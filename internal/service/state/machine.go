@@ -13,6 +13,7 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger-v3-poc/internal/crypto/keystore"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -128,12 +129,12 @@ type Machine struct {
 }
 
 func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier EventNotifier, numscriptCacheSize int) (*Machine, error) {
-	lastAppliedIndex, err := ReadLastAppliedIndex(dataStore)
+	lastAppliedIndex, err := query.ReadLastAppliedIndex(dataStore)
 	if err != nil {
 		return nil, err
 	}
 
-	lastAppliedTimestamp, err := ReadLastAppliedTimestamp(dataStore)
+	lastAppliedTimestamp, err := query.ReadLastAppliedTimestamp(dataStore)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +181,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		return nil, fmt.Errorf("creating batch_commit_duration histogram: %w", err)
 	}
 
-	periodsFromStore, err := ReadAllPeriods(dataStore)
+	periodsFromStore, err := query.ReadAllPeriods(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading periods from store: %w", err)
 	}
@@ -197,12 +198,12 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		}
 	}
 
-	nextPeriodID, err := ReadNextPeriodID(dataStore)
+	nextPeriodID, err := query.ReadNextPeriodID(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading next period ID from store: %w", err)
 	}
 
-	periodSchedule, err := ReadPeriodSchedule(dataStore)
+	periodSchedule, err := query.ReadPeriodSchedule(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading period schedule from store: %w", err)
 	}
@@ -214,7 +215,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 
 	// Load signing keys from Pebble on startup
 	if ks != nil {
-		signingKeys, err := ReadSigningKeys(dataStore)
+		signingKeys, err := query.ReadSigningKeys(dataStore)
 		if err != nil {
 			return nil, fmt.Errorf("loading signing keys from store: %w", err)
 		}
@@ -224,19 +225,19 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	}
 
 	// Load shared runtime flags from Pebble on startup
-	requireSig, err := ReadSigningConfig(dataStore)
+	requireSig, err := query.ReadSigningConfig(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading signing config from store: %w", err)
 	}
 	sharedState.SetRequireSignatures(requireSig)
 
-	maintenanceMode, err := ReadMaintenanceMode(dataStore)
+	maintenanceMode, err := query.ReadMaintenanceMode(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading maintenance mode from store: %w", err)
 	}
 	sharedState.SetMaintenanceMode(maintenanceMode)
 
-	auditEnabled, err := ReadAuditConfig(dataStore)
+	auditEnabled, err := query.ReadAuditConfig(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading audit config from store: %w", err)
 	}
@@ -318,7 +319,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 // After calling this method, CreateSnapshot will serialize the correct state.
 func (fsm *Machine) RecoverState() error {
 	// Recover nextSequenceID from last log sequence
-	lastSeq, err := ReadLastSequence(fsm.dataStore)
+	lastSeq, err := query.ReadLastSequence(fsm.dataStore)
 	if err != nil {
 		return fmt.Errorf("recovering last sequence: %w", err)
 	}
@@ -327,7 +328,7 @@ func (fsm *Machine) RecoverState() error {
 	}
 
 	// Recover lastLogHash from the last log entry
-	lastLog, err := ReadLastLog(fsm.dataStore)
+	lastLog, err := query.ReadLastLog(fsm.dataStore)
 	if err != nil {
 		return fmt.Errorf("recovering last log: %w", err)
 	}
@@ -336,7 +337,7 @@ func (fsm *Machine) RecoverState() error {
 	}
 
 	// Recover nextAuditSequenceID from last audit entry
-	lastAuditSeq, err := ReadLastAuditSequence(fsm.dataStore)
+	lastAuditSeq, err := query.ReadLastAuditSequence(fsm.dataStore)
 	if err != nil {
 		return fmt.Errorf("recovering last audit sequence: %w", err)
 	}
@@ -1361,7 +1362,7 @@ func (fsm *Machine) reloadStateFromStore() error {
 	if fsm.keyStore != nil {
 		fsm.keyStore.Reset()
 
-		signingKeys, err := ReadSigningKeys(fsm.dataStore)
+		signingKeys, err := query.ReadSigningKeys(fsm.dataStore)
 		if err != nil {
 			return fmt.Errorf("loading signing keys: %w", err)
 		}
@@ -1372,19 +1373,19 @@ func (fsm *Machine) reloadStateFromStore() error {
 
 	fsm.sharedState.Reset()
 
-	requireSig, err := ReadSigningConfig(fsm.dataStore)
+	requireSig, err := query.ReadSigningConfig(fsm.dataStore)
 	if err != nil {
 		return fmt.Errorf("loading signing config: %w", err)
 	}
 	fsm.sharedState.SetRequireSignatures(requireSig)
 
-	maintenanceMode, err := ReadMaintenanceMode(fsm.dataStore)
+	maintenanceMode, err := query.ReadMaintenanceMode(fsm.dataStore)
 	if err != nil {
 		return fmt.Errorf("loading maintenance mode: %w", err)
 	}
 	fsm.sharedState.SetMaintenanceMode(maintenanceMode)
 
-	auditEnabled, err := ReadAuditConfig(fsm.dataStore)
+	auditEnabled, err := query.ReadAuditConfig(fsm.dataStore)
 	if err != nil {
 		return fmt.Errorf("loading audit config: %w", err)
 	}
@@ -1588,7 +1589,7 @@ func (fsm *Machine) dispatchMetadataConversionRequests() {
 	handle := fsm.dataStore.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	cursor, err := ReadLedgers(handle)
+	cursor, err := query.ReadLedgers(handle)
 	if err != nil {
 		fsm.logger.Errorf("Failed to read ledgers for metadata conversion recovery: %v", err)
 		return

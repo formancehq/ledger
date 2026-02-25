@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/service/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
@@ -484,7 +485,7 @@ func NewNode(
 			}
 		}
 
-		storeLastAppliedIndex, err := state.ReadLastAppliedIndex(store)
+		storeLastAppliedIndex, err := query.ReadLastAppliedIndex(store)
 		if err != nil {
 			return nil, fmt.Errorf("getting store last applied index: %w", err)
 		}
@@ -1017,7 +1018,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 func (node *Node) unspoolAndResume(ctx context.Context) error {
 	node.logger.Infof("Background operation terminated, applying spooled entries before resuming...")
 
-	lastAppliedIndex, err := state.ReadLastAppliedIndex(node.store)
+	lastAppliedIndex, err := query.ReadLastAppliedIndex(node.store)
 	if err != nil {
 		return fmt.Errorf("getting last applied index: %w", err)
 	}
@@ -1028,7 +1029,7 @@ func (node *Node) unspoolAndResume(ctx context.Context) error {
 
 	node.status.Store(statusNormal)
 
-	lastAppliedIndex, err = state.ReadLastAppliedIndex(node.store)
+	lastAppliedIndex, err = query.ReadLastAppliedIndex(node.store)
 	if err != nil {
 		return fmt.Errorf("getting last applied index: %w", err)
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
@@ -149,7 +150,7 @@ func (mc *MetadataConverter) run() {
 // isFieldStillConverting checks whether a metadata field is still in CONVERTING
 // state by reading the ledger's metadata schema from the data store.
 func (mc *MetadataConverter) isFieldStillConverting(ledgerName string, targetType commonpb.TargetType, key string, expectedType commonpb.MetadataType) bool {
-	ledgerInfo, err := GetLedgerByName(mc.dataStore, ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(mc.dataStore, ledgerName)
 	if err != nil {
 		return false
 	}
@@ -316,7 +317,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 	}
 
 	// Validate the ledger exists (off the hot path).
-	_, err := GetLedgerByName(mc.dataStore, req.LedgerName)
+	_, err := query.GetLedgerByName(mc.dataStore, req.LedgerName)
 	if err != nil {
 		return fmt.Errorf("resolving ledger %q: %w", req.LedgerName, err)
 	}

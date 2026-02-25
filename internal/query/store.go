@@ -1,4 +1,4 @@
-package state
+package query
 
 import (
 	"encoding/binary"

@@ -15,8 +15,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/application"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/service/check"
-	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/tarutil"
 	"github.com/pterm/pterm"
@@ -175,17 +175,17 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 
 // readBootstrapPreviewData reads metadata and ledger names from a store.
 func readBootstrapPreviewData(store *dal.Store) (lastAppliedIndex, lastAppliedTimestamp uint64, ledgerNames []string, err error) {
-	lastAppliedIndex, err = state.ReadLastAppliedIndex(store)
+	lastAppliedIndex, err = query.ReadLastAppliedIndex(store)
 	if err != nil {
 		return 0, 0, nil, fmt.Errorf("getting last applied index: %w", err)
 	}
 
-	lastAppliedTimestamp, err = state.ReadLastAppliedTimestamp(store)
+	lastAppliedTimestamp, err = query.ReadLastAppliedTimestamp(store)
 	if err != nil {
 		return 0, 0, nil, fmt.Errorf("getting last applied timestamp: %w", err)
 	}
 
-	cursor, err := state.ReadLedgers(store)
+	cursor, err := query.ReadLedgers(store)
 	if err != nil {
 		return 0, 0, nil, fmt.Errorf("listing ledgers: %w", err)
 	}

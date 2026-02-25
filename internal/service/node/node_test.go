@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
@@ -29,7 +30,7 @@ import (
 
 // listLedgerContains checks if a ledger with the given name exists in the store
 func listLedgerContains(s *dal.Store, name string) bool {
-	cursor, err := state.ReadLedgers(s)
+	cursor, err := query.ReadLedgers(s)
 	if err != nil {
 		return false
 	}

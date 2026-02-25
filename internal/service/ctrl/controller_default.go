@@ -11,8 +11,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -50,7 +50,7 @@ func NewDefaultController(
 // ListLedgers returns a cursor over all active (non-deleted) ledgers
 func (ctrl *DefaultController) ListLedgers(_ context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := state.ReadLedgers(handle)
+	cursor, err := query.ReadLedgers(handle)
 	if err != nil {
 		_ = handle.Close()
 		return nil, err
@@ -63,7 +63,7 @@ func (ctrl *DefaultController) ListLedgers(_ context.Context) (dal.Cursor[*commo
 }
 
 func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
-	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -79,7 +79,7 @@ func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerName stri
 
 // buildTransaction builds a transaction from updates and logs using the given reader.
 func buildTransaction(reader dal.PebbleReader, ledger string, transactionID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
-	updates, err := state.ReadTransactionUpdates(reader, ledger, transactionID)
+	updates, err := query.ReadTransactionUpdates(reader, ledger, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("getting transaction updates for %d: %w", transactionID, err)
 	}
@@ -137,7 +137,7 @@ func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates 
 		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
 	}
 
-	log, err := state.ReadLogBySequence(reader, sequence)
+	log, err := query.ReadLogBySequence(reader, sequence)
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
 	}
@@ -201,7 +201,7 @@ func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates 
 // ListTransactions returns a cursor over transactions for a ledger (newest first).
 // Uses a single reverse iterator over transaction update keys for efficiency.
 func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (dal.Cursor[*commonpb.Transaction], error) {
-	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -247,7 +247,7 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 // Uses a single forward iterator over the attribute range to discover accounts
 // and collect metadata in one pass.
 func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (dal.Cursor[*commonpb.Account], error) {
-	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -302,7 +302,7 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 }
 
 func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, address string) (*commonpb.Account, error) {
-	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -317,7 +317,7 @@ func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, 
 }
 
 func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (*commonpb.LedgerInfo, error) {
-	ledgerInfo, err := state.GetLedgerByName(ctrl.store, name)
+	ledgerInfo, err := query.GetLedgerByName(ctrl.store, name)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", name)
@@ -329,7 +329,7 @@ func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (
 
 // GetMetadataSchemaStatus returns the conversion status of all declared metadata fields.
 func (ctrl *DefaultController) GetMetadataSchemaStatus(_ context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
-	ledgerInfo, err := state.GetLedgerByName(ctrl.store, ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -365,7 +365,7 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(_ context.Context, ledger
 // ListLogs returns a cursor over system logs.
 func (ctrl *DefaultController) ListLogs(_ context.Context, afterSequence uint64, pageSize uint32) (dal.Cursor[*commonpb.Log], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := state.ReadLogsSince(handle, afterSequence)
+	cursor, err := query.ReadLogsSince(handle, afterSequence)
 	if err != nil {
 		_ = handle.Close()
 		return nil, fmt.Errorf("listing logs: %w", err)
@@ -382,7 +382,7 @@ func (ctrl *DefaultController) ListLogs(_ context.Context, afterSequence uint64,
 // ListAuditEntries returns a cursor over audit entries, applying optional filters.
 func (ctrl *DefaultController) ListAuditEntries(_ context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (dal.Cursor[*auditpb.AuditEntry], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := state.ReadAuditEntries(handle, afterSequence)
+	cursor, err := query.ReadAuditEntries(handle, afterSequence)
 	if err != nil {
 		_ = handle.Close()
 		return nil, fmt.Errorf("listing audit entries: %w", err)
@@ -408,7 +408,7 @@ func (ctrl *DefaultController) GetAuditEntry(_ context.Context, sequence uint64)
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	entry, err := state.ReadAuditEntry(handle, sequence)
+	entry, err := query.ReadAuditEntry(handle, sequence)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("audit entry %d not found", sequence)
@@ -421,7 +421,7 @@ func (ctrl *DefaultController) GetAuditEntry(_ context.Context, sequence uint64)
 // ListPeriods returns a cursor over all non-purged periods from the store.
 func (ctrl *DefaultController) ListPeriods(_ context.Context) (dal.Cursor[*commonpb.Period], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := state.ReadPeriods(handle)
+	cursor, err := query.ReadPeriods(handle)
 	if err != nil {
 		_ = handle.Close()
 		return nil, err
@@ -432,7 +432,7 @@ func (ctrl *DefaultController) ListPeriods(_ context.Context) (dal.Cursor[*commo
 // ListSigningKeys returns a cursor over all registered signing keys.
 func (ctrl *DefaultController) ListSigningKeys(_ context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := state.ReadSigningKeysCursor(handle)
+	cursor, err := query.ReadSigningKeysCursor(handle)
 	if err != nil {
 		_ = handle.Close()
 		return nil, err

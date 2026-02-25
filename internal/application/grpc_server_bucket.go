@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/check"
 	"github.com/formancehq/ledger-v3-poc/internal/service/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/service/events"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/service/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -133,7 +134,7 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 // computeTransactionReceipt computes a JWT receipt for an existing transaction
 // by looking up its creation log to extract the period ID.
 func (impl *BucketServiceServerImpl) computeTransactionReceipt(ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
-	log, err := state.FindTransactionCreationLog(impl.store, ledger, txID)
+	log, err := query.FindTransactionCreationLog(impl.store, ledger, txID)
 	if err != nil {
 		return "", err
 	}
@@ -279,7 +280,7 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(_ context.Context, _ *servic
 }
 
 func (impl *BucketServiceServerImpl) GetPeriodSchedule(_ context.Context, _ *servicepb.GetPeriodScheduleRequest) (*servicepb.GetPeriodScheduleResponse, error) {
-	cronExpr, err := state.ReadPeriodSchedule(impl.store)
+	cronExpr, err := query.ReadPeriodSchedule(impl.store)
 	if err != nil {
 		return nil, fmt.Errorf("loading period schedule: %w", err)
 	}

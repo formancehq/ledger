@@ -9,9 +9,9 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing"
-	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/zeebo/blake3"
 	"google.golang.org/protobuf/proto"
@@ -49,7 +49,7 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes) *Checker {
 // 5. Transaction update consistency
 // 6. Reverted status consistency
 func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStoreEvent)) error {
-	lastSequence, err := state.ReadLastSequence(c.store)
+	lastSequence, err := query.ReadLastSequence(c.store)
 	if err != nil {
 		return fmt.Errorf("getting last sequence: %w", err)
 	}
@@ -85,7 +85,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return ctx.Err()
 		}
 
-		log, err := state.ReadLogBySequence(c.store, seq)
+		log, err := query.ReadLogBySequence(c.store, seq)
 		if err != nil {
 			return fmt.Errorf("getting log %d: %w", seq, err)
 		}
@@ -255,7 +255,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			continue
 		}
 
-		actualUpdates, err := state.ReadTransactionUpdates(c.store, tk.Ledger, tk.ID)
+		actualUpdates, err := query.ReadTransactionUpdates(c.store, tk.Ledger, tk.ID)
 		if err != nil {
 			return fmt.Errorf("getting transaction updates for ledger %s tx %d: %w", tk.Ledger, tk.ID, err)
 		}

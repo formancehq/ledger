@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -21,7 +22,7 @@ func TestSaveMaintenanceMode(t *testing.T) {
 	s := newTestStore(t)
 
 	// Default: not in maintenance mode
-	enabled, err := ReadMaintenanceMode(s)
+	enabled, err := query.ReadMaintenanceMode(s)
 	require.NoError(t, err)
 	require.False(t, enabled)
 
@@ -30,7 +31,7 @@ func TestSaveMaintenanceMode(t *testing.T) {
 	require.NoError(t, SaveMaintenanceMode(batch, true))
 	require.NoError(t, batch.Commit())
 
-	enabled, err = ReadMaintenanceMode(s)
+	enabled, err = query.ReadMaintenanceMode(s)
 	require.NoError(t, err)
 	require.True(t, enabled)
 
@@ -39,7 +40,7 @@ func TestSaveMaintenanceMode(t *testing.T) {
 	require.NoError(t, SaveMaintenanceMode(batch, false))
 	require.NoError(t, batch.Commit())
 
-	enabled, err = ReadMaintenanceMode(s)
+	enabled, err = query.ReadMaintenanceMode(s)
 	require.NoError(t, err)
 	require.False(t, enabled)
 }
@@ -50,7 +51,7 @@ func TestSavePeriodSchedule(t *testing.T) {
 	s := newTestStore(t)
 
 	// Default: empty schedule
-	schedule, err := ReadPeriodSchedule(s)
+	schedule, err := query.ReadPeriodSchedule(s)
 	require.NoError(t, err)
 	require.Equal(t, "", schedule)
 
@@ -59,7 +60,7 @@ func TestSavePeriodSchedule(t *testing.T) {
 	require.NoError(t, SavePeriodSchedule(batch, "*/5 * * * *"))
 	require.NoError(t, batch.Commit())
 
-	schedule, err = ReadPeriodSchedule(s)
+	schedule, err = query.ReadPeriodSchedule(s)
 	require.NoError(t, err)
 	require.Equal(t, "*/5 * * * *", schedule)
 
@@ -68,7 +69,7 @@ func TestSavePeriodSchedule(t *testing.T) {
 	require.NoError(t, SavePeriodSchedule(batch, "0 * * * *"))
 	require.NoError(t, batch.Commit())
 
-	schedule, err = ReadPeriodSchedule(s)
+	schedule, err = query.ReadPeriodSchedule(s)
 	require.NoError(t, err)
 	require.Equal(t, "0 * * * *", schedule)
 }
@@ -83,7 +84,7 @@ func TestBatchDeletePeriodScheduleFunc(t *testing.T) {
 	require.NoError(t, SavePeriodSchedule(batch, "*/10 * * * *"))
 	require.NoError(t, batch.Commit())
 
-	schedule, err := ReadPeriodSchedule(s)
+	schedule, err := query.ReadPeriodSchedule(s)
 	require.NoError(t, err)
 	require.Equal(t, "*/10 * * * *", schedule)
 
@@ -92,7 +93,7 @@ func TestBatchDeletePeriodScheduleFunc(t *testing.T) {
 	require.NoError(t, BatchDeletePeriodSchedule(batch))
 	require.NoError(t, batch.Commit())
 
-	schedule, err = ReadPeriodSchedule(s)
+	schedule, err = query.ReadPeriodSchedule(s)
 	require.NoError(t, err)
 	require.Equal(t, "", schedule)
 }
@@ -243,7 +244,7 @@ func TestPurgeTransactionUpdates(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify all 5 updates exist
-	updates, err := ReadTransactionUpdates(s, "test", 1)
+	updates, err := query.ReadTransactionUpdates(s, "test", 1)
 	require.NoError(t, err)
 	require.Len(t, updates, 5)
 
@@ -253,7 +254,7 @@ func TestPurgeTransactionUpdates(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify only updates with byLog 5 and 25 remain
-	updates, err = ReadTransactionUpdates(s, "test", 1)
+	updates, err = query.ReadTransactionUpdates(s, "test", 1)
 	require.NoError(t, err)
 	require.Len(t, updates, 2)
 	require.Equal(t, uint64(5), updates[0].ByLog)
@@ -276,18 +277,18 @@ func TestAppendAuditEntries(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify we can read them back
-	lastSeq, err := ReadLastAuditSequence(s)
+	lastSeq, err := query.ReadLastAuditSequence(s)
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), lastSeq)
 
 	// Read single entry
-	entry, err := ReadAuditEntry(s, 2)
+	entry, err := query.ReadAuditEntry(s, 2)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), entry.Sequence)
 	require.Equal(t, uint64(20), entry.ProposalId)
 
 	// Read non-existent entry
-	_, err = ReadAuditEntry(s, 999)
+	_, err = query.ReadAuditEntry(s, 999)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 }
 
@@ -301,11 +302,11 @@ func TestSetAppliedIndexAndTimestamp(t *testing.T) {
 	require.NoError(t, SetLastAppliedTimestamp(batch, 1700000000))
 	require.NoError(t, batch.Commit())
 
-	idx, err := ReadLastAppliedIndex(s)
+	idx, err := query.ReadLastAppliedIndex(s)
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), idx)
 
-	ts, err := ReadLastAppliedTimestamp(s)
+	ts, err := query.ReadLastAppliedTimestamp(s)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1700000000), ts)
 }
@@ -353,19 +354,19 @@ func TestReadTransactionUpdates(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Read updates for transaction 100
-	updates, err := ReadTransactionUpdates(s, "test", 100)
+	updates, err := query.ReadTransactionUpdates(s, "test", 100)
 	require.NoError(t, err)
 	require.Len(t, updates, 2)
 	require.Equal(t, uint64(1), updates[0].ByLog)
 	require.Equal(t, uint64(5), updates[1].ByLog)
 
 	// Read updates for transaction 200
-	updates, err = ReadTransactionUpdates(s, "test", 200)
+	updates, err = query.ReadTransactionUpdates(s, "test", 200)
 	require.NoError(t, err)
 	require.Len(t, updates, 1)
 
 	// Read updates for non-existent transaction
-	updates, err = ReadTransactionUpdates(s, "test", 999)
+	updates, err = query.ReadTransactionUpdates(s, "test", 999)
 	require.NoError(t, err)
 	require.Empty(t, updates)
 }
@@ -405,17 +406,17 @@ func TestFindTransactionCreationLog(t *testing.T) {
 	appendLogs(t, s, 1, logs...)
 
 	// Find the creation log
-	log, err := FindTransactionCreationLog(s, "find-tx-ledger", 1)
+	log, err := query.FindTransactionCreationLog(s, "find-tx-ledger", 1)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	require.Equal(t, uint64(5), log.Sequence)
 
 	// Non-existent transaction should return ErrNotFound
-	_, err = FindTransactionCreationLog(s, "find-tx-ledger", 999)
+	_, err = query.FindTransactionCreationLog(s, "find-tx-ledger", 999)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Non-existent ledger should return error
-	_, err = FindTransactionCreationLog(s, "non-existent", 1)
+	_, err = query.FindTransactionCreationLog(s, "non-existent", 1)
 	require.Error(t, err)
 }
 
@@ -425,7 +426,7 @@ func TestReadLastAuditSequence(t *testing.T) {
 	s := newTestStore(t)
 
 	// Empty store
-	seq, err := ReadLastAuditSequence(s)
+	seq, err := query.ReadLastAuditSequence(s)
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), seq)
 
@@ -438,7 +439,7 @@ func TestReadLastAuditSequence(t *testing.T) {
 	))
 	require.NoError(t, batch.Commit())
 
-	seq, err = ReadLastAuditSequence(s)
+	seq, err = query.ReadLastAuditSequence(s)
 	require.NoError(t, err)
 	require.Equal(t, uint64(30), seq)
 }
@@ -449,7 +450,7 @@ func TestReadSigningKeysCursorFunc(t *testing.T) {
 	s := newTestStore(t)
 
 	// Empty store
-	cursor, err := ReadSigningKeysCursor(s)
+	cursor, err := query.ReadSigningKeysCursor(s)
 	require.NoError(t, err)
 	var keys []*commonpb.SigningKey
 	for {
@@ -475,7 +476,7 @@ func TestReadSigningKeysCursorFunc(t *testing.T) {
 	require.NoError(t, SaveSigningKey(batch, "child-key", pubKey2, "root-key"))
 	require.NoError(t, batch.Commit())
 
-	cursor, err = ReadSigningKeysCursor(s)
+	cursor, err = query.ReadSigningKeysCursor(s)
 	require.NoError(t, err)
 	keys = nil
 	for {
@@ -506,7 +507,7 @@ func TestReadAuditEntry(t *testing.T) {
 	s := newTestStore(t)
 
 	// Non-existent entry
-	_, err := ReadAuditEntry(s, 99)
+	_, err := query.ReadAuditEntry(s, 99)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Add entry and read back
@@ -520,7 +521,7 @@ func TestReadAuditEntry(t *testing.T) {
 	))
 	require.NoError(t, batch.Commit())
 
-	entry, err := ReadAuditEntry(s, 42)
+	entry, err := query.ReadAuditEntry(s, 42)
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), entry.Sequence)
 	require.Equal(t, uint64(100), entry.ProposalId)

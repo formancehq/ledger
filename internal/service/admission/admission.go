@@ -23,6 +23,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/service/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -815,7 +816,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			logs[i] = created
 		} else if refSeq := logOrRef.GetReferenceSequence(); refSeq > 0 {
-			log, fetchErr := state.ReadLogBySequence(a.store, refSeq)
+			log, fetchErr := query.ReadLogBySequence(a.store, refSeq)
 			if fetchErr != nil {
 				return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, fetchErr)
 			}
@@ -1318,7 +1319,7 @@ func (a *Admission) requestsToOrders(reqs []*servicepb.Request) ([]*raftcmdpb.Or
 // getTransactionPostings retrieves the postings of an original transaction from the store.
 // It uses FindTransactionCreationLog to locate the creation log and extract postings.
 func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint64) ([]*commonpb.Posting, error) {
-	log, err := state.FindTransactionCreationLog(a.store, ledgerName, transactionID)
+	log, err := query.FindTransactionCreationLog(a.store, ledgerName, transactionID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, &domain.BusinessError{Err: &domain.ErrTransactionNotFound{TransactionID: transactionID}}

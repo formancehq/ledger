@@ -15,8 +15,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/service/check"
-	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/tarutil"
 	"google.golang.org/grpc"
@@ -235,22 +235,22 @@ func (s *RestoreServiceServerImpl) PreviewRestore(_ context.Context, _ *restorep
 	}
 	defer func() { _ = store.Close() }()
 
-	lastAppliedIndex, err := state.ReadLastAppliedIndex(store)
+	lastAppliedIndex, err := query.ReadLastAppliedIndex(store)
 	if err != nil {
 		return nil, fmt.Errorf("getting last applied index: %w", err)
 	}
 
-	lastAppliedTimestamp, err := state.ReadLastAppliedTimestamp(store)
+	lastAppliedTimestamp, err := query.ReadLastAppliedTimestamp(store)
 	if err != nil {
 		return nil, fmt.Errorf("getting last applied timestamp: %w", err)
 	}
 
-	lastSequence, err := state.ReadLastSequence(store)
+	lastSequence, err := query.ReadLastSequence(store)
 	if err != nil {
 		return nil, fmt.Errorf("getting last sequence: %w", err)
 	}
 
-	cursor, err := state.ReadLedgers(store)
+	cursor, err := query.ReadLedgers(store)
 	if err != nil {
 		return nil, fmt.Errorf("listing ledgers: %w", err)
 	}
@@ -295,13 +295,13 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 		return nil, fmt.Errorf("opening staging store: %w", err)
 	}
 
-	lastAppliedIndex, err := state.ReadLastAppliedIndex(store)
+	lastAppliedIndex, err := query.ReadLastAppliedIndex(store)
 	if err != nil {
 		_ = store.Close()
 		return nil, fmt.Errorf("getting last applied index: %w", err)
 	}
 
-	lastAppliedTimestamp, err := state.ReadLastAppliedTimestamp(store)
+	lastAppliedTimestamp, err := query.ReadLastAppliedTimestamp(store)
 	if err != nil {
 		_ = store.Close()
 		return nil, fmt.Errorf("getting last applied timestamp: %w", err)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
@@ -124,7 +125,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			"HLC should advance past last timestamp on clock regression")
 
 		// Verify the timestamp was persisted in the store
-		persistedTS, err := ReadLastAppliedTimestamp(dataStore)
+		persistedTS, err := query.ReadLastAppliedTimestamp(dataStore)
 		require.NoError(t, err)
 		require.Equal(t, uint64(1000001), persistedTS)
 	})
@@ -166,7 +167,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		require.Equal(t, uint64(5000), machine.lastAppliedTimestamp,
 			"HLC should use proposal date when it is ahead")
 
-		persistedTS, err := ReadLastAppliedTimestamp(dataStore)
+		persistedTS, err := query.ReadLastAppliedTimestamp(dataStore)
 		require.NoError(t, err)
 		require.Equal(t, uint64(5000), persistedTS)
 	})

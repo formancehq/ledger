@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/stretchr/testify/require"
 )
 
@@ -176,7 +177,7 @@ func TestReadLastLog(t *testing.T) {
 	s := newTestStore(t)
 
 	// Empty store
-	log, err := ReadLastLog(s)
+	log, err := query.ReadLastLog(s)
 	require.NoError(t, err)
 	require.Nil(t, log)
 
@@ -185,7 +186,7 @@ func TestReadLastLog(t *testing.T) {
 	testLogs := createTestLogs("test-ledger")
 	appendLogs(t, s, 1, testLogs...)
 
-	log, err = ReadLastLog(s)
+	log, err = query.ReadLastLog(s)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	require.Equal(t, uint64(4), log.Sequence)
@@ -196,7 +197,7 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 	s := newTestStore(t)
 
 	// Empty store
-	cursor, err := ReadAuditEntries(s, nil)
+	cursor, err := query.ReadAuditEntries(s, nil)
 	require.NoError(t, err)
 	_, curErr := cursor.Next()
 	require.Error(t, curErr) // io.EOF
@@ -212,7 +213,7 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Read all
-	cursor, err = ReadAuditEntries(s, nil)
+	cursor, err = query.ReadAuditEntries(s, nil)
 	require.NoError(t, err)
 	var entries []*auditpb.AuditEntry
 	for {
@@ -227,7 +228,7 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 
 	// Read after sequence 1
 	afterSeq := uint64(1)
-	cursor, err = ReadAuditEntries(s, &afterSeq)
+	cursor, err = query.ReadAuditEntries(s, &afterSeq)
 	require.NoError(t, err)
 	entries = nil
 	for {

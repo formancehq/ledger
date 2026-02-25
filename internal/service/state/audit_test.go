@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/service/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/service/processing/numscript"
@@ -59,7 +60,7 @@ func listAuditEntries(t *testing.T, store *dal.Store, afterSequence uint64) []*a
 	if afterSequence > 0 {
 		filter = &afterSequence
 	}
-	cursor, err := ReadAuditEntries(store, filter)
+	cursor, err := query.ReadAuditEntries(store, filter)
 	require.NoError(t, err)
 	defer func() { _ = cursor.Close() }()
 

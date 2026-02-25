@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/service/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/service/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/service/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/service/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -167,7 +168,7 @@ func (e *Emitter) run() {
 // processLogs reads logs from the store starting after the given cursor,
 // publishes them, and returns the updated cursor position.
 func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
-	logsCursor, err := state.ReadLogsSince(e.store, cursor)
+	logsCursor, err := query.ReadLogsSince(e.store, cursor)
 	if err != nil {
 		return cursor, err
 	}
