@@ -109,7 +109,7 @@ Design goals:
 - The **read store** (bbolt) is self-contained for metadata/address filtering — it never performs random reads against the primary Pebble store (see Section 7.2: Reverse Metadata Map).
 - **Volume aggregation** is the exception: after filtering accounts in bbolt, volumes are read from the primary Pebble store via sequential prefix scans (see Section 9).
 - **Prepared query definitions** are stored in the primary store via Raft commands (`[0xE0]`). The read store contains only derived index data.
-- The read store is **eventually consistent** with bounded lag (milliseconds). Clients can opt into freshness guarantees via `min_log_sequence`.
+- The read store is a **pure derived index** — it holds no authoritative data. Visibility lag is bounded (sub-millisecond on NVMe). Clients can opt into freshness guarantees via `min_log_sequence`.
 - **bbolt** is read-optimized (B+ tree, single-level, zero read amplification) with native MVCC — concurrent readers never block the index builder writer. This matches our I/O profile: single writer (index builder), many concurrent readers (query executors).
 
 ## 5. Filter Model
@@ -532,11 +532,13 @@ Forward index: [0x0C][ledgerName\x00][t:][metadataKey\x00][typeTag][sortableValu
 
 ### 7.3 Consistency Model
 
-The read store is **eventually consistent** with bounded lag:
+The bbolt read store is a **pure derived index** — it contains no authoritative data. All authoritative data lives in the primary Pebble store, which is always consistent. If the read store disappeared entirely, the system would continue to function (minus advanced queries) and the index can be rebuilt from scratch by replaying system logs.
 
-- Typical lag: milliseconds (bounded by bbolt write throughput)
+The only effect of the index builder's lag is **visibility**: a recently created account or metadata change may not yet appear in query results. But the data is never inconsistent — there is no stale data, no contradictory state. The index simply hasn't seen the latest changes yet.
+
+- Typical lag: sub-millisecond on NVMe (bounded by bbolt write throughput)
 - `lastIndexedLogSequence` is exposed via API for freshness checks
-- Queries can specify `min_log_sequence` to wait until the read store catches up (opt-in strong consistency, at the cost of latency)
+- Queries can specify `min_log_sequence` to wait until the read store catches up (opt-in freshness guarantee, at the cost of latency)
 - The log sequence (global, monotonically increasing) is a better progress marker than the Raft index because it only counts accepted operations
 
 ### 7.4 Crash Recovery
@@ -814,12 +816,11 @@ For a query matching 100 accounts with ~5 assets each: ~100 Pebble seeks + ~500 
 
 ### 9.4 Consistency
 
-Volume aggregation has a **mixed consistency model**:
+The authoritative data lives entirely in the primary Pebble store — it is always consistent, always correct. The bbolt read store is purely a **derived index**: it does not hold any data that doesn't already exist in Pebble. If bbolt disappeared, the system would still function (minus advanced queries), and it can be rebuilt from scratch at any time by replaying system logs.
 
-- **Filter** (bbolt): eventually consistent with bounded lag — same as list queries. A newly created account might not yet appear in bbolt.
-- **Volumes** (Pebble): current — reads the latest committed state via Pebble snapshot.
+The only consequence of the index lag is **visibility**: a newly created account or a metadata change may not appear in query results for a few milliseconds until the index builder catches up. But the data itself is never inconsistent — there is no split-brain, no stale volume values, no contradictory state between stores. Volumes are always read from Pebble (the source of truth), not from the index.
 
-This means: the set of accounts included in the aggregation may be slightly behind (by milliseconds), but the volume values for those accounts are up-to-date. This is the same consistency guarantee as list queries — `min_log_sequence` can be used for stronger freshness.
+In practice, the lag is bounded by the index builder's throughput (typically sub-millisecond on NVMe). For use cases that need strict freshness, `min_log_sequence` lets the client wait until the index has processed a specific log entry before executing the query.
 
 ### 9.5 Pagination
 
@@ -1141,7 +1142,7 @@ Response:
 | **Storage engine** | bbolt (B+ tree) over Pebble (LSM-tree) | Read-optimized workload: zero read amplification (vs multi-level LSM merges), automatic MVCC snapshots for multi-cursor consistency (vs explicit Snapshot management), no background compaction interference. Pebble's write optimization and compression are wasted on the low-throughput index builder. See Section 8. |
 | **Key-scoped indexes** | Key layout `[0x0C][ledger][a:][key\x00]` naturally scopes to a specific metadata key | Equivalent to a partial index — only entries for the queried key are scanned. No wasted I/O on unrelated metadata keys. Zero overhead for unqueried keys. |
 | **Dedicated disk** | Optional, not required | Async builder already decouples FSM; beneficial on SATA SSD, not needed on NVMe |
-| **Consistency** | Eventually consistent with opt-in freshness wait | Bounded lag (ms); `min_log_sequence` for strong consistency when needed |
+| **Consistency** | Pure derived index with opt-in freshness wait | bbolt is a derived index, not a source of truth — the authoritative data is always consistent in Pebble. Only visibility is delayed (sub-ms). `min_log_sequence` for freshness guarantee when needed. |
 | **Validation** | At creation time + execution time | Creation: enforce resource limits, condition/schema type compatibility. Execution: re-validate condition/schema match (catches schema changes not batched with query updates) |
 | **Condition/type matching** | Condition type must match declared `MetadataType` for the key | `IntCondition` only on `INT8`..`INT64` keys, `UintCondition` only on `UINT8`..`UINT64`, `BoolCondition` only on `BOOL`, `StringCondition` only on `STRING` or untyped keys. `ExistsCondition` on any type. Enforced at creation and execution. |
 | **NullValue visibility** | NullValue entries are invisible to typed conditions | `IntRange` won't match a NullValue — this is acceptable. `ExistsCondition(include_null: true)` can explicitly detect inconvertible values. Consistent with the typed metadata system's semantics. |
