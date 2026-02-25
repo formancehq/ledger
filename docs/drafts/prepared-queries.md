@@ -1150,11 +1150,112 @@ Response:
 | **Transaction metadata** | Indexed in the read store (same pattern as account metadata) | Transaction metadata is mutable (can be modified via SaveMetadata) and types can change; same reverse map pattern as account metadata; enables filtering transactions by metadata |
 | **Schema change handling** | Auto-rebuild indexes + user-managed query updates | Index builder re-encodes entries automatically via `ConvertMetadataValue` matrix. Prepared queries are the user's responsibility — schema change + `UpdatePreparedQuery` batched in the same `Proposal` (atomic). Execution-time validation rejects condition/schema mismatches with a clear error. No runtime conversion magic. |
 | **Volume aggregation** | Cross-store merge-scan (bbolt → Pebble), not volume replication | Volumes change on every transaction (high write volume) — replicating them in bbolt would undermine its low-write I/O profile. Instead: filter accounts in bbolt, read volumes from Pebble via sequential `ForEachInPrefix`. Both stores are sorted by account → merge-scan pattern, no random I/O. See Section 9. |
+| **Point-in-time queries** | Not supported (arbitrary PIT); period-boundary snapshots recommended instead | v2 proved that storing all diffs indefinitely causes unbounded storage growth and progressive performance degradation. v3's generational compaction and period archival are designed to bound the hot dataset — PIT negates both. Period-boundary snapshots (file copy at period close) provide auditable historical queries without fighting the architecture. See Section 14. |
 
-## 14. Open Questions
+## 14. Point-in-Time Queries
+
+### 14.1 Context — Ledger v2
+
+Ledger v2 supports querying the ledger at any arbitrary date via a `pit` parameter. The implementation stores every change in a `moves` table in PostgreSQL, then reconstructs state with `SUM(amount) WHERE date <= PIT`. This provides full bi-temporality (insertion date + effective date).
+
+**Known problems in v2:**
+
+- **Storage**: the `moves` table grows linearly with every transaction, indefinitely. No aggregation or cleanup is possible because any row could be needed for a future PIT query.
+- **Performance**: rebuilding state at a given date requires aggregating all moves up to that date — full table scans with `SUM` on large datasets. Complex `JOIN` + `DISTINCT ON` + `ORDER BY` for metadata history. Performance degrades proportionally to ledger age.
+- **Complexity**: feature flags (`FeatureMovesHistory`, `FeatureMovesHistoryPostCommitEffectiveVolumes`) control which historical data is stored, adding configuration surface and failure modes.
+
+### 14.2 What PIT Would Mean for v3
+
+The v3 architecture is fundamentally designed around **compaction**: old entries are consolidated and cleaned up over time (generational compaction in Pebble, period archival to cold storage). PIT fights directly against this design.
+
+#### What would be needed
+
+To support arbitrary PIT in the prepared query read store:
+
+1. **Versioned inverted index**: every metadata change creates a new bbolt entry instead of replacing the old one. Key becomes `[0x0C][ledger][a:][key\x00][typeTag][value][account][timestamp]`. Every query must filter `WHERE timestamp <= PIT` within each prefix scan.
+
+2. **No deletion of old entries**: the reverse metadata map (`[0x0E]`) must keep all historical values, not just the latest. Storage grows linearly with metadata changes.
+
+3. **Timestamp→Raft index mapping**: PIT queries use a calendar timestamp, but the read store is indexed by Raft index. Need a secondary index to translate `timestamp → raftIndex`, adding another lookup per query.
+
+4. **Volume reconstruction**: `ComputeValue(reader, maxIndex, key)` can reconstruct volumes at a specific Raft index — but only if the base+diff entries still exist in Pebble. After generational compaction, old entries are deleted. PIT beyond the compaction window is impossible.
+
+5. **Period archival breaks PIT**: once a period is archived and logs purged from Pebble, the base+diff entries for that period's transactions are gone. PIT queries into archived periods would require retrieving data from cold storage — fundamentally changing the query latency model.
+
+#### Cost analysis
+
+| Aspect | Current (no PIT) | With full PIT |
+|--------|-----------------|---------------|
+| **bbolt storage** | O(accounts × keys) | O(accounts × keys × changes) — unbounded growth |
+| **Index builder writes** | 1 delete + 1 insert per metadata change | 1 insert only (no delete — keep history) but storage never shrinks |
+| **Query I/O** | Range scan on current entries | Range scan + timestamp filter on all historical entries — proportional to churn |
+| **Volume aggregation** | `ForEachInPrefix` at latest index | `ComputeValue` at historical index — only works within compaction window |
+| **Complexity** | Single-version index, simple cursors | Multi-version index, timestamp filtering, Raft index translation |
+| **Compaction compatibility** | Fully compatible | Incompatible — PIT requires retaining everything compaction is designed to remove |
+
+### 14.3 Recommendation — No Arbitrary PIT
+
+**Arbitrary point-in-time queries are not supported.** The v2 experience demonstrated that storing all diffs indefinitely creates unbounded storage growth and progressive performance degradation. The v3 architecture is explicitly designed to avoid this: generational compaction, period archival, and cold storage are all mechanisms to bound the hot dataset size.
+
+Adding PIT to the prepared query system would:
+
+- **Negate compaction**: the index can never discard old entries if any PIT query might need them
+- **Re-create v2's storage problem**: in bbolt instead of PostgreSQL, with worse tooling for managing growth
+- **Break the I/O profile**: versioned indexes multiply range scan I/O by the average churn rate per key
+- **Create a false promise**: PIT on metadata works until compaction clears the Pebble base+diff entries; then it silently becomes unavailable for older dates, which is worse than not offering it at all
+
+### 14.4 Alternatives for Historical Queries
+
+Instead of arbitrary PIT, three lighter-weight alternatives provide historical query capabilities without fighting the architecture:
+
+#### Option A — Period-boundary snapshots
+
+When a period closes, capture a snapshot of the bbolt read store state. This gives exact answers to "what was the ledger state at the end of period N?" without any ongoing storage cost between periods.
+
+- **Storage**: one frozen bbolt file per closed period (can be compressed and moved to cold storage)
+- **Query**: open the period's bbolt snapshot as read-only, execute the same prepared query against it
+- **Granularity**: period boundaries only — not arbitrary dates, but predictable and auditable
+- **Implementation**: `bbolt.View()` + file copy at period close; or Pebble checkpoint-style approach
+- **Natural fit**: periods already exist for archival; snapshots extend them to read queries
+
+#### Option B — On-demand reconstruction from logs
+
+For rare historical queries, replay system logs up to a specific sequence into a temporary bbolt, then execute the prepared query against it.
+
+- **Storage**: zero ongoing cost — temporary bbolt is built on demand and discarded after
+- **Query latency**: proportional to the number of logs to replay (seconds to minutes for large ledgers)
+- **Granularity**: any log sequence (mapped to any point in time)
+- **Use case**: audit, compliance investigations, dispute resolution — infrequent but needs precision
+- **Implementation**: CLI command `ledgerctl query-at --date 2024-10-20 --query "premium_merchants"` replays logs from cold storage if needed
+
+#### Option C — Periodic materialized snapshots
+
+At a configurable interval (e.g., daily, weekly), the index builder captures a full snapshot of the current bbolt state and stores it with its `lastIndexedLogSequence` timestamp.
+
+- **Storage**: one snapshot per interval (bounded, configurable retention)
+- **Query**: "what was the state at the most recent snapshot before date X?"
+- **Granularity**: configurable — daily gives "end of day" queries, hourly gives finer resolution
+- **Trade-off**: more snapshots = more storage, but always bounded by retention policy
+- **Implementation**: cron-like scheduler creates `bbolt.Compact()` copies, tagged with timestamp
+
+#### Comparison
+
+| | Arbitrary PIT | Period snapshots (A) | On-demand replay (B) | Periodic snapshots (C) |
+|---|---|---|---|---|
+| **Granularity** | Any timestamp | Period boundaries | Any log sequence | Configurable interval |
+| **Ongoing storage** | Unbounded growth | One file per period | Zero | Bounded by retention |
+| **Query latency** | Same as live | Same as live | Seconds to minutes | Same as live |
+| **Complexity** | High (versioned index) | Low (file copy) | Medium (log replay) | Low (scheduled copy) |
+| **Compaction compatible** | No | Yes | Yes | Yes |
+| **Cold storage compatible** | No | Yes (snapshot in cold) | Yes (replays from cold) | Yes (snapshot in cold) |
+
+**Recommendation**: start with **Option A** (period-boundary snapshots) — it has the best cost/value ratio and aligns naturally with the existing period lifecycle. Option B can be added later for ad-hoc audit queries.
+
+## 15. Open Questions
 
 1. **Volume-based post-filters**: should prepared queries support conditions like `balance(USD/2) > 1000`? This would require loading account volumes for each candidate after metadata filtering. Potentially expensive.
 2. **String value length**: string metadata values can be arbitrarily long. For the inverted index key, should long values be truncated + hashed to keep keys bounded? Risk: hash collisions require post-filtering. With typed metadata, most filterable keys will have short strings or numeric values.
 3. **Prepared query limits per ledger**: should there be a maximum number? Query definitions are small but replicated via Raft.
 4. **Untyped keys**: for metadata keys with no declared schema, only `StringCondition` is allowed. Should `ExistsCondition` also be allowed on untyped keys? (Probably yes — it doesn't depend on the value type.)
 5. **bbolt file growth**: bbolt reuses freed pages but never shrinks the file. For ledgers with heavy metadata churn, should we add periodic compaction (`bbolt.Compact()`) or file rotation?
+6. **Historical query strategy**: which alternative(s) from Section 14.4 should we implement? Period snapshots (A) are recommended as the starting point. On-demand replay (B) and periodic snapshots (C) can be added incrementally.
