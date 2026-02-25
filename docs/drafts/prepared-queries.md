@@ -545,9 +545,9 @@ error: condition type mismatch for field AccountMetadata("amount"):
 
 This is simple, explicit, and avoids all runtime conversion complexity.
 
-## 8. Storage Engine — bbolt (B+ Tree)
+## 8. Storage Engine
 
-### 8.1 Why bbolt
+### 8.1 I/O Profile
 
 The read store has a very different I/O profile from the primary store:
 
@@ -555,18 +555,50 @@ The read store has a very different I/O profile from the primary store:
 - **Many concurrent readers** (query executors), heavy scan workload
 - **Analytical queries**: filtering, range scans, multi-criteria intersection
 
-bbolt is a B+ tree store (pure Go, used by etcd and Consul) that matches this profile:
+Two candidates: **bbolt** (B+ tree) and **Pebble** (LSM-tree, already used for the primary store).
 
-| Property | bbolt | Why it matters |
-|----------|-------|---------------|
-| **Read performance** | Single-level B+ tree — range scan = sequential page reads | Zero read amplification (unlike LSM-tree multi-level merges) |
-| **MVCC** | Native snapshot isolation — readers open read-only tx | Concurrent query executors never block the index builder writer |
-| **Single writer** | By design — one write tx at a time | Matches the index builder pattern exactly |
-| **Simplicity** | No compaction, no WAL, no tuning | No background I/O surprises |
-| **Maturity** | 10+ years in production (etcd, Consul) | Proven reliability |
-| **Pure Go** | No CGo, no cross-compilation issues | Simple build, no memory safety boundary |
+### 8.2 Comparison
 
-### 8.2 Key Layout
+| Criteria | bbolt (B+ tree) | Pebble (LSM-tree) |
+|----------|----------------|-------------------|
+| **Range scan I/O** | Single-level — sequential page reads, zero read amplification | Multi-level — a scan may touch L0 through L6, read amplification proportional to LSM depth |
+| **Concurrent readers** | Native MVCC — `db.View()` opens a snapshot automatically, readers never block writer | Explicit `db.NewSnapshot()` needed for consistent multi-cursor reads; without snapshot, cursors may see different states mid-query |
+| **Background I/O** | None — no compaction, no WAL flush, no surprises | Compaction goroutines run continuously; compete with read scans for disk bandwidth |
+| **Write performance** | Page rewrites (B+ tree) — slower for random writes | Append-only WAL + memtable — faster writes, but irrelevant here (index builder writes are sequential and low throughput) |
+| **Compression** | None — data stored uncompressed | Snappy/Zstd per SSTable block — smaller on-disk footprint |
+| **File size management** | Freed pages reused but file never shrinks; `bbolt.Compact()` can rewrite the file | SSTable files created/deleted by compaction — space reclaimed naturally |
+| **Tuning** | Zero config — page size, that's it | Memtable size, L0 compaction threshold, bloom filters, block cache size, compression level |
+| **Code reuse** | New dependency (`go.etcd.io/bbolt`), different cursor API | Same dependency as primary store, same key builders, same iterator patterns |
+| **Multi-cursor consistency** | Automatic — all cursors in a `View` tx see the same snapshot | Must explicitly create a `Snapshot` and open all iterators from it; if forgotten, a 5-cursor AND query may return incorrect results |
+| **Maturity** | 10+ years (etcd, Consul) | 5+ years (CockroachDB) |
+| **Pure Go** | Yes | Yes |
+
+### 8.3 Analysis
+
+**Read amplification** is the key differentiator. Our prepared queries open 2-10 cursors simultaneously (one per filter leaf) and merge-join them. Each cursor does a range scan on a prefix.
+
+- **bbolt**: each cursor reads sequential pages from a single B+ tree level. A range scan touching N entries reads ~N/fanout pages. Predictable, no variability.
+- **Pebble**: each cursor must merge data across multiple LSM levels (typically 4-6 after steady-state compaction). A range scan touching N entries may read 4-6× more data from disk. Bloom filters don't help — they optimize point lookups, not range scans.
+
+With 5 concurrent cursors, the total read amplification in Pebble is 5 × (LSM depth) — potentially 20-30× more I/O than bbolt for the same query.
+
+**Compaction interference**: the read store receives steady writes from the index builder. Pebble's compaction will run in the background, generating I/O that competes with concurrent read queries. bbolt has no background activity at all — every byte of I/O is either a write from the index builder or a read from a query. This makes performance predictable.
+
+**Snapshot consistency**: a prepared query with multiple filter leaves opens multiple cursors that must all see the same data state. bbolt provides this automatically — `db.View()` captures a snapshot for the entire transaction. With Pebble, you must explicitly create a `Snapshot` and derive all iterators from it. Forgetting this (or using `db.NewIter()` directly) means each cursor may see a different state, producing incorrect AND/OR results. This is a correctness footgun.
+
+**Code reuse** is Pebble's main advantage: same dependency, same key builder functions, same iterator API patterns. The key layout (Section 8.5) works identically in both engines. With bbolt, we need to adapt key builders and cursor handling for a different API.
+
+**Compression**: Pebble compresses SSTables (Snappy or Zstd). For an inverted index with many short keys and empty values, compression can reduce disk usage by 2-3×. bbolt stores data uncompressed. On NVMe this doesn't matter much (space is cheap); on constrained disks it could.
+
+### 8.4 Recommendation
+
+**bbolt** for the read store.
+
+The workload is read-heavy with multiple concurrent range scans — the exact scenario where B+ trees outperform LSM-trees. Zero read amplification, automatic MVCC snapshots (no correctness footgun), and no background compaction interference make bbolt the better fit.
+
+Pebble's advantages (code reuse, compression) don't outweigh the I/O disadvantage for this workload. The index builder writes are low-throughput and sequential — Pebble's write-optimized design is wasted here.
+
+### 8.5 Key Layout
 
 | Prefix | Key | Value | Purpose |
 |--------|-----|-------|---------|
@@ -583,7 +615,7 @@ bbolt is a B+ tree store (pure Go, used by etcd and Consul) that matches this pr
 
 `0x0C`, `0x0D`, `0x0E`, `0x0F` live in the read store (bbolt). `0xE0` lives in the primary Pebble store.
 
-### 8.3 Sortable Value Encoding
+### 8.6 Sortable Value Encoding
 
 The `typeTag` byte and `sortableValue` encoding depend on the metadata type:
 
@@ -597,7 +629,7 @@ The `typeTag` byte and `sortableValue` encoding depend on the metadata type:
 
 This encoding ensures that bbolt's B+ tree natural ordering corresponds to the logical value ordering — range scans on encoded values produce results in correct numeric/lexicographic order.
 
-### 8.4 Query Execution — Iterator Tree
+### 8.7 Query Execution — Iterator Tree
 
 The filter tree compiles into an **iterator tree**. Each leaf opens a bbolt cursor (range scan or point lookup). Operators compose cursors:
 
@@ -859,7 +891,7 @@ All cursors are lazy — the AND short-circuits as soon as one cursor is exhaust
 | **Index population** | Asynchronous via index builder | Keeps FSM apply fast (RAM-only); no I/O contention on write path |
 | **Feeding strategy** | Tail system logs (0x01) in Pebble, not raw Raft entries | Raw Raft entries include rejected proposals (insufficient funds, idempotency conflicts, etc.); system logs contain only accepted operations; reuses existing `NotifyLogsCommitted()` pattern from event emitter |
 | **Read store autonomy** | Reverse metadata map in bbolt | Eliminates cross-store random I/O for metadata lookups; all four operations (read old, delete old index, insert new index, update reverse map) are atomic in a single bbolt write tx |
-| **Storage engine** | bbolt (B+ tree, pure Go) | Read-optimized (single-level, zero read amplification), native MVCC for concurrent readers, single-writer by design (matches index builder), no CGo, battle-tested (etcd, Consul), simple (no compaction, no WAL, no tuning) |
+| **Storage engine** | bbolt (B+ tree) over Pebble (LSM-tree) | Read-optimized workload: zero read amplification (vs multi-level LSM merges), automatic MVCC snapshots for multi-cursor consistency (vs explicit Snapshot management), no background compaction interference. Pebble's write optimization and compression are wasted on the low-throughput index builder. See Section 8. |
 | **Key-scoped indexes** | Key layout `[0x0C][ledger][a:][key\x00]` naturally scopes to a specific metadata key | Equivalent to a partial index — only entries for the queried key are scanned. No wasted I/O on unrelated metadata keys. Zero overhead for unqueried keys. |
 | **Dedicated disk** | Optional, not required | Async builder already decouples FSM; beneficial on SATA SSD, not needed on NVMe |
 | **Consistency** | Eventually consistent with opt-in freshness wait | Bounded lag (ms); `min_log_sequence` for strong consistency when needed |
