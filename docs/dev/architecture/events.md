@@ -100,7 +100,7 @@ When `format=protobuf` in the events config, the event is serialized as binary p
 
 ### Components: Manager and Emitters
 
-The event system consists of two main components in `internal/service/events/`:
+The event system consists of two main components in `internal/application/events/`:
 
 - **Manager**: Manages the lifecycle of **one Emitter per named sink** based on the Raft-replicated per-sink configurations. It reconciles state on leadership changes and config updates, and fans out log notifications to all active emitters.
 - **Emitter**: Tails the global log from PebbleDB, converts logs to events, publishes them to its associated sink, and advances its per-sink cursor via Raft. On publish failure, it reports the error via Raft so it is visible cluster-wide.
@@ -443,7 +443,7 @@ The `Notifications` struct is created independently to break the fx circular dep
 ## Package Structure
 
 ```
-internal/service/events/
+internal/application/events/
   manager.go                            # Manager: one emitter per named sink, lifecycle, smart reconcile
   emitter.go                            # Emitter: tails log, converts, publishes, per-sink cursor
   signal.go                             # Signal type: non-blocking coalescing notification

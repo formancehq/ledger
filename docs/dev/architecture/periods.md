@@ -164,7 +164,7 @@ Every transaction created during a period includes a JWT receipt that links the 
 - **Verification**: The receipt can be verified independently to prove a transaction was recorded in a specific period.
 - **Period ID**: Set from the current open period in `processCreateTransaction` (FSM). If no period is open, `periodId` is `0`.
 
-**File**: `internal/service/receipt/receipt.go`
+**File**: `internal/infra/receipt/receipt.go`
 
 ### Obtaining Receipts
 
@@ -185,7 +185,7 @@ ledgerctl transactions revert 42 --ledger my-ledger --receipt <jwt-token>
 ```
 
 **Files**:
-- `internal/service/admission/admission.go` — Receipt verification and postings extraction
+- `internal/application/admission/admission.go` — Receipt verification and postings extraction
 - `internal/application/grpc_ledger_server.go` — Receipt signing and `GetTransaction` receipt computation
 
 ## Automatic Period Rotation (Cron Scheduler)

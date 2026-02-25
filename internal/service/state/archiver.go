@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/service/coldstorage"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 

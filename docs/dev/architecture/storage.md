@@ -351,7 +351,7 @@ Key prefixes are organized into three zones:
 
 ### Attribute Loading Coordination
 
-**File**: `internal/service/admission/loader.go`
+**File**: `internal/application/admission/loader.go`
 
 The `AttributeLoader` coordinates concurrent attribute loading to prevent duplicate store reads:
 

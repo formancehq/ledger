@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/rafttransportpb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"

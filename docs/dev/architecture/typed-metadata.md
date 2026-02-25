@@ -150,8 +150,8 @@ Any read that encounters a value whose stored type doesn't match the declared sc
 This layer guarantees that **reads always return the declared type** (or `NullValue`) regardless of the store's current state.
 
 **Implementation:**
-- Account metadata: `enforceAccountSchema()` in `internal/service/ctrl/store.go`
-- Transaction metadata: `enforceTransactionSchema()` in `internal/service/ctrl/controller_default.go`, applied during `assembleTransaction` which replays append-only update logs on every read
+- Account metadata: `enforceAccountSchema()` in `internal/application/ctrl/store.go`
+- Transaction metadata: `enforceTransactionSchema()` in `internal/application/ctrl/controller_default.go`, applied during `assembleTransaction` which replays append-only update logs on every read
 
 Both call `commonpb.TypeMatches()` and `commonpb.ConvertMetadataValue()`.
 
@@ -275,7 +275,7 @@ Numscript remains **string-only**. The typed metadata system bridges via convers
 | `internal/service/processing/processor_metadata_schema.go` | Schema enforcement, set/remove field type |
 | `internal/service/processing/processor_convert_metadata.go` | Batch conversion, conversion complete |
 | `internal/service/state/metadata_converter.go` | Background conversion worker (Layer 2) |
-| `internal/service/ctrl/store.go` | Lazy read-time conversion (Layer 1) |
+| `internal/application/ctrl/store.go` | Lazy read-time conversion (Layer 1) |
 | `internal/compat/http/handlers_get_metadata_schema.go` | HTTP: GET metadata schema status |
 | `internal/compat/http/handlers_set_metadata_type.go` | HTTP: PUT set metadata field type |
 | `internal/compat/http/handlers_remove_metadata_type.go` | HTTP: DELETE remove metadata field type |

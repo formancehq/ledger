@@ -11,7 +11,7 @@ import (
 	libtime "github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/events"
+	"github.com/formancehq/ledger-v3-poc/internal/application/events"
 	"github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"

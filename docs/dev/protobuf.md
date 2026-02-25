@@ -75,7 +75,7 @@ The project uses [vtprotobuf](https://github.com/planetscale/vtprotobuf) to gene
 
 | File | Usage |
 |------|-------|
-| `internal/service/admission/admission.go` | Proposal marshal (`SizeVT` + `MarshalToVT`) |
+| `internal/application/admission/admission.go` | Proposal marshal (`SizeVT` + `MarshalToVT`) |
 | `internal/service/state/machine.go` | Proposal unmarshal, snapshot marshal/unmarshal |
 | `internal/service/attributes/attributes.go` | Attribute value marshal/unmarshal |
 | `internal/storage/dal/batch.go` | Batch marshal |

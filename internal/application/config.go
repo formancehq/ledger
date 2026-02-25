@@ -5,9 +5,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/service/coldstorage"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/service/node"
-	"github.com/formancehq/ledger-v3-poc/internal/service/transport"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 

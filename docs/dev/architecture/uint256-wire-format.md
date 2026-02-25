@@ -86,7 +86,7 @@ numscript *big.Int  →  uint256.Int  →  Uint256 (proto)
      └──────── ToBigInt() ←───────── IntoUint256()
 ```
 
-Note: the checker (`internal/service/check/checker.go`) uses `*big.Int` from the standard library for its internal arithmetic — this is unrelated to the removed `BigInt` proto message and is fine for a non-hot-path verification tool.
+Note: the checker (`internal/application/check/checker.go`) uses `*big.Int` from the standard library for its internal arithmetic — this is unrelated to the removed `BigInt` proto message and is fine for a non-hot-path verification tool.
 
 ### Hot-path zero-allocation flow
 

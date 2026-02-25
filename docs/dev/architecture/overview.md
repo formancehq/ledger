@@ -22,12 +22,12 @@ flowchart TB
     subgraph Control["Control Layer"]
         Controller[Controller<br/>internal/ctrl]
         RoutedCtrl[Routed Controller<br/>internal/application]
-        Admission[Admission<br/>internal/service/admission]
+        Admission[Admission<br/>internal/application/admission]
     end
 
     subgraph Consensus["Consensus Layer"]
         Node[Raft Node<br/>internal/service/node]
-        Transport[Transport<br/>internal/service/transport]
+        Transport[Transport<br/>internal/infra/transport]
     end
 
     subgraph State["State Management"]
@@ -175,7 +175,7 @@ graph TB
         proc_cache[numscript_cache.go]
     end
 
-    subgraph Admission["internal/service/admission"]
+    subgraph Admission["internal/application/admission"]
         adm_main[admission.go]
         adm_loader[loader.go]
     end
@@ -340,13 +340,13 @@ erDiagram
 - **HTTP Server**: REST compatibility layer for legacy clients
 - **Routed Controller**: Routes requests to leader node for writes, serves reads locally
 
-### 2. Control Layer (`internal/ctrl`, `internal/service/admission`)
+### 2. Control Layer (`internal/ctrl`, `internal/application/admission`)
 
 - **Controller**: Interface defining read and write operations
 - **DefaultController**: Local implementation reading from Pebble store
 - **Admission**: Handles write request admission, preloads volumes, coordinates with Raft
 
-### 3. Consensus Layer (`internal/service/node`, `internal/service/transport`)
+### 3. Consensus Layer (`internal/service/node`, `internal/infra/transport`)
 
 - **Raft Node**: Wraps etcd/raft, manages consensus, applies committed entries
 - **Transport**: gRPC-based message transport between cluster nodes

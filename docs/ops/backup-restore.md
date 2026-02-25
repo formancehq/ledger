@@ -456,4 +456,4 @@ See [Periods](../dev/architecture/periods.md) for the full period lifecycle and 
 | `internal/service/node/restored_marker.go` | RESTORED marker read/write/remove |
 | `internal/service/state/machine.go` | `RecoverState()` — FSM state recovery from Pebble |
 | **Integrity Checker** | |
-| `internal/service/check/checker.go` | Hash chain, volumes, metadata verification |
+| `internal/application/check/checker.go` | Hash chain, volumes, metadata verification |

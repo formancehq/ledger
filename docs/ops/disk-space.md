@@ -53,7 +53,7 @@ Each node runs a `diskusage.Collector` that periodically samples the disk usage 
 
 The collector exposes both used bytes and total bytes for each volume, enabling percentage-based threshold checks.
 
-### Admission Gate (`internal/service/admission/`)
+### Admission Gate (`internal/application/admission/`)
 
 The `Admission` layer is the entry point for all write operations (create ledger, create transaction, metadata updates, etc.). It checks the health state before processing any request:
 

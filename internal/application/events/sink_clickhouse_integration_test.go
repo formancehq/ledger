@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	libtime "github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/events"
+	"github.com/formancehq/ledger-v3-poc/internal/application/events"
 	"github.com/stretchr/testify/require"
 )
 

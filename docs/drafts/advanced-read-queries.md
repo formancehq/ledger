@@ -383,9 +383,9 @@ These features use only the existing Pebble data layout:
 2. **Ledger stats** (partial): transaction count and log count from existing `LedgerBoundaries`
 
 Estimated changes:
-- `internal/service/ctrl/controller.go` — add methods to Controller interface
-- `internal/service/ctrl/controller_default.go` — implement methods
-- `internal/service/ctrl/store.go` — add `AggregateVolumes` function
+- `internal/application/ctrl/controller.go` — add methods to Controller interface
+- `internal/application/ctrl/controller_default.go` — implement methods
+- `internal/application/ctrl/store.go` — add `AggregateVolumes` function
 - `misc/proto/service.proto` — add RPCs and messages
 - `internal/application/grpc_ledger_server.go` — add gRPC handlers
 - `internal/compat/http/` — add HTTP handlers (one per file)

@@ -179,7 +179,7 @@ BLAKE3 remains the correct choice for:
 - **Log hash chaining** (`internal/service/processing/log_hasher.go`) — cryptographic integrity of the audit trail
 - **Numscript cache** (`internal/service/processing/numscript_cache.go`) — content-addressed deduplication
 - **Idempotency content hash** (`internal/service/processing/processor.go`) — conflict detection for same-key-different-content
-- **Hash chain verification** (`internal/service/check/checker.go`) — integrity checking
+- **Hash chain verification** (`internal/application/check/checker.go`) — integrity checking
 
 ## Benchmark Results
 

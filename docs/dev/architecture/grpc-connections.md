@@ -17,8 +17,8 @@ Each node runs **two separate gRPC servers** on different ports:
 
 Correspondingly, each node maintains **two connection pools**:
 
-1. **ConnectionPool** (`internal/service/transport/connection_pool.go`): Manages connections to peers' **Raft ports** (7777) for Raft message exchange
-2. **ServiceConnectionPool** (`internal/service/transport/service_pool.go`): Manages connections to peers' **Service ports** (8888) for request forwarding to the leader
+1. **ConnectionPool** (`internal/infra/transport/connection_pool.go`): Manages connections to peers' **Raft ports** (7777) for Raft message exchange
+2. **ServiceConnectionPool** (`internal/infra/transport/service_pool.go`): Manages connections to peers' **Service ports** (8888) for request forwarding to the leader
 
 ### Peer Configuration
 
@@ -88,7 +88,7 @@ graph TB
 
 ### Raft Connection Pool
 
-**File**: `internal/service/transport/connection_pool.go`
+**File**: `internal/infra/transport/connection_pool.go`
 
 The Raft connection pool manages gRPC connections to peers' **Raft ports** (7777) for consensus messages. Each connection is created lazily when needed.
 
@@ -101,7 +101,7 @@ type ConnectionPool struct {
 
 ### Service Connection Pool
 
-**File**: `internal/service/transport/service_pool.go`
+**File**: `internal/infra/transport/service_pool.go`
 
 The service connection pool manages gRPC connections to peers' **Service ports** (8888) for request forwarding. When a follower receives a write request, it uses this pool to forward the request to the leader's `BucketService`.
 

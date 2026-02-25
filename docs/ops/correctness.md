@@ -134,7 +134,7 @@ Events are streamed in real-time:
 
 ### Implementation
 
-The checker (`internal/service/check/checker.go`) takes a `*data.Store` and `*attributes.Attributes` as input. It reads logs sequentially from the store, replays them to build expected state in memory, then queries the attribute stores for actual values.
+The checker (`internal/application/check/checker.go`) takes a `*data.Store` and `*attributes.Attributes` as input. It reads logs sequentially from the store, replays them to build expected state in memory, then queries the attribute stores for actual values.
 
 Progress events are emitted every 100 logs and at the end of the replay.
 

@@ -101,8 +101,8 @@ Interfaces with mockgen annotations:
 |-----------|------|
 | `WAL` | `internal/service/node/node.go` |
 | `Transport` | `internal/service/node/transport.go` |
-| `Controller` | `internal/service/ctrl/controller.go` |
-| `Engine` | `internal/service/ctrl/controller_default.go` |
+| `Controller` | `internal/application/ctrl/controller.go` |
+| `Engine` | `internal/application/ctrl/controller_default.go` |
 | `Spool` | `internal/storage/spool/spool.go` |
 | `WAL` | `internal/storage/wal/wal.go` |
 | `Store` | `internal/service/processing/processor.go` |
