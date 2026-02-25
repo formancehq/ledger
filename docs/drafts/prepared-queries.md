@@ -1150,7 +1150,7 @@ Response:
 | **Transaction metadata** | Indexed in the read store (same pattern as account metadata) | Transaction metadata is mutable (can be modified via SaveMetadata) and types can change; same reverse map pattern as account metadata; enables filtering transactions by metadata |
 | **Schema change handling** | Auto-rebuild indexes + user-managed query updates | Index builder re-encodes entries automatically via `ConvertMetadataValue` matrix. Prepared queries are the user's responsibility — schema change + `UpdatePreparedQuery` batched in the same `Proposal` (atomic). Execution-time validation rejects condition/schema mismatches with a clear error. No runtime conversion magic. |
 | **Volume aggregation** | Cross-store merge-scan (bbolt → Pebble), not volume replication | Volumes change on every transaction (high write volume) — replicating them in bbolt would undermine its low-write I/O profile. Instead: filter accounts in bbolt, read volumes from Pebble via sequential `ForEachInPrefix`. Both stores are sorted by account → merge-scan pattern, no random I/O. See Section 9. |
-| **Point-in-time queries** | Not supported (arbitrary PIT); period-boundary snapshots recommended instead | v2 proved that storing all diffs indefinitely causes unbounded storage growth and progressive performance degradation. v3's generational compaction and period archival are designed to bound the hot dataset — PIT negates both. Period-boundary snapshots (file copy at period close) provide auditable historical queries without fighting the architecture. See Section 14. |
+| **Point-in-time queries** | Not supported (arbitrary PIT); [period](../dev/architecture/periods.md)-boundary snapshots recommended instead | v2 proved that storing all diffs indefinitely causes unbounded storage growth and progressive performance degradation. v3's generational compaction and period archival are designed to bound the hot dataset — PIT negates both. Period-boundary snapshots (file copy at period close) provide auditable historical queries without fighting the architecture. See Section 14. |
 
 ## 14. Point-in-Time Queries
 
@@ -1166,7 +1166,7 @@ Ledger v2 supports querying the ledger at any arbitrary date via a `pit` paramet
 
 ### 14.2 What PIT Would Mean for v3
 
-The v3 architecture is fundamentally designed around **compaction**: old entries are consolidated and cleaned up over time (generational compaction in Pebble, period archival to cold storage). PIT fights directly against this design.
+The v3 architecture is fundamentally designed around **compaction**: old entries are consolidated and cleaned up over time (generational compaction in Pebble, [period](../dev/architecture/periods.md) archival to cold storage). PIT fights directly against this design.
 
 #### What would be needed
 
@@ -1180,7 +1180,7 @@ To support arbitrary PIT in the prepared query read store:
 
 4. **Volume reconstruction**: `ComputeValue(reader, maxIndex, key)` can reconstruct volumes at a specific Raft index — but only if the base+diff entries still exist in Pebble. After generational compaction, old entries are deleted. PIT beyond the compaction window is impossible.
 
-5. **Period archival breaks PIT**: once a period is archived and logs purged from Pebble, the base+diff entries for that period's transactions are gone. PIT queries into archived periods would require retrieving data from cold storage — fundamentally changing the query latency model.
+5. **[Period](../dev/architecture/periods.md) archival breaks PIT**: once a period is archived and logs purged from Pebble, the base+diff entries for that period's transactions are gone. PIT queries into archived periods would require retrieving data from cold storage — fundamentally changing the query latency model.
 
 #### Cost analysis
 
@@ -1195,7 +1195,7 @@ To support arbitrary PIT in the prepared query read store:
 
 ### 14.3 Recommendation — No Arbitrary PIT
 
-**Arbitrary point-in-time queries are not supported.** The v2 experience demonstrated that storing all diffs indefinitely creates unbounded storage growth and progressive performance degradation. The v3 architecture is explicitly designed to avoid this: generational compaction, period archival, and cold storage are all mechanisms to bound the hot dataset size.
+**Arbitrary point-in-time queries are not supported.** The v2 experience demonstrated that storing all diffs indefinitely creates unbounded storage growth and progressive performance degradation. The v3 architecture is explicitly designed to avoid this: generational compaction, [period](../dev/architecture/periods.md) archival, and cold storage are all mechanisms to bound the hot dataset size.
 
 Adding PIT to the prepared query system would:
 
@@ -1210,13 +1210,13 @@ Instead of arbitrary PIT, three lighter-weight alternatives provide historical q
 
 #### Option A — Period-boundary snapshots
 
-When a period closes, capture a snapshot of the bbolt read store state. This gives exact answers to "what was the ledger state at the end of period N?" without any ongoing storage cost between periods.
+When a [period](../dev/architecture/periods.md) closes, capture a snapshot of the bbolt read store state. This gives exact answers to "what was the ledger state at the end of period N?" without any ongoing storage cost between periods.
 
 - **Storage**: one frozen bbolt file per closed period (can be compressed and moved to cold storage)
 - **Query**: open the period's bbolt snapshot as read-only, execute the same prepared query against it
 - **Granularity**: period boundaries only — not arbitrary dates, but predictable and auditable
 - **Implementation**: `bbolt.View()` + file copy at period close; or Pebble checkpoint-style approach
-- **Natural fit**: periods already exist for archival; snapshots extend them to read queries
+- **Natural fit**: periods already exist for archival (see [period lifecycle](../dev/architecture/periods.md)); snapshots extend them to read queries
 
 #### Option B — On-demand reconstruction from logs
 
@@ -1249,7 +1249,7 @@ At a configurable interval (e.g., daily, weekly), the index builder captures a f
 | **Compaction compatible** | No | Yes | Yes | Yes |
 | **Cold storage compatible** | No | Yes (snapshot in cold) | Yes (replays from cold) | Yes (snapshot in cold) |
 
-**Recommendation**: start with **Option A** (period-boundary snapshots) — it has the best cost/value ratio and aligns naturally with the existing period lifecycle. Option B can be added later for ad-hoc audit queries.
+**Recommendation**: start with **Option A** (period-boundary snapshots) — it has the best cost/value ratio and aligns naturally with the existing [period lifecycle](../dev/architecture/periods.md). Option B can be added later for ad-hoc audit queries.
 
 ## 15. Open Questions
 
