@@ -563,7 +563,7 @@ Two candidates: **bbolt** (B+ tree) and **Pebble** (LSM-tree, already used for t
 |----------|----------------|-------------------|
 | **Range scan I/O** | Single-level — sequential page reads, zero read amplification | Multi-level — a scan may touch L0 through L6, read amplification proportional to LSM depth |
 | **Concurrent readers** | Native MVCC — `db.View()` opens a snapshot automatically, readers never block writer | Explicit `db.NewSnapshot()` needed for consistent multi-cursor reads; without snapshot, cursors may see different states mid-query |
-| **Background I/O** | None — no compaction, no WAL flush, no surprises | Compaction goroutines run continuously; compete with read scans for disk bandwidth |
+| **Background I/O** | None — no compaction, no WAL flush, no surprises | Compaction goroutines run within the read store instance; compete with its own read scans for disk bandwidth (not with the primary store — separate instance) |
 | **Write performance** | Page rewrites (B+ tree) — slower for random writes | Append-only WAL + memtable — faster writes, but irrelevant here (index builder writes are sequential and low throughput) |
 | **Compression** | None — data stored uncompressed | Snappy/Zstd per SSTable block — smaller on-disk footprint |
 | **File size management** | Freed pages reused but file never shrinks; `bbolt.Compact()` can rewrite the file | SSTable files created/deleted by compaction — space reclaimed naturally |
@@ -582,7 +582,7 @@ Two candidates: **bbolt** (B+ tree) and **Pebble** (LSM-tree, already used for t
 
 With 5 concurrent cursors, the total read amplification in Pebble is 5 × (LSM depth) — potentially 20-30× more I/O than bbolt for the same query.
 
-**Compaction interference**: the read store receives steady writes from the index builder. Pebble's compaction will run in the background, generating I/O that competes with concurrent read queries. bbolt has no background activity at all — every byte of I/O is either a write from the index builder or a read from a query. This makes performance predictable.
+**Background I/O**: the read store receives steady writes from the index builder. With Pebble, compaction runs within the read store instance — it doesn't interfere with the primary store (separate Pebble instance), but it does compete with the read store's own query scans for disk bandwidth. With bbolt, there is no background activity at all — every byte of I/O is either a write from the index builder or a read from a query. This makes performance more predictable, though the difference is less critical than the read amplification factor.
 
 **Snapshot consistency**: a prepared query with multiple filter leaves opens multiple cursors that must all see the same data state. bbolt provides this automatically — `db.View()` captures a snapshot for the entire transaction. With Pebble, you must explicitly create a `Snapshot` and derive all iterators from it. Forgetting this (or using `db.NewIter()` directly) means each cursor may see a different state, producing incorrect AND/OR results. This is a correctness footgun.
 
