@@ -43,8 +43,7 @@ The reference implementation (`github.com/formancehq/ledger`) supports metadata 
 - Prepared query CRUD (create, update, list, delete) via Raft commands
 - Prepared query execution (read-only) with parameter substitution
 - Asynchronous index building from Raft log
-- Dedicated read store (separate engine, optionally on separate disk)
-- Two storage engine options: bbolt (pure Go) or DuckDB (SQL, CGo)
+- Dedicated read store (bbolt B+ tree, optionally on separate disk)
 
 ### Out of scope
 
@@ -70,12 +69,12 @@ The reference implementation (`github.com/formancehq/ledger`) supports metadata 
                              │ index writes
                              ▼
                     ┌──────────────────┐
-                    │  Read Index Store │  ← bbolt or DuckDB, optionally on dedicated disk
+                    │  Read Index Store │  ← bbolt (B+ tree), optionally on dedicated disk
                     └──────────────────┘
                              ▲
-                             │ concurrent read queries
+                             │ concurrent read queries (MVCC snapshots)
                     ┌──────────────────┐
-                    │  Query Executor  │  ← builds iterator tree (bbolt) or SQL (DuckDB)
+                    │  Query Executor  │  ← builds iterator tree from filter
                     └──────────────────┘
 ```
 
@@ -83,9 +82,10 @@ The reference implementation (`github.com/formancehq/ledger`) supports metadata 
 
 - The **index builder** runs asynchronously, outside the FSM hot path. The FSM apply remains RAM-only.
 - The index builder consumes **only accepted operations** — not raw Raft entries. Proposals can be rejected by the FSM (insufficient funds, idempotency conflict, already reverted, etc.) and must not be indexed (see Section 7.1).
-- The **read store** is self-contained for metadata lookups — it never performs random reads against the primary Pebble store (see Section 7.2: Reverse Metadata Map). However, it does consume system logs from the primary store or from the FSM directly (see Section 7.1).
+- The **read store** (bbolt) is self-contained for metadata lookups — it never performs random reads against the primary Pebble store (see Section 7.2: Reverse Metadata Map). However, it does consume system logs from the primary store (see Section 7.1).
 - **Prepared query definitions** are stored in the primary store via Raft commands (`[0xE0]`). The read store contains only derived index data.
 - The read store is **eventually consistent** with bounded lag (milliseconds). Clients can opt into freshness guarantees via `min_log_sequence`.
+- **bbolt** is read-optimized (B+ tree, single-level, zero read amplification) with native MVCC — concurrent readers never block the index builder writer. This matches our I/O profile: single writer (index builder), many concurrent readers (query executors).
 
 ## 5. Filter Model
 
@@ -93,12 +93,12 @@ The reference implementation (`github.com/formancehq/ledger`) supports metadata 
 
 Each prepared query declares a **target type** — `ACCOUNTS` or `TRANSACTIONS` — which determines what entity is returned and how filters are interpreted.
 
-A prepared query filter is a **tree of boolean operators** where leaves are either field conditions or address matches. Each node in the tree produces a **sorted iterator of entity IDs** (account addresses or transaction IDs) in the bbolt approach, or a SQL subquery in the DuckDB approach.
+A prepared query filter is a **tree of boolean operators** where leaves are either field conditions or address matches. Each node in the tree produces a **sorted iterator of entity IDs** (account addresses or transaction IDs). Operators compose iterators:
 
 ```
-AND(a, b)  →  intersection of results
-OR(a, b)   →  union of results
-NOT(a)     →  complement (all accounts EXCEPT matches)
+AND(a, b)  →  merge-intersect of sorted iterators
+OR(a, b)   →  merge-union of sorted iterators
+NOT(a)     →  merge-difference against existence index
 ```
 
 A **field condition** pairs a **field reference** (where to look) with a **condition** (what to match):
@@ -142,10 +142,10 @@ Leaf nodes are either **field conditions** (FieldRef + Condition) or **address m
 
 A `FieldRef` identifies **where** to look for the value. The field source must match the query's target type:
 
-| FieldRef | Description | Index table | Valid target |
-|----------|-------------|-------------|--------------|
-| `AccountMetadata("key")` | Metadata on accounts | `account_metadata` / `[0x0C]` | `ACCOUNTS` only |
-| `TransactionMetadata("key")` | Metadata on transactions | `transaction_metadata` / `[0x0C]` | `TRANSACTIONS` only |
+| FieldRef | Description | bbolt index prefix | Valid target |
+|----------|-------------|-------------------|--------------|
+| `AccountMetadata("key")` | Metadata on accounts | `[0x0C][ledger\x00][a:]` | `ACCOUNTS` only |
+| `TransactionMetadata("key")` | Metadata on transactions | `[0x0C][ledger\x00][t:]` | `TRANSACTIONS` only |
 
 Cross-entity conditions (e.g., `AccountMetadata` in a `TRANSACTIONS` query) are rejected at creation time — see Section 3 (Out of scope).
 
@@ -165,12 +165,12 @@ This design is extensible — future `FieldRef` sources (e.g., `Volume("USD/2")`
 
 **IntCondition / UintCondition** support flexible ranges:
 
-| `min` | `max` | Behavior | SQL equivalent |
-|-------|-------|----------|----------------|
-| set | omitted | `>= min` (or `> min` if exclusive) | `int_value >= $1` |
-| omitted | set | `<= max` (or `< max` if exclusive) | `int_value <= $1` |
-| set | set | BETWEEN | `int_value >= $1 AND int_value <= $2` |
-| `min = max` | (same) | Equality | `int_value = $1` |
+| `min` | `max` | Behavior | bbolt scan |
+|-------|-------|----------|------------|
+| set | omitted | `>= min` (or `> min` if exclusive) | `Seek(encode(min))` → scan to end of key prefix |
+| omitted | set | `<= max` (or `< max` if exclusive) | `Seek(typeTag)` → scan until `encode(max+1)` |
+| set | set | BETWEEN | `Seek(encode(min))` → scan until `encode(max+1)` |
+| `min = max` | (same) | Equality | Point scan on `encode(value)` |
 
 #### Address conditions
 
@@ -181,7 +181,7 @@ This design is extensible — future `FieldRef` sources (e.g., `Volume("USD/2")`
 | `ACCOUNTS` | Accounts whose address starts with `merchants:` | The single account `merchants:acme_corp` |
 | `TRANSACTIONS` | Transactions with at least one posting involving an account matching `merchants:*` | Transactions with at least one posting involving `merchants:acme_corp` |
 
-For transaction queries, `AddressMatch` uses the `account_transactions` table to find transactions linked to matching accounts.
+For transaction queries, `AddressMatch` scans the account-transaction mapping (`[0x0F]`) to find transactions linked to matching accounts.
 
 ### 5.3 NOT Operator
 
@@ -332,11 +332,11 @@ enum QueryTarget {
 
 ### 5.5 Resource Limits
 
-Each leaf node consumes resources (iterator or SQL subquery). Recommended limits, validated at **query creation time**:
+Each leaf node opens a bbolt cursor. Recommended limits, validated at **query creation time**:
 
 | Constraint | Suggested limit | Rationale |
 |-----------|----------------|-----------|
-| Max leaf nodes per query | 20 | Iterator/subquery overhead |
+| Max leaf nodes per query | 20 | Cursor overhead (~4KB each) |
 | Max tree depth | 10 | Prevents pathological nesting |
 | NOT as outermost operator | Rejected | Prevents full-universe scans on large ledgers |
 
@@ -432,8 +432,8 @@ Follow the same pattern as the existing event emitter (`internal/service/events/
 2. On notification, read new system logs from Pebble (`[0x01][sequence]`)
 3. System logs contain only accepted operations — rejected proposals never produce log entries
 4. Extract metadata changes, new accounts, transactions from each log
-5. Write index updates to the read store
-6. Persist progress (`lastIndexedLogSequence`) in the read store
+5. Write index updates to bbolt
+6. Persist progress (`lastIndexedLogSequence`) in bbolt
 
 **Pros**: proven pattern (event emitter already works this way), simple, no FSM coupling.
 
@@ -459,36 +459,36 @@ The FSM already resolves per-proposal futures with `ApplyResult.Logs`. A dedicat
 
 The index builder already reads system logs from the primary store (Section 7.1). However, for **random-access metadata lookups** (e.g., "what is the current value of key X for account Y?"), we avoid reading from Pebble. This would require cross-store random I/O on the volume/metadata key space, which is expensive and creates contention with the FSM's write path.
 
-When updating the metadata inverted index, the index builder must know the **old** metadata value to delete the stale index entry. The read store maintains its own reverse mapping:
-
-**In bbolt (key-value approach):**
+When updating the metadata inverted index, the index builder must know the **old** metadata value to delete the stale index entry. The read store maintains its own reverse mapping in bbolt:
 
 ```
-Reverse map:   [0x0E][ledgerName\x00][a:][account\x00][metadataKey] → currentValue
-Forward index: [0x0C][ledgerName\x00][a:][metadataKey\x00][metadataValue\x00][accountAddress] → (empty)
+Reverse map:   [0x0E][ledgerName\x00][a:][account\x00][metadataKey] → MetadataValue protobuf
+Forward index: [0x0C][ledgerName\x00][a:][metadataKey\x00][typeTag][sortableValue][accountAddress] → (empty)
 ```
-
-**In DuckDB:** the `account_metadata` table naturally stores the current value. An `UPDATE` handles both old-value cleanup and new-value insertion.
 
 When the index builder processes a `SetMetadata(account, key, newValue)`:
 
-1. Read old value (from reverse map or `SELECT` on `account_metadata`)
-2. Delete old forward index entry (or let the `UPDATE` handle it)
-3. Insert new forward index entry
-4. Update reverse map
+1. Read old value from reverse map `[0x0E][ledger\x00][a:][account\x00][key]`
+2. Delete old forward index entry `[0x0C][ledger\x00][a:][key\x00][oldTypeTag][oldEncodedValue][account]`
+3. Insert new forward index entry `[0x0C][ledger\x00][a:][key\x00][newTypeTag][newEncodedValue][account]`
+4. Update reverse map `[0x0E][ledger\x00][a:][account\x00][key]` = newValue
+
+All four operations happen in a single bbolt write transaction — atomic, no partial state.
 
 This makes the primary store and read store **fully independent** for random metadata lookups — no cross-disk I/O.
 
 **Transaction metadata** can be modified after creation (same as account metadata) and its types can change via `SetMetadataFieldType`. The same old-value problem applies — the index builder needs the previous value to delete stale index entries. The reverse metadata map pattern applies identically:
 
-- **bbolt**: `[0x0E][ledgerName\x00][t:][txId(8B BE)][metadataKey]` → `MetadataValue protobuf`
-- **DuckDB**: the `transaction_metadata` table stores the current value natively (`INSERT OR REPLACE`)
+```
+Reverse map:   [0x0E][ledgerName\x00][t:][txId(8B BE)][metadataKey] → MetadataValue protobuf
+Forward index: [0x0C][ledgerName\x00][t:][metadataKey\x00][typeTag][sortableValue][txId(8B BE)] → (empty)
+```
 
 ### 7.3 Consistency Model
 
 The read store is **eventually consistent** with bounded lag:
 
-- Typical lag: milliseconds (bounded by read store write throughput)
+- Typical lag: milliseconds (bounded by bbolt write throughput)
 - `lastIndexedLogSequence` is exposed via API for freshness checks
 - Queries can specify `min_log_sequence` to wait until the read store catches up (opt-in strong consistency, at the cost of latency)
 - The log sequence (global, monotonically increasing) is a better progress marker than the Raft index because it only counts accepted operations
@@ -502,7 +502,7 @@ If the read store is lost or corrupted:
 3. During rebuild, prepared query execution returns an error ("indexes not ready")
 4. No data loss — the read store is entirely derived from system logs
 
-On normal restart, the index builder resumes from `lastIndexedLogSequence` stored in the read store and catches up by tailing the remaining system logs.
+On normal restart, the index builder resumes from `lastIndexedLogSequence` stored in bbolt and catches up by tailing the remaining system logs.
 
 ### 7.5 Schema Change Handling
 
@@ -512,8 +512,10 @@ When a metadata key's type changes (`SetMetadataFieldType`), both the read store
 
 When the index builder processes a `SetMetadataFieldType` log, it re-encodes all inverted index entries for that key using the new type. Uses the existing `ConvertMetadataValue` matrix (`internal/proto/commonpb/metadata_convert.go`) to convert each value:
 
-- **bbolt**: scan and delete all `[0x0C][ledger\x00][key\x00][oldTypeTag]...` entries, re-insert with `[newTypeTag][newEncodedValue]`
-- **DuckDB**: `UPDATE account_metadata SET value_type=$1, int_value=$2, ... WHERE ledger=$3 AND key=$4` (same for `transaction_metadata`)
+1. Scan all entries matching `[0x0C][ledger\x00][a:][key\x00]` (or `[t:]` for transaction metadata)
+2. For each entry: decode old value, convert via `ConvertMetadataValue`, re-encode with new type tag
+3. Delete old entry, insert new entry
+4. Update reverse map `[0x0E]` with the converted value
 
 Inconvertible values become `NullValue` in the index (invisible to typed conditions unless `ExistsCondition(include_null: true)`).
 
@@ -543,13 +545,28 @@ error: condition type mismatch for field AccountMetadata("amount"):
 
 This is simple, explicit, and avoids all runtime conversion complexity.
 
-## 8. Storage Engine Options
+## 8. Storage Engine — bbolt (B+ Tree)
 
-### 8.1 Option A — bbolt (B+ Tree, Pure Go)
+### 8.1 Why bbolt
 
-Use bbolt as the read store engine. Implement inverted indexes, merge-join iterators, and the AND/OR/NOT operator tree manually.
+The read store has a very different I/O profile from the primary store:
 
-**Key layout:**
+- **Single writer** (index builder), low write throughput
+- **Many concurrent readers** (query executors), heavy scan workload
+- **Analytical queries**: filtering, range scans, multi-criteria intersection
+
+bbolt is a B+ tree store (pure Go, used by etcd and Consul) that matches this profile:
+
+| Property | bbolt | Why it matters |
+|----------|-------|---------------|
+| **Read performance** | Single-level B+ tree — range scan = sequential page reads | Zero read amplification (unlike LSM-tree multi-level merges) |
+| **MVCC** | Native snapshot isolation — readers open read-only tx | Concurrent query executors never block the index builder writer |
+| **Single writer** | By design — one write tx at a time | Matches the index builder pattern exactly |
+| **Simplicity** | No compaction, no WAL, no tuning | No background I/O surprises |
+| **Maturity** | 10+ years in production (etcd, Consul) | Proven reliability |
+| **Pure Go** | No CGo, no cross-compilation issues | Simple build, no memory safety boundary |
+
+### 8.2 Key Layout
 
 | Prefix | Key | Value | Purpose |
 |--------|-----|-------|---------|
@@ -559,7 +576,14 @@ Use bbolt as the read store engine. Implement inverted indexes, merge-join itera
 | `0x0D` | `[ledgerName\x00][t:][txId(8B BE)]` | (empty) | Transaction existence index |
 | `0x0E` | `[ledgerName\x00][a:][account\x00][metadataKey]` | `MetadataValue protobuf` | Account reverse metadata map |
 | `0x0E` | `[ledgerName\x00][t:][txId(8B BE)][metadataKey]` | `MetadataValue protobuf` | Transaction reverse metadata map |
-| `0x0F` | `[ledgerName\x00][accountAddress\x00][txId(8B BE)]` | (empty) | Account → transactions mapping (for AddressMatch on TRANSACTIONS) |
+| `0x0F` | `[ledgerName\x00][accountAddress\x00][txId(8B BE)]` | (empty) | Account → transactions mapping |
+| `0xE0` | `[ledgerName\x00][queryName]` | `PreparedQuery protobuf` | Query definitions (primary store) |
+
+`a:` / `t:` namespace tags distinguish account and transaction entries under the same prefix, keeping the sorted key layout clean.
+
+`0x0C`, `0x0D`, `0x0E`, `0x0F` live in the read store (bbolt). `0xE0` lives in the primary Pebble store.
+
+### 8.3 Sortable Value Encoding
 
 The `typeTag` byte and `sortableValue` encoding depend on the metadata type:
 
@@ -571,329 +595,85 @@ The `typeTag` byte and `sortableValue` encoding depend on the metadata type:
 | BOOL | `'B'` | 1 byte (`0x00` = false, `0x01` = true) | |
 | NullValue | `'N'` | Original raw string + `\x00` separator | Allows ExistsCondition to scan null entries |
 
-**String equality (accounts)** — point scan on `[0x0C][ledger\x00][a:][key\x00]['S'][value\x00]`.
+This encoding ensures that bbolt's B+ tree natural ordering corresponds to the logical value ordering — range scans on encoded values produce results in correct numeric/lexicographic order.
 
-**Integer range (accounts)** — range scan:
-```
-lower: [0x0C][ledger\x00][a:][key\x00]['I'][encode(min)]
-upper: [0x0C][ledger\x00][a:][key\x00]['I'][encode(max+1)]
-```
+### 8.4 Query Execution — Iterator Tree
 
-**Transaction queries** use the `t:` namespace (`[0x0C][ledger\x00][t:][key\x00]...`) and return transaction IDs (8-byte big-endian). For `AddressMatch` on transactions, the iterator scans `[0x0F][ledger\x00][matchingAccount\x00]` to find linked transaction IDs.
-
-This exploits bbolt's B+ tree sorted iteration — the encoded values sort in numeric order.
-
-**Query execution:** the filter tree is compiled into an **iterator tree**. Each leaf opens a bbolt cursor (range scan or point lookup). Operators compose cursors:
+The filter tree compiles into an **iterator tree**. Each leaf opens a bbolt cursor (range scan or point lookup). Operators compose cursors:
 
 - `AND` → merge-intersect of N sorted cursors
 - `OR` → merge-union of N sorted cursors
-- `NOT` → merge-difference against the existence index (`0x0D[ledger\x00][a:]` for accounts, `0x0D[ledger\x00][t:]` for transactions)
+- `NOT` → merge-difference against the existence index (`[0x0D][ledger\x00][a:]` for accounts, `[0x0D][ledger\x00][t:]` for transactions)
 
 All cursors are lazy and streaming — no intermediate materialization. Memory usage is constant regardless of result set size.
 
+#### Leaf operations
+
+**String equality** — point scan:
 ```
-Execution example — ACCOUNTS target, string equality:
-  AND(OR(StringEquals(AccountMetadata("category"),"premium"), StringEquals(AccountMetadata("category"),"gold")), AddressPrefix("merchants:"))
-
-  cursor1: scan [0x0C][ledger\x00][a:][category\x00]['S'][premium\x00]  → [acc_A, acc_C, acc_F]
-  cursor2: scan [0x0C][ledger\x00][a:][category\x00]['S'][gold\x00]     → [acc_B, acc_F, acc_G]
-  cursor3: OR(cursor1, cursor2)                                           → [acc_A, acc_B, acc_C, acc_F, acc_G]
-  cursor4: scan [0x0D][ledger\x00][a:][merchants:]...[merchants:\xFF]    → [acc_A, acc_B, acc_C, acc_F, acc_H]
-  cursor5: AND(cursor3, cursor4)                                          → [acc_A, acc_B, acc_C, acc_F]
-
-Execution example — ACCOUNTS target, integer range (credit_limit >= 10000):
-  cursor1: range [0x0C][ledger\x00][a:][credit_limit\x00]['I'][encode(10000)]
-                 ...[0x0C][ledger\x00][a:][credit_limit\x00]['I'][\xFF x 8]
-           → all accounts with credit_limit >= 10000
-
-Execution example — TRANSACTIONS target, AddressMatch:
-  AddressPrefix("merchants:")
-  step1: scan [0x0D][ledger\x00][a:][merchants:]...[merchants:\xFF]
-         → [merchants:acme, merchants:beta]
-  step2: for each account, scan [0x0F][ledger\x00][account\x00]
-         → merchants:acme → [tx_1, tx_5], merchants:beta → [tx_3, tx_5]
-  step3: merge-union → [tx_1, tx_3, tx_5]
+scan [0x0C][ledger\x00][a:][key\x00]['S'][value\x00] → sorted account addresses
 ```
 
-**Merge-join performance:** O(N x S) where N = number of filters, S = smallest result set. High-selectivity filters terminate quickly. Sub-second on SSD for typical use cases (10-20% selectivity on 1M accounts).
-
-**Pros:** pure Go, no CGo, battle-tested (etcd, Consul), full control over storage layout.
-
-**Cons:** significant custom code (iterator tree, merge-join, merge-union, merge-difference, sortable encoding per type), each new query type requires new code, no query optimizer. Typed range queries require careful binary encoding — more complex than string-only indexes.
-
-### 8.2 Option B — DuckDB (Columnar SQL, CGo)
-
-Use DuckDB as the read store engine. Replace the entire custom indexing layer with relational tables and SQL.
-
-**Schema (typed metadata):**
-
-```sql
-CREATE TABLE accounts (
-  ledger VARCHAR NOT NULL,
-  account VARCHAR NOT NULL,
-  PRIMARY KEY (ledger, account)
-);
-
-CREATE TABLE transactions (
-  ledger VARCHAR NOT NULL,
-  tx_id BIGINT NOT NULL,
-  PRIMARY KEY (ledger, tx_id)
-);
-
-CREATE TABLE account_metadata (
-  ledger VARCHAR NOT NULL,
-  account VARCHAR NOT NULL,
-  key VARCHAR NOT NULL,
-  value_type TINYINT NOT NULL,     -- MetadataType enum (0=STRING, 1=INT64, 2=BOOL, 3=UINT64, ...)
-  string_value VARCHAR,            -- populated when value_type = STRING
-  int_value BIGINT,                -- populated for INT8/INT16/INT32/INT64
-  uint_value UBIGINT,              -- populated for UINT8/UINT16/UINT32/UINT64
-  bool_value BOOLEAN,              -- populated when value_type = BOOL
-  null_original VARCHAR,           -- raw value preserved for NullValue (inconvertible)
-  PRIMARY KEY (ledger, account, key)
-);
-
--- No generic indexes here — indexes are created dynamically per prepared query
--- (see Section 8.3: Query-Driven Indexes)
-
-CREATE TABLE transaction_metadata (
-  ledger VARCHAR NOT NULL,
-  tx_id BIGINT NOT NULL,
-  key VARCHAR NOT NULL,
-  value_type TINYINT NOT NULL,     -- same MetadataType enum as account_metadata
-  string_value VARCHAR,
-  int_value BIGINT,
-  uint_value UBIGINT,
-  bool_value BOOLEAN,
-  null_original VARCHAR,
-  PRIMARY KEY (ledger, tx_id, key)
-);
-
--- Transaction metadata can be modified (SaveMetadata on transaction target)
--- Same old-value handling as account_metadata (INSERT OR REPLACE)
--- Indexes created dynamically per prepared query (see Section 8.3)
-
-CREATE TABLE account_transactions (
-  ledger VARCHAR NOT NULL,
-  account VARCHAR NOT NULL,
-  tx_id BIGINT NOT NULL,
-  PRIMARY KEY (ledger, account, tx_id)
-);
-
-CREATE TABLE ledger_logs (
-  ledger VARCHAR NOT NULL,
-  log_id BIGINT NOT NULL,
-  global_sequence BIGINT NOT NULL,
-  PRIMARY KEY (ledger, log_id)
-);
+**Integer range** — range scan:
+```
+lower: [0x0C][ledger\x00][a:][key\x00]['I'][encode(min)]
+upper: [0x0C][ledger\x00][a:][key\x00]['I'][encode(max+1)]
+→ all accounts with key in [min, max]
 ```
 
-**Query execution:** the filter tree compiles to a **SQL prepared statement**. Each condition type maps to the appropriate column:
-
-```sql
--- StringCondition: exact match on string_value
-WHERE key = 'category' AND string_value = 'premium'
-
--- IntCondition: range on int_value
-WHERE key = 'credit_limit' AND int_value >= 10000
-
--- IntCondition: BETWEEN
-WHERE key = 'credit_limit' AND int_value >= 10000 AND int_value <= 50000
-
--- BoolCondition: equality on bool_value
-WHERE key = 'active' AND bool_value = true
-
--- ExistsCondition (without null): key exists and is not NullValue
-WHERE key = 'email' AND value_type != 3
+**Boolean equality** — point scan:
+```
+scan [0x0C][ledger\x00][a:][key\x00]['B'][\x01] → accounts where key = true
 ```
 
-**Full example — ACCOUNTS target (string + range + boolean):**
-
-```sql
--- Filter: AND(StringEquals(AccountMetadata("category"), "premium"), IntRange(AccountMetadata("credit_limit"), min: 10000), BoolEquals(AccountMetadata("active"), true))
-SELECT DISTINCT a.account
-FROM accounts a
-JOIN account_metadata m1
-  ON a.ledger = m1.ledger AND a.account = m1.account
-  AND m1.key = 'category' AND m1.string_value = 'premium'
-JOIN account_metadata m2
-  ON a.ledger = m2.ledger AND a.account = m2.account
-  AND m2.key = 'credit_limit' AND m2.int_value >= 10000
-JOIN account_metadata m3
-  ON a.ledger = m3.ledger AND a.account = m3.account
-  AND m3.key = 'active' AND m3.bool_value = true
-WHERE a.ledger = $1
-  AND a.account > $3                        -- keyset pagination
-ORDER BY a.account
-LIMIT $2
+**Exists** — prefix scan:
+```
+scan [0x0C][ledger\x00][a:][key\x00] → all accounts that have this key
+(optionally exclude typeTag 'N' for non-null only)
 ```
 
-**Full example — TRANSACTIONS target (metadata range + address involvement):**
-
-```sql
--- Filter: AND(IntRange(TransactionMetadata("amount"), min: 5000), AddressPrefix("merchants:"))
-SELECT DISTINCT t.tx_id
-FROM transactions t
-JOIN transaction_metadata m1
-  ON t.ledger = m1.ledger AND t.tx_id = m1.tx_id
-  AND m1.key = 'amount' AND m1.int_value >= 5000
-JOIN account_transactions at1
-  ON t.ledger = at1.ledger AND t.tx_id = at1.tx_id
-  AND at1.account LIKE 'merchants:%'
-WHERE t.ledger = $1
-  AND t.tx_id > $3                          -- keyset pagination
-ORDER BY t.tx_id
-LIMIT $2
+**Address prefix** — range scan on existence index:
+```
+scan [0x0D][ledger\x00][a:][prefix]...[prefix\xFF] → accounts matching prefix
 ```
 
-The old-value problem disappears — `INSERT OR REPLACE` / `UPDATE` on `account_metadata` handles it natively. The typed columns are updated together:
+**Transaction queries** use the `t:` namespace (`[0x0C][ledger\x00][t:][key\x00]...`) and return transaction IDs (8-byte big-endian). For `AddressMatch` on transactions:
+1. Scan `[0x0D][ledger\x00][a:][prefix]...[prefix\xFF]` → matching account addresses
+2. For each account, scan `[0x0F][ledger\x00][account\x00]` → linked transaction IDs
+3. Merge-union all transaction ID sets → sorted iterator of transaction IDs
 
-```sql
-INSERT OR REPLACE INTO account_metadata
-  (ledger, account, key, value_type, string_value, int_value, uint_value, bool_value, null_original)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
-```
+#### Merge-join performance
 
-DuckDB also enables typed queries beyond metadata filtering with zero additional code:
+O(N × S) where N = number of filters, S = smallest result set. High-selectivity filters terminate quickly.
 
-```sql
--- AggregateBalances (if volumes are also stored in DuckDB)
-SELECT asset, SUM(input) as total_input, SUM(output) as total_output
-FROM account_volumes
-WHERE ledger = $1 AND account LIKE $2 || '%'
-GROUP BY asset;
+- A 2-filter AND on 1M accounts with 10-20% selectivity scans ~200K entries per cursor — sub-second on SSD
+- The key layout `[0x0C][ledger][a:][key\x00]` naturally scopes to a specific metadata key — equivalent to a partial index, no wasted scans on unrelated keys
 
--- Account count per ledger
-SELECT COUNT(*) FROM accounts WHERE ledger = $1;
+### 8.5 Estimated Code
 
--- Average credit limit of premium accounts
-SELECT AVG(m2.int_value) as avg_credit_limit
-FROM account_metadata m1
-JOIN account_metadata m2 ON m1.ledger = m2.ledger AND m1.account = m2.account
-WHERE m1.ledger = $1
-  AND m1.key = 'category' AND m1.string_value = 'premium'
-  AND m2.key = 'credit_limit';
-```
+~2000-3000 LOC of custom Go code:
 
-**Pros:** dramatically less custom code, built-in query optimizer, columnar + vectorized scan, SQL covers future queries, native aggregations, query-driven indexes (see Section 8.3).
+| Component | LOC estimate | Description |
+|-----------|-------------|-------------|
+| Sortable encoding | ~200 | `encode(int64)`, `encode(uint64)`, type tag dispatch |
+| Key builders | ~150 | Prefix construction for each key type |
+| Iterator interface | ~100 | `Next() (key, bool)`, `Close()` |
+| Merge-intersect | ~150 | N-way sorted intersection |
+| Merge-union | ~150 | N-way sorted union |
+| Merge-difference | ~100 | Sorted difference (for NOT) |
+| Filter tree compiler | ~300 | Recursive tree → iterator tree |
+| Index builder | ~400 | Log tailing, metadata extraction, bbolt writes |
+| Reverse metadata map | ~200 | Old-value lookup, update |
+| Pagination | ~150 | Keyset cursor encoding/decoding |
+| Schema change re-encoding | ~200 | ConvertMetadataValue dispatch, scan + rewrite |
 
-**Cons:** CGo required (`github.com/marcboeker/go-duckdb`), +30-50 MB binary size, younger Go bindings, cross-compilation complexity.
-
-### 8.3 Query-Driven Indexes (DuckDB)
-
-Prepared queries tell us **at creation time** exactly which fields and operators the client will use. Instead of maintaining generic indexes on all metadata keys, we create **partial indexes targeted to each prepared query's fields**.
-
-#### Generic vs. query-driven
-
-```sql
--- GENERIC (indexes ALL keys of a given type — wasteful)
-CREATE INDEX idx_meta_int ON account_metadata (ledger, key, int_value)
-  WHERE value_type IN (1, 4, 5, 6);
--- Contains entries for credit_limit, monthly_volume, retry_count, age, ...
-
--- QUERY-DRIVEN (indexes only the keys actually referenced by prepared queries)
-CREATE INDEX idx_pq_credit_limit
-  ON account_metadata (ledger, int_value, account)
-  WHERE key = 'credit_limit';
--- Contains only credit_limit entries — much smaller, much faster
-```
-
-**Why this is better:**
-
-| Aspect | Generic index | Query-driven partial index |
-|--------|--------------|---------------------------|
-| **Size** | All keys of that type | Only the referenced key |
-| **Selectivity** | `key = 'credit_limit'` filtered at runtime | `WHERE key = 'credit_limit'` baked into the index — already filtered |
-| **Covering** | Needs lookup in main table | `(ledger, int_value, account)` covers the query → index-only scan |
-| **Scan** | Traverses irrelevant entries | Only relevant entries |
-
-#### Index naming convention
-
-Indexes are named deterministically from the field reference:
-
-```
-idx_pq_{table}_{key}_{condition_type}
-```
-
-Examples:
-```sql
--- AccountMetadata("category") + StringCondition
-CREATE INDEX idx_pq_am_category_string
-  ON account_metadata (ledger, string_value, account)
-  WHERE key = 'category';
-
--- AccountMetadata("credit_limit") + IntCondition
-CREATE INDEX idx_pq_am_credit_limit_int
-  ON account_metadata (ledger, int_value, account)
-  WHERE key = 'credit_limit';
-
--- AccountMetadata("active") + BoolCondition
-CREATE INDEX idx_pq_am_active_bool
-  ON account_metadata (ledger, bool_value, account)
-  WHERE key = 'active';
-
--- TransactionMetadata("amount") + IntCondition
-CREATE INDEX idx_pq_tm_amount_int
-  ON transaction_metadata (ledger, int_value, tx_id)
-  WHERE key = 'amount';
-```
-
-#### Lifecycle
-
-| Event | Action |
-|-------|--------|
-| `CreatePreparedQuery` | Extract `(field, condition_type)` pairs → `CREATE INDEX IF NOT EXISTS` for each |
-| `DeletePreparedQuery` | Check if any other query references each index → `DROP INDEX` if orphan |
-| `UpdatePreparedQuery` | Diff old vs new fields → create missing indexes, drop orphaned ones |
-| `store rebuild-indexes` | Drop all `idx_pq_*` indexes, scan all query definitions, recreate |
-
-The index builder maintains a **reference count** per index in a metadata table:
-
-```sql
-CREATE TABLE index_registry (
-  index_name VARCHAR PRIMARY KEY,
-  field_key VARCHAR NOT NULL,         -- e.g., "credit_limit"
-  field_source VARCHAR NOT NULL,      -- "account_metadata" or "transaction_metadata"
-  condition_type VARCHAR NOT NULL,    -- "string", "int", "uint", "bool", "exists"
-  ref_count INTEGER NOT NULL DEFAULT 1
-);
-```
-
-Multiple prepared queries referencing the same `(field, condition_type)` share the same index — `ref_count` tracks the number of references.
-
-#### Impact on write path
-
-Each metadata update in the index builder touches only the partial indexes for that specific key. A key not referenced by any prepared query has **zero index overhead** — no wasted writes on unqueried metadata.
-
-### 8.4 Comparison
-
-| Criteria | bbolt + custom | DuckDB |
-|----------|---------------|--------|
-| **Custom code** | ~2000-3000 LOC (indexes, iterators, merge ops, sortable encoding) | ~500 LOC (SQL generation, schema migration, index lifecycle) |
-| **Typed metadata** | Custom binary encoding per type (sign-bit XOR for int, big-endian for uint) | Native typed columns (`BIGINT`, `UBIGINT`, `BOOLEAN`) — zero custom encoding |
-| **Range queries** | Range scan on sortable-encoded values | `int_value >= $1 AND int_value <= $2` — native |
-| **Query-driven indexes** | Already key-scoped by design (`[0x0C][ledger\x00][key\x00]...`) | Partial indexes per prepared query — covering, index-only scans, zero overhead on unqueried keys |
-| **Scan performance** | Good (B+ tree, single-level) | Excellent (columnar, vectorized, SIMD) |
-| **Aggregations** | Must implement manually | `SUM`, `COUNT`, `AVG`, `GROUP BY` native |
-| **Query optimizer** | None | Sophisticated (join reordering, predicate pushdown, partial index selection) |
-| **Pure Go** | Yes | No (CGo) |
-| **Binary size** | Negligible | +30-50 MB |
-| **Future flexibility** | Each query type = new code | SQL covers nearly everything |
-| **Maturity in Go** | Very mature (etcd) | Younger bindings |
-
-### 8.5 Recommendation
-
-**DuckDB if CGo is acceptable, bbolt otherwise.**
-
-The read store is fundamentally an analytical problem (scan, filter, aggregate). DuckDB is purpose-built for this. The code simplification is dramatic and it opens the door to queries not yet anticipated.
-
-If CGo is a deal-breaker (cross-compilation, build complexity, memory safety at boundary), bbolt with the custom iterator tree is the fallback — more code but fully self-contained in pure Go.
+This is relatively mechanical code — no query optimizer, no complex algorithms beyond merge-join on sorted cursors.
 
 ## 9. Dedicated Disk — Is It Necessary?
 
 **No, but it helps.**
 
-The index builder is asynchronous, so it **never blocks the FSM**. Whether both stores share a disk or not, the consensus critical path is unaffected. The two stores are fully independent (no cross-disk I/O thanks to the reverse metadata map / DuckDB's self-contained tables).
+The index builder is asynchronous, so it **never blocks the FSM**. Whether both stores share a disk or not, the consensus critical path is unaffected. The two stores are fully independent (no cross-disk I/O thanks to the reverse metadata map).
 
 The real question: does read query I/O interfere with primary store compaction?
 
@@ -908,7 +688,7 @@ The Raft WAL is already recommended on a separate disk (`--wal-dir`). Adding a t
 ```
 Disk 1 (fast, small):  --wal-dir        /mnt/nvme-wal/   ← Raft WAL (latency-critical)
 Disk 2 (large):        --data-dir       /mnt/ssd-data/   ← Primary Pebble store
-Disk 3 (large):        --read-index-dir /mnt/ssd-read/   ← Read index store
+Disk 3 (large):        --read-index-dir /mnt/ssd-read/   ← Read index store (bbolt)
 ```
 
 For simpler deployments, disk 2 and 3 can be the same.
@@ -922,30 +702,9 @@ For simpler deployments, disk 2 and 3 can be the same.
 
 Default: `{data-dir}/read-indexes/` (same disk).
 
-## 10. Key Prefixes (bbolt approach)
+## 10. Execution Examples
 
-These prefixes apply when using bbolt. With DuckDB, they are replaced by table schemas.
-
-| Prefix | Key | Value | Purpose |
-|--------|-----|-------|---------|
-| `0x0C` | `[ledgerName\x00][a:][metadataKey\x00][typeTag(1B)][sortableValue][accountAddress]` | (empty) | Account metadata inverted index |
-| `0x0C` | `[ledgerName\x00][t:][metadataKey\x00][typeTag(1B)][sortableValue][txId(8B BE)]` | (empty) | Transaction metadata inverted index |
-| `0x0D` | `[ledgerName\x00][a:][accountAddress]` | (empty) | Account existence index |
-| `0x0D` | `[ledgerName\x00][t:][txId(8B BE)]` | (empty) | Transaction existence index |
-| `0x0E` | `[ledgerName\x00][a:][account\x00][metadataKey]` | `MetadataValue protobuf` | Account reverse metadata map |
-| `0x0E` | `[ledgerName\x00][t:][txId(8B BE)][metadataKey]` | `MetadataValue protobuf` | Transaction reverse metadata map |
-| `0x0F` | `[ledgerName\x00][accountAddress\x00][txId(8B BE)]` | (empty) | Account → transactions mapping |
-| `0xE0` | `[ledgerName\x00][queryName]` | `PreparedQuery protobuf` | Query definitions (primary store) |
-
-`typeTag` values: `'S'` (string), `'I'` (signed int), `'U'` (unsigned int), `'B'` (bool), `'N'` (null). See Section 8.1 for encoding details.
-
-`a:` / `t:` namespace tags distinguish account and transaction entries under the same prefix, keeping the sorted key layout clean.
-
-`0x0C`, `0x0D`, `0x0E`, `0x0F` live in the read store. `0xE0` lives in the primary Pebble store.
-
-## 11. Execution Examples
-
-### 11.1 String equality + boolean combination
+### 10.1 String equality + boolean combination
 
 **Use case**: "List active premium/gold merchants, excluding suspended ones"
 
@@ -964,28 +723,6 @@ Prepared query "active_premium_merchants":
 Client: { "prefix": "merchants:" }
 ```
 
-**DuckDB:**
-
-```sql
-SELECT DISTINCT a.account
-FROM accounts a
-JOIN account_metadata m1
-  ON a.ledger = m1.ledger AND a.account = m1.account
-  AND m1.key = 'category' AND m1.string_value IN ('premium', 'gold')
-WHERE a.ledger = $1
-  AND a.account LIKE 'merchants:%'
-  AND NOT EXISTS (
-    SELECT 1 FROM account_metadata m2
-    WHERE m2.ledger = a.ledger AND m2.account = a.account
-    AND m2.key = 'status' AND m2.string_value = 'suspended'
-  )
-  AND a.account > $3                        -- keyset pagination
-ORDER BY a.account
-LIMIT $2
-```
-
-**bbolt:**
-
 ```
   cursor1: scan [0x0C][ledger\x00][a:][category\x00]['S'][premium\x00]  → [acc_A, acc_C, acc_F]
   cursor2: scan [0x0C][ledger\x00][a:][category\x00]['S'][gold\x00]     → [acc_B, acc_F, acc_G]
@@ -996,7 +733,7 @@ LIMIT $2
   cursor7: AND(cursor3, cursor4, cursor6)                                 → [acc_A, acc_C, acc_F]
 ```
 
-### 11.2 Integer range query
+### 10.2 Integer range query
 
 **Use case**: "List high-value merchants with credit limit between 10K and 50K"
 
@@ -1011,23 +748,6 @@ Prepared query "high_value_merchants":
 Client: {} (no parameters — all values hardcoded)
 ```
 
-**DuckDB:**
-
-```sql
-SELECT DISTINCT a.account
-FROM accounts a
-JOIN account_metadata m1
-  ON a.ledger = m1.ledger AND a.account = m1.account
-  AND m1.key = 'credit_limit' AND m1.int_value >= 10000 AND m1.int_value <= 50000
-WHERE a.ledger = $1
-  AND a.account LIKE 'merchants:%'
-  AND a.account > $3                        -- keyset pagination
-ORDER BY a.account
-LIMIT $2
-```
-
-**bbolt:**
-
 ```
   cursor1: range [0x0C][ledger\x00][a:][credit_limit\x00]['I'][encode(10000)]
              ... [0x0C][ledger\x00][a:][credit_limit\x00]['I'][encode(50001)]
@@ -1038,9 +758,9 @@ LIMIT $2
            → [acc_A, acc_C, acc_F, acc_H]
 ```
 
-### 11.3 Parameterized range with boolean filter
+### 10.3 Parameterized range with boolean filter
 
-**Use case**: "List active accounts with balance above a threshold (threshold provided at execution)"
+**Use case**: "List active accounts with volume above a threshold (threshold provided at execution)"
 
 ```
 Prepared query "active_above_threshold":
@@ -1054,27 +774,6 @@ Prepared query "active_above_threshold":
 Client: { "min_volume": "50000", "prefix": "merchants:" }
 ```
 
-**DuckDB:**
-
-```sql
-SELECT DISTINCT a.account
-FROM accounts a
-JOIN account_metadata m1
-  ON a.ledger = m1.ledger AND a.account = m1.account
-  AND m1.key = 'monthly_volume' AND m1.int_value >= $3
-JOIN account_metadata m2
-  ON a.ledger = m2.ledger AND a.account = m2.account
-  AND m2.key = 'active' AND m2.bool_value = true
-WHERE a.ledger = $1
-  AND a.account LIKE $4 || '%'
-  AND a.account > $5                        -- keyset pagination
-ORDER BY a.account
-LIMIT $2
--- $1='default', $2=100, $3=50000, $4='merchants:', $5='' (cursor)
-```
-
-**bbolt:**
-
 ```
   cursor1: range [0x0C][ledger\x00][a:][monthly_volume\x00]['I'][encode(50000)]
              ... [0x0C][ledger\x00][a:][monthly_volume\x00]['I'][\xFF x 8]
@@ -1087,7 +786,7 @@ LIMIT $2
            → [acc_A, acc_F, acc_H]
 ```
 
-### 11.4 Transaction query — metadata range + address involvement
+### 10.4 Transaction query — metadata range + address involvement
 
 **Use case**: "List transactions involving merchants with amount >= 5000"
 
@@ -1102,26 +801,6 @@ Prepared query "large_merchant_transactions":
 Client: { "min_amount": "5000", "prefix": "merchants:" }
 ```
 
-**DuckDB:**
-
-```sql
-SELECT DISTINCT t.tx_id
-FROM transactions t
-JOIN transaction_metadata m1
-  ON t.ledger = m1.ledger AND t.tx_id = m1.tx_id
-  AND m1.key = 'amount' AND m1.int_value >= $3
-JOIN account_transactions at1
-  ON t.ledger = at1.ledger AND t.tx_id = at1.tx_id
-  AND at1.account LIKE $4 || '%'
-WHERE t.ledger = $1
-  AND t.tx_id > $5                          -- keyset pagination
-ORDER BY t.tx_id
-LIMIT $2
--- $1='default', $2=100, $3=5000, $4='merchants:', $5=0 (cursor)
-```
-
-**bbolt:**
-
 ```
   cursor1: range [0x0C][ledger\x00][t:][amount\x00]['I'][encode(5000)]
                  ...[0x0C][ledger\x00][t:][amount\x00]['I'][\xFF x 8]
@@ -1134,7 +813,7 @@ LIMIT $2
   cursor5: AND(cursor1, cursor4) → [tx_1, tx_3, tx_5]
 ```
 
-### 11.5 Complex mixed query
+### 10.5 Complex mixed query
 
 **Use case**: "List EU or US merchants with credit limit >= 5000, category premium or gold, that are not suspended"
 
@@ -1158,73 +837,63 @@ Prepared query "qualified_regional_merchants":
 Client: { "min_credit": "5000", "prefix": "merchants:" }
 ```
 
-**DuckDB:**
-
-```sql
-SELECT DISTINCT a.account
-FROM accounts a
-JOIN account_metadata m1
-  ON a.ledger = m1.ledger AND a.account = m1.account
-  AND m1.key = 'region' AND m1.string_value IN ('eu', 'us')
-JOIN account_metadata m2
-  ON a.ledger = m2.ledger AND a.account = m2.account
-  AND m2.key = 'category' AND m2.string_value IN ('premium', 'gold')
-JOIN account_metadata m3
-  ON a.ledger = m3.ledger AND a.account = m3.account
-  AND m3.key = 'credit_limit' AND m3.int_value >= $3
-WHERE a.ledger = $1
-  AND a.account LIKE $4 || '%'
-  AND NOT EXISTS (
-    SELECT 1 FROM account_metadata m4
-    WHERE m4.ledger = a.ledger AND m4.account = a.account
-    AND m4.key = 'suspended' AND m4.bool_value = true
-  )
-  AND a.account > $5                        -- keyset pagination
-ORDER BY a.account
-LIMIT $2
--- $1='default', $2=100, $3=5000, $4='merchants:', $5='' (cursor)
+```
+  cursor1: scan [0x0C][ledger\x00][a:][region\x00]['S'][eu\x00]          → [acc_A, acc_C, acc_F]
+  cursor2: scan [0x0C][ledger\x00][a:][region\x00]['S'][us\x00]          → [acc_B, acc_H, acc_J]
+  cursor3: OR(cursor1, cursor2)                                             → [acc_A, acc_B, acc_C, acc_F, acc_H, acc_J]
+  cursor4: scan [0x0C][ledger\x00][a:][category\x00]['S'][premium\x00]   → [acc_A, acc_C, acc_H]
+  cursor5: scan [0x0C][ledger\x00][a:][category\x00]['S'][gold\x00]      → [acc_B, acc_F]
+  cursor6: OR(cursor4, cursor5)                                             → [acc_A, acc_B, acc_C, acc_F, acc_H]
+  cursor7: range [0x0C][ledger\x00][a:][credit_limit\x00]['I'][encode(5000)]
+             ... [0x0C][ledger\x00][a:][credit_limit\x00]['I'][\xFF x 8]  → [acc_A, acc_B, acc_C, acc_F, acc_H, acc_J]
+  cursor8: scan [0x0C][ledger\x00][a:][suspended\x00]['B'][\x01]         → [acc_J]
+  cursor9: NOT(cursor8) via universe [0x0D][ledger\x00][a:]               → [all except acc_J]
+  cursor10: scan [0x0D][ledger\x00][a:][merchants:]...[merchants:\xFF]   → [acc_A, acc_B, acc_C, acc_F, acc_H, acc_J]
+  cursor11: AND(cursor3, cursor6, cursor7, cursor9, cursor10)              → [acc_A, acc_B, acc_C, acc_F, acc_H]
 ```
 
-Note: DuckDB's optimizer can rewrite `OR(StringEquals, StringEquals)` on the same key as `IN (...)`, simplifying the JOIN pattern automatically.
+All cursors are lazy — the AND short-circuits as soon as one cursor is exhausted. With 5 filters, the merge-intersect advances the smallest cursor at each step, skipping large ranges in the other cursors.
 
-## 12. Implementation Plan
+## 11. Implementation Plan
 
-1. **Read store infrastructure**: index builder (tails system logs via `NotifyLogsCommitted()`), read store interface (abstract over bbolt/DuckDB), configuration flags (`--read-index-dir`, `--read-index-enable`)
-2. **Account existence tracking**: populate `accounts` table / `[0x0D][a:]` index from Raft entries
-3. **Account metadata index**: populate `account_metadata` table / `[0x0C][a:]` + `[0x0E][a:]` indexes, typed value encoding
-4. **Transaction existence tracking**: populate `transactions` table / `[0x0D][t:]` index from Raft entries
-5. **Transaction metadata index**: populate `transaction_metadata` table / `[0x0C][t:]` + `[0x0E][t:]` indexes, same reverse map pattern, same typed encoding
-6. **Account-transaction mapping**: populate `account_transactions` table / `[0x0F]` index from transaction postings (for AddressMatch on TRANSACTIONS target)
-7. **Schema change handling**: index builder detects `SetMetadataFieldType` logs → re-encodes all entries for the affected key via `ConvertMetadataValue`
-8. **Prepared query CRUD**: Raft commands for create/update/delete, storage in `[0xE0]`, gRPC + HTTP handlers, condition/schema validation + FieldRef/target compatibility at creation time
-9. **Query executor**: filter tree → iterator tree (bbolt) or SQL (DuckDB), condition/schema re-validation at execution time, target-dependent result type (accounts or transaction IDs), pagination
-10. **Backfill**: `store rebuild-indexes` CLI command to populate read store from existing logs
+1. **Read store infrastructure**: index builder (tails system logs via `NotifyLogsCommitted()`), bbolt read store, configuration flags (`--read-index-dir`, `--read-index-enable`)
+2. **Sortable encoding**: `encode(int64)`, `encode(uint64)`, type tag dispatch, key builders for all prefixes
+3. **Account existence tracking**: populate `[0x0D][a:]` index from system logs
+4. **Account metadata index**: populate `[0x0C][a:]` + `[0x0E][a:]` indexes, typed value encoding
+5. **Transaction existence tracking**: populate `[0x0D][t:]` index from system logs
+6. **Transaction metadata index**: populate `[0x0C][t:]` + `[0x0E][t:]` indexes, same reverse map pattern
+7. **Account-transaction mapping**: populate `[0x0F]` index from transaction postings (for AddressMatch on TRANSACTIONS target)
+8. **Schema change handling**: index builder detects `SetMetadataFieldType` logs → re-encodes all entries for the affected key via `ConvertMetadataValue`
+9. **Iterator tree**: merge-intersect, merge-union, merge-difference operators on sorted bbolt cursors
+10. **Prepared query CRUD**: Raft commands for create/update/delete, storage in `[0xE0]`, gRPC + HTTP handlers, condition/schema validation + FieldRef/target compatibility at creation time
+11. **Query executor**: filter tree compiler (recursive tree → iterator tree), condition/schema re-validation at execution time, target-dependent result type (accounts or transaction IDs), keyset pagination
+12. **Backfill**: `store rebuild-indexes` CLI command to populate read store from existing logs
 
-## 13. Decisions Record
+## 12. Decisions Record
 
 | Topic | Decision | Rationale |
 |---|---|---|
 | **Query targets** | ACCOUNTS and TRANSACTIONS | Each prepared query declares a target type. ACCOUNTS returns account addresses, TRANSACTIONS returns transaction IDs. FieldRef sources must match the target type (e.g., `AccountMetadata` only on ACCOUNTS, `TransactionMetadata` only on TRANSACTIONS). Cross-entity conditions are out of scope (future work). |
-| **Filter model** | Recursive boolean tree (AND/OR/NOT) | Supports complex queries; composable; compiles naturally to both iterator trees and SQL |
+| **Filter model** | Recursive boolean tree (AND/OR/NOT) | Supports complex queries; composable; compiles naturally to iterator trees on sorted cursors |
 | **Leaf types** | FieldCondition (FieldRef × Condition) + AddressMatch | Separates "where to look" (FieldRef: AccountMetadata, TransactionMetadata) from "what to match" (Condition: string/int/uint/bool/exists). Conditions are reusable across data sources. Extensible to future sources (e.g., volumes) without new condition types. AddressMatch semantics depend on target type: direct match for ACCOUNTS, posting involvement for TRANSACTIONS. |
 | **Index population** | Asynchronous via index builder | Keeps FSM apply fast (RAM-only); no I/O contention on write path |
 | **Feeding strategy** | Tail system logs (0x01) in Pebble, not raw Raft entries | Raw Raft entries include rejected proposals (insufficient funds, idempotency conflicts, etc.); system logs contain only accepted operations; reuses existing `NotifyLogsCommitted()` pattern from event emitter |
-| **Read store autonomy** | Reverse metadata map (bbolt) or native UPDATE (DuckDB) | Eliminates cross-store random I/O for metadata lookups; sequential log reads from Pebble are acceptable |
-| **Storage engine** | DuckDB (preferred) or bbolt (fallback) | DuckDB: minimal code, built-in optimizer, columnar perf, query-driven partial indexes. bbolt: pure Go, no CGo |
-| **Query-driven indexes** | Partial indexes created per prepared query, not generic | Prepared queries declare their fields at creation → `CREATE INDEX ... WHERE key = 'X'`. Smaller indexes, covering scans, zero write overhead on unqueried keys. Reference-counted, dropped when no query references them. |
+| **Read store autonomy** | Reverse metadata map in bbolt | Eliminates cross-store random I/O for metadata lookups; all four operations (read old, delete old index, insert new index, update reverse map) are atomic in a single bbolt write tx |
+| **Storage engine** | bbolt (B+ tree, pure Go) | Read-optimized (single-level, zero read amplification), native MVCC for concurrent readers, single-writer by design (matches index builder), no CGo, battle-tested (etcd, Consul), simple (no compaction, no WAL, no tuning) |
+| **Key-scoped indexes** | Key layout `[0x0C][ledger][a:][key\x00]` naturally scopes to a specific metadata key | Equivalent to a partial index — only entries for the queried key are scanned. No wasted I/O on unrelated metadata keys. Zero overhead for unqueried keys. |
 | **Dedicated disk** | Optional, not required | Async builder already decouples FSM; beneficial on SATA SSD, not needed on NVMe |
 | **Consistency** | Eventually consistent with opt-in freshness wait | Bounded lag (ms); `min_log_sequence` for strong consistency when needed |
 | **Validation** | At creation time + execution time | Creation: enforce resource limits, condition/schema type compatibility. Execution: re-validate condition/schema match (catches schema changes not batched with query updates) |
 | **Condition/type matching** | Condition type must match declared `MetadataType` for the key | `IntCondition` only on `INT8`..`INT64` keys, `UintCondition` only on `UINT8`..`UINT64`, `BoolCondition` only on `BOOL`, `StringCondition` only on `STRING` or untyped keys. `ExistsCondition` on any type. Enforced at creation and execution. |
 | **NullValue visibility** | NullValue entries are invisible to typed conditions | `IntRange` won't match a NullValue — this is acceptable. `ExistsCondition(include_null: true)` can explicitly detect inconvertible values. Consistent with the typed metadata system's semantics. |
-| **Pagination** | Cursor-based (keyset) following the reference implementation pattern | Opaque base64-encoded cursor with `next`/`previous` pointers. Keyset pagination (`account > $cursor`) instead of OFFSET — stable under concurrent inserts, O(1) seek. |
-| **Transaction metadata** | Indexed in the read store (same pattern as account metadata) | Transaction metadata is mutable (can be modified via SaveMetadata) and types can change; same reverse map / INSERT OR REPLACE pattern as account metadata; enables filtering transactions by metadata |
+| **Pagination** | Cursor-based (keyset) following the reference implementation pattern | Opaque base64-encoded cursor with `next`/`previous` pointers. Keyset pagination (`account > $cursor` / `tx_id > $cursor`) instead of OFFSET — stable under concurrent inserts, O(1) seek. |
+| **Transaction metadata** | Indexed in the read store (same pattern as account metadata) | Transaction metadata is mutable (can be modified via SaveMetadata) and types can change; same reverse map pattern as account metadata; enables filtering transactions by metadata |
 | **Schema change handling** | Auto-rebuild indexes + user-managed query updates | Index builder re-encodes entries automatically via `ConvertMetadataValue` matrix. Prepared queries are the user's responsibility — schema change + `UpdatePreparedQuery` batched in the same `Proposal` (atomic). Execution-time validation rejects condition/schema mismatches with a clear error. No runtime conversion magic. |
 
-## 14. Open Questions
+## 13. Open Questions
 
-1. **CGo decision**: is CGo acceptable for the project? This is the key factor for DuckDB vs bbolt. Impacts cross-compilation, build time, binary size.
-2. **Volume-based post-filters**: should prepared queries support conditions like `balance(USD/2) > 1000`? This would require loading account volumes for each candidate after metadata filtering. Potentially expensive.
-3. **String value length in bbolt**: string metadata values can be arbitrarily long. For the bbolt inverted index key, should long values be truncated + hashed to keep keys bounded? Risk: hash collisions require post-filtering. Less of an issue with DuckDB (native VARCHAR indexing). With typed metadata, most filterable keys will have short strings or numeric values.
-4. **Prepared query limits per ledger**: should there be a maximum number? Query definitions are small but replicated via Raft.
-5. **Untyped keys**: for metadata keys with no declared schema, only `StringCondition` is allowed. Should `ExistsCondition` also be allowed on untyped keys? (Probably yes — it doesn't depend on the value type.)
+1. **Volume-based post-filters**: should prepared queries support conditions like `balance(USD/2) > 1000`? This would require loading account volumes for each candidate after metadata filtering. Potentially expensive.
+2. **String value length**: string metadata values can be arbitrarily long. For the inverted index key, should long values be truncated + hashed to keep keys bounded? Risk: hash collisions require post-filtering. With typed metadata, most filterable keys will have short strings or numeric values.
+3. **Prepared query limits per ledger**: should there be a maximum number? Query definitions are small but replicated via Raft.
+4. **Untyped keys**: for metadata keys with no declared schema, only `StringCondition` is allowed. Should `ExistsCondition` also be allowed on untyped keys? (Probably yes — it doesn't depend on the value type.)
+5. **bbolt file growth**: bbolt reuses freed pages but never shrinks the file. For ledgers with heavy metadata churn, should we add periodic compaction (`bbolt.Compact()`) or file rotation?
