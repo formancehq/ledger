@@ -38,7 +38,7 @@ flowchart TB
     end
 
     subgraph Storage["Storage Layer"]
-        Store[Pebble Store<br/>internal/storage/data]
+        Store[Pebble Store<br/>internal/storage/dal]
         WAL[Write-Ahead Log<br/>internal/storage/wal]
         Spool[Spool<br/>internal/storage/spool]
     end
@@ -364,7 +364,7 @@ erDiagram
 - **Attributes**: Generic attribute system for volumes, metadata, reversions
 - **KeyStore**: Hash-based key mapping with collision detection
 
-### 6. Storage Layer (`internal/storage/data`, `internal/storage/wal`, `internal/storage/spool`)
+### 6. Storage Layer (`internal/storage/dal`, `internal/storage/wal`, `internal/storage/spool`)
 
 - **Pebble Store**: Persistent key-value storage for all state
 - **WAL (Write-Ahead Log)**: Durability for Raft entries before FSM apply

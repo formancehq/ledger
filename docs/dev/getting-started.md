@@ -29,13 +29,12 @@ ledger-v3-poc/
 │   └── ledgerctl/         # CLI client (ledgerctl)
 ├── internal/               # Internal code (not exported)
 │   ├── application/       # Application module (fx wiring, gRPC servers)
-│   ├── raft/              # Raft implementation (single group)
-│   ├── ctrl/              # Controller layer (transaction processing)
 │   ├── service/           # Business services
 │   │   ├── admission/     # Admission service (preload, AttributeLoader)
 │   │   ├── attributes/    # Attribute types, U128 hashing, collision detection
 │   │   ├── cache/         # FSM attribute cache (generation-based)
 │   │   ├── commands/      # Raft command builders
+│   │   ├── ctrl/          # Controller layer (transaction processing)
 │   │   ├── futures/       # Async futures for proposal results
 │   │   ├── node/          # Raft node lifecycle and transport
 │   │   ├── processing/    # Transaction/log processing

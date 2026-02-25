@@ -129,7 +129,7 @@ The package `pkg/testserver` provides helpers:
 
 ### Cluster Helper
 
-The `Cluster` struct in `internal/raft/node_test.go` provides a complete testing infrastructure for Raft node clusters:
+The `Cluster` struct in `internal/service/node/node_test.go` provides a complete testing infrastructure for Raft node clusters:
 
 ```go
 type Cluster struct {
@@ -165,7 +165,7 @@ type ClusterNode struct {
 
 ### ChannelTransport
 
-`ChannelTransport` (`internal/raft/transport_channel.go`) is an in-memory implementation of the `Transport` interface using Go channels:
+`ChannelTransport` (`internal/service/node/transport_channel.go`) is an in-memory implementation of the `Transport` interface using Go channels:
 
 ```go
 transport := NewChannelTransport(nodeID, DefaultChannelTransportConfig())

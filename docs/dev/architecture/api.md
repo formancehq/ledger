@@ -394,7 +394,7 @@ For detailed documentation, examples, and client code, see [gRPC API](./grpc-api
 The main interface for read and write operations:
 
 ```go
-// internal/ctrl/controller.go
+// internal/service/ctrl/controller.go
 type Controller interface {
     Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
     GetAccount(ctx context.Context, ledger string, address string) (*commonpb.Account, error)

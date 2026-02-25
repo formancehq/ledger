@@ -102,7 +102,7 @@ The spool is a persistent buffer that stores commands during synchronization:
 
 ### Synchronization Manager
 
-**File**: `internal/raft/node.go`
+**File**: `internal/service/node/node.go`
 
 The Node manages the synchronization lifecycle directly (previously in a separate `syncer.go` file):
 
@@ -395,8 +395,8 @@ Authorization can be added:
 
 1. Define the protobuf in `misc/proto/raftcmd.proto`
 2. Regenerate protobufs using `just generate-proto`
-3. Create the command function in `internal/raft/command.go`
-4. Add the handler in the FSM (`internal/raft/fsm.go`)
+3. Create the command function in `internal/service/commands/command.go`
+4. Add the handler in the FSM (`internal/service/state/machine.go`)
 5. Update `ApplyEntries` to handle the new command type
 
 ### Adding a New Log Type

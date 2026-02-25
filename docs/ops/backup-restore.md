@@ -449,7 +449,7 @@ See [Periods](../dev/architecture/periods.md) for the full period lifecycle and 
 | `internal/application/grpc_restore_server.go` | RestoreService gRPC implementation |
 | `internal/application/module_restore.go` | Minimal fx module for restore mode |
 | `internal/storage/tarutil/extract.go` | Shared tar extraction utility |
-| `internal/storage/data/store_readonly.go` | Read-only Pebble store opener |
+| `internal/storage/dal/store_readonly.go` | Read-only Pebble store opener |
 | **Offline Bootstrap** | |
 | `cmd/ledgerctl/store_bootstrap.go` | `store bootstrap` CLI command (offline) |
 | **Post-Restore Bootstrap** | |

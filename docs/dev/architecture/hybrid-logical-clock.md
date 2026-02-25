@@ -200,7 +200,7 @@ Tests are located in `internal/service/state/machine_hlc_test.go`:
 | File | Role |
 |------|------|
 | `internal/service/state/machine.go` | HLC field, `hlcTimestamp()` method, integration in `applyProposal()` and `ApplyEntries()`, snapshot handling |
-| `internal/storage/data/store.go` | `GetLastAppliedTimestamp()` for reading from PebbleDB |
-| `internal/storage/data/batch.go` | `SetLastAppliedTimestamp()` for writing to PebbleDB |
+| `internal/storage/dal/store.go` | `GetLastAppliedTimestamp()` for reading from PebbleDB |
+| `internal/storage/dal/batch.go` | `SetLastAppliedTimestamp()` for writing to PebbleDB |
 | `misc/proto/raftcmd.proto` | `last_applied_timestamp` field in `MemorySnapshot` |
 | `internal/service/state/machine_hlc_test.go` | Unit and integration tests |

@@ -34,7 +34,7 @@ Always verify compilation with `go build ./...` before submitting.
 
 **CRITICAL**: After any change to interfaces annotated with `//go:generate mockgen`, regenerate mocks immediately with `go generate ./...`.
 
-Interfaces with mockgen: `WAL` (`internal/raft/node.go`), `Transport` (`internal/raft/transport.go`), `Controller` (`internal/ctrl/controller.go`), `Engine` (`internal/ctrl/controller_default.go`), `Spool` (`internal/storage/spool/spool.go`), `WAL` (`internal/storage/wal/wal.go`), `Store` (`internal/service/processing/processor.go`), `Checker` (`internal/health/healthcheck.go`).
+Interfaces with mockgen: `WAL` (`internal/service/node/node.go`), `Transport` (`internal/service/node/transport.go`), `Controller` (`internal/service/ctrl/controller.go`), `Engine` (`internal/service/ctrl/controller_default.go`), `Spool` (`internal/storage/spool/spool.go`), `WAL` (`internal/storage/wal/wal.go`), `Store` (`internal/service/processing/processor.go`), `Checker` (`internal/health/healthcheck.go`).
 
 ## JSON Property Naming
 
@@ -81,7 +81,7 @@ Key rules:
 
 The server persists critical config (`node-id`, `cluster-id`) in Pebble (key prefix `0xFE`) on first boot and validates on subsequent boots. Mismatch on `node-id`/`cluster-id` is fatal. Use `--unsafe-skip-config-validation` to bypass (dangerous). See [docs/ops/deployment.md](docs/ops/deployment.md) and [docs/ops/cli.md](docs/ops/cli.md) for details.
 
-Key files: `internal/storage/data/persisted_config.go`, `internal/application/config_validation.go`, `internal/application/module.go`.
+Key files: `internal/application/persisted_config.go`, `internal/application/config_validation.go`, `internal/application/module.go`.
 
 ## Request Signing
 

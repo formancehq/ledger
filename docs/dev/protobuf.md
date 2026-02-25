@@ -33,7 +33,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 | `eventspb/` | Domain event types |
 | `restorepb/` | Restore service |
 
-Raft transport generated code lives in `internal/raft/` (`raft_transport.pb.go`, `raft_transport_grpc.pb.go`).
+Raft transport generated code lives in `internal/proto/rafttransportpb/` (`raft_transport.pb.go`, `raft_transport_grpc.pb.go`).
 
 ## Regenerating Code
 
@@ -78,7 +78,7 @@ The project uses [vtprotobuf](https://github.com/planetscale/vtprotobuf) to gene
 | `internal/service/admission/admission.go` | Proposal marshal (`SizeVT` + `MarshalToVT`) |
 | `internal/service/state/machine.go` | Proposal unmarshal, snapshot marshal/unmarshal |
 | `internal/service/attributes/attributes.go` | Attribute value marshal/unmarshal |
-| `internal/storage/data/batch.go` | Batch marshal |
+| `internal/storage/dal/batch.go` | Batch marshal |
 | `internal/service/processing/processor.go` | Order hash (`CloneVT` + `MarshalVT`) |
 | `internal/service/state/buffer.go` | Clone functions (`CloneVT` references) |
 
@@ -99,7 +99,7 @@ See [architecture/uint256-wire-format.md](./architecture/uint256-wire-format.md)
 
 1. Add the message definition to `misc/proto/raftcmd.proto`
 2. Run `just generate-proto`
-3. Create a `NewXxxCommand` function in `internal/raft/command.go`
-4. Update `UnmarshalCommandData` in `internal/raft/command.go`
-5. Add a handler method in `internal/raft/fsm.go`
+3. Create a `NewXxxCommand` function in `internal/service/commands/command.go`
+4. Update `UnmarshalCommandData` in `internal/service/commands/command.go`
+5. Add a handler method in `internal/service/state/machine.go`
 6. Rebuild and test: `go build ./... && go test ./...`

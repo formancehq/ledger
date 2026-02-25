@@ -57,8 +57,8 @@ Client -> gRPC Apply() -> Admission (check maintenance mode) -> Proposal -> Raft
 | File | Role |
 |------|------|
 | `internal/crypto/keystore/keystore.go` | In-memory flag (`MaintenanceMode()`, `SetMaintenanceMode()`) |
-| `internal/storage/data/store.go` | Pebble persistence (`LoadMaintenanceMode()`) |
-| `internal/storage/data/batch.go` | Pebble write (`SaveMaintenanceMode()`) |
+| `internal/storage/dal/store.go` | Pebble persistence (`LoadMaintenanceMode()`) |
+| `internal/storage/dal/batch.go` | Pebble write (`SaveMaintenanceMode()`) |
 | `internal/service/admission/admission.go` | Admission-level check |
 | `internal/service/state/machine.go` | FSM-level check (`allOrdersAreMaintenanceMode`) |
 | `internal/service/state/buffer.go` | Atomic merge (persist + update KeyStore) |

@@ -184,7 +184,7 @@ This is inherent to the Raft consensus model where all state changes are eventua
 | `internal/crypto/keystore/` | Thread-safe in-memory key cache (`sync.RWMutex`) |
 | `internal/service/admission/` | Signature verification, bootstrap logic, Request → Order conversion |
 | `internal/service/state/buffer.go` | Signing key changes accumulated during processing, applied in `Merge()` |
-| `internal/storage/data/` | Pebble persistence for signing keys (prefixes `0x0B`/`0x0C`) |
+| `internal/storage/dal/` | Pebble persistence for signing keys (prefixes `0x0B`/`0x0C`) |
 | `misc/proto/signature.proto` | `RequestSignature` and `ResponseSignature` protobuf messages |
 
 ## CLI Reference

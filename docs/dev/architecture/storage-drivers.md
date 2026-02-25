@@ -204,7 +204,7 @@ curl -X POST http://localhost:9000/my-ledger \
 
 ### Store and Batch
 
-The `Store` (`internal/storage/data/store.go`) manages the Pebble database lifecycle, checkpoints, and read operations. It provides:
+The `Store` (`internal/storage/dal/store.go`) manages the Pebble database lifecycle, checkpoints, and read operations. It provides:
 
 - **Log operations**: `GetLogBySequence`, `ListTransactionIDs`
 - **Idempotency**: `GetSequenceForIdempotencyKey`
@@ -213,7 +213,7 @@ The `Store` (`internal/storage/data/store.go`) manages the Pebble database lifec
 - **Audit**: `ListAuditEntries`
 - **Snapshots**: `CreateSnapshot`, `CreateBackup`
 
-The `Batch` (`internal/storage/data/batch.go`) provides atomic write operations:
+The `Batch` (`internal/storage/dal/batch.go`) provides atomic write operations:
 
 - `SetAppliedIndex` / `SetLastAppliedTimestamp` — Raft progress tracking
 - `AppendLogs` — System logs with idempotency index
@@ -226,12 +226,12 @@ The `Batch` (`internal/storage/data/batch.go`) provides atomic write operations:
 
 | Component | Source File |
 |-----------|-------------|
-| Store | `internal/storage/data/store.go` |
-| Batch | `internal/storage/data/batch.go` |
-| Config | `internal/storage/data/config.go` |
-| Metrics | `internal/storage/data/metrics.go` |
-| Types (keys) | `internal/storage/data/types.go` |
-| Key builder | `internal/storage/data/key_builder.go` |
+| Store | `internal/storage/dal/store.go` |
+| Batch | `internal/storage/dal/batch.go` |
+| Config | `internal/storage/dal/config.go` |
+| Metrics | `internal/storage/dal/metrics.go` |
+| Types (keys) | `internal/storage/dal/types.go` |
+| Key builder | `internal/storage/dal/key_builder.go` |
 
 ---
 

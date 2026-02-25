@@ -399,7 +399,7 @@ Requires adding writes during FSM log application:
 5. **Ledger stats** (account count): add counter to `LedgerBoundaries`
 
 Estimated changes:
-- `internal/storage/data/store.go` — add `keyPrefixLedgerLog` and `ListLedgerLogSequences`
+- `internal/storage/dal/store.go` — add `keyPrefixLedgerLog` and `ListLedgerLogSequences`
 - `internal/service/state/machine.go` (or `buffered.go`) — populate index during log application
 - `misc/proto/common.proto` — add `account_count` to `LedgerBoundaries`
 
@@ -410,7 +410,7 @@ Requires adding writes during transaction processing:
 6. **Transactions by account**: add `[0x0B][ledgerID][account\x00][txID]` index
 
 Estimated changes:
-- `internal/storage/data/store.go` — add `keyPrefixAccountTransaction` and iteration methods
+- `internal/storage/dal/store.go` — add `keyPrefixAccountTransaction` and iteration methods
 - `internal/service/state/machine.go` — populate index during transaction application
 - Proto + gRPC + HTTP + CLI additions
 

@@ -15,8 +15,6 @@ ledger-v3-poc/
 │   └── examples/          # Example Numscript files
 ├── internal/               # Internal code (not exported)
 │   ├── application/       # Application module (fx wiring, gRPC servers)
-│   ├── raft/              # Raft implementation (single group)
-│   ├── ctrl/              # Controller layer (transaction processing)
 │   ├── service/           # Business services
 │   │   ├── admission/     # Admission service (preload computation, AttributeLoader)
 │   │   ├── attributes/    # Attribute types, U128 hashing, collision detection
@@ -24,6 +22,7 @@ ledger-v3-poc/
 │   │   ├── commands/      # Raft command builders
 │   │   ├── futures/       # Async futures for proposal results
 │   │   ├── kv/            # Key-value map utilities
+│   │   ├── ctrl/          # Controller layer (transaction processing)
 │   │   ├── node/          # Raft node lifecycle and transport
 │   │   ├── processing/    # Transaction/log processing
 │   │   ├── state/         # FSM state machine and snapshots
@@ -32,7 +31,7 @@ ledger-v3-poc/
 │   │   ├── http/          # HTTP handlers
 │   │   └── json/          # JSON utilities
 │   ├── storage/           # Storage layer
-│   │   ├── data/          # Main data store (Pebble)
+│   │   ├── dal/           # Data access layer (Pebble)
 │   │   ├── spool/         # Spool for sync buffering
 │   │   └── wal/           # Write-ahead log
 │   ├── transport/         # gRPC transport and connection pool
@@ -127,9 +126,9 @@ All components with a lifecycle use `fx.Lifecycle` to register `OnStart` and `On
 
 2. **Regenerate protobufs** using `just generate-proto`
 
-3. **Create the command function** in `internal/raft/command.go`
+3. **Create the command function** in `internal/service/commands/command.go`
 
-4. **Add the handler in the FSM** in `internal/raft/fsm.go`
+4. **Add the handler in the FSM** in `internal/service/state/machine.go`
 
 5. **Update `ApplyEntries`** to route the command to the handler
 
