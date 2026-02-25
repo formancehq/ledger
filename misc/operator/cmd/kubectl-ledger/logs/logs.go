@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -28,11 +29,12 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	var f logsFlags
 
 	cmd := &cobra.Command{
-		Use:   "logs <name>",
-		Short: "Stream logs from a Ledger deployment",
-		Args:  cobra.ExactArgs(1),
+		Use:     "logs [name]",
+		Aliases: []string{"log"},
+		Short:   "Stream logs from a Ledger deployment",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLogs(cmd, opts, &f, args[0])
+			return runLogs(cmd, opts, &f, args)
 		},
 	}
 
@@ -45,12 +47,12 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	return cmd
 }
 
-func runLogs(cmd *cobra.Command, opts *cmdutil.Options, f *logsFlags, name string) error {
+func runLogs(cmd *cobra.Command, opts *cmdutil.Options, f *logsFlags, args []string) error {
 	ctx := cmd.Context()
 
-	ns, err := opts.ResolvedNamespace()
+	name, ns, err := cmdutil.ResolveLedgerName(ctx, opts, args)
 	if err != nil {
-		return fmt.Errorf("resolving namespace: %w", err)
+		return err
 	}
 
 	cs, err := opts.Clientset()
@@ -82,6 +84,7 @@ func runLogs(cmd *cobra.Command, opts *cmdutil.Options, f *logsFlags, name strin
 		ordinal = f.pod
 	}
 	podName := fmt.Sprintf("%s-%d", name, ordinal)
+	pterm.Info.Printfln("Streaming logs from %s", pterm.Cyan(podName))
 	return streamPodLogs(ctx, cs, ns, podName, "", logOpts)
 }
 
@@ -92,8 +95,11 @@ func streamAllPods(ctx context.Context, cs kubernetes.Interface, ns, name string
 	}
 
 	if len(pods.Items) == 0 {
+		pterm.Error.Printfln("No pods found for Ledger %s", pterm.Cyan(name))
 		return fmt.Errorf("no pods found for ledger %q", name)
 	}
+
+	pterm.Info.Printfln("Streaming logs from %d pods", len(pods.Items))
 
 	var wg sync.WaitGroup
 	for i := range pods.Items {
@@ -101,9 +107,8 @@ func streamAllPods(ctx context.Context, cs kubernetes.Interface, ns, name string
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			// best-effort: errors logged inline
 			if err := streamPodLogs(ctx, cs, ns, podName, podName, logOpts); err != nil {
-				fmt.Printf("[%s] error: %v\n", podName, err)
+				pterm.Error.Printfln("[%s] %v", podName, err)
 			}
 		}()
 	}
@@ -120,14 +125,13 @@ func streamPodLogs(ctx context.Context, cs kubernetes.Interface, ns, podName, pr
 	defer func() { _ = stream.Close() }()
 
 	scanner := bufio.NewScanner(stream)
-	// Increase scanner buffer for long log lines.
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	for scanner.Scan() {
 		if prefix != "" {
-			fmt.Printf("[%s] %s\n", prefix, scanner.Text())
+			pterm.Printf("[%s] %s\n", pterm.Cyan(prefix), scanner.Text())
 		} else {
-			fmt.Println(scanner.Text())
+			pterm.Println(scanner.Text())
 		}
 	}
 	if err := scanner.Err(); err != nil && err != io.EOF {

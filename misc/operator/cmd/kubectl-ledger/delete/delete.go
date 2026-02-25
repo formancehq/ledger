@@ -1,11 +1,9 @@
 package delete
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"strings"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/cmdutil"
@@ -20,11 +18,12 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	var f deleteFlags
 
 	cmd := &cobra.Command{
-		Use:   "delete <name>",
-		Short: "Delete a Ledger deployment",
-		Args:  cobra.ExactArgs(1),
+		Use:     "delete [name]",
+		Aliases: []string{"rm", "del"},
+		Short:   "Delete a Ledger deployment",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDelete(cmd, opts, &f, args[0])
+			return runDelete(cmd, opts, &f, args)
 		},
 	}
 
@@ -33,12 +32,12 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	return cmd
 }
 
-func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, name string) error {
+func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args []string) error {
 	ctx := cmd.Context()
 
-	ns, err := opts.ResolvedNamespace()
+	name, ns, err := cmdutil.ResolveLedgerName(ctx, opts, args)
 	if err != nil {
-		return fmt.Errorf("resolving namespace: %w", err)
+		return err
 	}
 
 	crdClient, err := opts.CRDClient()
@@ -57,7 +56,6 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, name s
 			replicas = *ledger.Spec.Replicas
 		}
 
-		// Count PVCs
 		cs, err := opts.Clientset()
 		if err != nil {
 			return fmt.Errorf("creating clientset: %w", err)
@@ -67,24 +65,36 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, name s
 			return fmt.Errorf("listing PVCs: %w", err)
 		}
 
-		fmt.Printf("Ledger %q in namespace %q:\n", name, ns)
-		fmt.Printf("  Replicas: %d\n", replicas)
-		fmt.Printf("  PVCs:     %d\n", len(pvcs.Items))
-		fmt.Printf("\nDelete this Ledger? [y/N] ")
+		pterm.Println()
+		cmdutil.RenderBoxedTable([][]string{
+			{"Name", pterm.Cyan(name)},
+			{"Namespace", ns},
+			{"Image", cmdutil.FormatImage(ledger.Spec.Image)},
+			{"Replicas", fmt.Sprintf("%d", replicas)},
+			{"PVCs", fmt.Sprintf("%d", len(pvcs.Items))},
+		})
+		pterm.Println()
 
-		reader := bufio.NewReader(os.Stdin)
-		response, _ := reader.ReadString('\n')
-		response = strings.TrimSpace(response)
-		if response != "y" && response != "Y" {
-			fmt.Println("Aborted.")
+		confirm, err := cmdutil.PromptConfirm(
+			fmt.Sprintf("Delete Ledger %s?", pterm.Cyan(name)),
+			false,
+		)
+		if err != nil {
+			return err
+		}
+		if !confirm {
+			pterm.Warning.Println("Aborted.")
 			return nil
 		}
 	}
 
+	spinner, _ := pterm.DefaultSpinner.Start("Deleting Ledger...")
+
 	if err := crdClient.Delete(ctx, ledger); err != nil {
+		spinner.Fail("Failed to delete Ledger")
 		return fmt.Errorf("deleting ledger %q: %w", name, err)
 	}
 
-	fmt.Printf("Ledger %q deleted\n", name)
+	spinner.Success(fmt.Sprintf("Ledger %s deleted", pterm.Cyan(name)))
 	return nil
 }

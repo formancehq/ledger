@@ -12,21 +12,22 @@ import (
 
 func newViewCommand(opts *cmdutil.Options) *cobra.Command {
 	return &cobra.Command{
-		Use:   "view <name>",
-		Short: "Pretty-print Ledger configuration",
-		Args:  cobra.ExactArgs(1),
+		Use:     "view [name]",
+		Aliases: []string{"show"},
+		Short:   "Pretty-print Ledger configuration",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runView(cmd, opts, args[0])
+			return runView(cmd, opts, args)
 		},
 	}
 }
 
-func runView(cmd *cobra.Command, opts *cmdutil.Options, name string) error {
+func runView(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	ctx := cmd.Context()
 
-	ns, err := opts.ResolvedNamespace()
+	name, ns, err := cmdutil.ResolveLedgerName(ctx, opts, args)
 	if err != nil {
-		return fmt.Errorf("resolving namespace: %w", err)
+		return err
 	}
 
 	crdClient, err := opts.CRDClient()
@@ -47,6 +48,10 @@ func runView(cmd *cobra.Command, opts *cmdutil.Options, name string) error {
 	}
 
 	cfg := &ledger.Spec.Config
+
+	pterm.Println()
+	pterm.Printf("Configuration for Ledger %s\n", pterm.Bold.Sprint(pterm.Cyan(name)))
+	cmdutil.Separator()
 
 	// Core
 	pterm.DefaultSection.Println("Core")
@@ -81,6 +86,10 @@ func runView(cmd *cobra.Command, opts *cmdutil.Options, name string) error {
 }
 
 func coreRows(cfg *ledgerv1alpha1.LedgerConfig) [][]string {
+	debug := "false"
+	if cfg.Debug {
+		debug = pterm.Yellow("true")
+	}
 	return [][]string{
 		{"clusterID", cfg.ClusterID},
 		{"bindAddr", cfg.BindAddr},
@@ -88,7 +97,7 @@ func coreRows(cfg *ledgerv1alpha1.LedgerConfig) [][]string {
 		{"grpcPort", fmt.Sprintf("%d", cfg.GrpcPort)},
 		{"walDir", cfg.WalDir},
 		{"dataDir", cfg.DataDir},
-		{"debug", fmt.Sprintf("%t", cfg.Debug)},
+		{"debug", debug},
 		{"restore", fmt.Sprintf("%t", cfg.Restore)},
 	}
 }

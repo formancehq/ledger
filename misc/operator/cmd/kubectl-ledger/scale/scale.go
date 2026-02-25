@@ -3,48 +3,37 @@ package scale
 import (
 	"fmt"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/cmdutil"
 )
 
-type scaleFlags struct {
-	replicas int32
-}
-
 // NewCommand returns the "scale" command.
 func NewCommand(opts *cmdutil.Options) *cobra.Command {
-	var f scaleFlags
+	var replicas int32
 
 	cmd := &cobra.Command{
-		Use:   "scale <name>",
+		Use:   "scale [name]",
 		Short: "Scale a Ledger deployment",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runScale(cmd, opts, &f, args[0])
+			return runScale(cmd, opts, &replicas, args)
 		},
 	}
 
-	cmd.Flags().Int32Var(&f.replicas, "replicas", 0, "Number of replicas (must be odd)")
-	_ = cmd.MarkFlagRequired("replicas")
+	cmd.Flags().Int32Var(&replicas, "replicas", 0, "Number of replicas (must be odd)")
 
 	return cmd
 }
 
-func runScale(cmd *cobra.Command, opts *cmdutil.Options, f *scaleFlags, name string) error {
-	if f.replicas%2 == 0 {
-		return fmt.Errorf("replicas must be odd for Raft consensus, got %d", f.replicas)
-	}
-	if f.replicas < 1 {
-		return fmt.Errorf("replicas must be at least 1, got %d", f.replicas)
-	}
-
+func runScale(cmd *cobra.Command, opts *cmdutil.Options, replicas *int32, args []string) error {
 	ctx := cmd.Context()
 
-	ns, err := opts.ResolvedNamespace()
+	name, ns, err := cmdutil.ResolveLedgerName(ctx, opts, args)
 	if err != nil {
-		return fmt.Errorf("resolving namespace: %w", err)
+		return err
 	}
 
 	crdClient, err := opts.CRDClient()
@@ -62,17 +51,41 @@ func runScale(cmd *cobra.Command, opts *cmdutil.Options, f *scaleFlags, name str
 		currentReplicas = *ledger.Spec.Replicas
 	}
 
-	if f.replicas < currentReplicas {
-		fmt.Printf("Warning: scaling down from %d to %d replicas\n", currentReplicas, f.replicas)
+	pterm.Info.Printfln("Image: %s", cmdutil.FormatImage(ledger.Spec.Image))
+
+	// Prompt for replicas if not explicitly set
+	newReplicas := *replicas
+	if !cmd.Flags().Changed("replicas") {
+		pterm.Info.Printfln("Current replicas: %s", pterm.Cyan(fmt.Sprintf("%d", currentReplicas)))
+		newReplicas, err = cmdutil.PromptReplicas(currentReplicas)
+		if err != nil {
+			return err
+		}
+	}
+
+	if err := cmdutil.ValidateReplicas(newReplicas); err != nil {
+		return err
+	}
+
+	if newReplicas == currentReplicas {
+		pterm.Info.Printfln("Ledger %s is already at %d replicas", pterm.Cyan(name), currentReplicas)
+		return nil
+	}
+
+	if newReplicas < currentReplicas {
+		pterm.Warning.Printfln("Scaling down from %d to %d replicas", currentReplicas, newReplicas)
 	}
 
 	patch := client.MergeFrom(ledger.DeepCopy())
-	ledger.Spec.Replicas = &f.replicas
+	ledger.Spec.Replicas = &newReplicas
+
+	spinner, _ := pterm.DefaultSpinner.Start("Scaling Ledger...")
 
 	if err := crdClient.Patch(ctx, ledger, patch); err != nil {
+		spinner.Fail("Failed to scale Ledger")
 		return fmt.Errorf("scaling ledger %q: %w", name, err)
 	}
 
-	fmt.Printf("Ledger %q scaled to %d replicas\n", name, f.replicas)
+	spinner.Success(fmt.Sprintf("Ledger %s scaled to %d replicas", pterm.Cyan(name), newReplicas))
 	return nil
 }

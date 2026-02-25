@@ -8,6 +8,8 @@ import (
 
 	"github.com/pterm/pterm"
 	"sigs.k8s.io/yaml"
+
+	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
 
 // PhaseColor returns a colored string for the given Ledger phase.
@@ -73,4 +75,23 @@ func FormatReadyReplicas(ready int32, desired *int32) string {
 		d = *desired
 	}
 	return fmt.Sprintf("%d/%d", ready, d)
+}
+
+// FormatImage returns "repository:tag" for the given image spec.
+func FormatImage(img ledgerv1alpha1.ImageSpec) string {
+	return fmt.Sprintf("%s:%s", img.Repository, img.Tag)
+}
+
+// RenderBoxedTable prints a boxed key-value table (no header).
+func RenderBoxedTable(rows [][]string) {
+	_ = pterm.DefaultTable.
+		WithHasHeader(false).
+		WithBoxed(true).
+		WithData(rows).
+		Render()
+}
+
+// Separator prints a gray separator line.
+func Separator() {
+	pterm.Println(pterm.Gray("─────────────────────────────────────────"))
 }

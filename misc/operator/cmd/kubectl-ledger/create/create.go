@@ -3,6 +3,7 @@ package create
 import (
 	"fmt"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -31,11 +32,11 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	var f createFlags
 
 	cmd := &cobra.Command{
-		Use:   "create <name>",
+		Use:   "create [name]",
 		Short: "Create a new Ledger deployment",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCreate(cmd, opts, &f, args[0])
+			return runCreate(cmd, opts, &f, args)
 		},
 	}
 
@@ -53,9 +54,11 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	return cmd
 }
 
-func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, name string) error {
-	if f.replicas%2 == 0 {
-		return fmt.Errorf("replicas must be odd for Raft consensus, got %d", f.replicas)
+func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args []string) error {
+	// Resolve name: from arg or interactive prompt
+	name, err := resolveName(args)
+	if err != nil {
+		return err
 	}
 
 	ns, err := opts.ResolvedNamespace()
@@ -63,17 +66,66 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, name s
 		return fmt.Errorf("resolving namespace: %w", err)
 	}
 
+	// Prompt for replicas if not explicitly set
+	if !cmd.Flags().Changed("replicas") {
+		replicas, err := cmdutil.PromptReplicas(f.replicas)
+		if err != nil {
+			return err
+		}
+		f.replicas = replicas
+	}
+
+	if err := cmdutil.ValidateReplicas(f.replicas); err != nil {
+		return err
+	}
+
+	// Prompt for cluster ID if not explicitly set
+	if !cmd.Flags().Changed("cluster-id") {
+		clusterID, err := cmdutil.PromptText("Cluster ID", f.clusterID)
+		if err != nil {
+			return err
+		}
+		if clusterID != "" {
+			f.clusterID = clusterID
+		}
+	}
+
 	ledger, err := buildLedger(name, ns, f)
 	if err != nil {
 		return err
 	}
+
+	// Show preview
+	pterm.Println()
+	pterm.DefaultSection.Println("Create Preview")
+	cmdutil.RenderBoxedTable([][]string{
+		{"Name", pterm.Cyan(name)},
+		{"Namespace", ns},
+		{"Replicas", fmt.Sprintf("%d", f.replicas)},
+		{"Image", f.image + ":" + f.tag},
+		{"Cluster ID", f.clusterID},
+		{"WAL Size", f.walSize},
+		{"Data Size", f.dataSize},
+	})
+	pterm.Println()
 
 	if f.dryRun {
 		b, err := yaml.Marshal(ledger)
 		if err != nil {
 			return fmt.Errorf("marshaling YAML: %w", err)
 		}
+		pterm.Info.Println("Dry run - YAML output:")
+		pterm.Println()
 		fmt.Print(string(b))
+		return nil
+	}
+
+	confirm, err := cmdutil.PromptConfirm("Create this Ledger?", true)
+	if err != nil {
+		return err
+	}
+	if !confirm {
+		pterm.Warning.Println("Aborted.")
 		return nil
 	}
 
@@ -82,12 +134,30 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, name s
 		return fmt.Errorf("creating client: %w", err)
 	}
 
+	spinner, _ := pterm.DefaultSpinner.Start("Creating Ledger...")
+
 	if err := crdClient.Create(cmd.Context(), ledger); err != nil {
+		spinner.Fail("Failed to create Ledger")
 		return fmt.Errorf("creating ledger %q: %w", name, err)
 	}
 
-	fmt.Printf("Ledger %q created in namespace %q\n", name, ns)
+	spinner.Success(fmt.Sprintf("Ledger %s created in namespace %s", pterm.Cyan(name), pterm.Cyan(ns)))
 	return nil
+}
+
+func resolveName(args []string) (string, error) {
+	if len(args) > 0 {
+		return args[0], nil
+	}
+
+	name, err := cmdutil.PromptText("Ledger name", "")
+	if err != nil {
+		return "", err
+	}
+	if name == "" {
+		return "", fmt.Errorf("ledger name is required")
+	}
+	return name, nil
 }
 
 func buildLedger(name, namespace string, f *createFlags) (*ledgerv1alpha1.Ledger, error) {

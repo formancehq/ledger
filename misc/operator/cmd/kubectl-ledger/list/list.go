@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
@@ -48,10 +49,15 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options, f *listFlags) error {
 		}
 	}
 
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching Ledger resources...")
+
 	ledgers, err := cmdutil.ListLedgers(ctx, crdClient, ns)
 	if err != nil {
+		spinner.Fail("Failed to list Ledger resources")
 		return fmt.Errorf("listing ledgers: %w", err)
 	}
+
+	_ = spinner.Stop()
 
 	switch opts.OutputFormat() {
 	case "json":
@@ -72,12 +78,12 @@ func renderTable(ledgers *ledgerv1alpha1.LedgerList, showNamespace bool) error {
 	rows := make([][]string, 0, len(ledgers.Items))
 	for i := range ledgers.Items {
 		l := &ledgers.Items[i]
-		image := fmt.Sprintf("%s:%s", l.Spec.Image.Repository, l.Spec.Image.Tag)
+		image := cmdutil.FormatImage(l.Spec.Image)
 		age := cmdutil.FormatAge(time.Since(l.CreationTimestamp.Time))
 		ready := cmdutil.FormatReadyReplicas(l.Status.ReadyReplicas, l.Spec.Replicas)
 		phase := cmdutil.PhaseColor(l.Status.Phase)
 
-		row := []string{l.Name, ready, phase, image, age}
+		row := []string{pterm.Cyan(l.Name), ready, phase, image, age}
 		if showNamespace {
 			row = append([]string{l.Namespace}, row...)
 		}
@@ -85,10 +91,12 @@ func renderTable(ledgers *ledgerv1alpha1.LedgerList, showNamespace bool) error {
 	}
 
 	if len(rows) == 0 {
-		fmt.Println("No Ledger resources found.")
+		pterm.Info.Println("No Ledger resources found.")
+		pterm.Println(pterm.Gray("Create one with: kubectl ledger create"))
 		return nil
 	}
 
+	pterm.Println()
 	cmdutil.RenderTable(header, rows)
 	return nil
 }

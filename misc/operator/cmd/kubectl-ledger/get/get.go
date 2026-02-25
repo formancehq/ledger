@@ -6,7 +6,6 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	corev1 "k8s.io/api/core/v1"
 
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/cmdutil"
 )
@@ -14,21 +13,22 @@ import (
 // NewCommand returns the "get" command.
 func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	return &cobra.Command{
-		Use:   "get <name>",
-		Short: "Show details of a Ledger deployment",
-		Args:  cobra.ExactArgs(1),
+		Use:     "get [name]",
+		Aliases: []string{"describe", "show", "inspect"},
+		Short:   "Show details of a Ledger deployment",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runGet(cmd, opts, args[0])
+			return runGet(cmd, opts, args)
 		},
 	}
 }
 
-func runGet(cmd *cobra.Command, opts *cmdutil.Options, name string) error {
+func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	ctx := cmd.Context()
 
-	ns, err := opts.ResolvedNamespace()
+	name, ns, err := cmdutil.ResolveLedgerName(ctx, opts, args)
 	if err != nil {
-		return fmt.Errorf("resolving namespace: %w", err)
+		return err
 	}
 
 	crdClient, err := opts.CRDClient()
@@ -41,15 +41,20 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, name string) error {
 		return fmt.Errorf("creating clientset: %w", err)
 	}
 
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching Ledger details...")
+
 	ledger, err := cmdutil.GetLedger(ctx, crdClient, ns, name)
 	if err != nil {
+		spinner.Fail("Failed to get Ledger")
 		return fmt.Errorf("getting ledger %q: %w", name, err)
 	}
 
 	switch opts.OutputFormat() {
 	case "json":
+		_ = spinner.Stop()
 		return cmdutil.OutputJSON(ledger)
 	case "yaml":
+		_ = spinner.Stop()
 		return cmdutil.OutputYAML(ledger)
 	}
 
@@ -59,15 +64,18 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, name string) error {
 		replicas = *ledger.Spec.Replicas
 	}
 
+	_ = spinner.Stop()
+	pterm.Println()
+
 	pterm.DefaultSection.Println("Overview")
 	cmdutil.RenderTable(
 		[]string{"FIELD", "VALUE"},
 		[][]string{
-			{"Name", ledger.Name},
+			{"Name", pterm.Cyan(ledger.Name)},
 			{"Namespace", ledger.Namespace},
 			{"Phase", cmdutil.PhaseColor(ledger.Status.Phase)},
 			{"Replicas", fmt.Sprintf("%d/%d", ledger.Status.ReadyReplicas, replicas)},
-			{"Image", fmt.Sprintf("%s:%s", ledger.Spec.Image.Repository, ledger.Spec.Image.Tag)},
+			{"Image", cmdutil.FormatImage(ledger.Spec.Image)},
 			{"Cluster ID", ledger.Spec.Config.ClusterID},
 			{"Age", cmdutil.FormatAge(time.Since(ledger.CreationTimestamp.Time))},
 		},
@@ -84,13 +92,12 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, name string) error {
 		podRows := make([][]string, 0, len(pods.Items))
 		for i := range pods.Items {
 			p := &pods.Items[i]
-			ready := podReadyCount(p)
 			podRows = append(podRows, []string{
 				p.Name,
 				string(p.Status.Phase),
-				ready,
+				cmdutil.PodReadyCount(p),
 				p.Spec.NodeName,
-				fmt.Sprintf("%d", podRestarts(p)),
+				fmt.Sprintf("%d", cmdutil.PodRestarts(p)),
 				cmdutil.FormatAge(time.Since(p.CreationTimestamp.Time)),
 			})
 		}
@@ -172,23 +179,4 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, name string) error {
 	}
 
 	return nil
-}
-
-func podReadyCount(p *corev1.Pod) string {
-	ready := 0
-	total := len(p.Spec.Containers)
-	for _, cs := range p.Status.ContainerStatuses {
-		if cs.Ready {
-			ready++
-		}
-	}
-	return fmt.Sprintf("%d/%d", ready, total)
-}
-
-func podRestarts(p *corev1.Pod) int32 {
-	var restarts int32
-	for _, cs := range p.Status.ContainerStatuses {
-		restarts += cs.RestartCount
-	}
-	return restarts
 }

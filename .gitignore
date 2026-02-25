@@ -59,3 +59,5 @@ tests/e2e/wal/
 
 worktrees
 /ledgerctl
+misc/operator/kubectl-ledger
+misc/devenv/devenv

@@ -72,3 +72,24 @@ func LedgerServices(ctx context.Context, cs kubernetes.Interface, namespace, nam
 		LabelSelector: LabelSelector(name),
 	})
 }
+
+// PodReadyCount returns a "ready/total" string for a pod's containers.
+func PodReadyCount(p *corev1.Pod) string {
+	ready := 0
+	total := len(p.Spec.Containers)
+	for _, cs := range p.Status.ContainerStatuses {
+		if cs.Ready {
+			ready++
+		}
+	}
+	return fmt.Sprintf("%d/%d", ready, total)
+}
+
+// PodRestarts returns the total restart count across all containers.
+func PodRestarts(p *corev1.Pod) int32 {
+	var restarts int32
+	for _, cs := range p.Status.ContainerStatuses {
+		restarts += cs.RestartCount
+	}
+	return restarts
+}

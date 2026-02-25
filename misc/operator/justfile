@@ -15,7 +15,7 @@ build-plugin:
     go build -o build/kubectl-ledger ./cmd/kubectl-ledger
 
 install-plugin:
-    go build -o $GOPATH/bin/kubectl-ledger ./cmd/kubectl-ledger
+    go build -o $(go env GOPATH)/bin/kubectl-ledger ./cmd/kubectl-ledger
 
 pre-commit: generate
     go mod tidy

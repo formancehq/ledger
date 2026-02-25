@@ -192,6 +192,7 @@ func main() {
 			},
 		Tags: pulumi.StringArray{
 			pulumi.Sprintf("%s/formancehq/ledger-exp:latest", registry),
+			pulumi.Sprintf("%s/formancehq/ledger-exp:%s", registry, imageTag),
 		},
 		})
 		if err != nil {
@@ -235,6 +236,7 @@ func main() {
 			},
 		Tags: pulumi.StringArray{
 			pulumi.Sprintf("%s/formancehq/benchmark-operator:latest", registry),
+			pulumi.Sprintf("%s/formancehq/benchmark-operator:%s", registry, imageTag),
 		},
 		})
 		if err != nil {
@@ -279,6 +281,7 @@ func main() {
 			},
 			Tags: pulumi.StringArray{
 				pulumi.Sprintf("%s/formancehq/ledger-operator:latest", registry),
+				pulumi.Sprintf("%s/formancehq/ledger-operator:%s", registry, imageTag),
 			},
 		})
 		if err != nil {
@@ -878,7 +881,9 @@ func main() {
 
 		// Export outputs
 		ctx.Export("namespace", namespace.Metadata.Name())
-		ctx.Export("dockerImage", dockerImage.Tags.Index(pulumi.Int(0)))
+		ctx.Export("dockerImage", pulumi.Sprintf("%s/formancehq/ledger-exp:latest@%s", pullRegistry, dockerImage.Digest))
+		ctx.Export("ledgerOperatorImage", pulumi.Sprintf("%s/formancehq/ledger-operator:latest@%s", pullRegistry, ledgerOperatorImage.Digest))
+		ctx.Export("benchmarkOperatorImage", pulumi.Sprintf("%s/formancehq/benchmark-operator:latest@%s", pullRegistry, benchmarkOperatorImage.Digest))
 		ctx.Export("victoriaMetricsRelease", victoriaMetrics.Name)
 		ctx.Export("tempoRelease", tempo.Name)
 		ctx.Export("lokiRelease", loki.Name)
@@ -886,8 +891,6 @@ func main() {
 		ctx.Export("grafanaRelease", grafana.Name)
 		ctx.Export("ledgerOperatorRelease", ledgerOperator.Name)
 		ctx.Export("ledgerCR", ledgerCR.Metadata.Name())
-		ctx.Export("ledgerOperatorImage", ledgerOperatorImage.Tags.Index(pulumi.Int(0)))
-		ctx.Export("benchmarkOperatorImage", benchmarkOperatorImage.Tags.Index(pulumi.Int(0)))
 		if pyroscope != nil {
 			ctx.Export("pyroscopeRelease", pyroscope.Name)
 		}

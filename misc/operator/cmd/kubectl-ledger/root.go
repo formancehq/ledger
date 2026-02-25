@@ -7,6 +7,7 @@ import (
 	configcmd "github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/config"
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/create"
 	deletecmd "github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/delete"
+	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/explain"
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/get"
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/list"
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/logs"
@@ -40,6 +41,7 @@ func newRootCommand() *cobra.Command {
 		logs.NewCommand(opts),
 		portforward.NewCommand(opts),
 		configcmd.NewCommand(opts),
+		explain.NewCommand(),
 		newVersionCommand(),
 	)
 

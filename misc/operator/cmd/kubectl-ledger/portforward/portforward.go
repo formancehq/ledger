@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
@@ -25,11 +26,12 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	var f portForwardFlags
 
 	cmd := &cobra.Command{
-		Use:   "port-forward <name>",
-		Short: "Port-forward to a Ledger deployment",
-		Args:  cobra.ExactArgs(1),
+		Use:     "port-forward [name]",
+		Aliases: []string{"pf"},
+		Short:   "Port-forward to a Ledger deployment",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPortForward(cmd, opts, &f, args[0])
+			return runPortForward(cmd, opts, &f, args)
 		},
 	}
 
@@ -40,12 +42,12 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	return cmd
 }
 
-func runPortForward(cmd *cobra.Command, opts *cmdutil.Options, f *portForwardFlags, name string) error {
+func runPortForward(cmd *cobra.Command, opts *cmdutil.Options, f *portForwardFlags, args []string) error {
 	ctx := cmd.Context()
 
-	ns, err := opts.ResolvedNamespace()
+	name, ns, err := cmdutil.ResolveLedgerName(ctx, opts, args)
 	if err != nil {
-		return fmt.Errorf("resolving namespace: %w", err)
+		return err
 	}
 
 	crdClient, err := opts.CRDClient()
@@ -70,7 +72,9 @@ func runPortForward(cmd *cobra.Command, opts *cmdutil.Options, f *portForwardFla
 
 	// Determine remote port
 	var remotePort int32
+	proto := "HTTP"
 	if f.grpc {
+		proto = "gRPC"
 		remotePort = ledger.Spec.Config.GrpcPort
 		if remotePort == 0 {
 			remotePort = 8888
@@ -121,12 +125,12 @@ func runPortForward(cmd *cobra.Command, opts *cmdutil.Options, f *portForwardFla
 		close(stopCh)
 	}()
 
-	proto := "HTTP"
-	if f.grpc {
-		proto = "gRPC"
-	}
-	fmt.Printf("Forwarding %s from 127.0.0.1:%d -> %s:%d\n", proto, localPort, podName, remotePort)
-	fmt.Println("Press Ctrl+C to stop")
+	pterm.Info.Printfln("Forwarding %s from %s -> %s:%d",
+		pterm.Cyan(proto),
+		pterm.Green(fmt.Sprintf("127.0.0.1:%d", localPort)),
+		podName, remotePort,
+	)
+	pterm.Info.Println("Press Ctrl+C to stop")
 
 	return fw.ForwardPorts()
 }

@@ -9,8 +9,9 @@ import (
 // NewCommand returns the "config" parent command.
 func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "config",
-		Short: "Manage Ledger configuration",
+		Use:     "config",
+		Aliases: []string{"cfg"},
+		Short:   "Manage Ledger configuration",
 	}
 
 	cmd.AddCommand(

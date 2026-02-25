@@ -12,24 +12,24 @@ import (
 
 func newEditCommand(opts *cmdutil.Options) *cobra.Command {
 	return &cobra.Command{
-		Use:   "edit <name>",
+		Use:   "edit [name]",
 		Short: "Edit Ledger configuration (delegates to kubectl edit)",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runEdit(opts, args[0])
+			return runEdit(cmd, opts, args)
 		},
 	}
 }
 
-func runEdit(opts *cmdutil.Options, name string) error {
-	ns, err := opts.ResolvedNamespace()
+func runEdit(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
+	name, ns, err := cmdutil.ResolveLedgerName(cmd.Context(), opts, args)
 	if err != nil {
-		return fmt.Errorf("resolving namespace: %w", err)
+		return err
 	}
 
-	args := []string{"edit", "ledger.ledger.formance.com/" + name, "-n", ns}
+	kubectlArgs := []string{"edit", "ledger.ledger.formance.com/" + name, "-n", ns}
 
-	kubectlCmd := exec.Command("kubectl", args...)
+	kubectlCmd := exec.Command("kubectl", kubectlArgs...)
 	kubectlCmd.Stdin = os.Stdin
 	kubectlCmd.Stdout = os.Stdout
 	kubectlCmd.Stderr = os.Stderr
