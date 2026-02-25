@@ -24,6 +24,14 @@ The reference implementation (`github.com/formancehq/ledger`) supports metadata 
 
 ## 2. Goals
 
+The read store serves **three types of queries**, all with advanced filtering:
+
+1. **List accounts** — filter accounts by metadata and/or address, return matching account addresses
+2. **List transactions** — filter transactions by metadata and/or account involvement, return matching transaction IDs
+3. **Aggregate volumes** — filter accounts by metadata and/or address, then retrieve and aggregate volumes (per-asset input/output/balance) for matching accounts
+
+Design goals:
+
 1. Allow clients to filter **accounts** or **transactions** by metadata key/value pairs with boolean operators (AND, OR, NOT)
 2. Allow clients to filter by **account address** (prefix or exact match) — for account queries directly, for transaction queries via posting involvement
 3. Allow **mixing** metadata and address filters in a single query
@@ -31,15 +39,17 @@ The reference implementation (`github.com/formancehq/ledger`) supports metadata 
 5. Execute queries efficiently via **secondary indexes**, not full scans
 6. Keep the **FSM apply fast** — index maintenance happens asynchronously
 7. Leverage the **typed metadata system** — support range/comparison operators on integer types, boolean checks, not just string equality
+8. Support **volume aggregation** on filtered accounts — filter then aggregate, reusing the same prepared query filter model
 
 ## 3. Scope
 
 ### In scope
 
-- **Two query targets**: accounts and transactions — each prepared query declares its target type
+- **Three query modes**: list accounts, list transactions, aggregate volumes — all with advanced filtering
 - Recursive boolean filter model (AND/OR/NOT) on metadata and addresses
 - **Typed metadata conditions**: string equality, integer ranges (>, <, >=, <=, BETWEEN), boolean checks, existence checks — leveraging the existing typed metadata system (`MetadataType` enum: `STRING`, `INT64`, `BOOL`, `UINT64`, sub-64-bit integer types)
 - **Address filters on transactions**: filter transactions by accounts involved in their postings (source or destination)
+- **Volume aggregation**: filter accounts via prepared query, then retrieve volumes from primary store and aggregate per asset
 - Prepared query CRUD (create, update, list, delete) via Raft commands
 - Prepared query execution (read-only) with parameter substitution
 - Asynchronous index building from Raft log
@@ -72,17 +82,32 @@ The reference implementation (`github.com/formancehq/ledger`) supports metadata 
                     │  Read Index Store │  ← bbolt (B+ tree), optionally on dedicated disk
                     └──────────────────┘
                              ▲
-                             │ concurrent read queries (MVCC snapshots)
+                             │ filter queries (list accounts, list transactions)
                     ┌──────────────────┐
                     │  Query Executor  │  ← builds iterator tree from filter
+                    └──────┬───────────┘
+                           │ for volume aggregation: sorted account list
+                           ▼
+                    ┌──────────────────┐
+                    │  Primary Store   │  ← Pebble: volume prefix scan for matching accounts
+                    │  (read-only)     │
                     └──────────────────┘
 ```
+
+**Three query modes:**
+
+| Mode | Filter in | Data from | Returns |
+|------|----------|-----------|---------|
+| **List accounts** | bbolt (metadata + address) | bbolt | Paginated account addresses |
+| **List transactions** | bbolt (metadata + address) | bbolt | Paginated transaction IDs |
+| **Aggregate volumes** | bbolt (metadata + address) | bbolt (filter) + Pebble (volumes) | Per-asset aggregated volumes |
 
 **Key design decisions:**
 
 - The **index builder** runs asynchronously, outside the FSM hot path. The FSM apply remains RAM-only.
 - The index builder consumes **only accepted operations** — not raw Raft entries. Proposals can be rejected by the FSM (insufficient funds, idempotency conflict, already reverted, etc.) and must not be indexed (see Section 7.1).
-- The **read store** (bbolt) is self-contained for metadata lookups — it never performs random reads against the primary Pebble store (see Section 7.2: Reverse Metadata Map). However, it does consume system logs from the primary store (see Section 7.1).
+- The **read store** (bbolt) is self-contained for metadata/address filtering — it never performs random reads against the primary Pebble store (see Section 7.2: Reverse Metadata Map).
+- **Volume aggregation** is the exception: after filtering accounts in bbolt, volumes are read from the primary Pebble store via sequential prefix scans (see Section 9).
 - **Prepared query definitions** are stored in the primary store via Raft commands (`[0xE0]`). The read store contains only derived index data.
 - The read store is **eventually consistent** with bounded lag (milliseconds). Clients can opt into freshness guarantees via `min_log_sequence`.
 - **bbolt** is read-optimized (B+ tree, single-level, zero read amplification) with native MVCC — concurrent readers never block the index builder writer. This matches our I/O profile: single writer (index builder), many concurrent readers (query executors).
@@ -363,13 +388,34 @@ message ExecutePreparedQueryRequest {
   string query_name = 2;
   map<string, string> parameters = 3;        // parameter values as strings, parsed to target type at execution
                                               // e.g., "50000" → int64(50000) for IntCondition.param_min
-  uint32 page_size = 4;                      // max results per page (default 15, max 1000)
-  string cursor = 5;                         // opaque cursor from previous response (if set, other fields are ignored)
+  uint32 page_size = 4;                      // max results per page (default 15, max 1000); ignored for AGGREGATE_VOLUMES
+  string cursor = 5;                         // opaque cursor from previous response (if set, other fields are ignored); ignored for AGGREGATE_VOLUMES
   uint64 min_log_sequence = 6;               // optional: wait until read store has indexed up to this log sequence
+  QueryMode mode = 7;                        // LIST (default) or AGGREGATE_VOLUMES
+}
+
+enum QueryMode {
+  LIST = 0;                                   // list entities (paginated) — default
+  AGGREGATE_VOLUMES = 1;                      // aggregate volumes for matching accounts (ACCOUNTS target only)
 }
 
 message ExecutePreparedQueryResponse {
-  Cursor cursor = 1;
+  oneof result {
+    Cursor cursor = 1;                        // for LIST mode
+    AggregateResult aggregate = 2;            // for AGGREGATE_VOLUMES mode
+  }
+}
+
+// AggregatedVolume represents the total input/output for a single asset
+// across all accounts matching the filter.
+message AggregatedVolume {
+  string asset = 1;
+  common.Uint256 input = 2;
+  common.Uint256 output = 3;
+}
+
+message AggregateResult {
+  repeated AggregatedVolume volumes = 1;
 }
 
 // Cursor follows the reference implementation pattern (bunpaginate).
@@ -389,7 +435,7 @@ message Cursor {
 
 - **Create**: `CreatePreparedQueryRequest` → Raft command → validated (resource limits, condition/schema compatibility, FieldRef/target compatibility) → persisted at `[0xE0][ledgerName\x00][queryName]` in primary store. FieldRef sources must match the target type (e.g., `AccountMetadata` only on `ACCOUNTS` target, `TransactionMetadata` only on `TRANSACTIONS` target).
 - **Update**: `UpdatePreparedQueryRequest` → Raft command → re-validated → overwrites filter at same key. Target type cannot be changed (delete + recreate if needed). Designed to be batched with `SetMetadataFieldType` in the same proposal for atomic schema + query updates.
-- **Execute**: `ExecutePreparedQueryRequest` → read-only against the read index store → returns matching accounts or transaction IDs depending on query target
+- **Execute**: `ExecutePreparedQueryRequest` → read-only against the read index store → `LIST` mode returns matching accounts or transaction IDs (paginated), `AGGREGATE_VOLUMES` mode returns per-asset aggregated volumes (ACCOUNTS target only)
 - **List**: returns all prepared queries for a ledger
 - **Delete**: Raft command → definition removed from primary store
 
@@ -414,7 +460,7 @@ service BucketService {
 | `PUT /{ledger}/prepared-queries/{name}` | `UpdatePreparedQuery` | Body: new filter; replaces existing query filter |
 | `GET /{ledger}/prepared-queries` | `ListPreparedQueries` | |
 | `DELETE /{ledger}/prepared-queries/{name}` | `DeletePreparedQuery` | |
-| `POST /{ledger}/prepared-queries/{name}/execute` | `ExecutePreparedQuery` | Body: `{ parameters }`. Query params: `page_size`, `cursor`. When `cursor` is set, all other params are ignored (state is encoded in the cursor). Response: `{ cursor: { pageSize, hasMore, previous, next, data } }` |
+| `POST /{ledger}/prepared-queries/{name}/execute` | `ExecutePreparedQuery` | Body: `{ parameters }`. Query params: `page_size`, `cursor`, `mode` (`list` or `aggregate_volumes`). When `cursor` is set, all other params are ignored. Response: `{ cursor: { ... } }` for LIST mode, `{ aggregate: { volumes: [...] } }` for AGGREGATE_VOLUMES mode. |
 
 ## 7. Index Builder & Read Store
 
@@ -681,7 +727,155 @@ O(N × S) where N = number of filters, S = smallest result set. High-selectivity
 - A 2-filter AND on 1M accounts with 10-20% selectivity scans ~200K entries per cursor — sub-second on SSD
 - The key layout `[0x0C][ledger][a:][key\x00]` naturally scopes to a specific metadata key — equivalent to a partial index, no wasted scans on unrelated keys
 
-## 9. Dedicated Disk — Is It Necessary?
+## 9. Volume Aggregation
+
+### 9.1 Problem
+
+Query mode 3 ("Aggregate volumes") requires filtering accounts by metadata/address, then retrieving their volumes from Pebble and aggregating per asset. Volumes are stored in the primary Pebble store as attribute entries — they are not metadata and follow a different storage model (base + diff with `ComputeValue`).
+
+The question: **where do volumes come from** during aggregation?
+
+### 9.2 Two Approaches
+
+#### Option A — Replicate volumes in bbolt
+
+Duplicate volume data into the read store so everything is self-contained.
+
+**Why this doesn't work:**
+
+- Every transaction touches volumes for all its postings — 2× accounts per posting (source + destination). A transaction with 3 postings updates 6 account/asset volume pairs.
+- The index builder would need to write to bbolt for every posting in every transaction — drastically increasing bbolt write volume.
+- Volumes in Pebble use a base+diff model (`ComputeValue`) with multiple entries per canonical key (one per Raft index). Replicating this in bbolt either requires the same multi-entry model (complex) or pre-computing the final value (stale the moment the next transaction lands).
+- Volume data is large: `Uint256` input + `Uint256` output per (account, asset) pair, vs. the current bbolt entries which are mostly empty values with data encoded in the key.
+
+This approach would transform the read store from a low-write index into a high-write data store — undermining the I/O profile that made bbolt the right choice (Section 8).
+
+#### Option B — Cross-store filter→aggregate (recommended)
+
+Keep volumes in Pebble only. The query executor filters accounts in bbolt, then reads volumes from Pebble for matching accounts:
+
+```
+1. Execute filter in bbolt     → sorted iterator of account addresses
+2. For each matching account   → SeekGE in Pebble to account's volume prefix
+3. Scan all (account, asset)   → ComputeValue per canonical key
+4. Accumulate per asset        → sum input/output across all matching accounts
+5. Return aggregated volumes
+```
+
+This is efficient because:
+
+- Both data sources are sorted by account address — the bbolt cursor emits accounts in order, and Pebble volume keys are sorted by `[ledger\x00][account\x00][asset]`. This enables a merge-scan pattern (no random I/O).
+- Pebble reads are sequential prefix scans — the same pattern as `ForEachInPrefix` already used elsewhere.
+- The number of Pebble seeks = number of matching accounts (not total accounts in ledger).
+- No data duplication, no extra bbolt writes.
+
+### 9.3 Algorithm Detail
+
+**Pebble volume key layout:**
+
+```
+[0xF1][ledger\x00][account\x00][asset]['V'][raftIndex(8B)][entryType(1B)]
+```
+
+All volumes for a given `(ledger, account)` share the prefix `[0xF1][ledger\x00][account\x00]`. `ForEachInPrefix` scans this prefix and computes the final value (base + diff) for each `(account, asset)` canonical key.
+
+**Merge-scan algorithm:**
+
+```go
+// Pseudocode
+accountIterator := executeFilter(bboltTx, filter)  // sorted account addresses from bbolt
+aggregator := map[string]AggregatedVolume{}         // asset → {totalInput, totalOutput}
+
+for accountIterator.Next() {
+    account := accountIterator.Current()
+    prefix := canonicalPrefix(ledger, account)       // [ledger\x00][account\x00]
+
+    volumes.ForEachInPrefix(pebbleReader, maxIndex, prefix, func(entry ComputedEntry[VolumePair]) {
+        var vk VolumeKey
+        vk.Unmarshal(entry.CanonicalKey)             // extract asset from key
+        agg := aggregator[vk.Asset]
+        agg.Input.Add(entry.Value.Input)             // Uint256 addition
+        agg.Output.Add(entry.Value.Output)
+        aggregator[vk.Asset] = agg
+    })
+}
+```
+
+**I/O profile per query:**
+
+| Step | Store | I/O pattern | Volume |
+|------|-------|-------------|--------|
+| Filter accounts | bbolt | Range scans (lazy cursors) | Same as list accounts query |
+| Seek to each account's volumes | Pebble | One SeekGE per matching account | N seeks (N = matching accounts) |
+| Scan account volumes | Pebble | Sequential prefix scan | Proportional to assets per account |
+| ComputeValue | CPU | base+diff computation | Negligible |
+
+For a query matching 100 accounts with ~5 assets each: ~100 Pebble seeks + ~500 sequential reads. On NVMe, this completes in low single-digit milliseconds.
+
+### 9.4 Consistency
+
+Volume aggregation has a **mixed consistency model**:
+
+- **Filter** (bbolt): eventually consistent with bounded lag — same as list queries. A newly created account might not yet appear in bbolt.
+- **Volumes** (Pebble): current — reads the latest committed state via Pebble snapshot.
+
+This means: the set of accounts included in the aggregation may be slightly behind (by milliseconds), but the volume values for those accounts are up-to-date. This is the same consistency guarantee as list queries — `min_log_sequence` can be used for stronger freshness.
+
+### 9.5 Pagination
+
+Volume aggregation does **not** use pagination — it returns a single response with all per-asset aggregated volumes. The result set is bounded by the number of distinct assets (typically small: 1-20), not by the number of matching accounts.
+
+If the matching account set is very large (millions), the query may take longer but memory usage remains bounded: the accumulator map has one entry per asset, not per account.
+
+### 9.6 Proto Definition
+
+```protobuf
+// AggregatedVolume represents the total input/output for a single asset
+// across all accounts matching the filter.
+message AggregatedVolume {
+  string asset = 1;
+  common.Uint256 input = 2;        // sum of all matching accounts' input
+  common.Uint256 output = 3;       // sum of all matching accounts' output
+}
+```
+
+The `ExecutePreparedQueryResponse` is updated to carry aggregate results:
+
+```protobuf
+message ExecutePreparedQueryResponse {
+  oneof result {
+    Cursor cursor = 1;                              // for list accounts / list transactions
+    AggregateResult aggregate = 2;                  // for volume aggregation
+  }
+}
+
+message AggregateResult {
+  repeated AggregatedVolume volumes = 1;
+}
+```
+
+The `ExecutePreparedQueryRequest` gains a mode field:
+
+```protobuf
+message ExecutePreparedQueryRequest {
+  string ledger = 1;
+  string query_name = 2;
+  map<string, string> parameters = 3;
+  uint32 page_size = 4;                            // ignored for aggregate mode
+  string cursor = 5;                               // ignored for aggregate mode
+  uint64 min_log_sequence = 6;
+  QueryMode mode = 7;                              // LIST (default) or AGGREGATE_VOLUMES
+}
+
+enum QueryMode {
+  LIST = 0;                                         // list entities (paginated)
+  AGGREGATE_VOLUMES = 1;                            // aggregate volumes for matching accounts
+}
+```
+
+**Validation**: `AGGREGATE_VOLUMES` is only valid on queries with `target: ACCOUNTS`. Using it on a `TRANSACTIONS` query returns an error.
+
+## 10. Dedicated Disk — Is It Necessary?
 
 **No, but it helps.**
 
@@ -714,9 +908,9 @@ For simpler deployments, disk 2 and 3 can be the same.
 
 Default: `{data-dir}/read-indexes/` (same disk).
 
-## 10. Execution Examples
+## 11. Execution Examples
 
-### 10.1 String equality + boolean combination
+### 11.1 String equality + boolean combination
 
 **Use case**: "List active premium/gold merchants, excluding suspended ones"
 
@@ -745,7 +939,7 @@ Client: { "prefix": "merchants:" }
   cursor7: AND(cursor3, cursor4, cursor6)                                 → [acc_A, acc_C, acc_F]
 ```
 
-### 10.2 Integer range query
+### 11.2 Integer range query
 
 **Use case**: "List high-value merchants with credit limit between 10K and 50K"
 
@@ -770,7 +964,7 @@ Client: {} (no parameters — all values hardcoded)
            → [acc_A, acc_C, acc_F, acc_H]
 ```
 
-### 10.3 Parameterized range with boolean filter
+### 11.3 Parameterized range with boolean filter
 
 **Use case**: "List active accounts with volume above a threshold (threshold provided at execution)"
 
@@ -798,7 +992,7 @@ Client: { "min_volume": "50000", "prefix": "merchants:" }
            → [acc_A, acc_F, acc_H]
 ```
 
-### 10.4 Transaction query — metadata range + address involvement
+### 11.4 Transaction query — metadata range + address involvement
 
 **Use case**: "List transactions involving merchants with amount >= 5000"
 
@@ -825,7 +1019,7 @@ Client: { "min_amount": "5000", "prefix": "merchants:" }
   cursor5: AND(cursor1, cursor4) → [tx_1, tx_3, tx_5]
 ```
 
-### 10.5 Complex mixed query
+### 11.5 Complex mixed query
 
 **Use case**: "List EU or US merchants with credit limit >= 5000, category premium or gold, that are not suspended"
 
@@ -866,7 +1060,59 @@ Client: { "min_credit": "5000", "prefix": "merchants:" }
 
 All cursors are lazy — the AND short-circuits as soon as one cursor is exhausted. With 5 filters, the merge-intersect advances the smallest cursor at each step, skipping large ranges in the other cursors.
 
-## 11. Implementation Plan
+### 11.6 Volume aggregation — filtered accounts
+
+**Use case**: "Aggregate volumes for all active premium merchants"
+
+```
+Prepared query "premium_merchant_volumes":
+  target: ACCOUNTS
+  filter: AND(
+    StringEquals(AccountMetadata("category"), hardcoded: "premium"),
+    BoolEquals(AccountMetadata("active"), hardcoded: true),
+    AddressPrefix(hardcoded: "merchants:")
+  )
+
+Client: mode=AGGREGATE_VOLUMES, parameters: {}
+```
+
+```
+  Step 1 — Filter in bbolt:
+  cursor1: scan [0x0C][ledger\x00][a:][category\x00]['S'][premium\x00]  → [acc_A, acc_C, acc_F, acc_H]
+  cursor2: scan [0x0C][ledger\x00][a:][active\x00]['B'][\x01]           → [acc_A, acc_C, acc_F, acc_H]
+  cursor3: scan [0x0D][ledger\x00][a:][merchants:]...[merchants:\xFF]    → [acc_A, acc_C, acc_F, acc_H, acc_J]
+  cursor4: AND(cursor1, cursor2, cursor3)                                 → [acc_A, acc_C, acc_F, acc_H]
+
+  Step 2 — Merge-scan Pebble volumes for matching accounts:
+  acc_A → ForEachInPrefix([ledger\x00][acc_A\x00])
+        → (acc_A, USD): input=1000, output=500
+        → (acc_A, EUR): input=200,  output=100
+  acc_C → ForEachInPrefix([ledger\x00][acc_C\x00])
+        → (acc_C, USD): input=3000, output=1500
+  acc_F → ForEachInPrefix([ledger\x00][acc_F\x00])
+        → (acc_F, USD): input=500,  output=200
+        → (acc_F, EUR): input=800,  output=400
+  acc_H → ForEachInPrefix([ledger\x00][acc_H\x00])
+        → (acc_H, USD): input=2000, output=1000
+
+  Step 3 — Aggregate per asset:
+  USD: input=6500, output=3200
+  EUR: input=1000, output=500
+```
+
+Response:
+```json
+{
+  "aggregate": {
+    "volumes": [
+      { "asset": "EUR", "input": "1000", "output": "500" },
+      { "asset": "USD", "input": "6500", "output": "3200" }
+    ]
+  }
+}
+```
+
+## 12. Implementation Plan
 
 1. **Read store infrastructure**: index builder (tails system logs via `NotifyLogsCommitted()`), bbolt read store, configuration flags (`--read-index-dir`, `--read-index-enable`)
 2. **Sortable encoding**: `encode(int64)`, `encode(uint64)`, type tag dispatch, key builders for all prefixes
@@ -879,9 +1125,10 @@ All cursors are lazy — the AND short-circuits as soon as one cursor is exhaust
 9. **Iterator tree**: merge-intersect, merge-union, merge-difference operators on sorted bbolt cursors
 10. **Prepared query CRUD**: Raft commands for create/update/delete, storage in `[0xE0]`, gRPC + HTTP handlers, condition/schema validation + FieldRef/target compatibility at creation time
 11. **Query executor**: filter tree compiler (recursive tree → iterator tree), condition/schema re-validation at execution time, target-dependent result type (accounts or transaction IDs), keyset pagination
-12. **Backfill**: `store rebuild-indexes` CLI command to populate read store from existing logs
+12. **Volume aggregation**: cross-store merge-scan (bbolt filter → Pebble `ForEachInPrefix`) with per-asset accumulator, `AGGREGATE_VOLUMES` mode validation (ACCOUNTS target only)
+13. **Backfill**: `store rebuild-indexes` CLI command to populate read store from existing logs
 
-## 12. Decisions Record
+## 13. Decisions Record
 
 | Topic | Decision | Rationale |
 |---|---|---|
@@ -901,8 +1148,9 @@ All cursors are lazy — the AND short-circuits as soon as one cursor is exhaust
 | **Pagination** | Cursor-based (keyset) following the reference implementation pattern | Opaque base64-encoded cursor with `next`/`previous` pointers. Keyset pagination (`account > $cursor` / `tx_id > $cursor`) instead of OFFSET — stable under concurrent inserts, O(1) seek. |
 | **Transaction metadata** | Indexed in the read store (same pattern as account metadata) | Transaction metadata is mutable (can be modified via SaveMetadata) and types can change; same reverse map pattern as account metadata; enables filtering transactions by metadata |
 | **Schema change handling** | Auto-rebuild indexes + user-managed query updates | Index builder re-encodes entries automatically via `ConvertMetadataValue` matrix. Prepared queries are the user's responsibility — schema change + `UpdatePreparedQuery` batched in the same `Proposal` (atomic). Execution-time validation rejects condition/schema mismatches with a clear error. No runtime conversion magic. |
+| **Volume aggregation** | Cross-store merge-scan (bbolt → Pebble), not volume replication | Volumes change on every transaction (high write volume) — replicating them in bbolt would undermine its low-write I/O profile. Instead: filter accounts in bbolt, read volumes from Pebble via sequential `ForEachInPrefix`. Both stores are sorted by account → merge-scan pattern, no random I/O. See Section 9. |
 
-## 13. Open Questions
+## 14. Open Questions
 
 1. **Volume-based post-filters**: should prepared queries support conditions like `balance(USD/2) > 1000`? This would require loading account volumes for each candidate after metadata filtering. Potentially expensive.
 2. **String value length**: string metadata values can be arbitrarily long. For the inverted index key, should long values be truncated + hashed to keep keys bounded? Risk: hash collisions require post-filtering. With typed metadata, most filterable keys will have short strings or numeric values.
