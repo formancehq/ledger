@@ -11,7 +11,7 @@ Everything you need to contribute to the Ledger v3 project.
 | Write and run tests | [testing.md](./testing.md) |
 | Work with Protocol Buffers | [protobuf.md](./protobuf.md) |
 | Understand Numscript language | [numscript.md](./numscript.md) |
-| Understand Numscript library | [architecture/numscript-library.md](./architecture/numscript-library.md) |
+| Understand Numscript library | [drafts/numscript-library.md](../drafts/numscript-library.md) (draft) |
 | Track v2 API parity | [api-comparison.md](./api-comparison.md) |
 | Explore the architecture | [architecture/](./architecture/) |
 
@@ -19,7 +19,7 @@ Everything you need to contribute to the Ledger v3 project.
 
 | Topic | Document |
 |-------|----------|
-| Numscript library | [architecture/numscript-library.md](./architecture/numscript-library.md) |
+| Numscript library | [drafts/numscript-library.md](../drafts/numscript-library.md) (draft) |
 | Typed metadata | [architecture/typed-metadata.md](./architecture/typed-metadata.md) |
 | System overview (start here) | [architecture/overview.md](./architecture/overview.md) |
 | Raft consensus | [architecture/raft-consensus.md](./architecture/raft-consensus.md) |
