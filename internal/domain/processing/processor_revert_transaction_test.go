@@ -38,6 +38,7 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false).AnyTimes()
 	mockStore.EXPECT().GetReverted(txKey).Return(false, nil)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{Name: "test-ledger"}, true)
 	mockStore.EXPECT().GetDate().Return(now).Times(4) // ledger date + revert tx timestamps
 
 	// Reversed posting: destination becomes source, source becomes destination

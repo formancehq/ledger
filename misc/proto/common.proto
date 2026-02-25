@@ -471,6 +471,8 @@ message LedgerLogPayload {
     CreateIndexLog create_index = 10;
     DropIndexLog drop_index = 11;
     IndexReadyLog index_ready = 12;
+    SetChartOfAccountsLog set_chart_of_accounts = 13;
+    SetChartEnforcementModeLog set_chart_enforcement_mode = 14;
   }
 }
 
@@ -518,17 +520,20 @@ message CreatedTransaction {
   map<string, MetadataSet> account_metadata = 2;
   uint64 period_id = 3;  // Period that was OPEN when this transaction was created
   PostCommitVolumes post_commit_volumes = 4;  // Opt-in: volumes after commit (only when expand_volumes is true)
+  repeated ChartViolation warnings = 5;  // Chart of accounts violations (AUDIT mode only)
 }
 
 message RevertedTransaction {
   uint64 reverted_transaction_id = 1;
   Transaction revert_transaction = 2;
   PostCommitVolumes post_commit_volumes = 3;  // Opt-in: volumes after commit (only when expand_volumes is true)
+  repeated ChartViolation warnings = 4;  // Chart of accounts violations (AUDIT mode only)
 }
 
 message SavedMetadata {
   Target target = 1;
   MetadataSet metadata = 2;
+  repeated ChartViolation warnings = 3;  // Chart of accounts violations (AUDIT mode only)
 }
 
 message DeletedMetadata {
@@ -656,6 +661,8 @@ message LedgerInfo {
   MirrorSourceConfig mirror_source = 7;     // Mirror source config (set when mode=MIRROR)
   MirrorSyncProgress mirror_sync_progress = 8;  // Populated at read time for MIRROR ledgers
   AddressIndexConfig address_indexes = 9;   // Per-role account-transaction index config
+  ChartOfAccounts chart_of_accounts = 10;    // Account address validation tree (nil = no validation)
+  ChartEnforcementMode enforcement_mode = 11; // How chart violations are handled
 }
 
 // ============================================================================
@@ -717,26 +724,47 @@ message TransactionReferenceValue {
 // Chart of Accounts
 // ============================================================================
 
-// ChartOfAccounts represents a discovered or declared chart of accounts.
-// Each segment describes one level of the colon-separated address hierarchy.
+// ChartOfAccounts defines the account address structure for a ledger.
 message ChartOfAccounts {
-  repeated ChartSegment segments = 1;
+  map<string, ChartSegment> roots = 1;
 }
 
-// ChartSegment describes one level in the account address hierarchy.
+// ChartSegment represents a node in the chart of accounts tree.
 message ChartSegment {
-  // fixed_value is set when this segment has a constant value (e.g. "bank", "users").
-  string fixed_value = 1;
-  // variable is set when this segment accepts variable values (e.g. user IDs).
-  ChartVariable variable = 2;
-  // children are the next-level segments that can follow this one.
-  repeated ChartSegment children = 3;
+  bool account = 1;
+  map<string, ChartSegment> children = 2;
+  ChartVariable variable = 3;
 }
 
-// ChartVariable describes a variable segment in the chart of accounts.
+// ChartVariable represents a variable child segment with an optional regex constraint.
 message ChartVariable {
-  string name = 1;             // Human-readable name (e.g. "userId", "walletId")
-  string inferred_pattern = 2; // Regex pattern inferred from observed values (e.g. UUID regex)
+  string name = 1;
+  string pattern = 2;
+  bool account = 3;
+  map<string, ChartSegment> children = 4;
+  ChartVariable variable = 5;
+}
+
+// ChartViolation represents an account address that does not match the chart of accounts.
+// Returned as warnings in AUDIT mode.
+message ChartViolation {
+  string address = 1;
+}
+
+// ChartEnforcementMode controls how chart violations are handled.
+enum ChartEnforcementMode {
+  CHART_ENFORCEMENT_STRICT = 0;  // Reject transactions with invalid addresses (default)
+  CHART_ENFORCEMENT_AUDIT = 1;   // Log warning but allow the transaction
+}
+
+// SetChartOfAccountsLog records a chart of accounts change.
+message SetChartOfAccountsLog {
+  ChartOfAccounts chart_of_accounts = 1;
+}
+
+// SetChartEnforcementModeLog records an enforcement mode change.
+message SetChartEnforcementModeLog {
+  ChartEnforcementMode enforcement_mode = 1;
 }
 
 // ============================================================================

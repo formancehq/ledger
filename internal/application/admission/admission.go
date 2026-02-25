@@ -1167,10 +1167,12 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_CreateLedger:
 		order.Type = &raftcmdpb.Order_CreateLedger{
 			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name:          reqType.CreateLedger.Name,
-				InitialSchema: reqType.CreateLedger.InitialSchema,
-				Mode:          reqType.CreateLedger.Mode,
-				MirrorSource:  reqType.CreateLedger.MirrorSource,
+				Name:            reqType.CreateLedger.Name,
+				InitialSchema:   reqType.CreateLedger.InitialSchema,
+				Mode:            reqType.CreateLedger.Mode,
+				MirrorSource:    reqType.CreateLedger.MirrorSource,
+				ChartOfAccounts: reqType.CreateLedger.ChartOfAccounts,
+				EnforcementMode: reqType.CreateLedger.EnforcementMode,
 			},
 		}
 	case *servicepb.Request_DeleteLedger:
@@ -1363,6 +1365,28 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				Name: reqType.DeleteNumscript.Name,
 			},
 		}
+	case *servicepb.Request_SetChartOfAccounts:
+		order.Type = &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: reqType.SetChartOfAccounts.Ledger,
+				Data: &raftcmdpb.LedgerApplyOrder_SetChartOfAccounts{
+					SetChartOfAccounts: &raftcmdpb.SetChartOfAccountsOrder{
+						ChartOfAccounts: reqType.SetChartOfAccounts.ChartOfAccounts,
+					},
+				},
+			},
+		}
+	case *servicepb.Request_SetChartEnforcementMode:
+		order.Type = &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: reqType.SetChartEnforcementMode.Ledger,
+				Data: &raftcmdpb.LedgerApplyOrder_SetChartEnforcementMode{
+					SetChartEnforcementMode: &raftcmdpb.SetChartEnforcementModeOrder{
+						EnforcementMode: reqType.SetChartEnforcementMode.EnforcementMode,
+					},
+				},
+			},
+		}
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.Type)
 	}
@@ -1439,6 +1463,18 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 			DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
 				Target: data.DeleteMetadata.Target,
 				Key:    data.DeleteMetadata.Key,
+			},
+		}
+	case *servicepb.LedgerApplyRequest_SetChartOfAccounts:
+		order.Data = &raftcmdpb.LedgerApplyOrder_SetChartOfAccounts{
+			SetChartOfAccounts: &raftcmdpb.SetChartOfAccountsOrder{
+				ChartOfAccounts: data.SetChartOfAccounts.ChartOfAccounts,
+			},
+		}
+	case *servicepb.LedgerApplyRequest_SetChartEnforcementMode:
+		order.Data = &raftcmdpb.LedgerApplyOrder_SetChartEnforcementMode{
+			SetChartEnforcementMode: &raftcmdpb.SetChartEnforcementModeOrder{
+				EnforcementMode: data.SetChartEnforcementMode.EnforcementMode,
 			},
 		}
 	case *servicepb.LedgerApplyRequest_RevertTransaction:

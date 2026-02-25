@@ -707,6 +707,19 @@ func saveNumscriptAction(name, content string) *servicepb.Request {
 	}
 }
 
+// createLedgerWithChartAction creates a ledger with an initial chart of accounts and enforcement mode.
+func createLedgerWithChartAction(name string, chart *commonpb.ChartOfAccounts, mode commonpb.ChartEnforcementMode) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_CreateLedger{
+			CreateLedger: &servicepb.CreateLedgerRequest{
+				Name:            name,
+				ChartOfAccounts: chart,
+				EnforcementMode: mode,
+			},
+		},
+	}
+}
+
 // saveNumscriptWithVersionAction creates an action for saving a numscript with a specific version.
 func saveNumscriptWithVersionAction(name, content, version string) *servicepb.Request {
 	return &servicepb.Request{
@@ -720,12 +733,36 @@ func saveNumscriptWithVersionAction(name, content, version string) *servicepb.Re
 	}
 }
 
+// setChartOfAccountsAction creates a request to set the chart of accounts on a ledger.
+func setChartOfAccountsAction(ledger string, chart *commonpb.ChartOfAccounts) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_SetChartOfAccounts{
+			SetChartOfAccounts: &servicepb.SetChartOfAccountsLedgerRequest{
+				Ledger:          ledger,
+				ChartOfAccounts: chart,
+			},
+		},
+	}
+}
+
 // deleteNumscriptAction creates an action for deleting a numscript from the library.
 func deleteNumscriptAction(name string) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_DeleteNumscript{
 			DeleteNumscript: &servicepb.DeleteNumscriptRequest{
 				Name: name,
+			},
+		},
+	}
+}
+
+// setChartEnforcementModeAction creates a request to set the chart enforcement mode on a ledger.
+func setChartEnforcementModeAction(ledger string, mode commonpb.ChartEnforcementMode) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_SetChartEnforcementMode{
+			SetChartEnforcementMode: &servicepb.SetChartEnforcementModeLedgerRequest{
+				Ledger:          ledger,
+				EnforcementMode: mode,
 			},
 		},
 	}
@@ -772,6 +809,7 @@ func listNumscripts(ctx context.Context, client servicepb.BucketServiceClient) (
 	}
 	return scripts, nil
 }
+
 
 // findMetadataValue looks up a key in a MetadataSet and returns the *MetadataValue (nil if not found).
 func findMetadataValue(ms *commonpb.MetadataSet, key string) *commonpb.MetadataValue {

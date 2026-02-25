@@ -14,15 +14,29 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 		return nil, domain.ErrTargetRequired
 	}
 
-	// Enforce schema: convert metadata values to declared types.
-	if order.Metadata != nil {
-		if info, ok := s.GetLedger(ledger); ok && info.MetadataSchema != nil {
-			targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
-			if _, isTx := order.Target.Target.(*commonpb.Target_Transaction); isTx {
-				targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
-			}
-			enforceSchema(info.MetadataSchema, targetType, order.Metadata.Metadata)
+	// Load ledger info once for both chart validation and schema enforcement.
+	var info *commonpb.LedgerInfo
+	if ledgerInfo, ok := s.GetLedger(ledger); ok {
+		info = ledgerInfo
+	}
+
+	// Validate account address against chart of accounts.
+	var warnings []*commonpb.ChartViolation
+	if acct, isAcct := order.Target.Target.(*commonpb.Target_Account); isAcct && info != nil && info.ChartOfAccounts != nil {
+		var chartErr error
+		warnings, chartErr = validateAccountInChartForAudit(acct.Account.Addr, info.ChartOfAccounts, info.EnforcementMode)
+		if chartErr != nil {
+			return nil, chartErr
 		}
+	}
+
+	// Enforce schema: convert metadata values to declared types.
+	if order.Metadata != nil && info != nil && info.MetadataSchema != nil {
+		targetType := commonpb.TargetType_TARGET_TYPE_ACCOUNT
+		if _, isTx := order.Target.Target.(*commonpb.Target_Transaction); isTx {
+			targetType = commonpb.TargetType_TARGET_TYPE_TRANSACTION
+		}
+		enforceSchema(info.MetadataSchema, targetType, order.Metadata.Metadata)
 	}
 
 	switch target := order.Target.Target.(type) {
@@ -63,6 +77,7 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 			SavedMetadata: &commonpb.SavedMetadata{
 				Target:   order.Target,
 				Metadata: order.Metadata,
+				Warnings: warnings,
 			},
 		},
 	}, nil

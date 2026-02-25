@@ -720,182 +720,79 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /{ledgerName}/prepared-queries:
+  /{ledgerName}/chart-of-accounts:
     get:
-      summary: List prepared queries
-      description: Returns all prepared queries defined for the specified ledger. Requires `ledger:read` scope.
-      operationId: listPreparedQueries
+      summary: Get chart of accounts
+      description: Returns the chart of accounts and enforcement mode for a ledger.
+      operationId: getChartOfAccounts
       tags:
-        - Prepared Queries
-      security:
-        - BearerAuth: []
-        - {}
+        - Chart of Accounts
       parameters:
         - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
-          description: List of prepared queries
+          description: Chart of accounts retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ListPreparedQueriesResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    post:
-      summary: Create a prepared query
-      description: |
-        Creates a new prepared query with the specified name, target, and filter.
-        The query is stored in Pebble via Raft consensus. Requires `ledger:write` scope.
-      operationId: createPreparedQuery
-      tags:
-        - Prepared Queries
-      security:
-        - BearerAuth: []
-        - {}
-      parameters:
-        - $ref: '#/components/parameters/LedgerName'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreatePreparedQueryRequest'
-      responses:
-        '201':
-          description: Prepared query created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PreparedQueryResponse'
+                $ref: '#/components/schemas/GetChartOfAccountsResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          description: Prepared query with this name already exists
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
-
-  /{ledgerName}/prepared-queries/{queryName}:
     put:
-      summary: Update a prepared query
-      description: Updates an existing prepared query. Requires `ledger:write` scope.
-      operationId: updatePreparedQuery
+      summary: Set chart of accounts
+      description: |
+        Sets the chart of accounts for a ledger. The chart defines a declarative tree structure
+        that validates account addresses against fixed and variable segments.
+      operationId: setChartOfAccounts
       tags:
-        - Prepared Queries
-      security:
-        - BearerAuth: []
-        - {}
+        - Chart of Accounts
       parameters:
         - $ref: '#/components/parameters/LedgerName'
-        - $ref: '#/components/parameters/QueryName'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdatePreparedQueryRequest'
-      responses:
-        '200':
-          description: Prepared query updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PreparedQueryResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    delete:
-      summary: Delete a prepared query
-      description: Deletes a prepared query by name. Requires `ledger:write` scope.
-      operationId: deletePreparedQuery
-      tags:
-        - Prepared Queries
-      security:
-        - BearerAuth: []
-        - {}
-      parameters:
-        - $ref: '#/components/parameters/LedgerName'
-        - $ref: '#/components/parameters/QueryName'
+              $ref: '#/components/schemas/ChartOfAccounts'
       responses:
         '204':
-          description: Prepared query deleted successfully
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
+          description: Chart of accounts set successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /{ledgerName}/prepared-queries/{queryName}/execute:
-    post:
-      summary: Execute a prepared query
+  /{ledgerName}/chart-of-accounts/enforcement-mode:
+    put:
+      summary: Set chart enforcement mode
       description: |
-        Executes a prepared query with the given parameters. Returns matching entities
-        (accounts or transactions) with cursor pagination, or aggregated volumes per asset.
-        Requires `ledger:read` scope. The read index must be enabled on the server.
-      operationId: executePreparedQuery
+        Sets the enforcement mode for chart of accounts validation.
+        STRICT mode rejects transactions with invalid account addresses.
+        AUDIT mode logs warnings but allows transactions through.
+      operationId: setChartEnforcementMode
       tags:
-        - Prepared Queries
-      security:
-        - BearerAuth: []
-        - {}
+        - Chart of Accounts
       parameters:
         - $ref: '#/components/parameters/LedgerName'
-        - $ref: '#/components/parameters/QueryName'
-        - name: pageSize
-          in: query
-          description: Maximum number of results per page
-          schema:
-            type: integer
-            format: int32
-        - name: cursor
-          in: query
-          description: Cursor for pagination (from previous response)
-          schema:
-            type: string
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExecutePreparedQueryRequest'
+              $ref: '#/components/schemas/SetChartEnforcementModeRequest'
       responses:
-        '200':
-          description: Query executed successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExecutePreparedQueryResponse'
+        '204':
+          description: Enforcement mode set successfully
         '400':
           $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1257,6 +1154,12 @@ components:
           description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source.
         mirrorSource:
           $ref: '#/components/schemas/MirrorSourceConfig'
+        chartOfAccounts:
+          $ref: '#/components/schemas/ChartOfAccounts'
+          description: Optional chart of accounts to set at creation time
+        enforcementMode:
+          $ref: '#/components/schemas/ChartEnforcementMode'
+          description: Optional enforcement mode (defaults to STRICT)
 
     CreateLedgerResponse:
       type: object
@@ -1611,6 +1514,11 @@ components:
             postCommitVolumes:
               $ref: '#/components/schemas/PostCommitVolumes'
               description: Post-commit volumes per account/asset (only present when expandVolumes is true)
+            warnings:
+              type: array
+              items:
+                $ref: '#/components/schemas/ChartViolation'
+              description: Chart of accounts violations (AUDIT mode only, empty in STRICT mode)
 
     GetTransactionResponse:
       type: object
@@ -1731,6 +1639,11 @@ components:
         postCommitVolumes:
           $ref: '#/components/schemas/PostCommitVolumes'
           description: Post-commit volumes per account/asset (only present when expandVolumes is true)
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChartViolation'
+          description: Chart of accounts violations (AUDIT mode only, empty in STRICT mode)
 
     RevertedTransactionResponse:
       type: object
@@ -2194,30 +2107,49 @@ components:
     ChartOfAccounts:
       type: object
       properties:
-        segments:
-          type: array
-          items:
+        roots:
+          type: object
+          additionalProperties:
             $ref: '#/components/schemas/ChartSegment'
+          description: Root segments of the chart (keyed by segment name)
 
     ChartSegment:
       type: object
       properties:
-        fixedValue:
-          type: string
+        account:
+          type: boolean
+          description: Whether this node represents a valid terminal account
+        children:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ChartSegment'
+          description: Fixed child segments (keyed by segment name)
         variable:
           $ref: '#/components/schemas/ChartVariable'
-        children:
-          type: array
-          items:
-            $ref: '#/components/schemas/ChartSegment'
+          description: Variable child segment (matches dynamic segments)
 
     ChartVariable:
       type: object
+      required:
+        - name
       properties:
         name:
           type: string
-        inferredPattern:
+          description: Variable name (for documentation purposes)
+        pattern:
           type: string
+          description: Optional regex pattern to constrain variable values
+        account:
+          type: boolean
+          description: Whether this variable node represents a valid terminal account
+        children:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ChartSegment'
+          description: Fixed child segments after the variable
+        variable:
+          $ref: '#/components/schemas/ChartVariable'
+          description: Nested variable child
 
     AccountPattern:
       type: object
@@ -2359,6 +2291,51 @@ components:
         transactionCount:
           type: integer
           format: int64
+
+    ChartEnforcementMode:
+      type: string
+      enum:
+        - STRICT
+        - AUDIT
+      description: |
+        Enforcement mode for chart of accounts validation.
+        STRICT rejects transactions with invalid account addresses.
+        AUDIT returns warnings but allows transactions through.
+
+    ChartViolation:
+      type: object
+      required:
+        - address
+      properties:
+        address:
+          type: string
+          description: Account address that does not match the chart of accounts
+
+    GetChartOfAccountsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - enforcementMode
+          properties:
+            chartOfAccounts:
+              $ref: '#/components/schemas/ChartOfAccounts'
+              description: The chart of accounts (null if not set)
+            enforcementMode:
+              $ref: '#/components/schemas/ChartEnforcementMode'
+              description: Current enforcement mode
+
+    SetChartEnforcementModeRequest:
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          $ref: '#/components/schemas/ChartEnforcementMode'
+          description: Enforcement mode to set
 
     CreatePreparedQueryRequest:
       type: object

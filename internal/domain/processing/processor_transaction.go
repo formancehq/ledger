@@ -53,6 +53,26 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 		}},
 	})
 
+	// Load ledger info once for chart validation and schema enforcement (DRY).
+	var (
+		schema *commonpb.MetadataSchema
+		info   *commonpb.LedgerInfo
+	)
+	if ledgerInfo, ok := s.GetLedger(ledger); ok {
+		info = ledgerInfo
+		schema = ledgerInfo.MetadataSchema
+	}
+
+	// Validate postings against chart of accounts
+	var warnings []*commonpb.ChartViolation
+	if info != nil && info.ChartOfAccounts != nil {
+		var chartErr error
+		warnings, chartErr = validatePostingsInChart(result.Postings, info.ChartOfAccounts, info.EnforcementMode)
+		if chartErr != nil {
+			return nil, chartErr
+		}
+	}
+
 	// Merge metadata: order metadata takes precedence over script metadata.
 	// Uses typed []*Metadata directly to avoid map[string]string roundtrip.
 	finalMetadata := order.Metadata
@@ -77,11 +97,6 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 		finalMetadata = &commonpb.MetadataSet{Metadata: merged}
 	}
 
-	// Enforce schema on transaction and account metadata.
-	var schema *commonpb.MetadataSchema
-	if info, ok := s.GetLedger(ledger); ok {
-		schema = info.MetadataSchema
-	}
 	if finalMetadata != nil {
 		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, finalMetadata.Metadata)
 	}
@@ -153,6 +168,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 				AccountMetadata:   accountMetadata,
 				PeriodId:          periodID,
 				PostCommitVolumes: postCommitVolumes,
+				Warnings:          warnings,
 			},
 		},
 	}, nil

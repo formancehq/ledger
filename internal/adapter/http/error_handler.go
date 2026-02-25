@@ -28,6 +28,8 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		metaNotFound      *domain.ErrMetadataNotFound
 		pqExists          *domain.ErrPreparedQueryAlreadyExists
 		pqNotFound        *domain.ErrPreparedQueryNotFound
+		chartErr          *domain.ErrAccountNotInChart
+		invalidChart      *domain.ErrInvalidChart
 	)
 
 	switch {
@@ -79,6 +81,12 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.As(err, &pqNotFound):
 		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
+
+	case errors.As(err, &chartErr):
+		writeErrorResponse(w, http.StatusBadRequest, "ACCOUNT_NOT_IN_CHART", err)
+
+	case errors.As(err, &invalidChart):
+		writeErrorResponse(w, http.StatusBadRequest, "INVALID_CHART", err)
 
 	case errors.Is(err, domain.ErrTargetRequired),
 		errors.Is(err, domain.ErrMetadataKeyRequired),

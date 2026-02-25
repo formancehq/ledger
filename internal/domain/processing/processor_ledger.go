@@ -12,12 +12,21 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 		return nil, &domain.ErrLedgerAlreadyExists{Name: order.Name}
 	}
 
+	// Validate chart at creation time if provided
+	if order.ChartOfAccounts != nil {
+		if err := validateChart(order.ChartOfAccounts); err != nil {
+			return nil, &domain.ErrInvalidChart{Details: err.Error()}
+		}
+	}
+
 	info := &commonpb.LedgerInfo{
-		Name:           order.Name,
-		CreatedAt:      s.GetDate(),
-		MetadataSchema: populateInitialSchema(order.InitialSchema),
-		Mode:           order.Mode,
-		MirrorSource:   order.MirrorSource,
+		Name:            order.Name,
+		CreatedAt:       s.GetDate(),
+		MetadataSchema:  populateInitialSchema(order.InitialSchema),
+		Mode:            order.Mode,
+		MirrorSource:    order.MirrorSource,
+		ChartOfAccounts: order.ChartOfAccounts,
+		EnforcementMode: order.EnforcementMode,
 	}
 	s.PutLedger(order.Name, info)
 	s.PutBoundaries(order.Name, &raftcmdpb.LedgerBoundaries{

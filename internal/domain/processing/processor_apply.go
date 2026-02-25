@@ -51,6 +51,10 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 		logPayload, err = p.processDropIndex(apply.Ledger, applyData.DropIndex, s)
 	case *raftcmdpb.LedgerApplyOrder_IndexReady:
 		logPayload, err = p.processIndexReady(apply.Ledger, applyData.IndexReady, s)
+	case *raftcmdpb.LedgerApplyOrder_SetChartOfAccounts:
+		logPayload, err = p.processSetChartOfAccounts(apply.Ledger, applyData.SetChartOfAccounts, s)
+	case *raftcmdpb.LedgerApplyOrder_SetChartEnforcementMode:
+		logPayload, err = p.processSetChartEnforcementMode(apply.Ledger, applyData.SetChartEnforcementMode, s)
 	default:
 		return nil, fmt.Errorf("invalid apply type")
 	}

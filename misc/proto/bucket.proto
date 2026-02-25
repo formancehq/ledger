@@ -132,6 +132,8 @@ message CreateLedgerRequest {
   repeated common.SetMetadataFieldTypeCommand initial_schema = 3;
   common.LedgerMode mode = 4;
   common.MirrorSourceConfig mirror_source = 5;
+  common.ChartOfAccounts chart_of_accounts = 6;
+  common.ChartEnforcementMode enforcement_mode = 7;
 }
 
 message DeleteLedgerRequest {
@@ -186,6 +188,8 @@ message Request {
     DropIndexRequest drop_index = 26;
     SaveNumscriptRequest save_numscript = 27;
     DeleteNumscriptRequest delete_numscript = 28;
+    SetChartOfAccountsLedgerRequest set_chart_of_accounts = 29;
+    SetChartEnforcementModeLedgerRequest set_chart_enforcement_mode = 30;
   }
   signature.RequestSignature signature = 5;
 }
@@ -395,7 +399,27 @@ message LedgerApplyRequest {
     common.SaveMetadataCommand add_metadata = 3;
     RevertTransactionPayload revert_transaction = 4;
     common.DeleteMetadataCommand delete_metadata = 5;
+    SetChartOfAccountsRequest set_chart_of_accounts = 6;
+    SetChartEnforcementModeRequest set_chart_enforcement_mode = 7;
   }
+}
+
+message SetChartOfAccountsRequest {
+  common.ChartOfAccounts chart_of_accounts = 1;
+}
+
+message SetChartEnforcementModeRequest {
+  common.ChartEnforcementMode enforcement_mode = 1;
+}
+
+message SetChartOfAccountsLedgerRequest {
+  string ledger = 1;
+  common.ChartOfAccounts chart_of_accounts = 2;
+}
+
+message SetChartEnforcementModeLedgerRequest {
+  string ledger = 1;
+  common.ChartEnforcementMode enforcement_mode = 2;
 }
 
 // ============================================================================

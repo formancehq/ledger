@@ -13,8 +13,10 @@ import (
 
 // createLedgerBody holds optional fields for ledger creation.
 type createLedgerBody struct {
-	Mode         string           `json:"mode,omitempty"`
-	MirrorSource *mirrorSourceBody `json:"mirrorSource,omitempty"`
+	Mode            string           `json:"mode,omitempty"`
+	MirrorSource    *mirrorSourceBody `json:"mirrorSource,omitempty"`
+	ChartOfAccounts *chartJSON       `json:"chartOfAccounts,omitempty"`
+	EnforcementMode string           `json:"enforcementMode,omitempty"`
 }
 
 // mirrorSourceBody holds the mirror source configuration.
@@ -42,7 +44,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		Name: ledgerName,
 	}
 
-	// Parse optional body for mirror mode fields
+	// Parse optional body for mirror mode and chart of accounts fields
 	if r.ContentLength > 0 {
 		var body createLedgerBody
 		if err := json.UnmarshalRead(r.Body, &body); err != nil {
@@ -60,7 +62,19 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 				createReq.MirrorSource = cfg
 			}
 		}
+		if body.ChartOfAccounts != nil {
+			createReq.ChartOfAccounts = fromChartJSON(body.ChartOfAccounts)
+		}
+		if body.EnforcementMode != "" {
+			mode, err := parseEnforcementMode(body.EnforcementMode)
+			if err != nil {
+				writeBadRequest(w, "INVALID_REQUEST", err)
+				return
+			}
+			createReq.EnforcementMode = mode
+		}
 	}
+
 
 	logs, err := s.backend.Apply(r.Context(), &servicepb.Request{
 		IdempotencyKey: r.Header.Get("Idempotency-Key"),

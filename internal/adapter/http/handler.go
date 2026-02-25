@@ -89,7 +89,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Get("/{ledgerName}/accounts/{address}", server.handleGetAccount)
 				r.Get("/{ledgerName}/metadata-schema", server.handleGetMetadataSchema)
 				r.Get("/{ledgerName}/analyze-accounts", server.handleAnalyzeAccounts)
-			r.Get("/{ledgerName}/analyze-transactions", server.handleAnalyzeTransactions)
+				r.Get("/{ledgerName}/analyze-transactions", server.handleAnalyzeTransactions)
+				r.Get("/{ledgerName}/chart-of-accounts", server.handleGetChartOfAccounts)
 			})
 
 			// Ledgers write scope
@@ -115,6 +116,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Delete("/{ledgerName}/accounts/{address}/metadata/{key}", server.handleDeleteAccountMetadata)
 				r.Put("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleSetMetadataType)
 				r.Delete("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleRemoveMetadataType)
+				r.Put("/{ledgerName}/chart-of-accounts", server.handleSetChartOfAccounts)
+				r.Put("/{ledgerName}/chart-of-accounts/enforcement-mode", server.handleSetChartEnforcementMode)
 			})
 
 			// Bulk endpoints: per-element scope check handled inside the handler

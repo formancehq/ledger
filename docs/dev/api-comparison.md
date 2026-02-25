@@ -35,6 +35,10 @@ This document compares the POC's API with the original Formance ledger API and d
 | Delete ledger | ✅ | ✅ | |
 | Get ledger | ✅ | ✅ | |
 | List ledgers | ✅ | ✅ | |
+| **Chart of Accounts** |
+| Set chart of accounts | ✅ | ❌ | Per-ledger declarative tree validation |
+| Get chart of accounts | ✅ | ❌ | Returns chart + enforcement mode |
+| Set enforcement mode | ✅ | ❌ | STRICT (reject) or AUDIT (warnings in response) |
 | **Accounts (Read)** |
 | Get account | ✅ | ✅ | Includes volumes per asset |
 | List accounts | ✅ | ✅ | Supports rich boolean filter (metadata equality/range/existence, address) with schema validation and cursor pagination |
@@ -170,10 +174,26 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 ### 5. Ledger Management
 
 **Endpoints:**
-- `POST /{ledgerName}` - Create a ledger
+- `POST /{ledgerName}` - Create a ledger (supports optional `chartOfAccounts` and `enforcementMode` in body)
 - `DELETE /{ledgerName}` - Delete a ledger
 - `GET /{ledgerName}` - Get ledger info (read)
 - `GET /` - List all ledgers (read)
+
+### 5b. Chart of Accounts
+
+**Endpoints:**
+- `GET /{ledgerName}/chart-of-accounts` - Get chart of accounts and enforcement mode
+- `PUT /{ledgerName}/chart-of-accounts` - Set chart of accounts
+- `PUT /{ledgerName}/chart-of-accounts/enforcement-mode` - Set enforcement mode (STRICT or AUDIT)
+
+**Features:**
+- ✅ Per-ledger declarative tree structure for account address validation
+- ✅ Fixed segments (exact match) and variable segments (with optional regex pattern)
+- ✅ STRICT mode: rejects transactions with invalid account addresses
+- ✅ AUDIT mode: returns warnings (ChartViolation) in log payload for invalid addresses but allows transactions
+- ✅ Chart can be set at ledger creation time or updated later
+- ✅ `world` account always passes validation
+- ✅ Chart self-validation (segment name format, variable names, regex patterns, at least one account node)
 
 ### 6. Transaction Read
 
@@ -494,6 +514,9 @@ Read endpoints comparison with the original ledger:
 | `GET /numscripts/{name}?version=` | ✅ | ❌ | Get numscript (semver version, empty = latest) |
 | `PUT /numscripts/{name}` | ✅ | ❌ | Save numscript (semver versioned) |
 | `DELETE /numscripts/{name}` | ✅ | ❌ | Delete numscript |
+| `GET /{ledgerName}/chart-of-accounts` | ✅ | ❌ | Get chart of accounts |
+| `PUT /{ledgerName}/chart-of-accounts` | ✅ | ❌ | Set chart of accounts |
+| `PUT /{ledgerName}/chart-of-accounts/enforcement-mode` | ✅ | ❌ | Set enforcement mode |
 
 ---
 
@@ -616,6 +639,8 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Ledger not in mirror mode | `FAILED_PRECONDITION` | `LEDGER_NOT_IN_MIRROR_MODE` | `name` |
 | Prepared query already exists | `ALREADY_EXISTS` | `PREPARED_QUERY_ALREADY_EXISTS` | `name` |
 | Prepared query not found | `NOT_FOUND` | `PREPARED_QUERY_NOT_FOUND` | `name` |
+| Account not in chart | `FAILED_PRECONDITION` | `ACCOUNT_NOT_IN_CHART` | `address` |
+| Invalid chart | `INVALID_ARGUMENT` | `INVALID_CHART` | `details` |
 
 **Client-side usage (Go):**
 ```go

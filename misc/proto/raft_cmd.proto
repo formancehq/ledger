@@ -140,6 +140,8 @@ message CreateLedgerOrder {
   repeated common.SetMetadataFieldTypeCommand initial_schema = 3;
   common.LedgerMode mode = 4;
   common.MirrorSourceConfig mirror_source = 5;
+  common.ChartOfAccounts chart_of_accounts = 6;
+  common.ChartEnforcementMode enforcement_mode = 7;
 }
 
 message MirrorIngestOrder {
@@ -211,6 +213,8 @@ message LedgerApplyOrder {
     CreateIndexOrder create_index = 10;
     DropIndexOrder drop_index = 11;
     IndexReadyOrder index_ready = 12;
+    SetChartOfAccountsOrder set_chart_of_accounts = 13;
+    SetChartEnforcementModeOrder set_chart_enforcement_mode = 14;
   }
 }
 
@@ -236,6 +240,14 @@ message IndexReadyOrder {
     common.AddressRole address_role = 1;
     common.MetadataIndexTarget metadata = 2;
   }
+}
+
+message SetChartOfAccountsOrder {
+  common.ChartOfAccounts chart_of_accounts = 1;
+}
+
+message SetChartEnforcementModeOrder {
+  common.ChartEnforcementMode enforcement_mode = 1;
 }
 
 message ConvertMetadataBatchOrder {

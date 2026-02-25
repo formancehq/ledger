@@ -39,9 +39,21 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 			Amount:      originalPosting.Amount,
 			Asset:       originalPosting.Asset,
 		}
+	}
 
+	// Validate reversed postings against chart of accounts
+	var warnings []*commonpb.ChartViolation
+	if info, ok := s.GetLedger(ledger); ok && info.ChartOfAccounts != nil {
+		var chartErr error
+		warnings, chartErr = validatePostingsInChart(revertPostings, info.ChartOfAccounts, info.EnforcementMode)
+		if chartErr != nil {
+			return nil, chartErr
+		}
+	}
+
+	for _, posting := range revertPostings {
 		// Apply the reversed posting (skip balance check if force is set)
-		if err := applyPosting(s, ledger, revertPostings[i], order.Force); err != nil {
+		if err := applyPosting(s, ledger, posting, order.Force); err != nil {
 			return nil, err
 		}
 	}
@@ -94,6 +106,7 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 					UpdatedAt:  s.GetDate(),
 				},
 				PostCommitVolumes: postCommitVolumes,
+				Warnings:          warnings,
 			},
 		},
 	}, nil

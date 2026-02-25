@@ -43,6 +43,8 @@ const (
 	ErrReasonNumscriptNotFound               = "NUMSCRIPT_NOT_FOUND"
 	ErrReasonNumscriptVersionAlreadyExists   = "NUMSCRIPT_VERSION_ALREADY_EXISTS"
 	ErrReasonNumscriptInvalidVersion         = "NUMSCRIPT_INVALID_VERSION"
+	ErrReasonAccountNotInChart               = "ACCOUNT_NOT_IN_CHART"
+	ErrReasonInvalidChart                    = "INVALID_CHART"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -322,4 +324,22 @@ type ErrNumscriptInvalidVersion struct {
 
 func (e *ErrNumscriptInvalidVersion) Error() string {
 	return fmt.Sprintf("invalid numscript version %q: must be semver (major.minor.patch) or \"latest\"", e.Version)
+}
+
+// ErrAccountNotInChart is returned when an account address is not in the chart of accounts.
+type ErrAccountNotInChart struct {
+	Address string
+}
+
+func (e *ErrAccountNotInChart) Error() string {
+	return fmt.Sprintf("account not in chart: %s", e.Address)
+}
+
+// ErrInvalidChart is returned when a chart of accounts fails self-validation.
+type ErrInvalidChart struct {
+	Details string
+}
+
+func (e *ErrInvalidChart) Error() string {
+	return fmt.Sprintf("invalid chart of accounts: %s", e.Details)
 }
