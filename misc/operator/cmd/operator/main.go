@@ -63,11 +63,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.LedgerReconciler{
+	if err = (&controller.LedgerServiceReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Ledger")
+		setupLog.Error(err, "unable to create controller", "controller", "LedgerService")
 		os.Exit(1)
 	}
 

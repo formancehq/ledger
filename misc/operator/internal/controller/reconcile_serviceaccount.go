@@ -10,7 +10,7 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
 
-func (r *LedgerReconciler) reconcileServiceAccount(ctx context.Context, ledger *ledgerv1alpha1.Ledger) error {
+func (r *LedgerServiceReconciler) reconcileServiceAccount(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	create := ledger.Spec.ServiceAccount.Create
 	if create != nil && !*create {
 		// SA is managed externally — don't touch it.
@@ -32,7 +32,7 @@ func (r *LedgerReconciler) reconcileServiceAccount(ctx context.Context, ledger *
 	return err
 }
 
-func serviceAccountName(ledger *ledgerv1alpha1.Ledger) string {
+func serviceAccountName(ledger *ledgerv1alpha1.LedgerService) string {
 	if ledger.Spec.ServiceAccount.Name != "" {
 		return ledger.Spec.ServiceAccount.Name
 	}

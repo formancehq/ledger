@@ -1,4 +1,4 @@
-package config
+package defaults
 
 import (
 	"encoding/json"
@@ -24,8 +24,8 @@ func newEditCommand(opts *cmdutil.Options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "edit [name]",
-		Short: "Edit LedgerService configuration interactively",
-		Long:  "Opens an interactive editor to navigate and modify LedgerService CRD fields.\nUse --raw to delegate to kubectl edit for full YAML editing.",
+		Short: "Edit a LedgerDefaults resource interactively",
+		Long:  "Opens an interactive editor to navigate and modify LedgerDefaults CRD fields.\nUse --raw to delegate to kubectl edit for full YAML editing.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runEdit(cmd, opts, flags, args)
@@ -40,13 +40,13 @@ func newEditCommand(opts *cmdutil.Options) *cobra.Command {
 func runEdit(cmd *cobra.Command, opts *cmdutil.Options, flags *editFlags, args []string) error {
 	ctx := cmd.Context()
 
-	name, ns, err := cmdutil.ResolveLedgerServiceName(ctx, opts, args)
+	name, err := cmdutil.ResolveLedgerDefaultsName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
 
 	if flags.raw {
-		return runRawEdit(name, ns)
+		return runRawEdit(name)
 	}
 
 	crdClient, err := opts.CRDClient()
@@ -54,13 +54,13 @@ func runEdit(cmd *cobra.Command, opts *cmdutil.Options, flags *editFlags, args [
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	ledger, err := cmdutil.GetLedgerService(ctx, crdClient, ns, name)
+	defaults, err := cmdutil.GetLedgerDefaults(ctx, crdClient, name)
 	if err != nil {
-		return fmt.Errorf("getting ledger %q: %w", name, err)
+		return fmt.Errorf("getting ledger defaults %q: %w", name, err)
 	}
 
 	// Marshal spec to unstructured map for editing.
-	specJSON, err := json.Marshal(ledger.Spec)
+	specJSON, err := json.Marshal(defaults.Spec)
 	if err != nil {
 		return fmt.Errorf("marshaling spec: %w", err)
 	}
@@ -74,12 +74,11 @@ func runEdit(cmd *cobra.Command, opts *cmdutil.Options, flags *editFlags, args [
 
 	// Header.
 	pterm.Println()
-	pterm.Printf("Editing LedgerService %s (namespace: %s)\n",
-		pterm.Bold.Sprint(pterm.Cyan(name)), pterm.Gray(ns))
+	pterm.Printf("Editing LedgerDefaults %s\n", pterm.Bold.Sprint(pterm.Cyan(name)))
 	cmdutil.Separator()
 
-	// Interactive edit loop.
-	if err := cmdutil.EditLoop(explain.SpecFields(), working, "spec", true); err != nil {
+	// Interactive edit loop, reusing the shared editor with the defaults schema.
+	if err := cmdutil.EditLoop(explain.DefaultsSpecFields(), working, "spec", true); err != nil {
 		return err
 	}
 
@@ -103,7 +102,7 @@ func runEdit(cmd *cobra.Command, opts *cmdutil.Options, flags *editFlags, args [
 	cmdutil.RenderTable([]string{"FIELD", "CHANGE"}, rows)
 
 	// Confirm.
-	ok, err := cmdutil.PromptConfirm(fmt.Sprintf("Apply changes to LedgerService %s?", name), true)
+	ok, err := cmdutil.PromptConfirm(fmt.Sprintf("Apply changes to LedgerDefaults %s?", name), true)
 	if err != nil {
 		return err
 	}
@@ -118,23 +117,23 @@ func runEdit(cmd *cobra.Command, opts *cmdutil.Options, flags *editFlags, args [
 		return fmt.Errorf("marshaling modified spec: %w", err)
 	}
 
-	var newSpec ledgerv1alpha1.LedgerServiceSpec
+	var newSpec ledgerv1alpha1.LedgerDefaultsSpec
 	if err := json.Unmarshal(modJSON, &newSpec); err != nil {
 		return fmt.Errorf("unmarshaling modified spec: %w", err)
 	}
 
-	patch := client.MergeFrom(ledger.DeepCopy())
-	ledger.Spec = newSpec
-	if err := crdClient.Patch(ctx, ledger, patch); err != nil {
-		return fmt.Errorf("patching ledger %q: %w", name, err)
+	patch := client.MergeFrom(defaults.DeepCopy())
+	defaults.Spec = newSpec
+	if err := crdClient.Patch(ctx, defaults, patch); err != nil {
+		return fmt.Errorf("patching ledger defaults %q: %w", name, err)
 	}
 
-	pterm.Success.Printfln("LedgerService %s updated", name)
+	pterm.Success.Printfln("LedgerDefaults %s updated", name)
 	return nil
 }
 
-func runRawEdit(name, ns string) error {
-	kubectlArgs := []string{"edit", "ledgerservice.ledger.formance.com/" + name, "-n", ns}
+func runRawEdit(name string) error {
+	kubectlArgs := []string{"edit", "ledgerdefaults.ledger.formance.com/" + name}
 
 	kubectlCmd := exec.Command("kubectl", kubectlArgs...)
 	kubectlCmd.Stdin = os.Stdin

@@ -3,7 +3,6 @@ module github.com/formancehq/ledger-v3-poc/deployments/devenv
 go 1.24.7
 
 require (
-	github.com/pulumi/pulumi-aws/sdk/v6 v6.83.2
 	github.com/pulumi/pulumi-docker-build/sdk/go/dockerbuild v0.0.15
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.24.1
 	github.com/pulumi/pulumi/sdk/v3 v3.207.0

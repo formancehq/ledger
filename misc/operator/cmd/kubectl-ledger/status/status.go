@@ -15,7 +15,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	return &cobra.Command{
 		Use:     "status [name]",
 		Aliases: []string{"st"},
-		Short:   "Show operational status of a Ledger deployment",
+		Short:   "Show operational status of a LedgerService deployment",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runStatus(cmd, opts, args)
@@ -26,7 +26,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 func runStatus(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	ctx := cmd.Context()
 
-	name, ns, err := cmdutil.ResolveLedgerName(ctx, opts, args)
+	name, ns, err := cmdutil.ResolveLedgerServiceName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -43,9 +43,9 @@ func runStatus(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start("Fetching status...")
 
-	ledger, err := cmdutil.GetLedger(ctx, crdClient, ns, name)
+	ledger, err := cmdutil.GetLedgerService(ctx, crdClient, ns, name)
 	if err != nil {
-		spinner.Fail("Failed to get Ledger")
+		spinner.Fail("Failed to get LedgerService")
 		return fmt.Errorf("getting ledger %q: %w", name, err)
 	}
 
@@ -67,7 +67,7 @@ func runStatus(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	}
 
 	pterm.Println()
-	pterm.Printf("Ledger %s  %s  %d/%d ready\n",
+	pterm.Printf("LedgerService %s  %s  %d/%d ready\n",
 		pterm.Bold.Sprint(pterm.Cyan(name)),
 		cmdutil.PhaseColor(ledger.Status.Phase),
 		ledger.Status.ReadyReplicas, replicas,
@@ -76,7 +76,7 @@ func runStatus(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	pterm.Println()
 
 	// Pod table
-	pods, err := cmdutil.LedgerPods(ctx, cs, ns, name)
+	pods, err := cmdutil.LedgerServicePods(ctx, cs, ns, name)
 	if err != nil {
 		return fmt.Errorf("listing pods: %w", err)
 	}
@@ -100,7 +100,7 @@ func runStatus(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	}
 
 	// PVC table
-	pvcs, err := cmdutil.LedgerPVCs(ctx, cs, ns, name)
+	pvcs, err := cmdutil.LedgerServicePVCs(ctx, cs, ns, name)
 	if err != nil {
 		return fmt.Errorf("listing PVCs: %w", err)
 	}

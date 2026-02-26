@@ -12,7 +12,7 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
 
-// PhaseColor returns a colored string for the given Ledger phase.
+// PhaseColor returns a colored string for the given LedgerService phase.
 func PhaseColor(phase string) string {
 	switch phase {
 	case "Running":
@@ -78,7 +78,18 @@ func FormatReadyReplicas(ready int32, desired *int32) string {
 }
 
 // FormatImage returns "repository:tag" for the given image spec.
+// When the image is inherited from LedgerDefaults and not set on the
+// LedgerService itself, both fields are empty; show "<from defaults>" instead.
 func FormatImage(img ledgerv1alpha1.ImageSpec) string {
+	if img.Repository == "" && img.Tag == "" {
+		return pterm.Gray("<from defaults>")
+	}
+	if img.Repository == "" {
+		return ":" + img.Tag
+	}
+	if img.Tag == "" {
+		return img.Repository
+	}
 	return fmt.Sprintf("%s:%s", img.Repository, img.Tag)
 }
 

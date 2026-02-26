@@ -1,7 +1,9 @@
 package create
 
 import (
+	"context"
 	"fmt"
+	"sort"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -15,16 +17,17 @@ import (
 )
 
 type createFlags struct {
-	replicas     int32
-	image        string
-	tag          string
-	walSize      string
-	dataSize     string
+	replicas    int32
+	image       string
+	tag         string
+	walSize     string
+	dataSize    string
 	storageClass string
-	clusterID    string
-	cpu          string
-	memory       string
-	dryRun       bool
+	clusterID   string
+	cpu         string
+	memory      string
+	defaultsRef string
+	dryRun      bool
 }
 
 // NewCommand returns the "create" command.
@@ -33,7 +36,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "create [name]",
-		Short: "Create a new Ledger deployment",
+		Short: "Create a new LedgerService deployment",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCreate(cmd, opts, &f, args)
@@ -49,6 +52,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	cmd.Flags().StringVar(&f.clusterID, "cluster-id", "default", "Cluster ID")
 	cmd.Flags().StringVar(&f.cpu, "cpu", "", "CPU resource request (e.g. 500m)")
 	cmd.Flags().StringVar(&f.memory, "memory", "", "Memory resource request (e.g. 512Mi)")
+	cmd.Flags().StringVar(&f.defaultsRef, "defaults-ref", "", "Reference a cluster-scoped LedgerDefaults resource")
 	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, "Print YAML without applying")
 
 	return cmd
@@ -61,9 +65,32 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 		return err
 	}
 
-	ns, err := opts.ResolvedNamespace()
+	ns, err := resolveNamespace(cmd, opts)
 	if err != nil {
 		return fmt.Errorf("resolving namespace: %w", err)
+	}
+
+	// Offer defaults-ref selection if not set via flag and defaults exist.
+	if !cmd.Flags().Changed("defaults-ref") {
+		crdClient, clientErr := opts.CRDClient()
+		if clientErr == nil {
+			defaults, listErr := cmdutil.ListLedgerDefaults(cmd.Context(), crdClient)
+			if listErr == nil && len(defaults.Items) > 0 {
+				names := []string{"(none)"}
+				for i := range defaults.Items {
+					names = append(names, defaults.Items[i].Name)
+				}
+				{
+					selected, selErr := pterm.DefaultInteractiveSelect.
+						WithOptions(names).
+						WithDefaultText("Use a LedgerDefaults resource?").
+						Show()
+					if selErr == nil && selected != "(none)" {
+						f.defaultsRef = selected
+					}
+				}
+			}
+		}
 	}
 
 	// Prompt for replicas if not explicitly set
@@ -90,7 +117,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 		}
 	}
 
-	ledger, err := buildLedger(name, ns, f)
+	ledger, err := buildLedgerService(cmd, name, ns, f)
 	if err != nil {
 		return err
 	}
@@ -98,15 +125,25 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 	// Show preview
 	pterm.Println()
 	pterm.DefaultSection.Println("Create Preview")
-	cmdutil.RenderBoxedTable([][]string{
+	previewRows := [][]string{
 		{"Name", pterm.Cyan(name)},
 		{"Namespace", ns},
-		{"Replicas", fmt.Sprintf("%d", f.replicas)},
-		{"Image", f.image + ":" + f.tag},
-		{"Cluster ID", f.clusterID},
-		{"WAL Size", f.walSize},
-		{"Data Size", f.dataSize},
-	})
+	}
+	if f.defaultsRef != "" {
+		previewRows = append(previewRows, []string{"Defaults", pterm.Cyan(f.defaultsRef)})
+	}
+	previewRows = append(previewRows, []string{"Replicas", fmt.Sprintf("%d", f.replicas)})
+	if ledger.Spec.Image.Repository != "" || ledger.Spec.Image.Tag != "" {
+		previewRows = append(previewRows, []string{"Image", cmdutil.FormatImage(ledger.Spec.Image)})
+	} else {
+		previewRows = append(previewRows, []string{"Image", pterm.Gray("<from defaults>")})
+	}
+	previewRows = append(previewRows,
+		[]string{"Cluster ID", f.clusterID},
+		[]string{"WAL Size", f.walSize},
+		[]string{"Data Size", f.dataSize},
+	)
+	cmdutil.RenderBoxedTable(previewRows)
 	pterm.Println()
 
 	if f.dryRun {
@@ -120,7 +157,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 		return nil
 	}
 
-	confirm, err := cmdutil.PromptConfirm("Create this Ledger?", true)
+	confirm, err := cmdutil.PromptConfirm("Create this LedgerService?", true)
 	if err != nil {
 		return err
 	}
@@ -134,14 +171,14 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Creating Ledger...")
+	spinner, _ := pterm.DefaultSpinner.Start("Creating LedgerService...")
 
 	if err := crdClient.Create(cmd.Context(), ledger); err != nil {
-		spinner.Fail("Failed to create Ledger")
+		spinner.Fail("Failed to create LedgerService")
 		return fmt.Errorf("creating ledger %q: %w", name, err)
 	}
 
-	spinner.Success(fmt.Sprintf("Ledger %s created in namespace %s", pterm.Cyan(name), pterm.Cyan(ns)))
+	spinner.Success(fmt.Sprintf("LedgerService %s created in namespace %s", pterm.Cyan(name), pterm.Cyan(ns)))
 	return nil
 }
 
@@ -150,7 +187,7 @@ func resolveName(args []string) (string, error) {
 		return args[0], nil
 	}
 
-	name, err := cmdutil.PromptText("Ledger name", "")
+	name, err := cmdutil.PromptText("LedgerService name", "")
 	if err != nil {
 		return "", err
 	}
@@ -160,7 +197,53 @@ func resolveName(args []string) (string, error) {
 	return name, nil
 }
 
-func buildLedger(name, namespace string, f *createFlags) (*ledgerv1alpha1.Ledger, error) {
+// resolveNamespace returns the target namespace. If the user passed -n, use
+// that directly. Otherwise, list cluster namespaces and let the user pick,
+// with the current kubeconfig namespace pre-selected.
+func resolveNamespace(cmd *cobra.Command, opts *cmdutil.Options) (string, error) {
+	// Explicit -n flag: use it as-is, no prompt.
+	if cmd.Flags().Changed("namespace") {
+		return opts.ResolvedNamespace()
+	}
+
+	currentNS, err := opts.ResolvedNamespace()
+	if err != nil {
+		return "", err
+	}
+
+	namespaces, err := listNamespaces(cmd.Context(), opts)
+	if err != nil {
+		// Fall back to text prompt if we can't list namespaces.
+		return cmdutil.PromptText("Namespace", currentNS)
+	}
+
+	selected, err := cmdutil.SelectPrompt("Namespace", namespaces)
+	if err != nil {
+		return "", fmt.Errorf("namespace selection failed: %w", err)
+	}
+	return selected, nil
+}
+
+func listNamespaces(ctx context.Context, opts *cmdutil.Options) ([]string, error) {
+	clientset, err := opts.Clientset()
+	if err != nil {
+		return nil, err
+	}
+
+	nsList, err := clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	names := make([]string, 0, len(nsList.Items))
+	for i := range nsList.Items {
+		names = append(names, nsList.Items[i].Name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+func buildLedgerService(cmd *cobra.Command, name, namespace string, f *createFlags) (*ledgerv1alpha1.LedgerService, error) {
 	walSize, err := resource.ParseQuantity(f.walSize)
 	if err != nil {
 		return nil, fmt.Errorf("invalid wal-size %q: %w", f.walSize, err)
@@ -171,22 +254,19 @@ func buildLedger(name, namespace string, f *createFlags) (*ledgerv1alpha1.Ledger
 		return nil, fmt.Errorf("invalid data-size %q: %w", f.dataSize, err)
 	}
 
-	ledger := &ledgerv1alpha1.Ledger{
+	ledger := &ledgerv1alpha1.LedgerService{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "ledger.formance.com/v1alpha1",
-			Kind:       "Ledger",
+			Kind:       "LedgerService",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
-		Spec: ledgerv1alpha1.LedgerSpec{
-			Replicas: &f.replicas,
-			Image: ledgerv1alpha1.ImageSpec{
-				Repository: f.image,
-				Tag:        f.tag,
-			},
-			Config: ledgerv1alpha1.LedgerConfig{
+		Spec: ledgerv1alpha1.LedgerServiceSpec{
+			DefaultsRef: f.defaultsRef,
+			Replicas:    &f.replicas,
+			Config: ledgerv1alpha1.LedgerServiceConfig{
 				ClusterID: f.clusterID,
 			},
 			Persistence: ledgerv1alpha1.PersistenceSpec{
@@ -196,14 +276,25 @@ func buildLedger(name, namespace string, f *createFlags) (*ledgerv1alpha1.Ledger
 		},
 	}
 
+	// Only set image fields if the user explicitly provided them via flags.
+	// When defaultsRef is set, leaving these empty lets the controller
+	// inherit them from LedgerDefaults.
+	if cmd.Flags().Changed("image") || f.defaultsRef == "" {
+		ledger.Spec.Image.Repository = f.image
+	}
+	if cmd.Flags().Changed("tag") || f.defaultsRef == "" {
+		ledger.Spec.Image.Tag = f.tag
+	}
+
 	if f.storageClass != "" {
 		ledger.Spec.Persistence.WAL.StorageClass = f.storageClass
 		ledger.Spec.Persistence.Data.StorageClass = f.storageClass
 	}
 
-	resources := corev1.ResourceRequirements{}
 	if f.cpu != "" || f.memory != "" {
-		resources.Requests = corev1.ResourceList{}
+		resources := corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{},
+		}
 		if f.cpu != "" {
 			q, err := resource.ParseQuantity(f.cpu)
 			if err != nil {

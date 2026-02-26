@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/cmdutil"
 	configcmd "github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/config"
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/create"
+	defaultscmd "github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/defaults"
 	deletecmd "github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/delete"
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/explain"
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/get"
@@ -22,8 +23,8 @@ func newRootCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "kubectl-ledger",
-		Short: "Manage Ledger deployments on Kubernetes",
-		Long:  "A kubectl plugin for managing Ledger CRDs deployed by the Formance Ledger Operator.",
+		Short: "Manage LedgerService deployments on Kubernetes",
+		Long:  "A kubectl plugin for managing LedgerService CRDs deployed by the Formance LedgerService Operator.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -41,6 +42,7 @@ func newRootCommand() *cobra.Command {
 		logs.NewCommand(opts),
 		portforward.NewCommand(opts),
 		configcmd.NewCommand(opts),
+		defaultscmd.NewCommand(opts),
 		explain.NewCommand(),
 		newVersionCommand(),
 	)

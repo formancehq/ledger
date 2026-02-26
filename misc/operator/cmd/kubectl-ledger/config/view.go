@@ -14,7 +14,7 @@ func newViewCommand(opts *cmdutil.Options) *cobra.Command {
 	return &cobra.Command{
 		Use:     "view [name]",
 		Aliases: []string{"show"},
-		Short:   "Pretty-print Ledger configuration",
+		Short:   "Pretty-print LedgerService configuration",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runView(cmd, opts, args)
@@ -25,7 +25,7 @@ func newViewCommand(opts *cmdutil.Options) *cobra.Command {
 func runView(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	ctx := cmd.Context()
 
-	name, ns, err := cmdutil.ResolveLedgerName(ctx, opts, args)
+	name, ns, err := cmdutil.ResolveLedgerServiceName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -35,7 +35,7 @@ func runView(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	ledger, err := cmdutil.GetLedger(ctx, crdClient, ns, name)
+	ledger, err := cmdutil.GetLedgerService(ctx, crdClient, ns, name)
 	if err != nil {
 		return fmt.Errorf("getting ledger %q: %w", name, err)
 	}
@@ -50,7 +50,7 @@ func runView(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	cfg := &ledger.Spec.Config
 
 	pterm.Println()
-	pterm.Printf("Configuration for Ledger %s\n", pterm.Bold.Sprint(pterm.Cyan(name)))
+	pterm.Printf("Configuration for LedgerService %s\n", pterm.Bold.Sprint(pterm.Cyan(name)))
 	cmdutil.Separator()
 
 	// Core
@@ -85,7 +85,7 @@ func runView(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	return nil
 }
 
-func coreRows(cfg *ledgerv1alpha1.LedgerConfig) [][]string {
+func coreRows(cfg *ledgerv1alpha1.LedgerServiceConfig) [][]string {
 	debug := "false"
 	if cfg.Debug {
 		debug = pterm.Yellow("true")
@@ -202,7 +202,7 @@ func monitoringRows(m *ledgerv1alpha1.MonitoringConfig) [][]string {
 	return rows
 }
 
-func otherRows(cfg *ledgerv1alpha1.LedgerConfig) [][]string {
+func otherRows(cfg *ledgerv1alpha1.LedgerServiceConfig) [][]string {
 	var rows [][]string
 	if cfg.Health != nil {
 		if cfg.Health.Interval != "" {

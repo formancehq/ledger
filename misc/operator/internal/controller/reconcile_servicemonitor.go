@@ -13,7 +13,7 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
 
-func (r *LedgerReconciler) reconcileServiceMonitor(ctx context.Context, ledger *ledgerv1alpha1.Ledger) error {
+func (r *LedgerServiceReconciler) reconcileServiceMonitor(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	name := ledger.Name
 	gvk := schema.GroupVersionKind{
 		Group:   "monitoring.coreos.com",
@@ -35,7 +35,7 @@ func (r *LedgerReconciler) reconcileServiceMonitor(ctx context.Context, ledger *
 	obj.SetNamespace(ledger.Namespace)
 
 	// Fetch existing to merge
-	_ = r.Client.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, obj) //nolint:errcheck // ignore not-found
+	_ = r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, obj) //nolint:errcheck // ignore not-found
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
 		labels := commonLabels(ledger)

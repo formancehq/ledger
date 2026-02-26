@@ -70,7 +70,7 @@ func appendIfBool(envs []corev1.EnvVar, name string, value *bool) []corev1.EnvVa
 }
 
 // buildEnvVars constructs the complete list of environment variables for the ledger container.
-func buildEnvVars(ledger *ledgerv1alpha1.Ledger) []corev1.EnvVar {
+func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 	spec := &ledger.Spec
 	cfg := &spec.Config
 

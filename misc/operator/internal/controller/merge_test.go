@@ -1,0 +1,235 @@
+package controller
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+
+	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
+)
+
+func TestApplyDefaultsFromRef_EmptySpec(t *testing.T) {
+	t.Parallel()
+
+	boolTrue := true
+	cacheSize := int64(1073741824)
+
+	defaults := &ledgerv1alpha1.LedgerDefaultsSpec{
+		Image: ledgerv1alpha1.ImageSpec{
+			Repository: "custom-repo/ledger",
+			Tag:        "v2.0",
+			PullPolicy: corev1.PullAlways,
+		},
+		ServiceAccount: ledgerv1alpha1.ServiceAccountSpec{
+			Create: &boolTrue,
+			Name:   "shared-sa",
+		},
+		Config: ledgerv1alpha1.LedgerDefaultsConfig{
+			Pebble: &ledgerv1alpha1.PebbleConfig{
+				CacheSize: &cacheSize,
+			},
+			TLS: &ledgerv1alpha1.TLSConfig{
+				Enabled:    true,
+				SecretName: "tls-secret",
+			},
+			Monitoring: &ledgerv1alpha1.MonitoringConfig{
+				ServiceName: "production-ledger",
+			},
+		},
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2000m"),
+				corev1.ResourceMemory: resource.MustParse("4Gi"),
+			},
+		},
+		NodeSelector: map[string]string{"tier": "production"},
+		Tolerations: []corev1.Toleration{
+			{Key: "dedicated", Operator: corev1.TolerationOpEqual, Value: "ledger"},
+		},
+	}
+
+	spec := &ledgerv1alpha1.LedgerServiceSpec{}
+	applyDefaultsFromRef(spec, defaults)
+
+	assert.Equal(t, "custom-repo/ledger", spec.Image.Repository)
+	assert.Equal(t, "v2.0", spec.Image.Tag)
+	assert.Equal(t, corev1.PullAlways, spec.Image.PullPolicy)
+	assert.Equal(t, &boolTrue, spec.ServiceAccount.Create)
+	assert.Equal(t, "shared-sa", spec.ServiceAccount.Name)
+	assert.Equal(t, &cacheSize, spec.Config.Pebble.CacheSize)
+	assert.True(t, spec.Config.TLS.Enabled)
+	assert.Equal(t, "tls-secret", spec.Config.TLS.SecretName)
+	assert.Equal(t, "production-ledger", spec.Config.Monitoring.ServiceName)
+	assert.Equal(t, resource.MustParse("2000m"), spec.Resources.Requests[corev1.ResourceCPU])
+	assert.Equal(t, map[string]string{"tier": "production"}, spec.NodeSelector)
+	assert.Len(t, spec.Tolerations, 1)
+}
+
+func TestApplyDefaultsFromRef_SpecOverridesDefaults(t *testing.T) {
+	t.Parallel()
+
+	cacheSize := int64(1073741824)
+
+	defaults := &ledgerv1alpha1.LedgerDefaultsSpec{
+		Image: ledgerv1alpha1.ImageSpec{
+			Repository: "default-repo/ledger",
+			Tag:        "v1.0",
+			PullPolicy: corev1.PullAlways,
+		},
+		Config: ledgerv1alpha1.LedgerDefaultsConfig{
+			Pebble: &ledgerv1alpha1.PebbleConfig{
+				CacheSize: &cacheSize,
+			},
+			TLS: &ledgerv1alpha1.TLSConfig{
+				Enabled:    true,
+				SecretName: "default-tls",
+			},
+		},
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU: resource.MustParse("1000m"),
+			},
+		},
+		NodeSelector: map[string]string{"tier": "default"},
+		Tolerations: []corev1.Toleration{
+			{Key: "default-key"},
+		},
+	}
+
+	localCacheSize := int64(2147483648)
+	spec := &ledgerv1alpha1.LedgerServiceSpec{
+		Image: ledgerv1alpha1.ImageSpec{
+			Repository: "my-repo/ledger",
+			Tag:        "v3.0",
+		},
+		Config: ledgerv1alpha1.LedgerServiceConfig{
+			Pebble: &ledgerv1alpha1.PebbleConfig{
+				CacheSize: &localCacheSize,
+			},
+		},
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU: resource.MustParse("4000m"),
+			},
+		},
+		NodeSelector: map[string]string{"env": "staging"},
+		Tolerations: []corev1.Toleration{
+			{Key: "local-key"},
+		},
+	}
+
+	applyDefaultsFromRef(spec, defaults)
+
+	// Spec-level values win.
+	assert.Equal(t, "my-repo/ledger", spec.Image.Repository)
+	assert.Equal(t, "v3.0", spec.Image.Tag)
+	// PullPolicy was empty in spec, so default fills it.
+	assert.Equal(t, corev1.PullAlways, spec.Image.PullPolicy)
+	// Pebble is non-nil in spec, whole-block replacement — spec wins.
+	assert.Equal(t, &localCacheSize, spec.Config.Pebble.CacheSize)
+	// TLS was nil in spec, so default fills it.
+	assert.True(t, spec.Config.TLS.Enabled)
+	assert.Equal(t, "default-tls", spec.Config.TLS.SecretName)
+	// Resources: spec Requests non-nil, so spec wins.
+	assert.Equal(t, resource.MustParse("4000m"), spec.Resources.Requests[corev1.ResourceCPU])
+	// Maps/slices: spec non-nil wins.
+	assert.Equal(t, map[string]string{"env": "staging"}, spec.NodeSelector)
+	assert.Len(t, spec.Tolerations, 1)
+	assert.Equal(t, "local-key", spec.Tolerations[0].Key)
+}
+
+func TestApplyDefaultsFromRef_PartialMerge(t *testing.T) {
+	t.Parallel()
+
+	defaults := &ledgerv1alpha1.LedgerDefaultsSpec{
+		Image: ledgerv1alpha1.ImageSpec{
+			Repository: "default-repo",
+		},
+		Config: ledgerv1alpha1.LedgerDefaultsConfig{
+			Health: &ledgerv1alpha1.HealthConfig{
+				Interval: "30s",
+			},
+		},
+	}
+
+	replicas := int32(5)
+	spec := &ledgerv1alpha1.LedgerServiceSpec{
+		Replicas: &replicas,
+		Image: ledgerv1alpha1.ImageSpec{
+			Tag: "custom-tag",
+		},
+	}
+
+	applyDefaultsFromRef(spec, defaults)
+
+	// Repository from defaults, tag from spec, replicas unchanged.
+	assert.Equal(t, "default-repo", spec.Image.Repository)
+	assert.Equal(t, "custom-tag", spec.Image.Tag)
+	assert.Equal(t, int32(5), *spec.Replicas)
+	assert.Equal(t, "30s", spec.Config.Health.Interval)
+}
+
+func TestApplyDefaultsFromRef_NilSubStructs(t *testing.T) {
+	t.Parallel()
+
+	// Empty defaults should not change anything.
+	defaults := &ledgerv1alpha1.LedgerDefaultsSpec{}
+	replicas := int32(3)
+	spec := &ledgerv1alpha1.LedgerServiceSpec{
+		Replicas: &replicas,
+		Image: ledgerv1alpha1.ImageSpec{
+			Repository: "my-repo",
+		},
+	}
+
+	applyDefaultsFromRef(spec, defaults)
+
+	assert.Equal(t, "my-repo", spec.Image.Repository)
+	assert.Equal(t, int32(3), *spec.Replicas)
+	assert.Nil(t, spec.Config.Pebble)
+	assert.Nil(t, spec.Config.TLS)
+	assert.Nil(t, spec.Affinity)
+	assert.Nil(t, spec.NodeSelector)
+}
+
+func TestApplyDefaultsFromRef_ProbeAndSecurityContext(t *testing.T) {
+	t.Parallel()
+
+	defaults := &ledgerv1alpha1.LedgerDefaultsSpec{
+		LivenessProbe: &corev1.Probe{
+			InitialDelaySeconds: 10,
+		},
+		ReadinessProbe: &corev1.Probe{
+			InitialDelaySeconds: 5,
+		},
+		PodSecurityContext: &corev1.PodSecurityContext{
+			RunAsNonRoot: boolPtr(true),
+		},
+		SecurityContext: &corev1.SecurityContext{
+			ReadOnlyRootFilesystem: boolPtr(true),
+		},
+	}
+
+	// Spec has its own liveness probe, other fields nil.
+	spec := &ledgerv1alpha1.LedgerServiceSpec{
+		LivenessProbe: &corev1.Probe{
+			InitialDelaySeconds: 30,
+		},
+	}
+
+	applyDefaultsFromRef(spec, defaults)
+
+	// LivenessProbe from spec wins.
+	assert.Equal(t, int32(30), spec.LivenessProbe.InitialDelaySeconds)
+	// ReadinessProbe from defaults.
+	assert.Equal(t, int32(5), spec.ReadinessProbe.InitialDelaySeconds)
+	// Security contexts from defaults.
+	assert.True(t, *spec.PodSecurityContext.RunAsNonRoot)
+	assert.True(t, *spec.SecurityContext.ReadOnlyRootFilesystem)
+}
+
+func boolPtr(v bool) *bool {
+	return &v
+}

@@ -10,7 +10,7 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
 
-func (r *LedgerReconciler) reconcileIngress(ctx context.Context, ledger *ledgerv1alpha1.Ledger) error {
+func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	name := ledger.Name
 
 	if ledger.Spec.Ingress == nil || !ledger.Spec.Ingress.Enabled {
@@ -47,7 +47,7 @@ func (r *LedgerReconciler) reconcileIngress(ctx context.Context, ledger *ledgerv
 	return err
 }
 
-func buildHTTPIngressRules(ledger *ledgerv1alpha1.Ledger, hosts []ledgerv1alpha1.IngressHost) []networkingv1.IngressRule {
+func buildHTTPIngressRules(ledger *ledgerv1alpha1.LedgerService, hosts []ledgerv1alpha1.IngressHost) []networkingv1.IngressRule {
 	rules := make([]networkingv1.IngressRule, 0, len(hosts))
 	httpPort := serviceHttpPort(ledger)
 
@@ -55,9 +55,10 @@ func buildHTTPIngressRules(ledger *ledgerv1alpha1.Ledger, hosts []ledgerv1alpha1
 		paths := make([]networkingv1.HTTPIngressPath, 0, len(h.Paths))
 		for _, p := range h.Paths {
 			pathType := networkingv1.PathTypePrefix
-			if p.PathType == "Exact" {
+			switch p.PathType {
+			case "Exact":
 				pathType = networkingv1.PathTypeExact
-			} else if p.PathType == "ImplementationSpecific" {
+			case "ImplementationSpecific":
 				pathType = networkingv1.PathTypeImplementationSpecific
 			}
 			paths = append(paths, networkingv1.HTTPIngressPath{

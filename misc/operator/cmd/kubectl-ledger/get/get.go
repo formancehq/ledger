@@ -15,7 +15,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	return &cobra.Command{
 		Use:     "get [name]",
 		Aliases: []string{"describe", "show", "inspect"},
-		Short:   "Show details of a Ledger deployment",
+		Short:   "Show details of a LedgerService deployment",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGet(cmd, opts, args)
@@ -26,7 +26,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	ctx := cmd.Context()
 
-	name, ns, err := cmdutil.ResolveLedgerName(ctx, opts, args)
+	name, ns, err := cmdutil.ResolveLedgerServiceName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -41,11 +41,11 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		return fmt.Errorf("creating clientset: %w", err)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching Ledger details...")
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerService details...")
 
-	ledger, err := cmdutil.GetLedger(ctx, crdClient, ns, name)
+	ledger, err := cmdutil.GetLedgerService(ctx, crdClient, ns, name)
 	if err != nil {
-		spinner.Fail("Failed to get Ledger")
+		spinner.Fail("Failed to get LedgerService")
 		return fmt.Errorf("getting ledger %q: %w", name, err)
 	}
 
@@ -82,7 +82,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	)
 
 	// Pods section
-	pods, err := cmdutil.LedgerPods(ctx, cs, ns, name)
+	pods, err := cmdutil.LedgerServicePods(ctx, cs, ns, name)
 	if err != nil {
 		return fmt.Errorf("listing pods: %w", err)
 	}
@@ -105,7 +105,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	}
 
 	// PVCs section
-	pvcs, err := cmdutil.LedgerPVCs(ctx, cs, ns, name)
+	pvcs, err := cmdutil.LedgerServicePVCs(ctx, cs, ns, name)
 	if err != nil {
 		return fmt.Errorf("listing PVCs: %w", err)
 	}

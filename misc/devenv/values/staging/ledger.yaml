@@ -113,11 +113,11 @@ persistence:
 replicas: 3
 resources:
   limits:
-    cpu: 8000m
-    memory: 8192Mi
+    cpu: 2000m
+    memory: 2048Mi
   requests:
-    cpu: 8000m
-    memory: 8192Mi
+    cpu: 2000m
+    memory: 2048Mi
 service:
   grpcPort: 8888
   httpPort: 9000

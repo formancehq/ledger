@@ -16,7 +16,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "scale [name]",
-		Short: "Scale a Ledger deployment",
+		Short: "Scale a LedgerService deployment",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runScale(cmd, opts, &replicas, args)
@@ -31,7 +31,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 func runScale(cmd *cobra.Command, opts *cmdutil.Options, replicas *int32, args []string) error {
 	ctx := cmd.Context()
 
-	name, ns, err := cmdutil.ResolveLedgerName(ctx, opts, args)
+	name, ns, err := cmdutil.ResolveLedgerServiceName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -41,7 +41,7 @@ func runScale(cmd *cobra.Command, opts *cmdutil.Options, replicas *int32, args [
 		return fmt.Errorf("creating client: %w", err)
 	}
 
-	ledger, err := cmdutil.GetLedger(ctx, crdClient, ns, name)
+	ledger, err := cmdutil.GetLedgerService(ctx, crdClient, ns, name)
 	if err != nil {
 		return fmt.Errorf("getting ledger %q: %w", name, err)
 	}
@@ -68,7 +68,7 @@ func runScale(cmd *cobra.Command, opts *cmdutil.Options, replicas *int32, args [
 	}
 
 	if newReplicas == currentReplicas {
-		pterm.Info.Printfln("Ledger %s is already at %d replicas", pterm.Cyan(name), currentReplicas)
+		pterm.Info.Printfln("LedgerService %s is already at %d replicas", pterm.Cyan(name), currentReplicas)
 		return nil
 	}
 
@@ -79,13 +79,13 @@ func runScale(cmd *cobra.Command, opts *cmdutil.Options, replicas *int32, args [
 	patch := client.MergeFrom(ledger.DeepCopy())
 	ledger.Spec.Replicas = &newReplicas
 
-	spinner, _ := pterm.DefaultSpinner.Start("Scaling Ledger...")
+	spinner, _ := pterm.DefaultSpinner.Start("Scaling LedgerService...")
 
 	if err := crdClient.Patch(ctx, ledger, patch); err != nil {
-		spinner.Fail("Failed to scale Ledger")
+		spinner.Fail("Failed to scale LedgerService")
 		return fmt.Errorf("scaling ledger %q: %w", name, err)
 	}
 
-	spinner.Success(fmt.Sprintf("Ledger %s scaled to %d replicas", pterm.Cyan(name), newReplicas))
+	spinner.Success(fmt.Sprintf("LedgerService %s scaled to %d replicas", pterm.Cyan(name), newReplicas))
 	return nil
 }

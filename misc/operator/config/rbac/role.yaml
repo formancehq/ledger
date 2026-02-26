@@ -44,7 +44,15 @@ rules:
 - apiGroups:
   - ledger.formance.com
   resources:
-  - ledgers
+  - ledgerdefaults
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ledger.formance.com
+  resources:
+  - ledgerservices
   verbs:
   - create
   - delete
@@ -56,13 +64,13 @@ rules:
 - apiGroups:
   - ledger.formance.com
   resources:
-  - ledgers/finalizers
+  - ledgerservices/finalizers
   verbs:
   - update
 - apiGroups:
   - ledger.formance.com
   resources:
-  - ledgers/status
+  - ledgerservices/status
   verbs:
   - get
   - patch

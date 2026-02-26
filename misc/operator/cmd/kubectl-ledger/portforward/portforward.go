@@ -28,7 +28,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "port-forward [name]",
 		Aliases: []string{"pf"},
-		Short:   "Port-forward to a Ledger deployment",
+		Short:   "Port-forward to a LedgerService deployment",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runPortForward(cmd, opts, &f, args)
@@ -45,7 +45,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 func runPortForward(cmd *cobra.Command, opts *cmdutil.Options, f *portForwardFlags, args []string) error {
 	ctx := cmd.Context()
 
-	name, ns, err := cmdutil.ResolveLedgerName(ctx, opts, args)
+	name, ns, err := cmdutil.ResolveLedgerServiceName(ctx, opts, args)
 	if err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func runPortForward(cmd *cobra.Command, opts *cmdutil.Options, f *portForwardFla
 		return fmt.Errorf("creating clientset: %w", err)
 	}
 
-	ledger, err := cmdutil.GetLedger(ctx, crdClient, ns, name)
+	ledger, err := cmdutil.GetLedgerService(ctx, crdClient, ns, name)
 	if err != nil {
 		return fmt.Errorf("getting ledger %q: %w", name, err)
 	}

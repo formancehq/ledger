@@ -1,0 +1,39 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerDefaults
+metadata:
+  name: production
+spec:
+  image:
+    repository: ghcr.io/formancehq/ledger-v3-poc
+    tag: latest
+    pullPolicy: IfNotPresent
+  config:
+    pebble:
+      memTableSize: 268435456
+      cacheSize: 1073741824
+    monitoring:
+      serviceName: ledger-v3-poc
+      traces:
+        enabled: true
+        exporter: otlp
+      metrics:
+        enabled: true
+        exporter: otlp
+    tls:
+      enabled: true
+      secretName: ledger-tls
+  resources:
+    requests:
+      cpu: "4000m"
+      memory: "2048Mi"
+    limits:
+      cpu: "4000m"
+      memory: "2048Mi"
+  podAntiAffinity:
+    enabled: true
+    type: soft
+    weight: 100
+    topologyKey: kubernetes.io/hostname
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2

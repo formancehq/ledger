@@ -22,13 +22,14 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List Ledger deployments",
+		Short:   "List LedgerService deployments",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runList(cmd, opts, &f)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&f.allNamespaces, "all-namespaces", "A", false, "List across all namespaces")
+	cmd.Flags().BoolVarP(&f.allNamespaces, "all", "a", false, "Alias for --all-namespaces")
 
 	return cmd
 }
@@ -49,11 +50,11 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options, f *listFlags) error {
 		}
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching Ledger resources...")
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerService resources...")
 
-	ledgers, err := cmdutil.ListLedgers(ctx, crdClient, ns)
+	ledgers, err := cmdutil.ListLedgerServices(ctx, crdClient, ns)
 	if err != nil {
-		spinner.Fail("Failed to list Ledger resources")
+		spinner.Fail("Failed to list LedgerService resources")
 		return fmt.Errorf("listing ledgers: %w", err)
 	}
 
@@ -69,7 +70,7 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options, f *listFlags) error {
 	}
 }
 
-func renderTable(ledgers *ledgerv1alpha1.LedgerList, showNamespace bool) error {
+func renderTable(ledgers *ledgerv1alpha1.LedgerServiceList, showNamespace bool) error {
 	header := []string{"NAME", "REPLICAS", "PHASE", "IMAGE", "AGE"}
 	if showNamespace {
 		header = append([]string{"NAMESPACE"}, header...)
@@ -91,7 +92,7 @@ func renderTable(ledgers *ledgerv1alpha1.LedgerList, showNamespace bool) error {
 	}
 
 	if len(rows) == 0 {
-		pterm.Info.Println("No Ledger resources found.")
+		pterm.Info.Println("No LedgerService resources found.")
 		pterm.Println(pterm.Gray("Create one with: kubectl ledger create"))
 		return nil
 	}

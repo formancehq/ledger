@@ -11,7 +11,7 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
 
-func (r *LedgerReconciler) reconcileGrpcService(ctx context.Context, ledger *ledgerv1alpha1.Ledger) error {
+func (r *LedgerServiceReconciler) reconcileGrpcService(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	name := ledger.Name + "-grpc"
 
 	if ledger.Spec.IngressGrpc == nil || !ledger.Spec.IngressGrpc.Enabled {

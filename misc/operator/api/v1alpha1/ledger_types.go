@@ -14,26 +14,32 @@ import (
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Ledger is the Schema for the ledgers API.
-type Ledger struct {
+// LedgerService is the Schema for the ledgers API.
+type LedgerService struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   LedgerSpec   `json:"spec,omitempty"`
-	Status LedgerStatus `json:"status,omitempty"`
+	Spec   LedgerServiceSpec   `json:"spec,omitempty"`
+	Status LedgerServiceStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// LedgerList contains a list of Ledger.
-type LedgerList struct {
+// LedgerServiceList contains a list of LedgerService.
+type LedgerServiceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Ledger `json:"items"`
+	Items           []LedgerService `json:"items"`
 }
 
-// LedgerSpec defines the desired state of Ledger.
-type LedgerSpec struct {
+// LedgerServiceSpec defines the desired state of LedgerService.
+type LedgerServiceSpec struct {
+	// DefaultsRef is the name of a cluster-scoped LedgerDefaults resource
+	// whose values are used as defaults for this LedgerService. LedgerService-level values
+	// take precedence over defaults.
+	// +optional
+	DefaultsRef string `json:"defaultsRef,omitempty"`
+
 	// Image configuration for the ledger container.
 	// +optional
 	Image ImageSpec `json:"image,omitempty"`
@@ -62,7 +68,7 @@ type LedgerSpec struct {
 
 	// Config holds the application configuration.
 	// +optional
-	Config LedgerConfig `json:"config,omitempty"`
+	Config LedgerServiceConfig `json:"config,omitempty"`
 
 	// Service configuration for the ClusterIP service.
 	// +optional
@@ -126,27 +132,26 @@ type LedgerSpec struct {
 }
 
 // ImageSpec defines container image configuration.
+// Defaults are applied by the controller (not the API server) so that
+// LedgerDefaults inheritance works correctly.
 type ImageSpec struct {
 	// Repository is the container image repository.
-	// +kubebuilder:default="ghcr.io/formancehq/ledger-v3-poc"
 	// +optional
 	Repository string `json:"repository,omitempty"`
 
 	// Tag is the container image tag.
-	// +kubebuilder:default="latest"
 	// +optional
 	Tag string `json:"tag,omitempty"`
 
 	// PullPolicy for the container image.
-	// +kubebuilder:default="IfNotPresent"
 	// +optional
 	PullPolicy corev1.PullPolicy `json:"pullPolicy,omitempty"`
 }
 
 // ServiceAccountSpec defines service account configuration.
+// Defaults are applied by the controller so that LedgerDefaults inheritance works.
 type ServiceAccountSpec struct {
 	// Create specifies whether to create a service account.
-	// +kubebuilder:default=true
 	// +optional
 	Create *bool `json:"create,omitempty"`
 
@@ -159,8 +164,8 @@ type ServiceAccountSpec struct {
 	Name string `json:"name,omitempty"`
 }
 
-// LedgerConfig holds application configuration mapped to environment variables.
-type LedgerConfig struct {
+// LedgerServiceConfig holds application configuration mapped to environment variables.
+type LedgerServiceConfig struct {
 	// ClusterID for inter-node communication validation.
 	// +kubebuilder:default="default"
 	// +optional
@@ -907,9 +912,9 @@ type ServiceMonitorSpec struct {
 	MetricRelabelings []runtime.RawExtension `json:"metricRelabelings,omitempty"`
 }
 
-// LedgerStatus defines the observed state of Ledger.
-type LedgerStatus struct {
-	// Phase of the Ledger: Pending, Running, Degraded.
+// LedgerServiceStatus defines the observed state of LedgerService.
+type LedgerServiceStatus struct {
+	// Phase of the LedgerService: Pending, Running, Degraded.
 	// +optional
 	Phase string `json:"phase,omitempty"`
 
@@ -927,5 +932,5 @@ type LedgerStatus struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&Ledger{}, &LedgerList{})
+	SchemeBuilder.Register(&LedgerService{}, &LedgerServiceList{})
 }

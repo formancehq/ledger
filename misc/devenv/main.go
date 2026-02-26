@@ -12,9 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws"
-	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/iam"
-	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/s3"
 	"github.com/pulumi/pulumi-docker-build/sdk/go/dockerbuild"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apiextensions"
@@ -88,9 +85,9 @@ func main() {
 		}
 
 		// Helper function to read config objects from Pulumi config or YAML files
-		getConfigObject := func(key string) (map[string]interface{}, error) {
+		getConfigObject := func(key string) (map[string]any, error) {
 			// First, try to get the config object
-			var configObj map[string]interface{}
+			var configObj map[string]any
 			if err := cfg.GetObject(key, &configObj); err != nil {
 				return nil, fmt.Errorf("failed to get config object %s: %w", key, err)
 			}
@@ -105,7 +102,7 @@ func main() {
 					return nil, fmt.Errorf("failed to read values file %s: %w", fullPath, err)
 				}
 
-				var result map[string]interface{}
+				var result map[string]any
 				if err := yaml.Unmarshal(data, &result); err != nil {
 					return nil, fmt.Errorf("failed to parse YAML file %s: %w", fullPath, err)
 				}
@@ -325,7 +322,7 @@ func main() {
 				}
 
 				// Validate JSON by parsing it
-				var jsonData map[string]interface{}
+				var jsonData map[string]any
 				if err := json.Unmarshal(data, &jsonData); err != nil {
 					return nil, fmt.Errorf("failed to parse JSON file %s: %w", filePath, err)
 				}
@@ -435,7 +432,7 @@ func main() {
 			pyroscopeValues, err := getConfigObject("pyroscope")
 			if err != nil {
 				// Pyroscope can work with default values
-				pyroscopeValues = make(map[string]interface{})
+				pyroscopeValues = make(map[string]any)
 			}
 			pyroscopeDeps := []pulumi.Resource{namespace, loki}
 			pyroscope, err = helm.NewRelease(ctx, "pyroscope", &helm.ReleaseArgs{
@@ -589,12 +586,19 @@ func main() {
 			return fmt.Errorf("failed to deploy Grafana: %w", err)
 		}
 
-		// Apply Ledger CRD
-		ledgerCRD, err := k8syaml.NewConfigFile(ctx, "ledger-crd", &k8syaml.ConfigFileArgs{
-			File: "../operator/config/crd/bases/ledger.formance.com_ledgers.yaml",
+		// Apply Ledger CRDs (LedgerService + LedgerDefaults)
+		ledgerServiceCRD, err := k8syaml.NewConfigFile(ctx, "ledgerservice-crd", &k8syaml.ConfigFileArgs{
+			File: "../operator/config/crd/bases/ledger.formance.com_ledgerservices.yaml",
 		}, pulumi.Provider(k8sProvider))
 		if err != nil {
-			return fmt.Errorf("failed to apply Ledger CRD: %w", err)
+			return fmt.Errorf("failed to apply LedgerService CRD: %w", err)
+		}
+
+		ledgerDefaultsCRD, err := k8syaml.NewConfigFile(ctx, "ledgerdefaults-crd", &k8syaml.ConfigFileArgs{
+			File: "../operator/config/crd/bases/ledger.formance.com_ledgerdefaults.yaml",
+		}, pulumi.Provider(k8sProvider))
+		if err != nil {
+			return fmt.Errorf("failed to apply LedgerDefaults CRD: %w", err)
 		}
 
 		// Deploy ledger operator via its Helm chart
@@ -613,204 +617,60 @@ func main() {
 			},
 			ForceUpdate: pulumi.Bool(true),
 		},
-			pulumi.DependsOn([]pulumi.Resource{namespace, ledgerCRD, ledgerOperatorImage}),
+			pulumi.DependsOn([]pulumi.Resource{namespace, ledgerServiceCRD, ledgerDefaultsCRD, ledgerOperatorImage}),
 			pulumi.Provider(k8sProvider),
 		)
 		if err != nil {
 			return fmt.Errorf("failed to deploy ledger operator: %w", err)
 		}
 
-		// Deploy Ledger via CR
+		// Deploy LedgerDefaults CR from the ledger values file.
+		// Only the tooling (CRDs, operator, defaults) is deployed here;
+		// LedgerService instances are created via kubectl-ledger CLI.
 		ledgerSpec, err := getConfigObject("ledger")
 		if err != nil {
 			return fmt.Errorf("failed to read Ledger spec: %w", err)
 		}
+
+		// Inject the built image into defaults so new LedgerServices inherit it.
 		ledgerSpec["image"] = map[string]any{
 			"repository": pulumi.Sprintf("%s/formancehq/ledger-exp", pullRegistry),
 			"tag":        pulumi.Sprintf("latest@%s", dockerImage.Digest),
 		}
 
-		// Add build version to Pyroscope tags for profile comparison
-		if configSection, ok := ledgerSpec["config"].(map[string]interface{}); ok {
-			if monitoring, ok := configSection["monitoring"].(map[string]interface{}); ok {
-				if pyroscope, ok := monitoring["pyroscope"].(map[string]interface{}); ok {
+		// Add build version to Pyroscope tags for profile comparison.
+		if configSection, ok := ledgerSpec["config"].(map[string]any); ok {
+			if monitoring, ok := configSection["monitoring"].(map[string]any); ok {
+				if pyroscopeCfg, ok := monitoring["pyroscope"].(map[string]any); ok {
 					existingTags := ""
-					if tags, ok := pyroscope["tags"].(string); ok && tags != "" {
+					if tags, ok := pyroscopeCfg["tags"].(string); ok && tags != "" {
 						existingTags = tags + ","
 					}
-					pyroscope["tags"] = fmt.Sprintf("%sversion=%s", existingTags, buildVersion)
+					pyroscopeCfg["tags"] = fmt.Sprintf("%sversion=%s", existingTags, buildVersion)
 				}
 			}
 		}
-		// Cold storage: optionally create an S3 bucket and inject config into the CR spec
-		ledgerDeps := []pulumi.Resource{namespace, otlp, dockerImage, ledgerOperator}
-		if getConfigBool("coldStorage-enabled", false) {
-			coldStorageRegion := cfg.Get("coldStorage-s3-region")
-			if coldStorageRegion == "" {
-				coldStorageRegion = "eu-west-1"
-			}
 
-			awsProvider, err := aws.NewProvider(ctx, "aws-cold-storage", &aws.ProviderArgs{
-				Region: pulumi.String(coldStorageRegion),
-			})
-			if err != nil {
-				return fmt.Errorf("failed to create AWS provider for cold storage: %w", err)
-			}
+		defaultsSpec := extractLedgerDefaults(ledgerSpec)
 
-			bucketName := fmt.Sprintf("ledger-exp-cold-storage-%s", ctx.Stack())
-			coldBucket, err := s3.NewBucketV2(ctx, "cold-storage-bucket", &s3.BucketV2Args{
-				Bucket: pulumi.String(bucketName),
-			}, pulumi.Provider(awsProvider))
-			if err != nil {
-				return fmt.Errorf("failed to create cold storage S3 bucket: %w", err)
-			}
-
-			// Ensure the config.coldStorage section exists in ledger spec
-			configMap, ok := ledgerSpec["config"].(map[string]interface{})
-			if !ok {
-				configMap = make(map[string]interface{})
-				ledgerSpec["config"] = configMap
-			}
-			configMap["coldStorage"] = map[string]interface{}{
-				"driver": "s3",
-				"s3": map[string]interface{}{
-					"bucket": coldBucket.Bucket,
-					"region": coldStorageRegion,
-				},
-			}
-
-			// Create IAM role for IRSA and inject annotation into the CR spec
-			// so the operator-managed ServiceAccount gets the IRSA annotation.
-			oidcIssuer := cfg.Get("coldStorage-eks-oidc-issuer")
-			if oidcIssuer != "" {
-				// Strip https:// prefix if present
-				oidcIssuer = strings.TrimPrefix(oidcIssuer, "https://")
-
-				// The SA name is the CR name (operator default)
-				ledgerSAName := "ledger-exp"
-				if saSpec, ok := ledgerSpec["serviceAccount"].(map[string]interface{}); ok {
-					if name, ok := saSpec["name"].(string); ok && name != "" {
-						ledgerSAName = name
-					}
-				}
-
-				// Get AWS account ID
-				callerIdentity, err := aws.GetCallerIdentity(ctx, &aws.GetCallerIdentityArgs{}, pulumi.Provider(awsProvider))
-				if err != nil {
-					return fmt.Errorf("failed to get AWS caller identity: %w", err)
-				}
-
-				// IAM role with OIDC trust policy scoped to this namespace/SA
-				oidcProviderARN := fmt.Sprintf("arn:aws:iam::%s:oidc-provider/%s", callerIdentity.AccountId, oidcIssuer)
-				trustPolicy, err := json.Marshal(map[string]any{
-					"Version": "2012-10-17",
-					"Statement": []map[string]any{{
-						"Effect":    "Allow",
-						"Principal": map[string]any{"Federated": oidcProviderARN},
-						"Action":    "sts:AssumeRoleWithWebIdentity",
-						"Condition": map[string]any{
-							"StringEquals": map[string]string{
-								oidcIssuer + ":sub": fmt.Sprintf("system:serviceaccount:%s:%s", namespaceName, ledgerSAName),
-								oidcIssuer + ":aud": "sts.amazonaws.com",
-							},
-						},
-					}},
-				})
-				if err != nil {
-					return fmt.Errorf("failed to marshal trust policy: %w", err)
-				}
-
-				coldStorageRole, err := iam.NewRole(ctx, "cold-storage-role", &iam.RoleArgs{
-					Name:             pulumi.Sprintf("ledger-exp-%s-cold-storage", ctx.Stack()),
-					AssumeRolePolicy: pulumi.String(trustPolicy),
-				}, pulumi.Provider(awsProvider))
-				if err != nil {
-					return fmt.Errorf("failed to create cold storage IAM role: %w", err)
-				}
-
-				// Inline S3 policy scoped to the cold storage bucket
-				s3Policy, err := json.Marshal(map[string]any{
-					"Version": "2012-10-17",
-					"Statement": []map[string]any{{
-						"Effect": "Allow",
-						"Action": []string{
-							"s3:GetObject",
-							"s3:PutObject",
-							"s3:DeleteObject",
-							"s3:ListBucket",
-						},
-						"Resource": []string{
-							fmt.Sprintf("arn:aws:s3:::%s", bucketName),
-							fmt.Sprintf("arn:aws:s3:::%s/*", bucketName),
-						},
-					}},
-				})
-				if err != nil {
-					return fmt.Errorf("failed to marshal S3 policy: %w", err)
-				}
-
-				_, err = iam.NewRolePolicy(ctx, "cold-storage-s3-policy", &iam.RolePolicyArgs{
-					Role:   coldStorageRole.Name,
-					Policy: pulumi.String(s3Policy),
-				}, pulumi.Provider(awsProvider))
-				if err != nil {
-					return fmt.Errorf("failed to create cold storage S3 policy: %w", err)
-				}
-
-				// Inject IRSA annotation into the CR spec so the operator
-				// creates the ServiceAccount with the correct role ARN.
-				saSpec, ok := ledgerSpec["serviceAccount"].(map[string]interface{})
-				if !ok {
-					saSpec = make(map[string]interface{})
-					ledgerSpec["serviceAccount"] = saSpec
-				}
-				annotations, ok := saSpec["annotations"].(map[string]interface{})
-				if !ok {
-					annotations = make(map[string]interface{})
-					saSpec["annotations"] = annotations
-				}
-				annotations["eks.amazonaws.com/role-arn"] = coldStorageRole.Arn
-
-				ctx.Export("coldStorageRoleArn", coldStorageRole.Arn)
-			}
-
-			ledgerDeps = append(ledgerDeps, coldBucket)
-			ctx.Export("coldStorageBucket", coldBucket.Bucket)
-		}
-
-		// Ensure the operator manages the ServiceAccount (override any stale SSA field).
-		saSpec, ok := ledgerSpec["serviceAccount"].(map[string]interface{})
-		if !ok {
-			saSpec = make(map[string]interface{})
-			ledgerSpec["serviceAccount"] = saSpec
-		}
-		if _, exists := saSpec["create"]; !exists {
-			saSpec["create"] = true
-		}
-		if _, exists := saSpec["name"]; !exists {
-			saSpec["name"] = ""
-		}
-
-		// Create Ledger custom resource (replaces the old Helm release)
-		ledgerCR, err := apiextensions.NewCustomResource(ctx, "ledger", &apiextensions.CustomResourceArgs{
+		_, err = apiextensions.NewCustomResource(ctx, "ledger-defaults", &apiextensions.CustomResourceArgs{
 			ApiVersion: pulumi.String("ledger.formance.com/v1alpha1"),
-			Kind:       pulumi.String("Ledger"),
+			Kind:       pulumi.String("LedgerDefaults"),
 			Metadata: &metav1.ObjectMetaArgs{
-				Name:      pulumi.String("ledger-exp"),
-				Namespace: namespace.Metadata.Name(),
+				Name: pulumi.String("default"),
 				Annotations: pulumi.StringMap{
 					"pulumi.com/patchForce": pulumi.String("true"),
 				},
 			},
 			OtherFields: kubernetes.UntypedArgs{
-				"spec": ledgerSpec,
+				"spec": defaultsSpec,
 			},
 		},
-			pulumi.DependsOn(ledgerDeps),
+			pulumi.DependsOn([]pulumi.Resource{ledgerDefaultsCRD, ledgerOperator}),
 			pulumi.Provider(k8sProvider),
 		)
 		if err != nil {
-			return fmt.Errorf("failed to create Ledger CR: %w", err)
+			return fmt.Errorf("failed to create LedgerDefaults CR: %w", err)
 		}
 
 		// Deploy k6-operator (optional, enabled by default)
@@ -819,7 +679,7 @@ func main() {
 			k6OperatorValues, err := getConfigObject("k6operator")
 			if err != nil {
 				// k6-operator can work with default values, so we use empty map if not configured
-				k6OperatorValues = make(map[string]interface{})
+				k6OperatorValues = make(map[string]any)
 			}
 			k6Operator, err = helm.NewRelease(ctx, "k6-operator", &helm.ReleaseArgs{
 				Name:           pulumi.String("k6-operator"),
@@ -842,7 +702,7 @@ func main() {
 		if getConfigBool("benchmarkOperator-enabled", false) {
 			benchmarkOperatorValues, err := getConfigObject("benchmarkOperator")
 			if err != nil {
-				benchmarkOperatorValues = make(map[string]interface{})
+				benchmarkOperatorValues = make(map[string]any)
 			}
 			var imageConfiguration map[string]any
 			if benchmarkOperatorValues["image"] == nil {
@@ -890,11 +750,77 @@ func main() {
 		ctx.Export("otlpRelease", otlp.Name)
 		ctx.Export("grafanaRelease", grafana.Name)
 		ctx.Export("ledgerOperatorRelease", ledgerOperator.Name)
-		ctx.Export("ledgerCR", ledgerCR.Metadata.Name())
 		if pyroscope != nil {
 			ctx.Export("pyroscopeRelease", pyroscope.Name)
 		}
 
 		return nil
 	})
+}
+
+// extractLedgerDefaults moves LedgerDefaultsSpec-eligible fields out of
+// ledgerSpec into a new defaults map. Fields that are extracted are deleted
+// from ledgerSpec so that only instance-specific values remain.
+//
+// Top-level fields: image, imagePullSecrets, serviceAccount, resources,
+// nodeSelector, tolerations, affinity, podAntiAffinity, podDisruptionBudget,
+// serviceMonitor, livenessProbe, readinessProbe, podSecurityContext, securityContext.
+//
+// Config sub-fields: pebble, raft, health, coldStorage, tls, responseSigning, monitoring.
+func extractLedgerDefaults(ledgerSpec map[string]any) map[string]any {
+	defaultsSpec := make(map[string]any)
+
+	// Top-level fields that belong in LedgerDefaultsSpec.
+	topLevelKeys := []string{
+		"image",
+		"imagePullSecrets",
+		"serviceAccount",
+		"resources",
+		"nodeSelector",
+		"tolerations",
+		"affinity",
+		"podAntiAffinity",
+		"podDisruptionBudget",
+		"serviceMonitor",
+		"livenessProbe",
+		"readinessProbe",
+		"podSecurityContext",
+		"securityContext",
+	}
+
+	for _, key := range topLevelKeys {
+		if val, ok := ledgerSpec[key]; ok {
+			defaultsSpec[key] = val
+			delete(ledgerSpec, key)
+		}
+	}
+
+	// Config sub-fields that belong in LedgerDefaultsConfig.
+	configKeys := []string{
+		"pebble",
+		"raft",
+		"health",
+		"coldStorage",
+		"tls",
+		"responseSigning",
+		"monitoring",
+	}
+
+	configMap, hasConfig := ledgerSpec["config"].(map[string]any)
+	if hasConfig {
+		defaultsConfig := make(map[string]any)
+
+		for _, key := range configKeys {
+			if val, ok := configMap[key]; ok {
+				defaultsConfig[key] = val
+				delete(configMap, key)
+			}
+		}
+
+		if len(defaultsConfig) > 0 {
+			defaultsSpec["config"] = defaultsConfig
+		}
+	}
+
+	return defaultsSpec
 }

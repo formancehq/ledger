@@ -11,43 +11,67 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
 
-// LedgerReconciler reconciles a Ledger object.
-type LedgerReconciler struct {
+// LedgerServiceReconciler reconciles a LedgerService object.
+type LedgerServiceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgers,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgers/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgers/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerdefaults,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=traefik.io,resources=ingressroutes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=elbv2.k8s.aws,resources=targetgroupbindings,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile handles the reconciliation loop for Ledger resources.
-func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+// Reconcile handles the reconciliation loop for LedgerService resources.
+func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Fetch the Ledger CR
-	ledger := &ledgerv1alpha1.Ledger{}
+	// Fetch the LedgerService CR
+	ledger := &ledgerv1alpha1.LedgerService{}
 	if err := r.Get(ctx, req.NamespacedName, ledger); err != nil {
 		return ctrl.Result{}, ignoreNotFound(err)
 	}
 
-	// Apply defaults
+	// Apply defaults from referenced LedgerDefaults (if any).
+	if ledger.Spec.DefaultsRef != "" {
+		if err := r.applyLedgerDefaults(ctx, ledger); err != nil {
+			meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+				Type:               "DefaultsResolved",
+				Status:             metav1.ConditionFalse,
+				Reason:             "ResolveFailed",
+				Message:            err.Error(),
+				ObservedGeneration: ledger.Generation,
+			})
+			ledger.Status.Phase = "Degraded"
+			_ = r.Status().Update(ctx, ledger)
+			return ctrl.Result{}, nil // Don't requeue; wait for LedgerDefaults to appear.
+		}
+		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+			Type:               "DefaultsResolved",
+			Status:             metav1.ConditionTrue,
+			Reason:             "Resolved",
+			ObservedGeneration: ledger.Generation,
+		})
+	}
+
+	// Apply hardcoded defaults (fills remaining zero-value fields).
 	applyDefaults(ledger)
 
 	// Validate spec — report errors via status condition instead of retrying.
@@ -78,7 +102,7 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// Reconcile sub-resources in order
 	reconcilers := []struct {
 		name string
-		fn   func(context.Context, *ledgerv1alpha1.Ledger) error
+		fn   func(context.Context, *ledgerv1alpha1.LedgerService) error
 	}{
 		{"ServiceAccount", r.reconcileServiceAccount},
 		{"HeadlessService", r.reconcileHeadlessService},
@@ -86,7 +110,6 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		{"GrpcService", r.reconcileGrpcService},
 		{"Ingress", r.reconcileIngress},
 		{"IngressGrpc", r.reconcileIngressGrpc},
-		{"IngressRouteGrpc", r.reconcileIngressRouteGrpc},
 		{"PDB", r.reconcilePDB},
 		{"ServiceMonitor", r.reconcileServiceMonitor},
 		{"TargetGroupBinding", r.reconcileTargetGroupBinding},
@@ -115,20 +138,59 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *LedgerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *LedgerServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&ledgerv1alpha1.Ledger{}).
+		For(&ledgerv1alpha1.LedgerService{}).
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ServiceAccount{}).
 		Owns(&networkingv1.Ingress{}).
 		Owns(&policyv1.PodDisruptionBudget{}).
+		Watches(&ledgerv1alpha1.LedgerDefaults{}, handler.EnqueueRequestsFromMapFunc(r.ledgerDefaultsToLedgerServices)).
 		Complete(r)
 }
 
-func (r *LedgerReconciler) updateStatus(ctx context.Context, ledger *ledgerv1alpha1.Ledger) error {
+// applyLedgerDefaults fetches the referenced LedgerDefaults and merges its
+// values into the LedgerService spec. Returns an error if the LedgerDefaults cannot
+// be found.
+func (r *LedgerServiceReconciler) applyLedgerDefaults(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
+	defaults := &ledgerv1alpha1.LedgerDefaults{}
+	// LedgerDefaults is cluster-scoped, so no namespace.
+	if err := r.Get(ctx, types.NamespacedName{Name: ledger.Spec.DefaultsRef}, defaults); err != nil {
+		return fmt.Errorf("fetching LedgerDefaults %q: %w", ledger.Spec.DefaultsRef, err)
+	}
+	applyDefaultsFromRef(&ledger.Spec, &defaults.Spec)
+	return nil
+}
+
+// ledgerDefaultsToLedgerServices maps a LedgerDefaults change to all LedgerServices that
+// reference it via spec.defaultsRef, triggering re-reconciliation.
+func (r *LedgerServiceReconciler) ledgerDefaultsToLedgerServices(ctx context.Context, obj client.Object) []ctrl.Request {
+	defaultsName := obj.GetName()
+
+	var ledgers ledgerv1alpha1.LedgerServiceList
+	if err := r.List(ctx, &ledgers); err != nil {
+		log.FromContext(ctx).Error(err, "failed to list LedgerServices for LedgerDefaults mapping")
+		return nil
+	}
+
+	var requests []ctrl.Request
+	for i := range ledgers.Items {
+		if ledgers.Items[i].Spec.DefaultsRef == defaultsName {
+			requests = append(requests, ctrl.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      ledgers.Items[i].Name,
+					Namespace: ledgers.Items[i].Namespace,
+				},
+			})
+		}
+	}
+	return requests
+}
+
+func (r *LedgerServiceReconciler) updateStatus(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	// Re-fetch the latest version to avoid conflict on status update.
-	latest := &ledgerv1alpha1.Ledger{}
+	latest := &ledgerv1alpha1.LedgerService{}
 	if err := r.Get(ctx, types.NamespacedName{
 		Name:      ledger.Name,
 		Namespace: ledger.Namespace,
@@ -190,10 +252,21 @@ func (r *LedgerReconciler) updateStatus(ctx context.Context, ledger *ledgerv1alp
 }
 
 // deleteIfExists deletes a resource if it exists, ignoring not-found errors.
-func (r *LedgerReconciler) deleteIfExists(ctx context.Context, obj client.Object) error {
+func (r *LedgerServiceReconciler) deleteIfExists(ctx context.Context, obj client.Object) error {
 	err := r.Get(ctx, types.NamespacedName{
 		Name:      obj.GetName(),
 		Namespace: obj.GetNamespace(),
+	}, obj)
+	if err != nil {
+		return ignoreNotFound(err)
+	}
+	return r.Delete(ctx, obj)
+}
+
+func (r *LedgerServiceReconciler) deleteUnstructuredIfExists(ctx context.Context, obj *unstructured.Unstructured) error {
+	err := r.Get(ctx, types.NamespacedName{
+		Namespace: obj.GetNamespace(),
+		Name:      obj.GetName(),
 	}, obj)
 	if err != nil {
 		return ignoreNotFound(err)
@@ -210,7 +283,7 @@ func ignoreNotFound(err error) error {
 }
 
 // applyDefaults fills in zero-value fields with sensible defaults.
-func applyDefaults(ledger *ledgerv1alpha1.Ledger) {
+func applyDefaults(ledger *ledgerv1alpha1.LedgerService) {
 	if ledger.Spec.Image.Repository == "" {
 		ledger.Spec.Image.Repository = "ghcr.io/formancehq/ledger-v3-poc"
 	}
@@ -241,6 +314,10 @@ func applyDefaults(ledger *ledgerv1alpha1.Ledger) {
 	}
 	if ledger.Spec.Config.ClusterID == "" {
 		ledger.Spec.Config.ClusterID = "default"
+	}
+	if ledger.Spec.ServiceAccount.Create == nil {
+		create := true
+		ledger.Spec.ServiceAccount.Create = &create
 	}
 	if ledger.Spec.Service.Type == "" {
 		ledger.Spec.Service.Type = corev1.ServiceTypeClusterIP
@@ -279,10 +356,10 @@ func defaultIngressPaths() []ledgerv1alpha1.IngressPath {
 	return []ledgerv1alpha1.IngressPath{{Path: "/", PathType: "Prefix"}}
 }
 
-// validateSpec checks the Ledger spec for configuration errors that would
+// validateSpec checks the LedgerService spec for configuration errors that would
 // cause reconciliation to fail. Errors are surfaced via status conditions
 // rather than silently failing in operator logs.
-func validateSpec(ledger *ledgerv1alpha1.Ledger) error {
+func validateSpec(ledger *ledgerv1alpha1.LedgerService) error {
 	if ledger.Spec.Replicas != nil && *ledger.Spec.Replicas%2 == 0 {
 		return fmt.Errorf("replicas must be odd for Raft consensus, got %d", *ledger.Spec.Replicas)
 	}

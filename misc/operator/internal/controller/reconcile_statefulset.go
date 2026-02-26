@@ -14,7 +14,7 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
 
-func (r *LedgerReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Ledger, specHash string) error {
+func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.LedgerService, specHash string) error {
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ledger.Name,
@@ -30,7 +30,7 @@ func (r *LedgerReconciler) reconcileStatefulSet(ctx context.Context, ledger *led
 	return err
 }
 
-func buildStatefulSetSpec(ledger *ledgerv1alpha1.Ledger, specHash string) appsv1.StatefulSetSpec {
+func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string) appsv1.StatefulSetSpec {
 	replicas := int32(3)
 	if ledger.Spec.Replicas != nil {
 		replicas = *ledger.Spec.Replicas
@@ -53,7 +53,7 @@ func buildStatefulSetSpec(ledger *ledgerv1alpha1.Ledger, specHash string) appsv1
 	return spec
 }
 
-func buildRetentionPolicy(ledger *ledgerv1alpha1.Ledger) *appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy {
+func buildRetentionPolicy(ledger *ledgerv1alpha1.LedgerService) *appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy {
 	whenScaled := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 	whenDeleted := appsv1.RetainPersistentVolumeClaimRetentionPolicyType
 
@@ -73,7 +73,7 @@ func buildRetentionPolicy(ledger *ledgerv1alpha1.Ledger) *appsv1.StatefulSetPers
 	}
 }
 
-func buildPodTemplate(ledger *ledgerv1alpha1.Ledger, specHash string) corev1.PodTemplateSpec {
+func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string) corev1.PodTemplateSpec {
 	cfg := &ledger.Spec.Config
 
 	// Pod annotations with spec hash for rolling updates
@@ -189,7 +189,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Ledger, specHash string) corev1.Pod
 	}
 }
 
-func buildAffinity(ledger *ledgerv1alpha1.Ledger) *corev1.Affinity {
+func buildAffinity(ledger *ledgerv1alpha1.LedgerService) *corev1.Affinity {
 	var affinity *corev1.Affinity
 
 	if ledger.Spec.Affinity != nil {
@@ -247,7 +247,7 @@ func buildAffinity(ledger *ledgerv1alpha1.Ledger) *corev1.Affinity {
 	return affinity
 }
 
-func buildCommand(ledger *ledgerv1alpha1.Ledger) []string {
+func buildCommand(ledger *ledgerv1alpha1.LedgerService) []string {
 	cfg := &ledger.Spec.Config
 	hlsSvcName := headlessServiceName(ledger)
 
@@ -286,7 +286,7 @@ exec ./ledger-v3-poc run \
 	return []string{"/bin/sh", "-c", script}
 }
 
-func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.Ledger) []corev1.PersistentVolumeClaim {
+func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.LedgerService) []corev1.PersistentVolumeClaim {
 	walAccessMode := corev1.ReadWriteOnce
 	if ledger.Spec.Persistence.WAL.AccessMode != "" {
 		walAccessMode = corev1.PersistentVolumeAccessMode(ledger.Spec.Persistence.WAL.AccessMode)

@@ -11,7 +11,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "config",
 		Aliases: []string{"cfg"},
-		Short:   "Manage Ledger configuration",
+		Short:   "Manage LedgerService configuration",
 	}
 
 	cmd.AddCommand(

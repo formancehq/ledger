@@ -18,7 +18,7 @@ type Field struct {
 	Children    []Field
 }
 
-// SpecFields returns the schema fields for the Ledger spec.
+// SpecFields returns the schema fields for the LedgerService spec.
 func SpecFields() []Field {
 	return specFields()
 }
@@ -28,18 +28,37 @@ func Lookup(fields []Field, path string) (Field, bool) {
 	return lookup(fields, path)
 }
 
+// DefaultsSpecFields returns the schema fields for the LedgerDefaults spec.
+func DefaultsSpecFields() []Field {
+	return defaultsSpecFields()
+}
+
+// DefaultsConfigFields returns the schema fields for the LedgerDefaults config section.
+func DefaultsConfigFields() []Field {
+	return defaultsConfigFields()
+}
+
 // NewCommand returns the "explain" command.
 func NewCommand() *cobra.Command {
-	return &cobra.Command{
+	var showDefaults bool
+
+	cmd := &cobra.Command{
 		Use:     "explain [field.path]",
 		Aliases: []string{"schema", "fields"},
-		Short:   "Describe the Ledger CRD schema and fields",
-		Long:    "Displays the Ledger CRD field hierarchy with types, defaults, and descriptions.\nOptionally pass a dotted field path to show only that subtree (e.g. spec.config.raft).",
+		Short:   "Describe the LedgerService CRD schema and fields",
+		Long:    "Displays the LedgerService CRD field hierarchy with types, defaults, and descriptions.\nOptionally pass a dotted field path to show only that subtree (e.g. spec.config.raft).\nUse --defaults to show the LedgerDefaults schema instead.",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
+			if showDefaults {
+				return runExplainDefaults(args)
+			}
 			return runExplain(args)
 		},
 	}
+
+	cmd.Flags().BoolVar(&showDefaults, "defaults", false, "Show the LedgerDefaults schema instead of LedgerService")
+
+	return cmd
 }
 
 func runExplain(args []string) error {
@@ -64,7 +83,7 @@ func runExplain(args []string) error {
 	}
 
 	pterm.Println()
-	pterm.DefaultSection.Println("Ledger CRD — ledger.formance.com/v1alpha1")
+	pterm.DefaultSection.Println("LedgerService CRD — ledger.formance.com/v1alpha1")
 	printFields(root, 0)
 	return nil
 }
@@ -107,13 +126,14 @@ func printFields(fields []Field, depth int) {
 
 func ledgerSchema() []Field {
 	return []Field{
-		{Name: "spec", Type: "object", Description: "Desired state of the Ledger deployment.", Children: specFields()},
+		{Name: "spec", Type: "object", Description: "Desired state of the LedgerService deployment.", Children: specFields()},
 		{Name: "status", Type: "object", Description: "Observed state (read-only, set by the operator).", Children: statusFields()},
 	}
 }
 
 func specFields() []Field {
 	return []Field{
+		{Name: "defaultsRef", Type: "string", Description: "Name of a cluster-scoped LedgerDefaults resource to inherit defaults from."},
 		{Name: "replicas", Type: "int32", Default: "3", Description: "Number of Raft nodes (must be odd)."},
 		{Name: "image", Type: "object", Description: "Container image configuration.", Children: imageFields()},
 		{Name: "imagePullSecrets", Type: "[]LocalObjectReference", Description: "Secrets for private container registries."},
@@ -361,8 +381,17 @@ func ingressGrpcFields() []Field {
 		{Name: "enabled", Type: "bool", Description: "Enable gRPC ingress."},
 		{Name: "className", Type: "string", Description: "Ingress class name (e.g. \"nginx\", \"traefik\")."},
 		{Name: "annotations", Type: "map[string]string", Description: "Annotations on the ingress."},
-		{Name: "hosts", Type: "[]object", Description: "Ingress host rules."},
-		{Name: "tls", Type: "[]object", Description: "TLS configuration."},
+		{Name: "hosts", Type: "[]object", Description: "Ingress host rules.", Children: []Field{
+			{Name: "host", Type: "string", Required: true, Description: "Hostname."},
+			{Name: "paths", Type: "[]object", Description: "Path rules.", Children: []Field{
+				{Name: "path", Type: "string", Default: "/", Description: "URL path."},
+				{Name: "pathType", Type: "string", Default: "Prefix", Description: "Path matching type."},
+			}},
+		}},
+		{Name: "tls", Type: "[]object", Description: "TLS configuration.", Children: []Field{
+			{Name: "hosts", Type: "[]string", Description: "TLS hostnames."},
+			{Name: "secretName", Type: "string", Description: "TLS secret name."},
+		}},
 		{Name: "targetGroupBinding", Type: "object", Description: "AWS TargetGroupBinding configuration.", Children: []Field{
 			{Name: "enabled", Type: "bool", Description: "Enable the TargetGroupBinding."},
 			{Name: "targetGroupARN", Type: "string", Description: "ARN of the target group."},
@@ -378,7 +407,7 @@ func persistenceFields() []Field {
 		{Name: "data", Type: "object", Description: "Data volume configuration.", Children: volumeSpecFields()},
 		{Name: "retentionPolicy", Type: "object", Description: "PVC retention policy.", Children: []Field{
 			{Name: "whenScaled", Type: "string", Default: "Retain", Description: "Policy when scaling down."},
-			{Name: "whenDeleted", Type: "string", Default: "Retain", Description: "Policy when deleting the Ledger."},
+			{Name: "whenDeleted", Type: "string", Default: "Retain", Description: "Policy when deleting the LedgerService."},
 		}},
 	}
 }
@@ -424,6 +453,73 @@ func statusFields() []Field {
 		{Name: "phase", Type: "string", Description: "Current phase: Pending, Running, or Degraded."},
 		{Name: "readyReplicas", Type: "int32", Description: "Number of ready pods."},
 		{Name: "observedGeneration", Type: "int64", Description: "Generation last observed by the controller."},
-		{Name: "conditions", Type: "[]Condition", Description: "Latest available observations of the Ledger's state."},
+		{Name: "conditions", Type: "[]Condition", Description: "Latest available observations of the LedgerService's state."},
+	}
+}
+
+// --- LedgerDefaults schema ---
+
+func runExplainDefaults(args []string) error {
+	root := ledgerDefaultsSchema()
+
+	if len(args) > 0 {
+		node, ok := Lookup(root, args[0])
+		if !ok {
+			return fmt.Errorf("unknown field path %q", args[0])
+		}
+		pterm.Println()
+		pterm.Printf("%s %s\n", pterm.Bold.Sprint(pterm.Cyan(args[0])), pterm.Gray(node.Type))
+		if node.Description != "" {
+			pterm.Printf("  %s\n", node.Description)
+		}
+		if node.Default != "" {
+			pterm.Printf("  Default: %s\n", pterm.Green(node.Default))
+		}
+		pterm.Println()
+		printFields(node.Children, 0)
+		return nil
+	}
+
+	pterm.Println()
+	pterm.DefaultSection.Println("LedgerDefaults CRD — ledger.formance.com/v1alpha1")
+	printFields(root, 0)
+	return nil
+}
+
+func ledgerDefaultsSchema() []Field {
+	return []Field{
+		{Name: "spec", Type: "object", Description: "Shared default values for LedgerService deployments.", Children: defaultsSpecFields()},
+	}
+}
+
+func defaultsSpecFields() []Field {
+	return []Field{
+		{Name: "image", Type: "object", Description: "Default container image configuration.", Children: imageFields()},
+		{Name: "imagePullSecrets", Type: "[]LocalObjectReference", Description: "Default secrets for private container registries."},
+		{Name: "serviceAccount", Type: "object", Description: "Default service account configuration.", Children: serviceAccountFields()},
+		{Name: "config", Type: "object", Description: "Default application configuration (shared subset).", Children: defaultsConfigFields()},
+		{Name: "resources", Type: "ResourceRequirements", Description: "Default CPU and memory resource requests/limits."},
+		{Name: "livenessProbe", Type: "Probe", Description: "Default liveness probe configuration."},
+		{Name: "readinessProbe", Type: "Probe", Description: "Default readiness probe configuration."},
+		{Name: "podSecurityContext", Type: "PodSecurityContext", Description: "Default pod-level security context."},
+		{Name: "securityContext", Type: "SecurityContext", Description: "Default container-level security context."},
+		{Name: "nodeSelector", Type: "map[string]string", Description: "Default node selector for pod scheduling."},
+		{Name: "tolerations", Type: "[]Toleration", Description: "Default tolerations for pod scheduling."},
+		{Name: "affinity", Type: "Affinity", Description: "Default affinity rules for pod scheduling."},
+		{Name: "podAntiAffinity", Type: "object", Description: "Default pod anti-affinity configuration.", Children: podAntiAffinityFields()},
+		{Name: "podDisruptionBudget", Type: "object", Description: "Default PodDisruptionBudget configuration.", Children: pdbFields()},
+		{Name: "serviceMonitor", Type: "object", Description: "Default Prometheus ServiceMonitor configuration.", Children: serviceMonitorFields()},
+	}
+}
+
+func defaultsConfigFields() []Field {
+	return []Field{
+		{Name: "pebble", Type: "object", Description: "Default Pebble storage engine tuning.", Children: pebbleFields()},
+		{Name: "raft", Type: "object", Description: "Default Raft consensus tuning.", Children: raftFields()},
+		{Name: "health", Type: "object", Description: "Default health check configuration.", Children: healthFields()},
+		{Name: "coldStorage", Type: "object", Description: "Default cold storage archival configuration.", Children: coldStorageFields()},
+		{Name: "tls", Type: "object", Description: "Default TLS configuration for gRPC connections.", Children: tlsFields()},
+		{Name: "responseSigning", Type: "object", Description: "Default Ed25519 response signing.", Children: responseSigningFields()},
+		{Name: "monitoring", Type: "object", Description: "Default OpenTelemetry monitoring.", Children: monitoringFields()},
 	}
 }

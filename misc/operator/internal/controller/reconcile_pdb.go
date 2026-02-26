@@ -11,7 +11,7 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
 
-func (r *LedgerReconciler) reconcilePDB(ctx context.Context, ledger *ledgerv1alpha1.Ledger) error {
+func (r *LedgerServiceReconciler) reconcilePDB(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	name := ledger.Name
 
 	if ledger.Spec.PodDisruptionBudget == nil || !ledger.Spec.PodDisruptionBudget.Enabled {

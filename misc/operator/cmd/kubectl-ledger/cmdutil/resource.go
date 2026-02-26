@@ -20,23 +20,23 @@ const (
 	LabelValue    = "ledger"
 )
 
-// LabelSelector returns a comma-separated label selector for the given Ledger name.
+// LabelSelector returns a comma-separated label selector for the given LedgerService name.
 func LabelSelector(name string) string {
 	return fmt.Sprintf("%s=%s,%s=%s", LabelName, LabelValue, LabelInstance, name)
 }
 
-// GetLedger fetches a single Ledger CR.
-func GetLedger(ctx context.Context, c client.Client, namespace, name string) (*ledgerv1alpha1.Ledger, error) {
-	var ledger ledgerv1alpha1.Ledger
+// GetLedgerService fetches a single LedgerService CR.
+func GetLedgerService(ctx context.Context, c client.Client, namespace, name string) (*ledgerv1alpha1.LedgerService, error) {
+	var ledger ledgerv1alpha1.LedgerService
 	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &ledger); err != nil {
 		return nil, err
 	}
 	return &ledger, nil
 }
 
-// ListLedgers lists Ledger CRs. Pass empty namespace for all namespaces.
-func ListLedgers(ctx context.Context, c client.Client, namespace string) (*ledgerv1alpha1.LedgerList, error) {
-	var list ledgerv1alpha1.LedgerList
+// ListLedgerServices lists LedgerService CRs. Pass empty namespace for all namespaces.
+func ListLedgerServices(ctx context.Context, c client.Client, namespace string) (*ledgerv1alpha1.LedgerServiceList, error) {
+	var list ledgerv1alpha1.LedgerServiceList
 	opts := []client.ListOption{}
 	if namespace != "" {
 		opts = append(opts, client.InNamespace(namespace))
@@ -47,30 +47,48 @@ func ListLedgers(ctx context.Context, c client.Client, namespace string) (*ledge
 	return &list, nil
 }
 
-// LedgerPods lists pods matching the selector labels for a Ledger.
-func LedgerPods(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.PodList, error) {
+// LedgerServicePods lists pods matching the selector labels for a LedgerService.
+func LedgerServicePods(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.PodList, error) {
 	return cs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: LabelSelector(name),
 	})
 }
 
-// LedgerPVCs lists PVCs matching the selector labels for a Ledger.
-func LedgerPVCs(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.PersistentVolumeClaimList, error) {
+// LedgerServicePVCs lists PVCs matching the selector labels for a LedgerService.
+func LedgerServicePVCs(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.PersistentVolumeClaimList, error) {
 	return cs.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: LabelSelector(name),
 	})
 }
 
-// LedgerStatefulSet fetches the StatefulSet for a Ledger (same name as CR).
-func LedgerStatefulSet(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*appsv1.StatefulSet, error) {
+// LedgerServiceStatefulSet fetches the StatefulSet for a LedgerService (same name as CR).
+func LedgerServiceStatefulSet(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*appsv1.StatefulSet, error) {
 	return cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
 }
 
-// LedgerServices lists services matching the selector labels for a Ledger.
+// LedgerServices lists services matching the selector labels for a LedgerService.
 func LedgerServices(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*corev1.ServiceList, error) {
 	return cs.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: LabelSelector(name),
 	})
+}
+
+// GetLedgerDefaults fetches a single cluster-scoped LedgerDefaults CR.
+func GetLedgerDefaults(ctx context.Context, c client.Client, name string) (*ledgerv1alpha1.LedgerDefaults, error) {
+	var defaults ledgerv1alpha1.LedgerDefaults
+	if err := c.Get(ctx, types.NamespacedName{Name: name}, &defaults); err != nil {
+		return nil, err
+	}
+	return &defaults, nil
+}
+
+// ListLedgerDefaults lists all cluster-scoped LedgerDefaults CRs.
+func ListLedgerDefaults(ctx context.Context, c client.Client) (*ledgerv1alpha1.LedgerDefaultsList, error) {
+	var list ledgerv1alpha1.LedgerDefaultsList
+	if err := c.List(ctx, &list); err != nil {
+		return nil, err
+	}
+	return &list, nil
 }
 
 // PodReadyCount returns a "ready/total" string for a pod's containers.
