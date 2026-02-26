@@ -9,8 +9,8 @@ spec:
     pullPolicy: IfNotPresent
   config:
     pebble:
-      memTableSize: 268435456
-      cacheSize: 1073741824
+      memTableSize: 67108864
+      cacheSize: 536870912
     monitoring:
       serviceName: ledger-v3-poc
       traces:

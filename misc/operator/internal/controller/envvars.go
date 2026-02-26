@@ -176,6 +176,14 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 		}
 	}
 
+	// GOMEMLIMIT: set to 90% of memory limit if available.
+	if ledger.Spec.Resources.Limits != nil {
+		if memLimit, ok := ledger.Spec.Resources.Limits[corev1.ResourceMemory]; ok {
+			goMemLimit := memLimit.Value() * 9 / 10
+			envs = append(envs, intEnv("GOMEMLIMIT", goMemLimit))
+		}
+	}
+
 	// Response signing
 	if cfg.ResponseSigning != nil && cfg.ResponseSigning.Enabled {
 		secretKey := cfg.ResponseSigning.SecretKey

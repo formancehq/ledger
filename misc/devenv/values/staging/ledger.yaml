@@ -11,12 +11,12 @@ config:
     rotationThreshold: 2000  # Raft entries before rotating cache generations
   # Pebble storage configuration
   pebble:
-    memTableSize: 268435456         # 256MB
-    memTableStopWritesThreshold: 6
+    memTableSize: 67108864           # 64MB
+    memTableStopWritesThreshold: 4
     l0CompactionThreshold: 64
     l0StopWritesThreshold: 256
     lBaseMaxBytes: 2147483648       # 2GB
-    cacheSize: 1073741824           # 1GB
+    cacheSize: 536870912            # 512MB
     targetFileSize: 268435456       # 256MB
     bytesPerSync: 1048576           # 1MB
     walBytesPerSync: 1048576        # 1MB
