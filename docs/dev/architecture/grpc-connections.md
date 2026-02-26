@@ -114,7 +114,7 @@ type ServiceConnectionPool struct {
 
 ### Transport Layer
 
-**File**: `internal/service/node/transport.go`
+**File**: `internal/infra/node/transport.go`
 
 The transport layer wraps the Raft connection pool and manages Raft-specific message routing:
 

@@ -12,7 +12,7 @@ Each CLI sub-command has its own file in `cmd/ledgerctl/`:
 
 ### One file per HTTP handler
 
-Each HTTP handler has its own file in `internal/compat/http/`:
+Each HTTP handler has its own file in `internal/adapter/http/`:
 - `handlers_create_ledger.go` - `POST /{ledgerName}`
 - `handlers_get_ledger.go` - `GET /{ledgerName}`
 - `handlers_create_transaction.go` - `POST /{ledgerName}/transactions`
@@ -99,14 +99,14 @@ Interfaces with mockgen annotations:
 
 | Interface | File |
 |-----------|------|
-| `WAL` | `internal/service/node/node.go` |
-| `Transport` | `internal/service/node/transport.go` |
+| `WAL` | `internal/infra/node/node.go` |
+| `Transport` | `internal/infra/node/transport.go` |
 | `Controller` | `internal/application/ctrl/controller.go` |
 | `Engine` | `internal/application/ctrl/controller_default.go` |
 | `Spool` | `internal/storage/spool/spool.go` |
 | `WAL` | `internal/storage/wal/wal.go` |
-| `Store` | `internal/service/processing/processor.go` |
-| `Checker` | `internal/health/healthcheck.go` |
+| `Store` | `internal/domain/processing/processor.go` |
+| `Checker` | `internal/infra/health/healthcheck.go` |
 
 ## Adding a New CLI Command
 
@@ -119,8 +119,8 @@ Interfaces with mockgen annotations:
 
 ## Adding a New HTTP Handler
 
-1. Create `internal/compat/http/handlers_<action>.go` with the handler function
-2. Register the route in `internal/compat/http/handler.go`
+1. Create `internal/adapter/http/handlers_<action>.go` with the handler function
+2. Register the route in `internal/adapter/http/handler.go`
 
 ## PR Checklist
 

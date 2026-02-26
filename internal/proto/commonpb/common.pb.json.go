@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/ledger-v3-poc/internal/compat/json"
+	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 )
 
 // Note: Transaction.MarshalJSON is already implemented in transaction.go

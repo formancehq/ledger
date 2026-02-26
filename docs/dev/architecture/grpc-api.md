@@ -485,7 +485,7 @@ Each business error response includes:
 
 ### Error Reason Constants
 
-All business errors carry an `ErrorInfo` detail with a machine-readable reason. The reason constants are defined in `internal/service/processing/errors.go` and shared between server and client.
+All business errors carry an `ErrorInfo` detail with a machine-readable reason. The reason constants are defined in `internal/domain/processing/errors.go` and shared between server and client.
 
 | Error | gRPC Code | Reason | Metadata |
 |-------|-----------|--------|----------|
@@ -563,7 +563,7 @@ Processor (returns typed error)
         → Client (extracts ErrorInfo, reconstructs typed error)
 ```
 
-**Server side** (`internal/application/grpc_errors.go`):
+**Server side** (`internal/adapter/grpc/errors.go`):
 - `businessErrorToGRPCStatus()` uses `errors.As` to safely match error types through the chain
 - Attaches `errdetails.ErrorInfo` with reason, domain, and metadata
 

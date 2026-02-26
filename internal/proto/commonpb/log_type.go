@@ -3,7 +3,7 @@ package commonpb
 import (
 	"database/sql/driver"
 
-	"github.com/formancehq/ledger-v3-poc/internal/compat/json"
+	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 )
 
 type LogType int16

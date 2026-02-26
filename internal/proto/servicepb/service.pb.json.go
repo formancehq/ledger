@@ -3,7 +3,7 @@ package servicepb
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/compat/json"
+	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 

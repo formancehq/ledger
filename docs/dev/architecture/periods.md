@@ -63,7 +63,7 @@ The `ClosePeriod` order is a lightweight Raft command that:
 3. Triggers a **maintenance task** that creates a Pebble seal checkpoint — a frozen snapshot of the database at the exact close boundary.
 4. Sends a `SealRequest` to the background Sealer.
 
-**File**: `internal/service/processing/processor_period.go`
+**File**: `internal/domain/processing/processor_period.go`
 
 ### Step 2: SealPeriod (background, then Raft)
 
@@ -74,7 +74,7 @@ The Sealer runs outside the Raft critical path:
 3. Computes the **sealing hash** and proposes a `SealPeriod` order back into Raft.
 4. The FSM transitions the period from `CLOSING` to `CLOSED` and records the sealing hash.
 
-**File**: `internal/service/state/sealer.go`
+**File**: `internal/infra/state/sealer.go`
 
 ### Sealing Hash Computation
 
@@ -126,7 +126,7 @@ The node crashed after the `ClosePeriod` Pebble batch was committed but before t
 - On startup, if `ClosingPeriod() != nil` and `SealCheckpointPath()` does not exist, the node creates the checkpoint from the current Pebble state.
 - This works because no entries were applied after `ClosePeriod` (it was the last operation before the crash), so Pebble's state is exactly at the close boundary.
 
-**File**: `internal/service/node/node.go` (lines 385–401)
+**File**: `internal/infra/node/node.go` (lines 385–401)
 
 ### Window 2: Crash after checkpoint creation, before SealPeriod proposal
 
@@ -135,7 +135,7 @@ The seal checkpoint exists on disk but the Sealer never proposed the `SealPeriod
 **Recovery** (in `Sealer.Start()`):
 - On startup, if a `closingPeriod` exists and the seal checkpoint is on disk, the Sealer re-sends a `SealRequest` to recompute the hash and propose `SealPeriod`.
 
-**File**: `internal/service/state/sealer.go` (lines 57–78)
+**File**: `internal/infra/state/sealer.go` (lines 57–78)
 
 ### Retry on Failure
 
@@ -186,7 +186,7 @@ ledgerctl transactions revert 42 --ledger my-ledger --receipt <jwt-token>
 
 **Files**:
 - `internal/application/admission/admission.go` — Receipt verification and postings extraction
-- `internal/application/grpc_ledger_server.go` — Receipt signing and `GetTransaction` receipt computation
+- `internal/adapter/grpc/server_bucket.go` — Receipt signing and `GetTransaction` receipt computation
 
 ## Automatic Period Rotation (Cron Scheduler)
 
@@ -220,7 +220,7 @@ The `PeriodScheduler` runs on every node but only triggers period rotation on th
 
 The period granularity is configurable and can be changed at any time. Changing from monthly to quarterly mid-flight simply means the next period will be longer — existing closed periods are unaffected.
 
-**File**: `internal/service/state/period_scheduler.go`
+**File**: `internal/infra/state/period_scheduler.go`
 
 ### Protobuf Messages
 
@@ -329,7 +329,7 @@ Like the seal process, archival uses two Raft commands to avoid blocking consens
 
 The `ArchivePeriod` order validates that the period is CLOSED and transitions it to `ARCHIVING`. This state change is deterministic across all nodes via Raft. Only the **leader** dispatches the actual archive request to the background Archiver — followers apply the state transition but do not perform the S3 upload. This avoids N redundant exports in an N-node cluster.
 
-**File**: `internal/service/processing/processor_period.go`
+**File**: `internal/domain/processing/processor_period.go`
 
 #### Step 2: ConfirmArchivePeriod (deterministic purge on all nodes)
 
@@ -340,7 +340,7 @@ After the Archiver exports data to cold storage and verifies the upload, it prop
 3. Signals a purge of logs and audit entries for the period's sequence range `[start_sequence, close_sequence]`.
 4. The purge is executed as `DeleteRange` operations in the Pebble batch during `Merge()`.
 
-**File**: `internal/service/state/archiver.go`
+**File**: `internal/infra/state/archiver.go`
 
 ### Archive Contents
 

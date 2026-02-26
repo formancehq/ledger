@@ -3,7 +3,7 @@ package commonpb
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/compat/json"
+	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"google.golang.org/protobuf/proto"
 )
 

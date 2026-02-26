@@ -285,7 +285,7 @@ func (s *spool) Reset() error
 
 ### Synchronization Manager
 
-The Node manages the synchronization process between the Raft log and the FSM directly (integrated within `internal/service/node/node.go` and `internal/service/state/machine.go`).
+The Node manages the synchronization process between the Raft log and the FSM directly (integrated within `internal/infra/node/node.go` and `internal/infra/state/machine.go`).
 
 **Responsibilities**:
 - Manages the "syncing" state flag (`statusNormal` / `statusSyncing`)

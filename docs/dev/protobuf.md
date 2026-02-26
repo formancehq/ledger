@@ -68,7 +68,7 @@ The project uses [vtprotobuf](https://github.com/planetscale/vtprotobuf) to gene
 **How it works**:
 - `*_vtproto.pb.go` files are generated alongside standard `*.pb.go` files
 - Wire format is identical to standard protobuf (no compatibility impact)
-- Server-side gRPC codec registered in `internal/application/grpc_server.go` via `init()`
+- Server-side gRPC codec registered in `internal/adapter/grpc/server.go` via `init()`
 - Client (`cmd/ledgerctl/`) uses standard protobuf (no codec import needed)
 
 **Hot-path usage** (direct VT method calls):
@@ -76,11 +76,11 @@ The project uses [vtprotobuf](https://github.com/planetscale/vtprotobuf) to gene
 | File | Usage |
 |------|-------|
 | `internal/application/admission/admission.go` | Proposal marshal (`SizeVT` + `MarshalToVT`) |
-| `internal/service/state/machine.go` | Proposal unmarshal, snapshot marshal/unmarshal |
-| `internal/service/attributes/attributes.go` | Attribute value marshal/unmarshal |
+| `internal/infra/state/machine.go` | Proposal unmarshal, snapshot marshal/unmarshal |
+| `internal/infra/attributes/attributes.go` | Attribute value marshal/unmarshal |
 | `internal/storage/dal/batch.go` | Batch marshal |
-| `internal/service/processing/processor.go` | Order hash (`CloneVT` + `MarshalVT`) |
-| `internal/service/state/buffer.go` | Clone functions (`CloneVT` references) |
+| `internal/domain/processing/processor.go` | Order hash (`CloneVT` + `MarshalVT`) |
+| `internal/infra/state/buffer.go` | Clone functions (`CloneVT` references) |
 
 ## Uint256 Wire Format
 
@@ -99,7 +99,7 @@ See [architecture/uint256-wire-format.md](./architecture/uint256-wire-format.md)
 
 1. Add the message definition to `misc/proto/raftcmd.proto`
 2. Run `just generate-proto`
-3. Create a `NewXxxCommand` function in `internal/service/commands/command.go`
-4. Update `UnmarshalCommandData` in `internal/service/commands/command.go`
-5. Add a handler method in `internal/service/state/machine.go`
+3. Create a `NewXxxCommand` function in `internal/pkg/commands/command.go`
+4. Update `UnmarshalCommandData` in `internal/pkg/commands/command.go`
+5. Add a handler method in `internal/infra/state/machine.go`
 6. Rebuild and test: `go build ./... && go test ./...`

@@ -12,11 +12,11 @@ import (
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
 	"github.com/formancehq/go-libs/v3/service"
-	"github.com/formancehq/ledger-v3-poc/internal/application"
-	"github.com/formancehq/ledger-v3-poc/internal/monitoring/pyroscope"
-	"github.com/formancehq/ledger-v3-poc/internal/monitoring/tracesampling"
+	"github.com/formancehq/ledger-v3-poc/internal/bootstrap"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/pyroscope"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/tracesampling"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/node"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/log/global"
@@ -212,9 +212,9 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	// Select the application module based on mode
 	var appModule fx.Option
 	if cfg.Restore {
-		appModule = application.RestoreModule()
+		appModule = bootstrap.RestoreModule()
 	} else {
-		appModule = application.Module()
+		appModule = bootstrap.Module()
 	}
 
 	// Create fx application options
@@ -251,8 +251,8 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	return service.NewWithLogger(logger, opts...).Run(cmd)
 }
 
-func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
-	cfg := &application.Config{}
+func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
+	cfg := &bootstrap.Config{}
 
 	// Helper function to get string value from flag (env vars are bound automatically by service.BindEnvToCommand)
 	getString := func(flagName, defaultValue string) string {
@@ -389,7 +389,7 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 	if (tlsCert == "") != (tlsKey == "") {
 		return nil, fmt.Errorf("--tls-cert-file and --tls-key-file must be provided together")
 	}
-	cfg.TLSConfig = application.TLSConfig{
+	cfg.TLSConfig = bootstrap.TLSConfig{
 		Enabled:  tlsCert != "" && tlsKey != "",
 		CertFile: tlsCert,
 		KeyFile:  tlsKey,
@@ -430,7 +430,7 @@ func LoadConfig(cmd *cobra.Command) (*application.Config, error) {
 
 // discoverPeersFromClusterWithRetry retries peer discovery with exponential backoff
 // for up to 60 seconds, allowing the bootstrap node time to start.
-func discoverPeersFromClusterWithRetry(serviceAddr string, tlsCfg application.TLSConfig) ([]node.Peer, error) {
+func discoverPeersFromClusterWithRetry(serviceAddr string, tlsCfg bootstrap.TLSConfig) ([]node.Peer, error) {
 	var (
 		lastErr  error
 		delay    = 500 * time.Millisecond
@@ -457,8 +457,8 @@ func discoverPeersFromClusterWithRetry(serviceAddr string, tlsCfg application.TL
 
 // discoverPeersFromCluster connects to an existing cluster member and discovers
 // all voter nodes and their addresses via GetClusterState.
-func discoverPeersFromCluster(serviceAddr string, tlsCfg application.TLSConfig) ([]node.Peer, error) {
-	creds, err := application.ClientTransportCredentials(tlsCfg)
+func discoverPeersFromCluster(serviceAddr string, tlsCfg bootstrap.TLSConfig) ([]node.Peer, error) {
+	creds, err := bootstrap.ClientTransportCredentials(tlsCfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading TLS credentials for peer discovery: %w", err)
 	}

@@ -8,44 +8,48 @@ This guide provides the information needed to contribute to the Ledger v3 POC pr
 
 ```
 ledger-v3-poc/
-├── cmd/                    # Entry points of the application
+├── cmd/                    # Entry points
 │   ├── server/            # Main server
 │   └── ledgerctl/         # CLI client (ledgerctl)
-├── numscript/              # Numscript resources
-│   └── examples/          # Example Numscript files
 ├── internal/               # Internal code (not exported)
-│   ├── application/       # Application module (fx wiring, gRPC servers)
-│   ├── service/           # Business services
-│   │   ├── admission/     # Admission service (preload computation, AttributeLoader)
-│   │   ├── attributes/    # Attribute types, U128 hashing, collision detection
-│   │   ├── cache/         # FSM attribute cache (generation-based)
-│   │   ├── commands/      # Raft command builders
-│   │   ├── futures/       # Async futures for proposal results
-│   │   ├── kv/            # Key-value map utilities
+│   ├── domain/            # Domain layer (value objects, errors, processing)
+│   │   └── processing/    # Transaction/log processing (Numscript)
+│   ├── bootstrap/         # Composition root (fx wiring, config, TLS)
+│   ├── application/       # Use cases
+│   │   ├── admission/     # Admission service (preload, AttributeLoader)
 │   │   ├── ctrl/          # Controller layer (transaction processing)
+│   │   ├── events/        # Event dispatch
+│   │   └── check/         # Integrity checking
+│   ├── adapter/           # Transport adapters
+│   │   ├── grpc/          # gRPC servers and client
+│   │   ├── http/          # HTTP REST handlers
+│   │   └── json/          # JSON serialization
+│   ├── infra/             # Infrastructure
 │   │   ├── node/          # Raft node lifecycle and transport
-│   │   ├── processing/    # Transaction/log processing
 │   │   ├── state/         # FSM state machine and snapshots
-│   │   └── transport/     # gRPC connection pool
-│   ├── compat/            # Compatibility layer
-│   │   ├── http/          # HTTP handlers
-│   │   └── json/          # JSON utilities
+│   │   ├── cache/         # FSM attribute cache (generation-based)
+│   │   ├── attributes/    # Attribute types, U128 hashing
+│   │   ├── transport/     # gRPC connection pool
+│   │   ├── health/        # Health checks
+│   │   └── monitoring/    # Observability (OTLP, Pyroscope, tracing, diskusage)
+│   ├── pkg/               # Pure utilities (zero/low internal deps)
+│   │   ├── kv/            # Key-value map utilities
+│   │   ├── signal/        # Signal utilities
+│   │   ├── futures/       # Async futures for proposal results
+│   │   ├── commands/      # Raft command builders
+│   │   ├── crypto/        # Ed25519 signing, keystore
+│   │   └── tarutil/       # Tar archive extraction
+│   ├── query/             # CQRS read-side queries
 │   ├── storage/           # Storage layer
 │   │   ├── dal/           # Data access layer (Pebble)
-│   │   ├── spool/         # Spool for sync buffering
-│   │   └── wal/           # Write-ahead log
-│   ├── transport/         # gRPC transport and connection pool
-│   ├── monitoring/        # Observability modules
-│   │   ├── otlplogs/      # OpenTelemetry logs
-│   │   ├── pyroscope/     # Continuous profiling
-│   │   └── tracesampling/ # Trace sampling
-│   ├── proto/             # Generated protobuf types
-│   │   ├── commonpb/      # Common types (Posting, Transaction, Log, etc.)
-│   │   ├── raftcmdpb/     # FSM command types
-│   │   ├── servicepb/     # gRPC service definitions
-│   │   ├── clusterpb/     # Cluster state types
-│   │   └── snapshotpb/    # Snapshot service types
-│   └── utils/             # Utility functions
+│   │   ├── spool/         # Spool for sync buffering (Raft entries)
+│   │   └── wal/           # Write-ahead log (etcd/raft)
+│   └── proto/             # Generated protobuf types
+│       ├── commonpb/      # Common types (Posting, Transaction, Log)
+│       ├── raftcmdpb/     # FSM command types
+│       ├── servicepb/     # gRPC service definitions
+│       ├── clusterpb/     # Cluster state types
+│       └── snapshotpb/    # Snapshot service types
 ├── pkg/                    # Exported packages
 │   └── testserver/        # Test helpers
 ├── misc/                   # Miscellaneous files
@@ -116,8 +120,8 @@ All components with a lifecycle use `fx.Lifecycle` to register `OnStart` and `On
 
 ### Example: Adding an HTTP Endpoint
 
-1. **Create the handler** in `internal/compat/http/handlers_*.go`
-2. **Register the route** in `internal/compat/http/handler.go`
+1. **Create the handler** in `internal/adapter/http/handlers_*.go`
+2. **Register the route** in `internal/adapter/http/handler.go`
 3. **Add to OpenAPI** in `openapi.yml`
 
 ### Example: Adding an FSM Command
@@ -126,9 +130,9 @@ All components with a lifecycle use `fx.Lifecycle` to register `OnStart` and `On
 
 2. **Regenerate protobufs** using `just generate-proto`
 
-3. **Create the command function** in `internal/service/commands/command.go`
+3. **Create the command function** in `internal/pkg/commands/command.go`
 
-4. **Add the handler in the FSM** in `internal/service/state/machine.go`
+4. **Add the handler in the FSM** in `internal/infra/state/machine.go`
 
 5. **Update `ApplyEntries`** to route the command to the handler
 

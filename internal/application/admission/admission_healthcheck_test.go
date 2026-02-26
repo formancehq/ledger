@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/health"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/stretchr/testify/require"

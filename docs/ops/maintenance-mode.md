@@ -56,12 +56,12 @@ Client -> gRPC Apply() -> Admission (check maintenance mode) -> Proposal -> Raft
 
 | File | Role |
 |------|------|
-| `internal/crypto/keystore/keystore.go` | In-memory flag (`MaintenanceMode()`, `SetMaintenanceMode()`) |
+| `internal/pkg/crypto/keystore/keystore.go` | In-memory flag (`MaintenanceMode()`, `SetMaintenanceMode()`) |
 | `internal/storage/dal/store.go` | Pebble persistence (`LoadMaintenanceMode()`) |
 | `internal/storage/dal/batch.go` | Pebble write (`SaveMaintenanceMode()`) |
 | `internal/application/admission/admission.go` | Admission-level check |
-| `internal/service/state/machine.go` | FSM-level check (`allOrdersAreMaintenanceMode`) |
-| `internal/service/state/buffer.go` | Atomic merge (persist + update KeyStore) |
-| `internal/service/processing/processor.go` | `processSetMaintenanceMode()` |
-| `internal/service/processing/errors.go` | `ErrMaintenanceMode` sentinel error |
+| `internal/infra/state/machine.go` | FSM-level check (`allOrdersAreMaintenanceMode`) |
+| `internal/infra/state/buffer.go` | Atomic merge (persist + update KeyStore) |
+| `internal/domain/processing/processor.go` | `processSetMaintenanceMode()` |
+| `internal/domain/processing/errors.go` | `ErrMaintenanceMode` sentinel error |
 | `cmd/ledgerctl/cluster_maintenance.go` | CLI command |

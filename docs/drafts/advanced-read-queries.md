@@ -387,8 +387,8 @@ Estimated changes:
 - `internal/application/ctrl/controller_default.go` — implement methods
 - `internal/application/ctrl/store.go` — add `AggregateVolumes` function
 - `misc/proto/service.proto` — add RPCs and messages
-- `internal/application/grpc_ledger_server.go` — add gRPC handlers
-- `internal/compat/http/` — add HTTP handlers (one per file)
+- `internal/adapter/grpc/server_bucket.go` — add gRPC handlers
+- `internal/adapter/http/` — add HTTP handlers (one per file)
 - `cmd/ledgerctl/` — add CLI commands
 
 ### Phase 2 — Lightweight Secondary Index
@@ -400,7 +400,7 @@ Requires adding writes during FSM log application:
 
 Estimated changes:
 - `internal/storage/dal/store.go` — add `keyPrefixLedgerLog` and `ListLedgerLogSequences`
-- `internal/service/state/machine.go` (or `buffered.go`) — populate index during log application
+- `internal/infra/state/machine.go` (or `buffered.go`) — populate index during log application
 - `misc/proto/common.proto` — add `account_count` to `LedgerBoundaries`
 
 ### Phase 3 — Write-Path Secondary Index
@@ -411,7 +411,7 @@ Requires adding writes during transaction processing:
 
 Estimated changes:
 - `internal/storage/dal/store.go` — add `keyPrefixAccountTransaction` and iteration methods
-- `internal/service/state/machine.go` — populate index during transaction application
+- `internal/infra/state/machine.go` — populate index during transaction application
 - Proto + gRPC + HTTP + CLI additions
 
 ### Data Migration Note

@@ -168,7 +168,7 @@ When the FSM applies a `SetMetadataFieldTypeOrder`, the type declaration is upda
 
 Concurrent conversions are bounded by a configurable pool size (default: 2). Excess conversions are queued.
 
-**Implementation:** `MetadataConverter` in `internal/service/state/metadata_converter.go`.
+**Implementation:** `MetadataConverter` in `internal/infra/state/metadata_converter.go`.
 
 ### Writes During Conversion
 
@@ -272,13 +272,13 @@ Numscript remains **string-only**. The typed metadata system bridges via convers
 | `internal/proto/commonpb/metadata_convert.go` | Conversion matrix implementation |
 | `internal/proto/commonpb/metadata_convert_test.go` | Conversion matrix tests (98 cases) |
 | `internal/proto/commonpb/metadata.go` | MetadataFromMap, MetadataToMap, JSON helpers |
-| `internal/service/processing/processor_metadata_schema.go` | Schema enforcement, set/remove field type |
-| `internal/service/processing/processor_convert_metadata.go` | Batch conversion, conversion complete |
-| `internal/service/state/metadata_converter.go` | Background conversion worker (Layer 2) |
+| `internal/domain/processing/processor_metadata_schema.go` | Schema enforcement, set/remove field type |
+| `internal/domain/processing/processor_convert_metadata.go` | Batch conversion, conversion complete |
+| `internal/infra/state/metadata_converter.go` | Background conversion worker (Layer 2) |
 | `internal/application/ctrl/store.go` | Lazy read-time conversion (Layer 1) |
-| `internal/compat/http/handlers_get_metadata_schema.go` | HTTP: GET metadata schema status |
-| `internal/compat/http/handlers_set_metadata_type.go` | HTTP: PUT set metadata field type |
-| `internal/compat/http/handlers_remove_metadata_type.go` | HTTP: DELETE remove metadata field type |
+| `internal/adapter/http/handlers_get_metadata_schema.go` | HTTP: GET metadata schema status |
+| `internal/adapter/http/handlers_set_metadata_type.go` | HTTP: PUT set metadata field type |
+| `internal/adapter/http/handlers_remove_metadata_type.go` | HTTP: DELETE remove metadata field type |
 | `cmd/ledgerctl/ledgers/set_metadata_type.go` | CLI: set-metadata-type |
 | `cmd/ledgerctl/ledgers/remove_metadata_type.go` | CLI: remove-metadata-type |
 | `cmd/ledgerctl/ledgers/get_schema.go` | CLI: get-schema |

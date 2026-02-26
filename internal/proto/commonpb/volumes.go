@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/formancehq/ledger-v3-poc/internal/compat/json"
+	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/invopop/jsonschema"
 )
 

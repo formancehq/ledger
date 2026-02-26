@@ -176,9 +176,9 @@ No mutex, no Reset/Write/Sum cycle, no pre-allocated buffers — just two statel
 
 BLAKE3 remains the correct choice for:
 
-- **Log hash chaining** (`internal/service/processing/log_hasher.go`) — cryptographic integrity of the audit trail
-- **Numscript cache** (`internal/service/processing/numscript_cache.go`) — content-addressed deduplication
-- **Idempotency content hash** (`internal/service/processing/processor.go`) — conflict detection for same-key-different-content
+- **Log hash chaining** (`internal/domain/processing/log_hasher.go`) — cryptographic integrity of the audit trail
+- **Numscript cache** (`internal/domain/processing/numscript_cache.go`) — content-addressed deduplication
+- **Idempotency content hash** (`internal/domain/processing/processor.go`) — conflict detection for same-key-different-content
 - **Hash chain verification** (`internal/application/check/checker.go`) — integrity checking
 
 ## Benchmark Results
@@ -186,5 +186,5 @@ BLAKE3 remains the correct choice for:
 Run benchmarks with:
 
 ```bash
-go test -bench=BenchmarkHashComparison ./internal/service/attributes/
+go test -bench=BenchmarkHashComparison ./internal/infra/attributes/
 ```

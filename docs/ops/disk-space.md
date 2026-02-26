@@ -35,7 +35,7 @@ graph TD
     ADM -->|reject if unhealthy| CLIENT[Client Requests]
 ```
 
-### HealthChecker (`internal/health/`)
+### HealthChecker (`internal/infra/health/`)
 
 The `HealthChecker` is a background service that periodically polls disk usage from all cluster nodes. It runs on every node but only performs checks when the node is the Raft leader.
 

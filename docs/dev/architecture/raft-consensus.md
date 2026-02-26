@@ -41,7 +41,7 @@ The single Raft group handles all commands through a unified FSM:
 - `DeleteLedgerCommand`: Delete an existing ledger
 - `CreateLogCommand`: Insert a log (transaction, metadata changes, reversions) into any ledger
 
-**FSM**: `internal/service/state/machine.go`
+**FSM**: `internal/infra/state/machine.go`
 
 ### State Management
 
@@ -79,7 +79,7 @@ The system uses `go.etcd.io/etcd/raft/v3`, a high-quality Raft implementation us
 
 #### Node Wrapper
 
-`internal/service/node/node.go` provides a wrapper around `raft.RawNode` that:
+`internal/infra/node/node.go` provides a wrapper around `raft.RawNode` that:
 
 - Manages node lifecycle
 - Processes incoming Raft messages
@@ -111,7 +111,7 @@ type Node struct {
 
 #### Transport
 
-`internal/service/node/transport.go` manages communication between nodes:
+`internal/infra/node/transport.go` manages communication between nodes:
 
 - Send Raft messages
 - Receive Raft messages
@@ -325,7 +325,7 @@ The leader tracks each follower's state:
 
 #### Code Reference
 
-In `internal/service/node/node.go`, the follower receives and applies the snapshot through a two-phase process:
+In `internal/infra/node/node.go`, the follower receives and applies the snapshot through a two-phase process:
 
 ```go
 // Phase 1: Install snapshot to FSM (in-memory state)

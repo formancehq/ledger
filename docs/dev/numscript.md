@@ -17,7 +17,7 @@ This ledger implementation uses the official Numscript interpreter from `github.
 
 ## Enabled Features
 
-All experimental Numscript features are enabled by default. The feature flags are defined in `internal/service/processing/processor.go`.
+All experimental Numscript features are enabled by default. The feature flags are defined in `internal/domain/processing/processor.go`.
 
 | Feature Flag | Description |
 |--------------|-------------|
@@ -453,7 +453,7 @@ When a Numscript transaction is submitted, account balances must be preloaded at
 
 As a temporary workaround, the admission layer runs the Numscript once with a "discovery store" that returns infinite balances (`2^256`) for every account queried. This emulation run discovers which accounts and assets the script needs, without modifying any real state. The discovered volume keys are then preloaded normally from storage.
 
-The emulation is implemented in `internal/service/processing/numscript_emulate.go`:
+The emulation is implemented in `internal/domain/processing/numscript_emulate.go`:
 
 1. **Parse** the script (no cache — the processor's cache handles the real execution)
 2. **Execute** with a discovery store that records queried account/asset pairs and returns infinite balances

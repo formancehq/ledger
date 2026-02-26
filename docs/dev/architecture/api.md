@@ -427,7 +427,7 @@ When a node receives a write request but is not the leader:
 The `RoutedController` checks if the node is the leader. If not, it forwards the request to the leader's service port via gRPC:
 
 ```go
-// Simplified from internal/application/controller_routed.go
+// Simplified from internal/bootstrap/controller_routed.go
 func (r *RoutedController) Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
     if r.isLeader() {
         return r.localController.Apply(ctx, requests...)

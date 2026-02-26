@@ -190,7 +190,7 @@ The clock skew check is a **complementary safety mechanism**, not a replacement 
 
 ## Testing
 
-Tests are located in `internal/service/state/machine_hlc_test.go`:
+Tests are located in `internal/infra/state/machine_hlc_test.go`:
 
 - **Unit tests** (`TestHLCTimestamp`): Test the `hlcTimestamp()` method in isolation with various scenarios (ahead, behind, equal, monotonicity across sequences).
 - **Integration tests** (`TestHLCTimestampIntegration`): Test the full pipeline including `ApplyEntries()`, persistence to PebbleDB, and snapshot round-trips.
@@ -199,8 +199,8 @@ Tests are located in `internal/service/state/machine_hlc_test.go`:
 
 | File | Role |
 |------|------|
-| `internal/service/state/machine.go` | HLC field, `hlcTimestamp()` method, integration in `applyProposal()` and `ApplyEntries()`, snapshot handling |
+| `internal/infra/state/machine.go` | HLC field, `hlcTimestamp()` method, integration in `applyProposal()` and `ApplyEntries()`, snapshot handling |
 | `internal/storage/dal/store.go` | `GetLastAppliedTimestamp()` for reading from PebbleDB |
 | `internal/storage/dal/batch.go` | `SetLastAppliedTimestamp()` for writing to PebbleDB |
 | `misc/proto/raftcmd.proto` | `last_applied_timestamp` field in `MemorySnapshot` |
-| `internal/service/state/machine_hlc_test.go` | Unit and integration tests |
+| `internal/infra/state/machine_hlc_test.go` | Unit and integration tests |

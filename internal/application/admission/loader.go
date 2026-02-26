@@ -5,7 +5,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 )
 
 // loadedEntry stores a loaded attribute value with its boundary

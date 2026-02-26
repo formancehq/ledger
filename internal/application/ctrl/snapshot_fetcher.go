@@ -6,9 +6,9 @@ import (
 	"io"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
-	"github.com/formancehq/ledger-v3-poc/internal/service/node"
-	"github.com/formancehq/ledger-v3-poc/internal/service/state"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/tarutil"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/tarutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

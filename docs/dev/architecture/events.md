@@ -425,10 +425,10 @@ The `Notifications` struct is created independently (no dependency on Node or Ma
 
 ### fx Integration
 
-The event system is wired into the application via `application.Module()`:
+The event system is wired into the application via `bootstrap.Module()`:
 
 ```go
-// internal/application/module.go
+// internal/bootstrap/module.go
 fx.Provide(
     events.NewNotifications,  // Shared signal bus (breaks circular dep)
     events.NewManager,        // Manages per-sink emitters

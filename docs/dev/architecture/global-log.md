@@ -276,7 +276,7 @@ The global log provides:
 The FSM processes all orders in a proposal atomically:
 
 ```go
-// In internal/service/state/machine.go
+// In internal/infra/state/machine.go
 func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *data.Batch, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
     var logs []*commonpb.Log
 

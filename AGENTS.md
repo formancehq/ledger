@@ -34,7 +34,7 @@ Always verify compilation with `go build ./...` before submitting.
 
 **CRITICAL**: After any change to interfaces annotated with `//go:generate mockgen`, regenerate mocks immediately with `go generate ./...`.
 
-Interfaces with mockgen: `WAL` (`internal/service/node/node.go`), `Transport` (`internal/service/node/transport.go`), `Controller` (`internal/application/ctrl/controller.go`), `Engine` (`internal/application/ctrl/controller_default.go`), `Spool` (`internal/storage/spool/spool.go`), `WAL` (`internal/storage/wal/wal.go`), `Store` (`internal/service/processing/processor.go`), `Checker` (`internal/health/healthcheck.go`).
+Interfaces with mockgen: `WAL` (`internal/infra/node/node.go`), `Transport` (`internal/infra/node/transport.go`), `Controller` (`internal/application/ctrl/controller.go`), `Engine` (`internal/application/ctrl/controller_default.go`), `Spool` (`internal/storage/spool/spool.go`), `WAL` (`internal/storage/wal/wal.go`), `Store` (`internal/domain/processing/processor.go`), `Checker` (`internal/infra/health/healthcheck.go`).
 
 ## JSON Property Naming
 
@@ -62,7 +62,14 @@ Key rules:
 ## File Structure
 
 - **CLI**: `cmd/ledgerctl/` - one file per sub-command. See [docs/ops/cli.md](docs/ops/cli.md).
-- **HTTP handlers**: `internal/compat/http/` - one file per handler
+- **Domain**: `internal/domain/` - value objects, errors, and domain services (`processing/`)
+- **Bootstrap**: `internal/bootstrap/` - composition root (fx wiring, config, TLS, persisted config)
+- **Application**: `internal/application/` - use cases (`admission/`, `ctrl/`, `events/`, `check/`)
+- **Infrastructure**: `internal/infra/` - consensus (`node/`, `state/`), caching (`cache/`, `attributes/`), transport, health, monitoring
+- **Utilities**: `internal/pkg/` - zero/low-dependency utilities (`kv/`, `signal/`, `futures/`, `commands/`, `crypto/`)
+- **Storage**: `internal/storage/` - Pebble DAL, WAL, spool
+- **Query**: `internal/query/` - CQRS read-side queries
+- **Adapters**: `internal/adapter/` - transport layer (`grpc/` primary API, `http/` REST compat, `json/` serialization)
 - **Proto definitions**: `misc/proto/` -> generated code in `internal/proto/`
 - **Demos**: `misc/demo/` - VHS tape files for CLI demos
 - **Numscript examples**: `misc/numscript/examples/`
@@ -81,7 +88,7 @@ Key rules:
 
 The server persists critical config (`node-id`, `cluster-id`) in Pebble (key prefix `0xFE`) on first boot and validates on subsequent boots. Mismatch on `node-id`/`cluster-id` is fatal. Use `--unsafe-skip-config-validation` to bypass (dangerous). See [docs/ops/deployment.md](docs/ops/deployment.md) and [docs/ops/cli.md](docs/ops/cli.md) for details.
 
-Key files: `internal/application/persisted_config.go`, `internal/application/config_validation.go`, `internal/application/module.go`.
+Key files: `internal/bootstrap/persisted_config.go`, `internal/bootstrap/config_validation.go`, `internal/bootstrap/module.go`.
 
 ## Request Signing
 

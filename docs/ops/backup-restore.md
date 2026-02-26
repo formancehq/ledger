@@ -68,7 +68,7 @@ The leader proposes a `CreateCheckpoint` command through Raft consensus. All nod
 
 This ensures the checkpoint is taken at a consistent Raft boundary without blocking write traffic for more than the Raft round-trip latency.
 
-**File**: `internal/service/node/node.go` — `ProposeBackupCheckpoint()`
+**File**: `internal/infra/node/node.go` — `ProposeBackupCheckpoint()`
 
 #### Step 2: Compaction for Restore Compatibility
 
@@ -80,7 +80,7 @@ The checkpoint is opened in read-write mode and prepared for standalone use:
 
 3. **Flush**: Pebble is flushed to ensure all compacted data is written to SSTs.
 
-**File**: `internal/service/attributes/compact.go` — `CompactAllForBackup()`
+**File**: `internal/infra/attributes/compact.go` — `CompactAllForBackup()`
 
 #### Step 3: Tar Streaming
 
@@ -92,7 +92,7 @@ The checkpoint directory is streamed to the client as a tar archive:
 - The final message is an EOF marker containing the SHA256 hash and total content size.
 - The client verifies the hash against the server-reported hash and fails if they differ.
 
-**File**: `internal/application/tar_streaming.go` — `StreamDirAsTar()`
+**File**: `internal/adapter/grpc/tar_streaming.go` — `StreamDirAsTar()`
 
 #### Cleanup
 
@@ -163,7 +163,7 @@ In restore mode, only a minimal subset of the application runs:
 | | ClusterService, SnapshotService |
 | | Event sinks, Signing |
 
-**File**: `internal/application/module_restore.go` — `RestoreModule()`
+**File**: `internal/bootstrap/module_restore.go` — `RestoreModule()`
 
 ### Step 1: Upload
 
@@ -367,7 +367,7 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 - `lastAppliedIndex`: The Raft index of the last applied entry in the backup (reset to 0 after compaction, so this is always 0 in practice).
 - `lastAppliedTimestamp`: The HLC timestamp (microseconds) of the last applied entry.
 
-**File**: `internal/service/node/restored_marker.go`
+**File**: `internal/infra/node/restored_marker.go`
 
 ---
 
@@ -439,21 +439,21 @@ See [Periods](../dev/architecture/periods.md) for the full period lifecycle and 
 |------|-------------|
 | **Backup** | |
 | `cmd/ledgerctl/store_backup.go` | `store backup` CLI command |
-| `internal/application/grpc_cluster_server.go` | `ClusterService.Backup` gRPC implementation |
-| `internal/application/tar_streaming.go` | Tar streaming with SHA256 |
-| `internal/service/attributes/compact.go` | `CompactAllForBackup()` — attribute compaction |
-| `internal/service/node/node.go` | `ProposeBackupCheckpoint()` — Raft checkpoint |
+| `internal/adapter/grpc/server_cluster.go` | `ClusterService.Backup` gRPC implementation |
+| `internal/adapter/grpc/tar_streaming.go` | Tar streaming with SHA256 |
+| `internal/infra/attributes/compact.go` | `CompactAllForBackup()` — attribute compaction |
+| `internal/infra/node/node.go` | `ProposeBackupCheckpoint()` — Raft checkpoint |
 | **Restore (gRPC)** | |
 | `misc/proto/restore.proto` | RestoreService proto definition |
 | `internal/proto/restorepb/` | Generated proto code |
-| `internal/application/grpc_restore_server.go` | RestoreService gRPC implementation |
-| `internal/application/module_restore.go` | Minimal fx module for restore mode |
+| `internal/adapter/grpc/server_restore.go` | RestoreService gRPC implementation |
+| `internal/bootstrap/module_restore.go` | Minimal fx module for restore mode |
 | `internal/storage/tarutil/extract.go` | Shared tar extraction utility |
 | `internal/storage/dal/store_readonly.go` | Read-only Pebble store opener |
 | **Offline Bootstrap** | |
 | `cmd/ledgerctl/store_bootstrap.go` | `store bootstrap` CLI command (offline) |
 | **Post-Restore Bootstrap** | |
-| `internal/service/node/restored_marker.go` | RESTORED marker read/write/remove |
-| `internal/service/state/machine.go` | `RecoverState()` — FSM state recovery from Pebble |
+| `internal/infra/node/restored_marker.go` | RESTORED marker read/write/remove |
+| `internal/infra/state/machine.go` | `RecoverState()` — FSM state recovery from Pebble |
 | **Integrity Checker** | |
 | `internal/application/check/checker.go` | Hash chain, volumes, metadata verification |

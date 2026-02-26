@@ -12,6 +12,7 @@ Business:
 Tests:
 * Convert K6 tests to GRPC
 * Read heavy with K6
+* Check schema eviction with time
 
 Refactor:
 * Simplify processor
@@ -21,7 +22,7 @@ Refactor:
 * Check all commands match a log type payload
 * Decoupler wal write / state machine processing
 * Leader reads
-* Rework packages
+* ~~Rework packages~~ (done: DDD layers domain/, infra/, pkg/)
 
 Later:
 * Events

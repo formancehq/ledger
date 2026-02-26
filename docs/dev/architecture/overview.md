@@ -15,26 +15,26 @@ flowchart TB
     end
 
     subgraph API["API Layer"]
-        HTTPServer[HTTP Server<br/>internal/compat/http]
-        GRPCServer[gRPC Server<br/>internal/application]
+        HTTPServer[HTTP Server<br/>internal/adapter/http]
+        GRPCServer[gRPC Server<br/>internal/adapter/grpc]
     end
 
     subgraph Control["Control Layer"]
         Controller[Controller<br/>internal/ctrl]
-        RoutedCtrl[Routed Controller<br/>internal/application]
+        RoutedCtrl[Routed Controller<br/>internal/bootstrap]
         Admission[Admission<br/>internal/application/admission]
     end
 
     subgraph Consensus["Consensus Layer"]
-        Node[Raft Node<br/>internal/service/node]
+        Node[Raft Node<br/>internal/infra/node]
         Transport[Transport<br/>internal/infra/transport]
     end
 
     subgraph State["State Management"]
-        FSM[State Machine<br/>internal/service/state]
-        Processing[Request Processor<br/>internal/service/processing]
-        Cache[Cache<br/>internal/service/cache]
-        Attributes[Attributes<br/>internal/service/attributes]
+        FSM[State Machine<br/>internal/infra/state]
+        Processing[Request Processor<br/>internal/domain/processing]
+        Cache[Cache<br/>internal/infra/cache]
+        Attributes[Attributes<br/>internal/infra/attributes]
     end
 
     subgraph Storage["Storage Layer"]
@@ -141,13 +141,16 @@ graph TB
         fx[uber/fx]
     end
 
-    subgraph Application["internal/application"]
+    subgraph Bootstrap["internal/bootstrap"]
         app_module[module.go]
-        app_grpc[grpc_*_server.go]
         app_ctrl[controller_routed.go]
     end
 
-    subgraph Compat["internal/compat"]
+    subgraph GRPCAdapter["internal/adapter/grpc"]
+        app_grpc[server_*.go]
+    end
+
+    subgraph Compat["internal/adapter"]
         http_handler[http/handler.go]
         http_server[http/server.go]
     end
@@ -158,19 +161,19 @@ graph TB
         ctrl_store[store.go]
     end
 
-    subgraph Node["internal/service/node"]
+    subgraph Node["internal/infra/node"]
         node_main[node.go]
         node_transport[transport.go]
         node_queue[queue.go]
     end
 
-    subgraph State["internal/service/state"]
+    subgraph State["internal/infra/state"]
         state_machine[machine.go]
         state_buffer[buffer.go]
         state_snapshot[snapshot.go]
     end
 
-    subgraph Processing["internal/service/processing"]
+    subgraph Processing["internal/domain/processing"]
         proc_main[processor.go]
         proc_cache[numscript_cache.go]
     end
@@ -180,12 +183,12 @@ graph TB
         adm_loader[loader.go]
     end
 
-    subgraph Cache["internal/service/cache"]
+    subgraph Cache["internal/infra/cache"]
         cache_main[cache.go]
         cache_gen[generation.go]
     end
 
-    subgraph Attributes["internal/service/attributes"]
+    subgraph Attributes["internal/infra/attributes"]
         attr_main[attributes.go]
         attr_keystore[key_store.go]
         attr_u128[u128.go]
@@ -334,7 +337,7 @@ erDiagram
 
 ## Key Components
 
-### 1. API Layer (`internal/application`, `internal/compat/http`)
+### 1. API Layer (`internal/adapter/grpc`, `internal/adapter/http`)
 
 - **gRPC Server**: Primary API for client interactions, supports Apply, GetLedger, GetAccount, GetTransaction
 - **HTTP Server**: REST compatibility layer for legacy clients
@@ -346,19 +349,19 @@ erDiagram
 - **DefaultController**: Local implementation reading from Pebble store
 - **Admission**: Handles write request admission, preloads volumes, coordinates with Raft
 
-### 3. Consensus Layer (`internal/service/node`, `internal/infra/transport`)
+### 3. Consensus Layer (`internal/infra/node`, `internal/infra/transport`)
 
 - **Raft Node**: Wraps etcd/raft, manages consensus, applies committed entries
 - **Transport**: gRPC-based message transport between cluster nodes
 - **Connection Pool**: Manages persistent gRPC connections to peers
 
-### 4. State Management (`internal/service/state`, `internal/service/processing`)
+### 4. State Management (`internal/infra/state`, `internal/domain/processing`)
 
 - **State Machine (FSM)**: Deterministic state machine, processes Raft log entries
 - **Request Processor**: Business logic for transactions, Numscript execution
 - **Buffer**: Accumulates changes during command processing before commit
 
-### 5. Caching Layer (`internal/service/cache`, `internal/service/attributes`)
+### 5. Caching Layer (`internal/infra/cache`, `internal/infra/attributes`)
 
 - **Cache**: Dual-generation cache for hot data, rotates based on Raft index
 - **Attributes**: Generic attribute system for volumes, metadata, reversions
