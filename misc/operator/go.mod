@@ -1,6 +1,6 @@
 module github.com/formancehq/ledger-v3-poc/operator
 
-go 1.25.3
+go 1.26.0
 
 require (
 	github.com/pterm/pterm v0.12.82

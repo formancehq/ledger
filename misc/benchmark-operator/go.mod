@@ -1,6 +1,6 @@
 module github.com/formancehq/ledger-v3-poc/misc/benchmark-operator
 
-go 1.25.3
+go 1.26.0
 
 require (
 	k8s.io/api v0.32.2

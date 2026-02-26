@@ -1,6 +1,6 @@
 module github.com/formancehq/ledger-v3-poc/deployments/devenv
 
-go 1.24.7
+go 1.26.0
 
 require (
 	github.com/pulumi/pulumi-docker-build/sdk/go/dockerbuild v0.0.15

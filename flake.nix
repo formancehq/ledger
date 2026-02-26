@@ -1,5 +1,5 @@
 {
-  description = "A Nix-flake-based Go 1.25 development environment";
+  description = "A Nix-flake-based Go 1.26 development environment";
 
   inputs = {
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2511";
@@ -44,20 +44,13 @@
           stablePackages = with pkgs; [
             ffmpeg
             ginkgo
-            go
             grpcurl
-            go-tools
             gomarkdoc
-            goperf
-            gotools
             jdk11
             jq
             just
-            mockgen
             nodejs_22
             protobuf_27
-            protoc-gen-go
-            protoc-gen-go-grpc
             vhs
             yq-go
             kubernetes-helm
@@ -65,6 +58,13 @@
             k6
           ];
           unstablePackages = with pkgs-unstable; [
+            go
+            go-tools
+            goperf
+            gotools
+            mockgen
+            protoc-gen-go
+            protoc-gen-go-grpc
             golangci-lint
           ];
           otherPackages = [
