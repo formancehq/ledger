@@ -198,6 +198,12 @@ func (r *LedgerServiceReconciler) updateStatus(ctx context.Context, ledger *ledg
 		return err
 	}
 
+	// Carry over conditions (DefaultsResolved, ConfigValid) accumulated
+	// during reconciliation on the in-memory ledger object.
+	for _, c := range ledger.Status.Conditions {
+		meta.SetStatusCondition(&latest.Status.Conditions, c)
+	}
+
 	// Get the StatefulSet to read ready replicas
 	sts := &appsv1.StatefulSet{}
 	err := r.Get(ctx, types.NamespacedName{
@@ -274,9 +280,11 @@ func (r *LedgerServiceReconciler) deleteUnstructuredIfExists(ctx context.Context
 	return r.Delete(ctx, obj)
 }
 
-// ignoreNotFound returns nil on NotFound errors.
+// ignoreNotFound returns nil on NotFound and NoKindMatch errors.
+// NoKindMatch occurs when optional CRDs (ServiceMonitor, TargetGroupBinding)
+// are not installed in the cluster.
 func ignoreNotFound(err error) error {
-	if apierrors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
 		return nil
 	}
 	return err

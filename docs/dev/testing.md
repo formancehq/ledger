@@ -332,6 +332,18 @@ ginkgo run -tags e2e ./tests/e2e
 go test -tags e2e ./tests/e2e/...
 ```
 
+### Operator Integration Tests
+
+```bash
+# Install envtest binaries (one-time)
+go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest use --bin-dir /tmp/envtest-bins
+
+# Run from misc/operator/
+cd misc/operator
+KUBEBUILDER_ASSETS=$(/tmp/envtest-bins/setup-envtest use -p path) \
+  go test -tags=integration ./internal/controller/ -v -count=1 -timeout=120s
+```
+
 ### Specific Tests
 
 ```bash
@@ -356,6 +368,44 @@ go tool cover -html=coverage.out
 - **Minimum**: 70% for critical code
 - **Ideal**: 80%+ for main components
 - **Focus**: FSM, Business services, HTTP handlers
+
+## Operator Integration Tests
+
+**Location**: `misc/operator/internal/controller/*_test.go`
+
+**Build tag**: `//go:build integration`
+
+**Framework**: controller-runtime [envtest](https://book.kubebuilder.io/reference/envtest) — starts a real API server and etcd, installs CRDs, and runs the reconciler against them.
+
+### Architecture
+
+`suite_test.go` boots a shared envtest environment via `TestMain`:
+
+1. Installs CRDs from `config/crd/bases/`
+2. Creates a controller-runtime manager with metrics disabled
+3. Registers `LedgerServiceReconciler`
+4. Starts the manager in a background goroutine
+
+Each test gets an isolated namespace via `createTestNamespace(t)`. Helpers `newLedgerService` and `newLedgerDefaults` create minimal valid CRs.
+
+### Test Files
+
+| File | Coverage |
+|------|----------|
+| `reconcile_basic_test.go` | ServiceAccount, Services, StatefulSet creation, image defaults, ports, volumes, env vars, ownerRefs |
+| `reconcile_defaults_test.go` | LedgerDefaults merge, override, not-found degraded, update propagation |
+| `reconcile_validation_test.go` | Even replicas, ingress without hosts, validation recovery |
+| `reconcile_status_test.go` | Phase=Pending, observedGeneration |
+| `reconcile_ingress_test.go` | HTTP/gRPC Ingress (nginx, traefik), cleanup on disable, default paths |
+| `reconcile_pdb_test.go` | PDB creation and cleanup |
+| `reconcile_update_test.go` | Spec hash rolling updates |
+
+### Writing New Tests
+
+- Use `requireEventually(t, condition, msg)` (10s timeout, 250ms poll) to wait for reconciliation
+- envtest has no kubelet — pods never become Ready, so `ReadyReplicas` stays 0
+- Cluster-scoped resources (LedgerDefaults) need `t.Cleanup` for deletion
+- Assertion helpers (`requireOwnerRef`, `requirePort`, `requireEnvVar`, etc.) are in `reconcile_basic_test.go`
 
 ## Performance Tests
 
