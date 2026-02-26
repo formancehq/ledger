@@ -1,7 +1,6 @@
 API:
 * Checkpoint + exposed api to read at PIT
 * Clean HTTP layer / GRPC proxy
-* ACL system / authentication
 
 Business:
 * Chart of account

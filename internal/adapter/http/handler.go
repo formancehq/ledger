@@ -7,6 +7,8 @@ import (
 	"net/http/pprof"
 	stdtime "time"
 
+	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -14,9 +16,15 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// NewHandler creates a new HTTP handler (router) for the ledger service
-func NewHandler(logger logging.Logger, backend Backend) http.Handler {
+// NewHandler creates a new HTTP handler (router) for the ledger service.
+// The authCfg parameter controls JWT authentication with read/write scopes:
+// when Enabled is false, requests pass through without authentication.
+func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.AuthConfig) http.Handler {
 	r := chi.NewRouter()
+
+	// Scope-bound middleware helpers
+	requireRead := internalauth.RequireScope(authCfg, internalauth.ScopeRead)
+	requireWrite := internalauth.RequireScope(authCfg, internalauth.ScopeWrite)
 
 	// Apply middlewares
 	r.Use(
@@ -29,6 +37,7 @@ func NewHandler(logger logging.Logger, backend Backend) http.Handler {
 			logger: logger,
 		}),
 		middleware.Recoverer,
+		internalauth.HTTPAuthMiddleware(authCfg),
 	)
 
 	// Create server instance for handlers
@@ -36,8 +45,7 @@ func NewHandler(logger logging.Logger, backend Backend) http.Handler {
 
 	// Register routes function - can be called with different prefixes
 	registerRoutes := func(r chi.Router) {
-		// Register pprof routes (for profiling and debugging)
-		// These routes are available at /debug/pprof/*
+		// Unauthenticated: pprof and health
 		r.Route("/debug/pprof", func(r chi.Router) {
 			r.Get("/", pprof.Index)
 			r.Get("/cmdline", pprof.Cmdline)
@@ -53,27 +61,37 @@ func NewHandler(logger logging.Logger, backend Backend) http.Handler {
 		})
 
 		r.With(contentTypeMiddleware).Group(func(r chi.Router) {
-			// Register known routes (specific routes first)
 			r.Get("/health", server.handleHealth)
 
-			r.Post("/{ledgerName}", server.handleCreateLedger)                                                            // POST /{ledgerName}
-			r.Get("/{ledgerName}", server.handleGetLedger)                                                                // GET /{ledgerName}
-			r.Delete("/{ledgerName}", server.handleDeleteLedger)                                                          // DELETE /{ledgerName}
-			r.Post("/{ledgerName}/transactions", server.handleCreateTransaction)                                          // POST /{ledgerName}/transactions
-			r.Get("/{ledgerName}/transactions/{transactionId}", server.handleGetTransaction)                              // GET /{ledgerName}/transactions/{transactionId}
-			r.Post("/{ledgerName}/transactions/{transactionId}/revert", server.handleRevertTransaction)                   // POST /{ledgerName}/transactions/{transactionId}/revert
-			r.Post("/{ledgerName}/transactions/{transactionId}/metadata", server.handleSaveTransactionMetadata)           // POST /{ledgerName}/transactions/{transactionId}/metadata
-			r.Delete("/{ledgerName}/transactions/{transactionId}/metadata/{key}", server.handleDeleteTransactionMetadata) // DELETE /{ledgerName}/transactions/{transactionId}/metadata/{key}
-			r.Get("/{ledgerName}/accounts", server.handleListAccounts)                                                     // GET /{ledgerName}/accounts
-			r.Get("/{ledgerName}/accounts/{address}", server.handleGetAccount)                                            // GET /{ledgerName}/accounts/{address}
-			r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata)                         // POST /{ledgerName}/accounts/{address}/metadata
-			r.Delete("/{ledgerName}/accounts/{address}/metadata/{key}", server.handleDeleteAccountMetadata)               // DELETE /{ledgerName}/accounts/{address}/metadata/{key}
-			r.Get("/{ledgerName}/metadata-schema", server.handleGetMetadataSchema)                                          // GET /{ledgerName}/metadata-schema
-			r.Put("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleSetMetadataType)                        // PUT /{ledgerName}/metadata-schema/{targetType}/{key}
-			r.Delete("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleRemoveMetadataType)                  // DELETE /{ledgerName}/metadata-schema/{targetType}/{key}
-			r.Post("/{ledgerName}/bulk", server.handleBulk)                                                               // POST /{ledgerName}/bulk
-			r.Post("/{ledgerName}/_bulk", server.handleBulk)                                                              // For compat
-			r.Get("/", server.handleListAllLedgers)                                                                       // GET / - must be last
+			// Read scope
+			r.With(requireRead).Group(func(r chi.Router) {
+				r.Get("/", server.handleListAllLedgers)
+				r.Get("/{ledgerName}", server.handleGetLedger)
+				r.Get("/{ledgerName}/transactions/{transactionId}", server.handleGetTransaction)
+				r.Get("/{ledgerName}/accounts", server.handleListAccounts)
+				r.Get("/{ledgerName}/accounts/{address}", server.handleGetAccount)
+				r.Get("/{ledgerName}/metadata-schema", server.handleGetMetadataSchema)
+			})
+
+			// Write scope
+			r.With(requireWrite).Group(func(r chi.Router) {
+				r.Post("/{ledgerName}", server.handleCreateLedger)
+				r.Delete("/{ledgerName}", server.handleDeleteLedger)
+				r.Post("/{ledgerName}/transactions", server.handleCreateTransaction)
+				r.Post("/{ledgerName}/transactions/{transactionId}/revert", server.handleRevertTransaction)
+				r.Post("/{ledgerName}/transactions/{transactionId}/metadata", server.handleSaveTransactionMetadata)
+				r.Delete("/{ledgerName}/transactions/{transactionId}/metadata/{key}", server.handleDeleteTransactionMetadata)
+				r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata)
+				r.Delete("/{ledgerName}/accounts/{address}/metadata/{key}", server.handleDeleteAccountMetadata)
+				r.Post("/{ledgerName}/bulk", server.handleBulk)
+				r.Post("/{ledgerName}/_bulk", server.handleBulk)
+			})
+
+			// Write scope (metadata schema management)
+			r.With(requireWrite).Group(func(r chi.Router) {
+				r.Put("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleSetMetadataType)
+				r.Delete("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleRemoveMetadataType)
+			})
 		})
 	}
 
@@ -178,3 +196,4 @@ func (c chiLogEntry) Panic(v interface{}, stack []byte) {
 		span.RecordError(fmt.Errorf("%s", v), trace.WithStackTrace(true))
 	}
 }
+

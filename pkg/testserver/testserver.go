@@ -207,3 +207,31 @@ func WithResponseSigningKey(path string) testservice.InstrumentationFunc {
 	}
 }
 
+func WithAuthEnabled() testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--auth-enabled")
+		return nil
+	}
+}
+
+func WithAuthIssuer(issuer string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--auth-issuer", issuer)
+		return nil
+	}
+}
+
+func WithAuthCheckScopes() testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--auth-check-scopes")
+		return nil
+	}
+}
+
+func WithAuthService(service string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--auth-service", service)
+		return nil
+	}
+}
+

@@ -11,7 +11,9 @@ import (
 
 	"github.com/formancehq/go-libs/v3/httpserver"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/oidc"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
+	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	httpcompat "github.com/formancehq/ledger-v3-poc/internal/adapter/http"
 	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
@@ -241,9 +243,16 @@ func Module() fx.Option {
 
 				return grpcadp.NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, tlsOpt), nil
 			},
-			func(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner) servicepb.BucketServiceServer {
-				return grpcadp.NewBucketServiceServer(logger, ctrl, s, attrs, ss, signer, respSigner)
-			},
+			fx.Annotate(func(cfg Config, logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, keySet oidc.KeySet) servicepb.BucketServiceServer {
+				authCfg := internalauth.AuthConfig{
+					Enabled:     cfg.AuthConfig.Enabled,
+					KeySet:      keySet,
+					Issuer:      cfg.AuthConfig.Issuer,
+					Service:     cfg.AuthConfig.Service,
+					CheckScopes: cfg.AuthConfig.CheckScopes,
+				}
+				return grpcadp.NewBucketServiceServer(logger, ctrl, s, attrs, ss, signer, respSigner, authCfg)
+			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `optional:"true"`)),
 			func(logger logging.Logger, s *dal.Store) snapshotpb.SnapshotServiceServer {
 				return grpcadp.NewSnapshotServiceServer(logger, s)
 			},
@@ -254,12 +263,20 @@ func Module() fx.Option {
 					10*time.Second,
 				)
 			},
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, ss *state.SharedState, logger logging.Logger, cfg Config) clusterpb.ClusterServiceServer {
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, ss *state.SharedState, logger logging.Logger, cfg Config, keySet oidc.KeySet) clusterpb.ClusterServiceServer {
+				authCfg := internalauth.AuthConfig{
+					Enabled:     cfg.AuthConfig.Enabled,
+					KeySet:      keySet,
+					Issuer:      cfg.AuthConfig.Issuer,
+					Service:     cfg.AuthConfig.Service,
+					CheckScopes: cfg.AuthConfig.CheckScopes,
+				}
 				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, ss, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
+					authCfg,
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, `optional:"true"`)),
 			fx.Annotate(func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
 				return clusterhealth.NewHealthChecker(
 					n, collector, servicePool,
@@ -277,7 +294,16 @@ func Module() fx.Option {
 			events.NewNotifications,
 			events.NewManager,
 			httpcompat.NewServer,
-			httpcompat.NewHandler,
+			fx.Annotate(func(cfg Config, logger logging.Logger, backend httpcompat.Backend, keySet oidc.KeySet) http.Handler {
+				authCfg := internalauth.AuthConfig{
+					Enabled:     cfg.AuthConfig.Enabled,
+					KeySet:      keySet,
+					Issuer:      cfg.AuthConfig.Issuer,
+					Service:     cfg.AuthConfig.Service,
+					CheckScopes: cfg.AuthConfig.CheckScopes,
+				}
+				return httpcompat.NewHandler(logger, backend, authCfg)
+			}, fx.ParamTags(``, ``, ``, `optional:"true"`)),
 			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
 				return httpcompat.NewDefaultBackend(node, ctrl)
 			},

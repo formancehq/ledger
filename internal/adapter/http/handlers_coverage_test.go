@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -25,14 +26,14 @@ import (
 func TestNewHandler_ReturnsNonNil(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(logging.Testing(), &mockBackend{healthy: true})
+	handler := NewHandler(logging.Testing(), &mockBackend{healthy: true}, internalauth.AuthConfig{})
 	require.NotNil(t, handler)
 }
 
 func TestNewHandler_HealthEndpoint(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(logging.Testing(), &mockBackend{healthy: true})
+	handler := NewHandler(logging.Testing(), &mockBackend{healthy: true}, internalauth.AuthConfig{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -46,7 +47,7 @@ func TestNewHandler_HealthEndpoint(t *testing.T) {
 func TestNewHandler_V2Prefix(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler(logging.Testing(), &mockBackend{healthy: true})
+	handler := NewHandler(logging.Testing(), &mockBackend{healthy: true}, internalauth.AuthConfig{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/v2/health", nil)
@@ -1136,7 +1137,7 @@ func TestNewHandler_CreateLedgerRoute(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(logging.Testing(), backend)
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/test", nil)
@@ -1155,7 +1156,7 @@ func TestNewHandler_GetLedgerRoute(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(logging.Testing(), backend)
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/my-ledger", nil)
@@ -1174,7 +1175,7 @@ func TestNewHandler_ListAllLedgersRoute(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(logging.Testing(), backend)
+	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{})
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/", nil)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
@@ -29,6 +30,7 @@ type ClusterServiceServerImpl struct {
 	logger           logging.Logger
 	localRaftAddr    string // This node's own Raft advertise address
 	localServiceAddr string // This node's own gRPC service address
+	authCfg          internalauth.AuthConfig
 }
 
 func NewClusterServiceServer(
@@ -41,6 +43,7 @@ func NewClusterServiceServer(
 	logger logging.Logger,
 	localRaftAddr string,
 	localServiceAddr string,
+	authCfg internalauth.AuthConfig,
 ) clusterpb.ClusterServiceServer {
 	return &ClusterServiceServerImpl{
 		node:             node,
@@ -52,10 +55,15 @@ func NewClusterServiceServer(
 		logger:           logger.WithField("component", "cluster-server"),
 		localRaftAddr:    localRaftAddr,
 		localServiceAddr: localServiceAddr,
+		authCfg:          authCfg,
 	}
 }
 
 func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+		return nil, err
+	}
+
 	// Determine target node
 	var targetNodeID uint64
 
@@ -118,6 +126,10 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 }
 
 func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+		return nil, err
+	}
+
 	if req.Transferee == 0 {
 		return nil, fmt.Errorf("transferee node ID must be non-zero")
 	}
@@ -149,7 +161,11 @@ func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, re
 	}, nil
 }
 
-func (impl *ClusterServiceServerImpl) GetDiskUsage(_ context.Context, _ *clusterpb.GetDiskUsageRequest) (*clusterpb.DiskUsage, error) {
+func (impl *ClusterServiceServerImpl) GetDiskUsage(ctx context.Context, _ *clusterpb.GetDiskUsageRequest) (*clusterpb.DiskUsage, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+		return nil, err
+	}
+
 	return &clusterpb.DiskUsage{
 		SpoolBytes:           impl.collector.SpoolBytes(),
 		WalBytes:             impl.collector.WALBytes(),
@@ -161,13 +177,21 @@ func (impl *ClusterServiceServerImpl) GetDiskUsage(_ context.Context, _ *cluster
 	}, nil
 }
 
-func (impl *ClusterServiceServerImpl) GetNodeTime(_ context.Context, _ *clusterpb.GetNodeTimeRequest) (*clusterpb.NodeTime, error) {
+func (impl *ClusterServiceServerImpl) GetNodeTime(ctx context.Context, _ *clusterpb.GetNodeTimeRequest) (*clusterpb.NodeTime, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+		return nil, err
+	}
+
 	return &clusterpb.NodeTime{
 		TimestampUs: uint64(time.Now().UnixMicro()),
 	}, nil
 }
 
 func (impl *ClusterServiceServerImpl) Backup(req *clusterpb.BackupRequest, stream ggrpc.ServerStreamingServer[clusterpb.BackupResponse]) error {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeAdmin); err != nil {
+		return err
+	}
+
 	// If this node is the leader, create a checkpoint and stream it
 	if impl.node.IsLeader() {
 		return impl.backupLocal(stream)
@@ -259,6 +283,10 @@ func (impl *ClusterServiceServerImpl) backupLocal(stream ggrpc.ServerStreamingSe
 }
 
 func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+		return nil, err
+	}
+
 	if req.NodeId == 0 {
 		return nil, fmt.Errorf("node_id must be non-zero")
 	}
@@ -300,6 +328,10 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 }
 
 func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *clusterpb.PromoteLearnerRequest) (*clusterpb.PromoteLearnerResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+		return nil, err
+	}
+
 	if req.NodeId == 0 {
 		return nil, fmt.Errorf("node_id must be non-zero")
 	}
@@ -328,6 +360,10 @@ func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *c
 }
 
 func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clusterpb.RemoveNodeRequest) (*clusterpb.RemoveNodeResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+		return nil, err
+	}
+
 	if req.NodeId == 0 {
 		return nil, fmt.Errorf("node_id must be non-zero")
 	}

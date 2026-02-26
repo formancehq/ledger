@@ -11,6 +11,14 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
+// AuthFlagConfig captures the authentication flag values without runtime objects.
+type AuthFlagConfig struct {
+	Enabled     bool
+	Issuer      string
+	Service     string
+	CheckScopes bool
+}
+
 type TLSConfig struct {
 	Enabled  bool
 	CertFile string
@@ -41,6 +49,7 @@ type Config struct {
 	ColdStorageConfig          coldstorage.Config
 	PoolConfig                 transport.PoolConfig
 	TLSConfig                  TLSConfig
+	AuthConfig                 AuthFlagConfig
 	Restore                    bool
 	NumscriptCacheSize         int
 	UnsafeSkipConfigValidation bool

@@ -11,14 +11,21 @@ servers:
   - url: http://localhost:9000
     description: Local development server
 
+security:
+  - BearerAuth: []
+  - {}
+
 paths:
   /:
     get:
       summary: List all ledgers
-      description: Returns a list of all ledgers in the cluster.
+      description: Returns a list of all ledgers in the cluster. Requires `ledger:read` scope.
       operationId: listAllLedgers
       tags:
         - Ledgers
+      security:
+        - BearerAuth: []
+        - {}
       responses:
         '200':
           description: List of ledgers retrieved successfully
@@ -26,16 +33,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListAllLedgersResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
   /{ledgerName}:
     get:
       summary: Get a ledger
-      description: Retrieves a ledger by its name.
+      description: Retrieves a ledger by its name. Requires `ledger:read` scope.
       operationId: getLedger
       tags:
         - Ledgers
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
       responses:
@@ -45,6 +59,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetLedgerResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -55,10 +73,13 @@ paths:
       summary: Create a new ledger
       description: |
         Creates a new ledger with the specified name. Storage is configured at the server level.
-        Each ledger has its own Raft group for data consistency.
+        Each ledger has its own Raft group for data consistency. Requires `ledger:write` scope.
       operationId: createLedger
       tags:
         - Ledgers
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -77,6 +98,10 @@ paths:
                 $ref: '#/components/schemas/CreateLedgerResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '409':
           description: Ledger already exists
           content:
@@ -89,16 +114,23 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     delete:
       summary: Delete a ledger
-      description: Deletes a ledger by its name. This operation removes the ledger and its associated Raft group from the cluster.
+      description: Deletes a ledger by its name. This operation removes the ledger and its associated Raft group from the cluster. Requires `ledger:write` scope.
       operationId: deleteLedger
       tags:
         - Ledgers
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '2XX':
           description: Ledger deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -109,10 +141,13 @@ paths:
   /{ledgerName}/transactions:
     post:
       summary: Create a new transaction
-      description: Creates a new transaction in the specified ledger with the specified postings
+      description: Creates a new transaction in the specified ledger with the specified postings. Requires `ledger:write` scope.
       operationId: createTransaction
       tags:
         - Transactions
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -131,6 +166,10 @@ paths:
                 $ref: '#/components/schemas/CreateTransactionResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -139,10 +178,13 @@ paths:
   /{ledgerName}/transactions/{transactionId}:
     get:
       summary: Get a transaction
-      description: Retrieves a transaction by its ID from the specified ledger
+      description: Retrieves a transaction by its ID from the specified ledger. Requires `ledger:read` scope.
       operationId: getTransaction
       tags:
         - Transactions
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
@@ -153,6 +195,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetTransactionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -163,8 +209,11 @@ paths:
   /{ledgerName}/accounts:
     get:
       summary: List accounts
-      description: Lists accounts in a ledger in alphabetical order with optional prefix filtering and cursor pagination
+      description: Lists accounts in a ledger in alphabetical order with optional prefix filtering and cursor pagination. Requires `ledger:read` scope.
       operationId: listAccounts
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - name: pageSize
@@ -195,16 +244,23 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Account'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
 
   /{ledgerName}/accounts/{address}:
     get:
       summary: Get an account
-      description: Retrieves account information including metadata for a specific account address
+      description: Retrieves account information including metadata for a specific account address. Requires `ledger:read` scope.
       operationId: getAccount
       tags:
         - Accounts
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/AccountAddress'
@@ -215,6 +271,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetAccountResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -225,10 +285,13 @@ paths:
   /{ledgerName}/accounts/{address}/metadata:
     post:
       summary: Save account metadata
-      description: Saves metadata for a specific account in the ledger
+      description: Saves metadata for a specific account in the ledger. Requires `ledger:write` scope.
       operationId: saveAccountMetadata
       tags:
         - Accounts
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/AccountAddress'
@@ -252,6 +315,10 @@ paths:
           description: Account metadata saved successfully
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -260,10 +327,13 @@ paths:
   /{ledgerName}/transactions/{transactionId}/metadata:
     post:
       summary: Save transaction metadata
-      description: Saves metadata for a specific transaction in the ledger
+      description: Saves metadata for a specific transaction in the ledger. Requires `ledger:write` scope.
       operationId: saveTransactionMetadata
       tags:
         - Transactions
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
@@ -286,6 +356,10 @@ paths:
           description: Transaction metadata saved successfully
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -294,10 +368,13 @@ paths:
   /{ledgerName}/accounts/{address}/metadata/{key}:
     delete:
       summary: Delete account metadata
-      description: Deletes a metadata key for a specific account in the ledger
+      description: Deletes a metadata key for a specific account in the ledger. Requires `ledger:write` scope.
       operationId: deleteAccountMetadata
       tags:
         - Accounts
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/AccountAddress'
@@ -308,6 +385,10 @@ paths:
           description: Account metadata deleted successfully
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -316,10 +397,13 @@ paths:
   /{ledgerName}/transactions/{transactionId}/metadata/{key}:
     delete:
       summary: Delete transaction metadata
-      description: Deletes a metadata key for a specific transaction in the ledger
+      description: Deletes a metadata key for a specific transaction in the ledger. Requires `ledger:write` scope.
       operationId: deleteTransactionMetadata
       tags:
         - Transactions
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
@@ -330,6 +414,10 @@ paths:
           description: Transaction metadata deleted successfully
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -338,10 +426,13 @@ paths:
   /{ledgerName}/transactions/{transactionId}/revert:
     post:
       summary: Revert a transaction
-      description: Reverts a transaction by creating a reverse transaction that undoes its effects
+      description: Reverts a transaction by creating a reverse transaction that undoes its effects. Requires `ledger:write` scope.
       operationId: revertTransaction
       tags:
         - Transactions
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TransactionId'
@@ -361,6 +452,10 @@ paths:
                 $ref: '#/components/schemas/RevertedTransactionResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -369,10 +464,13 @@ paths:
   /{ledgerName}/metadata-schema:
     get:
       summary: Get metadata schema status
-      description: Returns the metadata schema for a ledger, including per-field type declarations and conversion status.
+      description: Returns the metadata schema for a ledger, including per-field type declarations and conversion status. Requires `ledger:read` scope.
       operationId: getMetadataSchemaStatus
       tags:
         - Metadata Schema
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
       responses:
@@ -382,6 +480,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MetadataSchemaStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -395,10 +497,13 @@ paths:
       description: |
         Declares or changes the expected type for a metadata key on a ledger.
         Once set, all new metadata values for this key are converted to the declared type.
-        Existing values are converted in the background.
+        Existing values are converted in the background. Requires `ledger:write` scope.
       operationId: setMetadataFieldType
       tags:
         - Metadata Schema
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TargetType'
@@ -419,6 +524,10 @@ paths:
           description: Metadata field type set successfully
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -429,10 +538,13 @@ paths:
       summary: Remove metadata field type
       description: |
         Removes the type declaration for a metadata key on a ledger.
-        Existing typed values are converted back to strings.
+        Existing typed values are converted back to strings. Requires `ledger:write` scope.
       operationId: removeMetadataFieldType
       tags:
         - Metadata Schema
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TargetType'
@@ -447,6 +559,10 @@ paths:
           description: Metadata field type removed successfully
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -457,10 +573,13 @@ paths:
   /{ledgerName}/_bulk:
     post:
       summary: Bulk operations
-      description: Execute multiple operations (create transactions, add metadata, revert transactions, delete metadata) in a single request
+      description: Execute multiple operations (create transactions, add metadata, revert transactions, delete metadata) in a single request. Requires `ledger:write` scope.
       operationId: bulkOperations
       tags:
         - Transactions
+      security:
+        - BearerAuth: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - name: continueOnFailure
@@ -492,6 +611,10 @@ paths:
                 $ref: '#/components/schemas/BulkResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '413':
           description: Request entity too large
           content:
@@ -504,6 +627,16 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        JWT token issued by a trusted OIDC provider. Required when the server
+        is started with `--auth-enabled`. Scopes: `ledger:read` (read operations),
+        `ledger:write` (write operations), `ledger:admin` (cluster operations).
+
   parameters:
     LedgerName:
       name: ledgerName
@@ -583,6 +716,20 @@ components:
 
     NotFound:
       description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Unauthorized:
+      description: Authentication required (missing or invalid JWT token)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Forbidden:
+      description: Insufficient permissions (missing required scope)
       content:
         application/json:
           schema:

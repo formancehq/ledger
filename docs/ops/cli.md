@@ -1756,6 +1756,32 @@ Clients can also discover the server's public key via the `Discovery` RPC.
 
 ---
 
+### Server Authentication Flags
+
+Enable JWT/OIDC authentication with scope-based authorization. See [Authentication Guide](authentication.md) for full details.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--auth-enabled` | bool | `false` | Enable JWT authentication |
+| `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
+| `--auth-check-scopes` | bool | `false` | Enforce scope-based authorization |
+| `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
+| `--auth-read-key-set-max-retries` | int | `10` | Maximum retries when fetching the JWKS key set |
+
+```bash
+# Start server with authentication enabled
+ledger-v3-poc run \
+  --auth-enabled \
+  --auth-issuer https://auth.example.com \
+  --auth-check-scopes \
+  --auth-service ledger \
+  [other flags...]
+```
+
+When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. Four scopes are used: `ledger:read`, `ledger:write`, `ledger:admin`, `ledger:cluster`.
+
+---
+
 ## Connection Examples
 
 ### Local Development

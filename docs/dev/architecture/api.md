@@ -27,10 +27,7 @@ Both paths are equivalent and point to the same handlers. This allows for:
 
 ### Authentication
 
-Currently, no authentication is required. In production, it is recommended to add:
-- Token authentication (JWT)
-- TLS/HTTPS
-- Rate limiting
+The server supports optional JWT/OIDC authentication with scope-based authorization. When enabled via `--auth-enabled`, all API requests must carry a valid Bearer token in the `Authorization` header. See [Authentication Guide](../../ops/authentication.md) for configuration details.
 
 ### Response Format
 

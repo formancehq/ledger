@@ -318,6 +318,7 @@ func NewRaftServer(port int, logger logging.Logger, tlsOpt ggrpc.ServerOption) *
 
 // NewServiceServer creates a new gRPC server for service API (external)
 // This server includes OpenTelemetry instrumentation and error conversion.
+// Authentication is handled explicitly in each service method via auth.Authenticate.
 // If tlsOpt is non-nil, it is appended to the server options to enable TLS.
 func NewServiceServer(port int, logger logging.Logger, debug bool, tlsOpt ggrpc.ServerOption) *ServiceServer {
 	// Recovery interceptor must be first (outermost) to catch panics from all handlers

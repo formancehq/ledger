@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/formancehq/go-libs/v3/auth"
 	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
@@ -55,6 +56,9 @@ func NewRunCommand() *cobra.Command {
 
 	// Add standard service flags
 	service.AddFlags(runCmd.Flags())
+
+	// Add authentication flags from go-libs
+	auth.AddFlags(runCmd.Flags())
 
 	// Add OpenTelemetry flags from go-libs
 	otlp.AddFlags(runCmd.Flags())
@@ -221,6 +225,8 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	opts := []fx.Option{
 		// Provide configuration
 		fx.Supply(*cfg),
+		// Add authentication module from go-libs (OIDC discovery + JWT validation)
+		auth.FXModuleFromFlags(cmd),
 		// Add OpenTelemetry modules from go-libs (using flags)
 		otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(fmt.Sprintf("%s-%s", version, commit))),
 		otlptraces.FXModuleFromFlags(cmd),
@@ -398,6 +404,14 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 
 	// Restore mode
 	cfg.Restore = getBool("restore", false)
+
+	// Authentication configuration
+	cfg.AuthConfig = bootstrap.AuthFlagConfig{
+		Enabled:     getBool(auth.AuthEnabledFlag, false),
+		Issuer:      getString(auth.AuthIssuerFlag, ""),
+		Service:     getString(auth.AuthServiceFlag, "ledger"),
+		CheckScopes: getBool(auth.AuthCheckScopesFlag, false),
+	}
 
 	// Configuration safety
 	cfg.UnsafeSkipConfigValidation = getBool("unsafe-skip-config-validation", false)

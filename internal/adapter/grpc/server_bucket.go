@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -29,9 +30,10 @@ type BucketServiceServerImpl struct {
 	sharedState    *state.SharedState
 	receiptSigner  *receipt.Signer
 	responseSigner *signing.ResponseSigner
+	authCfg        internalauth.AuthConfig
 }
 
-func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig) servicepb.BucketServiceServer {
 	return &BucketServiceServerImpl{
 		logger:         logger,
 		ctrl:           ctrl,
@@ -40,10 +42,15 @@ func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.
 		sharedState:    sharedState,
 		receiptSigner:  receiptSigner,
 		responseSigner: responseSigner,
+		authCfg:        authCfg,
 	}
 }
 
 func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeWrite); err != nil {
+		return nil, err
+	}
+
 	if len(req.Requests) == 0 {
 		return nil, fmt.Errorf("at least one request is required")
 	}
@@ -99,6 +106,10 @@ func (impl *BucketServiceServerImpl) signReceiptIfNeeded(log *commonpb.Log) {
 }
 
 func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsRequest, stream servicepb.BucketService_ListPeriodsServer) error {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+		return err
+	}
+
 	cursor, err := impl.ctrl.ListPeriods(stream.Context())
 	if err != nil {
 		return fmt.Errorf("listing periods: %w", err)
@@ -112,6 +123,10 @@ func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsReque
 }
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
 	if req.Ledger == "" {
 		return nil, fmt.Errorf("ledger name is required")
 	}
@@ -152,6 +167,10 @@ func (impl *BucketServiceServerImpl) computeTransactionReceipt(ledger string, tx
 }
 
 func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransactionsRequest, stream servicepb.BucketService_ListTransactionsServer) error {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+		return err
+	}
+
 	if req.Ledger == "" {
 		return fmt.Errorf("ledger name is required")
 	}
@@ -168,6 +187,10 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 }
 
 func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersRequest, stream servicepb.BucketService_ListLedgersServer) error {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+		return err
+	}
+
 	impl.logger.Debugf("ListLedgers request received")
 
 	cursor, err := impl.ctrl.ListLedgers(stream.Context())
@@ -183,6 +206,10 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 }
 
 func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
 	if req.Ledger == "" {
 		return nil, fmt.Errorf("ledger name is required")
 	}
@@ -190,6 +217,10 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 }
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
 	if req.Ledger == "" {
 		return nil, fmt.Errorf("ledger name is required")
 	}
@@ -198,6 +229,10 @@ func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servic
 }
 
 func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsRequest, stream servicepb.BucketService_ListAccountsServer) error {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+		return err
+	}
+
 	if req.Ledger == "" {
 		return fmt.Errorf("ledger name is required")
 	}
@@ -213,7 +248,11 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 	return sendCursorToStream(cursor, stream, "account")
 }
 
-func (impl *BucketServiceServerImpl) GetStoreMetrics(_ context.Context, _ *servicepb.GetStoreMetricsRequest) (*servicepb.GetStoreMetricsResponse, error) {
+func (impl *BucketServiceServerImpl) GetStoreMetrics(ctx context.Context, _ *servicepb.GetStoreMetricsRequest) (*servicepb.GetStoreMetricsResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
 	// Get metrics from the Pebble store directly
 	metrics, ok := impl.store.GetMetrics().(*servicepb.PebbleMetrics)
 	if !ok {
@@ -229,6 +268,10 @@ func (impl *BucketServiceServerImpl) GetStoreMetrics(_ context.Context, _ *servi
 }
 
 func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, stream servicepb.BucketService_CheckStoreServer) error {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+		return err
+	}
+
 	checker := check.NewChecker(impl.store, impl.attrs)
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		_ = stream.Send(event)
@@ -236,10 +279,18 @@ func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, 
 }
 
 func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *servicepb.GetAuditEntryRequest) (*auditpb.AuditEntry, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
 	return impl.ctrl.GetAuditEntry(ctx, req.Sequence)
 }
 
 func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEntriesRequest, stream servicepb.BucketService_ListAuditEntriesServer) error {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+		return err
+	}
+
 	cursor, err := impl.ctrl.ListAuditEntries(stream.Context(), req.AfterSequence, req.FailuresOnly, req.PageSize) //nolint:protogetter
 	if err != nil {
 		return fmt.Errorf("listing audit entries: %w", err)
@@ -249,6 +300,10 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 }
 
 func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+		return err
+	}
+
 	var afterSequence uint64
 	if req.AfterSequence != nil {
 		afterSequence = *req.AfterSequence
@@ -262,7 +317,11 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	return sendCursorToStream(cursor, stream, "log")
 }
 
-func (impl *BucketServiceServerImpl) GetEventsSinks(_ context.Context, _ *servicepb.GetEventsSinksRequest) (*servicepb.GetEventsSinksResponse, error) {
+func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *servicepb.GetEventsSinksRequest) (*servicepb.GetEventsSinksResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
 	sinks, err := events.ReadAllSinkConfigs(impl.store)
 	if err != nil {
 		return nil, fmt.Errorf("loading sink configs: %w", err)
@@ -279,7 +338,11 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(_ context.Context, _ *servic
 	}, nil
 }
 
-func (impl *BucketServiceServerImpl) GetPeriodSchedule(_ context.Context, _ *servicepb.GetPeriodScheduleRequest) (*servicepb.GetPeriodScheduleResponse, error) {
+func (impl *BucketServiceServerImpl) GetPeriodSchedule(ctx context.Context, _ *servicepb.GetPeriodScheduleRequest) (*servicepb.GetPeriodScheduleResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
 	cronExpr, err := query.ReadPeriodSchedule(impl.store)
 	if err != nil {
 		return nil, fmt.Errorf("loading period schedule: %w", err)
@@ -288,6 +351,10 @@ func (impl *BucketServiceServerImpl) GetPeriodSchedule(_ context.Context, _ *ser
 }
 
 func (impl *BucketServiceServerImpl) ListSigningKeys(_ *servicepb.ListSigningKeysRequest, stream servicepb.BucketService_ListSigningKeysServer) error {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+		return err
+	}
+
 	cursor, err := impl.ctrl.ListSigningKeys(stream.Context())
 	if err != nil {
 		return fmt.Errorf("listing signing keys: %w", err)
@@ -297,6 +364,10 @@ func (impl *BucketServiceServerImpl) ListSigningKeys(_ *servicepb.ListSigningKey
 }
 
 func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context, req *servicepb.GetMetadataSchemaStatusRequest) (*servicepb.GetMetadataSchemaStatusResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
 	return impl.ctrl.GetMetadataSchemaStatus(ctx, req.Ledger)
 }
 
