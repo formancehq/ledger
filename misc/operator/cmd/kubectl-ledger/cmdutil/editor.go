@@ -23,6 +23,11 @@ func ClearTermBelow() {
 	fmt.Print("\033[J")
 }
 
+// clearScreen clears the visible terminal area and moves the cursor to the top-left.
+func clearScreen() {
+	fmt.Print("\033[2J\033[H")
+}
+
 // SelectPrompt wraps pterm interactive select with auto-sizing and iTerm cleanup.
 func SelectPrompt(label string, options []string) (string, error) {
 	maxVisible := len(options)
@@ -48,6 +53,8 @@ func EditLoop(fields []explain.Field, data map[string]any, path string, isRoot b
 	}
 
 	for {
+		clearScreen()
+
 		options := make([]string, 0, len(fields)+1)
 		editableFields := make([]explain.Field, 0, len(fields))
 
@@ -68,6 +75,7 @@ func EditLoop(fields []explain.Field, data map[string]any, path string, isRoot b
 		}
 
 		if strings.Contains(selected, sentinel) {
+			clearScreen()
 			return nil
 		}
 
@@ -115,6 +123,8 @@ func editList(f explain.Field, data map[string]any, path string) error {
 	items := getSlice(data, f.Name)
 
 	for {
+		clearScreen()
+
 		options := make([]string, 0, len(items)+2)
 		for i, item := range items {
 			summary := listItemSummary(f.Children, item)
@@ -129,6 +139,7 @@ func editList(f explain.Field, data map[string]any, path string) error {
 		}
 
 		if strings.Contains(selected, "Back") {
+			clearScreen()
 			break
 		}
 
