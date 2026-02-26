@@ -230,6 +230,76 @@ func TestApplyDefaultsFromRef_ProbeAndSecurityContext(t *testing.T) {
 	assert.True(t, *spec.SecurityContext.ReadOnlyRootFilesystem)
 }
 
+func TestApplyDefaultsFromRef_ColdStorageFieldLevelMerge(t *testing.T) {
+	t.Parallel()
+
+	defaults := &ledgerv1alpha1.LedgerDefaultsSpec{
+		Config: ledgerv1alpha1.LedgerDefaultsConfig{
+			ColdStorage: &ledgerv1alpha1.ColdStorageConfig{
+				Driver: "s3",
+				S3: &ledgerv1alpha1.S3Config{
+					Bucket:   "default-bucket",
+					Region:   "eu-west-1",
+					Endpoint: "http://minio:9000",
+				},
+			},
+		},
+	}
+
+	// LedgerService overrides driver and bucketId but not S3 — S3 should come from defaults.
+	spec := &ledgerv1alpha1.LedgerServiceSpec{
+		Config: ledgerv1alpha1.LedgerServiceConfig{
+			ColdStorage: &ledgerv1alpha1.ColdStorageConfig{
+				Driver:   "s3",
+				BucketID: "my-prefix",
+			},
+		},
+	}
+
+	applyDefaultsFromRef(spec, defaults)
+
+	assert.Equal(t, "s3", spec.Config.ColdStorage.Driver)
+	assert.Equal(t, "my-prefix", spec.Config.ColdStorage.BucketID)
+	assert.NotNil(t, spec.Config.ColdStorage.S3, "S3 block should be inherited from defaults")
+	assert.Equal(t, "default-bucket", spec.Config.ColdStorage.S3.Bucket)
+	assert.Equal(t, "eu-west-1", spec.Config.ColdStorage.S3.Region)
+	assert.Equal(t, "http://minio:9000", spec.Config.ColdStorage.S3.Endpoint)
+}
+
+func TestApplyDefaultsFromRef_ColdStorageSpecS3Wins(t *testing.T) {
+	t.Parallel()
+
+	defaults := &ledgerv1alpha1.LedgerDefaultsSpec{
+		Config: ledgerv1alpha1.LedgerDefaultsConfig{
+			ColdStorage: &ledgerv1alpha1.ColdStorageConfig{
+				Driver: "s3",
+				S3: &ledgerv1alpha1.S3Config{
+					Bucket: "default-bucket",
+					Region: "us-east-1",
+				},
+			},
+		},
+	}
+
+	// LedgerService has its own S3 block — it should win entirely.
+	spec := &ledgerv1alpha1.LedgerServiceSpec{
+		Config: ledgerv1alpha1.LedgerServiceConfig{
+			ColdStorage: &ledgerv1alpha1.ColdStorageConfig{
+				Driver: "s3",
+				S3: &ledgerv1alpha1.S3Config{
+					Bucket: "my-bucket",
+					Region: "eu-west-1",
+				},
+			},
+		},
+	}
+
+	applyDefaultsFromRef(spec, defaults)
+
+	assert.Equal(t, "my-bucket", spec.Config.ColdStorage.S3.Bucket)
+	assert.Equal(t, "eu-west-1", spec.Config.ColdStorage.S3.Region)
+}
+
 func boolPtr(v bool) *bool {
 	return &v
 }

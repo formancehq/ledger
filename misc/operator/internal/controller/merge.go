@@ -92,9 +92,7 @@ func mergeDefaultsConfig(spec *ledgerv1alpha1.LedgerServiceConfig, defaults *led
 	if spec.Health == nil {
 		spec.Health = defaults.Health
 	}
-	if spec.ColdStorage == nil {
-		spec.ColdStorage = defaults.ColdStorage
-	}
+	mergeColdStorageConfig(&spec.ColdStorage, defaults.ColdStorage)
 	if spec.TLS == nil {
 		spec.TLS = defaults.TLS
 	}
@@ -103,6 +101,30 @@ func mergeDefaultsConfig(spec *ledgerv1alpha1.LedgerServiceConfig, defaults *led
 	}
 	if spec.Monitoring == nil {
 		spec.Monitoring = defaults.Monitoring
+	}
+}
+
+// mergeColdStorageConfig merges cold storage defaults at field level so that
+// a LedgerService that sets e.g. only "driver" still inherits the S3 block from defaults.
+func mergeColdStorageConfig(spec **ledgerv1alpha1.ColdStorageConfig, defaults *ledgerv1alpha1.ColdStorageConfig) {
+	if *spec == nil {
+		*spec = defaults
+		return
+	}
+	if defaults == nil {
+		return
+	}
+	if (*spec).Driver == "" {
+		(*spec).Driver = defaults.Driver
+	}
+	if (*spec).Path == "" {
+		(*spec).Path = defaults.Path
+	}
+	if (*spec).BucketID == "" {
+		(*spec).BucketID = defaults.BucketID
+	}
+	if (*spec).S3 == nil {
+		(*spec).S3 = defaults.S3
 	}
 }
 
