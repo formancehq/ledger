@@ -633,7 +633,9 @@ func main() {
 		}
 
 		// Inject the built image into defaults so new LedgerServices inherit it.
-		ledgerSpec["image"] = map[string]any{
+		// Use pulumi.Map (not map[string]any) so the SDK properly tracks Output
+		// dependencies and detects digest changes between deploys.
+		ledgerSpec["image"] = pulumi.Map{
 			"repository": pulumi.Sprintf("%s/formancehq/ledger-exp", pullRegistry),
 			"tag":        pulumi.Sprintf("latest@%s", dockerImage.Digest),
 		}
