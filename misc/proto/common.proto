@@ -537,11 +537,6 @@ message TransactionUpdateDeleteMetadata {
 
 message TransactionInit {}
 
-// RevertedValue is used to track the reversion status of a transaction.
-message RevertedValue {
-  bool reverted = 1;
-}
-
 // IdempotencyKeyValue stores the log sequence associated with an idempotency key.
 message IdempotencyKeyValue {
   uint64 log_sequence = 1;

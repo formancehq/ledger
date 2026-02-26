@@ -19,11 +19,9 @@ import (
 
 const progressInterval = 100
 
-// expectedTxState tracks the expected transaction updates and reverted status
-// derived from replaying logs.
+// expectedTxState tracks the expected transaction updates derived from replaying logs.
 type expectedTxState struct {
-	updates  []*commonpb.TransactionUpdate
-	reverted bool
+	updates []*commonpb.TransactionUpdate
 }
 
 // Checker verifies store integrity by replaying logs and comparing derived state.
@@ -44,10 +42,10 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes) *Checker {
 // It verifies:
 // 1. Log sequence continuity (no gaps)
 // 2. BLAKE3 hash chain integrity
-// 3. Volume consistency (input/output per account/asset)
-// 4. Account metadata consistency
-// 5. Transaction update consistency
-// 6. Reverted status consistency
+// 3. Reversion invariants (no double reverts, valid revert targets)
+// 4. Volume consistency (input/output per account/asset)
+// 5. Account metadata consistency
+// 6. Transaction update consistency
 func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStoreEvent)) error {
 	lastSequence, err := query.ReadLastSequence(c.store)
 	if err != nil {
@@ -76,6 +74,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		deletedMetadata  = make(map[string]struct{})         // metadataKey -> deleted
 		expectedTxStates = make(map[string]*expectedTxState) // txKey -> expected state
 		knownLedgers     = make(map[string]struct{})          // ledgerName -> exists
+		// Per-ledger reversion tracking (verified during log replay)
+		ledgerKnownTxIDs   = make(map[string]map[uint64]struct{}) // ledger -> set of created tx IDs
+		ledgerRevertedTxIDs = make(map[string]map[uint64]struct{}) // ledger -> set of already-reverted tx IDs
 		errorCount       int
 	)
 
@@ -132,6 +133,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 					if payload.Apply.Log != nil && payload.Apply.Log.Data != nil {
 						replayLedgerLog(ledgerName, seq, payload.Apply.Log.Data, expectedInputs, expectedOutputs, expectedMetadata, deletedMetadata, expectedTxStates)
+
+						// Track transaction IDs and verify reversion invariants
+						errorCount += checkReversionInvariants(ledgerName, seq, payload.Apply.Log.Data, ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
 					}
 				}
 			}
@@ -281,40 +285,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 	}
 
-	// Pass 5: Compare expected reverted status against actual stored values
-	for key, expected := range expectedTxStates {
-		if !expected.reverted {
-			continue
-		}
-
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		var tk domain.TransactionKey
-		if err := tk.Unmarshal([]byte(key)); err != nil {
-			continue
-		}
-
-		actual, err := c.attrs.Reverted.ComputeValue(c.store, maxIndex, []byte(key))
-		if err != nil {
-			return fmt.Errorf("computing reverted status for ledger %s tx %d: %w", tk.Ledger, tk.ID, err)
-		}
-
-		actualReverted := false
-		if actual != nil {
-			actualReverted = actual.Reverted
-		}
-
-		if expected.reverted != actualReverted {
-			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
-				fmt.Sprintf("reverted mismatch for tx %d: expected %v, got %v",
-					tk.ID, expected.reverted, actualReverted),
-				tk.Ledger, tk.ID))
-			errorCount++
-		}
-	}
-
 	return nil
 }
 
@@ -379,7 +349,6 @@ func replayLedgerLog(
 		// Track revert update on the original transaction
 		origTxKey := string(domain.TransactionKey{Ledger: ledger, ID: p.RevertedTransaction.RevertedTransactionId}.Bytes())
 		origState := getOrCreateTxState(expectedTxStates, origTxKey)
-		origState.reverted = true
 		origState.updates = append(origState.updates, &commonpb.TransactionUpdate{
 			ByLog: seq,
 			Updates: []*commonpb.TransactionUpdateType{{
@@ -563,5 +532,74 @@ func errorEventWithTx(errorType servicepb.CheckStoreErrorType, message, ledger s
 			},
 		},
 	}
+}
+
+// checkReversionInvariants tracks transaction IDs and validates reversion invariants
+// during log replay. It returns the number of errors found.
+func checkReversionInvariants(
+	ledger string,
+	seq uint64,
+	payload *commonpb.LedgerLogPayload,
+	knownTxIDs map[string]map[uint64]struct{},
+	revertedTxIDs map[string]map[uint64]struct{},
+	callback func(*servicepb.CheckStoreEvent),
+) int {
+	errors := 0
+
+	switch p := payload.Payload.(type) {
+	case *commonpb.LedgerLogPayload_CreatedTransaction:
+		if p.CreatedTransaction != nil && p.CreatedTransaction.Transaction != nil {
+			trackTxID(knownTxIDs, ledger, p.CreatedTransaction.Transaction.Id)
+		}
+
+	case *commonpb.LedgerLogPayload_RevertedTransaction:
+		if p.RevertedTransaction == nil {
+			return 0
+		}
+		revertedID := p.RevertedTransaction.RevertedTransactionId
+
+		// Check that the target transaction exists
+		if txs, ok := knownTxIDs[ledger]; !ok || !containsUint64(txs, revertedID) {
+			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+				fmt.Sprintf("log %d reverts non-existent transaction %d in ledger %q", seq, revertedID, ledger),
+				ledger, revertedID))
+			errors++
+		}
+
+		// Check that the transaction is not already reverted
+		if containsUint64(revertedTxIDs[ledger], revertedID) {
+			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+				fmt.Sprintf("log %d double-reverts transaction %d in ledger %q", seq, revertedID, ledger),
+				ledger, revertedID))
+			errors++
+		}
+
+		// Mark the transaction as reverted
+		trackTxID(revertedTxIDs, ledger, revertedID)
+
+		// Track the revert transaction's own ID
+		if p.RevertedTransaction.RevertTransaction != nil {
+			trackTxID(knownTxIDs, ledger, p.RevertedTransaction.RevertTransaction.Id)
+		}
+	}
+
+	return errors
+}
+
+func trackTxID(m map[string]map[uint64]struct{}, ledger string, txID uint64) {
+	txs, ok := m[ledger]
+	if !ok {
+		txs = make(map[uint64]struct{})
+		m[ledger] = txs
+	}
+	txs[txID] = struct{}{}
+}
+
+func containsUint64(m map[uint64]struct{}, id uint64) bool {
+	if m == nil {
+		return false
+	}
+	_, ok := m[id]
+	return ok
 }
 

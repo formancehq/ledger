@@ -262,7 +262,7 @@ message PreloadSet {
 message Preload {
   oneof type {
      PreloadVolume volume = 1;
-     PreloadReverted reverted = 2;
+     // field 2 removed: PreloadReverted (replaced by in-memory bitset)
      PreloadIdempotencyKey idempotency_key = 3;
      PreloadLedger ledger = 4;
      PreloadBoundary boundary = 5;
@@ -278,10 +278,7 @@ message PreloadVolume {
   common.Uint256 output = 3;
 }
 
-message PreloadReverted {
-  AttributeID id = 1;
-  bool reverted = 2;
-}
+// PreloadReverted removed: reversions now use in-memory bitset per ledger.
 
 message PreloadIdempotencyKey {
   AttributeID id = 1;
@@ -334,6 +331,7 @@ message MemorySnapshot {
   common.Period closing_period = 11;  // Period being sealed (nil when no period is closing)
   uint64 next_period_id = 12;
   repeated common.Period closed_periods = 13;  // CLOSED + ARCHIVED periods (non-purged)
+  repeated ReversionBitsetEntry reversions = 14;  // Per-ledger reversion bitsets
 }
 
 message GenerationSnapshot {
@@ -377,6 +375,13 @@ message BoundaryAttributeEntry {
 message TransactionReferenceAttributeEntry {
   AttributeID id = 1;
   common.TransactionReferenceValue value = 2;
+}
+
+// ReversionBitsetEntry stores a packed bitset of reverted transaction IDs for a single ledger.
+// Bit N being set means transaction N has been reverted.
+message ReversionBitsetEntry {
+  string ledger = 1;
+  bytes words = 2;  // Packed little-endian uint64 array
 }
 
 message AttributeID {

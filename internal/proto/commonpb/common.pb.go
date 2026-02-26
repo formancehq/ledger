@@ -4731,51 +4731,6 @@ func (*TransactionInit) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{68}
 }
 
-// RevertedValue is used to track the reversion status of a transaction.
-type RevertedValue struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Reverted      bool                   `protobuf:"varint,1,opt,name=reverted,proto3" json:"reverted,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RevertedValue) Reset() {
-	*x = RevertedValue{}
-	mi := &file_common_proto_msgTypes[69]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RevertedValue) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RevertedValue) ProtoMessage() {}
-
-func (x *RevertedValue) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[69]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RevertedValue.ProtoReflect.Descriptor instead.
-func (*RevertedValue) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{69}
-}
-
-func (x *RevertedValue) GetReverted() bool {
-	if x != nil {
-		return x.Reverted
-	}
-	return false
-}
-
 // IdempotencyKeyValue stores the log sequence associated with an idempotency key.
 type IdempotencyKeyValue struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -4787,7 +4742,7 @@ type IdempotencyKeyValue struct {
 
 func (x *IdempotencyKeyValue) Reset() {
 	*x = IdempotencyKeyValue{}
-	mi := &file_common_proto_msgTypes[70]
+	mi := &file_common_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4799,7 +4754,7 @@ func (x *IdempotencyKeyValue) String() string {
 func (*IdempotencyKeyValue) ProtoMessage() {}
 
 func (x *IdempotencyKeyValue) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[70]
+	mi := &file_common_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4812,7 +4767,7 @@ func (x *IdempotencyKeyValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IdempotencyKeyValue.ProtoReflect.Descriptor instead.
 func (*IdempotencyKeyValue) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{70}
+	return file_common_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *IdempotencyKeyValue) GetLogSequence() uint64 {
@@ -4839,7 +4794,7 @@ type TransactionReferenceValue struct {
 
 func (x *TransactionReferenceValue) Reset() {
 	*x = TransactionReferenceValue{}
-	mi := &file_common_proto_msgTypes[71]
+	mi := &file_common_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4851,7 +4806,7 @@ func (x *TransactionReferenceValue) String() string {
 func (*TransactionReferenceValue) ProtoMessage() {}
 
 func (x *TransactionReferenceValue) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[71]
+	mi := &file_common_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4864,7 +4819,7 @@ func (x *TransactionReferenceValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransactionReferenceValue.ProtoReflect.Descriptor instead.
 func (*TransactionReferenceValue) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{71}
+	return file_common_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *TransactionReferenceValue) GetTransactionId() uint64 {
@@ -5195,9 +5150,7 @@ const file_common_proto_rawDesc = "" +
 	"\bmetadata\x18\x01 \x01(\v2\x10.common.MetadataR\bmetadata\"3\n" +
 	"\x1fTransactionUpdateDeleteMetadata\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\"\x11\n" +
-	"\x0fTransactionInit\"+\n" +
-	"\rRevertedValue\x12\x1a\n" +
-	"\breverted\x18\x01 \x01(\bR\breverted\"L\n" +
+	"\x0fTransactionInit\"L\n" +
 	"\x13IdempotencyKeyValue\x12!\n" +
 	"\flog_sequence\x18\x01 \x01(\x04R\vlogSequence\x12\x12\n" +
 	"\x04hash\x18\x02 \x01(\fR\x04hash\"B\n" +
@@ -5249,7 +5202,7 @@ func file_common_proto_rawDescGZIP() []byte {
 }
 
 var file_common_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 79)
+var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 78)
 var file_common_proto_goTypes = []any{
 	(TargetType)(0),                         // 0: common.TargetType
 	(MetadataType)(0),                       // 1: common.MetadataType
@@ -5325,18 +5278,17 @@ var file_common_proto_goTypes = []any{
 	(*TransactionUpdateAddMetadata)(nil),    // 71: common.TransactionUpdateAddMetadata
 	(*TransactionUpdateDeleteMetadata)(nil), // 72: common.TransactionUpdateDeleteMetadata
 	(*TransactionInit)(nil),                 // 73: common.TransactionInit
-	(*RevertedValue)(nil),                   // 74: common.RevertedValue
-	(*IdempotencyKeyValue)(nil),             // 75: common.IdempotencyKeyValue
-	(*TransactionReferenceValue)(nil),       // 76: common.TransactionReferenceValue
-	nil,                                     // 77: common.Script.VarsEntry
-	nil,                                     // 78: common.VolumesByAssets.VolumesEntry
-	nil,                                     // 79: common.PostCommitVolumes.VolumesByAccountEntry
-	nil,                                     // 80: common.Account.VolumesEntry
-	nil,                                     // 81: common.MetadataSchema.AccountFieldsEntry
-	nil,                                     // 82: common.MetadataSchema.TransactionFieldsEntry
-	nil,                                     // 83: common.CreatedTransaction.AccountMetadataEntry
-	(*signaturepb.RequestSignature)(nil),    // 84: signature.RequestSignature
-	(*signaturepb.ResponseSignature)(nil),   // 85: signature.ResponseSignature
+	(*IdempotencyKeyValue)(nil),             // 74: common.IdempotencyKeyValue
+	(*TransactionReferenceValue)(nil),       // 75: common.TransactionReferenceValue
+	nil,                                     // 76: common.Script.VarsEntry
+	nil,                                     // 77: common.VolumesByAssets.VolumesEntry
+	nil,                                     // 78: common.PostCommitVolumes.VolumesByAccountEntry
+	nil,                                     // 79: common.Account.VolumesEntry
+	nil,                                     // 80: common.MetadataSchema.AccountFieldsEntry
+	nil,                                     // 81: common.MetadataSchema.TransactionFieldsEntry
+	nil,                                     // 82: common.CreatedTransaction.AccountMetadataEntry
+	(*signaturepb.RequestSignature)(nil),    // 83: signature.RequestSignature
+	(*signaturepb.ResponseSignature)(nil),   // 84: signature.ResponseSignature
 }
 var file_common_proto_depIdxs = []int32{
 	8,   // 0: common.Metadata.value:type_name -> common.MetadataValue
@@ -5349,26 +5301,26 @@ var file_common_proto_depIdxs = []int32{
 	5,   // 7: common.Transaction.inserted_at:type_name -> common.Timestamp
 	5,   // 8: common.Transaction.updated_at:type_name -> common.Timestamp
 	5,   // 9: common.Transaction.reverted_at:type_name -> common.Timestamp
-	77,  // 10: common.Script.vars:type_name -> common.Script.VarsEntry
-	78,  // 11: common.VolumesByAssets.volumes:type_name -> common.VolumesByAssets.VolumesEntry
-	79,  // 12: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
+	76,  // 10: common.Script.vars:type_name -> common.Script.VarsEntry
+	77,  // 11: common.VolumesByAssets.volumes:type_name -> common.VolumesByAssets.VolumesEntry
+	78,  // 12: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
 	9,   // 13: common.Account.metadata:type_name -> common.MetadataSet
 	5,   // 14: common.Account.first_usage:type_name -> common.Timestamp
 	5,   // 15: common.Account.insertion_date:type_name -> common.Timestamp
 	5,   // 16: common.Account.updated_at:type_name -> common.Timestamp
-	80,  // 17: common.Account.volumes:type_name -> common.Account.VolumesEntry
+	79,  // 17: common.Account.volumes:type_name -> common.Account.VolumesEntry
 	20,  // 18: common.Target.account:type_name -> common.TargetAccount
 	21,  // 19: common.Target.transaction:type_name -> common.TargetTransaction
 	1,   // 20: common.MetadataFieldSchema.type:type_name -> common.MetadataType
 	2,   // 21: common.MetadataFieldSchema.status:type_name -> common.MetadataConversionStatus
-	81,  // 22: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
-	82,  // 23: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
+	80,  // 22: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
+	81,  // 23: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
 	0,   // 24: common.SetMetadataFieldTypeCommand.target_type:type_name -> common.TargetType
 	1,   // 25: common.SetMetadataFieldTypeCommand.type:type_name -> common.MetadataType
 	29,  // 26: common.Log.payload:type_name -> common.LogPayload
 	26,  // 27: common.Log.idempotency:type_name -> common.Idempotency
-	84,  // 28: common.Log.signature:type_name -> signature.RequestSignature
-	85,  // 29: common.Log.response_signature:type_name -> signature.ResponseSignature
+	83,  // 28: common.Log.signature:type_name -> signature.RequestSignature
+	84,  // 29: common.Log.response_signature:type_name -> signature.ResponseSignature
 	47,  // 30: common.LogPayload.create_ledger:type_name -> common.CreateLedgerLog
 	48,  // 31: common.LogPayload.delete_ledger:type_name -> common.DeleteLedgerLog
 	49,  // 32: common.LogPayload.apply:type_name -> common.ApplyLedgerLog
@@ -5409,7 +5361,7 @@ var file_common_proto_depIdxs = []int32{
 	0,   // 67: common.ConvertMetadataBatchLog.target_type:type_name -> common.TargetType
 	0,   // 68: common.MetadataConversionCompleteLog.target_type:type_name -> common.TargetType
 	12,  // 69: common.CreatedTransaction.transaction:type_name -> common.Transaction
-	83,  // 70: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
+	82,  // 70: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
 	12,  // 71: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
 	22,  // 72: common.SavedMetadata.target:type_name -> common.Target
 	9,   // 73: common.SavedMetadata.metadata:type_name -> common.MetadataSet
@@ -5512,7 +5464,7 @@ func file_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   79,
+			NumMessages:   78,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

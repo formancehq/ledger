@@ -140,20 +140,10 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	}
 
 
-	// Process Reversions updates
-	reversionUpdates, _, err := b.Derived.Reversions.Merge()
-	if err != nil {
-		return fmt.Errorf("failed to merge reversions: %w", err)
-	}
-	for _, update := range reversionUpdates {
-		// Reverted status is a simple boolean, we store it as a base value
-		err := b.attrs.Reverted.SetBase(batch, index, update.CanonicalKey, &commonpb.RevertedValue{Reverted: update.New})
-		if err != nil {
-			return fmt.Errorf("failed setting reverted base: %w", err)
-		}
-		if err := b.attrs.Reverted.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
-			return fmt.Errorf("compacting old reverted base: %w", err)
-		}
+	// Flush pending reversions to the authoritative in-memory bitset.
+	// No Pebble writes needed — reversions are reconstructed from WAL replay or snapshot.
+	for _, txKey := range b.Derived.PendingReversions {
+		b.fsm.Registry.SetReverted(txKey)
 	}
 
 	// Process IdempotencyKeys updates
@@ -363,11 +353,13 @@ func (b *Buffered) DeleteAccountMetadata(key domain.MetadataKey) {
 }
 
 func (b *Buffered) GetReverted(key domain.TransactionKey) (bool, error) {
-	return b.Derived.Reversions.Get(key)
+	return b.Derived.GetReverted(key), nil
 }
 
 func (b *Buffered) PutReverted(key domain.TransactionKey, reverted bool) {
-	b.Derived.Reversions.Put(key, reverted)
+	if reverted {
+		b.Derived.PutReverted(key)
+	}
 }
 
 func (b *Buffered) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {

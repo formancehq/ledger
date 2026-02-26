@@ -109,6 +109,7 @@ For each account metadata key/value encountered during replay (excluding deleted
 | `VOLUME_MISMATCH` | Account input or output volume does not match log replay |
 | `METADATA_MISMATCH` | Account metadata value does not match log replay |
 | `UNKNOWN_LEDGER` | A log references a ledger not created by any prior log |
+| `TRANSACTION_UPDATE_MISMATCH` | Transaction updates in Pebble do not match log replay |
 
 ### CLI Usage
 

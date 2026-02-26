@@ -29,7 +29,7 @@ func TestNewStateRegistryFieldsNotNil(t *testing.T) {
 	require.NotNil(t, reg.Attrs)
 	require.NotNil(t, reg.Volumes)
 	require.NotNil(t, reg.AccountMetadata)
-	require.NotNil(t, reg.Reversions)
+	require.NotNil(t, reg.Reversions) // map, always initialized
 	require.NotNil(t, reg.IdempotencyKeys)
 	require.NotNil(t, reg.References)
 	require.NotNil(t, reg.Ledgers)
@@ -61,7 +61,6 @@ func TestNewDerivedRegistryFieldsNotNil(t *testing.T) {
 
 	require.NotNil(t, derived.Volumes)
 	require.NotNil(t, derived.AccountMetadata)
-	require.NotNil(t, derived.Reversions)
 	require.NotNil(t, derived.IdempotencyKeys)
 	require.NotNil(t, derived.References)
 	require.NotNil(t, derived.Ledgers)

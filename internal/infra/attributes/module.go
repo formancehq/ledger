@@ -13,7 +13,6 @@ import (
 type Attributes struct {
 	Volume          *Attribute[*raftcmdpb.VolumePair]
 	Metadata        *Attribute[*commonpb.MetadataValue]
-	Reverted        *Attribute[*commonpb.RevertedValue]
 	IdempotencyKeys *Attribute[*commonpb.IdempotencyKeyValue]
 	References      *Attribute[*commonpb.TransactionReferenceValue]
 	Ledger          *Attribute[*commonpb.LedgerInfo]
@@ -25,7 +24,6 @@ func New() *Attributes {
 	return &Attributes{
 		Volume:          NewVolumeAttribute(),
 		Metadata:        NewMetadataAttribute(),
-		Reverted:        NewRevertedAttribute(),
 		IdempotencyKeys: NewIdempotencyKeysAttribute(),
 		References:      NewReferenceAttribute(),
 		Ledger:          NewLedgerAttribute(),
@@ -75,24 +73,6 @@ func NewMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
 		newValue: func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} },
 		computeFn: func(base *commonpb.MetadataValue, lastDiff *commonpb.MetadataValue) *commonpb.MetadataValue {
 			if lastDiff == nil {
-				return base
-			}
-			return lastDiff
-		},
-		keyBuf: make([]byte, 128),
-	}
-}
-
-// NewRevertedAttribute creates a new Reverted attribute for tracking transaction reversion status.
-func NewRevertedAttribute() *Attribute[*commonpb.RevertedValue] {
-	return &Attribute[*commonpb.RevertedValue]{
-		prefix:   dal.AttributePrefixReverted,
-		newValue: func() *commonpb.RevertedValue { return &commonpb.RevertedValue{} },
-		computeFn: func(base *commonpb.RevertedValue, lastDiff *commonpb.RevertedValue) *commonpb.RevertedValue {
-			if lastDiff == nil {
-				if base == nil {
-					return &commonpb.RevertedValue{Reverted: false}
-				}
 				return base
 			}
 			return lastDiff

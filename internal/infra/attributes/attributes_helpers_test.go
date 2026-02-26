@@ -326,40 +326,6 @@ func TestForEachInPrefixMaxIndex(t *testing.T) {
 	require.Len(t, results, 2)
 }
 
-func TestRevertedAttribute(t *testing.T) {
-	t.Parallel()
-
-	store := createTestStore(t)
-	attrs := New()
-
-	testKey := []byte("ledger\x00tx1")
-
-	// When no base or diff exists, computeFn returns {Reverted: false}
-	result, err := attrs.Reverted.ComputeValue(store, ^uint64(0), testKey)
-	require.NoError(t, err)
-	// No entries => computeFn(nil, nil) => base==nil returns {Reverted: false}
-	require.NotNil(t, result)
-	require.False(t, result.Reverted)
-
-	// Set base as not reverted
-	batch := store.NewBatch()
-	require.NoError(t, attrs.Reverted.SetBase(batch, 1, testKey, &commonpb.RevertedValue{Reverted: false}))
-	require.NoError(t, batch.Commit())
-
-	result, err = attrs.Reverted.ComputeValue(store, ^uint64(0), testKey)
-	require.NoError(t, err)
-	require.False(t, result.Reverted)
-
-	// Set a diff marking it as reverted
-	batch = store.NewBatch()
-	require.NoError(t, attrs.Reverted.AddDiff(batch, 5, testKey, &commonpb.RevertedValue{Reverted: true}))
-	require.NoError(t, batch.Commit())
-
-	result, err = attrs.Reverted.ComputeValue(store, ^uint64(0), testKey)
-	require.NoError(t, err)
-	require.True(t, result.Reverted)
-}
-
 func TestIdempotencyKeysAttribute(t *testing.T) {
 	t.Parallel()
 
@@ -428,7 +394,6 @@ func TestModuleNew(t *testing.T) {
 	attrs := New()
 	require.NotNil(t, attrs.Volume)
 	require.NotNil(t, attrs.Metadata)
-	require.NotNil(t, attrs.Reverted)
 	require.NotNil(t, attrs.IdempotencyKeys)
 	require.NotNil(t, attrs.References)
 	require.NotNil(t, attrs.Ledger)

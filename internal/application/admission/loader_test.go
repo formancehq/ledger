@@ -306,7 +306,6 @@ func TestNewLoaders(t *testing.T) {
 	loaders := NewLoaders()
 
 	assert.NotNil(t, loaders.Volumes)
-	assert.NotNil(t, loaders.Reversions)
 	assert.NotNil(t, loaders.IdempotencyKeys)
 }
 
@@ -318,7 +317,6 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 	// Load some values
 	key1 := attributes.NewU128(1, 1)
 	key2 := attributes.NewU128(2, 2)
-	key3 := attributes.NewU128(3, 3)
 	key4 := attributes.NewU128(4, 4)
 
 	_, err := loaders.Volumes.LoadOrWait(key1, 100, func() (*raftcmdpb.VolumePair, error) {
@@ -331,11 +329,6 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = loaders.Reversions.LoadOrWait(key3, 100, func() (bool, error) {
-		return true, nil
-	})
-	require.NoError(t, err)
-
 	_, err = loaders.IdempotencyKeys.LoadOrWait(key4, 100, func() (*commonpb.IdempotencyKeyValue, error) {
 		return &commonpb.IdempotencyKeyValue{LogSequence: 1, Hash: []byte("test")}, nil
 	})
@@ -344,7 +337,6 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 	// Create tracker with the loaded keys
 	tracker := &LoadedKeysTracker{
 		Volumes:         []attributes.U128{key1, key2},
-		Reversions:      []attributes.U128{key3},
 		IdempotencyKeys: []attributes.U128{key4},
 	}
 
@@ -368,14 +360,6 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, volumeLoadCount2, "Volumes key2 should reload after MarkApplied")
 
-	reversionsLoadCount := 0
-	_, err = loaders.Reversions.LoadOrWait(key3, 100, func() (bool, error) {
-		reversionsLoadCount++
-		return false, nil
-	})
-	require.NoError(t, err)
-	assert.Equal(t, 1, reversionsLoadCount, "Reversions should reload after MarkApplied")
-
 	idempotencyLoadCount := 0
 	_, err = loaders.IdempotencyKeys.LoadOrWait(key4, 100, func() (*commonpb.IdempotencyKeyValue, error) {
 		idempotencyLoadCount++
@@ -392,6 +376,5 @@ func TestNewLoadedKeysTracker(t *testing.T) {
 
 	assert.NotNil(t, tracker)
 	assert.Empty(t, tracker.Volumes)
-	assert.Empty(t, tracker.Reversions)
 	assert.Empty(t, tracker.IdempotencyKeys)
 }

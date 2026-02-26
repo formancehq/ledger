@@ -209,6 +209,7 @@ The snapshot (`MemorySnapshot`) contains the complete in-memory FSM state:
   - Ledger info entries
   - Ledger boundaries (next log ID, next transaction ID per ledger)
   - Transaction references
+- Per-ledger reversion bitsets (packed `uint64` arrays)
 - HLC timestamp of last applied entry
 - Next audit sequence ID
 
@@ -227,6 +228,7 @@ message MemorySnapshot {
   uint64 current_generation = 7;
   uint64 last_applied_timestamp = 8;     // HLC timestamp (microseconds since epoch)
   uint64 next_audit_sequence_id = 9;     // Next audit log sequence ID
+  repeated ReversionBitsetEntry reversions = 14; // Per-ledger reversion bitsets
 }
 
 message GenerationSnapshot {
@@ -241,7 +243,7 @@ message GenerationSnapshot {
 }
 ```
 
-The snapshot contains the full attribute cache state (volumes, metadata, ledger info, boundaries, references) serialized per generation, allowing fast in-memory restoration without reading from Pebble.
+The snapshot contains the full attribute cache state (volumes, metadata, ledger info, boundaries, references) serialized per generation, plus per-ledger reversion bitsets, allowing fast in-memory restoration without reading from Pebble.
 
 ### Restoration from Snapshot
 
@@ -336,7 +338,6 @@ Key prefixes are organized into three zones:
   - Ledger info entries
   - Ledger boundaries (next IDs per ledger)
   - Transaction references
-  - Reversion status
 
 **System zone `[0xF2, 0xFF]` — metadata that lives forever:**
 
@@ -363,8 +364,9 @@ The `AttributeLoader` coordinates concurrent attribute loading to prevent duplic
 **Attribute types coordinated**:
 - **Input volumes**: Balance inputs per account/asset
 - **Output volumes**: Balance outputs per account/asset
-- **Reversions**: Transaction reversion status
 - **Idempotency keys**: Idempotency key values
+
+> **Note:** Reversions do not use an `AttributeLoader` — they are stored as an in-memory bitset that is always authoritative. No preloading from Pebble is needed.
 
 For detailed documentation on the `AttributeLoader` design, see [Deterministic FSM - Concurrent Load Coordination](./deterministic-fsm.md#76-concurrent-load-coordination-attributeloader).
 

@@ -1,7 +1,6 @@
 package processing
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
@@ -20,9 +19,9 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 		return nil, &domain.ErrTransactionNotFound{TransactionID: order.TransactionId}
 	}
 
-	// Check if the transaction is already reverted
+	// Check if the transaction is already reverted (bitset lookup, never errors)
 	reverted, err := s.GetReverted(txKey)
-	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+	if err != nil {
 		return nil, fmt.Errorf("checking reverted status: %w", err)
 	}
 	if reverted {

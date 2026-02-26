@@ -33,7 +33,6 @@ func CompactAllForBackup(s *dal.Store) error {
 	dispatch := map[byte]keyCompactor{
 		dal.AttributePrefixVolume:         attrs.Volume,
 		dal.AttributePrefixMetadata:       attrs.Metadata,
-		dal.AttributePrefixReverted:       attrs.Reverted,
 		dal.AttributePrefixIdempotencyKey: attrs.IdempotencyKeys,
 		dal.AttributePrefixReference:      attrs.References,
 		dal.AttributePrefixLedger:         attrs.Ledger,

@@ -95,12 +95,13 @@ func TestBufferedGetPutReverted(t *testing.T) {
 
 	key := domain.TransactionKey{Ledger: "test", ID: 42}
 
-	// Non-existent key returns ErrNotFound from backing store
-	_, err := buf.GetReverted(key)
-	require.True(t, errors.Is(err, domain.ErrNotFound))
+	// Non-existent key returns false (not reverted)
+	reverted, err := buf.GetReverted(key)
+	require.NoError(t, err)
+	require.False(t, reverted)
 
 	buf.PutReverted(key, true)
-	reverted, err := buf.GetReverted(key)
+	reverted, err = buf.GetReverted(key)
 	require.NoError(t, err)
 	require.True(t, reverted)
 }

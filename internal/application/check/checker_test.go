@@ -51,7 +51,6 @@ type testEngine struct {
 	boundaries        map[string]*raftcmdpb.LedgerBoundaries
 	volumes           map[string]*raftcmdpb.VolumePair
 	metadata          map[string]*commonpb.MetadataValue
-	reverted          map[string]bool
 	idempotency       map[string]*commonpb.IdempotencyKeyValue
 	references        map[string]*commonpb.TransactionReferenceValue
 	currentOpenPeriod *commonpb.Period
@@ -85,7 +84,6 @@ func newTestEngine(t *testing.T) *testEngine {
 		boundaries:     make(map[string]*raftcmdpb.LedgerBoundaries),
 		volumes:        make(map[string]*raftcmdpb.VolumePair),
 		metadata:       make(map[string]*commonpb.MetadataValue),
-		reverted:       make(map[string]bool),
 		idempotency:    make(map[string]*commonpb.IdempotencyKeyValue),
 		references:     make(map[string]*commonpb.TransactionReferenceValue),
 		nextPeriodID:   1,
@@ -115,7 +113,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		modifiedVolumes:    modifiedVolumes,
 		modifiedMetadata:   modifiedMetadata,
 		transactionUpdates: make(map[string][]*commonpb.TransactionUpdate),
-		modifiedReverted:   make(map[string]struct{}),
+		reverted:           make(map[string]bool),
 	}
 	resp, err := e.processor.ProcessOrders(proposal.Orders, store)
 	require.NoError(e.t, err)
@@ -178,13 +176,6 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 			err := state.StoreTransactionUpdate(batch, tk, update)
 			require.NoError(e.t, err)
 		}
-	}
-
-	// Write modified reverted status to Pebble
-	for keyStr := range store.modifiedReverted {
-		reverted := e.reverted[keyStr]
-		err := e.attrs.Reverted.SetBase(batch, e.raftIndex, []byte(keyStr), &commonpb.RevertedValue{Reverted: reverted})
-		require.NoError(e.t, err)
 	}
 
 	// Write ledger info
@@ -258,8 +249,8 @@ type inMemoryStore struct {
 	modifiedMetadata map[string]struct{}
 	// Transaction updates accumulated during this proposal
 	transactionUpdates map[string][]*commonpb.TransactionUpdate // txKey -> updates
-	// Transaction keys whose reverted status was modified
-	modifiedReverted map[string]struct{}
+	// In-memory reverted status (bitset-like, not persisted to Pebble)
+	reverted map[string]bool
 }
 
 func (s *inMemoryStore) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
@@ -315,17 +306,11 @@ func (s *inMemoryStore) DeleteAccountMetadata(key domain.MetadataKey) {
 }
 
 func (s *inMemoryStore) GetReverted(key domain.TransactionKey) (bool, error) {
-	reverted, ok := s.engine.reverted[string(key.Bytes())]
-	if !ok {
-		return false, domain.ErrNotFound
-	}
-	return reverted, nil
+	return s.reverted[string(key.Bytes())], nil
 }
 
 func (s *inMemoryStore) PutReverted(key domain.TransactionKey, reverted bool) {
-	k := string(key.Bytes())
-	s.engine.reverted[k] = reverted
-	s.modifiedReverted[k] = struct{}{}
+	s.reverted[string(key.Bytes())] = reverted
 }
 
 func (s *inMemoryStore) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.IdempotencyKeyValue, error) {
@@ -1093,44 +1078,6 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 	require.Equal(t, uint64(1), txErrors[0].TransactionId)
 }
 
-// TestCheckerDetectsRevertedMismatch verifies the checker detects
-// corrupted reverted status.
-func TestCheckerDetectsRevertedMismatch(t *testing.T) {
-	t.Parallel()
-
-	engine := newTestEngine(t)
-
-	engine.processAndCommit(createLedgerOrder("test"))
-	engine.processAndCommit(createTransactionOrder("test", true,
-		newPosting("world", "user:alice", "USD", 1000),
-	))
-
-	// Revert the transaction
-	engine.processAndCommit(revertTransactionOrder("test", 1,
-		[]*commonpb.Posting{
-			newPosting("world", "user:alice", "USD", 1000),
-		},
-	))
-
-	// Overwrite the reverted status to false in Pebble
-	tkBytes := domain.TransactionKey{Ledger: "test", ID: 1}.Bytes()
-	batch := engine.store.NewBatch()
-	// Write a later raft index to override the existing base
-	err := engine.attrs.Reverted.SetBase(batch, 1<<61, tkBytes, &commonpb.RevertedValue{Reverted: false})
-	require.NoError(t, err)
-	require.NoError(t, batch.Commit())
-
-	errors := collectCheckErrors(t, engine.store, engine.attrs)
-	var revertErrors []*servicepb.CheckStoreError
-	for _, e := range errors {
-		if e.ErrorType == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
-			revertErrors = append(revertErrors, e)
-		}
-	}
-	require.NotEmpty(t, revertErrors, "should detect reverted mismatch")
-	require.Equal(t, uint64(1), revertErrors[0].TransactionId)
-}
-
 // TestCheckerWithTransactionMetadata verifies that transaction metadata
 // operations (save and delete) are properly tracked and verified.
 func TestCheckerWithTransactionMetadata(t *testing.T) {
@@ -1167,4 +1114,204 @@ func TestCheckerWithTransactionMetadata(t *testing.T) {
 			e.ErrorType, e.Message, e.LogSequence, e.Ledger, e.Account, e.Asset, e.TransactionId)
 	}
 	require.Empty(t, errors, "store with transaction metadata should have no integrity errors")
+}
+
+// TestCheckerDetectsDoubleRevert verifies the checker detects a transaction reverted twice.
+func TestCheckerDetectsDoubleRevert(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := attributes.New()
+	hasher := blake3.New()
+
+	// Build a valid log chain manually:
+	// 1. Create ledger "test"
+	// 2. Create transaction (tx 1): world -> alice 1000 USD
+	// 3. Revert tx 1 (creates tx 2)
+	// 4. Revert tx 1 AGAIN (double revert — should be detected)
+
+	var lastHash []byte
+	seqID := uint64(1)
+
+	// Log 1: Create ledger
+	log1 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_CreateLedger{
+			CreateLedger: &commonpb.CreateLedgerLog{
+				Info: &commonpb.LedgerInfo{Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000}},
+			},
+		},
+	})
+
+	// Log 2: Create transaction (tx 1)
+	posting := newPosting("world", "user:alice", "USD", 1000)
+	log2 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{
+				LedgerName: "test",
+				Log: &commonpb.LedgerLog{
+					Data: &commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+							CreatedTransaction: &commonpb.CreatedTransaction{
+								Transaction: &commonpb.Transaction{Id: 1, Postings: []*commonpb.Posting{posting}},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	// Log 3: Revert tx 1 (valid)
+	log3 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{
+				LedgerName: "test",
+				Log: &commonpb.LedgerLog{
+					Data: &commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+							RevertedTransaction: &commonpb.RevertedTransaction{
+								RevertedTransactionId: 1,
+								RevertTransaction:     &commonpb.Transaction{Id: 2, Postings: []*commonpb.Posting{reversePosting(posting)}},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	// Log 4: Revert tx 1 AGAIN (double revert)
+	log4 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{
+				LedgerName: "test",
+				Log: &commonpb.LedgerLog{
+					Data: &commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+							RevertedTransaction: &commonpb.RevertedTransaction{
+								RevertedTransactionId: 1,
+								RevertTransaction:     &commonpb.Transaction{Id: 3, Postings: []*commonpb.Posting{reversePosting(posting)}},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	batch := store.NewBatch()
+	require.NoError(t, state.AppendLogs(batch, log1, log2, log3, log4))
+	require.NoError(t, state.SaveLedger(batch, log1.Payload.GetCreateLedger().Info))
+	require.NoError(t, writeVolumes(batch, attrs, posting, "test", 1))
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, store, attrs)
+	var revertErrors []*servicepb.CheckStoreError
+	for _, e := range errors {
+		if e.ErrorType == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
+			revertErrors = append(revertErrors, e)
+		}
+	}
+	require.NotEmpty(t, revertErrors, "should detect double revert")
+	require.Contains(t, revertErrors[0].Message, "double-reverts")
+}
+
+// TestCheckerDetectsRevertOfNonExistentTransaction verifies the checker detects
+// a revert targeting a transaction ID that was never created.
+func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := attributes.New()
+	hasher := blake3.New()
+
+	var lastHash []byte
+	seqID := uint64(1)
+
+	// Log 1: Create ledger
+	log1 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_CreateLedger{
+			CreateLedger: &commonpb.CreateLedgerLog{
+				Info: &commonpb.LedgerInfo{Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000}},
+			},
+		},
+	})
+
+	// Log 2: Revert tx 999 (which was never created)
+	posting := newPosting("user:alice", "world", "USD", 1000)
+	log2 := buildLog(hasher, &lastHash, &seqID, &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{
+				LedgerName: "test",
+				Log: &commonpb.LedgerLog{
+					Data: &commonpb.LedgerLogPayload{
+						Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
+							RevertedTransaction: &commonpb.RevertedTransaction{
+								RevertedTransactionId: 999,
+								RevertTransaction:     &commonpb.Transaction{Id: 1, Postings: []*commonpb.Posting{posting}},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	batch := store.NewBatch()
+	require.NoError(t, state.AppendLogs(batch, log1, log2))
+	require.NoError(t, state.SaveLedger(batch, log1.Payload.GetCreateLedger().Info))
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, store, attrs)
+	var revertErrors []*servicepb.CheckStoreError
+	for _, e := range errors {
+		if e.ErrorType == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
+			revertErrors = append(revertErrors, e)
+		}
+	}
+	require.NotEmpty(t, revertErrors, "should detect revert of non-existent transaction")
+	require.Contains(t, revertErrors[0].Message, "non-existent")
+}
+
+// buildLog creates a log entry with the correct hash chain.
+func buildLog(hasher *blake3.Hasher, lastHash *[]byte, seqID *uint64, payload *commonpb.LogPayload) *commonpb.Log {
+	log := &commonpb.Log{
+		Sequence: *seqID,
+		Payload:  payload,
+	}
+	log.Hash = processing.ComputeLogHash(hasher, *lastHash, log)
+	*lastHash = log.Hash
+	*seqID++
+	return log
+}
+
+// reversePosting returns a posting with source and destination swapped.
+func reversePosting(p *commonpb.Posting) *commonpb.Posting {
+	return &commonpb.Posting{
+		Source:      p.Destination,
+		Destination: p.Source,
+		Amount:      p.Amount,
+		Asset:       p.Asset,
+	}
+}
+
+// writeVolumes writes volume attributes for a posting to make the store consistent.
+func writeVolumes(batch *dal.Batch, attrs *attributes.Attributes, posting *commonpb.Posting, ledger string, raftIndex uint64) error {
+	sourceKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.Source},
+		Asset:      posting.Asset,
+	}
+	destKey := domain.VolumeKey{
+		AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.Destination},
+		Asset:      posting.Asset,
+	}
+
+	if err := attrs.Volume.AddDiff(batch, raftIndex, sourceKey.Bytes(), &raftcmdpb.VolumePair{
+		OutputKnown: posting.Amount,
+	}); err != nil {
+		return err
+	}
+	return attrs.Volume.AddDiff(batch, raftIndex, destKey.Bytes(), &raftcmdpb.VolumePair{
+		InputKnown: posting.Amount,
+	})
 }

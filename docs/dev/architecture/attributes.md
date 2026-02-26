@@ -2,14 +2,16 @@
 
 ## Overview
 
-Attributes are key-value pairs that track the state of the ledger system. They use a unified storage and caching model based on **generation-based caching** and **preloading** to ensure deterministic FSM execution across all Raft nodes.
+Attributes are key-value pairs that track the state of the ledger system. Most attributes use a unified storage and caching model based on **generation-based caching** and **preloading** to ensure deterministic FSM execution across all Raft nodes.
 
-All attributes share:
+Most attributes share:
 - **U128 hash-based keys** for efficient storage and lookup
 - **Tag-based collision detection** (64-bit secondary hash)
 - **Generation cache** (gen0/gen1) for fast access
 - **AttributeLoader** for coordinated concurrent loads
 - **Base + diff storage** for efficient updates
+
+**Exception:** Reversions use a dedicated in-memory bitset instead of the attribute system. See [Reversions](#reversions) below.
 
 See [Deterministic FSM](./deterministic-fsm.md) for details on the caching and preloading mechanisms.
 
@@ -21,7 +23,7 @@ See [Deterministic FSM](./deterministic-fsm.md) for details on the caching and p
 | **Output Volumes** | ledger/account/asset | `BigInt` | Per-ledger | Additive (base + latest cumulative diff) |
 | **Account Metadata** | ledger/account/key | `MetadataValue` | Per-ledger | Last-write-wins |
 | **Ledger Metadata** | ledger/key | `MetadataValue` | Per-ledger | Last-write-wins |
-| **Reversions** | ledger/txID | `bool` | Per-ledger | Last-write-wins |
+| **Reversions** | ledger + txID | `bit` | Per-ledger | In-memory bitset (not a Pebble attribute) |
 | **Idempotency Keys** | key string | `IdempotencyKeyValue` | System-wide | Immutable once set |
 | **Transaction References** | ledger/reference | `uint64` (txID) | Per-ledger | Immutable once set |
 | **Ledgers** | ledger name | `LedgerInfo` | System-wide | Last-write-wins |
@@ -94,23 +96,36 @@ Value: "production"
 
 ## Reversions
 
-Track whether a transaction has been reverted.
+Track whether a transaction has been reverted using an **in-memory bitset** (`ReversionBitset`).
+
+Unlike other attributes, reversions are **not** stored as Pebble attributes. Instead, each ledger maintains a `[]uint64` bitset where bit N indicates whether transaction N has been reverted.
 
 | Property | Description |
 |----------|-------------|
-| **Key** | `TransactionKey` = ledger name + transaction ID |
-| **Value** | `bool` (reverted = true/false) |
-| **Computation** | Last diff wins (default false) |
+| **Storage** | `map[string]*ReversionBitset` — one bitset per ledger |
+| **Lookup** | O(1) — `words[txID/64] & (1 << (txID%64))` |
+| **Memory** | 1 bit per transaction (vs ~82 bytes per entry with the old KeyStore approach) |
+| **Persistence** | Reconstructed from WAL replay or snapshot restore (no Pebble storage) |
+| **Monotone** | Reversions only go `false → true`, never back |
 
 **Example:**
 ```
-Key: ledger="main", txID=42
-Value: true (transaction 42 has been reverted)
+Ledger "main", txID=42:
+  words[0] = 0x0000040000000000  // bit 42 is set → transaction 42 is reverted
 ```
 
+**Why a bitset?**
+- Reversions are **binary** (reverted or not), **monotone** (never unreverted), and **dense** (transaction IDs are sequential per ledger)
+- These three properties make a bitset the ideal data structure
+- Eliminates hashing, preloading, generation caching, and Pebble I/O for reversions
+- Excellent cache locality for sequential transaction checks
+
+**Snapshot serialization:**
+The bitset is serialized per-ledger in `MemorySnapshot` as packed little-endian `uint64` bytes via `ReversionBitsetEntry`.
+
 **Usage:**
-- Prevent double reversions
-- Query transaction reversion status
+- Prevent double reversions (O(1) check in the FSM)
+- No admission-layer preloading needed — the bitset is always authoritative in memory
 
 ## Idempotency Keys
 
@@ -211,11 +226,12 @@ All attributes are stored under the `KeyPrefixAttributes` (`0xF1`) top-level pre
 | Output Volumes | `'O'` | `0x4F` |
 | Account Metadata | `'M'` | `0x4D` |
 | Ledger Metadata | `'L'` | `0x4C` |
-| Reversions | `'R'` | `0x52` |
 | Idempotency Keys | `'K'` | `0x4B` |
 | Transaction References | `'F'` | `0x46` |
 | Ledgers | `'G'` | `0x47` |
 | Boundaries | `'B'` | `0x42` |
+
+> **Note:** Reversions are stored in-memory as a bitset and are **not** persisted as Pebble attributes. They are reconstructed from WAL replay or snapshot restore.
 
 ### Value Computation
 
@@ -273,7 +289,7 @@ The FSM tracks dirty volume keys per generation in a 3-slot rotating buffer. At 
 
 ### 4. DeleteOldest for Non-Volume Attributes (per Merge)
 
-For non-cumulative attributes (ledgers, boundaries, reversions, idempotency keys), `DeleteOldest` is called during `Buffered.Merge` after writing a new base. Since these attributes use last-write-wins semantics, the old base is simply superseded.
+For non-cumulative attributes (ledgers, boundaries, idempotency keys), `DeleteOldest` is called during `Buffered.Merge` after writing a new base. Since these attributes use last-write-wins semantics, the old base is simply superseded.
 
 ### Compaction Flow
 
@@ -343,7 +359,7 @@ This enables:
 │                                                          │
 │   One cache per attribute type:                         │
 │   - Input, Output, AccountMetadata, LedgerMetadata,     │
-│     Reversions, IdempotencyKeys                         │
+│     IdempotencyKeys                                     │
 └─────────────────────────────────────────────────────────┘
                            │
                            ▼

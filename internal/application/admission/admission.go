@@ -9,23 +9,23 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/application/events"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
-	"github.com/formancehq/ledger-v3-poc/internal/application/events"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -458,65 +458,6 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		}
 	}
 
-	// Build preload for reverted status not guaranteed in cache
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Transactions)),
-		metric.WithAttributes(attribute.String("type", "reversions")))
-	for txKey := range needs.Transactions {
-		canonicalKey := txKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
-		attrID := &raftcmdpb.AttributeID{
-			Id:  id[:],
-			Tag: tag,
-		}
-
-		// Check Reversions cache
-		if !a.cache.Reversions.IsGuaranteedInCache(nextIndex, id) {
-			preloadStart := time.Now()
-			result, err := a.loaders.Reversions.LoadOrWait(id, boundary, func() (bool, error) {
-				revertedValue, err := a.attrs.Reverted.ComputeValue(a.store, boundary, canonicalKey)
-				if err != nil {
-					return false, err
-				}
-				if revertedValue != nil {
-					return revertedValue.Reverted, nil
-				}
-				return false, nil
-			})
-			if err != nil {
-				return nil, fmt.Errorf("computing reverted value at boundary %d for tx %d: %w", boundary, txKey.ID, err)
-			}
-
-			if result.FromLoad {
-				loadedKeys.Reversions = append(loadedKeys.Reversions, id)
-				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "reversions")))
-				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "reversions")))
-			}
-
-			a.logger.WithFields(map[string]any{
-				"id":        id.Hex(),
-				"boundary":  boundary,
-				"nextIndex": nextIndex,
-				"txId":      txKey.ID,
-				"reverted":  result.Value,
-				"fromLoad":  result.FromLoad,
-			}).Debug("Preloading reverted status from store")
-
-			cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-				Type: &raftcmdpb.Preload_Reverted{
-					Reverted: &raftcmdpb.PreloadReverted{
-						Id:       attrID,
-						Reverted: result.Value,
-					},
-				},
-			})
-		} else {
-			a.preloadCacheHitsCounter.Add(ctx, 1,
-				metric.WithAttributes(attribute.String("type", "reversions")))
-		}
-	}
-
 	// Build preload for idempotency keys not guaranteed in cache
 	// Only preload if the key is actually found (has a value), to reduce command size
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.IdempotencyKeys)),
@@ -927,7 +868,6 @@ type preloadNeeds struct {
 	SinkConfigs     map[domain.SinkConfigKey]struct{}
 	Volumes         map[domain.VolumeKey]struct{}
 	Metadata        map[domain.MetadataKey]struct{}
-	Transactions    map[domain.TransactionKey]struct{}
 	References      map[domain.TransactionReferenceKey]struct{}
 }
 
@@ -962,7 +902,6 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 		SinkConfigs:     make(map[domain.SinkConfigKey]struct{}),
 		Volumes:         make(map[domain.VolumeKey]struct{}),
 		Metadata:        make(map[domain.MetadataKey]struct{}),
-		Transactions:    make(map[domain.TransactionKey]struct{}),
 		References:      make(map[domain.TransactionReferenceKey]struct{}),
 	}
 
@@ -1045,11 +984,7 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-				// Need to check if the transaction is already reverted
-				p.Transactions[domain.TransactionKey{
-					Ledger: ledgerName,
-					ID:     applyData.RevertTransaction.TransactionId,
-				}] = struct{}{}
+				// Reversion status is checked via in-memory bitset (no preload needed).
 
 				// For reverts, postings are reversed: original destination becomes source (needs balance check)
 				// and original source becomes destination (needs to receive credit)

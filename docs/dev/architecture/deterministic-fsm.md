@@ -309,7 +309,7 @@ Without coordination:
 
 #### Solution: AttributeLoader
 
-Each attribute type (Input, Output, Reversions, IdempotencyKeys) has a dedicated `AttributeLoader[T]` that:
+Each attribute type (Input, Output, IdempotencyKeys) has a dedicated `AttributeLoader[T]` that:
 
 1. **Tracks loading keys**: When a goroutine starts loading a key, it's marked as "loading"
 2. **Wait on pending loads**: Other goroutines needing the same key wait for the ongoing load
@@ -364,10 +364,11 @@ The `LoadedKeysTracker` tracks which keys were loaded by a command:
 type LoadedKeysTracker struct {
     Input           []attributes.U128
     Output          []attributes.U128
-    Reversions      []attributes.U128
     IdempotencyKeys []attributes.U128
 }
 ```
+
+> **Note:** Reversions do not use an `AttributeLoader` — they are stored as an in-memory bitset (`ReversionBitset`) that is always authoritative. No preloading or Pebble lookups are needed. See [Attributes - Reversions](./attributes.md#reversions) for details.
 
 After the command is applied (success or error), `MarkApplied()` removes the keys from their respective loaders. This is safe because:
 - On success: The FSM cache now has the values

@@ -659,32 +659,6 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		return pair
 	}
 
-	// Helper function to put a preloaded boolean into a cache generation
-	putInCacheBool := func(
-		kv kv.KV[attributes.U128, attributes.Entry[bool]],
-		attrID *raftcmdpb.AttributeID,
-		value bool,
-	) bool {
-		id := attributes.U128FromBytes(attrID.Id)
-
-		fsm.logger.WithFields(map[string]any{
-			"id":    id.Hex(),
-			"value": value,
-		}).Debugf("Preload bool")
-
-		existing, ok := kv.Get(id)
-		if ok {
-			return existing.Data
-		}
-
-		kv.Put(id, attributes.Entry[bool]{
-			Tag:  attrID.Tag,
-			Data: value,
-		})
-
-		return value
-	}
-
 	// Helper function to put a preloaded idempotency value into a cache generation
 	putInCacheIdempotencyValue := func(
 		kv kv.KV[attributes.U128, attributes.Entry[*commonpb.IdempotencyKeyValue]],
@@ -852,14 +826,6 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				putInCacheVolumePair(fsm.Registry.Cache.Volumes.Gen0(), preloadType.Volume.Id, aggregated)
 			} else {
 				putInCacheVolumePair(fsm.Registry.Cache.Volumes.Gen0(), preloadType.Volume.Id, pair)
-			}
-
-		case *raftcmdpb.Preload_Reverted:
-			if preloadSet.LastPersistedIndex == fsm.Registry.Cache.BaseIndex.Gen1 {
-				value := putInCacheBool(fsm.Registry.Cache.Reversions.Gen1(), preloadType.Reverted.Id, preloadType.Reverted.Reverted)
-				putInCacheBool(fsm.Registry.Cache.Reversions.Gen0(), preloadType.Reverted.Id, value)
-			} else {
-				putInCacheBool(fsm.Registry.Cache.Reversions.Gen0(), preloadType.Reverted.Id, preloadType.Reverted.Reverted)
 			}
 
 		case *raftcmdpb.Preload_IdempotencyKey:
@@ -1108,6 +1074,15 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		}
 	}
 
+	// Serialize reversion bitsets
+	reversions := make([]*raftcmdpb.ReversionBitsetEntry, 0, len(fsm.Registry.Reversions))
+	for ledger, bs := range fsm.Registry.Reversions {
+		reversions = append(reversions, &raftcmdpb.ReversionBitsetEntry{
+			Ledger: ledger,
+			Words:  bs.MarshalWords(),
+		})
+	}
+
 	snapshot := &raftcmdpb.MemorySnapshot{
 		NextSequenceId:       fsm.nextSequenceID,
 		LastLogHash:          fsm.lastLogHash,
@@ -1121,6 +1096,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		ClosingPeriod:        fsm.Periods.ClosingPeriod(),
 		NextPeriodId:         fsm.Periods.NextPeriodID(),
 		ClosedPeriods:        closedPeriods,
+		Reversions:           reversions,
 	}
 
 	size := snapshot.SizeVT()
@@ -1278,6 +1254,12 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	fsm.Registry.Cache.Reset()
 	deserializeCacheGeneration(fsm.Registry.Cache, memSnapshot.Gen0, 0)
 	deserializeCacheGeneration(fsm.Registry.Cache, memSnapshot.Gen1, 1)
+
+	// Restore reversion bitsets from snapshot
+	fsm.Registry.ResetReversions()
+	for _, entry := range memSnapshot.Reversions {
+		fsm.Registry.Reversions[entry.Ledger] = domain.ReversionBitsetFromWords(entry.Words)
+	}
 
 	// Update currentGeneration to match the snapshot
 	fsm.Registry.Cache.SetCurrentGeneration(memSnapshot.CurrentGeneration)

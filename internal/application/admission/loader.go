@@ -123,7 +123,6 @@ func (al *AttributeLoader[T]) MarkApplied(key attributes.U128) {
 // Similar to Cache, it provides type-safe access to loaders for each attribute type.
 type Loaders struct {
 	Volumes         *AttributeLoader[*raftcmdpb.VolumePair]
-	Reversions      *AttributeLoader[bool]
 	IdempotencyKeys *AttributeLoader[*commonpb.IdempotencyKeyValue]
 	References      *AttributeLoader[*commonpb.TransactionReferenceValue]
 	Ledgers         *AttributeLoader[*commonpb.LedgerInfo]
@@ -136,7 +135,6 @@ type Loaders struct {
 func NewLoaders() *Loaders {
 	return &Loaders{
 		Volumes:         NewAttributeLoader[*raftcmdpb.VolumePair](),
-		Reversions:      NewAttributeLoader[bool](),
 		IdempotencyKeys: NewAttributeLoader[*commonpb.IdempotencyKeyValue](),
 		References:      NewAttributeLoader[*commonpb.TransactionReferenceValue](),
 		Ledgers:         NewAttributeLoader[*commonpb.LedgerInfo](),
@@ -150,7 +148,6 @@ func NewLoaders() *Loaders {
 // Used to clean up loaded entries after a command is applied.
 type LoadedKeysTracker struct {
 	Volumes         []attributes.U128
-	Reversions      []attributes.U128
 	IdempotencyKeys []attributes.U128
 	References      []attributes.U128
 	Ledgers         []attributes.U128
@@ -168,9 +165,6 @@ func NewLoadedKeysTracker() *LoadedKeysTracker {
 func (t *LoadedKeysTracker) MarkApplied(loaders *Loaders) {
 	for _, key := range t.Volumes {
 		loaders.Volumes.MarkApplied(key)
-	}
-	for _, key := range t.Reversions {
-		loaders.Reversions.MarkApplied(key)
 	}
 	for _, key := range t.IdempotencyKeys {
 		loaders.IdempotencyKeys.MarkApplied(key)
