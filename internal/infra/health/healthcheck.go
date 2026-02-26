@@ -7,10 +7,11 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 )
 
 // ErrUnhealthy is returned when the cluster is not healthy (e.g. disk usage or clock skew exceeded threshold).
@@ -40,8 +41,7 @@ type HealthChecker struct {
 
 	healthy atomic.Bool
 
-	stopCh chan struct{}
-	doneCh chan struct{}
+	w worker.Worker
 }
 
 // NewHealthChecker creates a new HealthChecker that periodically polls disk usage
@@ -65,8 +65,7 @@ func NewHealthChecker(
 		walThreshold:       walThreshold,
 		dataThreshold:      dataThreshold,
 		clockSkewThreshold: clockSkewThreshold,
-		stopCh:             make(chan struct{}),
-		doneCh:             make(chan struct{}),
+		w:                  worker.New(),
 	}
 	hc.healthy.Store(true)
 	return hc
@@ -75,27 +74,14 @@ func NewHealthChecker(
 // Start launches the background goroutine that periodically checks disk usage.
 func (hc *HealthChecker) Start() {
 	hc.check()
-
-	go func() {
-		defer close(hc.doneCh)
-		ticker := time.NewTicker(hc.interval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-hc.stopCh:
-				return
-			case <-ticker.C:
-				hc.check()
-			}
-		}
-	}()
+	hc.w.Run(func(stop <-chan struct{}) {
+		worker.RunTicker(stop, hc.interval, hc.check)
+	})
 }
 
 // Stop signals the background goroutine to stop and waits for it to finish.
 func (hc *HealthChecker) Stop() {
-	close(hc.stopCh)
-	<-hc.doneCh
+	hc.w.Stop()
 }
 
 // IsHealthy returns true if the last health check passed (no node exceeded the disk usage threshold).

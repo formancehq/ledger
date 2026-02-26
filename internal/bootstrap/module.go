@@ -18,6 +18,7 @@ import (
 	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	clusterhealth "github.com/formancehq/ledger-v3-poc/internal/infra/health"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
@@ -256,11 +257,12 @@ func Module() fx.Option {
 			func(logger logging.Logger, s *dal.Store) snapshotpb.SnapshotServiceServer {
 				return grpcadp.NewSnapshotServiceServer(logger, s)
 			},
-			func(cfg Config) *diskusage.Collector {
+			func(cfg Config, meterProvider metric.MeterProvider) *diskusage.Collector {
 				return diskusage.NewCollector(
 					cfg.RaftConfig.WalDir,
 					cfg.DataDir,
 					10*time.Second,
+					meterProvider.Meter("storage"),
 				)
 			},
 			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, ss *state.SharedState, logger logging.Logger, cfg Config, keySet oidc.KeySet) clusterpb.ClusterServiceServer {
@@ -356,10 +358,7 @@ func Module() fx.Option {
 							},
 						},
 					})
-				}, raftNode.IsLeader, func(periodID uint64) bool {
-					cp := machine.ClosingPeriod()
-					return cp != nil && cp.Id == periodID
-				})
+				}, raftNode.IsLeader, machine)
 			},
 			func(cfg Config, logger logging.Logger) (coldstorage.ColdStorage, error) {
 				switch cfg.ColdStorageConfig.Driver {
@@ -736,95 +735,26 @@ func Module() fx.Option {
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
 				))
 			},
-			func(lc fx.Lifecycle, collector *diskusage.Collector, meterProvider metric.MeterProvider) error {
-				registration, err := collector.RegisterMetrics(meterProvider.Meter("storage"))
-				if err != nil {
-					return fmt.Errorf("registering disk usage metrics: %w", err)
-				}
-				lc.Append(fx.Hook{
-					OnStart: func(_ context.Context) error {
-						collector.Start()
-						return nil
-					},
-					OnStop: func(_ context.Context) error {
-						collector.Stop()
-						return registration.Unregister()
-					},
-				})
-				return nil
+			func(lc fx.Lifecycle, collector *diskusage.Collector) {
+				lc.Append(worker.FxHook(collector))
 			},
 			func(lc fx.Lifecycle, hc *clusterhealth.HealthChecker) {
-				lc.Append(fx.Hook{
-					OnStart: func(_ context.Context) error {
-						hc.Start()
-						return nil
-					},
-					OnStop: func(_ context.Context) error {
-						hc.Stop()
-						return nil
-					},
-				})
+				lc.Append(worker.FxHook(hc))
 			},
-			// Start and stop the event Manager
 			func(lc fx.Lifecycle, manager *events.Manager) {
-				lc.Append(fx.Hook{
-					OnStart: func(_ context.Context) error {
-						manager.Start()
-						return nil
-					},
-					OnStop: func(_ context.Context) error {
-						manager.Stop()
-						return nil
-					},
-				})
+				lc.Append(worker.FxHook(manager))
 			},
-			func(lc fx.Lifecycle, sealer *state.Sealer, machine *state.Machine) {
-				lc.Append(fx.Hook{
-					OnStart: func(_ context.Context) error {
-						sealer.Start(machine.ClosingPeriod())
-						return nil
-					},
-					OnStop: func(_ context.Context) error {
-						sealer.Stop()
-						return nil
-					},
-				})
+			func(lc fx.Lifecycle, sealer *state.Sealer) {
+				lc.Append(worker.FxHook(sealer))
 			},
 			func(lc fx.Lifecycle, archiver *state.Archiver) {
-				lc.Append(fx.Hook{
-					OnStart: func(_ context.Context) error {
-						archiver.Start()
-						return nil
-					},
-					OnStop: func(_ context.Context) error {
-						archiver.Stop()
-						return nil
-					},
-				})
+				lc.Append(worker.FxHook(archiver))
 			},
 			func(lc fx.Lifecycle, scheduler *state.PeriodScheduler) {
-				lc.Append(fx.Hook{
-					OnStart: func(_ context.Context) error {
-						scheduler.Start()
-						return nil
-					},
-					OnStop: func(_ context.Context) error {
-						scheduler.Stop()
-						return nil
-					},
-				})
+				lc.Append(worker.FxHook(scheduler))
 			},
 			func(lc fx.Lifecycle, converter *state.MetadataConverter) {
-				lc.Append(fx.Hook{
-					OnStart: func(_ context.Context) error {
-						converter.Start()
-						return nil
-					},
-					OnStop: func(_ context.Context) error {
-						converter.Stop()
-						return nil
-					},
-				})
+				lc.Append(worker.FxHook(converter))
 			},
 		),
 	)

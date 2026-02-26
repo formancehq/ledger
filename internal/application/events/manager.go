@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -58,8 +59,7 @@ type Manager struct {
 	isLeader bool
 	emitters map[string]*managedSink
 
-	stopCh  chan struct{}
-	stopped chan struct{}
+	w worker.Worker
 }
 
 // NewManager creates a new event Manager.
@@ -76,15 +76,13 @@ func NewManager(store *dal.Store, proposer Proposer, logger logging.Logger, noti
 // Start begins the background goroutine that listens for log notifications
 // and config changes.
 func (m *Manager) Start() {
-	m.stopCh = make(chan struct{})
-	m.stopped = make(chan struct{})
-	go m.run()
+	m.w = worker.New()
+	m.w.Run(m.loop)
 }
 
 // Stop gracefully stops the Manager and tears down any active emitters/sinks.
 func (m *Manager) Stop() {
-	close(m.stopCh)
-	<-m.stopped
+	m.w.Stop()
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -100,9 +98,7 @@ func (m *Manager) OnLeadershipChange(isLeader bool) {
 	m.reconcile()
 }
 
-func (m *Manager) run() {
-	defer close(m.stopped)
-
+func (m *Manager) loop(stop <-chan struct{}) {
 	for {
 		select {
 		case <-m.notifications.LogCommitted.C():
@@ -118,7 +114,7 @@ func (m *Manager) run() {
 				m.reconcile()
 			}
 			m.mu.Unlock()
-		case <-m.stopCh:
+		case <-stop:
 			return
 		}
 	}

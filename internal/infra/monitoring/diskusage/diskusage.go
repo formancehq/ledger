@@ -2,6 +2,7 @@ package diskusage
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -69,6 +71,7 @@ type Collector struct {
 	dataDir  string
 	spoolDir string
 	interval time.Duration
+	meter    metric.Meter
 
 	spoolBytes           atomic.Int64
 	walBytes             atomic.Int64
@@ -78,47 +81,45 @@ type Collector struct {
 	walVolumeTotalBytes  atomic.Int64
 	dataVolumeTotalBytes atomic.Int64
 
-	stopCh chan struct{}
-	doneCh chan struct{}
+	metricsRegistration metric.Registration
+	w                   worker.Worker
 }
 
 // NewCollector creates a new Collector that will periodically compute disk usage
-// for the given directories at the specified interval.
-func NewCollector(walDir, dataDir string, interval time.Duration) *Collector {
+// for the given directories at the specified interval. The meter is used to
+// register OTEL observable gauges on Start and unregister them on Stop.
+func NewCollector(walDir, dataDir string, interval time.Duration, meter metric.Meter) *Collector {
 	return &Collector{
 		walDir:   walDir,
 		dataDir:  dataDir,
 		spoolDir: filepath.Join(walDir, "spool"),
 		interval: interval,
-		stopCh:   make(chan struct{}),
-		doneCh:   make(chan struct{}),
+		meter:    meter,
+		w:        worker.New(),
 	}
 }
 
-// Start launches the background goroutine that periodically computes directory sizes.
+// Start registers OTEL metrics, performs an initial collection, and launches
+// the background goroutine that periodically computes directory sizes.
 func (c *Collector) Start() {
+	// Best-effort metrics registration — failure is not fatal.
+	if reg, err := c.registerMetrics(); err == nil {
+		c.metricsRegistration = reg
+	}
+
 	c.collect()
-
-	go func() {
-		defer close(c.doneCh)
-		ticker := time.NewTicker(c.interval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-c.stopCh:
-				return
-			case <-ticker.C:
-				c.collect()
-			}
-		}
-	}()
+	c.w.Run(func(stop <-chan struct{}) {
+		worker.RunTicker(stop, c.interval, c.collect)
+	})
 }
 
-// Stop signals the background goroutine to stop and waits for it to finish.
+// Stop signals the background goroutine to stop, waits for it to finish,
+// and unregisters OTEL metrics.
 func (c *Collector) Stop() {
-	close(c.stopCh)
-	<-c.doneCh
+	c.w.Stop()
+	if c.metricsRegistration != nil {
+		_ = c.metricsRegistration.Unregister()
+	}
 }
 
 // collect computes directory sizes and stores the results atomically.
@@ -176,28 +177,28 @@ func (c *Collector) WALVolumeTotalBytes() int64 { return c.walVolumeTotalBytes.L
 // DataVolumeTotalBytes returns the total capacity of the data filesystem in bytes.
 func (c *Collector) DataVolumeTotalBytes() int64 { return c.dataVolumeTotalBytes.Load() }
 
-// RegisterMetrics registers observable gauges for disk space consumption.
+// registerMetrics registers observable gauges for disk space consumption.
 // The callback reads cached values computed by the background goroutine.
-func (c *Collector) RegisterMetrics(meter metric.Meter) (metric.Registration, error) {
-	componentGauge, err := meter.Int64ObservableGauge(
+func (c *Collector) registerMetrics() (metric.Registration, error) {
+	componentGauge, err := c.meter.Int64ObservableGauge(
 		"storage.disk.component.bytes",
 		metric.WithDescription("Disk space used by storage component"),
 		metric.WithUnit("By"),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating component gauge: %w", err)
 	}
 
-	volumeGauge, err := meter.Int64ObservableGauge(
+	volumeGauge, err := c.meter.Int64ObservableGauge(
 		"storage.disk.volume.bytes",
 		metric.WithDescription("Disk space used by storage volume"),
 		metric.WithUnit("By"),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating volume gauge: %w", err)
 	}
 
-	return meter.RegisterCallback(
+	return c.meter.RegisterCallback(
 		func(_ context.Context, o metric.Observer) error {
 			o.ObserveInt64(componentGauge, c.spoolBytes.Load(),
 				metric.WithAttributes(componentKey.String("spool")))

@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 )
 
 // PeriodScheduler runs on every node but only triggers period rotation on the leader.
@@ -17,8 +18,7 @@ type PeriodScheduler struct {
 	getPeriodSchedule func() string
 	proposeFn         func()
 	scheduleChanged   signal.Signal
-	stopCh            chan struct{}
-	doneCh            chan struct{}
+	w                 worker.Worker
 }
 
 // NewPeriodScheduler creates a new PeriodScheduler.
@@ -36,26 +36,22 @@ func NewPeriodScheduler(
 		getPeriodSchedule: getPeriodSchedule,
 		proposeFn:         proposeFn,
 		scheduleChanged:   scheduleChanged,
-		stopCh:            make(chan struct{}),
-		doneCh:            make(chan struct{}),
+		w:                 worker.New(),
 	}
 }
 
 // Start launches the background scheduler goroutine.
 func (ps *PeriodScheduler) Start() {
-	go ps.run()
+	ps.w.Run(ps.loop)
 }
 
 // Stop signals the scheduler to stop and waits for it to finish.
 func (ps *PeriodScheduler) Stop() {
-	close(ps.stopCh)
-	<-ps.doneCh
+	ps.w.Stop()
 }
 
-// run is the main scheduler loop.
-func (ps *PeriodScheduler) run() {
-	defer close(ps.doneCh)
-
+// loop is the main scheduler loop.
+func (ps *PeriodScheduler) loop(stop <-chan struct{}) {
 	var timer *time.Timer
 	defer func() {
 		if timer != nil {
@@ -103,7 +99,7 @@ func (ps *PeriodScheduler) run() {
 
 	for {
 		select {
-		case <-ps.stopCh:
+		case <-stop:
 			return
 		case <-ps.scheduleChanged.C():
 			timerCh = resetTimer()

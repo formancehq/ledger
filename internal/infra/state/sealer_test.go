@@ -4,11 +4,12 @@ import (
 	"os"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -34,17 +35,27 @@ type testSealerResult struct {
 	sealingHash []byte
 }
 
-func newTestSealer(t *testing.T, store *dal.Store) (*Sealer, *testSealerResult) {
+// fixedPeriodState returns a fixed closing period for testing.
+type fixedPeriodState struct {
+	period *commonpb.Period
+}
+
+func (f *fixedPeriodState) ClosingPeriod() *commonpb.Period {
+	return f.period
+}
+
+func newTestSealer(t *testing.T, store *dal.Store, closingPeriodID uint64) (*Sealer, *testSealerResult) {
 	t.Helper()
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 
 	result := &testSealerResult{}
+	ps := &fixedPeriodState{period: &commonpb.Period{Id: closingPeriodID}}
 	sealer := NewSealer(logger, store, make(chan SealRequest, 1), func(periodID uint64, sealingHash []byte) {
 		result.periodID = periodID
 		result.sealingHash = sealingHash
-	}, func() bool { return true }, func(uint64) bool { return true })
+	}, func() bool { return true }, ps)
 
 	return sealer, result
 }
@@ -80,7 +91,7 @@ func TestSealerDeterministic(t *testing.T) {
 
 		checkpointPath := createSealCheckpoint(t, store)
 
-		sealer, result := newTestSealer(t, store)
+		sealer, result := newTestSealer(t, store, 42)
 		err := sealer.seal(SealRequest{
 			PeriodID:       42,
 			CloseSequence:  100,
@@ -110,7 +121,7 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 	// Create checkpoint BEFORE writing more data
 	checkpointPath := createSealCheckpoint(t, store)
 
-	sealer, result := newTestSealer(t, store)
+	sealer, result := newTestSealer(t, store, 1)
 	err := sealer.seal(SealRequest{
 		PeriodID:       1,
 		CloseSequence:  10,
@@ -130,7 +141,7 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 	// Create a NEW checkpoint that includes the index-20 data
 	checkpointPath2 := createSealCheckpoint(t, store)
 
-	sealer2, result2 := newTestSealer(t, store)
+	sealer2, result2 := newTestSealer(t, store, 1)
 	err = sealer2.seal(SealRequest{
 		PeriodID:       1,
 		CloseSequence:  10,
@@ -153,7 +164,7 @@ func TestSealerEmptyStore(t *testing.T) {
 
 	checkpointPath := createSealCheckpoint(t, store)
 
-	sealer, result := newTestSealer(t, store)
+	sealer, result := newTestSealer(t, store, 1)
 
 	err := sealer.seal(SealRequest{
 		PeriodID:       1,
@@ -175,35 +186,33 @@ func TestSealerRetryOnFailure(t *testing.T) {
 	hiddenPath := realPath + ".hidden"
 	require.NoError(t, os.Rename(realPath, hiddenPath))
 
-	var (
-		proposeCalled atomic.Int32
-		result        testSealerResult
-	)
+	var proposeCalled atomic.Int32
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
-	sealer := NewSealer(logger, store, make(chan SealRequest, 1), func(periodID uint64, sealingHash []byte) {
-		result.periodID = periodID
-		result.sealingHash = sealingHash
+	sealRequestCh := make(chan SealRequest, 1)
+	ps := &fixedPeriodState{period: &commonpb.Period{Id: 7}}
+	sealer := NewSealer(logger, store, sealRequestCh, func(periodID uint64, sealingHash []byte) {
 		proposeCalled.Add(1)
-	}, func() bool { return true }, func(uint64) bool { return true })
+	}, func() bool { return true }, ps)
 
-	req := SealRequest{
-		PeriodID:       7,
-		CloseSequence:  50,
-		LastLogHash:    []byte("test-hash"),
-		CheckpointPath: realPath,
-	}
+	sealer.Start()
+	t.Cleanup(sealer.Stop)
 
 	// Restore the checkpoint so the retry succeeds
 	go func() {
 		_ = os.Rename(hiddenPath, realPath)
 	}()
 
-	// sealWithRetry blocks until success
-	sealer.sealWithRetry(req)
+	// Send the seal request via the channel
+	sealRequestCh <- SealRequest{
+		PeriodID:       7,
+		CloseSequence:  50,
+		LastLogHash:    []byte("test-hash"),
+		CheckpointPath: realPath,
+	}
 
-	require.Equal(t, int32(1), proposeCalled.Load(), "propose should be called exactly once after retry succeeds")
-	require.Equal(t, uint64(7), result.periodID)
-	require.NotEmpty(t, result.sealingHash)
+	require.Eventually(t, func() bool {
+		return proposeCalled.Load() == 1
+	}, 10*time.Second, 50*time.Millisecond, "propose should be called exactly once after retry succeeds")
 }

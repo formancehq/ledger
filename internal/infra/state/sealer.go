@@ -2,12 +2,11 @@ package state
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
-	"time"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/zeebo/blake3"
@@ -24,20 +23,25 @@ type SealRequest struct {
 // SealProposer is a callback to propose a SealPeriod order back into Raft.
 type SealProposer func(periodID uint64, sealingHash []byte)
 
+// SealerPeriodState provides the Sealer with read access to the current period
+// state. Implemented by *Machine.
+type SealerPeriodState interface {
+	ClosingPeriod() *commonpb.Period
+}
+
 // Sealer runs in the background to compute sealing hashes for closing periods.
 // It reads seal requests from sealRequestCh (fed by the Machine on ClosePeriod
 // or directly by crash-recovery logic in the Sealer/Node).
 // Only the leader node computes the hash and proposes SealPeriod. Followers
 // poll until the period is no longer CLOSING (sealed by the leader through Raft).
 type Sealer struct {
-	logger               logging.Logger
-	dataStore            *dal.Store
-	sealRequestCh        chan SealRequest
-	proposeFn            SealProposer
-	isLeader             func() bool
-	isPeriodStillClosing func(uint64) bool
-	stopCh               chan struct{}
-	doneCh               chan struct{}
+	logger        logging.Logger
+	dataStore     *dal.Store
+	sealRequestCh chan SealRequest
+	proposeFn     SealProposer
+	isLeader      func() bool
+	periodState   SealerPeriodState
+	w             worker.Worker
 }
 
 // NewSealer creates a new background sealer.
@@ -47,95 +51,59 @@ func NewSealer(
 	sealRequestCh chan SealRequest,
 	proposeFn SealProposer,
 	isLeader func() bool,
-	isPeriodStillClosing func(uint64) bool,
+	periodState SealerPeriodState,
 ) *Sealer {
 	return &Sealer{
-		logger:               logger.WithFields(map[string]any{"cmp": "sealer"}),
-		dataStore:            dataStore,
-		sealRequestCh:        sealRequestCh,
-		proposeFn:            proposeFn,
-		isLeader:             isLeader,
-		isPeriodStillClosing: isPeriodStillClosing,
-		stopCh:               make(chan struct{}),
-		doneCh:               make(chan struct{}),
+		logger:        logger.WithFields(map[string]any{"cmp": "sealer"}),
+		dataStore:     dataStore,
+		sealRequestCh: sealRequestCh,
+		proposeFn:     proposeFn,
+		isLeader:      isLeader,
+		periodState:   periodState,
+		w:             worker.New(),
 	}
 }
 
 // Start launches the background sealing goroutine and recovers any
 // pending seal from a previous crash.
-func (s *Sealer) Start(closingPeriod *commonpb.Period) {
-	go s.run()
+func (s *Sealer) Start() {
+	s.w.Run(func(stop <-chan struct{}) {
+		worker.DrainChannel(stop, s.sealRequestCh, func(req SealRequest) {
+			worker.RetryWithBackoff(stop, s.logger, func() error {
+				return s.seal(req)
+			})
+		})
+	})
 
-	// Recover pending seal from a previous crash.
-	// If a seal checkpoint exists on disk, the Sealer can recompute the hash.
-	// If it doesn't exist (crashed before checkpoint creation), the node will
-	// re-apply the ClosePeriod entry from WAL replay and create the checkpoint again.
-	if closingPeriod != nil {
-		checkpointPath, exists := s.dataStore.TemporaryCheckpointPath("seal")
-		if exists {
-			req := SealRequestFromPeriod(closingPeriod)
-			req.CheckpointPath = checkpointPath
-			s.logger.WithFields(map[string]any{
-				"periodId":      req.PeriodID,
-				"closeSequence": req.CloseSequence,
-			}).Infof("Recovering pending period seal after restart")
-			select {
-			case s.sealRequestCh <- *req:
-			default:
-			}
-		}
+	s.recoverPendingSeal()
+}
+
+// recoverPendingSeal checks for a pending seal from a previous crash and
+// re-enqueues it if a seal checkpoint exists on disk.
+func (s *Sealer) recoverPendingSeal() {
+	closingPeriod := s.periodState.ClosingPeriod()
+	if closingPeriod == nil {
+		return
+	}
+	checkpointPath, exists := s.dataStore.TemporaryCheckpointPath("seal")
+	if !exists {
+		return
+	}
+	req := SealRequestFromPeriod(closingPeriod)
+	req.CheckpointPath = checkpointPath
+	s.logger.WithFields(map[string]any{
+		"periodId":      req.PeriodID,
+		"closeSequence": req.CloseSequence,
+	}).Infof("Recovering pending period seal after restart")
+	select {
+	case s.sealRequestCh <- *req:
+	default:
 	}
 }
 
 // Stop signals the background goroutine to stop and waits for it to finish.
 func (s *Sealer) Stop() {
-	close(s.stopCh)
-	<-s.doneCh
-}
-
-func (s *Sealer) run() {
-	defer close(s.doneCh)
-
-	for {
-		select {
-		case <-s.stopCh:
-			return
-		case req := <-s.sealRequestCh:
-			s.sealWithRetry(req)
-		}
-	}
-}
-
-// sealWithRetry retries seal() with exponential backoff until it succeeds or
-// the sealer is stopped. The checkpoint remains on disk after failure (only
-// removed on success), so retrying is safe.
-// On follower nodes, the loop exits when the period is no longer CLOSING
-// (sealed by the leader through Raft), without calling SealProposer.
-func (s *Sealer) sealWithRetry(req SealRequest) {
-	backoff := 100 * time.Millisecond
-	const maxBackoff = 10 * time.Second
-
-	for {
-		err := s.seal(req)
-		if err == nil {
-			return
-		}
-
-		if errors.Is(err, errNotLeader) {
-			s.logger.WithFields(map[string]any{
-				"periodId": req.PeriodID,
-			}).Infof("Not leader, waiting %v before re-checking", backoff)
-		} else {
-			s.logger.Errorf("Background sealing failed (will retry in %v): %v", backoff, err)
-		}
-
-		select {
-		case <-s.stopCh:
-			return
-		case <-time.After(backoff):
-		}
-		backoff = min(backoff*2, maxBackoff)
-	}
+	s.w.Stop()
 }
 
 // seal computes the sealing hash for a period and proposes a SealPeriod order.
@@ -144,7 +112,7 @@ func (s *Sealer) sealWithRetry(req SealRequest) {
 //   - First, check if the period is still in CLOSING state. If not, the seal
 //     was already applied through Raft — exit silently.
 //   - If the period is still CLOSING and this node is not the leader, return
-//     errNotLeader so the retry loop waits and re-checks.
+//     worker.ErrNotLeader so the retry loop waits and re-checks.
 //   - Only the leader computes the hash and proposes SealPeriod.
 //
 // sealing_hash = BLAKE3(period_id || close_sequence || last_log_hash || state_hash)
@@ -157,7 +125,8 @@ func (s *Sealer) seal(req SealRequest) error {
 
 	// Check if the period is still CLOSING — if not, the leader already sealed
 	// it and the SealPeriod was applied through Raft. Followers can exit.
-	if !s.isPeriodStillClosing(req.PeriodID) {
+	cp := s.periodState.ClosingPeriod()
+	if cp == nil || cp.Id != req.PeriodID {
 		s.logger.WithFields(logFields).Infof("Period no longer closing (sealed by leader), done")
 		// Clean up the seal checkpoint if it exists on this node
 		_ = s.dataStore.RemoveTemporaryCheckpoint("seal")
@@ -166,7 +135,7 @@ func (s *Sealer) seal(req SealRequest) error {
 
 	// Period is still CLOSING — only the leader should compute the hash.
 	if !s.isLeader() {
-		return errNotLeader
+		return worker.ErrNotLeader
 	}
 
 	s.logger.WithFields(logFields).Infof("Starting period sealing")

@@ -67,6 +67,10 @@ func TestDirSizeExcluding(t *testing.T) {
 	require.Equal(t, int64(4), size) // only "keep"
 }
 
+func newTestMeter() sdkmetric.Option {
+	return sdkmetric.WithReader(sdkmetric.NewManualReader())
+}
+
 func TestCollector_StartAndStop(t *testing.T) {
 	t.Parallel()
 
@@ -82,7 +86,8 @@ func TestCollector_StartAndStop(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(spoolDir, "spool.dat"), []byte("spool"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "data.db"), []byte("database content"), 0644))
 
-	c := NewCollector(walDir, dataDir, 100*time.Millisecond)
+	provider := sdkmetric.NewMeterProvider(newTestMeter())
+	c := NewCollector(walDir, dataDir, 100*time.Millisecond, provider.Meter("test"))
 	c.Start()
 
 	// After Start, collect should have run once synchronously
@@ -106,22 +111,22 @@ func TestCollector_RegisterMetrics(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(walDir, "wal.log"), []byte("wal"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "data.db"), []byte("data"), 0644))
 
-	c := NewCollector(walDir, dataDir, time.Hour)
-	c.collect()
-
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	meter := provider.Meter("test")
 
-	reg, err := c.RegisterMetrics(meter)
-	require.NoError(t, err)
-	require.NotNil(t, reg)
+	c := NewCollector(walDir, dataDir, time.Hour, provider.Meter("test"))
+	c.collect()
+
+	// Start registers metrics internally
+	c.Start()
 
 	// Trigger the callback by collecting metrics
 	var rm metricdata.ResourceMetrics
-	err = reader.Collect(t.Context(), &rm)
+	err := reader.Collect(t.Context(), &rm)
 	require.NoError(t, err)
 	require.NotEmpty(t, rm.ScopeMetrics)
+
+	c.Stop()
 }
 
 func TestCollector_AtomicReads(t *testing.T) {
@@ -131,7 +136,8 @@ func TestCollector_AtomicReads(t *testing.T) {
 	dataDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(walDir, "spool"), 0755))
 
-	c := NewCollector(walDir, dataDir, time.Hour) // long interval - we'll call collect manually
+	provider := sdkmetric.NewMeterProvider(newTestMeter())
+	c := NewCollector(walDir, dataDir, time.Hour, provider.Meter("test")) // long interval - we'll call collect manually
 
 	// Before collect, everything should be 0
 	require.Equal(t, int64(0), c.SpoolBytes())

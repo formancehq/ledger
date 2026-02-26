@@ -7,12 +7,12 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -22,10 +22,6 @@ type ArchiveRequest struct {
 	StartSequence uint64 // First log sequence in the period
 	CloseSequence uint64 // Last log sequence in the period (the ClosePeriod log)
 }
-
-// errNotLeader is returned by archive() when the current node is not the Raft leader.
-// The retry loop uses this to wait and re-check leadership.
-var errNotLeader = fmt.Errorf("not leader, skipping archive")
 
 // ArchiveProposer is a callback to propose a ConfirmArchivePeriod order back into Raft.
 type ArchiveProposer func(periodID uint64)
@@ -41,8 +37,7 @@ type Archiver struct {
 	archiveRequestCh chan ArchiveRequest
 	proposeFn        ArchiveProposer
 	isLeader         func() bool
-	stopCh           chan struct{}
-	doneCh           chan struct{}
+	w                worker.Worker
 	bucketID         string
 }
 
@@ -63,8 +58,7 @@ func NewArchiver(
 		archiveRequestCh: archiveRequestCh,
 		proposeFn:        proposeFn,
 		isLeader:         isLeader,
-		stopCh:           make(chan struct{}),
-		doneCh:           make(chan struct{}),
+		w:                worker.New(),
 		bucketID:         bucketID,
 	}
 }
@@ -74,57 +68,18 @@ func NewArchiver(
 // ArchivePeriodLog and ConfirmArchivePeriodLog, WAL replay re-sends the
 // ArchiveRequest to the channel, and the export is idempotent.
 func (a *Archiver) Start() {
-	go a.run()
+	a.w.Run(func(stop <-chan struct{}) {
+		worker.DrainChannel(stop, a.archiveRequestCh, func(req ArchiveRequest) {
+			worker.RetryWithBackoff(stop, a.logger, func() error {
+				return a.archive(req)
+			})
+		})
+	})
 }
 
 // Stop signals the background goroutine to stop and waits for it to finish.
 func (a *Archiver) Stop() {
-	close(a.stopCh)
-	<-a.doneCh
-}
-
-func (a *Archiver) run() {
-	defer close(a.doneCh)
-
-	for {
-		select {
-		case <-a.stopCh:
-			return
-		case req := <-a.archiveRequestCh:
-			a.archiveWithRetry(req)
-		}
-	}
-}
-
-// archiveWithRetry retries archive() with exponential backoff until it succeeds
-// or the archiver is stopped. The export is idempotent (same data, same key).
-// On follower nodes, the loop exits when the archive appears in cold storage
-// (pushed by the leader), without calling ArchiveProposer.
-func (a *Archiver) archiveWithRetry(req ArchiveRequest) {
-	backoff := 100 * time.Millisecond
-	const maxBackoff = 10 * time.Second
-
-	for {
-		err := a.archive(req)
-		if err == nil {
-			return
-		}
-
-		if errors.Is(err, errNotLeader) {
-			a.logger.WithFields(map[string]any{
-				"periodId": req.PeriodID,
-			}).Infof("Not leader, waiting %v before re-checking", backoff)
-		} else {
-			a.logger.Errorf("Background archiving failed (will retry in %v): %v", backoff, err)
-		}
-
-		select {
-		case <-a.stopCh:
-			return
-		case <-time.After(backoff):
-		}
-		backoff = min(backoff*2, maxBackoff)
-	}
+	a.w.Stop()
 }
 
 // archive exports period data to cold storage and proposes ConfirmArchivePeriod.
@@ -134,7 +89,7 @@ func (a *Archiver) archiveWithRetry(req ArchiveRequest) {
 //     the leader already pushed it — followers exit silently, and the leader
 //     proposes ConfirmArchivePeriod (crash-recovery idempotency).
 //   - If the archive does not exist yet and this node is not the leader,
-//     return errNotLeader so the retry loop waits and re-checks.
+//     return worker.ErrNotLeader so the retry loop waits and re-checks.
 //   - Only the leader builds, uploads, and proposes.
 func (a *Archiver) archive(req ArchiveRequest) error {
 	ctx := context.Background()
@@ -164,7 +119,7 @@ func (a *Archiver) archive(req ArchiveRequest) error {
 
 	// Archive doesn't exist yet — only the leader should upload.
 	if !a.isLeader() {
-		return errNotLeader
+		return worker.ErrNotLeader
 	}
 
 	a.logger.WithFields(logFields).Infof("Starting period archival")

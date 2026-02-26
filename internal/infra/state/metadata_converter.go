@@ -4,14 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -59,8 +59,7 @@ type MetadataConverter struct {
 	isLeader  func() bool
 	batchSize int
 	poolSize  int
-	stopCh    chan struct{}
-	doneCh    chan struct{}
+	w         worker.Worker
 	wg        sync.WaitGroup
 }
 
@@ -88,31 +87,27 @@ func NewMetadataConverter(
 		isLeader:  isLeader,
 		batchSize: batchSize,
 		poolSize:  poolSize,
-		stopCh:    make(chan struct{}),
-		doneCh:    make(chan struct{}),
+		w:         worker.New(),
 	}
 }
 
 // Start launches the background metadata conversion goroutine.
 func (mc *MetadataConverter) Start() {
-	go mc.run()
+	mc.w.Run(mc.dispatchLoop)
 }
 
 // Stop signals the dispatcher goroutine to stop and waits for all in-flight
 // conversions to finish.
 func (mc *MetadataConverter) Stop() {
-	close(mc.stopCh)
-	<-mc.doneCh  // wait for the dispatcher loop to exit
-	mc.wg.Wait() // wait for all in-flight conversion workers
+	mc.w.Stop()
+	mc.wg.Wait()
 }
 
-// run drains requestCh into an internal queue and dispatches work to a bounded
-// worker pool. The select loop alternates between:
+// dispatchLoop drains requestCh into an internal queue and dispatches work to a
+// bounded worker pool. The select loop alternates between:
 //   - accepting new requests from requestCh (always, to avoid back-pressure)
 //   - dispatching the head of the queue when a pool slot is available
-func (mc *MetadataConverter) run() {
-	defer close(mc.doneCh)
-
+func (mc *MetadataConverter) dispatchLoop(stop <-chan struct{}) {
 	sem := make(chan struct{}, mc.poolSize)
 	var pending []MetadataConvertRequest
 
@@ -121,7 +116,7 @@ func (mc *MetadataConverter) run() {
 		// new requests and checking for stop.
 		if len(pending) > 0 {
 			select {
-			case <-mc.stopCh:
+			case <-stop:
 				return
 			case req := <-mc.requestCh:
 				pending = append(pending, req)
@@ -132,13 +127,13 @@ func (mc *MetadataConverter) run() {
 				go func() {
 					defer mc.wg.Done()
 					defer func() { <-sem }()
-					mc.convertWithRetry(req)
+					mc.convertWithRetry(stop, req)
 				}()
 			}
 		} else {
 			// Nothing pending: just wait for new work or stop.
 			select {
-			case <-mc.stopCh:
+			case <-stop:
 				return
 			case req := <-mc.requestCh:
 				pending = append(pending, req)
@@ -178,11 +173,8 @@ func (mc *MetadataConverter) isFieldStillConverting(ledgerName string, targetTyp
 // or the converter is stopped.
 // On follower nodes, the loop exits when the field is no longer in CONVERTING
 // state (completed by the leader through Raft), without calling the proposers.
-func (mc *MetadataConverter) convertWithRetry(req MetadataConvertRequest) {
-	backoff := 100 * time.Millisecond
-	const maxBackoff = 10 * time.Second
-
-	for {
+func (mc *MetadataConverter) convertWithRetry(stop <-chan struct{}, req MetadataConvertRequest) {
+	worker.RetryWithBackoff(stop, mc.logger, func() error {
 		// Check if the field is still converting before attempting work.
 		// If the leader already completed the conversion, exit early.
 		if !mc.isFieldStillConverting(req.LedgerName, req.TargetType, req.Key, req.Type) {
@@ -190,45 +182,15 @@ func (mc *MetadataConverter) convertWithRetry(req MetadataConvertRequest) {
 				"ledger": req.LedgerName,
 				"key":    req.Key,
 			}).Infof("Field no longer converting (completed by leader), done")
-			return
+			return nil
 		}
 
 		if !mc.isLeader() {
-			mc.logger.WithFields(map[string]any{
-				"ledger": req.LedgerName,
-				"key":    req.Key,
-			}).Infof("Not leader, waiting %v before re-checking", backoff)
-
-			select {
-			case <-mc.stopCh:
-				return
-			case <-time.After(backoff):
-			}
-			backoff = min(backoff*2, maxBackoff)
-			continue
+			return worker.ErrNotLeader
 		}
 
-		err := mc.convert(req)
-		if err == nil {
-			return
-		}
-
-		if errors.Is(err, errNotLeader) {
-			mc.logger.WithFields(map[string]any{
-				"ledger": req.LedgerName,
-				"key":    req.Key,
-			}).Infof("Not leader, waiting %v before re-checking", backoff)
-		} else {
-			mc.logger.Errorf("Background metadata conversion failed (will retry in %v): %v", backoff, err)
-		}
-
-		select {
-		case <-mc.stopCh:
-			return
-		case <-time.After(backoff):
-		}
-		backoff = min(backoff*2, maxBackoff)
-	}
+		return mc.convert(req)
+	})
 }
 
 // proposeBatch proposes a ConvertMetadataBatch order to Raft.
@@ -247,12 +209,12 @@ func (mc *MetadataConverter) proposeBatch(
 				Ledger: ledgerName,
 				Data: &raftcmdpb.LedgerApplyOrder_ConvertMetadataBatch{
 					ConvertMetadataBatch: &raftcmdpb.ConvertMetadataBatchOrder{
-						TargetType:          targetType,
-						Key:                 key,
-						ExpectedType:        expectedType,
-						Entries:             entries,
-						TotalKeys:           totalKeys,
-						ConvertedKeysSoFar:  convertedKeysSoFar,
+						TargetType:         targetType,
+						Key:                key,
+						ExpectedType:       expectedType,
+						Entries:            entries,
+						TotalKeys:          totalKeys,
+						ConvertedKeysSoFar: convertedKeysSoFar,
 					},
 				},
 			},
@@ -298,7 +260,7 @@ func (mc *MetadataConverter) proposeComplete(
 //   - First, check if the field is still in CONVERTING state. If not, the
 //     conversion was already completed through Raft -- exit silently.
 //   - If the field is still CONVERTING and this node is not the leader, return
-//     errNotLeader so the retry loop waits and re-checks.
+//     worker.ErrNotLeader so the retry loop waits and re-checks.
 //   - Only the leader scans, converts, and proposes.
 func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 	logFields := map[string]any{
@@ -313,7 +275,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 	}
 
 	if !mc.isLeader() {
-		return errNotLeader
+		return worker.ErrNotLeader
 	}
 
 	// Validate the ledger exists (off the hot path).
@@ -359,8 +321,8 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 	}
 
 	mc.logger.WithFields(map[string]any{
-		"ledger":           req.LedgerName,
-		"key":              req.Key,
+		"ledger":            req.LedgerName,
+		"key":               req.Key,
 		"totalMatchingKeys": totalMatchingKeys,
 	}).Infof("Counted matching metadata keys, starting conversion")
 
@@ -410,7 +372,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 		},
 	)
 	if err != nil {
-		if err == errConversionAborted {
+		if errors.Is(err, errConversionAborted) {
 			return nil
 		}
 		return fmt.Errorf("converting metadata for ledger %s: %w", req.LedgerName, err)
