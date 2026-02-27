@@ -113,6 +113,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Bool("pebble-disable-wal", false, "Pebble disable WAL (WARNING: risks data loss)")
 	runCmd.Flags().Uint64("cache-rotation-threshold", 1000, "Cache rotation threshold (0 = use default 1000)")
 	runCmd.Flags().Int("numscript-cache-size", 1024, "Maximum number of parsed Numscript programs to cache (LRU eviction)")
+	runCmd.Flags().Int("mirror-max-batch-size", 500, "Maximum allowed batch size for mirror sync (server-side cap on user-configured batch size)")
 
 	// Health check configuration flags
 	runCmd.Flags().Duration("health-check-interval", 30*time.Second, "Interval between health checks (default: 30s)")
@@ -362,6 +363,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 
 	cfg.RaftConfig.RotationThreshold = getUint64("cache-rotation-threshold", 0)
 	cfg.NumscriptCacheSize = getInt("numscript-cache-size", 1024)
+	cfg.MirrorMaxBatchSize = getInt("mirror-max-batch-size", 500)
 
 	// Health check configuration
 	cfg.HealthConfig.Interval = getDuration("health-check-interval", 30*time.Second)

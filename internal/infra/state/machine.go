@@ -34,11 +34,23 @@ type EventNotifier interface {
 	NotifyConfigChanged()
 }
 
+// MirrorNotifier is notified by the FSM when logs are committed or mirror config changes.
+type MirrorNotifier interface {
+	NotifyLogsCommitted()
+	NotifyConfigChanged()
+}
+
 // NoopEventNotifier is a no-op implementation of EventNotifier for use in tests.
 type NoopEventNotifier struct{}
 
 func (NoopEventNotifier) NotifyLogsCommitted() {}
 func (NoopEventNotifier) NotifyConfigChanged() {}
+
+// NoopMirrorNotifier is a no-op implementation of MirrorNotifier for use in tests.
+type NoopMirrorNotifier struct{}
+
+func (NoopMirrorNotifier) NotifyLogsCommitted() {}
+func (NoopMirrorNotifier) NotifyConfigChanged() {}
 
 type Machine struct {
 	logger    logging.Logger
@@ -110,12 +122,17 @@ type Machine struct {
 	appliedMu   sync.Mutex
 	appliedCond *sync.Cond
 
+	// mirrorNotifier is notified after new logs are committed and when mirror
+	// ledger config changes. Used by the mirror Manager.
+	mirrorNotifier MirrorNotifier
+
 	// snapshotBuf is a reusable buffer for snapshot serialization to avoid
 	// repeated allocations (snapshots can be large).
 	snapshotBuf []byte
+
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier EventNotifier, numscriptCacheSize int) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier EventNotifier, mirrorNotifier MirrorNotifier, numscriptCacheSize int) (*Machine, error) {
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(dataStore)
 	if err != nil {
 		return nil, err
@@ -242,6 +259,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		batchCommitHistogram:        batchCommitHistogram,
 		processor:                   processor,
 		eventNotifier:               eventNotifier,
+		mirrorNotifier:              mirrorNotifier,
 		keyStore:                    ks,
 		sharedState:                 sharedState,
 		Registry:                    NewStateRegistry(cache, attrs),
@@ -400,6 +418,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		Results: make([]ApplyResult, 0, len(entries)),
 	}
 	eventsConfigChanged := false
+	mirrorConfigChanged := false
 	needsArchiveDispatch := false
 	var pendingConvertRequests []MetadataConvertRequest
 
@@ -464,8 +483,11 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			})
 		}
 
-		// Skip applyProposal for system-only proposals with no orders
-		if len(cmd.Orders) == 0 {
+		// Skip applyProposal for system-only proposals with no orders AND
+		// no sink/mirror updates. Proposals carrying MirrorSyncUpdates or
+		// EventsSinkUpdates must still go through applyProposal so that
+		// cursor and status writes reach the Pebble batch.
+		if len(cmd.Orders) == 0 && len(cmd.MirrorSyncUpdates) == 0 && len(cmd.EventsSinkUpdates) == 0 {
 			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.Id})
 			continue
 		}
@@ -476,6 +498,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		}
 		if result.ConfigChanged {
 			eventsConfigChanged = true
+		}
+		if result.MirrorConfigChanged {
+			mirrorConfigChanged = true
 		}
 		if result.HasArchiveRequests {
 			needsArchiveDispatch = true
@@ -526,6 +551,12 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	fsm.eventNotifier.NotifyLogsCommitted()
 	if eventsConfigChanged {
 		fsm.eventNotifier.NotifyConfigChanged()
+	}
+
+	// Notify mirror Manager that new logs are available.
+	fsm.mirrorNotifier.NotifyLogsCommitted()
+	if mirrorConfigChanged {
+		fsm.mirrorNotifier.NotifyConfigChanged()
 	}
 
 	return ret, nil
@@ -978,6 +1009,29 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 	}
 
+	// Handle per-ledger mirror cursor and status updates (Raft-replicated)
+	for _, update := range proposal.MirrorSyncUpdates {
+		if update.Cursor > 0 {
+			if err := SetMirrorCursor(batch, update.LedgerName, update.Cursor); err != nil {
+				return nil, fmt.Errorf("setting mirror cursor: %w", err)
+			}
+		}
+		if update.SourceLogCount > 0 {
+			if err := SetMirrorSourceHead(batch, update.LedgerName, update.SourceLogCount); err != nil {
+				return nil, fmt.Errorf("setting mirror source head: %w", err)
+			}
+		}
+		if update.ClearError {
+			if err := ClearMirrorStatus(batch, update.LedgerName); err != nil {
+				return nil, fmt.Errorf("clearing mirror status: %w", err)
+			}
+		} else if update.Error != nil {
+			if err := SetMirrorStatus(batch, update.LedgerName, update.Error); err != nil {
+				return nil, fmt.Errorf("setting mirror status: %w", err)
+			}
+		}
+	}
+
 	// If this proposal only carries sink updates, skip order processing
 	if len(proposal.Orders) == 0 {
 		return &ApplyResult{ProposalID: proposal.Id}, nil
@@ -1061,6 +1115,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Add only created logs to buffer and merge
 	buffer.PendingLogs = append(buffer.PendingLogs, createdLogs...)
 	configChanged := buffer.HasPendingSinkChanges()
+	mirrorConfigChanged := hasMirrorConfigChange(proposal)
 	hasArchiveRequests := len(buffer.pendingArchives) > 0
 	// Capture audit state before Merge, which may toggle sharedState via SetAuditConfig.
 	// We record the audit entry if audit was enabled before OR after, so that
@@ -1096,9 +1151,25 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		ProposalID:              proposal.Id,
 		Logs:                    logs,
 		ConfigChanged:           configChanged,
+		MirrorConfigChanged:     mirrorConfigChanged,
 		HasArchiveRequests:      hasArchiveRequests,
 		MetadataConvertRequests: buffer.MetadataConvertRequests(),
 	}, nil
+}
+
+// hasMirrorConfigChange returns true if any order in the proposal creates or promotes a mirror ledger.
+func hasMirrorConfigChange(proposal *raftcmdpb.Proposal) bool {
+	for _, order := range proposal.Orders {
+		switch o := order.Type.(type) {
+		case *raftcmdpb.Order_CreateLedger:
+			if o.CreateLedger.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+				return true
+			}
+		case *raftcmdpb.Order_PromoteLedger:
+			return true
+		}
+	}
+	return false
 }
 
 // CreateSnapshot creates a snapshot of the Machine state
@@ -1656,6 +1727,7 @@ type ApplyResult struct {
 	Error                   error
 	CheckpointPath          string // Set by Node after checkpoint creation (CreateCheckpoint proposals)
 	ConfigChanged           bool   // True when sink configuration changed
+	MirrorConfigChanged     bool   // True when mirror ledger configuration changed
 	HasArchiveRequests      bool   // True when there are pending archive requests
 	MetadataConvertRequests []MetadataConvertRequest
 }

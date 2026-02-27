@@ -14,7 +14,9 @@ import (
 func (r *LedgerServiceReconciler) reconcileIngressGrpc(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	name := ledger.Name + "-grpc"
 
-	if ledger.Spec.IngressGrpc == nil || !ledger.Spec.IngressGrpc.Enabled {
+	// Delete the Ingress if gRPC ingress is disabled or has no hosts
+	// (e.g. only a TargetGroupBinding is configured).
+	if ledger.Spec.IngressGrpc == nil || !ledger.Spec.IngressGrpc.Enabled || len(ledger.Spec.IngressGrpc.Hosts) == 0 {
 		return r.deleteIfExists(ctx, &networkingv1.Ingress{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,

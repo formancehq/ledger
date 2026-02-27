@@ -1519,6 +1519,58 @@ spec:
                   type: string
                 description: NodeSelector for pod scheduling.
                 type: object
+              persistence:
+                description: Persistence configuration for WAL and data volumes.
+                properties:
+                  data:
+                    description: Data persistence configuration.
+                    properties:
+                      accessMode:
+                        default: ReadWriteOnce
+                        description: AccessMode for the PVC.
+                        type: string
+                      size:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: Size of the volume.
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      storageClass:
+                        description: StorageClass for the PVC.
+                        type: string
+                    type: object
+                  retentionPolicy:
+                    description: RetentionPolicy for PVCs.
+                    properties:
+                      whenDeleted:
+                        default: Retain
+                        description: WhenDeleted policy.
+                        type: string
+                      whenScaled:
+                        default: Retain
+                        description: WhenScaled policy.
+                        type: string
+                    type: object
+                  wal:
+                    description: WAL persistence configuration.
+                    properties:
+                      accessMode:
+                        default: ReadWriteOnce
+                        description: AccessMode for the PVC.
+                        type: string
+                      size:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: Size of the volume.
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      storageClass:
+                        description: StorageClass for the PVC.
+                        type: string
+                    type: object
+                type: object
               podAntiAffinity:
                 description: PodAntiAffinity configuration.
                 properties:

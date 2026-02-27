@@ -94,6 +94,8 @@ message ListAccountsRequest {
 message CreateLedgerRequest {
   string name = 1;
   repeated common.SetMetadataFieldTypeCommand initial_schema = 3;
+  common.LedgerMode mode = 4;
+  common.MirrorSourceConfig mirror_source = 5;
 }
 
 message DeleteLedgerRequest {
@@ -140,8 +142,13 @@ message Request {
     SetMetadataFieldTypeRequest set_metadata_field_type = 18;
     RemoveMetadataFieldTypeRequest remove_metadata_field_type = 19;
     SetAuditConfigRequest set_audit_config = 20;
+    PromoteLedgerRequest promote_ledger = 21;
   }
   signature.RequestSignature signature = 5;
+}
+
+message PromoteLedgerRequest {
+  string ledger = 1;
 }
 
 // AddEventsSinkRequest adds or updates a named sink configuration.

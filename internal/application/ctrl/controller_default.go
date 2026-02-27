@@ -324,6 +324,16 @@ func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (
 		}
 		return nil, err
 	}
+
+	// Enrich mirror ledgers with sync progress computed from Pebble state
+	if ledgerInfo.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+		progress, err := query.ReadMirrorSyncProgress(ctrl.store, name)
+		if err != nil {
+			return nil, fmt.Errorf("reading mirror sync progress: %w", err)
+		}
+		ledgerInfo.MirrorSyncProgress = progress
+	}
+
 	return ledgerInfo, nil
 }
 

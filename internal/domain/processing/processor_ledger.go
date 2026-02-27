@@ -16,6 +16,8 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 		Name:           order.Name,
 		CreatedAt:      s.GetDate(),
 		MetadataSchema: populateInitialSchema(order.InitialSchema),
+		Mode:           order.Mode,
+		MirrorSource:   order.MirrorSource,
 	}
 	s.PutLedger(order.Name, info)
 	s.PutBoundaries(order.Name, &raftcmdpb.LedgerBoundaries{

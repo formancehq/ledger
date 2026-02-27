@@ -56,9 +56,13 @@ type DefaultTransport struct {
 	nodeID        uint64
 	clusterID     string
 
-	bufferSize       int
-	pendingSendQueue chan []raftpb.Message
-	stopCh           chan chan struct{}
+	bufferSize              int
+	pendingSendQueue        chan []raftpb.Message
+	stopCh                  chan chan struct{}
+	advertiseAddr           string
+	serviceAdvertiseAddr    string
+	onPeerDiscovered        func(nodeID uint64, raftAddr, serviceAddr string)
+	reverseDiscovered       sync.Map // tracks peer IDs already discovered via reverse connection
 
 	// Metrics for recv queues (indexed by priority: 0=high, 1=medium, 2=low)
 	recvQueueLoadHistogram [3]metric.Int64Histogram
@@ -93,6 +97,14 @@ type TransportConfig struct {
 	Send      []int
 }
 
+// SetOnPeerDiscovered sets a callback that fires when a new peer is discovered via
+// a reverse transport connection. This allows higher-level code (e.g. module.go) to
+// update the service pool and FSM peer map when a peer connects but wasn't in the
+// recovered peers list.
+func (t *DefaultTransport) SetOnPeerDiscovered(fn func(nodeID uint64, raftAddr, serviceAddr string)) {
+	t.onPeerDiscovered = fn
+}
+
 // NewTransport creates a new transport with a gRPC connection pool and client pool
 func NewTransport(
 	logger logging.Logger,
@@ -102,6 +114,8 @@ func NewTransport(
 	config TransportConfig,
 	clusterID string,
 	bufferSize int,
+	advertiseAddr string,
+	serviceAdvertiseAddr string,
 ) *DefaultTransport {
 	meter := meterProvider.Meter("raft.transport")
 
@@ -122,8 +136,10 @@ func NewTransport(
 		nodeID:               nodeID,
 		clusterID:            clusterID,
 		bufferSize:           bufferSize,
-		stopCh:               make(chan chan struct{}),
-		pendingSendQueue:     make(chan []raftpb.Message, pendingSendCapacity),
+		stopCh:                  make(chan chan struct{}),
+		pendingSendQueue:        make(chan []raftpb.Message, pendingSendCapacity),
+		advertiseAddr:           advertiseAddr,
+		serviceAdvertiseAddr:    serviceAdvertiseAddr,
 	}
 
 	// Initialize recv queue metrics for each priority level
@@ -286,6 +302,8 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 		pendingResponseCounter: pendingResponseCounter,
 		pingLatency:            pingLatency,
 		reconnected:            make(chan struct{}),
+		advertiseAddr:          t.advertiseAddr,
+		serviceAdvertiseAddr:   t.serviceAdvertiseAddr,
 	}
 
 	// Initialize send queue metrics for each priority level
@@ -474,7 +492,33 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 	priority := priorityStr[0]
 
 	t.logger.Infof("Peer %x connected on %s priority stream!", peerID, priority)
-	// This is a best effort to notify the send loop than the peer is now reachable
+
+	// Reverse discovery: if we don't have an outgoing connection to this peer,
+	// learn its address from the stream metadata and create one.
+	// Use reverseDiscovered to ensure only one of the 3 concurrent priority streams
+	// triggers the AddPeer call (prevents duplicate peerConnection creation).
+	if _, alreadyDiscovered := t.reverseDiscovered.LoadOrStore(peerID, struct{}{}); !alreadyDiscovered {
+		if _, ok := t.peers[peerID]; !ok {
+			if addrVals := metadata.ValueFromIncomingContext(stream.Context(), "advertiseAddr"); len(addrVals) > 0 && addrVals[0] != "" {
+				raftAddr := addrVals[0]
+				t.logger.WithFields(map[string]any{
+					"peer_id":   peerID,
+					"raft_addr": raftAddr,
+				}).Infof("Discovered peer address from reverse connection, adding to transport")
+				t.AddPeer(peerID, raftAddr)
+
+				if t.onPeerDiscovered != nil {
+					serviceAddr := ""
+					if svcVals := metadata.ValueFromIncomingContext(stream.Context(), "serviceAddr"); len(svcVals) > 0 {
+						serviceAddr = svcVals[0]
+					}
+					t.onPeerDiscovered(peerID, raftAddr, serviceAddr)
+				}
+			}
+		}
+	}
+
+	// Best effort to notify the send loop that the peer is now reachable
 	if peer, ok := t.peers[peerID]; ok {
 		select {
 		case peer.reconnected <- struct{}{}:
@@ -587,6 +631,8 @@ type peerConnection struct {
 	reconnected            chan struct{}
 	messageID              uint64
 	buf                    []byte
+	advertiseAddr          string
+	serviceAdvertiseAddr   string
 
 	// Metrics for sending queues (indexed by priority: 0=high, 1=medium, 2=low)
 	sendQueueLoadHistogram [3]metric.Int64Histogram
@@ -713,9 +759,11 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	createStream := func(priorityName string) (grpc.BidiStreamingClient[rafttransportpb.SendMessageRequest, rafttransportpb.SendMessageResponse], error) {
 		return client.StreamMessages(
 			metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{
-				"nodeID":    fmt.Sprintf("%x", conn.nodeID),
-				"priority":  priorityName,
-				"clusterID": conn.clusterID,
+				"nodeID":        fmt.Sprintf("%x", conn.nodeID),
+				"priority":      priorityName,
+				"clusterID":     conn.clusterID,
+				"advertiseAddr": conn.advertiseAddr,
+				"serviceAddr":   conn.serviceAdvertiseAddr,
 			})),
 		)
 	}

@@ -256,12 +256,14 @@ func buildCommand(ledger *ledgerv1alpha1.LedgerService) []string {
 		clusterLogic = `CLUSTER_FLAG="--restore"`
 	} else {
 		bootstrap0 := fmt.Sprintf("%s-0.%s.${POD_NAMESPACE}.svc.cluster.local", ledger.Name, hlsSvcName)
-		clusterLogic = fmt.Sprintf(`if [ "$POD_INDEX" = "0" ]; then
+		clusterLogic = fmt.Sprintf(`if [ -f "%s/CURRENT_CHECKPOINT" ]; then
+  CLUSTER_FLAG=""
+elif [ "$POD_INDEX" = "0" ]; then
   CLUSTER_FLAG="--bootstrap"
 else
   BOOTSTRAP_HOST="%s"
   CLUSTER_FLAG="--join ${BOOTSTRAP_HOST}:${GRPC_PORT}"
-fi`, bootstrap0)
+fi`, cfg.DataDir, bootstrap0)
 	}
 
 	var extraFlags string
@@ -277,11 +279,16 @@ fi`, bootstrap0)
 RAFT_PORT=$(echo $BIND_ADDR | cut -d: -f2)
 ADVERTISE_ADDR="${POD_NAME}.%s.${POD_NAMESPACE}.svc.cluster.local:${RAFT_PORT}"
 %s
-OTEL_RESOURCE_ATTRIBUTES="service.node_id=$NODE_ID"
+if [ -n "$OTEL_RESOURCE_ATTRIBUTES" ]; then
+  OTEL_RESOURCE_ATTRIBUTES="$OTEL_RESOURCE_ATTRIBUTES,service.cluster=%s,service.node_id=$POD_NAME"
+else
+  OTEL_RESOURCE_ATTRIBUTES="service.cluster=%s,service.node_id=$POD_NAME"
+fi
+export OTEL_RESOURCE_ATTRIBUTES
 exec ./ledger-v3-poc run \
   --node-id $NODE_ID \
   --advertise-addr "$ADVERTISE_ADDR"%s \
-  $CLUSTER_FLAG`, hlsSvcName, clusterLogic, extraFlags)
+  $CLUSTER_FLAG`, hlsSvcName, clusterLogic, ledger.Name, ledger.Name, extraFlags)
 
 	return []string{"/bin/sh", "-c", script}
 }

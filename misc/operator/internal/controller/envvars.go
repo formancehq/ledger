@@ -199,6 +199,13 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.MonitoringConfig) []corev1.EnvVar {
 	// Metrics-specific OTEL vars
 	if mon.Metrics != nil {
+		envs = appendIfBool(envs, "OTEL_METRICS_ENABLED", mon.Metrics.Enabled)
+		envs = appendIfStr(envs, "OTEL_METRICS_EXPORTER", mon.Metrics.Exporter)
+		if mon.Metrics.Endpoint != "" || mon.Metrics.Port != "" {
+			envs = append(envs, strEnv("OTEL_METRICS_EXPORTER_OTLP_ENDPOINT", mon.Metrics.Endpoint+":"+mon.Metrics.Port))
+		}
+		envs = appendIfStr(envs, "OTEL_METRICS_EXPORTER_OTLP_INSECURE", mon.Metrics.Insecure)
+		envs = appendIfStr(envs, "OTEL_METRICS_EXPORTER_OTLP_MODE", mon.Metrics.Mode)
 		envs = appendIfBool(envs, "OTEL_METRICS_KEEP_IN_MEMORY", mon.Metrics.KeepInMemory)
 		envs = appendIfStr(envs, "OTEL_METRICS_EXPORTER_PUSH_INTERVAL", mon.Metrics.ExporterPushInterval)
 		envs = appendIfBool(envs, "OTEL_METRICS_RUNTIME", mon.Metrics.Runtime)

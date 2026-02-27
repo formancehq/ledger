@@ -25,7 +25,7 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger"}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			require.NotNil(t, info.MetadataSchema)
@@ -83,7 +83,7 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger"}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			require.NotNil(t, info.MetadataSchema)
@@ -129,7 +129,7 @@ func TestProcessSetMetadataFieldType_LedgerNotFound(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	mockStore.EXPECT().GetBoundaries("missing").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("missing").Return(nil, false)
+	mockStore.EXPECT().GetLedger("missing").Return(nil, false).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_Apply{
@@ -176,7 +176,7 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			_, exists := info.MetadataSchema.AccountFields["amount"]
@@ -234,7 +234,7 @@ func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())

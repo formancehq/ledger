@@ -29,17 +29,20 @@ func clearScreen() {
 }
 
 // SelectPrompt wraps pterm interactive select with auto-sizing and iTerm cleanup.
+// Filter is only enabled for long lists (>10 options) to avoid rendering artifacts.
 func SelectPrompt(label string, options []string) (string, error) {
 	maxVisible := len(options)
 	if maxVisible > 15 {
 		maxVisible = 15
 	}
 
-	selected, err := pterm.DefaultInteractiveSelect.
+	selector := pterm.DefaultInteractiveSelect.
 		WithOptions(options).
 		WithDefaultText(label).
 		WithMaxHeight(maxVisible).
-		Show()
+		WithFilter(len(options) > 10)
+
+	selected, err := selector.Show()
 	ClearTermBelow()
 	return selected, err
 }

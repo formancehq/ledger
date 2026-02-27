@@ -33,6 +33,7 @@ config:
       port: "4317"
     metrics:
       enabled: true
+      runtime: true
       endpoint: otel-opentelemetry-collector
       exporter: otlp
       exporterPushInterval: 15s
@@ -66,7 +67,7 @@ config:
     maxSizePerMsg: 2097152
     compactionMargin: 50000
     proposeQueueCapacity: 1024
-    snapshotThreshold: 10000
+    snapshotThreshold: 1000
     tickInterval: 100ms
     transport:
       receptionQueues:

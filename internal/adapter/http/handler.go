@@ -77,6 +77,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			r.With(requireWrite).Group(func(r chi.Router) {
 				r.Post("/{ledgerName}", server.handleCreateLedger)
 				r.Delete("/{ledgerName}", server.handleDeleteLedger)
+				r.Post("/{ledgerName}/promote", server.handlePromoteLedger)
 				r.Post("/{ledgerName}/transactions", server.handleCreateTransaction)
 				r.Post("/{ledgerName}/transactions/{transactionId}/revert", server.handleRevertTransaction)
 				r.Post("/{ledgerName}/transactions/{transactionId}/metadata", server.handleSaveTransactionMetadata)

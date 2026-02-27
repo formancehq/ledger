@@ -47,6 +47,7 @@ type Applier struct {
 	status           *atomic.Int32
 	gatingTerminated chan struct{}
 	ch               chan applyWork // buffered(1)
+	snapshotWrapper  func([]byte) ([]byte, error)
 
 	// Metrics
 	applyEntriesHistogram          metric.Int64Histogram
@@ -306,6 +307,14 @@ func (a *Applier) triggerSnapshot(ctx context.Context, confState *raftpb.ConfSta
 		snapshotData, err := a.fsm.CreateSnapshot(ctx)
 		if err != nil {
 			return 0, err
+		}
+
+		// Wrap FSM data with cluster-level metadata (peer addresses) if wrapper is set.
+		if a.snapshotWrapper != nil {
+			snapshotData, err = a.snapshotWrapper(snapshotData)
+			if err != nil {
+				return 0, fmt.Errorf("wrapping snapshot: %w", err)
+			}
 		}
 
 		if err := a.wal.CreateSnapshot(lastEntryIndex, confState, snapshotData); err != nil {

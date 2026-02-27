@@ -34,6 +34,8 @@ const (
 	ErrReasonInvalidReceipt               = "INVALID_RECEIPT"
 	ErrReasonMaintenanceMode              = "MAINTENANCE_MODE"
 	ErrReasonInvalidCronExpression        = "INVALID_CRON_EXPRESSION"
+	ErrReasonLedgerInMirrorMode           = "LEDGER_IN_MIRROR_MODE"
+	ErrReasonLedgerNotInMirrorMode        = "LEDGER_NOT_IN_MIRROR_MODE"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -217,6 +219,24 @@ type ErrInvalidCronExpression struct {
 
 func (e *ErrInvalidCronExpression) Error() string {
 	return fmt.Sprintf("invalid cron expression %q: %s", e.Expression, e.Details)
+}
+
+// ErrLedgerInMirrorMode is returned when a write operation is attempted on a mirror-mode ledger.
+type ErrLedgerInMirrorMode struct {
+	Name string
+}
+
+func (e *ErrLedgerInMirrorMode) Error() string {
+	return fmt.Sprintf("ledger %s is in mirror mode: write operations are blocked", e.Name)
+}
+
+// ErrLedgerNotInMirrorMode is returned when a mirror-only operation is attempted on a normal-mode ledger.
+type ErrLedgerNotInMirrorMode struct {
+	Name string
+}
+
+func (e *ErrLedgerNotInMirrorMode) Error() string {
+	return fmt.Sprintf("ledger %s is not in mirror mode", e.Name)
 }
 
 // ErrInvalidReceipt is returned when a JWT receipt fails verification.

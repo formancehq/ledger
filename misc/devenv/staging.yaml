@@ -1,0 +1,87 @@
+# LedgerService optimized for fast mirror ingestion (single-replica, write-heavy).
+#
+# Tuning rationale:
+#   - 1 replica: eliminates Raft replication overhead (no heartbeats, no snapshot
+#     transfers, no follower lag). Single-node Raft still provides write-ahead
+#     logging and crash recovery.
+#   - 6 CPU / 12 GB memory: fits on c6a.2xlarge dedicated node (~8 vCPU / 15 GB).
+#     GOMEMLIMIT is auto-set to 90% of memory limit (~10.8 GB) by the operator.
+#   - Pebble: large memtables (256 MB × 4 active = 1 GB write buffer) reduce flush
+#     frequency. 4 GB block cache for read-side preloads. High L0 thresholds prevent
+#     write stalls during burst ingestion. 4 concurrent compactions to keep up.
+#   - Raft: higher snapshotThreshold (5000) and compactionMargin (5000) amortize
+#     snapshot overhead. Deep propose queue (4096) prevents back-pressure on the
+#     mirror worker. Large cache rotation threshold (5000) reduces generation churn.
+#   - Monitoring: inherited from LedgerDefaults (metrics, logs, traces, pyroscope).
+#     Do NOT set config.monitoring here — the merge is whole-block replacement,
+#     so any partial override would lose metrics/logs/traces endpoints.
+#
+# Target: catch-up sync of ~57M v2 logs as fast as possible.
+# Once caught up, scale back to 3 replicas with the standard config.
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerService
+metadata:
+  name: test0
+  namespace: ledger-exp
+spec:
+  defaultsRef: default
+  replicas: 1
+
+  resources:
+    requests:
+      cpu: "6"
+      memory: 12Gi
+    limits:
+      cpu: "6"
+      memory: 12Gi
+
+  config:
+    pebble:
+      memTableSize: 268435456              # 256 MB (4× current 64 MB)
+      memTableStopWritesThreshold: 4       # up to 1 GB buffered before stall
+      l0CompactionThreshold: 64            # keep current — high threshold
+      l0StopWritesThreshold: 256           # keep current — very permissive
+      lBaseMaxBytes: 4294967296            # 4 GB (2× current)
+      cacheSize: 4294967296                # 4 GB block cache (was 512 MB)
+      targetFileSize: 268435456            # 256 MB (keep)
+      bytesPerSync: 4194304                # 4 MB (4× current — fewer syncs)
+      walBytesPerSync: 4194304             # 4 MB
+      maxConcurrentCompactions: 4          # 4 (2× current — use extra CPU)
+      walMinSyncInterval: "0"              # immediate sync (keep for durability)
+      disableWAL: false
+
+    raft:
+      snapshotThreshold: 5000              # 5× current — less frequent snapshots
+      compactionMargin: 5000               # match snapshotThreshold
+      proposeQueueCapacity: 4096           # 4× current — deep queue for burst
+      maxSizePerMsg: 4194304               # 4 MB (2× current)
+      maxInflightMsgs: 256                 # irrelevant with 1 replica
+      electionTick: 10
+      heartbeatTick: 1
+      tickInterval: 100ms
+
+    cache:
+      rotationThreshold: 5000              # 2.5× current — less rotation overhead
+
+    # monitoring: inherited from LedgerDefaults via defaultsRef
+
+  ingressGrpc:
+    enabled: true
+    className: traefik
+    hosts:
+      - host: grpc-ledger-exp.staging.formance.cloud
+        paths:
+          - path: /
+            pathType: Prefix
+    targetGroupBinding:
+      enabled: true
+      targetGroupARN: "arn:aws:elasticloadbalancing:eu-west-1:955332203423:targetgroup/geoffrey-ledger-v3-grpc/e549d74021a8e711"
+      targetType: ip
+
+  persistence:
+    retentionPolicy:
+      whenDeleted: Delete
+    data:
+      size: 300Gi
+    wal:
+      size: 15Gi

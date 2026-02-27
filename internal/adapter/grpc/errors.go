@@ -27,6 +27,8 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 	var (
 		ledgerAlreadyExists          *domain.ErrLedgerAlreadyExists
 		ledgerNotFound               *domain.ErrLedgerNotFound
+		ledgerInMirrorMode           *domain.ErrLedgerInMirrorMode
+		ledgerNotInMirrorMode        *domain.ErrLedgerNotInMirrorMode
 		idempotencyKeyConflict       *domain.ErrIdempotencyKeyConflict
 		transactionReferenceConflict *domain.ErrTransactionReferenceConflict
 		transactionNotFound          *domain.ErrTransactionNotFound
@@ -54,6 +56,16 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		code = codes.NotFound
 		reason = domain.ErrReasonLedgerNotFound
 		metadata = map[string]string{"name": ledgerNotFound.Name}
+
+	case errors.As(inner, &ledgerInMirrorMode):
+		code = codes.FailedPrecondition
+		reason = domain.ErrReasonLedgerInMirrorMode
+		metadata = map[string]string{"name": ledgerInMirrorMode.Name}
+
+	case errors.As(inner, &ledgerNotInMirrorMode):
+		code = codes.FailedPrecondition
+		reason = domain.ErrReasonLedgerNotInMirrorMode
+		metadata = map[string]string{"name": ledgerNotInMirrorMode.Name}
 
 	case errors.As(inner, &idempotencyKeyConflict):
 		code = codes.AlreadyExists

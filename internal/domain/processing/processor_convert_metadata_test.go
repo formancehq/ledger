@@ -22,7 +22,7 @@ func TestProcessConvertMetadataBatch_LedgerNotFound(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_Apply{
@@ -74,7 +74,7 @@ func TestProcessConvertMetadataBatch_StaleSchema(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
@@ -138,7 +138,7 @@ func TestProcessConvertMetadataBatch_Success(t *testing.T) {
 	canonicalKey := mk.Bytes()
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	// The entry value does NOT match the expected type, so it should be converted
 	mockStore.EXPECT().GetAccountMetadata(mk).Return(commonpb.NewStringValue("25"), nil)
 	mockStore.EXPECT().PutAccountMetadata(mk, gomock.Any())
@@ -215,7 +215,7 @@ func TestProcessConvertMetadataBatch_AlreadyMatchesType(t *testing.T) {
 	canonicalKey := mk.Bytes()
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	// Value already matches the expected type -- no PutAccountMetadata expected
 	mockStore.EXPECT().GetAccountMetadata(mk).Return(commonpb.NewIntValue(25), nil)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
@@ -267,7 +267,7 @@ func TestProcessMetadataConversionComplete_LedgerNotFound(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_Apply{
@@ -319,7 +319,7 @@ func TestProcessMetadataConversionComplete_Stale(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
@@ -377,7 +377,7 @@ func TestProcessMetadataConversionComplete_Success(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())

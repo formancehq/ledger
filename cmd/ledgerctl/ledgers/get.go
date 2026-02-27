@@ -73,6 +73,15 @@ func runGet(cmd *cobra.Command, args []string) error {
 		createdAt = ledger.CreatedAt.AsTime().Format(time.RFC3339)
 	}
 	pterm.Printf("Created At: %s\n", createdAt)
+	pterm.Printf("Mode:       %s\n", ledgerModeString(ledger.Mode))
+
+	if ledger.MirrorSource != nil {
+		renderMirrorSource(ledger.MirrorSource)
+	}
+
+	if ledger.MirrorSyncProgress != nil {
+		renderMirrorSyncProgress(ledger.MirrorSyncProgress)
+	}
 
 	if ledger.MetadataSchema != nil {
 		renderLedgerSchema(ledger.MetadataSchema)

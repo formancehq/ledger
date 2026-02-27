@@ -9,6 +9,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
@@ -102,10 +103,13 @@ type Node struct {
 	observer         *Observer
 	applier          *Applier
 
-	readies         chan raft.Ready
-	readyTerminated chan raft.Ready
-	tasks           *taskSet
-	stopChannel     chan chan struct{}
+	readies            chan raft.Ready
+	readyTerminated    chan raft.Ready
+	tasks              *taskSet
+	stopChannel        chan chan struct{}
+	recoveredPeers     map[uint64]ConfChangeContext
+	peerAddresses      map[uint64]ConfChangeContext
+	pendingConfChanges SyncMap[uint64, *futures.Future[struct{}]]
 
 	// pendingReads tracks in-flight ReadIndex requests, keyed by unique request ID.
 	pendingReads *SyncMap[uint64, *readIndexRequest]
@@ -140,7 +144,10 @@ func NewNode(
 		return nil, fmt.Errorf("reading snapshot: %w", err)
 	}
 
-	var initialConfState raftpb.ConfState
+	var (
+		initialConfState raftpb.ConfState
+		recoveredPeers   map[uint64]ConfChangeContext
+	)
 	if len(snapshot.Metadata.ConfState.Voters) == 0 {
 		logger.Infof("Detected empty WAL, creating initial snapshot")
 
@@ -164,9 +171,15 @@ func NewNode(
 				return nil, fmt.Errorf("recovering FSM state from store: %w", err)
 			}
 
-			data, err := fsm.CreateSnapshot(context.Background())
+			fsmData, err := fsm.CreateSnapshot(context.Background())
 			if err != nil {
 				return nil, fmt.Errorf("creating restore snapshot data: %w", err)
+			}
+			// Wrap with empty NodeSnapshot (no peer addresses on restore bootstrap)
+			ns := &raftcmdpb.NodeSnapshot{FsmSnapshot: fsmData}
+			data, err := ns.MarshalVT()
+			if err != nil {
+				return nil, fmt.Errorf("wrapping restore snapshot: %w", err)
 			}
 
 			initialConfState = raftpb.ConfState{
@@ -206,9 +219,15 @@ func NewNode(
 				return nil, fmt.Errorf("first start requires --bootstrap or --join")
 			}
 
-			data, err := fsm.CreateSnapshot(context.Background())
+			fsmData, err := fsm.CreateSnapshot(context.Background())
 			if err != nil {
 				return nil, fmt.Errorf("creating initial snapshot data: %w", err)
+			}
+			// Wrap with empty NodeSnapshot (no peer addresses on initial bootstrap)
+			ns := &raftcmdpb.NodeSnapshot{FsmSnapshot: fsmData}
+			data, err := ns.MarshalVT()
+			if err != nil {
+				return nil, fmt.Errorf("wrapping initial snapshot: %w", err)
 			}
 
 			initialConfState = raftpb.ConfState{
@@ -222,8 +241,25 @@ func NewNode(
 	} else {
 		if snapshot.Metadata.Index > 0 {
 			logger.WithFields(map[string]any{"index": snapshot.Metadata.Index}).Infof("Restoring Machine from snapshot")
-			if err := fsm.InstallSnapshot(context.Background(), snapshot); err != nil {
+
+			// Unwrap NodeSnapshot to get FSM data and peer addresses
+			fsmData, peerAddrs, err := unwrapSnapshot(snapshot.Data)
+			if err != nil {
+				return nil, fmt.Errorf("unwrapping snapshot: %w", err)
+			}
+			fsmSnapshot := snapshot
+			fsmSnapshot.Data = fsmData
+			if err := fsm.InstallSnapshot(context.Background(), fsmSnapshot); err != nil {
 				panic(err)
+			}
+
+			// Seed recovered peers from snapshot peer addresses
+			recoveredPeers = make(map[uint64]ConfChangeContext, len(peerAddrs))
+			for _, addr := range peerAddrs {
+				recoveredPeers[addr.NodeId] = ConfChangeContext{
+					RaftAddress:    addr.RaftAddress,
+					ServiceAddress: addr.ServiceAddress,
+				}
 			}
 
 			logger.Infof("Snapshot restored successfully")
@@ -246,6 +282,28 @@ func NewNode(
 					"this usually means --node-id or --wal-dir was changed between restarts",
 				cfg.NodeID, initialConfState.Voters, initialConfState.Learners,
 			)
+		}
+
+		// Overlay WAL entries which may contain more recent peer addresses.
+		// Scan in bounded chunks to avoid loading the entire WAL into memory.
+		if recoveredPeers == nil {
+			recoveredPeers = make(map[uint64]ConfChangeContext)
+		}
+		firstIdx, firstErr := wal.FirstIndex()
+		lastIdx, lastErr := wal.LastIndex()
+		if firstErr == nil && lastErr == nil && firstIdx <= lastIdx {
+			const maxChunkBytes = 8 * 1024 * 1024 // 8MB per chunk
+			lo := firstIdx
+			for lo <= lastIdx {
+				entries, err := wal.Entries(lo, lastIdx+1, maxChunkBytes)
+				if err != nil || len(entries) == 0 {
+					break
+				}
+				for nodeID, addr := range ExtractPeerAddressesFromEntries(entries) {
+					recoveredPeers[nodeID] = addr
+				}
+				lo = entries[len(entries)-1].Index + 1
+			}
 		}
 	}
 
@@ -283,7 +341,17 @@ func NewNode(
 		tasks:            newTaskSet(),
 		stopChannel:      make(chan chan struct{}),
 		pendingReads:     &SyncMap[uint64, *readIndexRequest]{},
+		recoveredPeers:   recoveredPeers,
+		peerAddresses:    recoveredPeers,
 	}
+
+	// Ensure peerAddresses is never nil (bootstrap path has no recoveredPeers).
+	if node.peerAddresses == nil {
+		node.peerAddresses = make(map[uint64]ConfChangeContext)
+	}
+
+	// Wire the snapshot wrapper so the Applier wraps FSM snapshots with peer addresses.
+	applier.snapshotWrapper = node.wrapSnapshot
 
 	// Initialize applier metrics
 	applier.applyEntriesHistogram, err = meter.Int64Histogram("raft.apply_entries.duration",
@@ -498,9 +566,78 @@ func NewNode(
 		if err := applier.replaySpool(context.Background(), storeLastAppliedIndex); err != nil {
 			return nil, fmt.Errorf("replaying spool: %w", err)
 		}
+
+		// Early compaction: if the WAL has accumulated far more entries than the
+		// snapshot threshold, create a snapshot and compact now to release memory
+		// before the Raft node starts. Without this, the leader would try to
+		// replicate tens of thousands of entries to lagging followers, causing OOM.
+		if err := node.maybeCompactAtStartup(context.Background()); err != nil {
+			return nil, fmt.Errorf("early compaction: %w", err)
+		}
 	}
 
 	return node, nil
+}
+
+// maybeCompactAtStartup creates a snapshot and compacts the WAL if entries have
+// accumulated beyond the snapshot threshold. This prevents OOM during Raft
+// replication: without compaction a leader with 50K+ WAL entries would try to
+// send them all to lagging followers, exhausting memory.
+func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
+	lastSnap, err := node.wal.Snapshot()
+	if err != nil {
+		return fmt.Errorf("reading snapshot: %w", err)
+	}
+
+	walLastIdx, err := node.wal.LastIndex()
+	if err != nil {
+		return fmt.Errorf("reading WAL last index: %w", err)
+	}
+
+	if walLastIdx <= lastSnap.Metadata.Index+node.applier.snapshotThreshold {
+		return nil
+	}
+
+	appliedIndex, err := query.ReadLastAppliedIndex(node.applier.store)
+	if err != nil {
+		return fmt.Errorf("reading applied index: %w", err)
+	}
+
+	// Only snapshot at the applied index (not walLastIdx) — the FSM may not
+	// have processed every WAL entry yet.
+	if appliedIndex <= lastSnap.Metadata.Index {
+		return nil
+	}
+
+	node.logger.WithFields(map[string]any{
+		"lastSnapshotIndex":  lastSnap.Metadata.Index,
+		"walLastIndex":       walLastIdx,
+		"appliedIndex":       appliedIndex,
+		"entriesAccumulated": walLastIdx - lastSnap.Metadata.Index,
+	}).Infof("WAL has excess entries, compacting before Raft start")
+
+	fsmData, err := node.fsm.CreateSnapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("creating snapshot: %w", err)
+	}
+	snapshotData, err := node.wrapSnapshot(fsmData)
+	if err != nil {
+		return fmt.Errorf("wrapping snapshot: %w", err)
+	}
+
+	if err := node.wal.CreateSnapshot(appliedIndex, node.confState, snapshotData); err != nil {
+		return fmt.Errorf("saving snapshot: %w", err)
+	}
+
+	if appliedIndex > node.applier.compactionMargin {
+		compactIdx := appliedIndex - node.applier.compactionMargin
+		if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
+			node.logger.WithFields(map[string]any{"error": err}).Errorf("Early compaction failed")
+		}
+	}
+
+	node.logger.Infof("Early compaction completed")
+	return nil
 }
 
 func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
@@ -656,8 +793,24 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			return fmt.Errorf("applying snapshot to storage: %w", err)
 		}
 
-		if err := node.fsm.InstallSnapshot(ctx, rd.Snapshot); err != nil {
+		// Unwrap NodeSnapshot to get FSM data and peer addresses
+		fsmData, peerAddrs, err := unwrapSnapshot(rd.Snapshot.Data)
+		if err != nil {
+			return fmt.Errorf("unwrapping snapshot: %w", err)
+		}
+		fsmSnapshot := rd.Snapshot
+		fsmSnapshot.Data = fsmData
+		if err := node.fsm.InstallSnapshot(ctx, fsmSnapshot); err != nil {
 			return fmt.Errorf("installing snapshot: %w", err)
+		}
+
+		// Restore peer addresses into node
+		node.peerAddresses = make(map[uint64]ConfChangeContext, len(peerAddrs))
+		for _, addr := range peerAddrs {
+			node.peerAddresses[addr.NodeId] = ConfChangeContext{
+				RaftAddress:    addr.RaftAddress,
+				ServiceAddress: addr.ServiceAddress,
+			}
 		}
 
 		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
@@ -696,6 +849,25 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			WithFields(map[string]any{"transition": cc.Transition.String()}).
 			Infof("Applying configuration change")
 		node.confState = node.rawNode.ApplyConfChange(cc)
+
+		// Update peer address map and resolve pending futures
+		for _, change := range cc.Changes {
+			switch change.Type {
+			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+				if len(cc.Context) > 0 {
+					if ccCtx, err := UnmarshalConfChangeContext(cc.Context); err == nil {
+						node.SetPeerAddress(change.NodeID, ccCtx.RaftAddress, ccCtx.ServiceAddress)
+					}
+				}
+			case raftpb.ConfChangeRemoveNode:
+				node.RemovePeerAddress(change.NodeID)
+			}
+
+			// Resolve pending AddLearner future (if any)
+			if f, ok := node.pendingConfChanges.LoadAndDelete(change.NodeID); ok {
+				f.Resolve(struct{}{}, nil)
+			}
+		}
 
 		// Notify observers about configuration changes
 		if node.observer != nil {
@@ -1176,6 +1348,8 @@ func (node *Node) SetObserver(obs *Observer) {
 }
 
 // AddLearner proposes adding a non-voting learner node to the Raft cluster.
+// The call blocks until the ConfChange is committed through Raft consensus,
+// which prevents concurrent joins from being silently dropped by etcd/raft.
 // Must be called on the leader.
 func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string) error {
 	ccCtx, err := MarshalConfChangeContext(ConfChangeContext{
@@ -1186,7 +1360,12 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 		return fmt.Errorf("marshaling conf change context: %w", err)
 	}
 
-	return node.execClusterCommand(ctx, func() error {
+	// Register a future BEFORE proposing so processReady can resolve it.
+	future := futures.New[struct{}]()
+	node.pendingConfChanges.Store(nodeID, future)
+	defer node.pendingConfChanges.Delete(nodeID)
+
+	err = node.execClusterCommand(ctx, func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
@@ -1209,6 +1388,23 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 
 		return node.rawNode.ProposeConfChange(cc)
 	})
+	if err != nil {
+		return err
+	}
+
+	// Wait for the ConfChange to be committed (resolved by processReady).
+	done := make(chan struct{})
+	go func() {
+		_, _ = future.Wait() // error is always nil for conf change futures
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // PromoteLearner proposes promoting a learner node to a full voter.
@@ -1322,6 +1518,102 @@ func confStateContainsNode(cs raftpb.ConfState, nodeID uint64) bool {
 		}
 	}
 	return false
+}
+
+// ExtractPeerAddressesFromEntries scans committed entries for ConfChange entries
+// and extracts peer addresses from their Context field. For AddNode/AddLearnerNode
+// the address is stored (latest wins); for RemoveNode the entry is deleted.
+func ExtractPeerAddressesFromEntries(entries []raftpb.Entry) map[uint64]ConfChangeContext {
+	peers := make(map[uint64]ConfChangeContext)
+	for _, entry := range entries {
+		var cc raftpb.ConfChangeV2
+		switch entry.Type {
+		case raftpb.EntryConfChange:
+			var ccV1 raftpb.ConfChange
+			if err := ccV1.Unmarshal(entry.Data); err != nil {
+				continue
+			}
+			cc = ccV1.AsV2()
+			cc.Context = ccV1.Context
+		case raftpb.EntryConfChangeV2:
+			if err := cc.Unmarshal(entry.Data); err != nil {
+				continue
+			}
+		default:
+			continue
+		}
+
+		for _, change := range cc.Changes {
+			switch change.Type {
+			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+				if len(cc.Context) == 0 {
+					continue
+				}
+				ccCtx, err := UnmarshalConfChangeContext(cc.Context)
+				if err != nil {
+					continue
+				}
+				peers[change.NodeID] = ccCtx
+			case raftpb.ConfChangeRemoveNode:
+				delete(peers, change.NodeID)
+			}
+		}
+	}
+	return peers
+}
+
+// RecoveredPeers returns the peer addresses recovered from WAL entries and/or
+// snapshots during node initialization. Used by bootstrap to restore transport
+// connections without requiring a PeerStore file.
+func (node *Node) RecoveredPeers() map[uint64]ConfChangeContext {
+	return node.recoveredPeers
+}
+
+// SetPeerAddress upserts a peer's raft and service addresses.
+// Called on ConfChange commits and by bootstrap for self-registration.
+func (node *Node) SetPeerAddress(nodeID uint64, raftAddr, serviceAddr string) {
+	node.peerAddresses[nodeID] = ConfChangeContext{
+		RaftAddress:    raftAddr,
+		ServiceAddress: serviceAddr,
+	}
+}
+
+// RemovePeerAddress removes a peer's addresses.
+// Called when a ConfChange removing a peer is committed.
+func (node *Node) RemovePeerAddress(nodeID uint64) {
+	delete(node.peerAddresses, nodeID)
+}
+
+// PeerAddresses returns the current peer address map.
+func (node *Node) PeerAddresses() map[uint64]ConfChangeContext {
+	return node.peerAddresses
+}
+
+// wrapSnapshot wraps FSM snapshot data with cluster-level metadata (peer addresses)
+// into a NodeSnapshot for WAL storage.
+func (node *Node) wrapSnapshot(fsmData []byte) ([]byte, error) {
+	peerAddrs := make([]*raftcmdpb.PeerAddress, 0, len(node.peerAddresses))
+	for nodeID, addr := range node.peerAddresses {
+		peerAddrs = append(peerAddrs, &raftcmdpb.PeerAddress{
+			NodeId:         nodeID,
+			RaftAddress:    addr.RaftAddress,
+			ServiceAddress: addr.ServiceAddress,
+		})
+	}
+	ns := &raftcmdpb.NodeSnapshot{
+		FsmSnapshot:   fsmData,
+		PeerAddresses: peerAddrs,
+	}
+	return ns.MarshalVT()
+}
+
+// unwrapSnapshot extracts FSM snapshot data and peer addresses from a NodeSnapshot.
+func unwrapSnapshot(data []byte) ([]byte, []*raftcmdpb.PeerAddress, error) {
+	ns := &raftcmdpb.NodeSnapshot{}
+	if err := ns.UnmarshalVT(data); err != nil {
+		return nil, nil, err
+	}
+	return ns.FsmSnapshot, ns.PeerAddresses, nil
 }
 
 type Proposal struct {

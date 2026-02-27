@@ -114,7 +114,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		case *commonpb.SinkConfig_Clickhouse:
 			data = append(data,
 				[]string{"Type", "ClickHouse"},
-				[]string{"DSN", s.Clickhouse.Dsn},
+				[]string{"DSN", cmdutil.ObfuscateDSN(s.Clickhouse.Dsn)},
 				[]string{"Table", s.Clickhouse.Table},
 			)
 		default:

@@ -138,6 +138,44 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /{ledgerName}/promote:
+    post:
+      summary: Promote a mirror ledger
+      description: |
+        Promotes a mirror-mode ledger to normal mode. After promotion, the mirror sync
+        worker is stopped and the ledger accepts direct write operations. Requires `ledger:write` scope.
+      operationId: promoteLedger
+      tags:
+        - Ledgers
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+      responses:
+        '201':
+          description: Ledger promoted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoteLedgerResponse'
+        '400':
+          description: Ledger is not in mirror mode
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /{ledgerName}/transactions:
     post:
       summary: Create a new transaction
@@ -760,6 +798,15 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: Optional metadata for the ledger (supports typed values)
+        mode:
+          type: string
+          enum:
+            - NORMAL
+            - MIRROR
+          default: NORMAL
+          description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source.
+        mirrorSource:
+          $ref: '#/components/schemas/MirrorSourceConfig'
 
     CreateLedgerResponse:
       type: object
@@ -793,6 +840,7 @@ components:
       required:
         - name
         - createdAt
+        - mode
       properties:
         name:
           type: string
@@ -806,6 +854,61 @@ components:
           type: string
           format: date-time
           description: Creation timestamp (ISO 8601 format)
+        mode:
+          type: string
+          enum:
+            - NORMAL
+            - MIRROR
+          description: Ledger mode (NORMAL or MIRROR)
+        mirrorSource:
+          $ref: '#/components/schemas/MirrorSourceConfig'
+        mirrorSyncProgress:
+          $ref: '#/components/schemas/MirrorSyncProgress'
+
+    MirrorSyncProgress:
+      type: object
+      description: Sync progress for MIRROR ledgers (populated at read time)
+      required:
+        - state
+        - cursor
+        - sourceLogCount
+        - remainingLogs
+      properties:
+        state:
+          type: string
+          enum:
+            - SYNCING
+            - FOLLOWING
+          description: Current sync state (SYNCING = catching up, FOLLOWING = up to date)
+        cursor:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Last ingested v2 log ID
+        sourceLogCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Latest known log ID in the v2 source
+        remainingLogs:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of remaining logs to sync (sourceLogCount - cursor)
+        error:
+          $ref: '#/components/schemas/MirrorSyncError'
+
+    MirrorSyncError:
+      type: object
+      description: Most recent mirror sync error (null if healthy)
+      properties:
+        message:
+          type: string
+          description: Error message
+        occurredAt:
+          type: string
+          format: date-time
+          description: When the error occurred
 
     CreateTransactionRequest:
       type: object
@@ -1490,6 +1593,45 @@ components:
         output:
           type: string
           description: Total amount sent (as big integer string)
+
+    MirrorSourceConfig:
+      type: object
+      description: Configuration for the mirror source (required when mode is MIRROR)
+      required:
+        - ledgerName
+      properties:
+        ledgerName:
+          type: string
+          description: Name of the source ledger in the v2 system
+        type:
+          type: string
+          enum:
+            - http
+            - postgres
+          default: http
+          description: Source type (defaults to "http" if omitted)
+        baseUrl:
+          type: string
+          description: Base URL of the v2 API (required for HTTP source)
+        authToken:
+          type: string
+          description: Bearer token for authenticating with the v2 API (optional, HTTP source only)
+        dsn:
+          type: string
+          description: PostgreSQL connection string (required for PostgreSQL source)
+        batchSize:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Max logs per batch (0 = server default 100, capped by server's --mirror-max-batch-size)
+
+    PromoteLedgerResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/LedgerInfo'
 
     ErrorResponse:
       type: object

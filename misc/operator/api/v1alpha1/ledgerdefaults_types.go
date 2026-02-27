@@ -93,6 +93,10 @@ type LedgerDefaultsSpec struct {
 	// NetworkPolicy configuration for egress restrictions.
 	// +optional
 	NetworkPolicy *NetworkPolicySpec `json:"networkPolicy,omitempty"`
+
+	// Persistence configuration for WAL and data volumes.
+	// +optional
+	Persistence *PersistenceSpec `json:"persistence,omitempty"`
 }
 
 // LedgerDefaultsConfig holds the subset of LedgerServiceConfig fields that are safe

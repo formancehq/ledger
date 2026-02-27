@@ -31,7 +31,7 @@ func NewListCommand() *cobra.Command {
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Bool("failures-only", false, "Show only failed entries")
 	cmd.Flags().Uint64("after", 0, "Show entries after this sequence number")
-	cmd.Flags().Int("limit", 0, "Maximum number of entries to display (0 = unlimited)")
+	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of entries per page (0 = unlimited)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -51,11 +51,12 @@ func runList(cmd *cobra.Command, _ []string) error {
 		jsonOutput, _   = cmd.Flags().GetBool("json")
 		failuresOnly, _ = cmd.Flags().GetBool("failures-only")
 		after, _        = cmd.Flags().GetUint64("after")
-		limit, _        = cmd.Flags().GetInt("limit")
+		pageSize, _     = cmd.Flags().GetUint32("page-size")
 	)
 
 	req := &servicepb.ListAuditEntriesRequest{
 		FailuresOnly: failuresOnly,
+		PageSize:     pageSize,
 	}
 	if cmd.Flags().Changed("after") {
 		req.AfterSequence = &after
@@ -86,7 +87,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 			return cmdutil.FormatGRPCError("receiving audit entry", err)
 		}
 		entries = append(entries, entry)
-		if limit > 0 && len(entries) >= limit {
+		if pageSize > 0 && uint32(len(entries)) >= pageSize {
 			break
 		}
 	}
@@ -123,7 +124,7 @@ func printAuditEntry(entry *auditpb.AuditEntry) {
 	var statusIcon, statusText string
 	if entry.GetSuccess() != nil {
 		statusIcon = pterm.Green("OK")
-		statusText = fmt.Sprintf("logs=%v", entry.GetSuccess().LogSequences)
+		statusText = formatLogSequences(entry.GetSuccess().LogSequences)
 	} else if entry.GetFailure() != nil {
 		f := entry.GetFailure()
 		statusIcon = pterm.Red("FAIL")
@@ -138,8 +139,39 @@ func printAuditEntry(entry *auditpb.AuditEntry) {
 		pterm.Gray(statusText),
 	)
 
-	// Print each order with its details and signing key
-	for i, order := range entry.Orders {
+	// Group consecutive identical orders for compact display
+	printGroupedOrders(entry.Orders)
+}
+
+// formatLogSequences formats log sequences compactly.
+// For small sets: logs=[1 2 3]. For large sets: logs=500 (28487003..28487502).
+func formatLogSequences(seqs []uint64) string {
+	n := len(seqs)
+	if n == 0 {
+		return "logs=[]"
+	}
+	if n <= 5 {
+		return fmt.Sprintf("logs=%v", seqs)
+	}
+	return fmt.Sprintf("logs=%d (%d..%d)", n, seqs[0], seqs[n-1])
+}
+
+// orderGroup represents a run of consecutive identical order types.
+type orderGroup struct {
+	orderType   string
+	orderDetail string
+	keyStr      string
+	count       int
+}
+
+// printGroupedOrders groups consecutive identical orders and prints them compactly.
+func printGroupedOrders(orders []*raftcmdpb.Order) {
+	if len(orders) == 0 {
+		return
+	}
+
+	var groups []orderGroup
+	for _, order := range orders {
 		orderType, orderDetail := describeOrder(order)
 
 		keyStr := pterm.Gray("unsigned")
@@ -147,15 +179,32 @@ func printAuditEntry(entry *auditpb.AuditEntry) {
 			keyStr = pterm.Yellow(sig.KeyId)
 		}
 
+		// Merge with previous group if same type+detail+key
+		if len(groups) > 0 {
+			last := &groups[len(groups)-1]
+			if last.orderType == orderType && last.orderDetail == orderDetail && last.keyStr == keyStr {
+				last.count++
+				continue
+			}
+		}
+		groups = append(groups, orderGroup{orderType, orderDetail, keyStr, 1})
+	}
+
+	for i, g := range groups {
 		prefix := "├─"
-		if i == len(entry.Orders)-1 {
+		if i == len(groups)-1 {
 			prefix = "└─"
 		}
 
-		if orderDetail != "" {
-			pterm.Printf("    %s %s %s  key=%s\n", prefix, pterm.Cyan(orderType), pterm.Gray(orderDetail), keyStr)
+		countStr := ""
+		if g.count > 1 {
+			countStr = fmt.Sprintf(" x%d", g.count)
+		}
+
+		if g.orderDetail != "" {
+			pterm.Printf("    %s %s%s %s  key=%s\n", prefix, pterm.Cyan(g.orderType), countStr, pterm.Gray(g.orderDetail), g.keyStr)
 		} else {
-			pterm.Printf("    %s %s  key=%s\n", prefix, pterm.Cyan(orderType), keyStr)
+			pterm.Printf("    %s %s%s  key=%s\n", prefix, pterm.Cyan(g.orderType), countStr, g.keyStr)
 		}
 	}
 }
@@ -197,6 +246,10 @@ func describeOrder(order *raftcmdpb.Order) (string, string) {
 		return "SetPeriodSchedule", fmt.Sprintf("cron=%s", order.GetSetPeriodSchedule().Cron)
 	case order.GetDeletePeriodSchedule() != nil:
 		return "DeletePeriodSchedule", ""
+	case order.GetMirrorIngest() != nil:
+		return "MirrorIngest", fmt.Sprintf("ledger=%s", order.GetMirrorIngest().Ledger)
+	case order.GetPromoteLedger() != nil:
+		return "PromoteLedger", fmt.Sprintf("ledger=%s", order.GetPromoteLedger().Ledger)
 	default:
 		return "Unknown", ""
 	}
@@ -217,6 +270,18 @@ func describeApplyOrder(apply *raftcmdpb.LedgerApplyOrder) (string, string) {
 		return "RevertTransaction", ""
 	case apply.GetDeleteMetadata() != nil:
 		return "DeleteMetadata", ""
+	case apply.GetSetMetadataFieldType() != nil:
+		o := apply.GetSetMetadataFieldType()
+		return "SetMetadataFieldType", fmt.Sprintf("target=%s key=%s type=%s", o.TargetType, o.Key, o.Type)
+	case apply.GetRemoveMetadataFieldType() != nil:
+		o := apply.GetRemoveMetadataFieldType()
+		return "RemoveMetadataFieldType", fmt.Sprintf("target=%s key=%s", o.TargetType, o.Key)
+	case apply.GetConvertMetadataBatch() != nil:
+		o := apply.GetConvertMetadataBatch()
+		return "ConvertMetadataBatch", fmt.Sprintf("target=%s key=%s %d/%d", o.TargetType, o.Key, o.ConvertedKeysSoFar, o.TotalKeys)
+	case apply.GetConversionComplete() != nil:
+		o := apply.GetConversionComplete()
+		return "ConversionComplete", fmt.Sprintf("target=%s key=%s type=%s", o.TargetType, o.Key, o.ExpectedType)
 	default:
 		return "Apply", ""
 	}

@@ -26,7 +26,7 @@ func NewListCommand() *cobra.Command {
 
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Uint64("after", 0, "Show logs after this sequence number")
-	cmd.Flags().Int("limit", 0, "Maximum number of logs to display (0 = unlimited)")
+	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of logs per page (0 = unlimited)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -45,15 +45,14 @@ func runList(cmd *cobra.Command, _ []string) error {
 	var (
 		jsonOutput, _ = cmd.Flags().GetBool("json")
 		after, _      = cmd.Flags().GetUint64("after")
-		limit, _      = cmd.Flags().GetInt("limit")
+		pageSize, _   = cmd.Flags().GetUint32("page-size")
 	)
 
-	req := &servicepb.ListLogsRequest{}
+	req := &servicepb.ListLogsRequest{
+		PageSize: pageSize,
+	}
 	if cmd.Flags().Changed("after") {
 		req.AfterSequence = &after
-	}
-	if limit > 0 {
-		req.PageSize = uint32(limit)
 	}
 
 	stream, err := client.ListLogs(ctx, req)
@@ -71,7 +70,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 			return cmdutil.FormatGRPCError("receiving log", err)
 		}
 		entries = append(entries, log)
-		if limit > 0 && len(entries) >= limit {
+		if pageSize > 0 && uint32(len(entries)) >= pageSize {
 			break
 		}
 	}

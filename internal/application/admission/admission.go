@@ -919,6 +919,11 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.AddEventsSink.Config.Name}] = struct{}{}
 		case *raftcmdpb.Order_RemoveEventsSink:
 			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.RemoveEventsSink.Name}] = struct{}{}
+		case *raftcmdpb.Order_MirrorIngest:
+			p.Ledgers[domain.LedgerKey{Name: orderType.MirrorIngest.Ledger}] = struct{}{}
+			p.Boundaries[domain.LedgerKey{Name: orderType.MirrorIngest.Ledger}] = struct{}{}
+		case *raftcmdpb.Order_PromoteLedger:
+			p.Ledgers[domain.LedgerKey{Name: orderType.PromoteLedger.Ledger}] = struct{}{}
 		case *raftcmdpb.Order_Apply:
 			p.Boundaries[domain.LedgerKey{Name: orderType.Apply.Ledger}] = struct{}{}
 
@@ -1039,6 +1044,8 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 			CreateLedger: &raftcmdpb.CreateLedgerOrder{
 				Name:          reqType.CreateLedger.Name,
 				InitialSchema: reqType.CreateLedger.InitialSchema,
+				Mode:          reqType.CreateLedger.Mode,
+				MirrorSource:  reqType.CreateLedger.MirrorSource,
 			},
 		}
 	case *servicepb.Request_DeleteLedger:
@@ -1136,6 +1143,12 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_DeletePeriodSchedule:
 		order.Type = &raftcmdpb.Order_DeletePeriodSchedule{
 			DeletePeriodSchedule: &raftcmdpb.DeletePeriodScheduleOrder{},
+		}
+	case *servicepb.Request_PromoteLedger:
+		order.Type = &raftcmdpb.Order_PromoteLedger{
+			PromoteLedger: &raftcmdpb.PromoteLedgerOrder{
+				Ledger: reqType.PromoteLedger.Ledger,
+			},
 		}
 	case *servicepb.Request_SetMetadataFieldType:
 		order.Type = &raftcmdpb.Order_Apply{

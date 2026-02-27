@@ -233,7 +233,12 @@ message LogPayload {
     SetPeriodScheduleLog set_period_schedule = 14;
     DeletePeriodScheduleLog delete_period_schedule = 15;
     SetAuditConfigLog set_audit_config = 16;
+    PromoteLedgerLog promote_ledger = 17;
   }
+}
+
+message PromoteLedgerLog {
+  LedgerInfo info = 1;
 }
 
 // ============================================================================
@@ -392,7 +397,12 @@ message LedgerLogPayload {
     RemovedMetadataFieldTypeLog removed_metadata_field_type = 6;
     ConvertMetadataBatchLog convert_metadata_batch = 7;
     MetadataConversionCompleteLog metadata_conversion_complete = 8;
+    FillGapLog fill_gap = 9;
   }
+}
+
+message FillGapLog {
+  uint64 original_id = 1;  // v2 log ID that this gap fills
 }
 
 message ConvertMetadataBatchLog {
@@ -483,6 +493,51 @@ message ConfirmArchivePeriodLog {
 }
 
 // ============================================================================
+// Ledger Mode
+// ============================================================================
+
+enum LedgerMode {
+  LEDGER_MODE_NORMAL = 0;
+  LEDGER_MODE_MIRROR = 1;
+}
+
+message MirrorSourceConfig {
+  string ledger_name = 1;  // Source ledger name (common to all source types)
+  oneof type {
+    HttpMirrorSourceConfig http = 2;
+    PostgresMirrorSourceConfig postgres = 3;
+  }
+  uint32 batch_size = 4;  // Max logs per batch (0 = default 100). Client's responsibility to avoid saturating the instance.
+}
+
+message HttpMirrorSourceConfig {
+  string base_url = 1;
+  string auth_token = 2;
+}
+
+message PostgresMirrorSourceConfig {
+  string dsn = 1;  // e.g. "postgres://user:pass@host:5432/ledger?sslmode=disable"
+}
+
+message MirrorSyncError {
+  string message = 1;
+  Timestamp occurred_at = 2;
+}
+
+enum MirrorSyncState {
+  MIRROR_SYNC_STATE_SYNCING = 0;
+  MIRROR_SYNC_STATE_FOLLOWING = 1;
+}
+
+message MirrorSyncProgress {
+  MirrorSyncState state = 1;
+  uint64 cursor = 2;
+  uint64 source_log_count = 3;
+  uint64 remaining_logs = 4;
+  MirrorSyncError error = 5;
+}
+
+// ============================================================================
 // Ledger Info
 // ============================================================================
 
@@ -493,6 +548,9 @@ message LedgerInfo {
   reserved 3;                               // Was: uint32 id (removed: ledger name used as key)
   Timestamp deleted_at = 4;                 // Soft delete timestamp (nil if not deleted)
   MetadataSchema metadata_schema = 5;       // Per-key metadata type declarations
+  LedgerMode mode = 6;                      // Normal or mirror mode
+  MirrorSourceConfig mirror_source = 7;     // Mirror source config (set when mode=MIRROR)
+  MirrorSyncProgress mirror_sync_progress = 8;  // Populated at read time for MIRROR ledgers
 }
 
 // ============================================================================

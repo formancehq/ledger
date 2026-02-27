@@ -380,8 +380,14 @@ func validateSpec(ledger *ledgerv1alpha1.LedgerService) error {
 		}
 	}
 	if hosts, enabled := ingressGrpcHosts(ledger.Spec.IngressGrpc); enabled {
-		if err := validateIngressHosts("ingressGrpc", hosts); err != nil {
-			return err
+		// When only a TargetGroupBinding is configured (no hosts), skip host
+		// validation — the Ingress resource won't be created, only the TGB.
+		hasTGB := ledger.Spec.IngressGrpc.TargetGroupBinding != nil &&
+			ledger.Spec.IngressGrpc.TargetGroupBinding.Enabled
+		if len(hosts) != 0 || !hasTGB {
+			if err := validateIngressHosts("ingressGrpc", hosts); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
