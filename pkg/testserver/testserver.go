@@ -147,6 +147,13 @@ func WithRaftTransportSendQueues(capacities ...int) testservice.InstrumentationF
 	}
 }
 
+func WithClusterID(id string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--cluster-id", id)
+		return nil
+	}
+}
+
 func WithDebug(v bool) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		if v {

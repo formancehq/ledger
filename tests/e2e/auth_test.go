@@ -152,6 +152,7 @@ var _ = Describe("Auth", Ordered, func() {
 				testservice.DebugInstrumentation(debug),
 				testservice.OutputInstrumentation(GinkgoWriter),
 				testserver.WithNodeID(1),
+				testserver.WithClusterID("test-cluster"),
 				testserver.WithHTTPPort(authTestHTTPPort),
 				testserver.WithWalDir(walTmpDir),
 				testserver.WithDataDir(dataTmpDir),
