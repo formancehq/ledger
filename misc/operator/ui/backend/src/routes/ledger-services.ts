@@ -7,8 +7,9 @@ import {
   patchLedgerService,
 } from "../k8s/ledger-service.js";
 import { listPods, listPvcs, listServices, listEvents } from "../k8s/resources.js";
+import type { AuthEnv } from "../auth/middleware.js";
 
-const app = new Hono();
+const app = new Hono<AuthEnv>();
 
 // List LedgerServices in a namespace
 app.get("/namespaces/:ns/ledger-services", async (c) => {
@@ -34,6 +35,18 @@ app.get("/namespaces/:ns/ledger-services/:name", async (c) => {
 app.post("/namespaces/:ns/ledger-services", async (c) => {
   const ns = c.req.param("ns");
   const body = await c.req.json();
+
+  // Annotate with owner info from the authenticated session (if any)
+  const session = c.get("session");
+  if (session) {
+    body.metadata ??= {};
+    body.metadata.annotations = {
+      ...body.metadata.annotations,
+      "ledger.formance.com/created-by": session.userId,
+      ...(session.email && { "ledger.formance.com/created-by-email": session.email }),
+    };
+  }
+
   const result = await createLedgerService(ns, body);
   return c.json(result, 201);
 });

@@ -336,6 +336,14 @@ export function LedgerServiceDetailPage() {
                   <dt className="text-muted-foreground">Generation</dt>
                   <dd>{svc.metadata.generation ?? "-"}</dd>
                 </div>
+                <div>
+                  <dt className="text-muted-foreground">Owner</dt>
+                  <dd>
+                    {svc.metadata.annotations?.["ledger.formance.com/created-by-email"]
+                      ?? svc.metadata.annotations?.["ledger.formance.com/created-by"]
+                      ?? "-"}
+                  </dd>
+                </div>
               </dl>
             </CardContent>
           </Card>

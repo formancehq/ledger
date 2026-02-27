@@ -71,6 +71,7 @@ export function LedgerServicesListPage() {
         <p><strong>Replicas</strong> &mdash; ready pods / desired pods in the Raft cluster.</p>
         <p><strong>Phase</strong> &mdash; current lifecycle state (Pending, Running, Failed).</p>
         <p><strong>Defaults</strong> &mdash; the LedgerDefaults configuration this service inherits from.</p>
+        <p><strong>Owner</strong> &mdash; the user who created this service (from OIDC auth). Shows "-" when auth is disabled.</p>
       </InfoSection>
     </>
   );
@@ -126,6 +127,7 @@ export function LedgerServicesListPage() {
               <TableHead>Phase</TableHead>
               <TableHead>Image</TableHead>
               <TableHead>Defaults</TableHead>
+              <TableHead>Owner</TableHead>
               <TableHead>Age</TableHead>
               <TableHead className="w-12"></TableHead>
             </TableRow>
@@ -157,6 +159,11 @@ export function LedgerServicesListPage() {
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {svc.spec.defaultsRef || "-"}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {svc.metadata.annotations?.["ledger.formance.com/created-by-email"]
+                    ?? svc.metadata.annotations?.["ledger.formance.com/created-by"]
+                    ?? "-"}
                 </TableCell>
                 <TableCell>
                   {formatAge(svc.metadata.creationTimestamp)}
