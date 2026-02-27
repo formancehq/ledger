@@ -142,7 +142,7 @@ message ScriptReference {
 
 message CreateTransactionPayload {
   // ...
-  ScriptReference script_reference = 8;
+  ScriptReference script_reference = 9;
 }
 ```
 
@@ -333,27 +333,28 @@ Buffered.Merge()
 
 | Layer | File | Contents |
 |---|---|---|
-| HTTP | `internal/compat/http/handlers_save_numscript.go` | PUT handler |
-| HTTP | `internal/compat/http/handlers_get_numscript.go` | GET handler |
-| HTTP | `internal/compat/http/handlers_list_numscripts.go` | List handler |
-| HTTP | `internal/compat/http/handlers_delete_numscript.go` | DELETE handler |
+| HTTP | `internal/adapter/http/handlers_save_numscript.go` | PUT handler |
+| HTTP | `internal/adapter/http/handlers_get_numscript.go` | GET handler |
+| HTTP | `internal/adapter/http/handlers_list_numscripts.go` | List handler |
+| HTTP | `internal/adapter/http/handlers_delete_numscript.go` | DELETE handler |
 | CLI | `cmd/ledgerctl/numscripts/` | One file per subcommand |
-| Business logic | `internal/service/processing/processor_numscript_library.go` | Save/delete processors |
-| Errors | `internal/service/processing/errors.go` | Error types and reason codes |
-| Store interface | `internal/service/processing/store.go` | `InMemoryStore` numscript methods |
-| State buffer | `internal/service/state/buffer.go` | `Buffered` numscript operations |
-| State machine | `internal/service/state/machine.go` | `Machine` numscript KeyStores |
-| Pebble batch | `internal/service/state/batch.go` | `SaveNumscript`, `ClearNumscriptLatestVersion` |
-| Pebble read | `internal/service/state/store.go` | `ReadNumscript`, `ReadNumscriptLatestVersion`, `ReadAllNumscripts` |
-| Cache | `internal/service/cache/cache.go` | `NumscriptVersions`, `NumscriptEntries` caches |
-| Admission | `internal/service/admission/admission.go` | Preload phases 5-6 |
-| Loaders | `internal/service/admission/loader.go` | `NumscriptVersions`, `NumscriptEntries` loaders |
+| Business logic | `internal/domain/processing/processor_numscript_library.go` | Save/delete processors |
+| Errors | `internal/domain/errors.go` | Error types and reason codes |
+| Store interface | `internal/domain/processing/store.go` | `InMemoryStore` numscript methods |
+| State buffer | `internal/infra/state/buffer.go` | `Buffered` numscript operations |
+| State registry | `internal/infra/state/registry.go` | `NumscriptVersions`, `NumscriptEntries` KeyStores |
+| Pebble batch | `internal/infra/state/batch.go` | `SaveNumscript`, `ClearNumscriptLatestVersion` |
+| Query | `internal/query/store.go` | `ReadNumscript`, `ReadNumscriptLatestVersion` |
+| Cache | `internal/infra/cache/cache.go` | `NumscriptVersions`, `NumscriptEntries` caches |
+| Admission | `internal/application/admission/admission.go` | Preload and script reference resolution |
+| Loaders | `internal/application/admission/loader.go` | `NumscriptVersions`, `NumscriptEntries` loaders |
 | Semver | `internal/semver/semver.go` | `Version`, `Parse`, `ParsePartial` |
-| DAL types | `internal/storage/dal/types.go` | `NumscriptVersionKey`, `NumscriptEntryKey`, version tag constants |
+| DAL keys | `internal/domain/keys.go` | `NumscriptVersionKey`, `NumscriptEntryKey`, version tag constants |
+| DAL key builder | `internal/storage/dal/key_builder.go` | Pebble key encoding |
 | Proto | `misc/proto/common.proto` | `NumscriptInfo`, log payload messages |
 | Proto | `misc/proto/raft_cmd.proto` | `SaveNumscriptOrder`, `DeleteNumscriptOrder`, preload messages |
-| Proto | `misc/proto/bucket.proto` | gRPC service methods |
-| gRPC errors | `internal/application/grpc_errors.go` | Error-to-gRPC-status mapping |
+| Proto | `misc/proto/bucket.proto` | gRPC service methods, `ScriptReference` |
+| gRPC errors | `internal/adapter/grpc/errors.go` | Error-to-gRPC-status mapping |
 | E2E tests | `tests/e2e/numscript_library_test.go` | Library CRUD and versioning tests |
 
 ## Related Documentation
