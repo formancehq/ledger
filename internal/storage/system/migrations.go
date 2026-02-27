@@ -298,9 +298,9 @@ func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator 
 			Name: "Add global exporter state table",
 			Up: func(ctx context.Context, db bun.IDB) error {
 				_, err := db.ExecContext(ctx, `
-					CREATE TABLE IF NOT EXISTS _system.global_exporter_state (
-						ledger varchar PRIMARY KEY,
-						last_log_id bigint NOT NULL
+					create table if not exists _system.global_exporter_state (
+						ledger varchar primary key,
+						last_log_id bigint not null
 					);
 				`)
 				return err

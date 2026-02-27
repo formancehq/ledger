@@ -191,7 +191,7 @@ var _ = Context("Global logs exporter tests", func() {
 				// Stop the first server
 				srv, err := firstServer.Wait(specContext)
 				Expect(err).To(BeNil())
-				Expect(srv.Stop(ctx)).To(BeNil())
+				Expect(srv.Stop(specContext)).To(BeNil())
 			})
 
 			When("a new server starts with the same database and a new exporter target", func() {
