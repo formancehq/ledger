@@ -102,6 +102,9 @@ func (c *Registry) Create(ctx context.Context, id string) (Driver, json.RawMessa
 }
 
 func (c *Registry) CreateFromConfig(driverName string, rawConfig json.RawMessage) (Driver, error) {
+	if err := c.ValidateConfig(driverName, rawConfig); err != nil {
+		return nil, err
+	}
 	driverConstructor, ok := c.constructors[driverName]
 	if !ok {
 		return nil, NewErrDriverNotFound(driverName)
@@ -136,7 +139,6 @@ func (c *Registry) GetConfigType(driverName string) (any, error) {
 }
 
 func (c *Registry) ValidateConfig(driverName string, rawDriverConfig json.RawMessage) error {
-
 	driverConfig, err := c.GetConfigType(driverName)
 	if err != nil {
 		return errors.Wrapf(err, "validating config for exporter '%s'", driverName)
