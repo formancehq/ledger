@@ -126,6 +126,7 @@ export async function listPods(
         ? new Date(p.metadata.creationTimestamp).toISOString()
         : undefined,
       node: p.spec?.nodeName,
+      containers: (p.spec?.containers ?? []).map((c) => c.name),
     };
   });
 }

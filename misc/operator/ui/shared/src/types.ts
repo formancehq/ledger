@@ -428,6 +428,7 @@ export interface PodSummary {
   restarts: number;
   age?: string;
   node?: string;
+  containers: string[];
 }
 
 export interface PvcSummary {

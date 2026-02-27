@@ -38,8 +38,13 @@ import {
   Pencil,
   RefreshCw,
   Scaling,
+  ScrollText,
+  TerminalSquare,
   Trash2,
 } from "lucide-react";
+import { PodLogsPanel } from "@/components/pod-logs-panel";
+import { PodTerminalDialog } from "@/components/pod-terminal-dialog";
+import type { PodSummary } from "shared";
 
 export function LedgerServiceDetailPage() {
   const { ns, name } = useParams<{ ns: string; name: string }>();
@@ -55,6 +60,9 @@ export function LedgerServiceDetailPage() {
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [duplicateName, setDuplicateName] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [selectedPod, setSelectedPod] = useState<PodSummary | null>(null);
 
   if (isLoading) {
     return (
@@ -294,6 +302,7 @@ export function LedgerServiceDetailPage() {
                       <TableHead>Restarts</TableHead>
                       <TableHead>Node</TableHead>
                       <TableHead>Age</TableHead>
+                      <TableHead className="w-24">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -323,6 +332,34 @@ export function LedgerServiceDetailPage() {
                           {pod.node ?? "-"}
                         </TableCell>
                         <TableCell>{formatAge(pod.age)}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              title="View logs"
+                              onClick={() => {
+                                setSelectedPod(pod);
+                                setLogsOpen(true);
+                              }}
+                            >
+                              <ScrollText className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              title="Open terminal"
+                              onClick={() => {
+                                setSelectedPod(pod);
+                                setTerminalOpen(true);
+                              }}
+                            >
+                              <TerminalSquare className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -613,6 +650,34 @@ export function LedgerServiceDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Pod Logs Dialog */}
+      {selectedPod && (
+        <PodLogsPanel
+          open={logsOpen}
+          onOpenChange={(open) => {
+            setLogsOpen(open);
+            if (!open) setSelectedPod(null);
+          }}
+          namespace={ns ?? ""}
+          podName={selectedPod.name}
+          containers={selectedPod.containers}
+        />
+      )}
+
+      {/* Pod Terminal Dialog */}
+      {selectedPod && (
+        <PodTerminalDialog
+          open={terminalOpen}
+          onOpenChange={(open) => {
+            setTerminalOpen(open);
+            if (!open) setSelectedPod(null);
+          }}
+          namespace={ns ?? ""}
+          podName={selectedPod.name}
+          containers={selectedPod.containers}
+        />
+      )}
     </div>
   );
 }

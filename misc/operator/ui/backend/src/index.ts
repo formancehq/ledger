@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import api from "./routes/index.js";
 import { errorHandler } from "./middleware/error-handler.js";
+import { handleUpgrade } from "./ws/terminal.js";
 
 const app = new Hono();
 
@@ -28,4 +29,11 @@ if (process.env.NODE_ENV === "production") {
 const port = parseInt(process.env.PORT ?? "3001", 10);
 
 console.log(`Backend listening on http://localhost:${port}`);
-serve({ fetch: app.fetch, port });
+const server = serve({ fetch: app.fetch, port });
+
+// Attach WebSocket upgrade handler for terminal exec
+(server as import("node:http").Server).on("upgrade", (req, socket, head) => {
+  if (!handleUpgrade(req, socket, head)) {
+    socket.destroy();
+  }
+});

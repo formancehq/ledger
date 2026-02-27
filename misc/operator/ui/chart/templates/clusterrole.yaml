@@ -25,6 +25,14 @@ rules:
 - apiGroups: [""]
   resources: ["events"]
   verbs: ["get", "list", "watch"]
+# Pod logs - read for log streaming
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+# Pod exec - create for terminal access
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
 # Namespaces - list for namespace selector
 - apiGroups: [""]
   resources: ["namespaces"]
