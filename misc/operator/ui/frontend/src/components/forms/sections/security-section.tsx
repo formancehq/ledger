@@ -26,6 +26,7 @@ export function SecuritySection({
     <FormSection value="security" title="Security" description="TLS and response signing">
       <FormField
         label="TLS Enabled"
+        description="Encrypt gRPC and HTTP traffic with TLS. Requires a Kubernetes Secret containing the certificate and key."
         htmlFor="tls-enabled"
         hint={defaultHint(defaultTls?.enabled)}
       >
@@ -37,7 +38,11 @@ export function SecuritySection({
           }
         />
       </FormField>
-      <FormField label="TLS Secret Name" htmlFor="tls-secret">
+      <FormField
+        label="TLS Secret Name"
+        description="Name of the Kubernetes Secret (type kubernetes.io/tls) containing tls.crt and tls.key."
+        htmlFor="tls-secret"
+      >
         <Input
           id="tls-secret"
           value={tls.secretName ?? ""}
@@ -47,7 +52,11 @@ export function SecuritySection({
           placeholder={defaultPlaceholder(defaultTls?.secretName, "tls-secret")}
         />
       </FormField>
-      <FormField label="TLS CA Secret Key" htmlFor="tls-ca-key">
+      <FormField
+        label="TLS CA Secret Key"
+        description="Key within the TLS Secret that contains the CA certificate, used for mTLS client verification."
+        htmlFor="tls-ca-key"
+      >
         <Input
           id="tls-ca-key"
           value={tls.caSecretKey ?? ""}
@@ -59,6 +68,7 @@ export function SecuritySection({
       </FormField>
       <FormField
         label="Response Signing Enabled"
+        description="Sign API responses with Ed25519 for authenticity and integrity verification by clients."
         htmlFor="signing-enabled"
         hint={defaultHint(defaultResponseSigning?.enabled)}
       >
@@ -73,7 +83,11 @@ export function SecuritySection({
           }
         />
       </FormField>
-      <FormField label="Signing Secret Name" htmlFor="signing-secret">
+      <FormField
+        label="Signing Secret Name"
+        description="Name of the Kubernetes Secret containing the Ed25519 private key for response signing."
+        htmlFor="signing-secret"
+      >
         <Input
           id="signing-secret"
           value={responseSigning.secretName ?? ""}
@@ -86,7 +100,11 @@ export function SecuritySection({
           placeholder={defaultPlaceholder(defaultResponseSigning?.secretName, "signing-secret")}
         />
       </FormField>
-      <FormField label="Signing Secret Key" htmlFor="signing-key">
+      <FormField
+        label="Signing Secret Key"
+        description="Key within the Secret that contains the Ed25519 private key file."
+        htmlFor="signing-key"
+      >
         <Input
           id="signing-key"
           value={responseSigning.secretKey ?? ""}

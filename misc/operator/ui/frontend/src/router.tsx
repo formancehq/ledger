@@ -1,7 +1,4 @@
-import {
-  createBrowserRouter,
-  Navigate,
-} from "react-router-dom";
+import { createBrowserRouter } from "react-router-dom";
 import { Layout } from "@/components/layout";
 import { LedgerServicesListPage } from "@/pages/ledger-services-list";
 import { LedgerServiceDetailPage } from "@/pages/ledger-service-detail";
@@ -16,7 +13,7 @@ export const router = createBrowserRouter([
     children: [
       {
         path: "/",
-        element: <Navigate to="/ledger-defaults" replace />,
+        element: <LedgerServicesListPage />,
       },
       {
         path: "/namespaces/:ns/ledger-services",

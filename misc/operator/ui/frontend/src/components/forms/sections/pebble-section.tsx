@@ -23,7 +23,11 @@ export function PebbleSection({ value = {}, defaults, onChange }: PebbleSectionP
 
   return (
     <FormSection value="pebble" title="Pebble" description="Embedded storage engine tuning">
-      <FormField label="MemTable Size" description="Bytes" htmlFor="pebble-memtable">
+      <FormField
+        label="MemTable Size"
+        description="Size in bytes of each in-memory write buffer. Larger values improve write throughput but use more RAM."
+        htmlFor="pebble-memtable"
+      >
         <Input
           id="pebble-memtable"
           type="number"
@@ -32,7 +36,11 @@ export function PebbleSection({ value = {}, defaults, onChange }: PebbleSectionP
           placeholder={defaultPlaceholder(defaults?.memTableSize)}
         />
       </FormField>
-      <FormField label="MemTable Stop Writes Threshold" htmlFor="pebble-memtable-stop">
+      <FormField
+        label="MemTable Stop Writes Threshold"
+        description="Number of MemTables allowed in memory before writes stall. Prevents unbounded memory growth under heavy write load."
+        htmlFor="pebble-memtable-stop"
+      >
         <Input
           id="pebble-memtable-stop"
           type="number"
@@ -41,7 +49,11 @@ export function PebbleSection({ value = {}, defaults, onChange }: PebbleSectionP
           placeholder={defaultPlaceholder(defaults?.memTableStopWritesThreshold)}
         />
       </FormField>
-      <FormField label="Cache Size" description="Block cache size in bytes" htmlFor="pebble-cache">
+      <FormField
+        label="Cache Size"
+        description="Size in bytes of the block cache for SSTable data. A larger cache reduces disk reads for frequently accessed data."
+        htmlFor="pebble-cache"
+      >
         <Input
           id="pebble-cache"
           type="number"
@@ -50,7 +62,11 @@ export function PebbleSection({ value = {}, defaults, onChange }: PebbleSectionP
           placeholder={defaultPlaceholder(defaults?.cacheSize)}
         />
       </FormField>
-      <FormField label="L0 Compaction Threshold" htmlFor="pebble-l0-compact">
+      <FormField
+        label="L0 Compaction Threshold"
+        description="Number of L0 files that trigger a compaction. Lower values keep read amplification down but cause more compaction work."
+        htmlFor="pebble-l0-compact"
+      >
         <Input
           id="pebble-l0-compact"
           type="number"
@@ -59,7 +75,11 @@ export function PebbleSection({ value = {}, defaults, onChange }: PebbleSectionP
           placeholder={defaultPlaceholder(defaults?.l0CompactionThreshold)}
         />
       </FormField>
-      <FormField label="L0 Stop Writes Threshold" htmlFor="pebble-l0-stop">
+      <FormField
+        label="L0 Stop Writes Threshold"
+        description="Number of L0 files at which writes stall until compaction catches up. Safety valve against unbounded L0 growth."
+        htmlFor="pebble-l0-stop"
+      >
         <Input
           id="pebble-l0-stop"
           type="number"
@@ -68,7 +88,11 @@ export function PebbleSection({ value = {}, defaults, onChange }: PebbleSectionP
           placeholder={defaultPlaceholder(defaults?.l0StopWritesThreshold)}
         />
       </FormField>
-      <FormField label="LBase Max Bytes" htmlFor="pebble-lbase">
+      <FormField
+        label="LBase Max Bytes"
+        description="Target size for the base level of the LSM tree. Controls when data moves from L0 to deeper levels."
+        htmlFor="pebble-lbase"
+      >
         <Input
           id="pebble-lbase"
           type="number"
@@ -77,7 +101,11 @@ export function PebbleSection({ value = {}, defaults, onChange }: PebbleSectionP
           placeholder={defaultPlaceholder(defaults?.lBaseMaxBytes)}
         />
       </FormField>
-      <FormField label="Target File Size" htmlFor="pebble-target-file">
+      <FormField
+        label="Target File Size"
+        description="Target size for individual SSTable files. Smaller files speed up compaction but increase file count."
+        htmlFor="pebble-target-file"
+      >
         <Input
           id="pebble-target-file"
           type="number"
@@ -86,7 +114,11 @@ export function PebbleSection({ value = {}, defaults, onChange }: PebbleSectionP
           placeholder={defaultPlaceholder(defaults?.targetFileSize)}
         />
       </FormField>
-      <FormField label="Bytes Per Sync" htmlFor="pebble-bytes-sync">
+      <FormField
+        label="Bytes Per Sync"
+        description="How many bytes to write before syncing data files to disk. Lower values are safer but slower."
+        htmlFor="pebble-bytes-sync"
+      >
         <Input
           id="pebble-bytes-sync"
           type="number"
@@ -95,7 +127,11 @@ export function PebbleSection({ value = {}, defaults, onChange }: PebbleSectionP
           placeholder={defaultPlaceholder(defaults?.bytesPerSync)}
         />
       </FormField>
-      <FormField label="WAL Bytes Per Sync" htmlFor="pebble-wal-bytes-sync">
+      <FormField
+        label="WAL Bytes Per Sync"
+        description="How many bytes to write to the WAL before syncing to disk. Lower values reduce data loss risk on crash."
+        htmlFor="pebble-wal-bytes-sync"
+      >
         <Input
           id="pebble-wal-bytes-sync"
           type="number"
@@ -104,7 +140,11 @@ export function PebbleSection({ value = {}, defaults, onChange }: PebbleSectionP
           placeholder={defaultPlaceholder(defaults?.walBytesPerSync)}
         />
       </FormField>
-      <FormField label="Max Concurrent Compactions" htmlFor="pebble-max-compact">
+      <FormField
+        label="Max Concurrent Compactions"
+        description="Maximum number of compactions running in parallel. More parallelism speeds up compaction but uses more CPU and I/O."
+        htmlFor="pebble-max-compact"
+      >
         <Input
           id="pebble-max-compact"
           type="number"
@@ -113,7 +153,11 @@ export function PebbleSection({ value = {}, defaults, onChange }: PebbleSectionP
           placeholder={defaultPlaceholder(defaults?.maxConcurrentCompactions)}
         />
       </FormField>
-      <FormField label="WAL Min Sync Interval" description="e.g. 30ms" htmlFor="pebble-wal-sync">
+      <FormField
+        label="WAL Min Sync Interval"
+        description="Minimum interval between WAL syncs (e.g. 30ms). Batches small writes together for better throughput at the cost of slightly higher latency."
+        htmlFor="pebble-wal-sync"
+      >
         <Input
           id="pebble-wal-sync"
           value={value.walMinSyncInterval ?? ""}
@@ -123,6 +167,7 @@ export function PebbleSection({ value = {}, defaults, onChange }: PebbleSectionP
       </FormField>
       <FormField
         label="Disable WAL"
+        description="Skip write-ahead logging entirely. Dramatically faster but data will be lost on crash. Only for ephemeral/testing workloads."
         htmlFor="pebble-disable-wal"
         hint={defaultHint(defaults?.disableWAL)}
       >

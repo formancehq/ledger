@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatAge, formatImage, phaseColor } from "@/lib/utils";
 import { toast } from "@/lib/use-toast";
 import { Plus, Trash2 } from "lucide-react";
+import { PageWithInfo, InfoSection } from "@/components/info-panel";
 
 export function LedgerServicesListPage() {
   const { ns } = useParams<{ ns: string }>();
@@ -48,20 +49,52 @@ export function LedgerServicesListPage() {
     });
   };
 
+  const infoContent = (
+    <>
+      <InfoSection title="What is a LedgerService?">
+        <p>
+          A LedgerService is a running instance of the Formance Ledger in your Kubernetes cluster.
+          Each one manages its own data, Raft consensus group, and storage.
+        </p>
+        <p>
+          You can have multiple LedgerServices in the same namespace (e.g. one for staging, one for production).
+        </p>
+      </InfoSection>
+      <InfoSection title="Namespaces">
+        <p>
+          LedgerServices are namespace-scoped resources &mdash; each namespace can contain
+          its own independent set of Ledger instances. Use the namespace selector in the sidebar
+          to switch between namespaces.
+        </p>
+      </InfoSection>
+      <InfoSection title="Table columns">
+        <p><strong>Replicas</strong> &mdash; ready pods / desired pods in the Raft cluster.</p>
+        <p><strong>Phase</strong> &mdash; current lifecycle state (Pending, Running, Failed).</p>
+        <p><strong>Defaults</strong> &mdash; the LedgerDefaults configuration this service inherits from.</p>
+      </InfoSection>
+    </>
+  );
+
   if (!ns) {
     return (
-      <div className="text-muted-foreground">
-        Select a namespace from the sidebar to view LedgerServices.
-      </div>
+      <PageWithInfo info={infoContent}>
+        <div className="text-muted-foreground space-y-2">
+          <p className="text-lg font-medium">No namespace selected</p>
+          <p>
+            Use the namespace selector in the sidebar to pick a Kubernetes namespace.
+          </p>
+        </div>
+      </PageWithInfo>
     );
   }
 
   return (
-    <div>
+    <PageWithInfo info={infoContent}>
+      <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">LedgerServices</h1>
-          <p className="text-sm text-muted-foreground">Namespace: {ns}</p>
+          <p className="text-xs text-muted-foreground mt-1">Namespace: {ns}</p>
         </div>
         <Button asChild>
           <Link to={`/namespaces/${ns}/ledger-services/new`}>
@@ -78,8 +111,11 @@ export function LedgerServicesListPage() {
           ))}
         </div>
       ) : !data?.length ? (
-        <div className="text-center py-12 text-muted-foreground">
-          No LedgerServices found in namespace "{ns}".
+        <div className="text-center py-12 text-muted-foreground space-y-2">
+          <p>No LedgerServices found in namespace &ldquo;{ns}&rdquo;.</p>
+          <p className="text-xs">
+            Click &ldquo;Create&rdquo; to deploy a new Ledger instance, or select a different namespace from the sidebar.
+          </p>
         </div>
       ) : (
         <Table>
@@ -167,6 +203,7 @@ export function LedgerServicesListPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </PageWithInfo>
   );
 }

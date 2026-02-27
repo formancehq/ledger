@@ -22,7 +22,11 @@ export function RaftSection({ value = {}, defaults, onChange }: RaftSectionProps
 
   return (
     <FormSection value="raft" title="Raft" description="Consensus protocol tuning">
-      <FormField label="Snapshot Threshold" htmlFor="raft-snap-threshold">
+      <FormField
+        label="Snapshot Threshold"
+        description="Number of Raft log entries before a snapshot is taken. Snapshots allow slow followers to catch up faster."
+        htmlFor="raft-snap-threshold"
+      >
         <Input
           id="raft-snap-threshold"
           type="number"
@@ -31,7 +35,11 @@ export function RaftSection({ value = {}, defaults, onChange }: RaftSectionProps
           placeholder={defaultPlaceholder(defaults?.snapshotThreshold)}
         />
       </FormField>
-      <FormField label="Compaction Margin" htmlFor="raft-compact-margin">
+      <FormField
+        label="Compaction Margin"
+        description="Number of extra log entries to keep after a snapshot, as a safety buffer before compacting old entries."
+        htmlFor="raft-compact-margin"
+      >
         <Input
           id="raft-compact-margin"
           type="number"
@@ -40,7 +48,11 @@ export function RaftSection({ value = {}, defaults, onChange }: RaftSectionProps
           placeholder={defaultPlaceholder(defaults?.compactionMargin)}
         />
       </FormField>
-      <FormField label="Snapshot Interval" description="e.g. 5m" htmlFor="raft-snap-interval">
+      <FormField
+        label="Snapshot Interval"
+        description="Time-based interval for periodic snapshots (e.g. 5m). Ensures snapshots happen even under low write load."
+        htmlFor="raft-snap-interval"
+      >
         <Input
           id="raft-snap-interval"
           value={value.snapshotInterval ?? ""}
@@ -48,7 +60,11 @@ export function RaftSection({ value = {}, defaults, onChange }: RaftSectionProps
           placeholder={defaultPlaceholder(defaults?.snapshotInterval, "e.g. 5m")}
         />
       </FormField>
-      <FormField label="Election Tick" htmlFor="raft-election-tick">
+      <FormField
+        label="Election Tick"
+        description="Number of tick intervals before a follower starts an election if it hasn't heard from the leader. Higher values reduce false elections."
+        htmlFor="raft-election-tick"
+      >
         <Input
           id="raft-election-tick"
           type="number"
@@ -57,7 +73,11 @@ export function RaftSection({ value = {}, defaults, onChange }: RaftSectionProps
           placeholder={defaultPlaceholder(defaults?.electionTick)}
         />
       </FormField>
-      <FormField label="Heartbeat Tick" htmlFor="raft-heartbeat-tick">
+      <FormField
+        label="Heartbeat Tick"
+        description="Number of tick intervals between leader heartbeats. Must be less than Election Tick. Lower values detect failures faster."
+        htmlFor="raft-heartbeat-tick"
+      >
         <Input
           id="raft-heartbeat-tick"
           type="number"
@@ -66,7 +86,11 @@ export function RaftSection({ value = {}, defaults, onChange }: RaftSectionProps
           placeholder={defaultPlaceholder(defaults?.heartbeatTick)}
         />
       </FormField>
-      <FormField label="Max Size Per Msg" htmlFor="raft-max-msg">
+      <FormField
+        label="Max Size Per Msg"
+        description="Maximum size in bytes of a single Raft message. Limits memory usage when replicating large batches."
+        htmlFor="raft-max-msg"
+      >
         <Input
           id="raft-max-msg"
           type="number"
@@ -75,7 +99,11 @@ export function RaftSection({ value = {}, defaults, onChange }: RaftSectionProps
           placeholder={defaultPlaceholder(defaults?.maxSizePerMsg)}
         />
       </FormField>
-      <FormField label="Max Inflight Msgs" htmlFor="raft-inflight">
+      <FormField
+        label="Max Inflight Msgs"
+        description="Maximum number of in-flight append messages (messages sent but not yet acknowledged). Controls replication pipeline depth."
+        htmlFor="raft-inflight"
+      >
         <Input
           id="raft-inflight"
           type="number"
@@ -84,7 +112,11 @@ export function RaftSection({ value = {}, defaults, onChange }: RaftSectionProps
           placeholder={defaultPlaceholder(defaults?.maxInflightMsgs)}
         />
       </FormField>
-      <FormField label="Tick Interval" description="e.g. 100ms" htmlFor="raft-tick">
+      <FormField
+        label="Tick Interval"
+        description="Duration of a single Raft tick (e.g. 100ms). This is the base time unit for election and heartbeat timeouts."
+        htmlFor="raft-tick"
+      >
         <Input
           id="raft-tick"
           value={value.tickInterval ?? ""}
@@ -92,7 +124,11 @@ export function RaftSection({ value = {}, defaults, onChange }: RaftSectionProps
           placeholder={defaultPlaceholder(defaults?.tickInterval, "e.g. 100ms")}
         />
       </FormField>
-      <FormField label="Propose Queue Capacity" htmlFor="raft-propose-cap">
+      <FormField
+        label="Propose Queue Capacity"
+        description="Maximum number of pending proposals queued before back-pressure is applied. Prevents memory exhaustion under burst writes."
+        htmlFor="raft-propose-cap"
+      >
         <Input
           id="raft-propose-cap"
           type="number"
@@ -101,7 +137,11 @@ export function RaftSection({ value = {}, defaults, onChange }: RaftSectionProps
           placeholder={defaultPlaceholder(defaults?.proposeQueueCapacity)}
         />
       </FormField>
-      <FormField label="Learner Promotion Threshold" htmlFor="raft-learner">
+      <FormField
+        label="Learner Promotion Threshold"
+        description="Number of entries a learner node must replicate before being promoted to a full voting member."
+        htmlFor="raft-learner"
+      >
         <Input
           id="raft-learner"
           type="number"

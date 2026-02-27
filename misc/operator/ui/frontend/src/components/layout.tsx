@@ -80,7 +80,7 @@ export function Layout() {
 
         {/* Namespace selector */}
         <div className="p-4">
-          <label className="text-xs font-medium text-muted-foreground mb-2 block">
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">
             Namespace
           </label>
           <Select value={currentNs} onValueChange={handleNamespaceChange}>

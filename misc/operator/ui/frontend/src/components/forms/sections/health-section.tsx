@@ -16,7 +16,11 @@ export function HealthSection({ value = {}, defaults, onChange }: HealthSectionP
 
   return (
     <FormSection value="health" title="Health Checks" description="Health monitoring configuration">
-      <FormField label="Interval" description="e.g. 10s" htmlFor="health-interval">
+      <FormField
+        label="Interval"
+        description="How often the node runs internal health checks (e.g. 10s). Shorter intervals detect issues faster but add CPU overhead."
+        htmlFor="health-interval"
+      >
         <Input
           id="health-interval"
           value={value.interval ?? ""}
@@ -24,7 +28,11 @@ export function HealthSection({ value = {}, defaults, onChange }: HealthSectionP
           placeholder={defaultPlaceholder(defaults?.interval, "e.g. 10s")}
         />
       </FormField>
-      <FormField label="WAL Threshold" description="e.g. 5s" htmlFor="health-wal">
+      <FormField
+        label="WAL Threshold"
+        description="Maximum acceptable delay for WAL writes (e.g. 5s). If WAL writes take longer than this, the node is marked unhealthy."
+        htmlFor="health-wal"
+      >
         <Input
           id="health-wal"
           value={value.walThreshold ?? ""}
@@ -32,7 +40,11 @@ export function HealthSection({ value = {}, defaults, onChange }: HealthSectionP
           placeholder={defaultPlaceholder(defaults?.walThreshold, "e.g. 5s")}
         />
       </FormField>
-      <FormField label="Data Threshold" description="e.g. 5s" htmlFor="health-data">
+      <FormField
+        label="Data Threshold"
+        description="Maximum acceptable delay for Pebble data operations (e.g. 5s). Detects slow storage or compaction stalls."
+        htmlFor="health-data"
+      >
         <Input
           id="health-data"
           value={value.dataThreshold ?? ""}
@@ -40,7 +52,11 @@ export function HealthSection({ value = {}, defaults, onChange }: HealthSectionP
           placeholder={defaultPlaceholder(defaults?.dataThreshold, "e.g. 5s")}
         />
       </FormField>
-      <FormField label="Clock Skew Threshold" description="e.g. 1s" htmlFor="health-clock">
+      <FormField
+        label="Clock Skew Threshold"
+        description="Maximum allowed clock difference between nodes (e.g. 1s). Excessive skew can cause Raft issues and incorrect timestamps."
+        htmlFor="health-clock"
+      >
         <Input
           id="health-clock"
           value={value.clockSkewThreshold ?? ""}

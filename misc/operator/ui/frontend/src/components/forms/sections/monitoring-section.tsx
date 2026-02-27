@@ -26,6 +26,7 @@ export function MonitoringSection({ value = {}, defaults, onChange }: Monitoring
       {/* Traces */}
       <FormField
         label="Traces Enabled"
+        description="Enable OpenTelemetry distributed tracing. Traces follow requests across services for debugging and latency analysis."
         htmlFor="traces-enabled"
         hint={defaultHint(defaults?.traces?.enabled)}
       >
@@ -35,7 +36,11 @@ export function MonitoringSection({ value = {}, defaults, onChange }: Monitoring
           onCheckedChange={(checked) => updateTraces({ enabled: checked || undefined })}
         />
       </FormField>
-      <FormField label="Traces Exporter" htmlFor="traces-exporter">
+      <FormField
+        label="Traces Exporter"
+        description="Export protocol for traces (e.g. otlp, jaeger, zipkin). OTLP is the standard OpenTelemetry format."
+        htmlFor="traces-exporter"
+      >
         <Input
           id="traces-exporter"
           value={value.traces?.exporter ?? ""}
@@ -43,7 +48,11 @@ export function MonitoringSection({ value = {}, defaults, onChange }: Monitoring
           placeholder={defaultPlaceholder(defaults?.traces?.exporter, "otlp")}
         />
       </FormField>
-      <FormField label="Traces Endpoint" htmlFor="traces-endpoint">
+      <FormField
+        label="Traces Endpoint"
+        description="Address of the trace collector (e.g. localhost:4317 for OTLP gRPC). Must be reachable from the pods."
+        htmlFor="traces-endpoint"
+      >
         <Input
           id="traces-endpoint"
           value={value.traces?.endpoint ?? ""}
@@ -55,6 +64,7 @@ export function MonitoringSection({ value = {}, defaults, onChange }: Monitoring
       {/* Metrics */}
       <FormField
         label="Metrics Enabled"
+        description="Enable OpenTelemetry metrics export. Metrics include request counts, latencies, Raft health, and Pebble stats."
         htmlFor="metrics-enabled"
         hint={defaultHint(defaults?.metrics?.enabled)}
       >
@@ -64,7 +74,11 @@ export function MonitoringSection({ value = {}, defaults, onChange }: Monitoring
           onCheckedChange={(checked) => updateMetrics({ enabled: checked || undefined })}
         />
       </FormField>
-      <FormField label="Metrics Exporter" htmlFor="metrics-exporter">
+      <FormField
+        label="Metrics Exporter"
+        description="Export protocol for metrics (e.g. otlp, prometheus). Use prometheus for pull-based scraping."
+        htmlFor="metrics-exporter"
+      >
         <Input
           id="metrics-exporter"
           value={value.metrics?.exporter ?? ""}
@@ -72,7 +86,11 @@ export function MonitoringSection({ value = {}, defaults, onChange }: Monitoring
           placeholder={defaultPlaceholder(defaults?.metrics?.exporter, "otlp")}
         />
       </FormField>
-      <FormField label="Metrics Endpoint" htmlFor="metrics-endpoint">
+      <FormField
+        label="Metrics Endpoint"
+        description="Address of the metrics collector (e.g. localhost:4317 for OTLP gRPC)."
+        htmlFor="metrics-endpoint"
+      >
         <Input
           id="metrics-endpoint"
           value={value.metrics?.endpoint ?? ""}
@@ -84,6 +102,7 @@ export function MonitoringSection({ value = {}, defaults, onChange }: Monitoring
       {/* Logs */}
       <FormField
         label="Logs Enabled"
+        description="Enable structured log export via OpenTelemetry. Complements traces and metrics for full observability."
         htmlFor="logs-enabled"
         hint={defaultHint(defaults?.logs?.enabled)}
       >
@@ -93,7 +112,11 @@ export function MonitoringSection({ value = {}, defaults, onChange }: Monitoring
           onCheckedChange={(checked) => updateLogs({ enabled: checked || undefined })}
         />
       </FormField>
-      <FormField label="Logs Level" htmlFor="logs-level">
+      <FormField
+        label="Logs Level"
+        description="Minimum log level to export (e.g. debug, info, warn, error). Lower levels produce more output."
+        htmlFor="logs-level"
+      >
         <Input
           id="logs-level"
           value={value.logs?.level ?? ""}
@@ -101,7 +124,11 @@ export function MonitoringSection({ value = {}, defaults, onChange }: Monitoring
           placeholder={defaultPlaceholder(defaults?.logs?.level, "info")}
         />
       </FormField>
-      <FormField label="Logs Exporter" htmlFor="logs-exporter">
+      <FormField
+        label="Logs Exporter"
+        description="Export protocol for logs (e.g. otlp). Logs are sent to the same collector infrastructure as traces and metrics."
+        htmlFor="logs-exporter"
+      >
         <Input
           id="logs-exporter"
           value={value.logs?.exporter ?? ""}
@@ -113,6 +140,7 @@ export function MonitoringSection({ value = {}, defaults, onChange }: Monitoring
       {/* Pyroscope */}
       <FormField
         label="Pyroscope Enabled"
+        description="Enable continuous profiling with Pyroscope. Captures CPU, memory, and goroutine profiles for performance analysis."
         htmlFor="pyro-enabled"
         hint={defaultHint(defaults?.pyroscope?.enabled)}
       >
@@ -122,7 +150,11 @@ export function MonitoringSection({ value = {}, defaults, onChange }: Monitoring
           onCheckedChange={(checked) => updatePyroscope({ enabled: checked || undefined })}
         />
       </FormField>
-      <FormField label="Pyroscope Server" htmlFor="pyro-server">
+      <FormField
+        label="Pyroscope Server"
+        description="Address of the Pyroscope server (e.g. http://pyroscope:4040). Profiles are pushed to this endpoint."
+        htmlFor="pyro-server"
+      >
         <Input
           id="pyro-server"
           value={value.pyroscope?.serverAddress ?? ""}
@@ -130,7 +162,11 @@ export function MonitoringSection({ value = {}, defaults, onChange }: Monitoring
           placeholder={defaultPlaceholder(defaults?.pyroscope?.serverAddress, "http://pyroscope:4040")}
         />
       </FormField>
-      <FormField label="Pyroscope App Name" htmlFor="pyro-app">
+      <FormField
+        label="Pyroscope App Name"
+        description="Application name used to identify this service's profiles in the Pyroscope UI."
+        htmlFor="pyro-app"
+      >
         <Input
           id="pyro-app"
           value={value.pyroscope?.applicationName ?? ""}

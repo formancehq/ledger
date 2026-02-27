@@ -23,7 +23,11 @@ export function ImageSection({ value = {}, defaults, onChange }: ImageSectionPro
 
   return (
     <FormSection value="image" title="Image" description="Container image settings">
-      <FormField label="Repository" htmlFor="image-repo">
+      <FormField
+        label="Repository"
+        description="Docker image repository (e.g. ghcr.io/formancehq/ledger). The operator pulls this image to run the Ledger pods."
+        htmlFor="image-repo"
+      >
         <Input
           id="image-repo"
           value={value.repository ?? ""}
@@ -31,7 +35,11 @@ export function ImageSection({ value = {}, defaults, onChange }: ImageSectionPro
           placeholder={defaultPlaceholder(defaults?.repository, "ghcr.io/formancehq/ledger")}
         />
       </FormField>
-      <FormField label="Tag" htmlFor="image-tag">
+      <FormField
+        label="Tag"
+        description="Image tag or version (e.g. v3.0.0, latest). Pin to a specific version in production to avoid unexpected updates."
+        htmlFor="image-tag"
+      >
         <Input
           id="image-tag"
           value={value.tag ?? ""}
@@ -41,6 +49,7 @@ export function ImageSection({ value = {}, defaults, onChange }: ImageSectionPro
       </FormField>
       <FormField
         label="Pull Policy"
+        description="When to pull the image: Always (every restart), IfNotPresent (only if missing), Never (use local only)."
         htmlFor="image-pull-policy"
         hint={defaults?.pullPolicy ? `Default: ${defaults.pullPolicy}` : undefined}
       >

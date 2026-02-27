@@ -32,7 +32,11 @@ export function ServiceSection({
 }: ServiceSectionProps) {
   return (
     <FormSection value="service" title="Service" description="Kubernetes Service and headless service">
-      <FormField label="Service Type" htmlFor="svc-type">
+      <FormField
+        label="Service Type"
+        description="ClusterIP (internal only), NodePort (expose on each node), or LoadBalancer (cloud LB). ClusterIP is recommended with Ingress."
+        htmlFor="svc-type"
+      >
         <Select
           value={service.type ?? ""}
           onValueChange={(v) =>
@@ -49,7 +53,11 @@ export function ServiceSection({
           </SelectContent>
         </Select>
       </FormField>
-      <FormField label="HTTP Port" htmlFor="svc-http-port">
+      <FormField
+        label="HTTP Port"
+        description="Port exposed on the Kubernetes Service for the REST HTTP API."
+        htmlFor="svc-http-port"
+      >
         <Input
           id="svc-http-port"
           type="number"
@@ -60,7 +68,11 @@ export function ServiceSection({
           placeholder="9000"
         />
       </FormField>
-      <FormField label="gRPC Port" htmlFor="svc-grpc-port">
+      <FormField
+        label="gRPC Port"
+        description="Port exposed on the Kubernetes Service for the primary gRPC API."
+        htmlFor="svc-grpc-port"
+      >
         <Input
           id="svc-grpc-port"
           type="number"
@@ -71,7 +83,11 @@ export function ServiceSection({
           placeholder="8888"
         />
       </FormField>
-      <FormField label="Raft Port" htmlFor="svc-raft-port">
+      <FormField
+        label="Raft Port"
+        description="Port exposed for inter-node Raft communication. Only needed if nodes communicate via the Service (not headless)."
+        htmlFor="svc-raft-port"
+      >
         <Input
           id="svc-raft-port"
           type="number"
@@ -82,7 +98,11 @@ export function ServiceSection({
           placeholder="9100"
         />
       </FormField>
-      <FormField label="Headless Service Enabled" htmlFor="headless-enabled">
+      <FormField
+        label="Headless Service Enabled"
+        description="Create a headless Service (no ClusterIP) for Raft peer discovery. Each pod gets its own stable DNS name for direct addressing."
+        htmlFor="headless-enabled"
+      >
         <Switch
           id="headless-enabled"
           checked={headlessService.enabled ?? false}

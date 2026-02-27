@@ -69,7 +69,11 @@ export function IngressSection({
   return (
     <FormSection value="ingress" title="Ingress" description="HTTP and gRPC ingress configuration">
       {/* HTTP Ingress */}
-      <FormField label="HTTP Ingress Enabled" htmlFor="ing-http-enabled">
+      <FormField
+        label="HTTP Ingress Enabled"
+        description="Create a Kubernetes Ingress resource to expose the HTTP REST API externally via a reverse proxy."
+        htmlFor="ing-http-enabled"
+      >
         <Switch
           id="ing-http-enabled"
           checked={ingress.enabled ?? false}
@@ -78,7 +82,11 @@ export function IngressSection({
           }
         />
       </FormField>
-      <FormField label="HTTP Ingress Class" htmlFor="ing-http-class">
+      <FormField
+        label="HTTP Ingress Class"
+        description="Ingress controller class (e.g. nginx, traefik, alb). Determines which controller handles this Ingress."
+        htmlFor="ing-http-class"
+      >
         <Input
           id="ing-http-class"
           value={ingress.className ?? ""}
@@ -89,7 +97,10 @@ export function IngressSection({
         />
       </FormField>
       <div className="col-span-full">
-        <p className="text-sm font-medium mb-2">HTTP Hosts</p>
+        <p className="text-sm font-medium mb-1">HTTP Hosts</p>
+        <p className="text-xs text-muted-foreground mb-2">
+          Domain names routed to the HTTP API. Each host creates a routing rule in the Ingress.
+        </p>
         <HostList
           hosts={ingress.hosts ?? []}
           onChange={(hosts) => onIngressChange({ ...ingress, hosts })}
@@ -98,7 +109,11 @@ export function IngressSection({
       </div>
 
       {/* gRPC Ingress */}
-      <FormField label="gRPC Ingress Enabled" htmlFor="ing-grpc-enabled">
+      <FormField
+        label="gRPC Ingress Enabled"
+        description="Create a separate Ingress for gRPC traffic. Requires an Ingress controller with gRPC support (e.g. ALB, nginx with grpc_pass)."
+        htmlFor="ing-grpc-enabled"
+      >
         <Switch
           id="ing-grpc-enabled"
           checked={ingressGrpc.enabled ?? false}
@@ -107,7 +122,11 @@ export function IngressSection({
           }
         />
       </FormField>
-      <FormField label="gRPC Ingress Class" htmlFor="ing-grpc-class">
+      <FormField
+        label="gRPC Ingress Class"
+        description="Ingress controller class for gRPC traffic. May differ from HTTP if using a specialized gRPC-aware controller."
+        htmlFor="ing-grpc-class"
+      >
         <Input
           id="ing-grpc-class"
           value={ingressGrpc.className ?? ""}
@@ -118,7 +137,10 @@ export function IngressSection({
         />
       </FormField>
       <div className="col-span-full">
-        <p className="text-sm font-medium mb-2">gRPC Hosts</p>
+        <p className="text-sm font-medium mb-1">gRPC Hosts</p>
+        <p className="text-xs text-muted-foreground mb-2">
+          Domain names routed to the gRPC API. Typically a different subdomain than HTTP (e.g. grpc.example.com).
+        </p>
         <HostList
           hosts={ingressGrpc.hosts ?? []}
           onChange={(hosts) => onIngressGrpcChange({ ...ingressGrpc, hosts })}

@@ -39,6 +39,7 @@ import { ColdStorageSection } from "@/components/forms/sections/cold-storage-sec
 import { computeDiff, formatValue } from "@/lib/diff";
 import { toast } from "@/lib/use-toast";
 import { ArrowLeft, Save } from "lucide-react";
+import { PageWithInfo, InfoSection } from "@/components/info-panel";
 
 export function LedgerDefaultsFormPage() {
   const { name } = useParams<{ name?: string }>();
@@ -131,6 +132,35 @@ export function LedgerDefaultsFormPage() {
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
+    <PageWithInfo
+      info={
+        <>
+          <InfoSection title={isEdit ? "Editing" : "Creating"}>
+            <p>
+              {isEdit
+                ? "Modify this shared configuration. Changes will affect all LedgerServices that reference it. A diff preview will be shown before applying."
+                : "Define a shared configuration template. LedgerServices can reference it to inherit these settings."}
+            </p>
+          </InfoSection>
+          <InfoSection title="Sections">
+            <p><strong>Image</strong> &mdash; container image and pull policy.</p>
+            <p><strong>Pebble</strong> &mdash; storage engine tuning (cache, compaction, write buffer).</p>
+            <p><strong>Raft</strong> &mdash; consensus protocol timeouts and snapshotting.</p>
+            <p><strong>Health</strong> &mdash; liveness/readiness probe configuration.</p>
+            <p><strong>Security</strong> &mdash; TLS and response signing.</p>
+            <p><strong>Monitoring</strong> &mdash; OpenTelemetry traces and metrics.</p>
+            <p><strong>Cold Storage</strong> &mdash; offloading older data to cheaper storage.</p>
+            <p><strong>Scheduling</strong> &mdash; resource limits, anti-affinity, PDB.</p>
+          </InfoSection>
+          <InfoSection title="How it works">
+            <p>
+              Leave fields empty to use built-in defaults. LedgerServices that reference this
+              configuration inherit all values, but can override individual settings.
+            </p>
+          </InfoSection>
+        </>
+      }
+    >
     <div className="max-w-4xl">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
@@ -145,7 +175,7 @@ export function LedgerDefaultsFormPage() {
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold">
-            {isEdit ? `Edit ${name}` : "Create LedgerDefaults"}
+            {isEdit ? `Edit ${name}` : "Create Configuration"}
           </h1>
           <p className="text-sm text-muted-foreground">
             Cluster-scoped default configuration
@@ -161,7 +191,7 @@ export function LedgerDefaultsFormPage() {
       <Accordion type="multiple" defaultValue={["general"]}>
         {/* General (name for create only) */}
         {!isEdit && (
-          <FormSection value="general" title="General" description="Defaults name">
+          <FormSection value="general" title="General" description="A unique name for this configuration. LedgerServices reference it by this name (e.g. &quot;default&quot;, &quot;production&quot;, &quot;staging&quot;).">
             <FormField label="Name" htmlFor="ld-name">
               <Input
                 id="ld-name"
@@ -272,5 +302,6 @@ export function LedgerDefaultsFormPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </PageWithInfo>
   );
 }

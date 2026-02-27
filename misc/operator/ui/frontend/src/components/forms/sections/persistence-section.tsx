@@ -26,7 +26,11 @@ export function PersistenceSection({ value = {}, onChange }: PersistenceSectionP
   return (
     <FormSection value="persistence" title="Persistence" description="WAL and data volume configuration">
       {/* WAL Volume */}
-      <FormField label="WAL Storage Class" htmlFor="wal-sc">
+      <FormField
+        label="WAL Storage Class"
+        description="Kubernetes StorageClass for the WAL volume. Use fast, low-latency storage (e.g. gp3, local-path) for best write performance."
+        htmlFor="wal-sc"
+      >
         <Input
           id="wal-sc"
           value={value.wal?.storageClass ?? ""}
@@ -34,7 +38,11 @@ export function PersistenceSection({ value = {}, onChange }: PersistenceSectionP
           placeholder="gp3"
         />
       </FormField>
-      <FormField label="WAL Access Mode" htmlFor="wal-am">
+      <FormField
+        label="WAL Access Mode"
+        description="PVC access mode. ReadWriteOnce (single node) is typical. ReadWriteMany allows multiple nodes but requires a compatible StorageClass."
+        htmlFor="wal-am"
+      >
         <Select
           value={value.wal?.accessMode ?? ""}
           onValueChange={(v) => updateWal({ accessMode: v || undefined })}
@@ -48,7 +56,11 @@ export function PersistenceSection({ value = {}, onChange }: PersistenceSectionP
           </SelectContent>
         </Select>
       </FormField>
-      <FormField label="WAL Size" htmlFor="wal-size">
+      <FormField
+        label="WAL Size"
+        description="Storage capacity for the WAL volume (e.g. 10Gi). Size it based on expected write throughput and snapshot frequency."
+        htmlFor="wal-size"
+      >
         <Input
           id="wal-size"
           value={value.wal?.size ?? ""}
@@ -58,7 +70,11 @@ export function PersistenceSection({ value = {}, onChange }: PersistenceSectionP
       </FormField>
 
       {/* Data Volume */}
-      <FormField label="Data Storage Class" htmlFor="data-sc">
+      <FormField
+        label="Data Storage Class"
+        description="Kubernetes StorageClass for the Pebble data volume. Can use cheaper storage than WAL since reads are cached."
+        htmlFor="data-sc"
+      >
         <Input
           id="data-sc"
           value={value.data?.storageClass ?? ""}
@@ -66,7 +82,11 @@ export function PersistenceSection({ value = {}, onChange }: PersistenceSectionP
           placeholder="gp3"
         />
       </FormField>
-      <FormField label="Data Access Mode" htmlFor="data-am">
+      <FormField
+        label="Data Access Mode"
+        description="PVC access mode for the data volume. ReadWriteOnce is standard for single-node attachment."
+        htmlFor="data-am"
+      >
         <Select
           value={value.data?.accessMode ?? ""}
           onValueChange={(v) => updateData({ accessMode: v || undefined })}
@@ -80,7 +100,11 @@ export function PersistenceSection({ value = {}, onChange }: PersistenceSectionP
           </SelectContent>
         </Select>
       </FormField>
-      <FormField label="Data Size" htmlFor="data-size">
+      <FormField
+        label="Data Size"
+        description="Storage capacity for the Pebble data volume (e.g. 50Gi). Should accommodate the full dataset plus compaction headroom."
+        htmlFor="data-size"
+      >
         <Input
           id="data-size"
           value={value.data?.size ?? ""}
@@ -90,7 +114,11 @@ export function PersistenceSection({ value = {}, onChange }: PersistenceSectionP
       </FormField>
 
       {/* Retention Policy */}
-      <FormField label="Retention When Scaled" htmlFor="ret-scaled">
+      <FormField
+        label="Retention When Scaled"
+        description="What to do with PVCs when replicas are scaled down. 'Retain' keeps data for scale-up, 'Delete' frees storage."
+        htmlFor="ret-scaled"
+      >
         <Select
           value={value.retentionPolicy?.whenScaled ?? ""}
           onValueChange={(v) => updateRetention({ whenScaled: v || undefined })}
@@ -104,7 +132,11 @@ export function PersistenceSection({ value = {}, onChange }: PersistenceSectionP
           </SelectContent>
         </Select>
       </FormField>
-      <FormField label="Retention When Deleted" htmlFor="ret-deleted">
+      <FormField
+        label="Retention When Deleted"
+        description="What to do with PVCs when the LedgerService is deleted. 'Retain' preserves data for recovery, 'Delete' cleans up everything."
+        htmlFor="ret-deleted"
+      >
         <Select
           value={value.retentionPolicy?.whenDeleted ?? ""}
           onValueChange={(v) => updateRetention({ whenDeleted: v || undefined })}

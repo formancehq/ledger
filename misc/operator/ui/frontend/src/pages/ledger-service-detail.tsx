@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import { PodLogsPanel } from "@/components/pod-logs-panel";
 import { PodTerminalDialog } from "@/components/pod-terminal-dialog";
+import { PageWithInfo, InfoSection } from "@/components/info-panel";
 import type { PodSummary } from "shared";
 
 export function LedgerServiceDetailPage() {
@@ -153,6 +154,59 @@ export function LedgerServiceDetailPage() {
   };
 
   return (
+    <PageWithInfo
+      info={
+        <>
+          <InfoSection title="LedgerService">
+            <p>
+              A running Ledger instance managed by the operator. Each service
+              runs a Raft consensus cluster with the configured number of replicas.
+            </p>
+          </InfoSection>
+          <InfoSection title="Overview tab">
+            <p>
+              Key properties of this LedgerService. Replicas are the number of pods in the Raft cluster.
+              The "Defaults Ref" links to a LedgerDefaults configuration for inherited settings.
+            </p>
+          </InfoSection>
+          <InfoSection title="Pods tab">
+            <p>
+              Each pod is one node in the Raft consensus cluster. You can view its logs
+              or open an interactive terminal shell directly from here.
+            </p>
+          </InfoSection>
+          <InfoSection title="Events tab">
+            <p>
+              Kubernetes events for this service and its pods. "Normal" events are
+              informational (pod scheduled, image pulled). "Warning" events indicate
+              problems (crash loops, failed mounts). Events are cleaned up after ~1 hour.
+            </p>
+          </InfoSection>
+          <InfoSection title="Storage tab">
+            <p>
+              <strong>PVCs</strong> &mdash; each pod gets its own PVC to store Pebble database
+              files and WAL data. The storage class determines where data lives (local SSD, EBS, etc.).
+            </p>
+            <p>
+              <strong>Services</strong> &mdash; stable network endpoints to reach the Ledger pods.
+              The headless service is used for Raft peer discovery between nodes.
+            </p>
+          </InfoSection>
+          <InfoSection title="Conditions tab">
+            <p>
+              The operator's view of this service's health. Each condition tracks a specific aspect
+              (e.g. "Available", "Progressing"). Status=True means the condition is met.
+            </p>
+          </InfoSection>
+          <InfoSection title="Scaling">
+            <p>
+              The Raft consensus protocol requires an odd number of replicas (1, 3, 5, 7)
+              for clean leader election. More replicas improve fault tolerance and read throughput.
+            </p>
+          </InfoSection>
+        </>
+      }
+    >
     <div>
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
@@ -291,7 +345,7 @@ export function LedgerServiceDetailPage() {
           <Card>
             <CardContent className="pt-6">
               {!pods.length ? (
-                <p className="text-muted-foreground">No pods found.</p>
+                <p className="text-muted-foreground">No pods found. The operator may still be creating them.</p>
               ) : (
                 <Table>
                   <TableHeader>
@@ -373,7 +427,7 @@ export function LedgerServiceDetailPage() {
           <Card>
             <CardContent className="pt-6">
               {!events.length ? (
-                <p className="text-muted-foreground">No recent events.</p>
+                <p className="text-muted-foreground">No recent events &mdash; everything looks normal.</p>
               ) : (
                 <Table>
                   <TableHeader>
@@ -433,7 +487,7 @@ export function LedgerServiceDetailPage() {
               </CardHeader>
               <CardContent>
                 {!pvcs.length ? (
-                  <p className="text-muted-foreground">No PVCs found.</p>
+                  <p className="text-muted-foreground">No PVCs found. Persistence may be disabled for this service.</p>
                 ) : (
                   <Table>
                     <TableHeader>
@@ -506,7 +560,7 @@ export function LedgerServiceDetailPage() {
           <Card>
             <CardContent className="pt-6">
               {!svc.status?.conditions?.length ? (
-                <p className="text-muted-foreground">No conditions reported.</p>
+                <p className="text-muted-foreground">No conditions reported yet. The operator may still be reconciling.</p>
               ) : (
                 <Table>
                   <TableHeader>
@@ -568,7 +622,10 @@ export function LedgerServiceDetailPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Scale {name}</DialogTitle>
-            <DialogDescription>Set the desired replica count.</DialogDescription>
+            <DialogDescription>
+              Set the number of Raft cluster nodes. Use an odd number (1, 3, 5, 7)
+              for clean leader election. Changes take effect immediately.
+            </DialogDescription>
           </DialogHeader>
           <div>
             <Label htmlFor="replicas">Replicas</Label>
@@ -600,7 +657,8 @@ export function LedgerServiceDetailPage() {
           <DialogHeader>
             <DialogTitle>Duplicate {name}</DialogTitle>
             <DialogDescription>
-              Create a new LedgerService with the same spec.
+              Create a new independent LedgerService with the same configuration.
+              It will have its own data and storage.
             </DialogDescription>
           </DialogHeader>
           <div>
@@ -632,8 +690,8 @@ export function LedgerServiceDetailPage() {
           <DialogHeader>
             <DialogTitle>Delete {name}</DialogTitle>
             <DialogDescription>
-              This will delete the LedgerService and all its resources. This
-              cannot be undone.
+              This will permanently delete the LedgerService, its pods, and services.
+              PVCs may be retained depending on the reclaim policy. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -679,5 +737,6 @@ export function LedgerServiceDetailPage() {
         />
       )}
     </div>
+    </PageWithInfo>
   );
 }

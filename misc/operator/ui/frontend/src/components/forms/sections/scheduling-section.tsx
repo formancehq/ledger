@@ -61,7 +61,11 @@ export function SchedulingSection({
   return (
     <FormSection value="scheduling" title="Scheduling" description="Resources, anti-affinity, and disruption budgets">
       {/* Resources */}
-      <FormField label="CPU Request" htmlFor="res-cpu-req">
+      <FormField
+        label="CPU Request"
+        description="Guaranteed CPU allocation per pod (e.g. 500m = 0.5 cores). Kubernetes uses this for scheduling decisions."
+        htmlFor="res-cpu-req"
+      >
         <Input
           id="res-cpu-req"
           value={resources.requests?.cpu ?? ""}
@@ -69,7 +73,11 @@ export function SchedulingSection({
           placeholder={defaultPlaceholder(defaultResources?.requests?.cpu, "500m")}
         />
       </FormField>
-      <FormField label="Memory Request" htmlFor="res-mem-req">
+      <FormField
+        label="Memory Request"
+        description="Guaranteed memory allocation per pod (e.g. 512Mi). Set based on cache size + working set. Pods are evicted if they exceed limits."
+        htmlFor="res-mem-req"
+      >
         <Input
           id="res-mem-req"
           value={resources.requests?.memory ?? ""}
@@ -77,7 +85,11 @@ export function SchedulingSection({
           placeholder={defaultPlaceholder(defaultResources?.requests?.memory, "512Mi")}
         />
       </FormField>
-      <FormField label="CPU Limit" htmlFor="res-cpu-lim">
+      <FormField
+        label="CPU Limit"
+        description="Maximum CPU the pod can use (e.g. 1000m = 1 core). Pod is throttled if it exceeds this. Leave empty for no limit."
+        htmlFor="res-cpu-lim"
+      >
         <Input
           id="res-cpu-lim"
           value={resources.limits?.cpu ?? ""}
@@ -85,7 +97,11 @@ export function SchedulingSection({
           placeholder={defaultPlaceholder(defaultResources?.limits?.cpu, "1000m")}
         />
       </FormField>
-      <FormField label="Memory Limit" htmlFor="res-mem-lim">
+      <FormField
+        label="Memory Limit"
+        description="Maximum memory the pod can use (e.g. 1Gi). Pod is OOM-killed if it exceeds this. Should be >= memory request."
+        htmlFor="res-mem-lim"
+      >
         <Input
           id="res-mem-lim"
           value={resources.limits?.memory ?? ""}
@@ -97,6 +113,7 @@ export function SchedulingSection({
       {/* Pod Anti-Affinity */}
       <FormField
         label="Anti-Affinity Enabled"
+        description="Spread Raft replicas across different nodes to survive node failures. Strongly recommended for production."
         htmlFor="aa-enabled"
         hint={defaultHint(defaultAntiAffinity?.enabled)}
       >
@@ -110,6 +127,7 @@ export function SchedulingSection({
       </FormField>
       <FormField
         label="Anti-Affinity Type"
+        description="'Soft' tries to spread pods but allows co-location if necessary. 'Hard' strictly prevents co-location (may block scheduling)."
         htmlFor="aa-type"
         hint={defaultAntiAffinity?.type ? `Default: ${defaultAntiAffinity.type}` : undefined}
       >
@@ -132,6 +150,7 @@ export function SchedulingSection({
       {/* PDB */}
       <FormField
         label="PDB Enabled"
+        description="Create a PodDisruptionBudget to protect against voluntary disruptions (node drains, cluster upgrades)."
         htmlFor="pdb-enabled"
         hint={defaultHint(defaultPdb?.enabled)}
       >
@@ -143,7 +162,11 @@ export function SchedulingSection({
           }
         />
       </FormField>
-      <FormField label="PDB Min Available" htmlFor="pdb-min">
+      <FormField
+        label="PDB Min Available"
+        description="Minimum number of pods that must stay running during disruptions. Ensures Raft quorum is maintained."
+        htmlFor="pdb-min"
+      >
         <Input
           id="pdb-min"
           type="number"
@@ -154,7 +177,11 @@ export function SchedulingSection({
           placeholder={defaultPlaceholder(defaultPdb?.minAvailable)}
         />
       </FormField>
-      <FormField label="PDB Max Unavailable" htmlFor="pdb-max">
+      <FormField
+        label="PDB Max Unavailable"
+        description="Maximum number of pods that can be down simultaneously. Alternative to Min Available. Use one or the other, not both."
+        htmlFor="pdb-max"
+      >
         <Input
           id="pdb-max"
           type="number"

@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatAge, formatImage } from "@/lib/utils";
 import { toast } from "@/lib/use-toast";
 import { Plus, Trash2 } from "lucide-react";
+import { PageWithInfo, InfoSection } from "@/components/info-panel";
 
 export function LedgerDefaultsListPage() {
   const { data, isLoading } = useLedgerDefaults();
@@ -48,13 +49,38 @@ export function LedgerDefaultsListPage() {
   };
 
   return (
+    <PageWithInfo
+      info={
+        <>
+          <InfoSection title="What are Configurations?">
+            <p>
+              Configurations (LedgerDefaults) are cluster-wide templates that define shared settings
+              for your Ledger instances &mdash; container image, resource limits, monitoring, TLS,
+              storage engine tuning, and more.
+            </p>
+            <p>
+              When a LedgerService references a configuration, it inherits all its settings automatically.
+              Change it once here, and all linked services pick it up.
+            </p>
+          </InfoSection>
+          <InfoSection title="Table columns">
+            <p><strong>Referenced By</strong> &mdash; how many LedgerServices currently use this configuration. Click through to see which ones.</p>
+            <p><strong>TLS</strong> &mdash; whether TLS encryption is enabled for gRPC/HTTP traffic.</p>
+            <p><strong>Monitoring</strong> &mdash; whether OpenTelemetry traces are enabled.</p>
+          </InfoSection>
+          <InfoSection title="Inheritance">
+            <p>
+              Configurations are like CSS classes: a LedgerService can reference one to inherit all its settings,
+              then override individual values as needed.
+            </p>
+          </InfoSection>
+        </>
+      }
+    >
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">LedgerDefaults</h1>
-          <p className="text-sm text-muted-foreground">
-            Cluster-scoped default configurations
-          </p>
+          <h1 className="text-2xl font-bold">Configurations</h1>
         </div>
         <Button asChild>
           <Link to="/ledger-defaults/new">
@@ -71,8 +97,12 @@ export function LedgerDefaultsListPage() {
           ))}
         </div>
       ) : !data?.length ? (
-        <div className="text-center py-12 text-muted-foreground">
-          No LedgerDefaults found.
+        <div className="text-center py-12 text-muted-foreground space-y-2">
+          <p>No configurations found yet.</p>
+          <p className="text-xs">
+            Click &ldquo;Create&rdquo; to define a shared configuration template.
+            You can then reference it from any LedgerService to inherit its settings.
+          </p>
         </div>
       ) : (
         <Table>
@@ -168,5 +198,6 @@ export function LedgerDefaultsListPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </PageWithInfo>
   );
 }

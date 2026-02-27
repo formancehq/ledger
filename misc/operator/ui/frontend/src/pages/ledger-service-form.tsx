@@ -51,6 +51,7 @@ import { IngressSection } from "@/components/forms/sections/ingress-section";
 import { computeDiff, formatValue } from "@/lib/diff";
 import { toast } from "@/lib/use-toast";
 import { ArrowLeft, Save } from "lucide-react";
+import { PageWithInfo, InfoSection } from "@/components/info-panel";
 
 export function LedgerServiceFormPage() {
   const { ns, name } = useParams<{ ns: string; name?: string }>();
@@ -155,6 +156,39 @@ export function LedgerServiceFormPage() {
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
+    <PageWithInfo
+      info={
+        <>
+          <InfoSection title={isEdit ? "Editing" : "Creating"}>
+            <p>
+              {isEdit
+                ? "Modify the service configuration below. When you save, a diff will show exactly what changed before applying."
+                : "Configure a new Ledger instance. Start with the General section (name, replicas, defaults), then expand the other sections to customize."}
+            </p>
+          </InfoSection>
+          <InfoSection title="Sections">
+            <p><strong>General</strong> &mdash; name, replicas, and which LedgerDefaults to inherit.</p>
+            <p><strong>Image</strong> &mdash; container image and pull policy.</p>
+            <p><strong>Config</strong> &mdash; ports, cluster ID, and other core settings.</p>
+            <p><strong>Pebble</strong> &mdash; storage engine tuning (cache, compaction, write buffer).</p>
+            <p><strong>Raft</strong> &mdash; consensus protocol timeouts and snapshotting.</p>
+            <p><strong>Health</strong> &mdash; liveness/readiness probe configuration.</p>
+            <p><strong>Security</strong> &mdash; TLS and response signing.</p>
+            <p><strong>Monitoring</strong> &mdash; OpenTelemetry traces and metrics.</p>
+            <p><strong>Cold Storage</strong> &mdash; offloading older data to cheaper storage.</p>
+            <p><strong>Persistence</strong> &mdash; PVC size and storage class.</p>
+            <p><strong>Service/Ingress</strong> &mdash; networking and external access.</p>
+            <p><strong>Scheduling</strong> &mdash; resource limits, anti-affinity, PDB.</p>
+          </InfoSection>
+          <InfoSection title="Defaults">
+            <p>
+              Most settings are optional &mdash; sensible defaults are used when left empty.
+              If a LedgerDefaults is selected, its values are shown as placeholders.
+            </p>
+          </InfoSection>
+        </>
+      }
+    >
     <div className="max-w-4xl">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
@@ -186,7 +220,7 @@ export function LedgerServiceFormPage() {
       {/* Form */}
       <Accordion type="multiple" defaultValue={["general"]}>
         {/* General (always visible) */}
-        <FormSection value="general" title="General" description="Name, replicas, and defaults reference">
+        <FormSection value="general" title="General" description="Core settings: the service name, how many replicas to run, and which shared configuration to inherit.">
           {!isEdit && (
             <FormField label="Name" htmlFor="ls-name">
               <Input
@@ -374,5 +408,6 @@ export function LedgerServiceFormPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </PageWithInfo>
   );
 }

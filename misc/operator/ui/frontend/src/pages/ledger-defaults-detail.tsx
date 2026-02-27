@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatAge, formatImage } from "@/lib/utils";
 import { toast } from "@/lib/use-toast";
 import { ArrowLeft, Copy, Pencil, Trash2 } from "lucide-react";
+import { PageWithInfo, InfoSection } from "@/components/info-panel";
 
 export function LedgerDefaultsDetailPage() {
   const { name } = useParams<{ name: string }>();
@@ -91,6 +92,32 @@ export function LedgerDefaultsDetailPage() {
   const { ledgerDefaults: d, referencedBy } = data;
 
   return (
+    <PageWithInfo
+      info={
+        <>
+          <InfoSection title="Configuration">
+            <p>
+              This configuration defines default settings (image, resources, TLS, monitoring, etc.)
+              that LedgerServices can inherit by referencing it.
+            </p>
+            <p>
+              Changes here propagate to all linked services automatically.
+            </p>
+          </InfoSection>
+          <InfoSection title="Inheritance">
+            <p>
+              A LedgerService references this configuration via its "Defaults Reference" field.
+              The service inherits all settings, but can override individual values.
+            </p>
+          </InfoSection>
+          <InfoSection title="Actions">
+            <p><strong>Edit</strong> &mdash; modify the configuration with a form editor and diff preview.</p>
+            <p><strong>Duplicate</strong> &mdash; create a copy with a new name (useful for variants like staging vs production).</p>
+            <p><strong>Delete</strong> &mdash; remove this configuration. Linked services will lose inherited settings.</p>
+          </InfoSection>
+        </>
+      }
+    >
     <div>
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
@@ -104,7 +131,7 @@ export function LedgerDefaultsDetailPage() {
         <div className="flex-1">
           <h1 className="text-2xl font-bold">{d.metadata.name}</h1>
           <p className="text-sm text-muted-foreground">
-            Cluster-scoped &middot; Age: {formatAge(d.metadata.creationTimestamp)}
+            Cluster-scoped configuration template &middot; Age: {formatAge(d.metadata.creationTimestamp)}
           </p>
         </div>
         <div className="flex gap-2">
@@ -200,7 +227,8 @@ export function LedgerDefaultsDetailPage() {
           <CardContent>
             {!referencedBy.length ? (
               <p className="text-muted-foreground">
-                No LedgerServices reference this defaults.
+                No LedgerServices reference this configuration yet.
+                To use it, create or edit a LedgerService and set its &ldquo;Defaults Reference&rdquo; to &ldquo;{d.metadata.name}&rdquo;.
               </p>
             ) : (
               <Table>
@@ -289,5 +317,6 @@ export function LedgerDefaultsDetailPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </PageWithInfo>
   );
 }

@@ -27,6 +27,7 @@ export function ColdStorageSection({ value = {}, defaults, onChange }: ColdStora
     <FormSection value="cold-storage" title="Cold Storage" description="Snapshot cold storage backend">
       <FormField
         label="Driver"
+        description="Storage backend for Raft snapshots. Use 'filesystem' for local disk or 's3' for S3-compatible object storage."
         htmlFor="cs-driver"
         hint={defaults?.driver ? `Default: ${defaults.driver}` : undefined}
       >
@@ -43,7 +44,11 @@ export function ColdStorageSection({ value = {}, defaults, onChange }: ColdStora
           </SelectContent>
         </Select>
       </FormField>
-      <FormField label="Path" description="For filesystem driver" htmlFor="cs-path">
+      <FormField
+        label="Path"
+        description="Local filesystem path for snapshot storage. Only used with the 'filesystem' driver."
+        htmlFor="cs-path"
+      >
         <Input
           id="cs-path"
           value={value.path ?? ""}
@@ -51,7 +56,11 @@ export function ColdStorageSection({ value = {}, defaults, onChange }: ColdStora
           placeholder={defaultPlaceholder(defaults?.path, "/data/cold")}
         />
       </FormField>
-      <FormField label="Bucket ID" htmlFor="cs-bucket-id">
+      <FormField
+        label="Bucket ID"
+        description="Logical identifier for partitioning snapshots within the storage backend. Useful for multi-tenant setups."
+        htmlFor="cs-bucket-id"
+      >
         <Input
           id="cs-bucket-id"
           value={value.bucketId ?? ""}
@@ -59,7 +68,11 @@ export function ColdStorageSection({ value = {}, defaults, onChange }: ColdStora
           placeholder={defaultPlaceholder(defaults?.bucketId)}
         />
       </FormField>
-      <FormField label="S3 Bucket" htmlFor="cs-s3-bucket">
+      <FormField
+        label="S3 Bucket"
+        description="Name of the S3 bucket where snapshots are stored. The bucket must already exist."
+        htmlFor="cs-s3-bucket"
+      >
         <Input
           id="cs-s3-bucket"
           value={value.s3?.bucket ?? ""}
@@ -67,7 +80,11 @@ export function ColdStorageSection({ value = {}, defaults, onChange }: ColdStora
           placeholder={defaultPlaceholder(defaults?.s3?.bucket, "my-bucket")}
         />
       </FormField>
-      <FormField label="S3 Region" htmlFor="cs-s3-region">
+      <FormField
+        label="S3 Region"
+        description="AWS region of the S3 bucket (e.g. us-east-1, eu-west-1)."
+        htmlFor="cs-s3-region"
+      >
         <Input
           id="cs-s3-region"
           value={value.s3?.region ?? ""}
@@ -75,7 +92,11 @@ export function ColdStorageSection({ value = {}, defaults, onChange }: ColdStora
           placeholder={defaultPlaceholder(defaults?.s3?.region, "us-east-1")}
         />
       </FormField>
-      <FormField label="S3 Endpoint" htmlFor="cs-s3-endpoint">
+      <FormField
+        label="S3 Endpoint"
+        description="Custom S3 endpoint URL. Use this for MinIO, Ceph, or other S3-compatible services."
+        htmlFor="cs-s3-endpoint"
+      >
         <Input
           id="cs-s3-endpoint"
           value={value.s3?.endpoint ?? ""}
