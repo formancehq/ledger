@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
@@ -86,49 +85,31 @@ func (node *Node) execClusterCommand(ctx context.Context, fn func() error) error
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
 type Node struct {
-	rawNode                 *raft.RawNode
-	logger                  logging.Logger
-	fsm                     *state.Machine
-	wal                     wal.WAL
-	transport               Transport
-	config                  NodeConfig
-	proposeCh               chan *Proposal
-	clusterCommandCh        chan *clusterCommand
-	confState               *raftpb.ConfState
-	futures                 SyncMap[uint64, *futures.Future[state.ApplyResult]]
-	lastSoftState           atomic.Pointer[raft.SoftState]
-	snapshotFetcherProvider state.SnapshotFetcherProvider
-	observer                *Observer
+	rawNode          *raft.RawNode
+	logger           logging.Logger
+	fsm              *state.Machine
+	wal              wal.WAL
+	transport        Transport
+	config           NodeConfig
+	proposeCh        chan *Proposal
+	clusterCommandCh chan *clusterCommand
+	confState        *raftpb.ConfState
+	lastSoftState    atomic.Pointer[raft.SoftState]
+	observer         *Observer
+	applier          *Applier
 
-	store             *dal.Store
-	spool             spool.Spool
-	status            *atomic.Int32
-	snapshotThreshold uint64
-	compactionMargin  uint64
-	taskExecutor      *singleTaskExecutor
-	gatingTerminated  chan struct{}
-	readies           chan raft.Ready
-	readyTerminated   chan raft.Ready
-	tasks             *taskSet
-	stopChannel       chan chan struct{}
+	readies         chan raft.Ready
+	readyTerminated chan raft.Ready
+	tasks           *taskSet
+	stopChannel     chan chan struct{}
 
-	// Metrics
-	applyEntriesHistogram             metric.Int64Histogram
-	applyEntriesBatchSizeCounter      metric.Int64Counter
-	applyEntriesBatchSizeHistogram    metric.Int64Histogram
+	// Metrics (kept on Node: WAL/transport/orchestrate-related)
 	processEntryHistogram             metric.Int64Histogram
 	appendEntriesHistogram            metric.Int64Histogram
 	leadMonitorHistogram              metric.Int64Gauge
 	committedEntriesPerReadyHistogram metric.Int64Histogram
-	createSnapshotHistogram           metric.Float64Histogram
-	snapshotTriggeredCounter          metric.Int64Counter
 	readyWaitDurationHistogram        metric.Int64Histogram
 	readyTerminatedWaitHistogram      metric.Int64Histogram
-	unspoolDurationHistogram          metric.Float64Histogram
-	gatingWaitDurationHistogram       metric.Int64Histogram
-	readiesDuringGatingHistogram      metric.Int64Histogram
-	maintenanceSnapshotHistogram      metric.Float64Histogram
-	maintenanceReplaySpoolHistogram   metric.Float64Histogram
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -263,29 +244,40 @@ func NewNode(
 	initialStatus := atomic.Int32{}
 	initialStatus.Store(statusNormal)
 
-	node := &Node{
-		logger:                  logger,
-		wal:                     wal,
-		transport:               transport,
-		config:                  cfg,
-		proposeCh:               make(chan *Proposal, cfg.ProposeQueueCapacity),
-		clusterCommandCh:        make(chan *clusterCommand, 1),
-		store:                   store,
+	applier := &Applier{
 		fsm:                     fsm,
 		spool:                   spool,
+		store:                   store,
+		wal:                     wal,
+		futures:                 &SyncMap[uint64, *futures.Future[state.ApplyResult]]{},
+		taskExecutor:            newSingleTaskExecutor(logger),
+		logger:                  logger,
 		snapshotThreshold:       cfg.SnapshotThreshold,
 		compactionMargin:        cfg.CompactionMargin,
-		status:                  &initialStatus,
-		taskExecutor:            newSingleTaskExecutor(logger),
-		confState:               &initialConfState,
+		replayBatchSize:         cfg.ReplayBatchSize,
 		snapshotFetcherProvider: snapshotFetcherProvider,
-		readies:                 make(chan raft.Ready, 1),
-		readyTerminated:         make(chan raft.Ready, 1),
-		tasks:                   newTaskSet(),
-		stopChannel:             make(chan chan struct{}),
+		status:                  &initialStatus,
+		ch:                      make(chan applyWork, 1),
 	}
 
-	node.applyEntriesHistogram, err = meter.Int64Histogram("raft.apply_entries.duration",
+	node := &Node{
+		logger:           logger,
+		wal:              wal,
+		transport:        transport,
+		config:           cfg,
+		proposeCh:        make(chan *Proposal, cfg.ProposeQueueCapacity),
+		clusterCommandCh: make(chan *clusterCommand, 1),
+		fsm:              fsm,
+		confState:        &initialConfState,
+		applier:          applier,
+		readies:          make(chan raft.Ready, 1),
+		readyTerminated:  make(chan raft.Ready, 1),
+		tasks:            newTaskSet(),
+		stopChannel:      make(chan chan struct{}),
+	}
+
+	// Initialize applier metrics
+	applier.applyEntriesHistogram, err = meter.Int64Histogram("raft.apply_entries.duration",
 		metric.WithDescription("Time spent applying entries to Machine"),
 		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
@@ -296,7 +288,7 @@ func NewNode(
 		panic(err)
 	}
 
-	node.applyEntriesBatchSizeCounter, err = meter.Int64Counter("raft.apply_entries.batch_size",
+	applier.applyEntriesBatchSizeCounter, err = meter.Int64Counter("raft.apply_entries.batch_size",
 		metric.WithDescription("Size of batches passed to ApplyEntries"),
 		metric.WithUnit("1"),
 	)
@@ -304,7 +296,7 @@ func NewNode(
 		panic(err)
 	}
 
-	node.applyEntriesBatchSizeHistogram, err = meter.Int64Histogram("raft.apply_entries.batch_size_distribution",
+	applier.applyEntriesBatchSizeHistogram, err = meter.Int64Histogram("raft.apply_entries.batch_size_distribution",
 		metric.WithDescription("Distribution of batch sizes passed to ApplyEntries"),
 		metric.WithUnit("1"),
 		metric.WithExplicitBucketBoundaries(
@@ -353,7 +345,7 @@ func NewNode(
 		panic(err)
 	}
 
-	node.createSnapshotHistogram, err = meter.Float64Histogram("raft.syncer.create_snapshot.duration",
+	applier.createSnapshotHistogram, err = meter.Float64Histogram("raft.syncer.create_snapshot.duration",
 		metric.WithDescription("Time spent creating snapshot in syncer"),
 		metric.WithUnit("ms"),
 		metric.WithExplicitBucketBoundaries(
@@ -364,7 +356,7 @@ func NewNode(
 		panic(err)
 	}
 
-	node.snapshotTriggeredCounter, err = meter.Int64Counter("raft.snapshot.triggered",
+	applier.snapshotTriggeredCounter, err = meter.Int64Counter("raft.snapshot.triggered",
 		metric.WithDescription("Number of snapshots triggered"),
 		metric.WithUnit("1"),
 	)
@@ -396,7 +388,7 @@ func NewNode(
 		panic(err)
 	}
 
-	node.unspoolDurationHistogram, err = meter.Float64Histogram(
+	applier.unspoolDurationHistogram, err = meter.Float64Histogram(
 		"raft.node.unspool.duration",
 		metric.WithDescription("Time spent in unspoolAndResume after a maintenance task (snapshot/checkpoint)"),
 		metric.WithUnit("us"),
@@ -408,7 +400,7 @@ func NewNode(
 		panic(err)
 	}
 
-	node.gatingWaitDurationHistogram, err = meter.Int64Histogram(
+	applier.gatingWaitDurationHistogram, err = meter.Int64Histogram(
 		"raft.node.gating.wait_duration",
 		metric.WithDescription("Time spent waiting for gatingTerminated (maintenance task completion)"),
 		metric.WithUnit("us"),
@@ -420,7 +412,7 @@ func NewNode(
 		panic(err)
 	}
 
-	node.readiesDuringGatingHistogram, err = meter.Int64Histogram(
+	applier.readiesDuringGatingHistogram, err = meter.Int64Histogram(
 		"raft.node.gating.readies_processed",
 		metric.WithDescription("Number of Readies processed during each gating period"),
 		metric.WithUnit("1"),
@@ -432,7 +424,7 @@ func NewNode(
 		panic(err)
 	}
 
-	node.maintenanceSnapshotHistogram, err = meter.Float64Histogram(
+	applier.maintenanceSnapshotHistogram, err = meter.Float64Histogram(
 		"raft.node.maintenance.snapshot_creation.duration",
 		metric.WithDescription("Time spent creating the snapshot during a maintenance task (excluding replay spool)"),
 		metric.WithUnit("us"),
@@ -444,7 +436,7 @@ func NewNode(
 		panic(err)
 	}
 
-	node.maintenanceReplaySpoolHistogram, err = meter.Float64Histogram(
+	applier.maintenanceReplaySpoolHistogram, err = meter.Float64Histogram(
 		"raft.node.maintenance.replay_spool.duration",
 		metric.WithDescription("Time spent replaying spooled entries after snapshot creation in a maintenance task"),
 		metric.WithUnit("us"),
@@ -464,7 +456,7 @@ func NewNode(
 
 	if !isStoreUpToDate {
 		logger.Infof("Store is not up to date, resuming from snapshot and tagging node as out of sync")
-		node.status.Store(statusOutOfSync)
+		applier.status.Store(statusOutOfSync)
 	} else {
 		// Recovery: if a period is in CLOSING state but no seal checkpoint exists,
 		// the node crashed after ClosePeriod batch.Commit() but before checkpoint creation.
@@ -490,7 +482,7 @@ func NewNode(
 			return nil, fmt.Errorf("getting store last applied index: %w", err)
 		}
 
-		if err := node.replaySpool(context.Background(), storeLastAppliedIndex); err != nil {
+		if err := applier.replaySpool(context.Background(), storeLastAppliedIndex); err != nil {
 			return nil, fmt.Errorf("replaying spool: %w", err)
 		}
 	}
@@ -523,6 +515,7 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	}
 
 	node.tasks.add(newTask(node.orchestrate))
+	node.tasks.add(newTask(node.applier.Run))
 	node.tasks.add(newTask(node.processReadies))
 	node.tasks.run(ctx)
 
@@ -544,28 +537,16 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 }
 
 func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error {
-	var (
-		readiesDuringGating int64
-		gatingStart         time.Time
-	)
-
 	for {
 		waitStart := time.Now()
 		select {
 		case rd := <-node.readies:
 			node.readyWaitDurationHistogram.Record(context.Background(), time.Since(waitStart).Microseconds())
-			if !gatingStart.IsZero() {
-				readiesDuringGating++
-			}
 			now := time.Now()
-			err := node.processReady(ctx, rd)
+			err := node.processReady(ctx, stop, rd)
 			node.processEntryHistogram.Record(context.Background(), time.Since(now).Microseconds())
 			if err != nil {
 				return err
-			}
-			// Detect if gating just started during processReady
-			if node.gatingTerminated != nil && gatingStart.IsZero() {
-				gatingStart = time.Now()
 			}
 			terminatedStart := time.Now()
 			select {
@@ -574,26 +555,13 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 			case <-stop:
 				return nil
 			}
-		case <-node.gatingTerminated:
-			node.gatingWaitDurationHistogram.Record(context.Background(), time.Since(gatingStart).Microseconds())
-			node.readiesDuringGatingHistogram.Record(context.Background(), readiesDuringGating)
-			readiesDuringGating = 0
-			gatingStart = time.Time{}
-			// Drain the spool in this goroutine - no race condition possible
-			// since this is the same goroutine that does spooling
-			unspoolStart := time.Now()
-			if err := node.unspoolAndResume(ctx); err != nil {
-				return err
-			}
-			node.unspoolDurationHistogram.Record(context.Background(), float64(time.Since(unspoolStart).Microseconds()))
-			node.gatingTerminated = nil
 		case <-stop:
 			return nil
 		}
 	}
 }
 
-func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
+func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.Ready) error {
 
 	node.logger.Debugf("Processing ready")
 
@@ -606,8 +574,8 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 		// trigger its own syncSnapshot. Doing it here too would start a background
 		// task that is immediately interrupted by the second syncSnapshot call,
 		// which corrupts the spool read cache (entries read but never applied).
-		if ss.Lead != 0 && node.status.Load() == statusOutOfSync && raft.IsEmptySnap(rd.Snapshot) {
-			node.syncSnapshot(ctx, ss.Lead)
+		if ss.Lead != 0 && node.applier.Status() == statusOutOfSync && raft.IsEmptySnap(rd.Snapshot) {
+			node.applier.SyncSnapshot(ctx, ss.Lead)
 		}
 
 		actualNodeLastSoftState := node.lastSoftState.Load()
@@ -634,6 +602,7 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 				if node.observer != nil {
 					node.observer.Emit(LeadershipChangeEvent{IsLeader: true})
 				}
+				node.applier.Drain(stop)
 				node.fsm.OnLeadershipAcquired()
 			}
 		}
@@ -653,6 +622,8 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 			WithFields(map[string]any{"index": rd.Snapshot.Metadata.Index}).
 			Infof("Applying snapshot sent by leader")
 
+		node.applier.Drain(stop)
+
 		if err := node.wal.ApplySnapshot(rd.Snapshot); err != nil {
 			return fmt.Errorf("applying snapshot to storage: %w", err)
 		}
@@ -667,14 +638,14 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 		// fails (network issue, leader unavailable, etc.), the node transitions to
 		// statusOutOfSync and will retry automatically when a leader is detected
 		// via SoftState or on restart (isStoreUpToDate check).
-		node.syncSnapshot(ctx, node.lastSoftState.Load().Lead)
+		node.applier.SyncSnapshot(ctx, node.lastSoftState.Load().Lead)
 	}
 
 	// Send messages via transport
 	node.logger.Debugf("Sending messages via transport")
 	node.transport.Send(rd.Messages)
 
-	// Apply committed entries
+	// Apply conf changes (must happen in processReadies goroutine since rawNode is not thread-safe)
 	for _, entry := range rd.CommittedEntries {
 		var cc raftpb.ConfChangeV2
 		switch entry.Type {
@@ -684,7 +655,7 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 				return fmt.Errorf("unmarshaling ConfChange: %w", err)
 			}
 			cc = ccV1.AsV2()
-			// V1→V2 conversion does not copy Context; propagate it manually.
+			// V1->V2 conversion does not copy Context; propagate it manually.
 			cc.Context = ccV1.Context
 		case raftpb.EntryConfChangeV2:
 			if err := cc.Unmarshal(entry.Data); err != nil {
@@ -710,178 +681,12 @@ func (node *Node) processReady(ctx context.Context, rd raft.Ready) error {
 		}
 	}
 
+	// Submit committed entries to the Applier for async FSM application
 	if len(rd.CommittedEntries) > 0 {
-		switch node.status.Load() {
-		case statusNormal:
-			err := node.applyEntriesToFSM(ctx, node.confState, rd.CommittedEntries...)
-			if err != nil {
-				return fmt.Errorf("applying entries to Machine: %w", err)
-			}
-		default:
-			node.logger.Debugf("Spool committed entries")
-			err := node.spool.AppendCommittedEntries(ctx, rd.CommittedEntries...)
-			if err != nil {
-				return fmt.Errorf("spooling committed entries: %w", err)
-			}
-		}
+		node.applier.Submit(rd.CommittedEntries, node.confState, stop)
 	}
 
 	return nil
-}
-
-func (node *Node) applyEntriesAndResolveCommands(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {
-	start := time.Now()
-	result, err := node.fsm.ApplyEntries(ctx, entries...)
-	if err != nil {
-		return nil, fmt.Errorf("applying entries to Machine: %w", err)
-	}
-	node.applyEntriesHistogram.Record(ctx, time.Since(start).Microseconds())
-	node.applyEntriesBatchSizeCounter.Add(ctx, int64(len(result.Results)))
-	node.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(result.Results)))
-
-	// Resolve all proposal futures. When CheckpointRequired, the last result
-	// is the checkpoint-triggering entry — its future is resolved later by
-	// handleCheckpointRequired once the checkpoint path is known.
-	resolveCount := len(result.Results)
-	if result.CheckpointRequired && resolveCount > 0 {
-		resolveCount--
-	}
-	for _, r := range result.Results[:resolveCount] {
-		future, exists := node.futures.Load(r.ProposalID)
-		if !exists {
-			continue
-		}
-		future.Resolve(r, r.Error)
-		node.futures.Delete(r.ProposalID)
-	}
-
-	return result, nil
-}
-
-// applyEntriesToFSM applies entries directly to the Machine
-func (node *Node) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfState, entries ...raftpb.Entry) error {
-	result, err := node.applyEntriesAndResolveCommands(ctx, entries...)
-	if err != nil {
-		return err
-	}
-
-	// If Machine stopped at a checkpoint boundary (ClosePeriod or CreateCheckpoint),
-	// enter maintenance mode and create the checkpoint off the Raft hot path.
-	if result.CheckpointRequired {
-		return node.handleCheckpointRequired(ctx, entries, result)
-	}
-
-	lastSnapshot, err := node.wal.Snapshot()
-	if err != nil {
-		panic(fmt.Errorf("getting last snapshot: %w", err))
-	}
-
-	if entries[len(entries)-1].Index-lastSnapshot.Metadata.Index >= node.snapshotThreshold {
-		node.triggerSnapshot(ctx, confState, entries[len(entries)-1].Index, lastSnapshot.Metadata.Index)
-	}
-
-	return nil
-}
-
-// handleCheckpointRequired enters maintenance mode to create a checkpoint off
-// the Raft hot path. Handles both ClosePeriod (seal checkpoint) and
-// CreateCheckpoint (backup checkpoint). While the checkpoint is being created,
-// new committed entries are spooled and replayed afterward.
-func (node *Node) handleCheckpointRequired(
-	ctx context.Context,
-	entries []raftpb.Entry,
-	applyResult *state.ApplyEntriesResult,
-) error {
-	// Spool remaining entries — they'll be replayed after the maintenance task
-	if len(applyResult.RemainingEntries) > 0 {
-		if err := node.spool.AppendCommittedEntries(ctx, applyResult.RemainingEntries...); err != nil {
-			return fmt.Errorf("spooling remaining entries: %w", err)
-		}
-	}
-
-	// Last applied index: the boundary entry (before any remaining entries)
-	var frozenAtIndex uint64
-	if len(applyResult.RemainingEntries) > 0 {
-		frozenAtIndex = applyResult.RemainingEntries[0].Index - 1
-	} else {
-		frozenAtIndex = entries[len(entries)-1].Index
-	}
-
-	node.status.Store(statusSnapshotting)
-
-	// Resolve the deferred future for the checkpoint-triggering proposal.
-	// The last result in applyResult.Results is the entry that set CheckpointRequired.
-	var deferredResult *state.ApplyResult
-	var deferredFuture *futures.Future[state.ApplyResult]
-	if len(applyResult.Results) > 0 {
-		deferredResult = &applyResult.Results[len(applyResult.Results)-1]
-		if f, ok := node.futures.Load(deferredResult.ProposalID); ok {
-			deferredFuture = f
-			node.futures.Delete(deferredResult.ProposalID)
-		}
-	}
-
-	node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
-		path, err := node.store.CreateTemporaryCheckpoint("checkpoint")
-		if err != nil {
-			if deferredFuture != nil {
-				deferredFuture.Resolve(state.ApplyResult{}, err)
-			}
-			return 0, fmt.Errorf("creating checkpoint: %w", err)
-		}
-
-		if applyResult.OnCheckpointDone != nil {
-			applyResult.OnCheckpointDone(path)
-		}
-
-		if deferredFuture != nil {
-			deferredResult.CheckpointPath = path
-			deferredFuture.Resolve(*deferredResult, nil)
-		}
-
-		return frozenAtIndex, nil
-	}, nil)
-
-	return nil
-}
-
-// triggerSnapshot creates a Raft snapshot when the threshold is reached.
-func (node *Node) triggerSnapshot(ctx context.Context, confState *raftpb.ConfState, lastEntryIndex, lastSnapshotIndex uint64) {
-	node.snapshotTriggeredCounter.Add(ctx, 1)
-	node.status.Store(statusSnapshotting)
-
-	node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
-		node.logger.WithFields(map[string]any{
-			"applied":           lastEntryIndex,
-			"lastSnapshotIndex": lastSnapshotIndex,
-			"snapshotThreshold": node.snapshotThreshold,
-			"compactionMargin":  node.compactionMargin,
-		}).Infof("Creating new snapshot")
-
-		startTime := time.Now()
-		snapshotData, err := node.fsm.CreateSnapshot(ctx)
-		if err != nil {
-			return 0, err
-		}
-
-		if err := node.wal.CreateSnapshot(lastEntryIndex, confState, snapshotData); err != nil {
-			return 0, err
-		}
-		node.createSnapshotHistogram.Record(ctx, float64(time.Since(startTime).Milliseconds()))
-
-		return lastEntryIndex, nil
-	}, func(ctx context.Context) {
-		// WAL compaction runs after gating ends to avoid holding the WAL
-		// mutex during the spooling window, which would block wal.Append
-		// and stall the Ready pipeline.
-		if lastEntryIndex > node.compactionMargin {
-			if err := node.wal.Compact(lastEntryIndex - node.compactionMargin); err != nil && !errors.Is(err, raft.ErrCompacted) {
-				node.logger.WithFields(map[string]any{
-					"error": err,
-				}).Errorf("Failed to compact WAL")
-			}
-		}
-	})
 }
 
 func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
@@ -936,7 +741,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 		select {
 		case <-ticker.C:
 			// Prevent election timeouts from happening while syncing the Machine
-			status := node.status.Load()
+			status := node.applier.Status()
 			if status != statusSyncing && status != statusOutOfSync {
 				node.rawNode.Tick()
 				if node.config.AutoPromoteThreshold > 0 {
@@ -984,7 +789,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					node.readies <- node.rawNode.Ready()
 				case <-stop:
 					node.logger.Infof("Stopping readyLoop as context was cancelled")
-					node.taskExecutor.interrupt()
+					node.applier.taskExecutor.interrupt()
 					return nil
 				case nodeID := <-node.transport.Unreachable():
 					node.rawNode.ReportUnreachable(nodeID)
@@ -1007,203 +812,12 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					p.Resolve(nil, node.rawNode.Propose(p.data))
 				case cmd := <-node.clusterCommandCh:
 					cmd.errCh <- cmd.fn()
-				case err := <-node.taskExecutor.error():
+				case err := <-node.applier.taskExecutor.error():
 					return fmt.Errorf("task executor error: %w", err)
 				}
 			}
 		}
 	}
-}
-
-func (node *Node) unspoolAndResume(ctx context.Context) error {
-	node.logger.Infof("Background operation terminated, applying spooled entries before resuming...")
-
-	lastAppliedIndex, err := query.ReadLastAppliedIndex(node.store)
-	if err != nil {
-		return fmt.Errorf("getting last applied index: %w", err)
-	}
-
-	if err := node.replaySpool(ctx, lastAppliedIndex); err != nil {
-		return fmt.Errorf("replaying spool: %w", err)
-	}
-
-	node.status.Store(statusNormal)
-
-	lastAppliedIndex, err = query.ReadLastAppliedIndex(node.store)
-	if err != nil {
-		return fmt.Errorf("getting last applied index: %w", err)
-	}
-	if err := node.spool.Prune(lastAppliedIndex); err != nil {
-		return fmt.Errorf("pruning spool: %w", err)
-	}
-
-	node.logger.Infof("Unspooling operation terminated, resuming...")
-
-	return nil
-}
-
-// syncSnapshot starts a background synchronization with the leader.
-// On failure the node transitions to statusOutOfSync so that new entries
-// are spooled and a retry is triggered when a leader reappears in SoftState.
-func (node *Node) syncSnapshot(ctx context.Context, leader uint64) {
-	node.logger.
-		WithFields(map[string]any{
-			"leader": leader,
-		}).
-		Infof("Syncing snapshot from leader")
-
-	node.status.Store(statusSyncing)
-
-	node.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
-		snapshotFetcher, err := node.snapshotFetcherProvider.GetForPeer(leader)
-		if err != nil {
-			node.logger.WithFields(map[string]any{
-				"leader": leader,
-				"error":  err,
-			}).Errorf("Failed to get snapshot fetcher, marking node as out of sync")
-			node.status.Store(statusOutOfSync)
-			return 0, nil
-		}
-		if _, err := node.fsm.SynchronizeWithLeader(ctx, snapshotFetcher); err != nil {
-			node.logger.WithFields(map[string]any{
-				"leader": leader,
-				"error":  err,
-			}).Errorf("Failed to synchronize with leader, marking node as out of sync")
-			node.status.Store(statusOutOfSync)
-			return 0, nil
-		}
-		return 0, nil
-	}, nil)
-}
-
-func (node *Node) replaySpool(ctx context.Context, fromIndex uint64) error {
-
-	node.logger.WithFields(map[string]any{
-		"fromIndex": fromIndex,
-	}).Infof("Replaying spool")
-
-	until, err := node.spool.End()
-	if err != nil {
-		return fmt.Errorf("getting spool end position: %w", err)
-	}
-
-	count := 0
-	batchSize := node.config.ReplayBatchSize
-	batch := make([]raftpb.Entry, 0, batchSize)
-	logFields := map[string]any{}
-	var lastEntry *raftpb.Entry
-	if err := node.spool.ReplayUntil(ctx, *until, fromIndex, func(entry raftpb.Entry) error {
-		batch = append(batch, entry)
-		if len(batch) >= batchSize {
-			result, err := node.applyEntriesAndResolveCommands(ctx, batch...)
-			if err != nil {
-				return err
-			}
-			count += len(batch)
-			batch = batch[:0]
-			lastEntry = &entry
-
-			// Handle checkpoint during replay (ClosePeriod or CreateCheckpoint)
-			if result.CheckpointRequired {
-				if err := node.handleCheckpointDuringReplay(ctx, result); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("replaying spool: %w", err)
-	}
-	if len(batch) > 0 {
-		count += len(batch)
-		result, err := node.applyEntriesAndResolveCommands(ctx, batch...)
-		if err != nil {
-			return err
-		}
-		lastEntry = pointer.For(batch[len(batch)-1])
-
-		// Handle checkpoint during replay (ClosePeriod or CreateCheckpoint)
-		if result.CheckpointRequired {
-			if err := node.handleCheckpointDuringReplay(ctx, result); err != nil {
-				return err
-			}
-		}
-	}
-	if lastEntry != nil {
-		logFields["last_entry_index"] = lastEntry.Index
-	}
-	logFields["count"] = count
-	node.logger.
-		WithFields(logFields).
-		WithField("count", count).
-		Infof("Replayed spool")
-
-	return nil
-}
-
-// handleCheckpointDuringReplay creates a temporary checkpoint and calls the
-// FSM-provided callback when a checkpoint-requiring entry (ClosePeriod or
-// CreateCheckpoint) is encountered during spool replay.
-// Unlike handleCheckpointRequired, this does not enter maintenance mode — the
-// checkpoint is created synchronously (acceptable since we're already off
-// the hot path) and remaining entries are applied directly.
-func (node *Node) handleCheckpointDuringReplay(ctx context.Context, applyResult *state.ApplyEntriesResult) error {
-	checkpointPath, err := node.store.CreateTemporaryCheckpoint("replay")
-	if err != nil {
-		return fmt.Errorf("creating checkpoint during replay: %w", err)
-	}
-
-	if applyResult.OnCheckpointDone != nil {
-		applyResult.OnCheckpointDone(checkpointPath)
-	}
-
-	// Apply remaining entries directly (no re-spool needed since we're replaying)
-	if len(applyResult.RemainingEntries) > 0 {
-		_, err := node.applyEntriesAndResolveCommands(ctx, applyResult.RemainingEntries...)
-		if err != nil {
-			return fmt.Errorf("applying remaining entries after checkpoint during replay: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func (node *Node) runMaintenanceTask(
-	ctx context.Context,
-	task func(ctx context.Context) (uint64, error),
-	postGating func(ctx context.Context),
-) {
-	gatingTerminated := make(chan struct{})
-	node.gatingTerminated = gatingTerminated
-
-	node.taskExecutor.interrupt()
-	node.taskExecutor.run(ctx, func(ctx context.Context) error {
-		snapshotStart := time.Now()
-		frozenAtIndex, err := task(ctx)
-		if err != nil {
-			close(gatingTerminated)
-			return err
-		}
-		node.maintenanceSnapshotHistogram.Record(context.Background(), float64(time.Since(snapshotStart).Microseconds()))
-
-		replayStart := time.Now()
-		if err := node.replaySpool(ctx, frozenAtIndex); err != nil {
-			close(gatingTerminated)
-			return err
-		}
-		node.maintenanceReplaySpoolHistogram.Record(context.Background(), float64(time.Since(replayStart).Microseconds()))
-
-		// End gating before post-gating work (e.g. WAL compaction).
-		// Post-gating work doesn't need the FSM to be frozen and would
-		// unnecessarily extend the spooling window, increasing latency.
-		close(gatingTerminated)
-
-		if postGating != nil {
-			postGating(ctx)
-		}
-
-		return nil
-	})
 }
 
 // handleTransferLeader validates preconditions and calls rawNode.TransferLeader.
@@ -1310,13 +924,13 @@ func (node *Node) Propose(proposal *Proposal) (*futures.Future[state.ApplyResult
 	// The proposal's embedded Future is for Raft consensus (resolved by rawNode.Propose).
 	// The fsmFuture is for Machine processing (resolved when entry is applied).
 	fsmFuture := futures.New[state.ApplyResult]()
-	node.futures.Store(proposal.commandID, fsmFuture)
+	node.applier.futures.Store(proposal.commandID, fsmFuture)
 
 	select {
 	case node.proposeCh <- proposal:
 		return fsmFuture, nil
 	default:
-		node.futures.Delete(proposal.commandID)
+		node.applier.futures.Delete(proposal.commandID)
 		return nil, ErrProposalQueueFull
 	}
 }
@@ -1340,7 +954,7 @@ func (node *Node) IsLeader() bool {
 // isSyncing returns true when the node is restoring a snapshot or checkpoint
 // and is not yet ready to serve as leader.
 func (node *Node) isSyncing() bool {
-	s := node.status.Load()
+	s := node.applier.Status()
 	return s == statusSyncing || s == statusSnapshotting || s == statusOutOfSync
 }
 

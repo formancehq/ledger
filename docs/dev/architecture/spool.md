@@ -241,22 +241,22 @@ The DefaultSpool uses a **batched sync** strategy:
 
 ## Integration with Raft
 
-The Spool is used by the Node component:
+The Spool is used by the **Applier** component (owned by the Node). The Applier runs as a dedicated goroutine, decoupled from the WAL-writing `processReadies` goroutine, so that WAL writes and FSM application can overlap across consecutive Ready cycles:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                            Node                                  │
+│                          Applier                                 │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  On committed entries (from Raft):                              │
-│    1. If syncing: spool.AppendCommittedEntries(entries)         │
+│  On committed entries (received via Submit() channel):          │
+│    1. If syncing/snapshotting: spool.AppendCommittedEntries()   │
 │    2. If normal: applyEntriesToFSM(entries)                     │
-│    3. On sync completion (finalizeSynchronization):             │
+│    3. On gating termination (unspoolAndResume):                 │
 │       - end := spool.End()                                      │
 │       - spool.ReplayUntil(end, lastApplied, fsm.Apply)          │
 │       - spool.Prune(lastApplied)                                │
 │    4. If snapshot threshold reached:                            │
-│       - Create snapshot                                         │
+│       - Create snapshot (maintenance task)                      │
 │       - wal.Compact()                                           │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘

@@ -81,25 +81,47 @@ The system uses `go.etcd.io/etcd/raft/v3`, a high-quality Raft implementation us
 
 `internal/infra/node/node.go` provides a wrapper around `raft.RawNode` that:
 
-- Manages node lifecycle
+- Manages node lifecycle (orchestrate loop, transport, proposals)
 - Processes incoming Raft messages
-- Applies committed commands to the FSM (Machine)
-- Manages snapshots and synchronization
+- Writes to the WAL and sends messages via transport
+- Delegates FSM application to the **Applier**
 
 ```go
 type Node struct {
-    rawNode                 *raft.RawNode
-    logger                  logging.Logger
-    fsm                     *state.Machine
-    wal                     wal.WAL
-    transport               Transport
-    config                  NodeConfig
-    spool                   spool.Spool
-    store                   *data.Store
-    snapshotFetcherProvider state.SnapshotFetcherProvider
-    // ... and other fields
+    rawNode          *raft.RawNode
+    logger           logging.Logger
+    fsm              *state.Machine
+    wal              wal.WAL
+    transport        Transport
+    config           NodeConfig
+    applier          *Applier   // owns FSM application and gating/spool lifecycle
+    // ... and other fields (proposals, metrics, etc.)
 }
 ```
+
+#### Applier
+
+`internal/infra/node/applier.go` decouples WAL writes from FSM application by running as a dedicated goroutine. This allows WAL write of Ready N+1 to overlap with FSM application of Ready N, reducing each Raft cycle from `WAL_time + FSM_time` to `max(WAL_time, FSM_time)`.
+
+```go
+type Applier struct {
+    fsm                     *state.Machine
+    spool                   spool.Spool
+    store                   *dal.Store
+    wal                     wal.WAL
+    futures                 *SyncMap[uint64, *futures.Future[state.ApplyResult]]
+    taskExecutor            *singleTaskExecutor
+    status                  *atomic.Int32       // statusNormal, statusSyncing, etc.
+    ch                      chan applyWork       // buffered(1)
+    // ... config, metrics, etc.
+}
+```
+
+The Applier provides three key methods:
+
+- **`Submit(entries, confState, stop)`**: Asynchronously sends committed entries for FSM application (or spooling)
+- **`Drain(stop)`**: Blocks until all previously submitted work is processed (used before snapshot install and leadership acquisition)
+- **`Run(ctx, stop)`**: The goroutine loop that processes work items and handles gating termination
 
 #### Storage
 
@@ -325,27 +347,27 @@ The leader tracks each follower's state:
 
 #### Code Reference
 
-In `internal/infra/node/node.go`, the follower receives and applies the snapshot through a two-phase process:
+In `internal/infra/node/node.go`, the follower receives and applies the snapshot through a two-phase process. The Applier is drained first to ensure no concurrent FSM access:
 
 ```go
 // Phase 1: Install snapshot to FSM (in-memory state)
 if !raft.IsEmptySnap(rd.Snapshot) {
     node.logger.Infof("Applying snapshot sent by leader")
-    
+
+    // Drain the Applier to ensure no concurrent FSM access
+    node.applier.Drain(stop)
+
     // Write snapshot to WAL
     node.wal.ApplySnapshot(rd.Snapshot)
-    
+
     // Install snapshot state in FSM (fast, in-memory)
-    node.fsm.InstallSnapshot(rd.Snapshot.Data)
-    
+    node.fsm.InstallSnapshot(ctx, rd.Snapshot)
+
     // Report success to Raft
     node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
-}
 
-// Phase 2: Synchronize store with leader (async, can be slow)
-// This happens when the FSM detects the store is behind
-if !node.fsm.IsStoreUpToDate() {
-    node.fsm.SynchronizeWithLeader(ctx, leaderID, logReaderProvider)
+    // Start async synchronization with leader
+    node.applier.SyncSnapshot(ctx, node.lastSoftState.Load().Lead)
 }
 ```
 

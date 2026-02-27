@@ -17,7 +17,6 @@ Refactor:
 * Simplify processor
 * Split admission
 * Check all commands match a log type payload
-* Decoupler wal write / state machine processing
 * Leader reads
 
 Later:

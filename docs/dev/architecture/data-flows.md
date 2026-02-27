@@ -198,7 +198,7 @@ When a follower joins the cluster or recovers after a failure, it must synchroni
 
 ### Node Synchronization State Machine
 
-The **Node** manages the synchronization process through a four-state machine. For the complete cluster lifecycle (bootstrap, join, synchronization, and learner promotion), see [Cluster Lifecycle](../../ops/cluster-operations.md).
+The **Applier** (owned by the Node) manages the synchronization process through a four-state machine. For the complete cluster lifecycle (bootstrap, join, synchronization, and learner promotion), see [Cluster Lifecycle](../../ops/cluster-operations.md).
 
 | Status | Value | Description |
 |--------|-------|-------------|
@@ -248,23 +248,23 @@ If the leader is unreachable during sync, the node falls back to `statusOutOfSyn
 
 #### Entry Processing During Sync
 
-While synchronization is in progress (`status != statusNormal`), entry processing behaves differently:
+While synchronization is in progress (`status != statusNormal`), entry processing behaves differently. The Applier goroutine routes committed entries to either the FSM or the Spool:
 
 ```go
-// In node.processReady():
-switch node.status.Load() {
-case statusNormal:
-    // Normal: apply directly to FSM
-    results, err = node.applyEntriesToFSM(ctx, node.confState, rd.CommittedEntries...)
+// In the Applier.Run() goroutine:
+case work := <-a.ch:
+    switch a.status.Load() {
+    case statusNormal:
+        // Normal: apply directly to FSM
+        a.applyEntriesToFSM(ctx, work.confState, work.entries...)
 
-case statusSyncing, statusSnapshotting:
-    // Syncing/Snapshotting: spool entries for later
-    node.spool.AppendCommittedEntries(ctx, rd.CommittedEntries...)
-    results = make([]ApplyResult, len(rd.CommittedEntries))
-}
+    default: // statusSyncing, statusSnapshotting
+        // Syncing/Snapshotting: spool entries for later
+        a.spool.AppendCommittedEntries(ctx, work.entries...)
+    }
 ```
 
-This ensures that new Raft entries committed during synchronization are not lost -- they are buffered in the Spool.
+The `processReadies` goroutine submits entries asynchronously via `node.applier.Submit()`, allowing WAL writes to overlap with FSM application across consecutive Ready cycles. This ensures that new Raft entries committed during synchronization are not lost -- they are buffered in the Spool.
 
 #### Protection Against Premature Leadership
 
@@ -278,7 +278,7 @@ Two mechanisms prevent a syncing node from becoming leader prematurely:
 When the background sync completes:
 
 1. The `gatingTerminated` channel is closed
-2. The `processReadies` goroutine detects this and calls `unspoolAndResume`:
+2. The `Applier` goroutine detects this and calls `unspoolAndResume`:
    - Replays remaining spooled entries
    - Prunes applied spool entries
    - Sets status to `statusNormal`
@@ -287,39 +287,42 @@ When the background sync completes:
 
 ```mermaid
 sequenceDiagram
-    participant Node as Raft Node
+    participant Node as processReadies
+    participant Applier as Applier goroutine
     participant WAL
     participant Spool
     participant FSM
     participant Store
     participant Leader as Leader (gRPC)
 
-    Note over Node: Store behind snapshot at startup
-    Node->>Node: status = OutOfSync
+    Note over Applier: Store behind snapshot at startup
+    Applier->>Applier: status = OutOfSync
     Note over Node: SoftState reveals leader
-    Node->>Node: status = Syncing
-    Node->>Node: Start background task
+    Applier->>Applier: status = Syncing
+    Applier->>Applier: Start background task
 
     par Background Sync
-        Node->>FSM: SynchronizeWithLeader()
+        Applier->>FSM: SynchronizeWithLeader()
         FSM->>Leader: Fetch Pebble checkpoint (SnapshotService gRPC)
         Leader-->>FSM: Checkpoint stream
         FSM->>Store: Restore checkpoint
-        FSM-->>Node: Sync complete
-        Node->>Spool: ReplayUntil(watermark)
+        FSM-->>Applier: Sync complete
+        Applier->>Spool: ReplayUntil(watermark)
         Spool-->>FSM: Apply spooled entries
-        Node->>Node: close(gatingTerminated)
-    and Normal Raft Operations
+        Applier->>Applier: close(gatingTerminated)
+    and Normal Raft Operations (overlapped WAL + FSM)
         Note over Node: New entries committed
-        Node->>Spool: AppendCommittedEntries()
+        Node->>WAL: Append entries
+        Node->>Applier: Submit(entries)
+        Applier->>Spool: AppendCommittedEntries()
         Note over Spool: Entries buffered
     end
 
-    Node->>Node: Detect gatingTerminated closed
-    Node->>Node: unspoolAndResume()
-    Node->>Spool: ReplayUntil() + Prune()
-    Node->>Node: status = Normal
-    Node->>FSM: Apply directly
+    Applier->>Applier: Detect gatingTerminated closed
+    Applier->>Applier: unspoolAndResume()
+    Applier->>Spool: ReplayUntil() + Prune()
+    Applier->>Applier: status = Normal
+    Applier->>FSM: Apply directly
 ```
 
 ### The Spool
@@ -340,12 +343,17 @@ The **Spool** is a temporary buffer that stores committed Raft entries that have
 │                          Raft Node                                   │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
-│  ┌──────────┐    commit    ┌──────────┐    apply    ┌──────────┐   │
-│  │   WAL    │ ──────────► │  Spool   │ ──────────► │   FSM    │   │
-│  └──────────┘             └──────────┘             └──────────┘   │
-│                                 │                                   │
-│                           End() returns                             │
-│                           watermark position                        │
+│  processReadies goroutine:          Applier goroutine:              │
+│                                                                      │
+│  ┌──────────┐  Submit()  ┌──────────┐   apply    ┌──────────┐     │
+│  │   WAL    │ ─────────► │ Applier  │ ─────────► │   FSM    │     │
+│  └──────────┘            └──────────┘            └──────────┘     │
+│                                │                                    │
+│                          (if gating)                                │
+│                                │                                    │
+│                          ┌──────────┐                               │
+│                          │  Spool   │                               │
+│                          └──────────┘                               │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘
 ```
