@@ -17,6 +17,8 @@ RUN go build -o ledger-v3-poc .
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata
 ENV TZ=UTC
+ENV PATH=$PATH:/app
+ENV INSECURE=true
 WORKDIR /app
 COPY --from=builder /build/ledger-v3-poc .
 COPY --from=builder /build/ledgerctl .
