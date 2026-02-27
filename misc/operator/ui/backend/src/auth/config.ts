@@ -1,3 +1,24 @@
+/**
+ * Auth configuration — reads environment variables and validates them.
+ *
+ * Authentication is **entirely optional** and controlled by the AUTH_ENABLED
+ * env var. When disabled (the default), the rest of the auth module is a no-op
+ * and the app behaves exactly as before.
+ *
+ * Environment variables:
+ *
+ *  AUTH_ENABLED          "true" to enable (default: "false")
+ *  AUTH_ISSUER_URL       OIDC provider URL (e.g. "https://accounts.google.com")
+ *  AUTH_CLIENT_ID        OAuth client ID from your OIDC provider
+ *  AUTH_CLIENT_SECRET    OAuth client secret (keep it secret!)
+ *  AUTH_SESSION_SECRET   Random string (min 32 chars) used to sign session cookies
+ *                        Generate one with: openssl rand -hex 32
+ *  AUTH_REDIRECT_URI     Where the OIDC provider redirects after login
+ *                        (default: http://localhost:<PORT>/api/auth/callback)
+ *  AUTH_SCOPES           OAuth scopes to request (default: "openid profile email")
+ *  AUTH_POST_LOGOUT_REDIRECT_URI  Where to go after logout (default: "/")
+ */
+
 export interface AuthConfig {
   issuerUrl: string;
   clientId: string;
@@ -8,9 +29,14 @@ export interface AuthConfig {
   postLogoutRedirectUri: string;
 }
 
+/** true when the AUTH_ENABLED env var is set to "true" (case-insensitive). */
 export const authEnabled: boolean =
   (process.env.AUTH_ENABLED ?? "false").toLowerCase() === "true";
 
+/**
+ * Build and validate the auth configuration from environment variables.
+ * Returns null when auth is disabled, throws on missing/invalid values.
+ */
 export function loadAuthConfig(): AuthConfig | null {
   if (!authEnabled) return null;
 

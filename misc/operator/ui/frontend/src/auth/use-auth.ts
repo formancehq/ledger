@@ -1,3 +1,16 @@
+/**
+ * React hooks for authentication.
+ *
+ * useAuth()   — fetches the current auth status from the backend (GET /api/auth/me).
+ *               Returns { enabled, authenticated, user } so components can adapt:
+ *               - enabled=false  → auth is off, show the app normally
+ *               - authenticated  → user is logged in, show their info
+ *               - !authenticated → redirect to login
+ *
+ * useLogout() — returns an async function that logs the user out (POST /api/auth/logout),
+ *               clears the React Query cache, and redirects to the post-logout page.
+ */
+
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export interface AuthUser {
@@ -24,6 +37,7 @@ async function fetchAuthMe(): Promise<AuthStatus> {
   return res.json();
 }
 
+/** Check current authentication status. Cached for 60 seconds. */
 export function useAuth() {
   return useQuery({
     queryKey: ["auth", "me"],
@@ -33,6 +47,7 @@ export function useAuth() {
   });
 }
 
+/** Returns an async logout function. Clears cache and redirects. */
 export function useLogout() {
   const qc = useQueryClient();
   return async () => {

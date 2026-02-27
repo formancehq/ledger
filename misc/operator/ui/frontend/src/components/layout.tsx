@@ -14,10 +14,16 @@ import { Database, Settings, Box, LogOut, User } from "lucide-react";
 
 const LAST_NS_KEY = "ledger-ui-namespace";
 
+/**
+ * UserInfo — shown at the bottom of the sidebar when auth is enabled.
+ * Displays the logged-in user's name/email and a logout button.
+ * Renders nothing when auth is disabled (the component is invisible).
+ */
 function UserInfo() {
   const { data: auth } = useAuth();
   const logout = useLogout();
 
+  // Don't render anything when auth is off or user is not logged in
   if (!auth?.enabled || !auth.authenticated || !auth.user) return null;
 
   return (

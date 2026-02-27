@@ -31,17 +31,52 @@ ingress:
   hosts: []
   tls: []
 
+# ── Authentication (optional) ─────────────────────────────────────────────────
+# Enable OIDC authentication to restrict access to the operator UI.
+# When disabled (the default), the UI is accessible without login.
+#
+# To enable, set auth.enabled=true and configure an OIDC provider
+# (e.g. Google, Keycloak, Dex, Auth0...).
+#
+# Quick start with Google:
+#   1. Create an OAuth client at https://console.cloud.google.com/apis/credentials
+#   2. Set authorized redirect URI to: https://<your-host>/api/auth/callback
+#   3. Fill in the values below
+#
+# For production, use existingSecret to avoid storing credentials in values.
 auth:
+  # Set to true to require login
   enabled: false
+
+  # OIDC provider URL (e.g. "https://accounts.google.com")
+  # The backend will auto-discover endpoints via .well-known/openid-configuration
   issuerUrl: ""
+
+  # OAuth client credentials — get these from your OIDC provider
   clientId: ""
   clientSecret: ""
+
+  # Random string (min 32 chars) used to sign session cookies.
+  # Generate one with: openssl rand -hex 32
   sessionSecret: ""
+
+  # Where the OIDC provider redirects after login.
+  # Leave empty to auto-detect from the service port (http://localhost:<port>/api/auth/callback)
   redirectUri: ""
+
+  # OAuth scopes to request — "openid" is required, "profile email" gives us name/email
   scopes: "openid profile email"
+
+  # Where to redirect after logout
   postLogoutRedirectUri: "/"
-  # Use an existing secret for clientSecret and sessionSecret.
-  # The secret must contain keys: client-secret and session-secret.
+
+  # Use an existing Kubernetes Secret instead of putting credentials in values.
+  # The Secret must contain two keys: "client-secret" and "session-secret".
+  #
+  # Example:
+  #   kubectl create secret generic operator-ui-auth \
+  #     --from-literal=client-secret=YOUR_CLIENT_SECRET \
+  #     --from-literal=session-secret=$(openssl rand -hex 32)
   existingSecret: ""
 
 nameOverride: ""

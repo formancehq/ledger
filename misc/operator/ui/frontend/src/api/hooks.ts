@@ -12,9 +12,13 @@ import type {
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
+
+  // If the session has expired (or auth is enabled and user isn't logged in),
+  // the backend returns 401. We redirect to the login page automatically.
+  // The never-resolving promise prevents React Query from processing the error
+  // while the browser navigates away.
   if (res.status === 401) {
     window.location.href = "/api/auth/login";
-    // Return a never-resolving promise to prevent downstream errors during redirect
     return new Promise<T>(() => {});
   }
   if (!res.ok) {

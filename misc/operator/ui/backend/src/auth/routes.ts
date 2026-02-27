@@ -1,3 +1,31 @@
+/**
+ * Auth HTTP routes — mounted at /api/auth.
+ *
+ * These implement the standard OAuth 2.0 "Authorization Code" flow:
+ *
+ *   Browser                     Backend                     OIDC Provider
+ *     |                            |                             |
+ *     |--- GET /api/auth/login --->|                             |
+ *     |                            |--- redirect to /authorize ->|
+ *     |                            |                             |
+ *     |<---------- redirect to provider's login page ------------|
+ *     |                            |                             |
+ *     |  (user logs in at the provider, e.g. Google)             |
+ *     |                            |                             |
+ *     |<--- redirect to /api/auth/callback?code=...&state=... --|
+ *     |--- GET /api/auth/callback->|                             |
+ *     |                            |--- POST /token (code) ----->|
+ *     |                            |<-- access_token, id_token --|
+ *     |                            |                             |
+ *     |<-- Set-Cookie + redirect / |                             |
+ *     |                            |                             |
+ *     |--- GET /api/auth/me ------>| (reads cookie, returns user)|
+ *
+ * The "state" parameter is a random value stored temporarily on the backend
+ * to prevent CSRF attacks — it ensures the callback really came from a login
+ * we initiated.
+ */
+
 import { Hono } from "hono";
 import * as client from "openid-client";
 import { authEnabled } from "./config.js";
@@ -10,10 +38,11 @@ import {
   getCookieName,
 } from "./session.js";
 
-// In-memory state store for CSRF protection (state → timestamp)
+// In-memory state store for CSRF protection (state -> timestamp).
+// Each login attempt generates a unique random state that must match on callback.
 const pendingStates = new Map<string, number>();
 
-// Clean up expired states (5 min TTL)
+// States older than 5 minutes are considered expired (the user took too long).
 const STATE_TTL_MS = 5 * 60 * 1000;
 
 function cleanExpiredStates(): void {
@@ -26,7 +55,9 @@ function cleanExpiredStates(): void {
 export function createAuthRoutes(config: AuthConfig | null): Hono {
   const app = new Hono();
 
-  // GET /me — always accessible
+  // GET /me — always accessible, even without a session.
+  // The frontend calls this on load to know whether auth is enabled and
+  // whether the user is already logged in.
   app.get("/me", (c) => {
     if (!authEnabled || !config) {
       return c.json({ enabled: false });
@@ -46,7 +77,8 @@ export function createAuthRoutes(config: AuthConfig | null): Hono {
     });
   });
 
-  // GET /login — redirect to OIDC authorize endpoint
+  // GET /login — starts the login flow by redirecting the browser to the
+  // OIDC provider (e.g. Google). The user will see the provider's login page.
   app.get("/login", (c) => {
     if (!authEnabled || !config) {
       return c.redirect("/");
@@ -65,7 +97,9 @@ export function createAuthRoutes(config: AuthConfig | null): Hono {
     return c.redirect(redirectTo.href);
   });
 
-  // GET /callback — exchange code for tokens
+  // GET /callback — the OIDC provider redirects here after the user logs in.
+  // We exchange the authorization code for tokens, extract user info from the
+  // ID token, create a server-side session, and set a cookie.
   app.get("/callback", async (c) => {
     if (!authEnabled || !config) {
       return c.redirect("/");

@@ -13,8 +13,12 @@ import { createAuthRoutes } from "./auth/routes.js";
 import { createAuthMiddleware } from "./auth/middleware.js";
 
 async function start(): Promise<void> {
+  // Load auth configuration from env vars. Returns null when AUTH_ENABLED is not "true".
   const authConfig = loadAuthConfig();
 
+  // When auth is enabled, we need to perform OIDC discovery at startup.
+  // This fetches the provider's endpoints (authorize, token, userinfo) from
+  // its .well-known/openid-configuration URL. It's async, hence the start() wrapper.
   if (authConfig) {
     initSessions(authConfig.sessionSecret);
     console.log(`OIDC discovery: ${authConfig.issuerUrl} ...`);

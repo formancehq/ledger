@@ -28,6 +28,7 @@ spec:
           value: "{{ .Values.port }}"
         - name: NODE_ENV
           value: "production"
+        {{- /* Auth env vars — only injected when auth.enabled is true */}}
         {{- if .Values.auth.enabled }}
         - name: AUTH_ENABLED
           value: "true"
