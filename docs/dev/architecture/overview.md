@@ -27,6 +27,7 @@ flowchart TB
 
     subgraph Consensus["Consensus Layer"]
         Node[Raft Node<br/>internal/infra/node]
+        Applier[Applier<br/>internal/infra/node]
         Transport[Transport<br/>internal/infra/transport]
     end
 
@@ -58,7 +59,10 @@ flowchart TB
     Node <--> Transport
     Transport <-->|Raft Messages| OtherNodes[Other Nodes]
 
-    Node --> FSM
+    Node -->|WAL writes| WAL
+    Node -->|Submit| Applier
+    Applier --> FSM
+    Applier -->|gating| Spool
     FSM --> Processing
     FSM --> Cache
     FSM --> Attributes
@@ -66,8 +70,6 @@ flowchart TB
 
     Processing --> Attributes
 
-    Node --> WAL
-    Node --> Spool
     Spool --> Store
 
     Cache --> Attributes
@@ -96,13 +98,17 @@ sequenceDiagram
 
     Adm->>Node: Propose()
     Node->>Node: Replicate via Raft
-    
+
     Note over Node: Wait for majority consensus
-    
+
+    Node->>Node: WAL.Append(entries)
+    Node->>Node: Applier.Submit(entries)
+
+    Note over Node: Applier goroutine (async)
     Node->>FSM: Apply(entries)
     FSM->>FSM: Process command
     FSM->>Store: Commit batch
-    
+
     FSM-->>Node: Result
     Node-->>Adm: Future resolved
     Adm-->>Ctrl: Log entries
@@ -163,6 +169,7 @@ graph TB
 
     subgraph Node["internal/infra/node"]
         node_main[node.go]
+        node_applier[applier.go]
         node_transport[transport.go]
         node_queue[queue.go]
     end
@@ -230,10 +237,11 @@ graph TB
     ctrl_default --> data_store
 
     %% Node layer
-    node_main --> state_machine
+    node_main --> node_applier
     node_main --> node_transport
     node_main --> wal_main
-    node_main --> spool_main
+    node_applier --> state_machine
+    node_applier --> spool_main
     node_main --> cache_main
 
     %% State layer
@@ -351,7 +359,8 @@ erDiagram
 
 ### 3. Consensus Layer (`internal/infra/node`, `internal/infra/transport`)
 
-- **Raft Node**: Wraps etcd/raft, manages consensus, applies committed entries
+- **Raft Node**: Wraps etcd/raft, manages consensus, WAL writes, and transport
+- **Applier**: Dedicated goroutine that applies committed entries to the FSM (or spools them during maintenance). Decouples WAL writes from FSM application so they overlap across consecutive Ready cycles.
 - **Transport**: gRPC-based message transport between cluster nodes
 - **Connection Pool**: Manages persistent gRPC connections to peers
 
