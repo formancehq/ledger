@@ -15,9 +15,7 @@ Tests:
 
 Refactor:
 * Simplify processor
-* Separate modules in application package
 * Split admission
-* Categorize raft commands (user commands vs system commands)
 * Check all commands match a log type payload
 * Decoupler wal write / state machine processing
 * Leader reads
