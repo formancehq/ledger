@@ -2,6 +2,7 @@ package testserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -106,6 +107,28 @@ func WorkerAddressInstrumentation(addr *deferred.Deferred[string]) testservice.I
 			return fmt.Errorf("waiting for worker address: %w", err)
 		}
 		runConfiguration.AppendArgs("--"+cmd.WorkerGRPCAddressFlag, address)
+		return nil
+	}
+}
+
+func ExperimentalGlobalExporterInstrumentation(driverDeferred *deferred.Deferred[Driver]) testservice.InstrumentationFunc {
+	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
+		driver, err := driverDeferred.Wait(ctx)
+		if err != nil {
+			return fmt.Errorf("waiting for global exporter driver: %w", err)
+		}
+		config, err := json.Marshal(driver.Config())
+		if err != nil {
+			return fmt.Errorf("marshalling global exporter config: %w", err)
+		}
+		runConfiguration.AppendArgs("--"+cmd.ExperimentalGlobalExporterFlag, driver.Name()+":"+string(config))
+		return nil
+	}
+}
+
+func GlobalExporterResetInstrumentation() testservice.InstrumentationFunc {
+	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
+		runConfiguration.AppendArgs("--" + cmd.GlobalExporterResetFlag)
 		return nil
 	}
 }

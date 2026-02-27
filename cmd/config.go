@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/robfig/cron/v3"
@@ -17,6 +19,8 @@ type commonConfig struct {
 	NumscriptInterpreterFlags   []string                     `mapstructure:"experimental-numscript-interpreter-flags"`
 	ExperimentalFeaturesEnabled bool                         `mapstructure:"experimental-features"`
 	ExperimentalExporters       bool                         `mapstructure:"experimental-exporters"`
+	ExperimentalGlobalExporter  string                       `mapstructure:"experimental-global-exporter"`
+	GlobalExporterReset         bool                         `mapstructure:"global-exporter-reset"`
 	SemconvMetricsNames         bool                         `mapstructure:"semconv-metrics-names"`
 	SchemaEnforcementMode       ledger.SchemaEnforcementMode `mapstructure:"schema-enforcement-mode"`
 }
@@ -36,6 +40,17 @@ func decodeCronSchedule(sourceType, destType reflect.Type, value any) (any, erro
 	}
 
 	return schedule, nil
+}
+
+func parseGlobalExporter(value string) (string, json.RawMessage, error) {
+	driverName, configStr, ok := strings.Cut(value, ":")
+	if !ok || driverName == "" || configStr == "" {
+		return "", nil, fmt.Errorf("invalid global exporter format, expected <driver>:<config>")
+	}
+	if !json.Valid([]byte(configStr)) {
+		return "", nil, fmt.Errorf("invalid global exporter config, expected valid json")
+	}
+	return driverName, json.RawMessage(configStr), nil
 }
 
 func LoadConfig[V any](cmd *cobra.Command) (*V, error) {

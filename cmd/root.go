@@ -19,6 +19,8 @@ const (
 	NumscriptInterpreterFlagsToPass = "experimental-numscript-interpreter-flags"
 	ExperimentalFeaturesFlag        = "experimental-features"
 	ExperimentalExporters           = "experimental-exporters"
+	ExperimentalGlobalExporterFlag  = "experimental-global-exporter"
+	GlobalExporterResetFlag         = "global-exporter-reset"
 )
 
 var (
@@ -37,6 +39,8 @@ func NewRootCommand() *cobra.Command {
 
 	root.PersistentFlags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
 	root.PersistentFlags().Bool(ExperimentalExporters, false, "Enable exporters support")
+	root.PersistentFlags().String(ExperimentalGlobalExporterFlag, "", "Global logs exporter configuration (<driver>:<config>)")
+	root.PersistentFlags().Bool(GlobalExporterResetFlag, false, "Reset global logs exporter state and re-export all logs from the beginning")
 
 	root.AddCommand(NewServeCommand())
 	root.AddCommand(NewBucketsCommand())
