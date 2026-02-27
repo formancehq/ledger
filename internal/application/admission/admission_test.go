@@ -216,22 +216,16 @@ func TestExtractNeededVolumes(t *testing.T) {
 
 		volumes := admission.extractPreloadNeeds(orders).Volumes
 
-		// Should have 2 volume keys: source (world) and destination (user:alice)
-		require.Len(t, volumes, 2)
+		// Should have 1 volume key: only source (world) is preloaded
+		require.Len(t, volumes, 1)
 
 		worldKey := domain.VolumeKey{
 			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "world"},
 			Asset:      "USD",
 		}
-		aliceKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "user:alice"},
-			Asset:      "USD",
-		}
 
 		_, hasWorld := volumes[worldKey]
-		_, hasAlice := volumes[aliceKey]
 		require.True(t, hasWorld, "should have world volume key")
-		require.True(t, hasAlice, "should have alice volume key")
 	})
 
 	t.Run("extracts volumes for revert transaction", func(t *testing.T) {
@@ -267,21 +261,15 @@ func TestExtractNeededVolumes(t *testing.T) {
 
 		volumes := admission.extractPreloadNeeds(orders).Volumes
 
-		// Should have 2 volume keys: original destination (alice, now source) and original source (world, now destination)
-		require.Len(t, volumes, 2)
+		// Should have 1 volume key: only the new source (original destination alice) is preloaded
+		require.Len(t, volumes, 1)
 
-		worldKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "world"},
-			Asset:      "USD",
-		}
 		aliceKey := domain.VolumeKey{
 			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "user:alice"},
 			Asset:      "USD",
 		}
 
-		_, hasWorld := volumes[worldKey]
 		_, hasAlice := volumes[aliceKey]
-		require.True(t, hasWorld, "should have world volume key (destination in revert)")
 		require.True(t, hasAlice, "should have alice volume key (source in revert)")
 	})
 
@@ -321,13 +309,10 @@ func TestExtractNeededVolumes(t *testing.T) {
 
 		volumes := admission.extractPreloadNeeds(orders).Volumes
 
-		// Should have 3 volume keys: world, alice, bob (all in USD)
-		require.Len(t, volumes, 3)
+		// Should have 2 volume keys: alice and bob (original destinations become sources in revert)
+		// Original source "world" is NOT preloaded (it becomes a destination in revert)
+		require.Len(t, volumes, 2)
 
-		worldKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "world"},
-			Asset:      "USD",
-		}
 		aliceKey := domain.VolumeKey{
 			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "user:alice"},
 			Asset:      "USD",
@@ -337,10 +322,8 @@ func TestExtractNeededVolumes(t *testing.T) {
 			Asset:      "USD",
 		}
 
-		_, hasWorld := volumes[worldKey]
 		_, hasAlice := volumes[aliceKey]
 		_, hasBob := volumes[bobKey]
-		require.True(t, hasWorld)
 		require.True(t, hasAlice)
 		require.True(t, hasBob)
 	})
@@ -497,22 +480,16 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 
 		volumes := admission.extractPreloadNeeds(orders).Volumes
 
-		// Should have 2 volume keys: source and destination
-		require.Len(t, volumes, 2, "force=false should extract volumes normally")
+		// Should have 1 volume key: only source is preloaded
+		require.Len(t, volumes, 1, "force=false should extract source volumes only")
 
 		aliceKey := domain.VolumeKey{
 			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "users:alice"},
 			Asset:      "USD",
 		}
-		bobKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "users:bob"},
-			Asset:      "USD",
-		}
 
 		_, hasAlice := volumes[aliceKey]
-		_, hasBob := volumes[bobKey]
 		require.True(t, hasAlice)
-		require.True(t, hasBob)
 	})
 
 	t.Run("mixed orders: force=true skipped, force=false extracted", func(t *testing.T) {
@@ -567,8 +544,8 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 
 		volumes := admission.extractPreloadNeeds(orders).Volumes
 
-		// Should have volumes only from force=false order (2 volume keys)
-		require.Len(t, volumes, 2)
+		// Should have volumes only from force=false order (1 volume key: source only)
+		require.Len(t, volumes, 1)
 
 		// Verify force=true volumes are NOT present
 		forceSourceKey := domain.VolumeKey{
@@ -587,13 +564,12 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		require.True(t, hasNormalSource, "force=false order should have volumes extracted")
 	})
 
-	t.Run("force on revert still extracts volumes", func(t *testing.T) {
+	t.Run("force on revert skips volume extraction", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
 		admission := createTestAdmission(t, store)
 
-		// Revert transactions still need volume preloading even with force=true
-		// because we need to track the reverted amounts correctly
+		// force=true on revert without expandVolumes skips volume preloading entirely
 		orders := []*raftcmdpb.Order{
 			{
 				Type: &raftcmdpb.Order_Apply{
@@ -602,7 +578,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 						Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 							RevertTransaction: &raftcmdpb.RevertTransactionOrder{
 								TransactionId: 1,
-								Force:         true, // Force on revert only affects balance check
+								Force:         true,
 								OriginalPostings: []*commonpb.Posting{
 									{
 										Source:      "world",
@@ -620,9 +596,8 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 
 		volumes := admission.extractPreloadNeeds(orders).Volumes
 
-		// Should still have 2 volume keys for revert (even with force=true)
-		// because volume preloading is needed for correct accounting
-		require.Len(t, volumes, 2, "revert with force=true should still extract volumes")
+		// force=true on revert without expandVolumes should extract 0 volumes
+		require.Len(t, volumes, 0, "revert with force=true should skip volume extraction")
 	})
 }
 
@@ -764,7 +739,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 
 		volumes := admission.extractPreloadNeeds(orders).Volumes
 
-		// Numscript emulation should discover both source and destination
+		// Without expandVolumes, only source volumes are preloaded from numscript
 		require.NotEmpty(t, volumes, "numscript emulation should discover volumes")
 
 		aliceKey := domain.VolumeKey{
@@ -779,7 +754,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 		_, hasAlice := volumes[aliceKey]
 		_, hasBob := volumes[bobKey]
 		require.True(t, hasAlice, "should discover source account from numscript")
-		require.True(t, hasBob, "should discover destination account from numscript")
+		require.False(t, hasBob, "should NOT preload destination account from numscript")
 	})
 
 	t.Run("skips numscript emulation when force is true", func(t *testing.T) {
@@ -849,22 +824,16 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 
 		volumes := admission.extractPreloadNeeds(orders).Volumes
 
-		// Should use explicit postings, not numscript emulation
-		require.Len(t, volumes, 2)
+		// Should use explicit postings, not numscript emulation; only source preloaded
+		require.Len(t, volumes, 1)
 
 		bankKey := domain.VolumeKey{
 			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "bank"},
 			Asset:      "EUR",
 		}
-		merchantKey := domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: testLedgerName, Account: "merchant"},
-			Asset:      "EUR",
-		}
 
 		_, hasBank := volumes[bankKey]
-		_, hasMerchant := volumes[merchantKey]
 		require.True(t, hasBank, "should use explicit posting source")
-		require.True(t, hasMerchant, "should use explicit posting destination")
 	})
 }
 

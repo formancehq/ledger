@@ -840,6 +840,10 @@ components:
         idempotencyKey:
           type: string
           description: Idempotency key to prevent duplicate transactions
+        expandVolumes:
+          type: boolean
+          default: false
+          description: When true, include post-commit volumes (per account/asset) in the response
 
     PostingRequest:
       type: object
@@ -949,6 +953,10 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: Metadata for the revert transaction (supports typed values)
+        expandVolumes:
+          type: boolean
+          default: false
+          description: When true, include post-commit volumes (per account/asset) in the response
 
     RevertTransactionRequestBody:
       type: object
@@ -966,6 +974,10 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: Metadata for the revert transaction (supports typed values)
+        expandVolumes:
+          type: boolean
+          default: false
+          description: When true, include post-commit volumes (per account/asset) in the response
 
     DeleteMetadataRequest:
       type: object
@@ -1043,6 +1055,9 @@ components:
                 additionalProperties:
                   $ref: '#/components/schemas/MetadataValue'
               description: Metadata for accounts involved in the transaction (typed values)
+            postCommitVolumes:
+              $ref: '#/components/schemas/PostCommitVolumes'
+              description: Post-commit volumes per account/asset (only present when expandVolumes is true)
 
     GetTransactionResponse:
       type: object
@@ -1125,15 +1140,19 @@ components:
     RevertedTransaction:
       type: object
       required:
-        - revertedTransaction
+        - revertedTransactionId
         - revertTransaction
       properties:
-        revertedTransaction:
-          $ref: '#/components/schemas/TransactionResponse'
-          description: The original transaction that was reverted
+        revertedTransactionId:
+          type: integer
+          format: uint64
+          description: ID of the original transaction that was reverted
         revertTransaction:
           $ref: '#/components/schemas/TransactionResponse'
           description: The new transaction that reverses the original transaction
+        postCommitVolumes:
+          $ref: '#/components/schemas/PostCommitVolumes'
+          description: Post-commit volumes per account/asset (only present when expandVolumes is true)
 
     RevertedTransactionResponse:
       type: object
@@ -1450,6 +1469,27 @@ components:
             - uint16
             - uint32
           description: Metadata type to set for the field
+
+    PostCommitVolumes:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties:
+          $ref: '#/components/schemas/Volumes'
+      description: Post-commit volumes grouped by account address, then by asset
+
+    Volumes:
+      type: object
+      required:
+        - input
+        - output
+      properties:
+        input:
+          type: string
+          description: Total amount received (as big integer string)
+        output:
+          type: string
+          description: Total amount sent (as big integer string)
 
     ErrorResponse:
       type: object

@@ -778,4 +778,216 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(transactions).To(HaveLen(3))
 		})
 	})
+
+	Context("When creating transactions with expandVolumes", Ordered, func() {
+		var ledgerName = "tx-expand-volumes-ledger"
+
+		BeforeAll(func() {
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should not include postCommitVolumes when expandVolumes is false", func() {
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "ev-no-expand", big.NewInt(100), "USD"),
+					}, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx.PostCommitVolumes).To(BeNil())
+		})
+
+		It("Should include postCommitVolumes for a simple transaction", func() {
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					withExpandVolumes(createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "ev-simple", big.NewInt(100), "USD"),
+					}, nil, nil)),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx.PostCommitVolumes).NotTo(BeNil())
+
+			pcv := createdTx.PostCommitVolumes.VolumesByAccount
+			Expect(pcv).To(HaveKey("world"))
+			Expect(pcv).To(HaveKey("ev-simple"))
+
+			// world is shared across tests in this Ordered context, so only check presence
+			Expect(pcv["world"].Volumes).To(HaveKey("USD"))
+
+			// ev-simple is fresh — exact values are predictable
+			Expect(pcv["ev-simple"].Volumes).To(HaveKey("USD"))
+			Expect(pcv["ev-simple"].Volumes["USD"].Input).To(Equal("100"))
+			Expect(pcv["ev-simple"].Volumes["USD"].Output).To(Equal("0"))
+		})
+
+		It("Should include correct volumes for multiple postings", func() {
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					withExpandVolumes(createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "ev-multi-a", big.NewInt(100), "USD"),
+						newPosting("world", "ev-multi-b", big.NewInt(200), "USD"),
+					}, nil, nil)),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			pcv := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
+			Expect(pcv).To(HaveKey("world"))
+			Expect(pcv).To(HaveKey("ev-multi-a"))
+			Expect(pcv).To(HaveKey("ev-multi-b"))
+
+			Expect(pcv["ev-multi-a"].Volumes["USD"].Input).To(Equal("100"))
+			Expect(pcv["ev-multi-a"].Volumes["USD"].Output).To(Equal("0"))
+			Expect(pcv["ev-multi-b"].Volumes["USD"].Input).To(Equal("200"))
+			Expect(pcv["ev-multi-b"].Volumes["USD"].Output).To(Equal("0"))
+		})
+
+		It("Should include correct volumes for multiple assets", func() {
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					withExpandVolumes(createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "ev-multi-asset", big.NewInt(100), "USD"),
+						newPosting("world", "ev-multi-asset", big.NewInt(50), "EUR"),
+					}, nil, nil)),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			pcv := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
+			Expect(pcv).To(HaveKey("ev-multi-asset"))
+
+			vols := pcv["ev-multi-asset"].Volumes
+			Expect(vols).To(HaveKey("USD"))
+			Expect(vols).To(HaveKey("EUR"))
+			Expect(vols["USD"].Input).To(Equal("100"))
+			Expect(vols["USD"].Output).To(Equal("0"))
+			Expect(vols["EUR"].Input).To(Equal("50"))
+			Expect(vols["EUR"].Output).To(Equal("0"))
+		})
+
+		It("Should reflect cumulative volumes across sequential transactions", func() {
+			resp1, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					withExpandVolumes(createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "ev-cumul", big.NewInt(500), "USD"),
+					}, nil, nil)),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			pcv1 := resp1.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
+			Expect(pcv1["ev-cumul"].Volumes["USD"].Input).To(Equal("500"))
+			Expect(pcv1["ev-cumul"].Volumes["USD"].Output).To(Equal("0"))
+
+			resp2, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					withExpandVolumes(createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("ev-cumul", "ev-cumul-dest", big.NewInt(200), "USD"),
+					}, nil, nil)),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			pcv2 := resp2.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
+			Expect(pcv2["ev-cumul"].Volumes["USD"].Input).To(Equal("500"))
+			Expect(pcv2["ev-cumul"].Volumes["USD"].Output).To(Equal("200"))
+			Expect(pcv2["ev-cumul-dest"].Volumes["USD"].Input).To(Equal("200"))
+			Expect(pcv2["ev-cumul-dest"].Volumes["USD"].Output).To(Equal("0"))
+		})
+
+		It("Should work with force flag and expandVolumes", func() {
+			req := createForceTransactionAction(ledgerName, []*commonpb.Posting{
+				newPosting("ev-force-src", "ev-force-dst", big.NewInt(100), "USD"),
+			}, nil)
+			withExpandVolumes(req)
+
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{req},
+			})
+			Expect(err).To(Succeed())
+
+			pcv := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
+			Expect(pcv).To(HaveKey("ev-force-src"))
+			Expect(pcv).To(HaveKey("ev-force-dst"))
+
+			Expect(pcv["ev-force-src"].Volumes["USD"].Input).To(Equal("0"))
+			Expect(pcv["ev-force-src"].Volumes["USD"].Output).To(Equal("100"))
+			Expect(pcv["ev-force-dst"].Volumes["USD"].Input).To(Equal("100"))
+			Expect(pcv["ev-force-dst"].Volumes["USD"].Output).To(Equal("0"))
+		})
+
+		It("Should include postCommitVolumes with Numscript transaction", func() {
+			script := `send [USD/2 100] (
+				source = @world
+				destination = @user:001
+			)`
+			req := createScriptTransactionAction(ledgerName, script, nil, nil)
+			withExpandVolumes(req)
+
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{req},
+			})
+			Expect(err).To(Succeed())
+
+			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(createdTx.PostCommitVolumes).NotTo(BeNil())
+
+			pcv := createdTx.PostCommitVolumes.VolumesByAccount
+			Expect(pcv).To(HaveKey("world"))
+			Expect(pcv).To(HaveKey("user:001"))
+			Expect(pcv["user:001"].Volumes["USD/2"].Input).To(Equal("100"))
+			Expect(pcv["user:001"].Volumes["USD/2"].Output).To(Equal("0"))
+		})
+
+		It("Should include postCommitVolumes for each transaction in a bulk request", func() {
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					withExpandVolumes(createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "ev-bulk-a", big.NewInt(100), "USD"),
+					}, nil, nil)),
+					withExpandVolumes(createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "ev-bulk-b", big.NewInt(200), "USD"),
+					}, nil, nil)),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(2))
+
+			pcv1 := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
+			Expect(pcv1["ev-bulk-a"].Volumes["USD"].Input).To(Equal("100"))
+
+			pcv2 := resp.Logs[1].Payload.GetApply().Log.Data.GetCreatedTransaction().PostCommitVolumes.VolumesByAccount
+			Expect(pcv2["ev-bulk-b"].Volumes["USD"].Input).To(Equal("200"))
+		})
+
+		It("Should allow mixing expandVolumes=true and expandVolumes=false in bulk", func() {
+			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					withExpandVolumes(createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "ev-bulk-mix-a", big.NewInt(100), "USD"),
+					}, nil, nil)),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "ev-bulk-mix-b", big.NewInt(200), "USD"),
+					}, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+			Expect(resp.Logs).To(HaveLen(2))
+
+			ct1 := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(ct1.PostCommitVolumes).NotTo(BeNil())
+
+			ct2 := resp.Logs[1].Payload.GetApply().Log.Data.GetCreatedTransaction()
+			Expect(ct2.PostCommitVolumes).To(BeNil())
+		})
+	})
 })

@@ -72,7 +72,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Archive period | ✅ | ❌ | Two-step archive: ArchivePeriod → ConfirmArchivePeriod with cold storage export |
 | Store restore | ✅ | ❌ | Upload backup, validate, preview, finalize (--restore mode) |
 | **Volumes (responses)** |
-| postCommitVolumes | ❌ | ✅ | Intentionally removed |
+| postCommitVolumes | ✅ | ✅ | Opt-in via `expandVolumes` in request body |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |
 | postCommitEffectiveVolumes | ❌ | ✅ | Intentionally removed |
 | preCommitEffectiveVolumes | ❌ | ✅ | Intentionally removed |
@@ -285,30 +285,46 @@ ledgerctl periods list
 
 ## Intentionally Removed Features
 
-### 1. ❌ Pre/Post Commit Volumes in Transaction Responses
+### 1. Post-Commit Volumes (Opt-in) / Pre-Commit Volumes (Removed)
 
 **Description:** In the original ledger, transaction creation responses include volumes before and after the commit:
 
 - `postCommitVolumes` - Volumes after transaction application
-- `preCommitVolumes` - Volumes before transaction application  
+- `preCommitVolumes` - Volumes before transaction application
 - `postCommitEffectiveVolumes` - Effective volumes after application (with effective timestamp)
 - `preCommitEffectiveVolumes` - Effective volumes before application (with effective timestamp)
 
-**POC Status:** These fields **no longer exist** in POC responses.
+**POC Status:**
+- `postCommitVolumes` is available **opt-in** via `expandVolumes: true` in the request body for both `createTransaction` and `revertTransaction`. When enabled, the response includes volumes (input/output) per account/asset after the transaction is applied.
+- `preCommitVolumes`, `postCommitEffectiveVolumes`, and `preCommitEffectiveVolumes` remain **intentionally removed**.
 
-**Reason for removal:**
-- **Architecture simplification**: Computing pre/post commit volumes adds complexity
-- **Performance**: Avoids additional reads to compute volumes
-- **Decoupling**: Volumes can be retrieved via dedicated read endpoints if needed
-- **Raft consistency**: In a Raft architecture, volumes are computed by the FSM when applying the log, not when creating the command
+**Usage:**
+```json
+POST /{ledgerName}/transactions
+{
+  "postings": [...],
+  "expandVolumes": true
+}
+```
+
+The response will include a `postCommitVolumes` field:
+```json
+{
+  "postCommitVolumes": {
+    "users:alice": {
+      "USD/2": { "input": "0", "output": "1000" }
+    },
+    "users:bob": {
+      "USD/2": { "input": "1000", "output": "0" }
+    }
+  }
+}
+```
 
 **Impact on clients:**
-- Clients that depend on these fields to display balances after transaction will need to make a separate request
-- Integrations using these fields for reconciliation will need to be adapted
-
-**Alternative in POC:**
-- Use read endpoints to get account balances/volumes
-- Balances are maintained in real-time in the runtime store
+- Clients that need post-commit volumes can opt-in with `expandVolumes: true`
+- When `expandVolumes` is false (default), no volumes are returned (preserving the lightweight default)
+- `preCommitVolumes` and effective volumes remain removed; use dedicated read endpoints if needed
 
 ---
 

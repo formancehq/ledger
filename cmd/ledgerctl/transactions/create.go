@@ -88,6 +88,7 @@ Examples:
 	cmd.Flags().String("reference", "", "Transaction reference")
 	cmd.Flags().StringToString("metadata", nil, "Metadata key=value pairs")
 	cmd.Flags().Bool("force", false, "Bypass balance checks (allow accounts to go negative)")
+	cmd.Flags().Bool("expand-volumes", false, "Include post-commit volumes in response")
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -318,8 +319,9 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	// Get metadata (optional)
 	metadata, _ := cmd.Flags().GetStringToString("metadata")
 
-	// Get force flag
+	// Get force and expand-volumes flags
 	force, _ := cmd.Flags().GetBool("force")
+	expandVolumes, _ := cmd.Flags().GetBool("expand-volumes")
 
 	// Create the transaction
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -334,11 +336,12 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 					Ledger: ledgerName,
 					Data: &servicepb.LedgerApplyRequest_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings:  postings,
-							Script:    script,
-							Reference: reference,
-							Metadata:  commonpb.MetadataSetFromMap(metadata),
-							Force:     force,
+							Postings:      postings,
+							Script:        script,
+							Reference:     reference,
+							Metadata:      commonpb.MetadataSetFromMap(metadata),
+							Force:         force,
+							ExpandVolumes: expandVolumes,
 						},
 					},
 				},
@@ -390,7 +393,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
-		return encoder.Encode(tx)
+		return encoder.Encode(createdTx)
 	}
 
 	pterm.Println()
@@ -446,7 +449,16 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 				commonpb.MetadataValueToString(md.Value),
 			})
 		}
-		return pterm.DefaultTable.WithHasHeader().WithData(metadataTable).Render()
+		if err := pterm.DefaultTable.WithHasHeader().WithData(metadataTable).Render(); err != nil {
+			return err
+		}
+	}
+
+	// Display post-commit volumes
+	if createdTx.PostCommitVolumes != nil {
+		if err := renderPostCommitVolumes(createdTx.PostCommitVolumes); err != nil {
+			return err
+		}
 	}
 
 	return nil

@@ -272,6 +272,7 @@ message CreateTransactionPayload {
   common.MetadataSet metadata = 5;
   map<string, common.MetadataSet> account_metadata = 6;
   bool force = 7;
+  bool expand_volumes = 8;
 }
 
 // RevertTransactionPayload contains the data for reverting a transaction
@@ -281,6 +282,7 @@ message RevertTransactionPayload {
   bool at_effective_date = 3;
   common.MetadataSet metadata = 4;
   string receipt = 5;
+  bool expand_volumes = 6;
 }
 
 // LedgerAction represents a single ledger action

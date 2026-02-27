@@ -880,16 +880,15 @@ type preloadNeeds struct {
 //   - SinkConfigs: from AddEventsSink/RemoveEventsSink orders
 //
 // For Apply orders it additionally collects:
-//   - Volumes: accounts that need balance checks or cache warmup
+//   - Volumes: accounts that need balance checks or post-commit volume expansion
 //   - Metadata: accounts whose metadata is queried (e.g. Numscript meta() calls)
-//   - Transactions: transactions whose reverted status must be checked
 //   - References: transaction references for uniqueness enforcement
 //
 // Volume preloading rationale:
-//   - Sources need balance checks (Input + Output to compute balance)
-//   - Destinations need to be in cache to receive credits
-//   - When Force is true on a CreateTransaction, volume preloading is skipped
-//     because balance checks are bypassed and the processor stores deltas
+//   - Sources always need balance checks (Input + Output to compute balance)
+//   - Destinations are only preloaded when ExpandVolumes is true (for post-commit volumes)
+//   - When Force is true and ExpandVolumes is false, volume preloading is skipped entirely
+//   - When Force is true and ExpandVolumes is true, all volumes are preloaded
 //   - Metadata preloading is still performed for Force transactions since
 //     Numscript scripts may still query metadata via meta() calls
 //   - For reverts, postings are reversed: original destination becomes source
@@ -952,9 +951,14 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 						}).Info("Numscript emulation failed during dependency discovery, skipping preload")
 					}
 					if discovered != nil {
-						// Skip volume preloading for force transactions - they store deltas only
-						if !applyData.CreateTransaction.Force {
-							for key := range discovered.Volumes {
+						expandVolumes := applyData.CreateTransaction.ExpandVolumes
+						if !applyData.CreateTransaction.Force || expandVolumes {
+							for key := range discovered.SourceVolumes {
+								p.Volumes[key] = struct{}{}
+							}
+						}
+						if expandVolumes {
+							for key := range discovered.DestinationVolumes {
 								p.Volumes[key] = struct{}{}
 							}
 						}
@@ -965,38 +969,49 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 					continue
 				}
 
-				// Skip volume preloading for force transactions - they store deltas only
-				if applyData.CreateTransaction.Force {
+				expandVolumes := applyData.CreateTransaction.ExpandVolumes
+				// Skip volume preloading for force transactions without expandVolumes
+				if applyData.CreateTransaction.Force && !expandVolumes {
 					continue
 				}
 
 				for _, posting := range applyData.CreateTransaction.Postings {
-					// Source account needs balance check
+					// Source account needs balance check (or volume expansion)
 					p.Volumes[domain.VolumeKey{
 						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Source},
 						Asset:      posting.Asset,
 					}] = struct{}{}
-					// Destination account needs to be in cache to apply credit
-					p.Volumes[domain.VolumeKey{
-						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Destination},
-						Asset:      posting.Asset,
-					}] = struct{}{}
+					if expandVolumes {
+						// Destination account needed for post-commit volumes
+						p.Volumes[domain.VolumeKey{
+							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Destination},
+							Asset:      posting.Asset,
+						}] = struct{}{}
+					}
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 				// Reversion status is checked via in-memory bitset (no preload needed).
 
+				expandVolumes := applyData.RevertTransaction.ExpandVolumes
+				// Skip volume preloading for force reverts without expandVolumes
+				if applyData.RevertTransaction.Force && !expandVolumes {
+					continue
+				}
+
 				// For reverts, postings are reversed: original destination becomes source (needs balance check)
-				// and original source becomes destination (needs to receive credit)
 				for _, posting := range applyData.RevertTransaction.OriginalPostings {
 					p.Volumes[domain.VolumeKey{
 						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Destination},
 						Asset:      posting.Asset,
 					}] = struct{}{}
-					p.Volumes[domain.VolumeKey{
-						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Source},
-						Asset:      posting.Asset,
-					}] = struct{}{}
+					if expandVolumes {
+						// Original source becomes destination in revert (needed for post-commit volumes)
+						p.Volumes[domain.VolumeKey{
+							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Source},
+							Asset:      posting.Asset,
+						}] = struct{}{}
+					}
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
@@ -1177,12 +1192,13 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 	case *servicepb.LedgerApplyRequest_CreateTransaction:
 		order.Data = &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 			CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-				Postings:  data.CreateTransaction.Postings,
-				Script:    data.CreateTransaction.Script,
-				Timestamp: data.CreateTransaction.Timestamp,
-				Reference: data.CreateTransaction.Reference,
-				Metadata:  data.CreateTransaction.Metadata,
-				Force:     data.CreateTransaction.Force,
+				Postings:      data.CreateTransaction.Postings,
+				Script:        data.CreateTransaction.Script,
+				Timestamp:     data.CreateTransaction.Timestamp,
+				Reference:     data.CreateTransaction.Reference,
+				Metadata:      data.CreateTransaction.Metadata,
+				Force:         data.CreateTransaction.Force,
+				ExpandVolumes: data.CreateTransaction.ExpandVolumes,
 			},
 		}
 	case *servicepb.LedgerApplyRequest_AddMetadata:
@@ -1229,6 +1245,7 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 				AtEffectiveDate:  data.RevertTransaction.AtEffectiveDate,
 				Metadata:         data.RevertTransaction.Metadata,
 				OriginalPostings: originalPostings,
+				ExpandVolumes:    data.RevertTransaction.ExpandVolumes,
 			},
 		}
 	default:

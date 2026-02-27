@@ -4,7 +4,6 @@ API:
 
 Business:
 * Chart of account
-* Post commit volumes
 * Mirror mode
 * Numscript
 ** Add typed variables

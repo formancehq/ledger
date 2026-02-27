@@ -555,4 +555,110 @@ var _ = Describe("Reversions", Ordered, func() {
 			Expect(err).To(HaveOccurred())
 		})
 	})
+
+	Context("When reverting transactions with expandVolumes", Ordered, func() {
+		var ledgerName = "revert-expand-volumes-ledger"
+
+		BeforeAll(func() {
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should not include postCommitVolumes on revert when expandVolumes is false", func() {
+			createResp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "ev-rv-no-expand", big.NewInt(100), "USD"),
+					}, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			txID := createResp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
+
+			revertResp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					revertTransactionAction(ledgerName, txID, false, false, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			revertedTx := revertResp.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction()
+			Expect(revertedTx.PostCommitVolumes).To(BeNil())
+		})
+
+		It("Should include postCommitVolumes on revert when expandVolumes is true", func() {
+			createResp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "ev-rv-expand", big.NewInt(100), "USD"),
+					}, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			txID := createResp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
+
+			revertResp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					withExpandVolumes(revertTransactionAction(ledgerName, txID, false, false, nil)),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			revertedTx := revertResp.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction()
+			Expect(revertedTx.PostCommitVolumes).NotTo(BeNil())
+
+			pcv := revertedTx.PostCommitVolumes.VolumesByAccount
+			// After revert: ev-rv-expand sent 100 back to world -> input=100, output=100
+			Expect(pcv).To(HaveKey("ev-rv-expand"))
+			Expect(pcv["ev-rv-expand"].Volumes["USD"].Input).To(Equal("100"))
+			Expect(pcv["ev-rv-expand"].Volumes["USD"].Output).To(Equal("100"))
+
+			Expect(pcv).To(HaveKey("world"))
+		})
+
+		It("Should include correct postCommitVolumes on force revert with spent funds", func() {
+			// Create: world -> ev-rv-force (100 USD)
+			createResp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "ev-rv-force", big.NewInt(100), "USD"),
+					}, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			txID := createResp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
+
+			// Spend the funds: ev-rv-force -> other (100 USD)
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("ev-rv-force", "ev-rv-force-other", big.NewInt(100), "USD"),
+					}, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Force revert with expandVolumes
+			revertResp, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					withExpandVolumes(revertTransactionAction(ledgerName, txID, true, false, nil)),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			revertedTx := revertResp.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction()
+			Expect(revertedTx.PostCommitVolumes).NotTo(BeNil())
+
+			pcv := revertedTx.PostCommitVolumes.VolumesByAccount
+			// ev-rv-force: input=100 (original), output=200 (100 spent + 100 reverted)
+			Expect(pcv).To(HaveKey("ev-rv-force"))
+			Expect(pcv["ev-rv-force"].Volumes["USD"].Input).To(Equal("100"))
+			Expect(pcv["ev-rv-force"].Volumes["USD"].Output).To(Equal("200"))
+		})
+	})
 })

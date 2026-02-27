@@ -551,6 +551,7 @@ ledgerctl transactions create [flags]
 | `--reference` | | Transaction reference |
 | `--metadata` | | Metadata key=value pairs |
 | `--force` | `false` | Bypass balance checks (allow accounts to go negative) |
+| `--expand-volumes` | `false` | Include post-commit volumes (per account/asset) in response |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
@@ -641,6 +642,7 @@ ledgerctl transactions revert [transaction-id] [flags]
 | `--at-effective-date` | `false` | Use the original transaction timestamp for the revert |
 | `--metadata` | | Metadata for the revert transaction (key=value) |
 | `--receipt` | | JWT receipt for the transaction (avoids server-side lookup) |
+| `--expand-volumes` | `false` | Include post-commit volumes (per account/asset) in response |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
