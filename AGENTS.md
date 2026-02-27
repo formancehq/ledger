@@ -83,6 +83,7 @@ Key rules:
 - **Always use `t.Parallel()`** in unit tests
 - **Use gRPC client** (`servicepb.LedgerServiceClient`) in integration tests
 - **Use helper functions** from `tests/e2e/helpers.go`
+- **E2E tests** use the `e2e` build tag: `go test -tags e2e ./tests/e2e/... -timeout=600s`
 
 ## Configuration Safety Checks
 

@@ -104,6 +104,12 @@ type Machine struct {
 	// config changes. Used by the event Manager.
 	eventNotifier EventNotifier
 
+	// appliedMu and appliedCond are used to notify waiters when lastPersistedIndex advances.
+	// This enables ReadIndex-based linearizable reads: callers wait until the FSM has caught up
+	// to a target commit index before reading local state.
+	appliedMu   sync.Mutex
+	appliedCond *sync.Cond
+
 	// snapshotBuf is a reusable buffer for snapshot serialization to avoid
 	// repeated allocations (snapshots can be large).
 	snapshotBuf []byte
@@ -252,6 +258,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		archiveRequestCh:         make(chan ArchiveRequest, 1),
 		metadataConvertRequestCh: make(chan MetadataConvertRequest, 16),
 	}
+	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 
 	return fsm, nil
 }
@@ -337,6 +344,39 @@ func (fsm *Machine) writeBoundariesToCheckpoint(checkpointPath string) error {
 
 func (fsm *Machine) LastPersistedIndex() (uint64, error) {
 	return fsm.lastPersistedIndex.Load(), nil
+}
+
+// WaitForApplied blocks until the FSM has applied entries up to (and including) targetIndex,
+// or the context is cancelled. Used by ReadIndex to ensure local state is fresh enough
+// for linearizable reads.
+func (fsm *Machine) WaitForApplied(ctx context.Context, targetIndex uint64) error {
+	// Fast path: already caught up.
+	if fsm.lastPersistedIndex.Load() >= targetIndex {
+		return nil
+	}
+
+	// Spawn a goroutine that broadcasts on the cond when the context is cancelled.
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			fsm.appliedCond.Broadcast()
+		case <-done:
+		}
+	}()
+
+	fsm.appliedMu.Lock()
+	for fsm.lastPersistedIndex.Load() < targetIndex {
+		if ctx.Err() != nil {
+			fsm.appliedMu.Unlock()
+			return ctx.Err()
+		}
+		fsm.appliedCond.Wait()
+	}
+	fsm.appliedMu.Unlock()
+
+	return nil
 }
 
 func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (*ApplyEntriesResult, error) {
@@ -471,6 +511,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	fsm.batchCommitHistogram.Record(context.Background(), time.Since(commitStart).Microseconds())
 
 	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
+	fsm.appliedCond.Broadcast()
 	if needsArchiveDispatch {
 		fsm.dispatchArchiveRequests()
 	}
@@ -510,6 +551,7 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 		return nil, fmt.Errorf("committing batch for checkpoint: %w", err)
 	}
 	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
+	fsm.appliedCond.Broadcast()
 	if needsArchiveDispatch {
 		fsm.dispatchArchiveRequests()
 	}

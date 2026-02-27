@@ -542,11 +542,11 @@ config:
 - Larger margins use more disk but allow slower followers to catch up
 - Smaller margins save disk but may force more snapshot transfers
 
-## Request Forwarding
+## Request Forwarding (Writes Only)
 
 ### Overview
 
-When a follower receives a write request, it forwards it to the leader.
+Only **write requests** (`Apply`) and **`ListPeriods`** are forwarded to the leader. All other reads use the ReadIndex mechanism (see below).
 
 ### Forwarding Flow
 
@@ -557,20 +557,20 @@ sequenceDiagram
     participant ConnectionPool
     participant Leader
     participant FSM
-    
-    Client->>Follower: Write Request
+
+    Client->>Follower: Apply(write request)
     Follower->>Follower: Check IsLeader()
     Follower->>Follower: Find leader ID
-    
+
     Follower->>ConnectionPool: Get Connection(leaderID)
     ConnectionPool-->>Follower: gRPC Connection
-    
+
     Follower->>Leader: Forward Request (gRPC)
     Leader->>Leader: Process Request
     Leader->>FSM: Apply Command
     FSM-->>Leader: Result
     Leader-->>Follower: Response
-    
+
     Follower-->>Client: Response
 ```
 
@@ -583,6 +583,50 @@ If the leader is not available:
 3. The HTTP handler returns `503 Service Unavailable`
 4. The header `Retry-After: 1` is added
 5. The client SDK retries automatically
+
+## Linearizable Read (ReadIndex)
+
+### Overview
+
+All read operations use the Raft **ReadIndex** mechanism to provide linearizable reads on any node (leader or follower) without forwarding to the leader. This distributes read load across the cluster while guaranteeing consistency.
+
+### ReadIndex Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant AnyNode as Any Node (Leader or Follower)
+    participant RaftLeader as Raft Leader
+    participant Quorum as Quorum Peers
+    participant FSM as Local FSM
+    participant Store as Local Pebble Store
+
+    Client->>AnyNode: Read Request (e.g. GetAccount)
+    AnyNode->>AnyNode: ReadIndexAndWait(ctx)
+
+    Note over AnyNode,RaftLeader: Step 1: ReadIndex
+    AnyNode->>RaftLeader: ReadIndex(rctx)
+    RaftLeader->>Quorum: Heartbeat (confirm leadership)
+    Quorum-->>RaftLeader: Ack
+    RaftLeader-->>AnyNode: ReadState{Index: commitIndex}
+
+    Note over AnyNode,FSM: Step 2: WaitForApplied
+    AnyNode->>FSM: WaitForApplied(commitIndex)
+    FSM->>FSM: Wait until lastPersistedIndex >= commitIndex
+    FSM-->>AnyNode: OK
+
+    Note over AnyNode,Store: Step 3: Local Read
+    AnyNode->>Store: Read from Pebble
+    Store-->>AnyNode: Data
+    AnyNode-->>Client: Response (linearizable)
+```
+
+### Key Properties
+
+- **Linearizable**: The read reflects all writes committed before the ReadIndex call
+- **Distributed**: Any node can serve reads, not just the leader
+- **Efficient**: No data forwarding via gRPC, only a lightweight heartbeat round-trip
+- **Context-aware**: Respects deadlines and cancellation throughout
 
 ## Bulk Operations
 

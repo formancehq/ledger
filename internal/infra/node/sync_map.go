@@ -29,6 +29,12 @@ func (m *SyncMap[K, V]) LoadOrStore(key K, value V) (actual V, loaded bool) {
 	return v.(V), loaded
 }
 
+func (m *SyncMap[K, V]) Range(f func(K, V) bool) {
+	m.m.Range(func(key, value any) bool {
+		return f(key.(K), value.(V))
+	})
+}
+
 func NewSyncMap[K comparable, V any]() *SyncMap[K, V] {
 	return &SyncMap[K, V]{
 		m: sync.Map{},

@@ -53,6 +53,10 @@ var (
 
 	// ErrNodeNotInCluster is returned when trying to remove a node that is not a cluster member.
 	ErrNodeNotInCluster = fmt.Errorf("node is not a member of the cluster")
+
+	// ErrNodeSyncing is returned by ReadIndexAndWait when the node is still catching up
+	// (restoring a snapshot or replaying spool). Callers should forward the read to the leader.
+	ErrNodeSyncing = fmt.Errorf("node is syncing")
 )
 
 // clusterCommand represents an operation that must execute in the orchestrate loop
@@ -103,6 +107,9 @@ type Node struct {
 	tasks           *taskSet
 	stopChannel     chan chan struct{}
 
+	// pendingReads tracks in-flight ReadIndex requests, keyed by unique request ID.
+	pendingReads *SyncMap[uint64, *readIndexRequest]
+
 	// Metrics (kept on Node: WAL/transport/orchestrate-related)
 	processEntryHistogram             metric.Int64Histogram
 	appendEntriesHistogram            metric.Int64Histogram
@@ -110,6 +117,7 @@ type Node struct {
 	committedEntriesPerReadyHistogram metric.Int64Histogram
 	readyWaitDurationHistogram        metric.Int64Histogram
 	readyTerminatedWaitHistogram      metric.Int64Histogram
+	readIndexDurationHistogram        metric.Int64Histogram
 }
 
 // NewNode creates a new wrapper around a RawNode
@@ -274,6 +282,7 @@ func NewNode(
 		readyTerminated:  make(chan raft.Ready, 1),
 		tasks:            newTaskSet(),
 		stopChannel:      make(chan chan struct{}),
+		pendingReads:     &SyncMap[uint64, *readIndexRequest]{},
 	}
 
 	// Initialize applier metrics
@@ -448,6 +457,10 @@ func NewNode(
 		panic(err)
 	}
 
+	if err := node.initReadIndexMetric(meter); err != nil {
+		panic(err)
+	}
+
 	// Check if store is up to date and replay spool if needed
 	isStoreUpToDate, err := fsm.IsStoreUpToDate(context.Background())
 	if err != nil {
@@ -592,6 +605,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			// leadership loss
 			if wasLeader && !isLeader {
 				logger.Infof("Leadership lost")
+				node.failAllPendingReads(ErrNotLeader)
 				if node.observer != nil {
 					node.observer.Emit(LeadershipChangeEvent{IsLeader: false})
 				}
@@ -609,6 +623,20 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		node.leadMonitorHistogram.Record(ctx, int64(ss.Lead))
 
 		node.lastSoftState.Store(ss)
+	}
+
+	// Resolve pending ReadIndex requests from rd.ReadStates.
+	for _, rs := range rd.ReadStates {
+		reqID, ok := parseReadIndexContext(rs.RequestCtx)
+		if !ok {
+			continue
+		}
+		req, loaded := node.pendingReads.Load(reqID)
+		if !loaded {
+			continue
+		}
+		node.pendingReads.Delete(reqID)
+		req.future.Resolve(rs.Index, nil)
 	}
 
 	now := time.Now()

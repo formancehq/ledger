@@ -421,12 +421,35 @@ The system can pipeline requests:
 - Send multiple `AppendEntries` before receiving confirmations
 - Limited by `MaxInflightMsgs`
 
-### Local Reads
+### Linearizable Reads via ReadIndex
 
-Reads can be served locally without going through Raft:
-- Followers can read their local data
-- Only writes require consensus
-- Significant improvement in read performance
+All reads use the etcd/raft **ReadIndex** mechanism to provide linearizable consistency on every node:
+
+1. The caller invokes `Node.ReadIndexAndWait(ctx)`.
+2. `ReadIndex` sends a `ReadIndex` request through the Raft orchestrate loop. The leader confirms it is still the leader by exchanging heartbeats with a quorum of peers (the `ReadOnlySafe` mode, which is the default).
+3. The leader responds with the current **commit index** via `rd.ReadStates`.
+4. `WaitForApplied` blocks until the local FSM has applied entries up to that commit index (using a `sync.Cond` that broadcasts after each `lastPersistedIndex.Store()`).
+5. The caller reads from the local Pebble store, which is now guaranteed to reflect all writes committed before the ReadIndex call.
+
+**Benefits**:
+- **Linearizable reads on all nodes** (leader and followers)
+- **Read load distributed** across the cluster instead of concentrated on the leader
+- **No gRPC forwarding** for reads (lower latency than routing to the leader)
+- **No stale reads** (unlike plain local reads which could return outdated data)
+
+**Exceptions**:
+- `Apply` (writes) are still forwarded to the leader via gRPC, since writes must go through Raft consensus.
+- `ListPeriods` is forwarded to the leader because period state is kept in-memory only on the leader.
+
+**Fallback during sync**:
+- If the node is still syncing (restoring a snapshot or replaying spool), `ReadIndexAndWait` returns `ErrNodeSyncing`.
+- The `RoutedController` catches this and transparently forwards the read to the leader via gRPC, so the client always gets an answer without having to retry.
+
+**Error handling**:
+- On leadership loss, all pending ReadIndex requests are failed immediately.
+- Context cancellation is respected throughout the ReadIndex+WaitForApplied pipeline.
+
+**Key files**: `internal/infra/node/read_index.go`, `internal/infra/state/machine.go` (`WaitForApplied`), `internal/bootstrap/controller_routed.go`.
 
 ## Next Steps
 
