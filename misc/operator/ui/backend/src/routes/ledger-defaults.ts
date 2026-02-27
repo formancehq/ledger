@@ -10,51 +10,39 @@ import { listLedgerServices } from "../k8s/ledger-service.js";
 import { coreApi } from "../k8s/client.js";
 import type { LedgerService } from "shared";
 
-async function findReferencingServices(
-  defaultsName: string
-): Promise<Array<{ name: string; namespace: string }>> {
+async function listAllServices(): Promise<LedgerService[]> {
   const nsRes = await coreApi.listNamespace();
-  const refs: Array<{ name: string; namespace: string }> = [];
+  const namespaces = (nsRes.items ?? [])
+    .map((ns) => ns.metadata?.name)
+    .filter(Boolean) as string[];
 
-  for (const ns of nsRes.items ?? []) {
-    const nsName = ns.metadata?.name;
-    if (!nsName) continue;
-    try {
-      const services = await listLedgerServices(nsName);
-      for (const svc of services) {
-        if ((svc as LedgerService).spec?.defaultsRef === defaultsName) {
-          refs.push({
-            name: (svc as LedgerService).metadata.name,
-            namespace: nsName,
-          });
-        }
-      }
-    } catch {
-      // skip namespaces where we can't list (permission errors, etc.)
-    }
-  }
-  return refs;
+  const results = await Promise.allSettled(
+    namespaces.map((ns) => listLedgerServices(ns))
+  );
+
+  return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+}
+
+function findReferencingServices(
+  allServices: LedgerService[],
+  defaultsName: string
+): Array<{ name: string; namespace: string }> {
+  return allServices
+    .filter((svc) => svc.spec?.defaultsRef === defaultsName)
+    .map((svc) => ({
+      name: svc.metadata.name,
+      namespace: svc.metadata.namespace ?? "",
+    }));
 }
 
 const app = new Hono();
 
 // List all LedgerDefaults with reference counts
 app.get("/ledger-defaults", async (c) => {
-  const defaults = await listLedgerDefaults();
-
-  // Build reference counts by scanning all LedgerServices
-  const nsRes = await coreApi.listNamespace();
-  const allServices: LedgerService[] = [];
-  for (const ns of nsRes.items ?? []) {
-    const nsName = ns.metadata?.name;
-    if (!nsName) continue;
-    try {
-      const services = await listLedgerServices(nsName);
-      allServices.push(...services);
-    } catch {
-      // skip
-    }
-  }
+  const [defaults, allServices] = await Promise.all([
+    listLedgerDefaults(),
+    listAllServices(),
+  ]);
 
   const items = defaults.map((d) => {
     const count = allServices.filter(
@@ -69,10 +57,11 @@ app.get("/ledger-defaults", async (c) => {
 // Get single LedgerDefaults with referencing services
 app.get("/ledger-defaults/:name", async (c) => {
   const name = c.req.param("name");
-  const [ledgerDefaults, referencedBy] = await Promise.all([
+  const [ledgerDefaults, allServices] = await Promise.all([
     getLedgerDefaults(name),
-    findReferencingServices(name),
+    listAllServices(),
   ]);
+  const referencedBy = findReferencingServices(allServices, name);
   return c.json({ ledgerDefaults, referencedBy });
 });
 
