@@ -819,6 +819,31 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		return value
 	}
 
+	putInCacheBool := func(
+		kv kv.KV[attributes.U128, attributes.Entry[bool]],
+		attrID *raftcmdpb.AttributeID,
+		value bool,
+	) bool {
+		id := attributes.U128FromBytes(attrID.Id)
+
+		fsm.logger.WithFields(map[string]any{
+			"id":    id.Hex(),
+			"value": value,
+		}).Debugf("Preload bool")
+
+		existing, ok := kv.Get(id)
+		if ok {
+			return existing.Data
+		}
+
+		kv.Put(id, attributes.Entry[bool]{
+			Tag:  attrID.Tag,
+			Data: value,
+		})
+
+		return value
+	}
+
 	// Helper function to put a preloaded account metadata value into a cache generation
 	putInCacheMetadataValue := func(
 		kv kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]],
