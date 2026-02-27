@@ -56,6 +56,9 @@ type Config struct {
 }
 
 func (c Config) Validate() error {
+	if c.ClusterID == "" {
+		return fmt.Errorf("--cluster-id is required")
+	}
 	return c.RaftConfig.Validate()
 }
 

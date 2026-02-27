@@ -402,9 +402,6 @@ func Module() fx.Option {
 				if bucketID == "" {
 					bucketID = cfg.ClusterID
 				}
-				if bucketID == "" {
-					bucketID = store.DataDir()
-				}
 				return state.NewArchiver(
 					logger,
 					store,
