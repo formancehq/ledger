@@ -5,11 +5,9 @@ package components
 // V2SchemaData - Schema data structure for ledger schemas
 type V2SchemaData struct {
 	// Chart of account
-	Chart map[string]V2ChartSegment `json:"chart"`
-	// Transaction templates
+	Chart        map[string]V2ChartSegment        `json:"chart"`
 	Transactions map[string]V2TransactionTemplate `json:"transactions,omitempty"`
-	// Query templates
-	Queries map[string]V2QueryTemplate `json:"queries,omitempty"`
+	Queries      map[string]V2QueryTemplate       `json:"queries,omitempty"`
 }
 
 func (o *V2SchemaData) GetChart() map[string]V2ChartSegment {

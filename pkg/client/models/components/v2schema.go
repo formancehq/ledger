@@ -14,11 +14,9 @@ type V2Schema struct {
 	// Schema creation timestamp
 	CreatedAt time.Time `json:"createdAt"`
 	// Chart of account
-	Chart map[string]V2ChartSegment `json:"chart"`
-	// Transaction templates
+	Chart        map[string]V2ChartSegment        `json:"chart"`
 	Transactions map[string]V2TransactionTemplate `json:"transactions,omitempty"`
-	// Query templates
-	Queries map[string]V2QueryTemplate `json:"queries,omitempty"`
+	Queries      map[string]V2QueryTemplate       `json:"queries,omitempty"`
 }
 
 func (v V2Schema) MarshalJSON() ([]byte, error) {
