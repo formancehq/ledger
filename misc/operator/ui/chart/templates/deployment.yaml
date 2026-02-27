@@ -28,6 +28,43 @@ spec:
           value: "{{ .Values.port }}"
         - name: NODE_ENV
           value: "production"
+        {{- if .Values.auth.enabled }}
+        - name: AUTH_ENABLED
+          value: "true"
+        - name: AUTH_ISSUER_URL
+          value: {{ .Values.auth.issuerUrl | quote }}
+        - name: AUTH_CLIENT_ID
+          value: {{ .Values.auth.clientId | quote }}
+        {{- if .Values.auth.existingSecret }}
+        - name: AUTH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.auth.existingSecret }}
+              key: client-secret
+        - name: AUTH_SESSION_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.auth.existingSecret }}
+              key: session-secret
+        {{- else }}
+        - name: AUTH_CLIENT_SECRET
+          value: {{ .Values.auth.clientSecret | quote }}
+        - name: AUTH_SESSION_SECRET
+          value: {{ .Values.auth.sessionSecret | quote }}
+        {{- end }}
+        {{- if .Values.auth.redirectUri }}
+        - name: AUTH_REDIRECT_URI
+          value: {{ .Values.auth.redirectUri | quote }}
+        {{- end }}
+        {{- if .Values.auth.scopes }}
+        - name: AUTH_SCOPES
+          value: {{ .Values.auth.scopes | quote }}
+        {{- end }}
+        {{- if .Values.auth.postLogoutRedirectUri }}
+        - name: AUTH_POST_LOGOUT_REDIRECT_URI
+          value: {{ .Values.auth.postLogoutRedirectUri | quote }}
+        {{- end }}
+        {{- end }}
         livenessProbe:
           httpGet:
             path: /api/health

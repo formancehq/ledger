@@ -9,9 +9,41 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useNamespaces } from "@/api/hooks";
 import { useWatch } from "@/api/use-watch";
-import { Database, Settings, Box } from "lucide-react";
+import { useAuth, useLogout } from "@/auth/use-auth";
+import { Database, Settings, Box, LogOut, User } from "lucide-react";
 
 const LAST_NS_KEY = "ledger-ui-namespace";
+
+function UserInfo() {
+  const { data: auth } = useAuth();
+  const logout = useLogout();
+
+  if (!auth?.enabled || !auth.authenticated || !auth.user) return null;
+
+  return (
+    <>
+      <Separator />
+      <div className="p-3 flex items-center gap-2">
+        <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">
+            {auth.user.name ?? auth.user.email ?? auth.user.id}
+          </p>
+          {auth.user.name && auth.user.email && (
+            <p className="text-xs text-muted-foreground truncate">{auth.user.email}</p>
+          )}
+        </div>
+        <button
+          onClick={logout}
+          className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+          title="Log out"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
+      </div>
+    </>
+  );
+}
 
 export function Layout() {
   const { ns } = useParams<{ ns: string }>();
@@ -79,6 +111,8 @@ export function Layout() {
             Configurations
           </Link>
         </nav>
+
+        <UserInfo />
       </aside>
 
       {/* Main content */}

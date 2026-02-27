@@ -675,16 +675,39 @@ func main() {
 		// Deploy operator UI (optional, enabled by default)
 		if getConfigBool("operatorUI-enabled", true) && operatorUIImage != nil {
 			uiChartPath := filepath.Join("..", "operator", "ui", "chart")
-			operatorUI, err := helm.NewRelease(ctx, "ledger-operator-ui", &helm.ReleaseArgs{
-				Name:      pulumi.String("ledger-operator-ui"),
-				Chart:     pulumi.String(uiChartPath),
-				Namespace: namespace.Metadata.Name(),
-				Values: pulumi.Map{
-					"image": pulumi.Map{
-						"repository": pulumi.Sprintf("%s/formancehq/ledger-operator-ui", pullRegistry),
-						"tag":        pulumi.Sprintf("latest@%s", operatorUIImage.Digest),
-					},
+
+			uiValues := pulumi.Map{
+				"image": pulumi.Map{
+					"repository": pulumi.Sprintf("%s/formancehq/ledger-operator-ui", pullRegistry),
+					"tag":        pulumi.Sprintf("latest@%s", operatorUIImage.Digest),
 				},
+			}
+
+			// Inject OIDC auth configuration when enabled
+			if getConfigBool("operatorUI-auth-enabled", false) {
+				authValues := pulumi.Map{
+					"enabled":   pulumi.Bool(true),
+					"issuerUrl": pulumi.String(cfg.Require("operatorUI-auth-issuer-url")),
+					"clientId":  pulumi.String(cfg.Require("operatorUI-auth-client-id")),
+				}
+				authValues["clientSecret"] = config.GetSecret(ctx, "operatorUI-auth-client-secret")
+				authValues["sessionSecret"] = config.GetSecret(ctx, "operatorUI-auth-session-secret")
+
+				if redirectUri := cfg.Get("operatorUI-auth-redirect-uri"); redirectUri != "" {
+					authValues["redirectUri"] = pulumi.String(redirectUri)
+				}
+				if scopes := cfg.Get("operatorUI-auth-scopes"); scopes != "" {
+					authValues["scopes"] = pulumi.String(scopes)
+				}
+
+				uiValues["auth"] = authValues
+			}
+
+			operatorUI, err := helm.NewRelease(ctx, "ledger-operator-ui", &helm.ReleaseArgs{
+				Name:        pulumi.String("ledger-operator-ui"),
+				Chart:       pulumi.String(uiChartPath),
+				Namespace:   namespace.Metadata.Name(),
+				Values:      uiValues,
 				ForceUpdate: pulumi.Bool(true),
 			},
 				pulumi.DependsOn([]pulumi.Resource{namespace, ledgerServiceCRD, ledgerDefaultsCRD, ledgerOperator, operatorUIImage}),

@@ -31,5 +31,18 @@ ingress:
   hosts: []
   tls: []
 
+auth:
+  enabled: false
+  issuerUrl: ""
+  clientId: ""
+  clientSecret: ""
+  sessionSecret: ""
+  redirectUri: ""
+  scopes: "openid profile email"
+  postLogoutRedirectUri: "/"
+  # Use an existing secret for clientSecret and sessionSecret.
+  # The secret must contain keys: client-secret and session-secret.
+  existingSecret: ""
+
 nameOverride: ""
 fullnameOverride: ""

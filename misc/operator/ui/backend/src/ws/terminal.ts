@@ -4,6 +4,8 @@ import type { Duplex } from "node:stream";
 import { PassThrough } from "node:stream";
 import * as k8s from "@kubernetes/client-node";
 import { kubeConfig } from "../k8s/client.js";
+import { authEnabled } from "../auth/config.js";
+import { getSession } from "../auth/session.js";
 
 // Binary protocol over browser WebSocket:
 // Byte 0 = channel: 0=stdin, 1=stdout, 2=stderr, 3=resize
@@ -144,6 +146,17 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
 export function handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): boolean {
   const url = req.url ?? "";
   if (!url.startsWith("/api/ws/")) return false;
+
+  // Validate session when auth is enabled
+  if (authEnabled) {
+    const cookieHeader = req.headers.cookie;
+    const session = getSession(cookieHeader);
+    if (!session) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
+      return true;
+    }
+  }
 
   wss.handleUpgrade(req, socket, head, (ws) => {
     wss.emit("connection", ws, req);

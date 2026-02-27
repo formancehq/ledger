@@ -12,6 +12,11 @@ import type {
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
+  if (res.status === 401) {
+    window.location.href = "/api/auth/login";
+    // Return a never-resolving promise to prevent downstream errors during redirect
+    return new Promise<T>(() => {});
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: { message: res.statusText } }));
     throw new Error(body.error?.message ?? res.statusText);
