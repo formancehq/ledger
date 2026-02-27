@@ -129,6 +129,10 @@ type LedgerServiceSpec struct {
 	// ServiceMonitor configuration for Prometheus.
 	// +optional
 	ServiceMonitor *ServiceMonitorSpec `json:"serviceMonitor,omitempty"`
+
+	// NetworkPolicy configuration for egress restrictions.
+	// +optional
+	NetworkPolicy *NetworkPolicySpec `json:"networkPolicy,omitempty"`
 }
 
 // ImageSpec defines container image configuration.
@@ -879,6 +883,18 @@ type PodDisruptionBudgetSpec struct {
 	// MaxUnavailable is the maximum number of unavailable pods.
 	// +optional
 	MaxUnavailable *int32 `json:"maxUnavailable,omitempty"`
+}
+
+// NetworkPolicySpec defines egress NetworkPolicy configuration.
+type NetworkPolicySpec struct {
+	// Enabled enables the egress NetworkPolicy.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// ExternalCIDRExcept overrides the default RFC1918 CIDR blocks excluded from external egress.
+	// Defaults to [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16].
+	// +optional
+	ExternalCIDRExcept []string `json:"externalCIDRExcept,omitempty"`
 }
 
 // ServiceMonitorSpec defines Prometheus ServiceMonitor configuration.

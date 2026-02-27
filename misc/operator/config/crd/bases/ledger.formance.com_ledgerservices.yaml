@@ -1707,6 +1707,20 @@ spec:
                     format: int32
                     type: integer
                 type: object
+              networkPolicy:
+                description: NetworkPolicy configuration for egress restrictions.
+                properties:
+                  enabled:
+                    description: Enabled enables the egress NetworkPolicy.
+                    type: boolean
+                  externalCIDRExcept:
+                    description: |-
+                      ExternalCIDRExcept overrides the default RFC1918 CIDR blocks excluded from external egress.
+                      Defaults to [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16].
+                    items:
+                      type: string
+                    type: array
+                type: object
               nodeSelector:
                 additionalProperties:
                   type: string

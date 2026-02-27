@@ -110,6 +110,9 @@ persistence:
     accessMode: ReadWriteOnce
     size: 50Gi
 
+networkPolicy:
+  enabled: true
+
 replicas: 3
 resources:
   limits:

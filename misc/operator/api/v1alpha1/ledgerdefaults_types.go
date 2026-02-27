@@ -89,6 +89,10 @@ type LedgerDefaultsSpec struct {
 	// ServiceMonitor configuration for Prometheus.
 	// +optional
 	ServiceMonitor *ServiceMonitorSpec `json:"serviceMonitor,omitempty"`
+
+	// NetworkPolicy configuration for egress restrictions.
+	// +optional
+	NetworkPolicy *NetworkPolicySpec `json:"networkPolicy,omitempty"`
 }
 
 // LedgerDefaultsConfig holds the subset of LedgerServiceConfig fields that are safe

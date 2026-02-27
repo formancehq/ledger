@@ -91,6 +91,7 @@ rules:
   - networking.k8s.io
   resources:
   - ingresses
+  - networkpolicies
   verbs:
   - create
   - delete
@@ -103,18 +104,6 @@ rules:
   - policy
   resources:
   - poddisruptionbudgets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - traefik.io
-  resources:
-  - ingressroutes
   verbs:
   - create
   - delete

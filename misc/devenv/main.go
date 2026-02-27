@@ -784,6 +784,7 @@ func extractLedgerDefaults(ledgerSpec map[string]any) map[string]any {
 		"podAntiAffinity",
 		"podDisruptionBudget",
 		"serviceMonitor",
+		"networkPolicy",
 		"livenessProbe",
 		"readinessProbe",
 		"podSecurityContext",

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
@@ -298,6 +299,34 @@ func TestApplyDefaultsFromRef_ColdStorageSpecS3Wins(t *testing.T) {
 
 	assert.Equal(t, "my-bucket", spec.Config.ColdStorage.S3.Bucket)
 	assert.Equal(t, "eu-west-1", spec.Config.ColdStorage.S3.Region)
+}
+
+func TestApplyDefaultsFromRef_NetworkPolicy(t *testing.T) {
+	t.Parallel()
+
+	defaults := &ledgerv1alpha1.LedgerDefaultsSpec{
+		NetworkPolicy: &ledgerv1alpha1.NetworkPolicySpec{
+			Enabled:            true,
+			ExternalCIDRExcept: []string{"10.0.0.0/8"},
+		},
+	}
+
+	// Empty spec inherits NetworkPolicy from defaults.
+	spec := &ledgerv1alpha1.LedgerServiceSpec{}
+	applyDefaultsFromRef(spec, defaults)
+
+	require.NotNil(t, spec.NetworkPolicy)
+	assert.True(t, spec.NetworkPolicy.Enabled)
+	assert.Equal(t, []string{"10.0.0.0/8"}, spec.NetworkPolicy.ExternalCIDRExcept)
+
+	// Spec-level NetworkPolicy wins.
+	spec2 := &ledgerv1alpha1.LedgerServiceSpec{
+		NetworkPolicy: &ledgerv1alpha1.NetworkPolicySpec{
+			Enabled: false,
+		},
+	}
+	applyDefaultsFromRef(spec2, defaults)
+	assert.False(t, spec2.NetworkPolicy.Enabled)
 }
 
 func boolPtr(v bool) *bool {

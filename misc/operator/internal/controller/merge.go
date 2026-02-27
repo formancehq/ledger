@@ -47,6 +47,9 @@ func applyDefaultsFromRef(spec *ledgerv1alpha1.LedgerServiceSpec, defaults *ledg
 	if spec.ServiceMonitor == nil {
 		spec.ServiceMonitor = defaults.ServiceMonitor
 	}
+	if spec.NetworkPolicy == nil {
+		spec.NetworkPolicy = defaults.NetworkPolicy
+	}
 
 	// Maps: LedgerService non-nil replaces.
 	if spec.NodeSelector == nil {

@@ -37,6 +37,7 @@ type LedgerServiceReconciler struct {
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=elbv2.k8s.aws,resources=targetgroupbindings,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile handles the reconciliation loop for LedgerService resources.
@@ -113,6 +114,7 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		{"PDB", r.reconcilePDB},
 		{"ServiceMonitor", r.reconcileServiceMonitor},
 		{"TargetGroupBinding", r.reconcileTargetGroupBinding},
+		{"NetworkPolicy", r.reconcileNetworkPolicy},
 	}
 
 	for _, rec := range reconcilers {
@@ -146,6 +148,7 @@ func (r *LedgerServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.ServiceAccount{}).
 		Owns(&networkingv1.Ingress{}).
 		Owns(&policyv1.PodDisruptionBudget{}).
+		Owns(&networkingv1.NetworkPolicy{}).
 		Watches(&ledgerv1alpha1.LedgerDefaults{}, handler.EnqueueRequestsFromMapFunc(r.ledgerDefaultsToLedgerServices)).
 		Complete(r)
 }
