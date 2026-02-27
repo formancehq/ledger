@@ -3263,9 +3263,13 @@ components:
         chart:
           $ref: "#/components/schemas/V2ChartOfAccounts"
         transactions:
-          $ref: "#/components/schemas/V2TransactionTemplates"
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/V2TransactionTemplates"
         queries:
-          $ref: "#/components/schemas/V2QueryTemplates"
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/V2QueryTemplates"
       required:
         - chart
     V2Schema:

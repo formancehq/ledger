@@ -7116,8 +7116,8 @@ Schema data structure for ledger schemas
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |chart|[V2ChartOfAccounts](#schemav2chartofaccounts)|true|none|Chart of account|
-|transactions|[V2TransactionTemplates](#schemav2transactiontemplates)|false|none|Transaction templates|
-|queries|[V2QueryTemplates](#schemav2querytemplates)|false|none|Query templates|
+|transactions|[V2TransactionTemplates](#schemav2transactiontemplates)¦null|false|none|Transaction templates|
+|queries|[V2QueryTemplates](#schemav2querytemplates)¦null|false|none|Query templates|
 
 <h2 id="tocS_V2Schema">V2Schema</h2>
 <!-- backwards compatibility -->
