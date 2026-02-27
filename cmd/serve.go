@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
@@ -18,6 +20,7 @@ import (
 	"github.com/formancehq/go-libs/v4/aws/iam"
 	"github.com/formancehq/go-libs/v4/ballast"
 	"github.com/formancehq/go-libs/v4/bun/bunconnect"
+	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v4/health"
 	"github.com/formancehq/go-libs/v4/httpserver"
 	"github.com/formancehq/go-libs/v4/logging"
@@ -27,6 +30,7 @@ import (
 	"github.com/formancehq/go-libs/v4/publish"
 	"github.com/formancehq/go-libs/v4/service"
 
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api"
 	"github.com/formancehq/ledger/internal/bus"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -158,6 +162,14 @@ func NewServeCommand() *cobra.Command {
 				}),
 			}
 
+			if cfg.ExperimentalGlobalExporter != "" {
+				driverName, rawConfig, err := parseGlobalExporter(cfg.ExperimentalGlobalExporter)
+				if err != nil {
+					return fmt.Errorf("parsing global-logs-exporter: %w", err)
+				}
+				options = append(options, globalExporterModule(driverName, rawConfig, cfg.GlobalExporterReset))
+			}
+
 			if cfg.WorkerEnabled {
 				options = append(options,
 					newWorkerModule(cfg.WorkerConfiguration),
@@ -251,6 +263,45 @@ func assembleFinalRouter(
 	wrappedRouter.Mount("/", handler)
 
 	return wrappedRouter
+}
+
+func globalExporterModule(driverName string, rawConfig json.RawMessage, reset bool) fx.Option {
+	return fx.Options(
+		fx.Provide(func(registry *drivers.Registry, logger logging.Logger, store systemcontroller.Store, sysDriver systemcontroller.Driver) (*replication.GlobalExporterRunner, error) {
+			d, err := registry.CreateFromConfig(driverName, rawConfig)
+			if err != nil {
+				return nil, fmt.Errorf("creating global log exporter driver %q: %w", driverName, err)
+			}
+			return replication.NewGlobalExporterRunner(
+				store,
+				d,
+				func(ctx context.Context, name string) (replication.LogFetcher, error) {
+					ledgerStore, _, err := sysDriver.OpenLedger(ctx, name)
+					if err != nil {
+						return nil, err
+					}
+					return replication.LogFetcherFn(func(ctx context.Context, q storagecommon.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
+						return ledgerStore.Logs().Paginate(ctx, q)
+					}), nil
+				},
+				logger,
+				replication.GlobalExporterRunnerConfig{
+					Reset: reset,
+				},
+			), nil
+		}),
+		fx.Invoke(func(lc fx.Lifecycle, runner *replication.GlobalExporterRunner) {
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					go runner.Run(context.WithoutCancel(ctx))
+					return nil
+				},
+				OnStop: func(ctx context.Context) error {
+					return runner.Shutdown(ctx)
+				},
+			})
+		}),
+	)
 }
 
 func otlpModule(cmd *cobra.Command, cfg commonConfig) fx.Option {

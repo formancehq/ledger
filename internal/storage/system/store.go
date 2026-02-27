@@ -381,6 +381,53 @@ func (d *DefaultStore) StorePipelineState(ctx context.Context, id string, lastLo
 	return nil
 }
 
+type globalExporterState struct {
+	bun.BaseModel `bun:"table:_system.global_exporter_state"`
+	Ledger        string `bun:"ledger,pk"`
+	LastLogID     uint64 `bun:"last_log_id"`
+}
+
+func (d *DefaultStore) UpdateGlobalExporterState(ctx context.Context, ledgerName string, lastLogID uint64) error {
+	state := &globalExporterState{
+		Ledger:    ledgerName,
+		LastLogID: lastLogID,
+	}
+	_, err := d.db.NewInsert().
+		Model(state).
+		On("CONFLICT (ledger) DO UPDATE SET last_log_id = EXCLUDED.last_log_id").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("updating global exporter state: %w", postgres.ResolveError(err))
+	}
+	return nil
+}
+
+func (d *DefaultStore) ListGlobalExporterStates(ctx context.Context) (map[string]uint64, error) {
+	states := make([]globalExporterState, 0)
+	err := d.db.NewSelect().
+		Model(&states).
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing global exporter states: %w", postgres.ResolveError(err))
+	}
+	result := make(map[string]uint64, len(states))
+	for _, s := range states {
+		result[s.Ledger] = s.LastLogID
+	}
+	return result, nil
+}
+
+func (d *DefaultStore) DeleteAllGlobalExporterStates(ctx context.Context) error {
+	_, err := d.db.NewDelete().
+		Model((*globalExporterState)(nil)).
+		Where("TRUE").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("deleting all global exporter states: %w", postgres.ResolveError(err))
+	}
+	return nil
+}
+
 func (d *DefaultStore) UpdateExporter(ctx context.Context, exporter ledger.Exporter) error {
 	ret, err := d.db.NewUpdate().
 		Model(&exporter).

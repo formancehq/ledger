@@ -101,6 +101,32 @@ func (c *Registry) Create(ctx context.Context, id string) (Driver, json.RawMessa
 	return ret[0].Interface().(Driver), exporter.Config, nil
 }
 
+func (c *Registry) CreateFromConfig(driverName string, rawConfig json.RawMessage) (Driver, error) {
+	driverConstructor, ok := c.constructors[driverName]
+	if !ok {
+		return nil, NewErrDriverNotFound(driverName)
+	}
+	driverConfig := c.extractConfigType(driverConstructor)
+
+	if err := json.Unmarshal(rawConfig, driverConfig); err != nil {
+		return nil, err
+	}
+
+	if v, ok := driverConfig.(config.Defaulter); ok {
+		v.SetDefaults()
+	}
+
+	ret := reflect.ValueOf(driverConstructor).Call([]reflect.Value{
+		reflect.ValueOf(driverConfig).Elem(),
+		reflect.ValueOf(c.logger),
+	})
+	if !ret[1].IsZero() {
+		return nil, ret[1].Interface().(error)
+	}
+
+	return ret[0].Interface().(Driver), nil
+}
+
 func (c *Registry) GetConfigType(driverName string) (any, error) {
 	driverConstructor, ok := c.constructors[driverName]
 	if !ok {

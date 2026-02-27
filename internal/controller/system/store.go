@@ -18,6 +18,10 @@ type Store interface {
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
 	DeleteBucket(ctx context.Context, bucket string) error
 	RestoreBucket(ctx context.Context, bucket string) error
+
+	UpdateGlobalExporterState(ctx context.Context, ledger string, lastLogID uint64) error
+	ListGlobalExporterStates(ctx context.Context) (map[string]uint64, error)
+	DeleteAllGlobalExporterStates(ctx context.Context) error
 }
 
 type Driver interface {
