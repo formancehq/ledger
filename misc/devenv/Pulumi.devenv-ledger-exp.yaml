@@ -12,6 +12,7 @@ config:
   ledger-exp-devenv:k6operator-enabled: true
   ledger-exp-devenv:benchmarkOperator-enabled: true
   ledger-exp-devenv:pyroscope-enabled: true
+  ledger-exp-devenv:operatorUI-enabled: true
 
   ledger-exp-devenv:grafana:
     file: values/devenv-ledger-exp/grafana.yaml

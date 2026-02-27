@@ -1,0 +1,35 @@
+image:
+  repository: ghcr.io/formancehq/ledger-operator-ui
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+port: 3001
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
+
+nameOverride: ""
+fullnameOverride: ""

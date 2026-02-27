@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ledger-operator-ui
+description: Helm chart for the Ledger Operator web UI
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

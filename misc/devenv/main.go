@@ -285,6 +285,54 @@ func main() {
 			return fmt.Errorf("failed to build ledger operator image: %w", err)
 		}
 
+		// Build Docker image for the operator UI
+		var operatorUIImage *dockerbuild.Image
+		if getConfigBool("operatorUI-enabled", true) {
+			operatorUIImage, err = dockerbuild.NewImage(ctx, "formancehq/ledger-operator-ui", &dockerbuild.ImageArgs{
+				Context: dockerbuild.BuildContextArgs{
+					Location: pulumi.String("../operator/ui"),
+				},
+				Builder: dockerbuild.BuilderConfigArgs{
+					Name: pulumi.String(dockerBuilderName),
+				},
+				CacheFrom: dockerbuild.CacheFromArray{
+					dockerbuild.CacheFromArgs{
+						Registry: dockerbuild.CacheFromRegistryArgs{
+							Ref: pulumi.Sprintf("%s/formancehq/ledger-operator-ui:buildcache", registry),
+						},
+					},
+				},
+				CacheTo: dockerbuild.CacheToArray{
+					dockerbuild.CacheToArgs{
+						Registry: dockerbuild.CacheToRegistryArgs{
+							Ref: pulumi.Sprintf("%s/formancehq/ledger-operator-ui:buildcache,mode=max", registry),
+						},
+					},
+				},
+				Dockerfile: dockerbuild.DockerfileArgs{
+					Location: pulumi.String("../operator/ui/Dockerfile"),
+				},
+				Platforms: dockerbuild.PlatformArray{
+					"linux/amd64",
+				},
+				Push: pulumi.Bool(true),
+				Registries: dockerbuild.RegistryArray{
+					dockerbuild.RegistryArgs{
+						Address:  pulumi.String(registry),
+						Username: config.GetSecret(ctx, "formance-dev-registry-username"),
+						Password: config.GetSecret(ctx, "formance-dev-registry-password"),
+					},
+				},
+				Tags: pulumi.StringArray{
+					pulumi.Sprintf("%s/formancehq/ledger-operator-ui:latest", registry),
+					pulumi.Sprintf("%s/formancehq/ledger-operator-ui:%s", registry, imageTag),
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to build operator UI image: %w", err)
+			}
+		}
+
 		// Get the config directory for Grafana provisioning files (still needed for dashboards and datasources)
 		k8sConfigPath := filepath.Join("config")
 
@@ -622,6 +670,31 @@ func main() {
 		)
 		if err != nil {
 			return fmt.Errorf("failed to deploy ledger operator: %w", err)
+		}
+
+		// Deploy operator UI (optional, enabled by default)
+		if getConfigBool("operatorUI-enabled", true) && operatorUIImage != nil {
+			uiChartPath := filepath.Join("..", "operator", "ui", "chart")
+			operatorUI, err := helm.NewRelease(ctx, "ledger-operator-ui", &helm.ReleaseArgs{
+				Name:      pulumi.String("ledger-operator-ui"),
+				Chart:     pulumi.String(uiChartPath),
+				Namespace: namespace.Metadata.Name(),
+				Values: pulumi.Map{
+					"image": pulumi.Map{
+						"repository": pulumi.Sprintf("%s/formancehq/ledger-operator-ui", pullRegistry),
+						"tag":        pulumi.Sprintf("latest@%s", operatorUIImage.Digest),
+					},
+				},
+				ForceUpdate: pulumi.Bool(true),
+			},
+				pulumi.DependsOn([]pulumi.Resource{namespace, ledgerServiceCRD, ledgerDefaultsCRD, ledgerOperator, operatorUIImage}),
+				pulumi.Provider(k8sProvider),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to deploy operator UI: %w", err)
+			}
+			ctx.Export("operatorUIRelease", operatorUI.Name)
+			ctx.Export("operatorUIImage", pulumi.Sprintf("%s/formancehq/ledger-operator-ui:latest@%s", pullRegistry, operatorUIImage.Digest))
 		}
 
 		// Deploy LedgerDefaults CR from the ledger values file.
