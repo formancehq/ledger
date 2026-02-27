@@ -164,6 +164,7 @@ message CreateTransactionOrder {
   common.MetadataSet metadata = 5;
   map<string, common.MetadataSet> account_metadata = 6;
   bool force = 7;  // Skip balance checks when true
+  bool expand_volumes = 8;  // Include post-commit volumes in response
 }
 
 message SaveMetadataOrder {
@@ -177,6 +178,7 @@ message RevertTransactionOrder {
   bool at_effective_date = 3;
   common.MetadataSet metadata = 4;
   repeated common.Posting original_postings = 5;
+  bool expand_volumes = 6;  // Include post-commit volumes in response
 }
 
 message DeleteMetadataOrder {

@@ -836,6 +836,7 @@ func (m *CreateTransactionPayload) CloneVT() *CreateTransactionPayload {
 	r.Reference = m.Reference
 	r.Metadata = m.Metadata.CloneVT()
 	r.Force = m.Force
+	r.ExpandVolumes = m.ExpandVolumes
 	if rhs := m.Postings; rhs != nil {
 		tmpContainer := make([]*commonpb.Posting, len(rhs))
 		for k, v := range rhs {
@@ -871,6 +872,7 @@ func (m *RevertTransactionPayload) CloneVT() *RevertTransactionPayload {
 	r.AtEffectiveDate = m.AtEffectiveDate
 	r.Metadata = m.Metadata.CloneVT()
 	r.Receipt = m.Receipt
+	r.ExpandVolumes = m.ExpandVolumes
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2756,6 +2758,9 @@ func (this *CreateTransactionPayload) EqualVT(that *CreateTransactionPayload) bo
 	if this.Force != that.Force {
 		return false
 	}
+	if this.ExpandVolumes != that.ExpandVolumes {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -2785,6 +2790,9 @@ func (this *RevertTransactionPayload) EqualVT(that *RevertTransactionPayload) bo
 		return false
 	}
 	if this.Receipt != that.Receipt {
+		return false
+	}
+	if this.ExpandVolumes != that.ExpandVolumes {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -5648,6 +5656,16 @@ func (m *CreateTransactionPayload) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.ExpandVolumes {
+		i--
+		if m.ExpandVolumes {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x40
+	}
 	if m.Force {
 		i--
 		if m.Force {
@@ -5761,6 +5779,16 @@ func (m *RevertTransactionPayload) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ExpandVolumes {
+		i--
+		if m.ExpandVolumes {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x30
 	}
 	if len(m.Receipt) > 0 {
 		i -= len(m.Receipt)
@@ -8200,6 +8228,9 @@ func (m *CreateTransactionPayload) SizeVT() (n int) {
 	if m.Force {
 		n += 2
 	}
+	if m.ExpandVolumes {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -8226,6 +8257,9 @@ func (m *RevertTransactionPayload) SizeVT() (n int) {
 	l = len(m.Receipt)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.ExpandVolumes {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -13137,6 +13171,26 @@ func (m *CreateTransactionPayload) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Force = bool(v != 0)
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ExpandVolumes", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.ExpandVolumes = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -13315,6 +13369,26 @@ func (m *RevertTransactionPayload) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Receipt = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ExpandVolumes", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.ExpandVolumes = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

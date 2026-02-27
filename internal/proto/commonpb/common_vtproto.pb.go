@@ -1330,6 +1330,7 @@ func (m *CreatedTransaction) CloneVT() *CreatedTransaction {
 	r := new(CreatedTransaction)
 	r.Transaction = m.Transaction.CloneVT()
 	r.PeriodId = m.PeriodId
+	r.PostCommitVolumes = m.PostCommitVolumes.CloneVT()
 	if rhs := m.AccountMetadata; rhs != nil {
 		tmpContainer := make(map[string]*MetadataSet, len(rhs))
 		for k, v := range rhs {
@@ -1355,6 +1356,7 @@ func (m *RevertedTransaction) CloneVT() *RevertedTransaction {
 	r := new(RevertedTransaction)
 	r.RevertedTransactionId = m.RevertedTransactionId
 	r.RevertTransaction = m.RevertTransaction.CloneVT()
+	r.PostCommitVolumes = m.PostCommitVolumes.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3966,6 +3968,9 @@ func (this *CreatedTransaction) EqualVT(that *CreatedTransaction) bool {
 	if this.PeriodId != that.PeriodId {
 		return false
 	}
+	if !this.PostCommitVolumes.EqualVT(that.PostCommitVolumes) {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -3986,6 +3991,9 @@ func (this *RevertedTransaction) EqualVT(that *RevertedTransaction) bool {
 		return false
 	}
 	if !this.RevertTransaction.EqualVT(that.RevertTransaction) {
+		return false
+	}
+	if !this.PostCommitVolumes.EqualVT(that.PostCommitVolumes) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -7825,6 +7833,16 @@ func (m *CreatedTransaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.PostCommitVolumes != nil {
+		size, err := m.PostCommitVolumes.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x22
+	}
 	if m.PeriodId != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PeriodId))
 		i--
@@ -7894,6 +7912,16 @@ func (m *RevertedTransaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.PostCommitVolumes != nil {
+		size, err := m.PostCommitVolumes.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
 	}
 	if m.RevertTransaction != nil {
 		size, err := m.RevertTransaction.MarshalToSizedBufferVT(dAtA[:i])
@@ -10371,6 +10399,10 @@ func (m *CreatedTransaction) SizeVT() (n int) {
 	if m.PeriodId != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.PeriodId))
 	}
+	if m.PostCommitVolumes != nil {
+		l = m.PostCommitVolumes.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -10386,6 +10418,10 @@ func (m *RevertedTransaction) SizeVT() (n int) {
 	}
 	if m.RevertTransaction != nil {
 		l = m.RevertTransaction.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.PostCommitVolumes != nil {
+		l = m.PostCommitVolumes.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -18721,6 +18757,42 @@ func (m *CreatedTransaction) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PostCommitVolumes", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.PostCommitVolumes == nil {
+				m.PostCommitVolumes = &PostCommitVolumes{}
+			}
+			if err := m.PostCommitVolumes.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -18824,6 +18896,42 @@ func (m *RevertedTransaction) UnmarshalVT(dAtA []byte) error {
 				m.RevertTransaction = &Transaction{}
 			}
 			if err := m.RevertTransaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PostCommitVolumes", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.PostCommitVolumes == nil {
+				m.PostCommitVolumes = &PostCommitVolumes{}
+			}
+			if err := m.PostCommitVolumes.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

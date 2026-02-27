@@ -3605,12 +3605,13 @@ func (x *MetadataConversionCompleteLog) GetKey() string {
 }
 
 type CreatedTransaction struct {
-	state           protoimpl.MessageState  `protogen:"open.v1"`
-	Transaction     *Transaction            `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
-	AccountMetadata map[string]*MetadataSet `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	PeriodId        uint64                  `protobuf:"varint,3,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"` // Period that was OPEN when this transaction was created
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state             protoimpl.MessageState  `protogen:"open.v1"`
+	Transaction       *Transaction            `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
+	AccountMetadata   map[string]*MetadataSet `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	PeriodId          uint64                  `protobuf:"varint,3,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`                             // Period that was OPEN when this transaction was created
+	PostCommitVolumes *PostCommitVolumes      `protobuf:"bytes,4,opt,name=post_commit_volumes,json=postCommitVolumes,proto3" json:"post_commit_volumes,omitempty"` // Opt-in: volumes after commit (only when expand_volumes is true)
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *CreatedTransaction) Reset() {
@@ -3664,10 +3665,18 @@ func (x *CreatedTransaction) GetPeriodId() uint64 {
 	return 0
 }
 
+func (x *CreatedTransaction) GetPostCommitVolumes() *PostCommitVolumes {
+	if x != nil {
+		return x.PostCommitVolumes
+	}
+	return nil
+}
+
 type RevertedTransaction struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	RevertedTransactionId uint64                 `protobuf:"varint,1,opt,name=reverted_transaction_id,json=revertedTransactionId,proto3" json:"reverted_transaction_id,omitempty"`
 	RevertTransaction     *Transaction           `protobuf:"bytes,2,opt,name=revert_transaction,json=revertTransaction,proto3" json:"revert_transaction,omitempty"`
+	PostCommitVolumes     *PostCommitVolumes     `protobuf:"bytes,3,opt,name=post_commit_volumes,json=postCommitVolumes,proto3" json:"post_commit_volumes,omitempty"` // Opt-in: volumes after commit (only when expand_volumes is true)
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -3712,6 +3721,13 @@ func (x *RevertedTransaction) GetRevertedTransactionId() uint64 {
 func (x *RevertedTransaction) GetRevertTransaction() *Transaction {
 	if x != nil {
 		return x.RevertTransaction
+	}
+	return nil
+}
+
+func (x *RevertedTransaction) GetPostCommitVolumes() *PostCommitVolumes {
+	if x != nil {
+		return x.PostCommitVolumes
 	}
 	return nil
 }
@@ -5076,17 +5092,19 @@ const file_common_proto_rawDesc = "" +
 	"\x1dMetadataConversionCompleteLog\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\x9d\x02\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xe8\x02\n" +
 	"\x12CreatedTransaction\x125\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\x12Z\n" +
 	"\x10account_metadata\x18\x02 \x03(\v2/.common.CreatedTransaction.AccountMetadataEntryR\x0faccountMetadata\x12\x1b\n" +
-	"\tperiod_id\x18\x03 \x01(\x04R\bperiodId\x1aW\n" +
+	"\tperiod_id\x18\x03 \x01(\x04R\bperiodId\x12I\n" +
+	"\x13post_commit_volumes\x18\x04 \x01(\v2\x19.common.PostCommitVolumesR\x11postCommitVolumes\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataSetR\x05value:\x028\x01\"\x91\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataSetR\x05value:\x028\x01\"\xdc\x01\n" +
 	"\x13RevertedTransaction\x126\n" +
 	"\x17reverted_transaction_id\x18\x01 \x01(\x04R\x15revertedTransactionId\x12B\n" +
-	"\x12revert_transaction\x18\x02 \x01(\v2\x13.common.TransactionR\x11revertTransaction\"h\n" +
+	"\x12revert_transaction\x18\x02 \x01(\v2\x13.common.TransactionR\x11revertTransaction\x12I\n" +
+	"\x13post_commit_volumes\x18\x03 \x01(\v2\x19.common.PostCommitVolumesR\x11postCommitVolumes\"h\n" +
 	"\rSavedMetadata\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12/\n" +
 	"\bmetadata\x18\x02 \x01(\v2\x13.common.MetadataSetR\bmetadata\"K\n" +
@@ -5362,44 +5380,46 @@ var file_common_proto_depIdxs = []int32{
 	0,   // 68: common.MetadataConversionCompleteLog.target_type:type_name -> common.TargetType
 	12,  // 69: common.CreatedTransaction.transaction:type_name -> common.Transaction
 	82,  // 70: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
-	12,  // 71: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
-	22,  // 72: common.SavedMetadata.target:type_name -> common.Target
-	9,   // 73: common.SavedMetadata.metadata:type_name -> common.MetadataSet
-	22,  // 74: common.DeletedMetadata.target:type_name -> common.Target
-	0,   // 75: common.SetMetadataFieldTypeLog.target_type:type_name -> common.TargetType
-	1,   // 76: common.SetMetadataFieldTypeLog.type:type_name -> common.MetadataType
-	0,   // 77: common.RemovedMetadataFieldTypeLog.target_type:type_name -> common.TargetType
-	5,   // 78: common.Period.start:type_name -> common.Timestamp
-	5,   // 79: common.Period.end:type_name -> common.Timestamp
-	4,   // 80: common.Period.status:type_name -> common.PeriodStatus
-	60,  // 81: common.ClosePeriodLog.closed_period:type_name -> common.Period
-	60,  // 82: common.ClosePeriodLog.new_period:type_name -> common.Period
-	60,  // 83: common.SealPeriodLog.period:type_name -> common.Period
-	60,  // 84: common.ArchivePeriodLog.period:type_name -> common.Period
-	60,  // 85: common.ConfirmArchivePeriodLog.period:type_name -> common.Period
-	5,   // 86: common.LedgerInfo.created_at:type_name -> common.Timestamp
-	5,   // 87: common.LedgerInfo.deleted_at:type_name -> common.Timestamp
-	24,  // 88: common.LedgerInfo.metadata_schema:type_name -> common.MetadataSchema
-	22,  // 89: common.SaveMetadataCommand.target:type_name -> common.Target
-	9,   // 90: common.SaveMetadataCommand.metadata:type_name -> common.MetadataSet
-	22,  // 91: common.DeleteMetadataCommand.target:type_name -> common.Target
-	69,  // 92: common.TransactionUpdate.updates:type_name -> common.TransactionUpdateType
-	70,  // 93: common.TransactionUpdateType.transaction_modification_revert:type_name -> common.TransactionUpdateRevert
-	71,  // 94: common.TransactionUpdateType.transaction_modification_add_metadata:type_name -> common.TransactionUpdateAddMetadata
-	72,  // 95: common.TransactionUpdateType.transaction_modification_delete_metadata:type_name -> common.TransactionUpdateDeleteMetadata
-	73,  // 96: common.TransactionUpdateType.transaction_init:type_name -> common.TransactionInit
-	6,   // 97: common.TransactionUpdateAddMetadata.metadata:type_name -> common.Metadata
-	14,  // 98: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
-	16,  // 99: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	15,  // 100: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
-	23,  // 101: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	23,  // 102: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	9,   // 103: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataSet
-	104, // [104:104] is the sub-list for method output_type
-	104, // [104:104] is the sub-list for method input_type
-	104, // [104:104] is the sub-list for extension type_name
-	104, // [104:104] is the sub-list for extension extendee
-	0,   // [0:104] is the sub-list for field type_name
+	17,  // 71: common.CreatedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
+	12,  // 72: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
+	17,  // 73: common.RevertedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
+	22,  // 74: common.SavedMetadata.target:type_name -> common.Target
+	9,   // 75: common.SavedMetadata.metadata:type_name -> common.MetadataSet
+	22,  // 76: common.DeletedMetadata.target:type_name -> common.Target
+	0,   // 77: common.SetMetadataFieldTypeLog.target_type:type_name -> common.TargetType
+	1,   // 78: common.SetMetadataFieldTypeLog.type:type_name -> common.MetadataType
+	0,   // 79: common.RemovedMetadataFieldTypeLog.target_type:type_name -> common.TargetType
+	5,   // 80: common.Period.start:type_name -> common.Timestamp
+	5,   // 81: common.Period.end:type_name -> common.Timestamp
+	4,   // 82: common.Period.status:type_name -> common.PeriodStatus
+	60,  // 83: common.ClosePeriodLog.closed_period:type_name -> common.Period
+	60,  // 84: common.ClosePeriodLog.new_period:type_name -> common.Period
+	60,  // 85: common.SealPeriodLog.period:type_name -> common.Period
+	60,  // 86: common.ArchivePeriodLog.period:type_name -> common.Period
+	60,  // 87: common.ConfirmArchivePeriodLog.period:type_name -> common.Period
+	5,   // 88: common.LedgerInfo.created_at:type_name -> common.Timestamp
+	5,   // 89: common.LedgerInfo.deleted_at:type_name -> common.Timestamp
+	24,  // 90: common.LedgerInfo.metadata_schema:type_name -> common.MetadataSchema
+	22,  // 91: common.SaveMetadataCommand.target:type_name -> common.Target
+	9,   // 92: common.SaveMetadataCommand.metadata:type_name -> common.MetadataSet
+	22,  // 93: common.DeleteMetadataCommand.target:type_name -> common.Target
+	69,  // 94: common.TransactionUpdate.updates:type_name -> common.TransactionUpdateType
+	70,  // 95: common.TransactionUpdateType.transaction_modification_revert:type_name -> common.TransactionUpdateRevert
+	71,  // 96: common.TransactionUpdateType.transaction_modification_add_metadata:type_name -> common.TransactionUpdateAddMetadata
+	72,  // 97: common.TransactionUpdateType.transaction_modification_delete_metadata:type_name -> common.TransactionUpdateDeleteMetadata
+	73,  // 98: common.TransactionUpdateType.transaction_init:type_name -> common.TransactionInit
+	6,   // 99: common.TransactionUpdateAddMetadata.metadata:type_name -> common.Metadata
+	14,  // 100: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
+	16,  // 101: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	15,  // 102: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
+	23,  // 103: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	23,  // 104: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	9,   // 105: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataSet
+	106, // [106:106] is the sub-list for method output_type
+	106, // [106:106] is the sub-list for method input_type
+	106, // [106:106] is the sub-list for extension type_name
+	106, // [106:106] is the sub-list for extension extendee
+	0,   // [0:106] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }

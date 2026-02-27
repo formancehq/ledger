@@ -10,10 +10,12 @@ import (
 )
 
 // DiscoveryResult holds the results of Numscript dependency discovery.
-// It contains both the volume keys and metadata keys that a script queries.
+// SourceVolumes contains accounts queried via GetBalances (posting sources).
+// DestinationVolumes contains accounts that only appear as posting destinations.
 type DiscoveryResult struct {
-	Volumes  map[domain.VolumeKey]struct{}
-	Metadata map[domain.MetadataKey]struct{}
+	SourceVolumes      map[domain.VolumeKey]struct{}
+	DestinationVolumes map[domain.VolumeKey]struct{}
+	Metadata           map[domain.MetadataKey]struct{}
 }
 
 // discoveryStore implements numscript.Store to discover which accounts/assets
@@ -117,24 +119,30 @@ func DiscoverNumscriptDependencies(script string, vars map[string]string, ledger
 		return nil, store.nonDeterministic
 	}
 
-	// Collect volume keys from balance queries (sources) with the real ledger name
-	volumes := make(map[domain.VolumeKey]struct{}, len(store.queriedVolumes))
+	// Collect source volume keys from balance queries with the real ledger name
+	sourceVolumes := make(map[domain.VolumeKey]struct{}, len(store.queriedVolumes))
 	for key := range store.queriedVolumes {
 		key.Ledger = ledger
-		volumes[key] = struct{}{}
+		sourceVolumes[key] = struct{}{}
 	}
 
-	// Also collect volume keys from postings (both sources and destinations).
-	// GetBalances only captures source accounts; destinations come from postings.
-	for _, posting := range execResult.Postings {
-		volumes[domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.Source},
-			Asset:      posting.Asset,
-		}] = struct{}{}
-		volumes[domain.VolumeKey{
-			AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.Destination},
-			Asset:      posting.Asset,
-		}] = struct{}{}
+	// Also collect volume keys from postings: sources go into sourceVolumes,
+	// destinations go into destinationVolumes.
+	var destinationVolumes map[domain.VolumeKey]struct{}
+	if len(execResult.Postings) > 0 {
+		for _, posting := range execResult.Postings {
+			sourceVolumes[domain.VolumeKey{
+				AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.Source},
+				Asset:      posting.Asset,
+			}] = struct{}{}
+			if destinationVolumes == nil {
+				destinationVolumes = make(map[domain.VolumeKey]struct{})
+			}
+			destinationVolumes[domain.VolumeKey{
+				AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.Destination},
+				Asset:      posting.Asset,
+			}] = struct{}{}
+		}
 	}
 
 	// Collect metadata keys with the real ledger name
@@ -145,7 +153,8 @@ func DiscoverNumscriptDependencies(script string, vars map[string]string, ledger
 	}
 
 	return &DiscoveryResult{
-		Volumes:  volumes,
-		Metadata: metadata,
+		SourceVolumes:      sourceVolumes,
+		DestinationVolumes: destinationVolumes,
+		Metadata:           metadata,
 	}, nil
 }

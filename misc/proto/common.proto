@@ -410,11 +410,13 @@ message CreatedTransaction {
   Transaction transaction = 1;
   map<string, MetadataSet> account_metadata = 2;
   uint64 period_id = 3;  // Period that was OPEN when this transaction was created
+  PostCommitVolumes post_commit_volumes = 4;  // Opt-in: volumes after commit (only when expand_volumes is true)
 }
 
 message RevertedTransaction {
   uint64 reverted_transaction_id = 1;
   Transaction revert_transaction = 2;
+  PostCommitVolumes post_commit_volumes = 3;  // Opt-in: volumes after commit (only when expand_volumes is true)
 }
 
 message SavedMetadata {

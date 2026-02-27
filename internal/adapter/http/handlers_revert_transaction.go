@@ -63,6 +63,9 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		if atEffectiveDate, ok := reqBody["atEffectiveDate"].(bool); ok {
 			payload.AtEffectiveDate = atEffectiveDate
 		}
+		if ev, ok := reqBody["expandVolumes"].(bool); ok {
+			payload.ExpandVolumes = ev
+		}
 	}
 
 	logs, err := s.backend.Apply(r.Context(), &servicepb.Request{
@@ -86,8 +89,8 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Return the revert transaction response
+	// Return the full reverted transaction response (includes post-commit volumes when requested)
 	ledgerLog := logs[0].Payload.GetApply().GetLog()
-	revertedPayload := ledgerLog.Data.Payload.(*commonpb.LedgerLogPayload_RevertedTransaction).RevertedTransaction.RevertTransaction
+	revertedPayload := ledgerLog.Data.Payload.(*commonpb.LedgerLogPayload_RevertedTransaction).RevertedTransaction
 	writeCreated(w, revertedPayload)
 }

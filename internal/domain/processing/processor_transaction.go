@@ -126,6 +126,12 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 		timestamp = s.GetDate()
 	}
 
+	// Compute post-commit volumes if requested
+	var postCommitVolumes *commonpb.PostCommitVolumes
+	if order.ExpandVolumes {
+		postCommitVolumes = buildPostCommitVolumes(s, ledger, result.Postings)
+	}
+
 	// Get the current open period ID for the receipt
 	var periodID uint64
 	if p, ok := s.GetCurrentOpenPeriod(); ok {
@@ -144,8 +150,9 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 					InsertedAt: s.GetDate(),
 					UpdatedAt:  s.GetDate(),
 				},
-				AccountMetadata: accountMetadata,
-				PeriodId:        periodID,
+				AccountMetadata:   accountMetadata,
+				PeriodId:          periodID,
+				PostCommitVolumes: postCommitVolumes,
 			},
 		},
 	}, nil

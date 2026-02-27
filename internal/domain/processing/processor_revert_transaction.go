@@ -75,6 +75,12 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 		}},
 	})
 
+	// Compute post-commit volumes if requested
+	var postCommitVolumes *commonpb.PostCommitVolumes
+	if order.ExpandVolumes {
+		postCommitVolumes = buildPostCommitVolumes(s, ledger, revertPostings)
+	}
+
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 			RevertedTransaction: &commonpb.RevertedTransaction{
@@ -87,6 +93,7 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 					InsertedAt: s.GetDate(),
 					UpdatedAt:  s.GetDate(),
 				},
+				PostCommitVolumes: postCommitVolumes,
 			},
 		},
 	}, nil
