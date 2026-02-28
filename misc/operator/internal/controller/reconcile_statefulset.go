@@ -36,12 +36,13 @@ func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string)
 		replicas = *ledger.Spec.Replicas
 	}
 
-	parallel := appsv1.ParallelPodManagement
-
+	// OrderedReady ensures pods start sequentially. This is critical for Raft
+	// clusters: etcd/raft only processes one ConfChange at a time and silently
+	// drops concurrent proposals, so nodes must join one at a time.
 	spec := appsv1.StatefulSetSpec{
 		ServiceName:         headlessServiceName(ledger),
 		Replicas:            &replicas,
-		PodManagementPolicy: parallel,
+		PodManagementPolicy: appsv1.OrderedReadyPodManagement,
 		Selector: &metav1.LabelSelector{
 			MatchLabels: selectorLabels(ledger),
 		},
@@ -256,10 +257,12 @@ func buildCommand(ledger *ledgerv1alpha1.LedgerService) []string {
 		clusterLogic = `CLUSTER_FLAG="--restore"`
 	} else {
 		bootstrap0 := fmt.Sprintf("%s-0.%s.${POD_NAMESPACE}.svc.cluster.local", ledger.Name, hlsSvcName)
-		clusterLogic = fmt.Sprintf(`if [ -f "%s/CURRENT_CHECKPOINT" ]; then
-  CLUSTER_FLAG=""
-elif [ "$POD_INDEX" = "0" ]; then
-  CLUSTER_FLAG="--bootstrap"
+		clusterLogic = fmt.Sprintf(`if [ "$POD_INDEX" = "0" ]; then
+  if [ -f "%s/CURRENT_CHECKPOINT" ]; then
+    CLUSTER_FLAG=""
+  else
+    CLUSTER_FLAG="--bootstrap"
+  fi
 else
   BOOTSTRAP_HOST="%s"
   CLUSTER_FLAG="--join ${BOOTSTRAP_HOST}:${GRPC_PORT}"
