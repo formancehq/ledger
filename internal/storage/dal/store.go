@@ -176,18 +176,43 @@ func NewStore(
 		}
 	} else {
 		logger.Infof("Checkpoint found, restoring from checkpoint %s to directory %s", string(currentCheckpointRaw), liveDir)
+		removeStart := time.Now()
 		if err := os.RemoveAll(liveDir); err != nil {
 			return nil, fmt.Errorf("removing old database: %w", err)
 		}
+		logger.WithFields(map[string]any{
+			"duration": time.Since(removeStart).String(),
+		}).Infof("Removed old live directory")
 
+		linkStart := time.Now()
 		if err := HardLink(filepath.Join(dataDir, checkpointsDir, string(currentCheckpointRaw)), liveDir); err != nil {
 			return nil, fmt.Errorf("hard linking checkpoint: %w", err)
 		}
+		logger.WithFields(map[string]any{
+			"duration": time.Since(linkStart).String(),
+		}).Infof("Hard-linked checkpoint to live directory")
 
+		openStart := time.Now()
 		db, err = pebble.Open(liveDir, opts)
 		if err != nil {
 			return nil, fmt.Errorf("opening pebble database: %w", err)
 		}
+		m := db.Metrics()
+		logger.WithFields(map[string]any{
+			"duration":              time.Since(openStart).String(),
+			"l0FileCount":           m.Levels[0].NumFiles,
+			"l0Size":                m.Levels[0].Size,
+			"l1FileCount":           m.Levels[1].NumFiles,
+			"l1Size":                m.Levels[1].Size,
+			"memTableCount":         m.MemTable.Count,
+			"memTableSize":          m.MemTable.Size,
+			"compactionCount":       m.Compact.Count,
+			"compactionDebt":        m.Compact.InProgressBytes,
+			"compactionEstDebt":     m.Compact.EstimatedDebt,
+			"walFilesCount":         m.WAL.Files,
+			"walSize":               m.WAL.Size,
+			"totalLevelsSize":       m.DiskSpaceUsage(),
+		}).Infof("Pebble database opened — LSM state")
 	}
 
 	var currentCheckpoint uint64

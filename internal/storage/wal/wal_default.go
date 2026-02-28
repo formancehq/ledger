@@ -219,7 +219,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			"hardState.Commit": s.hardState.Commit,
 			"snapshot.Index":   s.snapshot.Metadata.Index,
 			"snapshot.Term":    s.snapshot.Metadata.Term,
-		}).Infof("DefaultWAL replay completed")
+		}).Infof("WAL replay completed")
 
 	// Start background purger to delete old WAL segment files that have been
 	// unlocked by ReleaseLockTo during compaction.

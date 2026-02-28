@@ -1564,6 +1564,8 @@ func (m *NodeSnapshot) CloneVT() *NodeSnapshot {
 		return (*NodeSnapshot)(nil)
 	}
 	r := new(NodeSnapshot)
+	r.IsReference = m.IsReference
+	r.SizeHint = m.SizeHint
 	if rhs := m.FsmSnapshot; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -4458,6 +4460,12 @@ func (this *NodeSnapshot) EqualVT(that *NodeSnapshot) bool {
 				return false
 			}
 		}
+	}
+	if this.IsReference != that.IsReference {
+		return false
+	}
+	if this.SizeHint != that.SizeHint {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -8711,6 +8719,21 @@ func (m *NodeSnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.SizeHint != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SizeHint))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.IsReference {
+		i--
+		if m.IsReference {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
 	if len(m.PeerAddresses) > 0 {
 		for iNdEx := len(m.PeerAddresses) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.PeerAddresses[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -10941,6 +10964,12 @@ func (m *NodeSnapshot) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
+	}
+	if m.IsReference {
+		n += 2
+	}
+	if m.SizeHint != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.SizeHint))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -20442,6 +20471,45 @@ func (m *NodeSnapshot) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IsReference", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.IsReference = bool(v != 0)
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SizeHint", wireType)
+			}
+			m.SizeHint = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SizeHint |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

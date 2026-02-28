@@ -434,9 +434,13 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 			return nil, fmt.Errorf("--join and --bootstrap are mutually exclusive")
 		}
 
+		fmt.Printf("Join mode: discovering peers from cluster via %s\n", joinAddr)
 		peers, err := discoverPeersFromClusterWithRetry(joinAddr, cfg.TLSConfig)
 		if err != nil {
 			return nil, fmt.Errorf("discovering peers from cluster: %w", err)
+		}
+		for _, p := range peers {
+			fmt.Printf("  Discovered peer: id=%d raft=%s service=%s\n", p.ID, p.Address, p.ServiceAddress)
 		}
 		cfg.RaftConfig.Peers = peers
 	}

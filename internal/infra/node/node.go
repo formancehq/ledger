@@ -149,7 +149,7 @@ func NewNode(
 		recoveredPeers   map[uint64]ConfChangeContext
 	)
 	if len(snapshot.Metadata.ConfState.Voters) == 0 {
-		logger.Infof("Detected empty WAL, creating initial snapshot")
+		logger.Infof("Fresh start: WAL has no ConfState voters, creating initial snapshot")
 
 		// Check for RESTORED marker from a completed backup restore
 		marker, err := ReadRestoredMarker(cfg.DataDir)
@@ -207,6 +207,9 @@ func NewNode(
 				for _, peerEntry := range cfg.Peers {
 					voters = append(voters, peerEntry.ID)
 				}
+				logger.WithFields(map[string]any{
+					"voters": voters,
+				}).Infof("Bootstrap mode: initializing as voter cluster")
 			} else if len(cfg.Peers) > 0 {
 				// Join mode: existing peers are voters, self joins as learner.
 				// The leader will add us via ConfChange after we start.
@@ -215,6 +218,10 @@ func NewNode(
 					voters = append(voters, peerEntry.ID)
 				}
 				learners = []uint64{cfg.NodeID}
+				logger.WithFields(map[string]any{
+					"voters":   voters,
+					"learners": learners,
+				}).Infof("Join mode: initializing as learner, peers are voters")
 			} else {
 				return nil, fmt.Errorf("first start requires --bootstrap or --join")
 			}
@@ -239,23 +246,46 @@ func NewNode(
 			}
 		}
 	} else {
+		logger.WithFields(map[string]any{
+			"snapshotIndex":  snapshot.Metadata.Index,
+			"snapshotTerm":   snapshot.Metadata.Term,
+			"voters":         snapshot.Metadata.ConfState.Voters,
+			"learners":       snapshot.Metadata.ConfState.Learners,
+			"nodeID":         cfg.NodeID,
+			"bootstrap":      cfg.Bootstrap,
+			"peerCount":      len(cfg.Peers),
+		}).Infof("Restart detected: WAL already has ConfState (not a fresh start)")
 		if snapshot.Metadata.Index > 0 {
-			logger.WithFields(map[string]any{"index": snapshot.Metadata.Index}).Infof("Restoring Machine from snapshot")
+			logger.WithFields(map[string]any{
+				"index":        snapshot.Metadata.Index,
+				"snapshotSize": len(snapshot.Data),
+			}).Infof("Restoring Machine from snapshot")
 
 			// Unwrap NodeSnapshot to get FSM data and peer addresses
-			fsmData, peerAddrs, err := unwrapSnapshot(snapshot.Data)
+			unwrapStart := time.Now()
+			result, err := unwrapSnapshot(snapshot.Data)
 			if err != nil {
 				return nil, fmt.Errorf("unwrapping snapshot: %w", err)
 			}
+			logger.WithFields(map[string]any{
+				"duration":    time.Since(unwrapStart).String(),
+				"fsmDataSize": len(result.fsmData),
+				"peerCount":   len(result.peerAddresses),
+			}).Infof("Unwrapped NodeSnapshot")
+
 			fsmSnapshot := snapshot
-			fsmSnapshot.Data = fsmData
+			fsmSnapshot.Data = result.fsmData
+			installStart := time.Now()
 			if err := fsm.InstallSnapshot(context.Background(), fsmSnapshot); err != nil {
 				panic(err)
 			}
+			logger.WithFields(map[string]any{
+				"duration": time.Since(installStart).String(),
+			}).Infof("Installed FSM snapshot (memory state restored)")
 
 			// Seed recovered peers from snapshot peer addresses
-			recoveredPeers = make(map[uint64]ConfChangeContext, len(peerAddrs))
-			for _, addr := range peerAddrs {
+			recoveredPeers = make(map[uint64]ConfChangeContext, len(result.peerAddresses))
+			for _, addr := range result.peerAddresses {
 				recoveredPeers[addr.NodeId] = ConfChangeContext{
 					RaftAddress:    addr.RaftAddress,
 					ServiceAddress: addr.ServiceAddress,
@@ -289,9 +319,16 @@ func NewNode(
 		if recoveredPeers == nil {
 			recoveredPeers = make(map[uint64]ConfChangeContext)
 		}
+		walScanStart := time.Now()
 		firstIdx, firstErr := wal.FirstIndex()
 		lastIdx, lastErr := wal.LastIndex()
 		if firstErr == nil && lastErr == nil && firstIdx <= lastIdx {
+			logger.WithFields(map[string]any{
+				"firstIndex": firstIdx,
+				"lastIndex":  lastIdx,
+				"entryCount": lastIdx - firstIdx + 1,
+			}).Infof("Scanning WAL entries for peer addresses")
+
 			const maxChunkBytes = 8 * 1024 * 1024 // 8MB per chunk
 			lo := firstIdx
 			for lo <= lastIdx {
@@ -305,6 +342,10 @@ func NewNode(
 				lo = entries[len(entries)-1].Index + 1
 			}
 		}
+		logger.WithFields(map[string]any{
+			"duration":  time.Since(walScanStart).String(),
+			"peerCount": len(recoveredPeers),
+		}).Infof("WAL peer address scan complete")
 	}
 
 	initialStatus := atomic.Int32{}
@@ -563,16 +604,29 @@ func NewNode(
 			return nil, fmt.Errorf("getting store last applied index: %w", err)
 		}
 
+		replayStart := time.Now()
+		logger.WithFields(map[string]any{
+			"fromIndex": storeLastAppliedIndex,
+		}).Infof("Starting spool replay")
 		if err := applier.replaySpool(context.Background(), storeLastAppliedIndex); err != nil {
 			return nil, fmt.Errorf("replaying spool: %w", err)
 		}
+		logger.WithFields(map[string]any{
+			"duration": time.Since(replayStart).String(),
+		}).Infof("Spool replay complete")
 
 		// Early compaction: if the WAL has accumulated far more entries than the
 		// snapshot threshold, create a snapshot and compact now to release memory
 		// before the Raft node starts. Without this, the leader would try to
 		// replicate tens of thousands of entries to lagging followers, causing OOM.
+		compactStart := time.Now()
 		if err := node.maybeCompactAtStartup(context.Background()); err != nil {
 			return nil, fmt.Errorf("early compaction: %w", err)
+		}
+		if time.Since(compactStart) > 100*time.Millisecond {
+			logger.WithFields(map[string]any{
+				"duration": time.Since(compactStart).String(),
+			}).Infof("Early compaction complete")
 		}
 	}
 
@@ -616,27 +670,47 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 		"entriesAccumulated": walLastIdx - lastSnap.Metadata.Index,
 	}).Infof("WAL has excess entries, compacting before Raft start")
 
+	snapshotStart := time.Now()
 	fsmData, err := node.fsm.CreateSnapshot(ctx)
 	if err != nil {
 		return fmt.Errorf("creating snapshot: %w", err)
 	}
+	node.logger.WithFields(map[string]any{
+		"duration":    time.Since(snapshotStart).String(),
+		"fsmDataSize": len(fsmData),
+	}).Infof("Created FSM snapshot for early compaction")
+
 	snapshotData, err := node.wrapSnapshot(fsmData)
 	if err != nil {
 		return fmt.Errorf("wrapping snapshot: %w", err)
 	}
 
+	walSnapshotStart := time.Now()
 	if err := node.wal.CreateSnapshot(appliedIndex, node.confState, snapshotData); err != nil {
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
+	node.logger.WithFields(map[string]any{
+		"duration":     time.Since(walSnapshotStart).String(),
+		"snapshotSize": len(snapshotData),
+		"appliedIndex": appliedIndex,
+	}).Infof("Saved snapshot to WAL")
 
 	if appliedIndex > node.applier.compactionMargin {
 		compactIdx := appliedIndex - node.applier.compactionMargin
+		compactStart := time.Now()
 		if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Early compaction failed")
+		} else {
+			node.logger.WithFields(map[string]any{
+				"duration":     time.Since(compactStart).String(),
+				"compactIndex": compactIdx,
+			}).Infof("WAL compacted")
 		}
 	}
 
-	node.logger.Infof("Early compaction completed")
+	node.logger.WithFields(map[string]any{
+		"totalDuration": time.Since(snapshotStart).String(),
+	}).Infof("Early compaction completed")
 	return nil
 }
 
@@ -663,6 +737,19 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	if err != nil {
 		return fmt.Errorf("creating raw rawNode: %w", err)
 	}
+
+	// Log initial raft state for cluster join diagnostics
+	status := node.rawNode.Status()
+	node.logger.WithFields(map[string]any{
+		"nodeID":    node.config.NodeID,
+		"raftState": status.RaftState.String(),
+		"lead":      status.Lead,
+		"term":      status.HardState.Term,
+		"commit":    status.HardState.Commit,
+		"vote":      status.HardState.Vote,
+		"voters":    node.confState.Voters,
+		"learners":  node.confState.Learners,
+	}).Infof("Raft node created — initial state")
 
 	node.tasks.add(newTask(node.orchestrate))
 	node.tasks.add(newTask(node.applier.Run))
@@ -783,9 +870,11 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
 
 	if !raft.IsEmptySnap(rd.Snapshot) {
-		node.logger.
-			WithFields(map[string]any{"index": rd.Snapshot.Metadata.Index}).
-			Infof("Applying snapshot sent by leader")
+		snapshotStart := time.Now()
+		node.logger.WithFields(map[string]any{
+			"index":        rd.Snapshot.Metadata.Index,
+			"snapshotSize": len(rd.Snapshot.Data),
+		}).Infof("Applying snapshot sent by leader")
 
 		node.applier.Drain(stop)
 
@@ -794,19 +883,59 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 
 		// Unwrap NodeSnapshot to get FSM data and peer addresses
-		fsmData, peerAddrs, err := unwrapSnapshot(rd.Snapshot.Data)
+		unwrapStart := time.Now()
+		result, err := unwrapSnapshot(rd.Snapshot.Data)
 		if err != nil {
 			return fmt.Errorf("unwrapping snapshot: %w", err)
 		}
+
+		// If the snapshot is a reference, fetch the full data from the leader
+		if result.isReference {
+			node.logger.WithFields(map[string]any{
+				"duration": time.Since(unwrapStart).String(),
+				"sizeHint": result.sizeHint,
+				"index":    rd.Snapshot.Metadata.Index,
+				"term":     rd.Snapshot.Metadata.Term,
+			}).Infof("Received snapshot reference, fetching full data from leader")
+
+			fullData, err := node.fetchRemoteSnapshot(
+				rd.Snapshot.Metadata.Index,
+				rd.Snapshot.Metadata.Term,
+			)
+			if err != nil {
+				return fmt.Errorf("fetching remote snapshot: %w", err)
+			}
+
+			// Re-unwrap the full snapshot data
+			result, err = unwrapSnapshot(fullData)
+			if err != nil {
+				return fmt.Errorf("unwrapping fetched snapshot: %w", err)
+			}
+
+			// Update the rd.Snapshot.Data with full data so WAL has the complete snapshot
+			rd.Snapshot.Data = fullData
+
+			// Re-apply the full snapshot to WAL (overwrite the reference)
+			if err := node.wal.ApplySnapshot(rd.Snapshot); err != nil {
+				return fmt.Errorf("re-applying full snapshot to storage: %w", err)
+			}
+		}
+
+		node.logger.WithFields(map[string]any{
+			"duration":    time.Since(unwrapStart).String(),
+			"fsmDataSize": len(result.fsmData),
+			"peerCount":   len(result.peerAddresses),
+		}).Infof("Unwrapped leader snapshot")
+
 		fsmSnapshot := rd.Snapshot
-		fsmSnapshot.Data = fsmData
+		fsmSnapshot.Data = result.fsmData
 		if err := node.fsm.InstallSnapshot(ctx, fsmSnapshot); err != nil {
 			return fmt.Errorf("installing snapshot: %w", err)
 		}
 
 		// Restore peer addresses into node
-		node.peerAddresses = make(map[uint64]ConfChangeContext, len(peerAddrs))
-		for _, addr := range peerAddrs {
+		node.peerAddresses = make(map[uint64]ConfChangeContext, len(result.peerAddresses))
+		for _, addr := range result.peerAddresses {
 			node.peerAddresses[addr.NodeId] = ConfChangeContext{
 				RaftAddress:    addr.RaftAddress,
 				ServiceAddress: addr.ServiceAddress,
@@ -814,6 +943,11 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 
 		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
+
+		node.logger.WithFields(map[string]any{
+			"duration": time.Since(snapshotStart).String(),
+			"index":    rd.Snapshot.Metadata.Index,
+		}).Infof("Snapshot from leader applied, starting checkpoint sync")
 
 		// The snapshot is already persisted in WAL at this point. If syncSnapshot
 		// fails (network issue, leader unavailable, etc.), the node transitions to
@@ -1589,6 +1723,31 @@ func (node *Node) PeerAddresses() map[uint64]ConfChangeContext {
 	return node.peerAddresses
 }
 
+// MemorySnapshotFetcher is an optional interface that transports can implement
+// to support fetching large memory snapshots via streaming RPC.
+// DefaultTransport implements this; ChannelTransport (used in tests) does not.
+type MemorySnapshotFetcher interface {
+	// FetchRemoteMemorySnapshot fetches the full snapshot data from the leader
+	// via the FetchMemorySnapshot streaming RPC.
+	FetchRemoteMemorySnapshot(leaderID uint64, index, term uint64) ([]byte, error)
+}
+
+// fetchRemoteSnapshot fetches the full snapshot data from the leader.
+// It uses the transport's MemorySnapshotFetcher capability if available.
+func (node *Node) fetchRemoteSnapshot(index, term uint64) ([]byte, error) {
+	fetcher, ok := node.transport.(MemorySnapshotFetcher)
+	if !ok {
+		return nil, fmt.Errorf("transport does not support remote snapshot fetching")
+	}
+
+	ss := node.lastSoftState.Load()
+	if ss == nil || ss.Lead == 0 {
+		return nil, fmt.Errorf("no leader known for snapshot fetch")
+	}
+
+	return fetcher.FetchRemoteMemorySnapshot(ss.Lead, index, term)
+}
+
 // wrapSnapshot wraps FSM snapshot data with cluster-level metadata (peer addresses)
 // into a NodeSnapshot for WAL storage.
 func (node *Node) wrapSnapshot(fsmData []byte) ([]byte, error) {
@@ -1607,13 +1766,28 @@ func (node *Node) wrapSnapshot(fsmData []byte) ([]byte, error) {
 	return ns.MarshalVT()
 }
 
+// snapshotUnwrapResult holds the result of unwrapping a NodeSnapshot.
+type snapshotUnwrapResult struct {
+	fsmData       []byte
+	peerAddresses []*raftcmdpb.PeerAddress
+	isReference   bool
+	sizeHint      uint64
+}
+
 // unwrapSnapshot extracts FSM snapshot data and peer addresses from a NodeSnapshot.
-func unwrapSnapshot(data []byte) ([]byte, []*raftcmdpb.PeerAddress, error) {
+// When isReference is true, fsmData is empty and the caller must fetch the full
+// snapshot via FetchMemorySnapshot RPC.
+func unwrapSnapshot(data []byte) (*snapshotUnwrapResult, error) {
 	ns := &raftcmdpb.NodeSnapshot{}
 	if err := ns.UnmarshalVT(data); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return ns.FsmSnapshot, ns.PeerAddresses, nil
+	return &snapshotUnwrapResult{
+		fsmData:       ns.FsmSnapshot,
+		peerAddresses: ns.PeerAddresses,
+		isReference:   ns.IsReference,
+		sizeHint:      ns.SizeHint,
+	}, nil
 }
 
 type Proposal struct {

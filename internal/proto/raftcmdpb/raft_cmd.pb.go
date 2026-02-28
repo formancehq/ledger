@@ -3900,6 +3900,8 @@ type NodeSnapshot struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	FsmSnapshot   []byte                 `protobuf:"bytes,1,opt,name=fsm_snapshot,json=fsmSnapshot,proto3" json:"fsm_snapshot,omitempty"`
 	PeerAddresses []*PeerAddress         `protobuf:"bytes,2,rep,name=peer_addresses,json=peerAddresses,proto3" json:"peer_addresses,omitempty"`
+	IsReference   bool                   `protobuf:"varint,3,opt,name=is_reference,json=isReference,proto3" json:"is_reference,omitempty"` // When true, fsm_snapshot is empty — fetch via FetchMemorySnapshot RPC
+	SizeHint      uint64                 `protobuf:"varint,4,opt,name=size_hint,json=sizeHint,proto3" json:"size_hint,omitempty"`          // Approximate size of the full snapshot (only set when is_reference=true)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3946,6 +3948,20 @@ func (x *NodeSnapshot) GetPeerAddresses() []*PeerAddress {
 		return x.PeerAddresses
 	}
 	return nil
+}
+
+func (x *NodeSnapshot) GetIsReference() bool {
+	if x != nil {
+		return x.IsReference
+	}
+	return false
+}
+
+func (x *NodeSnapshot) GetSizeHint() uint64 {
+	if x != nil {
+		return x.SizeHint
+	}
+	return 0
 }
 
 // PeerAddress stores a peer's raft and service addresses in snapshots.
@@ -4786,10 +4802,12 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x0eclosed_periods\x18\r \x03(\v2\x0e.common.PeriodR\rclosedPeriods\x12:\n" +
 	"\n" +
 	"reversions\x18\x0e \x03(\v2\x1a.raft.ReversionBitsetEntryR\n" +
-	"reversionsJ\x04\b\x01\x10\x02J\x04\b\x0f\x10\x10\"k\n" +
+	"reversionsJ\x04\b\x01\x10\x02J\x04\b\x0f\x10\x10\"\xab\x01\n" +
 	"\fNodeSnapshot\x12!\n" +
 	"\ffsm_snapshot\x18\x01 \x01(\fR\vfsmSnapshot\x128\n" +
-	"\x0epeer_addresses\x18\x02 \x03(\v2\x11.raft.PeerAddressR\rpeerAddresses\"r\n" +
+	"\x0epeer_addresses\x18\x02 \x03(\v2\x11.raft.PeerAddressR\rpeerAddresses\x12!\n" +
+	"\fis_reference\x18\x03 \x01(\bR\visReference\x12\x1b\n" +
+	"\tsize_hint\x18\x04 \x01(\x04R\bsizeHint\"r\n" +
 	"\vPeerAddress\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +

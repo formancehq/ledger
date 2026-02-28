@@ -66,17 +66,24 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 
 	// Determine target node
 	var targetNodeID uint64
+	localNodeID := impl.node.GetNodeID()
 
 	if req.NodeId == 0 {
 		// No node ID specified, route to leader
 		if impl.node.IsLeader() {
 			// This node is the leader, handle locally
+			impl.logger.WithFields(map[string]any{
+				"localNodeID": localNodeID,
+			}).Infof("GetClusterState: handling locally (this node is leader)")
 			return impl.getClusterStateLocal(ctx)
 		}
 
 		// Get the leader ID
 		targetNodeID = impl.node.GetLeader()
 		if targetNodeID == 0 {
+			impl.logger.WithFields(map[string]any{
+				"localNodeID": localNodeID,
+			}).Infof("GetClusterState: no leader known, returning ErrNoLeader")
 			return nil, commonpb.ErrNoLeader
 		}
 	} else {
@@ -84,7 +91,7 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 		targetNodeID = uint64(req.NodeId)
 
 		// If requesting this node, handle locally
-		if targetNodeID == impl.node.GetNodeID() {
+		if targetNodeID == localNodeID {
 			return impl.getClusterStateLocal(ctx)
 		}
 	}
@@ -92,8 +99,18 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 	// Forward to target node
 	grpcConn := impl.servicePool.GetConnection(targetNodeID)
 	if grpcConn == nil {
+		impl.logger.WithFields(map[string]any{
+			"localNodeID":  localNodeID,
+			"targetNodeID": targetNodeID,
+			"knownPeers":   impl.servicePool.PeerIDs(),
+		}).Infof("GetClusterState: no connection to target node, returning ErrNoLeader")
 		return nil, commonpb.ErrNoLeader
 	}
+
+	impl.logger.WithFields(map[string]any{
+		"localNodeID":  localNodeID,
+		"targetNodeID": targetNodeID,
+	}).Infof("GetClusterState: forwarding to target node")
 
 	client := clusterpb.NewClusterServiceClient(grpcConn)
 	return client.GetClusterState(ctx, req)
@@ -297,23 +314,45 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 		return nil, fmt.Errorf("service_address is required")
 	}
 
+	impl.logger.WithFields(map[string]any{
+		"requestedNodeID":      req.NodeId,
+		"requestedRaftAddress": req.RaftAddress,
+		"requestedServiceAddr": req.ServiceAddress,
+		"isLeader":             impl.node.IsLeader(),
+		"localNodeID":          impl.node.GetNodeID(),
+	}).Infof("AddLearner: received request")
+
 	// Forward to leader if not leader
 	if !impl.node.IsLeader() {
 		leaderID := impl.node.GetLeader()
 		if leaderID == 0 {
+			impl.logger.Infof("AddLearner: not leader and no leader known, returning ErrNoLeader")
 			return nil, commonpb.ErrNoLeader
 		}
 
 		grpcConn := impl.servicePool.GetConnection(leaderID)
 		if grpcConn == nil {
+			impl.logger.WithFields(map[string]any{
+				"leaderID": leaderID,
+			}).Infof("AddLearner: no connection to leader, returning ErrNoLeader")
 			return nil, commonpb.ErrNoLeader
 		}
+
+		impl.logger.WithFields(map[string]any{
+			"leaderID": leaderID,
+		}).Infof("AddLearner: forwarding to leader")
 
 		client := clusterpb.NewClusterServiceClient(grpcConn)
 		return client.AddLearner(ctx, req)
 	}
 
 	// On the leader: add peer to transport and service pool so we can reach it
+	impl.logger.WithFields(map[string]any{
+		"learnerNodeID":   req.NodeId,
+		"raftAddress":     req.RaftAddress,
+		"serviceAddress":  req.ServiceAddress,
+	}).Infof("AddLearner: processing on leader — adding peer to transport and proposing ConfChange")
+
 	impl.raftTransport.AddPeer(req.NodeId, req.RaftAddress)
 	if err := impl.servicePool.AddPeer(req.NodeId, req.ServiceAddress); err != nil {
 		impl.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add learner to service pool")
@@ -323,6 +362,10 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 	if err := impl.node.AddLearner(ctx, req.NodeId, req.RaftAddress, req.ServiceAddress); err != nil {
 		return nil, fmt.Errorf("adding learner: %w", err)
 	}
+
+	impl.logger.WithFields(map[string]any{
+		"learnerNodeID": req.NodeId,
+	}).Infof("AddLearner: successfully proposed ConfChange for learner")
 
 	return &clusterpb.AddLearnerResponse{}, nil
 }

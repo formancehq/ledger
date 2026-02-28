@@ -406,6 +406,8 @@ message MemorySnapshot {
 message NodeSnapshot {
   bytes fsm_snapshot = 1;
   repeated PeerAddress peer_addresses = 2;
+  bool is_reference = 3;    // When true, fsm_snapshot is empty — fetch via FetchMemorySnapshot RPC
+  uint64 size_hint = 4;     // Approximate size of the full snapshot (only set when is_reference=true)
 }
 
 // PeerAddress stores a peer's raft and service addresses in snapshots.

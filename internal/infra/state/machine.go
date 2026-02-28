@@ -133,6 +133,8 @@ type Machine struct {
 }
 
 func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier EventNotifier, mirrorNotifier MirrorNotifier, numscriptCacheSize int) (*Machine, error) {
+	stepStart := time.Now()
+
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(dataStore)
 	if err != nil {
 		return nil, err
@@ -142,7 +144,13 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	if err != nil {
 		return nil, err
 	}
+	logger.WithFields(map[string]any{
+		"duration":             time.Since(stepStart).String(),
+		"lastAppliedIndex":    lastAppliedIndex,
+		"lastAppliedTimestamp": lastAppliedTimestamp,
+	}).Infof("NewMachine: read last applied state from Pebble")
 
+	stepStart = time.Now()
 	logsAppendedCounter, err := meter.Int64Counter(
 		"raft.fsm.logs_appended",
 		metric.WithDescription("Total number of logs appended to the store. Use rate() to get logs per second."),
@@ -184,11 +192,19 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	if err != nil {
 		return nil, fmt.Errorf("creating batch_commit_duration histogram: %w", err)
 	}
+	logger.WithFields(map[string]any{
+		"duration": time.Since(stepStart).String(),
+	}).Infof("NewMachine: created metrics")
 
+	stepStart = time.Now()
 	periodsFromStore, err := query.ReadAllPeriods(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading periods from store: %w", err)
 	}
+	logger.WithFields(map[string]any{
+		"duration":    time.Since(stepStart).String(),
+		"periodCount": len(periodsFromStore),
+	}).Infof("NewMachine: ReadAllPeriods")
 
 	allPeriods := make(map[uint64]*commonpb.Period, len(periodsFromStore))
 	var currentOpenPeriod, closingPeriod *commonpb.Period
@@ -202,22 +218,35 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		}
 	}
 
+	stepStart = time.Now()
 	nextPeriodID, err := query.ReadNextPeriodID(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading next period ID from store: %w", err)
 	}
+	logger.WithFields(map[string]any{
+		"duration": time.Since(stepStart).String(),
+	}).Infof("NewMachine: ReadNextPeriodID")
 
+	stepStart = time.Now()
 	periodSchedule, err := query.ReadPeriodSchedule(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading period schedule from store: %w", err)
 	}
+	logger.WithFields(map[string]any{
+		"duration": time.Since(stepStart).String(),
+	}).Infof("NewMachine: ReadPeriodSchedule")
 
+	stepStart = time.Now()
 	processor, err := processing.NewRequestProcessor(meter, numscriptCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("creating request processor: %w", err)
 	}
+	logger.WithFields(map[string]any{
+		"duration": time.Since(stepStart).String(),
+	}).Infof("NewMachine: created request processor")
 
 	// Load signing keys from Pebble on startup
+	stepStart = time.Now()
 	if ks != nil {
 		signingKeys, err := query.ReadSigningKeys(dataStore)
 		if err != nil {
@@ -246,6 +275,9 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		return nil, fmt.Errorf("loading audit config from store: %w", err)
 	}
 	sharedState.SetAuditEnabled(auditEnabled)
+	logger.WithFields(map[string]any{
+		"duration": time.Since(stepStart).String(),
+	}).Infof("NewMachine: loaded signing keys and config from Pebble")
 
 	fsm := &Machine{
 		logger:                      logger,
@@ -1174,6 +1206,8 @@ func hasMirrorConfigChange(proposal *raftcmdpb.Proposal) bool {
 
 // CreateSnapshot creates a snapshot of the Machine state
 func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
+	totalStart := time.Now()
+
 	checkpointID, err := fsm.dataStore.CreateSnapshot()
 	if err != nil {
 		return nil, fmt.Errorf("creating snapshot: %w", err)
@@ -1196,6 +1230,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		})
 	}
 
+	serializeStart := time.Now()
 	snapshot := &raftcmdpb.MemorySnapshot{
 		NextSequenceId:       fsm.nextSequenceID,
 		LastLogHash:          fsm.lastLogHash,
@@ -1222,6 +1257,16 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshaling snapshot: %w", err)
 	}
+
+	fsm.logger.WithFields(map[string]any{
+		"totalDuration":      time.Since(totalStart).String(),
+		"serializeDuration":  time.Since(serializeStart).String(),
+		"snapshotSize":       n,
+		"checkpointId":       checkpointID,
+		"gen0Volumes":        countGenVolumes(snapshot.Gen0),
+		"gen1Volumes":        countGenVolumes(snapshot.Gen1),
+	}).Infof("Created MemorySnapshot")
+
 	return fsm.snapshotBuf[:n], nil
 }
 
@@ -1336,12 +1381,19 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 }
 
 func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapshot) error {
+	totalStart := time.Now()
 	fsm.snapshotIndex = snapshot.Metadata.Index
 
+	deserializeStart := time.Now()
 	memSnapshot := &raftcmdpb.MemorySnapshot{}
 	if err := memSnapshot.UnmarshalVT(snapshot.Data); err != nil {
 		return err
 	}
+	fsm.logger.WithFields(map[string]any{
+		"duration":    time.Since(deserializeStart).String(),
+		"dataSize":    len(snapshot.Data),
+		"checkpointId": memSnapshot.CheckpointId,
+	}).Infof("Deserialized MemorySnapshot")
 
 	// Restore memory state from snapshot
 	fsm.nextSequenceID = memSnapshot.NextSequenceId
@@ -1364,9 +1416,20 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 
 	// Reset the cache and deserialize both generations into it
 	// Ledger info and boundaries are restored via deserializeCacheGeneration (from cache generations)
+	cacheStart := time.Now()
 	fsm.Registry.Cache.Reset()
 	deserializeCacheGeneration(fsm.Registry.Cache, memSnapshot.Gen0, 0)
 	deserializeCacheGeneration(fsm.Registry.Cache, memSnapshot.Gen1, 1)
+	fsm.logger.WithFields(map[string]any{
+		"duration":       time.Since(cacheStart).String(),
+		"gen0Volumes":    countGenVolumes(memSnapshot.Gen0),
+		"gen1Volumes":    countGenVolumes(memSnapshot.Gen1),
+		"gen0Metadata":   countGenMetadata(memSnapshot.Gen0),
+		"gen1Metadata":   countGenMetadata(memSnapshot.Gen1),
+		"gen0Ledgers":    countGenLedgers(memSnapshot.Gen0),
+		"gen0Boundaries": countGenBoundaries(memSnapshot.Gen0),
+		"gen0References": countGenReferences(memSnapshot.Gen0),
+	}).Infof("Restored cache from snapshot")
 
 	// Restore reversion bitsets from snapshot
 	fsm.Registry.ResetReversions()
@@ -1389,7 +1452,52 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	}
 	fsm.dirtyBoundaryKeys = make(map[string]*raftcmdpb.LedgerBoundaries)
 
+	fsm.logger.WithFields(map[string]any{
+		"totalDuration": time.Since(totalStart).String(),
+		"snapshotIndex": snapshot.Metadata.Index,
+	}).Infof("InstallSnapshot complete")
+
 	return nil
+}
+
+// countGenVolumes returns the number of volume entries in a generation snapshot, or 0 if nil.
+func countGenVolumes(gen *raftcmdpb.GenerationSnapshot) int {
+	if gen == nil {
+		return 0
+	}
+	return len(gen.Volumes)
+}
+
+// countGenMetadata returns the number of metadata entries in a generation snapshot, or 0 if nil.
+func countGenMetadata(gen *raftcmdpb.GenerationSnapshot) int {
+	if gen == nil {
+		return 0
+	}
+	return len(gen.Metadata) + len(gen.LedgerMetadata)
+}
+
+// countGenLedgers returns the number of ledger entries in a generation snapshot, or 0 if nil.
+func countGenLedgers(gen *raftcmdpb.GenerationSnapshot) int {
+	if gen == nil {
+		return 0
+	}
+	return len(gen.Ledgers)
+}
+
+// countGenBoundaries returns the number of boundary entries in a generation snapshot, or 0 if nil.
+func countGenBoundaries(gen *raftcmdpb.GenerationSnapshot) int {
+	if gen == nil {
+		return 0
+	}
+	return len(gen.Boundaries)
+}
+
+// countGenReferences returns the number of reference entries in a generation snapshot, or 0 if nil.
+func countGenReferences(gen *raftcmdpb.GenerationSnapshot) int {
+	if gen == nil {
+		return 0
+	}
+	return len(gen.References)
 }
 
 // reloadStateFromStore reloads signing keys and shared runtime flags from Pebble.

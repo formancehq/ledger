@@ -85,6 +85,7 @@ func Module() fx.Option {
 				)
 			}, fx.ParamTags(``, ``, `name:"raft"`, ``)),
 			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*dal.Store, error) {
+				storeStart := time.Now()
 				store, err := dal.NewStore(
 					cfg.DataDir,
 					logger,
@@ -94,12 +95,19 @@ func Module() fx.Option {
 				if err != nil {
 					return nil, err
 				}
+				logger.WithFields(map[string]any{
+					"duration": time.Since(storeStart).String(),
+				}).Infof("Pebble store opened")
 
 				if !cfg.Restore {
+					configStart := time.Now()
 					if err := ValidateOrPersistConfig(store, cfg, logger, cfg.UnsafeSkipConfigValidation); err != nil {
 						_ = store.Close()
 						return nil, fmt.Errorf("configuration safety check failed: %w", err)
 					}
+					logger.WithFields(map[string]any{
+						"duration": time.Since(configStart).String(),
+					}).Infof("Configuration validation completed")
 				}
 
 				return store, nil
@@ -136,7 +144,8 @@ func Module() fx.Option {
 				eventNotifications *events.Notifications,
 				mirrorNotifications *mirror.Notifications,
 			) (*state.Machine, error) {
-				return state.NewMachine(
+				machineStart := time.Now()
+				m, err := state.NewMachine(
 					logger,
 					store,
 					meterProvider.Meter("raft.node"),
@@ -149,6 +158,13 @@ func Module() fx.Option {
 					mirrorNotifications,
 					cfg.NumscriptCacheSize,
 				)
+				if err != nil {
+					return nil, err
+				}
+				logger.WithFields(map[string]any{
+					"duration": time.Since(machineStart).String(),
+				}).Infof("FSM Machine created")
+				return m, nil
 			},
 			func(
 				params struct {
@@ -170,6 +186,13 @@ func Module() fx.Option {
 					return nodeProvideResult{}, fmt.Errorf("reading WAL snapshot: %w", err)
 				}
 				freshStart := walFreshStart(len(snapshot.Metadata.ConfState.Voters) == 0)
+				params.Logger.WithFields(map[string]any{
+					"freshStart":     freshStart,
+					"walVoters":      snapshot.Metadata.ConfState.Voters,
+					"walLearners":    snapshot.Metadata.ConfState.Learners,
+					"snapshotIndex":  snapshot.Metadata.Index,
+					"snapshotTerm":   snapshot.Metadata.Term,
+				}).Infof("WAL fresh start detection")
 
 				n, err := node.NewNode(
 					params.NodeConfig,
@@ -749,17 +772,27 @@ func Module() fx.Option {
 						// Only register as learner on the very first start;
 						// on restart the node is already a cluster member.
 						if !freshStart {
-							logger.Infof("Restart detected, skipping learner registration")
+							logger.WithFields(map[string]any{
+								"nodeID": cfg.RaftConfig.NodeID,
+							}).Infof("WARNING: Learner registration SKIPPED — WAL already contains ConfState voters (not a fresh start). " +
+								"If this node was never successfully added to the cluster, delete its WAL directory and retry")
 							return nil
 						}
 
 						peer := cfg.RaftConfig.Peers[0]
+						logger.WithFields(map[string]any{
+							"nodeID":         cfg.RaftConfig.NodeID,
+							"targetPeerID":   peer.ID,
+							"targetPeerAddr": peer.ServiceAddress,
+							"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
+							"serviceAddress": cfg.ServiceAdvertiseAddr(),
+						}).Infof("Join mode: requesting peer to add this node as learner")
+
 						conn := servicePool.GetConnection(peer.ID)
 						if conn == nil {
-							return fmt.Errorf("failed to register as learner: peer %d is not reachable", peer.ID)
+							return fmt.Errorf("failed to register as learner: no gRPC connection to peer %d (address: %s)", peer.ID, peer.ServiceAddress)
 						}
 
-						logger.Infof("Join mode: requesting a peer to add this node as learner")
 						client := clusterpb.NewClusterServiceClient(conn)
 						_, err := client.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 							NodeId:         cfg.RaftConfig.NodeID,
@@ -767,12 +800,12 @@ func Module() fx.Option {
 							ServiceAddress: cfg.ServiceAdvertiseAddr(),
 						})
 						if err != nil {
-							return fmt.Errorf("failed to register as learner via peer %d: %w", peer.ID, err)
+							return fmt.Errorf("failed to register as learner via peer %d (%s): %w", peer.ID, peer.ServiceAddress, err)
 						}
 
 						logger.WithFields(map[string]any{
 							"peer": peer.ID,
-						}).Infof("Successfully registered as learner")
+						}).Infof("Successfully registered as learner on the cluster")
 						return nil
 					},
 				})
