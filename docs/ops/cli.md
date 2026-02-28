@@ -28,6 +28,27 @@ These flags are available for all commands:
 | `--signing-key` | | Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded) |
 | `--signing-key-id` | `default` | Key ID for request signatures |
 | `--response-verify-key` | | Path to Ed25519 public key file for verifying server response signatures |
+| `--consistency` | | Read consistency level: `stale`, `leader`, or `linearizable` (default) |
+
+### Read Consistency
+
+By default, all read operations use **linearizable** consistency: the node performs a ReadIndex barrier to ensure it has applied all committed entries before reading from the local store. This guarantees that reads always reflect the latest committed state, but it can block during maintenance windows (e.g. mirror sync, snapshot creation) when the FSM is frozen.
+
+Two alternative consistency levels are available:
+
+- **`stale`** — Skip the ReadIndex barrier and read directly from the local store. Data may lag behind the latest committed index, but reads never block. Useful for monitoring, dashboards, and non-critical queries.
+- **`leader`** — Forward the read to the leader node. The leader always has the most up-to-date data and its ReadIndex barrier is fast (no round-trip needed). Useful when you need fresh data but the local node may be lagging.
+
+```bash
+# Stale read (instant, may lag)
+ledgerctl --consistency stale ledgers get my-ledger
+
+# Leader read (fresh, forwarded to leader)
+ledgerctl --consistency leader ledgers list
+
+# Default linearizable read
+ledgerctl ledgers list
+```
 
 ### Request Signing
 
@@ -2017,6 +2038,7 @@ Global flags can be set via environment variables:
 | `SERVER` | `--server` |
 | `INSECURE` | `--insecure` |
 | `TLS_CA_CERT` | `--tls-ca-cert` |
+| `CONSISTENCY` | `--consistency` |
 
 ```bash
 export SERVER=ledger.example.com:443

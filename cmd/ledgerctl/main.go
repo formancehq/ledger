@@ -39,6 +39,7 @@ func newRootCommand() *cobra.Command {
 			bindEnvToFlag(cmd, "server", "SERVER")
 			bindEnvToFlag(cmd, "insecure", "INSECURE")
 			bindEnvToFlag(cmd, "tls-ca-cert", "TLS_CA_CERT")
+			bindEnvToFlag(cmd, "consistency", "CONSISTENCY")
 		},
 	}
 
@@ -53,6 +54,9 @@ func newRootCommand() *cobra.Command {
 
 	// Add persistent flag for response signature verification.
 	rootCmd.PersistentFlags().String("response-verify-key", "", "Path to Ed25519 seed file for verifying server response signatures")
+
+	// Add persistent flag for read consistency level.
+	rootCmd.PersistentFlags().String("consistency", "", "Read consistency level: stale, leader, or linearizable (default) (env: CONSISTENCY)")
 
 	// Add subcommands.
 	rootCmd.AddCommand(ledgers.NewCommand())

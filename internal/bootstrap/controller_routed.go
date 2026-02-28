@@ -38,11 +38,22 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 	return grpcadp.NewLedgerGrpcClient(servicepb.NewBucketServiceClient(grpcConn)), nil
 }
 
-// readCtrl returns the controller to use for a linearizable read.
-// It performs a ReadIndex+WaitForApplied barrier on the local node. If that succeeds,
-// the local controller is returned (fastest path). If the node is still syncing
-// (catching up with the cluster), the read is transparently forwarded to the leader.
+// readCtrl returns the controller to use for a read operation.
+// The consistency level is determined from the context (set by the gRPC interceptor):
+//   - linearizable (default): ReadIndex+WaitForApplied barrier on the local node
+//   - stale: skip the barrier and read from the local store directly
+//   - leader: forward the read to the leader node
+//
+// For linearizable reads, if the local node is still syncing the read is
+// transparently forwarded to the leader.
 func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, error) {
+	switch grpcadp.ConsistencyFromContext(ctx) {
+	case grpcadp.ConsistencyStale:
+		return b.localController, nil
+	case grpcadp.ConsistencyLeader:
+		return b.getLeaderCtrl()
+	}
+
 	err := b.ReadIndexAndWait(ctx)
 	if err == nil {
 		return b.localController, nil

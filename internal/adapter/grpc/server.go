@@ -324,10 +324,12 @@ func NewServiceServer(port int, logger logging.Logger, debug bool, tlsOpt ggrpc.
 	// Recovery interceptor must be first (outermost) to catch panics from all handlers
 	unaryInterceptors := []ggrpc.UnaryServerInterceptor{
 		recoveryInterceptor(logger),
+		consistencyInterceptor(),
 		errorConversionInterceptor(),
 	}
 	streamInterceptors := []ggrpc.StreamServerInterceptor{
 		recoveryStreamInterceptor(logger),
+		consistencyStreamInterceptor(),
 		errorConversionStreamInterceptor(),
 	}
 

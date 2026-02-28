@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 const (
@@ -104,12 +105,17 @@ func GetClusterClient(cmd *cobra.Command) (clusterpb.ClusterServiceClient, *grpc
 }
 
 // GetContext returns a context with the configured timeout.
+// If --consistency is set, appends x-consistency metadata to the outgoing gRPC context.
 func GetContext(cmd *cobra.Command) (context.Context, context.CancelFunc) {
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 	if timeout == 0 {
 		timeout = DefaultTimeout
 	}
-	return context.WithTimeout(cmd.Context(), timeout)
+	ctx := cmd.Context()
+	if consistency, _ := cmd.Flags().GetString("consistency"); consistency != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "x-consistency", consistency)
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 // ParseKeyValue parses a string in the format "key=value" and returns the key and value.
