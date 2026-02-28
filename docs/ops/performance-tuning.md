@@ -231,6 +231,10 @@ The default configuration is tuned for write-heavy workloads:
 | CacheSize | 1 GB | Block cache for read performance |
 | MaxConcurrentCompactions | 2 | Parallel compaction threads |
 
+**L0 compaction and cold starts:** A high `L0CompactionThreshold` (e.g. 64) improves write throughput but can leave many L0 files below the threshold after a write burst. On restart with a cold block cache, each read must scan every L0 file from disk, causing multi-minute stalls. Two automatic mechanisms mitigate this:
+- **Startup compaction**: If the checkpoint has > 4 L0 files at boot, a full compaction runs before serving reads. The checkpoint is then overwritten so subsequent restarts are fast.
+- **Idle compaction**: A background goroutine detects when writes stop (no new flushes for 30s) and compacts L0 proactively, ensuring clean checkpoints for future restarts.
+
 Monitor these metrics for write stalls:
 ```promql
 increase(pebble_write_stall_count[5m]) > 0

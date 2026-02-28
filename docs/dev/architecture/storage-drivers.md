@@ -45,11 +45,12 @@ Optimized for ledger workloads with high write throughput:
 
 ```go
 MemTableSize:                256 << 20  // 256MB memtable (absorb more writes before flush)
-MemTableStopWritesThreshold: 4          // Reduce write stalls
-L0CompactionThreshold:       8          // Trigger L0->L1 compactions earlier
-L0StopWritesThreshold:       32         // Higher threshold for stop-the-world writes
-LBaseMaxBytes:               512 << 20  // 512MB base level
-TargetFileSize:              64 << 20   // 64MB per SST file
+MemTableStopWritesThreshold: 6          // Reduce write stalls
+L0CompactionThreshold:       16         // Runtime threshold (operator typically overrides to 64)
+L0StopWritesThreshold:       64         // Higher threshold for stop-the-world writes
+LBaseMaxBytes:               2 << 30    // 2GB base level
+CacheSize:                   1024 << 20 // 1GB block cache
+TargetFileSize:              256 << 20  // 256MB per SST file
 BytesPerSync:                1 << 20    // 1MB sync interval
 WALBytesPerSync:             1 << 20    // 1MB WAL sync interval
 MaxConcurrentCompactions:    2          // Parallel compactions (balance CPU/IO)
@@ -142,6 +143,26 @@ Pebble uses a checkpoint-based system for durability:
 3. **On snapshot**: Create a new checkpoint with incremented ID using Pebble's built-in checkpoint feature
 4. **Efficiency**: Checkpoints use hard links, so they don't duplicate data
 
+### L0 Compaction Management
+
+Pebble's runtime `L0CompactionThreshold` is set high (e.g. 64) to maximize write throughput during bulk operations. This means L0 files can accumulate below the threshold without triggering automatic compaction. While harmless during normal operation (the block cache keeps hot data in RAM), these accumulated L0 files become a problem on restart: with a cold cache, every read must scan each L0 file individually from disk, causing multi-minute stalls.
+
+Three mechanisms keep L0 under control:
+
+1. **Startup compaction** (`store.go:NewStore`): When the database opens from a checkpoint with more than 4 L0 files, a full `db.Compact()` runs synchronously before serving any reads. After compaction, the checkpoint is overwritten with the clean LSM state so subsequent restarts skip the compaction.
+
+2. **Idle compaction** (`idle_compactor.go`): A background goroutine checks every 30 seconds whether the database is idle (no new memtable flushes since last check). If idle and L0 exceeds 4 files, it triggers `db.Compact()` in a separate goroutine. This runs concurrently with reads/writes without blocking. It ensures that after a write burst (e.g. bulk import), L0 is cleaned up proactively before the next restart.
+
+3. **Pebble automatic compaction**: Pebble's built-in compaction runs when L0 reaches the runtime threshold (default 64). This handles steady-state write workloads.
+
+| Mechanism | Trigger | Blocking | When |
+|-----------|---------|----------|------|
+| Startup compaction | L0 > 4 at boot | Yes (before serving) | Every restart with dirty L0 |
+| Idle compaction | No flushes for 30s + L0 > 4 | No (background goroutine) | After write bursts |
+| Pebble automatic | L0 >= runtime threshold | No (background) | During sustained writes |
+
+Source files: `internal/storage/dal/store.go` (startup), `internal/storage/dal/idle_compactor.go` (idle).
+
 ### Metrics
 
 Pebble exposes detailed metrics accessible via the API through OpenTelemetry:
@@ -229,6 +250,7 @@ The `Batch` (`internal/storage/dal/batch.go`) provides atomic write operations:
 | Store | `internal/storage/dal/store.go` |
 | Batch | `internal/storage/dal/batch.go` |
 | Config | `internal/storage/dal/config.go` |
+| Idle Compactor | `internal/storage/dal/idle_compactor.go` |
 | Metrics | `internal/storage/dal/metrics.go` |
 | Types (keys) | `internal/storage/dal/types.go` |
 | Key builder | `internal/storage/dal/key_builder.go` |

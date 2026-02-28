@@ -176,6 +176,24 @@ func NewStore(
 		}
 	} else {
 		logger.Infof("Checkpoint found, restoring from checkpoint %s to directory %s", string(currentCheckpointRaw), liveDir)
+
+		checkpointPath := filepath.Join(dataDir, checkpointsDir, string(currentCheckpointRaw))
+
+		// Clean up incomplete post-compaction leftovers from a previous crash.
+		_ = os.RemoveAll(checkpointPath + ".compacted")
+		// If the main checkpoint dir is missing but .old exists, a crash happened
+		// between rename(target→.old) and rename(.compacted→target). Restore it.
+		if _, statErr := os.Stat(checkpointPath); os.IsNotExist(statErr) {
+			oldPath := checkpointPath + ".old"
+			if _, oldStatErr := os.Stat(oldPath); oldStatErr == nil {
+				logger.Infof("Recovering checkpoint from .old (crash during post-compaction rename)")
+				if renameErr := os.Rename(oldPath, checkpointPath); renameErr != nil {
+					return nil, fmt.Errorf("recovering checkpoint from .old: %w", renameErr)
+				}
+			}
+		}
+		_ = os.RemoveAll(checkpointPath + ".old")
+
 		removeStart := time.Now()
 		if err := os.RemoveAll(liveDir); err != nil {
 			return nil, fmt.Errorf("removing old database: %w", err)
@@ -185,7 +203,7 @@ func NewStore(
 		}).Infof("Removed old live directory")
 
 		linkStart := time.Now()
-		if err := HardLink(filepath.Join(dataDir, checkpointsDir, string(currentCheckpointRaw)), liveDir); err != nil {
+		if err := HardLink(checkpointPath, liveDir); err != nil {
 			return nil, fmt.Errorf("hard linking checkpoint: %w", err)
 		}
 		logger.WithFields(map[string]any{
@@ -220,6 +238,9 @@ func NewStore(
 		// iterator to read each one from disk, stalling reads for tens of seconds.
 		// We use a low startup-specific threshold (4) to ensure reads are fast
 		// immediately after boot.
+		//
+		// After compaction, we overwrite the checkpoint with the compacted state so
+		// that subsequent restarts don't repeat the (potentially multi-minute) compaction.
 		const startupL0CompactThreshold = 4
 		if m.Levels[0].NumFiles > startupL0CompactThreshold {
 			logger.WithFields(map[string]any{
@@ -236,6 +257,36 @@ func NewStore(
 					"l0FileCount": m2.Levels[0].NumFiles,
 					"l0Size":      m2.Levels[0].Size,
 				}).Infof("Startup compaction complete")
+
+				// Replace the checkpoint with the compacted LSM state.
+				// 1. Write to a temp dir
+				// 2. Rename old → .old (preserves it if rename in step 3 fails)
+				// 3. Rename temp → target (atomic on same filesystem)
+				// 4. Remove .old
+				// If we crash at any point, recovery is safe:
+				//   - .compacted leftover: cleaned up on next boot (see above)
+				//   - .old exists + target missing: startup falls back to .old
+				//     (but CURRENT_CHECKPOINT still points to the ID, and NewStore
+				//     just needs the dir to exist — we handle this at the top)
+				tmpPath := checkpointPath + ".compacted"
+				oldPath := checkpointPath + ".old"
+				_ = os.RemoveAll(tmpPath) // clean up leftover from a previous crash
+				_ = os.RemoveAll(oldPath)
+				if err := db.Checkpoint(tmpPath, pebble.WithFlushedWAL()); err != nil {
+					logger.WithFields(map[string]any{"error": err}).Infof("Failed to create post-compaction checkpoint (non-fatal)")
+					_ = os.RemoveAll(tmpPath)
+				} else if err := os.Rename(checkpointPath, oldPath); err != nil {
+					logger.WithFields(map[string]any{"error": err}).Infof("Failed to move old checkpoint aside (non-fatal)")
+					_ = os.RemoveAll(tmpPath)
+				} else if err := os.Rename(tmpPath, checkpointPath); err != nil {
+					// Restore the old checkpoint
+					logger.WithFields(map[string]any{"error": err}).Infof("Failed to rename post-compaction checkpoint (non-fatal)")
+					_ = os.Rename(oldPath, checkpointPath)
+					_ = os.RemoveAll(tmpPath)
+				} else {
+					_ = os.RemoveAll(oldPath)
+					logger.Infof("Post-compaction checkpoint saved — next restart will skip compaction")
+				}
 			}
 		}
 	}
