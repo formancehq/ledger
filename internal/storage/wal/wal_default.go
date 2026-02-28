@@ -224,7 +224,10 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	// Start background purger to delete old WAL segment files that have been
 	// unlocked by ReleaseLockTo during compaction.
 	s.stopPurge = make(chan struct{})
-	s.purgeDone, _ = fileutil.PurgeFileWithDoneNotify(s.zapLogger, s.etcdWalDir, ".wal", 1, s.purgeInterval, s.stopPurge)
+	// Use a nop logger for the purger to suppress the benign "failed to lock file"
+	// warning that occurs when ReleaseLockTo keeps one extra segment locked.
+	// The purger retries on the next cycle and eventually succeeds.
+	s.purgeDone, _ = fileutil.PurgeFileWithDoneNotify(zap.NewNop(), s.etcdWalDir, ".wal", 1, s.purgeInterval, s.stopPurge)
 
 	return s, nil
 }
