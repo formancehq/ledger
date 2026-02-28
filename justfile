@@ -34,6 +34,14 @@ install-client:
 test:
     go test ./... -tags it,e2e -timeout 20m
 
+# Release (official, triggered by tag)
+release:
+    goreleaser release --clean
+
+# Release CI (nightly, triggered by main push)
+release-ci:
+    goreleaser release --nightly --clean
+
 # Clean build artifacts
 clean:
     rm -rf ledgerctl ledger-v3-poc

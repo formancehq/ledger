@@ -1,0 +1,67 @@
+name: Default
+on:
+  merge_group:
+  push:
+    branches:
+      - master
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  Dirty:
+    runs-on: ubuntu-latest
+    env:
+      GOPATH: /tmp/go
+      GOLANGCI_LINT_CACHE: /tmp/golangci-lint
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - run: >
+          nix develop --command just pre-commit
+      - name: Get changed files
+        id: changed-files
+        shell: bash
+        run: |
+          hasChanged=$(git status --porcelain)
+          if (( $(echo ${#hasChanged}) != 0 )); then
+            git status
+            echo "There are changes in the repository"
+            git diff
+            exit 1
+          fi
+
+  Tests:
+    runs-on: ubuntu-latest
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - run: >
+          nix develop --command go test ./... -timeout 10m
+
+  Build:
+    runs-on: ubuntu-latest
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - run: >
+          nix develop --command go build ./...

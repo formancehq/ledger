@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+version: 2
+project_name: ledger-v3
+
+builds:
+  - binary: ledger-server
+    id: ledger-server
+    ldflags:
+      - -X main.Version={{ .Version }}
+      - -X main.Commit={{ .ShortCommit }}
+      - -X main.BuildDate={{ .Date }}
+      - -extldflags "-static"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+  - binary: ledgerctl
+    id: ledgerctl
+    main: ./cmd/ledgerctl
+    ldflags:
+      - -X main.Version={{ .Version }}
+      - -X main.Commit={{ .ShortCommit }}
+      - -X main.BuildDate={{ .Date }}
+      - -extldflags "-static"
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+release:
+  prerelease: auto
+  extra_files:
+    - glob: openapi.yml
+
+archives:
+  - id: "{{ .ProjectName }}"
+    builds:
+      - ledger-server
+      - ledgerctl
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "^ci:"
