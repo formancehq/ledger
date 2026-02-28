@@ -85,7 +85,6 @@ func Module() fx.Option {
 				)
 			}, fx.ParamTags(``, ``, `name:"raft"`, ``)),
 			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*dal.Store, error) {
-				storeStart := time.Now()
 				store, err := dal.NewStore(
 					cfg.DataDir,
 					logger,
@@ -95,22 +94,18 @@ func Module() fx.Option {
 				if err != nil {
 					return nil, err
 				}
-				logger.WithFields(map[string]any{
-					"duration": time.Since(storeStart).String(),
-				}).Infof("Pebble store opened")
 
 				if !cfg.Restore {
-					configStart := time.Now()
 					if err := ValidateOrPersistConfig(store, cfg, logger, cfg.UnsafeSkipConfigValidation); err != nil {
 						_ = store.Close()
 						return nil, fmt.Errorf("configuration safety check failed: %w", err)
 					}
-					logger.WithFields(map[string]any{
-						"duration": time.Since(configStart).String(),
-					}).Infof("Configuration validation completed")
 				}
 
 				return store, nil
+			},
+			func(store *dal.Store, logger logging.Logger) *dal.IdleCompactor {
+				return dal.NewIdleCompactor(store, logger)
 			},
 			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
 				return wal.New(cfg.RaftConfig.WalDir, logger.WithFields(map[string]any{
@@ -817,6 +812,9 @@ func Module() fx.Option {
 			},
 			func(lc fx.Lifecycle, collector *diskusage.Collector) {
 				lc.Append(worker.FxHook(collector))
+			},
+			func(lc fx.Lifecycle, compactor *dal.IdleCompactor) {
+				lc.Append(worker.FxHook(compactor))
 			},
 			func(lc fx.Lifecycle, hc *clusterhealth.HealthChecker) {
 				lc.Append(worker.FxHook(hc))
