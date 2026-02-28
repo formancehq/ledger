@@ -43,6 +43,8 @@ service BucketService {
   rpc ListPeriods(ListPeriodsRequest) returns (stream common.Period);
   // ListLogs streams system logs
   rpc ListLogs(ListLogsRequest) returns (stream common.Log);
+  // GetLog returns a single system log by sequence number
+  rpc GetLog(GetLogRequest) returns (common.Log);
   // GetPeriodSchedule returns the current automatic period rotation schedule
   rpc GetPeriodSchedule(GetPeriodScheduleRequest) returns (GetPeriodScheduleResponse);
   // ListSigningKeys streams all registered signing keys
@@ -480,6 +482,10 @@ message GetAuditEntryRequest {
 message ListLogsRequest {
   optional uint64 after_sequence = 1;
   uint32 page_size = 2;
+}
+
+message GetLogRequest {
+  uint64 sequence = 1;
 }
 
 // ============================================================================

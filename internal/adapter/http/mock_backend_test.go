@@ -22,6 +22,7 @@ type mockBackend struct {
 	getAccountFn               func(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error)
 	listAccountsFn             func(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (dal.Cursor[*commonpb.Account], error)
 	listLogsFn                 func(ctx context.Context, afterSequence uint64, pageSize uint32) (dal.Cursor[*commonpb.Log], error)
+	getLogFn                   func(ctx context.Context, sequence uint64) (*commonpb.Log, error)
 	listAuditEntriesFn         func(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (dal.Cursor[*auditpb.AuditEntry], error)
 	getAuditEntryFn            func(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error)
 	listPeriodsFn              func(ctx context.Context) (dal.Cursor[*commonpb.Period], error)
@@ -93,6 +94,13 @@ func (m *mockBackend) ListLogs(ctx context.Context, afterSequence uint64, pageSi
 		return m.listLogsFn(ctx, afterSequence, pageSize)
 	}
 	return dal.NewSliceCursor[*commonpb.Log](nil), nil
+}
+
+func (m *mockBackend) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
+	if m.getLogFn != nil {
+		return m.getLogFn(ctx, sequence)
+	}
+	return nil, nil
 }
 
 func (m *mockBackend) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (dal.Cursor[*auditpb.AuditEntry], error) {

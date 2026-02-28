@@ -211,6 +211,36 @@ ledgerctl ledgers delete my-ledger -y
 ledgerctl ledgers delete
 ```
 
+#### ledgers promote
+
+Promote a mirror ledger to normal mode. This stops mirror replication and converts the ledger to a regular read-write ledger.
+
+```bash
+ledgerctl ledgers promote [name] [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name` | | Name of the ledger to promote |
+| `-y, --yes` | `false` | Skip confirmation prompt |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Promote a mirror ledger (will prompt for confirmation)
+ledgerctl ledgers promote my-mirror-ledger
+
+# Promote without confirmation
+ledgerctl ledgers promote my-mirror-ledger -y
+
+# Interactive mode (will prompt for ledger selection)
+ledgerctl ledgers promote
+```
+
 #### ledgers set-metadata-type
 
 Declare a typed metadata field on a ledger. Once set, all new metadata values for this key must conform to the declared type. Existing untyped values will be converted in the background.
@@ -1118,11 +1148,36 @@ ledgerctl logs list
 # Show logs after sequence 100
 ledgerctl logs list --after 100
 
-# Limit to 20 entries
+# Show 20 entries per page
 ledgerctl logs list --page-size 20
 
 # Output as JSON
 ledgerctl logs list --json
+```
+
+#### logs get
+
+Get a single system log entry by sequence number.
+
+```bash
+ledgerctl logs get <sequence> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Get log #42
+ledgerctl logs get 42
+
+# Get log as JSON
+ledgerctl logs get 42 --json
 ```
 
 ---

@@ -3904,6 +3904,50 @@ func (x *ListLogsRequest) GetPageSize() uint32 {
 	return 0
 }
 
+type GetLogRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sequence      uint64                 `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLogRequest) Reset() {
+	*x = GetLogRequest{}
+	mi := &file_bucket_proto_msgTypes[59]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLogRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLogRequest) ProtoMessage() {}
+
+func (x *GetLogRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_bucket_proto_msgTypes[59]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLogRequest.ProtoReflect.Descriptor instead.
+func (*GetLogRequest) Descriptor() ([]byte, []int) {
+	return file_bucket_proto_rawDescGZIP(), []int{59}
+}
+
+func (x *GetLogRequest) GetSequence() uint64 {
+	if x != nil {
+		return x.Sequence
+	}
+	return 0
+}
+
 type GetEventsSinksRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -3912,7 +3956,7 @@ type GetEventsSinksRequest struct {
 
 func (x *GetEventsSinksRequest) Reset() {
 	*x = GetEventsSinksRequest{}
-	mi := &file_bucket_proto_msgTypes[59]
+	mi := &file_bucket_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3924,7 +3968,7 @@ func (x *GetEventsSinksRequest) String() string {
 func (*GetEventsSinksRequest) ProtoMessage() {}
 
 func (x *GetEventsSinksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[59]
+	mi := &file_bucket_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3937,7 +3981,7 @@ func (x *GetEventsSinksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEventsSinksRequest.ProtoReflect.Descriptor instead.
 func (*GetEventsSinksRequest) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{59}
+	return file_bucket_proto_rawDescGZIP(), []int{60}
 }
 
 type GetEventsSinksResponse struct {
@@ -3950,7 +3994,7 @@ type GetEventsSinksResponse struct {
 
 func (x *GetEventsSinksResponse) Reset() {
 	*x = GetEventsSinksResponse{}
-	mi := &file_bucket_proto_msgTypes[60]
+	mi := &file_bucket_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3962,7 +4006,7 @@ func (x *GetEventsSinksResponse) String() string {
 func (*GetEventsSinksResponse) ProtoMessage() {}
 
 func (x *GetEventsSinksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[60]
+	mi := &file_bucket_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3975,7 +4019,7 @@ func (x *GetEventsSinksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEventsSinksResponse.ProtoReflect.Descriptor instead.
 func (*GetEventsSinksResponse) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{60}
+	return file_bucket_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *GetEventsSinksResponse) GetSinks() []*commonpb.SinkConfig {
@@ -4001,7 +4045,7 @@ type GetMetadataSchemaStatusRequest struct {
 
 func (x *GetMetadataSchemaStatusRequest) Reset() {
 	*x = GetMetadataSchemaStatusRequest{}
-	mi := &file_bucket_proto_msgTypes[61]
+	mi := &file_bucket_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4013,7 +4057,7 @@ func (x *GetMetadataSchemaStatusRequest) String() string {
 func (*GetMetadataSchemaStatusRequest) ProtoMessage() {}
 
 func (x *GetMetadataSchemaStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[61]
+	mi := &file_bucket_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4026,7 +4070,7 @@ func (x *GetMetadataSchemaStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMetadataSchemaStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetMetadataSchemaStatusRequest) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{61}
+	return file_bucket_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *GetMetadataSchemaStatusRequest) GetLedger() string {
@@ -4046,7 +4090,7 @@ type GetMetadataSchemaStatusResponse struct {
 
 func (x *GetMetadataSchemaStatusResponse) Reset() {
 	*x = GetMetadataSchemaStatusResponse{}
-	mi := &file_bucket_proto_msgTypes[62]
+	mi := &file_bucket_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4058,7 +4102,7 @@ func (x *GetMetadataSchemaStatusResponse) String() string {
 func (*GetMetadataSchemaStatusResponse) ProtoMessage() {}
 
 func (x *GetMetadataSchemaStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[62]
+	mi := &file_bucket_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4071,7 +4115,7 @@ func (x *GetMetadataSchemaStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMetadataSchemaStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetMetadataSchemaStatusResponse) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{62}
+	return file_bucket_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *GetMetadataSchemaStatusResponse) GetAccountFields() map[string]*MetadataFieldStatus {
@@ -4100,7 +4144,7 @@ type MetadataFieldStatus struct {
 
 func (x *MetadataFieldStatus) Reset() {
 	*x = MetadataFieldStatus{}
-	mi := &file_bucket_proto_msgTypes[63]
+	mi := &file_bucket_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4112,7 +4156,7 @@ func (x *MetadataFieldStatus) String() string {
 func (*MetadataFieldStatus) ProtoMessage() {}
 
 func (x *MetadataFieldStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_bucket_proto_msgTypes[63]
+	mi := &file_bucket_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4125,7 +4169,7 @@ func (x *MetadataFieldStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetadataFieldStatus.ProtoReflect.Descriptor instead.
 func (*MetadataFieldStatus) Descriptor() ([]byte, []int) {
-	return file_bucket_proto_rawDescGZIP(), []int{63}
+	return file_bucket_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *MetadataFieldStatus) GetDeclaredType() commonpb.MetadataType {
@@ -4426,7 +4470,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x0fListLogsRequest\x12*\n" +
 	"\x0eafter_sequence\x18\x01 \x01(\x04H\x00R\rafterSequence\x88\x01\x01\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSizeB\x11\n" +
-	"\x0f_after_sequence\"\x17\n" +
+	"\x0f_after_sequence\"+\n" +
+	"\rGetLogRequest\x12\x1a\n" +
+	"\bsequence\x18\x01 \x01(\x04R\bsequence\"\x17\n" +
 	"\x15GetEventsSinksRequest\"{\n" +
 	"\x16GetEventsSinksResponse\x12(\n" +
 	"\x05sinks\x18\x01 \x03(\v2\x12.common.SinkConfigR\x05sinks\x127\n" +
@@ -4456,7 +4502,7 @@ const file_bucket_proto_rawDesc = "" +
 	"(CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH\x10\x04\x12)\n" +
 	"%CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER\x10\x05\x126\n" +
 	"2CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH\x10\x06\x12,\n" +
-	"(CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH\x10\a2\x8f\n" +
+	"(CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH\x10\a2\xbd\n" +
 	"\n" +
 	"\rBucketService\x12?\n" +
 	"\vListLedgers\x12\x1a.ledger.ListLedgersRequest\x1a\x12.common.LedgerInfo0\x01\x129\n" +
@@ -4474,7 +4520,8 @@ const file_bucket_proto_rawDesc = "" +
 	"\rGetAuditEntry\x12\x1c.ledger.GetAuditEntryRequest\x1a\x11.audit.AuditEntry\x12O\n" +
 	"\x0eGetEventsSinks\x12\x1d.ledger.GetEventsSinksRequest\x1a\x1e.ledger.GetEventsSinksResponse\x12;\n" +
 	"\vListPeriods\x12\x1a.ledger.ListPeriodsRequest\x1a\x0e.common.Period0\x01\x122\n" +
-	"\bListLogs\x12\x17.ledger.ListLogsRequest\x1a\v.common.Log0\x01\x12X\n" +
+	"\bListLogs\x12\x17.ledger.ListLogsRequest\x1a\v.common.Log0\x01\x12,\n" +
+	"\x06GetLog\x12\x15.ledger.GetLogRequest\x1a\v.common.Log\x12X\n" +
 	"\x11GetPeriodSchedule\x12 .ledger.GetPeriodScheduleRequest\x1a!.ledger.GetPeriodScheduleResponse\x12G\n" +
 	"\x0fListSigningKeys\x12\x1e.ledger.ListSigningKeysRequest\x1a\x12.common.SigningKey0\x01\x12@\n" +
 	"\tDiscovery\x12\x18.ledger.DiscoveryRequest\x1a\x19.ledger.DiscoveryResponse\x12j\n" +
@@ -4493,7 +4540,7 @@ func file_bucket_proto_rawDescGZIP() []byte {
 }
 
 var file_bucket_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_bucket_proto_msgTypes = make([]protoimpl.MessageInfo, 67)
+var file_bucket_proto_msgTypes = make([]protoimpl.MessageInfo, 68)
 var file_bucket_proto_goTypes = []any{
 	(CheckStoreErrorType)(0),                     // 0: ledger.CheckStoreErrorType
 	(*GetAccountRequest)(nil),                    // 1: ledger.GetAccountRequest
@@ -4555,44 +4602,45 @@ var file_bucket_proto_goTypes = []any{
 	(*ListAuditEntriesRequest)(nil),              // 57: ledger.ListAuditEntriesRequest
 	(*GetAuditEntryRequest)(nil),                 // 58: ledger.GetAuditEntryRequest
 	(*ListLogsRequest)(nil),                      // 59: ledger.ListLogsRequest
-	(*GetEventsSinksRequest)(nil),                // 60: ledger.GetEventsSinksRequest
-	(*GetEventsSinksResponse)(nil),               // 61: ledger.GetEventsSinksResponse
-	(*GetMetadataSchemaStatusRequest)(nil),       // 62: ledger.GetMetadataSchemaStatusRequest
-	(*GetMetadataSchemaStatusResponse)(nil),      // 63: ledger.GetMetadataSchemaStatusResponse
-	(*MetadataFieldStatus)(nil),                  // 64: ledger.MetadataFieldStatus
-	nil,                                          // 65: ledger.CreateTransactionPayload.AccountMetadataEntry
-	nil,                                          // 66: ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry
-	nil,                                          // 67: ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry
-	(*commonpb.Transaction)(nil),                 // 68: common.Transaction
-	(*commonpb.SetMetadataFieldTypeCommand)(nil), // 69: common.SetMetadataFieldTypeCommand
-	(commonpb.LedgerMode)(0),                     // 70: common.LedgerMode
-	(*commonpb.MirrorSourceConfig)(nil),          // 71: common.MirrorSourceConfig
-	(*commonpb.Log)(nil),                         // 72: common.Log
-	(*signaturepb.RequestSignature)(nil),         // 73: signature.RequestSignature
-	(*commonpb.SinkConfig)(nil),                  // 74: common.SinkConfig
-	(commonpb.TargetType)(0),                     // 75: common.TargetType
-	(commonpb.MetadataType)(0),                   // 76: common.MetadataType
-	(*commonpb.Posting)(nil),                     // 77: common.Posting
-	(*commonpb.Script)(nil),                      // 78: common.Script
-	(*commonpb.Timestamp)(nil),                   // 79: common.Timestamp
-	(*commonpb.MetadataSet)(nil),                 // 80: common.MetadataSet
-	(*commonpb.SaveMetadataCommand)(nil),         // 81: common.SaveMetadataCommand
-	(*commonpb.DeleteMetadataCommand)(nil),       // 82: common.DeleteMetadataCommand
-	(*commonpb.SinkStatus)(nil),                  // 83: common.SinkStatus
-	(commonpb.MetadataConversionStatus)(0),       // 84: common.MetadataConversionStatus
-	(*commonpb.LedgerInfo)(nil),                  // 85: common.LedgerInfo
-	(*commonpb.Account)(nil),                     // 86: common.Account
-	(*auditpb.AuditEntry)(nil),                   // 87: audit.AuditEntry
-	(*commonpb.Period)(nil),                      // 88: common.Period
-	(*commonpb.SigningKey)(nil),                  // 89: common.SigningKey
+	(*GetLogRequest)(nil),                        // 60: ledger.GetLogRequest
+	(*GetEventsSinksRequest)(nil),                // 61: ledger.GetEventsSinksRequest
+	(*GetEventsSinksResponse)(nil),               // 62: ledger.GetEventsSinksResponse
+	(*GetMetadataSchemaStatusRequest)(nil),       // 63: ledger.GetMetadataSchemaStatusRequest
+	(*GetMetadataSchemaStatusResponse)(nil),      // 64: ledger.GetMetadataSchemaStatusResponse
+	(*MetadataFieldStatus)(nil),                  // 65: ledger.MetadataFieldStatus
+	nil,                                          // 66: ledger.CreateTransactionPayload.AccountMetadataEntry
+	nil,                                          // 67: ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry
+	nil,                                          // 68: ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry
+	(*commonpb.Transaction)(nil),                 // 69: common.Transaction
+	(*commonpb.SetMetadataFieldTypeCommand)(nil), // 70: common.SetMetadataFieldTypeCommand
+	(commonpb.LedgerMode)(0),                     // 71: common.LedgerMode
+	(*commonpb.MirrorSourceConfig)(nil),          // 72: common.MirrorSourceConfig
+	(*commonpb.Log)(nil),                         // 73: common.Log
+	(*signaturepb.RequestSignature)(nil),         // 74: signature.RequestSignature
+	(*commonpb.SinkConfig)(nil),                  // 75: common.SinkConfig
+	(commonpb.TargetType)(0),                     // 76: common.TargetType
+	(commonpb.MetadataType)(0),                   // 77: common.MetadataType
+	(*commonpb.Posting)(nil),                     // 78: common.Posting
+	(*commonpb.Script)(nil),                      // 79: common.Script
+	(*commonpb.Timestamp)(nil),                   // 80: common.Timestamp
+	(*commonpb.MetadataSet)(nil),                 // 81: common.MetadataSet
+	(*commonpb.SaveMetadataCommand)(nil),         // 82: common.SaveMetadataCommand
+	(*commonpb.DeleteMetadataCommand)(nil),       // 83: common.DeleteMetadataCommand
+	(*commonpb.SinkStatus)(nil),                  // 84: common.SinkStatus
+	(commonpb.MetadataConversionStatus)(0),       // 85: common.MetadataConversionStatus
+	(*commonpb.LedgerInfo)(nil),                  // 86: common.LedgerInfo
+	(*commonpb.Account)(nil),                     // 87: common.Account
+	(*auditpb.AuditEntry)(nil),                   // 88: audit.AuditEntry
+	(*commonpb.Period)(nil),                      // 89: common.Period
+	(*commonpb.SigningKey)(nil),                  // 90: common.SigningKey
 }
 var file_bucket_proto_depIdxs = []int32{
-	68, // 0: ledger.GetTransactionResponse.transaction:type_name -> common.Transaction
-	69, // 1: ledger.CreateLedgerRequest.initial_schema:type_name -> common.SetMetadataFieldTypeCommand
-	70, // 2: ledger.CreateLedgerRequest.mode:type_name -> common.LedgerMode
-	71, // 3: ledger.CreateLedgerRequest.mirror_source:type_name -> common.MirrorSourceConfig
+	69, // 0: ledger.GetTransactionResponse.transaction:type_name -> common.Transaction
+	70, // 1: ledger.CreateLedgerRequest.initial_schema:type_name -> common.SetMetadataFieldTypeCommand
+	71, // 2: ledger.CreateLedgerRequest.mode:type_name -> common.LedgerMode
+	72, // 3: ledger.CreateLedgerRequest.mirror_source:type_name -> common.MirrorSourceConfig
 	13, // 4: ledger.ApplyRequest.requests:type_name -> ledger.Request
-	72, // 5: ledger.ApplyResponse.logs:type_name -> common.Log
+	73, // 5: ledger.ApplyResponse.logs:type_name -> common.Log
 	39, // 6: ledger.Request.apply:type_name -> ledger.LedgerApplyRequest
 	6,  // 7: ledger.Request.create_ledger:type_name -> ledger.CreateLedgerRequest
 	7,  // 8: ledger.Request.delete_ledger:type_name -> ledger.DeleteLedgerRequest
@@ -4612,22 +4660,22 @@ var file_bucket_proto_depIdxs = []int32{
 	30, // 22: ledger.Request.remove_metadata_field_type:type_name -> ledger.RemoveMetadataFieldTypeRequest
 	31, // 23: ledger.Request.set_audit_config:type_name -> ledger.SetAuditConfigRequest
 	14, // 24: ledger.Request.promote_ledger:type_name -> ledger.PromoteLedgerRequest
-	73, // 25: ledger.Request.signature:type_name -> signature.RequestSignature
-	74, // 26: ledger.AddEventsSinkRequest.config:type_name -> common.SinkConfig
-	75, // 27: ledger.SetMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
-	76, // 28: ledger.SetMetadataFieldTypeRequest.type:type_name -> common.MetadataType
-	75, // 29: ledger.RemoveMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
+	74, // 25: ledger.Request.signature:type_name -> signature.RequestSignature
+	75, // 26: ledger.AddEventsSinkRequest.config:type_name -> common.SinkConfig
+	76, // 27: ledger.SetMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
+	77, // 28: ledger.SetMetadataFieldTypeRequest.type:type_name -> common.MetadataType
+	76, // 29: ledger.RemoveMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
 	36, // 30: ledger.DiscoveryResponse.response_signing:type_name -> ledger.ResponseSigningInfo
-	77, // 31: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
-	78, // 32: ledger.CreateTransactionPayload.script:type_name -> common.Script
-	79, // 33: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
-	80, // 34: ledger.CreateTransactionPayload.metadata:type_name -> common.MetadataSet
-	65, // 35: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
-	80, // 36: ledger.RevertTransactionPayload.metadata:type_name -> common.MetadataSet
+	78, // 31: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
+	79, // 32: ledger.CreateTransactionPayload.script:type_name -> common.Script
+	80, // 33: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
+	81, // 34: ledger.CreateTransactionPayload.metadata:type_name -> common.MetadataSet
+	66, // 35: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
+	81, // 36: ledger.RevertTransactionPayload.metadata:type_name -> common.MetadataSet
 	37, // 37: ledger.LedgerApplyRequest.create_transaction:type_name -> ledger.CreateTransactionPayload
-	81, // 38: ledger.LedgerApplyRequest.add_metadata:type_name -> common.SaveMetadataCommand
+	82, // 38: ledger.LedgerApplyRequest.add_metadata:type_name -> common.SaveMetadataCommand
 	38, // 39: ledger.LedgerApplyRequest.revert_transaction:type_name -> ledger.RevertTransactionPayload
-	82, // 40: ledger.LedgerApplyRequest.delete_metadata:type_name -> common.DeleteMetadataCommand
+	83, // 40: ledger.LedgerApplyRequest.delete_metadata:type_name -> common.DeleteMetadataCommand
 	42, // 41: ledger.GetStoreMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
 	43, // 42: ledger.PebbleMetrics.block_cache:type_name -> ledger.BlockCacheMetrics
 	44, // 43: ledger.PebbleMetrics.compact:type_name -> ledger.CompactMetrics
@@ -4642,15 +4690,15 @@ var file_bucket_proto_depIdxs = []int32{
 	55, // 52: ledger.CheckStoreEvent.error:type_name -> ledger.CheckStoreError
 	56, // 53: ledger.CheckStoreEvent.progress:type_name -> ledger.CheckStoreProgress
 	0,  // 54: ledger.CheckStoreError.error_type:type_name -> ledger.CheckStoreErrorType
-	74, // 55: ledger.GetEventsSinksResponse.sinks:type_name -> common.SinkConfig
-	83, // 56: ledger.GetEventsSinksResponse.sink_statuses:type_name -> common.SinkStatus
-	66, // 57: ledger.GetMetadataSchemaStatusResponse.account_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry
-	67, // 58: ledger.GetMetadataSchemaStatusResponse.transaction_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry
-	76, // 59: ledger.MetadataFieldStatus.declared_type:type_name -> common.MetadataType
-	84, // 60: ledger.MetadataFieldStatus.status:type_name -> common.MetadataConversionStatus
-	80, // 61: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataSet
-	64, // 62: ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
-	64, // 63: ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
+	75, // 55: ledger.GetEventsSinksResponse.sinks:type_name -> common.SinkConfig
+	84, // 56: ledger.GetEventsSinksResponse.sink_statuses:type_name -> common.SinkStatus
+	67, // 57: ledger.GetMetadataSchemaStatusResponse.account_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry
+	68, // 58: ledger.GetMetadataSchemaStatusResponse.transaction_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry
+	77, // 59: ledger.MetadataFieldStatus.declared_type:type_name -> common.MetadataType
+	85, // 60: ledger.MetadataFieldStatus.status:type_name -> common.MetadataConversionStatus
+	81, // 61: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataSet
+	65, // 62: ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
+	65, // 63: ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
 	9,  // 64: ledger.BucketService.ListLedgers:input_type -> ledger.ListLedgersRequest
 	10, // 65: ledger.BucketService.GetLedger:input_type -> ledger.GetLedgerRequest
 	1,  // 66: ledger.BucketService.GetAccount:input_type -> ledger.GetAccountRequest
@@ -4662,33 +4710,35 @@ var file_bucket_proto_depIdxs = []int32{
 	53, // 72: ledger.BucketService.CheckStore:input_type -> ledger.CheckStoreRequest
 	57, // 73: ledger.BucketService.ListAuditEntries:input_type -> ledger.ListAuditEntriesRequest
 	58, // 74: ledger.BucketService.GetAuditEntry:input_type -> ledger.GetAuditEntryRequest
-	60, // 75: ledger.BucketService.GetEventsSinks:input_type -> ledger.GetEventsSinksRequest
+	61, // 75: ledger.BucketService.GetEventsSinks:input_type -> ledger.GetEventsSinksRequest
 	25, // 76: ledger.BucketService.ListPeriods:input_type -> ledger.ListPeriodsRequest
 	59, // 77: ledger.BucketService.ListLogs:input_type -> ledger.ListLogsRequest
-	32, // 78: ledger.BucketService.GetPeriodSchedule:input_type -> ledger.GetPeriodScheduleRequest
-	20, // 79: ledger.BucketService.ListSigningKeys:input_type -> ledger.ListSigningKeysRequest
-	34, // 80: ledger.BucketService.Discovery:input_type -> ledger.DiscoveryRequest
-	62, // 81: ledger.BucketService.GetMetadataSchemaStatus:input_type -> ledger.GetMetadataSchemaStatusRequest
-	85, // 82: ledger.BucketService.ListLedgers:output_type -> common.LedgerInfo
-	85, // 83: ledger.BucketService.GetLedger:output_type -> common.LedgerInfo
-	86, // 84: ledger.BucketService.GetAccount:output_type -> common.Account
-	3,  // 85: ledger.BucketService.GetTransaction:output_type -> ledger.GetTransactionResponse
-	68, // 86: ledger.BucketService.ListTransactions:output_type -> common.Transaction
-	86, // 87: ledger.BucketService.ListAccounts:output_type -> common.Account
-	12, // 88: ledger.BucketService.Apply:output_type -> ledger.ApplyResponse
-	41, // 89: ledger.BucketService.GetStoreMetrics:output_type -> ledger.GetStoreMetricsResponse
-	54, // 90: ledger.BucketService.CheckStore:output_type -> ledger.CheckStoreEvent
-	87, // 91: ledger.BucketService.ListAuditEntries:output_type -> audit.AuditEntry
-	87, // 92: ledger.BucketService.GetAuditEntry:output_type -> audit.AuditEntry
-	61, // 93: ledger.BucketService.GetEventsSinks:output_type -> ledger.GetEventsSinksResponse
-	88, // 94: ledger.BucketService.ListPeriods:output_type -> common.Period
-	72, // 95: ledger.BucketService.ListLogs:output_type -> common.Log
-	33, // 96: ledger.BucketService.GetPeriodSchedule:output_type -> ledger.GetPeriodScheduleResponse
-	89, // 97: ledger.BucketService.ListSigningKeys:output_type -> common.SigningKey
-	35, // 98: ledger.BucketService.Discovery:output_type -> ledger.DiscoveryResponse
-	63, // 99: ledger.BucketService.GetMetadataSchemaStatus:output_type -> ledger.GetMetadataSchemaStatusResponse
-	82, // [82:100] is the sub-list for method output_type
-	64, // [64:82] is the sub-list for method input_type
+	60, // 78: ledger.BucketService.GetLog:input_type -> ledger.GetLogRequest
+	32, // 79: ledger.BucketService.GetPeriodSchedule:input_type -> ledger.GetPeriodScheduleRequest
+	20, // 80: ledger.BucketService.ListSigningKeys:input_type -> ledger.ListSigningKeysRequest
+	34, // 81: ledger.BucketService.Discovery:input_type -> ledger.DiscoveryRequest
+	63, // 82: ledger.BucketService.GetMetadataSchemaStatus:input_type -> ledger.GetMetadataSchemaStatusRequest
+	86, // 83: ledger.BucketService.ListLedgers:output_type -> common.LedgerInfo
+	86, // 84: ledger.BucketService.GetLedger:output_type -> common.LedgerInfo
+	87, // 85: ledger.BucketService.GetAccount:output_type -> common.Account
+	3,  // 86: ledger.BucketService.GetTransaction:output_type -> ledger.GetTransactionResponse
+	69, // 87: ledger.BucketService.ListTransactions:output_type -> common.Transaction
+	87, // 88: ledger.BucketService.ListAccounts:output_type -> common.Account
+	12, // 89: ledger.BucketService.Apply:output_type -> ledger.ApplyResponse
+	41, // 90: ledger.BucketService.GetStoreMetrics:output_type -> ledger.GetStoreMetricsResponse
+	54, // 91: ledger.BucketService.CheckStore:output_type -> ledger.CheckStoreEvent
+	88, // 92: ledger.BucketService.ListAuditEntries:output_type -> audit.AuditEntry
+	88, // 93: ledger.BucketService.GetAuditEntry:output_type -> audit.AuditEntry
+	62, // 94: ledger.BucketService.GetEventsSinks:output_type -> ledger.GetEventsSinksResponse
+	89, // 95: ledger.BucketService.ListPeriods:output_type -> common.Period
+	73, // 96: ledger.BucketService.ListLogs:output_type -> common.Log
+	73, // 97: ledger.BucketService.GetLog:output_type -> common.Log
+	33, // 98: ledger.BucketService.GetPeriodSchedule:output_type -> ledger.GetPeriodScheduleResponse
+	90, // 99: ledger.BucketService.ListSigningKeys:output_type -> common.SigningKey
+	35, // 100: ledger.BucketService.Discovery:output_type -> ledger.DiscoveryResponse
+	64, // 101: ledger.BucketService.GetMetadataSchemaStatus:output_type -> ledger.GetMetadataSchemaStatusResponse
+	83, // [83:102] is the sub-list for method output_type
+	64, // [64:83] is the sub-list for method input_type
 	64, // [64:64] is the sub-list for extension type_name
 	64, // [64:64] is the sub-list for extension extendee
 	0,  // [0:64] is the sub-list for field type_name
@@ -4738,7 +4788,7 @@ func file_bucket_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_bucket_proto_rawDesc), len(file_bucket_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   67,
+			NumMessages:   68,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -120,6 +120,14 @@ func (b *RoutedController) ListLogs(ctx context.Context, afterSequence uint64, p
 	return c.ListLogs(ctx, afterSequence, pageSize)
 }
 
+func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
+	c, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.GetLog(ctx, sequence)
+}
+
 func (b *RoutedController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (dal.Cursor[*auditpb.AuditEntry], error) {
 	c, err := b.readCtrl(ctx)
 	if err != nil {

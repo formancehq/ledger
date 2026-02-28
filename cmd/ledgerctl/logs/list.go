@@ -176,6 +176,17 @@ func describeLogPayload(log *commonpb.Log) (string, string) {
 		return "CONFIRM_ARCHIVE", ""
 	case *commonpb.LogPayload_SetMaintenanceMode:
 		return "MAINTENANCE", ""
+	case *commonpb.LogPayload_SetPeriodSchedule:
+		return "SET_PERIOD_SCHED", ""
+	case *commonpb.LogPayload_DeletePeriodSchedule:
+		return "DEL_PERIOD_SCHED", ""
+	case *commonpb.LogPayload_SetAuditConfig:
+		return "SET_AUDIT_CFG", ""
+	case *commonpb.LogPayload_PromoteLedger:
+		if t.PromoteLedger != nil && t.PromoteLedger.Info != nil {
+			return "PROMOTE_LEDGER", t.PromoteLedger.Info.Name
+		}
+		return "PROMOTE_LEDGER", ""
 	default:
 		return "UNKNOWN", ""
 	}
@@ -210,6 +221,18 @@ func formatLogDetails(log *commonpb.Log) string {
 	case *commonpb.LogPayload_CreateLedger:
 		if t.CreateLedger != nil && t.CreateLedger.Info != nil && t.CreateLedger.Info.CreatedAt != nil {
 			return t.CreateLedger.Info.CreatedAt.AsTime().Format(time.RFC3339)
+		}
+	case *commonpb.LogPayload_SetMaintenanceMode:
+		if t.SetMaintenanceMode != nil {
+			return fmt.Sprintf("enabled=%v", t.SetMaintenanceMode.Enabled)
+		}
+	case *commonpb.LogPayload_SetPeriodSchedule:
+		if t.SetPeriodSchedule != nil {
+			return fmt.Sprintf("cron=%s", t.SetPeriodSchedule.Cron)
+		}
+	case *commonpb.LogPayload_SetAuditConfig:
+		if t.SetAuditConfig != nil {
+			return fmt.Sprintf("enabled=%v", t.SetAuditConfig.Enabled)
 		}
 	}
 	return ""

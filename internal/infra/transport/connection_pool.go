@@ -15,7 +15,7 @@ const (
 	GRPCInitialConnWindowSize = 64 << 20 // 64 MB
 	GRPCReadBufferSize        = 1 << 20  // 1 MB
 	GRPCWriteBufferSize       = 1 << 20  // 1 MB
-	GRPCMaxMsgSize            = 64 << 20 // 64 MB
+	GRPCMaxMsgSize            = 256 << 20 // 256 MB (must accommodate Raft snapshots)
 )
 
 // PoolConfig holds gRPC dial options shared by all connection pools.

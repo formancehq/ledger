@@ -107,6 +107,21 @@ func (mr *MockControllerMockRecorder) GetLedgerByName(ctx, name any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerByName", reflect.TypeOf((*MockController)(nil).GetLedgerByName), ctx, name)
 }
 
+// GetLog mocks base method.
+func (m *MockController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLog", ctx, sequence)
+	ret0, _ := ret[0].(*commonpb.Log)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLog indicates an expected call of GetLog.
+func (mr *MockControllerMockRecorder) GetLog(ctx, sequence any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLog", reflect.TypeOf((*MockController)(nil).GetLog), ctx, sequence)
+}
+
 // GetMetadataSchemaStatus mocks base method.
 func (m *MockController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
 	m.ctrl.T.Helper()

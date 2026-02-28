@@ -1,6 +1,9 @@
 package main
 
 import (
+	"os"
+	"strings"
+
 	"github.com/formancehq/go-libs/v3/service"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/accounts"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/audit"
@@ -31,12 +34,18 @@ func newRootCommand() *cobra.Command {
 		Short:        "Ledger v3 CLI client",
 		Long:         "Command-line client for interacting with Ledger v3 servers via gRPC",
 		SilenceUsage: true,
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+			// Bind environment variables to flags when the flag was not explicitly set.
+			bindEnvToFlag(cmd, "server", "SERVER")
+			bindEnvToFlag(cmd, "insecure", "INSECURE")
+			bindEnvToFlag(cmd, "tls-ca-cert", "TLS_CA_CERT")
+		},
 	}
 
 	// Add persistent flags for server connection.
-	rootCmd.PersistentFlags().String("server", "localhost:8888", "gRPC server address")
-	rootCmd.PersistentFlags().Bool("insecure", false, "Use insecure connection (no TLS)")
-	rootCmd.PersistentFlags().String("tls-ca-cert", "", "Path to CA certificate file (PEM) for server verification")
+	rootCmd.PersistentFlags().String("server", "localhost:8888", "gRPC server address (env: SERVER)")
+	rootCmd.PersistentFlags().Bool("insecure", false, "Use insecure connection (no TLS) (env: INSECURE)")
+	rootCmd.PersistentFlags().String("tls-ca-cert", "", "Path to CA certificate file (PEM) for server verification (env: TLS_CA_CERT)")
 
 	// Add persistent flags for request signing.
 	rootCmd.PersistentFlags().String("signing-key", "", "Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded)")
@@ -60,6 +69,17 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(newVersionCommand())
 
 	return rootCmd
+}
+
+// bindEnvToFlag sets a cobra flag's value from an environment variable
+// when the flag was not explicitly provided on the command line.
+func bindEnvToFlag(cmd *cobra.Command, flagName, envVar string) {
+	if cmd.Flags().Changed(flagName) {
+		return
+	}
+	if v, ok := os.LookupEnv(envVar); ok && v != "" {
+		_ = cmd.Flags().Set(flagName, strings.TrimSpace(v))
+	}
 }
 
 func newVersionCommand() *cobra.Command {
