@@ -100,7 +100,7 @@ func newV2TransactionLog(id uint64, txID uint64, source, destination, amount, as
 			Postings: []v2.V2Posting{{
 				Source:      source,
 				Destination: destination,
-				Amount:      amount,
+				Amount:      json.Number(amount),
 				Asset:       asset,
 			}},
 			Timestamp: time.Now().Format(time.RFC3339Nano),
