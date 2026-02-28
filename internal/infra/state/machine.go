@@ -1590,13 +1590,13 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 	}
 }
 
-func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher SnapshotFetcher) (uint64, error) {
+func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) (uint64, error) {
 	// Restore checkpoint from the leader if needed
 	// The checkpoint ID is stored in the Machine state from the snapshot
 	if fsm.lastCheckpointID > 0 {
 		currentCheckpointID := fsm.dataStore.GetCurrentCheckpointID()
 		if currentCheckpointID < fsm.lastCheckpointID {
-			if err := fsm.restoreCheckpoint(ctx, snapshotFetcher); err != nil {
+			if err := fsm.restoreCheckpoint(ctx, snapshotFetcher, progress); err != nil {
 				return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
 			}
 		}
@@ -1616,11 +1616,15 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 }
 
 // restoreCheckpoint restores a checkpoint from the leader.
-func (fsm *Machine) restoreCheckpoint(ctx context.Context, snapshotFetcher SnapshotFetcher) error {
+func (fsm *Machine) restoreCheckpoint(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) error {
 	fsm.logger.WithFields(map[string]any{
 		"currentCheckpointId": fsm.dataStore.GetCurrentCheckpointID(),
 		"targetCheckpointId":  fsm.lastCheckpointID,
 	}).Infof("Fetching checkpoint from leader")
+
+	if progress != nil {
+		progress.SetCheckpointID(fsm.lastCheckpointID)
+	}
 
 	// Prepare the checkpoint directory
 	checkpointDir, err := fsm.dataStore.PrepareCheckpointRestore(fsm.lastCheckpointID)
@@ -1629,7 +1633,7 @@ func (fsm *Machine) restoreCheckpoint(ctx context.Context, snapshotFetcher Snaps
 	}
 
 	// Fetch the checkpoint from the leader
-	size, hash, err := snapshotFetcher.FetchSnapshot(ctx, fsm.lastCheckpointID, checkpointDir)
+	size, hash, err := snapshotFetcher.FetchSnapshot(ctx, fsm.lastCheckpointID, checkpointDir, progress)
 	if err != nil {
 		return fmt.Errorf("fetching snapshot from leader: %w", err)
 	}

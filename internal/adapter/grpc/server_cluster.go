@@ -118,28 +118,55 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 
 // getClusterStateLocal returns cluster state with peer address information populated.
 func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) (*clusterpb.ClusterState, error) {
-	state, err := impl.node.GetClusterState(ctx)
+	clusterState, err := impl.node.GetClusterState(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Populate maintenance mode from shared state
-	state.MaintenanceMode = impl.sharedState.MaintenanceMode()
+	clusterState.MaintenanceMode = impl.sharedState.MaintenanceMode()
 
-	// Populate peer addresses from transport and service pool
+	// Populate peer addresses and sync progress from each node
 	localNodeID := impl.node.GetNodeID()
-	for _, nodeInfo := range state.Nodes {
+	for _, nodeInfo := range clusterState.Nodes {
 		nodeID := uint64(nodeInfo.Id)
 		if nodeID == localNodeID {
 			nodeInfo.RaftAddress = impl.localRaftAddr
 			nodeInfo.ServiceAddress = impl.localServiceAddr
+			// Local sync progress is already in clusterState.SyncProgress
+			nodeInfo.SyncProgress = clusterState.SyncProgress
 		} else {
 			nodeInfo.RaftAddress = impl.raftTransport.GetPeerAddress(nodeID)
 			nodeInfo.ServiceAddress = impl.servicePool.GetPeerAddress(nodeID)
+			// Query the peer for its sync progress
+			nodeInfo.SyncProgress = impl.fetchPeerSyncProgress(ctx, nodeID)
 		}
 	}
 
-	return state, nil
+	return clusterState, nil
+}
+
+// fetchPeerSyncProgress queries a peer node for its local sync progress.
+// Returns nil if the peer is unreachable.
+func (impl *ClusterServiceServerImpl) fetchPeerSyncProgress(ctx context.Context, nodeID uint64) *clusterpb.SyncProgress {
+	conn := impl.servicePool.GetConnection(nodeID)
+	if conn == nil {
+		return nil
+	}
+
+	// Short timeout — this is best-effort and must not slow down the status command.
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	client := clusterpb.NewClusterServiceClient(conn)
+	peerState, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+		NodeId: uint32(nodeID),
+	})
+	if err != nil {
+		return nil
+	}
+
+	return peerState.SyncProgress
 }
 
 func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {

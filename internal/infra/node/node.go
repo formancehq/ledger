@@ -4,16 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
@@ -247,13 +248,13 @@ func NewNode(
 		}
 	} else {
 		logger.WithFields(map[string]any{
-			"snapshotIndex":  snapshot.Metadata.Index,
-			"snapshotTerm":   snapshot.Metadata.Term,
-			"voters":         snapshot.Metadata.ConfState.Voters,
-			"learners":       snapshot.Metadata.ConfState.Learners,
-			"nodeID":         cfg.NodeID,
-			"bootstrap":      cfg.Bootstrap,
-			"peerCount":      len(cfg.Peers),
+			"snapshotIndex": snapshot.Metadata.Index,
+			"snapshotTerm":  snapshot.Metadata.Term,
+			"voters":        snapshot.Metadata.ConfState.Voters,
+			"learners":      snapshot.Metadata.ConfState.Learners,
+			"nodeID":        cfg.NodeID,
+			"bootstrap":     cfg.Bootstrap,
+			"peerCount":     len(cfg.Peers),
 		}).Infof("Restart detected: WAL already has ConfState (not a fresh start)")
 		if snapshot.Metadata.Index > 0 {
 			logger.WithFields(map[string]any{
@@ -1020,6 +1021,19 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 	}
 
+	// If the ConfState changed (e.g. a learner was added), update the WAL
+	// snapshot's ConfState immediately. Without this, etcd/raft would send
+	// the stale snapshot (which lacks the new node) before the applier's
+	// async snapshot creation finishes, causing the new node to reject it.
+	if node.confState != nil {
+		snap, _ := node.wal.Snapshot()
+		if !confStatesEqual(node.confState, &snap.Metadata.ConfState) {
+			if err := node.wal.UpdateSnapshotConfState(node.confState); err != nil {
+				return fmt.Errorf("updating snapshot confstate: %w", err)
+			}
+		}
+	}
+
 	// Submit committed entries to the Applier for async FSM application
 	if len(rd.CommittedEntries) > 0 {
 		node.applier.Submit(rd.CommittedEntries, node.confState, stop)
@@ -1317,7 +1331,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 	// Get leader
 	leaderID := status.Lead
 
-	stateStr := status.RaftState.String()
+	stateStr := strings.TrimPrefix(status.RaftState.String(), "State")
 
 	// Build progress information map and nodes list only if this node is the leader
 	var nodes []*clusterpb.NodeInfo
@@ -1394,13 +1408,25 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 		Progress:  progress,
 	}
 
-	return &clusterpb.ClusterState{
+	clusterState := &clusterpb.ClusterState{
 		State:      stateStr,
 		Leader:     uint32(leaderID),
 		Nodes:      nodes,
 		LocalNode:  uint32(node.config.NodeID),
 		RaftStatus: raftStatus,
-	}, nil
+	}
+
+	// Populate local sync progress
+	clusterState.SyncProgress = &clusterpb.SyncProgress{
+		Status: node.applier.StatusString(),
+	}
+	if sp := node.applier.GetSyncProgress(); sp != nil {
+		clusterState.SyncProgress.BytesReceived = sp.BytesReceived()
+		clusterState.SyncProgress.BytesTotal = sp.BytesTotal()
+		clusterState.SyncProgress.CheckpointId = sp.CheckpointID()
+	}
+
+	return clusterState, nil
 }
 
 // IsHealthy returns true if the rawNode is connected to the cluster (leader or follower)

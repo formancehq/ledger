@@ -26,7 +26,17 @@ func isUnavailableError(err error) bool {
 	return false
 }
 
-func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID uint64, targetDir string) (uint64, string, error) {
+func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID uint64, targetDir string, progress *state.SyncProgress) (uint64, string, error) {
+	// Fetch total size upfront so callers can display progress.
+	if progress != nil {
+		desc, err := f.client.DescribeSnapshot(ctx, &snapshotpb.DescribeSnapshotRequest{
+			SnapshotId: snapshotID,
+		})
+		if err == nil && desc.Status == snapshotpb.DescribeSnapshotResponse_READY {
+			progress.SetTotal(desc.ContentSize)
+		}
+	}
+
 	// Request the snapshot stream
 	stream, err := f.client.FetchSnapshot(ctx, &snapshotpb.FetchSnapshotRequest{
 		SnapshotId: snapshotID,
@@ -74,6 +84,9 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID uint
 		if len(resp.Data) > 0 {
 			if _, err := pw.Write(resp.Data); err != nil {
 				return 0, "", fmt.Errorf("writing to tar pipe: %w", err)
+			}
+			if progress != nil {
+				progress.AddReceived(uint64(len(resp.Data)))
 			}
 		}
 

@@ -524,6 +524,43 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 	return nil
 }
 
+// UpdateSnapshotConfState updates the ConfState of the latest snapshot without
+// changing the snapshot data or index. This is used when cluster membership
+// changes (e.g. a learner is added) so that etcd/raft sends snapshots with
+// the correct ConfState to newly added nodes.
+func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
+	s.mu.Lock()
+
+	// Nothing to update if there is no snapshot yet.
+	if s.snapshot.Metadata.Index == 0 && len(s.snapshot.Metadata.ConfState.Voters) == 0 {
+		s.mu.Unlock()
+		return nil
+	}
+
+	snap := s.snapshot
+	snap.Metadata.ConfState = *cs
+	s.snapshot = snap
+	s.mu.Unlock()
+
+	if err := s.saveSnapshot(snap); err != nil {
+		return fmt.Errorf("saving snapshot: %w", err)
+	}
+
+	if err := s.wal.SaveSnapshot(walpb.Snapshot{
+		Index:     snap.Metadata.Index,
+		Term:      snap.Metadata.Term,
+		ConfState: cs,
+	}); err != nil {
+		return fmt.Errorf("saving snapshot: %w", err)
+	}
+
+	s.logger.WithFields(map[string]any{
+		"index": snap.Metadata.Index,
+	}).Infof("Snapshot ConfState updated")
+
+	return nil
+}
+
 // termLocked returns the term of entry i without taking a lock (assumes lock is already held)
 func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 	firstIndex := s.snapshot.Metadata.Index + 1

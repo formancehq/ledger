@@ -55,6 +55,7 @@ message NodeInfo {
   ProgressInfo progress = 3;  // Progress information (only available when querying leader)
   string raft_address = 4;  // Raft transport address
   string service_address = 5;  // Service API address
+  SyncProgress sync_progress = 6;  // Checkpoint sync progress (populated by leader querying each node)
 }
 
 // ProgressInfo represents the progress information for a node
@@ -89,6 +90,15 @@ message ClusterState {
   uint32 local_node = 4;        // ID of the local node
   RaftStatus raft_status = 5;   // Complete Raft status information
   bool maintenance_mode = 6;    // Whether maintenance mode is active
+  SyncProgress sync_progress = 7; // Local node checkpoint sync progress
+}
+
+// SyncProgress tracks the progress of a checkpoint fetch on the local node.
+message SyncProgress {
+  string status = 1;              // "normal", "syncing", "snapshotting", "out_of_sync"
+  uint64 bytes_received = 2;      // Bytes received so far during checkpoint fetch
+  uint64 bytes_total = 3;         // Total bytes to fetch (0 if unknown)
+  uint64 checkpoint_id = 4;       // Checkpoint ID being fetched
 }
 
 // ============================================================================

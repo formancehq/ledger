@@ -9,6 +9,7 @@ import (
 type WAL interface {
 	raft.Storage
 	CreateSnapshot(i uint64, r *raftpb.ConfState, data []byte) error
+	UpdateSnapshotConfState(cs *raftpb.ConfState) error
 	Compact(u uint64) error
 	Append(state raftpb.HardState, entries []raftpb.Entry) error
 	ApplySnapshot(snapshot raftpb.Snapshot) error

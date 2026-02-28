@@ -124,7 +124,7 @@ type clusterSnapshotFetcher struct {
 	provider *ClusterSnapshotFetcherProvider
 }
 
-func (f *clusterSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID uint64, targetDir string) (uint64, string, error) {
+func (f *clusterSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID uint64, targetDir string, _ *state.SyncProgress) (uint64, string, error) {
 	// Call interceptor if set
 	if interceptor := f.provider.getInterceptor(); interceptor != nil {
 		if err := interceptor(ctx, snapshotID, targetDir); err != nil {

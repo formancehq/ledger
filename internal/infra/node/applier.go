@@ -45,6 +45,7 @@ type Applier struct {
 	snapshotFetcherProvider state.SnapshotFetcherProvider
 
 	status           *atomic.Int32
+	syncProgress     atomic.Pointer[state.SyncProgress]
 	gatingTerminated chan struct{}
 	ch               chan applyWork // buffered(1)
 	snapshotWrapper  func([]byte) ([]byte, error)
@@ -152,6 +153,9 @@ func (a *Applier) SyncSnapshot(ctx context.Context, leader uint64) {
 
 	a.status.Store(statusSyncing)
 
+	progress := state.NewSyncProgress()
+	a.syncProgress.Store(progress)
+
 	a.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
 		snapshotFetcher, err := a.snapshotFetcherProvider.GetForPeer(leader)
 		if err != nil {
@@ -159,19 +163,43 @@ func (a *Applier) SyncSnapshot(ctx context.Context, leader uint64) {
 				"leader": leader,
 				"error":  err,
 			}).Errorf("Failed to get snapshot fetcher, marking node as out of sync")
+			a.syncProgress.Store(nil)
 			a.status.Store(statusOutOfSync)
 			return 0, nil
 		}
-		if _, err := a.fsm.SynchronizeWithLeader(ctx, snapshotFetcher); err != nil {
+		if _, err := a.fsm.SynchronizeWithLeader(ctx, snapshotFetcher, progress); err != nil {
 			a.logger.WithFields(map[string]any{
 				"leader": leader,
 				"error":  err,
 			}).Errorf("Failed to synchronize with leader, marking node as out of sync")
+			a.syncProgress.Store(nil)
 			a.status.Store(statusOutOfSync)
 			return 0, nil
 		}
+		a.syncProgress.Store(nil)
 		return 0, nil
 	}, nil)
+}
+
+// StatusString returns the current applier status as a human-readable string.
+func (a *Applier) StatusString() string {
+	switch a.status.Load() {
+	case statusNormal:
+		return "normal"
+	case statusSyncing:
+		return "syncing"
+	case statusSnapshotting:
+		return "snapshotting"
+	case statusOutOfSync:
+		return "out_of_sync"
+	default:
+		return "unknown"
+	}
+}
+
+// GetSyncProgress returns the current sync progress, or nil if not syncing.
+func (a *Applier) GetSyncProgress() *state.SyncProgress {
+	return a.syncProgress.Load()
 }
 
 func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {

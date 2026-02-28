@@ -21,11 +21,12 @@ type Interceptor struct {
 	OnSnapshot     func(delegate WAL) (raftpb.Snapshot, error)
 
 	// Interceptors for DefaultWAL-specific methods
-	OnCreateSnapshot func(delegate WAL, i uint64, r *raftpb.ConfState, data []byte) error
-	OnCompact        func(delegate WAL, u uint64) error
-	OnAppend         func(delegate WAL, state raftpb.HardState, entries []raftpb.Entry) error
-	OnApplySnapshot  func(delegate WAL, snapshot raftpb.Snapshot) error
-	OnClose          func(delegate WAL) error
+	OnCreateSnapshot          func(delegate WAL, i uint64, r *raftpb.ConfState, data []byte) error
+	OnUpdateSnapshotConfState func(delegate WAL, cs *raftpb.ConfState) error
+	OnCompact                 func(delegate WAL, u uint64) error
+	OnAppend                  func(delegate WAL, state raftpb.HardState, entries []raftpb.Entry) error
+	OnApplySnapshot           func(delegate WAL, snapshot raftpb.Snapshot) error
+	OnClose                   func(delegate WAL) error
 }
 
 // NewWALInterceptor creates a new Interceptor wrapping the given DefaultWAL.
@@ -124,6 +125,18 @@ func (w *Interceptor) CreateSnapshot(i uint64, r *raftpb.ConfState, data []byte)
 	return w.delegate.CreateSnapshot(i, r, data)
 }
 
+// UpdateSnapshotConfState implements WAL.
+func (w *Interceptor) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
+	w.mu.RLock()
+	interceptor := w.OnUpdateSnapshotConfState
+	w.mu.RUnlock()
+
+	if interceptor != nil {
+		return interceptor(w.delegate, cs)
+	}
+	return w.delegate.UpdateSnapshotConfState(cs)
+}
+
 // Compact implements DefaultWAL.
 func (w *Interceptor) Compact(u uint64) error {
 	w.mu.RLock()
@@ -216,6 +229,12 @@ func (w *Interceptor) SetCreateSnapshotInterceptor(fn func(delegate WAL, i uint6
 	w.mu.Unlock()
 }
 
+func (w *Interceptor) SetUpdateSnapshotConfStateInterceptor(fn func(delegate WAL, cs *raftpb.ConfState) error) {
+	w.mu.Lock()
+	w.OnUpdateSnapshotConfState = fn
+	w.mu.Unlock()
+}
+
 func (w *Interceptor) SetCompactInterceptor(fn func(delegate WAL, u uint64) error) {
 	w.mu.Lock()
 	w.OnCompact = fn
@@ -250,6 +269,7 @@ func (w *Interceptor) ClearInterceptors() {
 	w.OnFirstIndex = nil
 	w.OnSnapshot = nil
 	w.OnCreateSnapshot = nil
+	w.OnUpdateSnapshotConfState = nil
 	w.OnCompact = nil
 	w.OnAppend = nil
 	w.OnApplySnapshot = nil
