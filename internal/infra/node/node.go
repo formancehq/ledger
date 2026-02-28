@@ -729,7 +729,12 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	}
 
 	node.logger.WithFields(map[string]any{
-		"config": raftConfig,
+		"id":              raftConfig.ID,
+		"electionTick":    raftConfig.ElectionTick,
+		"heartbeatTick":   raftConfig.HeartbeatTick,
+		"maxSizePerMsg":   raftConfig.MaxSizePerMsg,
+		"maxInflightMsgs": raftConfig.MaxInflightMsgs,
+		"preVote":         raftConfig.PreVote,
 	}).Infof("Starting raft node")
 
 	var err error
@@ -1482,8 +1487,13 @@ func (node *Node) SetObserver(obs *Observer) {
 }
 
 // AddLearner proposes adding a non-voting learner node to the Raft cluster.
-// The call blocks until the ConfChange is committed through Raft consensus,
-// which prevents concurrent joins from being silently dropped by etcd/raft.
+// The call blocks until the ConfChange is committed through Raft consensus.
+//
+// etcd/raft silently drops ConfChange proposals when another ConfChange is
+// pending (e.g. from a concurrent join or auto-promotion). This method retries
+// the proposal with a short backoff until it is committed or the context is
+// cancelled.
+//
 // Must be called on the leader.
 func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string) error {
 	ccCtx, err := MarshalConfChangeContext(ConfChangeContext{
@@ -1494,18 +1504,42 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 		return fmt.Errorf("marshaling conf change context: %w", err)
 	}
 
-	// Register a future BEFORE proposing so processReady can resolve it.
+	// Retry interval: slightly above the heartbeat tick so pending ConfChanges
+	// have time to commit between attempts.
+	retryInterval := node.config.TickInterval * time.Duration(node.config.HeartbeatTick) * 3
+	if retryInterval < 500*time.Millisecond {
+		retryInterval = 500 * time.Millisecond
+	}
+
+	for {
+		committed, err := node.tryAddLearner(ctx, nodeID, ccCtx, retryInterval)
+		if err != nil {
+			return err
+		}
+		if committed {
+			return nil
+		}
+		// ConfChange was likely dropped because another is pending. Retry.
+		node.logger.WithFields(map[string]any{
+			"nodeID": nodeID,
+		}).Infof("AddLearner: retrying (previous proposal likely dropped due to pending ConfChange)")
+	}
+}
+
+// tryAddLearner proposes a single AddLearner ConfChange and waits up to
+// timeout for it to be committed. Returns (true, nil) on success,
+// (false, nil) if the proposal was likely dropped, or (false, err) on error.
+func (node *Node) tryAddLearner(ctx context.Context, nodeID uint64, ccCtx []byte, timeout time.Duration) (bool, error) {
 	future := futures.New[struct{}]()
 	node.pendingConfChanges.Store(nodeID, future)
 	defer node.pendingConfChanges.Delete(nodeID)
 
-	err = node.execClusterCommand(ctx, func() error {
+	err := node.execClusterCommand(ctx, func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
 		}
 
-		// Check if node already exists in the cluster
 		if _, ok := status.Progress[nodeID]; ok {
 			return ErrNodeAlreadyInCluster
 		}
@@ -1523,21 +1557,25 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 		return node.rawNode.ProposeConfChange(cc)
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	// Wait for the ConfChange to be committed (resolved by processReady).
 	done := make(chan struct{})
 	go func() {
-		_, _ = future.Wait() // error is always nil for conf change futures
+		_, _ = future.Wait()
 		close(done)
 	}()
 
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	select {
 	case <-done:
-		return nil
+		return true, nil
+	case <-timer.C:
+		return false, nil
 	case <-ctx.Done():
-		return ctx.Err()
+		return false, ctx.Err()
 	}
 }
 

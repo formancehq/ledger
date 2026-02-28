@@ -221,8 +221,25 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		panic(fmt.Errorf("getting last snapshot: %w", err))
 	}
 
-	if entries[len(entries)-1].Index-lastSnapshot.Metadata.Index >= a.snapshotThreshold {
-		a.triggerSnapshot(ctx, confState, entries[len(entries)-1].Index, lastSnapshot.Metadata.Index)
+	lastEntryIndex := entries[len(entries)-1].Index
+	thresholdReached := lastEntryIndex-lastSnapshot.Metadata.Index >= a.snapshotThreshold
+
+	// Force a snapshot when cluster membership has changed since the last
+	// snapshot. Without this, a newly added learner/voter would receive
+	// a snapshot whose ConfState doesn't include it, causing etcd/raft
+	// on the new node to reject the snapshot.
+	//
+	// Skip joint consensus states (VotersOutgoing non-empty): V2 conf
+	// changes like learner-to-voter promotion go through a transient joint
+	// state before auto-leaving. Persisting such a state causes newRaft
+	// to panic on restore. The auto-leave ConfChange follows immediately
+	// and will trigger the snapshot with a clean ConfState.
+	confStateChanged := confState != nil &&
+		confStateIsClean(confState) &&
+		!confStatesEqual(confState, &lastSnapshot.Metadata.ConfState)
+
+	if thresholdReached || confStateChanged {
+		a.triggerSnapshot(ctx, confState, lastEntryIndex, lastSnapshot.Metadata.Index)
 	}
 
 	return nil
@@ -288,6 +305,34 @@ func (a *Applier) handleCheckpointRequired(
 	}, nil)
 
 	return nil
+}
+
+// confStateIsClean returns false when the ConfState represents a joint
+// consensus transition (VotersOutgoing is non-empty). Joint states are
+// transient — etcd/raft auto-leaves them immediately — and must not be
+// persisted in snapshots because newRaft panics when restoring from one.
+func confStateIsClean(cs *raftpb.ConfState) bool {
+	return len(cs.VotersOutgoing) == 0
+}
+
+// confStatesEqual returns true when two ConfStates have identical membership.
+func confStatesEqual(a, b *raftpb.ConfState) bool {
+	return slicesEqual(a.Voters, b.Voters) &&
+		slicesEqual(a.Learners, b.Learners) &&
+		slicesEqual(a.VotersOutgoing, b.VotersOutgoing) &&
+		slicesEqual(a.LearnersNext, b.LearnersNext)
+}
+
+func slicesEqual(a, b []uint64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // triggerSnapshot creates a Raft snapshot when the threshold is reached.
