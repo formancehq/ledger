@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -128,11 +129,16 @@ func (p *ConnectionPool) RestartConnection(id uint64) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	err := p.connections[id].Close()
-	if err != nil {
+	conn := p.connections[id]
+	if conn == nil {
+		return fmt.Errorf("no connection for peer %d", id)
+	}
+
+	if err := conn.Close(); err != nil {
 		return err
 	}
 
+	var err error
 	p.connections[id], err = p.connect(p.peers[id])
 
 	return err

@@ -106,6 +106,10 @@ type DefaultTransport struct {
 	pendingSendLoadHistogram metric.Int64Histogram
 	pendingSendFullCounter   metric.Float64Counter
 	pendingSendInflight      atomic.Int32
+
+	// stopped is set at the beginning of Stop() to guard channel sends
+	// from orphaned goroutines that outlive the transport shutdown.
+	stopped atomic.Bool
 }
 
 func (t *DefaultTransport) RecvHighPriority() <-chan []raftpb.Message {
@@ -230,6 +234,9 @@ func (t *DefaultTransport) pushToRecvQueue(priority int, msgs []raftpb.Message) 
 	if len(msgs) == 0 {
 		return true
 	}
+	if t.stopped.Load() {
+		return false
+	}
 
 	var queue chan []raftpb.Message
 	switch priority {
@@ -261,6 +268,9 @@ func (t *DefaultTransport) Stop(ctx context.Context) error {
 
 	t.logger.Infof("Stopping raft transport")
 
+	// Mark as stopped so orphaned goroutines skip channel sends.
+	t.stopped.Store(true)
+
 	stopCh := make(chan struct{})
 	select {
 	case <-ctx.Done():
@@ -278,11 +288,10 @@ func (t *DefaultTransport) Stop(ctx context.Context) error {
 		}
 	}
 
-	close(t.highPriorityRecvCh)
-	close(t.mediumPriorityRecvCh)
-	close(t.lowPriorityRecvCh)
-	close(t.unreachableCh)
-	close(t.pendingSendQueue)
+	// Note: we intentionally do NOT close the recv/unreachable/pendingSend
+	// channels here. Orphaned goroutines may still attempt sends after Stop()
+	// returns; the stopped flag guards those sends. The channels will be GC'd
+	// with the struct. Consumers have their own shutdown path.
 
 	return t.connectionPool.Close()
 }
@@ -386,6 +395,9 @@ func (t *DefaultTransport) RemovePeer(ctx context.Context, id uint64) {
 // Send sends a message to a peer
 func (t *DefaultTransport) Send(msgs []raftpb.Message) {
 	if len(msgs) == 0 {
+		return
+	}
+	if t.stopped.Load() {
 		return
 	}
 	select {
@@ -608,6 +620,9 @@ func (t *DefaultTransport) Unreachable() <-chan uint64 {
 
 // pushUnreachable pushes a peer ID to the unreachable queue with metrics
 func (t *DefaultTransport) pushUnreachable(peerID uint64) bool {
+	if t.stopped.Load() {
+		return false
+	}
 	select {
 	case t.unreachableCh <- peerID:
 		t.unreachableLoadHistogram.Record(context.Background(), int64(t.unreachableInflight.Add(1)))
@@ -913,6 +928,10 @@ func (conn *peerConnection) loop() {
 
 		conn.logger.Infof("Creating stream to peer %x...", conn.peerID)
 		grpcPeerConnection := conn.connectionPool.GetConnection(conn.peerID)
+		if grpcPeerConnection == nil {
+			conn.logger.Errorf("No gRPC connection for peer %x, peer may have been removed", conn.peerID)
+			return
+		}
 		stopped, err := conn.handleConnection(grpcPeerConnection)
 		if stopped {
 			return
@@ -975,10 +994,15 @@ type priorityStream struct {
 func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn) (bool, error) {
 	client := rafttransportpb.NewRaftTransportServiceClient(grpcPeerConnection)
 
+	// Use a cancelable context so that cancelling it unblocks all stream.Recv()
+	// calls in the receive goroutines, ensuring they exit on every path.
+	streamCtx, streamCancel := context.WithCancel(context.Background())
+	defer streamCancel()
+
 	// Create a stream for each priority level
 	createStream := func(priorityName string) (grpc.BidiStreamingClient[rafttransportpb.SendMessageRequest, rafttransportpb.SendMessageResponse], error) {
 		return client.StreamMessages(
-			metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{
+			metadata.NewOutgoingContext(streamCtx, metadata.New(map[string]string{
 				"nodeID":        fmt.Sprintf("%x", conn.nodeID),
 				"priority":      priorityName,
 				"clusterID":     conn.clusterID,
@@ -1028,6 +1052,11 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	}
 
 	streamErrors := make(chan error, 3)
+
+	// Ensure all receive goroutines have exited before handleConnection returns.
+	// streamCancel() (deferred above) will unblock stream.Recv() calls, and this
+	// Wait() ensures we don't leave orphaned goroutines that could send on closed channels.
+	defer receiveWg.Wait()
 
 	for _, ps := range streams {
 		receiveWg.Add(1)
@@ -1210,10 +1239,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 		// No messages available, do a blocking select on all channels
 		select {
 		case ch := <-conn.closeCh:
-			_ = highStream.CloseSend()
-			_ = mediumStream.CloseSend()
-			_ = lowStream.CloseSend()
-			receiveWg.Wait()
+			// streamCancel() + receiveWg.Wait() are handled by defers.
 			close(ch)
 			return true, nil
 		case err := <-streamErrors:
