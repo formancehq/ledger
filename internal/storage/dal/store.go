@@ -213,6 +213,31 @@ func NewStore(
 			"walSize":               m.WAL.Size,
 			"totalLevelsSize":       m.DiskSpaceUsage(),
 		}).Infof("Pebble database opened — LSM state")
+
+		// Compact L0 at startup to avoid read amplification with a cold block cache.
+		// The runtime L0CompactionThreshold is tuned for write throughput (e.g. 64),
+		// but at startup with a cold cache, even a few L0 files force the merging
+		// iterator to read each one from disk, stalling reads for tens of seconds.
+		// We use a low startup-specific threshold (4) to ensure reads are fast
+		// immediately after boot.
+		const startupL0CompactThreshold = 4
+		if m.Levels[0].NumFiles > startupL0CompactThreshold {
+			logger.WithFields(map[string]any{
+				"l0FileCount": m.Levels[0].NumFiles,
+				"threshold":   startupL0CompactThreshold,
+			}).Infof("L0 file count exceeds startup compaction threshold, compacting before serving reads")
+			compactStart := time.Now()
+			if err := db.Compact(nil, []byte{0xFF}, false); err != nil {
+				logger.WithFields(map[string]any{"error": err}).Infof("Startup compaction failed (non-fatal)")
+			} else {
+				m2 := db.Metrics()
+				logger.WithFields(map[string]any{
+					"duration":    time.Since(compactStart).String(),
+					"l0FileCount": m2.Levels[0].NumFiles,
+					"l0Size":      m2.Levels[0].Size,
+				}).Infof("Startup compaction complete")
+			}
+		}
 	}
 
 	var currentCheckpoint uint64
