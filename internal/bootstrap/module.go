@@ -601,17 +601,6 @@ func Module() fx.Option {
 				n *node.Node,
 				fullCfg Config,
 			) {
-				// Set up reverse peer discovery callback: when a peer connects to us
-				// and we didn't know its address, add it to the service pool and Node.
-				defaultTransport.SetOnPeerDiscovered(func(nodeID uint64, raftAddr, svcAddr string) {
-					n.SetPeerAddress(nodeID, raftAddr, svcAddr)
-					if svcAddr != "" {
-						if err := servicePool.AddPeer(nodeID, svcAddr); err != nil {
-							logger.WithFields(map[string]any{"error": err, "peer_id": nodeID}).Errorf("Failed to add discovered peer to service pool")
-						}
-					}
-				})
-
 				// Store own address in Node so it gets included in the next snapshot.
 				// This ensures that after a snapshot cycle, all nodes know this node's address.
 				n.SetPeerAddress(cfg.NodeID, cfg.AdvertiseAddr, fullCfg.ServiceAdvertiseAddr())
