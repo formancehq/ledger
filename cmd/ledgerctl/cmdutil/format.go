@@ -28,6 +28,41 @@ func FormatBytes(bytes uint64) string {
 	}
 }
 
+// WrapText wraps text to fit within maxWidth, preferring to break at separator
+// boundaries. Returns a slice of lines. If the text fits within maxWidth, a
+// single-element slice is returned.
+func WrapText(text string, maxWidth int, separator string) []string {
+	if maxWidth <= 0 || len(text) <= maxWidth {
+		return []string{text}
+	}
+
+	var lines []string
+	remaining := text
+
+	for len(remaining) > maxWidth {
+		cutPoint := -1
+		if separator != "" {
+			lastSep := strings.LastIndex(remaining[:maxWidth], separator)
+			if lastSep > 0 {
+				cutPoint = lastSep + len(separator)
+			}
+		}
+
+		if cutPoint <= 0 {
+			cutPoint = maxWidth
+		}
+
+		lines = append(lines, remaining[:cutPoint])
+		remaining = remaining[cutPoint:]
+	}
+
+	if remaining != "" {
+		lines = append(lines, remaining)
+	}
+
+	return lines
+}
+
 // ObfuscateDSN replaces the password in a DSN URL with "****".
 // Works with postgres://, postgresql://, clickhouse:// and similar URL-format DSNs.
 // If the DSN is not URL-formatted or has no password, it is returned unchanged.

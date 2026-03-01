@@ -141,15 +141,52 @@ func runGet(cmd *cobra.Command, args []string) error {
 			{"#", "SOURCE", "", "DESTINATION", "AMOUNT", "ASSET"},
 		}
 
+		termWidth := pterm.GetTerminalWidth()
+		// Reserve space for #(3) + arrow(1) + AMOUNT(12) + ASSET(8) + separators(5*3=15) + indent(2)
+		const fixedColsWidth = 3 + 1 + 12 + 8 + 15 + 2
+		maxAddrWidth := (termWidth - fixedColsWidth) / 2
+		if maxAddrWidth < 15 {
+			maxAddrWidth = 15
+		}
+
+		const continuationIndent = "  "
 		for i, posting := range tx.Postings {
-			postingsTable = append(postingsTable, []string{
-				fmt.Sprintf("%d", i+1),
-				posting.Source,
-				"→",
-				posting.Destination,
-				posting.Amount.Dec(),
-				posting.Asset,
-			})
+			srcLines := cmdutil.WrapText(posting.Source, maxAddrWidth, ":")
+			dstLines := cmdutil.WrapText(posting.Destination, maxAddrWidth, ":")
+
+			maxLines := len(srcLines)
+			if len(dstLines) > maxLines {
+				maxLines = len(dstLines)
+			}
+
+			for line := range maxLines {
+				src, dst := "", ""
+				num, arrow, amount, asset := "", "", "", ""
+
+				if line < len(srcLines) {
+					src = srcLines[line]
+					if line > 0 {
+						src = continuationIndent + src
+					}
+				}
+				if line < len(dstLines) {
+					dst = dstLines[line]
+					if line > 0 {
+						dst = continuationIndent + dst
+					}
+				}
+
+				if line == 0 {
+					num = fmt.Sprintf("%d", i+1)
+					arrow = "→"
+					amount = posting.Amount.Dec()
+					asset = posting.Asset
+				}
+
+				postingsTable = append(postingsTable, []string{
+					num, src, arrow, dst, amount, asset,
+				})
+			}
 		}
 
 		if err := pterm.DefaultTable.WithHasHeader().WithData(postingsTable).Render(); err != nil {

@@ -207,6 +207,21 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 }
 
 func renderAccountsTable(accounts []*commonpb.Account) {
+	termWidth := pterm.GetTerminalWidth()
+
+	// Reserve space for METADATA column (header is 8 chars), separator (3 spaces),
+	// and continuation indent (2 spaces).
+	const (
+		metadataColWidth    = 8
+		separatorWidth      = 3
+		continuationIndent  = "  "
+	)
+
+	maxAddressWidth := termWidth - metadataColWidth - separatorWidth - len(continuationIndent)
+	if maxAddressWidth < 20 {
+		maxAddressWidth = 20
+	}
+
 	tableData := pterm.TableData{
 		{"ADDRESS", "METADATA"},
 	}
@@ -217,10 +232,11 @@ func renderAccountsTable(accounts []*commonpb.Account) {
 			metadataCount = fmt.Sprintf("%d", len(account.Metadata.Metadata))
 		}
 
-		tableData = append(tableData, []string{
-			account.Address,
-			metadataCount,
-		})
+		lines := cmdutil.WrapText(account.Address, maxAddressWidth, ":")
+		tableData = append(tableData, []string{lines[0], metadataCount})
+		for _, line := range lines[1:] {
+			tableData = append(tableData, []string{continuationIndent + line, ""})
+		}
 	}
 
 	_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
