@@ -104,8 +104,8 @@ func Module() fx.Option {
 
 				return store, nil
 			},
-			func(store *dal.Store, logger logging.Logger) *dal.IdleCompactor {
-				return dal.NewIdleCompactor(store, logger)
+			func(store *dal.Store, logger logging.Logger, machine *state.Machine) *dal.SmartCompactor {
+				return dal.NewSmartCompactor(store, logger, machine.ColdCompactionCh())
 			},
 			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
 				return wal.New(cfg.RaftConfig.WalDir, logger.WithFields(map[string]any{
@@ -802,7 +802,7 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, collector *diskusage.Collector) {
 				lc.Append(worker.FxHook(collector))
 			},
-			func(lc fx.Lifecycle, compactor *dal.IdleCompactor) {
+			func(lc fx.Lifecycle, compactor *dal.SmartCompactor) {
 				lc.Append(worker.FxHook(compactor))
 			},
 			func(lc fx.Lifecycle, hc *clusterhealth.HealthChecker) {

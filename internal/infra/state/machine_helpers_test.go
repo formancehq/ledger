@@ -128,6 +128,9 @@ func TestMachineSealRequestAndArchiveRequestChannels(t *testing.T) {
 
 	convertCh := machine.MetadataConvertRequestCh()
 	require.NotNil(t, convertCh)
+
+	coldCh := machine.ColdCompactionCh()
+	require.NotNil(t, coldCh)
 }
 
 func TestMachineLastPersistedIndex(t *testing.T) {

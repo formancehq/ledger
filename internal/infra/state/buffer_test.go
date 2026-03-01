@@ -361,11 +361,16 @@ func TestBufferedSetPurgeRange(t *testing.T) {
 	buf, _ := newTestBuffer(t)
 
 	require.Empty(t, buf.purgeRanges)
+	require.False(t, buf.HasPurges())
+
 	buf.SetPurgeRange(1, 10, 50)
+	require.True(t, buf.HasPurges())
+
 	buf.SetPurgeRange(2, 51, 100)
 	require.Len(t, buf.purgeRanges, 2)
 	require.Equal(t, uint64(10), buf.purgeRanges[0].startSequence)
 	require.Equal(t, uint64(51), buf.purgeRanges[1].startSequence)
+	require.True(t, buf.HasPurges())
 }
 
 func TestBufferedSetPendingArchive(t *testing.T) {

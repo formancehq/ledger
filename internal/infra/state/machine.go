@@ -105,6 +105,10 @@ type Machine struct {
 	// background conversion of existing account metadata values.
 	metadataConvertRequestCh chan MetadataConvertRequest
 
+	// coldCompactionCh signals the SmartCompactor that a period purge has been applied,
+	// meaning the cold zone [0x01, 0xF1) contains fresh tombstones that benefit from compaction.
+	coldCompactionCh chan struct{}
+
 	// Metrics
 	logsAppendedCounter       metric.Int64Counter
 	rotationDurationHistogram metric.Int64Histogram
@@ -275,6 +279,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		sealRequestCh:            make(chan SealRequest, 1),
 		archiveRequestCh:         make(chan ArchiveRequest, 1),
 		metadataConvertRequestCh: make(chan MetadataConvertRequest, 16),
+		coldCompactionCh:         make(chan struct{}, 1),
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 
@@ -420,6 +425,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	eventsConfigChanged := false
 	mirrorConfigChanged := false
 	needsArchiveDispatch := false
+	needsColdCompaction := false
 	var pendingConvertRequests []MetadataConvertRequest
 
 	for i, entry := range entries {
@@ -505,6 +511,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		if result.HasArchiveRequests {
 			needsArchiveDispatch = true
 		}
+		if result.HasPurges {
+			needsColdCompaction = true
+		}
 		ret.Results = append(ret.Results, *result)
 		pendingConvertRequests = append(pendingConvertRequests, result.MetadataConvertRequests...)
 
@@ -539,6 +548,12 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	fsm.appliedCond.Broadcast()
 	if needsArchiveDispatch {
 		fsm.dispatchArchiveRequests()
+	}
+	if needsColdCompaction {
+		select {
+		case fsm.coldCompactionCh <- struct{}{}:
+		default:
+		}
 	}
 	for _, req := range pendingConvertRequests {
 		select {
@@ -1117,6 +1132,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	configChanged := buffer.HasPendingSinkChanges()
 	mirrorConfigChanged := hasMirrorConfigChange(proposal)
 	hasArchiveRequests := len(buffer.pendingArchives) > 0
+	hasPurges := buffer.HasPurges()
 	// Capture audit state before Merge, which may toggle sharedState via SetAuditConfig.
 	// We record the audit entry if audit was enabled before OR after, so that
 	// SetAuditConfig(true) and SetAuditConfig(false) both record themselves.
@@ -1153,6 +1169,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		ConfigChanged:           configChanged,
 		MirrorConfigChanged:     mirrorConfigChanged,
 		HasArchiveRequests:      hasArchiveRequests,
+		HasPurges:               hasPurges,
 		MetadataConvertRequests: buffer.MetadataConvertRequests(),
 	}, nil
 }
@@ -1680,6 +1697,12 @@ func (fsm *Machine) MetadataConvertRequestCh() chan MetadataConvertRequest {
 	return fsm.metadataConvertRequestCh
 }
 
+// ColdCompactionCh returns the channel that signals the SmartCompactor when
+// cold zone compaction is needed (after period purges).
+func (fsm *Machine) ColdCompactionCh() <-chan struct{} {
+	return fsm.coldCompactionCh
+}
+
 // dispatchArchiveRequests sends archive requests for all ARCHIVING periods
 // to the archiver channel. Called internally after batch commit on all nodes.
 // The Archiver itself skips execution when the node is not the leader.
@@ -1809,6 +1832,7 @@ type ApplyResult struct {
 	ConfigChanged           bool   // True when sink configuration changed
 	MirrorConfigChanged     bool   // True when mirror ledger configuration changed
 	HasArchiveRequests      bool   // True when there are pending archive requests
+	HasPurges               bool   // True when cold zone data was purged (triggers cold compaction)
 	MetadataConvertRequests []MetadataConvertRequest
 }
 

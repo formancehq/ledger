@@ -695,5 +695,10 @@ func (b *Buffered) MetadataConvertRequests() []MetadataConvertRequest {
 	return b.pendingMetadataConvertRequests
 }
 
+// HasPurges returns true if the buffer contains any pending purge ranges.
+func (b *Buffered) HasPurges() bool {
+	return len(b.purgeRanges) > 0
+}
+
 // Ensure Buffered implements InMemoryStore
 var _ processing.InMemoryStore = (*Buffered)(nil)

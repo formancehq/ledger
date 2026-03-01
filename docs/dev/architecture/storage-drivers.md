@@ -147,21 +147,30 @@ Pebble uses a checkpoint-based system for durability:
 
 Pebble's runtime `L0CompactionThreshold` is set high (e.g. 64) to maximize write throughput during bulk operations. This means L0 files can accumulate below the threshold without triggering automatic compaction. While harmless during normal operation (the block cache keeps hot data in RAM), these accumulated L0 files become a problem on restart: with a cold cache, every read must scan each L0 file individually from disk, causing multi-minute stalls.
 
-Three mechanisms keep L0 under control:
+The key space is divided into three zones with different compaction characteristics:
 
-1. **Startup compaction** (`store.go:NewStore`): When the database opens from a checkpoint with more than 4 L0 files, a full `db.Compact()` runs synchronously before serving any reads. After compaction, the checkpoint is overwritten with the clean LSM state so subsequent restarts skip the compaction.
+- **Cold zone** `[0x01, 0xF1)` — logs, audit, tx updates. Immutable, sequential, write-once data. Compacting this zone only benefits after a period purge deletes data.
+- **Attributes zone** `[0xF1, 0xF2)` — volumes, metadata, etc. The only zone that benefits from regular compaction: `DeleteRange` tombstones from generation-rotation pruning need to be pushed down the LSM.
+- **System zone** `[0xF2, 0xFF]` — tiny singleton keys, Pebble handles natively.
 
-2. **Idle compaction** (`idle_compactor.go`): A background goroutine checks every 30 seconds whether the database is idle (no new memtable flushes since last check). If idle and L0 exceeds 4 files, it triggers `db.Compact()` in a separate goroutine. This runs concurrently with reads/writes without blocking. It ensures that after a write burst (e.g. bulk import), L0 is cleaned up proactively before the next restart.
+Four mechanisms keep L0 under control:
 
-3. **Pebble automatic compaction**: Pebble's built-in compaction runs when L0 reaches the runtime threshold (default 64). This handles steady-state write workloads.
+1. **Startup compaction** (`store.go:NewStore`): When the database opens from a checkpoint with more than 4 L0 files, a full-range `db.Compact(nil, 0xFF)` runs synchronously before serving any reads. Full range is correct here because the block cache is cold. After compaction, the checkpoint is overwritten with the clean LSM state so subsequent restarts skip the compaction.
 
-| Mechanism | Trigger | Blocking | When |
-|-----------|---------|----------|------|
-| Startup compaction | L0 > 4 at boot | Yes (before serving) | Every restart with dirty L0 |
-| Idle compaction | No flushes for 30s + L0 > 4 | No (background goroutine) | After write bursts |
-| Pebble automatic | L0 >= runtime threshold | No (background) | During sustained writes |
+2. **Idle compaction — attributes zone** (`smart_compactor.go`): A background goroutine checks every 30 seconds whether the database is idle (no new memtable flushes since last check). If idle and L0 exceeds 4 files, it triggers `db.Compact(0xF1, 0xF2)` — only the attributes zone where `DeleteRange` tombstones from generation rotation benefit from compaction. The cold zone is skipped because it contains immutable write-once data with no overlapping versions.
 
-Source files: `internal/storage/dal/store.go` (startup), `internal/storage/dal/idle_compactor.go` (idle).
+3. **Post-purge compaction — cold zone** (`smart_compactor.go`): When a `ConfirmArchivePeriod` is applied and period data is purged, the FSM signals the `SmartCompactor` via a channel. The compactor then runs `db.Compact(0x01, 0xF1)` to push the purge tombstones down the LSM and reclaim space.
+
+4. **Pebble automatic compaction**: Pebble's built-in compaction runs when L0 reaches the runtime threshold (default 64). This handles steady-state write workloads.
+
+| Mechanism | Zone | Trigger | Blocking | When |
+|-----------|------|---------|----------|------|
+| Startup compaction | Full range | L0 > 4 at boot | Yes (before serving) | Every restart with dirty L0 |
+| Idle compaction | Attributes `[0xF1, 0xF2)` | No flushes for 30s + L0 > 4 | No (background goroutine) | After write bursts |
+| Post-purge compaction | Cold `[0x01, 0xF1)` | Period purge applied | No (background goroutine) | After period archival |
+| Pebble automatic | Full range | L0 >= runtime threshold | No (background) | During sustained writes |
+
+Source files: `internal/storage/dal/store.go` (startup), `internal/storage/dal/smart_compactor.go` (idle + post-purge).
 
 ### Metrics
 
@@ -250,7 +259,7 @@ The `Batch` (`internal/storage/dal/batch.go`) provides atomic write operations:
 | Store | `internal/storage/dal/store.go` |
 | Batch | `internal/storage/dal/batch.go` |
 | Config | `internal/storage/dal/config.go` |
-| Idle Compactor | `internal/storage/dal/idle_compactor.go` |
+| Smart Compactor | `internal/storage/dal/smart_compactor.go` |
 | Metrics | `internal/storage/dal/metrics.go` |
 | Types (keys) | `internal/storage/dal/types.go` |
 | Key builder | `internal/storage/dal/key_builder.go` |
