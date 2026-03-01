@@ -14,12 +14,14 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 		return nil, &domain.ErrLedgerNotFound{Name: apply.Ledger}
 	}
 
-	// Block normal writes on mirror-mode ledgers.
-	// We check mode here using GetLedger, which some sub-processors also call
-	// for schema enforcement. The sub-processors use their own GetLedger call
-	// independently, so this check is purely for the write guard.
+	// Block data-modifying writes on mirror-mode ledgers.
+	// Schema operations (set/remove metadata field type and their conversion
+	// lifecycle) are allowed because they only affect local configuration,
+	// not replicated data.
 	if ledgerInfo, infoOk := s.GetLedger(apply.Ledger); infoOk && ledgerInfo.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
-		return nil, &domain.ErrLedgerInMirrorMode{Name: apply.Ledger}
+		if !isMirrorSafeApply(apply) {
+			return nil, &domain.ErrLedgerInMirrorMode{Name: apply.Ledger}
+		}
 	}
 
 	var (
@@ -67,4 +69,20 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 			},
 		},
 	}, nil
+}
+
+// isMirrorSafeApply returns true if the apply order is safe to execute on a
+// mirror-mode ledger. Schema operations (set/remove metadata field type and
+// their associated conversion lifecycle) only affect local configuration and
+// do not cause drift with the mirror source.
+func isMirrorSafeApply(apply *raftcmdpb.LedgerApplyOrder) bool {
+	switch apply.Data.(type) {
+	case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType,
+		*raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType,
+		*raftcmdpb.LedgerApplyOrder_ConvertMetadataBatch,
+		*raftcmdpb.LedgerApplyOrder_ConversionComplete:
+		return true
+	default:
+		return false
+	}
 }

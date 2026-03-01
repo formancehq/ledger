@@ -264,6 +264,37 @@ var _ = Describe("Mirror", Ordered, func() {
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
 		})
+
+		It("Should reject deleting metadata on mirror ledger", func() {
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					deleteAccountMetadataAction("mirror-guard", "users:001", "key"),
+				},
+			})
+			Expect(err).To(HaveOccurred())
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
+		})
+
+		It("Should allow setting metadata field type on mirror ledger", func() {
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					setMetadataFieldTypeAction("mirror-guard", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category", commonpb.MetadataType_METADATA_TYPE_STRING),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should allow removing metadata field type on mirror ledger", func() {
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					removeMetadataFieldTypeAction("mirror-guard", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category"),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
 	})
 
 	Context("When syncing from a v2 source", Ordered, func() {
