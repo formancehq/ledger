@@ -29,6 +29,8 @@ Refactor:
 * Refactor Go-Libs
 * Clean protobuf
 * Prevent concurrent tests
+* Keep attributes in pebble cache?
+* Index tracking
 
 Later:
 * Events
