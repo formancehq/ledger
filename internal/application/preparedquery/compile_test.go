@@ -289,6 +289,231 @@ func TestValidateCondition_UintSchemaRejectsBool(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot use bool condition")
 }
 
+func TestResolveIntBounds(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		cond       *commonpb.IntCondition
+		params     map[string]string
+		wantMin    int64
+		wantMax    int64
+		wantHasMin bool
+		wantHasMax bool
+		wantEq     bool
+		wantErr    bool
+	}{
+		{
+			name:       "equality: min == max, both inclusive",
+			cond:       &commonpb.IntCondition{Min: ptr(int64(25)), Max: ptr(int64(25))},
+			wantMin:    25,
+			wantMax:    26,
+			wantHasMin: true,
+			wantHasMax: true,
+			wantEq:     true,
+		},
+		{
+			name:       "range: min < max",
+			cond:       &commonpb.IntCondition{Min: ptr(int64(10)), Max: ptr(int64(20))},
+			wantMin:    10,
+			wantMax:    21,
+			wantHasMin: true,
+			wantHasMax: true,
+			wantEq:     false,
+		},
+		{
+			name:       "min exclusive: min=24 exclusive → effective 25, max=25 inclusive → 26",
+			cond:       &commonpb.IntCondition{Min: ptr(int64(24)), Max: ptr(int64(25)), MinExclusive: true},
+			wantMin:    25,
+			wantMax:    26,
+			wantHasMin: true,
+			wantHasMax: true,
+			wantEq:     true,
+		},
+		{
+			name:       "max exclusive: min=25, max=26 exclusive → equality on 25",
+			cond:       &commonpb.IntCondition{Min: ptr(int64(25)), Max: ptr(int64(26)), MaxExclusive: true},
+			wantMin:    25,
+			wantMax:    26,
+			wantHasMin: true,
+			wantHasMax: true,
+			wantEq:     true,
+		},
+		{
+			name:       "both exclusive: min=24 excl, max=26 excl → range [25, 26) = equality",
+			cond:       &commonpb.IntCondition{Min: ptr(int64(24)), Max: ptr(int64(26)), MinExclusive: true, MaxExclusive: true},
+			wantMin:    25,
+			wantMax:    26,
+			wantHasMin: true,
+			wantHasMax: true,
+			wantEq:     true,
+		},
+		{
+			name:       "only min",
+			cond:       &commonpb.IntCondition{Min: ptr(int64(5))},
+			wantMin:    5,
+			wantHasMin: true,
+			wantHasMax: false,
+			wantEq:     false,
+		},
+		{
+			name:       "only max",
+			cond:       &commonpb.IntCondition{Max: ptr(int64(100))},
+			wantMax:    101,
+			wantHasMin: false,
+			wantHasMax: true,
+			wantEq:     false,
+		},
+		{
+			name:       "no bounds",
+			cond:       &commonpb.IntCondition{},
+			wantHasMin: false,
+			wantHasMax: false,
+			wantEq:     false,
+		},
+		{
+			name:       "param equality: same param for min and max",
+			cond:       &commonpb.IntCondition{ParamMin: "val", ParamMax: "val"},
+			params:     map[string]string{"val": "42"},
+			wantMin:    42,
+			wantMax:    43,
+			wantHasMin: true,
+			wantHasMax: true,
+			wantEq:     true,
+		},
+		{
+			name:    "param error: missing param",
+			cond:    &commonpb.IntCondition{ParamMin: "missing"},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := resolveIntBounds(tt.cond, tt.params)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantHasMin, got.hasMin, "hasMin")
+			assert.Equal(t, tt.wantHasMax, got.hasMax, "hasMax")
+			if tt.wantHasMin {
+				assert.Equal(t, tt.wantMin, got.min, "min")
+			}
+			if tt.wantHasMax {
+				assert.Equal(t, tt.wantMax, got.max, "max")
+			}
+			assert.Equal(t, tt.wantEq, got.isEquality(), "isEquality")
+		})
+	}
+}
+
+func TestResolveUintBounds(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		cond       *commonpb.UintCondition
+		params     map[string]string
+		wantMin    uint64
+		wantMax    uint64
+		wantHasMin bool
+		wantHasMax bool
+		wantEq     bool
+		wantErr    bool
+	}{
+		{
+			name:       "equality: min == max, both inclusive",
+			cond:       &commonpb.UintCondition{Min: ptr(uint64(25)), Max: ptr(uint64(25))},
+			wantMin:    25,
+			wantMax:    26,
+			wantHasMin: true,
+			wantHasMax: true,
+			wantEq:     true,
+		},
+		{
+			name:       "range: min < max",
+			cond:       &commonpb.UintCondition{Min: ptr(uint64(10)), Max: ptr(uint64(20))},
+			wantMin:    10,
+			wantMax:    21,
+			wantHasMin: true,
+			wantHasMax: true,
+			wantEq:     false,
+		},
+		{
+			name:       "min exclusive: min=24 exclusive, max=25 → equality on 25",
+			cond:       &commonpb.UintCondition{Min: ptr(uint64(24)), Max: ptr(uint64(25)), MinExclusive: true},
+			wantMin:    25,
+			wantMax:    26,
+			wantHasMin: true,
+			wantHasMax: true,
+			wantEq:     true,
+		},
+		{
+			name:       "max exclusive: min=25, max=26 exclusive → equality on 25",
+			cond:       &commonpb.UintCondition{Min: ptr(uint64(25)), Max: ptr(uint64(26)), MaxExclusive: true},
+			wantMin:    25,
+			wantMax:    26,
+			wantHasMin: true,
+			wantHasMax: true,
+			wantEq:     true,
+		},
+		{
+			name:       "only min",
+			cond:       &commonpb.UintCondition{Min: ptr(uint64(5))},
+			wantMin:    5,
+			wantHasMin: true,
+			wantHasMax: false,
+			wantEq:     false,
+		},
+		{
+			name:       "no bounds",
+			cond:       &commonpb.UintCondition{},
+			wantHasMin: false,
+			wantHasMax: false,
+			wantEq:     false,
+		},
+		{
+			name:       "param equality",
+			cond:       &commonpb.UintCondition{ParamMin: "v", ParamMax: "v"},
+			params:     map[string]string{"v": "100"},
+			wantMin:    100,
+			wantMax:    101,
+			wantHasMin: true,
+			wantHasMax: true,
+			wantEq:     true,
+		},
+		{
+			name:    "param error: missing param",
+			cond:    &commonpb.UintCondition{ParamMax: "missing"},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := resolveUintBounds(tt.cond, tt.params)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantHasMin, got.hasMin, "hasMin")
+			assert.Equal(t, tt.wantHasMax, got.hasMax, "hasMax")
+			if tt.wantHasMin {
+				assert.Equal(t, tt.wantMin, got.min, "min")
+			}
+			if tt.wantHasMax {
+				assert.Equal(t, tt.wantMax, got.max, "max")
+			}
+			assert.Equal(t, tt.wantEq, got.isEquality(), "isEquality")
+		})
+	}
+}
+
 func TestSchemaFieldsForTarget(t *testing.T) {
 	t.Parallel()
 

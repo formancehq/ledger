@@ -171,62 +171,101 @@ func compileStringCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, c
 	return readstore.NewPrefixIterator(cursor, fullPrefix, len(fullPrefix), entityLen), nil
 }
 
-// compileIntCondition — range scan on encoded int64 values.
-// Entities are NOT sorted by entity ID across different values, so we materialize + sort.
-func compileIntCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond *commonpb.IntCondition, params map[string]string) (readstore.EntityIterator, error) {
-	lower := make([]byte, 0, len(prefix)+9)
-	lower = append(lower, prefix...)
-	upper := make([]byte, 0, len(prefix)+9)
-	upper = append(upper, prefix...)
+// resolvedIntBounds holds resolved min/max bounds for an int64 range condition.
+// Values are already adjusted for exclusivity (min incremented if exclusive,
+// max incremented if inclusive) so the range is [min, max).
+type resolvedIntBounds struct {
+	min    int64
+	max    int64
+	hasMin bool
+	hasMax bool
+}
 
-	hasMin, hasMax := false, false
+// isEquality returns true if the resolved bounds cover exactly one value.
+// When max == min + 1, the range [min, min+1) matches only value min.
+// Within a single value prefix, entities are naturally sorted by entity ID
+// in the B+ tree, enabling streaming instead of materializing + sorting.
+func (b resolvedIntBounds) isEquality() bool {
+	return b.hasMin && b.hasMax && b.max == b.min+1
+}
 
-	// Resolve min bound
+// resolveIntBounds resolves an IntCondition's bounds from hardcoded values or parameters,
+// applying exclusivity adjustments. The returned bounds define a half-open range [min, max).
+func resolveIntBounds(cond *commonpb.IntCondition, params map[string]string) (resolvedIntBounds, error) {
+	var b resolvedIntBounds
+
 	if cond.ParamMin != "" {
 		v, err := resolveParamInt64(params, cond.ParamMin)
 		if err != nil {
-			return nil, err
+			return b, err
 		}
 		if cond.MinExclusive {
 			v++
 		}
-		lower = readstore.EncodeInt64(lower, v)
-		hasMin = true
+		b.min = v
+		b.hasMin = true
 	} else if cond.Min != nil {
 		v := *cond.Min
 		if cond.MinExclusive {
 			v++
 		}
-		lower = readstore.EncodeInt64(lower, v)
-		hasMin = true
+		b.min = v
+		b.hasMin = true
 	}
 
-	// Resolve max bound
 	if cond.ParamMax != "" {
 		v, err := resolveParamInt64(params, cond.ParamMax)
 		if err != nil {
-			return nil, err
+			return b, err
 		}
 		if !cond.MaxExclusive {
 			v++
 		}
-		upper = readstore.EncodeInt64(upper, v)
-		hasMax = true
+		b.max = v
+		b.hasMax = true
 	} else if cond.Max != nil {
 		v := *cond.Max
 		if !cond.MaxExclusive {
 			v++
 		}
-		upper = readstore.EncodeInt64(upper, v)
-		hasMax = true
+		b.max = v
+		b.hasMax = true
 	}
 
-	if !hasMin {
-		// Start from type tag 'I'
+	return b, nil
+}
+
+// compileIntCondition — range scan on encoded int64 values.
+// For equality conditions (single value), uses streaming PrefixIterator.
+// For multi-value ranges, materializes + sorts because entities are not
+// sorted by entity ID across different values.
+func compileIntCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond *commonpb.IntCondition, params map[string]string) (readstore.EntityIterator, error) {
+	bounds, err := resolveIntBounds(cond, params)
+	if err != nil {
+		return nil, err
+	}
+
+	// Equality optimization: single value range → entities are naturally sorted
+	// within the value prefix, so we can stream instead of materializing.
+	if bounds.isEquality() {
+		fullPrefix := readstore.EncodeInt64(append([]byte{}, prefix...), bounds.min)
+		return readstore.NewPrefixIterator(cursor, fullPrefix, len(fullPrefix), entityLen), nil
+	}
+
+	// General range: materialize + sort
+	lower := make([]byte, 0, len(prefix)+9)
+	lower = append(lower, prefix...)
+	upper := make([]byte, 0, len(prefix)+9)
+	upper = append(upper, prefix...)
+
+	if bounds.hasMin {
+		lower = readstore.EncodeInt64(lower, bounds.min)
+	} else {
 		lower = append(lower, readstore.TypeTagInt)
 	}
-	if !hasMax {
-		// End just past type tag 'I' (everything with tag 'I' + max value)
+	if bounds.hasMax {
+		upper = readstore.EncodeInt64(upper, bounds.max)
+	} else {
 		upper = append(upper, readstore.TypeTagInt+1)
 	}
 
@@ -234,57 +273,95 @@ func compileIntCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond
 	return materializeRange(cursor, lower, upper, entityOffset, entityLen), nil
 }
 
-// compileUintCondition — range scan on encoded uint64 values (same approach as int).
-func compileUintCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond *commonpb.UintCondition, params map[string]string) (readstore.EntityIterator, error) {
-	lower := make([]byte, 0, len(prefix)+9)
-	lower = append(lower, prefix...)
-	upper := make([]byte, 0, len(prefix)+9)
-	upper = append(upper, prefix...)
+// resolvedUintBounds holds resolved min/max bounds for a uint64 range condition.
+// Values are already adjusted for exclusivity so the range is [min, max).
+type resolvedUintBounds struct {
+	min    uint64
+	max    uint64
+	hasMin bool
+	hasMax bool
+}
 
-	hasMin, hasMax := false, false
+// isEquality returns true if the resolved bounds cover exactly one value.
+func (b resolvedUintBounds) isEquality() bool {
+	return b.hasMin && b.hasMax && b.max == b.min+1
+}
+
+// resolveUintBounds resolves a UintCondition's bounds from hardcoded values or parameters,
+// applying exclusivity adjustments. The returned bounds define a half-open range [min, max).
+func resolveUintBounds(cond *commonpb.UintCondition, params map[string]string) (resolvedUintBounds, error) {
+	var b resolvedUintBounds
 
 	if cond.ParamMin != "" {
 		v, err := resolveParamUint64(params, cond.ParamMin)
 		if err != nil {
-			return nil, err
+			return b, err
 		}
 		if cond.MinExclusive {
 			v++
 		}
-		lower = readstore.EncodeUint64(lower, v)
-		hasMin = true
+		b.min = v
+		b.hasMin = true
 	} else if cond.Min != nil {
 		v := *cond.Min
 		if cond.MinExclusive {
 			v++
 		}
-		lower = readstore.EncodeUint64(lower, v)
-		hasMin = true
+		b.min = v
+		b.hasMin = true
 	}
 
 	if cond.ParamMax != "" {
 		v, err := resolveParamUint64(params, cond.ParamMax)
 		if err != nil {
-			return nil, err
+			return b, err
 		}
 		if !cond.MaxExclusive {
 			v++
 		}
-		upper = readstore.EncodeUint64(upper, v)
-		hasMax = true
+		b.max = v
+		b.hasMax = true
 	} else if cond.Max != nil {
 		v := *cond.Max
 		if !cond.MaxExclusive {
 			v++
 		}
-		upper = readstore.EncodeUint64(upper, v)
-		hasMax = true
+		b.max = v
+		b.hasMax = true
 	}
 
-	if !hasMin {
+	return b, nil
+}
+
+// compileUintCondition — range scan on encoded uint64 values.
+// For equality conditions, uses streaming PrefixIterator (same optimization as int).
+// For multi-value ranges, materializes + sorts.
+func compileUintCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond *commonpb.UintCondition, params map[string]string) (readstore.EntityIterator, error) {
+	bounds, err := resolveUintBounds(cond, params)
+	if err != nil {
+		return nil, err
+	}
+
+	// Equality optimization: single value range → streaming
+	if bounds.isEquality() {
+		fullPrefix := readstore.EncodeUint64(append([]byte{}, prefix...), bounds.min)
+		return readstore.NewPrefixIterator(cursor, fullPrefix, len(fullPrefix), entityLen), nil
+	}
+
+	// General range: materialize + sort
+	lower := make([]byte, 0, len(prefix)+9)
+	lower = append(lower, prefix...)
+	upper := make([]byte, 0, len(prefix)+9)
+	upper = append(upper, prefix...)
+
+	if bounds.hasMin {
+		lower = readstore.EncodeUint64(lower, bounds.min)
+	} else {
 		lower = append(lower, readstore.TypeTagUint)
 	}
-	if !hasMax {
+	if bounds.hasMax {
+		upper = readstore.EncodeUint64(upper, bounds.max)
+	} else {
 		upper = append(upper, readstore.TypeTagUint+1)
 	}
 
