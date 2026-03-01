@@ -183,4 +183,5 @@ message BackupResponse {
   string content_sha256 = 4;        // SHA256 hash of the full archive (set on EOF)
   uint64 content_size = 5;          // Total size of the archive in bytes (set on EOF)
   uint64 estimated_total_size = 6;  // Estimated total tar size in bytes (set on first chunk)
+  string status_message = 7;        // Preparation phase status (shown before data streaming)
 }

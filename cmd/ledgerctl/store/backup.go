@@ -98,6 +98,14 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 			return cmdutil.FormatGRPCError("receiving backup chunk", err)
 		}
 
+		// Status-only messages update the spinner during preparation phases
+		if resp.StatusMessage != "" && len(resp.Data) == 0 && !resp.Eof {
+			if spinner != nil {
+				spinner.UpdateText(resp.StatusMessage)
+			}
+			continue
+		}
+
 		if resp.Eof {
 			expectedHash = resp.ContentSha256
 			expectedSize = resp.ContentSize

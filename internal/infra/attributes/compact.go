@@ -4,23 +4,67 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// keyCompactor compacts a single canonical key to a base entry at the given index.
-// This interface lets CompactAllForBackup dispatch to the correct typed Attribute[V]
-// without knowing the concrete protobuf type.
-type keyCompactor interface {
-	compactKey(s *dal.Store, batch *dal.Batch, targetIndex uint64, canonicalKey []byte) error
+// compactor accumulates attribute entries of a single type during a forward scan
+// and writes compacted base values at the target index. This is the type-erased
+// interface used by CompactAllForBackup to dispatch entries by attribute type.
+type compactor interface {
+	Feed(pebbleKey, pebbleValue []byte) error
+	Flush() error
+}
+
+// typedCompactor wraps accumulatorBase to compact entries for a single attribute type.
+// When a canonical key boundary is crossed, it writes the computed value as a base
+// at targetIndex into the batch.
+type typedCompactor[V proto.Message] struct {
+	accumulatorBase[V]
+	batch       *dal.Batch
+	targetIndex uint64
+}
+
+func newCompactor[V proto.Message](attr *core[V], batch *dal.Batch, targetIndex uint64) *typedCompactor[V] {
+	return &typedCompactor[V]{
+		accumulatorBase: accumulatorBase[V]{attr: attr},
+		batch:           batch,
+		targetIndex:     targetIndex,
+	}
+}
+
+func (c *typedCompactor[V]) Feed(pebbleKey, pebbleValue []byte) error {
+	_, prev, err := c.feed(pebbleKey, pebbleValue)
+	if err != nil {
+		return err
+	}
+	if prev != nil {
+		return c.writeCompacted(prev)
+	}
+	return nil
+}
+
+func (c *typedCompactor[V]) writeCompacted(entry *ComputedEntry[V]) error {
+	return c.attr.setBase(c.batch, c.targetIndex, entry.CanonicalKey, entry.Value)
+}
+
+func (c *typedCompactor[V]) Flush() error {
+	entry := c.flush()
+	if entry != nil {
+		return c.writeCompacted(entry)
+	}
+	return nil
 }
 
 // CompactAllForBackup compacts all attribute types in the store to index 0 and resets
 // the lastAppliedIndex to 0. This prepares the database for use as a backup that can
 // be restored on a fresh cluster without raft index conflicts.
 //
-// It performs a single scan over the entire attribute range [0xF1, 0xF2) and dispatches
-// each unique (canonicalKey, attrType) pair to the correct typed attribute handler.
+// It performs a single forward scan over the entire attribute range [0xF1, 0xF2),
+// dispatching each entry to a type-specific compactor that uses accumulatorBase
+// to compute the final value per canonical key. Old entries are bulk-deleted with
+// a single DeleteRange, and compacted bases are written into the same batch.
 //
 // The caller must ensure that all in-memory state (dirty boundaries, etc.) has been
 // flushed to Pebble before the checkpoint was taken. The backup flow achieves this
@@ -29,22 +73,27 @@ func CompactAllForBackup(s *dal.Store) error {
 	attrs := New()
 	batch := s.NewBatch()
 
-	// Build dispatch table: attrType byte → keyCompactor
-	dispatch := map[byte]keyCompactor{
-		dal.AttributePrefixVolume:         attrs.Volume,
-		dal.AttributePrefixMetadata:       attrs.Metadata,
-		dal.AttributePrefixIdempotencyKey: attrs.IdempotencyKeys,
-		dal.AttributePrefixReference:      attrs.References,
-		dal.AttributePrefixLedger:         attrs.Ledger,
-		dal.AttributePrefixBoundary:       attrs.Boundary,
+	// Bulk-delete the entire attribute range — compacted bases are written back below.
+	if err := batch.DeleteRange(
+		[]byte{dal.KeyPrefixAttributes},
+		[]byte{dal.KeyPrefixAttributes + 1},
+		pebble.NoSync,
+	); err != nil {
+		_ = batch.Cancel()
+		return fmt.Errorf("deleting attribute range: %w", err)
+	}
+
+	// Build dispatch table: attrType byte → compactor
+	dispatch := map[byte]compactor{
+		dal.AttributePrefixVolume:         newCompactor(&attrs.Volume.core, batch, 0),
+		dal.AttributePrefixMetadata:       newCompactor(&attrs.Metadata.core, batch, 0),
+		dal.AttributePrefixIdempotencyKey: newCompactor(&attrs.IdempotencyKeys.core, batch, 0),
+		dal.AttributePrefixReference:      newCompactor(&attrs.References.core, batch, 0),
+		dal.AttributePrefixLedger:         newCompactor(&attrs.Ledger.core, batch, 0),
+		dal.AttributePrefixBoundary:       newCompactor(&attrs.Boundary.core, batch, 0),
 	}
 
 	// Single scan over the entire attribute range
-	type entryKey struct {
-		canonicalKey string
-		attrType     byte
-	}
-
 	buf := make([]byte, 2)
 	buf[0] = dal.KeyPrefixAttributes
 	buf[1] = dal.KeyPrefixAttributes + 1
@@ -58,8 +107,7 @@ func CompactAllForBackup(s *dal.Store) error {
 		return fmt.Errorf("creating iterator for attributes: %w", err)
 	}
 
-	seen := make(map[entryKey]struct{})
-	minKeyLen := 1 + SuffixLen // prefix(1) + suffix(10)
+	minKeyLen := 1 + SuffixLen
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		iterKey := iter.Key()
@@ -68,26 +116,22 @@ func CompactAllForBackup(s *dal.Store) error {
 		}
 
 		attrType := iterKey[len(iterKey)-SuffixLen]
-		canonicalKey := string(iterKey[1 : len(iterKey)-SuffixLen])
-
-		ek := entryKey{canonicalKey: canonicalKey, attrType: attrType}
-		if _, ok := seen[ek]; ok {
-			continue
-		}
-		seen[ek] = struct{}{}
-
 		handler, ok := dispatch[attrType]
 		if !ok {
 			continue
 		}
 
-		canonicalBytes := make([]byte, len(canonicalKey))
-		copy(canonicalBytes, canonicalKey)
-
-		if err := handler.compactKey(s, batch, 0, canonicalBytes); err != nil {
+		valueBytes, err := iter.ValueAndErr()
+		if err != nil {
 			_ = iter.Close()
 			_ = batch.Cancel()
-			return fmt.Errorf("compacting key (type=%c): %w", attrType, err)
+			return fmt.Errorf("reading value: %w", err)
+		}
+
+		if err := handler.Feed(iterKey, valueBytes); err != nil {
+			_ = iter.Close()
+			_ = batch.Cancel()
+			return fmt.Errorf("feeding compactor (type=%c): %w", attrType, err)
 		}
 	}
 
@@ -97,6 +141,14 @@ func CompactAllForBackup(s *dal.Store) error {
 		return fmt.Errorf("iterating attributes: %w", err)
 	}
 	_ = iter.Close()
+
+	// Flush all compactors to write the last pending entry for each type
+	for attrType, handler := range dispatch {
+		if err := handler.Flush(); err != nil {
+			_ = batch.Cancel()
+			return fmt.Errorf("flushing compactor (type=%c): %w", attrType, err)
+		}
+	}
 
 	// Reset lastAppliedIndex to 0 so the restored cluster starts fresh
 	if err := batch.SetBytes([]byte{dal.KeyPrefixLastAppliedIndex}, make([]byte, 8)); err != nil {

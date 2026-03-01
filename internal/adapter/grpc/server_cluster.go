@@ -277,6 +277,10 @@ func (impl *ClusterServiceServerImpl) Backup(req *clusterpb.BackupRequest, strea
 func (impl *ClusterServiceServerImpl) backupLocal(stream ggrpc.ServerStreamingServer[clusterpb.BackupResponse]) error {
 	impl.logger.Infof("Creating backup checkpoint")
 
+	if err := stream.Send(&clusterpb.BackupResponse{StatusMessage: "Creating checkpoint..."}); err != nil {
+		return fmt.Errorf("sending status message: %w", err)
+	}
+
 	// Propose a CreateCheckpoint through Raft consensus. All nodes enter maintenance
 	// mode; the leader creates the backup checkpoint and writes dirty boundaries into it.
 	backupPath, err := impl.node.ProposeBackupCheckpoint(stream.Context())
@@ -295,6 +299,10 @@ func (impl *ClusterServiceServerImpl) backupLocal(stream ggrpc.ServerStreamingSe
 	// This ensures backups are self-contained and can be restored on a fresh cluster
 	// without raft index conflicts in the attribute storage.
 	impl.logger.Infof("Compacting backup checkpoint for restore compatibility")
+
+	if err := stream.Send(&clusterpb.BackupResponse{StatusMessage: "Compacting attributes..."}); err != nil {
+		return fmt.Errorf("sending status message: %w", err)
+	}
 
 	compactStore, err := dal.OpenDirect(backupPath, impl.logger)
 	if err != nil {

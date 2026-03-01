@@ -580,3 +580,174 @@ func TestCompactAllForBackup(t *testing.T) {
 	require.NotNil(t, result)
 }
 
+// TestCompactAllForBackupAllTypes verifies that CompactAllForBackup correctly
+// compacts all 6 attribute types to index 0 with exact value verification,
+// and resets lastAppliedIndex.
+func TestCompactAllForBackupAllTypes(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := New()
+
+	ledgerKey := []byte("myledger")
+	volumeKey := []byte("myledger\x00alice\x00USD")
+	metadataKey := []byte("myledger\x00alice\x00status")
+	idempotencyKey := []byte("idem-key-123")
+	referenceKey := []byte("\x00\x00\x00\x01ref-abc")
+	boundaryKey := []byte("myledger")
+
+	// Write data at high raft indexes
+	batch := store.NewBatch()
+	require.NoError(t, attrs.Volume.SetBase(batch, 100, volumeKey, &raftcmdpb.VolumePair{
+		InputKnown:  commonpb.NewUint256FromUint64(1000),
+		OutputKnown: commonpb.NewUint256FromUint64(500),
+	}))
+	require.NoError(t, attrs.Volume.AddDiff(batch, 200, volumeKey, &raftcmdpb.VolumePair{
+		InputKnown:  commonpb.NewUint256FromUint64(300),
+		OutputKnown: commonpb.NewUint256FromUint64(100),
+	}))
+	require.NoError(t, attrs.Metadata.Set(batch, 50, metadataKey, commonpb.NewStringValue("active")))
+	require.NoError(t, attrs.IdempotencyKeys.Set(batch, 75, idempotencyKey, &commonpb.IdempotencyKeyValue{
+		LogSequence: 42,
+	}))
+	require.NoError(t, attrs.References.Set(batch, 80, referenceKey, &commonpb.TransactionReferenceValue{
+		TransactionId: 99,
+	}))
+	require.NoError(t, attrs.Ledger.Set(batch, 60, ledgerKey, &commonpb.LedgerInfo{
+		Name: "myledger",
+	}))
+	require.NoError(t, attrs.Boundary.Set(batch, 90, boundaryKey, &raftcmdpb.LedgerBoundaries{
+		NextTransactionId: 10,
+		NextLogId:         5,
+	}))
+
+	// Set lastAppliedIndex to a high value
+	idxBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(idxBuf, 200)
+	require.NoError(t, batch.SetBytes([]byte{dal.KeyPrefixLastAppliedIndex}, idxBuf))
+	require.NoError(t, batch.Commit())
+
+	// Verify data is NOT visible at index 0 before compaction
+	vol, err := attrs.Volume.ComputeValue(store, 0, volumeKey)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), vol.InputKnown.ToBigInt().Int64(), "volume should not be visible at index 0 before compaction")
+
+	// Run compaction
+	require.NoError(t, CompactAllForBackup(store))
+
+	// Verify all types are readable at index 0 with correct values
+	freshAttrs := New()
+
+	vol, err = freshAttrs.Volume.ComputeValue(store, 0, volumeKey)
+	require.NoError(t, err)
+	require.NotNil(t, vol)
+	require.Equal(t, int64(1300), vol.InputKnown.ToBigInt().Int64(), "volume input: base 1000 + diff 300")
+	require.Equal(t, int64(600), vol.OutputKnown.ToBigInt().Int64(), "volume output: base 500 + diff 100")
+
+	meta, err := freshAttrs.Metadata.ComputeValue(store, 0, metadataKey)
+	require.NoError(t, err)
+	require.NotNil(t, meta)
+	require.Equal(t, "active", commonpb.MetadataValueToString(meta))
+
+	idem, err := freshAttrs.IdempotencyKeys.ComputeValue(store, 0, idempotencyKey)
+	require.NoError(t, err)
+	require.NotNil(t, idem)
+	require.Equal(t, uint64(42), idem.LogSequence)
+
+	ref, err := freshAttrs.References.ComputeValue(store, 0, referenceKey)
+	require.NoError(t, err)
+	require.NotNil(t, ref)
+	require.Equal(t, uint64(99), ref.TransactionId)
+
+	ledger, err := freshAttrs.Ledger.ComputeValue(store, 0, ledgerKey)
+	require.NoError(t, err)
+	require.NotNil(t, ledger)
+	require.Equal(t, "myledger", ledger.Name)
+
+	boundary, err := freshAttrs.Boundary.ComputeValue(store, 0, boundaryKey)
+	require.NoError(t, err)
+	require.NotNil(t, boundary)
+	require.Equal(t, uint64(10), boundary.NextTransactionId)
+	require.Equal(t, uint64(5), boundary.NextLogId)
+
+	// Verify lastAppliedIndex was reset to 0
+	lastIdx, err := readLastAppliedIndex(store)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), lastIdx, "lastAppliedIndex should be 0 after compaction")
+}
+
+// TestCompactAllForBackupMultiKeyPerType verifies that single-pass compaction
+// correctly handles multiple canonical keys per attribute type. Each key should
+// be compacted independently with the correct accumulated value.
+func TestCompactAllForBackupMultiKeyPerType(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	attrs := New()
+
+	keyAlice := []byte("ledger\x00alice\x00USD")
+	keyBob := []byte("ledger\x00bob\x00USD")
+	keyCharlie := []byte("ledger\x00charlie\x00USD")
+
+	batch := store.NewBatch()
+	// Alice: base=100, diff=+50 → 150
+	require.NoError(t, attrs.Volume.SetBase(batch, 1, keyAlice, &raftcmdpb.VolumePair{
+		InputKnown: commonpb.NewUint256FromUint64(100),
+	}))
+	require.NoError(t, attrs.Volume.AddDiff(batch, 5, keyAlice, &raftcmdpb.VolumePair{
+		InputKnown: commonpb.NewUint256FromUint64(50),
+	}))
+	// Bob: base only = 200
+	require.NoError(t, attrs.Volume.SetBase(batch, 3, keyBob, &raftcmdpb.VolumePair{
+		InputKnown: commonpb.NewUint256FromUint64(200),
+	}))
+	// Charlie: two diffs, no explicit base → diff=300 (last diff wins)
+	require.NoError(t, attrs.Volume.AddDiff(batch, 2, keyCharlie, &raftcmdpb.VolumePair{
+		InputKnown: commonpb.NewUint256FromUint64(100),
+	}))
+	require.NoError(t, attrs.Volume.AddDiff(batch, 7, keyCharlie, &raftcmdpb.VolumePair{
+		InputKnown: commonpb.NewUint256FromUint64(300),
+	}))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, CompactAllForBackup(store))
+
+	freshAttrs := New()
+
+	alice, err := freshAttrs.Volume.ComputeValue(store, 0, keyAlice)
+	require.NoError(t, err)
+	require.NotNil(t, alice)
+	require.Equal(t, int64(150), alice.InputKnown.ToBigInt().Int64(), "alice: base 100 + diff 50")
+
+	bob, err := freshAttrs.Volume.ComputeValue(store, 0, keyBob)
+	require.NoError(t, err)
+	require.NotNil(t, bob)
+	require.Equal(t, int64(200), bob.InputKnown.ToBigInt().Int64(), "bob: base only 200")
+
+	charlie, err := freshAttrs.Volume.ComputeValue(store, 0, keyCharlie)
+	require.NoError(t, err)
+	require.NotNil(t, charlie)
+	require.Equal(t, int64(300), charlie.InputKnown.ToBigInt().Int64(), "charlie: last diff 300")
+}
+
+// TestCompactAllForBackupEmpty verifies that compacting an empty store succeeds
+// without errors and resets lastAppliedIndex.
+func TestCompactAllForBackupEmpty(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+
+	// Set a non-zero lastAppliedIndex
+	batch := store.NewBatch()
+	idxBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(idxBuf, 42)
+	require.NoError(t, batch.SetBytes([]byte{dal.KeyPrefixLastAppliedIndex}, idxBuf))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, CompactAllForBackup(store))
+
+	lastIdx, err := readLastAppliedIndex(store)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), lastIdx, "lastAppliedIndex should be 0 even on empty store")
+}
+

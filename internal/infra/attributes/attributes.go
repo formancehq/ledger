@@ -416,24 +416,4 @@ func IncrementBytes(b []byte) []byte {
 	return nil
 }
 
-// compactKey compacts a single canonical key: computes the final value, deletes all entries,
-// and writes a single base entry at targetIndex.
-func (a *core[V]) compactKey(s *dal.Store, batch *dal.Batch, targetIndex uint64, canonicalKey []byte) error {
-	value, err := a.ComputeValue(s, ^uint64(0), canonicalKey)
-	if err != nil {
-		return fmt.Errorf("computing value for key %x: %w", canonicalKey, err)
-	}
-
-	if err := a.Delete(batch, canonicalKey); err != nil {
-		return fmt.Errorf("deleting entries for key %x: %w", canonicalKey, err)
-	}
-
-	if (any)(value) != nil && !proto.Equal(value, a.newValue()) {
-		if err := a.setBase(batch, targetIndex, canonicalKey, value); err != nil {
-			return fmt.Errorf("setting base for key %x: %w", canonicalKey, err)
-		}
-	}
-
-	return nil
-}
 

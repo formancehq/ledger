@@ -54,11 +54,12 @@ var _ = Describe("Backup", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		var (
-			allData      []byte
-			hash         = sha256.New()
-			expectedHash string
-			expectedSize uint64
-			gotEOF       bool
+			allData        []byte
+			hash           = sha256.New()
+			expectedHash   string
+			expectedSize   uint64
+			gotEOF         bool
+			statusMessages []string
 		)
 
 		for {
@@ -67,6 +68,12 @@ var _ = Describe("Backup", Ordered, func() {
 				break
 			}
 			Expect(err).To(Succeed())
+
+			// Collect status-only messages (preparation phase)
+			if resp.StatusMessage != "" && len(resp.Data) == 0 && !resp.Eof {
+				statusMessages = append(statusMessages, resp.StatusMessage)
+				continue
+			}
 
 			if resp.Eof {
 				expectedHash = resp.ContentSha256
@@ -79,6 +86,11 @@ var _ = Describe("Backup", Ordered, func() {
 			_, err = hash.Write(resp.Data)
 			Expect(err).To(Succeed())
 		}
+
+		// Verify status messages were sent before data
+		Expect(statusMessages).NotTo(BeEmpty(), "should receive at least one status message during preparation")
+		Expect(statusMessages).To(ContainElement(ContainSubstring("checkpoint")))
+		Expect(statusMessages).To(ContainElement(ContainSubstring("ompacting")))
 
 		Expect(gotEOF).To(BeTrue(), "should receive an EOF chunk")
 		Expect(allData).NotTo(BeEmpty(), "backup should contain data")

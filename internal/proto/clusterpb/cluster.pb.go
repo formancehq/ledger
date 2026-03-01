@@ -1121,6 +1121,7 @@ type BackupResponse struct {
 	ContentSha256      string                 `protobuf:"bytes,4,opt,name=content_sha256,json=contentSha256,proto3" json:"content_sha256,omitempty"`                   // SHA256 hash of the full archive (set on EOF)
 	ContentSize        uint64                 `protobuf:"varint,5,opt,name=content_size,json=contentSize,proto3" json:"content_size,omitempty"`                        // Total size of the archive in bytes (set on EOF)
 	EstimatedTotalSize uint64                 `protobuf:"varint,6,opt,name=estimated_total_size,json=estimatedTotalSize,proto3" json:"estimated_total_size,omitempty"` // Estimated total tar size in bytes (set on first chunk)
+	StatusMessage      string                 `protobuf:"bytes,7,opt,name=status_message,json=statusMessage,proto3" json:"status_message,omitempty"`                   // Preparation phase status (shown before data streaming)
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -1195,6 +1196,13 @@ func (x *BackupResponse) GetEstimatedTotalSize() uint64 {
 		return x.EstimatedTotalSize
 	}
 	return 0
+}
+
+func (x *BackupResponse) GetStatusMessage() string {
+	if x != nil {
+		return x.StatusMessage
+	}
+	return ""
 }
 
 var File_cluster_proto protoreflect.FileDescriptor
@@ -1285,14 +1293,15 @@ const file_cluster_proto_rawDesc = "" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\"\x14\n" +
 	"\x12RemoveNodeResponse\"\x0f\n" +
-	"\rBackupRequest\"\xd5\x01\n" +
+	"\rBackupRequest\"\xfc\x01\n" +
 	"\x0eBackupResponse\x12!\n" +
 	"\fchunk_offset\x18\x01 \x01(\x04R\vchunkOffset\x12\x12\n" +
 	"\x04data\x18\x02 \x01(\fR\x04data\x12\x10\n" +
 	"\x03eof\x18\x03 \x01(\bR\x03eof\x12%\n" +
 	"\x0econtent_sha256\x18\x04 \x01(\tR\rcontentSha256\x12!\n" +
 	"\fcontent_size\x18\x05 \x01(\x04R\vcontentSize\x120\n" +
-	"\x14estimated_total_size\x18\x06 \x01(\x04R\x12estimatedTotalSize2\xd9\x04\n" +
+	"\x14estimated_total_size\x18\x06 \x01(\x04R\x12estimatedTotalSize\x12%\n" +
+	"\x0estatus_message\x18\a \x01(\tR\rstatusMessage2\xd9\x04\n" +
 	"\x0eClusterService\x12I\n" +
 	"\x0fGetClusterState\x12\x1f.cluster.GetClusterStateRequest\x1a\x15.cluster.ClusterState\x12@\n" +
 	"\fGetDiskUsage\x12\x1c.cluster.GetDiskUsageRequest\x1a\x12.cluster.DiskUsage\x12=\n" +
