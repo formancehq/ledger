@@ -21,12 +21,13 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 		return nil, fmt.Errorf("opening read-only pebble database at %s: %w", dirPath, err)
 	}
 
-	return &Store{
-		db:      db,
+	store := &Store{
 		opts:    opts,
 		logger:  logger.WithField("cmp", "pebble-readonly"),
 		dataDir: dirPath,
-	}, nil
+	}
+	store.db.Store(db)
+	return store, nil
 }
 
 // OpenDirect opens a Pebble database at dirPath in read-write mode
@@ -40,10 +41,11 @@ func OpenDirect(dirPath string, logger logging.Logger) (*Store, error) {
 		return nil, fmt.Errorf("opening pebble database at %s: %w", dirPath, err)
 	}
 
-	return &Store{
-		db:      db,
+	store := &Store{
 		opts:    opts,
 		logger:  logger.WithField("cmp", "pebble-direct"),
 		dataDir: dirPath,
-	}, nil
+	}
+	store.db.Store(db)
+	return store, nil
 }
