@@ -176,6 +176,12 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s InMemoryStore)
 		return p.processMirrorIngest(orderType.MirrorIngest, s)
 	case *raftcmdpb.Order_PromoteLedger:
 		return p.processPromoteLedger(orderType.PromoteLedger, s)
+	case *raftcmdpb.Order_CreatePreparedQuery:
+		return p.processCreatePreparedQuery(orderType.CreatePreparedQuery, s)
+	case *raftcmdpb.Order_UpdatePreparedQuery:
+		return p.processUpdatePreparedQuery(orderType.UpdatePreparedQuery, s)
+	case *raftcmdpb.Order_DeletePreparedQuery:
+		return p.processDeletePreparedQuery(orderType.DeletePreparedQuery, s)
 	default:
 		return nil, fmt.Errorf("invalid order type")
 	}

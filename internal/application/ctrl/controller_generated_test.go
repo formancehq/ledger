@@ -77,6 +77,21 @@ func (mr *MockControllerMockRecorder) Apply(ctx any, requests ...any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockController)(nil).Apply), varargs...)
 }
 
+// ExecutePreparedQuery mocks base method.
+func (m *MockController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecutePreparedQuery", ctx, req)
+	ret0, _ := ret[0].(*servicepb.ExecutePreparedQueryResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExecutePreparedQuery indicates an expected call of ExecutePreparedQuery.
+func (mr *MockControllerMockRecorder) ExecutePreparedQuery(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecutePreparedQuery", reflect.TypeOf((*MockController)(nil).ExecutePreparedQuery), ctx, req)
+}
+
 // GetAccount mocks base method.
 func (m *MockController) GetAccount(ctx context.Context, ledgerName, address string) (*commonpb.Account, error) {
 	m.ctrl.T.Helper()
@@ -240,6 +255,21 @@ func (m *MockController) ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.
 func (mr *MockControllerMockRecorder) ListPeriods(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPeriods", reflect.TypeOf((*MockController)(nil).ListPeriods), ctx)
+}
+
+// ListPreparedQueries mocks base method.
+func (m *MockController) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPreparedQueries", ctx, ledger)
+	ret0, _ := ret[0].([]*commonpb.PreparedQuery)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPreparedQueries indicates an expected call of ListPreparedQueries.
+func (mr *MockControllerMockRecorder) ListPreparedQueries(ctx, ledger any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPreparedQueries", reflect.TypeOf((*MockController)(nil).ListPreparedQueries), ctx, ledger)
 }
 
 // ListSigningKeys mocks base method.

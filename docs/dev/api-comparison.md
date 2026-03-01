@@ -74,6 +74,13 @@ This document compares the POC's API with the original Formance ledger API and d
 | Period crash recovery | ✅ | ❌ | Automatic recovery for both crash windows |
 | Archive period | ✅ | ❌ | Two-step archive: ArchivePeriod → ConfirmArchivePeriod with cold storage export |
 | Store restore | ✅ | ❌ | Upload backup, validate, preview, finalize (--restore mode) |
+| **Prepared Queries** |
+| Create prepared query | ✅ | ❌ | Reusable parameterized filter queries |
+| Update prepared query | ✅ | ❌ | |
+| Delete prepared query | ✅ | ❌ | |
+| List prepared queries | ✅ | ❌ | |
+| Execute prepared query (list) | ✅ | ❌ | Returns matching entities with cursor pagination |
+| Execute prepared query (aggregate) | ✅ | ❌ | Returns aggregated volumes per asset |
 | **Volumes (responses)** |
 | postCommitVolumes | ✅ | ✅ | Opt-in via `expandVolumes` in request body |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |
@@ -438,6 +445,11 @@ Read endpoints comparison with the original ledger:
 | `GET /{ledgerName}/analyze-accounts` | ✅ | ❌ | Analyze accounts and suggest Chart of Accounts |
 | `PUT /{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Set metadata field type |
 | `DELETE /{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Remove metadata field type |
+| `POST /{ledgerName}/prepared-queries` | ✅ | ❌ | Create a prepared query |
+| `PUT /{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Update a prepared query |
+| `DELETE /{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Delete a prepared query |
+| `GET /{ledgerName}/prepared-queries` | ✅ | ❌ | List prepared queries |
+| `POST /{ledgerName}/prepared-queries/{queryName}/execute` | ✅ | ❌ | Execute a prepared query |
 
 ---
 
@@ -546,6 +558,8 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Audit disabled | `FAILED_PRECONDITION` | `AUDIT_DISABLED` | *(none)* |
 | Ledger in mirror mode | `FAILED_PRECONDITION` | `LEDGER_IN_MIRROR_MODE` | `name` |
 | Ledger not in mirror mode | `FAILED_PRECONDITION` | `LEDGER_NOT_IN_MIRROR_MODE` | `name` |
+| Prepared query already exists | `ALREADY_EXISTS` | `PREPARED_QUERY_ALREADY_EXISTS` | `name` |
+| Prepared query not found | `NOT_FOUND` | `PREPARED_QUERY_NOT_FOUND` | `name` |
 
 **Client-side usage (Go):**
 ```go

@@ -425,6 +425,12 @@ func (s *inMemoryStore) SetPendingArchive(_, _, _ uint64) {}
 func (s *inMemoryStore) AddMetadataConvertRequest(_ string, _ commonpb.TargetType, _ string, _ commonpb.MetadataType) {
 }
 
+func (s *inMemoryStore) GetPreparedQuery(_, _ string) (*commonpb.PreparedQuery, error) {
+	return nil, nil
+}
+func (s *inMemoryStore) PutPreparedQuery(_ *commonpb.PreparedQuery)  {}
+func (s *inMemoryStore) DeletePreparedQuery(_, _ string)             {}
+
 // Helper functions for building orders
 
 func newPosting(source, destination, asset string, amount int64) *commonpb.Posting {

@@ -178,4 +178,18 @@ func (g *BucketGrpcClient) AnalyzeAccounts(ctx context.Context, ledgerName strin
 	})
 }
 
+func (g *BucketGrpcClient) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
+	resp, err := g.client.ListPreparedQueries(ctx, &servicepb.ListPreparedQueriesRequest{
+		Ledger: ledger,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Queries, nil
+}
+
+func (g *BucketGrpcClient) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	return g.client.ExecutePreparedQuery(ctx, req)
+}
+
 var _ ctrl.Controller = (*BucketGrpcClient)(nil)

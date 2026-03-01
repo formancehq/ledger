@@ -26,6 +26,8 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		balNotFound       *domain.ErrBalanceNotFound
 		parseErr          *numscript.ErrNumscriptParse
 		metaNotFound      *domain.ErrMetadataNotFound
+		pqExists          *domain.ErrPreparedQueryAlreadyExists
+		pqNotFound        *domain.ErrPreparedQueryNotFound
 	)
 
 	switch {
@@ -70,6 +72,12 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		writeErrorResponse(w, http.StatusBadRequest, "SCRIPT_PARSE_ERROR", err)
 
 	case errors.As(err, &metaNotFound):
+		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
+
+	case errors.As(err, &pqExists):
+		writeErrorResponse(w, http.StatusConflict, "CONFLICT", err)
+
+	case errors.As(err, &pqNotFound):
 		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
 
 	case errors.Is(err, domain.ErrTargetRequired),

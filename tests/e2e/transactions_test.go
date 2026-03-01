@@ -644,9 +644,13 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 
 		It("Should list all transactions", func() {
-			transactions, err := listAllTransactions(ctx, client, ledgerName, 0, 0)
-			Expect(err).To(Succeed())
-			Expect(transactions).To(HaveLen(5))
+			// The bbolt read index is populated asynchronously by the index builder,
+			// so we need to wait for it to catch up after writing data.
+			Eventually(func(g Gomega) {
+				transactions, err := listAllTransactions(ctx, client, ledgerName, 0, 0)
+				g.Expect(err).To(Succeed())
+				g.Expect(transactions).To(HaveLen(5))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should return transactions in reverse chronological order (newest first)", func() {
@@ -772,10 +776,13 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(3))
 
-			// List and verify all 3 transactions are returned
-			transactions, err := listAllTransactions(ctx, client, bulkLedgerName, 0, 0)
-			Expect(err).To(Succeed())
-			Expect(transactions).To(HaveLen(3))
+			// The bbolt read index is populated asynchronously by the index builder,
+			// so we need to wait for it to catch up after writing data.
+			Eventually(func(g Gomega) {
+				transactions, err := listAllTransactions(ctx, client, bulkLedgerName, 0, 0)
+				g.Expect(err).To(Succeed())
+				g.Expect(transactions).To(HaveLen(3))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 

@@ -391,6 +391,74 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(ctx context.Context, req *s
 	return impl.ctrl.AnalyzeAccounts(ctx, req.Ledger, req.VariableThreshold)
 }
 
+func (impl *BucketServiceServerImpl) CreatePreparedQuery(ctx context.Context, req *servicepb.CreatePreparedQueryRequest) (*servicepb.CreatePreparedQueryResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeWrite); err != nil {
+		return nil, err
+	}
+
+	_, err := impl.ctrl.Apply(ctx, &servicepb.Request{
+		Type: &servicepb.Request_CreatePreparedQuery{
+			CreatePreparedQuery: req,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &servicepb.CreatePreparedQueryResponse{}, nil
+}
+
+func (impl *BucketServiceServerImpl) UpdatePreparedQuery(ctx context.Context, req *servicepb.UpdatePreparedQueryRequest) (*servicepb.UpdatePreparedQueryResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeWrite); err != nil {
+		return nil, err
+	}
+
+	_, err := impl.ctrl.Apply(ctx, &servicepb.Request{
+		Type: &servicepb.Request_UpdatePreparedQuery{
+			UpdatePreparedQuery: req,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &servicepb.UpdatePreparedQueryResponse{}, nil
+}
+
+func (impl *BucketServiceServerImpl) DeletePreparedQuery(ctx context.Context, req *servicepb.DeletePreparedQueryRequest) (*servicepb.DeletePreparedQueryResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeWrite); err != nil {
+		return nil, err
+	}
+
+	_, err := impl.ctrl.Apply(ctx, &servicepb.Request{
+		Type: &servicepb.Request_DeletePreparedQuery{
+			DeletePreparedQuery: req,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &servicepb.DeletePreparedQueryResponse{}, nil
+}
+
+func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, req *servicepb.ListPreparedQueriesRequest) (*servicepb.ListPreparedQueriesResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
+	queries, err := impl.ctrl.ListPreparedQueries(ctx, req.Ledger)
+	if err != nil {
+		return nil, err
+	}
+	return &servicepb.ListPreparedQueriesResponse{Queries: queries}, nil
+}
+
+func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
+	return impl.ctrl.ExecutePreparedQuery(ctx, req)
+}
+
 func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {
 	resp := &servicepb.DiscoveryResponse{}
 	if impl.responseSigner != nil {

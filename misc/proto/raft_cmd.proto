@@ -47,8 +47,26 @@ message Order {
     SetAuditConfigOrder set_audit_config = 18;
     MirrorIngestOrder mirror_ingest = 19;
     PromoteLedgerOrder promote_ledger = 20;
+    CreatePreparedQueryOrder create_prepared_query = 21;
+    UpdatePreparedQueryOrder update_prepared_query = 22;
+    DeletePreparedQueryOrder delete_prepared_query = 23;
   }
   signature.RequestSignature signature = 5;
+}
+
+message CreatePreparedQueryOrder {
+  common.PreparedQuery query = 1;
+}
+
+message UpdatePreparedQueryOrder {
+  string ledger = 1;
+  string name = 2;
+  common.QueryFilter filter = 3;
+}
+
+message DeletePreparedQueryOrder {
+  string ledger = 1;
+  string name = 2;
 }
 
 message AddEventsSinkOrder {

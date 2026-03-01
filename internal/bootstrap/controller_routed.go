@@ -195,6 +195,16 @@ func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName strin
 	return c.AnalyzeAccounts(ctx, ledgerName, variableThreshold)
 }
 
+func (b *RoutedController) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
+	// Read from local store - prepared queries are replicated via Raft
+	return b.localController.ListPreparedQueries(ctx, ledger)
+}
+
+func (b *RoutedController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	// Execute locally - both read index and Pebble data are available on all nodes
+	return b.localController.ExecutePreparedQuery(ctx, req)
+}
+
 var _ ctrl.Controller = (*RoutedController)(nil)
 
 func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {

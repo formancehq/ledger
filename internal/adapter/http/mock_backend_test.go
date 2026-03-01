@@ -146,4 +146,12 @@ func (m *mockBackend) AnalyzeAccounts(ctx context.Context, ledgerName string, va
 	return nil, nil
 }
 
+func (m *mockBackend) ListPreparedQueries(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
+	return nil, nil
+}
+
+func (m *mockBackend) ExecutePreparedQuery(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	return nil, nil
+}
+
 var _ Backend = (*mockBackend)(nil)

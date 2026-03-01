@@ -649,6 +649,185 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /{ledgerName}/prepared-queries:
+    get:
+      summary: List prepared queries
+      description: Returns all prepared queries defined for the specified ledger. Requires `ledger:read` scope.
+      operationId: listPreparedQueries
+      tags:
+        - Prepared Queries
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+      responses:
+        '200':
+          description: List of prepared queries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListPreparedQueriesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      summary: Create a prepared query
+      description: |
+        Creates a new prepared query with the specified name, target, and filter.
+        The query is stored in Pebble via Raft consensus. Requires `ledger:write` scope.
+      operationId: createPreparedQuery
+      tags:
+        - Prepared Queries
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePreparedQueryRequest'
+      responses:
+        '201':
+          description: Prepared query created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreparedQueryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Prepared query with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /{ledgerName}/prepared-queries/{queryName}:
+    put:
+      summary: Update a prepared query
+      description: Updates an existing prepared query. Requires `ledger:write` scope.
+      operationId: updatePreparedQuery
+      tags:
+        - Prepared Queries
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/QueryName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePreparedQueryRequest'
+      responses:
+        '200':
+          description: Prepared query updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreparedQueryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete a prepared query
+      description: Deletes a prepared query by name. Requires `ledger:write` scope.
+      operationId: deletePreparedQuery
+      tags:
+        - Prepared Queries
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/QueryName'
+      responses:
+        '204':
+          description: Prepared query deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /{ledgerName}/prepared-queries/{queryName}/execute:
+    post:
+      summary: Execute a prepared query
+      description: |
+        Executes a prepared query with the given parameters. Returns matching entities
+        (accounts or transactions) with cursor pagination, or aggregated volumes per asset.
+        Requires `ledger:read` scope. The read index must be enabled on the server.
+      operationId: executePreparedQuery
+      tags:
+        - Prepared Queries
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - $ref: '#/components/parameters/QueryName'
+        - name: pageSize
+          in: query
+          description: Maximum number of results per page
+          schema:
+            type: integer
+            format: int32
+        - name: cursor
+          in: query
+          description: Cursor for pagination (from previous response)
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutePreparedQueryRequest'
+      responses:
+        '200':
+          description: Query executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutePreparedQueryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /{ledgerName}/_bulk:
     post:
       summary: Bulk operations
@@ -760,6 +939,14 @@ components:
           - account
           - transaction
       description: Target type (account or transaction)
+
+    QueryName:
+      name: queryName
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Prepared query name
 
     IdempotencyKey:
       name: Idempotency-Key
@@ -1758,6 +1945,174 @@ components:
           type: array
           items:
             type: string
+
+    CreatePreparedQueryRequest:
+      type: object
+      required:
+        - name
+        - target
+        - filter
+      properties:
+        name:
+          type: string
+          description: Unique name for the prepared query
+        target:
+          type: string
+          enum:
+            - ACCOUNTS
+            - TRANSACTIONS
+          description: Target entity type
+        filter:
+          $ref: '#/components/schemas/QueryFilter'
+        allowedModes:
+          type: array
+          items:
+            type: string
+            enum:
+              - LIST
+              - AGGREGATE_VOLUMES
+          description: Allowed execution modes (default LIST only)
+
+    UpdatePreparedQueryRequest:
+      type: object
+      required:
+        - target
+        - filter
+      properties:
+        target:
+          type: string
+          enum:
+            - ACCOUNTS
+            - TRANSACTIONS
+          description: Target entity type
+        filter:
+          $ref: '#/components/schemas/QueryFilter'
+        allowedModes:
+          type: array
+          items:
+            type: string
+            enum:
+              - LIST
+              - AGGREGATE_VOLUMES
+          description: Allowed execution modes
+
+    ExecutePreparedQueryRequest:
+      type: object
+      properties:
+        parameters:
+          type: object
+          additionalProperties:
+            type: string
+          description: Parameter values for the query (substituted into filter placeholders)
+        pageSize:
+          type: integer
+          format: int32
+          description: Maximum number of results per page
+        cursor:
+          type: string
+          description: Cursor for pagination (from previous response)
+        minLogSequence:
+          type: integer
+          format: uint64
+          description: Minimum log sequence the read index must have processed (freshness guarantee)
+        mode:
+          type: string
+          enum:
+            - LIST
+            - AGGREGATE_VOLUMES
+          description: Execution mode (default LIST)
+
+    PreparedQueryResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/PreparedQuery'
+
+    ListPreparedQueriesResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PreparedQuery'
+
+    PreparedQuery:
+      type: object
+      required:
+        - name
+        - target
+        - filter
+      properties:
+        name:
+          type: string
+          description: Query name
+        target:
+          type: string
+          enum:
+            - ACCOUNTS
+            - TRANSACTIONS
+          description: Target entity type
+        filter:
+          $ref: '#/components/schemas/QueryFilter'
+        allowedModes:
+          type: array
+          items:
+            type: string
+
+    QueryFilter:
+      type: object
+      description: Recursive filter tree (AND/OR/NOT of field conditions and address matches)
+      properties:
+        and:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryFilter'
+        or:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryFilter'
+        not:
+          $ref: '#/components/schemas/QueryFilter'
+        match:
+          type: object
+          description: Field condition or address match
+
+    ExecutePreparedQueryResponse:
+      type: object
+      properties:
+        cursor:
+          type: object
+          properties:
+            hasMore:
+              type: boolean
+            next:
+              type: string
+              description: Cursor to pass for the next page
+            data:
+              type: array
+              items:
+                type: string
+              description: Entity IDs (account addresses or transaction IDs)
+        aggregateResult:
+          type: object
+          properties:
+            volumes:
+              type: array
+              items:
+                type: object
+                properties:
+                  asset:
+                    type: string
+                  input:
+                    type: string
+                    description: Total input as big integer string
+                  output:
+                    type: string
+                    description: Total output as big integer string
 
     ErrorResponse:
       type: object

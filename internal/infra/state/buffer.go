@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/holiman/uint256"
 	"google.golang.org/protobuf/proto"
@@ -75,6 +76,9 @@ type Buffered struct {
 	purgeRanges                    []purgeRange
 	pendingArchives                []ArchiveRequest
 	pendingMetadataConvertRequests []MetadataConvertRequest
+
+	// Pending prepared query changes (ledger/name -> query or nil for deletion)
+	pendingPreparedQueries map[domain.PreparedQueryKey]*commonpb.PreparedQuery
 }
 
 // purgeRange identifies a period's sequence range to delete from Pebble during Merge().
@@ -252,6 +256,18 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	for _, deletion := range sinkDeletions {
 		if err := DeleteSinkConfig(batch, deletion.Key.Name); err != nil {
 			return fmt.Errorf("deleting sink config %q: %w", deletion.Key.Name, err)
+		}
+	}
+
+	for key, pq := range b.pendingPreparedQueries {
+		if pq != nil {
+			if err := SavePreparedQuery(batch, pq); err != nil {
+				return fmt.Errorf("saving prepared query %s/%s: %w", key.Ledger, key.Name, err)
+			}
+		} else {
+			if err := DeletePreparedQuery(batch, key.Ledger, key.Name); err != nil {
+				return fmt.Errorf("deleting prepared query %s/%s: %w", key.Ledger, key.Name, err)
+			}
 		}
 	}
 
@@ -697,6 +713,28 @@ func (b *Buffered) MetadataConvertRequests() []MetadataConvertRequest {
 // HasPurges returns true if the buffer contains any pending purge ranges.
 func (b *Buffered) HasPurges() bool {
 	return len(b.purgeRanges) > 0
+}
+
+func (b *Buffered) GetPreparedQuery(ledger, name string) (*commonpb.PreparedQuery, error) {
+	key := domain.PreparedQueryKey{Ledger: ledger, Name: name}
+	if pq, ok := b.pendingPreparedQueries[key]; ok {
+		return pq, nil // nil means deleted
+	}
+	return query.ReadPreparedQuery(b.fsm.dataStore, ledger, name)
+}
+
+func (b *Buffered) PutPreparedQuery(pq *commonpb.PreparedQuery) {
+	if b.pendingPreparedQueries == nil {
+		b.pendingPreparedQueries = make(map[domain.PreparedQueryKey]*commonpb.PreparedQuery)
+	}
+	b.pendingPreparedQueries[domain.PreparedQueryKey{Ledger: pq.Ledger, Name: pq.Name}] = pq
+}
+
+func (b *Buffered) DeletePreparedQuery(ledger, name string) {
+	if b.pendingPreparedQueries == nil {
+		b.pendingPreparedQueries = make(map[domain.PreparedQueryKey]*commonpb.PreparedQuery)
+	}
+	b.pendingPreparedQueries[domain.PreparedQueryKey{Ledger: ledger, Name: name}] = nil
 }
 
 // Ensure Buffered implements InMemoryStore

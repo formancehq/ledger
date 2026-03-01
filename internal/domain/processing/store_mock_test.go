@@ -126,6 +126,18 @@ func (mr *MockInMemoryStoreMockRecorder) DeletePeriodSchedule() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePeriodSchedule", reflect.TypeOf((*MockInMemoryStore)(nil).DeletePeriodSchedule))
 }
 
+// DeletePreparedQuery mocks base method.
+func (m *MockInMemoryStore) DeletePreparedQuery(ledger, name string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "DeletePreparedQuery", ledger, name)
+}
+
+// DeletePreparedQuery indicates an expected call of DeletePreparedQuery.
+func (mr *MockInMemoryStoreMockRecorder) DeletePreparedQuery(ledger, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).DeletePreparedQuery), ledger, name)
+}
+
 // GetAccountMetadata mocks base method.
 func (m *MockInMemoryStore) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
 	m.ctrl.T.Helper()
@@ -287,6 +299,21 @@ func (mr *MockInMemoryStoreMockRecorder) GetPeriodByID(periodID any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPeriodByID", reflect.TypeOf((*MockInMemoryStore)(nil).GetPeriodByID), periodID)
 }
 
+// GetPreparedQuery mocks base method.
+func (m *MockInMemoryStore) GetPreparedQuery(ledger, name string) (*commonpb.PreparedQuery, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPreparedQuery", ledger, name)
+	ret0, _ := ret[0].(*commonpb.PreparedQuery)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPreparedQuery indicates an expected call of GetPreparedQuery.
+func (mr *MockInMemoryStoreMockRecorder) GetPreparedQuery(ledger, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).GetPreparedQuery), ledger, name)
+}
+
 // GetReverted mocks base method.
 func (m *MockInMemoryStore) GetReverted(key domain.TransactionKey) (bool, error) {
 	m.ctrl.T.Helper()
@@ -435,6 +462,18 @@ func (m *MockInMemoryStore) PutLedger(name string, info *commonpb.LedgerInfo) {
 func (mr *MockInMemoryStoreMockRecorder) PutLedger(name, info any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutLedger", reflect.TypeOf((*MockInMemoryStore)(nil).PutLedger), name, info)
+}
+
+// PutPreparedQuery mocks base method.
+func (m *MockInMemoryStore) PutPreparedQuery(pq *commonpb.PreparedQuery) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "PutPreparedQuery", pq)
+}
+
+// PutPreparedQuery indicates an expected call of PutPreparedQuery.
+func (mr *MockInMemoryStoreMockRecorder) PutPreparedQuery(pq any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutPreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).PutPreparedQuery), pq)
 }
 
 // PutReverted mocks base method.

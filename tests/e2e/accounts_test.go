@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"math/big"
+	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -85,10 +86,14 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should list all accounts", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
-			Expect(err).To(Succeed())
-			// world + alice + bob + charlie = 4 accounts
-			Expect(accounts).To(HaveLen(4))
+			// The bbolt read index is populated asynchronously by the index builder,
+			// so we need to wait for it to catch up after writing data.
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+				g.Expect(err).To(Succeed())
+				// world + alice + bob + charlie = 4 accounts
+				g.Expect(accounts).To(HaveLen(4))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should return accounts in alphabetical order", func() {
@@ -218,11 +223,15 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should filter accounts by prefix", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "users:")
-			Expect(err).To(Succeed())
-			Expect(accounts).To(HaveLen(2))
-			Expect(accounts[0].Address).To(Equal("users:alice"))
-			Expect(accounts[1].Address).To(Equal("users:bob"))
+			// The bbolt read index is populated asynchronously by the index builder,
+			// so we need to wait for it to catch up after writing data.
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "users:")
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(2))
+				g.Expect(accounts[0].Address).To(Equal("users:alice"))
+				g.Expect(accounts[1].Address).To(Equal("users:bob"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should filter merchants by prefix", func() {
@@ -290,23 +299,27 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should include source-only accounts (accounts with only outputs)", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
-			Expect(err).To(Succeed())
+			// The bbolt read index is populated asynchronously by the index builder,
+			// so we need to wait for it to catch up after writing data.
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+				g.Expect(err).To(Succeed())
 
-			// Collect all addresses
-			addresses := make(map[string]bool)
-			for _, a := range accounts {
-				addresses[a.Address] = true
-			}
+				// Collect all addresses
+				addresses := make(map[string]bool)
+				for _, a := range accounts {
+					addresses[a.Address] = true
+				}
 
-			// unfunded-source has only Output (was source in force transaction)
-			Expect(addresses).To(HaveKey("unfunded-source"))
-			// destination-only has only Input
-			Expect(addresses).To(HaveKey("destination-only"))
-			// normal-account has Input
-			Expect(addresses).To(HaveKey("normal-account"))
-			// world has Output
-			Expect(addresses).To(HaveKey("world"))
+				// unfunded-source has only Output (was source in force transaction)
+				g.Expect(addresses).To(HaveKey("unfunded-source"))
+				// destination-only has only Input
+				g.Expect(addresses).To(HaveKey("destination-only"))
+				// normal-account has Input
+				g.Expect(addresses).To(HaveKey("normal-account"))
+				// world has Output
+				g.Expect(addresses).To(HaveKey("world"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should list all accounts in alphabetical order", func() {
@@ -345,18 +358,22 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should not duplicate accounts with multiple assets", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
-			Expect(err).To(Succeed())
+			// The bbolt read index is populated asynchronously by the index builder,
+			// so we need to wait for it to catch up after writing data.
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+				g.Expect(err).To(Succeed())
 
-			// Should have exactly 2 accounts: multi-asset and world
-			Expect(accounts).To(HaveLen(2))
+				// Should have exactly 2 accounts: multi-asset and world
+				g.Expect(accounts).To(HaveLen(2))
 
-			addresses := make(map[string]int)
-			for _, a := range accounts {
-				addresses[a.Address]++
-			}
-			Expect(addresses["multi-asset"]).To(Equal(1))
-			Expect(addresses["world"]).To(Equal(1))
+				addresses := make(map[string]int)
+				for _, a := range accounts {
+					addresses[a.Address]++
+				}
+				g.Expect(addresses["multi-asset"]).To(Equal(1))
+				g.Expect(addresses["world"]).To(Equal(1))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 
@@ -381,9 +398,12 @@ var _ = Describe("Accounts", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
-			Expect(err).To(Succeed())
-			Expect(accounts).To(HaveLen(2)) // world + account-1
+			// Wait for the async index builder to catch up
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(2)) // world + account-1
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// Second batch
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
@@ -398,9 +418,11 @@ var _ = Describe("Accounts", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			accounts, err = listAllAccounts(ctx, client, ledgerName, 0, "", "")
-			Expect(err).To(Succeed())
-			Expect(accounts).To(HaveLen(4)) // world + account-1 + account-2 + account-3
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(4)) // world + account-1 + account-2 + account-3
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 
@@ -445,31 +467,35 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should only return accounts from the requested ledger", func() {
-			accountsA, err := listAllAccounts(ctx, client, ledgerA, 0, "", "")
-			Expect(err).To(Succeed())
-			Expect(accountsA).To(HaveLen(3)) // world + alice + bob
+			// The bbolt read index is populated asynchronously by the index builder,
+			// so we need to wait for it to catch up after writing data.
+			Eventually(func(g Gomega) {
+				accountsA, err := listAllAccounts(ctx, client, ledgerA, 0, "", "")
+				g.Expect(err).To(Succeed())
+				g.Expect(accountsA).To(HaveLen(3)) // world + alice + bob
 
-			addressesA := make(map[string]bool)
-			for _, a := range accountsA {
-				addressesA[a.Address] = true
-			}
-			Expect(addressesA).To(HaveKey("world"))
-			Expect(addressesA).To(HaveKey("alice"))
-			Expect(addressesA).To(HaveKey("bob"))
-			Expect(addressesA).NotTo(HaveKey("charlie"))
+				addressesA := make(map[string]bool)
+				for _, a := range accountsA {
+					addressesA[a.Address] = true
+				}
+				g.Expect(addressesA).To(HaveKey("world"))
+				g.Expect(addressesA).To(HaveKey("alice"))
+				g.Expect(addressesA).To(HaveKey("bob"))
+				g.Expect(addressesA).NotTo(HaveKey("charlie"))
 
-			accountsB, err := listAllAccounts(ctx, client, ledgerB, 0, "", "")
-			Expect(err).To(Succeed())
-			Expect(accountsB).To(HaveLen(2)) // world + charlie
+				accountsB, err := listAllAccounts(ctx, client, ledgerB, 0, "", "")
+				g.Expect(err).To(Succeed())
+				g.Expect(accountsB).To(HaveLen(2)) // world + charlie
 
-			addressesB := make(map[string]bool)
-			for _, a := range accountsB {
-				addressesB[a.Address] = true
-			}
-			Expect(addressesB).To(HaveKey("world"))
-			Expect(addressesB).To(HaveKey("charlie"))
-			Expect(addressesB).NotTo(HaveKey("alice"))
-			Expect(addressesB).NotTo(HaveKey("bob"))
+				addressesB := make(map[string]bool)
+				for _, a := range accountsB {
+					addressesB[a.Address] = true
+				}
+				g.Expect(addressesB).To(HaveKey("world"))
+				g.Expect(addressesB).To(HaveKey("charlie"))
+				g.Expect(addressesB).NotTo(HaveKey("alice"))
+				g.Expect(addressesB).NotTo(HaveKey("bob"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 })

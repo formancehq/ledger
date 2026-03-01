@@ -209,6 +209,12 @@ func (k SinkConfigKey) Bytes() []byte {
 	return []byte(k.Name)
 }
 
+// PreparedQueryKey uniquely identifies a prepared query by ledger and name.
+type PreparedQueryKey struct {
+	Ledger string
+	Name   string
+}
+
 // splitNullBytes splits data by null bytes into at most n parts.
 func splitNullBytes(data []byte, n int) [][]byte {
 	var parts [][]byte

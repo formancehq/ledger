@@ -36,6 +36,8 @@ const (
 	ErrReasonInvalidCronExpression        = "INVALID_CRON_EXPRESSION"
 	ErrReasonLedgerInMirrorMode           = "LEDGER_IN_MIRROR_MODE"
 	ErrReasonLedgerNotInMirrorMode        = "LEDGER_NOT_IN_MIRROR_MODE"
+	ErrReasonPreparedQueryAlreadyExists   = "PREPARED_QUERY_ALREADY_EXISTS"
+	ErrReasonPreparedQueryNotFound        = "PREPARED_QUERY_NOT_FOUND"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -237,6 +239,26 @@ type ErrLedgerNotInMirrorMode struct {
 
 func (e *ErrLedgerNotInMirrorMode) Error() string {
 	return fmt.Sprintf("ledger %s is not in mirror mode", e.Name)
+}
+
+// ErrPreparedQueryAlreadyExists is returned when creating a prepared query that already exists.
+type ErrPreparedQueryAlreadyExists struct {
+	Ledger string
+	Name   string
+}
+
+func (e *ErrPreparedQueryAlreadyExists) Error() string {
+	return fmt.Sprintf("prepared query %s/%s already exists", e.Ledger, e.Name)
+}
+
+// ErrPreparedQueryNotFound is returned when a prepared query does not exist.
+type ErrPreparedQueryNotFound struct {
+	Ledger string
+	Name   string
+}
+
+func (e *ErrPreparedQueryNotFound) Error() string {
+	return fmt.Sprintf("prepared query %s/%s not found", e.Ledger, e.Name)
 }
 
 // ErrInvalidReceipt is returned when a JWT receipt fails verification.

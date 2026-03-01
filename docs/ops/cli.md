@@ -1020,6 +1020,40 @@ ledgerctl store bootstrap -i backup.tar --data-dir ./fresh-data --yes
 
 ---
 
+### store rebuild-indexes
+
+Rebuild the bbolt read indexes from Pebble system logs. This is a purely offline operation — no server needed. Use this after restoring from a backup or when the read index becomes corrupted or out of date.
+
+```bash
+ledgerctl store rebuild-indexes --data-dir /path/to/data [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--data-dir` | | Pebble data directory (required) |
+| `--read-index-dir` | | Read index output directory (default: `<data-dir>/read-indexes/`) |
+
+**Behavior:**
+
+1. Opens the Pebble data directory in read-only mode
+2. Opens or creates the bbolt read index store
+3. Replays all system logs from scratch, rebuilding inverted indexes for metadata, account/transaction existence, and account-to-transaction mappings
+4. Reports the last processed log sequence on completion
+
+**Example:**
+
+```bash
+# Rebuild with default read index location
+ledgerctl store rebuild-indexes --data-dir ./data
+
+# Rebuild to a custom read index directory
+ledgerctl store rebuild-indexes --data-dir ./data --read-index-dir ./custom-indexes
+```
+
+---
+
 ### audit
 
 View the replicated audit log. The audit log captures every proposal (success and failure) that goes through Raft consensus, providing a complete audit trail.
@@ -2003,6 +2037,28 @@ ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create -
 ```
 
 Clients can also discover the server's public key via the `Discovery` RPC.
+
+---
+
+### Server Read Index Flags
+
+The bbolt-based read index store is always active. An index builder tails the system logs and populates inverted indexes in a bbolt database. The read index is used for prepared queries and listing operations (accounts, transactions).
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--read-index-dir` | string | `""` | Directory for the bbolt read index database (default: `<data-dir>/read-indexes/`) |
+
+```bash
+# Use default directory (<data-dir>/read-indexes/)
+ledger-v3-poc run [other flags...]
+
+# Use custom directory
+ledger-v3-poc run --read-index-dir /ssd/read-indexes [other flags...]
+```
+
+The index builder runs on ALL nodes (not just the leader), so follower nodes can also serve prepared query reads. Listings are eventually consistent (the bbolt index may lag behind the latest Raft commits).
+
+After restoring from a backup, use `ledgerctl store rebuild-indexes` to backfill the index from existing data.
 
 ---
 

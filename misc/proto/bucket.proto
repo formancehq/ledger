@@ -55,6 +55,16 @@ service BucketService {
   rpc GetMetadataSchemaStatus(GetMetadataSchemaStatusRequest) returns (GetMetadataSchemaStatusResponse);
   // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts
   rpc AnalyzeAccounts(AnalyzeAccountsRequest) returns (AnalyzeAccountsResponse);
+  // CreatePreparedQuery creates a named prepared query for a ledger
+  rpc CreatePreparedQuery(CreatePreparedQueryRequest) returns (CreatePreparedQueryResponse);
+  // UpdatePreparedQuery updates the filter of an existing prepared query
+  rpc UpdatePreparedQuery(UpdatePreparedQueryRequest) returns (UpdatePreparedQueryResponse);
+  // DeletePreparedQuery removes a prepared query
+  rpc DeletePreparedQuery(DeletePreparedQueryRequest) returns (DeletePreparedQueryResponse);
+  // ListPreparedQueries lists all prepared queries for a ledger
+  rpc ListPreparedQueries(ListPreparedQueriesRequest) returns (ListPreparedQueriesResponse);
+  // ExecutePreparedQuery executes a prepared query against the read index store
+  rpc ExecutePreparedQuery(ExecutePreparedQueryRequest) returns (ExecutePreparedQueryResponse);
 }
 
 // ============================================================================
@@ -147,6 +157,9 @@ message Request {
     RemoveMetadataFieldTypeRequest remove_metadata_field_type = 19;
     SetAuditConfigRequest set_audit_config = 20;
     PromoteLedgerRequest promote_ledger = 21;
+    CreatePreparedQueryRequest create_prepared_query = 22;
+    UpdatePreparedQueryRequest update_prepared_query = 23;
+    DeletePreparedQueryRequest delete_prepared_query = 24;
   }
   signature.RequestSignature signature = 5;
 }
@@ -561,4 +574,54 @@ message PatternSegment {
 enum PatternSegmentType {
   PATTERN_SEGMENT_TYPE_FIXED = 0;
   PATTERN_SEGMENT_TYPE_VARIABLE = 1;
+}
+
+// ============================================================================
+// Prepared Query Messages
+// ============================================================================
+
+message CreatePreparedQueryRequest {
+  common.PreparedQuery query = 1;
+}
+
+message CreatePreparedQueryResponse {}
+
+message UpdatePreparedQueryRequest {
+  string ledger = 1;
+  string name = 2;
+  common.QueryFilter filter = 3;
+}
+
+message UpdatePreparedQueryResponse {}
+
+message DeletePreparedQueryRequest {
+  string ledger = 1;
+  string name = 2;
+}
+
+message DeletePreparedQueryResponse {}
+
+message ListPreparedQueriesRequest {
+  string ledger = 1;
+}
+
+message ListPreparedQueriesResponse {
+  repeated common.PreparedQuery queries = 1;
+}
+
+message ExecutePreparedQueryRequest {
+  string ledger = 1;
+  string query_name = 2;
+  map<string, string> parameters = 3;
+  uint32 page_size = 4;
+  string cursor = 5;
+  uint64 min_log_sequence = 6;
+  common.QueryMode mode = 7;
+}
+
+message ExecutePreparedQueryResponse {
+  oneof result {
+    common.PreparedQueryCursor cursor = 1;
+    common.AggregateResult aggregate = 2;
+  }
 }
