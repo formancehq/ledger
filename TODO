@@ -31,6 +31,8 @@ Refactor:
 * Prevent concurrent tests
 * Keep attributes in pebble cache?
 * Index tracking
+* Apply configuration schema
+* Stop lifecycle
 
 Later:
 * Events
