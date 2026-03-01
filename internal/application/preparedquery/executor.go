@@ -67,13 +67,20 @@ func Execute(
 		}
 	}
 
+	// Fetch ledger info for schema-based filter validation
+	ledgerInfo, err := query.GetLedgerByName(pebbleStore, req.Ledger)
+	if err != nil {
+		return nil, fmt.Errorf("reading ledger info: %w", err)
+	}
+	schema := SchemaFieldsForTarget(ledgerInfo.MetadataSchema, pq.Target)
+
 	// Execute within a bbolt read-only transaction (MVCC snapshot)
 	var resp *servicepb.ExecutePreparedQueryResponse
 	err = rs.View(func(tx *bolt.Tx) error {
 		kb := readstore.NewKeyBuilder()
 
 		// Compile filter into iterator tree
-		iter, compileErr := Compile(tx, kb, pq.Filter, pq.Target, req.Ledger, req.Parameters)
+		iter, compileErr := Compile(tx, kb, pq.Filter, pq.Target, req.Ledger, req.Parameters, schema)
 		if compileErr != nil {
 			return fmt.Errorf("compiling filter: %w", compileErr)
 		}

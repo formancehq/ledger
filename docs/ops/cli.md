@@ -495,6 +495,8 @@ destination_cond := "destination" ("==" VALUE | "^=" VALUE)
 | Integer | `42`, `-5` | int64 |
 | Boolean | `true`, `false` | bool |
 
+**Schema validation:** When a ledger declares a metadata schema (e.g., `account:age:int64`), filter conditions are validated against the declared types at compile time. Type mismatches produce clear error messages (e.g., using a string condition on an `int64` field). Integer conditions on unsigned fields (e.g., `uint64`) are automatically coerced to unsigned conditions. The `exists` condition is always valid regardless of schema type.
+
 **Examples:**
 
 ```bash

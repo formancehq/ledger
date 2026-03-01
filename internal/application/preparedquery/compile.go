@@ -13,6 +13,7 @@ import (
 
 // Compile translates a QueryFilter proto into an EntityIterator tree.
 // The params map resolves parameterized conditions at execution time.
+// The schema map (optional) validates condition types against declared metadata field types.
 func Compile(
 	tx *bolt.Tx,
 	kb *readstore.KeyBuilder,
@@ -20,6 +21,7 @@ func Compile(
 	target commonpb.QueryTarget,
 	ledger string,
 	params map[string]string,
+	schema map[string]*commonpb.MetadataFieldSchema,
 ) (readstore.EntityIterator, error) {
 	if filter == nil {
 		return compileUniverse(tx, kb, target, ledger)
@@ -27,15 +29,15 @@ func Compile(
 
 	switch f := filter.Filter.(type) {
 	case *commonpb.QueryFilter_Field:
-		return compileFieldCondition(tx, kb, f.Field, target, ledger, params)
+		return compileFieldCondition(tx, kb, f.Field, target, ledger, params, schema)
 	case *commonpb.QueryFilter_Address:
 		return compileAddressMatch(tx, kb, f.Address, target, ledger, params)
 	case *commonpb.QueryFilter_And:
-		return compileAnd(tx, kb, f.And, target, ledger, params)
+		return compileAnd(tx, kb, f.And, target, ledger, params, schema)
 	case *commonpb.QueryFilter_Or:
-		return compileOr(tx, kb, f.Or, target, ledger, params)
+		return compileOr(tx, kb, f.Or, target, ledger, params, schema)
 	case *commonpb.QueryFilter_Not:
-		return compileNot(tx, kb, f.Not, target, ledger, params)
+		return compileNot(tx, kb, f.Not, target, ledger, params, schema)
 	default:
 		return nil, fmt.Errorf("unknown filter type: %T", filter.Filter)
 	}
@@ -53,10 +55,10 @@ func compileUniverse(tx *bolt.Tx, kb *readstore.KeyBuilder, target commonpb.Quer
 }
 
 // compileAnd compiles an AND filter into a merge-intersect iterator.
-func compileAnd(tx *bolt.Tx, kb *readstore.KeyBuilder, and *commonpb.AndFilter, target commonpb.QueryTarget, ledger string, params map[string]string) (readstore.EntityIterator, error) {
+func compileAnd(tx *bolt.Tx, kb *readstore.KeyBuilder, and *commonpb.AndFilter, target commonpb.QueryTarget, ledger string, params map[string]string, schema map[string]*commonpb.MetadataFieldSchema) (readstore.EntityIterator, error) {
 	children := make([]readstore.EntityIterator, 0, len(and.Filters))
 	for _, f := range and.Filters {
-		child, err := Compile(tx, kb, f, target, ledger, params)
+		child, err := Compile(tx, kb, f, target, ledger, params, schema)
 		if err != nil {
 			closeAll(children)
 			return nil, err
@@ -73,10 +75,10 @@ func compileAnd(tx *bolt.Tx, kb *readstore.KeyBuilder, and *commonpb.AndFilter, 
 }
 
 // compileOr compiles an OR filter into a merge-union iterator.
-func compileOr(tx *bolt.Tx, kb *readstore.KeyBuilder, or *commonpb.OrFilter, target commonpb.QueryTarget, ledger string, params map[string]string) (readstore.EntityIterator, error) {
+func compileOr(tx *bolt.Tx, kb *readstore.KeyBuilder, or *commonpb.OrFilter, target commonpb.QueryTarget, ledger string, params map[string]string, schema map[string]*commonpb.MetadataFieldSchema) (readstore.EntityIterator, error) {
 	children := make([]readstore.EntityIterator, 0, len(or.Filters))
 	for _, f := range or.Filters {
-		child, err := Compile(tx, kb, f, target, ledger, params)
+		child, err := Compile(tx, kb, f, target, ledger, params, schema)
 		if err != nil {
 			closeAll(children)
 			return nil, err
@@ -93,12 +95,12 @@ func compileOr(tx *bolt.Tx, kb *readstore.KeyBuilder, or *commonpb.OrFilter, tar
 }
 
 // compileNot compiles a NOT filter into a merge-difference iterator.
-func compileNot(tx *bolt.Tx, kb *readstore.KeyBuilder, not *commonpb.NotFilter, target commonpb.QueryTarget, ledger string, params map[string]string) (readstore.EntityIterator, error) {
+func compileNot(tx *bolt.Tx, kb *readstore.KeyBuilder, not *commonpb.NotFilter, target commonpb.QueryTarget, ledger string, params map[string]string, schema map[string]*commonpb.MetadataFieldSchema) (readstore.EntityIterator, error) {
 	universe, err := compileUniverse(tx, kb, target, ledger)
 	if err != nil {
 		return nil, err
 	}
-	child, err := Compile(tx, kb, not.Filter, target, ledger, params)
+	child, err := Compile(tx, kb, not.Filter, target, ledger, params, schema)
 	if err != nil {
 		universe.Close()
 		return nil, err
@@ -114,6 +116,7 @@ func compileFieldCondition(
 	target commonpb.QueryTarget,
 	ledger string,
 	params map[string]string,
+	schema map[string]*commonpb.MetadataFieldSchema,
 ) (readstore.EntityIterator, error) {
 	if fc.Field == nil {
 		return nil, fmt.Errorf("field condition has no field reference")
@@ -121,6 +124,17 @@ func compileFieldCondition(
 
 	ns, entityLen := targetNamespaceAndLen(target)
 	metaKey := fc.Field.GetMetadata()
+
+	// Validate condition type against declared schema type (if schema is provided)
+	if schema != nil {
+		if fieldSchema, ok := schema[metaKey]; ok {
+			var err error
+			fc, err = validateAndCoerceCondition(fc, fieldSchema)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	b := tx.Bucket(readstore.BucketMetadataIndex)
 	if b == nil {
@@ -561,6 +575,97 @@ func closeAll(iters []readstore.EntityIterator) {
 	for _, it := range iters {
 		it.Close()
 	}
+}
+
+// SchemaFieldsForTarget extracts the relevant metadata fields map from a schema
+// based on the query target. Returns nil if schema is nil.
+func SchemaFieldsForTarget(schema *commonpb.MetadataSchema, target commonpb.QueryTarget) map[string]*commonpb.MetadataFieldSchema {
+	if schema == nil {
+		return nil
+	}
+	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+		return schema.TransactionFields
+	}
+	return schema.AccountFields
+}
+
+// validateAndCoerceCondition validates a field condition against the declared schema type.
+// It returns the (possibly coerced) condition or an error for incompatible types.
+// ExistsCondition is always valid regardless of schema type.
+func validateAndCoerceCondition(fc *commonpb.FieldCondition, fieldSchema *commonpb.MetadataFieldSchema) (*commonpb.FieldCondition, error) {
+	fieldName := fc.Field.GetMetadata()
+	schemaType := fieldSchema.Type
+
+	switch fc.Condition.(type) {
+	case *commonpb.FieldCondition_ExistsCond:
+		return fc, nil
+
+	case *commonpb.FieldCondition_IntCond:
+		if commonpb.IsSignedType(schemaType) {
+			return fc, nil
+		}
+		if commonpb.IsUnsignedType(schemaType) {
+			return coerceIntToUint(fc)
+		}
+		return nil, fmt.Errorf("field %q is declared as %s, cannot use integer condition", fieldName, schemaType)
+
+	case *commonpb.FieldCondition_UintCond:
+		if commonpb.IsUnsignedType(schemaType) {
+			return fc, nil
+		}
+		return nil, fmt.Errorf("field %q is declared as %s, cannot use unsigned integer condition", fieldName, schemaType)
+
+	case *commonpb.FieldCondition_StringCond:
+		if schemaType == commonpb.MetadataType_METADATA_TYPE_STRING {
+			return fc, nil
+		}
+		return nil, fmt.Errorf("field %q is declared as %s, cannot use string condition", fieldName, schemaType)
+
+	case *commonpb.FieldCondition_BoolCond:
+		if schemaType == commonpb.MetadataType_METADATA_TYPE_BOOL {
+			return fc, nil
+		}
+		return nil, fmt.Errorf("field %q is declared as %s, cannot use bool condition", fieldName, schemaType)
+
+	default:
+		return fc, nil
+	}
+}
+
+// coerceIntToUint converts an IntCondition to a UintCondition for unsigned schema fields.
+// Returns an error if any bound is negative.
+func coerceIntToUint(fc *commonpb.FieldCondition) (*commonpb.FieldCondition, error) {
+	fieldName := fc.Field.GetMetadata()
+	intCond := fc.GetIntCond()
+
+	uintCond := &commonpb.UintCondition{
+		MinExclusive: intCond.MinExclusive,
+		MaxExclusive: intCond.MaxExclusive,
+		ParamMin:     intCond.ParamMin,
+		ParamMax:     intCond.ParamMax,
+	}
+
+	if intCond.Min != nil {
+		v := *intCond.Min
+		if v < 0 {
+			return nil, fmt.Errorf("field %q is unsigned, cannot use negative min bound %d", fieldName, v)
+		}
+		uv := uint64(v)
+		uintCond.Min = &uv
+	}
+	if intCond.Max != nil {
+		v := *intCond.Max
+		if v < 0 {
+			return nil, fmt.Errorf("field %q is unsigned, cannot use negative max bound %d", fieldName, v)
+		}
+		uv := uint64(v)
+		uintCond.Max = &uv
+	}
+
+	return &commonpb.FieldCondition{
+		Field:     fc.Field,
+		Condition: &commonpb.FieldCondition_UintCond{UintCond: uintCond},
+	}, nil
 }
 
 // SliceIterator wraps a pre-sorted slice of entity IDs as an EntityIterator.

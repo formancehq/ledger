@@ -224,15 +224,17 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 		pageSize = math.MaxUint32
 	}
 
+	schemaFields := preparedquery.SchemaFieldsForTarget(ledgerInfo.MetadataSchema, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+
 	var entityIDs [][]byte
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
 		if reverse {
 			// Oldest-first (ascending txID): compiled iterator is naturally ascending
-			return ctrl.listTransactionsAscending(tx, ledgerInfo.Name, pageSize, afterTxID, filter, &entityIDs)
+			return ctrl.listTransactionsAscending(tx, ledgerInfo.Name, pageSize, afterTxID, filter, schemaFields, &entityIDs)
 		}
 		// Newest-first (descending txID) — default
 		if filter != nil {
-			return ctrl.listTransactionsDescFiltered(tx, ledgerInfo.Name, pageSize, afterTxID, filter, &entityIDs)
+			return ctrl.listTransactionsDescFiltered(tx, ledgerInfo.Name, pageSize, afterTxID, filter, schemaFields, &entityIDs)
 		}
 		return ctrl.listTransactionsDescUnfiltered(tx, ledgerInfo.Name, pageSize, afterTxID, &entityIDs)
 	})
@@ -259,12 +261,12 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 // listTransactionsAscending returns transactions in oldest-first order.
 // The compiled iterator (filtered or not) is naturally ascending, so we
 // paginate forward directly.
-func (ctrl *DefaultController) listTransactionsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, out *[][]byte) error {
+func (ctrl *DefaultController) listTransactionsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, out *[][]byte) error {
 	kb := readstore.NewKeyBuilder()
 	iter, err := preparedquery.Compile(
 		tx, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		ledgerName, nil,
+		ledgerName, nil, schema,
 	)
 	if err != nil {
 		return fmt.Errorf("compiling transaction filter: %w", err)
@@ -301,12 +303,12 @@ func (ctrl *DefaultController) listTransactionsDescUnfiltered(tx *bolt.Tx, ledge
 
 // listTransactionsDescFiltered compiles a filter, collects matching IDs, reverses
 // them for newest-first ordering, and applies pagination.
-func (ctrl *DefaultController) listTransactionsDescFiltered(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, out *[][]byte) error {
+func (ctrl *DefaultController) listTransactionsDescFiltered(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, out *[][]byte) error {
 	kb := readstore.NewKeyBuilder()
 	iter, err := preparedquery.Compile(
 		tx, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		ledgerName, nil,
+		ledgerName, nil, schema,
 	)
 	if err != nil {
 		return fmt.Errorf("compiling transaction filter: %w", err)
@@ -365,12 +367,14 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 		pageSize = math.MaxUint32
 	}
 
+	schemaFields := preparedquery.SchemaFieldsForTarget(ledgerInfo.MetadataSchema, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+
 	var addresses [][]byte
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
 		if reverse {
-			return ctrl.listAccountsDescending(tx, ledgerInfo.Name, pageSize, afterAddress, filter, &addresses)
+			return ctrl.listAccountsDescending(tx, ledgerInfo.Name, pageSize, afterAddress, filter, schemaFields, &addresses)
 		}
-		return ctrl.listAccountsAscending(tx, ledgerInfo.Name, pageSize, afterAddress, filter, &addresses)
+		return ctrl.listAccountsAscending(tx, ledgerInfo.Name, pageSize, afterAddress, filter, schemaFields, &addresses)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing accounts from index: %w", err)
@@ -392,12 +396,12 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 }
 
 // listAccountsAscending returns accounts in alphabetical order (A→Z).
-func (ctrl *DefaultController) listAccountsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, out *[][]byte) error {
+func (ctrl *DefaultController) listAccountsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, out *[][]byte) error {
 	kb := readstore.NewKeyBuilder()
 	iter, err := preparedquery.Compile(
 		tx, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		ledgerName, nil,
+		ledgerName, nil, schema,
 	)
 	if err != nil {
 		return fmt.Errorf("compiling account filter: %w", err)
@@ -413,14 +417,14 @@ func (ctrl *DefaultController) listAccountsAscending(tx *bolt.Tx, ledgerName str
 }
 
 // listAccountsDescending returns accounts in reverse-alphabetical order (Z→A).
-func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, out *[][]byte) error {
+func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, out *[][]byte) error {
 	if filter != nil {
 		// Filtered: collect all ascending, reverse, then paginate manually
 		kb := readstore.NewKeyBuilder()
 		iter, err := preparedquery.Compile(
 			tx, kb, filter,
 			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			ledgerName, nil,
+			ledgerName, nil, schema,
 		)
 		if err != nil {
 			return fmt.Errorf("compiling account filter: %w", err)

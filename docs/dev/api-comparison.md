@@ -37,7 +37,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | List ledgers | ✅ | ✅ | |
 | **Accounts (Read)** |
 | Get account | ✅ | ✅ | Includes volumes per asset |
-| List accounts | ✅ | ✅ | Supports rich boolean filter (metadata equality/range/existence, address) and cursor pagination |
+| List accounts | ✅ | ✅ | Supports rich boolean filter (metadata equality/range/existence, address) with schema validation and cursor pagination |
 | Get account balances | ⚠️ | ✅ | Included in account volumes |
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |
@@ -80,8 +80,8 @@ This document compares the POC's API with the original Formance ledger API and d
 | Update prepared query | ✅ | ❌ | |
 | Delete prepared query | ✅ | ❌ | |
 | List prepared queries | ✅ | ❌ | |
-| Execute prepared query (list) | ✅ | ❌ | Returns matching entities with cursor pagination |
-| Execute prepared query (aggregate) | ✅ | ❌ | Returns aggregated volumes per asset |
+| Execute prepared query (list) | ✅ | ❌ | Returns matching entities with cursor pagination; validates filters against metadata schema |
+| Execute prepared query (aggregate) | ✅ | ❌ | Returns aggregated volumes per asset; validates filters against metadata schema |
 | **Volumes (responses)** |
 | postCommitVolumes | ✅ | ✅ | Opt-in via `expandVolumes` in request body |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |
