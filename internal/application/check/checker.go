@@ -3,15 +3,18 @@ package check
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math/big"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/zeebo/blake3"
 	"google.golang.org/protobuf/proto"
@@ -80,23 +83,44 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		errorCount       int
 	)
 
-	// Pass 1: Iterate all logs, verify hash chain, and replay state
-	for seq := uint64(1); seq <= lastSequence; seq++ {
+	// Pass 1: Single forward iterator over all logs (avoids N point reads).
+	// Uses UnmarshalVT directly (avoids reflect.New + proto.Unmarshal overhead).
+	logIter, err := c.store.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.KeyPrefixLog},
+		UpperBound: []byte{dal.KeyPrefixLog, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+	})
+	if err != nil {
+		return fmt.Errorf("creating log iterator: %w", err)
+	}
+	defer func() { _ = logIter.Close() }()
+
+	expectedSeq := uint64(1)
+	for logIter.First(); logIter.Valid(); logIter.Next() {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		log, err := query.ReadLogBySequence(c.store, seq)
+		// Extract sequence from key: [KeyPrefixLog(1)][sequence(8)]
+		seq := binary.BigEndian.Uint64(logIter.Key()[1:9])
+
+		// 1. Detect gaps: any missing sequences between expectedSeq and seq
+		for expectedSeq < seq {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+				fmt.Sprintf("log sequence %d is missing", expectedSeq), expectedSeq, "", "", ""))
+			errorCount++
+			expectedSeq++
+		}
+		expectedSeq = seq + 1
+
+		// Unmarshal using vtprotobuf (avoids reflect.New and standard proto.Unmarshal)
+		value, err := logIter.ValueAndErr()
 		if err != nil {
-			return fmt.Errorf("getting log %d: %w", seq, err)
+			return fmt.Errorf("reading log %d value: %w", seq, err)
 		}
 
-		// 1. Verify sequence continuity
-		if log == nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
-				fmt.Sprintf("log sequence %d is missing", seq), seq, "", "", ""))
-			errorCount++
-			continue
+		log := &commonpb.Log{}
+		if err := log.UnmarshalVT(value); err != nil {
+			return fmt.Errorf("unmarshaling log %d: %w", seq, err)
 		}
 
 		// 2. Verify hash chain
@@ -153,9 +177,22 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			})
 		}
 	}
+	if err := logIter.Error(); err != nil {
+		return fmt.Errorf("log iterator error: %w", err)
+	}
 
-	// Pass 2: Compare expected volumes against actual stored values
+	// Pass 2: Compare expected volumes against actual stored values.
+	// Single ForEachInPrefix scan instead of N separate ComputeValue iterators.
 	const maxIndex uint64 = 1 << 62
+
+	actualVolumes := make(map[string]*raftcmdpb.VolumePair)
+	err = c.attrs.Volume.ForEachInPrefix(c.store, maxIndex, nil, func(entry attributes.ComputedEntry[*raftcmdpb.VolumePair]) error {
+		actualVolumes[string(entry.CanonicalKey)] = entry.Value
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("scanning volumes: %w", err)
+	}
 
 	// Collect all volume keys from both expected maps
 	allVolumeKeys := make(map[string]struct{}, len(expectedInputs)+len(expectedOutputs))
@@ -176,11 +213,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			continue
 		}
 
-		pair, err := c.attrs.Volume.ComputeValue(c.store, maxIndex, []byte(key))
-		if err != nil {
-			return fmt.Errorf("computing volume for %s: %w", key, err)
-		}
-
+		pair := actualVolumes[key]
 		actualInputVal := big.NewInt(0)
 		actualOutputVal := big.NewInt(0)
 		if pair != nil {
@@ -213,7 +246,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 	}
 
-	// Pass 3: Compare expected metadata against actual stored values
+	// Pass 3: Compare expected metadata against actual stored values.
+	// Single ForEachInPrefix scan instead of N separate ComputeValue iterators.
+	actualMetadata := make(map[string]*commonpb.MetadataValue)
+	err = c.attrs.Metadata.ForEachInPrefix(c.store, maxIndex, nil, func(entry attributes.ComputedEntry[*commonpb.MetadataValue]) error {
+		actualMetadata[string(entry.CanonicalKey)] = entry.Value
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("scanning metadata: %w", err)
+	}
+
 	for key, expectedValue := range expectedMetadata {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -229,11 +272,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			continue
 		}
 
-		actualValue, err := c.attrs.Metadata.ComputeValue(c.store, maxIndex, []byte(key))
-		if err != nil {
-			return fmt.Errorf("computing metadata for %s: %w", key, err)
-		}
-
+		actualValue := actualMetadata[key]
 		actualStr := ""
 		if actualValue != nil {
 			actualStr = commonpb.MetadataValueToString(actualValue)
