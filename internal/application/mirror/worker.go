@@ -216,6 +216,17 @@ func (w *Worker) processLogs(stop <-chan struct{}) {
 		default:
 		}
 
+		// Pause while Pebble is in a write stall to let compaction catch up.
+		if w.store.IsWriteStalled() {
+			w.logger.Infof("Pausing mirror ingestion: Pebble write stall in progress")
+			select {
+			case <-stop:
+				return
+			case <-w.store.WriteStallWaitCh():
+			}
+			w.logger.Infof("Resuming mirror ingestion: write stall cleared")
+		}
+
 		hasMore, err := w.processBatch()
 		if err != nil {
 			w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Mirror sync error")

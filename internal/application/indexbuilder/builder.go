@@ -76,13 +76,21 @@ func (b *Builder) loop(stop <-chan struct{}) {
 			b.logger.Infof("Index builder stopped")
 			return
 		case <-b.notifications.LogCommitted.C():
-			if cursor, err = b.processLogs(cursor); err != nil {
-				b.logger.Errorf("Error processing logs: %v", err)
-			}
 		case <-ticker.C:
-			if cursor, err = b.processLogs(cursor); err != nil {
-				b.logger.Errorf("Error processing logs (poll): %v", err)
-			}
+		}
+
+		// Check stop again after waking up, before accessing the store.
+		// This avoids a race where the Pebble DB is closed between the
+		// select wakeup and the store access.
+		select {
+		case <-stop:
+			b.logger.Infof("Index builder stopped")
+			return
+		default:
+		}
+
+		if cursor, err = b.processLogs(cursor); err != nil {
+			b.logger.Errorf("Error processing logs: %v", err)
 		}
 	}
 }

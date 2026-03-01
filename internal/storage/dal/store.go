@@ -19,6 +19,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// ErrStoreClosed is returned when a store operation is attempted after the
+// Pebble database has been closed. This prevents panics during shutdown races.
+var ErrStoreClosed = errors.New("store closed")
+
 const (
 	liveDir                 = "live"
 	currentCheckpointFile   = "CURRENT_CHECKPOINT"
@@ -36,12 +40,34 @@ type Store struct {
 	currentCheckPoint uint64
 	oldestCheckpoint  uint64
 	maxCheckpoints    int
+	stallState        *WriteStallState
 }
 
 // getDB returns the current pebble.DB via an atomic load.
 // This is lock-free and never blocks, even during RestoreCheckpoint.
 func (s *Store) getDB() *pebble.DB {
 	return s.db.Load()
+}
+
+// WriteStallWaitCh returns a channel that blocks while Pebble is in a write stall.
+// When not stalled, the channel is already closed (non-blocking).
+// Safe to call on stores opened read-only (returns a pre-closed channel).
+func (s *Store) WriteStallWaitCh() <-chan struct{} {
+	if s.stallState == nil {
+		ch := make(chan struct{})
+		close(ch)
+		return ch
+	}
+	return s.stallState.WaitCh()
+}
+
+// IsWriteStalled returns true if Pebble is currently in a write stall.
+// Safe to call on stores opened read-only (always returns false).
+func (s *Store) IsWriteStalled() bool {
+	if s.stallState == nil {
+		return false
+	}
+	return s.stallState.IsStalled()
 }
 
 // Key prefixes for Pebble storage, organized into three zones:
@@ -103,8 +129,10 @@ func NewStore(
 	cfg Config,
 ) (*Store, error) {
 
+	stallState := NewWriteStallState()
+
 	opts := &pebble.Options{
-		EventListener: NewMetricsListener(meter),
+		EventListener: NewMetricsListener(meter, stallState),
 		// 1) Absorb more writes before flush => fewer SST files, fewer compactions.
 		MemTableSize:                cfg.MemTableSize,
 		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
@@ -311,6 +339,7 @@ func NewStore(
 		currentCheckPoint: currentCheckpoint,
 		oldestCheckpoint:  oldestCheckpoint,
 		maxCheckpoints:    cfg.MaxCheckpoints,
+		stallState:        stallState,
 	}
 	store.db.Store(db)
 
@@ -753,7 +782,11 @@ func (c *ProtoCursor[T]) Close() error {
 }
 
 func (s *Store) NewIter(p *pebble.IterOptions) (*pebble.Iterator, error) {
-	return s.getDB().NewIter(p)
+	db := s.getDB()
+	if db == nil {
+		return nil, ErrStoreClosed
+	}
+	return db.NewIter(p)
 }
 
 func HardLink(srcDir, dstDir string) error {
