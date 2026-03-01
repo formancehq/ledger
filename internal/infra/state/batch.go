@@ -259,6 +259,54 @@ func StoreNextPeriodID(b *dal.Batch, id uint64) error {
 	return nil
 }
 
+// SetMirrorSourceHead writes the latest known v2 source log count to the batch (Raft-replicated).
+func SetMirrorSourceHead(b *dal.Batch, ledgerName string, count uint64) error {
+	b.KeyBuilder.PutByte(dal.KeyPrefixMirrorSourceHead).
+		PutString(ledgerName)
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], count)
+	if err := b.SetBytes(b.KeyBuilder.Build(), buf[:]); err != nil {
+		return fmt.Errorf("setting mirror source head: %w", err)
+	}
+	return nil
+}
+
+// SetMirrorCursor writes a per-ledger mirror cursor to the batch (Raft-replicated).
+func SetMirrorCursor(b *dal.Batch, ledgerName string, cursor uint64) error {
+	b.KeyBuilder.PutByte(dal.KeyPrefixMirrorCursor).
+		PutString(ledgerName)
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], cursor)
+	if err := b.SetBytes(b.KeyBuilder.Build(), buf[:]); err != nil {
+		return fmt.Errorf("setting mirror cursor: %w", err)
+	}
+	return nil
+}
+
+// SetMirrorStatus writes a per-ledger mirror sync error to the batch.
+func SetMirrorStatus(b *dal.Batch, ledgerName string, syncErr *commonpb.MirrorSyncError) error {
+	b.KeyBuilder.PutByte(dal.KeyPrefixMirrorStatus).
+		PutString(ledgerName)
+
+	if err := b.SetProto(b.KeyBuilder.Build(), syncErr); err != nil {
+		return fmt.Errorf("setting mirror status: %w", err)
+	}
+	return nil
+}
+
+// ClearMirrorStatus removes a per-ledger mirror sync error from the batch.
+func ClearMirrorStatus(b *dal.Batch, ledgerName string) error {
+	b.KeyBuilder.PutByte(dal.KeyPrefixMirrorStatus).
+		PutString(ledgerName)
+
+	if err := b.DeleteKey(b.KeyBuilder.Build()); err != nil {
+		return fmt.Errorf("clearing mirror status: %w", err)
+	}
+	return nil
+}
+
 // SetAppliedIndex writes the last applied Raft index to the batch.
 func SetAppliedIndex(b *dal.Batch, index uint64) error {
 	value := make([]byte, 8)

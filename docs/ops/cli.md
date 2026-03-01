@@ -28,6 +28,27 @@ These flags are available for all commands:
 | `--signing-key` | | Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded) |
 | `--signing-key-id` | `default` | Key ID for request signatures |
 | `--response-verify-key` | | Path to Ed25519 public key file for verifying server response signatures |
+| `--consistency` | | Read consistency level: `stale`, `leader`, or `linearizable` (default) |
+
+### Read Consistency
+
+By default, all read operations use **linearizable** consistency: the node performs a ReadIndex barrier to ensure it has applied all committed entries before reading from the local store. This guarantees that reads always reflect the latest committed state, but it can block during maintenance windows (e.g. mirror sync, snapshot creation) when the FSM is frozen.
+
+Two alternative consistency levels are available:
+
+- **`stale`** — Skip the ReadIndex barrier and read directly from the local store. Data may lag behind the latest committed index, but reads never block. Useful for monitoring, dashboards, and non-critical queries.
+- **`leader`** — Forward the read to the leader node. The leader always has the most up-to-date data and its ReadIndex barrier is fast (no round-trip needed). Useful when you need fresh data but the local node may be lagging.
+
+```bash
+# Stale read (instant, may lag)
+ledgerctl --consistency stale ledgers get my-ledger
+
+# Leader read (fresh, forwarded to leader)
+ledgerctl --consistency leader ledgers list
+
+# Default linearizable read
+ledgerctl ledgers list
+```
 
 ### Request Signing
 
@@ -96,13 +117,19 @@ ledgerctl ledgers get <name> [flags]
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
-- Displays ledger ID, name, and creation timestamp
+- Displays ledger name, creation timestamp, and mode (NORMAL or MIRROR)
+- For mirror ledgers, displays the mirror source configuration (type, URL/DSN)
+- For mirror ledgers, displays sync progress (state, cursor, source count, remaining, percentage)
 - If the ledger has a metadata schema, it is displayed as tables (Account Fields, Transaction Fields) with KEY and TYPE columns
 
 **Example:**
 
 ```bash
+# Get a normal ledger
 ledgerctl ledgers get my-ledger
+
+# Get a mirror ledger (shows sync progress)
+ledgerctl ledgers get my-mirror-ledger
 ```
 
 #### ledgers create
@@ -122,6 +149,13 @@ ledgerctl ledgers create [flags]
 | `--name` | | Name of the ledger to create |
 | `--metadata` | | Metadata key=value pairs |
 | `--schema` | | Metadata schema in `target:key:type` format (repeatable) |
+| `--mode` | `normal` | Ledger mode: `normal` or `mirror` |
+| `--mirror-source-type` | `http` | Mirror source type: `http` or `postgres` |
+| `--mirror-ledger-name` | | Source ledger name in the v2 system (defaults to ledger name) |
+| `--mirror-base-url` | | Base URL of the v2 API (required for `http` source) |
+| `--mirror-auth-token` | | Auth token for the v2 API (for `http` source) |
+| `--mirror-dsn` | | PostgreSQL DSN (required for `postgres` source) |
+| `--mirror-batch-size` | `0` | Max logs per batch (0 = server default, capped by `--mirror-max-batch-size`) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
@@ -130,11 +164,12 @@ ledgerctl ledgers create [flags]
 **Behavior:**
 - In interactive mode (no `--schema` flags), prompts "Add metadata schema?" and loops through target/key/type selection
 - If the ledger is created with a schema, the schema is displayed in the output
+- For mirror mode, displays the mirror source configuration in the output
 
 **Example:**
 
 ```bash
-# Create a ledger with a name
+# Create a normal ledger
 ledgerctl ledgers create --name my-ledger
 
 # Create with metadata
@@ -143,8 +178,23 @@ ledgerctl ledgers create --name my-ledger --metadata description="My ledger" --m
 # Create with typed metadata schema
 ledgerctl ledgers create --name my-ledger --schema account:age:int64 --schema account:active:bool
 
-# Create with both metadata and schema
-ledgerctl ledgers create --name my-ledger --metadata env=prod --schema transaction:priority:uint64
+# Create a mirror ledger from an HTTP v2 source
+ledgerctl ledgers create --name my-mirror \
+  --mode mirror \
+  --mirror-base-url https://v2-api.example.com \
+  --mirror-auth-token my-token
+
+# Create a mirror ledger from a PostgreSQL v2 source
+ledgerctl ledgers create --name my-mirror \
+  --mode mirror \
+  --mirror-source-type postgres \
+  --mirror-dsn "postgres://user:pass@host:5432/ledger?sslmode=disable"
+
+# Mirror with a different source ledger name
+ledgerctl ledgers create --name my-mirror \
+  --mode mirror \
+  --mirror-base-url https://v2-api.example.com \
+  --mirror-ledger-name original-ledger-name
 
 # Interactive mode (will prompt for name, metadata schema)
 ledgerctl ledgers create
@@ -180,6 +230,36 @@ ledgerctl ledgers delete my-ledger -y
 
 # Interactive mode (will prompt for ledger selection)
 ledgerctl ledgers delete
+```
+
+#### ledgers promote
+
+Promote a mirror ledger to normal mode. This stops mirror replication and converts the ledger to a regular read-write ledger.
+
+```bash
+ledgerctl ledgers promote [name] [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name` | | Name of the ledger to promote |
+| `-y, --yes` | `false` | Skip confirmation prompt |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Promote a mirror ledger (will prompt for confirmation)
+ledgerctl ledgers promote my-mirror-ledger
+
+# Promote without confirmation
+ledgerctl ledgers promote my-mirror-ledger -y
+
+# Interactive mode (will prompt for ledger selection)
+ledgerctl ledgers promote
 ```
 
 #### ledgers set-metadata-type
@@ -974,7 +1054,7 @@ ledgerctl audit list [flags]
 | `--failures-only` | `false` | Show only failed entries |
 | `--ledger` | | Filter by ledger name |
 | `--after` | `0` | Show entries after this sequence number |
-| `--limit` | `0` | Maximum number of entries to display (0 = unlimited) |
+| `--page-size` | `10` | Number of entries per page (0 = unlimited) |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
@@ -983,6 +1063,7 @@ ledgerctl audit list [flags]
 - Below each entry, all orders are listed in a tree structure with:
   - Order type and details (ledger name, reference, etc.)
   - Signing key ID used (`key=<id>`) or `unsigned` if the order was not signed
+  - Consecutive identical orders are grouped compactly (e.g. `MirrorIngest x500`)
 - If audit is disabled on the server, a warning message is displayed instead of an error
 
 **Example:**
@@ -1000,8 +1081,8 @@ ledgerctl audit list --ledger my-ledger
 # Show entries after sequence 100
 ledgerctl audit list --after 100
 
-# Limit to 20 entries
-ledgerctl audit list --limit 20
+# Show 20 entries per page
+ledgerctl audit list --page-size 20
 
 # Output as JSON
 ledgerctl audit list --json
@@ -1072,7 +1153,7 @@ ledgerctl logs list [flags]
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
 | `--after` | `0` | Show logs after this sequence number |
-| `--limit` | `0` | Maximum number of logs to display (0 = unlimited) |
+| `--page-size` | `10` | Number of logs per page (0 = unlimited) |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
@@ -1088,11 +1169,36 @@ ledgerctl logs list
 # Show logs after sequence 100
 ledgerctl logs list --after 100
 
-# Limit to 20 entries
-ledgerctl logs list --limit 20
+# Show 20 entries per page
+ledgerctl logs list --page-size 20
 
 # Output as JSON
 ledgerctl logs list --json
+```
+
+#### logs get
+
+Get a single system log entry by sequence number.
+
+```bash
+ledgerctl logs get <sequence> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Get log #42
+ledgerctl logs get 42
+
+# Get log as JSON
+ledgerctl logs get 42 --json
 ```
 
 ---
@@ -1707,6 +1813,22 @@ ledger-v3-poc run --node-id 1 --bootstrap ...
 ledger-v3-poc run --node-id 1 --bootstrap --numscript-cache-size 4096 ...
 ```
 
+### Server `--mirror-max-batch-size` Flag
+
+Server-side cap on the mirror batch size. Each mirror ledger can request a custom batch size via its source config, but the server clamps it to this maximum. This prevents a user from overwhelming the cluster with oversized batches.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--mirror-max-batch-size` | `500` | Maximum allowed batch size for mirror sync |
+
+```bash
+# Default: mirror workers use at most 500 logs per batch
+ledger-v3-poc run --node-id 1 --bootstrap ...
+
+# Allow larger batches for high-throughput mirror workloads
+ledger-v3-poc run --node-id 1 --bootstrap --mirror-max-batch-size 1000 ...
+```
+
 ---
 
 ### Server `--unsafe-skip-config-validation` Flag
@@ -1916,6 +2038,7 @@ Global flags can be set via environment variables:
 | `SERVER` | `--server` |
 | `INSECURE` | `--insecure` |
 | `TLS_CA_CERT` | `--tls-ca-cert` |
+| `CONSISTENCY` | `--consistency` |
 
 ```bash
 export SERVER=ledger.example.com:443

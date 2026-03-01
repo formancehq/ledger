@@ -131,6 +131,12 @@ func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *
 	}), nil
 }
 
+func (g *BucketGrpcClient) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
+	return g.client.GetLog(ctx, &servicepb.GetLogRequest{
+		Sequence: sequence,
+	})
+}
+
 func (g *BucketGrpcClient) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
 	return g.client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{
 		Sequence: sequence,

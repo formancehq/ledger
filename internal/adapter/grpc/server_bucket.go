@@ -299,6 +299,14 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 	return sendCursorToStream(cursor, stream, "audit entry")
 }
 
+func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.GetLogRequest) (*commonpb.Log, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
+	return impl.ctrl.GetLog(ctx, req.Sequence)
+}
+
 func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
 	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
 		return err

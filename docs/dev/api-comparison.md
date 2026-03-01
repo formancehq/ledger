@@ -30,6 +30,8 @@ This document compares the POC's API with the original Formance ledger API and d
 | Bulk continueOnFailure | ✅ | ✅ | |
 | **Ledger** |
 | Create ledger | ✅ | ✅ | |
+| Create mirror ledger | ✅ | ❌ | HTTP or PostgreSQL source |
+| Promote mirror ledger | ✅ | ❌ | Mirror → Normal mode |
 | Delete ledger | ✅ | ✅ | |
 | Get ledger | ✅ | ✅ | |
 | List ledgers | ✅ | ✅ | |
@@ -219,6 +221,48 @@ ledgerctl periods archive 1
 ledgerctl periods list
 ```
 
+### 8. Mirror Ledgers
+
+Mirror mode enables one-way synchronization from an existing v2 ledger into a v3 ledger. The mirror ledger is read-only until promoted to normal mode.
+
+**Create a mirror ledger:** `POST /{ledgerName}`
+
+Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying the source configuration.
+
+**Source types:**
+- **HTTP** (`type: "http"`) — Polls the v2 API endpoint `GET /v2/{ledger}/logs`. Fields: `baseUrl`, `authToken` (optional).
+- **PostgreSQL** (`type: "postgres"`) — Reads directly from the v2 ledger's PostgreSQL database. Fields: `dsn`.
+
+If `type` is omitted, defaults to `"http"`.
+
+**Write guard:** All direct write operations (create transaction, save metadata, delete metadata, revert transaction) are rejected on mirror-mode ledgers with HTTP 409 (`LEDGER_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`.
+
+**Sync progress:** `GET /{ledgerName}` returns a `mirrorSyncProgress` object for mirror ledgers with:
+- `state`: `SYNCING` (catching up with history) or `FOLLOWING` (up to date)
+- `cursor`: Last ingested v2 log ID
+- `sourceLogCount`: Latest known log ID in the v2 source
+- `remainingLogs`: Number of logs remaining to sync (`sourceLogCount - cursor`)
+- `error`: Most recent sync error (null if healthy)
+
+**Sync behavior:** A background worker polls the source for v2 logs and replays them into the mirror ledger. Supported v2 log types:
+- `NEW_TRANSACTION` — Creates a transaction with postings and optional account metadata
+- `SET_METADATA` — Sets metadata on an account or transaction
+- `REVERTED_TRANSACTION` — Replays a revert
+- `DELETE_METADATA` — Deletes a metadata key
+- Unknown log types are recorded as fill-gap entries (no-op for data, preserves log ID sequence)
+
+**Promote a mirror ledger:** `POST /{ledgerName}/promote`
+
+Converts the mirror ledger to normal mode. After promotion:
+- The mirror worker is stopped
+- The ledger accepts direct writes
+- The `mode` changes from `MIRROR` to `NORMAL`
+- The `mirrorSource` configuration is cleared
+
+Promoting a non-mirror ledger returns HTTP 400 (`LEDGER_NOT_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`.
+
+**gRPC:** Both create-mirror and promote operations go through the `Apply` method using `CreateLedgerRequest` (with `mode` and `mirror_source` fields) and `PromoteLedgerRequest`.
+
 ---
 
 ## Missing Features
@@ -387,6 +431,7 @@ Read endpoints comparison with the original ledger:
 | `GET /{ledgerName}/aggregate/balances` | ❌ | ✅ | Balance aggregation |
 | `GET /{ledgerName}/stats` | ❌ | ✅ | Ledger statistics |
 | `GET /{ledgerName}` | ✅ | ✅ | Get ledger info |
+| `POST /{ledgerName}/promote` | ✅ | ❌ | Promote mirror ledger to normal mode |
 | `GET /` | ✅ | ✅ | List all ledgers |
 | `GET /{ledgerName}/metadata-schema` | ✅ | ❌ | Get metadata schema status |
 | `PUT /{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Set metadata field type |
@@ -439,6 +484,8 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `GetTransaction` | Get transaction by ID | ✅ |
 | `StreamLogs` | Stream logs from a ledger | ✅ |
 | `Apply` | Apply a ledger action (write operations) | ✅ |
+| `Apply(CreateLedger)` with mirror mode | Create a mirror ledger | ✅ |
+| `Apply(PromoteLedger)` | Promote mirror ledger to normal mode | ✅ |
 | `Apply(ClosePeriod)` | Close the current open period | ✅ |
 | `ListPeriods` | Stream all periods | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure) | ✅ |
@@ -494,6 +541,8 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
 | Validation error | `INVALID_ARGUMENT` | `VALIDATION` | *(none)* |
 | Audit disabled | `FAILED_PRECONDITION` | `AUDIT_DISABLED` | *(none)* |
+| Ledger in mirror mode | `FAILED_PRECONDITION` | `LEDGER_IN_MIRROR_MODE` | `name` |
+| Ledger not in mirror mode | `FAILED_PRECONDITION` | `LEDGER_NOT_IN_MIRROR_MODE` | `name` |
 
 **Client-side usage (Go):**
 ```go

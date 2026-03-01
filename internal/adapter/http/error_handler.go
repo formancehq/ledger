@@ -13,17 +13,19 @@ import (
 // handleError handles errors and returns appropriate HTTP responses.
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	var (
-		notFoundErr    *commonpb.NotFoundError
-		refConflict    *domain.ErrTransactionReferenceConflict
-		ikConflict     *domain.ErrIdempotencyKeyConflict
-		ledgerExists   *domain.ErrLedgerAlreadyExists
-		ledgerNotFound *domain.ErrLedgerNotFound
-		txNotFound     *domain.ErrTransactionNotFound
-		txReverted     *domain.ErrTransactionAlreadyReverted
-		insufficient   *domain.ErrInsufficientFunds
-		balNotFound    *domain.ErrBalanceNotFound
-		parseErr       *numscript.ErrNumscriptParse
-		metaNotFound   *domain.ErrMetadataNotFound
+		notFoundErr       *commonpb.NotFoundError
+		refConflict       *domain.ErrTransactionReferenceConflict
+		ikConflict        *domain.ErrIdempotencyKeyConflict
+		ledgerExists      *domain.ErrLedgerAlreadyExists
+		ledgerNotFound    *domain.ErrLedgerNotFound
+		ledgerInMirror    *domain.ErrLedgerInMirrorMode
+		ledgerNotInMirror *domain.ErrLedgerNotInMirrorMode
+		txNotFound        *domain.ErrTransactionNotFound
+		txReverted        *domain.ErrTransactionAlreadyReverted
+		insufficient      *domain.ErrInsufficientFunds
+		balNotFound       *domain.ErrBalanceNotFound
+		parseErr          *numscript.ErrNumscriptParse
+		metaNotFound      *domain.ErrMetadataNotFound
 	)
 
 	switch {
@@ -39,6 +41,12 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.As(err, &ledgerNotFound):
 		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
+
+	case errors.As(err, &ledgerInMirror):
+		writeErrorResponse(w, http.StatusConflict, "LEDGER_IN_MIRROR_MODE", err)
+
+	case errors.As(err, &ledgerNotInMirror):
+		writeErrorResponse(w, http.StatusBadRequest, "LEDGER_NOT_IN_MIRROR_MODE", err)
 
 	case errors.As(err, &refConflict):
 		writeErrorResponse(w, http.StatusConflict, "CONFLICT", err)

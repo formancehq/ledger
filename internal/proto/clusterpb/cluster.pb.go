@@ -74,6 +74,7 @@ type NodeInfo struct {
 	Progress       *ProgressInfo          `protobuf:"bytes,3,opt,name=progress,proto3" json:"progress,omitempty"`                                   // Progress information (only available when querying leader)
 	RaftAddress    string                 `protobuf:"bytes,4,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"`          // Raft transport address
 	ServiceAddress string                 `protobuf:"bytes,5,opt,name=service_address,json=serviceAddress,proto3" json:"service_address,omitempty"` // Service API address
+	SyncProgress   *SyncProgress          `protobuf:"bytes,6,opt,name=sync_progress,json=syncProgress,proto3" json:"sync_progress,omitempty"`       // Checkpoint sync progress (populated by leader querying each node)
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -141,6 +142,13 @@ func (x *NodeInfo) GetServiceAddress() string {
 		return x.ServiceAddress
 	}
 	return ""
+}
+
+func (x *NodeInfo) GetSyncProgress() *SyncProgress {
+	if x != nil {
+		return x.SyncProgress
+	}
+	return nil
 }
 
 // ProgressInfo represents the progress information for a node
@@ -354,6 +362,7 @@ type ClusterState struct {
 	LocalNode       uint32                 `protobuf:"varint,4,opt,name=local_node,json=localNode,proto3" json:"local_node,omitempty"`                   // ID of the local node
 	RaftStatus      *RaftStatus            `protobuf:"bytes,5,opt,name=raft_status,json=raftStatus,proto3" json:"raft_status,omitempty"`                 // Complete Raft status information
 	MaintenanceMode bool                   `protobuf:"varint,6,opt,name=maintenance_mode,json=maintenanceMode,proto3" json:"maintenance_mode,omitempty"` // Whether maintenance mode is active
+	SyncProgress    *SyncProgress          `protobuf:"bytes,7,opt,name=sync_progress,json=syncProgress,proto3" json:"sync_progress,omitempty"`           // Local node checkpoint sync progress
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -430,6 +439,82 @@ func (x *ClusterState) GetMaintenanceMode() bool {
 	return false
 }
 
+func (x *ClusterState) GetSyncProgress() *SyncProgress {
+	if x != nil {
+		return x.SyncProgress
+	}
+	return nil
+}
+
+// SyncProgress tracks the progress of a checkpoint fetch on the local node.
+type SyncProgress struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`                                     // "normal", "syncing", "snapshotting", "out_of_sync"
+	BytesReceived uint64                 `protobuf:"varint,2,opt,name=bytes_received,json=bytesReceived,proto3" json:"bytes_received,omitempty"` // Bytes received so far during checkpoint fetch
+	BytesTotal    uint64                 `protobuf:"varint,3,opt,name=bytes_total,json=bytesTotal,proto3" json:"bytes_total,omitempty"`          // Total bytes to fetch (0 if unknown)
+	CheckpointId  uint64                 `protobuf:"varint,4,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`    // Checkpoint ID being fetched
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SyncProgress) Reset() {
+	*x = SyncProgress{}
+	mi := &file_cluster_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SyncProgress) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SyncProgress) ProtoMessage() {}
+
+func (x *SyncProgress) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SyncProgress.ProtoReflect.Descriptor instead.
+func (*SyncProgress) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SyncProgress) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *SyncProgress) GetBytesReceived() uint64 {
+	if x != nil {
+		return x.BytesReceived
+	}
+	return 0
+}
+
+func (x *SyncProgress) GetBytesTotal() uint64 {
+	if x != nil {
+		return x.BytesTotal
+	}
+	return 0
+}
+
+func (x *SyncProgress) GetCheckpointId() uint64 {
+	if x != nil {
+		return x.CheckpointId
+	}
+	return 0
+}
+
 type TransferLeadershipRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Transferee    uint32                 `protobuf:"varint,1,opt,name=transferee,proto3" json:"transferee,omitempty"` // Target node ID
@@ -439,7 +524,7 @@ type TransferLeadershipRequest struct {
 
 func (x *TransferLeadershipRequest) Reset() {
 	*x = TransferLeadershipRequest{}
-	mi := &file_cluster_proto_msgTypes[5]
+	mi := &file_cluster_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -451,7 +536,7 @@ func (x *TransferLeadershipRequest) String() string {
 func (*TransferLeadershipRequest) ProtoMessage() {}
 
 func (x *TransferLeadershipRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[5]
+	mi := &file_cluster_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -464,7 +549,7 @@ func (x *TransferLeadershipRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferLeadershipRequest.ProtoReflect.Descriptor instead.
 func (*TransferLeadershipRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{5}
+	return file_cluster_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *TransferLeadershipRequest) GetTransferee() uint32 {
@@ -483,7 +568,7 @@ type TransferLeadershipResponse struct {
 
 func (x *TransferLeadershipResponse) Reset() {
 	*x = TransferLeadershipResponse{}
-	mi := &file_cluster_proto_msgTypes[6]
+	mi := &file_cluster_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -495,7 +580,7 @@ func (x *TransferLeadershipResponse) String() string {
 func (*TransferLeadershipResponse) ProtoMessage() {}
 
 func (x *TransferLeadershipResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[6]
+	mi := &file_cluster_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -508,7 +593,7 @@ func (x *TransferLeadershipResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransferLeadershipResponse.ProtoReflect.Descriptor instead.
 func (*TransferLeadershipResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{6}
+	return file_cluster_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *TransferLeadershipResponse) GetNewLeader() uint32 {
@@ -526,7 +611,7 @@ type GetDiskUsageRequest struct {
 
 func (x *GetDiskUsageRequest) Reset() {
 	*x = GetDiskUsageRequest{}
-	mi := &file_cluster_proto_msgTypes[7]
+	mi := &file_cluster_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -538,7 +623,7 @@ func (x *GetDiskUsageRequest) String() string {
 func (*GetDiskUsageRequest) ProtoMessage() {}
 
 func (x *GetDiskUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[7]
+	mi := &file_cluster_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -551,7 +636,7 @@ func (x *GetDiskUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDiskUsageRequest.ProtoReflect.Descriptor instead.
 func (*GetDiskUsageRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{7}
+	return file_cluster_proto_rawDescGZIP(), []int{8}
 }
 
 type GetNodeTimeRequest struct {
@@ -562,7 +647,7 @@ type GetNodeTimeRequest struct {
 
 func (x *GetNodeTimeRequest) Reset() {
 	*x = GetNodeTimeRequest{}
-	mi := &file_cluster_proto_msgTypes[8]
+	mi := &file_cluster_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -574,7 +659,7 @@ func (x *GetNodeTimeRequest) String() string {
 func (*GetNodeTimeRequest) ProtoMessage() {}
 
 func (x *GetNodeTimeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[8]
+	mi := &file_cluster_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -587,7 +672,7 @@ func (x *GetNodeTimeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNodeTimeRequest.ProtoReflect.Descriptor instead.
 func (*GetNodeTimeRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{8}
+	return file_cluster_proto_rawDescGZIP(), []int{9}
 }
 
 // NodeTime represents the current physical clock time of a node
@@ -600,7 +685,7 @@ type NodeTime struct {
 
 func (x *NodeTime) Reset() {
 	*x = NodeTime{}
-	mi := &file_cluster_proto_msgTypes[9]
+	mi := &file_cluster_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -612,7 +697,7 @@ func (x *NodeTime) String() string {
 func (*NodeTime) ProtoMessage() {}
 
 func (x *NodeTime) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[9]
+	mi := &file_cluster_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -625,7 +710,7 @@ func (x *NodeTime) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeTime.ProtoReflect.Descriptor instead.
 func (*NodeTime) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{9}
+	return file_cluster_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *NodeTime) GetTimestampUs() uint64 {
@@ -651,7 +736,7 @@ type DiskUsage struct {
 
 func (x *DiskUsage) Reset() {
 	*x = DiskUsage{}
-	mi := &file_cluster_proto_msgTypes[10]
+	mi := &file_cluster_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -663,7 +748,7 @@ func (x *DiskUsage) String() string {
 func (*DiskUsage) ProtoMessage() {}
 
 func (x *DiskUsage) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[10]
+	mi := &file_cluster_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -676,7 +761,7 @@ func (x *DiskUsage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiskUsage.ProtoReflect.Descriptor instead.
 func (*DiskUsage) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{10}
+	return file_cluster_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DiskUsage) GetSpoolBytes() int64 {
@@ -739,7 +824,7 @@ type AddLearnerRequest struct {
 
 func (x *AddLearnerRequest) Reset() {
 	*x = AddLearnerRequest{}
-	mi := &file_cluster_proto_msgTypes[11]
+	mi := &file_cluster_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -751,7 +836,7 @@ func (x *AddLearnerRequest) String() string {
 func (*AddLearnerRequest) ProtoMessage() {}
 
 func (x *AddLearnerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[11]
+	mi := &file_cluster_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -764,7 +849,7 @@ func (x *AddLearnerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddLearnerRequest.ProtoReflect.Descriptor instead.
 func (*AddLearnerRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{11}
+	return file_cluster_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *AddLearnerRequest) GetNodeId() uint64 {
@@ -796,7 +881,7 @@ type AddLearnerResponse struct {
 
 func (x *AddLearnerResponse) Reset() {
 	*x = AddLearnerResponse{}
-	mi := &file_cluster_proto_msgTypes[12]
+	mi := &file_cluster_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -808,7 +893,7 @@ func (x *AddLearnerResponse) String() string {
 func (*AddLearnerResponse) ProtoMessage() {}
 
 func (x *AddLearnerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[12]
+	mi := &file_cluster_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -821,7 +906,7 @@ func (x *AddLearnerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddLearnerResponse.ProtoReflect.Descriptor instead.
 func (*AddLearnerResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{12}
+	return file_cluster_proto_rawDescGZIP(), []int{13}
 }
 
 type PromoteLearnerRequest struct {
@@ -833,7 +918,7 @@ type PromoteLearnerRequest struct {
 
 func (x *PromoteLearnerRequest) Reset() {
 	*x = PromoteLearnerRequest{}
-	mi := &file_cluster_proto_msgTypes[13]
+	mi := &file_cluster_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -845,7 +930,7 @@ func (x *PromoteLearnerRequest) String() string {
 func (*PromoteLearnerRequest) ProtoMessage() {}
 
 func (x *PromoteLearnerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[13]
+	mi := &file_cluster_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -858,7 +943,7 @@ func (x *PromoteLearnerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PromoteLearnerRequest.ProtoReflect.Descriptor instead.
 func (*PromoteLearnerRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{13}
+	return file_cluster_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *PromoteLearnerRequest) GetNodeId() uint64 {
@@ -876,7 +961,7 @@ type PromoteLearnerResponse struct {
 
 func (x *PromoteLearnerResponse) Reset() {
 	*x = PromoteLearnerResponse{}
-	mi := &file_cluster_proto_msgTypes[14]
+	mi := &file_cluster_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -888,7 +973,7 @@ func (x *PromoteLearnerResponse) String() string {
 func (*PromoteLearnerResponse) ProtoMessage() {}
 
 func (x *PromoteLearnerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[14]
+	mi := &file_cluster_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -901,7 +986,7 @@ func (x *PromoteLearnerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PromoteLearnerResponse.ProtoReflect.Descriptor instead.
 func (*PromoteLearnerResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{14}
+	return file_cluster_proto_rawDescGZIP(), []int{15}
 }
 
 type RemoveNodeRequest struct {
@@ -913,7 +998,7 @@ type RemoveNodeRequest struct {
 
 func (x *RemoveNodeRequest) Reset() {
 	*x = RemoveNodeRequest{}
-	mi := &file_cluster_proto_msgTypes[15]
+	mi := &file_cluster_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -925,7 +1010,7 @@ func (x *RemoveNodeRequest) String() string {
 func (*RemoveNodeRequest) ProtoMessage() {}
 
 func (x *RemoveNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[15]
+	mi := &file_cluster_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -938,7 +1023,7 @@ func (x *RemoveNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveNodeRequest.ProtoReflect.Descriptor instead.
 func (*RemoveNodeRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{15}
+	return file_cluster_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *RemoveNodeRequest) GetNodeId() uint64 {
@@ -956,7 +1041,7 @@ type RemoveNodeResponse struct {
 
 func (x *RemoveNodeResponse) Reset() {
 	*x = RemoveNodeResponse{}
-	mi := &file_cluster_proto_msgTypes[16]
+	mi := &file_cluster_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -968,7 +1053,7 @@ func (x *RemoveNodeResponse) String() string {
 func (*RemoveNodeResponse) ProtoMessage() {}
 
 func (x *RemoveNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[16]
+	mi := &file_cluster_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -981,7 +1066,7 @@ func (x *RemoveNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveNodeResponse.ProtoReflect.Descriptor instead.
 func (*RemoveNodeResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{16}
+	return file_cluster_proto_rawDescGZIP(), []int{17}
 }
 
 type BackupRequest struct {
@@ -992,7 +1077,7 @@ type BackupRequest struct {
 
 func (x *BackupRequest) Reset() {
 	*x = BackupRequest{}
-	mi := &file_cluster_proto_msgTypes[17]
+	mi := &file_cluster_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1004,7 +1089,7 @@ func (x *BackupRequest) String() string {
 func (*BackupRequest) ProtoMessage() {}
 
 func (x *BackupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[17]
+	mi := &file_cluster_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1017,7 +1102,7 @@ func (x *BackupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackupRequest.ProtoReflect.Descriptor instead.
 func (*BackupRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{17}
+	return file_cluster_proto_rawDescGZIP(), []int{18}
 }
 
 type BackupResponse struct {
@@ -1033,7 +1118,7 @@ type BackupResponse struct {
 
 func (x *BackupResponse) Reset() {
 	*x = BackupResponse{}
-	mi := &file_cluster_proto_msgTypes[18]
+	mi := &file_cluster_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1045,7 +1130,7 @@ func (x *BackupResponse) String() string {
 func (*BackupResponse) ProtoMessage() {}
 
 func (x *BackupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_proto_msgTypes[18]
+	mi := &file_cluster_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1058,7 +1143,7 @@ func (x *BackupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackupResponse.ProtoReflect.Descriptor instead.
 func (*BackupResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_proto_rawDescGZIP(), []int{18}
+	return file_cluster_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *BackupResponse) GetChunkOffset() uint64 {
@@ -1102,13 +1187,14 @@ const file_cluster_proto_rawDesc = "" +
 	"\n" +
 	"\rcluster.proto\x12\acluster\"1\n" +
 	"\x16GetClusterStateRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\rR\x06nodeId\"\xb5\x01\n" +
+	"\anode_id\x18\x01 \x01(\rR\x06nodeId\"\xf1\x01\n" +
 	"\bNodeInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x1a\n" +
 	"\bsuffrage\x18\x02 \x01(\tR\bsuffrage\x121\n" +
 	"\bprogress\x18\x03 \x01(\v2\x15.cluster.ProgressInfoR\bprogress\x12!\n" +
 	"\fraft_address\x18\x04 \x01(\tR\vraftAddress\x12'\n" +
-	"\x0fservice_address\x18\x05 \x01(\tR\x0eserviceAddress\"\xf9\x01\n" +
+	"\x0fservice_address\x18\x05 \x01(\tR\x0eserviceAddress\x12:\n" +
+	"\rsync_progress\x18\x06 \x01(\v2\x15.cluster.SyncProgressR\fsyncProgress\"\xf9\x01\n" +
 	"\fProgressInfo\x12\x14\n" +
 	"\x05match\x18\x01 \x01(\x04R\x05match\x12\x12\n" +
 	"\x04next\x18\x02 \x01(\x04R\x04next\x12\x14\n" +
@@ -1133,7 +1219,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\bprogress\x18\b \x03(\v2!.cluster.RaftStatus.ProgressEntryR\bprogress\x1aR\n" +
 	"\rProgressEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.cluster.ProgressInfoR\x05value:\x028\x01\"\xe5\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.cluster.ProgressInfoR\x05value:\x028\x01\"\xa1\x02\n" +
 	"\fClusterState\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x16\n" +
 	"\x06leader\x18\x02 \x01(\rR\x06leader\x12'\n" +
@@ -1142,7 +1228,14 @@ const file_cluster_proto_rawDesc = "" +
 	"local_node\x18\x04 \x01(\rR\tlocalNode\x124\n" +
 	"\vraft_status\x18\x05 \x01(\v2\x13.cluster.RaftStatusR\n" +
 	"raftStatus\x12)\n" +
-	"\x10maintenance_mode\x18\x06 \x01(\bR\x0fmaintenanceMode\";\n" +
+	"\x10maintenance_mode\x18\x06 \x01(\bR\x0fmaintenanceMode\x12:\n" +
+	"\rsync_progress\x18\a \x01(\v2\x15.cluster.SyncProgressR\fsyncProgress\"\x93\x01\n" +
+	"\fSyncProgress\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12%\n" +
+	"\x0ebytes_received\x18\x02 \x01(\x04R\rbytesReceived\x12\x1f\n" +
+	"\vbytes_total\x18\x03 \x01(\x04R\n" +
+	"bytesTotal\x12#\n" +
+	"\rcheckpoint_id\x18\x04 \x01(\x04R\fcheckpointId\";\n" +
 	"\x19TransferLeadershipRequest\x12\x1e\n" +
 	"\n" +
 	"transferee\x18\x01 \x01(\rR\n" +
@@ -1206,56 +1299,59 @@ func file_cluster_proto_rawDescGZIP() []byte {
 	return file_cluster_proto_rawDescData
 }
 
-var file_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_cluster_proto_goTypes = []any{
 	(*GetClusterStateRequest)(nil),     // 0: cluster.GetClusterStateRequest
 	(*NodeInfo)(nil),                   // 1: cluster.NodeInfo
 	(*ProgressInfo)(nil),               // 2: cluster.ProgressInfo
 	(*RaftStatus)(nil),                 // 3: cluster.RaftStatus
 	(*ClusterState)(nil),               // 4: cluster.ClusterState
-	(*TransferLeadershipRequest)(nil),  // 5: cluster.TransferLeadershipRequest
-	(*TransferLeadershipResponse)(nil), // 6: cluster.TransferLeadershipResponse
-	(*GetDiskUsageRequest)(nil),        // 7: cluster.GetDiskUsageRequest
-	(*GetNodeTimeRequest)(nil),         // 8: cluster.GetNodeTimeRequest
-	(*NodeTime)(nil),                   // 9: cluster.NodeTime
-	(*DiskUsage)(nil),                  // 10: cluster.DiskUsage
-	(*AddLearnerRequest)(nil),          // 11: cluster.AddLearnerRequest
-	(*AddLearnerResponse)(nil),         // 12: cluster.AddLearnerResponse
-	(*PromoteLearnerRequest)(nil),      // 13: cluster.PromoteLearnerRequest
-	(*PromoteLearnerResponse)(nil),     // 14: cluster.PromoteLearnerResponse
-	(*RemoveNodeRequest)(nil),          // 15: cluster.RemoveNodeRequest
-	(*RemoveNodeResponse)(nil),         // 16: cluster.RemoveNodeResponse
-	(*BackupRequest)(nil),              // 17: cluster.BackupRequest
-	(*BackupResponse)(nil),             // 18: cluster.BackupResponse
-	nil,                                // 19: cluster.RaftStatus.ProgressEntry
+	(*SyncProgress)(nil),               // 5: cluster.SyncProgress
+	(*TransferLeadershipRequest)(nil),  // 6: cluster.TransferLeadershipRequest
+	(*TransferLeadershipResponse)(nil), // 7: cluster.TransferLeadershipResponse
+	(*GetDiskUsageRequest)(nil),        // 8: cluster.GetDiskUsageRequest
+	(*GetNodeTimeRequest)(nil),         // 9: cluster.GetNodeTimeRequest
+	(*NodeTime)(nil),                   // 10: cluster.NodeTime
+	(*DiskUsage)(nil),                  // 11: cluster.DiskUsage
+	(*AddLearnerRequest)(nil),          // 12: cluster.AddLearnerRequest
+	(*AddLearnerResponse)(nil),         // 13: cluster.AddLearnerResponse
+	(*PromoteLearnerRequest)(nil),      // 14: cluster.PromoteLearnerRequest
+	(*PromoteLearnerResponse)(nil),     // 15: cluster.PromoteLearnerResponse
+	(*RemoveNodeRequest)(nil),          // 16: cluster.RemoveNodeRequest
+	(*RemoveNodeResponse)(nil),         // 17: cluster.RemoveNodeResponse
+	(*BackupRequest)(nil),              // 18: cluster.BackupRequest
+	(*BackupResponse)(nil),             // 19: cluster.BackupResponse
+	nil,                                // 20: cluster.RaftStatus.ProgressEntry
 }
 var file_cluster_proto_depIdxs = []int32{
 	2,  // 0: cluster.NodeInfo.progress:type_name -> cluster.ProgressInfo
-	19, // 1: cluster.RaftStatus.progress:type_name -> cluster.RaftStatus.ProgressEntry
-	1,  // 2: cluster.ClusterState.nodes:type_name -> cluster.NodeInfo
-	3,  // 3: cluster.ClusterState.raft_status:type_name -> cluster.RaftStatus
-	2,  // 4: cluster.RaftStatus.ProgressEntry.value:type_name -> cluster.ProgressInfo
-	0,  // 5: cluster.ClusterService.GetClusterState:input_type -> cluster.GetClusterStateRequest
-	7,  // 6: cluster.ClusterService.GetDiskUsage:input_type -> cluster.GetDiskUsageRequest
-	8,  // 7: cluster.ClusterService.GetNodeTime:input_type -> cluster.GetNodeTimeRequest
-	5,  // 8: cluster.ClusterService.TransferLeadership:input_type -> cluster.TransferLeadershipRequest
-	17, // 9: cluster.ClusterService.Backup:input_type -> cluster.BackupRequest
-	11, // 10: cluster.ClusterService.AddLearner:input_type -> cluster.AddLearnerRequest
-	13, // 11: cluster.ClusterService.PromoteLearner:input_type -> cluster.PromoteLearnerRequest
-	15, // 12: cluster.ClusterService.RemoveNode:input_type -> cluster.RemoveNodeRequest
-	4,  // 13: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
-	10, // 14: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
-	9,  // 15: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
-	6,  // 16: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
-	18, // 17: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
-	12, // 18: cluster.ClusterService.AddLearner:output_type -> cluster.AddLearnerResponse
-	14, // 19: cluster.ClusterService.PromoteLearner:output_type -> cluster.PromoteLearnerResponse
-	16, // 20: cluster.ClusterService.RemoveNode:output_type -> cluster.RemoveNodeResponse
-	13, // [13:21] is the sub-list for method output_type
-	5,  // [5:13] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	5,  // 1: cluster.NodeInfo.sync_progress:type_name -> cluster.SyncProgress
+	20, // 2: cluster.RaftStatus.progress:type_name -> cluster.RaftStatus.ProgressEntry
+	1,  // 3: cluster.ClusterState.nodes:type_name -> cluster.NodeInfo
+	3,  // 4: cluster.ClusterState.raft_status:type_name -> cluster.RaftStatus
+	5,  // 5: cluster.ClusterState.sync_progress:type_name -> cluster.SyncProgress
+	2,  // 6: cluster.RaftStatus.ProgressEntry.value:type_name -> cluster.ProgressInfo
+	0,  // 7: cluster.ClusterService.GetClusterState:input_type -> cluster.GetClusterStateRequest
+	8,  // 8: cluster.ClusterService.GetDiskUsage:input_type -> cluster.GetDiskUsageRequest
+	9,  // 9: cluster.ClusterService.GetNodeTime:input_type -> cluster.GetNodeTimeRequest
+	6,  // 10: cluster.ClusterService.TransferLeadership:input_type -> cluster.TransferLeadershipRequest
+	18, // 11: cluster.ClusterService.Backup:input_type -> cluster.BackupRequest
+	12, // 12: cluster.ClusterService.AddLearner:input_type -> cluster.AddLearnerRequest
+	14, // 13: cluster.ClusterService.PromoteLearner:input_type -> cluster.PromoteLearnerRequest
+	16, // 14: cluster.ClusterService.RemoveNode:input_type -> cluster.RemoveNodeRequest
+	4,  // 15: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
+	11, // 16: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
+	10, // 17: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
+	7,  // 18: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
+	19, // 19: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
+	13, // 20: cluster.ClusterService.AddLearner:output_type -> cluster.AddLearnerResponse
+	15, // 21: cluster.ClusterService.PromoteLearner:output_type -> cluster.PromoteLearnerResponse
+	17, // 22: cluster.ClusterService.RemoveNode:output_type -> cluster.RemoveNodeResponse
+	15, // [15:23] is the sub-list for method output_type
+	7,  // [7:15] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_cluster_proto_init() }
@@ -1269,7 +1365,7 @@ func file_cluster_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cluster_proto_rawDesc), len(file_cluster_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

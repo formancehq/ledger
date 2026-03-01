@@ -45,6 +45,8 @@ message Order {
     SetPeriodScheduleOrder set_period_schedule = 16;
     DeletePeriodScheduleOrder delete_period_schedule = 17;
     SetAuditConfigOrder set_audit_config = 18;
+    MirrorIngestOrder mirror_ingest = 19;
+    PromoteLedgerOrder promote_ledger = 20;
   }
   signature.RequestSignature signature = 5;
 }
@@ -105,6 +107,59 @@ message SetAuditConfigOrder {
 message CreateLedgerOrder {
   string name = 1;
   repeated common.SetMetadataFieldTypeCommand initial_schema = 3;
+  common.LedgerMode mode = 4;
+  common.MirrorSourceConfig mirror_source = 5;
+}
+
+message MirrorIngestOrder {
+  string ledger = 1;
+  MirrorLogEntry entry = 2;
+}
+
+message MirrorLogEntry {
+  uint64 v2_log_id = 1;
+  oneof data {
+    MirrorCreatedTransaction created_transaction = 2;
+    MirrorSavedMetadata saved_metadata = 3;
+    MirrorRevertedTransaction reverted_transaction = 4;
+    MirrorDeletedMetadata deleted_metadata = 5;
+    MirrorFillGap fill_gap = 6;
+  }
+}
+
+message MirrorFillGap {
+  repeated uint64 skipped_transaction_ids = 1;
+}
+
+message MirrorCreatedTransaction {
+  uint64 transaction_id = 1;
+  repeated common.Posting postings = 2;
+  common.MetadataSet metadata = 3;
+  common.Timestamp timestamp = 4;
+  string reference = 5;
+  map<string, common.MetadataSet> account_metadata = 6;
+}
+
+message MirrorSavedMetadata {
+  common.Target target = 1;
+  common.MetadataSet metadata = 2;
+}
+
+message MirrorRevertedTransaction {
+  uint64 reverted_transaction_id = 1;
+  uint64 new_transaction_id = 2;
+  repeated common.Posting reverse_postings = 3;
+  common.MetadataSet metadata = 4;
+  common.Timestamp timestamp = 5;
+}
+
+message MirrorDeletedMetadata {
+  common.Target target = 1;
+  string key = 2;
+}
+
+message PromoteLedgerOrder {
+  string ledger = 1;
 }
 
 message DeleteLedgerOrder {
@@ -199,6 +254,15 @@ message Proposal {
   PreloadSet preload = 4;
   repeated EventsSinkUpdate events_sink_updates = 5;  // Per-sink cursor and error updates (Raft-replicated)
   bool create_checkpoint = 6;       // When true, enter maintenance mode and create a Pebble checkpoint
+  repeated MirrorSyncUpdate mirror_sync_updates = 7;  // Per-ledger mirror cursor and error updates (Raft-replicated)
+}
+
+message MirrorSyncUpdate {
+  string ledger_name = 1;
+  uint64 cursor = 2;
+  common.MirrorSyncError error = 3;
+  bool clear_error = 4;
+  uint64 source_log_count = 5;  // Latest known log ID in v2 source
 }
 
 // EventsSinkUpdate carries a per-sink cursor advance or error status change.
@@ -334,6 +398,23 @@ message MemorySnapshot {
   uint64 next_period_id = 12;
   repeated common.Period closed_periods = 13;  // CLOSED + ARCHIVED periods (non-purged)
   repeated ReversionBitsetEntry reversions = 14;  // Per-ledger reversion bitsets
+  reserved 15;                                     // Was: repeated PeerAddress peer_addresses (moved to NodeSnapshot)
+}
+
+// NodeSnapshot wraps the FSM snapshot with cluster-level metadata.
+// The Node layer serializes/deserializes this; the FSM only sees its own bytes.
+message NodeSnapshot {
+  bytes fsm_snapshot = 1;
+  repeated PeerAddress peer_addresses = 2;
+  bool is_reference = 3;    // When true, fsm_snapshot is empty — fetch via FetchMemorySnapshot RPC
+  uint64 size_hint = 4;     // Approximate size of the full snapshot (only set when is_reference=true)
+}
+
+// PeerAddress stores a peer's raft and service addresses in snapshots.
+message PeerAddress {
+  uint64 node_id = 1;
+  string raft_address = 2;
+  string service_address = 3;
 }
 
 message GenerationSnapshot {

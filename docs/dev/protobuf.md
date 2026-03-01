@@ -11,6 +11,7 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 | `raft_transport.proto` | Raft transport messages |
 | `common.proto` | Common types (Posting, Transaction, Log, Uint256, etc.) |
 | `raftcmd.proto` | FSM command types (CreateLedger, DeleteLedger, CreateLog, etc.) |
+| `bucket.proto` | Bucket service (includes mirror sync, promote) |
 | `service.proto` | gRPC service definitions (LedgerService) |
 | `cluster.proto` | Cluster management (ClusterService) |
 | `snapshot.proto` | Snapshot service definitions |
@@ -94,6 +95,25 @@ All monetary amounts use the `Uint256` protobuf message - a fixed-size 4 x `fixe
 **Key file**: `internal/proto/commonpb/uint256.go` (`IntoUint256()`, `SetFromUint256()`, `ToBigInt()`, `IsZero()`, `Dec()`)
 
 See [architecture/uint256-wire-format.md](./architecture/uint256-wire-format.md) for the full design rationale.
+
+## Mirror-Related Proto Types
+
+Mirror mode introduces several protobuf types across multiple files:
+
+**`common.proto`:**
+- `LedgerMode` enum — `LEDGER_MODE_NORMAL`, `LEDGER_MODE_MIRROR`
+- `MirrorSourceConfig` — oneof with `HttpMirrorSourceConfig` and `PostgresMirrorSourceConfig`
+- `LedgerInfo.mode` and `LedgerInfo.mirror_source` fields
+
+**`raft_cmd.proto`:**
+- `MirrorIngestOrder` — Raft command to ingest a translated v2 log entry
+- `MirrorLogEntry` — Wrapper for a single v2 log entry (oneof: `CreatedTransaction`, `SavedMetadata`, `DeletedMetadata`, `RevertedTransaction`, `FillGap`)
+- `PromoteLedgerOrder` — Raft command to promote a mirror ledger to normal mode
+
+**`bucket.proto`:**
+- `CreateLedgerRequest.mode` and `CreateLedgerRequest.mirror_source` fields
+- `PromoteLedgerRequest` — gRPC request to promote a mirror ledger
+- `MirrorSyncUpdate` — Streaming update from the mirror worker (progress reporting)
 
 ## Adding New Command Models
 

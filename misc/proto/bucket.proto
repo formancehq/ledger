@@ -43,6 +43,8 @@ service BucketService {
   rpc ListPeriods(ListPeriodsRequest) returns (stream common.Period);
   // ListLogs streams system logs
   rpc ListLogs(ListLogsRequest) returns (stream common.Log);
+  // GetLog returns a single system log by sequence number
+  rpc GetLog(GetLogRequest) returns (common.Log);
   // GetPeriodSchedule returns the current automatic period rotation schedule
   rpc GetPeriodSchedule(GetPeriodScheduleRequest) returns (GetPeriodScheduleResponse);
   // ListSigningKeys streams all registered signing keys
@@ -94,6 +96,8 @@ message ListAccountsRequest {
 message CreateLedgerRequest {
   string name = 1;
   repeated common.SetMetadataFieldTypeCommand initial_schema = 3;
+  common.LedgerMode mode = 4;
+  common.MirrorSourceConfig mirror_source = 5;
 }
 
 message DeleteLedgerRequest {
@@ -140,8 +144,13 @@ message Request {
     SetMetadataFieldTypeRequest set_metadata_field_type = 18;
     RemoveMetadataFieldTypeRequest remove_metadata_field_type = 19;
     SetAuditConfigRequest set_audit_config = 20;
+    PromoteLedgerRequest promote_ledger = 21;
   }
   signature.RequestSignature signature = 5;
+}
+
+message PromoteLedgerRequest {
+  string ledger = 1;
 }
 
 // AddEventsSinkRequest adds or updates a named sink configuration.
@@ -473,6 +482,10 @@ message GetAuditEntryRequest {
 message ListLogsRequest {
   optional uint64 after_sequence = 1;
   uint32 page_size = 2;
+}
+
+message GetLogRequest {
+  uint64 sequence = 1;
 }
 
 // ============================================================================

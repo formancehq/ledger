@@ -462,3 +462,41 @@ func (c *MockWALTermCall) DoAndReturn(f func(uint64) (uint64, error)) *MockWALTe
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
+
+// UpdateSnapshotConfState mocks base method.
+func (m *MockWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateSnapshotConfState", cs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateSnapshotConfState indicates an expected call of UpdateSnapshotConfState.
+func (mr *MockWALMockRecorder) UpdateSnapshotConfState(cs any) *MockWALUpdateSnapshotConfStateCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSnapshotConfState", reflect.TypeOf((*MockWAL)(nil).UpdateSnapshotConfState), cs)
+	return &MockWALUpdateSnapshotConfStateCall{Call: call}
+}
+
+// MockWALUpdateSnapshotConfStateCall wrap *gomock.Call
+type MockWALUpdateSnapshotConfStateCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockWALUpdateSnapshotConfStateCall) Return(arg0 error) *MockWALUpdateSnapshotConfStateCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockWALUpdateSnapshotConfStateCall) Do(f func(*raftpb.ConfState) error) *MockWALUpdateSnapshotConfStateCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockWALUpdateSnapshotConfStateCall) DoAndReturn(f func(*raftpb.ConfState) error) *MockWALUpdateSnapshotConfStateCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}

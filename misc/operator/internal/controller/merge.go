@@ -55,6 +55,11 @@ func applyDefaultsFromRef(spec *ledgerv1alpha1.LedgerServiceSpec, defaults *ledg
 	if spec.NodeSelector == nil {
 		spec.NodeSelector = defaults.NodeSelector
 	}
+
+	// Persistence: merge at field level so LedgerService can override individual fields.
+	if defaults.Persistence != nil {
+		mergePersistence(&spec.Persistence, defaults.Persistence)
+	}
 }
 
 // mergeImageSpec merges default image values into spec where spec fields are zero.
@@ -128,6 +133,31 @@ func mergeColdStorageConfig(spec **ledgerv1alpha1.ColdStorageConfig, defaults *l
 	}
 	if (*spec).S3 == nil {
 		(*spec).S3 = defaults.S3
+	}
+}
+
+// mergePersistence merges default persistence values into spec at field level.
+func mergePersistence(spec *ledgerv1alpha1.PersistenceSpec, defaults *ledgerv1alpha1.PersistenceSpec) {
+	if spec.RetentionPolicy == nil {
+		spec.RetentionPolicy = defaults.RetentionPolicy
+	}
+	if spec.WAL.StorageClass == "" {
+		spec.WAL.StorageClass = defaults.WAL.StorageClass
+	}
+	if spec.WAL.AccessMode == "" {
+		spec.WAL.AccessMode = defaults.WAL.AccessMode
+	}
+	if spec.WAL.Size.IsZero() {
+		spec.WAL.Size = defaults.WAL.Size
+	}
+	if spec.Data.StorageClass == "" {
+		spec.Data.StorageClass = defaults.Data.StorageClass
+	}
+	if spec.Data.AccessMode == "" {
+		spec.Data.AccessMode = defaults.Data.AccessMode
+	}
+	if spec.Data.Size.IsZero() {
+		spec.Data.Size = defaults.Data.Size
 	}
 }
 

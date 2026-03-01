@@ -29,10 +29,10 @@ rules:
 - apiGroups: [""]
   resources: ["pods/log"]
   verbs: ["get"]
-# Pod exec - create for terminal access
+# Pod exec - get+create for terminal access (get is needed for WebSocket upgrade)
 - apiGroups: [""]
   resources: ["pods/exec"]
-  verbs: ["create"]
+  verbs: ["get", "create"]
 # Namespaces - list for namespace selector
 - apiGroups: [""]
   resources: ["namespaces"]

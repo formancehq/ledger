@@ -172,6 +172,10 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s InMemoryStore)
 		return p.processSetPeriodSchedule(orderType.SetPeriodSchedule, s)
 	case *raftcmdpb.Order_DeletePeriodSchedule:
 		return p.processDeletePeriodSchedule(s)
+	case *raftcmdpb.Order_MirrorIngest:
+		return p.processMirrorIngest(orderType.MirrorIngest, s)
+	case *raftcmdpb.Order_PromoteLedger:
+		return p.processPromoteLedger(orderType.PromoteLedger, s)
 	default:
 		return nil, fmt.Errorf("invalid order type")
 	}

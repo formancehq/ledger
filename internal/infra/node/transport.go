@@ -10,6 +10,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/rafttransportpb"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -30,6 +31,28 @@ type Transport interface {
 	RecvMediumPriority() <-chan []raftpb.Message
 	RecvLowPriority() <-chan []raftpb.Message
 	Send(msg []raftpb.Message)
+}
+
+const (
+	// snapshotChunkingThreshold is the size above which a MsgSnap's data
+	// is replaced with a lightweight reference. The follower fetches the
+	// full data via the FetchMemorySnapshot streaming RPC.
+	snapshotChunkingThreshold = 32 << 20 // 32 MB
+
+	// snapshotChunkSize is the size of each chunk sent via FetchMemorySnapshot.
+	snapshotChunkSize = 256 << 10 // 256 KB
+
+	// snapshotTTL is how long a pending snapshot is kept before cleanup.
+	snapshotTTL = 5 * time.Minute
+)
+
+// pendingSnapshot holds snapshot data that has been replaced by a reference
+// in the Raft message. The follower fetches it via FetchMemorySnapshot.
+type pendingSnapshot struct {
+	data      []byte
+	index     uint64
+	term      uint64
+	createdAt time.Time
 }
 
 // DefaultTransport handles network communication between Raft nodes using gRPC
@@ -56,9 +79,15 @@ type DefaultTransport struct {
 	nodeID        uint64
 	clusterID     string
 
-	bufferSize       int
-	pendingSendQueue chan []raftpb.Message
-	stopCh           chan chan struct{}
+	bufferSize              int
+	pendingSendQueue        chan []raftpb.Message
+	stopCh                  chan chan struct{}
+	advertiseAddr           string
+	serviceAdvertiseAddr    string
+	// pendingSnapshots stores large snapshot data keyed by raft snapshot index.
+	// The leader stores the data here when intercepting a MsgSnap, then sends
+	// a lightweight reference. The follower fetches via FetchMemorySnapshot RPC.
+	pendingSnapshots sync.Map // map[uint64]*pendingSnapshot
 
 	// Metrics for recv queues (indexed by priority: 0=high, 1=medium, 2=low)
 	recvQueueLoadHistogram [3]metric.Int64Histogram
@@ -74,6 +103,10 @@ type DefaultTransport struct {
 	pendingSendLoadHistogram metric.Int64Histogram
 	pendingSendFullCounter   metric.Float64Counter
 	pendingSendInflight      atomic.Int32
+
+	// stopped is set at the beginning of Stop() to guard channel sends
+	// from orphaned goroutines that outlive the transport shutdown.
+	stopped atomic.Bool
 }
 
 func (t *DefaultTransport) RecvHighPriority() <-chan []raftpb.Message {
@@ -102,6 +135,8 @@ func NewTransport(
 	config TransportConfig,
 	clusterID string,
 	bufferSize int,
+	advertiseAddr string,
+	serviceAdvertiseAddr string,
 ) *DefaultTransport {
 	meter := meterProvider.Meter("raft.transport")
 
@@ -122,8 +157,10 @@ func NewTransport(
 		nodeID:               nodeID,
 		clusterID:            clusterID,
 		bufferSize:           bufferSize,
-		stopCh:               make(chan chan struct{}),
-		pendingSendQueue:     make(chan []raftpb.Message, pendingSendCapacity),
+		stopCh:                  make(chan chan struct{}),
+		pendingSendQueue:        make(chan []raftpb.Message, pendingSendCapacity),
+		advertiseAddr:           advertiseAddr,
+		serviceAdvertiseAddr:    serviceAdvertiseAddr,
 	}
 
 	// Initialize recv queue metrics for each priority level
@@ -186,6 +223,9 @@ func (t *DefaultTransport) pushToRecvQueue(priority int, msgs []raftpb.Message) 
 	if len(msgs) == 0 {
 		return true
 	}
+	if t.stopped.Load() {
+		return false
+	}
 
 	var queue chan []raftpb.Message
 	switch priority {
@@ -217,6 +257,9 @@ func (t *DefaultTransport) Stop(ctx context.Context) error {
 
 	t.logger.Infof("Stopping raft transport")
 
+	// Mark as stopped so orphaned goroutines skip channel sends.
+	t.stopped.Store(true)
+
 	stopCh := make(chan struct{})
 	select {
 	case <-ctx.Done():
@@ -234,11 +277,10 @@ func (t *DefaultTransport) Stop(ctx context.Context) error {
 		}
 	}
 
-	close(t.highPriorityRecvCh)
-	close(t.mediumPriorityRecvCh)
-	close(t.lowPriorityRecvCh)
-	close(t.unreachableCh)
-	close(t.pendingSendQueue)
+	// Note: we intentionally do NOT close the recv/unreachable/pendingSend
+	// channels here. Orphaned goroutines may still attempt sends after Stop()
+	// returns; the stopped flag guards those sends. The channels will be GC'd
+	// with the struct. Consumers have their own shutdown path.
 
 	return t.connectionPool.Close()
 }
@@ -286,6 +328,8 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 		pendingResponseCounter: pendingResponseCounter,
 		pingLatency:            pingLatency,
 		reconnected:            make(chan struct{}),
+		advertiseAddr:          t.advertiseAddr,
+		serviceAdvertiseAddr:   t.serviceAdvertiseAddr,
 	}
 
 	// Initialize send queue metrics for each priority level
@@ -342,6 +386,9 @@ func (t *DefaultTransport) Send(msgs []raftpb.Message) {
 	if len(msgs) == 0 {
 		return
 	}
+	if t.stopped.Load() {
+		return
+	}
 	select {
 	case t.pendingSendQueue <- msgs:
 		t.pendingSendLoadHistogram.Record(context.Background(), int64(t.pendingSendInflight.Add(1)))
@@ -366,13 +413,28 @@ func messagePriority(msgType raftpb.MessageType) int {
 }
 
 func (t *DefaultTransport) Start(_ context.Context) {
+	// Periodically clean up expired pending snapshots
+	cleanupTicker := time.NewTicker(time.Minute)
+	defer cleanupTicker.Stop()
+
 	for {
 		select {
 		case ch := <-t.stopCh:
 			close(ch)
 			return
+		case <-cleanupTicker.C:
+			t.cleanupPendingSnapshots()
 		case msgs := <-t.pendingSendQueue:
 			t.pendingSendInflight.Add(-1)
+
+			// Intercept large MsgSnap messages: replace snapshot data with a
+			// lightweight reference and store the full data for pull via RPC.
+			for i := range msgs {
+				if msgs[i].Type == raftpb.MsgSnap && len(msgs[i].Snapshot.Data) > snapshotChunkingThreshold {
+					t.interceptSnapshot(&msgs[i])
+				}
+			}
+
 			// Group messages by peer and priority
 			// Key: peerID, Value: map of priority -> messages
 			msgsByPeerAndPriority := make(map[uint64]map[int][]raftpb.Message)
@@ -413,6 +475,133 @@ func (t *DefaultTransport) Start(_ context.Context) {
 	}
 }
 
+// interceptSnapshot replaces the snapshot data in a MsgSnap with a lightweight
+// reference NodeSnapshot. The full data is stored in pendingSnapshots for the
+// follower to fetch via FetchMemorySnapshot RPC.
+func (t *DefaultTransport) interceptSnapshot(msg *raftpb.Message) {
+	originalData := msg.Snapshot.Data
+	index := msg.Snapshot.Metadata.Index
+	term := msg.Snapshot.Metadata.Term
+
+	t.logger.WithFields(map[string]any{
+		"index":    index,
+		"term":     term,
+		"size":     len(originalData),
+		"to":       fmt.Sprintf("%x", msg.To),
+	}).Infof("Intercepting large snapshot, storing for pull-based transfer")
+
+	// Store the full snapshot data for later retrieval
+	t.pendingSnapshots.Store(index, &pendingSnapshot{
+		data:      originalData,
+		index:     index,
+		term:      term,
+		createdAt: time.Now(),
+	})
+
+	// Unwrap the NodeSnapshot to get the peer addresses (we need to keep those
+	// in the reference so the follower can update its peer map)
+	ns := &raftcmdpb.NodeSnapshot{}
+	if err := ns.UnmarshalVT(originalData); err != nil {
+		t.logger.WithFields(map[string]any{
+			"error": err,
+			"index": index,
+		}).Errorf("Failed to unwrap NodeSnapshot for interception, sending inline")
+		return
+	}
+
+	// Create a reference-only NodeSnapshot (no FSM data)
+	ref := &raftcmdpb.NodeSnapshot{
+		PeerAddresses: ns.PeerAddresses,
+		IsReference:   true,
+		SizeHint:      uint64(len(originalData)),
+	}
+	refData, err := ref.MarshalVT()
+	if err != nil {
+		t.logger.WithFields(map[string]any{
+			"error": err,
+			"index": index,
+		}).Errorf("Failed to marshal reference NodeSnapshot, sending inline")
+		// Clean up the stored snapshot since we're falling back to inline
+		t.pendingSnapshots.Delete(index)
+		return
+	}
+
+	// Replace the snapshot data with the lightweight reference
+	msg.Snapshot.Data = refData
+
+	t.logger.WithFields(map[string]any{
+		"index":        index,
+		"originalSize": len(originalData),
+		"refSize":      len(refData),
+	}).Infof("Snapshot replaced with reference for chunked transfer")
+}
+
+// cleanupPendingSnapshots removes expired pending snapshots.
+func (t *DefaultTransport) cleanupPendingSnapshots() {
+	now := time.Now()
+	t.pendingSnapshots.Range(func(key, value any) bool {
+		ps := value.(*pendingSnapshot)
+		if now.Sub(ps.createdAt) > snapshotTTL {
+			t.logger.WithFields(map[string]any{
+				"index": ps.index,
+				"age":   now.Sub(ps.createdAt).String(),
+			}).Infof("Cleaning up expired pending snapshot")
+			t.pendingSnapshots.Delete(key)
+		}
+		return true
+	})
+}
+
+// FetchMemorySnapshot implements the RaftTransportService RPC.
+// It streams a pending snapshot's data in chunks to the requesting follower.
+func (t *DefaultTransport) FetchMemorySnapshot(req *rafttransportpb.FetchMemorySnapshotRequest, stream grpc.ServerStreamingServer[rafttransportpb.FetchMemorySnapshotResponse]) error {
+	t.logger.WithFields(map[string]any{
+		"index": req.SnapshotIndex,
+		"term":  req.SnapshotTerm,
+	}).Infof("FetchMemorySnapshot request received")
+
+	val, ok := t.pendingSnapshots.Load(req.SnapshotIndex)
+	if !ok {
+		return status.Errorf(codes.NotFound, "snapshot at index %d not found (may have expired)", req.SnapshotIndex)
+	}
+	ps := val.(*pendingSnapshot)
+
+	if ps.term != req.SnapshotTerm {
+		return status.Errorf(codes.NotFound, "snapshot at index %d has term %d, requested term %d", req.SnapshotIndex, ps.term, req.SnapshotTerm)
+	}
+
+	data := ps.data
+	totalSize := uint64(len(data))
+	offset := 0
+
+	for offset < len(data) {
+		end := offset + snapshotChunkSize
+		if end > len(data) {
+			end = len(data)
+		}
+
+		eof := end == len(data)
+		if err := stream.Send(&rafttransportpb.FetchMemorySnapshotResponse{
+			Data:      data[offset:end],
+			TotalSize: totalSize,
+			Eof:       eof,
+		}); err != nil {
+			return fmt.Errorf("sending snapshot chunk: %w", err)
+		}
+		offset = end
+	}
+
+	// Clean up after successful transfer
+	t.pendingSnapshots.Delete(req.SnapshotIndex)
+
+	t.logger.WithFields(map[string]any{
+		"index":     req.SnapshotIndex,
+		"totalSize": totalSize,
+	}).Infof("FetchMemorySnapshot completed")
+
+	return nil
+}
+
 // Unreachable returns the channel for reporting unreachable peers
 func (t *DefaultTransport) Unreachable() <-chan uint64 {
 	return t.unreachableCh
@@ -420,6 +609,9 @@ func (t *DefaultTransport) Unreachable() <-chan uint64 {
 
 // pushUnreachable pushes a peer ID to the unreachable queue with metrics
 func (t *DefaultTransport) pushUnreachable(peerID uint64) bool {
+	if t.stopped.Load() {
+		return false
+	}
 	select {
 	case t.unreachableCh <- peerID:
 		t.unreachableLoadHistogram.Record(context.Background(), int64(t.unreachableInflight.Add(1)))
@@ -474,7 +666,8 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 	priority := priorityStr[0]
 
 	t.logger.Infof("Peer %x connected on %s priority stream!", peerID, priority)
-	// This is a best effort to notify the send loop than the peer is now reachable
+
+	// Best effort to notify the send loop that the peer is now reachable
 	if peer, ok := t.peers[peerID]; ok {
 		select {
 		case peer.reconnected <- struct{}{}:
@@ -568,6 +761,56 @@ func (t *DefaultTransport) RegisterRaftService(server *grpc.Server) {
 	rafttransportpb.RegisterRaftTransportServiceServer(server, t)
 }
 
+// FetchRemoteMemorySnapshot fetches the full snapshot data from a peer
+// via the FetchMemorySnapshot streaming RPC. Implements MemorySnapshotFetcher.
+func (t *DefaultTransport) FetchRemoteMemorySnapshot(leaderID uint64, index, term uint64) ([]byte, error) {
+	conn := t.connectionPool.GetConnection(leaderID)
+	if conn == nil {
+		return nil, fmt.Errorf("no connection to leader %x", leaderID)
+	}
+
+	client := rafttransportpb.NewRaftTransportServiceClient(conn)
+	stream, err := client.FetchMemorySnapshot(context.Background(), &rafttransportpb.FetchMemorySnapshotRequest{
+		SnapshotIndex: index,
+		SnapshotTerm:  term,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("opening FetchMemorySnapshot stream: %w", err)
+	}
+
+	var (
+		buf       []byte
+		totalSize uint64
+	)
+
+	for {
+		resp, err := stream.Recv()
+		if err != nil {
+			return nil, fmt.Errorf("receiving snapshot chunk: %w", err)
+		}
+
+		totalSize = resp.TotalSize
+		if buf == nil && totalSize > 0 {
+			buf = make([]byte, 0, totalSize)
+		}
+		buf = append(buf, resp.Data...)
+
+		if resp.Eof {
+			break
+		}
+	}
+
+	t.logger.WithFields(map[string]any{
+		"index":     index,
+		"totalSize": len(buf),
+	}).Infof("Fetched full snapshot from leader via streaming RPC")
+
+	return buf, nil
+}
+
+// Ensure DefaultTransport implements MemorySnapshotFetcher.
+var _ MemorySnapshotFetcher = (*DefaultTransport)(nil)
+
 type peerConnection struct {
 	// 3 priority queues for sending batches of messages (high to low priority)
 	highPriorityCh   chan []raftpb.Message // Heartbeats
@@ -587,6 +830,8 @@ type peerConnection struct {
 	reconnected            chan struct{}
 	messageID              uint64
 	buf                    []byte
+	advertiseAddr          string
+	serviceAdvertiseAddr   string
 
 	// Metrics for sending queues (indexed by priority: 0=high, 1=medium, 2=low)
 	sendQueueLoadHistogram [3]metric.Int64Histogram
@@ -647,6 +892,10 @@ func (conn *peerConnection) loop() {
 
 		conn.logger.Infof("Creating stream to peer %x...", conn.peerID)
 		grpcPeerConnection := conn.connectionPool.GetConnection(conn.peerID)
+		if grpcPeerConnection == nil {
+			conn.logger.Errorf("No gRPC connection for peer %x, peer may have been removed", conn.peerID)
+			return
+		}
 		stopped, err := conn.handleConnection(grpcPeerConnection)
 		if stopped {
 			return
@@ -709,13 +958,20 @@ type priorityStream struct {
 func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn) (bool, error) {
 	client := rafttransportpb.NewRaftTransportServiceClient(grpcPeerConnection)
 
+	// Use a cancelable context so that cancelling it unblocks all stream.Recv()
+	// calls in the receive goroutines, ensuring they exit on every path.
+	streamCtx, streamCancel := context.WithCancel(context.Background())
+	defer streamCancel()
+
 	// Create a stream for each priority level
 	createStream := func(priorityName string) (grpc.BidiStreamingClient[rafttransportpb.SendMessageRequest, rafttransportpb.SendMessageResponse], error) {
 		return client.StreamMessages(
-			metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{
-				"nodeID":    fmt.Sprintf("%x", conn.nodeID),
-				"priority":  priorityName,
-				"clusterID": conn.clusterID,
+			metadata.NewOutgoingContext(streamCtx, metadata.New(map[string]string{
+				"nodeID":        fmt.Sprintf("%x", conn.nodeID),
+				"priority":      priorityName,
+				"clusterID":     conn.clusterID,
+				"advertiseAddr": conn.advertiseAddr,
+				"serviceAddr":   conn.serviceAdvertiseAddr,
 			})),
 		)
 	}
@@ -760,6 +1016,11 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	}
 
 	streamErrors := make(chan error, 3)
+
+	// Ensure all receive goroutines have exited before handleConnection returns.
+	// streamCancel() (deferred above) will unblock stream.Recv() calls, and this
+	// Wait() ensures we don't leave orphaned goroutines that could send on closed channels.
+	defer receiveWg.Wait()
 
 	for _, ps := range streams {
 		receiveWg.Add(1)
@@ -942,10 +1203,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 		// No messages available, do a blocking select on all channels
 		select {
 		case ch := <-conn.closeCh:
-			_ = highStream.CloseSend()
-			_ = mediumStream.CloseSend()
-			_ = lowStream.CloseSend()
-			receiveWg.Wait()
+			// streamCancel() + receiveWg.Wait() are handled by defers.
 			close(ch)
 			return true, nil
 		case err := <-streamErrors:

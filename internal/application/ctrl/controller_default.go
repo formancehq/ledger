@@ -324,6 +324,16 @@ func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (
 		}
 		return nil, err
 	}
+
+	// Enrich mirror ledgers with sync progress computed from Pebble state
+	if ledgerInfo.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+		progress, err := query.ReadMirrorSyncProgress(ctrl.store, name)
+		if err != nil {
+			return nil, fmt.Errorf("reading mirror sync progress: %w", err)
+		}
+		ledgerInfo.MirrorSyncProgress = progress
+	}
+
 	return ledgerInfo, nil
 }
 
@@ -401,6 +411,21 @@ func (ctrl *DefaultController) ListAuditEntries(_ context.Context, afterSequence
 	}
 
 	return result, nil
+}
+
+// GetLog returns a single system log by sequence number.
+func (ctrl *DefaultController) GetLog(_ context.Context, sequence uint64) (*commonpb.Log, error) {
+	handle := ctrl.store.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
+	log, err := query.ReadLogBySequence(handle, sequence)
+	if err != nil {
+		return nil, fmt.Errorf("getting log %d: %w", sequence, err)
+	}
+	if log == nil {
+		return nil, commonpb.NewNotFoundError("log %d not found", sequence)
+	}
+	return log, nil
 }
 
 // GetAuditEntry returns a single audit entry by sequence number.

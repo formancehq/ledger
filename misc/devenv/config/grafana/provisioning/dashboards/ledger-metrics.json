@@ -118,7 +118,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(raft.fsm.logs_appended{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+              "expr": "sum(rate(raft.fsm.logs_appended{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
               "interval": "1s",
               "legendFormat": "Node {{service.node_id}}",
               "range": true,
@@ -188,7 +188,7 @@
                   }
                 ]
               },
-              "unit": "µs"
+              "unit": "\u00b5s"
             },
             "overrides": []
           },
@@ -220,7 +220,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "rate({\"raft.transport.ping.latency_sum\", \"service.node_id\"=~\"$node\"}[$__rate_interval])",
+              "expr": "rate({\"raft.transport.ping.latency_sum\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}[$__rate_interval])",
               "instant": false,
               "legendFormat": "Node {{service.node_id}} / Peer {{scope.attributes.peer}}",
               "range": true,
@@ -317,7 +317,7 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "sum(rate({\"http.server.request.duration_count\", \"service.node_id\"=~\"$node\"}[$__rate_interval])) by (service.node_id, http.response.status_code)",
+              "expr": "sum(rate({\"http.server.request.duration_count\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}[$__rate_interval])) by (service.node_id, http.response.status_code)",
               "legendFormat": "Node {{service.node_id}} : {{http.response.status_code}}",
               "range": true,
               "refId": "A"
@@ -417,7 +417,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "rate({\"system.memory.utilization\", \"system.memory.state\"=\"used\", \"service.node_id\"=~\"$node\"}[$__rate_interval])",
+              "expr": "rate({\"system.memory.utilization\", \"system.memory.state\"=\"used\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}[$__rate_interval])",
               "instant": false,
               "legendFormat": "Node {{service.node_id}} : Used",
               "range": true,
@@ -429,7 +429,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "rate({\"system.memory.utilization\", \"system.memory.state\"=\"free\", \"service.node_id\"=~\"$node\"}[$__rate_interval])",
+              "expr": "rate({\"system.memory.utilization\", \"system.memory.state\"=\"free\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}[$__rate_interval])",
               "hide": false,
               "instant": false,
               "legendFormat": "Node {{service.node_id}} : Free",
@@ -533,7 +533,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum by (service.node_id) (\n  rate(process.cpu.time{service.node_id=~\"$node\"})\n)",
+              "expr": "sum by (service.node_id) (\n  rate(process.cpu.time{service.cluster=~\"$cluster\", service.node_id=~\"$node\"})\n)",
               "format": "time_series",
               "hide": true,
               "instant": false,
@@ -548,7 +548,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "max by (service.node_id) (\n  go.processor.limit{service.node_id=~\"$node\"}\n)",
+              "expr": "max by (service.node_id) (\n  go.processor.limit{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}\n)",
               "hide": true,
               "instant": false,
               "legendFormat": "Node {{service.node_id}}: Limit",
@@ -662,7 +662,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "rate(system.network.io{network.io.direction=\"receive\", \"service.node_id\"=~\"$node\"})",
+              "expr": "rate(system.network.io{network.io.direction=\"receive\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"})",
               "instant": false,
               "legendFormat": "Node {{service.node_id}}: Reception",
               "range": true,
@@ -674,7 +674,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "rate(system.network.io{network.io.direction=\"transmit\", \"service.node_id\"=~\"$node\"})",
+              "expr": "rate(system.network.io{network.io.direction=\"transmit\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"})",
               "instant": false,
               "key": "Q-0bb4b159-8753-40fa-8ff6-fc2a2f0f2b01-1",
               "legendFormat": "Node {{service.node_id}}: Transmission",
@@ -777,7 +777,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "{\"system.memory.usage\", \"service.node_id\"=~\"$node\"}",
+              "expr": "{\"system.memory.usage\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}",
               "format": "time_series",
               "instant": false,
               "legendFormat": "Node {{ service.node_id}}: {{system.memory.state}}",
@@ -879,7 +879,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "rate(go.memory.allocated{service.node_id=~\"$node\"}[$__rate_interval])",
+              "expr": "rate(go.memory.allocated{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
               "instant": false,
               "legendFormat": "Node {{service.node_id}}: Allocated",
               "range": true,
@@ -1094,7 +1094,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "go.goroutine.count{service.node_id=~\"$node\"}",
+              "expr": "go.goroutine.count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
               "instant": false,
               "legendFormat": "Node {{service.node_id}}",
               "range": true,
@@ -1195,7 +1195,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "{\"go.memory.used\", \"service.node_id\"=~\"$node\"}",
+              "expr": "{\"go.memory.used\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}",
               "instant": false,
               "interval": "1s",
               "key": "Q-62fe488d-9ee1-43be-b29c-81c24b376f01-2",
@@ -1298,7 +1298,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "rate(go.memory.allocations{service.node_id=~\"$node\"}[$__rate_interval])",
+              "expr": "rate(go.memory.allocations{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
               "instant": false,
               "key": "Q-d3e1e93b-3bc8-4d4b-9fec-a1bb3c2532e8-2",
               "legendFormat": "Node {{service.node_id}}: Allocations",
@@ -1400,7 +1400,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "go.memory.gc.goal{service.node_id=~\"$node\"}",
+              "expr": "go.memory.gc.goal{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
               "instant": false,
               "key": "Q-a2bd3481-149c-45bd-b3fc-a3731b2b829b-3",
               "legendFormat": "Node {{service.node_id}}: Goal",
@@ -1512,7 +1512,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "rate(raft.transport.recv.load_count{service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
+              "expr": "rate(raft.transport.recv.load_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
               "interval": "1s",
               "legendFormat": "Node {{service.node_id}}: p{{scope.attributes.priority}}",
               "range": true,
@@ -1566,7 +1566,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-9
+              "le": 1e-09
             },
             "legend": {
               "show": true
@@ -1589,7 +1589,7 @@
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum(\n  rate(raft.transport.recv.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, le)\n",
+              "expr": "sum(\n  rate(raft.transport.recv.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, le)\n",
               "format": "heatmap",
               "instant": false,
               "legendFormat": "__auto",
@@ -1769,7 +1769,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-9
+              "le": 1e-09
             },
             "legend": {
               "show": true
@@ -1792,7 +1792,7 @@
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum(\n  rate(raft.transport.recv.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, le)",
+              "expr": "sum(\n  rate(raft.transport.recv.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, le)",
               "format": "heatmap",
               "instant": false,
               "legendFormat": "__auto",
@@ -1847,7 +1847,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-9
+              "le": 1e-09
             },
             "legend": {
               "show": true
@@ -1870,7 +1870,7 @@
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum(\n  rate(raft.transport.recv.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"2\"}[$__rate_interval])\n) by (service.node_id, le)\n",
+              "expr": "sum(\n  rate(raft.transport.recv.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\", scope.attributes.priority=~\"2\"}[$__rate_interval])\n) by (service.node_id, le)\n",
               "format": "heatmap",
               "instant": false,
               "legendFormat": "__auto",
@@ -2062,7 +2062,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(increase(raft.transport.recv.full{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.priority_name)",
+              "expr": "sum(increase(raft.transport.recv.full{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.priority_name)",
               "interval": "1s",
               "legendFormat": "{{scope.attributes.priority_name}}",
               "range": true,
@@ -2159,7 +2159,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "rate(raft.transport.unreachable.load_count{service.node_id=~\"$node\", scope.name=\"raft.transport\"})",
+              "expr": "rate(raft.transport.unreachable.load_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\", scope.name=\"raft.transport\"})",
               "interval": "1s",
               "legendFormat": "Node {{service.node_id}}",
               "range": true,
@@ -2213,7 +2213,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-9
+              "le": 1e-09
             },
             "legend": {
               "show": true
@@ -2236,7 +2236,7 @@
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum(\n  rate(raft.transport.unreachable.load_bucket{service.node_id=~\"$node\"}[$__rate_interval])\n) by (service.node_id, le)",
+              "expr": "sum(\n  rate(raft.transport.unreachable.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])\n) by (service.node_id, le)",
               "format": "heatmap",
               "instant": false,
               "legendFormat": "__auto",
@@ -2304,7 +2304,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum(increase(raft.transport.unreachable.full{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+              "expr": "sum(increase(raft.transport.unreachable.full{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
               "instant": true,
               "interval": "1s",
               "legendFormat": "{{scope.name}}",
@@ -2402,7 +2402,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(raft.send.pending_messages.load_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+              "expr": "sum(rate(raft.send.pending_messages.load_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
               "interval": "1s",
               "legendFormat": "Node {{service.node_id}}",
               "range": true,
@@ -2456,7 +2456,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-9
+              "le": 1e-09
             },
             "legend": {
               "show": true
@@ -2479,7 +2479,7 @@
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum(\n  rate(raft.send.pending_messages.load_bucket{service.node_id=~\"$node\"}[$__rate_interval])\n) by (service.node_id, le)",
+              "expr": "sum(\n  rate(raft.send.pending_messages.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])\n) by (service.node_id, le)",
               "format": "heatmap",
               "instant": false,
               "legendFormat": "__auto",
@@ -2581,7 +2581,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(increase(raft.send.pending_messages.full{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+              "expr": "sum(increase(raft.send.pending_messages.full{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
               "interval": "1s",
               "legendFormat": "Node {{service.node_id}}",
               "range": true,
@@ -2680,7 +2680,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum(rate(raft.transport.peer.sending.load_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.peer, type)",
+              "expr": "sum(rate(raft.transport.peer.sending.load_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.peer, type)",
               "format": "time_series",
               "hide": false,
               "instant": false,
@@ -2787,7 +2787,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum(increase(raft.transport.peer.sending.full{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.priority_name)",
+              "expr": "sum(increase(raft.transport.peer.sending.full{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.priority_name)",
               "format": "time_series",
               "instant": false,
               "interval": "",
@@ -2843,7 +2843,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-9
+              "le": 1e-09
             },
             "legend": {
               "show": true
@@ -2866,7 +2866,7 @@
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, scope.attributes.peer, le)\n",
+              "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, scope.attributes.peer, le)\n",
               "format": "heatmap",
               "instant": false,
               "legendFormat": "__auto",
@@ -3046,7 +3046,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-9
+              "le": 1e-09
             },
             "legend": {
               "show": true
@@ -3069,7 +3069,7 @@
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, le)",
+              "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\", scope.attributes.priority=~\"1\"}[$__rate_interval])\n) by (service.node_id, le)",
               "format": "heatmap",
               "instant": false,
               "legendFormat": "__auto",
@@ -3124,7 +3124,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-9
+              "le": 1e-09
             },
             "legend": {
               "show": true
@@ -3147,7 +3147,7 @@
             {
               "editorMode": "code",
               "exemplar": false,
-              "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.node_id=~\"$node\", scope.attributes.priority=~\"2\"}[$__rate_interval])\n) by (service.node_id, scope.attributes.peer, le)\n",
+              "expr": "sum(\n  rate(raft.transport.peer.sending.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\", scope.attributes.priority=~\"2\"}[$__rate_interval])\n) by (service.node_id, scope.attributes.peer, le)\n",
               "format": "heatmap",
               "instant": false,
               "legendFormat": "__auto",
@@ -3370,7 +3370,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "rate(admission.propose_queue.load_count{service.node_id=~\"$node\"}[$__rate_interval])",
+              "expr": "rate(admission.propose_queue.load_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
               "interval": "1s",
               "legendFormat": "Node {{service.node_id}}: Incoming",
               "range": true,
@@ -3424,7 +3424,7 @@
               "color": "rgba(255,0,255,0.7)"
             },
             "filterValues": {
-              "le": 1e-9
+              "le": 1e-09
             },
             "legend": {
               "show": true
@@ -3670,7 +3670,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(increase(admission.propose_queue.full{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+              "expr": "sum(increase(admission.propose_queue.full{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
               "interval": "1s",
               "legendFormat": "Node {{service.node_id}}",
               "range": true,
@@ -3795,7 +3795,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "{\"raft.transport.sending.pending_response\", service.node_id=~\"$node\"}",
+              "expr": "{\"raft.transport.sending.pending_response\", service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
               "instant": false,
               "legendFormat": "Node {{service.node_id}} / Peer : {{scope.attributes.peer}}",
               "range": true,
@@ -3881,7 +3881,7 @@
               }
             ]
           },
-          "unit": "µs"
+          "unit": "\u00b5s"
         },
         "overrides": []
       },
@@ -3909,7 +3909,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "rate({\"raft.process_entry_sum\", \"service.node_id\"=~\"$node\"})",
+          "expr": "rate({\"raft.process_entry_sum\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"})",
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
@@ -3973,7 +3973,7 @@
               }
             ]
           },
-          "unit": "µs"
+          "unit": "\u00b5s"
         },
         "overrides": []
       },
@@ -4005,7 +4005,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "sum(rate(raft.apply_entries.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "expr": "sum(rate(raft.apply_entries.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
@@ -4102,7 +4102,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "sum(rate(raft.process_entry_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "expr": "sum(rate(raft.process_entry_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
@@ -4166,7 +4166,7 @@
               }
             ]
           },
-          "unit": "µs"
+          "unit": "\u00b5s"
         },
         "overrides": []
       },
@@ -4198,7 +4198,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(raft.process_entry_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.process_entry_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "legendFormat": "Node {{service.node_id}}: P99",
           "range": true,
           "refId": "A"
@@ -4209,7 +4209,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(raft.process_entry_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.process_entry_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: P95",
           "range": true,
@@ -4221,7 +4221,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum(rate(raft.process_entry_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.75, sum(rate(raft.process_entry_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: P75",
           "range": true,
@@ -4233,7 +4233,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "sum(rate(raft.process_entry_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.process_entry_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "expr": "sum(rate(raft.process_entry_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.process_entry_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: Avg",
           "range": true,
@@ -4302,7 +4302,7 @@
               }
             ]
           },
-          "unit": "µs"
+          "unit": "\u00b5s"
         },
         "overrides": []
       },
@@ -4330,7 +4330,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(raft.append_entries_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "expr": "sum(rate(raft.append_entries_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
@@ -4394,7 +4394,7 @@
               }
             ]
           },
-          "unit": "µs"
+          "unit": "\u00b5s"
         },
         "overrides": []
       },
@@ -4426,7 +4426,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(raft.append_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.append_entries_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "legendFormat": "Node {{service.node_id}}: P99",
           "range": true,
           "refId": "A"
@@ -4437,7 +4437,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(raft.append_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.append_entries_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: P95",
           "range": true,
@@ -4449,7 +4449,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum(rate(raft.append_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.75, sum(rate(raft.append_entries_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: P75",
           "range": true,
@@ -4461,7 +4461,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "sum(rate(raft.append_entries_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.append_entries_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "expr": "sum(rate(raft.append_entries_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.append_entries_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: Avg",
           "range": true,
@@ -4558,7 +4558,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(raft.ready.committed_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.ready.committed_entries_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "legendFormat": "Node {{service.node_id}}: P99",
           "range": true,
           "refId": "A"
@@ -4569,7 +4569,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(raft.ready.committed_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.ready.committed_entries_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: P95",
           "range": true,
@@ -4581,7 +4581,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum(rate(raft.ready.committed_entries_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.75, sum(rate(raft.ready.committed_entries_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: P75",
           "range": true,
@@ -4593,7 +4593,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "sum(rate(raft.ready.committed_entries_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.ready.committed_entries_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "expr": "sum(rate(raft.ready.committed_entries_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.ready.committed_entries_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: Avg",
           "range": true,
@@ -4693,7 +4693,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "hide": false,
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}}: P99",
@@ -4706,7 +4706,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "hide": false,
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}}: P95",
@@ -4719,7 +4719,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "hide": false,
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}}: P75",
@@ -4732,7 +4732,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "sum(rate(raft.apply_entries.batch_size_distribution_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.apply_entries.batch_size_distribution_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "expr": "sum(rate(raft.apply_entries.batch_size_distribution_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.apply_entries.batch_size_distribution_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "hide": false,
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}}: Avg",
@@ -4802,7 +4802,7 @@
               }
             ]
           },
-          "unit": "µs"
+          "unit": "\u00b5s"
         },
         "overrides": []
       },
@@ -4830,7 +4830,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "legendFormat": "Node {{service.node_id}}: P99",
           "range": true,
           "refId": "A"
@@ -4841,7 +4841,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: P95",
           "range": true,
@@ -4853,7 +4853,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: P75",
           "range": true,
@@ -4865,7 +4865,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "sum(rate(raft.apply_entries.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.apply_entries.duration_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "expr": "sum(rate(raft.apply_entries.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.apply_entries.duration_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: Avg",
           "range": true,
@@ -4880,7 +4880,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Rate of apply operations per second (how often the FSM processes batches).\n\nCombine with 'Batch size distribution' to understand throughput:\n- High rate + low batch size = many small batches\n- Lower rate + high batch size = fewer but larger batches (more efficient)\n\nTotal transactions/sec = rate × average batch size\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
+      "description": "Rate of apply operations per second (how often the FSM processes batches).\n\nCombine with 'Batch size distribution' to understand throughput:\n- High rate + low batch size = many small batches\n- Lower rate + high batch size = fewer but larger batches (more efficient)\n\nTotal transactions/sec = rate \u00d7 average batch size\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4962,7 +4962,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "rate(raft.apply_entries.duration_count{service.node_id=~\"$node\"})",
+          "expr": "rate(raft.apply_entries.duration_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"})",
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
@@ -5030,7 +5030,7 @@
               }
             ]
           },
-          "unit": "µs"
+          "unit": "\u00b5s"
         },
         "overrides": []
       },
@@ -5058,7 +5058,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "rate(wal.append.cache.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
+          "expr": "rate(wal.append.cache.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
@@ -5126,7 +5126,7 @@
               }
             ]
           },
-          "unit": "µs"
+          "unit": "\u00b5s"
         },
         "overrides": []
       },
@@ -5154,7 +5154,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "rate(wal.append.save.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
+          "expr": "rate(wal.append.save.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
           "refId": "A"
@@ -5250,7 +5250,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(wal.append.batch_size_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.99, sum(rate(wal.append.batch_size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "legendFormat": "Node {{service.node_id}}: P99",
           "range": true,
           "refId": "A"
@@ -5261,7 +5261,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(wal.append.batch_size_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.95, sum(rate(wal.append.batch_size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: P95",
           "range": true,
@@ -5273,7 +5273,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.75, sum(rate(wal.append.batch_size_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+          "expr": "histogram_quantile(0.75, sum(rate(wal.append.batch_size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: P75",
           "range": true,
@@ -5285,7 +5285,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "sum(rate(wal.append.batch_size_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(wal.append.batch_size_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "expr": "sum(rate(wal.append.batch_size_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(wal.append.batch_size_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "hide": false,
           "legendFormat": "Node {{service.node_id}}: Avg",
           "range": true,
@@ -5350,7 +5350,7 @@
               }
             ]
           },
-          "unit": "µs"
+          "unit": "\u00b5s"
         },
         "overrides": []
       },
@@ -5382,7 +5382,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}} p99",
           "range": true,
@@ -5394,7 +5394,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(raft.node.ready.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "expr": "histogram_quantile(0.95, sum(rate(raft.node.ready.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}} p95",
           "range": true,
@@ -5406,7 +5406,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}} p50",
           "range": true,
@@ -5418,7 +5418,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "sum(rate(raft.node.ready.wait_duration_sum{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.node.ready.wait_duration_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "expr": "sum(rate(raft.node.ready.wait_duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.node.ready.wait_duration_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}} avg",
           "range": true,
@@ -5515,7 +5515,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "sum(rate(raft.node.ready.wait_duration_count{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+          "expr": "sum(rate(raft.node.ready.wait_duration_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
@@ -5583,7 +5583,7 @@
               }
             ]
           },
-          "unit": "µs"
+          "unit": "\u00b5s"
         },
         "overrides": []
       },
@@ -5611,7 +5611,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "rate({\"raft.node.ready.wait_duration_sum\", \"service.node_id\"=~\"$node\"})",
+          "expr": "rate({\"raft.node.ready.wait_duration_sum\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"})",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -5711,7 +5711,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.syncer.create_snapshot.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
+          "expr": "rate(raft.syncer.create_snapshot.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
@@ -5776,7 +5776,7 @@
               }
             ]
           },
-          "unit": "µs"
+          "unit": "\u00b5s"
         },
         "overrides": []
       },
@@ -5808,7 +5808,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready_terminated.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready_terminated.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}} p99",
           "range": true,
@@ -5820,7 +5820,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready_terminated.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready_terminated.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}} p50",
           "range": true,
@@ -5917,7 +5917,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.node.unspool.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
+          "expr": "rate(raft.node.unspool.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
@@ -6014,7 +6014,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.snapshot.triggered{service.node_id=~\"$node\"}[$__rate_interval])",
+          "expr": "rate(raft.snapshot.triggered{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
@@ -6111,7 +6111,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(raft.node.gating.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.node.gating.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}} p99",
           "range": true,
@@ -6123,7 +6123,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum(rate(raft.node.gating.wait_duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "expr": "histogram_quantile(0.50, sum(rate(raft.node.gating.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}} p50",
           "range": true,
@@ -6219,7 +6219,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(raft.node.gating.readies_processed_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.node.gating.readies_processed_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}} p99",
           "range": true,
@@ -6231,7 +6231,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum(rate(raft.node.gating.readies_processed_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "expr": "histogram_quantile(0.50, sum(rate(raft.node.gating.readies_processed_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
           "interval": "1s",
           "legendFormat": "Node {{service.node_id}} p50",
           "range": true,
@@ -6359,7 +6359,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.node.maintenance.snapshot_creation.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
+          "expr": "rate(raft.node.maintenance.snapshot_creation.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: Snapshot creation",
           "range": true,
@@ -6371,7 +6371,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.node.maintenance.replay_spool.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
+          "expr": "rate(raft.node.maintenance.replay_spool.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: Replay spool",
           "range": true,
@@ -6468,7 +6468,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.fsm.rotation.duration_sum{service.node_id=~\"$node\"}[$__rate_interval])",
+          "expr": "rate(raft.fsm.rotation.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
@@ -6565,7 +6565,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "rate(raft.fsm.rotation.keys_compacted{service.node_id=~\"$node\"}[$__rate_interval])",
+          "expr": "rate(raft.fsm.rotation.keys_compacted{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}",
           "range": true,
@@ -6662,7 +6662,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(raft.fsm.batch_commit.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "expr": "histogram_quantile(0.99, sum(rate(raft.fsm.batch_commit.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: p99",
           "range": true,
@@ -6674,7 +6674,7 @@
             "uid": "VictoriaMetrics"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum(rate(raft.fsm.batch_commit.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
+          "expr": "histogram_quantile(0.50, sum(rate(raft.fsm.batch_commit.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
           "instant": false,
           "legendFormat": "Node {{service.node_id}}: p50",
           "range": true,
@@ -6780,7 +6780,7 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "sum by (service.node_id, status, reason) (rate({__name__=\"pebble.flush.total\", \"scope.name\"=\"pebble.runtime_store\", \"service.node_id\"=~\"$node\"}[$__rate_interval]))",
+              "expr": "sum by (service.node_id, status, reason) (rate({__name__=\"pebble.flush.total\", \"scope.name\"=\"pebble.runtime_store\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}[$__rate_interval]))",
               "legendFormat": "Node {{service.node_id}} {{db}} {{status}} {{reason}}",
               "range": true,
               "refId": "A"
@@ -7747,7 +7747,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "cache.size{service.node_id=~\"$node\", type=\"volumes\"}",
+              "expr": "cache.size{service.cluster=~\"$cluster\", service.node_id=~\"$node\", type=\"volumes\"}",
               "interval": "1s",
               "legendFormat": "Volumes (Node {{service.node_id}})",
               "range": true,
@@ -7759,7 +7759,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "cache.size{service.node_id=~\"$node\", type=\"account_metadata\"}",
+              "expr": "cache.size{service.cluster=~\"$cluster\", service.node_id=~\"$node\", type=\"account_metadata\"}",
               "interval": "1s",
               "legendFormat": "Account Metadata (Node {{service.node_id}})",
               "range": true,
@@ -7771,7 +7771,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "cache.size{service.node_id=~\"$node\", type=\"idempotency_keys\"}",
+              "expr": "cache.size{service.cluster=~\"$cluster\", service.node_id=~\"$node\", type=\"idempotency_keys\"}",
               "interval": "1s",
               "legendFormat": "Idempotency Keys (Node {{service.node_id}})",
               "range": true,
@@ -7783,7 +7783,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "cache.size{service.node_id=~\"$node\", type=\"boundaries\"}",
+              "expr": "cache.size{service.cluster=~\"$cluster\", service.node_id=~\"$node\", type=\"boundaries\"}",
               "interval": "1s",
               "legendFormat": "Boundaries (Node {{service.node_id}})",
               "range": true,
@@ -7880,7 +7880,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "numscript.cache.size{service.node_id=~\"$node\"}",
+              "expr": "numscript.cache.size{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
               "interval": "1s",
               "legendFormat": "Node {{service.node_id}}",
               "range": true,
@@ -7977,7 +7977,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "cache.generation{service.node_id=~\"$node\"}",
+              "expr": "cache.generation{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
               "interval": "1s",
               "legendFormat": "Node {{service.node_id}}: Generation",
               "range": true,
@@ -7989,7 +7989,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(cache.rotations{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+              "expr": "sum(rate(cache.rotations{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
               "interval": "1s",
               "legendFormat": "Node {{service.node_id}}: Rotations/s",
               "range": true,
@@ -8066,7 +8066,7 @@
                   }
                 ]
               },
-              "unit": "µs"
+              "unit": "\u00b5s"
             },
             "overrides": []
           },
@@ -8101,7 +8101,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum(rate(admission.preload.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (type, le))",
+              "expr": "histogram_quantile(0.50, sum(rate(admission.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type, le))",
               "interval": "1s",
               "legendFormat": "p50 - {{type}}",
               "range": true,
@@ -8113,7 +8113,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(admission.preload.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (type, le))",
+              "expr": "histogram_quantile(0.95, sum(rate(admission.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type, le))",
               "interval": "1s",
               "legendFormat": "p95 - {{type}}",
               "range": true,
@@ -8125,7 +8125,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(admission.preload.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (type, le))",
+              "expr": "histogram_quantile(0.99, sum(rate(admission.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type, le))",
               "interval": "1s",
               "legendFormat": "p99 - {{type}}",
               "range": true,
@@ -8223,7 +8223,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(admission.preload.total{service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
+              "expr": "sum(rate(admission.preload.total{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
               "interval": "1s",
               "legendFormat": "{{type}}",
               "range": true,
@@ -8321,7 +8321,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(admission.preload.keys_needed{service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
+              "expr": "sum(rate(admission.preload.keys_needed{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
               "interval": "1s",
               "legendFormat": "{{type}}",
               "range": true,
@@ -8419,7 +8419,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(admission.preload.cache_hits{service.node_id=~\"$node\"}[$__rate_interval])) by (type) / sum(rate(admission.preload.keys_needed{service.node_id=~\"$node\"}[$__rate_interval])) by (type) * 100",
+              "expr": "sum(rate(admission.preload.cache_hits{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type) / sum(rate(admission.preload.keys_needed{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type) * 100",
               "interval": "1s",
               "legendFormat": "{{type}}",
               "range": true,
@@ -8517,7 +8517,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(admission.preload.total{service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
+              "expr": "sum(rate(admission.preload.total{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
               "interval": "1s",
               "legendFormat": "store reads - {{type}}",
               "range": true,
@@ -8529,7 +8529,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(admission.preload.cache_hits{service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
+              "expr": "sum(rate(admission.preload.cache_hits{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
               "interval": "1s",
               "legendFormat": "cache hits - {{type}}",
               "range": true,
@@ -8627,7 +8627,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum(rate(admission.propose_queue.load_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
+              "expr": "histogram_quantile(0.50, sum(rate(admission.propose_queue.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
               "interval": "1s",
               "legendFormat": "p50",
               "range": true,
@@ -8639,7 +8639,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(admission.propose_queue.load_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(admission.propose_queue.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
               "interval": "1s",
               "legendFormat": "p95",
               "range": true,
@@ -8651,7 +8651,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(admission.propose_queue.load_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
+              "expr": "histogram_quantile(0.99, sum(rate(admission.propose_queue.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
               "interval": "1s",
               "legendFormat": "p99",
               "range": true,
@@ -8714,7 +8714,7 @@
                   }
                 ]
               },
-              "unit": "µs"
+              "unit": "\u00b5s"
             },
             "overrides": []
           },
@@ -8749,7 +8749,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum(rate(admission.command.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+              "expr": "histogram_quantile(0.50, sum(rate(admission.command.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
               "interval": "1s",
               "legendFormat": "p50 - Node {{service.node_id}}",
               "range": true,
@@ -8761,7 +8761,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(admission.command.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+              "expr": "histogram_quantile(0.95, sum(rate(admission.command.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
               "interval": "1s",
               "legendFormat": "p95 - Node {{service.node_id}}",
               "range": true,
@@ -8773,7 +8773,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(admission.command.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+              "expr": "histogram_quantile(0.99, sum(rate(admission.command.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
               "interval": "1s",
               "legendFormat": "p99 - Node {{service.node_id}}",
               "range": true,
@@ -8855,7 +8855,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(admission.command.size_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (le)",
+              "expr": "sum(rate(admission.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le)",
               "format": "heatmap",
               "interval": "1s",
               "legendFormat": "{{le}}",
@@ -8962,7 +8962,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.5, rate(admission.command.size_bucket{service.node_id=~\"$node\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.5, rate(admission.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval]))",
               "interval": "1s",
               "legendFormat": "p50 (Node {{service.node_id}})",
               "range": true,
@@ -8974,7 +8974,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, rate(admission.command.size_bucket{service.node_id=~\"$node\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.95, rate(admission.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval]))",
               "interval": "1s",
               "legendFormat": "p95 (Node {{service.node_id}})",
               "range": true,
@@ -8986,7 +8986,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, rate(admission.command.size_bucket{service.node_id=~\"$node\"}[$__rate_interval]))",
+              "expr": "histogram_quantile(0.99, rate(admission.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval]))",
               "interval": "1s",
               "legendFormat": "p99 (Node {{service.node_id}})",
               "range": true,
@@ -9083,9 +9083,9 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum by (le) (rate(admission.command.size_bucket{service.node_id=~\"$node\"}[$__rate_interval]))",
+              "expr": "sum by (le) (rate(admission.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval]))",
               "interval": "1s",
-              "legendFormat": "≤ {{le}} bytes",
+              "legendFormat": "\u2264 {{le}} bytes",
               "range": true,
               "refId": "A"
             }
@@ -9146,7 +9146,7 @@
                   }
                 ]
               },
-              "unit": "µs"
+              "unit": "\u00b5s"
             },
             "overrides": []
           },
@@ -9181,7 +9181,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum(rate(admission.propose.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+              "expr": "histogram_quantile(0.50, sum(rate(admission.propose.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
               "interval": "1s",
               "legendFormat": "p50 - Node {{service.node_id}}",
               "range": true,
@@ -9193,7 +9193,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(admission.propose.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+              "expr": "histogram_quantile(0.95, sum(rate(admission.propose.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
               "interval": "1s",
               "legendFormat": "p95 - Node {{service.node_id}}",
               "range": true,
@@ -9205,7 +9205,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(admission.propose.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+              "expr": "histogram_quantile(0.99, sum(rate(admission.propose.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
               "interval": "1s",
               "legendFormat": "p99 - Node {{service.node_id}}",
               "range": true,
@@ -9302,7 +9302,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum(rate(admission.fsm_future.wait.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+              "expr": "histogram_quantile(0.50, sum(rate(admission.fsm_future.wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
               "interval": "1s",
               "legendFormat": "p50 - Node {{service.node_id}}",
               "range": true,
@@ -9314,7 +9314,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(admission.fsm_future.wait.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+              "expr": "histogram_quantile(0.95, sum(rate(admission.fsm_future.wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
               "interval": "1s",
               "legendFormat": "p95 - Node {{service.node_id}}",
               "range": true,
@@ -9326,7 +9326,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(admission.fsm_future.wait.duration_bucket{service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
+              "expr": "histogram_quantile(0.99, sum(rate(admission.fsm_future.wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
               "interval": "1s",
               "legendFormat": "p99 - Node {{service.node_id}}",
               "range": true,
@@ -9347,6 +9347,692 @@
         "w": 24,
         "x": 0,
         "y": 106
+      },
+      "id": 395,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "Rate of v2 logs fetched and ingested by the mirror worker, broken down by ledger.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 107
+          },
+          "id": 389,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(mirror.logs.ingested{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (ledger)",
+              "interval": "1s",
+              "legendFormat": "{{ledger}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Logs Ingested/s",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "Rate of mirror batches processed per second, broken down by status (success/error).",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "normal"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 107
+          },
+          "id": 390,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(mirror.batch.total{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (status)",
+              "interval": "1s",
+              "legendFormat": "{{status}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Batch Rate",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "End-to-end batch processing time from cursor read to FSM apply completion.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  }
+                ]
+              },
+              "unit": "\u00b5s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 115
+          },
+          "id": 391,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.50, sum(rate(mirror.batch.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
+              "interval": "1s",
+              "legendFormat": "p50",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum(rate(mirror.batch.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
+              "interval": "1s",
+              "legendFormat": "p95",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.99, sum(rate(mirror.batch.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
+              "interval": "1s",
+              "legendFormat": "p99",
+              "range": true,
+              "refId": "C"
+            }
+          ],
+          "title": "Batch Duration (p50, p95, p99)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "p95 duration of each phase within a mirror batch: fetch (HTTP/PG source), translate (v2\u2192v3), preload (Pebble reads), propose (Raft), and fsm_wait (FSM apply).",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  }
+                ]
+              },
+              "unit": "\u00b5s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 115
+          },
+          "id": 392,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum(rate(mirror.fetch.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
+              "interval": "1s",
+              "legendFormat": "fetch",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum(rate(mirror.translate.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
+              "interval": "1s",
+              "legendFormat": "translate",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum(rate(mirror.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
+              "interval": "1s",
+              "legendFormat": "preload",
+              "range": true,
+              "refId": "C"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum(rate(mirror.propose.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
+              "interval": "1s",
+              "legendFormat": "propose",
+              "range": true,
+              "refId": "D"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum(rate(mirror.fsm_wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
+              "interval": "1s",
+              "legendFormat": "fsm_wait",
+              "range": true,
+              "refId": "E"
+            }
+          ],
+          "title": "Phase Breakdown (p95)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "Rate of Pebble reads needed because the cache did not contain the required attribute, broken down by type (ledger/boundary).",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "normal"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 123
+          },
+          "id": 393,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(mirror.preload.cache_miss{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
+              "interval": "1s",
+              "legendFormat": "{{type}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Preload Cache Misses/s",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "Size of the marshalled Raft proposal in bytes. Large commands increase WAL write amplification.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  }
+                ]
+              },
+              "unit": "bytes"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 123
+          },
+          "id": 394,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.50, sum(rate(mirror.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
+              "interval": "1s",
+              "legendFormat": "p50",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum(rate(mirror.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
+              "interval": "1s",
+              "legendFormat": "p95",
+              "range": true,
+              "refId": "B"
+            }
+          ],
+          "title": "Command Size (p50, p95)",
+          "type": "timeseries"
+        }
+      ],
+      "title": "Mirror",
+      "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 107
       },
       "id": 7,
       "panels": [
@@ -9439,7 +10125,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "storage.disk.component.bytes{service.node_id=~\"$node\", component=\"spool\"}",
+              "expr": "storage.disk.component.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", component=\"spool\"}",
               "interval": "1s",
               "legendFormat": "Spool (Node {{service.node_id}})",
               "range": true,
@@ -9451,7 +10137,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "storage.disk.component.bytes{service.node_id=~\"$node\", component=\"wal\"}",
+              "expr": "storage.disk.component.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", component=\"wal\"}",
               "interval": "1s",
               "legendFormat": "WAL (Node {{service.node_id}})",
               "range": true,
@@ -9463,7 +10149,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "storage.disk.component.bytes{service.node_id=~\"$node\", component=\"data\"}",
+              "expr": "storage.disk.component.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", component=\"data\"}",
               "interval": "1s",
               "legendFormat": "Data (Node {{service.node_id}})",
               "range": true,
@@ -9562,7 +10248,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "storage.disk.volume.bytes{service.node_id=~\"$node\", volume=\"wal\"}",
+              "expr": "storage.disk.volume.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", volume=\"wal\"}",
               "interval": "1s",
               "legendFormat": "WAL (Node {{service.node_id}})",
               "range": true,
@@ -9574,7 +10260,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "storage.disk.volume.bytes{service.node_id=~\"$node\", volume=\"data\"}",
+              "expr": "storage.disk.volume.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", volume=\"data\"}",
               "interval": "1s",
               "legendFormat": "Data (Node {{service.node_id}})",
               "range": true,
@@ -9594,7 +10280,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 107
+        "y": 108
       },
       "id": 8,
       "panels": [
@@ -9779,6 +10465,28 @@
           "uid": "VictoriaMetrics"
         },
         "definition": "query_result(raft.node.lead)",
+        "description": "Select a Ledger cluster to filter metrics",
+        "includeAll": true,
+        "label": "Cluster",
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "query_result(raft.node.lead)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "/service\\.cluster=\"([^\"]+)\"/",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "VictoriaMetrics"
+        },
+        "definition": "query_result(raft.node.lead{service.cluster=~\"$cluster\"})",
         "description": "Select a node to filter metrics",
         "includeAll": true,
         "label": "Node",
@@ -9786,7 +10494,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "query_result(raft.node.lead)",
+          "query": "query_result(raft.node.lead{service.cluster=~\"$cluster\"})",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

@@ -142,6 +142,12 @@ func (h *logHasher) hashLogPayload(p *commonpb.LogPayload) {
 	case *commonpb.LogPayload_DeletePeriodSchedule:
 		h.writeDiscriminator(15)
 		h.hashDeletePeriodScheduleLog(v.DeletePeriodSchedule)
+	case *commonpb.LogPayload_SetAuditConfig:
+		h.writeDiscriminator(16)
+		h.hashSetAuditConfigLog(v.SetAuditConfig)
+	case *commonpb.LogPayload_PromoteLedger:
+		h.writeDiscriminator(17)
+		h.hashPromoteLedgerLog(v.PromoteLedger)
 	default:
 		h.writeDiscriminator(0)
 	}
@@ -174,6 +180,28 @@ func (h *logHasher) hashLedgerInfo(info *commonpb.LedgerInfo) {
 	h.writeString(info.Name)
 	h.hashTimestamp(info.CreatedAt)
 	h.hashTimestamp(info.DeletedAt)
+	h.writeInt32(int32(info.Mode))
+	h.hashMirrorSourceConfig(info.MirrorSource)
+}
+
+func (h *logHasher) hashMirrorSourceConfig(cfg *commonpb.MirrorSourceConfig) {
+	if cfg == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeString(cfg.LedgerName)
+	switch s := cfg.GetType().(type) {
+	case *commonpb.MirrorSourceConfig_Http:
+		h.writeDiscriminator(1)
+		h.writeString(s.Http.GetBaseUrl())
+		h.writeString(s.Http.GetAuthToken())
+	case *commonpb.MirrorSourceConfig_Postgres:
+		h.writeDiscriminator(2)
+		h.writeString(s.Postgres.GetDsn())
+	default:
+		h.writeDiscriminator(0)
+	}
 }
 
 func (h *logHasher) hashApplyLedgerLog(a *commonpb.ApplyLedgerLog) {
@@ -228,6 +256,9 @@ func (h *logHasher) hashLedgerLogPayload(p *commonpb.LedgerLogPayload) {
 	case *commonpb.LedgerLogPayload_MetadataConversionComplete:
 		h.writeDiscriminator(8)
 		h.hashMetadataConversionCompleteLog(v.MetadataConversionComplete)
+	case *commonpb.LedgerLogPayload_FillGap:
+		h.writeDiscriminator(9)
+		h.hashFillGapLog(v.FillGap)
 	default:
 		h.writeDiscriminator(0)
 	}
@@ -659,6 +690,39 @@ func (h *logHasher) hashTimestamp(ts *commonpb.Timestamp) {
 	}
 	h.writePresence(true)
 	h.writeUint64(ts.Data)
+}
+
+// --- Audit config log hasher ---
+
+func (h *logHasher) hashSetAuditConfigLog(a *commonpb.SetAuditConfigLog) {
+	if a == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeBool(a.Enabled)
+}
+
+// --- FillGap log hasher ---
+
+func (h *logHasher) hashFillGapLog(f *commonpb.FillGapLog) {
+	if f == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.writeUint64(f.OriginalId)
+}
+
+// --- Promote ledger log hasher ---
+
+func (h *logHasher) hashPromoteLedgerLog(p *commonpb.PromoteLedgerLog) {
+	if p == nil {
+		h.writePresence(false)
+		return
+	}
+	h.writePresence(true)
+	h.hashLedgerInfo(p.Info)
 }
 
 // ComputeLogHash computes a blake3 hash for log chaining:

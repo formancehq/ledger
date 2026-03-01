@@ -20,7 +20,7 @@ func NewCreateCommand() *cobra.Command {
 		Use:     "create",
 		Aliases: []string{"new", "add"},
 		Short:   "Create a new ledger",
-		Long:    "Create a new ledger via gRPC",
+		Long:    "Create a new ledger via gRPC.\n\nTo create a mirror ledger, use --mode=mirror with source configuration flags.",
 		Args:    cobra.NoArgs,
 		RunE:    runCreate,
 	}
@@ -29,6 +29,15 @@ func NewCreateCommand() *cobra.Command {
 	cmd.Flags().StringArray("schema", nil, "Metadata schema entries in target:key:type format (can be repeated, e.g. account:age:int64)")
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
+
+	// Mirror mode flags
+	cmd.Flags().String("mode", "normal", "Ledger mode: normal or mirror")
+	cmd.Flags().String("mirror-source-type", "http", "Mirror source type: http or postgres")
+	cmd.Flags().String("mirror-ledger-name", "", "Source ledger name in the v2 system (defaults to ledger name)")
+	cmd.Flags().String("mirror-base-url", "", "Base URL of the v2 API (for http source)")
+	cmd.Flags().String("mirror-auth-token", "", "Auth token for the v2 API (for http source)")
+	cmd.Flags().String("mirror-dsn", "", "PostgreSQL DSN (for postgres source)")
+	cmd.Flags().Uint32("mirror-batch-size", 0, "Max logs per batch (0 = default 100)")
 
 	return cmd
 }
@@ -59,6 +68,12 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	// Parse mirror mode
+	mode, mirrorSource, err := parseMirrorFlags(cmd, name)
+	if err != nil {
+		return err
+	}
+
 	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
 		return err
@@ -68,7 +83,11 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Creating ledger %s...", name))
+	modeStr := "normal"
+	if mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+		modeStr = "mirror"
+	}
+	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Creating %s ledger %s...", modeStr, name))
 
 	requests := []*servicepb.Request{
 		{
@@ -76,6 +95,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 				CreateLedger: &servicepb.CreateLedgerRequest{
 					Name:          name,
 					InitialSchema: initialSchema,
+					Mode:          mode,
+					MirrorSource:  mirrorSource,
 				},
 			},
 		},
@@ -131,6 +152,11 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		createdAt = ledger.CreatedAt.AsTime().Format(time.RFC3339)
 	}
 	pterm.Printf("Created At: %s\n", createdAt)
+	pterm.Printf("Mode:       %s\n", ledgerModeString(ledger.Mode))
+
+	if ledger.MirrorSource != nil {
+		renderMirrorSource(ledger.MirrorSource)
+	}
 
 	if ledger.MetadataSchema != nil {
 		renderLedgerSchema(ledger.MetadataSchema)

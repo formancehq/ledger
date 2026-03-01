@@ -10,5 +10,6 @@ func NewCommand() *cobra.Command {
 		Long:    "Commands for viewing system logs via gRPC",
 	}
 	cmd.AddCommand(NewListCommand())
+	cmd.AddCommand(NewGetCommand())
 	return cmd
 }

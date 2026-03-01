@@ -35,6 +35,7 @@ const (
 	BucketService_GetEventsSinks_FullMethodName          = "/ledger.BucketService/GetEventsSinks"
 	BucketService_ListPeriods_FullMethodName             = "/ledger.BucketService/ListPeriods"
 	BucketService_ListLogs_FullMethodName                = "/ledger.BucketService/ListLogs"
+	BucketService_GetLog_FullMethodName                  = "/ledger.BucketService/GetLog"
 	BucketService_GetPeriodSchedule_FullMethodName       = "/ledger.BucketService/GetPeriodSchedule"
 	BucketService_ListSigningKeys_FullMethodName         = "/ledger.BucketService/ListSigningKeys"
 	BucketService_Discovery_FullMethodName               = "/ledger.BucketService/Discovery"
@@ -75,6 +76,8 @@ type BucketServiceClient interface {
 	ListPeriods(ctx context.Context, in *ListPeriodsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Period], error)
 	// ListLogs streams system logs
 	ListLogs(ctx context.Context, in *ListLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error)
+	// GetLog returns a single system log by sequence number
+	GetLog(ctx context.Context, in *GetLogRequest, opts ...grpc.CallOption) (*commonpb.Log, error)
 	// GetPeriodSchedule returns the current automatic period rotation schedule
 	GetPeriodSchedule(ctx context.Context, in *GetPeriodScheduleRequest, opts ...grpc.CallOption) (*GetPeriodScheduleResponse, error)
 	// ListSigningKeys streams all registered signing keys
@@ -296,6 +299,16 @@ func (c *bucketServiceClient) ListLogs(ctx context.Context, in *ListLogsRequest,
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListLogsClient = grpc.ServerStreamingClient[commonpb.Log]
 
+func (c *bucketServiceClient) GetLog(ctx context.Context, in *GetLogRequest, opts ...grpc.CallOption) (*commonpb.Log, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(commonpb.Log)
+	err := c.cc.Invoke(ctx, BucketService_GetLog_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *bucketServiceClient) GetPeriodSchedule(ctx context.Context, in *GetPeriodScheduleRequest, opts ...grpc.CallOption) (*GetPeriodScheduleResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetPeriodScheduleResponse)
@@ -379,6 +392,8 @@ type BucketServiceServer interface {
 	ListPeriods(*ListPeriodsRequest, grpc.ServerStreamingServer[commonpb.Period]) error
 	// ListLogs streams system logs
 	ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error
+	// GetLog returns a single system log by sequence number
+	GetLog(context.Context, *GetLogRequest) (*commonpb.Log, error)
 	// GetPeriodSchedule returns the current automatic period rotation schedule
 	GetPeriodSchedule(context.Context, *GetPeriodScheduleRequest) (*GetPeriodScheduleResponse, error)
 	// ListSigningKeys streams all registered signing keys
@@ -438,6 +453,9 @@ func (UnimplementedBucketServiceServer) ListPeriods(*ListPeriodsRequest, grpc.Se
 }
 func (UnimplementedBucketServiceServer) ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error {
 	return status.Error(codes.Unimplemented, "method ListLogs not implemented")
+}
+func (UnimplementedBucketServiceServer) GetLog(context.Context, *GetLogRequest) (*commonpb.Log, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetLog not implemented")
 }
 func (UnimplementedBucketServiceServer) GetPeriodSchedule(context.Context, *GetPeriodScheduleRequest) (*GetPeriodScheduleResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetPeriodSchedule not implemented")
@@ -675,6 +693,24 @@ func _BucketService_ListLogs_Handler(srv interface{}, stream grpc.ServerStream) 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BucketService_ListLogsServer = grpc.ServerStreamingServer[commonpb.Log]
 
+func _BucketService_GetLog_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLogRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetLog(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetLog_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetLog(ctx, req.(*GetLogRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BucketService_GetPeriodSchedule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetPeriodScheduleRequest)
 	if err := dec(in); err != nil {
@@ -774,6 +810,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetEventsSinks",
 			Handler:    _BucketService_GetEventsSinks_Handler,
+		},
+		{
+			MethodName: "GetLog",
+			Handler:    _BucketService_GetLog_Handler,
 		},
 		{
 			MethodName: "GetPeriodSchedule",

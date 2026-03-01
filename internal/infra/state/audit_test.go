@@ -46,7 +46,7 @@ func newTestMachineWithAudit(t *testing.T, auditEnabled bool) (*Machine, *dal.St
 		require.NoError(t, batch.Commit())
 	}
 
-	machine, err := NewMachine(logger, dataStore, meter, c, attrs, 1000, keystore.NewKeyStore(), NewSharedState(), NoopEventNotifier{}, 0)
+	machine, err := NewMachine(logger, dataStore, meter, c, attrs, 1000, keystore.NewKeyStore(), NewSharedState(), NoopEventNotifier{}, NoopMirrorNotifier{}, 0)
 	require.NoError(t, err)
 
 	return machine, dataStore, attrs
@@ -357,6 +357,62 @@ func TestBuildAuditFailure(t *testing.T) {
 		err := numscript.ErrScriptRequired
 		failure := buildAuditFailure(err)
 		require.Equal(t, domain.ErrReasonValidation, failure.ErrorType)
+	})
+
+	t.Run("LedgerInMirrorMode", func(t *testing.T) {
+		t.Parallel()
+		err := &domain.ErrLedgerInMirrorMode{Name: "mirror-ledger"}
+		failure := buildAuditFailure(err)
+		require.Equal(t, domain.ErrReasonLedgerInMirrorMode, failure.ErrorType)
+		require.Equal(t, "mirror-ledger", failure.Context["name"])
+	})
+
+	t.Run("LedgerNotInMirrorMode", func(t *testing.T) {
+		t.Parallel()
+		err := &domain.ErrLedgerNotInMirrorMode{Name: "normal-ledger"}
+		failure := buildAuditFailure(err)
+		require.Equal(t, domain.ErrReasonLedgerNotInMirrorMode, failure.ErrorType)
+		require.Equal(t, "normal-ledger", failure.Context["name"])
+	})
+
+	t.Run("MaintenanceMode", func(t *testing.T) {
+		t.Parallel()
+		err := domain.ErrMaintenanceMode
+		failure := buildAuditFailure(err)
+		require.Equal(t, domain.ErrReasonMaintenanceMode, failure.ErrorType)
+	})
+
+	t.Run("InvalidCronExpression", func(t *testing.T) {
+		t.Parallel()
+		err := &domain.ErrInvalidCronExpression{Expression: "bad", Details: "parse error"}
+		failure := buildAuditFailure(err)
+		require.Equal(t, domain.ErrReasonInvalidCronExpression, failure.ErrorType)
+		require.Equal(t, "bad", failure.Context["expression"])
+		require.Equal(t, "parse error", failure.Context["details"])
+	})
+
+	t.Run("SinkAlreadyExists", func(t *testing.T) {
+		t.Parallel()
+		err := &domain.ErrSinkAlreadyExists{Name: "my-sink"}
+		failure := buildAuditFailure(err)
+		require.Equal(t, domain.ErrReasonSinkAlreadyExists, failure.ErrorType)
+		require.Equal(t, "my-sink", failure.Context["name"])
+	})
+
+	t.Run("SinkNotFound", func(t *testing.T) {
+		t.Parallel()
+		err := &domain.ErrSinkNotFound{Name: "missing-sink"}
+		failure := buildAuditFailure(err)
+		require.Equal(t, domain.ErrReasonSinkNotFound, failure.ErrorType)
+		require.Equal(t, "missing-sink", failure.Context["name"])
+	})
+
+	t.Run("PeriodNotClosed", func(t *testing.T) {
+		t.Parallel()
+		err := &domain.ErrPeriodNotClosed{PeriodID: 3}
+		failure := buildAuditFailure(err)
+		require.Equal(t, domain.ErrReasonPeriodNotClosed, failure.ErrorType)
+		require.Equal(t, "3", failure.Context["periodId"])
 	})
 
 	t.Run("Unknown", func(t *testing.T) {

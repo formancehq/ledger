@@ -34,6 +34,6 @@ spec:
               service:
                 name: {{ include "ledger-operator-ui.fullname" $ }}
                 port:
-                  name: http
+                  number: {{ $.Values.service.port }}
     {{- end }}
 {{- end }}

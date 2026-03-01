@@ -34,11 +34,23 @@ type EventNotifier interface {
 	NotifyConfigChanged()
 }
 
+// MirrorNotifier is notified by the FSM when logs are committed or mirror config changes.
+type MirrorNotifier interface {
+	NotifyLogsCommitted()
+	NotifyConfigChanged()
+}
+
 // NoopEventNotifier is a no-op implementation of EventNotifier for use in tests.
 type NoopEventNotifier struct{}
 
 func (NoopEventNotifier) NotifyLogsCommitted() {}
 func (NoopEventNotifier) NotifyConfigChanged() {}
+
+// NoopMirrorNotifier is a no-op implementation of MirrorNotifier for use in tests.
+type NoopMirrorNotifier struct{}
+
+func (NoopMirrorNotifier) NotifyLogsCommitted() {}
+func (NoopMirrorNotifier) NotifyConfigChanged() {}
 
 type Machine struct {
 	logger    logging.Logger
@@ -110,12 +122,17 @@ type Machine struct {
 	appliedMu   sync.Mutex
 	appliedCond *sync.Cond
 
+	// mirrorNotifier is notified after new logs are committed and when mirror
+	// ledger config changes. Used by the mirror Manager.
+	mirrorNotifier MirrorNotifier
+
 	// snapshotBuf is a reusable buffer for snapshot serialization to avoid
 	// repeated allocations (snapshots can be large).
 	snapshotBuf []byte
+
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier EventNotifier, numscriptCacheSize int) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier EventNotifier, mirrorNotifier MirrorNotifier, numscriptCacheSize int) (*Machine, error) {
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(dataStore)
 	if err != nil {
 		return nil, err
@@ -242,6 +259,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		batchCommitHistogram:        batchCommitHistogram,
 		processor:                   processor,
 		eventNotifier:               eventNotifier,
+		mirrorNotifier:              mirrorNotifier,
 		keyStore:                    ks,
 		sharedState:                 sharedState,
 		Registry:                    NewStateRegistry(cache, attrs),
@@ -400,6 +418,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		Results: make([]ApplyResult, 0, len(entries)),
 	}
 	eventsConfigChanged := false
+	mirrorConfigChanged := false
 	needsArchiveDispatch := false
 	var pendingConvertRequests []MetadataConvertRequest
 
@@ -464,8 +483,11 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			})
 		}
 
-		// Skip applyProposal for system-only proposals with no orders
-		if len(cmd.Orders) == 0 {
+		// Skip applyProposal for system-only proposals with no orders AND
+		// no sink/mirror updates. Proposals carrying MirrorSyncUpdates or
+		// EventsSinkUpdates must still go through applyProposal so that
+		// cursor and status writes reach the Pebble batch.
+		if len(cmd.Orders) == 0 && len(cmd.MirrorSyncUpdates) == 0 && len(cmd.EventsSinkUpdates) == 0 {
 			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.Id})
 			continue
 		}
@@ -476,6 +498,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		}
 		if result.ConfigChanged {
 			eventsConfigChanged = true
+		}
+		if result.MirrorConfigChanged {
+			mirrorConfigChanged = true
 		}
 		if result.HasArchiveRequests {
 			needsArchiveDispatch = true
@@ -526,6 +551,12 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	fsm.eventNotifier.NotifyLogsCommitted()
 	if eventsConfigChanged {
 		fsm.eventNotifier.NotifyConfigChanged()
+	}
+
+	// Notify mirror Manager that new logs are available.
+	fsm.mirrorNotifier.NotifyLogsCommitted()
+	if mirrorConfigChanged {
+		fsm.mirrorNotifier.NotifyConfigChanged()
 	}
 
 	return ret, nil
@@ -978,6 +1009,29 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 	}
 
+	// Handle per-ledger mirror cursor and status updates (Raft-replicated)
+	for _, update := range proposal.MirrorSyncUpdates {
+		if update.Cursor > 0 {
+			if err := SetMirrorCursor(batch, update.LedgerName, update.Cursor); err != nil {
+				return nil, fmt.Errorf("setting mirror cursor: %w", err)
+			}
+		}
+		if update.SourceLogCount > 0 {
+			if err := SetMirrorSourceHead(batch, update.LedgerName, update.SourceLogCount); err != nil {
+				return nil, fmt.Errorf("setting mirror source head: %w", err)
+			}
+		}
+		if update.ClearError {
+			if err := ClearMirrorStatus(batch, update.LedgerName); err != nil {
+				return nil, fmt.Errorf("clearing mirror status: %w", err)
+			}
+		} else if update.Error != nil {
+			if err := SetMirrorStatus(batch, update.LedgerName, update.Error); err != nil {
+				return nil, fmt.Errorf("setting mirror status: %w", err)
+			}
+		}
+	}
+
 	// If this proposal only carries sink updates, skip order processing
 	if len(proposal.Orders) == 0 {
 		return &ApplyResult{ProposalID: proposal.Id}, nil
@@ -1061,6 +1115,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Add only created logs to buffer and merge
 	buffer.PendingLogs = append(buffer.PendingLogs, createdLogs...)
 	configChanged := buffer.HasPendingSinkChanges()
+	mirrorConfigChanged := hasMirrorConfigChange(proposal)
 	hasArchiveRequests := len(buffer.pendingArchives) > 0
 	// Capture audit state before Merge, which may toggle sharedState via SetAuditConfig.
 	// We record the audit entry if audit was enabled before OR after, so that
@@ -1096,13 +1151,31 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		ProposalID:              proposal.Id,
 		Logs:                    logs,
 		ConfigChanged:           configChanged,
+		MirrorConfigChanged:     mirrorConfigChanged,
 		HasArchiveRequests:      hasArchiveRequests,
 		MetadataConvertRequests: buffer.MetadataConvertRequests(),
 	}, nil
 }
 
+// hasMirrorConfigChange returns true if any order in the proposal creates or promotes a mirror ledger.
+func hasMirrorConfigChange(proposal *raftcmdpb.Proposal) bool {
+	for _, order := range proposal.Orders {
+		switch o := order.Type.(type) {
+		case *raftcmdpb.Order_CreateLedger:
+			if o.CreateLedger.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+				return true
+			}
+		case *raftcmdpb.Order_PromoteLedger:
+			return true
+		}
+	}
+	return false
+}
+
 // CreateSnapshot creates a snapshot of the Machine state
 func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
+	totalStart := time.Now()
+
 	checkpointID, err := fsm.dataStore.CreateSnapshot()
 	if err != nil {
 		return nil, fmt.Errorf("creating snapshot: %w", err)
@@ -1125,6 +1198,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		})
 	}
 
+	serializeStart := time.Now()
 	snapshot := &raftcmdpb.MemorySnapshot{
 		NextSequenceId:       fsm.nextSequenceID,
 		LastLogHash:          fsm.lastLogHash,
@@ -1151,6 +1225,16 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshaling snapshot: %w", err)
 	}
+
+	fsm.logger.WithFields(map[string]any{
+		"totalDuration":      time.Since(totalStart).String(),
+		"serializeDuration":  time.Since(serializeStart).String(),
+		"snapshotSize":       n,
+		"checkpointId":       checkpointID,
+		"gen0Volumes":        countGenVolumes(snapshot.Gen0),
+		"gen1Volumes":        countGenVolumes(snapshot.Gen1),
+	}).Infof("Created MemorySnapshot")
+
 	return fsm.snapshotBuf[:n], nil
 }
 
@@ -1265,12 +1349,19 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 }
 
 func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapshot) error {
+	totalStart := time.Now()
 	fsm.snapshotIndex = snapshot.Metadata.Index
 
+	deserializeStart := time.Now()
 	memSnapshot := &raftcmdpb.MemorySnapshot{}
 	if err := memSnapshot.UnmarshalVT(snapshot.Data); err != nil {
 		return err
 	}
+	fsm.logger.WithFields(map[string]any{
+		"duration":    time.Since(deserializeStart).String(),
+		"dataSize":    len(snapshot.Data),
+		"checkpointId": memSnapshot.CheckpointId,
+	}).Infof("Deserialized MemorySnapshot")
 
 	// Restore memory state from snapshot
 	fsm.nextSequenceID = memSnapshot.NextSequenceId
@@ -1293,9 +1384,20 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 
 	// Reset the cache and deserialize both generations into it
 	// Ledger info and boundaries are restored via deserializeCacheGeneration (from cache generations)
+	cacheStart := time.Now()
 	fsm.Registry.Cache.Reset()
 	deserializeCacheGeneration(fsm.Registry.Cache, memSnapshot.Gen0, 0)
 	deserializeCacheGeneration(fsm.Registry.Cache, memSnapshot.Gen1, 1)
+	fsm.logger.WithFields(map[string]any{
+		"duration":       time.Since(cacheStart).String(),
+		"gen0Volumes":    countGenVolumes(memSnapshot.Gen0),
+		"gen1Volumes":    countGenVolumes(memSnapshot.Gen1),
+		"gen0Metadata":   countGenMetadata(memSnapshot.Gen0),
+		"gen1Metadata":   countGenMetadata(memSnapshot.Gen1),
+		"gen0Ledgers":    countGenLedgers(memSnapshot.Gen0),
+		"gen0Boundaries": countGenBoundaries(memSnapshot.Gen0),
+		"gen0References": countGenReferences(memSnapshot.Gen0),
+	}).Infof("Restored cache from snapshot")
 
 	// Restore reversion bitsets from snapshot
 	fsm.Registry.ResetReversions()
@@ -1318,7 +1420,52 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	}
 	fsm.dirtyBoundaryKeys = make(map[string]*raftcmdpb.LedgerBoundaries)
 
+	fsm.logger.WithFields(map[string]any{
+		"totalDuration": time.Since(totalStart).String(),
+		"snapshotIndex": snapshot.Metadata.Index,
+	}).Infof("InstallSnapshot complete")
+
 	return nil
+}
+
+// countGenVolumes returns the number of volume entries in a generation snapshot, or 0 if nil.
+func countGenVolumes(gen *raftcmdpb.GenerationSnapshot) int {
+	if gen == nil {
+		return 0
+	}
+	return len(gen.Volumes)
+}
+
+// countGenMetadata returns the number of metadata entries in a generation snapshot, or 0 if nil.
+func countGenMetadata(gen *raftcmdpb.GenerationSnapshot) int {
+	if gen == nil {
+		return 0
+	}
+	return len(gen.Metadata) + len(gen.LedgerMetadata)
+}
+
+// countGenLedgers returns the number of ledger entries in a generation snapshot, or 0 if nil.
+func countGenLedgers(gen *raftcmdpb.GenerationSnapshot) int {
+	if gen == nil {
+		return 0
+	}
+	return len(gen.Ledgers)
+}
+
+// countGenBoundaries returns the number of boundary entries in a generation snapshot, or 0 if nil.
+func countGenBoundaries(gen *raftcmdpb.GenerationSnapshot) int {
+	if gen == nil {
+		return 0
+	}
+	return len(gen.Boundaries)
+}
+
+// countGenReferences returns the number of reference entries in a generation snapshot, or 0 if nil.
+func countGenReferences(gen *raftcmdpb.GenerationSnapshot) int {
+	if gen == nil {
+		return 0
+	}
+	return len(gen.References)
 }
 
 // reloadStateFromStore reloads signing keys and shared runtime flags from Pebble.
@@ -1443,13 +1590,13 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 	}
 }
 
-func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher SnapshotFetcher) (uint64, error) {
+func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) (uint64, error) {
 	// Restore checkpoint from the leader if needed
 	// The checkpoint ID is stored in the Machine state from the snapshot
 	if fsm.lastCheckpointID > 0 {
 		currentCheckpointID := fsm.dataStore.GetCurrentCheckpointID()
 		if currentCheckpointID < fsm.lastCheckpointID {
-			if err := fsm.restoreCheckpoint(ctx, snapshotFetcher); err != nil {
+			if err := fsm.restoreCheckpoint(ctx, snapshotFetcher, progress); err != nil {
 				return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
 			}
 		}
@@ -1469,11 +1616,15 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 }
 
 // restoreCheckpoint restores a checkpoint from the leader.
-func (fsm *Machine) restoreCheckpoint(ctx context.Context, snapshotFetcher SnapshotFetcher) error {
+func (fsm *Machine) restoreCheckpoint(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) error {
 	fsm.logger.WithFields(map[string]any{
 		"currentCheckpointId": fsm.dataStore.GetCurrentCheckpointID(),
 		"targetCheckpointId":  fsm.lastCheckpointID,
 	}).Infof("Fetching checkpoint from leader")
+
+	if progress != nil {
+		progress.SetCheckpointID(fsm.lastCheckpointID)
+	}
 
 	// Prepare the checkpoint directory
 	checkpointDir, err := fsm.dataStore.PrepareCheckpointRestore(fsm.lastCheckpointID)
@@ -1482,7 +1633,7 @@ func (fsm *Machine) restoreCheckpoint(ctx context.Context, snapshotFetcher Snaps
 	}
 
 	// Fetch the checkpoint from the leader
-	size, hash, err := snapshotFetcher.FetchSnapshot(ctx, fsm.lastCheckpointID, checkpointDir)
+	size, hash, err := snapshotFetcher.FetchSnapshot(ctx, fsm.lastCheckpointID, checkpointDir, progress)
 	if err != nil {
 		return fmt.Errorf("fetching snapshot from leader: %w", err)
 	}
@@ -1656,6 +1807,7 @@ type ApplyResult struct {
 	Error                   error
 	CheckpointPath          string // Set by Node after checkpoint creation (CreateCheckpoint proposals)
 	ConfigChanged           bool   // True when sink configuration changed
+	MirrorConfigChanged     bool   // True when mirror ledger configuration changed
 	HasArchiveRequests      bool   // True when there are pending archive requests
 	MetadataConvertRequests []MetadataConvertRequest
 }

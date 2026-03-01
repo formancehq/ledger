@@ -135,8 +135,9 @@ wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
         }
       });
     })
-    .catch((err: Error) => {
-      console.error("K8s exec failed:", err.message ?? err);
+    .catch((err: Error & { statusCode?: number; body?: unknown }) => {
+      console.error(`K8s exec failed: ns=${params.namespace} pod=${params.pod} container=${params.container ?? "(default)"}`, err.message ?? err);
+      if (err.body) console.error("K8s exec response body:", JSON.stringify(err.body));
       if (ws.readyState === WebSocket.OPEN) {
         ws.close(1011, `Exec failed: ${err.message ?? "unknown error"}`);
       }

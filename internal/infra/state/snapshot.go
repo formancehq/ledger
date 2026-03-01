@@ -15,7 +15,8 @@ type SnapshotFetcher interface {
 	// FetchSnapshot fetches a snapshot by ID and writes it to the given directory.
 	// Returns the total size in bytes and SHA256 hash of the content.
 	// May return ErrNotAvailable if the peer is not reachable.
-	FetchSnapshot(ctx context.Context, snapshotID uint64, targetDir string) (size uint64, hash string, err error)
+	// If progress is non-nil, the fetcher reports transfer progress to it.
+	FetchSnapshot(ctx context.Context, snapshotID uint64, targetDir string, progress *SyncProgress) (size uint64, hash string, err error)
 }
 
 // SnapshotFetcherProvider provides snapshot fetchers for peers.

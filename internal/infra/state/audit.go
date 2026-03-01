@@ -21,6 +21,8 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 	var (
 		ledgerAlreadyExists          *domain.ErrLedgerAlreadyExists
 		ledgerNotFound               *domain.ErrLedgerNotFound
+		ledgerInMirrorMode           *domain.ErrLedgerInMirrorMode
+		ledgerNotInMirrorMode        *domain.ErrLedgerNotInMirrorMode
 		idempotencyKeyConflict       *domain.ErrIdempotencyKeyConflict
 		transactionReferenceConflict *domain.ErrTransactionReferenceConflict
 		transactionNotFound          *domain.ErrTransactionNotFound
@@ -30,6 +32,15 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 		balanceNotPreloaded          *numscript.ErrBalanceNotPreloaded
 		numscriptParse               *numscript.ErrNumscriptParse
 		nonDeterministic             *numscript.ErrNonDeterministicScript
+		sinkAlreadyExists            *domain.ErrSinkAlreadyExists
+		sinkNotFound                 *domain.ErrSinkNotFound
+		metadataNotFound             *domain.ErrMetadataNotFound
+		periodNotFound               *domain.ErrPeriodNotFound
+		periodNotClosing             *domain.ErrPeriodNotClosing
+		periodNotClosed              *domain.ErrPeriodNotClosed
+		periodNotArchiving           *domain.ErrPeriodNotArchiving
+		invalidReceipt               *domain.ErrInvalidReceipt
+		invalidCronExpression        *domain.ErrInvalidCronExpression
 	)
 
 	switch {
@@ -40,6 +51,14 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 	case errors.As(err, &ledgerNotFound):
 		failure.ErrorType = domain.ErrReasonLedgerNotFound
 		failure.Context["name"] = ledgerNotFound.Name
+
+	case errors.As(err, &ledgerInMirrorMode):
+		failure.ErrorType = domain.ErrReasonLedgerInMirrorMode
+		failure.Context["name"] = ledgerInMirrorMode.Name
+
+	case errors.As(err, &ledgerNotInMirrorMode):
+		failure.ErrorType = domain.ErrReasonLedgerNotInMirrorMode
+		failure.Context["name"] = ledgerNotInMirrorMode.Name
 
 	case errors.As(err, &idempotencyKeyConflict):
 		failure.ErrorType = domain.ErrReasonIdempotencyKeyConflict
@@ -82,6 +101,53 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 	case errors.As(err, &nonDeterministic):
 		failure.ErrorType = "NON_DETERMINISTIC_SCRIPT"
 		failure.Context["method"] = nonDeterministic.Method
+
+	case errors.As(err, &sinkAlreadyExists):
+		failure.ErrorType = domain.ErrReasonSinkAlreadyExists
+		failure.Context["name"] = sinkAlreadyExists.Name
+
+	case errors.As(err, &sinkNotFound):
+		failure.ErrorType = domain.ErrReasonSinkNotFound
+		failure.Context["name"] = sinkNotFound.Name
+
+	case errors.As(err, &metadataNotFound):
+		failure.ErrorType = domain.ErrReasonMetadataNotFound
+		failure.Context["target"] = metadataNotFound.Target
+		failure.Context["key"] = metadataNotFound.Key
+
+	case errors.Is(err, domain.ErrNoPeriodOpen):
+		failure.ErrorType = domain.ErrReasonNoPeriodOpen
+
+	case errors.Is(err, domain.ErrPeriodAlreadyClosing):
+		failure.ErrorType = domain.ErrReasonPeriodAlreadyClosing
+
+	case errors.As(err, &periodNotFound):
+		failure.ErrorType = domain.ErrReasonPeriodNotFound
+		failure.Context["periodId"] = fmt.Sprintf("%d", periodNotFound.PeriodID)
+
+	case errors.As(err, &periodNotClosing):
+		failure.ErrorType = domain.ErrReasonPeriodNotClosing
+		failure.Context["periodId"] = fmt.Sprintf("%d", periodNotClosing.PeriodID)
+
+	case errors.As(err, &periodNotClosed):
+		failure.ErrorType = domain.ErrReasonPeriodNotClosed
+		failure.Context["periodId"] = fmt.Sprintf("%d", periodNotClosed.PeriodID)
+
+	case errors.As(err, &periodNotArchiving):
+		failure.ErrorType = domain.ErrReasonPeriodNotArchiving
+		failure.Context["periodId"] = fmt.Sprintf("%d", periodNotArchiving.PeriodID)
+
+	case errors.As(err, &invalidReceipt):
+		failure.ErrorType = domain.ErrReasonInvalidReceipt
+		failure.Context["reason"] = invalidReceipt.Reason
+
+	case errors.As(err, &invalidCronExpression):
+		failure.ErrorType = domain.ErrReasonInvalidCronExpression
+		failure.Context["expression"] = invalidCronExpression.Expression
+		failure.Context["details"] = invalidCronExpression.Details
+
+	case errors.Is(err, domain.ErrMaintenanceMode):
+		failure.ErrorType = domain.ErrReasonMaintenanceMode
 
 	case errors.Is(err, domain.ErrTargetRequired),
 		errors.Is(err, domain.ErrMetadataKeyRequired),

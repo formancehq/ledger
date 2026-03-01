@@ -9,6 +9,11 @@ service RaftTransportService {
   // StreamMessages establishes a client streaming connection for sending Raft messages
   // This avoids frequent reconnections by maintaining a persistent connection
   rpc StreamMessages(stream SendMessageRequest) returns (stream SendMessageResponse);
+
+  // FetchMemorySnapshot streams a large memory snapshot in chunks.
+  // Used when the snapshot exceeds the inline gRPC message size threshold.
+  // The leader stores the snapshot data locally and the follower pulls it via this RPC.
+  rpc FetchMemorySnapshot(FetchMemorySnapshotRequest) returns (stream FetchMemorySnapshotResponse);
 }
 
 message RaftRequestMessage {
@@ -54,5 +59,19 @@ message SendMessageResponse {
     RaftResponseBatch raft = 1;
     PongResponse pong = 2;
   }
+}
+
+// FetchMemorySnapshotRequest identifies which snapshot to fetch.
+// The follower sends this after receiving a reference-only NodeSnapshot via Raft.
+message FetchMemorySnapshotRequest {
+  uint64 snapshot_index = 1;  // Raft index of the snapshot
+  uint64 snapshot_term = 2;   // Raft term of the snapshot
+}
+
+// FetchMemorySnapshotResponse is a chunk of the snapshot data.
+message FetchMemorySnapshotResponse {
+  bytes data = 1;          // Chunk payload
+  uint64 total_size = 2;   // Total snapshot size (set on every chunk for progress tracking)
+  bool eof = 3;            // True on the last chunk
 }
 

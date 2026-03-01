@@ -14,6 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -25,7 +27,9 @@ import (
 // LedgerServiceReconciler reconciles a LedgerService object.
 type LedgerServiceReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme    *runtime.Scheme
+	Config    *rest.Config
+	Clientset kubernetes.Interface
 }
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices,verbs=get;list;watch;create;update;patch;delete
@@ -34,6 +38,9 @@ type LedgerServiceReconciler struct {
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerdefaults,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=delete;list
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
+// +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
@@ -380,8 +387,14 @@ func validateSpec(ledger *ledgerv1alpha1.LedgerService) error {
 		}
 	}
 	if hosts, enabled := ingressGrpcHosts(ledger.Spec.IngressGrpc); enabled {
-		if err := validateIngressHosts("ingressGrpc", hosts); err != nil {
-			return err
+		// When only a TargetGroupBinding is configured (no hosts), skip host
+		// validation — the Ingress resource won't be created, only the TGB.
+		hasTGB := ledger.Spec.IngressGrpc.TargetGroupBinding != nil &&
+			ledger.Spec.IngressGrpc.TargetGroupBinding.Enabled
+		if len(hosts) != 0 || !hasTGB {
+			if err := validateIngressHosts("ingressGrpc", hosts); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

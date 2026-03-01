@@ -45,10 +45,10 @@ async function start(): Promise<void> {
   if (process.env.NODE_ENV === "production") {
     app.use(
       "/*",
-      serveStatic({ root: "../frontend/dist" })
+      serveStatic({ root: "./frontend/dist" })
     );
     // SPA fallback
-    app.get("*", serveStatic({ root: "../frontend/dist", path: "index.html" }));
+    app.get("*", serveStatic({ root: "./frontend/dist", path: "index.html" }));
   }
 
   const port = parseInt(process.env.PORT ?? "3001", 10);

@@ -219,12 +219,15 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			"hardState.Commit": s.hardState.Commit,
 			"snapshot.Index":   s.snapshot.Metadata.Index,
 			"snapshot.Term":    s.snapshot.Metadata.Term,
-		}).Infof("DefaultWAL replay completed")
+		}).Infof("WAL replay completed")
 
 	// Start background purger to delete old WAL segment files that have been
 	// unlocked by ReleaseLockTo during compaction.
 	s.stopPurge = make(chan struct{})
-	s.purgeDone, _ = fileutil.PurgeFileWithDoneNotify(s.zapLogger, s.etcdWalDir, ".wal", 1, s.purgeInterval, s.stopPurge)
+	// Use a nop logger for the purger to suppress the benign "failed to lock file"
+	// warning that occurs when ReleaseLockTo keeps one extra segment locked.
+	// The purger retries on the next cycle and eventually succeeds.
+	s.purgeDone, _ = fileutil.PurgeFileWithDoneNotify(zap.NewNop(), s.etcdWalDir, ".wal", 1, s.purgeInterval, s.stopPurge)
 
 	return s, nil
 }
@@ -517,6 +520,43 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 	}
 
 	s.logger.WithFields(map[string]any{"index": index}).Infof("Snapshot created")
+
+	return nil
+}
+
+// UpdateSnapshotConfState updates the ConfState of the latest snapshot without
+// changing the snapshot data or index. This is used when cluster membership
+// changes (e.g. a learner is added) so that etcd/raft sends snapshots with
+// the correct ConfState to newly added nodes.
+func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
+	s.mu.Lock()
+
+	// Nothing to update if there is no snapshot yet.
+	if s.snapshot.Metadata.Index == 0 && len(s.snapshot.Metadata.ConfState.Voters) == 0 {
+		s.mu.Unlock()
+		return nil
+	}
+
+	snap := s.snapshot
+	snap.Metadata.ConfState = *cs
+	s.snapshot = snap
+	s.mu.Unlock()
+
+	if err := s.saveSnapshot(snap); err != nil {
+		return fmt.Errorf("saving snapshot: %w", err)
+	}
+
+	if err := s.wal.SaveSnapshot(walpb.Snapshot{
+		Index:     snap.Metadata.Index,
+		Term:      snap.Metadata.Term,
+		ConfState: cs,
+	}); err != nil {
+		return fmt.Errorf("saving snapshot: %w", err)
+	}
+
+	s.logger.WithFields(map[string]any{
+		"index": snap.Metadata.Index,
+	}).Infof("Snapshot ConfState updated")
 
 	return nil
 }

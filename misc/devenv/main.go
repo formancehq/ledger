@@ -12,6 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws"
+	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/iam"
+	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/s3"
 	"github.com/pulumi/pulumi-docker-build/sdk/go/dockerbuild"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apiextensions"
@@ -681,6 +684,15 @@ func main() {
 					"repository": pulumi.Sprintf("%s/formancehq/ledger-operator-ui", pullRegistry),
 					"tag":        pulumi.Sprintf("latest@%s", operatorUIImage.Digest),
 				},
+				"ingress": pulumi.Map{
+					"enabled":   pulumi.Bool(true),
+					"className": pulumi.String("traefik"),
+					"hosts": pulumi.MapArray{
+						pulumi.Map{
+							"host": pulumi.String("operator-ledger-exp.staging.formance.cloud"),
+						},
+					},
+				},
 			}
 
 			// Inject OIDC auth configuration when enabled
@@ -751,6 +763,134 @@ func main() {
 
 		defaultsSpec := extractLedgerDefaults(ledgerSpec)
 
+		// Ensure PVCs are deleted when a LedgerService is removed.
+		ensurePersistenceRetentionPolicy(defaultsSpec)
+
+		// Cold storage: optionally create an S3 bucket and inject config into LedgerDefaults
+		var coldStorageDeps []pulumi.Resource
+		if getConfigBool("coldStorage-enabled", false) {
+			coldStorageRegion := cfg.Get("coldStorage-s3-region")
+			if coldStorageRegion == "" {
+				coldStorageRegion = "eu-west-1"
+			}
+
+			awsProvider, err := aws.NewProvider(ctx, "aws-cold-storage", &aws.ProviderArgs{
+				Region: pulumi.String(coldStorageRegion),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to create AWS provider for cold storage: %w", err)
+			}
+
+			bucketName := fmt.Sprintf("ledger-exp-cold-storage-%s", ctx.Stack())
+			coldBucket, err := s3.NewBucketV2(ctx, "cold-storage-bucket", &s3.BucketV2Args{
+				Bucket: pulumi.String(bucketName),
+			}, pulumi.Provider(awsProvider))
+			if err != nil {
+				return fmt.Errorf("failed to create cold storage S3 bucket: %w", err)
+			}
+
+			// Inject coldStorage config into the defaults spec
+			defaultsConfig, ok := defaultsSpec["config"].(map[string]any)
+			if !ok {
+				defaultsConfig = make(map[string]any)
+				defaultsSpec["config"] = defaultsConfig
+			}
+			defaultsConfig["coldStorage"] = map[string]any{
+				"driver": "s3",
+				"s3": map[string]any{
+					"bucket": coldBucket.Bucket,
+					"region": coldStorageRegion,
+				},
+			}
+
+			// Create IAM role and ServiceAccount for IRSA (IAM Roles for Service Accounts)
+			oidcIssuer := cfg.Get("coldStorage-eks-oidc-issuer")
+			if oidcIssuer != "" {
+				oidcIssuer = strings.TrimPrefix(oidcIssuer, "https://")
+
+				callerIdentity, err := aws.GetCallerIdentity(ctx, &aws.GetCallerIdentityArgs{}, pulumi.Provider(awsProvider))
+				if err != nil {
+					return fmt.Errorf("failed to get AWS caller identity: %w", err)
+				}
+
+				oidcProviderARN := fmt.Sprintf("arn:aws:iam::%s:oidc-provider/%s", callerIdentity.AccountId, oidcIssuer)
+				trustPolicy, err := json.Marshal(map[string]any{
+					"Version": "2012-10-17",
+					"Statement": []map[string]any{{
+						"Effect":    "Allow",
+						"Principal": map[string]any{"Federated": oidcProviderARN},
+						"Action":    "sts:AssumeRoleWithWebIdentity",
+						"Condition": map[string]any{
+							"StringEquals": map[string]string{
+								oidcIssuer + ":sub": fmt.Sprintf("system:serviceaccount:%s:aws-access", namespaceName),
+								oidcIssuer + ":aud": "sts.amazonaws.com",
+							},
+						},
+					}},
+				})
+				if err != nil {
+					return fmt.Errorf("failed to marshal trust policy: %w", err)
+				}
+
+				coldStorageRole, err := iam.NewRole(ctx, "cold-storage-role", &iam.RoleArgs{
+					Name:             pulumi.Sprintf("ledger-exp-%s-cold-storage", ctx.Stack()),
+					AssumeRolePolicy: pulumi.String(trustPolicy),
+				}, pulumi.Provider(awsProvider))
+				if err != nil {
+					return fmt.Errorf("failed to create cold storage IAM role: %w", err)
+				}
+
+				s3Policy, err := json.Marshal(map[string]any{
+					"Version": "2012-10-17",
+					"Statement": []map[string]any{{
+						"Effect": "Allow",
+						"Action": []string{
+							"s3:GetObject",
+							"s3:PutObject",
+							"s3:DeleteObject",
+							"s3:ListBucket",
+						},
+						"Resource": []string{
+							fmt.Sprintf("arn:aws:s3:::%s", bucketName),
+							fmt.Sprintf("arn:aws:s3:::%s/*", bucketName),
+						},
+					}},
+				})
+				if err != nil {
+					return fmt.Errorf("failed to marshal S3 policy: %w", err)
+				}
+
+				_, err = iam.NewRolePolicy(ctx, "cold-storage-s3-policy", &iam.RolePolicyArgs{
+					Role:   coldStorageRole.Name,
+					Policy: pulumi.String(s3Policy),
+				}, pulumi.Provider(awsProvider))
+				if err != nil {
+					return fmt.Errorf("failed to create cold storage S3 policy: %w", err)
+				}
+
+				sa, err := v1.NewServiceAccount(ctx, "aws-access", &v1.ServiceAccountArgs{
+					Metadata: &metav1.ObjectMetaArgs{
+						Name:      pulumi.String("aws-access"),
+						Namespace: namespace.Metadata.Name(),
+						Annotations: pulumi.StringMap{
+							"eks.amazonaws.com/role-arn": coldStorageRole.Arn,
+						},
+					},
+				}, pulumi.Provider(k8sProvider))
+				if err != nil {
+					return fmt.Errorf("failed to create IRSA ServiceAccount: %w", err)
+				}
+				coldStorageDeps = append(coldStorageDeps, sa)
+				ctx.Export("coldStorageRoleArn", coldStorageRole.Arn)
+			}
+
+			coldStorageDeps = append(coldStorageDeps, coldBucket)
+			ctx.Export("coldStorageBucket", coldBucket.Bucket)
+		}
+
+		defaultsDeps := []pulumi.Resource{ledgerDefaultsCRD, ledgerOperator}
+		defaultsDeps = append(defaultsDeps, coldStorageDeps...)
+
 		_, err = apiextensions.NewCustomResource(ctx, "ledger-defaults", &apiextensions.CustomResourceArgs{
 			ApiVersion: pulumi.String("ledger.formance.com/v1alpha1"),
 			Kind:       pulumi.String("LedgerDefaults"),
@@ -764,7 +904,7 @@ func main() {
 				"spec": defaultsSpec,
 			},
 		},
-			pulumi.DependsOn([]pulumi.Resource{ledgerDefaultsCRD, ledgerOperator}),
+			pulumi.DependsOn(defaultsDeps),
 			pulumi.Provider(k8sProvider),
 		)
 		if err != nil {
@@ -885,6 +1025,7 @@ func extractLedgerDefaults(ledgerSpec map[string]any) map[string]any {
 		"readinessProbe",
 		"podSecurityContext",
 		"securityContext",
+		"persistence",
 	}
 
 	for _, key := range topLevelKeys {
@@ -922,4 +1063,25 @@ func extractLedgerDefaults(ledgerSpec map[string]any) map[string]any {
 	}
 
 	return defaultsSpec
+}
+
+// ensurePersistenceRetentionPolicy ensures that the defaults spec always has
+// persistence.retentionPolicy.whenDeleted=Delete so PVCs are cleaned up
+// when a LedgerService is removed.
+func ensurePersistenceRetentionPolicy(defaultsSpec map[string]any) {
+	persistence, ok := defaultsSpec["persistence"].(map[string]any)
+	if !ok {
+		persistence = make(map[string]any)
+		defaultsSpec["persistence"] = persistence
+	}
+
+	rp, ok := persistence["retentionPolicy"].(map[string]any)
+	if !ok {
+		rp = make(map[string]any)
+		persistence["retentionPolicy"] = rp
+	}
+
+	if _, ok := rp["whenDeleted"]; !ok {
+		rp["whenDeleted"] = "Delete"
+	}
 }

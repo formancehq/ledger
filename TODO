@@ -4,6 +4,7 @@ API:
 
 Business:
 * Chart of account
+* Account types instead of segment filtering
 * Mirror mode
 * Numscript
 ** Add typed variables

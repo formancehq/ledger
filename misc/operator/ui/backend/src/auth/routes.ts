@@ -105,7 +105,14 @@ export function createAuthRoutes(config: AuthConfig | null): Hono {
       return c.redirect("/");
     }
 
-    const callbackUrl = new URL(c.req.url);
+    // Build the callback URL from the configured redirectUri rather than
+    // c.req.url, because behind a reverse proxy the internal URL (http://pod-ip:3001/...)
+    // differs from the public URL that was sent to the OIDC provider at login time.
+    // The token exchange MUST use the exact same redirect_uri.
+    const incomingUrl = new URL(c.req.url);
+    const callbackUrl = new URL(config.redirectUri);
+    // Carry over query params (code, state, scope, etc.) from the incoming request
+    incomingUrl.searchParams.forEach((v, k) => callbackUrl.searchParams.set(k, v));
     const state = callbackUrl.searchParams.get("state");
 
     if (!state || !pendingStates.has(state)) {

@@ -81,16 +81,29 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 		maintenanceDisplay = pterm.Red("On")
 	}
 
+	syncStatusDisplay := pterm.Green("Normal")
+	if sp := state.SyncProgress; sp != nil {
+		syncStatusDisplay = getSyncStatusColor(sp.Status)
+	}
+
 	overviewData := [][]string{
 		{pterm.LightCyan("State:"), getStateColor(state.State)},
 		{pterm.LightCyan("Local Node ID:"), fmt.Sprintf("%d", state.LocalNode)},
 		{pterm.LightCyan("Leader ID:"), getLeaderDisplay(state.Leader)},
 		{pterm.LightCyan("Total Nodes:"), fmt.Sprintf("%d", len(state.Nodes))},
 		{pterm.LightCyan("Maintenance:"), maintenanceDisplay},
+		{pterm.LightCyan("Sync Status:"), syncStatusDisplay},
 	}
 
 	_ = pterm.DefaultTable.WithHasHeader(false).WithData(overviewData).Render()
 	pterm.Println()
+
+	// Show checkpoint fetch progress when syncing
+	if sp := state.SyncProgress; sp != nil && sp.Status == "syncing" && sp.BytesTotal > 0 {
+		pterm.DefaultSection.Println("Checkpoint Fetch Progress")
+		displaySyncProgress(sp)
+		pterm.Println()
+	}
 
 	// Raft status
 	if state.RaftStatus != nil {
@@ -115,7 +128,6 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 	if len(state.Nodes) > 0 {
 		pterm.DefaultSection.Println("Cluster Nodes")
 
-		// Build table header
 		nodeData := [][]string{
 			{
 				pterm.Bold.Sprint("ID"),
@@ -124,7 +136,8 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 				pterm.Bold.Sprint("Match"),
 				pterm.Bold.Sprint("Next"),
 				pterm.Bold.Sprint("State"),
-				pterm.Bold.Sprint("Active"),
+				pterm.Bold.Sprint("Replication"),
+				pterm.Bold.Sprint("Sync"),
 			},
 		}
 
@@ -135,6 +148,11 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 			return sortedNodes[i].Id < sortedNodes[j].Id
 		})
 
+		commitIndex := uint64(0)
+		if state.RaftStatus != nil {
+			commitIndex = state.RaftStatus.Commit
+		}
+
 		for _, node := range sortedNodes {
 			status := ""
 			switch node.Id {
@@ -144,19 +162,23 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 				status = pterm.Yellow("Local")
 			}
 
-			// Include progress information (should always be present when nodes list is available)
-			active := pterm.Red("No")
-			if node.Progress != nil && node.Progress.RecentActive {
-				active = pterm.Green("Yes")
-			}
-
 			matchStr := "-"
 			nextStr := "-"
 			stateStr := "-"
+			progressStr := pterm.Gray("-")
 			if node.Progress != nil {
 				matchStr = fmt.Sprintf("%d", node.Progress.Match)
 				nextStr = fmt.Sprintf("%d", node.Progress.Next)
 				stateStr = node.Progress.State
+				isLeader := node.Id == state.Leader
+				progressStr = formatNodeProgress(node.Progress, commitIndex, isLeader)
+			}
+
+			syncStr := pterm.Green("ok")
+			if sp := node.SyncProgress; sp != nil {
+				syncStr = formatSyncStatus(sp)
+			} else if node.Progress != nil && node.Progress.State == "Probe" {
+				syncStr = pterm.Gray("unknown")
 			}
 
 			nodeData = append(nodeData, []string{
@@ -166,13 +188,106 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 				matchStr,
 				nextStr,
 				stateStr,
-				active,
+				progressStr,
+				syncStr,
 			})
 		}
 
 		_ = pterm.DefaultTable.WithHasHeader(true).WithData(nodeData).Render()
 		pterm.Println()
 	}
+}
+
+// formatNodeProgress returns a visual progress indicator for a cluster node.
+func formatNodeProgress(prog *clusterpb.ProgressInfo, commitIndex uint64, isLeader bool) string {
+	if prog.State == "Snapshot" {
+		return pterm.Cyan("receiving snapshot...")
+	}
+	if !prog.RecentActive && !isLeader {
+		return pterm.Red("inactive")
+	}
+	if commitIndex == 0 {
+		return pterm.Gray("n/a")
+	}
+
+	pct := float64(prog.Match) / float64(commitIndex) * 100
+	if pct > 100 {
+		pct = 100
+	}
+
+	lag := commitIndex - prog.Match
+	lagStr := ""
+	if lag > 0 {
+		lagStr = fmt.Sprintf(" (%d behind)", lag)
+	}
+
+	label := fmt.Sprintf("%.1f%%", pct)
+	switch {
+	case pct >= 100:
+		return pterm.Green(label) + lagStr
+	case pct >= 80:
+		return pterm.Yellow(label) + pterm.Gray(lagStr)
+	default:
+		return pterm.Red(label) + pterm.Gray(lagStr)
+	}
+}
+
+func getSyncStatusColor(status string) string {
+	switch status {
+	case "normal":
+		return pterm.Green("Normal")
+	case "syncing":
+		return pterm.Cyan("Syncing")
+	case "snapshotting":
+		return pterm.Yellow("Snapshotting")
+	case "out_of_sync":
+		return pterm.Red("Out of Sync")
+	default:
+		return status
+	}
+}
+
+func formatSyncStatus(sp *clusterpb.SyncProgress) string {
+	switch sp.Status {
+	case "normal":
+		return pterm.Green("ok")
+	case "syncing":
+		if sp.BytesTotal > 0 {
+			pct := float64(sp.BytesReceived) / float64(sp.BytesTotal) * 100
+			if pct > 100 {
+				pct = 100
+			}
+			return pterm.Cyan(fmt.Sprintf("%.1f%%", pct))
+		}
+		return pterm.Cyan("syncing")
+	case "snapshotting":
+		return pterm.Yellow("snapshotting")
+	case "out_of_sync":
+		return pterm.Red("out of sync")
+	default:
+		return sp.Status
+	}
+}
+
+func displaySyncProgress(sp *clusterpb.SyncProgress) {
+	pct := float64(0)
+	if sp.BytesTotal > 0 {
+		pct = float64(sp.BytesReceived) / float64(sp.BytesTotal) * 100
+		if pct > 100 {
+			pct = 100
+		}
+	}
+
+	receivedMB := float64(sp.BytesReceived) / (1024 * 1024)
+	totalMB := float64(sp.BytesTotal) / (1024 * 1024)
+
+	progressData := [][]string{
+		{pterm.LightCyan("Checkpoint ID:"), fmt.Sprintf("%d", sp.CheckpointId)},
+		{pterm.LightCyan("Progress:"), pterm.Cyan(fmt.Sprintf("%.1f%%", pct))},
+		{pterm.LightCyan("Transferred:"), fmt.Sprintf("%.1f / %.1f MB", receivedMB, totalMB)},
+	}
+
+	_ = pterm.DefaultTable.WithHasHeader(false).WithData(progressData).Render()
 }
 
 func getStateColor(state string) string {

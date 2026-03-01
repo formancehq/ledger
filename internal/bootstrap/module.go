@@ -30,6 +30,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/application/events"
+	"github.com/formancehq/ledger-v3-poc/internal/application/mirror"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
@@ -79,6 +80,8 @@ func Module() fx.Option {
 					cfg.TransportConfig,
 					cfg.ClusterID,
 					cfg.RaftConfig.TransportBufferSize,
+					cfg.RaftConfig.AdvertiseAddr,
+					cfg.ServiceAdvertiseAddr(),
 				)
 			}, fx.ParamTags(``, ``, `name:"raft"`, ``)),
 			func(cfg Config, meterProvider metric.MeterProvider, logger logging.Logger) (*dal.Store, error) {
@@ -100,6 +103,9 @@ func Module() fx.Option {
 				}
 
 				return store, nil
+			},
+			func(store *dal.Store, logger logging.Logger) *dal.IdleCompactor {
+				return dal.NewIdleCompactor(store, logger)
 			},
 			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
 				return wal.New(cfg.RaftConfig.WalDir, logger.WithFields(map[string]any{
@@ -130,9 +136,11 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				ks *keystore.KeyStore,
 				ss *state.SharedState,
-				notifications *events.Notifications,
+				eventNotifications *events.Notifications,
+				mirrorNotifications *mirror.Notifications,
 			) (*state.Machine, error) {
-				return state.NewMachine(
+				machineStart := time.Now()
+				m, err := state.NewMachine(
 					logger,
 					store,
 					meterProvider.Meter("raft.node"),
@@ -141,9 +149,17 @@ func Module() fx.Option {
 					cfg.RaftConfig.RotationThreshold,
 					ks,
 					ss,
-					notifications,
+					eventNotifications,
+					mirrorNotifications,
 					cfg.NumscriptCacheSize,
 				)
+				if err != nil {
+					return nil, err
+				}
+				logger.WithFields(map[string]any{
+					"duration": time.Since(machineStart).String(),
+				}).Infof("FSM Machine created")
+				return m, nil
 			},
 			func(
 				params struct {
@@ -165,6 +181,13 @@ func Module() fx.Option {
 					return nodeProvideResult{}, fmt.Errorf("reading WAL snapshot: %w", err)
 				}
 				freshStart := walFreshStart(len(snapshot.Metadata.ConfState.Voters) == 0)
+				params.Logger.WithFields(map[string]any{
+					"freshStart":     freshStart,
+					"walVoters":      snapshot.Metadata.ConfState.Voters,
+					"walLearners":    snapshot.Metadata.ConfState.Learners,
+					"snapshotIndex":  snapshot.Metadata.Index,
+					"snapshotTerm":   snapshot.Metadata.Term,
+				}).Infof("WAL fresh start detection")
 
 				n, err := node.NewNode(
 					params.NodeConfig,
@@ -295,6 +318,14 @@ func Module() fx.Option {
 			state.NewSharedState,
 			events.NewNotifications,
 			events.NewManager,
+			mirror.NewNotifications,
+			func(store *dal.Store, proposer mirror.Proposer, c *cache.Cache, attrs *attributes.Attributes, logger logging.Logger, notifications *mirror.Notifications, meterProvider metric.MeterProvider, cfg Config) *mirror.Manager {
+				return mirror.NewManager(store, proposer, c, attrs, logger, notifications, meterProvider, cfg.MirrorMaxBatchSize)
+			},
+			// Provide mirror.Proposer from the Raft node
+			func(n *node.Node) mirror.Proposer {
+				return n
+			},
 			httpcompat.NewServer,
 			fx.Annotate(func(cfg Config, logger logging.Logger, backend httpcompat.Backend, keySet oidc.KeySet) http.Handler {
 				authCfg := internalauth.AuthConfig{
@@ -567,7 +598,13 @@ func Module() fx.Option {
 				defaultTransport *node.DefaultTransport,
 				servicePool *transport.ConnectionPool,
 				cfg node.NodeConfig,
+				n *node.Node,
+				fullCfg Config,
 			) {
+				// Store own address in Node so it gets included in the next snapshot.
+				// This ensures that after a snapshot cycle, all nodes know this node's address.
+				n.SetPeerAddress(cfg.NodeID, cfg.AdvertiseAddr, fullCfg.ServiceAdvertiseAddr())
+
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						logger.Infof("Starting Raft gRPC server")
@@ -586,12 +623,31 @@ func Module() fx.Option {
 						}
 
 						logger.Infof("Raft gRPC server started successfully")
+
+						// Load peers from config (set during --join or --peers)
 						for _, peerEntry := range cfg.Peers {
 							logger := logger.WithFields(map[string]any{"peer": peerEntry})
 							logger.Infof("Adding peer to transport and service pool")
 							defaultTransport.AddPeer(peerEntry.ID, peerEntry.Address)
 							if err := servicePool.AddPeer(peerEntry.ID, peerEntry.ServiceAddress); err != nil {
 								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool")
+							}
+						}
+
+						// Recover peers from snapshot + WAL (populated by NewNode during recovery).
+						for nodeID, addr := range n.RecoveredPeers() {
+							if nodeID == cfg.NodeID {
+								continue // skip self
+							}
+							logger := logger.WithFields(map[string]any{
+								"peer_id":      nodeID,
+								"raft_addr":    addr.RaftAddress,
+								"service_addr": addr.ServiceAddress,
+							})
+							logger.Infof("Restoring recovered peer")
+							defaultTransport.AddPeer(nodeID, addr.RaftAddress)
+							if err := servicePool.AddPeer(nodeID, addr.ServiceAddress); err != nil {
+								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add recovered peer to service pool")
 							}
 						}
 
@@ -602,7 +658,7 @@ func Module() fx.Option {
 						return raftServer.Stop()
 					},
 				})
-			}, fx.ParamTags(``, ``, ``, ``, `name:"service"`, ``)),
+			}, fx.ParamTags(``, ``, ``, ``, `name:"service"`, ``, ``, ``)),
 			// Start Service server (external)
 			func(
 				lc fx.Lifecycle,
@@ -640,19 +696,20 @@ func Module() fx.Option {
 				defaultTransport *node.DefaultTransport,
 				servicePool *transport.ConnectionPool,
 				logger logging.Logger,
-				manager *events.Manager,
+				eventsManager *events.Manager,
+				mirrorManager *mirror.Manager,
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
 					case node.ConfChangeEvent:
 						handleConfChangeEvent(e, defaultTransport, servicePool, logger)
 					case node.LeadershipChangeEvent:
-						handleLeadershipChangeEvent(e, manager, logger)
+						handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
 				}))
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
 			func(lc fx.Lifecycle, node *node.Node, logger logging.Logger) (*node.Node, error) {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
@@ -699,17 +756,27 @@ func Module() fx.Option {
 						// Only register as learner on the very first start;
 						// on restart the node is already a cluster member.
 						if !freshStart {
-							logger.Infof("Restart detected, skipping learner registration")
+							logger.WithFields(map[string]any{
+								"nodeID": cfg.RaftConfig.NodeID,
+							}).Infof("WARNING: Learner registration SKIPPED — WAL already contains ConfState voters (not a fresh start). " +
+								"If this node was never successfully added to the cluster, delete its WAL directory and retry")
 							return nil
 						}
 
 						peer := cfg.RaftConfig.Peers[0]
+						logger.WithFields(map[string]any{
+							"nodeID":         cfg.RaftConfig.NodeID,
+							"targetPeerID":   peer.ID,
+							"targetPeerAddr": peer.ServiceAddress,
+							"raftAddress":    cfg.RaftConfig.AdvertiseAddr,
+							"serviceAddress": cfg.ServiceAdvertiseAddr(),
+						}).Infof("Join mode: requesting peer to add this node as learner")
+
 						conn := servicePool.GetConnection(peer.ID)
 						if conn == nil {
-							return fmt.Errorf("failed to register as learner: peer %d is not reachable", peer.ID)
+							return fmt.Errorf("failed to register as learner: no gRPC connection to peer %d (address: %s)", peer.ID, peer.ServiceAddress)
 						}
 
-						logger.Infof("Join mode: requesting a peer to add this node as learner")
 						client := clusterpb.NewClusterServiceClient(conn)
 						_, err := client.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 							NodeId:         cfg.RaftConfig.NodeID,
@@ -717,12 +784,12 @@ func Module() fx.Option {
 							ServiceAddress: cfg.ServiceAdvertiseAddr(),
 						})
 						if err != nil {
-							return fmt.Errorf("failed to register as learner via peer %d: %w", peer.ID, err)
+							return fmt.Errorf("failed to register as learner via peer %d (%s): %w", peer.ID, peer.ServiceAddress, err)
 						}
 
 						logger.WithFields(map[string]any{
 							"peer": peer.ID,
-						}).Infof("Successfully registered as learner")
+						}).Infof("Successfully registered as learner on the cluster")
 						return nil
 					},
 				})
@@ -735,10 +802,16 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, collector *diskusage.Collector) {
 				lc.Append(worker.FxHook(collector))
 			},
+			func(lc fx.Lifecycle, compactor *dal.IdleCompactor) {
+				lc.Append(worker.FxHook(compactor))
+			},
 			func(lc fx.Lifecycle, hc *clusterhealth.HealthChecker) {
 				lc.Append(worker.FxHook(hc))
 			},
 			func(lc fx.Lifecycle, manager *events.Manager) {
+				lc.Append(worker.FxHook(manager))
+			},
+			func(lc fx.Lifecycle, manager *mirror.Manager) {
 				lc.Append(worker.FxHook(manager))
 			},
 			func(lc fx.Lifecycle, sealer *state.Sealer) {
@@ -758,7 +831,9 @@ func Module() fx.Option {
 }
 
 // handleConfChangeEvent processes a single ConfChangeEvent by updating the
-// transport and service pool when a node joins the cluster.
+// transport and service pool when a node joins or leaves the cluster.
+// Peer addresses are persisted in the Node (updated by processReady) and
+// included in Raft snapshots, so no separate PeerStore is needed.
 func handleConfChangeEvent(
 	e node.ConfChangeEvent,
 	defaultTransport *node.DefaultTransport,
@@ -795,16 +870,18 @@ func handleConfChangeEvent(
 	}
 }
 
-// handleLeadershipChangeEvent notifies the event Manager of leadership changes.
+// handleLeadershipChangeEvent notifies the event and mirror Managers of leadership changes.
 func handleLeadershipChangeEvent(
 	e node.LeadershipChangeEvent,
-	manager *events.Manager,
+	eventsManager *events.Manager,
+	mirrorManager *mirror.Manager,
 	logger logging.Logger,
 ) {
 	if e.IsLeader {
-		logger.Infof("Became leader — reconciling event emitter")
+		logger.Infof("Became leader — reconciling event emitter and mirror workers")
 	} else {
-		logger.Infof("Lost leadership — tearing down event emitter")
+		logger.Infof("Lost leadership — tearing down event emitter and mirror workers")
 	}
-	manager.OnLeadershipChange(e.IsLeader)
+	eventsManager.OnLeadershipChange(e.IsLeader)
+	mirrorManager.OnLeadershipChange(e.IsLeader)
 }

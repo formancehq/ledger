@@ -14,6 +14,14 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 		return nil, &domain.ErrLedgerNotFound{Name: apply.Ledger}
 	}
 
+	// Block normal writes on mirror-mode ledgers.
+	// We check mode here using GetLedger, which some sub-processors also call
+	// for schema enforcement. The sub-processors use their own GetLedger call
+	// independently, so this check is purely for the write guard.
+	if ledgerInfo, infoOk := s.GetLedger(apply.Ledger); infoOk && ledgerInfo.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+		return nil, &domain.ErrLedgerInMirrorMode{Name: apply.Ledger}
+	}
+
 	var (
 		logPayload *commonpb.LedgerLogPayload
 		err        error

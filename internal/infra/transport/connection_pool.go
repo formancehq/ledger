@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -15,7 +16,7 @@ const (
 	GRPCInitialConnWindowSize = 64 << 20 // 64 MB
 	GRPCReadBufferSize        = 1 << 20  // 1 MB
 	GRPCWriteBufferSize       = 1 << 20  // 1 MB
-	GRPCMaxMsgSize            = 64 << 20 // 64 MB
+	GRPCMaxMsgSize            = 64 << 20 // 64 MB (large snapshots use chunked streaming)
 )
 
 // PoolConfig holds gRPC dial options shared by all connection pools.
@@ -128,11 +129,16 @@ func (p *ConnectionPool) RestartConnection(id uint64) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	err := p.connections[id].Close()
-	if err != nil {
+	conn := p.connections[id]
+	if conn == nil {
+		return fmt.Errorf("no connection for peer %d", id)
+	}
+
+	if err := conn.Close(); err != nil {
 		return err
 	}
 
+	var err error
 	p.connections[id], err = p.connect(p.peers[id])
 
 	return err

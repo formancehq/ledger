@@ -45,8 +45,10 @@ type Applier struct {
 	snapshotFetcherProvider state.SnapshotFetcherProvider
 
 	status           *atomic.Int32
+	syncProgress     atomic.Pointer[state.SyncProgress]
 	gatingTerminated chan struct{}
 	ch               chan applyWork // buffered(1)
+	snapshotWrapper  func([]byte) ([]byte, error)
 
 	// Metrics
 	applyEntriesHistogram          metric.Int64Histogram
@@ -151,6 +153,9 @@ func (a *Applier) SyncSnapshot(ctx context.Context, leader uint64) {
 
 	a.status.Store(statusSyncing)
 
+	progress := state.NewSyncProgress()
+	a.syncProgress.Store(progress)
+
 	a.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
 		snapshotFetcher, err := a.snapshotFetcherProvider.GetForPeer(leader)
 		if err != nil {
@@ -158,19 +163,43 @@ func (a *Applier) SyncSnapshot(ctx context.Context, leader uint64) {
 				"leader": leader,
 				"error":  err,
 			}).Errorf("Failed to get snapshot fetcher, marking node as out of sync")
+			a.syncProgress.Store(nil)
 			a.status.Store(statusOutOfSync)
 			return 0, nil
 		}
-		if _, err := a.fsm.SynchronizeWithLeader(ctx, snapshotFetcher); err != nil {
+		if _, err := a.fsm.SynchronizeWithLeader(ctx, snapshotFetcher, progress); err != nil {
 			a.logger.WithFields(map[string]any{
 				"leader": leader,
 				"error":  err,
 			}).Errorf("Failed to synchronize with leader, marking node as out of sync")
+			a.syncProgress.Store(nil)
 			a.status.Store(statusOutOfSync)
 			return 0, nil
 		}
+		a.syncProgress.Store(nil)
 		return 0, nil
 	}, nil)
+}
+
+// StatusString returns the current applier status as a human-readable string.
+func (a *Applier) StatusString() string {
+	switch a.status.Load() {
+	case statusNormal:
+		return "normal"
+	case statusSyncing:
+		return "syncing"
+	case statusSnapshotting:
+		return "snapshotting"
+	case statusOutOfSync:
+		return "out_of_sync"
+	default:
+		return "unknown"
+	}
+}
+
+// GetSyncProgress returns the current sync progress, or nil if not syncing.
+func (a *Applier) GetSyncProgress() *state.SyncProgress {
+	return a.syncProgress.Load()
 }
 
 func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {
@@ -220,8 +249,25 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		panic(fmt.Errorf("getting last snapshot: %w", err))
 	}
 
-	if entries[len(entries)-1].Index-lastSnapshot.Metadata.Index >= a.snapshotThreshold {
-		a.triggerSnapshot(ctx, confState, entries[len(entries)-1].Index, lastSnapshot.Metadata.Index)
+	lastEntryIndex := entries[len(entries)-1].Index
+	thresholdReached := lastEntryIndex-lastSnapshot.Metadata.Index >= a.snapshotThreshold
+
+	// Force a snapshot when cluster membership has changed since the last
+	// snapshot. Without this, a newly added learner/voter would receive
+	// a snapshot whose ConfState doesn't include it, causing etcd/raft
+	// on the new node to reject the snapshot.
+	//
+	// Skip joint consensus states (VotersOutgoing non-empty): V2 conf
+	// changes like learner-to-voter promotion go through a transient joint
+	// state before auto-leaving. Persisting such a state causes newRaft
+	// to panic on restore. The auto-leave ConfChange follows immediately
+	// and will trigger the snapshot with a clean ConfState.
+	confStateChanged := confState != nil &&
+		confStateIsClean(confState) &&
+		!confStatesEqual(confState, &lastSnapshot.Metadata.ConfState)
+
+	if thresholdReached || confStateChanged {
+		a.triggerSnapshot(ctx, confState, lastEntryIndex, lastSnapshot.Metadata.Index)
 	}
 
 	return nil
@@ -289,6 +335,34 @@ func (a *Applier) handleCheckpointRequired(
 	return nil
 }
 
+// confStateIsClean returns false when the ConfState represents a joint
+// consensus transition (VotersOutgoing is non-empty). Joint states are
+// transient — etcd/raft auto-leaves them immediately — and must not be
+// persisted in snapshots because newRaft panics when restoring from one.
+func confStateIsClean(cs *raftpb.ConfState) bool {
+	return len(cs.VotersOutgoing) == 0
+}
+
+// confStatesEqual returns true when two ConfStates have identical membership.
+func confStatesEqual(a, b *raftpb.ConfState) bool {
+	return slicesEqual(a.Voters, b.Voters) &&
+		slicesEqual(a.Learners, b.Learners) &&
+		slicesEqual(a.VotersOutgoing, b.VotersOutgoing) &&
+		slicesEqual(a.LearnersNext, b.LearnersNext)
+}
+
+func slicesEqual(a, b []uint64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // triggerSnapshot creates a Raft snapshot when the threshold is reached.
 func (a *Applier) triggerSnapshot(ctx context.Context, confState *raftpb.ConfState, lastEntryIndex, lastSnapshotIndex uint64) {
 	a.snapshotTriggeredCounter.Add(ctx, 1)
@@ -306,6 +380,14 @@ func (a *Applier) triggerSnapshot(ctx context.Context, confState *raftpb.ConfSta
 		snapshotData, err := a.fsm.CreateSnapshot(ctx)
 		if err != nil {
 			return 0, err
+		}
+
+		// Wrap FSM data with cluster-level metadata (peer addresses) if wrapper is set.
+		if a.snapshotWrapper != nil {
+			snapshotData, err = a.snapshotWrapper(snapshotData)
+			if err != nil {
+				return 0, fmt.Errorf("wrapping snapshot: %w", err)
+			}
 		}
 
 		if err := a.wal.CreateSnapshot(lastEntryIndex, confState, snapshotData); err != nil {

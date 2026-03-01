@@ -52,6 +52,7 @@ type Config struct {
 	AuthConfig                 AuthFlagConfig
 	Restore                    bool
 	NumscriptCacheSize         int
+	MirrorMaxBatchSize         int
 	UnsafeSkipConfigValidation bool
 }
 

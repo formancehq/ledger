@@ -4,15 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
@@ -102,10 +105,24 @@ type Node struct {
 	observer         *Observer
 	applier          *Applier
 
-	readies         chan raft.Ready
-	readyTerminated chan raft.Ready
-	tasks           *taskSet
-	stopChannel     chan chan struct{}
+	readies            chan raft.Ready
+	readyTerminated    chan raft.Ready
+	tasks              *taskSet
+	stopChannel        chan chan struct{}
+	recoveredPeers     map[uint64]ConfChangeContext
+	peerAddresses      map[uint64]ConfChangeContext
+	pendingConfChanges SyncMap[uint64, *futures.Future[struct{}]]
+
+	// confChangeMu serializes external ConfChange operations (AddLearner,
+	// RemoveNode, PromoteLearner) so that only one proposal is in-flight at a
+	// time. This avoids unnecessary retries caused by etcd/raft silently
+	// dropping concurrent ConfChange proposals.
+	confChangeMu sync.Mutex
+
+	// lastAutoPromote tracks the last time an auto-promotion was proposed for
+	// each learner node. Used to rate-limit proposals and avoid spamming raft
+	// when another ConfChange is pending. Accessed only from the orchestrate loop.
+	lastAutoPromote map[uint64]time.Time
 
 	// pendingReads tracks in-flight ReadIndex requests, keyed by unique request ID.
 	pendingReads *SyncMap[uint64, *readIndexRequest]
@@ -140,9 +157,12 @@ func NewNode(
 		return nil, fmt.Errorf("reading snapshot: %w", err)
 	}
 
-	var initialConfState raftpb.ConfState
+	var (
+		initialConfState raftpb.ConfState
+		recoveredPeers   map[uint64]ConfChangeContext
+	)
 	if len(snapshot.Metadata.ConfState.Voters) == 0 {
-		logger.Infof("Detected empty WAL, creating initial snapshot")
+		logger.Infof("Fresh start: WAL has no ConfState voters, creating initial snapshot")
 
 		// Check for RESTORED marker from a completed backup restore
 		marker, err := ReadRestoredMarker(cfg.DataDir)
@@ -164,9 +184,15 @@ func NewNode(
 				return nil, fmt.Errorf("recovering FSM state from store: %w", err)
 			}
 
-			data, err := fsm.CreateSnapshot(context.Background())
+			fsmData, err := fsm.CreateSnapshot(context.Background())
 			if err != nil {
 				return nil, fmt.Errorf("creating restore snapshot data: %w", err)
+			}
+			// Wrap with empty NodeSnapshot (no peer addresses on restore bootstrap)
+			ns := &raftcmdpb.NodeSnapshot{FsmSnapshot: fsmData}
+			data, err := ns.MarshalVT()
+			if err != nil {
+				return nil, fmt.Errorf("wrapping restore snapshot: %w", err)
 			}
 
 			initialConfState = raftpb.ConfState{
@@ -194,6 +220,9 @@ func NewNode(
 				for _, peerEntry := range cfg.Peers {
 					voters = append(voters, peerEntry.ID)
 				}
+				logger.WithFields(map[string]any{
+					"voters": voters,
+				}).Infof("Bootstrap mode: initializing as voter cluster")
 			} else if len(cfg.Peers) > 0 {
 				// Join mode: existing peers are voters, self joins as learner.
 				// The leader will add us via ConfChange after we start.
@@ -202,13 +231,23 @@ func NewNode(
 					voters = append(voters, peerEntry.ID)
 				}
 				learners = []uint64{cfg.NodeID}
+				logger.WithFields(map[string]any{
+					"voters":   voters,
+					"learners": learners,
+				}).Infof("Join mode: initializing as learner, peers are voters")
 			} else {
 				return nil, fmt.Errorf("first start requires --bootstrap or --join")
 			}
 
-			data, err := fsm.CreateSnapshot(context.Background())
+			fsmData, err := fsm.CreateSnapshot(context.Background())
 			if err != nil {
 				return nil, fmt.Errorf("creating initial snapshot data: %w", err)
+			}
+			// Wrap with empty NodeSnapshot (no peer addresses on initial bootstrap)
+			ns := &raftcmdpb.NodeSnapshot{FsmSnapshot: fsmData}
+			data, err := ns.MarshalVT()
+			if err != nil {
+				return nil, fmt.Errorf("wrapping initial snapshot: %w", err)
 			}
 
 			initialConfState = raftpb.ConfState{
@@ -220,10 +259,50 @@ func NewNode(
 			}
 		}
 	} else {
+		logger.WithFields(map[string]any{
+			"snapshotIndex": snapshot.Metadata.Index,
+			"snapshotTerm":  snapshot.Metadata.Term,
+			"voters":        snapshot.Metadata.ConfState.Voters,
+			"learners":      snapshot.Metadata.ConfState.Learners,
+			"nodeID":        cfg.NodeID,
+			"bootstrap":     cfg.Bootstrap,
+			"peerCount":     len(cfg.Peers),
+		}).Infof("Restart detected: WAL already has ConfState (not a fresh start)")
 		if snapshot.Metadata.Index > 0 {
-			logger.WithFields(map[string]any{"index": snapshot.Metadata.Index}).Infof("Restoring Machine from snapshot")
-			if err := fsm.InstallSnapshot(context.Background(), snapshot); err != nil {
+			logger.WithFields(map[string]any{
+				"index":        snapshot.Metadata.Index,
+				"snapshotSize": len(snapshot.Data),
+			}).Infof("Restoring Machine from snapshot")
+
+			// Unwrap NodeSnapshot to get FSM data and peer addresses
+			unwrapStart := time.Now()
+			result, err := unwrapSnapshot(snapshot.Data)
+			if err != nil {
+				return nil, fmt.Errorf("unwrapping snapshot: %w", err)
+			}
+			logger.WithFields(map[string]any{
+				"duration":    time.Since(unwrapStart).String(),
+				"fsmDataSize": len(result.fsmData),
+				"peerCount":   len(result.peerAddresses),
+			}).Infof("Unwrapped NodeSnapshot")
+
+			fsmSnapshot := snapshot
+			fsmSnapshot.Data = result.fsmData
+			installStart := time.Now()
+			if err := fsm.InstallSnapshot(context.Background(), fsmSnapshot); err != nil {
 				panic(err)
+			}
+			logger.WithFields(map[string]any{
+				"duration": time.Since(installStart).String(),
+			}).Infof("Installed FSM snapshot (memory state restored)")
+
+			// Seed recovered peers from snapshot peer addresses
+			recoveredPeers = make(map[uint64]ConfChangeContext, len(result.peerAddresses))
+			for _, addr := range result.peerAddresses {
+				recoveredPeers[addr.NodeId] = ConfChangeContext{
+					RaftAddress:    addr.RaftAddress,
+					ServiceAddress: addr.ServiceAddress,
+				}
 			}
 
 			logger.Infof("Snapshot restored successfully")
@@ -247,6 +326,39 @@ func NewNode(
 				cfg.NodeID, initialConfState.Voters, initialConfState.Learners,
 			)
 		}
+
+		// Overlay WAL entries which may contain more recent peer addresses.
+		// Scan in bounded chunks to avoid loading the entire WAL into memory.
+		if recoveredPeers == nil {
+			recoveredPeers = make(map[uint64]ConfChangeContext)
+		}
+		walScanStart := time.Now()
+		firstIdx, firstErr := wal.FirstIndex()
+		lastIdx, lastErr := wal.LastIndex()
+		if firstErr == nil && lastErr == nil && firstIdx <= lastIdx {
+			logger.WithFields(map[string]any{
+				"firstIndex": firstIdx,
+				"lastIndex":  lastIdx,
+				"entryCount": lastIdx - firstIdx + 1,
+			}).Infof("Scanning WAL entries for peer addresses")
+
+			const maxChunkBytes = 8 * 1024 * 1024 // 8MB per chunk
+			lo := firstIdx
+			for lo <= lastIdx {
+				entries, err := wal.Entries(lo, lastIdx+1, maxChunkBytes)
+				if err != nil || len(entries) == 0 {
+					break
+				}
+				for nodeID, addr := range ExtractPeerAddressesFromEntries(entries) {
+					recoveredPeers[nodeID] = addr
+				}
+				lo = entries[len(entries)-1].Index + 1
+			}
+		}
+		logger.WithFields(map[string]any{
+			"duration":  time.Since(walScanStart).String(),
+			"peerCount": len(recoveredPeers),
+		}).Infof("WAL peer address scan complete")
 	}
 
 	initialStatus := atomic.Int32{}
@@ -283,7 +395,18 @@ func NewNode(
 		tasks:            newTaskSet(),
 		stopChannel:      make(chan chan struct{}),
 		pendingReads:     &SyncMap[uint64, *readIndexRequest]{},
+		recoveredPeers:   recoveredPeers,
+		peerAddresses:    recoveredPeers,
+		lastAutoPromote:  make(map[uint64]time.Time),
 	}
+
+	// Ensure peerAddresses is never nil (bootstrap path has no recoveredPeers).
+	if node.peerAddresses == nil {
+		node.peerAddresses = make(map[uint64]ConfChangeContext)
+	}
+
+	// Wire the snapshot wrapper so the Applier wraps FSM snapshots with peer addresses.
+	applier.snapshotWrapper = node.wrapSnapshot
 
 	// Initialize applier metrics
 	applier.applyEntriesHistogram, err = meter.Int64Histogram("raft.apply_entries.duration",
@@ -495,12 +618,114 @@ func NewNode(
 			return nil, fmt.Errorf("getting store last applied index: %w", err)
 		}
 
+		replayStart := time.Now()
+		logger.WithFields(map[string]any{
+			"fromIndex": storeLastAppliedIndex,
+		}).Infof("Starting spool replay")
 		if err := applier.replaySpool(context.Background(), storeLastAppliedIndex); err != nil {
 			return nil, fmt.Errorf("replaying spool: %w", err)
+		}
+		logger.WithFields(map[string]any{
+			"duration": time.Since(replayStart).String(),
+		}).Infof("Spool replay complete")
+
+		// Early compaction: if the WAL has accumulated far more entries than the
+		// snapshot threshold, create a snapshot and compact now to release memory
+		// before the Raft node starts. Without this, the leader would try to
+		// replicate tens of thousands of entries to lagging followers, causing OOM.
+		compactStart := time.Now()
+		if err := node.maybeCompactAtStartup(context.Background()); err != nil {
+			return nil, fmt.Errorf("early compaction: %w", err)
+		}
+		if time.Since(compactStart) > 100*time.Millisecond {
+			logger.WithFields(map[string]any{
+				"duration": time.Since(compactStart).String(),
+			}).Infof("Early compaction complete")
 		}
 	}
 
 	return node, nil
+}
+
+// maybeCompactAtStartup creates a snapshot and compacts the WAL if entries have
+// accumulated beyond the snapshot threshold. This prevents OOM during Raft
+// replication: without compaction a leader with 50K+ WAL entries would try to
+// send them all to lagging followers, exhausting memory.
+func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
+	lastSnap, err := node.wal.Snapshot()
+	if err != nil {
+		return fmt.Errorf("reading snapshot: %w", err)
+	}
+
+	walLastIdx, err := node.wal.LastIndex()
+	if err != nil {
+		return fmt.Errorf("reading WAL last index: %w", err)
+	}
+
+	if walLastIdx <= lastSnap.Metadata.Index+node.applier.snapshotThreshold {
+		return nil
+	}
+
+	appliedIndex, err := query.ReadLastAppliedIndex(node.applier.store)
+	if err != nil {
+		return fmt.Errorf("reading applied index: %w", err)
+	}
+
+	// Only snapshot at the applied index (not walLastIdx) — the FSM may not
+	// have processed every WAL entry yet.
+	if appliedIndex <= lastSnap.Metadata.Index {
+		return nil
+	}
+
+	node.logger.WithFields(map[string]any{
+		"lastSnapshotIndex":  lastSnap.Metadata.Index,
+		"walLastIndex":       walLastIdx,
+		"appliedIndex":       appliedIndex,
+		"entriesAccumulated": walLastIdx - lastSnap.Metadata.Index,
+	}).Infof("WAL has excess entries, compacting before Raft start")
+
+	snapshotStart := time.Now()
+	fsmData, err := node.fsm.CreateSnapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("creating snapshot: %w", err)
+	}
+	node.logger.WithFields(map[string]any{
+		"duration":    time.Since(snapshotStart).String(),
+		"fsmDataSize": len(fsmData),
+	}).Infof("Created FSM snapshot for early compaction")
+
+	snapshotData, err := node.wrapSnapshot(fsmData)
+	if err != nil {
+		return fmt.Errorf("wrapping snapshot: %w", err)
+	}
+
+	walSnapshotStart := time.Now()
+	if err := node.wal.CreateSnapshot(appliedIndex, node.confState, snapshotData); err != nil {
+		return fmt.Errorf("saving snapshot: %w", err)
+	}
+	node.logger.WithFields(map[string]any{
+		"duration":     time.Since(walSnapshotStart).String(),
+		"snapshotSize": len(snapshotData),
+		"appliedIndex": appliedIndex,
+	}).Infof("Saved snapshot to WAL")
+
+	if appliedIndex > node.applier.compactionMargin {
+		compactIdx := appliedIndex - node.applier.compactionMargin
+		compactStart := time.Now()
+		if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
+			node.logger.WithFields(map[string]any{"error": err}).Errorf("Early compaction failed")
+		} else {
+			node.logger.WithFields(map[string]any{
+				"duration":     time.Since(compactStart).String(),
+				"compactIndex": compactIdx,
+			}).Infof("WAL compacted")
+		}
+	}
+
+	node.logger.WithFields(map[string]any{
+		"totalDuration": time.Since(snapshotStart).String(),
+	}).Infof("Early compaction completed")
+	return nil
 }
 
 func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
@@ -518,7 +743,12 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	}
 
 	node.logger.WithFields(map[string]any{
-		"config": raftConfig,
+		"id":              raftConfig.ID,
+		"electionTick":    raftConfig.ElectionTick,
+		"heartbeatTick":   raftConfig.HeartbeatTick,
+		"maxSizePerMsg":   raftConfig.MaxSizePerMsg,
+		"maxInflightMsgs": raftConfig.MaxInflightMsgs,
+		"preVote":         raftConfig.PreVote,
 	}).Infof("Starting raft node")
 
 	var err error
@@ -526,6 +756,19 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	if err != nil {
 		return fmt.Errorf("creating raw rawNode: %w", err)
 	}
+
+	// Log initial raft state for cluster join diagnostics
+	status := node.rawNode.Status()
+	node.logger.WithFields(map[string]any{
+		"nodeID":    node.config.NodeID,
+		"raftState": status.RaftState.String(),
+		"lead":      status.Lead,
+		"term":      status.HardState.Term,
+		"commit":    status.HardState.Commit,
+		"vote":      status.HardState.Vote,
+		"voters":    node.confState.Voters,
+		"learners":  node.confState.Learners,
+	}).Infof("Raft node created — initial state")
 
 	node.tasks.add(newTask(node.orchestrate))
 	node.tasks.add(newTask(node.applier.Run))
@@ -646,9 +889,11 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
 
 	if !raft.IsEmptySnap(rd.Snapshot) {
-		node.logger.
-			WithFields(map[string]any{"index": rd.Snapshot.Metadata.Index}).
-			Infof("Applying snapshot sent by leader")
+		snapshotStart := time.Now()
+		node.logger.WithFields(map[string]any{
+			"index":        rd.Snapshot.Metadata.Index,
+			"snapshotSize": len(rd.Snapshot.Data),
+		}).Infof("Applying snapshot sent by leader")
 
 		node.applier.Drain(stop)
 
@@ -656,11 +901,72 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			return fmt.Errorf("applying snapshot to storage: %w", err)
 		}
 
-		if err := node.fsm.InstallSnapshot(ctx, rd.Snapshot); err != nil {
+		// Unwrap NodeSnapshot to get FSM data and peer addresses
+		unwrapStart := time.Now()
+		result, err := unwrapSnapshot(rd.Snapshot.Data)
+		if err != nil {
+			return fmt.Errorf("unwrapping snapshot: %w", err)
+		}
+
+		// If the snapshot is a reference, fetch the full data from the leader
+		if result.isReference {
+			node.logger.WithFields(map[string]any{
+				"duration": time.Since(unwrapStart).String(),
+				"sizeHint": result.sizeHint,
+				"index":    rd.Snapshot.Metadata.Index,
+				"term":     rd.Snapshot.Metadata.Term,
+			}).Infof("Received snapshot reference, fetching full data from leader")
+
+			fullData, err := node.fetchRemoteSnapshot(
+				rd.Snapshot.Metadata.Index,
+				rd.Snapshot.Metadata.Term,
+			)
+			if err != nil {
+				return fmt.Errorf("fetching remote snapshot: %w", err)
+			}
+
+			// Re-unwrap the full snapshot data
+			result, err = unwrapSnapshot(fullData)
+			if err != nil {
+				return fmt.Errorf("unwrapping fetched snapshot: %w", err)
+			}
+
+			// Update the rd.Snapshot.Data with full data so WAL has the complete snapshot
+			rd.Snapshot.Data = fullData
+
+			// Re-apply the full snapshot to WAL (overwrite the reference)
+			if err := node.wal.ApplySnapshot(rd.Snapshot); err != nil {
+				return fmt.Errorf("re-applying full snapshot to storage: %w", err)
+			}
+		}
+
+		node.logger.WithFields(map[string]any{
+			"duration":    time.Since(unwrapStart).String(),
+			"fsmDataSize": len(result.fsmData),
+			"peerCount":   len(result.peerAddresses),
+		}).Infof("Unwrapped leader snapshot")
+
+		fsmSnapshot := rd.Snapshot
+		fsmSnapshot.Data = result.fsmData
+		if err := node.fsm.InstallSnapshot(ctx, fsmSnapshot); err != nil {
 			return fmt.Errorf("installing snapshot: %w", err)
 		}
 
+		// Restore peer addresses into node
+		node.peerAddresses = make(map[uint64]ConfChangeContext, len(result.peerAddresses))
+		for _, addr := range result.peerAddresses {
+			node.peerAddresses[addr.NodeId] = ConfChangeContext{
+				RaftAddress:    addr.RaftAddress,
+				ServiceAddress: addr.ServiceAddress,
+			}
+		}
+
 		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
+
+		node.logger.WithFields(map[string]any{
+			"duration": time.Since(snapshotStart).String(),
+			"index":    rd.Snapshot.Metadata.Index,
+		}).Infof("Snapshot from leader applied, starting checkpoint sync")
 
 		// The snapshot is already persisted in WAL at this point. If syncSnapshot
 		// fails (network issue, leader unavailable, etc.), the node transitions to
@@ -673,7 +979,11 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	node.logger.Debugf("Sending messages via transport")
 	node.transport.Send(rd.Messages)
 
-	// Apply conf changes (must happen in processReadies goroutine since rawNode is not thread-safe)
+	// Apply conf changes (must happen in processReadies goroutine since rawNode is not thread-safe).
+	// Collect pending futures to resolve AFTER the WAL ConfState update, so
+	// callers waiting on ConfChange commit (AddLearner, PromoteLearner, etc.)
+	// don't resume before the WAL is consistent.
+	var pendingFutures []*futures.Future[struct{}]
 	for _, entry := range rd.CommittedEntries {
 		var cc raftpb.ConfChangeV2
 		switch entry.Type {
@@ -697,6 +1007,25 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			Infof("Applying configuration change")
 		node.confState = node.rawNode.ApplyConfChange(cc)
 
+		// Update peer address map and collect pending futures
+		for _, change := range cc.Changes {
+			switch change.Type {
+			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+				if len(cc.Context) > 0 {
+					if ccCtx, err := UnmarshalConfChangeContext(cc.Context); err == nil {
+						node.SetPeerAddress(change.NodeID, ccCtx.RaftAddress, ccCtx.ServiceAddress)
+					}
+				}
+			case raftpb.ConfChangeRemoveNode:
+				node.RemovePeerAddress(change.NodeID)
+			}
+
+			// Collect pending ConfChange future (if any) — resolved below after WAL update.
+			if f, ok := node.pendingConfChanges.LoadAndDelete(change.NodeID); ok {
+				pendingFutures = append(pendingFutures, f)
+			}
+		}
+
 		// Notify observers about configuration changes
 		if node.observer != nil {
 			for _, change := range cc.Changes {
@@ -707,6 +1036,24 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 				})
 			}
 		}
+	}
+
+	// If the ConfState changed (e.g. a learner was added), update the WAL
+	// snapshot's ConfState immediately. Without this, etcd/raft would send
+	// the stale snapshot (which lacks the new node) before the applier's
+	// async snapshot creation finishes, causing the new node to reject it.
+	if node.confState != nil {
+		snap, _ := node.wal.Snapshot()
+		if !confStatesEqual(node.confState, &snap.Metadata.ConfState) {
+			if err := node.wal.UpdateSnapshotConfState(node.confState); err != nil {
+				return fmt.Errorf("updating snapshot confstate: %w", err)
+			}
+		}
+	}
+
+	// Resolve pending ConfChange futures now that WAL is consistent.
+	for _, f := range pendingFutures {
+		f.Resolve(struct{}{}, nil)
 	}
 
 	// Submit committed entries to the Applier for async FSM application
@@ -1006,7 +1353,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 	// Get leader
 	leaderID := status.Lead
 
-	stateStr := status.RaftState.String()
+	stateStr := strings.TrimPrefix(status.RaftState.String(), "State")
 
 	// Build progress information map and nodes list only if this node is the leader
 	var nodes []*clusterpb.NodeInfo
@@ -1083,13 +1430,25 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 		Progress:  progress,
 	}
 
-	return &clusterpb.ClusterState{
+	clusterState := &clusterpb.ClusterState{
 		State:      stateStr,
 		Leader:     uint32(leaderID),
 		Nodes:      nodes,
 		LocalNode:  uint32(node.config.NodeID),
 		RaftStatus: raftStatus,
-	}, nil
+	}
+
+	// Populate local sync progress
+	clusterState.SyncProgress = &clusterpb.SyncProgress{
+		Status: node.applier.StatusString(),
+	}
+	if sp := node.applier.GetSyncProgress(); sp != nil {
+		clusterState.SyncProgress.BytesReceived = sp.BytesReceived()
+		clusterState.SyncProgress.BytesTotal = sp.BytesTotal()
+		clusterState.SyncProgress.CheckpointId = sp.CheckpointID()
+	}
+
+	return clusterState, nil
 }
 
 // IsHealthy returns true if the rawNode is connected to the cluster (leader or follower)
@@ -1175,7 +1534,66 @@ func (node *Node) SetObserver(obs *Observer) {
 	node.observer = obs
 }
 
+// proposeConfChangeAndWait proposes a ConfChange via the orchestrate loop and
+// waits for it to be committed. Returns (true, nil) on commit, (false, nil) if
+// the proposal was likely dropped (timeout), or (false, err) on error.
+// The proposeFn is dispatched via execClusterCommand (rawNode is not thread-safe).
+func (node *Node) proposeConfChangeAndWait(ctx context.Context, nodeID uint64, proposeFn func() error, timeout time.Duration) (bool, error) {
+	future := futures.New[struct{}]()
+	node.pendingConfChanges.Store(nodeID, future)
+	defer node.pendingConfChanges.Delete(nodeID)
+
+	if err := node.execClusterCommand(ctx, proposeFn); err != nil {
+		return false, err
+	}
+
+	done := make(chan struct{})
+	go func() {
+		_, _ = future.Wait()
+		close(done)
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case <-done:
+		return true, nil
+	case <-timer.C:
+		return false, nil
+	case <-ctx.Done():
+		return false, ctx.Err()
+	}
+}
+
+// retryConfChange acquires confChangeMu and retries a ConfChange proposal until
+// it commits or the context is cancelled. etcd/raft silently drops ConfChange
+// proposals when another is pending; this method handles that transparently.
+func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name string, proposeFn func() error) error {
+	node.confChangeMu.Lock()
+	defer node.confChangeMu.Unlock()
+
+	retryInterval := node.config.TickInterval * time.Duration(node.config.HeartbeatTick) * 3
+	if retryInterval < 500*time.Millisecond {
+		retryInterval = 500 * time.Millisecond
+	}
+
+	for {
+		committed, err := node.proposeConfChangeAndWait(ctx, nodeID, proposeFn, retryInterval)
+		if err != nil {
+			return err
+		}
+		if committed {
+			return nil
+		}
+		node.logger.WithFields(map[string]any{
+			"nodeID": nodeID,
+		}).Infof("%s: retrying (previous proposal likely dropped due to pending ConfChange)", name)
+	}
+}
+
 // AddLearner proposes adding a non-voting learner node to the Raft cluster.
+// The call blocks until the ConfChange is committed through Raft consensus.
 // Must be called on the leader.
 func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string) error {
 	ccCtx, err := MarshalConfChangeContext(ConfChangeContext{
@@ -1186,35 +1604,31 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 		return fmt.Errorf("marshaling conf change context: %w", err)
 	}
 
-	return node.execClusterCommand(ctx, func() error {
+	return node.retryConfChange(ctx, nodeID, "AddLearner", func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
 		}
 
-		// Check if node already exists in the cluster
 		if _, ok := status.Progress[nodeID]; ok {
 			return ErrNodeAlreadyInCluster
 		}
 
-		cc := raftpb.ConfChangeV2{
-			Changes: []raftpb.ConfChangeSingle{
-				{
-					Type:   raftpb.ConfChangeAddLearnerNode,
-					NodeID: nodeID,
-				},
-			},
+		return node.rawNode.ProposeConfChange(raftpb.ConfChangeV2{
+			Changes: []raftpb.ConfChangeSingle{{
+				Type:   raftpb.ConfChangeAddLearnerNode,
+				NodeID: nodeID,
+			}},
 			Context: ccCtx,
-		}
-
-		return node.rawNode.ProposeConfChange(cc)
+		})
 	})
 }
 
 // PromoteLearner proposes promoting a learner node to a full voter.
+// The call blocks until the ConfChange is committed through Raft consensus.
 // Must be called on the leader.
 func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
-	return node.execClusterCommand(ctx, func() error {
+	return node.retryConfChange(ctx, nodeID, "PromoteLearner", func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
@@ -1228,23 +1642,20 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 			return fmt.Errorf("node %d is already a voter", nodeID)
 		}
 
-		cc := raftpb.ConfChangeV2{
-			Changes: []raftpb.ConfChangeSingle{
-				{
-					Type:   raftpb.ConfChangeAddNode,
-					NodeID: nodeID,
-				},
-			},
-		}
-
-		return node.rawNode.ProposeConfChange(cc)
+		return node.rawNode.ProposeConfChange(raftpb.ConfChangeV2{
+			Changes: []raftpb.ConfChangeSingle{{
+				Type:   raftpb.ConfChangeAddNode,
+				NodeID: nodeID,
+			}},
+		})
 	})
 }
 
 // RemoveNode proposes removing a node (voter or learner) from the Raft cluster.
+// The call blocks until the ConfChange is committed through Raft consensus.
 // Must be called on the leader. Cannot remove the leader itself.
 func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
-	return node.execClusterCommand(ctx, func() error {
+	return node.retryConfChange(ctx, nodeID, "RemoveNode", func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
@@ -1258,14 +1669,12 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 			return ErrNodeNotInCluster
 		}
 
-		cc := raftpb.ConfChangeV2{
+		return node.rawNode.ProposeConfChange(raftpb.ConfChangeV2{
 			Changes: []raftpb.ConfChangeSingle{{
 				Type:   raftpb.ConfChangeRemoveNode,
 				NodeID: nodeID,
 			}},
-		}
-
-		return node.rawNode.ProposeConfChange(cc)
+		})
 	})
 }
 
@@ -1273,16 +1682,40 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 // caught up (within AutoPromoteThreshold of the commit index).
 // Must be called from the orchestrate loop (rawNode is not thread-safe).
 func (node *Node) checkAndPromoteLearners() {
+	// Skip if an external ConfChange operation (AddLearner, RemoveNode, etc.)
+	// is in-flight. etcd/raft would silently drop our proposal anyway.
+	if !node.confChangeMu.TryLock() {
+		return
+	}
+	node.confChangeMu.Unlock()
+
 	status := node.rawNode.Status()
 	if status.RaftState != raft.StateLeader {
 		return
 	}
 
+	now := time.Now()
+
+	// Rate-limit: don't re-propose promotion for the same learner within this interval.
+	const autoPromoteRetryInterval = 2 * time.Second
+
 	for id, prog := range status.Progress {
-		if !prog.IsLearner || !prog.RecentActive || prog.Match == 0 {
+		if !prog.IsLearner {
+			// Node was promoted (or removed), clean up tracking.
+			delete(node.lastAutoPromote, id)
+			continue
+		}
+		if !prog.RecentActive || prog.Match == 0 {
 			continue
 		}
 		if prog.Match+node.config.AutoPromoteThreshold >= status.Commit {
+			if lastAttempt, ok := node.lastAutoPromote[id]; ok {
+				if now.Sub(lastAttempt) < autoPromoteRetryInterval {
+					continue
+				}
+			}
+
+			node.lastAutoPromote[id] = now
 			node.logger.WithFields(map[string]any{
 				"node_id":   id,
 				"match":     prog.Match,
@@ -1304,6 +1737,9 @@ func (node *Node) checkAndPromoteLearners() {
 					"error":   err,
 				}).Errorf("Failed to propose learner promotion")
 			}
+
+			// Only propose one promotion per tick to avoid multiple concurrent proposals.
+			return
 		}
 	}
 }
@@ -1322,6 +1758,142 @@ func confStateContainsNode(cs raftpb.ConfState, nodeID uint64) bool {
 		}
 	}
 	return false
+}
+
+// ExtractPeerAddressesFromEntries scans committed entries for ConfChange entries
+// and extracts peer addresses from their Context field. For AddNode/AddLearnerNode
+// the address is stored (latest wins); for RemoveNode the entry is deleted.
+func ExtractPeerAddressesFromEntries(entries []raftpb.Entry) map[uint64]ConfChangeContext {
+	peers := make(map[uint64]ConfChangeContext)
+	for _, entry := range entries {
+		var cc raftpb.ConfChangeV2
+		switch entry.Type {
+		case raftpb.EntryConfChange:
+			var ccV1 raftpb.ConfChange
+			if err := ccV1.Unmarshal(entry.Data); err != nil {
+				continue
+			}
+			cc = ccV1.AsV2()
+			cc.Context = ccV1.Context
+		case raftpb.EntryConfChangeV2:
+			if err := cc.Unmarshal(entry.Data); err != nil {
+				continue
+			}
+		default:
+			continue
+		}
+
+		for _, change := range cc.Changes {
+			switch change.Type {
+			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+				if len(cc.Context) == 0 {
+					continue
+				}
+				ccCtx, err := UnmarshalConfChangeContext(cc.Context)
+				if err != nil {
+					continue
+				}
+				peers[change.NodeID] = ccCtx
+			case raftpb.ConfChangeRemoveNode:
+				delete(peers, change.NodeID)
+			}
+		}
+	}
+	return peers
+}
+
+// RecoveredPeers returns the peer addresses recovered from WAL entries and/or
+// snapshots during node initialization. Used by bootstrap to restore transport
+// connections without requiring a PeerStore file.
+func (node *Node) RecoveredPeers() map[uint64]ConfChangeContext {
+	return node.recoveredPeers
+}
+
+// SetPeerAddress upserts a peer's raft and service addresses.
+// Called on ConfChange commits and by bootstrap for self-registration.
+func (node *Node) SetPeerAddress(nodeID uint64, raftAddr, serviceAddr string) {
+	node.peerAddresses[nodeID] = ConfChangeContext{
+		RaftAddress:    raftAddr,
+		ServiceAddress: serviceAddr,
+	}
+}
+
+// RemovePeerAddress removes a peer's addresses.
+// Called when a ConfChange removing a peer is committed.
+func (node *Node) RemovePeerAddress(nodeID uint64) {
+	delete(node.peerAddresses, nodeID)
+}
+
+// PeerAddresses returns the current peer address map.
+func (node *Node) PeerAddresses() map[uint64]ConfChangeContext {
+	return node.peerAddresses
+}
+
+// MemorySnapshotFetcher is an optional interface that transports can implement
+// to support fetching large memory snapshots via streaming RPC.
+// DefaultTransport implements this; ChannelTransport (used in tests) does not.
+type MemorySnapshotFetcher interface {
+	// FetchRemoteMemorySnapshot fetches the full snapshot data from the leader
+	// via the FetchMemorySnapshot streaming RPC.
+	FetchRemoteMemorySnapshot(leaderID uint64, index, term uint64) ([]byte, error)
+}
+
+// fetchRemoteSnapshot fetches the full snapshot data from the leader.
+// It uses the transport's MemorySnapshotFetcher capability if available.
+func (node *Node) fetchRemoteSnapshot(index, term uint64) ([]byte, error) {
+	fetcher, ok := node.transport.(MemorySnapshotFetcher)
+	if !ok {
+		return nil, fmt.Errorf("transport does not support remote snapshot fetching")
+	}
+
+	ss := node.lastSoftState.Load()
+	if ss == nil || ss.Lead == 0 {
+		return nil, fmt.Errorf("no leader known for snapshot fetch")
+	}
+
+	return fetcher.FetchRemoteMemorySnapshot(ss.Lead, index, term)
+}
+
+// wrapSnapshot wraps FSM snapshot data with cluster-level metadata (peer addresses)
+// into a NodeSnapshot for WAL storage.
+func (node *Node) wrapSnapshot(fsmData []byte) ([]byte, error) {
+	peerAddrs := make([]*raftcmdpb.PeerAddress, 0, len(node.peerAddresses))
+	for nodeID, addr := range node.peerAddresses {
+		peerAddrs = append(peerAddrs, &raftcmdpb.PeerAddress{
+			NodeId:         nodeID,
+			RaftAddress:    addr.RaftAddress,
+			ServiceAddress: addr.ServiceAddress,
+		})
+	}
+	ns := &raftcmdpb.NodeSnapshot{
+		FsmSnapshot:   fsmData,
+		PeerAddresses: peerAddrs,
+	}
+	return ns.MarshalVT()
+}
+
+// snapshotUnwrapResult holds the result of unwrapping a NodeSnapshot.
+type snapshotUnwrapResult struct {
+	fsmData       []byte
+	peerAddresses []*raftcmdpb.PeerAddress
+	isReference   bool
+	sizeHint      uint64
+}
+
+// unwrapSnapshot extracts FSM snapshot data and peer addresses from a NodeSnapshot.
+// When isReference is true, fsmData is empty and the caller must fetch the full
+// snapshot via FetchMemorySnapshot RPC.
+func unwrapSnapshot(data []byte) (*snapshotUnwrapResult, error) {
+	ns := &raftcmdpb.NodeSnapshot{}
+	if err := ns.UnmarshalVT(data); err != nil {
+		return nil, err
+	}
+	return &snapshotUnwrapResult{
+		fsmData:       ns.FsmSnapshot,
+		peerAddresses: ns.PeerAddresses,
+		isReference:   ns.IsReference,
+		sizeHint:      ns.SizeHint,
+	}, nil
 }
 
 type Proposal struct {

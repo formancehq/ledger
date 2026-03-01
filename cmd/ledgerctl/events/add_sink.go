@@ -245,7 +245,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		pterm.Printf("URL:    %s\n", natsURL)
 		pterm.Printf("Topic:  %s\n", natsTopic)
 	case hasCH:
-		pterm.Printf("DSN:    %s\n", chDSN)
+		pterm.Printf("DSN:    %s\n", cmdutil.ObfuscateDSN(chDSN))
 		pterm.Printf("Table:  %s\n", chTable)
 	case hasKafka:
 		pterm.Printf("Brokers: %s\n", kafkaBrokersStr)

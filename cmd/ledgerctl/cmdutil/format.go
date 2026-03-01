@@ -1,6 +1,9 @@
 package cmdutil
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // FormatBytes formats a byte count as a human-readable string.
 func FormatBytes(bytes uint64) string {
@@ -23,4 +26,32 @@ func FormatBytes(bytes uint64) string {
 	default:
 		return fmt.Sprintf("%d B", bytes)
 	}
+}
+
+// ObfuscateDSN replaces the password in a DSN URL with "****".
+// Works with postgres://, postgresql://, clickhouse:// and similar URL-format DSNs.
+// If the DSN is not URL-formatted or has no password, it is returned unchanged.
+func ObfuscateDSN(dsn string) string {
+	schemeEnd := strings.Index(dsn, "://")
+	if schemeEnd == -1 {
+		return dsn
+	}
+
+	rest := dsn[schemeEnd+3:]
+
+	lastAt := strings.LastIndex(rest, "@")
+	if lastAt == -1 {
+		return dsn
+	}
+
+	creds := rest[:lastAt]
+	colonIdx := strings.Index(creds, ":")
+	if colonIdx == -1 {
+		return dsn
+	}
+
+	user := creds[:colonIdx]
+	hostPart := rest[lastAt:]
+
+	return dsn[:schemeEnd+3] + user + ":****" + hostPart
 }

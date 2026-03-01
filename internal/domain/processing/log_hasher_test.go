@@ -33,7 +33,7 @@ func TestGoldenHashCreateLedger(t *testing.T) {
 
 	h := blake3.New()
 	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "d6276287f07392a75f0aaa56d8b13ead2460a8015d2e4c33ff3b98e0e3b404b4", got)
+	require.Equal(t, "0b72cef72f58a65f0b0aa4b2f0e226f474524444cb54628957bcddbd02c3e542", got)
 }
 
 func TestGoldenHashApplyCreatedTransaction(t *testing.T) {
@@ -175,8 +175,8 @@ func TestGoldenHashChain(t *testing.T) {
 	gotHash1 := hex.EncodeToString(hash1)
 	gotHash2 := hex.EncodeToString(hash2)
 
-	require.Equal(t, "ca652b36b0ebfe7719a0a52825a0f8dbf3e62406eb52fea8a6dbdeafdedfdd83", gotHash1)
-	require.Equal(t, "7c26ce727755a7054767a5b9ce1b1332d18b2d1044045ae016208486d5eae38d", gotHash2)
+	require.Equal(t, "a817810e446f921e64eb7fbdef2c51899e6fb788413971427081dc28ed57b640", gotHash1)
+	require.Equal(t, "fa2be97c6ccda07a3e6909a4f4527a2cc36baa96f5dbb26005ff99b19a1666d0", gotHash2)
 }
 
 func TestGoldenHashAddedEventsSink(t *testing.T) {
@@ -233,7 +233,7 @@ func TestGoldenHashDeleteLedger(t *testing.T) {
 
 	h := blake3.New()
 	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "0b8085f7af59930346204823f967bf9dd0bc894a1bb762f8c78f3c711a507b95", got)
+	require.Equal(t, "712c8b09d51e1c2fa0713cb36ef756efcfe417de4ac8fd41ff0b419b460e6d24", got)
 }
 
 func TestGoldenHashRevokeSigningKey(t *testing.T) {

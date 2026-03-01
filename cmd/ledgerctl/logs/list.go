@@ -26,7 +26,7 @@ func NewListCommand() *cobra.Command {
 
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Uint64("after", 0, "Show logs after this sequence number")
-	cmd.Flags().Int("limit", 0, "Maximum number of logs to display (0 = unlimited)")
+	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of logs per page (0 = unlimited)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -45,15 +45,14 @@ func runList(cmd *cobra.Command, _ []string) error {
 	var (
 		jsonOutput, _ = cmd.Flags().GetBool("json")
 		after, _      = cmd.Flags().GetUint64("after")
-		limit, _      = cmd.Flags().GetInt("limit")
+		pageSize, _   = cmd.Flags().GetUint32("page-size")
 	)
 
-	req := &servicepb.ListLogsRequest{}
+	req := &servicepb.ListLogsRequest{
+		PageSize: pageSize,
+	}
 	if cmd.Flags().Changed("after") {
 		req.AfterSequence = &after
-	}
-	if limit > 0 {
-		req.PageSize = uint32(limit)
 	}
 
 	stream, err := client.ListLogs(ctx, req)
@@ -71,7 +70,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 			return cmdutil.FormatGRPCError("receiving log", err)
 		}
 		entries = append(entries, log)
-		if limit > 0 && len(entries) >= limit {
+		if pageSize > 0 && uint32(len(entries)) >= pageSize {
 			break
 		}
 	}
@@ -177,6 +176,17 @@ func describeLogPayload(log *commonpb.Log) (string, string) {
 		return "CONFIRM_ARCHIVE", ""
 	case *commonpb.LogPayload_SetMaintenanceMode:
 		return "MAINTENANCE", ""
+	case *commonpb.LogPayload_SetPeriodSchedule:
+		return "SET_PERIOD_SCHED", ""
+	case *commonpb.LogPayload_DeletePeriodSchedule:
+		return "DEL_PERIOD_SCHED", ""
+	case *commonpb.LogPayload_SetAuditConfig:
+		return "SET_AUDIT_CFG", ""
+	case *commonpb.LogPayload_PromoteLedger:
+		if t.PromoteLedger != nil && t.PromoteLedger.Info != nil {
+			return "PROMOTE_LEDGER", t.PromoteLedger.Info.Name
+		}
+		return "PROMOTE_LEDGER", ""
 	default:
 		return "UNKNOWN", ""
 	}
@@ -211,6 +221,18 @@ func formatLogDetails(log *commonpb.Log) string {
 	case *commonpb.LogPayload_CreateLedger:
 		if t.CreateLedger != nil && t.CreateLedger.Info != nil && t.CreateLedger.Info.CreatedAt != nil {
 			return t.CreateLedger.Info.CreatedAt.AsTime().Format(time.RFC3339)
+		}
+	case *commonpb.LogPayload_SetMaintenanceMode:
+		if t.SetMaintenanceMode != nil {
+			return fmt.Sprintf("enabled=%v", t.SetMaintenanceMode.Enabled)
+		}
+	case *commonpb.LogPayload_SetPeriodSchedule:
+		if t.SetPeriodSchedule != nil {
+			return fmt.Sprintf("cron=%s", t.SetPeriodSchedule.Cron)
+		}
+	case *commonpb.LogPayload_SetAuditConfig:
+		if t.SetAuditConfig != nil {
+			return fmt.Sprintf("enabled=%v", t.SetAuditConfig.Enabled)
 		}
 	}
 	return ""
