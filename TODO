@@ -3,16 +3,11 @@ API:
 * Clean HTTP layer / GRPC proxy
 
 Business:
-* Block admin commands for normal users
 * Chart of account
 * Account types instead of segment filtering
-* Mirror mode
 * Numscript
 ** Add typed variables
 * ledgerctl:
-** watch command
-** wrap long address in table views
-** allow set metadata type on mirror mode
 ** Add self update
 ** First usage detection and display
 
@@ -29,8 +24,6 @@ Refactor:
 * Simplify processor
 * Split admission
 * Check all commands match a log type payload
-* Log signal broadcast
-* Simplify attributes system
 
 Later:
 * Events
