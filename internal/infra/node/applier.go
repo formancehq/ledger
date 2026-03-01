@@ -238,7 +238,7 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		return err
 	}
 
-	// If Machine stopped at a checkpoint boundary (ClosePeriod or CreateCheckpoint),
+	// If Machine stopped at a checkpoint boundary (ClosePeriod),
 	// enter maintenance mode and create the checkpoint off the Raft hot path.
 	if result.CheckpointRequired {
 		return a.handleCheckpointRequired(ctx, entries, result)
@@ -274,9 +274,8 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 }
 
 // handleCheckpointRequired enters maintenance mode to create a checkpoint off
-// the Raft hot path. Handles both ClosePeriod (seal checkpoint) and
-// CreateCheckpoint (backup checkpoint). While the checkpoint is being created,
-// new committed entries are spooled and replayed afterward.
+// the Raft hot path for ClosePeriod (seal checkpoint). While the checkpoint is
+// being created, new committed entries are spooled and replayed afterward.
 func (a *Applier) handleCheckpointRequired(
 	ctx context.Context,
 	entries []raftpb.Entry,
@@ -501,7 +500,7 @@ func (a *Applier) replaySpool(ctx context.Context, fromIndex uint64) error {
 			batch = batch[:0]
 			lastEntry = &entry
 
-			// Handle checkpoint during replay (ClosePeriod or CreateCheckpoint)
+			// Handle checkpoint during replay (ClosePeriod)
 			if result.CheckpointRequired {
 				if err := a.handleCheckpointDuringReplay(ctx, result); err != nil {
 					return err
@@ -540,8 +539,8 @@ func (a *Applier) replaySpool(ctx context.Context, fromIndex uint64) error {
 }
 
 // handleCheckpointDuringReplay creates a temporary checkpoint and calls the
-// FSM-provided callback when a checkpoint-requiring entry (ClosePeriod or
-// CreateCheckpoint) is encountered during spool replay.
+// FSM-provided callback when a checkpoint-requiring entry (ClosePeriod)
+// is encountered during spool replay.
 // Unlike handleCheckpointRequired, this does not enter maintenance mode -- the
 // checkpoint is created synchronously (acceptable since we're already off
 // the hot path) and remaining entries are applied directly.

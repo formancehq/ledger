@@ -99,13 +99,13 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		}
 	}
 
-	// Process Boundary updates — track dirty keys for deferred Pebble write at generation rotation
+	// Process Boundary updates
 	boundaryUpdates, _, err := b.Derived.Boundaries.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge boundaries: %w", err)
 	}
-	for _, update := range boundaryUpdates {
-		b.fsm.dirtyBoundaryKeys[string(update.CanonicalKey)] = update.New
+	if err := mergeSimple(b.attrs.Boundary, batch, index, boundaryUpdates); err != nil {
+		return fmt.Errorf("failed merging boundary attributes: %w", err)
 	}
 
 	// Process Volume updates and track dirty volume keys inline

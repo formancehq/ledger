@@ -11,7 +11,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -1217,38 +1216,10 @@ func (node *Node) handleTransferLeader(transferee uint64) error {
 	return nil
 }
 
-// ProposeBackupCheckpoint proposes a CreateCheckpoint command through Raft consensus.
-// The checkpoint is created during maintenance mode off the Raft hot path while no
-// new proposals are being applied, guaranteeing a consistent snapshot.
-// Dirty boundaries are written into the checkpoint copy (not the live DB).
-// Returns the filesystem path to the created checkpoint.
-func (node *Node) ProposeBackupCheckpoint(ctx context.Context) (string, error) {
-	cmd := commands.NewCommand()
-	cmd.CreateCheckpoint = true
-
-	cmdData, err := cmd.MarshalVT()
-	if err != nil {
-		return "", fmt.Errorf("marshaling checkpoint proposal: %w", err)
-	}
-
-	proposal := NewProposal(cmd.Id, cmdData)
-	fsmFuture, err := node.Propose(proposal)
-	if err != nil {
-		return "", fmt.Errorf("proposing checkpoint: %w", err)
-	}
-
-	// Wait for Raft consensus
-	if _, err := proposal.Wait(); err != nil {
-		return "", fmt.Errorf("waiting for checkpoint raft consensus: %w", err)
-	}
-
-	// Wait for checkpoint creation (resolved by handleCheckpointRequired)
-	result, err := fsmFuture.Wait()
-	if err != nil {
-		return "", fmt.Errorf("waiting for checkpoint creation: %w", err)
-	}
-
-	return result.CheckpointPath, nil
+// CreateBackupCheckpoint creates a Pebble checkpoint directly (no Raft consensus).
+// Boundaries are always up-to-date in Pebble, so the checkpoint is consistent.
+func (node *Node) CreateBackupCheckpoint() (string, error) {
+	return node.applier.store.CreateTemporaryCheckpoint("checkpoint")
 }
 
 // TransferLeader initiates a leadership transfer to the given node.

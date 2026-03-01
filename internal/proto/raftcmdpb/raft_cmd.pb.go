@@ -2533,8 +2533,7 @@ type Proposal struct {
 	Date              *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=date,proto3" json:"date,omitempty"`     // Creation date in UTC
 	Preload           *PreloadSet            `protobuf:"bytes,4,opt,name=preload,proto3" json:"preload,omitempty"`
 	EventsSinkUpdates []*EventsSinkUpdate    `protobuf:"bytes,5,rep,name=events_sink_updates,json=eventsSinkUpdates,proto3" json:"events_sink_updates,omitempty"` // Per-sink cursor and error updates (Raft-replicated)
-	CreateCheckpoint  bool                   `protobuf:"varint,6,opt,name=create_checkpoint,json=createCheckpoint,proto3" json:"create_checkpoint,omitempty"`     // When true, enter maintenance mode and create a Pebble checkpoint
-	MirrorSyncUpdates []*MirrorSyncUpdate    `protobuf:"bytes,7,rep,name=mirror_sync_updates,json=mirrorSyncUpdates,proto3" json:"mirror_sync_updates,omitempty"` // Per-ledger mirror cursor and error updates (Raft-replicated)
+	MirrorSyncUpdates []*MirrorSyncUpdate    `protobuf:"bytes,6,rep,name=mirror_sync_updates,json=mirrorSyncUpdates,proto3" json:"mirror_sync_updates,omitempty"` // Per-ledger mirror cursor and error updates (Raft-replicated)
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -2602,13 +2601,6 @@ func (x *Proposal) GetEventsSinkUpdates() []*EventsSinkUpdate {
 		return x.EventsSinkUpdates
 	}
 	return nil
-}
-
-func (x *Proposal) GetCreateCheckpoint() bool {
-	if x != nil {
-		return x.CreateCheckpoint
-	}
-	return false
 }
 
 func (x *Proposal) GetMirrorSyncUpdates() []*MirrorSyncUpdate {
@@ -4687,15 +4679,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x0eexpand_volumes\x18\x06 \x01(\bR\rexpandVolumes\"O\n" +
 	"\x13DeleteMetadataOrder\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\xcf\x02\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xa2\x02\n" +
 	"\bProposal\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12#\n" +
 	"\x06orders\x18\x02 \x03(\v2\v.raft.OrderR\x06orders\x12%\n" +
 	"\x04date\x18\x03 \x01(\v2\x11.common.TimestampR\x04date\x12*\n" +
 	"\apreload\x18\x04 \x01(\v2\x10.raft.PreloadSetR\apreload\x12F\n" +
-	"\x13events_sink_updates\x18\x05 \x03(\v2\x16.raft.EventsSinkUpdateR\x11eventsSinkUpdates\x12+\n" +
-	"\x11create_checkpoint\x18\x06 \x01(\bR\x10createCheckpoint\x12F\n" +
-	"\x13mirror_sync_updates\x18\a \x03(\v2\x16.raft.MirrorSyncUpdateR\x11mirrorSyncUpdates\"\xc5\x01\n" +
+	"\x13events_sink_updates\x18\x05 \x03(\v2\x16.raft.EventsSinkUpdateR\x11eventsSinkUpdates\x12F\n" +
+	"\x13mirror_sync_updates\x18\x06 \x03(\v2\x16.raft.MirrorSyncUpdateR\x11mirrorSyncUpdates\"\xc5\x01\n" +
 	"\x10MirrorSyncUpdate\x12\x1f\n" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +
 	"ledgerName\x12\x16\n" +

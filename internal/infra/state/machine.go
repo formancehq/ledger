@@ -76,11 +76,6 @@ type Machine struct {
 	// [0]=current gen, [1]=previous gen, [2]=gen before (consumed at compaction).
 	dirtyVolumeKeys [3]map[string]uint32
 
-	// dirtyBoundaryKeys tracks boundary canonical keys that have been updated
-	// since the last generation rotation. Boundaries are flushed to Pebble only
-	// at rotation time instead of on every log entry.
-	dirtyBoundaryKeys map[string]*raftcmdpb.LedgerBoundaries
-
 	// sealRequestCh receives seal requests when a ClosePeriod log is applied.
 	// The Sealer reads from this channel to perform background sealing.
 	sealRequestCh chan SealRequest
@@ -147,7 +142,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 
 	rotationDurationHistogram, err := meter.Int64Histogram(
 		"raft.fsm.rotation.duration",
-		metric.WithDescription("Time spent in generation rotation (compaction + boundary flush) during ApplyEntries"),
+		metric.WithDescription("Time spent in generation rotation (volume compaction) during ApplyEntries"),
 		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
 			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000,
@@ -264,7 +259,6 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 			make(map[string]uint32),
 			make(map[string]uint32),
 		},
-		dirtyBoundaryKeys:        make(map[string]*raftcmdpb.LedgerBoundaries),
 		sealRequestCh:            make(chan SealRequest, 1),
 		archiveRequestCh:         make(chan ArchiveRequest, 1),
 		metadataConvertRequestCh: make(chan MetadataConvertRequest, 16),
@@ -312,44 +306,6 @@ func (fsm *Machine) RecoverState() error {
 		"nextAuditSequenceID": fsm.nextAuditSequenceID,
 		"hasLogHash":          len(fsm.lastLogHash) > 0,
 	}).Infof("Recovered FSM state from store")
-
-	return nil
-}
-
-// writeBoundariesToCheckpoint opens a checkpoint Pebble DB and writes all
-// dirty boundary keys into it so that backups contain up-to-date boundaries.
-// The dirty map is NOT cleared — boundaries stay dirty for the next generation rotation.
-func (fsm *Machine) writeBoundariesToCheckpoint(checkpointPath string) error {
-	if len(fsm.dirtyBoundaryKeys) == 0 {
-		return nil
-	}
-
-	db, err := dal.OpenDirect(checkpointPath, fsm.logger)
-	if err != nil {
-		return fmt.Errorf("opening checkpoint for boundary write: %w", err)
-	}
-
-	batch := db.NewBatch()
-	for keyStr, value := range fsm.dirtyBoundaryKeys {
-		canonicalKey := []byte(keyStr)
-		if err := fsm.Registry.Attrs.Boundary.Set(batch, fsm.lastAppliedIndex, canonicalKey, value); err != nil {
-			_ = batch.Cancel()
-			_ = db.Close()
-			return fmt.Errorf("setting boundary base: %w", err)
-		}
-		if err := fsm.Registry.Attrs.Boundary.DeleteOldest(batch, fsm.lastAppliedIndex, canonicalKey); err != nil {
-			_ = batch.Cancel()
-			_ = db.Close()
-			return fmt.Errorf("compacting old boundary: %w", err)
-		}
-	}
-	if err := batch.Commit(); err != nil {
-		_ = db.Close()
-		return fmt.Errorf("committing boundaries to checkpoint: %w", err)
-	}
-	if err := db.Close(); err != nil {
-		return fmt.Errorf("closing checkpoint after boundary write: %w", err)
-	}
 
 	return nil
 }
@@ -444,11 +400,6 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 				return nil, fmt.Errorf("compacting volume diffs: %w", err)
 			}
 
-			// Flush dirty boundaries to Pebble at the rotation boundary index
-			if err := fsm.flushBoundaries(batch, fsm.Registry.Cache.BaseIndex.Gen0); err != nil {
-				return nil, fmt.Errorf("flushing boundaries at rotation: %w", err)
-			}
-
 			fsm.rotationDurationHistogram.Record(context.Background(), time.Since(rotationStart).Microseconds())
 			fsm.rotationKeysCompacted.Add(context.Background(), compactedKeys)
 		}
@@ -461,21 +412,6 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		cmd.Reset()
 		if err := cmd.UnmarshalVT(entry.Data); err != nil {
 			return nil, err
-		}
-
-		// CreateCheckpoint: enter maintenance mode to create a Pebble checkpoint.
-		// The OnCheckpointDone callback writes dirty boundaries into the checkpoint
-		// so that backups contain up-to-date data without polluting the live DB.
-		if cmd.CreateCheckpoint {
-			ret.Results = append(ret.Results, ApplyResult{ProposalID: cmd.Id})
-
-			return fsm.commitAndRequestCheckpoint(batch, ret, entries[i+1:], needsArchiveDispatch, func(checkpointPath string) {
-				if err := fsm.writeBoundariesToCheckpoint(checkpointPath); err != nil {
-					fsm.logger.WithFields(map[string]any{
-						"error": err,
-					}).Errorf("Failed to write boundaries to checkpoint")
-				}
-			})
 		}
 
 		// Skip applyProposal for system-only proposals with no orders AND
@@ -567,8 +503,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 }
 
 // commitAndRequestCheckpoint commits the current batch, stores remaining entries,
-// and returns with CheckpointRequired = true. This is shared by CreateCheckpoint
-// (backup checkpoint) and ClosePeriod (seal checkpoint).
+// and returns with CheckpointRequired = true. Used by ClosePeriod (seal checkpoint).
 func (fsm *Machine) commitAndRequestCheckpoint(
 	batch *dal.Batch,
 	ret *ApplyEntriesResult,
@@ -648,22 +583,6 @@ func (fsm *Machine) compactVolumeDiffs(batch *dal.Batch, compactionIndex uint64,
 		compacted++
 	}
 	return compacted, nil
-}
-
-// flushBoundaries writes all dirty boundary keys to Pebble and clears the tracking map.
-// Called at generation rotation to batch boundary writes instead of writing on every log entry.
-func (fsm *Machine) flushBoundaries(batch *dal.Batch, index uint64) error {
-	for keyStr, value := range fsm.dirtyBoundaryKeys {
-		canonicalKey := []byte(keyStr)
-		if err := fsm.Registry.Attrs.Boundary.Set(batch, index, canonicalKey, value); err != nil {
-			return fmt.Errorf("setting boundary base: %w", err)
-		}
-		if err := fsm.Registry.Attrs.Boundary.DeleteOldest(batch, index, canonicalKey); err != nil {
-			return fmt.Errorf("compacting old boundary: %w", err)
-		}
-	}
-	clear(fsm.dirtyBoundaryKeys)
-	return nil
 }
 
 // Preload applies preloaded data to the Machine's volatile state.
@@ -1417,14 +1336,13 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	// Signing keys are not in the memory snapshot — they live in Pebble.
 	// They will be reloaded from Pebble after SynchronizeWithLeader restores the checkpoint.
 
-	// Reset dirty key tracking. The first 2 rotations after restore will do
+	// Reset dirty volume key tracking. The first 2 rotations after restore will do
 	// less cleanup, but the system self-corrects as new keys are tracked.
 	fsm.dirtyVolumeKeys = [3]map[string]uint32{
 		make(map[string]uint32),
 		make(map[string]uint32),
 		make(map[string]uint32),
 	}
-	fsm.dirtyBoundaryKeys = make(map[string]*raftcmdpb.LedgerBoundaries)
 
 	fsm.logger.WithFields(map[string]any{
 		"totalDuration": time.Since(totalStart).String(),
@@ -1817,7 +1735,7 @@ type ApplyResult struct {
 	ProposalID              uint64
 	Logs                    []*raftcmdpb.CreatedLogOrReference
 	Error                   error
-	CheckpointPath          string // Set by Node after checkpoint creation (CreateCheckpoint proposals)
+	CheckpointPath          string // Set by Node after checkpoint creation (ClosePeriod proposals)
 	ConfigChanged           bool   // True when sink configuration changed
 	MirrorConfigChanged     bool   // True when mirror ledger configuration changed
 	HasArchiveRequests      bool   // True when there are pending archive requests

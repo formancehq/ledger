@@ -281,9 +281,9 @@ func (impl *ClusterServiceServerImpl) backupLocal(stream ggrpc.ServerStreamingSe
 		return fmt.Errorf("sending status message: %w", err)
 	}
 
-	// Propose a CreateCheckpoint through Raft consensus. All nodes enter maintenance
-	// mode; the leader creates the backup checkpoint and writes dirty boundaries into it.
-	backupPath, err := impl.node.ProposeBackupCheckpoint(stream.Context())
+	// Create a direct Pebble checkpoint (no Raft consensus needed).
+	// Boundaries are always up-to-date in Pebble since they are written on every commit.
+	backupPath, err := impl.node.CreateBackupCheckpoint()
 	if err != nil {
 		return fmt.Errorf("creating backup checkpoint: %w", err)
 	}

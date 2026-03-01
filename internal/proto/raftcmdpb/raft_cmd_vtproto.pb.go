@@ -1049,7 +1049,6 @@ func (m *Proposal) CloneVT() *Proposal {
 	r.Id = m.Id
 	r.Date = m.Date.CloneVT()
 	r.Preload = m.Preload.CloneVT()
-	r.CreateCheckpoint = m.CreateCheckpoint
 	if rhs := m.Orders; rhs != nil {
 		tmpContainer := make([]*Order, len(rhs))
 		for k, v := range rhs {
@@ -3627,9 +3626,6 @@ func (this *Proposal) EqualVT(that *Proposal) bool {
 				return false
 			}
 		}
-	}
-	if this.CreateCheckpoint != that.CreateCheckpoint {
-		return false
 	}
 	if len(this.MirrorSyncUpdates) != len(that.MirrorSyncUpdates) {
 		return false
@@ -7354,18 +7350,8 @@ func (m *Proposal) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x3a
+			dAtA[i] = 0x32
 		}
-	}
-	if m.CreateCheckpoint {
-		i--
-		if m.CreateCheckpoint {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x30
 	}
 	if len(m.EventsSinkUpdates) > 0 {
 		for iNdEx := len(m.EventsSinkUpdates) - 1; iNdEx >= 0; iNdEx-- {
@@ -10418,9 +10404,6 @@ func (m *Proposal) SizeVT() (n int) {
 			l = e.SizeVT()
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
-	}
-	if m.CreateCheckpoint {
-		n += 2
 	}
 	if len(m.MirrorSyncUpdates) > 0 {
 		for _, e := range m.MirrorSyncUpdates {
@@ -17177,26 +17160,6 @@ func (m *Proposal) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CreateCheckpoint", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.CreateCheckpoint = bool(v != 0)
-		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MirrorSyncUpdates", wireType)
 			}

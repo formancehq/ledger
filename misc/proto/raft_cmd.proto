@@ -253,8 +253,7 @@ message Proposal {
   common.Timestamp date = 3;        // Creation date in UTC
   PreloadSet preload = 4;
   repeated EventsSinkUpdate events_sink_updates = 5;  // Per-sink cursor and error updates (Raft-replicated)
-  bool create_checkpoint = 6;       // When true, enter maintenance mode and create a Pebble checkpoint
-  repeated MirrorSyncUpdate mirror_sync_updates = 7;  // Per-ledger mirror cursor and error updates (Raft-replicated)
+  repeated MirrorSyncUpdate mirror_sync_updates = 6;  // Per-ledger mirror cursor and error updates (Raft-replicated)
 }
 
 message MirrorSyncUpdate {

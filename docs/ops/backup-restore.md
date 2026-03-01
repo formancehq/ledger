@@ -11,7 +11,7 @@ The ledger provides a complete backup and restore pipeline. A backup captures a 
 │ 1. BACKUP (running cluster)                                            │
 │                                                                        │
 │    ledgerctl store backup -o backup.tar                                │
-│    ─► Raft consensus: CreateCheckpoint (all nodes enter maintenance)   │
+│    ─► Leader: create Pebble checkpoint (direct, no Raft consensus)    │
 │    ─► Leader: compact attributes to index 0, reset lastAppliedIndex   │
 │    ─► Leader: stream checkpoint directory as tar + SHA256              │
 │    ─► Client: verify SHA256, write to disk                            │
@@ -62,13 +62,11 @@ ledgerctl store backup | gzip > backup.tar.gz
 
 The `store backup` command calls the `ClusterService.Backup` gRPC RPC (server-streaming). If connected to a follower, the request is transparently forwarded to the leader.
 
-#### Step 1: Raft Checkpoint
+#### Step 1: Direct Pebble Checkpoint
 
-The leader proposes a `CreateCheckpoint` command through Raft consensus. All nodes agree to enter **maintenance mode**: the Raft loop stops applying entries directly to the FSM and spools them instead. The leader then creates a **Pebble checkpoint** — a point-in-time filesystem snapshot using hardlinks — off the critical path. After checkpoint creation, spooled entries are replayed and normal operation resumes.
+The leader creates a **Pebble checkpoint** directly — a point-in-time filesystem snapshot using hardlinks. Because boundaries (nextTransactionId, nextLogId per ledger) are written to Pebble on every committed entry, the checkpoint is immediately consistent without requiring Raft consensus or FSM gating. This means backup does not block writes at all.
 
-This ensures the checkpoint is taken at a consistent Raft boundary without blocking write traffic for more than the Raft round-trip latency.
-
-**File**: `internal/infra/node/node.go` — `ProposeBackupCheckpoint()`
+**File**: `internal/infra/node/node.go` — `CreateBackupCheckpoint()`
 
 #### Step 2: Compaction for Restore Compatibility
 
@@ -123,10 +121,7 @@ sequenceDiagram
     Client->>Follower: Backup RPC
     Follower->>Leader: Forward to leader
 
-    Leader->>FSM: Propose CreateCheckpoint
-    FSM->>FSM: Enter maintenance mode (spool entries)
-    FSM->>Pebble: Checkpoint(tmp/checkpoint)
-    FSM->>FSM: Replay spooled entries, resume
+    Leader->>Pebble: CreateTemporaryCheckpoint("checkpoint")
 
     Leader->>Pebble: CompactAllForBackup()
     Note over Leader,Pebble: Compact attributes to index 0<br/>Reset lastAppliedIndex to 0
@@ -375,7 +370,7 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 
 | Guarantee | Mechanism |
 |-----------|-----------|
-| **Consistent snapshot** | Backup checkpoint is created via Raft consensus — all nodes agree on the boundary. Entries arriving during checkpoint creation are spooled and replayed after. |
+| **Consistent snapshot** | Backup checkpoint is created as a direct Pebble checkpoint. Boundaries are always up-to-date in Pebble (written on every commit), so the checkpoint is consistent without Raft consensus or FSM gating. |
 | **Self-contained backup** | Attributes are compacted to index 0 and `lastAppliedIndex` is reset. No dependency on the original cluster's Raft indices. |
 | **Data integrity (transport)** | SHA256 hash is computed during streaming and verified by both client and server. Hash mismatch aborts the operation. |
 | **Data integrity (content)** | `ValidateRestore` runs the full integrity checker: log hash chain continuity, volume balance verification, metadata consistency. |
@@ -442,7 +437,7 @@ See [Periods](../dev/architecture/periods.md) for the full period lifecycle and 
 | `internal/adapter/grpc/server_cluster.go` | `ClusterService.Backup` gRPC implementation |
 | `internal/adapter/grpc/tar_streaming.go` | Tar streaming with SHA256 |
 | `internal/infra/attributes/compact.go` | `CompactAllForBackup()` — attribute compaction |
-| `internal/infra/node/node.go` | `ProposeBackupCheckpoint()` — Raft checkpoint |
+| `internal/infra/node/node.go` | `CreateBackupCheckpoint()` — direct Pebble checkpoint |
 | **Restore (gRPC)** | |
 | `misc/proto/restore.proto` | RestoreService proto definition |
 | `internal/proto/restorepb/` | Generated proto code |
