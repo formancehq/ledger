@@ -5,9 +5,10 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/application/events"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +33,7 @@ func TestManager_AddRemoveSink(t *testing.T) {
 	store := newTestStore(t)
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
-	notifications := events.NewNotifications()
+	notifications := signal.NewNotifications()
 
 	manager := events.NewManager(store, proposer, logger, notifications)
 	manager.Start()
@@ -70,7 +71,7 @@ func TestManager_LeadershipChange(t *testing.T) {
 	store := newTestStore(t)
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
-	notifications := events.NewNotifications()
+	notifications := signal.NewNotifications()
 
 	// Pre-save a sink config
 	saveSinkConfig(t, store, &commonpb.SinkConfig{
@@ -98,7 +99,7 @@ func TestManager_ConfigChangeWhileFollower(t *testing.T) {
 	store := newTestStore(t)
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
-	notifications := events.NewNotifications()
+	notifications := signal.NewNotifications()
 
 	manager := events.NewManager(store, proposer, logger, notifications)
 	manager.Start()
@@ -126,7 +127,7 @@ func TestManager_StopWithoutStart(t *testing.T) {
 	store := newTestStore(t)
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
-	notifications := events.NewNotifications()
+	notifications := signal.NewNotifications()
 
 	manager := events.NewManager(store, proposer, logger, notifications)
 	manager.Start()
@@ -140,7 +141,7 @@ func TestManager_LogNotificationForwarding(t *testing.T) {
 	store := newTestStore(t)
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
-	notifications := events.NewNotifications()
+	notifications := signal.NewNotifications()
 
 	// Pre-save a sink config
 	saveSinkConfig(t, store, &commonpb.SinkConfig{

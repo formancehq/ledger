@@ -20,32 +20,6 @@ type managedSink struct {
 	config  *commonpb.SinkConfig
 }
 
-// Notifications holds the signals shared between the FSM and the event Manager.
-// It is created independently (no dependency on Node or Manager) to break the
-// circular dependency in the fx graph.
-type Notifications struct {
-	LogCommitted  signal.Signal
-	ConfigChanged signal.Signal
-}
-
-// NewNotifications creates a new Notifications with buffered(1) signals.
-func NewNotifications() *Notifications {
-	return &Notifications{
-		LogCommitted:  signal.New(),
-		ConfigChanged: signal.New(),
-	}
-}
-
-// NotifyLogsCommitted signals that new logs have been committed.
-func (n *Notifications) NotifyLogsCommitted() {
-	n.LogCommitted.Notify()
-}
-
-// NotifyConfigChanged signals that the events configuration has changed.
-func (n *Notifications) NotifyConfigChanged() {
-	n.ConfigChanged.Notify()
-}
-
 // Manager manages the lifecycle of event emitters and sinks based on
 // the Raft-replicated events configuration. It creates one Emitter per
 // named sink, each with its own cursor and error status.
@@ -53,7 +27,7 @@ type Manager struct {
 	store         *dal.Store
 	proposer      Proposer
 	logger        logging.Logger
-	notifications *Notifications
+	notifications *signal.Notifications
 
 	mu       sync.Mutex
 	isLeader bool
@@ -63,7 +37,7 @@ type Manager struct {
 }
 
 // NewManager creates a new event Manager.
-func NewManager(store *dal.Store, proposer Proposer, logger logging.Logger, notifications *Notifications) *Manager {
+func NewManager(store *dal.Store, proposer Proposer, logger logging.Logger, notifications *signal.Notifications) *Manager {
 	return &Manager{
 		store:         store,
 		proposer:      proposer,
@@ -99,25 +73,23 @@ func (m *Manager) OnLeadershipChange(isLeader bool) {
 }
 
 func (m *Manager) loop(stop <-chan struct{}) {
-	for {
-		select {
-		case <-m.notifications.LogCommitted.C():
+	signal.RunNotificationLoop(stop, m.notifications,
+		func() {
 			m.mu.Lock()
+			defer m.mu.Unlock()
 			// Forward notification to all active emitters
 			for _, ms := range m.emitters {
 				ms.emitter.Notify()
 			}
-			m.mu.Unlock()
-		case <-m.notifications.ConfigChanged.C():
+		},
+		func() {
 			m.mu.Lock()
+			defer m.mu.Unlock()
 			if m.isLeader {
 				m.reconcile()
 			}
-			m.mu.Unlock()
-		case <-stop:
-			return
-		}
-	}
+		},
+	)
 }
 
 // reconcile reads the current per-sink configurations from the store and

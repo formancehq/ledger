@@ -411,7 +411,7 @@ The write path (API → Controller → Admission → Raft → FSM → PebbleDB) 
 
 ### FSM Notification Hook
 
-The FSM notifies the event system via a `Notifications` struct shared between the FSM and the Manager. Notifications use a coalescing `Signal` type (buffered channel of size 1) — multiple rapid notifications are collapsed into a single wake-up, and the send is always non-blocking:
+The FSM notifies the event system via a `signal.Notifications` struct (from `internal/pkg/signal/`) shared between the FSM and the Manager. Both the events and mirror Managers receive their own `*signal.Notifications` instance, disambiguated via fx named tags (`name:"events"` / `name:"mirror"`). Notifications use a coalescing `Signal` type (buffered channel of size 1) — multiple rapid notifications are collapsed into a single wake-up, and the send is always non-blocking:
 
 ```go
 // After committing a batch with new logs:
@@ -421,7 +421,7 @@ if eventsConfigChanged {
 }
 ```
 
-The `Notifications` struct is created independently (no dependency on Node or Manager) to break the fx circular dependency between the Node (which contains the FSM) and the Manager (which needs the Node as a Proposer).
+The `signal.Notifications` struct is created independently (no dependency on Node or Manager) to break the fx circular dependency between the Node (which contains the FSM) and the Manager (which needs the Node as a Proposer).
 
 ### fx Integration
 
@@ -430,15 +430,15 @@ The event system is wired into the application via `bootstrap.Module()`:
 ```go
 // internal/bootstrap/module.go
 fx.Provide(
-    events.NewNotifications,  // Shared signal bus (breaks circular dep)
-    events.NewManager,        // Manages per-sink emitters
+    fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"events"`)),
+    fx.Annotate(events.NewManager, fx.ParamTags(``, ``, ``, `name:"events"`)),
 )
 fx.Invoke(func(lc fx.Lifecycle, manager *events.Manager) {
     // Start/Stop the Manager background goroutine
 })
 ```
 
-The `Notifications` struct is created independently to break the fx circular dependency between the Node (which contains the FSM) and the Manager (which needs the Node as a Proposer). The Manager only activates emitters when the node becomes leader AND at least one sink is configured.
+Named fx tags (`name:"events"` / `name:"mirror"`) disambiguate the two `*signal.Notifications` instances without requiring wrapper types. The Manager only activates emitters when the node becomes leader AND at least one sink is configured.
 
 ## Package Structure
 

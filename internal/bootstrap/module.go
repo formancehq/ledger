@@ -18,6 +18,7 @@ import (
 	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	clusterhealth "github.com/formancehq/ledger-v3-poc/internal/infra/health"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
@@ -127,7 +128,7 @@ func Module() fx.Option {
 			func(cfg node.NodeConfig, meterProvider metric.MeterProvider) (*cache.Cache, error) {
 				return cache.New(cfg.RotationThreshold, meterProvider.Meter("cache"))
 			},
-			func(
+			fx.Annotate(func(
 				cfg Config,
 				logger logging.Logger,
 				store *dal.Store,
@@ -136,8 +137,8 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				ks *keystore.KeyStore,
 				ss *state.SharedState,
-				eventNotifications *events.Notifications,
-				mirrorNotifications *mirror.Notifications,
+				eventNotifications *signal.Notifications,
+				mirrorNotifications *signal.Notifications,
 			) (*state.Machine, error) {
 				machineStart := time.Now()
 				m, err := state.NewMachine(
@@ -160,7 +161,7 @@ func Module() fx.Option {
 					"duration": time.Since(machineStart).String(),
 				}).Infof("FSM Machine created")
 				return m, nil
-			},
+			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`)),
 			func(
 				params struct {
 					fx.In
@@ -316,12 +317,12 @@ func Module() fx.Option {
 				return keystore.NewKeyStore()
 			},
 			state.NewSharedState,
-			events.NewNotifications,
-			events.NewManager,
-			mirror.NewNotifications,
-			func(store *dal.Store, proposer mirror.Proposer, c *cache.Cache, attrs *attributes.Attributes, logger logging.Logger, notifications *mirror.Notifications, meterProvider metric.MeterProvider, cfg Config) *mirror.Manager {
+			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"events"`)),
+			fx.Annotate(events.NewManager, fx.ParamTags(``, ``, ``, `name:"events"`)),
+			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"mirror"`)),
+			fx.Annotate(func(store *dal.Store, proposer mirror.Proposer, c *cache.Cache, attrs *attributes.Attributes, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, cfg Config) *mirror.Manager {
 				return mirror.NewManager(store, proposer, c, attrs, logger, notifications, meterProvider, cfg.MirrorMaxBatchSize)
-			},
+			}, fx.ParamTags(``, ``, ``, ``, ``, `name:"mirror"`, ``, ``)),
 			// Provide mirror.Proposer from the Raft node
 			func(n *node.Node) mirror.Proposer {
 				return n

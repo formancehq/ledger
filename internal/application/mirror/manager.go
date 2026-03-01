@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
@@ -33,7 +34,7 @@ type Manager struct {
 	cache         *cache.Cache
 	attrs         *attributes.Attributes
 	logger        logging.Logger
-	notifications *Notifications
+	notifications *signal.Notifications
 	meterProvider metric.MeterProvider
 	maxBatchSize  int
 
@@ -45,7 +46,7 @@ type Manager struct {
 }
 
 // NewManager creates a new mirror Manager.
-func NewManager(store *dal.Store, proposer Proposer, cache *cache.Cache, attrs *attributes.Attributes, logger logging.Logger, notifications *Notifications, meterProvider metric.MeterProvider, maxBatchSize int) *Manager {
+func NewManager(store *dal.Store, proposer Proposer, cache *cache.Cache, attrs *attributes.Attributes, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, maxBatchSize int) *Manager {
 	return &Manager{
 		store:         store,
 		proposer:      proposer,
@@ -85,25 +86,23 @@ func (m *Manager) OnLeadershipChange(isLeader bool) {
 }
 
 func (m *Manager) loop(stop <-chan struct{}) {
-	for {
-		select {
-		case <-m.notifications.LogCommitted.C():
+	signal.RunNotificationLoop(stop, m.notifications,
+		func() {
 			m.mu.Lock()
+			defer m.mu.Unlock()
 			// Forward notification to all active workers
 			for _, w := range m.workers {
 				w.Notify()
 			}
-			m.mu.Unlock()
-		case <-m.notifications.ConfigChanged.C():
+		},
+		func() {
 			m.mu.Lock()
+			defer m.mu.Unlock()
 			if m.isLeader {
 				m.reconcile()
 			}
-			m.mu.Unlock()
-		case <-stop:
-			return
-		}
-	}
+		},
+	)
 }
 
 // reconcile reads the current mirror ledger configurations from the store and

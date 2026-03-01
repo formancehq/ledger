@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/application/events"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 )
@@ -47,7 +48,7 @@ func TestManager_HTTPSink_StartStop(t *testing.T) {
 	store := newTestStore(t)
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
-	notifications := events.NewNotifications()
+	notifications := signal.NewNotifications()
 
 	// Pre-save an HTTP sink config
 	saveHTTPSinkConfig(t, store, "http-sink", server.URL)
@@ -81,7 +82,7 @@ func TestManager_HTTPSink_ConfigChangeRemovesSink(t *testing.T) {
 	store := newTestStore(t)
 	proposer := &directProposer{store: store}
 	logger := logging.Testing()
-	notifications := events.NewNotifications()
+	notifications := signal.NewNotifications()
 
 	// Pre-save an HTTP sink config
 	saveHTTPSinkConfig(t, store, "http-sink", server.URL)

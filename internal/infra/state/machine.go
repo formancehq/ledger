@@ -28,29 +28,18 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// EventNotifier is notified by the FSM when logs are committed or events config changes.
-type EventNotifier interface {
+// Notifier is notified by the FSM when logs are committed or config changes.
+// Used by the events Manager and mirror Manager.
+type Notifier interface {
 	NotifyLogsCommitted()
 	NotifyConfigChanged()
 }
 
-// MirrorNotifier is notified by the FSM when logs are committed or mirror config changes.
-type MirrorNotifier interface {
-	NotifyLogsCommitted()
-	NotifyConfigChanged()
-}
+// NoopNotifier is a no-op implementation of Notifier for use in tests.
+type NoopNotifier struct{}
 
-// NoopEventNotifier is a no-op implementation of EventNotifier for use in tests.
-type NoopEventNotifier struct{}
-
-func (NoopEventNotifier) NotifyLogsCommitted() {}
-func (NoopEventNotifier) NotifyConfigChanged() {}
-
-// NoopMirrorNotifier is a no-op implementation of MirrorNotifier for use in tests.
-type NoopMirrorNotifier struct{}
-
-func (NoopMirrorNotifier) NotifyLogsCommitted() {}
-func (NoopMirrorNotifier) NotifyConfigChanged() {}
+func (NoopNotifier) NotifyLogsCommitted() {}
+func (NoopNotifier) NotifyConfigChanged() {}
 
 type Machine struct {
 	logger    logging.Logger
@@ -118,7 +107,7 @@ type Machine struct {
 
 	// eventNotifier is notified after new logs are committed and when events
 	// config changes. Used by the event Manager.
-	eventNotifier EventNotifier
+	eventNotifier Notifier
 
 	// appliedMu and appliedCond are used to notify waiters when lastPersistedIndex advances.
 	// This enables ReadIndex-based linearizable reads: callers wait until the FSM has caught up
@@ -128,7 +117,7 @@ type Machine struct {
 
 	// mirrorNotifier is notified after new logs are committed and when mirror
 	// ledger config changes. Used by the mirror Manager.
-	mirrorNotifier MirrorNotifier
+	mirrorNotifier Notifier
 
 	// snapshotBuf is a reusable buffer for snapshot serialization to avoid
 	// repeated allocations (snapshots can be large).
@@ -136,7 +125,7 @@ type Machine struct {
 
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier EventNotifier, mirrorNotifier MirrorNotifier, numscriptCacheSize int) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, numscriptCacheSize int) (*Machine, error) {
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(dataStore)
 	if err != nil {
 		return nil, err
