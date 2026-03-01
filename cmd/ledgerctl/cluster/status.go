@@ -177,6 +177,8 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 			syncStr := pterm.Green("ok")
 			if sp := node.SyncProgress; sp != nil {
 				syncStr = formatSyncStatus(sp)
+			} else if node.Progress != nil && node.Progress.State == "Probe" {
+				syncStr = pterm.Gray("unknown")
 			}
 
 			nodeData = append(nodeData, []string{

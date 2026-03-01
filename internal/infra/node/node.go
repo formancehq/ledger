@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -111,6 +112,17 @@ type Node struct {
 	recoveredPeers     map[uint64]ConfChangeContext
 	peerAddresses      map[uint64]ConfChangeContext
 	pendingConfChanges SyncMap[uint64, *futures.Future[struct{}]]
+
+	// confChangeMu serializes external ConfChange operations (AddLearner,
+	// RemoveNode, PromoteLearner) so that only one proposal is in-flight at a
+	// time. This avoids unnecessary retries caused by etcd/raft silently
+	// dropping concurrent ConfChange proposals.
+	confChangeMu sync.Mutex
+
+	// lastAutoPromote tracks the last time an auto-promotion was proposed for
+	// each learner node. Used to rate-limit proposals and avoid spamming raft
+	// when another ConfChange is pending. Accessed only from the orchestrate loop.
+	lastAutoPromote map[uint64]time.Time
 
 	// pendingReads tracks in-flight ReadIndex requests, keyed by unique request ID.
 	pendingReads *SyncMap[uint64, *readIndexRequest]
@@ -385,6 +397,7 @@ func NewNode(
 		pendingReads:     &SyncMap[uint64, *readIndexRequest]{},
 		recoveredPeers:   recoveredPeers,
 		peerAddresses:    recoveredPeers,
+		lastAutoPromote:  make(map[uint64]time.Time),
 	}
 
 	// Ensure peerAddresses is never nil (bootstrap path has no recoveredPeers).
@@ -966,7 +979,11 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	node.logger.Debugf("Sending messages via transport")
 	node.transport.Send(rd.Messages)
 
-	// Apply conf changes (must happen in processReadies goroutine since rawNode is not thread-safe)
+	// Apply conf changes (must happen in processReadies goroutine since rawNode is not thread-safe).
+	// Collect pending futures to resolve AFTER the WAL ConfState update, so
+	// callers waiting on ConfChange commit (AddLearner, PromoteLearner, etc.)
+	// don't resume before the WAL is consistent.
+	var pendingFutures []*futures.Future[struct{}]
 	for _, entry := range rd.CommittedEntries {
 		var cc raftpb.ConfChangeV2
 		switch entry.Type {
@@ -990,7 +1007,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			Infof("Applying configuration change")
 		node.confState = node.rawNode.ApplyConfChange(cc)
 
-		// Update peer address map and resolve pending futures
+		// Update peer address map and collect pending futures
 		for _, change := range cc.Changes {
 			switch change.Type {
 			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
@@ -1003,9 +1020,9 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 				node.RemovePeerAddress(change.NodeID)
 			}
 
-			// Resolve pending AddLearner future (if any)
+			// Collect pending ConfChange future (if any) — resolved below after WAL update.
 			if f, ok := node.pendingConfChanges.LoadAndDelete(change.NodeID); ok {
-				f.Resolve(struct{}{}, nil)
+				pendingFutures = append(pendingFutures, f)
 			}
 		}
 
@@ -1032,6 +1049,11 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 				return fmt.Errorf("updating snapshot confstate: %w", err)
 			}
 		}
+	}
+
+	// Resolve pending ConfChange futures now that WAL is consistent.
+	for _, f := range pendingFutures {
+		f.Resolve(struct{}{}, nil)
 	}
 
 	// Submit committed entries to the Applier for async FSM application
@@ -1512,77 +1534,16 @@ func (node *Node) SetObserver(obs *Observer) {
 	node.observer = obs
 }
 
-// AddLearner proposes adding a non-voting learner node to the Raft cluster.
-// The call blocks until the ConfChange is committed through Raft consensus.
-//
-// etcd/raft silently drops ConfChange proposals when another ConfChange is
-// pending (e.g. from a concurrent join or auto-promotion). This method retries
-// the proposal with a short backoff until it is committed or the context is
-// cancelled.
-//
-// Must be called on the leader.
-func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string) error {
-	ccCtx, err := MarshalConfChangeContext(ConfChangeContext{
-		RaftAddress:    raftAddr,
-		ServiceAddress: serviceAddr,
-	})
-	if err != nil {
-		return fmt.Errorf("marshaling conf change context: %w", err)
-	}
-
-	// Retry interval: slightly above the heartbeat tick so pending ConfChanges
-	// have time to commit between attempts.
-	retryInterval := node.config.TickInterval * time.Duration(node.config.HeartbeatTick) * 3
-	if retryInterval < 500*time.Millisecond {
-		retryInterval = 500 * time.Millisecond
-	}
-
-	for {
-		committed, err := node.tryAddLearner(ctx, nodeID, ccCtx, retryInterval)
-		if err != nil {
-			return err
-		}
-		if committed {
-			return nil
-		}
-		// ConfChange was likely dropped because another is pending. Retry.
-		node.logger.WithFields(map[string]any{
-			"nodeID": nodeID,
-		}).Infof("AddLearner: retrying (previous proposal likely dropped due to pending ConfChange)")
-	}
-}
-
-// tryAddLearner proposes a single AddLearner ConfChange and waits up to
-// timeout for it to be committed. Returns (true, nil) on success,
-// (false, nil) if the proposal was likely dropped, or (false, err) on error.
-func (node *Node) tryAddLearner(ctx context.Context, nodeID uint64, ccCtx []byte, timeout time.Duration) (bool, error) {
+// proposeConfChangeAndWait proposes a ConfChange via the orchestrate loop and
+// waits for it to be committed. Returns (true, nil) on commit, (false, nil) if
+// the proposal was likely dropped (timeout), or (false, err) on error.
+// The proposeFn is dispatched via execClusterCommand (rawNode is not thread-safe).
+func (node *Node) proposeConfChangeAndWait(ctx context.Context, nodeID uint64, proposeFn func() error, timeout time.Duration) (bool, error) {
 	future := futures.New[struct{}]()
 	node.pendingConfChanges.Store(nodeID, future)
 	defer node.pendingConfChanges.Delete(nodeID)
 
-	err := node.execClusterCommand(ctx, func() error {
-		status := node.rawNode.Status()
-		if status.RaftState != raft.StateLeader {
-			return ErrNotLeader
-		}
-
-		if _, ok := status.Progress[nodeID]; ok {
-			return ErrNodeAlreadyInCluster
-		}
-
-		cc := raftpb.ConfChangeV2{
-			Changes: []raftpb.ConfChangeSingle{
-				{
-					Type:   raftpb.ConfChangeAddLearnerNode,
-					NodeID: nodeID,
-				},
-			},
-			Context: ccCtx,
-		}
-
-		return node.rawNode.ProposeConfChange(cc)
-	})
-	if err != nil {
+	if err := node.execClusterCommand(ctx, proposeFn); err != nil {
 		return false, err
 	}
 
@@ -1605,10 +1566,69 @@ func (node *Node) tryAddLearner(ctx context.Context, nodeID uint64, ccCtx []byte
 	}
 }
 
+// retryConfChange acquires confChangeMu and retries a ConfChange proposal until
+// it commits or the context is cancelled. etcd/raft silently drops ConfChange
+// proposals when another is pending; this method handles that transparently.
+func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name string, proposeFn func() error) error {
+	node.confChangeMu.Lock()
+	defer node.confChangeMu.Unlock()
+
+	retryInterval := node.config.TickInterval * time.Duration(node.config.HeartbeatTick) * 3
+	if retryInterval < 500*time.Millisecond {
+		retryInterval = 500 * time.Millisecond
+	}
+
+	for {
+		committed, err := node.proposeConfChangeAndWait(ctx, nodeID, proposeFn, retryInterval)
+		if err != nil {
+			return err
+		}
+		if committed {
+			return nil
+		}
+		node.logger.WithFields(map[string]any{
+			"nodeID": nodeID,
+		}).Infof("%s: retrying (previous proposal likely dropped due to pending ConfChange)", name)
+	}
+}
+
+// AddLearner proposes adding a non-voting learner node to the Raft cluster.
+// The call blocks until the ConfChange is committed through Raft consensus.
+// Must be called on the leader.
+func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string) error {
+	ccCtx, err := MarshalConfChangeContext(ConfChangeContext{
+		RaftAddress:    raftAddr,
+		ServiceAddress: serviceAddr,
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling conf change context: %w", err)
+	}
+
+	return node.retryConfChange(ctx, nodeID, "AddLearner", func() error {
+		status := node.rawNode.Status()
+		if status.RaftState != raft.StateLeader {
+			return ErrNotLeader
+		}
+
+		if _, ok := status.Progress[nodeID]; ok {
+			return ErrNodeAlreadyInCluster
+		}
+
+		return node.rawNode.ProposeConfChange(raftpb.ConfChangeV2{
+			Changes: []raftpb.ConfChangeSingle{{
+				Type:   raftpb.ConfChangeAddLearnerNode,
+				NodeID: nodeID,
+			}},
+			Context: ccCtx,
+		})
+	})
+}
+
 // PromoteLearner proposes promoting a learner node to a full voter.
+// The call blocks until the ConfChange is committed through Raft consensus.
 // Must be called on the leader.
 func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
-	return node.execClusterCommand(ctx, func() error {
+	return node.retryConfChange(ctx, nodeID, "PromoteLearner", func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
@@ -1622,23 +1642,20 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 			return fmt.Errorf("node %d is already a voter", nodeID)
 		}
 
-		cc := raftpb.ConfChangeV2{
-			Changes: []raftpb.ConfChangeSingle{
-				{
-					Type:   raftpb.ConfChangeAddNode,
-					NodeID: nodeID,
-				},
-			},
-		}
-
-		return node.rawNode.ProposeConfChange(cc)
+		return node.rawNode.ProposeConfChange(raftpb.ConfChangeV2{
+			Changes: []raftpb.ConfChangeSingle{{
+				Type:   raftpb.ConfChangeAddNode,
+				NodeID: nodeID,
+			}},
+		})
 	})
 }
 
 // RemoveNode proposes removing a node (voter or learner) from the Raft cluster.
+// The call blocks until the ConfChange is committed through Raft consensus.
 // Must be called on the leader. Cannot remove the leader itself.
 func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
-	return node.execClusterCommand(ctx, func() error {
+	return node.retryConfChange(ctx, nodeID, "RemoveNode", func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
@@ -1652,14 +1669,12 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 			return ErrNodeNotInCluster
 		}
 
-		cc := raftpb.ConfChangeV2{
+		return node.rawNode.ProposeConfChange(raftpb.ConfChangeV2{
 			Changes: []raftpb.ConfChangeSingle{{
 				Type:   raftpb.ConfChangeRemoveNode,
 				NodeID: nodeID,
 			}},
-		}
-
-		return node.rawNode.ProposeConfChange(cc)
+		})
 	})
 }
 
@@ -1667,16 +1682,40 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 // caught up (within AutoPromoteThreshold of the commit index).
 // Must be called from the orchestrate loop (rawNode is not thread-safe).
 func (node *Node) checkAndPromoteLearners() {
+	// Skip if an external ConfChange operation (AddLearner, RemoveNode, etc.)
+	// is in-flight. etcd/raft would silently drop our proposal anyway.
+	if !node.confChangeMu.TryLock() {
+		return
+	}
+	node.confChangeMu.Unlock()
+
 	status := node.rawNode.Status()
 	if status.RaftState != raft.StateLeader {
 		return
 	}
 
+	now := time.Now()
+
+	// Rate-limit: don't re-propose promotion for the same learner within this interval.
+	const autoPromoteRetryInterval = 2 * time.Second
+
 	for id, prog := range status.Progress {
-		if !prog.IsLearner || !prog.RecentActive || prog.Match == 0 {
+		if !prog.IsLearner {
+			// Node was promoted (or removed), clean up tracking.
+			delete(node.lastAutoPromote, id)
+			continue
+		}
+		if !prog.RecentActive || prog.Match == 0 {
 			continue
 		}
 		if prog.Match+node.config.AutoPromoteThreshold >= status.Commit {
+			if lastAttempt, ok := node.lastAutoPromote[id]; ok {
+				if now.Sub(lastAttempt) < autoPromoteRetryInterval {
+					continue
+				}
+			}
+
+			node.lastAutoPromote[id] = now
 			node.logger.WithFields(map[string]any{
 				"node_id":   id,
 				"match":     prog.Match,
@@ -1698,6 +1737,9 @@ func (node *Node) checkAndPromoteLearners() {
 					"error":   err,
 				}).Errorf("Failed to propose learner promotion")
 			}
+
+			// Only propose one promotion per tick to avoid multiple concurrent proposals.
+			return
 		}
 	}
 }

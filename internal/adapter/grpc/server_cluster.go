@@ -72,9 +72,6 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 		// No node ID specified, route to leader
 		if impl.node.IsLeader() {
 			// This node is the leader, handle locally
-			impl.logger.WithFields(map[string]any{
-				"localNodeID": localNodeID,
-			}).Infof("GetClusterState: handling locally (this node is leader)")
 			return impl.getClusterStateLocal(ctx)
 		}
 

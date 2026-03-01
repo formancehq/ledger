@@ -9,12 +9,44 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
 
 func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.LedgerService, specHash string) error {
+	logger := log.FromContext(ctx)
+
+	desiredReplicas := int32(3)
+	if ledger.Spec.Replicas != nil {
+		desiredReplicas = *ledger.Spec.Replicas
+	}
+
+	// Check for scale-down: if the existing StatefulSet has more replicas than
+	// desired, remove excess Raft nodes before updating the StatefulSet.
+	var previousReplicas int32
+	scalingDown := false
+	if r.Config != nil && r.Clientset != nil {
+		existing := &appsv1.StatefulSet{}
+		err := r.Get(ctx, types.NamespacedName{
+			Name:      ledger.Name,
+			Namespace: ledger.Namespace,
+		}, existing)
+		if err == nil && existing.Spec.Replicas != nil && *existing.Spec.Replicas > desiredReplicas {
+			previousReplicas = *existing.Spec.Replicas
+			scalingDown = true
+			logger.Info("scale-down detected, removing Raft nodes",
+				"currentReplicas", previousReplicas,
+				"desiredReplicas", desiredReplicas,
+			)
+			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas); err != nil {
+				return fmt.Errorf("removing Raft nodes before scale-down: %w", err)
+			}
+		}
+	}
+
 	sts := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ledger.Name,
@@ -27,7 +59,18 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 		sts.Spec = buildStatefulSetSpec(ledger, specHash)
 		return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+
+	// After the StatefulSet is updated (pods terminated), delete orphaned PVCs.
+	if scalingDown && r.Clientset != nil {
+		if err := deleteScaledDownPVCs(ctx, r.Clientset, ledger.Namespace, ledger.Name, previousReplicas, desiredReplicas); err != nil {
+			return fmt.Errorf("deleting PVCs after scale-down: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string) appsv1.StatefulSetSpec {
