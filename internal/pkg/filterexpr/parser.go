@@ -19,7 +19,7 @@ import (
 //	unary_expr     := "not" unary_expr | primary
 //	primary        := "(" expression ")" | condition
 //	condition      := metadata_cond | address_cond | source_cond | destination_cond
-//	metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | "exists")
+//	metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "exists")
 //	address_cond   := "address" ("==" VALUE | "^=" VALUE)
 //	source_cond    := "source" ("==" VALUE | "^=" VALUE)
 //	destination_cond := "destination" ("==" VALUE | "^=" VALUE)
@@ -48,6 +48,10 @@ const (
 	tokenOpEq
 	tokenOpNe
 	tokenOpPrefix
+	tokenOpGt
+	tokenOpGte
+	tokenOpLt
+	tokenOpLte
 )
 
 type token struct {
@@ -84,6 +88,14 @@ func tokenize(input string) []token {
 				tokens = append(tokens, token{kind: tokenOpPrefix, value: "^=", pos: pos})
 				i += 2
 				continue
+			case ">=":
+				tokens = append(tokens, token{kind: tokenOpGte, value: ">=", pos: pos})
+				i += 2
+				continue
+			case "<=":
+				tokens = append(tokens, token{kind: tokenOpLte, value: "<=", pos: pos})
+				i += 2
+				continue
 			}
 		}
 
@@ -103,6 +115,14 @@ func tokenize(input string) []token {
 			continue
 		case ')':
 			tokens = append(tokens, token{kind: tokenRParen, value: ")", pos: pos})
+			i++
+			continue
+		case '>':
+			tokens = append(tokens, token{kind: tokenOpGt, value: ">", pos: pos})
+			i++
+			continue
+		case '<':
+			tokens = append(tokens, token{kind: tokenOpLt, value: "<", pos: pos})
 			i++
 			continue
 		}
@@ -126,7 +146,7 @@ func tokenize(input string) []token {
 
 		// Words (bare words, keywords, numbers, etc.)
 		start := i
-		for i < len(input) && !unicode.IsSpace(rune(input[i])) && !strings.ContainsRune("[]()!=^", rune(input[i])) {
+		for i < len(input) && !unicode.IsSpace(rune(input[i])) && !strings.ContainsRune("[]()!=^><", rune(input[i])) {
 			i++
 		}
 		if i > start {
@@ -185,6 +205,14 @@ func kindName(k tokenKind) string {
 		return "'!='"
 	case tokenOpPrefix:
 		return "'^='"
+	case tokenOpGt:
+		return "'>'"
+	case tokenOpGte:
+		return "'>='"
+	case tokenOpLt:
+		return "'<'"
+	case tokenOpLte:
+		return "'<='"
 	default:
 		return "unknown"
 	}
@@ -350,6 +378,9 @@ func (p *parser) parseMetadataCondition() (*commonpb.QueryFilter, error) {
 				Not: &commonpb.NotFilter{Filter: inner},
 			},
 		}, nil
+	case t.kind == tokenOpGt || t.kind == tokenOpGte || t.kind == tokenOpLt || t.kind == tokenOpLte:
+		op := p.advance()
+		return p.parseMetadataRangeCondition(field, op.kind)
 	case t.kind == tokenWord && t.value == "exists":
 		p.advance()
 		return &commonpb.QueryFilter{
@@ -361,7 +392,7 @@ func (p *parser) parseMetadataCondition() (*commonpb.QueryFilter, error) {
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("expected '==', '!=' or 'exists' at position %d, got %q", t.pos, t.value)
+		return nil, fmt.Errorf("expected '==', '!=', '>', '>=', '<', '<=' or 'exists' at position %d, got %q", t.pos, t.value)
 	}
 }
 
@@ -406,6 +437,41 @@ func (p *parser) parseMetadataEqualityCondition(field *commonpb.FieldRef) (*comm
 
 	return &commonpb.QueryFilter{
 		Filter: &commonpb.QueryFilter_Field{Field: fc},
+	}, nil
+}
+
+func (p *parser) parseMetadataRangeCondition(field *commonpb.FieldRef, opKind tokenKind) (*commonpb.QueryFilter, error) {
+	val, err := p.parseValue()
+	if err != nil {
+		return nil, fmt.Errorf("expected value: %w", err)
+	}
+
+	intVal, intErr := strconv.ParseInt(val, 10, 64)
+	if intErr != nil {
+		return nil, fmt.Errorf("range operators only support integer values, got %q", val)
+	}
+
+	ic := &commonpb.IntCondition{}
+	switch opKind {
+	case tokenOpGt:
+		ic.Min = &intVal
+		ic.MinExclusive = true
+	case tokenOpGte:
+		ic.Min = &intVal
+	case tokenOpLt:
+		ic.Max = &intVal
+		ic.MaxExclusive = true
+	case tokenOpLte:
+		ic.Max = &intVal
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field:     field,
+				Condition: &commonpb.FieldCondition_IntCond{IntCond: ic},
+			},
+		},
 	}, nil
 }
 

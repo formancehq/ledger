@@ -1181,6 +1181,205 @@ var _ = Describe("Transactions", Ordered, func() {
 		})
 	})
 
+	Context("When listing transactions with metadata range filter", Ordered, func() {
+		var ledgerName = "tx-range-filter-ledger"
+
+		BeforeAll(func() {
+			// Create ledger with int64 schema for transaction "score"
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+							Key:        "score",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+					}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Create transactions with varying "score" metadata
+			// tx1: score=10, tx2: score=30, tx3: score=50, tx4: score=70, tx5: no score
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "a1", big.NewInt(100), "USD"),
+					}, map[string]string{"score": "10"}, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "a2", big.NewInt(200), "USD"),
+					}, map[string]string{"score": "30"}, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "a3", big.NewInt(300), "USD"),
+					}, map[string]string{"score": "50"}, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "a4", big.NewInt(400), "USD"),
+					}, map[string]string{"score": "70"}, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "a5", big.NewInt(500), "USD"),
+					}, nil, nil), // No score metadata
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Wait for the index builder to catch up
+			Eventually(func(g Gomega) {
+				txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0)
+				g.Expect(err).To(Succeed())
+				g.Expect(txs).To(HaveLen(5))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should filter transactions with > (greater than)", func() {
+			// score > 30 should match tx3(50), tx4(70)
+			val := int64(30)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "score"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Min:          &val,
+								MinExclusive: true,
+							},
+						},
+					},
+				},
+			}
+			Eventually(func(g Gomega) {
+				txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+				g.Expect(err).To(Succeed())
+				g.Expect(txs).To(HaveLen(2))
+				for _, tx := range txs {
+					g.Expect(tx.Metadata).NotTo(BeNil())
+				}
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should filter transactions with >= (greater than or equal)", func() {
+			// score >= 30 should match tx2(30), tx3(50), tx4(70)
+			val := int64(30)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "score"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Min: &val,
+							},
+						},
+					},
+				},
+			}
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(HaveLen(3))
+		})
+
+		It("Should filter transactions with < (less than)", func() {
+			// score < 50 should match tx1(10), tx2(30)
+			val := int64(50)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "score"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Max:          &val,
+								MaxExclusive: true,
+							},
+						},
+					},
+				},
+			}
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(HaveLen(2))
+		})
+
+		It("Should filter transactions with <= (less than or equal)", func() {
+			// score <= 50 should match tx1(10), tx2(30), tx3(50)
+			val := int64(50)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "score"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Max: &val,
+							},
+						},
+					},
+				},
+			}
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(HaveLen(3))
+		})
+
+		It("Should filter transactions with combined range (>= AND <=)", func() {
+			// score >= 20 AND score <= 60 should match tx2(30), tx3(50)
+			minVal := int64(20)
+			maxVal := int64(60)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_And{
+					And: &commonpb.AndFilter{
+						Filters: []*commonpb.QueryFilter{
+							{
+								Filter: &commonpb.QueryFilter_Field{
+									Field: &commonpb.FieldCondition{
+										Field: &commonpb.FieldRef{Metadata: "score"},
+										Condition: &commonpb.FieldCondition_IntCond{
+											IntCond: &commonpb.IntCondition{
+												Min: &minVal,
+											},
+										},
+									},
+								},
+							},
+							{
+								Filter: &commonpb.QueryFilter_Field{
+									Field: &commonpb.FieldCondition{
+										Field: &commonpb.FieldRef{Metadata: "score"},
+										Condition: &commonpb.FieldCondition_IntCond{
+											IntCond: &commonpb.IntCondition{
+												Max: &maxVal,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(HaveLen(2))
+		})
+
+		It("Should return empty list when no transactions match the range", func() {
+			// score > 100 should match nobody
+			val := int64(100)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "score"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Min:          &val,
+								MinExclusive: true,
+							},
+						},
+					},
+				},
+			}
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(BeEmpty())
+		})
+	})
+
 	Context("When listing transactions with source/destination filter", Ordered, func() {
 		var ledgerName = "tx-src-dst-filter-ledger"
 

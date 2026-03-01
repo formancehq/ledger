@@ -453,7 +453,7 @@ and_expr       := unary_expr ("and" unary_expr)*
 unary_expr     := "not" unary_expr | primary
 primary        := "(" expression ")" | condition
 condition      := metadata_cond | address_cond | source_cond | destination_cond
-metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | "exists")
+metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "exists")
 address_cond   := "address" ("==" VALUE | "^=" VALUE)
 source_cond    := "source" ("==" VALUE | "^=" VALUE)
 destination_cond := "destination" ("==" VALUE | "^=" VALUE)
@@ -465,6 +465,10 @@ destination_cond := "destination" ("==" VALUE | "^=" VALUE)
 |--------|-------------|
 | `metadata[key] == value` | Metadata equality (auto-typed: `true`/`false` → bool, integer → int64, else → string) |
 | `metadata[key] != value` | Metadata inequality (desugars to `not (metadata[key] == value)`) |
+| `metadata[key] > value` | Metadata greater than (integer values only) |
+| `metadata[key] >= value` | Metadata greater than or equal (integer values only) |
+| `metadata[key] < value` | Metadata less than (integer values only) |
+| `metadata[key] <= value` | Metadata less than or equal (integer values only) |
 | `metadata[key] exists` | Metadata key existence check |
 | `address == value` | Exact address match (any role: source or destination) |
 | `address ^= value` | Address prefix match (any role: source or destination) |
@@ -505,6 +509,12 @@ destination_cond := "destination" ("==" VALUE | "^=" VALUE)
 
 # Integer metadata
 --filter "metadata[age] == 42"
+
+# Integer range (greater than)
+--filter "metadata[age] > 18"
+
+# Integer range (combined with AND)
+--filter "metadata[score] >= 50 and metadata[score] <= 100"
 
 # Metadata existence
 --filter "metadata[category] exists"

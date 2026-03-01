@@ -347,6 +347,117 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_ANY, am.GetRole())
 	})
 
+	t.Run("metadata greater than", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("metadata[age] > 18")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		assert.Equal(t, "age", fc.Field.GetMetadata())
+		ic := fc.GetIntCond()
+		require.NotNil(t, ic)
+		require.NotNil(t, ic.Min)
+		assert.Equal(t, int64(18), *ic.Min)
+		assert.True(t, ic.MinExclusive)
+		assert.Nil(t, ic.Max)
+	})
+
+	t.Run("metadata greater than or equal", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("metadata[age] >= 18")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		assert.Equal(t, "age", fc.Field.GetMetadata())
+		ic := fc.GetIntCond()
+		require.NotNil(t, ic)
+		require.NotNil(t, ic.Min)
+		assert.Equal(t, int64(18), *ic.Min)
+		assert.False(t, ic.MinExclusive)
+		assert.Nil(t, ic.Max)
+	})
+
+	t.Run("metadata less than", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("metadata[age] < 65")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		assert.Equal(t, "age", fc.Field.GetMetadata())
+		ic := fc.GetIntCond()
+		require.NotNil(t, ic)
+		assert.Nil(t, ic.Min)
+		require.NotNil(t, ic.Max)
+		assert.Equal(t, int64(65), *ic.Max)
+		assert.True(t, ic.MaxExclusive)
+	})
+
+	t.Run("metadata less than or equal", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("metadata[age] <= 65")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		assert.Equal(t, "age", fc.Field.GetMetadata())
+		ic := fc.GetIntCond()
+		require.NotNil(t, ic)
+		assert.Nil(t, ic.Min)
+		require.NotNil(t, ic.Max)
+		assert.Equal(t, int64(65), *ic.Max)
+		assert.False(t, ic.MaxExclusive)
+	})
+
+	t.Run("metadata range combined with AND", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("metadata[age] >= 18 and metadata[age] < 65")
+		require.NoError(t, err)
+
+		andF := filter.GetAnd()
+		require.NotNil(t, andF)
+		require.Len(t, andF.Filters, 2)
+
+		fc0 := andF.Filters[0].GetField()
+		require.NotNil(t, fc0)
+		ic0 := fc0.GetIntCond()
+		require.NotNil(t, ic0)
+		require.NotNil(t, ic0.Min)
+		assert.Equal(t, int64(18), *ic0.Min)
+		assert.False(t, ic0.MinExclusive)
+
+		fc1 := andF.Filters[1].GetField()
+		require.NotNil(t, fc1)
+		ic1 := fc1.GetIntCond()
+		require.NotNil(t, ic1)
+		require.NotNil(t, ic1.Max)
+		assert.Equal(t, int64(65), *ic1.Max)
+		assert.True(t, ic1.MaxExclusive)
+	})
+
+	t.Run("metadata negative integer range", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("metadata[score] > -10")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		ic := fc.GetIntCond()
+		require.NotNil(t, ic)
+		require.NotNil(t, ic.Min)
+		assert.Equal(t, int64(-10), *ic.Min)
+		assert.True(t, ic.MinExclusive)
+	})
+
+	t.Run("error: string range not supported", func(t *testing.T) {
+		t.Parallel()
+		_, err := Parse(`metadata[name] > "alice"`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "range operators only support integer values")
+	})
+
 	t.Run("error: unknown keyword", func(t *testing.T) {
 		t.Parallel()
 		_, err := Parse("foobar == 42")

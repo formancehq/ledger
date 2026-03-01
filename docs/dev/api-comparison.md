@@ -37,7 +37,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | List ledgers | ✅ | ✅ | |
 | **Accounts (Read)** |
 | Get account | ✅ | ✅ | Includes volumes per asset |
-| List accounts | ✅ | ✅ | Supports rich boolean filter (metadata, address) and cursor pagination |
+| List accounts | ✅ | ✅ | Supports rich boolean filter (metadata equality/range/existence, address) and cursor pagination |
 | Get account balances | ⚠️ | ✅ | Included in account volumes |
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |

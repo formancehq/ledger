@@ -437,6 +437,220 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 	})
 
+	Context("When listing accounts with metadata range filter", Ordered, func() {
+		var ledgerName = "accounts-range-filter-ledger"
+
+		BeforeAll(func() {
+			// Create ledger with int64 schema for "age"
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "age",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+					}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Create accounts with transactions and set typed int metadata
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "alice", big.NewInt(100), "USD"),
+					}, nil, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "bob", big.NewInt(200), "USD"),
+					}, nil, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "charlie", big.NewInt(300), "USD"),
+					}, nil, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "dave", big.NewInt(400), "USD"),
+					}, nil, nil),
+					// alice=20, bob=35, charlie=50, dave=65
+					saveAccountMetadataAction(ledgerName, "alice", map[string]string{"age": "20"}),
+					saveAccountMetadataAction(ledgerName, "bob", map[string]string{"age": "35"}),
+					saveAccountMetadataAction(ledgerName, "charlie", map[string]string{"age": "50"}),
+					saveAccountMetadataAction(ledgerName, "dave", map[string]string{"age": "65"}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Wait for index builder to catch up (5 accounts: world + 4 users)
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(5))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should filter accounts with > (greater than)", func() {
+			// age > 35 should match charlie(50), dave(65)
+			val := int64(35)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Min:          &val,
+								MinExclusive: true,
+							},
+						},
+					},
+				},
+			}
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(2))
+				addresses := []string{accounts[0].Address, accounts[1].Address}
+				g.Expect(addresses).To(ContainElements("charlie", "dave"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should filter accounts with >= (greater than or equal)", func() {
+			// age >= 35 should match bob(35), charlie(50), dave(65)
+			val := int64(35)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Min: &val,
+							},
+						},
+					},
+				},
+			}
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(HaveLen(3))
+			addresses := make([]string, len(accounts))
+			for i, a := range accounts {
+				addresses[i] = a.Address
+			}
+			Expect(addresses).To(ContainElements("bob", "charlie", "dave"))
+		})
+
+		It("Should filter accounts with < (less than)", func() {
+			// age < 50 should match alice(20), bob(35)
+			val := int64(50)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Max:          &val,
+								MaxExclusive: true,
+							},
+						},
+					},
+				},
+			}
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(HaveLen(2))
+			addresses := []string{accounts[0].Address, accounts[1].Address}
+			Expect(addresses).To(ContainElements("alice", "bob"))
+		})
+
+		It("Should filter accounts with <= (less than or equal)", func() {
+			// age <= 50 should match alice(20), bob(35), charlie(50)
+			val := int64(50)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Max: &val,
+							},
+						},
+					},
+				},
+			}
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(HaveLen(3))
+			addresses := make([]string, len(accounts))
+			for i, a := range accounts {
+				addresses[i] = a.Address
+			}
+			Expect(addresses).To(ContainElements("alice", "bob", "charlie"))
+		})
+
+		It("Should filter accounts with combined range (>= AND <)", func() {
+			// age >= 30 AND age < 60 should match bob(35), charlie(50)
+			minVal := int64(30)
+			maxVal := int64(60)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_And{
+					And: &commonpb.AndFilter{
+						Filters: []*commonpb.QueryFilter{
+							{
+								Filter: &commonpb.QueryFilter_Field{
+									Field: &commonpb.FieldCondition{
+										Field: &commonpb.FieldRef{Metadata: "age"},
+										Condition: &commonpb.FieldCondition_IntCond{
+											IntCond: &commonpb.IntCondition{
+												Min: &minVal,
+											},
+										},
+									},
+								},
+							},
+							{
+								Filter: &commonpb.QueryFilter_Field{
+									Field: &commonpb.FieldCondition{
+										Field: &commonpb.FieldRef{Metadata: "age"},
+										Condition: &commonpb.FieldCondition_IntCond{
+											IntCond: &commonpb.IntCondition{
+												Max:          &maxVal,
+												MaxExclusive: true,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(HaveLen(2))
+			addresses := []string{accounts[0].Address, accounts[1].Address}
+			Expect(addresses).To(ContainElements("bob", "charlie"))
+		})
+
+		It("Should return empty list when no accounts match the range", func() {
+			// age > 100 should match nobody
+			val := int64(100)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Min:          &val,
+								MinExclusive: true,
+							},
+						},
+					},
+				},
+			}
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(BeEmpty())
+		})
+	})
+
 	Context("When listing accounts is isolated per ledger", Ordered, func() {
 		var (
 			ledgerA = "accounts-isolation-a"
