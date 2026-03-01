@@ -3,6 +3,7 @@ API:
 * Clean HTTP layer / GRPC proxy
 
 Business:
+* Block admin commands for normal users
 * Chart of account
 * Account types instead of segment filtering
 * Mirror mode
