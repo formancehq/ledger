@@ -699,7 +699,7 @@ func TestHandleListAccounts_BackendError(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter) (dal.Cursor[*commonpb.Account], error) {
+		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
 			return nil, commonpb.ErrNoLeader
 		},
 	}
@@ -719,7 +719,7 @@ func TestHandleListAccounts_CursorIterationError(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter) (dal.Cursor[*commonpb.Account], error) {
+		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
 			return &errorCursor[*commonpb.Account]{err: errors.New("cursor iteration failed")}, nil
 		},
 	}
@@ -740,7 +740,7 @@ func TestHandleListAccounts_WithPrefix(t *testing.T) {
 
 	var capturedFilter *commonpb.QueryFilter
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Account], error) {
+		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, filter *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
 			capturedFilter = filter
 			return dal.NewSliceCursor[*commonpb.Account](nil), nil
 		},

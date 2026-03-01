@@ -45,12 +45,13 @@ func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string
 	return resp.Transaction, nil
 }
 
-func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Transaction], error) {
+func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
 	stream, err := g.client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger:    ledgerName,
 		PageSize:  pageSize,
 		AfterTxId: afterTxID,
 		Filter:    filter,
+		Reverse:   reverse,
 	})
 	if err != nil {
 		return nil, err
@@ -66,12 +67,13 @@ func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, ad
 	return nil, fmt.Errorf("GetAccount is not available via gRPC client - use local reads")
 }
 
-func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Account], error) {
+func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
 	stream, err := g.client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
 		Ledger:       ledgerName,
 		PageSize:     pageSize,
 		AfterAddress: afterAddress,
 		Filter:       filter,
+		Reverse:      reverse,
 	})
 	if err != nil {
 		return nil, err

@@ -402,12 +402,13 @@ ledgerctl accounts list [flags]
 | `--page-size` | `10` | Number of accounts per page |
 | `--prefix` | | Filter accounts by address prefix (e.g. `users:`) |
 | `--filter` | | Filter expression (see [Filter Expression Syntax](#filter-expression-syntax)) |
+| `--reverse` | `false` | Reverse iteration order (Z→A instead of A→Z) |
 | `--all` | `false` | Fetch all accounts at once (no pagination) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
-- Accounts are listed in alphabetical order
+- Accounts are listed in alphabetical order by default; use `--reverse` for reverse-alphabetical (Z→A)
 - If `--ledger` is not provided and only one ledger exists, it will be used automatically
 - If multiple ledgers exist, you will be prompted to select one
 - Use `--prefix` to filter by address prefix (e.g. `users:` lists only accounts starting with `users:`)
@@ -700,12 +701,14 @@ ledgerctl transactions list [flags]
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
 | `--page-size` | `10` | Number of transactions per page |
+| `--filter` | | Filter expression (e.g. `"metadata[category] == premium"`) |
+| `--reverse` | `false` | Reverse iteration order (oldest first instead of newest first) |
 | `--all` | `false` | Fetch all transactions at once (no pagination) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
-- Transactions are displayed **newest first**
+- Transactions are displayed **newest first** by default; use `--reverse` for oldest first
 - Interactive pagination: press Enter to load the next page, or 'q' to quit
 - In JSON mode, only the first page is output (no interactive pagination)
 
@@ -717,6 +720,9 @@ ledgerctl transactions list --ledger my-ledger
 
 # Custom page size
 ledgerctl transactions list --ledger my-ledger --page-size 20
+
+# Oldest first
+ledgerctl transactions list --ledger my-ledger --reverse
 
 # Fetch all transactions at once
 ledgerctl transactions list --ledger my-ledger --all

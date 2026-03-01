@@ -22,7 +22,7 @@ func NewListCommand() *cobra.Command {
 		Short:   "List accounts in a ledger",
 		Long: `List accounts in a ledger via gRPC with pagination.
 
-Accounts are displayed in alphabetical order, with interactive pagination.
+Accounts are displayed in alphabetical order by default. Use --reverse for Z→A.
 Press Enter to load the next page, or 'q' to quit.
 
 If --ledger is not provided and only one ledger exists, it will be used automatically.
@@ -34,6 +34,7 @@ Examples:
   ledgerctl accounts list --ledger my-ledger --prefix users:
   ledgerctl accounts list --ledger my-ledger --filter "metadata[category] == premium"
   ledgerctl accounts list --ledger my-ledger --filter "metadata[active] == true or address ^= users:"
+  ledgerctl accounts list --reverse   # Reverse alphabetical (Z→A)
   ledgerctl accounts list --all   # Fetch all accounts without pagination`,
 		RunE: runList,
 	}
@@ -42,6 +43,7 @@ Examples:
 	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of accounts per page")
 	cmd.Flags().String("prefix", "", "Filter accounts by address prefix (e.g. users:)")
 	cmd.Flags().String("filter", "", `Filter expression (e.g. "metadata[category] == premium or address ^= users:")`)
+	cmd.Flags().Bool("reverse", false, "Reverse iteration order (Z→A instead of A→Z)")
 	cmd.Flags().Bool("all", false, "Fetch all accounts at once (no pagination)")
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
@@ -65,6 +67,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	pageSize, _ := cmd.Flags().GetUint32("page-size")
 	prefix, _ := cmd.Flags().GetString("prefix")
 	filterExpr, _ := cmd.Flags().GetString("filter")
+	reverse, _ := cmd.Flags().GetBool("reverse")
 	fetchAll, _ := cmd.Flags().GetBool("all")
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 
@@ -75,10 +78,10 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if fetchAll {
-		return fetchAllAccounts(cmd, client, ledgerName, filter, jsonOutput)
+		return fetchAllAccounts(cmd, client, ledgerName, filter, reverse, jsonOutput)
 	}
 
-	return fetchAccountsWithPager(cmd, client, ledgerName, pageSize, filter, jsonOutput)
+	return fetchAccountsWithPager(cmd, client, ledgerName, pageSize, filter, reverse, jsonOutput)
 }
 
 // buildAccountFilter combines --filter and --prefix flags into a single QueryFilter.
@@ -119,7 +122,7 @@ func buildAccountFilter(filterExpr, prefix string) (*commonpb.QueryFilter, error
 	}
 }
 
-func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, jsonOutput bool) error {
+func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -129,6 +132,7 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 		Ledger:   ledgerName,
 		PageSize: 0,
 		Filter:   filter,
+		Reverse:  reverse,
 	})
 	if err != nil {
 		spinner.Fail("Failed to list accounts")
@@ -166,7 +170,7 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 	return nil
 }
 
-func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, jsonOutput bool) error {
+func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool) error {
 	var afterAddress string
 	pageNum := 1
 
@@ -180,6 +184,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 			PageSize:     pageSize,
 			AfterAddress: afterAddress,
 			Filter:       filter,
+			Reverse:      reverse,
 		})
 		if err != nil {
 			cancel()

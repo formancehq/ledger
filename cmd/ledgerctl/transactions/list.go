@@ -23,7 +23,7 @@ func NewListCommand() *cobra.Command {
 		Short:   "List transactions in a ledger",
 		Long: `List transactions in a ledger via gRPC with pagination.
 
-Transactions are displayed newest first, with interactive pagination.
+Transactions are displayed newest first by default. Use --reverse for oldest first.
 Press Enter to load the next page, or 'q' to quit.
 
 If --ledger is not provided and only one ledger exists, it will be used automatically.
@@ -37,6 +37,7 @@ Examples:
   ledgerctl transactions list --ledger my-ledger --filter 'source ^= "merchants:"'
   ledgerctl transactions list --ledger my-ledger --filter 'destination == "users:alice"'
   ledgerctl transactions list --ledger my-ledger --filter 'source ^= "merchants:" and destination ^= "users:"'
+  ledgerctl transactions list --reverse   # Oldest first
   ledgerctl transactions list --all   # Fetch all transactions without pagination`,
 		RunE: runList,
 	}
@@ -44,6 +45,7 @@ Examples:
 	cmd.Flags().String("ledger", "", "Name of the ledger")
 	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of transactions per page")
 	cmd.Flags().String("filter", "", `Filter expression (e.g. "metadata[category] == premium")`)
+	cmd.Flags().Bool("reverse", false, "Reverse iteration order (oldest first instead of newest first)")
 	cmd.Flags().Bool("all", false, "Fetch all transactions at once (no pagination)")
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
@@ -67,6 +69,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	pageSize, _ := cmd.Flags().GetUint32("page-size")
 	filterExpr, _ := cmd.Flags().GetString("filter")
+	reverse, _ := cmd.Flags().GetBool("reverse")
 	fetchAll, _ := cmd.Flags().GetBool("all")
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 
@@ -76,10 +79,10 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if fetchAll {
-		return fetchAllTransactions(cmd, client, ledgerName, filter, jsonOutput)
+		return fetchAllTransactions(cmd, client, ledgerName, filter, reverse, jsonOutput)
 	}
 
-	return fetchTransactionsWithPager(cmd, client, ledgerName, pageSize, filter, jsonOutput)
+	return fetchTransactionsWithPager(cmd, client, ledgerName, pageSize, filter, reverse, jsonOutput)
 }
 
 // buildTransactionFilter parses the --filter expression for transaction metadata.
@@ -94,7 +97,7 @@ func buildTransactionFilter(filterExpr string) (*commonpb.QueryFilter, error) {
 	return filter, nil
 }
 
-func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, jsonOutput bool) error {
+func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -104,6 +107,7 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 		Ledger:   ledgerName,
 		PageSize: 0, // No limit
 		Filter:   filter,
+		Reverse:  reverse,
 	})
 	if err != nil {
 		spinner.Fail("Failed to list transactions")
@@ -141,7 +145,7 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 	return nil
 }
 
-func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, jsonOutput bool) error {
+func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool) error {
 	var afterTxID uint64
 	pageNum := 1
 
@@ -155,6 +159,7 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 			PageSize:  pageSize,
 			AfterTxId: afterTxID,
 			Filter:    filter,
+			Reverse:   reverse,
 		})
 		if err != nil {
 			cancel()

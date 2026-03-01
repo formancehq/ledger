@@ -183,18 +183,18 @@ func (mr *MockControllerMockRecorder) GetTransaction(ctx, ledgerName, transactio
 }
 
 // ListAccounts mocks base method.
-func (m *MockController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Account], error) {
+func (m *MockController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListAccounts", ctx, ledgerName, pageSize, afterAddress, filter)
+	ret := m.ctrl.Call(m, "ListAccounts", ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 	ret0, _ := ret[0].(dal.Cursor[*commonpb.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListAccounts indicates an expected call of ListAccounts.
-func (mr *MockControllerMockRecorder) ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter any) *gomock.Call {
+func (mr *MockControllerMockRecorder) ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAccounts", reflect.TypeOf((*MockController)(nil).ListAccounts), ctx, ledgerName, pageSize, afterAddress, filter)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAccounts", reflect.TypeOf((*MockController)(nil).ListAccounts), ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 }
 
 // ListAuditEntries mocks base method.
@@ -288,16 +288,16 @@ func (mr *MockControllerMockRecorder) ListSigningKeys(ctx any) *gomock.Call {
 }
 
 // ListTransactions mocks base method.
-func (m *MockController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Transaction], error) {
+func (m *MockController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListTransactions", ctx, ledgerName, pageSize, afterTxID, filter)
+	ret := m.ctrl.Call(m, "ListTransactions", ctx, ledgerName, pageSize, afterTxID, filter, reverse)
 	ret0, _ := ret[0].(dal.Cursor[*commonpb.Transaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListTransactions indicates an expected call of ListTransactions.
-func (mr *MockControllerMockRecorder) ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter any) *gomock.Call {
+func (mr *MockControllerMockRecorder) ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTransactions", reflect.TypeOf((*MockController)(nil).ListTransactions), ctx, ledgerName, pageSize, afterTxID, filter)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTransactions", reflect.TypeOf((*MockController)(nil).ListTransactions), ctx, ledgerName, pageSize, afterTxID, filter, reverse)
 }

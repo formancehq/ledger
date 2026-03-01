@@ -97,6 +97,8 @@ message ListTransactionsRequest {
   uint64 after_tx_id = 3;
   // filter is a rich boolean filter (metadata conditions, address matching, AND/OR/NOT)
   common.QueryFilter filter = 4;
+  // reverse inverts the default iteration order (newest-first becomes oldest-first)
+  bool reverse = 5;
 }
 
 message ListAccountsRequest {
@@ -107,6 +109,8 @@ message ListAccountsRequest {
   string after_address = 3;
   // filter is a rich boolean filter (metadata conditions, address matching, AND/OR/NOT)
   common.QueryFilter filter = 4;
+  // reverse inverts the default iteration order (alphabetical becomes reverse-alphabetical)
+  bool reverse = 5;
 }
 
 message CreateLedgerRequest {

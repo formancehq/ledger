@@ -115,12 +115,12 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 	return c.GetTransaction(ctx, ledgerName, transactionID)
 }
 
-func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Transaction], error) {
+func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
 	c, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return c.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter)
+	return c.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
 }
 
 func (b *RoutedController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32) (dal.Cursor[*commonpb.Log], error) {
@@ -163,12 +163,12 @@ func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, ad
 	return c.GetAccount(ctx, ledgerName, address)
 }
 
-func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Account], error) {
+func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
 	c, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter)
+	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 }
 
 func (b *RoutedController) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {

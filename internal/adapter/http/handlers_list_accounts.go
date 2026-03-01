@@ -44,8 +44,10 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	reverse := r.URL.Query().Get("reverse") == "true"
+
 	ctx := r.Context()
-	cursor, err := s.backend.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter)
+	cursor, err := s.backend.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 	if err != nil {
 		handleError(w, r, err)
 		return

@@ -179,10 +179,10 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		return fmt.Errorf("ledger name is required")
 	}
 
-	impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, hasFilter=%v)",
-		req.Ledger, req.PageSize, req.AfterTxId, req.Filter != nil)
+	impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, hasFilter=%v, reverse=%v)",
+		req.Ledger, req.PageSize, req.AfterTxId, req.Filter != nil, req.Reverse)
 
-	cursor, err := impl.ctrl.ListTransactions(stream.Context(), req.Ledger, req.PageSize, req.AfterTxId, req.Filter)
+	cursor, err := impl.ctrl.ListTransactions(stream.Context(), req.Ledger, req.PageSize, req.AfterTxId, req.Filter, req.Reverse)
 	if err != nil {
 		return fmt.Errorf("listing transactions: %w", err)
 	}
@@ -241,10 +241,10 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		return fmt.Errorf("ledger name is required")
 	}
 
-	impl.logger.Debugf("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, hasFilter=%v)",
-		req.Ledger, req.PageSize, req.AfterAddress, req.Filter != nil)
+	impl.logger.Debugf("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, hasFilter=%v, reverse=%v)",
+		req.Ledger, req.PageSize, req.AfterAddress, req.Filter != nil, req.Reverse)
 
-	cursor, err := impl.ctrl.ListAccounts(stream.Context(), req.Ledger, req.PageSize, req.AfterAddress, req.Filter)
+	cursor, err := impl.ctrl.ListAccounts(stream.Context(), req.Ledger, req.PageSize, req.AfterAddress, req.Filter, req.Reverse)
 	if err != nil {
 		return fmt.Errorf("listing accounts: %w", err)
 	}

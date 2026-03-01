@@ -299,7 +299,9 @@ type ListTransactionsRequest struct {
 	// Use 0 or omit to start from the latest transaction
 	AfterTxId uint64 `protobuf:"varint,3,opt,name=after_tx_id,json=afterTxId,proto3" json:"after_tx_id,omitempty"`
 	// filter is a rich boolean filter (metadata conditions, address matching, AND/OR/NOT)
-	Filter        *commonpb.QueryFilter `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
+	Filter *commonpb.QueryFilter `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
+	// reverse inverts the default iteration order (newest-first becomes oldest-first)
+	Reverse       bool `protobuf:"varint,5,opt,name=reverse,proto3" json:"reverse,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -362,6 +364,13 @@ func (x *ListTransactionsRequest) GetFilter() *commonpb.QueryFilter {
 	return nil
 }
 
+func (x *ListTransactionsRequest) GetReverse() bool {
+	if x != nil {
+		return x.Reverse
+	}
+	return false
+}
+
 type ListAccountsRequest struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
@@ -370,7 +379,9 @@ type ListAccountsRequest struct {
 	// after_address is the account address to start after (for pagination, exclusive)
 	AfterAddress string `protobuf:"bytes,3,opt,name=after_address,json=afterAddress,proto3" json:"after_address,omitempty"`
 	// filter is a rich boolean filter (metadata conditions, address matching, AND/OR/NOT)
-	Filter        *commonpb.QueryFilter `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
+	Filter *commonpb.QueryFilter `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
+	// reverse inverts the default iteration order (alphabetical becomes reverse-alphabetical)
+	Reverse       bool `protobuf:"varint,5,opt,name=reverse,proto3" json:"reverse,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -431,6 +442,13 @@ func (x *ListAccountsRequest) GetFilter() *commonpb.QueryFilter {
 		return x.Filter
 	}
 	return nil
+}
+
+func (x *ListAccountsRequest) GetReverse() bool {
+	if x != nil {
+		return x.Reverse
+	}
+	return false
 }
 
 type CreateLedgerRequest struct {
@@ -5230,17 +5248,19 @@ const file_bucket_proto_rawDesc = "" +
 	"\x0etransaction_id\x18\x02 \x01(\x04R\rtransactionId\"i\n" +
 	"\x16GetTransactionResponse\x125\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\x12\x18\n" +
-	"\areceipt\x18\x02 \x01(\tR\areceipt\"\x9b\x01\n" +
+	"\areceipt\x18\x02 \x01(\tR\areceipt\"\xb5\x01\n" +
 	"\x17ListTransactionsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12\x1e\n" +
 	"\vafter_tx_id\x18\x03 \x01(\x04R\tafterTxId\x12+\n" +
-	"\x06filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\x06filter\"\x9c\x01\n" +
+	"\x06filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\x06filter\x12\x18\n" +
+	"\areverse\x18\x05 \x01(\bR\areverse\"\xb6\x01\n" +
 	"\x13ListAccountsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12#\n" +
 	"\rafter_address\x18\x03 \x01(\tR\fafterAddress\x12+\n" +
-	"\x06filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\x06filter\"\xde\x01\n" +
+	"\x06filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\x06filter\x12\x18\n" +
+	"\areverse\x18\x05 \x01(\bR\areverse\"\xde\x01\n" +
 	"\x13CreateLedgerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12J\n" +
 	"\x0einitial_schema\x18\x03 \x03(\v2#.common.SetMetadataFieldTypeCommandR\rinitialSchema\x12&\n" +
