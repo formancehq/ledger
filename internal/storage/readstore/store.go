@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	bolt "go.etcd.io/bbolt"
@@ -29,12 +30,24 @@ func New(dir string, logger logging.Logger) (*Store, error) {
 	}
 
 	dbPath := filepath.Join(dir, "readindex.db")
-	db, err := bolt.Open(dbPath, 0o600, &bolt.Options{
-		NoFreelistSync: true, // faster writes; freelist rebuilt on open
-	})
+	info, _ := os.Stat(dbPath)
+	var fileSize int64
+	if info != nil {
+		fileSize = info.Size()
+	}
+	logger.WithFields(map[string]any{
+		"path":     dbPath,
+		"fileSize": fileSize,
+	}).Infof("Opening bbolt read index")
+	openStart := time.Now()
+	db, err := bolt.Open(dbPath, 0o600, nil)
 	if err != nil {
 		return nil, fmt.Errorf("opening bbolt database: %w", err)
 	}
+	logger.WithFields(map[string]any{
+		"duration": time.Since(openStart).String(),
+		"fileSize": fileSize,
+	}).Infof("bbolt read index opened")
 
 	// Create all required buckets.
 	if err := db.Update(func(tx *bolt.Tx) error {
