@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/pebble"
@@ -33,7 +33,8 @@ const (
 // Store is a Pebble implementation of dal.Store
 // It stores balances and account metadata
 type Store struct {
-	db                atomic.Pointer[pebble.DB]
+	dbMu sync.RWMutex  // protects DB lifecycle (RestoreCheckpoint, Close)
+	db   *pebble.DB
 	opts              *pebble.Options
 	logger            logging.Logger
 	dataDir           string
@@ -43,10 +44,12 @@ type Store struct {
 	stallState        *WriteStallState
 }
 
-// getDB returns the current pebble.DB via an atomic load.
-// This is lock-free and never blocks, even during RestoreCheckpoint.
+// getDB returns the current pebble.DB.
+// Callers that create iterators (NewIter, IterateColdKVPairs) must hold
+// dbMu.RLock to prevent RestoreCheckpoint/Close from closing the DB
+// between the read and the iterator creation.
 func (s *Store) getDB() *pebble.DB {
-	return s.db.Load()
+	return s.db
 }
 
 // WriteStallWaitCh returns a channel that blocks while Pebble is in a write stall.
@@ -341,7 +344,7 @@ func NewStore(
 		maxCheckpoints:    cfg.MaxCheckpoints,
 		stallState:        stallState,
 	}
-	store.db.Store(db)
+	store.db = db
 
 	// Clean up any orphaned backup checkpoints from a previous crash
 	store.cleanupTemporaryCheckpoints()
@@ -406,9 +409,12 @@ func (s *Store) WarmBlockCache() {
 
 // Close closes the Pebble database.
 func (s *Store) Close() error {
-	db := s.db.Load()
+	s.dbMu.Lock()
+	defer s.dbMu.Unlock()
+
+	db := s.db
 	if db != nil {
-		s.db.Store(nil)
+		s.db = nil
 		if err := db.Close(); err != nil {
 			return fmt.Errorf("closing store: %w", err)
 		}
@@ -588,10 +594,12 @@ func (s *Store) PrepareCheckpointRestore(checkpointID uint64) (string, error) {
 
 // RestoreCheckpoint restores the database from a checkpoint.
 // This closes the current database, replaces it with the checkpoint, and reopens.
-// Uses atomic pointer swap so concurrent reads via getDB() are never blocked.
-// There is a brief window (close → reopen) where getDB() returns a closed DB;
-// callers will see a fast Pebble error instead of blocking on a mutex.
+// Holds dbMu exclusively so concurrent NewIter/IterateColdKVPairs calls block
+// until the new DB is ready, preventing panics on the closed DB.
 func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
+	s.dbMu.Lock()
+	defer s.dbMu.Unlock()
+
 	checkpointDir := filepath.Join(s.dataDir, checkpointsDir, fmt.Sprintf("%d", checkpointID))
 
 	// Verify the checkpoint exists
@@ -599,7 +607,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		return fmt.Errorf("checkpoint %d not found: %w", checkpointID, err)
 	}
 
-	oldDB := s.db.Load()
+	oldDB := s.db
 
 	// Preserve this node's persisted config before replacing the database.
 	// The checkpoint originates from the leader and contains the leader's
@@ -633,8 +641,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		return fmt.Errorf("reopening database: %w", err)
 	}
 
-	// Atomic swap: new reads immediately see the fresh DB.
-	s.db.Store(newDB)
+	s.db = newDB
 
 	// Re-write this node's persisted config into the restored database.
 	// After writing, flush and recreate the checkpoint so the config survives
@@ -688,7 +695,13 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 // Transaction updates are not archived: they are redundant with log entries which already
 // contain all creation, revert, and metadata information.
 func (s *Store) IterateColdKVPairs(startSeq, closeSeq uint64, fn func(key, value []byte) error) error {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+
 	db := s.getDB()
+	if db == nil {
+		return ErrStoreClosed
+	}
 
 	for _, prefix := range ColdSequencePrefixes {
 		kb := NewKeyBuilder()
@@ -782,6 +795,9 @@ func (c *ProtoCursor[T]) Close() error {
 }
 
 func (s *Store) NewIter(p *pebble.IterOptions) (*pebble.Iterator, error) {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+
 	db := s.getDB()
 	if db == nil {
 		return nil, ErrStoreClosed

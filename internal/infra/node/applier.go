@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -419,17 +420,19 @@ func (a *Applier) runMaintenanceTask(
 
 	a.taskExecutor.interrupt()
 	a.taskExecutor.run(ctx, func(ctx context.Context) error {
+		var closeOnce sync.Once
+		closeGating := func() { closeOnce.Do(func() { close(gatingTerminated) }) }
+		defer closeGating()
+
 		snapshotStart := time.Now()
 		frozenAtIndex, err := task(ctx)
 		if err != nil {
-			close(gatingTerminated)
 			return err
 		}
 		a.maintenanceSnapshotHistogram.Record(context.Background(), float64(time.Since(snapshotStart).Microseconds()))
 
 		replayStart := time.Now()
 		if err := a.replaySpool(ctx, frozenAtIndex); err != nil {
-			close(gatingTerminated)
 			return err
 		}
 		a.maintenanceReplaySpoolHistogram.Record(context.Background(), float64(time.Since(replayStart).Microseconds()))
@@ -437,7 +440,7 @@ func (a *Applier) runMaintenanceTask(
 		// End gating before post-gating work (e.g. WAL compaction).
 		// Post-gating work doesn't need the FSM to be frozen and would
 		// unnecessarily extend the spooling window, increasing latency.
-		close(gatingTerminated)
+		closeGating()
 
 		if postGating != nil {
 			postGating(ctx)
@@ -552,6 +555,18 @@ func (a *Applier) handleCheckpointDuringReplay(ctx context.Context, applyResult 
 
 	if applyResult.OnCheckpointDone != nil {
 		applyResult.OnCheckpointDone(checkpointPath)
+	}
+
+	// Resolve the deferred future for the checkpoint-triggering entry.
+	// During replay, applyEntriesAndResolveCommands skips this future
+	// (resolveCount-- when CheckpointRequired is true).
+	if len(applyResult.Results) > 0 {
+		lastResult := &applyResult.Results[len(applyResult.Results)-1]
+		if f, ok := a.futures.Load(lastResult.ProposalID); ok {
+			lastResult.CheckpointPath = checkpointPath
+			f.Resolve(*lastResult, nil)
+			a.futures.Delete(lastResult.ProposalID)
+		}
 	}
 
 	// Apply remaining entries directly (no re-spool needed since we're replaying)

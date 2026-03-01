@@ -26,7 +26,7 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 		logger:  logger.WithField("cmp", "pebble-readonly"),
 		dataDir: dirPath,
 	}
-	store.db.Store(db)
+	store.db = db
 	return store, nil
 }
 
@@ -46,6 +46,6 @@ func OpenDirect(dirPath string, logger logging.Logger) (*Store, error) {
 		logger:  logger.WithField("cmp", "pebble-direct"),
 		dataDir: dirPath,
 	}
-	store.db.Store(db)
+	store.db = db
 	return store, nil
 }
