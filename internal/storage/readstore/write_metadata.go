@@ -42,6 +42,25 @@ func DeleteReverseMap(tx *bolt.Tx, key []byte) error {
 	return b.Delete(key)
 }
 
+// isNullEncoded returns true if the encoded value starts with TypeTagNull.
+func isNullEncoded(encodedValue []byte) bool {
+	return len(encodedValue) > 0 && encodedValue[0] == TypeTagNull
+}
+
+// WriteEntityExists inserts an entry in the entity-ordered existence index.
+func WriteEntityExists(tx *bolt.Tx, kb *KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) error {
+	b := tx.Bucket(BucketEntityExists)
+	key := EntityExistsKey(kb, ledger, ns, metaKey, isNull, entityID)
+	return b.Put(key, nil)
+}
+
+// DeleteEntityExists removes an entry from the entity-ordered existence index.
+func DeleteEntityExists(tx *bolt.Tx, kb *KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) error {
+	b := tx.Bucket(BucketEntityExists)
+	key := EntityExistsKey(kb, ledger, ns, metaKey, isNull, entityID)
+	return b.Delete(key)
+}
+
 // UpdateMetadataIndex performs the atomic 4-step metadata index update:
 //  1. Read old value from reverse map
 //  2. Delete old forward index entry (if exists)
@@ -63,16 +82,22 @@ func UpdateMetadataIndex(
 	// Step 1: Read old value from reverse map
 	oldEncodedValue := ReadReverseMap(tx, reverseKey)
 
-	// Step 2: Delete old forward index entry (if exists)
+	// Step 2: Delete old forward index + eidx entry (if exists)
 	if oldEncodedValue != nil {
 		if err := DeleteMetadataIndex(tx, kb, ledger, ns, metadataKey, oldEncodedValue, entityID); err != nil {
 			return fmt.Errorf("deleting old metadata index: %w", err)
 		}
+		if err := DeleteEntityExists(tx, kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
+			return fmt.Errorf("deleting old entity exists index: %w", err)
+		}
 	}
 
-	// Step 3: Insert new forward index entry
+	// Step 3: Insert new forward index + eidx entry
 	if err := WriteMetadataIndex(tx, kb, ledger, ns, metadataKey, newEncodedValue, entityID); err != nil {
 		return fmt.Errorf("writing new metadata index: %w", err)
+	}
+	if err := WriteEntityExists(tx, kb, ledger, ns, metadataKey, isNullEncoded(newEncodedValue), entityID); err != nil {
+		return fmt.Errorf("writing new entity exists index: %w", err)
 	}
 
 	// Step 4: Update reverse map
@@ -95,10 +120,13 @@ func DeleteMetadataEntry(
 	// Read old value from reverse map
 	oldEncodedValue := ReadReverseMap(tx, reverseKey)
 
-	// Delete forward index entry (if exists)
+	// Delete forward index + eidx entry (if exists)
 	if oldEncodedValue != nil {
 		if err := DeleteMetadataIndex(tx, kb, ledger, ns, metadataKey, oldEncodedValue, entityID); err != nil {
 			return fmt.Errorf("deleting metadata index: %w", err)
+		}
+		if err := DeleteEntityExists(tx, kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
+			return fmt.Errorf("deleting entity exists index: %w", err)
 		}
 	}
 

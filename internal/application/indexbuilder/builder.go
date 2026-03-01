@@ -450,6 +450,7 @@ func (b *Builder) indexSetMetadataFieldType(
 	}
 
 	midxBucket := tx.Bucket(readstore.BucketMetadataIndex)
+	eidxBucket := tx.Bucket(readstore.BucketEntityExists)
 	rmapBucket := tx.Bucket(readstore.BucketReverseMap)
 
 	// Iterate the reverse map for this namespace to find all entities with the key.
@@ -501,6 +502,20 @@ func (b *Builder) indexSetMetadataFieldType(
 		// Convert to new type
 		newMV := commonpb.ConvertMetadataValue(oldMV, smft.Type)
 		newEncoded := readstore.EncodeMetadataValue(nil, newMV)
+
+		// Update eidx if null status changed
+		oldIsNull := len(oldEncoded) > 0 && oldEncoded[0] == readstore.TypeTagNull
+		newIsNull := len(newEncoded) > 0 && newEncoded[0] == readstore.TypeTagNull
+		if oldIsNull != newIsNull {
+			oldEidxKey := readstore.EntityExistsKey(kb, ledger, ns, smft.Key, oldIsNull, e.entityID)
+			if err := eidxBucket.Delete(oldEidxKey); err != nil {
+				return err
+			}
+			newEidxKey := readstore.EntityExistsKey(kb, ledger, ns, smft.Key, newIsNull, e.entityID)
+			if err := eidxBucket.Put(newEidxKey, nil); err != nil {
+				return err
+			}
+		}
 
 		// Write new forward index entry
 		newKey := readstore.MetadataIndexKey(kb, ledger, ns, smft.Key, newEncoded, e.entityID)

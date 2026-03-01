@@ -34,6 +34,15 @@ var (
 	// Key format is identical to BucketAccountTx.
 	BucketDestAccountTx = []byte("datx")
 
+	// BucketEntityExists is the entity-ordered existence index for metadata keys.
+	// It maps (ledger, namespace, metadataKey) → sorted entity IDs, partitioned
+	// by null status. This enables streaming ExistsCondition queries via PrefixIterator.
+	// Key: [ledgerName\x00][ns:][metadataKey\x00][nullFlag(1B)][entityID]
+	//   nullFlag = 0x00 → non-null (typed metadata: string, int, uint, bool)
+	//   nullFlag = 0x01 → null (TypeTagNull — unconvertible or explicit null)
+	// Value: (empty)
+	BucketEntityExists = []byte("eidx")
+
 	// BucketProgress stores index builder progress.
 	// Key: "lastSeq"
 	// Value: uint64 big-endian
@@ -219,5 +228,54 @@ func AccountTxPrefix(kb *KeyBuilder, ledger, account string) []byte {
 	return kb.Reset().
 		PutLedger(ledger).
 		PutStringNull(account).
+		Snapshot()
+}
+
+// Null flag bytes for the entity-ordered existence index (eidx).
+const (
+	EntityExistsNonNull byte = 0x00
+	EntityExistsNull    byte = 0x01
+)
+
+// EntityExistsKey builds a full entity-ordered existence index key.
+//
+//	[ledgerName\x00][ns:][metadataKey\x00][nullFlag][entityID]
+func EntityExistsKey(kb *KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) []byte {
+	nullFlag := EntityExistsNonNull
+	if isNull {
+		nullFlag = EntityExistsNull
+	}
+	return kb.Reset().
+		PutLedger(ledger).
+		PutNamespace(ns).
+		PutStringNull(metaKey).
+		PutByte(nullFlag).
+		PutBytes(entityID).
+		Build()
+}
+
+// EntityExistsNonNullPrefix returns the prefix for scanning non-null entities
+// that have a given metadata key.
+//
+//	[ledgerName\x00][ns:][metadataKey\x00][0x00]
+func EntityExistsNonNullPrefix(kb *KeyBuilder, ledger, ns, metaKey string) []byte {
+	return kb.Reset().
+		PutLedger(ledger).
+		PutNamespace(ns).
+		PutStringNull(metaKey).
+		PutByte(EntityExistsNonNull).
+		Snapshot()
+}
+
+// EntityExistsNullPrefix returns the prefix for scanning null-valued entities
+// that have a given metadata key.
+//
+//	[ledgerName\x00][ns:][metadataKey\x00][0x01]
+func EntityExistsNullPrefix(kb *KeyBuilder, ledger, ns, metaKey string) []byte {
+	return kb.Reset().
+		PutLedger(ledger).
+		PutNamespace(ns).
+		PutStringNull(metaKey).
+		PutByte(EntityExistsNull).
 		Snapshot()
 }

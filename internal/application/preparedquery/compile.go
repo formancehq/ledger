@@ -154,7 +154,7 @@ func compileFieldCondition(
 	case *commonpb.FieldCondition_BoolCond:
 		return compileBoolCondition(cursor, prefix, entityLen, cond.BoolCond, params)
 	case *commonpb.FieldCondition_ExistsCond:
-		return compileExistsCondition(cursor, prefix, entityLen, cond.ExistsCond)
+		return compileExistsCondition(tx, kb, ledger, ns, metaKey, entityLen, cond.ExistsCond)
 	default:
 		return nil, fmt.Errorf("unknown condition type: %T", fc.Condition)
 	}
@@ -379,30 +379,31 @@ func compileBoolCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, con
 	return readstore.NewPrefixIterator(cursor, fullPrefix, len(fullPrefix), entityLen), nil
 }
 
-// compileExistsCondition — scan all entries for a metadata key.
-// Entities interleave across type tags, so we materialize + sort.
-func compileExistsCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond *commonpb.ExistsCondition) (readstore.EntityIterator, error) {
-	// Scan the entire metadata key prefix across all type tags.
-	// Upper bound: prefix with last byte incremented.
-	upper := make([]byte, len(prefix))
-	copy(upper, prefix)
-	upper = incrementBytes(upper)
-
-	var entities [][]byte
-	for k, _ := cursor.Seek(prefix); k != nil && bytes.Compare(k, upper) < 0; k, _ = cursor.Next() {
-		if !cond.IncludeNull && len(k) > len(prefix) && k[len(prefix)] == readstore.TypeTagNull {
-			continue
-		}
-		entity := extractEntity(k, prefix, entityLen)
-		if entity != nil {
-			cp := make([]byte, len(entity))
-			copy(cp, entity)
-			entities = append(entities, cp)
-		}
+// compileExistsCondition — streaming scan on the entity-ordered existence index (eidx).
+// Entities are stored in entity ID order, so no materialization or sorting is needed.
+func compileExistsCondition(
+	tx *bolt.Tx,
+	kb *readstore.KeyBuilder,
+	ledger, ns, metaKey string,
+	entityLen int,
+	cond *commonpb.ExistsCondition,
+) (readstore.EntityIterator, error) {
+	b := tx.Bucket(readstore.BucketEntityExists)
+	if b == nil {
+		return &SliceIterator{}, nil
 	}
 
-	sortEntities(entities)
-	return &SliceIterator{entities: entities}, nil
+	nonNullPrefix := readstore.EntityExistsNonNullPrefix(kb, ledger, ns, metaKey)
+	if !cond.IncludeNull {
+		// Only non-null entries
+		return readstore.NewPrefixIterator(b.Cursor(), nonNullPrefix, len(nonNullPrefix), entityLen), nil
+	}
+
+	// Both non-null and null entries: merge two prefix iterators
+	nullPrefix := readstore.EntityExistsNullPrefix(kb, ledger, ns, metaKey)
+	nonNullIter := readstore.NewPrefixIterator(b.Cursor(), nonNullPrefix, len(nonNullPrefix), entityLen)
+	nullIter := readstore.NewPrefixIterator(b.Cursor(), nullPrefix, len(nullPrefix), entityLen)
+	return readstore.NewOrIterator(nonNullIter, nullIter), nil
 }
 
 // addressRoleBucket returns the bbolt bucket for the given address role.
@@ -564,56 +565,6 @@ func materializeRange(cursor *bolt.Cursor, lower, upper []byte, entityOffset, en
 	return &SliceIterator{entities: entities}
 }
 
-// extractEntity extracts the entity ID from a metadata index key, inferring offset
-// from the type tag and value encoding that follows the prefix.
-func extractEntity(key []byte, prefix []byte, entityLen int) []byte {
-	if len(key) <= len(prefix) {
-		return nil
-	}
-	// After the prefix: [typeTag][encoded_value][entityID]
-	// We need to skip past the type tag + value to find the entity.
-	rest := key[len(prefix):]
-	if len(rest) == 0 {
-		return nil
-	}
-	tag := rest[0]
-	offset := 0
-	switch tag {
-	case readstore.TypeTagString:
-		// 'S' + value + \x00
-		nullPos := bytes.IndexByte(rest[1:], 0x00)
-		if nullPos < 0 {
-			return nil
-		}
-		offset = 1 + nullPos + 1 // tag + value + null
-	case readstore.TypeTagInt, readstore.TypeTagUint:
-		offset = 1 + 8 // tag + 8-byte value
-	case readstore.TypeTagBool:
-		offset = 1 + 1 // tag + 1-byte value
-	case readstore.TypeTagNull:
-		// 'N' + rawValue + \x00
-		nullPos := bytes.IndexByte(rest[1:], 0x00)
-		if nullPos < 0 {
-			return nil
-		}
-		offset = 1 + nullPos + 1
-	default:
-		return nil
-	}
-
-	if offset >= len(rest) {
-		return nil
-	}
-	suffix := rest[offset:]
-	if entityLen > 0 {
-		if len(suffix) < entityLen {
-			return nil
-		}
-		return suffix[:entityLen]
-	}
-	return suffix
-}
-
 // extractEntityAtOffset extracts entity from a key at a known byte offset.
 func extractEntityAtOffset(key []byte, entityOffset, entityLen int) []byte {
 	if len(key) <= entityOffset {
@@ -633,19 +584,6 @@ func sortEntities(entities [][]byte) {
 	sort.Slice(entities, func(i, j int) bool {
 		return bytes.Compare(entities[i], entities[j]) < 0
 	})
-}
-
-func incrementBytes(b []byte) []byte {
-	result := make([]byte, len(b))
-	copy(result, b)
-	for i := len(result) - 1; i >= 0; i-- {
-		result[i]++
-		if result[i] != 0 {
-			return result
-		}
-	}
-	// Overflow: return a byte that sorts after everything
-	return append(result, 0xFF)
 }
 
 func closeAll(iters []readstore.EntityIterator) {

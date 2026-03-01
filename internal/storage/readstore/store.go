@@ -54,6 +54,7 @@ func New(dir string, logger logging.Logger) (*Store, error) {
 		for _, bucket := range [][]byte{
 			BucketMetadataIndex,
 			BucketExistence,
+			BucketEntityExists,
 			BucketReverseMap,
 			BucketAccountTx,
 			BucketSourceAccountTx,
