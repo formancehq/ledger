@@ -1180,6 +1180,132 @@ var _ = Describe("Transactions", Ordered, func() {
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
+
+	Context("When listing transactions with source/destination filter", Ordered, func() {
+		var ledgerName = "tx-src-dst-filter-ledger"
+
+		BeforeAll(func() {
+			// Create ledger
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			// Create transactions:
+			// tx1: A → B
+			// tx2: A → C
+			// tx3: B → A
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("A", "B", big.NewInt(100), "USD"),
+					}, nil),
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("A", "C", big.NewInt(200), "USD"),
+					}, nil),
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("B", "A", big.NewInt(50), "USD"),
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Wait for the index builder to catch up
+			Eventually(func(g Gomega) {
+				txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0)
+				g.Expect(err).To(Succeed())
+				g.Expect(txs).To(HaveLen(3))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should filter by source prefix", func() {
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Address{
+					Address: &commonpb.AddressMatch{
+						Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "A"},
+						Role:  commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
+					},
+				},
+			}
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			// A is source in tx1 (A→B) and tx2 (A→C)
+			Expect(txs).To(HaveLen(2))
+			for _, tx := range txs {
+				hasSourceA := false
+				for _, p := range tx.Postings {
+					if p.Source == "A" {
+						hasSourceA = true
+						break
+					}
+				}
+				Expect(hasSourceA).To(BeTrue())
+			}
+		})
+
+		It("Should filter by destination exact", func() {
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Address{
+					Address: &commonpb.AddressMatch{
+						Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "A"},
+						Role:  commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
+					},
+				},
+			}
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			// A is destination only in tx3 (B→A)
+			Expect(txs).To(HaveLen(1))
+			Expect(txs[0].Postings[0].Destination).To(Equal("A"))
+		})
+
+		It("Should filter by source AND destination", func() {
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_And{
+					And: &commonpb.AndFilter{
+						Filters: []*commonpb.QueryFilter{
+							{
+								Filter: &commonpb.QueryFilter_Address{
+									Address: &commonpb.AddressMatch{
+										Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "A"},
+										Role:  commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
+									},
+								},
+							},
+							{
+								Filter: &commonpb.QueryFilter_Address{
+									Address: &commonpb.AddressMatch{
+										Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "B"},
+										Role:  commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			// Only tx1 (A→B) has source=A AND destination=B
+			Expect(txs).To(HaveLen(1))
+			Expect(txs[0].Postings[0].Source).To(Equal("A"))
+			Expect(txs[0].Postings[0].Destination).To(Equal("B"))
+		})
+
+		It("Should still support address filter for backward compatibility", func() {
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Address{
+					Address: &commonpb.AddressMatch{
+						Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: "A"},
+					},
+				},
+			}
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			// A appears in all 3 transactions (as source or destination)
+			Expect(txs).To(HaveLen(3))
+		})
+	})
 })
 
 // txMetadataStringFilter builds a QueryFilter for a transaction metadata string equality.

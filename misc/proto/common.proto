@@ -737,6 +737,12 @@ message ExistsCondition {
   bool include_null = 1;
 }
 
+enum AddressRole {
+  ADDRESS_ROLE_ANY = 0;
+  ADDRESS_ROLE_SOURCE = 1;
+  ADDRESS_ROLE_DESTINATION = 2;
+}
+
 message AddressMatch {
   oneof match {
     string hardcoded_prefix = 1;
@@ -744,6 +750,7 @@ message AddressMatch {
     string param_prefix = 3;
     string param_exact = 4;
   }
+  AddressRole role = 5;
 }
 
 enum QueryTarget {

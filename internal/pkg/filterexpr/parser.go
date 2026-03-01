@@ -18,9 +18,11 @@ import (
 //	and_expr       := unary_expr ("and" unary_expr)*
 //	unary_expr     := "not" unary_expr | primary
 //	primary        := "(" expression ")" | condition
-//	condition      := metadata_cond | address_cond
+//	condition      := metadata_cond | address_cond | source_cond | destination_cond
 //	metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | "exists")
 //	address_cond   := "address" ("==" VALUE | "^=" VALUE)
+//	source_cond    := "source" ("==" VALUE | "^=" VALUE)
+//	destination_cond := "destination" ("==" VALUE | "^=" VALUE)
 func Parse(input string) (*commonpb.QueryFilter, error) {
 	p := &parser{tokens: tokenize(input)}
 	filter, err := p.parseExpression()
@@ -299,9 +301,13 @@ func (p *parser) parseCondition() (*commonpb.QueryFilter, error) {
 	case t.kind == tokenWord && t.value == "metadata":
 		return p.parseMetadataCondition()
 	case t.kind == tokenWord && t.value == "address":
-		return p.parseAddressCondition()
+		return p.parseAddressConditionWithRole(commonpb.AddressRole_ADDRESS_ROLE_ANY)
+	case t.kind == tokenWord && t.value == "source":
+		return p.parseAddressConditionWithRole(commonpb.AddressRole_ADDRESS_ROLE_SOURCE)
+	case t.kind == tokenWord && t.value == "destination":
+		return p.parseAddressConditionWithRole(commonpb.AddressRole_ADDRESS_ROLE_DESTINATION)
 	default:
-		return nil, fmt.Errorf("expected 'metadata' or 'address' at position %d, got %q", t.pos, t.value)
+		return nil, fmt.Errorf("expected 'metadata', 'address', 'source' or 'destination' at position %d, got %q", t.pos, t.value)
 	}
 }
 
@@ -403,12 +409,12 @@ func (p *parser) parseMetadataEqualityCondition(field *commonpb.FieldRef) (*comm
 	}, nil
 }
 
-func (p *parser) parseAddressCondition() (*commonpb.QueryFilter, error) {
-	p.advance() // consume "address"
+func (p *parser) parseAddressConditionWithRole(role commonpb.AddressRole) (*commonpb.QueryFilter, error) {
+	keyword := p.advance().value // consume "address", "source", or "destination"
 
 	t := p.peek()
 	if t == nil {
-		return nil, fmt.Errorf("unexpected end of expression after 'address'")
+		return nil, fmt.Errorf("unexpected end of expression after %q", keyword)
 	}
 
 	switch t.kind {
@@ -422,6 +428,7 @@ func (p *parser) parseAddressCondition() (*commonpb.QueryFilter, error) {
 			Filter: &commonpb.QueryFilter_Address{
 				Address: &commonpb.AddressMatch{
 					Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: val},
+					Role:  role,
 				},
 			},
 		}, nil
@@ -435,11 +442,12 @@ func (p *parser) parseAddressCondition() (*commonpb.QueryFilter, error) {
 			Filter: &commonpb.QueryFilter_Address{
 				Address: &commonpb.AddressMatch{
 					Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: val},
+					Role:  role,
 				},
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("expected '==' or '^=' after 'address' at position %d, got %q", t.pos, t.value)
+		return nil, fmt.Errorf("expected '==' or '^=' after %q at position %d, got %q", keyword, t.pos, t.value)
 	}
 }
 

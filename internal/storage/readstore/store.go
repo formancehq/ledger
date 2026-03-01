@@ -56,6 +56,8 @@ func New(dir string, logger logging.Logger) (*Store, error) {
 			BucketExistence,
 			BucketReverseMap,
 			BucketAccountTx,
+			BucketSourceAccountTx,
+			BucketDestAccountTx,
 			BucketProgress,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(bucket); err != nil {

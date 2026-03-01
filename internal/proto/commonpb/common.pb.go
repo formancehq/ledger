@@ -392,6 +392,55 @@ func (MirrorSyncState) EnumDescriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{6}
 }
 
+type AddressRole int32
+
+const (
+	AddressRole_ADDRESS_ROLE_ANY         AddressRole = 0
+	AddressRole_ADDRESS_ROLE_SOURCE      AddressRole = 1
+	AddressRole_ADDRESS_ROLE_DESTINATION AddressRole = 2
+)
+
+// Enum value maps for AddressRole.
+var (
+	AddressRole_name = map[int32]string{
+		0: "ADDRESS_ROLE_ANY",
+		1: "ADDRESS_ROLE_SOURCE",
+		2: "ADDRESS_ROLE_DESTINATION",
+	}
+	AddressRole_value = map[string]int32{
+		"ADDRESS_ROLE_ANY":         0,
+		"ADDRESS_ROLE_SOURCE":      1,
+		"ADDRESS_ROLE_DESTINATION": 2,
+	}
+)
+
+func (x AddressRole) Enum() *AddressRole {
+	p := new(AddressRole)
+	*p = x
+	return p
+}
+
+func (x AddressRole) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AddressRole) Descriptor() protoreflect.EnumDescriptor {
+	return file_common_proto_enumTypes[7].Descriptor()
+}
+
+func (AddressRole) Type() protoreflect.EnumType {
+	return &file_common_proto_enumTypes[7]
+}
+
+func (x AddressRole) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AddressRole.Descriptor instead.
+func (AddressRole) EnumDescriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{7}
+}
+
 type QueryTarget int32
 
 const (
@@ -422,11 +471,11 @@ func (x QueryTarget) String() string {
 }
 
 func (QueryTarget) Descriptor() protoreflect.EnumDescriptor {
-	return file_common_proto_enumTypes[7].Descriptor()
+	return file_common_proto_enumTypes[8].Descriptor()
 }
 
 func (QueryTarget) Type() protoreflect.EnumType {
-	return &file_common_proto_enumTypes[7]
+	return &file_common_proto_enumTypes[8]
 }
 
 func (x QueryTarget) Number() protoreflect.EnumNumber {
@@ -435,7 +484,7 @@ func (x QueryTarget) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QueryTarget.Descriptor instead.
 func (QueryTarget) EnumDescriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{7}
+	return file_common_proto_rawDescGZIP(), []int{8}
 }
 
 type QueryMode int32
@@ -468,11 +517,11 @@ func (x QueryMode) String() string {
 }
 
 func (QueryMode) Descriptor() protoreflect.EnumDescriptor {
-	return file_common_proto_enumTypes[8].Descriptor()
+	return file_common_proto_enumTypes[9].Descriptor()
 }
 
 func (QueryMode) Type() protoreflect.EnumType {
-	return &file_common_proto_enumTypes[8]
+	return &file_common_proto_enumTypes[9]
 }
 
 func (x QueryMode) Number() protoreflect.EnumNumber {
@@ -481,7 +530,7 @@ func (x QueryMode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QueryMode.Descriptor instead.
 func (QueryMode) EnumDescriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{8}
+	return file_common_proto_rawDescGZIP(), []int{9}
 }
 
 type Timestamp struct {
@@ -6706,6 +6755,7 @@ type AddressMatch struct {
 	//	*AddressMatch_ParamPrefix
 	//	*AddressMatch_ParamExact
 	Match         isAddressMatch_Match `protobuf_oneof:"match"`
+	Role          AddressRole          `protobuf:"varint,5,opt,name=role,proto3,enum=common.AddressRole" json:"role,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6781,6 +6831,13 @@ func (x *AddressMatch) GetParamExact() string {
 		}
 	}
 	return ""
+}
+
+func (x *AddressMatch) GetRole() AddressRole {
+	if x != nil {
+		return x.Role
+	}
+	return AddressRole_ADDRESS_ROLE_ANY
 }
 
 type isAddressMatch_Match interface {
@@ -7510,13 +7567,14 @@ const file_common_proto_rawDesc = "" +
 	"\x05param\x18\x02 \x01(\tH\x00R\x05paramB\a\n" +
 	"\x05value\"4\n" +
 	"\x0fExistsCondition\x12!\n" +
-	"\finclude_null\x18\x01 \x01(\bR\vincludeNull\"\xb7\x01\n" +
+	"\finclude_null\x18\x01 \x01(\bR\vincludeNull\"\xe0\x01\n" +
 	"\fAddressMatch\x12+\n" +
 	"\x10hardcoded_prefix\x18\x01 \x01(\tH\x00R\x0fhardcodedPrefix\x12)\n" +
 	"\x0fhardcoded_exact\x18\x02 \x01(\tH\x00R\x0ehardcodedExact\x12#\n" +
 	"\fparam_prefix\x18\x03 \x01(\tH\x00R\vparamPrefix\x12!\n" +
 	"\vparam_exact\x18\x04 \x01(\tH\x00R\n" +
-	"paramExactB\a\n" +
+	"paramExact\x12'\n" +
+	"\x04role\x18\x05 \x01(\x0e2\x13.common.AddressRoleR\x04roleB\a\n" +
 	"\x05match\"\x95\x01\n" +
 	"\rPreparedQuery\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
@@ -7574,7 +7632,11 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*G\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*Z\n" +
+	"\vAddressRole\x12\x14\n" +
+	"\x10ADDRESS_ROLE_ANY\x10\x00\x12\x17\n" +
+	"\x13ADDRESS_ROLE_SOURCE\x10\x01\x12\x1c\n" +
+	"\x18ADDRESS_ROLE_DESTINATION\x10\x02*G\n" +
 	"\vQueryTarget\x12\x19\n" +
 	"\x15QUERY_TARGET_ACCOUNTS\x10\x00\x12\x1d\n" +
 	"\x19QUERY_TARGET_TRANSACTIONS\x10\x01*B\n" +
@@ -7594,7 +7656,7 @@ func file_common_proto_rawDescGZIP() []byte {
 	return file_common_proto_rawDescData
 }
 
-var file_common_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
+var file_common_proto_enumTypes = make([]protoimpl.EnumInfo, 10)
 var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 107)
 var file_common_proto_goTypes = []any{
 	(TargetType)(0),                         // 0: common.TargetType
@@ -7604,269 +7666,271 @@ var file_common_proto_goTypes = []any{
 	(PeriodStatus)(0),                       // 4: common.PeriodStatus
 	(LedgerMode)(0),                         // 5: common.LedgerMode
 	(MirrorSyncState)(0),                    // 6: common.MirrorSyncState
-	(QueryTarget)(0),                        // 7: common.QueryTarget
-	(QueryMode)(0),                          // 8: common.QueryMode
-	(*Timestamp)(nil),                       // 9: common.Timestamp
-	(*Metadata)(nil),                        // 10: common.Metadata
-	(*NullValue)(nil),                       // 11: common.NullValue
-	(*MetadataValue)(nil),                   // 12: common.MetadataValue
-	(*MetadataSet)(nil),                     // 13: common.MetadataSet
-	(*Uint256)(nil),                         // 14: common.Uint256
-	(*Posting)(nil),                         // 15: common.Posting
-	(*Transaction)(nil),                     // 16: common.Transaction
-	(*Script)(nil),                          // 17: common.Script
-	(*Volumes)(nil),                         // 18: common.Volumes
-	(*VolumesWithBalance)(nil),              // 19: common.VolumesWithBalance
-	(*VolumesByAssets)(nil),                 // 20: common.VolumesByAssets
-	(*PostCommitVolumes)(nil),               // 21: common.PostCommitVolumes
-	(*Account)(nil),                         // 22: common.Account
-	(*AccountsVolumes)(nil),                 // 23: common.AccountsVolumes
-	(*TargetAccount)(nil),                   // 24: common.TargetAccount
-	(*TargetTransaction)(nil),               // 25: common.TargetTransaction
-	(*Target)(nil),                          // 26: common.Target
-	(*MetadataFieldSchema)(nil),             // 27: common.MetadataFieldSchema
-	(*MetadataSchema)(nil),                  // 28: common.MetadataSchema
-	(*SetMetadataFieldTypeCommand)(nil),     // 29: common.SetMetadataFieldTypeCommand
-	(*Idempotency)(nil),                     // 30: common.Idempotency
-	(*IdempotencyEntry)(nil),                // 31: common.IdempotencyEntry
-	(*Log)(nil),                             // 32: common.Log
-	(*LogPayload)(nil),                      // 33: common.LogPayload
-	(*PromoteLedgerLog)(nil),                // 34: common.PromoteLedgerLog
-	(*RegisterSigningKeyLog)(nil),           // 35: common.RegisterSigningKeyLog
-	(*RevokeSigningKeyLog)(nil),             // 36: common.RevokeSigningKeyLog
-	(*SigningKey)(nil),                      // 37: common.SigningKey
-	(*SetSigningConfigLog)(nil),             // 38: common.SetSigningConfigLog
-	(*AddedEventsSinkLog)(nil),              // 39: common.AddedEventsSinkLog
-	(*RemovedEventsSinkLog)(nil),            // 40: common.RemovedEventsSinkLog
-	(*SetMaintenanceModeLog)(nil),           // 41: common.SetMaintenanceModeLog
-	(*SetPeriodScheduleLog)(nil),            // 42: common.SetPeriodScheduleLog
-	(*DeletePeriodScheduleLog)(nil),         // 43: common.DeletePeriodScheduleLog
-	(*SetAuditConfigLog)(nil),               // 44: common.SetAuditConfigLog
-	(*CreatedPreparedQueryLog)(nil),         // 45: common.CreatedPreparedQueryLog
-	(*UpdatedPreparedQueryLog)(nil),         // 46: common.UpdatedPreparedQueryLog
-	(*DeletedPreparedQueryLog)(nil),         // 47: common.DeletedPreparedQueryLog
-	(*SinkConfig)(nil),                      // 48: common.SinkConfig
-	(*SinkStatus)(nil),                      // 49: common.SinkStatus
-	(*SinkError)(nil),                       // 50: common.SinkError
-	(*NatsSinkConfig)(nil),                  // 51: common.NatsSinkConfig
-	(*ClickHouseSinkConfig)(nil),            // 52: common.ClickHouseSinkConfig
-	(*KafkaSinkConfig)(nil),                 // 53: common.KafkaSinkConfig
-	(*HttpSinkConfig)(nil),                  // 54: common.HttpSinkConfig
-	(*CreateLedgerLog)(nil),                 // 55: common.CreateLedgerLog
-	(*DeleteLedgerLog)(nil),                 // 56: common.DeleteLedgerLog
-	(*ApplyLedgerLog)(nil),                  // 57: common.ApplyLedgerLog
-	(*LedgerLog)(nil),                       // 58: common.LedgerLog
-	(*LedgerLogPayload)(nil),                // 59: common.LedgerLogPayload
-	(*FillGapLog)(nil),                      // 60: common.FillGapLog
-	(*ConvertMetadataBatchLog)(nil),         // 61: common.ConvertMetadataBatchLog
-	(*MetadataConversionCompleteLog)(nil),   // 62: common.MetadataConversionCompleteLog
-	(*CreatedTransaction)(nil),              // 63: common.CreatedTransaction
-	(*RevertedTransaction)(nil),             // 64: common.RevertedTransaction
-	(*SavedMetadata)(nil),                   // 65: common.SavedMetadata
-	(*DeletedMetadata)(nil),                 // 66: common.DeletedMetadata
-	(*SetMetadataFieldTypeLog)(nil),         // 67: common.SetMetadataFieldTypeLog
-	(*RemovedMetadataFieldTypeLog)(nil),     // 68: common.RemovedMetadataFieldTypeLog
-	(*Period)(nil),                          // 69: common.Period
-	(*ClosePeriodLog)(nil),                  // 70: common.ClosePeriodLog
-	(*SealPeriodLog)(nil),                   // 71: common.SealPeriodLog
-	(*ArchivePeriodLog)(nil),                // 72: common.ArchivePeriodLog
-	(*ConfirmArchivePeriodLog)(nil),         // 73: common.ConfirmArchivePeriodLog
-	(*MirrorSourceConfig)(nil),              // 74: common.MirrorSourceConfig
-	(*HttpMirrorSourceConfig)(nil),          // 75: common.HttpMirrorSourceConfig
-	(*PostgresMirrorSourceConfig)(nil),      // 76: common.PostgresMirrorSourceConfig
-	(*MirrorSyncError)(nil),                 // 77: common.MirrorSyncError
-	(*MirrorSyncProgress)(nil),              // 78: common.MirrorSyncProgress
-	(*LedgerInfo)(nil),                      // 79: common.LedgerInfo
-	(*SaveMetadataCommand)(nil),             // 80: common.SaveMetadataCommand
-	(*DeleteMetadataCommand)(nil),           // 81: common.DeleteMetadataCommand
-	(*TransactionUpdate)(nil),               // 82: common.TransactionUpdate
-	(*TransactionUpdateType)(nil),           // 83: common.TransactionUpdateType
-	(*TransactionUpdateRevert)(nil),         // 84: common.TransactionUpdateRevert
-	(*TransactionUpdateAddMetadata)(nil),    // 85: common.TransactionUpdateAddMetadata
-	(*TransactionUpdateDeleteMetadata)(nil), // 86: common.TransactionUpdateDeleteMetadata
-	(*TransactionInit)(nil),                 // 87: common.TransactionInit
-	(*IdempotencyKeyValue)(nil),             // 88: common.IdempotencyKeyValue
-	(*TransactionReferenceValue)(nil),       // 89: common.TransactionReferenceValue
-	(*ChartOfAccounts)(nil),                 // 90: common.ChartOfAccounts
-	(*ChartSegment)(nil),                    // 91: common.ChartSegment
-	(*ChartVariable)(nil),                   // 92: common.ChartVariable
-	(*QueryFilter)(nil),                     // 93: common.QueryFilter
-	(*AndFilter)(nil),                       // 94: common.AndFilter
-	(*OrFilter)(nil),                        // 95: common.OrFilter
-	(*NotFilter)(nil),                       // 96: common.NotFilter
-	(*FieldRef)(nil),                        // 97: common.FieldRef
-	(*FieldCondition)(nil),                  // 98: common.FieldCondition
-	(*StringCondition)(nil),                 // 99: common.StringCondition
-	(*IntCondition)(nil),                    // 100: common.IntCondition
-	(*UintCondition)(nil),                   // 101: common.UintCondition
-	(*BoolCondition)(nil),                   // 102: common.BoolCondition
-	(*ExistsCondition)(nil),                 // 103: common.ExistsCondition
-	(*AddressMatch)(nil),                    // 104: common.AddressMatch
-	(*PreparedQuery)(nil),                   // 105: common.PreparedQuery
-	(*AggregatedVolume)(nil),                // 106: common.AggregatedVolume
-	(*AggregateResult)(nil),                 // 107: common.AggregateResult
-	(*PreparedQueryCursor)(nil),             // 108: common.PreparedQueryCursor
-	nil,                                     // 109: common.Script.VarsEntry
-	nil,                                     // 110: common.VolumesByAssets.VolumesEntry
-	nil,                                     // 111: common.PostCommitVolumes.VolumesByAccountEntry
-	nil,                                     // 112: common.Account.VolumesEntry
-	nil,                                     // 113: common.MetadataSchema.AccountFieldsEntry
-	nil,                                     // 114: common.MetadataSchema.TransactionFieldsEntry
-	nil,                                     // 115: common.CreatedTransaction.AccountMetadataEntry
-	(*signaturepb.RequestSignature)(nil),    // 116: signature.RequestSignature
-	(*signaturepb.ResponseSignature)(nil),   // 117: signature.ResponseSignature
+	(AddressRole)(0),                        // 7: common.AddressRole
+	(QueryTarget)(0),                        // 8: common.QueryTarget
+	(QueryMode)(0),                          // 9: common.QueryMode
+	(*Timestamp)(nil),                       // 10: common.Timestamp
+	(*Metadata)(nil),                        // 11: common.Metadata
+	(*NullValue)(nil),                       // 12: common.NullValue
+	(*MetadataValue)(nil),                   // 13: common.MetadataValue
+	(*MetadataSet)(nil),                     // 14: common.MetadataSet
+	(*Uint256)(nil),                         // 15: common.Uint256
+	(*Posting)(nil),                         // 16: common.Posting
+	(*Transaction)(nil),                     // 17: common.Transaction
+	(*Script)(nil),                          // 18: common.Script
+	(*Volumes)(nil),                         // 19: common.Volumes
+	(*VolumesWithBalance)(nil),              // 20: common.VolumesWithBalance
+	(*VolumesByAssets)(nil),                 // 21: common.VolumesByAssets
+	(*PostCommitVolumes)(nil),               // 22: common.PostCommitVolumes
+	(*Account)(nil),                         // 23: common.Account
+	(*AccountsVolumes)(nil),                 // 24: common.AccountsVolumes
+	(*TargetAccount)(nil),                   // 25: common.TargetAccount
+	(*TargetTransaction)(nil),               // 26: common.TargetTransaction
+	(*Target)(nil),                          // 27: common.Target
+	(*MetadataFieldSchema)(nil),             // 28: common.MetadataFieldSchema
+	(*MetadataSchema)(nil),                  // 29: common.MetadataSchema
+	(*SetMetadataFieldTypeCommand)(nil),     // 30: common.SetMetadataFieldTypeCommand
+	(*Idempotency)(nil),                     // 31: common.Idempotency
+	(*IdempotencyEntry)(nil),                // 32: common.IdempotencyEntry
+	(*Log)(nil),                             // 33: common.Log
+	(*LogPayload)(nil),                      // 34: common.LogPayload
+	(*PromoteLedgerLog)(nil),                // 35: common.PromoteLedgerLog
+	(*RegisterSigningKeyLog)(nil),           // 36: common.RegisterSigningKeyLog
+	(*RevokeSigningKeyLog)(nil),             // 37: common.RevokeSigningKeyLog
+	(*SigningKey)(nil),                      // 38: common.SigningKey
+	(*SetSigningConfigLog)(nil),             // 39: common.SetSigningConfigLog
+	(*AddedEventsSinkLog)(nil),              // 40: common.AddedEventsSinkLog
+	(*RemovedEventsSinkLog)(nil),            // 41: common.RemovedEventsSinkLog
+	(*SetMaintenanceModeLog)(nil),           // 42: common.SetMaintenanceModeLog
+	(*SetPeriodScheduleLog)(nil),            // 43: common.SetPeriodScheduleLog
+	(*DeletePeriodScheduleLog)(nil),         // 44: common.DeletePeriodScheduleLog
+	(*SetAuditConfigLog)(nil),               // 45: common.SetAuditConfigLog
+	(*CreatedPreparedQueryLog)(nil),         // 46: common.CreatedPreparedQueryLog
+	(*UpdatedPreparedQueryLog)(nil),         // 47: common.UpdatedPreparedQueryLog
+	(*DeletedPreparedQueryLog)(nil),         // 48: common.DeletedPreparedQueryLog
+	(*SinkConfig)(nil),                      // 49: common.SinkConfig
+	(*SinkStatus)(nil),                      // 50: common.SinkStatus
+	(*SinkError)(nil),                       // 51: common.SinkError
+	(*NatsSinkConfig)(nil),                  // 52: common.NatsSinkConfig
+	(*ClickHouseSinkConfig)(nil),            // 53: common.ClickHouseSinkConfig
+	(*KafkaSinkConfig)(nil),                 // 54: common.KafkaSinkConfig
+	(*HttpSinkConfig)(nil),                  // 55: common.HttpSinkConfig
+	(*CreateLedgerLog)(nil),                 // 56: common.CreateLedgerLog
+	(*DeleteLedgerLog)(nil),                 // 57: common.DeleteLedgerLog
+	(*ApplyLedgerLog)(nil),                  // 58: common.ApplyLedgerLog
+	(*LedgerLog)(nil),                       // 59: common.LedgerLog
+	(*LedgerLogPayload)(nil),                // 60: common.LedgerLogPayload
+	(*FillGapLog)(nil),                      // 61: common.FillGapLog
+	(*ConvertMetadataBatchLog)(nil),         // 62: common.ConvertMetadataBatchLog
+	(*MetadataConversionCompleteLog)(nil),   // 63: common.MetadataConversionCompleteLog
+	(*CreatedTransaction)(nil),              // 64: common.CreatedTransaction
+	(*RevertedTransaction)(nil),             // 65: common.RevertedTransaction
+	(*SavedMetadata)(nil),                   // 66: common.SavedMetadata
+	(*DeletedMetadata)(nil),                 // 67: common.DeletedMetadata
+	(*SetMetadataFieldTypeLog)(nil),         // 68: common.SetMetadataFieldTypeLog
+	(*RemovedMetadataFieldTypeLog)(nil),     // 69: common.RemovedMetadataFieldTypeLog
+	(*Period)(nil),                          // 70: common.Period
+	(*ClosePeriodLog)(nil),                  // 71: common.ClosePeriodLog
+	(*SealPeriodLog)(nil),                   // 72: common.SealPeriodLog
+	(*ArchivePeriodLog)(nil),                // 73: common.ArchivePeriodLog
+	(*ConfirmArchivePeriodLog)(nil),         // 74: common.ConfirmArchivePeriodLog
+	(*MirrorSourceConfig)(nil),              // 75: common.MirrorSourceConfig
+	(*HttpMirrorSourceConfig)(nil),          // 76: common.HttpMirrorSourceConfig
+	(*PostgresMirrorSourceConfig)(nil),      // 77: common.PostgresMirrorSourceConfig
+	(*MirrorSyncError)(nil),                 // 78: common.MirrorSyncError
+	(*MirrorSyncProgress)(nil),              // 79: common.MirrorSyncProgress
+	(*LedgerInfo)(nil),                      // 80: common.LedgerInfo
+	(*SaveMetadataCommand)(nil),             // 81: common.SaveMetadataCommand
+	(*DeleteMetadataCommand)(nil),           // 82: common.DeleteMetadataCommand
+	(*TransactionUpdate)(nil),               // 83: common.TransactionUpdate
+	(*TransactionUpdateType)(nil),           // 84: common.TransactionUpdateType
+	(*TransactionUpdateRevert)(nil),         // 85: common.TransactionUpdateRevert
+	(*TransactionUpdateAddMetadata)(nil),    // 86: common.TransactionUpdateAddMetadata
+	(*TransactionUpdateDeleteMetadata)(nil), // 87: common.TransactionUpdateDeleteMetadata
+	(*TransactionInit)(nil),                 // 88: common.TransactionInit
+	(*IdempotencyKeyValue)(nil),             // 89: common.IdempotencyKeyValue
+	(*TransactionReferenceValue)(nil),       // 90: common.TransactionReferenceValue
+	(*ChartOfAccounts)(nil),                 // 91: common.ChartOfAccounts
+	(*ChartSegment)(nil),                    // 92: common.ChartSegment
+	(*ChartVariable)(nil),                   // 93: common.ChartVariable
+	(*QueryFilter)(nil),                     // 94: common.QueryFilter
+	(*AndFilter)(nil),                       // 95: common.AndFilter
+	(*OrFilter)(nil),                        // 96: common.OrFilter
+	(*NotFilter)(nil),                       // 97: common.NotFilter
+	(*FieldRef)(nil),                        // 98: common.FieldRef
+	(*FieldCondition)(nil),                  // 99: common.FieldCondition
+	(*StringCondition)(nil),                 // 100: common.StringCondition
+	(*IntCondition)(nil),                    // 101: common.IntCondition
+	(*UintCondition)(nil),                   // 102: common.UintCondition
+	(*BoolCondition)(nil),                   // 103: common.BoolCondition
+	(*ExistsCondition)(nil),                 // 104: common.ExistsCondition
+	(*AddressMatch)(nil),                    // 105: common.AddressMatch
+	(*PreparedQuery)(nil),                   // 106: common.PreparedQuery
+	(*AggregatedVolume)(nil),                // 107: common.AggregatedVolume
+	(*AggregateResult)(nil),                 // 108: common.AggregateResult
+	(*PreparedQueryCursor)(nil),             // 109: common.PreparedQueryCursor
+	nil,                                     // 110: common.Script.VarsEntry
+	nil,                                     // 111: common.VolumesByAssets.VolumesEntry
+	nil,                                     // 112: common.PostCommitVolumes.VolumesByAccountEntry
+	nil,                                     // 113: common.Account.VolumesEntry
+	nil,                                     // 114: common.MetadataSchema.AccountFieldsEntry
+	nil,                                     // 115: common.MetadataSchema.TransactionFieldsEntry
+	nil,                                     // 116: common.CreatedTransaction.AccountMetadataEntry
+	(*signaturepb.RequestSignature)(nil),    // 117: signature.RequestSignature
+	(*signaturepb.ResponseSignature)(nil),   // 118: signature.ResponseSignature
 }
 var file_common_proto_depIdxs = []int32{
-	12,  // 0: common.Metadata.value:type_name -> common.MetadataValue
-	11,  // 1: common.MetadataValue.null_value:type_name -> common.NullValue
-	10,  // 2: common.MetadataSet.metadata:type_name -> common.Metadata
-	14,  // 3: common.Posting.amount:type_name -> common.Uint256
-	15,  // 4: common.Transaction.postings:type_name -> common.Posting
-	13,  // 5: common.Transaction.metadata:type_name -> common.MetadataSet
-	9,   // 6: common.Transaction.timestamp:type_name -> common.Timestamp
-	9,   // 7: common.Transaction.inserted_at:type_name -> common.Timestamp
-	9,   // 8: common.Transaction.updated_at:type_name -> common.Timestamp
-	9,   // 9: common.Transaction.reverted_at:type_name -> common.Timestamp
-	109, // 10: common.Script.vars:type_name -> common.Script.VarsEntry
-	110, // 11: common.VolumesByAssets.volumes:type_name -> common.VolumesByAssets.VolumesEntry
-	111, // 12: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
-	13,  // 13: common.Account.metadata:type_name -> common.MetadataSet
-	9,   // 14: common.Account.first_usage:type_name -> common.Timestamp
-	9,   // 15: common.Account.insertion_date:type_name -> common.Timestamp
-	9,   // 16: common.Account.updated_at:type_name -> common.Timestamp
-	112, // 17: common.Account.volumes:type_name -> common.Account.VolumesEntry
-	24,  // 18: common.Target.account:type_name -> common.TargetAccount
-	25,  // 19: common.Target.transaction:type_name -> common.TargetTransaction
+	13,  // 0: common.Metadata.value:type_name -> common.MetadataValue
+	12,  // 1: common.MetadataValue.null_value:type_name -> common.NullValue
+	11,  // 2: common.MetadataSet.metadata:type_name -> common.Metadata
+	15,  // 3: common.Posting.amount:type_name -> common.Uint256
+	16,  // 4: common.Transaction.postings:type_name -> common.Posting
+	14,  // 5: common.Transaction.metadata:type_name -> common.MetadataSet
+	10,  // 6: common.Transaction.timestamp:type_name -> common.Timestamp
+	10,  // 7: common.Transaction.inserted_at:type_name -> common.Timestamp
+	10,  // 8: common.Transaction.updated_at:type_name -> common.Timestamp
+	10,  // 9: common.Transaction.reverted_at:type_name -> common.Timestamp
+	110, // 10: common.Script.vars:type_name -> common.Script.VarsEntry
+	111, // 11: common.VolumesByAssets.volumes:type_name -> common.VolumesByAssets.VolumesEntry
+	112, // 12: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
+	14,  // 13: common.Account.metadata:type_name -> common.MetadataSet
+	10,  // 14: common.Account.first_usage:type_name -> common.Timestamp
+	10,  // 15: common.Account.insertion_date:type_name -> common.Timestamp
+	10,  // 16: common.Account.updated_at:type_name -> common.Timestamp
+	113, // 17: common.Account.volumes:type_name -> common.Account.VolumesEntry
+	25,  // 18: common.Target.account:type_name -> common.TargetAccount
+	26,  // 19: common.Target.transaction:type_name -> common.TargetTransaction
 	1,   // 20: common.MetadataFieldSchema.type:type_name -> common.MetadataType
 	2,   // 21: common.MetadataFieldSchema.status:type_name -> common.MetadataConversionStatus
-	113, // 22: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
-	114, // 23: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
+	114, // 22: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
+	115, // 23: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
 	0,   // 24: common.SetMetadataFieldTypeCommand.target_type:type_name -> common.TargetType
 	1,   // 25: common.SetMetadataFieldTypeCommand.type:type_name -> common.MetadataType
-	33,  // 26: common.Log.payload:type_name -> common.LogPayload
-	30,  // 27: common.Log.idempotency:type_name -> common.Idempotency
-	116, // 28: common.Log.signature:type_name -> signature.RequestSignature
-	117, // 29: common.Log.response_signature:type_name -> signature.ResponseSignature
-	55,  // 30: common.LogPayload.create_ledger:type_name -> common.CreateLedgerLog
-	56,  // 31: common.LogPayload.delete_ledger:type_name -> common.DeleteLedgerLog
-	57,  // 32: common.LogPayload.apply:type_name -> common.ApplyLedgerLog
-	35,  // 33: common.LogPayload.register_signing_key:type_name -> common.RegisterSigningKeyLog
-	36,  // 34: common.LogPayload.revoke_signing_key:type_name -> common.RevokeSigningKeyLog
-	38,  // 35: common.LogPayload.set_signing_config:type_name -> common.SetSigningConfigLog
-	39,  // 36: common.LogPayload.added_events_sink:type_name -> common.AddedEventsSinkLog
-	40,  // 37: common.LogPayload.removed_events_sink:type_name -> common.RemovedEventsSinkLog
-	70,  // 38: common.LogPayload.close_period:type_name -> common.ClosePeriodLog
-	71,  // 39: common.LogPayload.seal_period:type_name -> common.SealPeriodLog
-	72,  // 40: common.LogPayload.archive_period:type_name -> common.ArchivePeriodLog
-	73,  // 41: common.LogPayload.confirm_archive_period:type_name -> common.ConfirmArchivePeriodLog
-	41,  // 42: common.LogPayload.set_maintenance_mode:type_name -> common.SetMaintenanceModeLog
-	42,  // 43: common.LogPayload.set_period_schedule:type_name -> common.SetPeriodScheduleLog
-	43,  // 44: common.LogPayload.delete_period_schedule:type_name -> common.DeletePeriodScheduleLog
-	44,  // 45: common.LogPayload.set_audit_config:type_name -> common.SetAuditConfigLog
-	34,  // 46: common.LogPayload.promote_ledger:type_name -> common.PromoteLedgerLog
-	45,  // 47: common.LogPayload.created_prepared_query:type_name -> common.CreatedPreparedQueryLog
-	46,  // 48: common.LogPayload.updated_prepared_query:type_name -> common.UpdatedPreparedQueryLog
-	47,  // 49: common.LogPayload.deleted_prepared_query:type_name -> common.DeletedPreparedQueryLog
-	79,  // 50: common.PromoteLedgerLog.info:type_name -> common.LedgerInfo
-	48,  // 51: common.AddedEventsSinkLog.config:type_name -> common.SinkConfig
-	105, // 52: common.CreatedPreparedQueryLog.query:type_name -> common.PreparedQuery
-	93,  // 53: common.UpdatedPreparedQueryLog.previous_filter:type_name -> common.QueryFilter
-	93,  // 54: common.UpdatedPreparedQueryLog.new_filter:type_name -> common.QueryFilter
-	51,  // 55: common.SinkConfig.nats:type_name -> common.NatsSinkConfig
-	52,  // 56: common.SinkConfig.clickhouse:type_name -> common.ClickHouseSinkConfig
-	53,  // 57: common.SinkConfig.kafka:type_name -> common.KafkaSinkConfig
-	54,  // 58: common.SinkConfig.http:type_name -> common.HttpSinkConfig
+	34,  // 26: common.Log.payload:type_name -> common.LogPayload
+	31,  // 27: common.Log.idempotency:type_name -> common.Idempotency
+	117, // 28: common.Log.signature:type_name -> signature.RequestSignature
+	118, // 29: common.Log.response_signature:type_name -> signature.ResponseSignature
+	56,  // 30: common.LogPayload.create_ledger:type_name -> common.CreateLedgerLog
+	57,  // 31: common.LogPayload.delete_ledger:type_name -> common.DeleteLedgerLog
+	58,  // 32: common.LogPayload.apply:type_name -> common.ApplyLedgerLog
+	36,  // 33: common.LogPayload.register_signing_key:type_name -> common.RegisterSigningKeyLog
+	37,  // 34: common.LogPayload.revoke_signing_key:type_name -> common.RevokeSigningKeyLog
+	39,  // 35: common.LogPayload.set_signing_config:type_name -> common.SetSigningConfigLog
+	40,  // 36: common.LogPayload.added_events_sink:type_name -> common.AddedEventsSinkLog
+	41,  // 37: common.LogPayload.removed_events_sink:type_name -> common.RemovedEventsSinkLog
+	71,  // 38: common.LogPayload.close_period:type_name -> common.ClosePeriodLog
+	72,  // 39: common.LogPayload.seal_period:type_name -> common.SealPeriodLog
+	73,  // 40: common.LogPayload.archive_period:type_name -> common.ArchivePeriodLog
+	74,  // 41: common.LogPayload.confirm_archive_period:type_name -> common.ConfirmArchivePeriodLog
+	42,  // 42: common.LogPayload.set_maintenance_mode:type_name -> common.SetMaintenanceModeLog
+	43,  // 43: common.LogPayload.set_period_schedule:type_name -> common.SetPeriodScheduleLog
+	44,  // 44: common.LogPayload.delete_period_schedule:type_name -> common.DeletePeriodScheduleLog
+	45,  // 45: common.LogPayload.set_audit_config:type_name -> common.SetAuditConfigLog
+	35,  // 46: common.LogPayload.promote_ledger:type_name -> common.PromoteLedgerLog
+	46,  // 47: common.LogPayload.created_prepared_query:type_name -> common.CreatedPreparedQueryLog
+	47,  // 48: common.LogPayload.updated_prepared_query:type_name -> common.UpdatedPreparedQueryLog
+	48,  // 49: common.LogPayload.deleted_prepared_query:type_name -> common.DeletedPreparedQueryLog
+	80,  // 50: common.PromoteLedgerLog.info:type_name -> common.LedgerInfo
+	49,  // 51: common.AddedEventsSinkLog.config:type_name -> common.SinkConfig
+	106, // 52: common.CreatedPreparedQueryLog.query:type_name -> common.PreparedQuery
+	94,  // 53: common.UpdatedPreparedQueryLog.previous_filter:type_name -> common.QueryFilter
+	94,  // 54: common.UpdatedPreparedQueryLog.new_filter:type_name -> common.QueryFilter
+	52,  // 55: common.SinkConfig.nats:type_name -> common.NatsSinkConfig
+	53,  // 56: common.SinkConfig.clickhouse:type_name -> common.ClickHouseSinkConfig
+	54,  // 57: common.SinkConfig.kafka:type_name -> common.KafkaSinkConfig
+	55,  // 58: common.SinkConfig.http:type_name -> common.HttpSinkConfig
 	3,   // 59: common.SinkConfig.event_types:type_name -> common.EventType
-	50,  // 60: common.SinkStatus.error:type_name -> common.SinkError
-	9,   // 61: common.SinkError.occurred_at:type_name -> common.Timestamp
-	79,  // 62: common.CreateLedgerLog.info:type_name -> common.LedgerInfo
-	79,  // 63: common.DeleteLedgerLog.info:type_name -> common.LedgerInfo
-	58,  // 64: common.ApplyLedgerLog.log:type_name -> common.LedgerLog
-	59,  // 65: common.LedgerLog.data:type_name -> common.LedgerLogPayload
-	9,   // 66: common.LedgerLog.date:type_name -> common.Timestamp
-	63,  // 67: common.LedgerLogPayload.created_transaction:type_name -> common.CreatedTransaction
-	64,  // 68: common.LedgerLogPayload.reverted_transaction:type_name -> common.RevertedTransaction
-	65,  // 69: common.LedgerLogPayload.saved_metadata:type_name -> common.SavedMetadata
-	66,  // 70: common.LedgerLogPayload.deleted_metadata:type_name -> common.DeletedMetadata
-	67,  // 71: common.LedgerLogPayload.set_metadata_field_type:type_name -> common.SetMetadataFieldTypeLog
-	68,  // 72: common.LedgerLogPayload.removed_metadata_field_type:type_name -> common.RemovedMetadataFieldTypeLog
-	61,  // 73: common.LedgerLogPayload.convert_metadata_batch:type_name -> common.ConvertMetadataBatchLog
-	62,  // 74: common.LedgerLogPayload.metadata_conversion_complete:type_name -> common.MetadataConversionCompleteLog
-	60,  // 75: common.LedgerLogPayload.fill_gap:type_name -> common.FillGapLog
+	51,  // 60: common.SinkStatus.error:type_name -> common.SinkError
+	10,  // 61: common.SinkError.occurred_at:type_name -> common.Timestamp
+	80,  // 62: common.CreateLedgerLog.info:type_name -> common.LedgerInfo
+	80,  // 63: common.DeleteLedgerLog.info:type_name -> common.LedgerInfo
+	59,  // 64: common.ApplyLedgerLog.log:type_name -> common.LedgerLog
+	60,  // 65: common.LedgerLog.data:type_name -> common.LedgerLogPayload
+	10,  // 66: common.LedgerLog.date:type_name -> common.Timestamp
+	64,  // 67: common.LedgerLogPayload.created_transaction:type_name -> common.CreatedTransaction
+	65,  // 68: common.LedgerLogPayload.reverted_transaction:type_name -> common.RevertedTransaction
+	66,  // 69: common.LedgerLogPayload.saved_metadata:type_name -> common.SavedMetadata
+	67,  // 70: common.LedgerLogPayload.deleted_metadata:type_name -> common.DeletedMetadata
+	68,  // 71: common.LedgerLogPayload.set_metadata_field_type:type_name -> common.SetMetadataFieldTypeLog
+	69,  // 72: common.LedgerLogPayload.removed_metadata_field_type:type_name -> common.RemovedMetadataFieldTypeLog
+	62,  // 73: common.LedgerLogPayload.convert_metadata_batch:type_name -> common.ConvertMetadataBatchLog
+	63,  // 74: common.LedgerLogPayload.metadata_conversion_complete:type_name -> common.MetadataConversionCompleteLog
+	61,  // 75: common.LedgerLogPayload.fill_gap:type_name -> common.FillGapLog
 	0,   // 76: common.ConvertMetadataBatchLog.target_type:type_name -> common.TargetType
 	0,   // 77: common.MetadataConversionCompleteLog.target_type:type_name -> common.TargetType
-	16,  // 78: common.CreatedTransaction.transaction:type_name -> common.Transaction
-	115, // 79: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
-	21,  // 80: common.CreatedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
-	16,  // 81: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
-	21,  // 82: common.RevertedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
-	26,  // 83: common.SavedMetadata.target:type_name -> common.Target
-	13,  // 84: common.SavedMetadata.metadata:type_name -> common.MetadataSet
-	26,  // 85: common.DeletedMetadata.target:type_name -> common.Target
+	17,  // 78: common.CreatedTransaction.transaction:type_name -> common.Transaction
+	116, // 79: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
+	22,  // 80: common.CreatedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
+	17,  // 81: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
+	22,  // 82: common.RevertedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
+	27,  // 83: common.SavedMetadata.target:type_name -> common.Target
+	14,  // 84: common.SavedMetadata.metadata:type_name -> common.MetadataSet
+	27,  // 85: common.DeletedMetadata.target:type_name -> common.Target
 	0,   // 86: common.SetMetadataFieldTypeLog.target_type:type_name -> common.TargetType
 	1,   // 87: common.SetMetadataFieldTypeLog.type:type_name -> common.MetadataType
 	0,   // 88: common.RemovedMetadataFieldTypeLog.target_type:type_name -> common.TargetType
-	9,   // 89: common.Period.start:type_name -> common.Timestamp
-	9,   // 90: common.Period.end:type_name -> common.Timestamp
+	10,  // 89: common.Period.start:type_name -> common.Timestamp
+	10,  // 90: common.Period.end:type_name -> common.Timestamp
 	4,   // 91: common.Period.status:type_name -> common.PeriodStatus
-	69,  // 92: common.ClosePeriodLog.closed_period:type_name -> common.Period
-	69,  // 93: common.ClosePeriodLog.new_period:type_name -> common.Period
-	69,  // 94: common.SealPeriodLog.period:type_name -> common.Period
-	69,  // 95: common.ArchivePeriodLog.period:type_name -> common.Period
-	69,  // 96: common.ConfirmArchivePeriodLog.period:type_name -> common.Period
-	75,  // 97: common.MirrorSourceConfig.http:type_name -> common.HttpMirrorSourceConfig
-	76,  // 98: common.MirrorSourceConfig.postgres:type_name -> common.PostgresMirrorSourceConfig
-	9,   // 99: common.MirrorSyncError.occurred_at:type_name -> common.Timestamp
+	70,  // 92: common.ClosePeriodLog.closed_period:type_name -> common.Period
+	70,  // 93: common.ClosePeriodLog.new_period:type_name -> common.Period
+	70,  // 94: common.SealPeriodLog.period:type_name -> common.Period
+	70,  // 95: common.ArchivePeriodLog.period:type_name -> common.Period
+	70,  // 96: common.ConfirmArchivePeriodLog.period:type_name -> common.Period
+	76,  // 97: common.MirrorSourceConfig.http:type_name -> common.HttpMirrorSourceConfig
+	77,  // 98: common.MirrorSourceConfig.postgres:type_name -> common.PostgresMirrorSourceConfig
+	10,  // 99: common.MirrorSyncError.occurred_at:type_name -> common.Timestamp
 	6,   // 100: common.MirrorSyncProgress.state:type_name -> common.MirrorSyncState
-	77,  // 101: common.MirrorSyncProgress.error:type_name -> common.MirrorSyncError
-	9,   // 102: common.LedgerInfo.created_at:type_name -> common.Timestamp
-	9,   // 103: common.LedgerInfo.deleted_at:type_name -> common.Timestamp
-	28,  // 104: common.LedgerInfo.metadata_schema:type_name -> common.MetadataSchema
+	78,  // 101: common.MirrorSyncProgress.error:type_name -> common.MirrorSyncError
+	10,  // 102: common.LedgerInfo.created_at:type_name -> common.Timestamp
+	10,  // 103: common.LedgerInfo.deleted_at:type_name -> common.Timestamp
+	29,  // 104: common.LedgerInfo.metadata_schema:type_name -> common.MetadataSchema
 	5,   // 105: common.LedgerInfo.mode:type_name -> common.LedgerMode
-	74,  // 106: common.LedgerInfo.mirror_source:type_name -> common.MirrorSourceConfig
-	78,  // 107: common.LedgerInfo.mirror_sync_progress:type_name -> common.MirrorSyncProgress
-	26,  // 108: common.SaveMetadataCommand.target:type_name -> common.Target
-	13,  // 109: common.SaveMetadataCommand.metadata:type_name -> common.MetadataSet
-	26,  // 110: common.DeleteMetadataCommand.target:type_name -> common.Target
-	83,  // 111: common.TransactionUpdate.updates:type_name -> common.TransactionUpdateType
-	84,  // 112: common.TransactionUpdateType.transaction_modification_revert:type_name -> common.TransactionUpdateRevert
-	85,  // 113: common.TransactionUpdateType.transaction_modification_add_metadata:type_name -> common.TransactionUpdateAddMetadata
-	86,  // 114: common.TransactionUpdateType.transaction_modification_delete_metadata:type_name -> common.TransactionUpdateDeleteMetadata
-	87,  // 115: common.TransactionUpdateType.transaction_init:type_name -> common.TransactionInit
-	10,  // 116: common.TransactionUpdateAddMetadata.metadata:type_name -> common.Metadata
-	91,  // 117: common.ChartOfAccounts.segments:type_name -> common.ChartSegment
-	92,  // 118: common.ChartSegment.variable:type_name -> common.ChartVariable
-	91,  // 119: common.ChartSegment.children:type_name -> common.ChartSegment
-	98,  // 120: common.QueryFilter.field:type_name -> common.FieldCondition
-	104, // 121: common.QueryFilter.address:type_name -> common.AddressMatch
-	94,  // 122: common.QueryFilter.and:type_name -> common.AndFilter
-	95,  // 123: common.QueryFilter.or:type_name -> common.OrFilter
-	96,  // 124: common.QueryFilter.not:type_name -> common.NotFilter
-	93,  // 125: common.AndFilter.filters:type_name -> common.QueryFilter
-	93,  // 126: common.OrFilter.filters:type_name -> common.QueryFilter
-	93,  // 127: common.NotFilter.filter:type_name -> common.QueryFilter
-	97,  // 128: common.FieldCondition.field:type_name -> common.FieldRef
-	99,  // 129: common.FieldCondition.string_cond:type_name -> common.StringCondition
-	100, // 130: common.FieldCondition.int_cond:type_name -> common.IntCondition
-	101, // 131: common.FieldCondition.uint_cond:type_name -> common.UintCondition
-	102, // 132: common.FieldCondition.bool_cond:type_name -> common.BoolCondition
-	103, // 133: common.FieldCondition.exists_cond:type_name -> common.ExistsCondition
-	93,  // 134: common.PreparedQuery.filter:type_name -> common.QueryFilter
-	7,   // 135: common.PreparedQuery.target:type_name -> common.QueryTarget
-	14,  // 136: common.AggregatedVolume.input:type_name -> common.Uint256
-	14,  // 137: common.AggregatedVolume.output:type_name -> common.Uint256
-	106, // 138: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
-	18,  // 139: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
-	20,  // 140: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	19,  // 141: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
-	27,  // 142: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	27,  // 143: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	13,  // 144: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataSet
-	145, // [145:145] is the sub-list for method output_type
-	145, // [145:145] is the sub-list for method input_type
-	145, // [145:145] is the sub-list for extension type_name
-	145, // [145:145] is the sub-list for extension extendee
-	0,   // [0:145] is the sub-list for field type_name
+	75,  // 106: common.LedgerInfo.mirror_source:type_name -> common.MirrorSourceConfig
+	79,  // 107: common.LedgerInfo.mirror_sync_progress:type_name -> common.MirrorSyncProgress
+	27,  // 108: common.SaveMetadataCommand.target:type_name -> common.Target
+	14,  // 109: common.SaveMetadataCommand.metadata:type_name -> common.MetadataSet
+	27,  // 110: common.DeleteMetadataCommand.target:type_name -> common.Target
+	84,  // 111: common.TransactionUpdate.updates:type_name -> common.TransactionUpdateType
+	85,  // 112: common.TransactionUpdateType.transaction_modification_revert:type_name -> common.TransactionUpdateRevert
+	86,  // 113: common.TransactionUpdateType.transaction_modification_add_metadata:type_name -> common.TransactionUpdateAddMetadata
+	87,  // 114: common.TransactionUpdateType.transaction_modification_delete_metadata:type_name -> common.TransactionUpdateDeleteMetadata
+	88,  // 115: common.TransactionUpdateType.transaction_init:type_name -> common.TransactionInit
+	11,  // 116: common.TransactionUpdateAddMetadata.metadata:type_name -> common.Metadata
+	92,  // 117: common.ChartOfAccounts.segments:type_name -> common.ChartSegment
+	93,  // 118: common.ChartSegment.variable:type_name -> common.ChartVariable
+	92,  // 119: common.ChartSegment.children:type_name -> common.ChartSegment
+	99,  // 120: common.QueryFilter.field:type_name -> common.FieldCondition
+	105, // 121: common.QueryFilter.address:type_name -> common.AddressMatch
+	95,  // 122: common.QueryFilter.and:type_name -> common.AndFilter
+	96,  // 123: common.QueryFilter.or:type_name -> common.OrFilter
+	97,  // 124: common.QueryFilter.not:type_name -> common.NotFilter
+	94,  // 125: common.AndFilter.filters:type_name -> common.QueryFilter
+	94,  // 126: common.OrFilter.filters:type_name -> common.QueryFilter
+	94,  // 127: common.NotFilter.filter:type_name -> common.QueryFilter
+	98,  // 128: common.FieldCondition.field:type_name -> common.FieldRef
+	100, // 129: common.FieldCondition.string_cond:type_name -> common.StringCondition
+	101, // 130: common.FieldCondition.int_cond:type_name -> common.IntCondition
+	102, // 131: common.FieldCondition.uint_cond:type_name -> common.UintCondition
+	103, // 132: common.FieldCondition.bool_cond:type_name -> common.BoolCondition
+	104, // 133: common.FieldCondition.exists_cond:type_name -> common.ExistsCondition
+	7,   // 134: common.AddressMatch.role:type_name -> common.AddressRole
+	94,  // 135: common.PreparedQuery.filter:type_name -> common.QueryFilter
+	8,   // 136: common.PreparedQuery.target:type_name -> common.QueryTarget
+	15,  // 137: common.AggregatedVolume.input:type_name -> common.Uint256
+	15,  // 138: common.AggregatedVolume.output:type_name -> common.Uint256
+	107, // 139: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
+	19,  // 140: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
+	21,  // 141: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	20,  // 142: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
+	28,  // 143: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	28,  // 144: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	14,  // 145: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataSet
+	146, // [146:146] is the sub-list for method output_type
+	146, // [146:146] is the sub-list for method input_type
+	146, // [146:146] is the sub-list for extension type_name
+	146, // [146:146] is the sub-list for extension extendee
+	0,   // [0:146] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }
@@ -7969,7 +8033,7 @@ func file_common_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
-			NumEnums:      9,
+			NumEnums:      10,
 			NumMessages:   107,
 			NumExtensions: 0,
 			NumServices:   0,

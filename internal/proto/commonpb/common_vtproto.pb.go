@@ -2468,6 +2468,7 @@ func (m *AddressMatch) CloneVT() *AddressMatch {
 		return (*AddressMatch)(nil)
 	}
 	r := new(AddressMatch)
+	r.Role = m.Role
 	if m.Match != nil {
 		r.Match = m.Match.(interface{ CloneVT() isAddressMatch_Match }).CloneVT()
 	}
@@ -6545,6 +6546,9 @@ func (this *AddressMatch) EqualVT(that *AddressMatch) bool {
 		}).EqualVT(that.Match) {
 			return false
 		}
+	}
+	if this.Role != that.Role {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -12824,6 +12828,11 @@ func (m *AddressMatch) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
+	if m.Role != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Role))
+		i--
+		dAtA[i] = 0x28
+	}
 	return len(dAtA) - i, nil
 }
 
@@ -15667,6 +15676,9 @@ func (m *AddressMatch) SizeVT() (n int) {
 	_ = l
 	if vtmsg, ok := m.Match.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
+	}
+	if m.Role != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Role))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -29864,6 +29876,25 @@ func (m *AddressMatch) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Match = &AddressMatch_ParamExact{ParamExact: string(dAtA[iNdEx:postIndex])}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Role", wireType)
+			}
+			m.Role = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Role |= AddressRole(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

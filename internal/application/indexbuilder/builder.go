@@ -219,11 +219,18 @@ func (b *Builder) indexCreatedTransaction(
 		accounts[posting.Source] = struct{}{}
 		accounts[posting.Destination] = struct{}{}
 
-		// Account→transaction mapping
+		// Account→transaction mapping (any role)
 		if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Source, txn.Id); err != nil {
 			return err
 		}
 		if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Destination, txn.Id); err != nil {
+			return err
+		}
+		// Role-specific mappings
+		if err := readstore.WriteSourceAccountTxMapping(tx, kb, ledger, posting.Source, txn.Id); err != nil {
+			return err
+		}
+		if err := readstore.WriteDestAccountTxMapping(tx, kb, ledger, posting.Destination, txn.Id); err != nil {
 			return err
 		}
 	}
@@ -304,6 +311,13 @@ func (b *Builder) indexRevertedTransaction(
 			return err
 		}
 		if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Destination, revertTxn.Id); err != nil {
+			return err
+		}
+		// Role-specific mappings
+		if err := readstore.WriteSourceAccountTxMapping(tx, kb, ledger, posting.Source, revertTxn.Id); err != nil {
+			return err
+		}
+		if err := readstore.WriteDestAccountTxMapping(tx, kb, ledger, posting.Destination, revertTxn.Id); err != nil {
 			return err
 		}
 	}

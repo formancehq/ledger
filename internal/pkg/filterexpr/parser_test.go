@@ -273,6 +273,80 @@ func TestParse(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("source exact", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse(`source == "merchants:alice"`)
+		require.NoError(t, err)
+
+		am := filter.GetAddress()
+		require.NotNil(t, am)
+		assert.Equal(t, "merchants:alice", am.GetHardcodedExact())
+		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_SOURCE, am.GetRole())
+	})
+
+	t.Run("source prefix", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse(`source ^= "merchants:"`)
+		require.NoError(t, err)
+
+		am := filter.GetAddress()
+		require.NotNil(t, am)
+		assert.Equal(t, "merchants:", am.GetHardcodedPrefix())
+		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_SOURCE, am.GetRole())
+	})
+
+	t.Run("destination exact", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse(`destination == "users:bob"`)
+		require.NoError(t, err)
+
+		am := filter.GetAddress()
+		require.NotNil(t, am)
+		assert.Equal(t, "users:bob", am.GetHardcodedExact())
+		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION, am.GetRole())
+	})
+
+	t.Run("destination prefix", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse(`destination ^= "users:"`)
+		require.NoError(t, err)
+
+		am := filter.GetAddress()
+		require.NotNil(t, am)
+		assert.Equal(t, "users:", am.GetHardcodedPrefix())
+		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION, am.GetRole())
+	})
+
+	t.Run("source and destination combined", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse(`source ^= "a:" and destination ^= "b:"`)
+		require.NoError(t, err)
+
+		andF := filter.GetAnd()
+		require.NotNil(t, andF)
+		require.Len(t, andF.Filters, 2)
+
+		srcAm := andF.Filters[0].GetAddress()
+		require.NotNil(t, srcAm)
+		assert.Equal(t, "a:", srcAm.GetHardcodedPrefix())
+		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_SOURCE, srcAm.GetRole())
+
+		dstAm := andF.Filters[1].GetAddress()
+		require.NotNil(t, dstAm)
+		assert.Equal(t, "b:", dstAm.GetHardcodedPrefix())
+		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION, dstAm.GetRole())
+	})
+
+	t.Run("address has ANY role by default", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse(`address == "users:alice"`)
+		require.NoError(t, err)
+
+		am := filter.GetAddress()
+		require.NotNil(t, am)
+		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_ANY, am.GetRole())
+	})
+
 	t.Run("error: unknown keyword", func(t *testing.T) {
 		t.Parallel()
 		_, err := Parse("foobar == 42")

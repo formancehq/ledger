@@ -19,6 +19,7 @@ type AddressTxIterator struct {
 	tx          *bolt.Tx
 	kb          *KeyBuilder
 	ledger      string
+	bucket      []byte         // which account→tx bucket to scan
 	addrIter  EntityIterator // iterates over matching account addresses
 	current   []byte         // current txID (8 bytes)
 	exhausted bool
@@ -27,18 +28,20 @@ type AddressTxIterator struct {
 }
 
 // NewAddressTxIterator creates an iterator that, for each address matching
-// addrIter, looks up all associated transaction IDs in the account→tx mapping
-// and produces them in sorted order (merge-union).
+// addrIter, looks up all associated transaction IDs in the specified
+// account→tx bucket and produces them in sorted order (merge-union).
 func NewAddressTxIterator(
 	tx *bolt.Tx,
 	kb *KeyBuilder,
 	ledger string,
 	addrIter EntityIterator,
+	bucket []byte,
 ) *AddressTxIterator {
 	return &AddressTxIterator{
 		tx:       tx,
 		kb:       kb,
 		ledger:   ledger,
+		bucket:   bucket,
 		addrIter: addrIter,
 		txSeen:   make(map[uint64]struct{}),
 	}
@@ -110,7 +113,7 @@ func (it *AddressTxIterator) Close() {
 // materialize collects all transaction IDs from all matching accounts,
 // deduplicates, and sorts them.
 func (it *AddressTxIterator) materialize() error {
-	b := it.tx.Bucket(BucketAccountTx)
+	b := it.tx.Bucket(it.bucket)
 	if b == nil {
 		return nil
 	}

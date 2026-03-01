@@ -15,7 +15,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |
-| List transactions | ✅ | ✅ | gRPC stream with pagination |
+| List transactions | ✅ | ✅ | gRPC stream with pagination; supports `source`/`destination` address filtering |
 | **Metadata** |
 | Save account metadata | ✅ | ✅ | |
 | Delete account metadata | ✅ | ✅ | |

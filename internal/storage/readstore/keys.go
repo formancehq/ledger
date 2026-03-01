@@ -21,10 +21,18 @@ var (
 	// Value: MetadataValue protobuf
 	BucketReverseMap = []byte("rmap")
 
-	// BucketAccountTx maps accounts to their transactions.
+	// BucketAccountTx maps accounts to their transactions (any role: source or destination).
 	// Key: [ledgerName\x00][accountAddress\x00][txID(8B)]
 	// Value: (empty)
 	BucketAccountTx = []byte("atxm")
+
+	// BucketSourceAccountTx maps source accounts to their transactions.
+	// Key format is identical to BucketAccountTx.
+	BucketSourceAccountTx = []byte("satx")
+
+	// BucketDestAccountTx maps destination accounts to their transactions.
+	// Key format is identical to BucketAccountTx.
+	BucketDestAccountTx = []byte("datx")
 
 	// BucketProgress stores index builder progress.
 	// Key: "lastSeq"

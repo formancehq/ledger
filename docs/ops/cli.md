@@ -451,9 +451,11 @@ or_expr        := and_expr ("or" and_expr)*
 and_expr       := unary_expr ("and" unary_expr)*
 unary_expr     := "not" unary_expr | primary
 primary        := "(" expression ")" | condition
-condition      := metadata_cond | address_cond
+condition      := metadata_cond | address_cond | source_cond | destination_cond
 metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | "exists")
 address_cond   := "address" ("==" VALUE | "^=" VALUE)
+source_cond    := "source" ("==" VALUE | "^=" VALUE)
+destination_cond := "destination" ("==" VALUE | "^=" VALUE)
 ```
 
 **Conditions:**
@@ -463,8 +465,12 @@ address_cond   := "address" ("==" VALUE | "^=" VALUE)
 | `metadata[key] == value` | Metadata equality (auto-typed: `true`/`false` → bool, integer → int64, else → string) |
 | `metadata[key] != value` | Metadata inequality (desugars to `not (metadata[key] == value)`) |
 | `metadata[key] exists` | Metadata key existence check |
-| `address == value` | Exact address match |
-| `address ^= value` | Address prefix match |
+| `address == value` | Exact address match (any role: source or destination) |
+| `address ^= value` | Address prefix match (any role: source or destination) |
+| `source == value` | Exact source address match (transactions only) |
+| `source ^= value` | Source address prefix match (transactions only) |
+| `destination == value` | Exact destination address match (transactions only) |
+| `destination ^= value` | Destination address prefix match (transactions only) |
 
 **Boolean operators** (precedence: `not` > `and` > `or`):
 
@@ -507,6 +513,15 @@ address_cond   := "address" ("==" VALUE | "^=" VALUE)
 
 # Exact address
 --filter 'address == "users:alice"'
+
+# Source address (transactions only)
+--filter 'source ^= "merchants:"'
+
+# Destination address (transactions only)
+--filter 'destination == "users:alice"'
+
+# Source AND destination combined
+--filter 'source ^= "merchants:" and destination ^= "users:"'
 
 # AND (both must match)
 --filter "metadata[active] == true and address ^= users:"

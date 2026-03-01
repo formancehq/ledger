@@ -314,6 +314,18 @@ func compileExistsCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, c
 	return &SliceIterator{entities: entities}, nil
 }
 
+// addressRoleBucket returns the bbolt bucket for the given address role.
+func addressRoleBucket(role commonpb.AddressRole) []byte {
+	switch role {
+	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
+		return readstore.BucketSourceAccountTx
+	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
+		return readstore.BucketDestAccountTx
+	default:
+		return readstore.BucketAccountTx
+	}
+}
+
 // compileAddressMatch compiles an address filter.
 func compileAddressMatch(
 	tx *bolt.Tx,
@@ -323,29 +335,30 @@ func compileAddressMatch(
 	ledger string,
 	params map[string]string,
 ) (readstore.EntityIterator, error) {
+	role := am.Role
 	switch m := am.Match.(type) {
 	case *commonpb.AddressMatch_HardcodedPrefix:
-		return compileAddressPrefix(tx, kb, m.HardcodedPrefix, target, ledger)
+		return compileAddressPrefix(tx, kb, m.HardcodedPrefix, target, ledger, role)
 	case *commonpb.AddressMatch_HardcodedExact:
-		return compileAddressExact(tx, kb, m.HardcodedExact, target, ledger)
+		return compileAddressExact(tx, kb, m.HardcodedExact, target, ledger, role)
 	case *commonpb.AddressMatch_ParamPrefix:
 		value, ok := params[m.ParamPrefix]
 		if !ok {
 			return nil, fmt.Errorf("parameter %q not provided", m.ParamPrefix)
 		}
-		return compileAddressPrefix(tx, kb, value, target, ledger)
+		return compileAddressPrefix(tx, kb, value, target, ledger, role)
 	case *commonpb.AddressMatch_ParamExact:
 		value, ok := params[m.ParamExact]
 		if !ok {
 			return nil, fmt.Errorf("parameter %q not provided", m.ParamExact)
 		}
-		return compileAddressExact(tx, kb, value, target, ledger)
+		return compileAddressExact(tx, kb, value, target, ledger, role)
 	default:
 		return nil, fmt.Errorf("unknown address match type: %T", am.Match)
 	}
 }
 
-func compileAddressPrefix(tx *bolt.Tx, kb *readstore.KeyBuilder, addrPrefix string, target commonpb.QueryTarget, ledger string) (readstore.EntityIterator, error) {
+func compileAddressPrefix(tx *bolt.Tx, kb *readstore.KeyBuilder, addrPrefix string, target commonpb.QueryTarget, ledger string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
 	b := tx.Bucket(readstore.BucketExistence)
 	if b == nil {
 		return &SliceIterator{}, nil
@@ -361,10 +374,10 @@ func compileAddressPrefix(tx *bolt.Tx, kb *readstore.KeyBuilder, addrPrefix stri
 		return accountIter, nil
 	}
 	// TRANSACTIONS target: translate matching accounts → transaction IDs
-	return readstore.NewAddressTxIterator(tx, kb, ledger, accountIter), nil
+	return readstore.NewAddressTxIterator(tx, kb, ledger, accountIter, addressRoleBucket(role)), nil
 }
 
-func compileAddressExact(tx *bolt.Tx, kb *readstore.KeyBuilder, exactAddr string, target commonpb.QueryTarget, ledger string) (readstore.EntityIterator, error) {
+func compileAddressExact(tx *bolt.Tx, kb *readstore.KeyBuilder, exactAddr string, target commonpb.QueryTarget, ledger string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
 	b := tx.Bucket(readstore.BucketExistence)
 	if b == nil {
 		return &SliceIterator{}, nil
@@ -382,7 +395,7 @@ func compileAddressExact(tx *bolt.Tx, kb *readstore.KeyBuilder, exactAddr string
 	}
 	// TRANSACTIONS target: wrap single account in AddressTxIterator
 	singleIter := &SliceIterator{entities: [][]byte{[]byte(exactAddr)}}
-	return readstore.NewAddressTxIterator(tx, kb, ledger, singleIter), nil
+	return readstore.NewAddressTxIterator(tx, kb, ledger, singleIter, addressRoleBucket(role)), nil
 }
 
 // --- Helpers ---
