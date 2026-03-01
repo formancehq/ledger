@@ -1430,6 +1430,7 @@ ledgerctl cluster remove-node <node-id> [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--timeout` | `10s` | Request timeout |
+| `--force` | `false` | Bypass Raft consensus (unsafe, for permanently unreachable nodes) |
 
 **Behavior:**
 - The request is forwarded to the current leader if sent to a follower
@@ -1439,6 +1440,13 @@ ledgerctl cluster remove-node <node-id> [flags]
 - Works for both voters and learners
 - The removed node is not automatically shut down; the operator must stop it manually
 
+**Force mode (`--force`):**
+- Bypasses Raft consensus by directly applying the configuration change on the leader
+- Must be executed on the leader node (not forwarded)
+- Use only for permanently unreachable nodes where consensus-based removal would block
+- Useful when a downed node causes quorum loss (e.g., 3→1 scale-down with a crashed node)
+- The change is persisted to the WAL snapshot and survives leader restarts
+
 **Example:**
 
 ```bash
@@ -1447,6 +1455,9 @@ ledgerctl cluster remove-node 3
 
 # Remove with custom timeout
 ledgerctl cluster remove-node 4 --timeout 30s
+
+# Force-remove a crashed node (bypasses consensus)
+ledgerctl cluster remove-node 3 --force
 ```
 
 #### cluster disk-usage

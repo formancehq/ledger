@@ -49,7 +49,7 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 	t.Parallel()
 
 	brokers := sharedKafkaBrokers
-	const topic = "ledger-events"
+	topic := uniqueTopic("ledger-events")
 
 	store := newTestStore(t)
 	proposer := &directProposer{store: store}
@@ -136,7 +136,7 @@ func TestKafkaSinkIntegration_MessageKeyIsLedger(t *testing.T) {
 	t.Parallel()
 
 	brokers := sharedKafkaBrokers
-	const topic = "ledger-keys"
+	topic := uniqueTopic("ledger-keys")
 
 	store := newTestStore(t)
 	proposer := &directProposer{store: store}
@@ -197,7 +197,7 @@ func TestKafkaSinkIntegration_ProtobufFormat(t *testing.T) {
 	t.Parallel()
 
 	brokers := sharedKafkaBrokers
-	const topic = "ledger-proto"
+	topic := uniqueTopic("ledger-proto")
 
 	store := newTestStore(t)
 	proposer := &directProposer{store: store}

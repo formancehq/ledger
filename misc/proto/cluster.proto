@@ -165,6 +165,7 @@ message PromoteLearnerResponse {}
 
 message RemoveNodeRequest {
   uint64 node_id = 1;  // Numeric ID of the node to remove
+  bool force = 2;      // Bypass Raft consensus (unsafe, for permanently unreachable nodes)
 }
 
 message RemoveNodeResponse {}

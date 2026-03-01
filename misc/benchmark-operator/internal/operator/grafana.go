@@ -197,7 +197,7 @@ func (g *GrafanaClient) fetchDashboards(ctx context.Context) ([]dashboardInfo, e
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("grafana search failed: %s", resp.Status)
@@ -216,7 +216,7 @@ func (g *GrafanaClient) fetchDashboard(ctx context.Context, uid string) (map[str
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, "", fmt.Errorf("grafana dashboard fetch failed: %s", resp.Status)
@@ -247,7 +247,7 @@ func (g *GrafanaClient) resolveDatasourceUID(ctx context.Context) (string, error
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("grafana datasources fetch failed: %s", resp.Status)
@@ -278,7 +278,7 @@ func (g *GrafanaClient) fetchNodeValues(ctx context.Context, datasourceUID strin
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("series query failed: %s", resp.Status)
@@ -314,7 +314,7 @@ func (g *GrafanaClient) fetchNodeValuesViaQuery(ctx context.Context, datasourceU
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("query failed: %s", resp.Status)
@@ -370,7 +370,7 @@ func (g *GrafanaClient) createSnapshot(ctx context.Context, name string, dashboa
 	if err != nil {
 		return SnapshotInfo{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return SnapshotInfo{}, fmt.Errorf("snapshot create failed: %s", resp.Status)
@@ -456,7 +456,7 @@ func (g *GrafanaClient) DeleteSnapshot(ctx context.Context, deleteURL, deleteKey
 			lastErr = err
 			continue
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted || resp.StatusCode == http.StatusNoContent {
 			return nil
@@ -522,7 +522,7 @@ func (g *GrafanaClient) doRequest(ctx context.Context, method, path string, body
 		req.SetBasicAuth(g.cfg.GrafanaUser, g.cfg.GrafanaPassword)
 	}
 
-	if body != nil && len(body) > 0 {
+	if len(body) > 0 {
 		req.Header.Set("Content-Type", "application/json")
 	}
 

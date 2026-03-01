@@ -1525,3 +1525,185 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 
 	t.Log("Test passed: node recovered correctly after DefaultWAL snapshot failure, entries replayed correctly")
 }
+
+func TestForceRemoveNode_DisconnectedNode(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+
+	// Create a 3-node cluster
+	cluster := NewCluster(t, 3, DefaultClusterConfig())
+	_ = cluster.Start(ctx)
+
+	leaderID, err := cluster.WaitForLeader(5 * time.Second)
+	require.NoError(t, err)
+
+	leader := cluster.GetNodeByID(leaderID)
+	require.NotNil(t, leader)
+
+	// Create a ledger to confirm the cluster works
+	_, err = createLedger(ctx, leader.Node, "before-force-remove")
+	require.NoError(t, err)
+
+	// Pick a follower to disconnect and force-remove
+	followerID := uint64(1)
+	for _, n := range cluster.nodes {
+		if n.ID != leaderID {
+			followerID = n.ID
+			break
+		}
+	}
+
+	// Disconnect the follower from all peers
+	cluster.DisconnectNode(followerID)
+
+	// Force-remove the disconnected node
+	err = leader.Node.ForceRemoveNode(ctx, followerID)
+	require.NoError(t, err)
+
+	// Verify ConfState has 2 voters
+	require.Len(t, leader.Node.confState.Voters, 2)
+	for _, v := range leader.Node.confState.Voters {
+		require.NotEqual(t, followerID, v, "removed node should not be in voters")
+	}
+
+	// Verify the cluster still accepts proposals
+	_, err = createLedger(ctx, leader.Node, "after-force-remove")
+	require.NoError(t, err)
+
+	t.Log("Test passed: force-removed a disconnected node, cluster still operational")
+}
+
+func TestForceRemoveNode_QuorumLoss(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+
+	// Create a 3-node cluster
+	cluster := NewCluster(t, 3, DefaultClusterConfig())
+	_ = cluster.Start(ctx)
+
+	leaderID, err := cluster.WaitForLeader(5 * time.Second)
+	require.NoError(t, err)
+
+	leader := cluster.GetNodeByID(leaderID)
+	require.NotNil(t, leader)
+
+	// Identify the two followers
+	var followers []uint64
+	for _, n := range cluster.nodes {
+		if n.ID != leaderID {
+			followers = append(followers, n.ID)
+		}
+	}
+	require.Len(t, followers, 2)
+
+	// Disconnect both followers (quorum lost: leader alone can't commit)
+	cluster.DisconnectNode(followers[0])
+	cluster.DisconnectNode(followers[1])
+
+	// Force-remove follower 0 — this restores quorum to (2 voters, need 2, but
+	// only leader alive) — still not enough. Force-remove follower 1 too.
+	err = leader.Node.ForceRemoveNode(ctx, followers[0])
+	require.NoError(t, err)
+
+	err = leader.Node.ForceRemoveNode(ctx, followers[1])
+	require.NoError(t, err)
+
+	// Now we have a single-voter cluster — leader can propose alone
+	require.Len(t, leader.Node.confState.Voters, 1)
+	require.Equal(t, leaderID, leader.Node.confState.Voters[0])
+
+	// Verify the leader can still propose
+	_, err = createLedger(ctx, leader.Node, "after-quorum-restore")
+	require.NoError(t, err)
+
+	t.Log("Test passed: force-removed both followers, leader operates as single-node cluster")
+}
+
+func TestForceRemoveNode_Validations(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+
+	cluster := NewCluster(t, 3, DefaultClusterConfig())
+	_ = cluster.Start(ctx)
+
+	leaderID, err := cluster.WaitForLeader(5 * time.Second)
+	require.NoError(t, err)
+
+	leader := cluster.GetNodeByID(leaderID)
+	require.NotNil(t, leader)
+
+	// Find a follower
+	var followerNode *ClusterNode
+	for _, n := range cluster.nodes {
+		if n.ID != leaderID {
+			followerNode = n
+			break
+		}
+	}
+	require.NotNil(t, followerNode)
+
+	// ErrNotLeader: calling ForceRemoveNode on a follower
+	err = followerNode.Node.ForceRemoveNode(ctx, leaderID)
+	require.ErrorIs(t, err, ErrNotLeader)
+
+	// ErrCannotRemoveSelf: leader tries to force-remove itself
+	err = leader.Node.ForceRemoveNode(ctx, leaderID)
+	require.ErrorIs(t, err, ErrCannotRemoveSelf)
+
+	// ErrNodeNotInCluster: unknown node ID
+	err = leader.Node.ForceRemoveNode(ctx, 99)
+	require.ErrorIs(t, err, ErrNodeNotInCluster)
+
+	t.Log("Test passed: ForceRemoveNode validations work correctly")
+}
+
+func TestForceRemoveNode_PersistsConfState(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+
+	config := DefaultClusterConfig()
+	cluster := NewCluster(t, 3, config)
+	_ = cluster.Start(ctx)
+
+	leaderID, err := cluster.WaitForLeader(5 * time.Second)
+	require.NoError(t, err)
+
+	leader := cluster.GetNodeByID(leaderID)
+	require.NotNil(t, leader)
+
+	// Pick a follower to force-remove
+	var followerID uint64
+	for _, n := range cluster.nodes {
+		if n.ID != leaderID {
+			followerID = n.ID
+			break
+		}
+	}
+
+	// Disconnect and force-remove
+	cluster.DisconnectNode(followerID)
+	err = leader.Node.ForceRemoveNode(ctx, followerID)
+	require.NoError(t, err)
+	require.Len(t, leader.Node.confState.Voters, 2)
+
+	// Verify the ConfState was persisted to the WAL snapshot directly.
+	// Reading from the WAL proves the change survives restarts without
+	// needing to actually restart the node (which introduces election
+	// complexities with surviving followers).
+	snap, err := leader.WALInterceptor.Snapshot()
+	require.NoError(t, err)
+
+	for _, v := range snap.Metadata.ConfState.Voters {
+		require.NotEqual(t, followerID, v, "removed node should not be in WAL snapshot voters")
+	}
+	for _, l := range snap.Metadata.ConfState.Learners {
+		require.NotEqual(t, followerID, l, "removed node should not be in WAL snapshot learners")
+	}
+	require.Len(t, snap.Metadata.ConfState.Voters, 2)
+
+	t.Log("Test passed: ForceRemoveNode confstate persists in WAL snapshot")
+}

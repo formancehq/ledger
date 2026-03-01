@@ -992,6 +992,7 @@ func (*PromoteLearnerResponse) Descriptor() ([]byte, []int) {
 type RemoveNodeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	NodeId        uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"` // Numeric ID of the node to remove
+	Force         bool                   `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`                 // Bypass Raft consensus (unsafe, for permanently unreachable nodes)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1031,6 +1032,13 @@ func (x *RemoveNodeRequest) GetNodeId() uint64 {
 		return x.NodeId
 	}
 	return 0
+}
+
+func (x *RemoveNodeRequest) GetForce() bool {
+	if x != nil {
+		return x.Force
+	}
+	return false
 }
 
 type RemoveNodeResponse struct {
@@ -1272,9 +1280,10 @@ const file_cluster_proto_rawDesc = "" +
 	"\x12AddLearnerResponse\"0\n" +
 	"\x15PromoteLearnerRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\"\x18\n" +
-	"\x16PromoteLearnerResponse\",\n" +
+	"\x16PromoteLearnerResponse\"B\n" +
 	"\x11RemoveNodeRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\"\x14\n" +
+	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x14\n" +
+	"\x05force\x18\x02 \x01(\bR\x05force\"\x14\n" +
 	"\x12RemoveNodeResponse\"\x0f\n" +
 	"\rBackupRequest\"\xd5\x01\n" +
 	"\x0eBackupResponse\x12!\n" +

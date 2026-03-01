@@ -52,7 +52,7 @@ func TestReconcile_MinimalLedgerService(t *testing.T) {
 
 	// StatefulSet details
 	assert.Equal(t, int32(3), *sts.Spec.Replicas)
-	assert.Equal(t, appsv1.ParallelPodManagement, sts.Spec.PodManagementPolicy)
+	assert.Equal(t, appsv1.OrderedReadyPodManagement, sts.Spec.PodManagementPolicy)
 	assert.Equal(t, "basic-headless", sts.Spec.ServiceName)
 	requireOwnerRef(t, sts.OwnerReferences, "basic")
 
@@ -115,7 +115,7 @@ func TestReconcile_StatefulSetSpec(t *testing.T) {
 	}, "StatefulSet should be created")
 
 	assert.Equal(t, int32(5), *sts.Spec.Replicas)
-	assert.Equal(t, appsv1.ParallelPodManagement, sts.Spec.PodManagementPolicy)
+	assert.Equal(t, appsv1.OrderedReadyPodManagement, sts.Spec.PodManagementPolicy)
 	assert.Equal(t, "sts-spec-headless", sts.Spec.ServiceName)
 
 	// Retention policy defaults to Retain

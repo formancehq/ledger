@@ -40,7 +40,7 @@ type Operator struct {
 	config      Config
 	clientset   kubernetes.Interface
 	dynamic     dynamic.Interface
-	queue       workqueue.RateLimitingInterface
+	queue       workqueue.TypedRateLimitingInterface[any]
 	informer    cache.SharedIndexInformer
 	workerOnce  sync.Once
 	grafana     *GrafanaClient
@@ -58,7 +58,7 @@ func New(restConfig *rest.Config, clientset kubernetes.Interface, cfg Config) (*
 		return nil, fmt.Errorf("create dynamic client: %w", err)
 	}
 
-	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 
 	factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynamicClient, 30*time.Second, cfg.WatchNamespace, nil)
 	informer := factory.ForResource(testRunGVR).Informer()
@@ -221,7 +221,7 @@ func (o *Operator) handleDelete(ctx context.Context, obj *unstructured.Unstructu
 		log.Printf("cleanup failed for %s: %v", key, err)
 	}
 
-	patch := []byte(fmt.Sprintf(`{"metadata":{"finalizers":[]}}`))
+	patch := []byte(`{"metadata":{"finalizers":[]}}`)
 	_, err := o.dynamic.Resource(testRunGVR).Namespace(obj.GetNamespace()).Patch(ctx, obj.GetName(), types.MergePatchType, patch, metav1.PatchOptions{})
 	if err != nil {
 		return err

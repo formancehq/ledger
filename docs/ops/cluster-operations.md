@@ -448,6 +448,41 @@ kill <node-3-pid>
 ledgerctl cluster status
 ```
 
+### Force-Removing a Down Node
+
+When a node is permanently unreachable (crashed, OOMKilled, etc.) and removing it through normal Raft consensus would block due to quorum loss, use `--force` to bypass consensus:
+
+```bash
+# Starting state: 3 voters (nodes 1, 2, 3), node 1 is leader, node 3 is crashed
+
+# Normal remove would block because {1,2} can't reach quorum=2 after node 2 is also
+# down, but even removing node 3 normally requires it to be reachable for quorum.
+# Force-remove bypasses consensus entirely:
+ledgerctl cluster remove-node 3 --force
+
+# Now the cluster is {1, 2} with quorum=2, both alive → cluster operational
+ledgerctl cluster status
+```
+
+**How it works:**
+
+1. `ForceRemoveNode` directly calls `rawNode.ApplyConfChange()` on the leader, bypassing the Raft log
+2. The updated `ConfState` is persisted to the WAL snapshot immediately
+3. The observer emits a `ConfChangeEvent` so the transport and service pool clean up the removed peer
+4. The reduced voter set immediately recalculates quorum, allowing the leader to resume normal operations
+
+**When to use:**
+
+- A node is in `CrashLoopBackOff`, `OOMKilled`, or `Failed` state and won't recover before the scale-down
+- The Kubernetes operator automatically uses `--force` for pods it detects as crashed during scale-down
+- Removing the node through consensus would time out because the downed node prevents quorum
+
+**Safety considerations:**
+
+- Only use for nodes that will **never rejoin** with their old state (e.g., PVCs will be deleted)
+- The force-removed node is not notified — if it somehow recovers, it will have stale cluster membership
+- Cannot force-remove the leader itself
+
 ## Related Documentation
 
 - [Raft Consensus](../dev/architecture/raft-consensus.md) - Raft protocol details, elections, replication

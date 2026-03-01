@@ -1678,6 +1678,69 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 	})
 }
 
+// ForceRemoveNode removes a node from the Raft cluster by directly applying a
+// ConfChange without going through Raft consensus. This bypasses the log
+// replication path entirely, so it works even when quorum is lost (e.g. the
+// node being removed is down and the cluster can't reach majority).
+//
+// WARNING: This is unsafe for normal operations. Only use it for permanently
+// unreachable nodes where consensus-based removal would block indefinitely.
+// The caller must ensure the removed node will never rejoin with stale state.
+//
+// Must be called on the leader.
+func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
+	node.confChangeMu.Lock()
+	defer node.confChangeMu.Unlock()
+
+	return node.execClusterCommand(ctx, func() error {
+		status := node.rawNode.Status()
+		if status.RaftState != raft.StateLeader {
+			return ErrNotLeader
+		}
+
+		if nodeID == node.config.NodeID {
+			return ErrCannotRemoveSelf
+		}
+
+		if _, ok := status.Progress[nodeID]; !ok {
+			return ErrNodeNotInCluster
+		}
+
+		// Apply the ConfChange directly (bypasses consensus).
+		cc := raftpb.ConfChangeV2{
+			Changes: []raftpb.ConfChangeSingle{{
+				Type:   raftpb.ConfChangeRemoveNode,
+				NodeID: nodeID,
+			}},
+		}
+		node.confState = node.rawNode.ApplyConfChange(cc)
+
+		node.RemovePeerAddress(nodeID)
+
+		// Persist the updated ConfState in the WAL snapshot so that restarts
+		// see the correct voter set.
+		if err := node.wal.UpdateSnapshotConfState(node.confState); err != nil {
+			return fmt.Errorf("persisting confstate after force-remove: %w", err)
+		}
+
+		node.logger.WithFields(map[string]any{
+			"removedNodeID": nodeID,
+			"voters":        node.confState.Voters,
+			"learners":      node.confState.Learners,
+		}).Infof("Force-removed node (bypassed consensus)")
+
+		// Notify observers so bootstrap can clean up transport/service pool.
+		if node.observer != nil {
+			node.observer.Emit(ConfChangeEvent{
+				NodeID:     nodeID,
+				ChangeType: raftpb.ConfChangeRemoveNode,
+			})
+		}
+
+		return nil
+	})
+}
+
 // checkAndPromoteLearners checks all learner nodes and promotes those that are
 // caught up (within AutoPromoteThreshold of the commit index).
 // Must be called from the orchestrate loop (rawNode is not thread-safe).

@@ -86,7 +86,7 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 	t.Parallel()
 
 	dsn := sharedClickHouseDSN
-	const table = "ledger_events"
+	table := uniqueTopic("ledger_events")
 
 	store := newTestStore(t)
 	proposer := &directProposer{store: store}
@@ -185,7 +185,7 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 	t.Parallel()
 
 	dsn := sharedClickHouseDSN
-	const table = "ledger_events_typed"
+	table := uniqueTopic("ledger_events_typed")
 
 	store := newTestStore(t)
 	proposer := &directProposer{store: store}
@@ -282,7 +282,7 @@ func TestClickHouseSinkIntegration_AutoCreateTable(t *testing.T) {
 	t.Parallel()
 
 	dsn := sharedClickHouseDSN
-	const table = "auto_created_table"
+	table := uniqueTopic("auto_created_table")
 
 	sink, err := events.NewClickHouseSink(context.Background(), events.ClickHouseSinkConfig{
 		DSN:   dsn,

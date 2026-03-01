@@ -21,6 +21,7 @@ func NewRemoveNodeCommand() *cobra.Command {
 	}
 
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
+	cmd.Flags().Bool("force", false, "Bypass Raft consensus (unsafe, for permanently unreachable nodes)")
 
 	return cmd
 }
@@ -35,6 +36,8 @@ func runRemoveNode(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("node ID must be non-zero")
 	}
 
+	forceFlag, _ := cmd.Flags().GetBool("force")
+
 	client, conn, err := cmdutil.GetClusterClient(cmd)
 	if err != nil {
 		return err
@@ -46,13 +49,19 @@ func runRemoveNode(cmd *cobra.Command, args []string) error {
 
 	_, err = client.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
 		NodeId: nodeID,
+		Force:  forceFlag,
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to remove node", err)
 	}
 
-	pterm.Success.Printfln("Node %s removed from cluster",
+	suffix := ""
+	if forceFlag {
+		suffix = " (force, bypassed consensus)"
+	}
+	pterm.Success.Printfln("Node %s removed from cluster%s",
 		pterm.Green(fmt.Sprintf("%d", nodeID)),
+		suffix,
 	)
 
 	return nil

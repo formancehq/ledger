@@ -66,6 +66,7 @@
             protoc-gen-go
             protoc-gen-go-grpc
             golangci-lint
+            setup-envtest
           ];
           otherPackages = [
             pkgs.nur.repos.goreleaser.goreleaser-pro
@@ -74,6 +75,17 @@
         {
           default = pkgs.mkShell {
             packages = stablePackages ++ unstablePackages ++ otherPackages;
+
+            shellHook = ''
+              # Auto-configure envtest assets for operator integration tests.
+              # setup-envtest downloads etcd + kube-apiserver on first run and caches them.
+              if [ -z "$KUBEBUILDER_ASSETS" ]; then
+                KUBEBUILDER_ASSETS="$(setup-envtest use -p path 2>/dev/null || true)"
+                if [ -n "$KUBEBUILDER_ASSETS" ]; then
+                  export KUBEBUILDER_ASSETS
+                fi
+              fi
+            '';
           };
         }
       );

@@ -436,6 +436,20 @@ func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clust
 		return nil, fmt.Errorf("node_id must be non-zero")
 	}
 
+	// Force-remove bypasses consensus and must run on the leader directly.
+	// Do NOT forward: the operator already exec's into the leader pod.
+	if req.Force {
+		if !impl.node.IsLeader() {
+			return nil, fmt.Errorf("force-remove must be executed on the leader node")
+		}
+
+		if err := impl.node.ForceRemoveNode(ctx, req.NodeId); err != nil {
+			return nil, fmt.Errorf("force-removing node: %w", err)
+		}
+
+		return &clusterpb.RemoveNodeResponse{}, nil
+	}
+
 	// Forward to leader if not leader
 	if !impl.node.IsLeader() {
 		leaderID := impl.node.GetLeader()

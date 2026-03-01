@@ -59,26 +59,26 @@ func createTestStream(t *testing.T, js jetstream.JetStream, streamName, topicPre
 }
 
 // consumeEvents reads up to expectedCount events from a JetStream consumer within a timeout.
+// It uses a push-based Messages() iterator instead of polling Fetch() to avoid missed messages
+// under system load.
 func consumeEvents(t *testing.T, cons jetstream.Consumer, expectedCount int, timeout time.Duration) []jetstream.Msg {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+
+	iter, err := cons.Messages()
+	require.NoError(t, err)
+
+	// Stop the iterator after timeout to unblock Next().
+	timer := time.AfterFunc(timeout, func() { iter.Stop() })
+	defer timer.Stop()
+	defer iter.Stop()
 
 	var msgs []jetstream.Msg
 	for len(msgs) < expectedCount {
-		batch, err := cons.Fetch(expectedCount-len(msgs), jetstream.FetchMaxWait(500*time.Millisecond))
+		msg, err := iter.Next()
 		if err != nil {
-			if ctx.Err() != nil {
-				break
-			}
-			continue
-		}
-		for msg := range batch.Messages() {
-			msgs = append(msgs, msg)
-		}
-		if ctx.Err() != nil {
 			break
 		}
+		msgs = append(msgs, msg)
 	}
 
 	require.Len(t, msgs, expectedCount, "expected %d events from NATS", expectedCount)

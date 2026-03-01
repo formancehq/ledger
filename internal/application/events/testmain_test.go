@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync/atomic"
 	"testing"
 
 	chmodule "github.com/testcontainers/testcontainers-go/modules/clickhouse"
@@ -13,7 +14,15 @@ import (
 var (
 	sharedKafkaBrokers  []string
 	sharedClickHouseDSN string
+	topicCounter        atomic.Int64
 )
+
+// uniqueTopic returns a unique topic name for each test invocation,
+// preventing cross-invocation message contamination when tests run
+// in parallel or with -count > 1.
+func uniqueTopic(prefix string) string {
+	return fmt.Sprintf("%s_%d", prefix, topicCounter.Add(1))
+}
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()

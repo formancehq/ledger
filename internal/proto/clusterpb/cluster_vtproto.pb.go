@@ -341,6 +341,7 @@ func (m *RemoveNodeRequest) CloneVT() *RemoveNodeRequest {
 	}
 	r := new(RemoveNodeRequest)
 	r.NodeId = m.NodeId
+	r.Force = m.Force
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -848,6 +849,9 @@ func (this *RemoveNodeRequest) EqualVT(that *RemoveNodeRequest) bool {
 		return false
 	}
 	if this.NodeId != that.NodeId {
+		return false
+	}
+	if this.Force != that.Force {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -1809,6 +1813,16 @@ func (m *RemoveNodeRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Force {
+		i--
+		if m.Force {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x10
+	}
 	if m.NodeId != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NodeId))
 		i--
@@ -2293,6 +2307,9 @@ func (m *RemoveNodeRequest) SizeVT() (n int) {
 	_ = l
 	if m.NodeId != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.NodeId))
+	}
+	if m.Force {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -4425,6 +4442,26 @@ func (m *RemoveNodeRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Force", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Force = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

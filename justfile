@@ -1,13 +1,28 @@
 set dotenv-load
 
+# Go sub-modules relative to project root
+go_submodules := "misc/operator misc/benchmark-operator misc/devenv"
+
 pre-commit: generate generate-proto tidy lint
 pc: pre-commit
 
 lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "==> golangci-lint (.)"
     golangci-lint run --fix --build-tags it,local --timeout 5m
+    for dir in {{go_submodules}}; do
+        echo "==> golangci-lint ($dir)"
+        (cd "$dir" && golangci-lint run --fix --timeout 5m)
+    done
 
 tidy:
-    go mod tidy
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in . {{go_submodules}}; do
+        echo "==> go mod tidy ($dir)"
+        (cd "$dir" && go mod tidy)
+    done
 
 # Build the server application
 build:
@@ -30,9 +45,29 @@ install-client:
     #todo: make optional or configurable or whatever
     ledgerctl completion zsh > ~/.oh-my-zsh/custom/completions/_ledgerctl
 
-# Run tests
+# Run unit tests for the root module
 test:
-    go test ./... -tags it,e2e -timeout 20m
+    go test ./... -timeout 20m
+
+# Run all tests across all modules (unit + integration + e2e)
+test-all: test test-submodules test-integration test-e2e
+
+# Run unit tests for all sub-modules
+test-submodules:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in {{go_submodules}}; do
+        echo "==> go test ($dir)"
+        (cd "$dir" && go test ./...)
+    done
+
+# Run integration tests (operator envtest, requires KUBEBUILDER_ASSETS)
+test-integration:
+    cd misc/operator && go test -tags integration ./internal/controller/... -timeout 2m
+
+# Run end-to-end tests
+test-e2e:
+    go test ./... -tags e2e -timeout 20m
 
 # Release (official, triggered by tag)
 release:
@@ -51,9 +86,17 @@ clean-benchmarks-data:
     rm -rf build
 
 generate:
-    rm $(find ./internal -name '*_generated_test.go') || true
-    rm $(find ./internal -name '*_generated.go') || true
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "==> go generate (.)"
+    rm $(find ./internal -name '*_generated_test.go') 2>/dev/null || true
+    rm $(find ./internal -name '*_generated.go') 2>/dev/null || true
     go generate ./...
+    echo "==> controller-gen (misc/operator)"
+    cd misc/operator && go run sigs.k8s.io/controller-tools/cmd/controller-gen@latest \
+        object:headerFile="" paths=./api/... \
+        crd output:crd:dir=config/crd/bases \
+        rbac:roleName=ledger-operator output:rbac:dir=config/rbac paths=./...
 
 # Generate gRPC code from protobuf files
 generate-proto:

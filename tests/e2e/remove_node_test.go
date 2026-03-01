@@ -154,6 +154,178 @@ var _ = Describe("Remove node", func() {
 		})
 	})
 
+	Context("When force-removing a stopped follower", Ordered, func() {
+		var (
+			ctx      context.Context
+			servers  []*serviceWithClient
+			leaderID *uint64
+		)
+
+		BeforeAll(func() {
+			ctx, servers, _, leaderID = setupMultiNodeCluster(
+				countInstances, testRaftBasePort, testServiceBasePort, testHTTPBasePort, testGatewayBasePort,
+			)
+		})
+
+		AfterAll(func() {
+			stopServers(ctx, servers)
+		})
+
+		It("should force-remove a stopped follower from the cluster", func() {
+			lid := *leaderID
+			// Pick a follower to stop and force-remove
+			followerIdx := int(((lid) % countInstances))
+			followerID := uint64(servers[followerIdx].nodeID)
+
+			// Stop the follower
+			stopNode(ctx, servers[followerIdx])
+
+			// Force-remove the stopped follower via the leader
+			_, err := servers[lid-1].clusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+				NodeId: followerID,
+				Force:  true,
+			})
+			Expect(err).To(Succeed())
+
+			waitForNodeRemoved(servers[lid-1].clusterClient, lid, uint32(followerID))
+		})
+
+		It("should continue to accept transactions with remaining 2 nodes", func() {
+			lid := *leaderID
+			ledgerName := "force-remove-test"
+
+			_, err := servers[lid-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			for i := range 3 {
+				_, err := servers[lid-1].client.Apply(ctx, &servicepb.ApplyRequest{
+					Requests: []*servicepb.Request{
+						createTransactionAction(ledgerName, []*commonpb.Posting{
+							newPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
+						}, nil, nil),
+					},
+				})
+				Expect(err).To(Succeed())
+			}
+		})
+	})
+
+	Context("When force-removing causes quorum restoration", Ordered, func() {
+		var (
+			ctx      context.Context
+			servers  []*serviceWithClient
+			leaderID *uint64
+		)
+
+		BeforeAll(func() {
+			ctx, servers, _, leaderID = setupMultiNodeCluster(
+				countInstances, testRaftBasePort, testServiceBasePort, testHTTPBasePort, testGatewayBasePort,
+			)
+		})
+
+		AfterAll(func() {
+			stopServers(ctx, servers)
+		})
+
+		It("should restore quorum by force-removing both stopped followers", func() {
+			lid := *leaderID
+
+			// Stop both followers
+			var followerIDs []uint64
+			for _, srv := range servers {
+				if uint64(srv.nodeID) != lid {
+					followerIDs = append(followerIDs, uint64(srv.nodeID))
+					stopNode(ctx, srv)
+				}
+			}
+			Expect(followerIDs).To(HaveLen(2))
+
+			// Force-remove both stopped followers
+			for _, fid := range followerIDs {
+				_, err := servers[lid-1].clusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+					NodeId: fid,
+					Force:  true,
+				})
+				Expect(err).To(Succeed())
+			}
+
+			// Verify leader can operate as single-node cluster
+			Eventually(func(g Gomega) {
+				state, err := servers[lid-1].clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+					NodeId: uint32(lid),
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(state.Nodes).To(HaveLen(1))
+			}).Should(Succeed())
+		})
+
+		It("should accept writes as a single-node cluster", func() {
+			lid := *leaderID
+			ledgerName := "quorum-restore-test"
+
+			_, err := servers[lid-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			_, err = servers[lid-1].client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "alice", big.NewInt(500), "USD"),
+					}, nil, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+	})
+
+	Context("ForceRemoveNode edge cases", Ordered, func() {
+		var (
+			ctx      context.Context
+			servers  []*serviceWithClient
+			leaderID *uint64
+		)
+
+		BeforeAll(func() {
+			ctx, servers, _, leaderID = setupMultiNodeCluster(
+				countInstances, testRaftBasePort, testServiceBasePort, testHTTPBasePort, testGatewayBasePort,
+			)
+		})
+
+		AfterAll(func() {
+			stopServers(ctx, servers)
+		})
+
+		It("should reject force-removing the leader itself", func() {
+			lid := *leaderID
+			_, err := servers[lid-1].clusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+				NodeId: lid,
+				Force:  true,
+			})
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("should reject force-removing a non-existent node", func() {
+			lid := *leaderID
+			_, err := servers[lid-1].clusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+				NodeId: 99,
+				Force:  true,
+			})
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("should reject force-removing with zero node ID", func() {
+			lid := *leaderID
+			_, err := servers[lid-1].clusterClient.RemoveNode(ctx, &clusterpb.RemoveNodeRequest{
+				NodeId: 0,
+				Force:  true,
+			})
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
 	Context("RemoveNode edge cases", Ordered, func() {
 		var (
 			ctx      context.Context

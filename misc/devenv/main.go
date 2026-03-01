@@ -147,7 +147,7 @@ func main() {
 
 		// Generate build version from git commit + timestamp
 		buildVersion := getBuildVersion()
-		ctx.Log.Info(fmt.Sprintf("Build version: %s", buildVersion), nil)
+		_ = ctx.Log.Info(fmt.Sprintf("Build version: %s", buildVersion), nil)
 		
 		imageTag := cfg.Get("imageTag")
 		if imageTag == "" {
