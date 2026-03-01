@@ -42,6 +42,21 @@ func (m *MockController) EXPECT() *MockControllerMockRecorder {
 	return m.recorder
 }
 
+// AnalyzeAccounts mocks base method.
+func (m *MockController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AnalyzeAccounts", ctx, ledgerName, variableThreshold)
+	ret0, _ := ret[0].(*servicepb.AnalyzeAccountsResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AnalyzeAccounts indicates an expected call of AnalyzeAccounts.
+func (mr *MockControllerMockRecorder) AnalyzeAccounts(ctx, ledgerName, variableThreshold any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AnalyzeAccounts", reflect.TypeOf((*MockController)(nil).AnalyzeAccounts), ctx, ledgerName, variableThreshold)
+}
+
 // Apply mocks base method.
 func (m *MockController) Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 	m.ctrl.T.Helper()

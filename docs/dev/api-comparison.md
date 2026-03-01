@@ -40,6 +40,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | List accounts | ✅ | ✅ | Supports prefix filter and cursor pagination |
 | Get account balances | ⚠️ | ✅ | Included in account volumes |
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
+| Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |
 | **Logs** |
 | List logs | ✅ | ✅ | gRPC stream |
 | **Import/Export** |
@@ -434,6 +435,7 @@ Read endpoints comparison with the original ledger:
 | `POST /{ledgerName}/promote` | ✅ | ❌ | Promote mirror ledger to normal mode |
 | `GET /` | ✅ | ✅ | List all ledgers |
 | `GET /{ledgerName}/metadata-schema` | ✅ | ❌ | Get metadata schema status |
+| `GET /{ledgerName}/analyze-accounts` | ✅ | ❌ | Analyze accounts and suggest Chart of Accounts |
 | `PUT /{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Set metadata field type |
 | `DELETE /{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Remove metadata field type |
 
@@ -493,6 +495,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListLogs` | Stream system logs (optional ledger filter) | ✅ |
 | `ListSigningKeys` | Stream all registered signing keys | ✅ |
 | `Discovery` | Return server capabilities (response signing config) | ✅ |
+| `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
 
 ### Apply Method
 

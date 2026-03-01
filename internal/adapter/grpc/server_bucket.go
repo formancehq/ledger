@@ -379,6 +379,18 @@ func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context
 	return impl.ctrl.GetMetadataSchemaStatus(ctx, req.Ledger)
 }
 
+func (impl *BucketServiceServerImpl) AnalyzeAccounts(ctx context.Context, req *servicepb.AnalyzeAccountsRequest) (*servicepb.AnalyzeAccountsResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
+	if req.Ledger == "" {
+		return nil, fmt.Errorf("ledger name is required")
+	}
+
+	return impl.ctrl.AnalyzeAccounts(ctx, req.Ledger, req.VariableThreshold)
+}
+
 func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {
 	resp := &servicepb.DiscoveryResponse{}
 	if impl.responseSigner != nil {

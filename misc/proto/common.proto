@@ -607,3 +607,29 @@ message IdempotencyKeyValue {
 message TransactionReferenceValue {
   uint64 transaction_id = 1;
 }
+
+// ============================================================================
+// Chart of Accounts
+// ============================================================================
+
+// ChartOfAccounts represents a discovered or declared chart of accounts.
+// Each segment describes one level of the colon-separated address hierarchy.
+message ChartOfAccounts {
+  repeated ChartSegment segments = 1;
+}
+
+// ChartSegment describes one level in the account address hierarchy.
+message ChartSegment {
+  // fixed_value is set when this segment has a constant value (e.g. "bank", "users").
+  string fixed_value = 1;
+  // variable is set when this segment accepts variable values (e.g. user IDs).
+  ChartVariable variable = 2;
+  // children are the next-level segments that can follow this one.
+  repeated ChartSegment children = 3;
+}
+
+// ChartVariable describes a variable segment in the chart of accounts.
+message ChartVariable {
+  string name = 1;             // Human-readable name (e.g. "userId", "walletId")
+  string inferred_pattern = 2; // Regex pattern inferred from observed values (e.g. UUID regex)
+}

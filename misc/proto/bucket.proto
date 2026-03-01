@@ -53,6 +53,8 @@ service BucketService {
   rpc Discovery(DiscoveryRequest) returns (DiscoveryResponse);
   // GetMetadataSchemaStatus returns the conversion status for all declared metadata fields
   rpc GetMetadataSchemaStatus(GetMetadataSchemaStatusRequest) returns (GetMetadataSchemaStatusResponse);
+  // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts
+  rpc AnalyzeAccounts(AnalyzeAccountsRequest) returns (AnalyzeAccountsResponse);
 }
 
 // ============================================================================
@@ -517,4 +519,46 @@ message MetadataFieldStatus {
   common.MetadataConversionStatus status = 2;
   uint64 total_keys = 3;
   uint64 converted_keys = 4;
+}
+
+// ============================================================================
+// Account Analysis Messages
+// ============================================================================
+
+message AnalyzeAccountsRequest {
+  string ledger = 1;
+  // variable_threshold is the max distinct children before a trie node is classified
+  // as variable. 0 uses the default (10).
+  uint32 variable_threshold = 2;
+}
+
+message AnalyzeAccountsResponse {
+  common.ChartOfAccounts suggested_chart = 1;
+  repeated AccountPattern patterns = 2;
+  uint64 total_accounts = 3;
+}
+
+// AccountPattern describes a discovered address pattern and its statistics.
+message AccountPattern {
+  string pattern = 1;             // Human-readable pattern (e.g. "users:{userId}")
+  uint64 account_count = 2;       // Number of accounts matching this pattern
+  repeated string assets = 3;     // Distinct assets observed for matching accounts
+  repeated string metadata_keys = 4; // Distinct metadata keys observed
+  repeated PatternSegment segments = 5;
+}
+
+// PatternSegment describes one level of a discovered pattern.
+message PatternSegment {
+  uint32 position = 1;
+  PatternSegmentType type = 2;
+  string fixed_value = 3;        // Set when type=FIXED
+  string variable_name = 4;      // Set when type=VARIABLE
+  string inferred_pattern = 5;   // Regex for variable segments
+  uint64 unique_values = 6;      // Count of distinct values for this segment
+  repeated string examples = 7;  // Up to 5 example values
+}
+
+enum PatternSegmentType {
+  PATTERN_SEGMENT_TYPE_FIXED = 0;
+  PATTERN_SEGMENT_TYPE_VARIABLE = 1;
 }

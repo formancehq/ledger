@@ -529,6 +529,47 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /{ledgerName}/analyze-accounts:
+    get:
+      summary: Analyze accounts and suggest a Chart of Accounts
+      description: |
+        Scans all accounts in a ledger, discovers address patterns, and returns a
+        suggested Chart of Accounts. Useful after a mirror import to understand
+        account structure. Requires `ledger:read` scope.
+      operationId: analyzeAccounts
+      tags:
+        - Accounts
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: variableThreshold
+          in: query
+          description: Max distinct children before classifying as variable (0 = default 10)
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 0
+      responses:
+        '200':
+          description: Analysis completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeAccountsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /{ledgerName}/metadata-schema/{targetType}/{key}:
     put:
       summary: Set metadata field type
@@ -1632,6 +1673,91 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/LedgerInfo'
+
+    AnalyzeAccountsResponse:
+      type: object
+      properties:
+        suggestedChart:
+          $ref: '#/components/schemas/ChartOfAccounts'
+        patterns:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountPattern'
+        totalAccounts:
+          type: integer
+          format: int64
+
+    ChartOfAccounts:
+      type: object
+      properties:
+        segments:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChartSegment'
+
+    ChartSegment:
+      type: object
+      properties:
+        fixedValue:
+          type: string
+        variable:
+          $ref: '#/components/schemas/ChartVariable'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChartSegment'
+
+    ChartVariable:
+      type: object
+      properties:
+        name:
+          type: string
+        inferredPattern:
+          type: string
+
+    AccountPattern:
+      type: object
+      properties:
+        pattern:
+          type: string
+        accountCount:
+          type: integer
+          format: int64
+        assets:
+          type: array
+          items:
+            type: string
+        metadataKeys:
+          type: array
+          items:
+            type: string
+        segments:
+          type: array
+          items:
+            $ref: '#/components/schemas/PatternSegment'
+
+    PatternSegment:
+      type: object
+      properties:
+        position:
+          type: integer
+          format: int32
+        type:
+          type: string
+          enum: [fixed, variable]
+        fixedValue:
+          type: string
+        variableName:
+          type: string
+        inferredPattern:
+          type: string
+        uniqueValues:
+          type: integer
+          format: int64
+        examples:
+          type: array
+          items:
+            type: string
 
     ErrorResponse:
       type: object
