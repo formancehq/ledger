@@ -2,11 +2,13 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/stretchr/testify/require"
 )
 
@@ -147,7 +149,13 @@ func TestReadIndexContextCancellation(t *testing.T) {
 
 	err = follower.Node.ReadIndexAndWait(shortCtx)
 	require.Error(t, err)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+	// The disconnected follower may either:
+	// - lose track of the leader (heartbeat timeout) → ErrNoLeader
+	// - still know the leader but fail to complete ReadIndex → DeadlineExceeded
+	require.True(t,
+		errors.Is(err, context.DeadlineExceeded) || errors.Is(err, commonpb.ErrNoLeader),
+		"expected DeadlineExceeded or ErrNoLeader, got: %v", err,
+	)
 
 	// Reconnect for clean shutdown
 	cluster.ReconnectNode(follower.ID)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -75,6 +76,10 @@ func (node *Node) ReadIndex(ctx context.Context) (uint64, error) {
 func (node *Node) ReadIndexAndWait(ctx context.Context) error {
 	if node.isSyncing() {
 		return ErrNodeSyncing
+	}
+
+	if node.GetLeader() == 0 {
+		return commonpb.ErrNoLeader
 	}
 
 	start := time.Now()

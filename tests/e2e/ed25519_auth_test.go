@@ -402,17 +402,22 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 		client = servicepb.NewBucketServiceClient(grpcConn)
 		clusterClient = clusterpb.NewClusterServiceClient(grpcConn)
 
-		// Wait for leader election using read-only scope (GetLedger is a read op)
+		// Wait for leader election using a read that goes through Raft.
+		// GetLedger calls ReadIndexAndWait, which returns ErrNoLeader (Unavailable)
+		// immediately when no leader is elected yet. We expect NotFound once a
+		// leader is available (the ledger doesn't exist, but the read succeeds).
 		Eventually(func(g Gomega) {
 			token, err := signEdDSAJWT(edPrivKey, keyID, makeEdDSAClaims("ledger:read"))
 			g.Expect(err).To(Succeed())
 			authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 
-			// Discovery is unauthenticated, use it to confirm server is up
-			resp, err := client.Discovery(authCtx, &servicepb.DiscoveryRequest{})
-			g.Expect(err).To(Succeed())
-			g.Expect(resp).NotTo(BeNil())
-		}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+			_, err = client.GetLedger(authCtx, &servicepb.GetLedgerRequest{Ledger: "wait-for-leader"})
+			if err != nil {
+				st, ok := status.FromError(err)
+				g.Expect(ok).To(BeTrue())
+				g.Expect(st.Code()).To(Equal(codes.NotFound))
+			}
+		}).Within(30 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 	})
 
 	Context("with key restricted to read-only scopes", func() {
