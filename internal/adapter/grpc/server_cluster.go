@@ -314,11 +314,12 @@ func (impl *ClusterServiceServerImpl) backupLocal(stream ggrpc.ServerStreamingSe
 
 	return StreamDirAsTar(backupPath, 0, func(chunk TarStreamChunk) error {
 		return stream.Send(&clusterpb.BackupResponse{
-			ChunkOffset:   chunk.ChunkOffset,
-			Data:          chunk.Data,
-			Eof:           chunk.IsEOF,
-			ContentSha256: chunk.ContentSHA256,
-			ContentSize:   chunk.ContentSize,
+			ChunkOffset:        chunk.ChunkOffset,
+			Data:               chunk.Data,
+			Eof:                chunk.IsEOF,
+			ContentSha256:      chunk.ContentSHA256,
+			ContentSize:        chunk.ContentSize,
+			EstimatedTotalSize: chunk.EstimatedTotalSize,
 		})
 	})
 }

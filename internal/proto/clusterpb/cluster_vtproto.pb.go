@@ -393,6 +393,7 @@ func (m *BackupResponse) CloneVT() *BackupResponse {
 	r.Eof = m.Eof
 	r.ContentSha256 = m.ContentSha256
 	r.ContentSize = m.ContentSize
+	r.EstimatedTotalSize = m.EstimatedTotalSize
 	if rhs := m.Data; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -910,6 +911,9 @@ func (this *BackupResponse) EqualVT(that *BackupResponse) bool {
 		return false
 	}
 	if this.ContentSize != that.ContentSize {
+		return false
+	}
+	if this.EstimatedTotalSize != that.EstimatedTotalSize {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -1909,6 +1913,11 @@ func (m *BackupResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.EstimatedTotalSize != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.EstimatedTotalSize))
+		i--
+		dAtA[i] = 0x30
+	}
 	if m.ContentSize != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ContentSize))
 		i--
@@ -2331,6 +2340,9 @@ func (m *BackupResponse) SizeVT() (n int) {
 	}
 	if m.ContentSize != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.ContentSize))
+	}
+	if m.EstimatedTotalSize != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.EstimatedTotalSize))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -4686,6 +4698,25 @@ func (m *BackupResponse) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.ContentSize |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field EstimatedTotalSize", wireType)
+			}
+			m.EstimatedTotalSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.EstimatedTotalSize |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

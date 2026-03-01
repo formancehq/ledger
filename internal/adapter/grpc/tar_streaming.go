@@ -16,17 +16,50 @@ const (
 
 // TarStreamChunk represents a single chunk of a tar archive being streamed.
 type TarStreamChunk struct {
-	Data          []byte
-	ChunkOffset   uint64
-	IsFirst       bool
-	IsEOF         bool
-	ContentSHA256 string
-	ContentSize   uint64
+	Data               []byte
+	ChunkOffset        uint64
+	IsFirst            bool
+	IsEOF              bool
+	ContentSHA256      string
+	ContentSize        uint64
+	EstimatedTotalSize uint64 // Set on first chunk; estimated tar archive size
+}
+
+// estimateTarSize walks dirPath and returns the estimated tar archive size.
+// Each entry has a 512-byte header; file data is padded to 512-byte boundaries;
+// the archive ends with two 512-byte zero blocks.
+func estimateTarSize(dirPath string) (uint64, error) {
+	var total uint64
+	err := filepath.Walk(dirPath, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		total += 512 // tar header
+		if !info.IsDir() {
+			size := uint64(info.Size())
+			total += size
+			if rem := size % 512; rem != 0 {
+				total += 512 - rem // padding to 512-byte boundary
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	total += 1024 // end-of-archive marker (two zero blocks)
+	return total, nil
 }
 
 // StreamDirAsTar creates a tar archive of dirPath and streams it in chunks via sendChunk.
 // If offset > 0, bytes before that offset are skipped (for resumption).
 func StreamDirAsTar(dirPath string, offset uint64, sendChunk func(TarStreamChunk) error) error {
+	// Pre-compute estimated tar size for progress reporting
+	estimatedSize, err := estimateTarSize(dirPath)
+	if err != nil {
+		return err
+	}
+
 	// Create a pipe to stream tar data
 	pr, pw := io.Pipe()
 
@@ -117,6 +150,9 @@ func StreamDirAsTar(dirPath string, offset uint64, sendChunk func(TarStreamChunk
 				Data:        buf[:n],
 				ChunkOffset: currentOffset,
 				IsFirst:     !headerSent,
+			}
+			if !headerSent {
+				chunk.EstimatedTotalSize = estimatedSize
 			}
 			headerSent = true
 
