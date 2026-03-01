@@ -5403,6 +5403,169 @@ func (x *TransactionReferenceValue) GetTransactionId() uint64 {
 	return 0
 }
 
+// ChartOfAccounts represents a discovered or declared chart of accounts.
+// Each segment describes one level of the colon-separated address hierarchy.
+type ChartOfAccounts struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Segments      []*ChartSegment        `protobuf:"bytes,1,rep,name=segments,proto3" json:"segments,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChartOfAccounts) Reset() {
+	*x = ChartOfAccounts{}
+	mi := &file_common_proto_msgTypes[78]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChartOfAccounts) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChartOfAccounts) ProtoMessage() {}
+
+func (x *ChartOfAccounts) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[78]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChartOfAccounts.ProtoReflect.Descriptor instead.
+func (*ChartOfAccounts) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{78}
+}
+
+func (x *ChartOfAccounts) GetSegments() []*ChartSegment {
+	if x != nil {
+		return x.Segments
+	}
+	return nil
+}
+
+// ChartSegment describes one level in the account address hierarchy.
+type ChartSegment struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// fixed_value is set when this segment has a constant value (e.g. "bank", "users").
+	FixedValue string `protobuf:"bytes,1,opt,name=fixed_value,json=fixedValue,proto3" json:"fixed_value,omitempty"`
+	// variable is set when this segment accepts variable values (e.g. user IDs).
+	Variable *ChartVariable `protobuf:"bytes,2,opt,name=variable,proto3" json:"variable,omitempty"`
+	// children are the next-level segments that can follow this one.
+	Children      []*ChartSegment `protobuf:"bytes,3,rep,name=children,proto3" json:"children,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChartSegment) Reset() {
+	*x = ChartSegment{}
+	mi := &file_common_proto_msgTypes[79]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChartSegment) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChartSegment) ProtoMessage() {}
+
+func (x *ChartSegment) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[79]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChartSegment.ProtoReflect.Descriptor instead.
+func (*ChartSegment) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{79}
+}
+
+func (x *ChartSegment) GetFixedValue() string {
+	if x != nil {
+		return x.FixedValue
+	}
+	return ""
+}
+
+func (x *ChartSegment) GetVariable() *ChartVariable {
+	if x != nil {
+		return x.Variable
+	}
+	return nil
+}
+
+func (x *ChartSegment) GetChildren() []*ChartSegment {
+	if x != nil {
+		return x.Children
+	}
+	return nil
+}
+
+// ChartVariable describes a variable segment in the chart of accounts.
+type ChartVariable struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Name            string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                              // Human-readable name (e.g. "userId", "walletId")
+	InferredPattern string                 `protobuf:"bytes,2,opt,name=inferred_pattern,json=inferredPattern,proto3" json:"inferred_pattern,omitempty"` // Regex pattern inferred from observed values (e.g. UUID regex)
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ChartVariable) Reset() {
+	*x = ChartVariable{}
+	mi := &file_common_proto_msgTypes[80]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChartVariable) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChartVariable) ProtoMessage() {}
+
+func (x *ChartVariable) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[80]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChartVariable.ProtoReflect.Descriptor instead.
+func (*ChartVariable) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{80}
+}
+
+func (x *ChartVariable) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ChartVariable) GetInferredPattern() string {
+	if x != nil {
+		return x.InferredPattern
+	}
+	return ""
+}
+
 var File_common_proto protoreflect.FileDescriptor
 
 const file_common_proto_rawDesc = "" +
@@ -5766,7 +5929,17 @@ const file_common_proto_rawDesc = "" +
 	"\flog_sequence\x18\x01 \x01(\x04R\vlogSequence\x12\x12\n" +
 	"\x04hash\x18\x02 \x01(\fR\x04hash\"B\n" +
 	"\x19TransactionReferenceValue\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId*B\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\"C\n" +
+	"\x0fChartOfAccounts\x120\n" +
+	"\bsegments\x18\x01 \x03(\v2\x14.common.ChartSegmentR\bsegments\"\x94\x01\n" +
+	"\fChartSegment\x12\x1f\n" +
+	"\vfixed_value\x18\x01 \x01(\tR\n" +
+	"fixedValue\x121\n" +
+	"\bvariable\x18\x02 \x01(\v2\x15.common.ChartVariableR\bvariable\x120\n" +
+	"\bchildren\x18\x03 \x03(\v2\x14.common.ChartSegmentR\bchildren\"N\n" +
+	"\rChartVariable\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12)\n" +
+	"\x10inferred_pattern\x18\x02 \x01(\tR\x0finferredPattern*B\n" +
 	"\n" +
 	"TargetType\x12\x17\n" +
 	"\x13TARGET_TYPE_ACCOUNT\x10\x00\x12\x1b\n" +
@@ -5820,7 +5993,7 @@ func file_common_proto_rawDescGZIP() []byte {
 }
 
 var file_common_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 85)
+var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 88)
 var file_common_proto_goTypes = []any{
 	(TargetType)(0),                         // 0: common.TargetType
 	(MetadataType)(0),                       // 1: common.MetadataType
@@ -5907,15 +6080,18 @@ var file_common_proto_goTypes = []any{
 	(*TransactionInit)(nil),                 // 82: common.TransactionInit
 	(*IdempotencyKeyValue)(nil),             // 83: common.IdempotencyKeyValue
 	(*TransactionReferenceValue)(nil),       // 84: common.TransactionReferenceValue
-	nil,                                     // 85: common.Script.VarsEntry
-	nil,                                     // 86: common.VolumesByAssets.VolumesEntry
-	nil,                                     // 87: common.PostCommitVolumes.VolumesByAccountEntry
-	nil,                                     // 88: common.Account.VolumesEntry
-	nil,                                     // 89: common.MetadataSchema.AccountFieldsEntry
-	nil,                                     // 90: common.MetadataSchema.TransactionFieldsEntry
-	nil,                                     // 91: common.CreatedTransaction.AccountMetadataEntry
-	(*signaturepb.RequestSignature)(nil),    // 92: signature.RequestSignature
-	(*signaturepb.ResponseSignature)(nil),   // 93: signature.ResponseSignature
+	(*ChartOfAccounts)(nil),                 // 85: common.ChartOfAccounts
+	(*ChartSegment)(nil),                    // 86: common.ChartSegment
+	(*ChartVariable)(nil),                   // 87: common.ChartVariable
+	nil,                                     // 88: common.Script.VarsEntry
+	nil,                                     // 89: common.VolumesByAssets.VolumesEntry
+	nil,                                     // 90: common.PostCommitVolumes.VolumesByAccountEntry
+	nil,                                     // 91: common.Account.VolumesEntry
+	nil,                                     // 92: common.MetadataSchema.AccountFieldsEntry
+	nil,                                     // 93: common.MetadataSchema.TransactionFieldsEntry
+	nil,                                     // 94: common.CreatedTransaction.AccountMetadataEntry
+	(*signaturepb.RequestSignature)(nil),    // 95: signature.RequestSignature
+	(*signaturepb.ResponseSignature)(nil),   // 96: signature.ResponseSignature
 }
 var file_common_proto_depIdxs = []int32{
 	10,  // 0: common.Metadata.value:type_name -> common.MetadataValue
@@ -5928,26 +6104,26 @@ var file_common_proto_depIdxs = []int32{
 	7,   // 7: common.Transaction.inserted_at:type_name -> common.Timestamp
 	7,   // 8: common.Transaction.updated_at:type_name -> common.Timestamp
 	7,   // 9: common.Transaction.reverted_at:type_name -> common.Timestamp
-	85,  // 10: common.Script.vars:type_name -> common.Script.VarsEntry
-	86,  // 11: common.VolumesByAssets.volumes:type_name -> common.VolumesByAssets.VolumesEntry
-	87,  // 12: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
+	88,  // 10: common.Script.vars:type_name -> common.Script.VarsEntry
+	89,  // 11: common.VolumesByAssets.volumes:type_name -> common.VolumesByAssets.VolumesEntry
+	90,  // 12: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
 	11,  // 13: common.Account.metadata:type_name -> common.MetadataSet
 	7,   // 14: common.Account.first_usage:type_name -> common.Timestamp
 	7,   // 15: common.Account.insertion_date:type_name -> common.Timestamp
 	7,   // 16: common.Account.updated_at:type_name -> common.Timestamp
-	88,  // 17: common.Account.volumes:type_name -> common.Account.VolumesEntry
+	91,  // 17: common.Account.volumes:type_name -> common.Account.VolumesEntry
 	22,  // 18: common.Target.account:type_name -> common.TargetAccount
 	23,  // 19: common.Target.transaction:type_name -> common.TargetTransaction
 	1,   // 20: common.MetadataFieldSchema.type:type_name -> common.MetadataType
 	2,   // 21: common.MetadataFieldSchema.status:type_name -> common.MetadataConversionStatus
-	89,  // 22: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
-	90,  // 23: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
+	92,  // 22: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
+	93,  // 23: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
 	0,   // 24: common.SetMetadataFieldTypeCommand.target_type:type_name -> common.TargetType
 	1,   // 25: common.SetMetadataFieldTypeCommand.type:type_name -> common.MetadataType
 	31,  // 26: common.Log.payload:type_name -> common.LogPayload
 	28,  // 27: common.Log.idempotency:type_name -> common.Idempotency
-	92,  // 28: common.Log.signature:type_name -> signature.RequestSignature
-	93,  // 29: common.Log.response_signature:type_name -> signature.ResponseSignature
+	95,  // 28: common.Log.signature:type_name -> signature.RequestSignature
+	96,  // 29: common.Log.response_signature:type_name -> signature.ResponseSignature
 	50,  // 30: common.LogPayload.create_ledger:type_name -> common.CreateLedgerLog
 	51,  // 31: common.LogPayload.delete_ledger:type_name -> common.DeleteLedgerLog
 	52,  // 32: common.LogPayload.apply:type_name -> common.ApplyLedgerLog
@@ -5991,7 +6167,7 @@ var file_common_proto_depIdxs = []int32{
 	0,   // 70: common.ConvertMetadataBatchLog.target_type:type_name -> common.TargetType
 	0,   // 71: common.MetadataConversionCompleteLog.target_type:type_name -> common.TargetType
 	14,  // 72: common.CreatedTransaction.transaction:type_name -> common.Transaction
-	91,  // 73: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
+	94,  // 73: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
 	19,  // 74: common.CreatedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
 	14,  // 75: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
 	19,  // 76: common.RevertedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
@@ -6029,17 +6205,20 @@ var file_common_proto_depIdxs = []int32{
 	81,  // 108: common.TransactionUpdateType.transaction_modification_delete_metadata:type_name -> common.TransactionUpdateDeleteMetadata
 	82,  // 109: common.TransactionUpdateType.transaction_init:type_name -> common.TransactionInit
 	8,   // 110: common.TransactionUpdateAddMetadata.metadata:type_name -> common.Metadata
-	16,  // 111: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
-	18,  // 112: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	17,  // 113: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
-	25,  // 114: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	25,  // 115: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	11,  // 116: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataSet
-	117, // [117:117] is the sub-list for method output_type
-	117, // [117:117] is the sub-list for method input_type
-	117, // [117:117] is the sub-list for extension type_name
-	117, // [117:117] is the sub-list for extension extendee
-	0,   // [0:117] is the sub-list for field type_name
+	86,  // 111: common.ChartOfAccounts.segments:type_name -> common.ChartSegment
+	87,  // 112: common.ChartSegment.variable:type_name -> common.ChartVariable
+	86,  // 113: common.ChartSegment.children:type_name -> common.ChartSegment
+	16,  // 114: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
+	18,  // 115: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	17,  // 116: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
+	25,  // 117: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	25,  // 118: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	11,  // 119: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataSet
+	120, // [120:120] is the sub-list for method output_type
+	120, // [120:120] is the sub-list for method input_type
+	120, // [120:120] is the sub-list for extension type_name
+	120, // [120:120] is the sub-list for extension extendee
+	0,   // [0:120] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }
@@ -6110,7 +6289,7 @@ func file_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   85,
+			NumMessages:   88,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

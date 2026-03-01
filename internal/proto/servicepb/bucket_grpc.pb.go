@@ -40,6 +40,7 @@ const (
 	BucketService_ListSigningKeys_FullMethodName         = "/ledger.BucketService/ListSigningKeys"
 	BucketService_Discovery_FullMethodName               = "/ledger.BucketService/Discovery"
 	BucketService_GetMetadataSchemaStatus_FullMethodName = "/ledger.BucketService/GetMetadataSchemaStatus"
+	BucketService_AnalyzeAccounts_FullMethodName         = "/ledger.BucketService/AnalyzeAccounts"
 )
 
 // BucketServiceClient is the client API for BucketService service.
@@ -86,6 +87,8 @@ type BucketServiceClient interface {
 	Discovery(ctx context.Context, in *DiscoveryRequest, opts ...grpc.CallOption) (*DiscoveryResponse, error)
 	// GetMetadataSchemaStatus returns the conversion status for all declared metadata fields
 	GetMetadataSchemaStatus(ctx context.Context, in *GetMetadataSchemaStatusRequest, opts ...grpc.CallOption) (*GetMetadataSchemaStatusResponse, error)
+	// AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts
+	AnalyzeAccounts(ctx context.Context, in *AnalyzeAccountsRequest, opts ...grpc.CallOption) (*AnalyzeAccountsResponse, error)
 }
 
 type bucketServiceClient struct {
@@ -358,6 +361,16 @@ func (c *bucketServiceClient) GetMetadataSchemaStatus(ctx context.Context, in *G
 	return out, nil
 }
 
+func (c *bucketServiceClient) AnalyzeAccounts(ctx context.Context, in *AnalyzeAccountsRequest, opts ...grpc.CallOption) (*AnalyzeAccountsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AnalyzeAccountsResponse)
+	err := c.cc.Invoke(ctx, BucketService_AnalyzeAccounts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BucketServiceServer is the server API for BucketService service.
 // All implementations must embed UnimplementedBucketServiceServer
 // for forward compatibility.
@@ -402,6 +415,8 @@ type BucketServiceServer interface {
 	Discovery(context.Context, *DiscoveryRequest) (*DiscoveryResponse, error)
 	// GetMetadataSchemaStatus returns the conversion status for all declared metadata fields
 	GetMetadataSchemaStatus(context.Context, *GetMetadataSchemaStatusRequest) (*GetMetadataSchemaStatusResponse, error)
+	// AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts
+	AnalyzeAccounts(context.Context, *AnalyzeAccountsRequest) (*AnalyzeAccountsResponse, error)
 	mustEmbedUnimplementedBucketServiceServer()
 }
 
@@ -468,6 +483,9 @@ func (UnimplementedBucketServiceServer) Discovery(context.Context, *DiscoveryReq
 }
 func (UnimplementedBucketServiceServer) GetMetadataSchemaStatus(context.Context, *GetMetadataSchemaStatusRequest) (*GetMetadataSchemaStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetMetadataSchemaStatus not implemented")
+}
+func (UnimplementedBucketServiceServer) AnalyzeAccounts(context.Context, *AnalyzeAccountsRequest) (*AnalyzeAccountsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AnalyzeAccounts not implemented")
 }
 func (UnimplementedBucketServiceServer) mustEmbedUnimplementedBucketServiceServer() {}
 func (UnimplementedBucketServiceServer) testEmbeddedByValue()                       {}
@@ -776,6 +794,24 @@ func _BucketService_GetMetadataSchemaStatus_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_AnalyzeAccounts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AnalyzeAccountsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).AnalyzeAccounts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_AnalyzeAccounts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).AnalyzeAccounts(ctx, req.(*AnalyzeAccountsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BucketService_ServiceDesc is the grpc.ServiceDesc for BucketService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -826,6 +862,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetMetadataSchemaStatus",
 			Handler:    _BucketService_GetMetadataSchemaStatus_Handler,
+		},
+		{
+			MethodName: "AnalyzeAccounts",
+			Handler:    _BucketService_AnalyzeAccounts_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

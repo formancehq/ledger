@@ -171,4 +171,11 @@ func (g *BucketGrpcClient) GetMetadataSchemaStatus(ctx context.Context, ledgerNa
 	})
 }
 
+func (g *BucketGrpcClient) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
+	return g.client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+		Ledger:            ledgerName,
+		VariableThreshold: variableThreshold,
+	})
+}
+
 var _ ctrl.Controller = (*BucketGrpcClient)(nil)

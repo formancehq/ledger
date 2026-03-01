@@ -187,6 +187,14 @@ func (b *RoutedController) GetMetadataSchemaStatus(ctx context.Context, ledgerNa
 	return c.GetMetadataSchemaStatus(ctx, ledgerName)
 }
 
+func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
+	c, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.AnalyzeAccounts(ctx, ledgerName, variableThreshold)
+}
+
 var _ ctrl.Controller = (*RoutedController)(nil)
 
 func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {

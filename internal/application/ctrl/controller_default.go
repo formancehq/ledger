@@ -4,15 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/internal/application/analysis"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -370,6 +372,30 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(_ context.Context, ledger
 		}
 	}
 	return resp, nil
+}
+
+// AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts.
+func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
+	// Reuse ListAccounts with pageSize=0 (no limit) to get all accounts
+	cursor, err := ctrl.ListAccounts(ctx, ledgerName, 0, "", "")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cursor.Close() }()
+
+	var accounts []*commonpb.Account
+	for {
+		acc, err := cursor.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("reading accounts for analysis: %w", err)
+		}
+		accounts = append(accounts, acc)
+	}
+
+	return analysis.Analyze(accounts, variableThreshold), nil
 }
 
 // ListLogs returns a cursor over system logs.

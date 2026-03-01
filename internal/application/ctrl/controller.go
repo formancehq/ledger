@@ -38,6 +38,9 @@ type Controller interface {
 	// Schema operations
 	GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error)
 
+	// Analysis operations
+	AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error)
+
 	// Write operations - single entry point for all requests
 	Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
 }

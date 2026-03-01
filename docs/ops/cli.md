@@ -525,6 +525,45 @@ ledgerctl accounts delete-metadata users:alice role -y
 ledgerctl accounts delete-metadata
 ```
 
+#### accounts analyze
+
+Analyze all accounts in a ledger and suggest a Chart of Accounts based on discovered address patterns. Useful after a mirror import (v2 to v3) to understand account structure.
+
+**Aliases:** `analyse`
+
+```bash
+ledgerctl accounts analyze [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--threshold` | `0` | Variable threshold (0 = default 10): max distinct children before classifying as variable |
+| `--json` | `false` | Output full response as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Scans all accounts and builds a trie from colon-separated address segments
+- Classifies segments as fixed (constant labels) or variable (IDs, numbers)
+- Infers regex patterns for variable segments (UUID, numeric, alphanumeric)
+- Outputs a suggested Chart of Accounts tree, discovered patterns, and statistics
+- If `--ledger` is not provided and only one ledger exists, it will be used automatically
+
+**Example:**
+
+```bash
+# Analyze accounts with rich terminal output
+ledgerctl accounts analyze --ledger my-ledger
+
+# Increase variable threshold for ledgers with many fixed sub-accounts
+ledgerctl accounts analyze --ledger my-ledger --threshold 20
+
+# Output as JSON (for programmatic consumption)
+ledgerctl accounts analyze --ledger my-ledger --json
+```
+
 ---
 
 ### transactions
