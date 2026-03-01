@@ -4,6 +4,8 @@ API:
 
 Business:
 * Chart of account
+* Auth granular scopes
+* Operator auto generate keys
 * Account types instead of segment filtering
 * Numscript
 ** Add typed variables
@@ -24,6 +26,9 @@ Refactor:
 * Simplify processor
 * Split admission
 * Check all commands match a log type payload
+* Refactor Go-Libs
+* Clean protobuf
+* Prevent concurrent tests
 
 Later:
 * Events
