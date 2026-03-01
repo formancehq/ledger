@@ -67,16 +67,14 @@ func runMetrics(cmd *cobra.Command, _ []string) error {
 
 func printFormattedMetrics(m *servicepb.PebbleMetrics) {
 	// General
-	pterm.Println("General")
-	pterm.Println(pterm.Gray("─────────────────────────────────"))
+	pterm.DefaultSection.Println("General")
 	pterm.Printf("Disk Space Usage: %s\n\n", cmdutil.FormatBytes(m.DiskSpaceUsage))
 
 	// Block Cache
 	if m.BlockCache != nil {
-		pterm.Println("Block Cache")
-		pterm.Println(pterm.Gray("─────────────────────────────────"))
+		pterm.DefaultSection.Println("Block Cache")
 		tableData := pterm.TableData{
-			{"Metric", "Value"},
+			{"METRIC", "VALUE"},
 			{"Size", cmdutil.FormatBytes(uint64(m.BlockCache.Size))},
 			{"Count", fmt.Sprintf("%d", m.BlockCache.Count)},
 			{"Hits", fmt.Sprintf("%d", m.BlockCache.Hits)},
@@ -92,10 +90,9 @@ func printFormattedMetrics(m *servicepb.PebbleMetrics) {
 
 	// Table Cache
 	if m.TableCache != nil {
-		pterm.Println("Table Cache")
-		pterm.Println(pterm.Gray("─────────────────────────────────"))
+		pterm.DefaultSection.Println("Table Cache")
 		tableData := pterm.TableData{
-			{"Metric", "Value"},
+			{"METRIC", "VALUE"},
 			{"Size", fmt.Sprintf("%d", m.TableCache.Size)},
 			{"Count", fmt.Sprintf("%d", m.TableCache.Count)},
 			{"Hits", fmt.Sprintf("%d", m.TableCache.Hits)},
@@ -111,10 +108,9 @@ func printFormattedMetrics(m *servicepb.PebbleMetrics) {
 
 	// MemTable
 	if m.MemTable != nil {
-		pterm.Println("MemTable")
-		pterm.Println(pterm.Gray("─────────────────────────────────"))
+		pterm.DefaultSection.Println("MemTable")
 		tableData := pterm.TableData{
-			{"Metric", "Value"},
+			{"METRIC", "VALUE"},
 			{"Size", cmdutil.FormatBytes(m.MemTable.Size)},
 			{"Count", fmt.Sprintf("%d", m.MemTable.Count)},
 			{"Zombie Size", cmdutil.FormatBytes(m.MemTable.ZombieSize)},
@@ -126,10 +122,9 @@ func printFormattedMetrics(m *servicepb.PebbleMetrics) {
 
 	// WAL
 	if m.Wal != nil {
-		pterm.Println("Write-Ahead Log (WAL)")
-		pterm.Println(pterm.Gray("─────────────────────────────────"))
+		pterm.DefaultSection.Println("Write-Ahead Log (WAL)")
 		tableData := pterm.TableData{
-			{"Metric", "Value"},
+			{"METRIC", "VALUE"},
 			{"Files", fmt.Sprintf("%d", m.Wal.Files)},
 			{"Obsolete Files", fmt.Sprintf("%d", m.Wal.ObsoleteFiles)},
 			{"Size", cmdutil.FormatBytes(m.Wal.Size)},
@@ -142,10 +137,9 @@ func printFormattedMetrics(m *servicepb.PebbleMetrics) {
 
 	// Compaction
 	if m.Compact != nil {
-		pterm.Println("Compaction")
-		pterm.Println(pterm.Gray("─────────────────────────────────"))
+		pterm.DefaultSection.Println("Compaction")
 		tableData := pterm.TableData{
-			{"Metric", "Value"},
+			{"METRIC", "VALUE"},
 			{"Total Count", fmt.Sprintf("%d", m.Compact.Count)},
 			{"Default", fmt.Sprintf("%d", m.Compact.DefaultCount)},
 			{"Del-Only", fmt.Sprintf("%d", m.Compact.DeleteOnlyCount)},
@@ -165,10 +159,9 @@ func printFormattedMetrics(m *servicepb.PebbleMetrics) {
 
 	// Flush
 	if m.Flush != nil {
-		pterm.Println("Flush")
-		pterm.Println(pterm.Gray("─────────────────────────────────"))
+		pterm.DefaultSection.Println("Flush")
 		tableData := pterm.TableData{
-			{"Metric", "Value"},
+			{"METRIC", "VALUE"},
 			{"Count", fmt.Sprintf("%d", m.Flush.Count)},
 			{"In Progress", fmt.Sprintf("%d", m.Flush.NumInProgress)},
 			{"As Ingest Count", fmt.Sprintf("%d", m.Flush.AsIngestCount)},
@@ -181,10 +174,9 @@ func printFormattedMetrics(m *servicepb.PebbleMetrics) {
 
 	// Snapshots
 	if m.Snapshots != nil {
-		pterm.Println("Snapshots")
-		pterm.Println(pterm.Gray("─────────────────────────────────"))
+		pterm.DefaultSection.Println("Snapshots")
 		tableData := pterm.TableData{
-			{"Metric", "Value"},
+			{"METRIC", "VALUE"},
 			{"Count", fmt.Sprintf("%d", m.Snapshots.Count)},
 			{"Earliest Seq Num", fmt.Sprintf("%d", m.Snapshots.EarliestSeqNum)},
 			{"Pinned Keys", fmt.Sprintf("%d", m.Snapshots.PinnedKeys)},
@@ -196,10 +188,9 @@ func printFormattedMetrics(m *servicepb.PebbleMetrics) {
 
 	// Tables
 	if m.Table != nil {
-		pterm.Println("Tables (SST)")
-		pterm.Println(pterm.Gray("─────────────────────────────────"))
+		pterm.DefaultSection.Println("Tables (SST)")
 		tableData := pterm.TableData{
-			{"Metric", "Value"},
+			{"METRIC", "VALUE"},
 			{"Zombie Size", cmdutil.FormatBytes(m.Table.ZombieSize)},
 			{"Zombie Count", fmt.Sprintf("%d", m.Table.ZombieCount)},
 			{"Backing Table Count", fmt.Sprintf("%d", m.Table.BackingTableCount)},
@@ -211,10 +202,9 @@ func printFormattedMetrics(m *servicepb.PebbleMetrics) {
 
 	// Keys
 	if m.Keys != nil {
-		pterm.Println("Keys")
-		pterm.Println(pterm.Gray("─────────────────────────────────"))
+		pterm.DefaultSection.Println("Keys")
 		tableData := pterm.TableData{
-			{"Metric", "Value"},
+			{"METRIC", "VALUE"},
 			{"Range Key Sets", fmt.Sprintf("%d", m.Keys.RangeKeySetsCount)},
 			{"Tombstones", fmt.Sprintf("%d", m.Keys.TombstoneCount)},
 		}
@@ -224,10 +214,9 @@ func printFormattedMetrics(m *servicepb.PebbleMetrics) {
 
 	// Levels
 	if len(m.Levels) > 0 {
-		pterm.Println("Levels")
-		pterm.Println(pterm.Gray("─────────────────────────────────"))
+		pterm.DefaultSection.Println("Levels")
 		tableData := pterm.TableData{
-			{"Level", "Files", "Size", "Score", "Bytes In", "Bytes Compacted"},
+			{"LEVEL", "FILES", "SIZE", "SCORE", "BYTES IN", "BYTES COMPACTED"},
 		}
 		for _, level := range m.Levels {
 			tableData = append(tableData, []string{

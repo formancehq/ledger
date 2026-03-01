@@ -69,7 +69,7 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 	}
 
 	tableData := pterm.TableData{
-		{"Key ID", "Public Key (hex)", "Parent"},
+		{"KEY ID", "PUBLIC KEY (HEX)", "PARENT"},
 	}
 
 	for _, k := range keys {

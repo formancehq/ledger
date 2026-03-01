@@ -82,7 +82,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if len(entries) == 0 {
-		pterm.Println("No logs found.")
+		pterm.Info.Println("No logs found.")
 		return nil
 	}
 

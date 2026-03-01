@@ -94,7 +94,7 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 			break
 		}
 		if err != nil {
-			failProgress("Backup failed")
+			failProgress("Failed to download backup")
 			return cmdutil.FormatGRPCError("receiving backup chunk", err)
 		}
 
@@ -114,11 +114,11 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 
 		if len(resp.Data) > 0 {
 			if _, err := out.Write(resp.Data); err != nil {
-				failProgress("Backup failed")
+				failProgress("Failed to download backup")
 				return fmt.Errorf("writing backup data: %w", err)
 			}
 			if _, err := hash.Write(resp.Data); err != nil {
-				failProgress("Backup failed")
+				failProgress("Failed to download backup")
 				return fmt.Errorf("computing hash: %w", err)
 			}
 			totalReceived += uint64(len(resp.Data))

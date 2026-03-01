@@ -58,9 +58,8 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if len(resp.Sinks) == 0 {
-		pterm.Info.Println("No event sinks configured.")
-		pterm.Println(pterm.Gray("Hint: Add a sink using:"))
-		pterm.FgCyan.Println("  ledgerctl events add-sink --name <name> --nats-url <url> --nats-topic <topic>")
+		pterm.Info.Println("No event sinks found.")
+		pterm.Println(pterm.Gray("Add one with: ledgerctl events add-sink --name <name> --nats-url <url> --nats-topic <topic>"))
 		return nil
 	}
 

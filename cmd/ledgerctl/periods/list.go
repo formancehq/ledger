@@ -70,7 +70,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	// Build table
 	tableData := pterm.TableData{
-		{"ID", "Status", "Start", "End", "Close Seq"},
+		{"ID", "STATUS", "START", "END", "CLOSE SEQ"},
 	}
 
 	for _, p := range periods {

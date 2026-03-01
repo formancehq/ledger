@@ -146,16 +146,7 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 		b.WriteString(sectionStr)
 
 		nodeData := [][]string{
-			{
-				pterm.Bold.Sprint("ID"),
-				pterm.Bold.Sprint("Suffrage"),
-				pterm.Bold.Sprint("Status"),
-				pterm.Bold.Sprint("Match"),
-				pterm.Bold.Sprint("Next"),
-				pterm.Bold.Sprint("State"),
-				pterm.Bold.Sprint("Replication"),
-				pterm.Bold.Sprint("Sync"),
-			},
+			{"ID", "SUFFRAGE", "STATUS", "MATCH", "NEXT", "STATE", "REPLICATION", "SYNC"},
 		}
 
 		// Sort nodes by ID for consistent display

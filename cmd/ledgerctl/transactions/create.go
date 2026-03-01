@@ -399,7 +399,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	pterm.Println()
 
 	// Display transaction header
-	pterm.Printf("Transaction #%d\n", tx.Id)
+	pterm.Printf("Transaction: %s\n", pterm.Cyan(fmt.Sprintf("#%d", tx.Id)))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
 	// Display basic info

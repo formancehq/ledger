@@ -238,7 +238,8 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 	}
 
 	pterm.Println()
-	pterm.Printf("Sink:   %s\n", pterm.Cyan(name))
+	pterm.Printf("Sink: %s\n", pterm.Cyan(name))
+	pterm.Println(pterm.Gray("─────────────────────────────────"))
 	pterm.Printf("Type:   %s\n", sinkType)
 	switch {
 	case hasNATS:

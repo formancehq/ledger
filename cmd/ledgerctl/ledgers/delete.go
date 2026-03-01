@@ -136,7 +136,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	pterm.Println()
 
-	pterm.Printf("Ledger: %s (deleted)\n", ledger.Name)
+	pterm.Printf("Ledger: %s (deleted)\n", pterm.Cyan(ledger.Name))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
 	pterm.Printf("Name:       %s\n", pterm.Gray(ledger.Name))

@@ -108,7 +108,7 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 	}
 
 	if len(accounts) == 0 {
-		pterm.Println("No accounts found in this ledger.")
+		pterm.Info.Println("No accounts found.")
 		pterm.Println(pterm.Gray("Create transactions to populate accounts."))
 		return nil
 	}
@@ -157,7 +157,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 		if len(accounts) == 0 {
 			spinner.Info("No more accounts.")
 			if pageNum == 1 {
-				pterm.Println("No accounts found in this ledger.")
+				pterm.Info.Println("No accounts found.")
 				pterm.Println(pterm.Gray("Create transactions to populate accounts."))
 			}
 			return nil

@@ -64,7 +64,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	pterm.Println()
 
-	pterm.Printf("Ledger: %s\n", ledger.Name)
+	pterm.Printf("Ledger: %s\n", pterm.Cyan(ledger.Name))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
 	pterm.Printf("Name:       %s\n", ledger.Name)

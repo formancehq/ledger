@@ -94,7 +94,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	pterm.Println()
 
-	pterm.Printf("Account: %s\n", account.Address)
+	pterm.Printf("Account: %s\n", pterm.Cyan(account.Address))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
 	if account.Metadata != nil && len(account.Metadata.Metadata) > 0 {

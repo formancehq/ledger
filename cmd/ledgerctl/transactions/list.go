@@ -106,7 +106,7 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 	}
 
 	if len(transactions) == 0 {
-		pterm.Println("No transactions found in this ledger.")
+		pterm.Info.Println("No transactions found.")
 		pterm.Println(pterm.Gray("Create one with: ledgerctl transactions create --ledger " + ledgerName))
 		return nil
 	}
@@ -154,7 +154,7 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 		if len(transactions) == 0 {
 			spinner.Info("No more transactions.")
 			if pageNum == 1 {
-				pterm.Println("No transactions found in this ledger.")
+				pterm.Info.Println("No transactions found.")
 				pterm.Println(pterm.Gray("Create one with: ledgerctl transactions create --ledger " + ledgerName))
 			}
 			return nil

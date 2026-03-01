@@ -78,7 +78,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 
 	if err := tarutil.ExtractTar(f, stagingDir); err != nil {
 		_ = f.Close()
-		spinner.Fail("Extraction failed")
+		spinner.Fail("Failed to extract backup")
 		return fmt.Errorf("extracting tar: %w", err)
 	}
 	_ = f.Close()
@@ -260,7 +260,7 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 		}
 	})
 	if err != nil {
-		validationSpinner.Fail("Validation failed")
+		validationSpinner.Fail("Failed to validate backup")
 		return fmt.Errorf("running integrity check: %w", err)
 	}
 

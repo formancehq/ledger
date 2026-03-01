@@ -50,7 +50,7 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 			break
 		}
 		if err != nil {
-			spinner.Fail("Validation failed")
+			spinner.Fail("Failed to validate backup")
 			return cmdutil.FormatGRPCError("receiving validation event", err)
 		}
 

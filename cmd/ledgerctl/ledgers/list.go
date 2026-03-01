@@ -61,7 +61,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	sort.Strings(names)
 
 	if len(names) == 0 {
-		pterm.Println("No ledgers found.")
+		pterm.Info.Println("No ledgers found.")
 		pterm.Println(pterm.Gray("Create one with: ledgerctl ledgers create --name <name>"))
 		return nil
 	}

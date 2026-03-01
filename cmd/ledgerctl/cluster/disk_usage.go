@@ -59,7 +59,7 @@ func displayDiskUsage(usage *clusterpb.DiskUsage) {
 	pterm.DefaultSection.Println("Storage Components")
 
 	componentData := [][]string{
-		{pterm.Bold.Sprint("Component"), pterm.Bold.Sprint("Size")},
+		{"COMPONENT", "SIZE"},
 		{"Spool", cmdutil.FormatBytes(uint64(usage.SpoolBytes))},
 		{"WAL", cmdutil.FormatBytes(uint64(usage.WalBytes))},
 		{"Data", cmdutil.FormatBytes(uint64(usage.DataBytes))},
@@ -70,7 +70,7 @@ func displayDiskUsage(usage *clusterpb.DiskUsage) {
 	pterm.DefaultSection.Println("Volumes")
 
 	volumeData := [][]string{
-		{pterm.Bold.Sprint("Volume"), pterm.Bold.Sprint("Used"), pterm.Bold.Sprint("Total")},
+		{"VOLUME", "USED", "TOTAL"},
 		{"WAL", cmdutil.FormatBytes(uint64(usage.WalVolumeBytes)), cmdutil.FormatBytes(uint64(usage.WalVolumeTotalBytes))},
 		{"Data", cmdutil.FormatBytes(uint64(usage.DataVolumeBytes)), cmdutil.FormatBytes(uint64(usage.DataVolumeTotalBytes))},
 	}

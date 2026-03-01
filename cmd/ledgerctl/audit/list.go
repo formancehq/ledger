@@ -99,7 +99,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if len(entries) == 0 {
-		pterm.Println("No audit entries found.")
+		pterm.Info.Println("No audit entries found.")
 		return nil
 	}
 
