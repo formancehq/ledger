@@ -9,6 +9,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"go.etcd.io/etcd/raft/v3"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -50,6 +51,13 @@ func (node *Node) ReadIndex(ctx context.Context) (uint64, error) {
 	node.pendingReads.Store(reqID, req)
 
 	if err := node.execClusterCommand(ctx, func() error {
+		// Guard against dispatching ReadIndex when the node is a follower with no
+		// known leader. In that case etcd-raft's stepFollower silently drops the
+		// request and the future would never be resolved, hanging the caller.
+		st := node.rawNode.Status()
+		if st.RaftState != raft.StateLeader && st.Lead == 0 {
+			return ErrNotLeader
+		}
 		node.rawNode.ReadIndex(rctx)
 		return nil
 	}); err != nil {

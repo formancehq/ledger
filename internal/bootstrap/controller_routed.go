@@ -58,7 +58,7 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, error
 	if err == nil {
 		return b.localController, nil
 	}
-	if errors.Is(err, node.ErrNodeSyncing) {
+	if errors.Is(err, node.ErrNodeSyncing) || errors.Is(err, node.ErrNotLeader) {
 		return b.getLeaderCtrl()
 	}
 	return nil, err
