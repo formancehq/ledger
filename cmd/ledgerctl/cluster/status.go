@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
@@ -67,14 +68,25 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 }
 
 func displayClusterStatus(state *clusterpb.ClusterState) {
-	// Display banner
-	banner, _ := pterm.DefaultBigText.WithLetters(
-		putils.LettersFromStringWithStyle("CLUSTER", pterm.FgCyan.ToStyle()),
-	).Srender()
-	pterm.Println(banner)
+	pterm.Print(renderClusterStatus(state, true))
+}
+
+// renderClusterStatus builds the full cluster status display as a string.
+// When showBanner is true, the large "CLUSTER" banner is included.
+func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string {
+	var b strings.Builder
+
+	if showBanner {
+		banner, _ := pterm.DefaultBigText.WithLetters(
+			putils.LettersFromStringWithStyle("CLUSTER", pterm.FgCyan.ToStyle()),
+		).Srender()
+		b.WriteString(banner)
+		b.WriteString("\n")
+	}
 
 	// Cluster overview
-	pterm.DefaultSection.Println("Cluster Overview")
+	sectionStr := pterm.DefaultSection.Sprintln("Cluster Overview")
+	b.WriteString(sectionStr)
 
 	maintenanceDisplay := pterm.Green("Off")
 	if state.MaintenanceMode {
@@ -95,19 +107,22 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 		{pterm.LightCyan("Sync Status:"), syncStatusDisplay},
 	}
 
-	_ = pterm.DefaultTable.WithHasHeader(false).WithData(overviewData).Render()
-	pterm.Println()
+	tableStr, _ := pterm.DefaultTable.WithHasHeader(false).WithData(overviewData).Srender()
+	b.WriteString(tableStr)
+	b.WriteString("\n\n")
 
 	// Show checkpoint fetch progress when syncing
 	if sp := state.SyncProgress; sp != nil && sp.Status == "syncing" && sp.BytesTotal > 0 {
-		pterm.DefaultSection.Println("Checkpoint Fetch Progress")
-		displaySyncProgress(sp)
-		pterm.Println()
+		sectionStr = pterm.DefaultSection.Sprintln("Checkpoint Fetch Progress")
+		b.WriteString(sectionStr)
+		b.WriteString(renderSyncProgress(sp))
+		b.WriteString("\n\n")
 	}
 
 	// Raft status
 	if state.RaftStatus != nil {
-		pterm.DefaultSection.Println("Raft Status")
+		sectionStr = pterm.DefaultSection.Sprintln("Raft Status")
+		b.WriteString(sectionStr)
 
 		raftData := [][]string{
 			{pterm.LightCyan("Term:"), fmt.Sprintf("%d", state.RaftStatus.Term)},
@@ -120,13 +135,15 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 			raftData = append(raftData, []string{pterm.LightCyan("Vote:"), fmt.Sprintf("%d", state.RaftStatus.Vote)})
 		}
 
-		_ = pterm.DefaultTable.WithHasHeader(false).WithData(raftData).Render()
-		pterm.Println()
+		tableStr, _ = pterm.DefaultTable.WithHasHeader(false).WithData(raftData).Srender()
+		b.WriteString(tableStr)
+		b.WriteString("\n\n")
 	}
 
 	// Nodes table - only display if nodes list is available (i.e., querying the leader)
 	if len(state.Nodes) > 0 {
-		pterm.DefaultSection.Println("Cluster Nodes")
+		sectionStr = pterm.DefaultSection.Sprintln("Cluster Nodes")
+		b.WriteString(sectionStr)
 
 		nodeData := [][]string{
 			{
@@ -193,9 +210,12 @@ func displayClusterStatus(state *clusterpb.ClusterState) {
 			})
 		}
 
-		_ = pterm.DefaultTable.WithHasHeader(true).WithData(nodeData).Render()
-		pterm.Println()
+		tableStr, _ = pterm.DefaultTable.WithHasHeader(true).WithData(nodeData).Srender()
+		b.WriteString(tableStr)
+		b.WriteString("\n\n")
 	}
+
+	return b.String()
 }
 
 // formatNodeProgress returns a visual progress indicator for a cluster node.
@@ -269,7 +289,8 @@ func formatSyncStatus(sp *clusterpb.SyncProgress) string {
 	}
 }
 
-func displaySyncProgress(sp *clusterpb.SyncProgress) {
+// renderSyncProgress builds the sync progress display as a string.
+func renderSyncProgress(sp *clusterpb.SyncProgress) string {
 	pct := float64(0)
 	if sp.BytesTotal > 0 {
 		pct = float64(sp.BytesReceived) / float64(sp.BytesTotal) * 100
@@ -287,7 +308,8 @@ func displaySyncProgress(sp *clusterpb.SyncProgress) {
 		{pterm.LightCyan("Transferred:"), fmt.Sprintf("%.1f / %.1f MB", receivedMB, totalMB)},
 	}
 
-	_ = pterm.DefaultTable.WithHasHeader(false).WithData(progressData).Render()
+	tableStr, _ := pterm.DefaultTable.WithHasHeader(false).WithData(progressData).Srender()
+	return tableStr
 }
 
 func getStateColor(state string) string {

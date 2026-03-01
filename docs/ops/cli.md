@@ -1250,6 +1250,44 @@ ledgerctl cluster status --node-id 2
 - **Cluster Nodes**: List of all nodes with ID, address, suffrage, and status
 - **Replication Progress**: Replication status for each follower (only shown when querying leader)
 
+#### cluster watch
+
+Continuously poll and display the cluster status with in-place updates (similar to the Unix `watch` command).
+
+```bash
+ledgerctl cluster watch [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--interval` | `2s` | Polling interval |
+| `--node-id` | `0` | Query specific node by ID (0 = route to leader) |
+| `--timeout` | `10s` | Per-request timeout |
+
+**Behavior:**
+- Polls the cluster state at the configured interval and updates the display in place
+- No banner is shown (saves screen space); a refresh timestamp is displayed at the bottom
+- On error (e.g., unreachable server), the error is displayed in place and polling continues
+- Press Ctrl+C to exit cleanly
+
+**Example:**
+
+```bash
+# Watch cluster status with default 2s interval
+ledgerctl cluster watch
+
+# Watch with 1s interval
+ledgerctl cluster watch --interval 1s
+
+# Watch a specific node
+ledgerctl cluster watch --node-id 2
+
+# Watch with custom timeout
+ledgerctl cluster watch --interval 5s --timeout 3s
+```
+
 #### cluster transfer-leader
 
 Transfer the Raft cluster leadership to a specific node. The request is automatically forwarded to the current leader.

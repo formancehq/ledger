@@ -12,6 +12,7 @@ func NewCommand() *cobra.Command {
 	}
 
 	cmd.AddCommand(NewStatusCommand())
+	cmd.AddCommand(NewWatchCommand())
 	cmd.AddCommand(NewDiskUsageCommand())
 	cmd.AddCommand(NewTransferLeaderCommand())
 	cmd.AddCommand(NewAddLearnerCommand())
