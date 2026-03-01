@@ -9,7 +9,6 @@ Business:
 * Numscript
 ** Add typed variables
 * ledgerctl:
-** backup progress
 ** watch command
 ** wrap long address in table views
 ** allow set metadata type on mirror mode
