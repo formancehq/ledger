@@ -332,6 +332,51 @@ func (s *Store) Flush() error {
 	return s.getDB().Flush()
 }
 
+// WarmBlockCache iterates the attributes zone [0xF1, 0xF2) to preload
+// Pebble's block cache. This turns the first query on a cold start from a
+// full disk scan into cache hits, which dramatically improves latency for
+// read-heavy commands such as "accounts analysis".
+func (s *Store) WarmBlockCache() {
+	start := time.Now()
+	db := s.getDB()
+
+	iter, err := db.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{KeyPrefixAttributes},
+		UpperBound: []byte{KeyPrefixAttributes + 1},
+	})
+	if err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).
+			Errorf("Block cache warmup failed to create iterator")
+		return
+	}
+	defer func() { _ = iter.Close() }()
+
+	var keys int64
+	for iter.First(); iter.Valid(); iter.Next() {
+		// Reading the value forces Pebble to load the data block into the
+		// block cache. Keys alone only load index blocks.
+		if _, err := iter.ValueAndErr(); err != nil {
+			s.logger.WithFields(map[string]any{"error": err}).
+				Errorf("Block cache warmup aborted on value read error")
+			return
+		}
+		keys++
+	}
+	if err := iter.Error(); err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).
+			Errorf("Block cache warmup iterator error")
+		return
+	}
+
+	m := db.Metrics()
+	s.logger.WithFields(map[string]any{
+		"duration":        time.Since(start).String(),
+		"keys":            keys,
+		"blockCacheSize":  m.BlockCache.Size,
+		"blockCacheCount": m.BlockCache.Count,
+	}).Infof("Block cache warmup complete")
+}
+
 // Close closes the Pebble database
 func (s *Store) Close() error {
 	s.dbMu.Lock()

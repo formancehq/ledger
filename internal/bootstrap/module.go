@@ -103,6 +103,10 @@ func Module() fx.Option {
 					}
 				}
 
+				// Preload the attributes zone into the block cache so the first
+				// read-heavy query (e.g. "accounts analysis") hits warm cache.
+				store.WarmBlockCache()
+
 				return store, nil
 			},
 			func(store *dal.Store, logger logging.Logger, machine *state.Machine) *dal.SmartCompactor {
