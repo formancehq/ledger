@@ -158,7 +158,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		value, ok := e.metadata[key]
 		canonicalKey := []byte(key)
 		if ok {
-			err := e.attrs.Metadata.AddDiff(batch, e.raftIndex, canonicalKey, value)
+			err := e.attrs.Metadata.Set(batch, e.raftIndex, canonicalKey, value)
 			require.NoError(e.t, err)
 		} else {
 			// Metadata was deleted
@@ -182,7 +182,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	for _, info := range e.ledgers {
 		err := state.SaveLedger(batch, info)
 		require.NoError(e.t, err)
-		err = e.attrs.Ledger.SetBase(batch, e.raftIndex, domain.LedgerKey{Name: info.Name}.Bytes(), info)
+		err = e.attrs.Ledger.Set(batch, e.raftIndex, domain.LedgerKey{Name: info.Name}.Bytes(), info)
 		require.NoError(e.t, err)
 	}
 
@@ -773,8 +773,8 @@ func TestCheckerDetectsHashMismatch(t *testing.T) {
 
 	// Write ledger attributes
 	batch2 := store.NewBatch()
-	require.NoError(t, attrs.Ledger.SetBase(batch2, 1, domain.LedgerKey{Name: "test"}.Bytes(), log1.Payload.GetCreateLedger().Info))
-	require.NoError(t, attrs.Ledger.SetBase(batch2, 1, domain.LedgerKey{Name: "test2"}.Bytes(), log2.Payload.GetCreateLedger().Info))
+	require.NoError(t, attrs.Ledger.Set(batch2, 1, domain.LedgerKey{Name: "test"}.Bytes(), log1.Payload.GetCreateLedger().Info))
+	require.NoError(t, attrs.Ledger.Set(batch2, 1, domain.LedgerKey{Name: "test2"}.Bytes(), log2.Payload.GetCreateLedger().Info))
 	require.NoError(t, batch2.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)

@@ -6,17 +6,18 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/holiman/uint256"
 	"go.uber.org/fx"
+	"google.golang.org/protobuf/proto"
 )
 
 // Attributes holds all attribute types used in the ledger.
 // Each instance has its own pre-allocated key buffer for thread-safe concurrent access.
 type Attributes struct {
-	Volume          *Attribute[*raftcmdpb.VolumePair]
-	Metadata        *Attribute[*commonpb.MetadataValue]
-	IdempotencyKeys *Attribute[*commonpb.IdempotencyKeyValue]
-	References      *Attribute[*commonpb.TransactionReferenceValue]
-	Ledger          *Attribute[*commonpb.LedgerInfo]
-	Boundary        *Attribute[*raftcmdpb.LedgerBoundaries]
+	Volume          *AccumulatingAttribute[*raftcmdpb.VolumePair]
+	Metadata        *SimpleAttribute[*commonpb.MetadataValue]
+	IdempotencyKeys *SimpleAttribute[*commonpb.IdempotencyKeyValue]
+	References      *SimpleAttribute[*commonpb.TransactionReferenceValue]
+	Ledger          *SimpleAttribute[*commonpb.LedgerInfo]
+	Boundary        *SimpleAttribute[*raftcmdpb.LedgerBoundaries]
 }
 
 // New creates a new Attributes instance with all attribute types initialized.
@@ -32,11 +33,11 @@ func New() *Attributes {
 }
 
 // NewVolumeAttribute creates a new Volume attribute storing merged Input+Output pairs.
-func NewVolumeAttribute() *Attribute[*raftcmdpb.VolumePair] {
-	return &Attribute[*raftcmdpb.VolumePair]{
+func NewVolumeAttribute() *AccumulatingAttribute[*raftcmdpb.VolumePair] {
+	return &AccumulatingAttribute[*raftcmdpb.VolumePair]{core: core[*raftcmdpb.VolumePair]{
 		prefix:   dal.AttributePrefixVolume,
 		newValue: func() *raftcmdpb.VolumePair { return &raftcmdpb.VolumePair{} },
-		computeFn: func(base *raftcmdpb.VolumePair, lastDiff *raftcmdpb.VolumePair) *raftcmdpb.VolumePair {
+		resolveFn: func(base *raftcmdpb.VolumePair, lastDiff *raftcmdpb.VolumePair) *raftcmdpb.VolumePair {
 			var inputResult, outputResult, tmp uint256.Int
 
 			if base != nil {
@@ -63,82 +64,62 @@ func NewVolumeAttribute() *Attribute[*raftcmdpb.VolumePair] {
 			}
 		},
 		keyBuf: make([]byte, 128),
-	}
+	}}
+}
+
+// simpleResolve returns the base value, ignoring diffs. Used for all SimpleAttribute types.
+func simpleResolve[V proto.Message](base, _ V) V {
+	return base
 }
 
 // NewMetadataAttribute creates a new Metadata attribute for account metadata.
-func NewMetadataAttribute() *Attribute[*commonpb.MetadataValue] {
-	return &Attribute[*commonpb.MetadataValue]{
-		prefix:   dal.AttributePrefixMetadata,
-		newValue: func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} },
-		computeFn: func(base *commonpb.MetadataValue, lastDiff *commonpb.MetadataValue) *commonpb.MetadataValue {
-			if lastDiff == nil {
-				return base
-			}
-			return lastDiff
-		},
-		keyBuf: make([]byte, 128),
-	}
+func NewMetadataAttribute() *SimpleAttribute[*commonpb.MetadataValue] {
+	return &SimpleAttribute[*commonpb.MetadataValue]{core: core[*commonpb.MetadataValue]{
+		prefix:    dal.AttributePrefixMetadata,
+		newValue:  func() *commonpb.MetadataValue { return &commonpb.MetadataValue{} },
+		resolveFn: simpleResolve[*commonpb.MetadataValue],
+		keyBuf:    make([]byte, 128),
+	}}
 }
 
 // NewIdempotencyKeysAttribute creates a new IdempotencyKeys attribute for storing idempotency key mappings.
-func NewIdempotencyKeysAttribute() *Attribute[*commonpb.IdempotencyKeyValue] {
-	return &Attribute[*commonpb.IdempotencyKeyValue]{
-		prefix:   dal.AttributePrefixIdempotencyKey,
-		newValue: func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} },
-		computeFn: func(base *commonpb.IdempotencyKeyValue, lastDiff *commonpb.IdempotencyKeyValue) *commonpb.IdempotencyKeyValue {
-			if base != nil {
-				return base
-			}
-			return lastDiff
-		},
-		keyBuf: make([]byte, 128),
-	}
+func NewIdempotencyKeysAttribute() *SimpleAttribute[*commonpb.IdempotencyKeyValue] {
+	return &SimpleAttribute[*commonpb.IdempotencyKeyValue]{core: core[*commonpb.IdempotencyKeyValue]{
+		prefix:    dal.AttributePrefixIdempotencyKey,
+		newValue:  func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} },
+		resolveFn: simpleResolve[*commonpb.IdempotencyKeyValue],
+		keyBuf:    make([]byte, 128),
+	}}
 }
 
 // NewReferenceAttribute creates a new Reference attribute for storing transaction reference mappings.
-func NewReferenceAttribute() *Attribute[*commonpb.TransactionReferenceValue] {
-	return &Attribute[*commonpb.TransactionReferenceValue]{
-		prefix:   dal.AttributePrefixReference,
-		newValue: func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} },
-		computeFn: func(base *commonpb.TransactionReferenceValue, lastDiff *commonpb.TransactionReferenceValue) *commonpb.TransactionReferenceValue {
-			if base != nil {
-				return base
-			}
-			return lastDiff
-		},
-		keyBuf: make([]byte, 128),
-	}
+func NewReferenceAttribute() *SimpleAttribute[*commonpb.TransactionReferenceValue] {
+	return &SimpleAttribute[*commonpb.TransactionReferenceValue]{core: core[*commonpb.TransactionReferenceValue]{
+		prefix:    dal.AttributePrefixReference,
+		newValue:  func() *commonpb.TransactionReferenceValue { return &commonpb.TransactionReferenceValue{} },
+		resolveFn: simpleResolve[*commonpb.TransactionReferenceValue],
+		keyBuf:    make([]byte, 128),
+	}}
 }
 
 // NewLedgerAttribute creates a new Ledger attribute for storing ledger info.
-func NewLedgerAttribute() *Attribute[*commonpb.LedgerInfo] {
-	return &Attribute[*commonpb.LedgerInfo]{
-		prefix:   dal.AttributePrefixLedger,
-		newValue: func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} },
-		computeFn: func(base *commonpb.LedgerInfo, lastDiff *commonpb.LedgerInfo) *commonpb.LedgerInfo {
-			if lastDiff == nil {
-				return base
-			}
-			return lastDiff
-		},
-		keyBuf: make([]byte, 128),
-	}
+func NewLedgerAttribute() *SimpleAttribute[*commonpb.LedgerInfo] {
+	return &SimpleAttribute[*commonpb.LedgerInfo]{core: core[*commonpb.LedgerInfo]{
+		prefix:    dal.AttributePrefixLedger,
+		newValue:  func() *commonpb.LedgerInfo { return &commonpb.LedgerInfo{} },
+		resolveFn: simpleResolve[*commonpb.LedgerInfo],
+		keyBuf:    make([]byte, 128),
+	}}
 }
 
 // NewBoundaryAttribute creates a new Boundary attribute for storing ledger boundaries.
-func NewBoundaryAttribute() *Attribute[*raftcmdpb.LedgerBoundaries] {
-	return &Attribute[*raftcmdpb.LedgerBoundaries]{
-		prefix:   dal.AttributePrefixBoundary,
-		newValue: func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} },
-		computeFn: func(base *raftcmdpb.LedgerBoundaries, lastDiff *raftcmdpb.LedgerBoundaries) *raftcmdpb.LedgerBoundaries {
-			if lastDiff == nil {
-				return base
-			}
-			return lastDiff
-		},
-		keyBuf: make([]byte, 128),
-	}
+func NewBoundaryAttribute() *SimpleAttribute[*raftcmdpb.LedgerBoundaries] {
+	return &SimpleAttribute[*raftcmdpb.LedgerBoundaries]{core: core[*raftcmdpb.LedgerBoundaries]{
+		prefix:    dal.AttributePrefixBoundary,
+		newValue:  func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} },
+		resolveFn: simpleResolve[*raftcmdpb.LedgerBoundaries],
+		keyBuf:    make([]byte, 128),
+	}}
 }
 
 // Module returns the fx module for the attributes package.

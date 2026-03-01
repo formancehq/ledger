@@ -10,7 +10,27 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/holiman/uint256"
+	"google.golang.org/protobuf/proto"
 )
+
+// mergeSimple writes each update to a SimpleAttribute using Set + DeleteOldest.
+// This is the common pattern for all non-accumulating attribute types.
+func mergeSimple[K attributes.Key, V proto.Message](
+	attr *attributes.SimpleAttribute[V],
+	batch *dal.Batch,
+	index uint64,
+	updates []attributes.Update[K, V],
+) error {
+	for _, update := range updates {
+		if err := attr.Set(batch, index, update.CanonicalKey, update.New); err != nil {
+			return err
+		}
+		if err := attr.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // signingKeyUpdate represents a pending signing key change to be applied during Merge.
 type signingKeyUpdate struct {
@@ -70,15 +90,12 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if err != nil {
 		return fmt.Errorf("failed to merge ledgers: %w", err)
 	}
+	if err := mergeSimple(b.attrs.Ledger, batch, index, ledgerUpdates); err != nil {
+		return fmt.Errorf("failed merging ledger attributes: %w", err)
+	}
 	for _, update := range ledgerUpdates {
-		if err := b.attrs.Ledger.SetBase(batch, index, update.CanonicalKey, update.New); err != nil {
-			return fmt.Errorf("failed setting ledger base: %w", err)
-		}
 		if err := SaveLedger(batch, update.New); err != nil {
 			return fmt.Errorf("failed to save ledger: %w", err)
-		}
-		if err := b.attrs.Ledger.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
-			return fmt.Errorf("compacting old ledger base: %w", err)
 		}
 	}
 
@@ -127,18 +144,14 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if err != nil {
 		return fmt.Errorf("failed to merge account metadata: %w", err)
 	}
-	for _, update := range accountMetadataUpdates {
-		err := b.attrs.Metadata.AddDiff(batch, index, update.CanonicalKey, update.New)
-		if err != nil {
-			return fmt.Errorf("failed adding diff between old and new attribute: %v", err)
-		}
+	if err := mergeSimple(b.attrs.Metadata, batch, index, accountMetadataUpdates); err != nil {
+		return fmt.Errorf("failed merging metadata attributes: %w", err)
 	}
 	for _, deletion := range accountMetadataDeletions {
 		if err := b.attrs.Metadata.Delete(batch, deletion.CanonicalKey); err != nil {
 			return fmt.Errorf("failed deleting metadata attribute: %v", err)
 		}
 	}
-
 
 	// Flush pending reversions to the authoritative in-memory bitset.
 	// No Pebble writes needed — reversions are reconstructed from WAL replay or snapshot.
@@ -151,15 +164,8 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if err != nil {
 		return fmt.Errorf("failed to merge idempotency keys: %w", err)
 	}
-	for _, update := range idempotencyUpdates {
-		// Idempotency keys are immutable once set, store as base value
-		err := b.attrs.IdempotencyKeys.SetBase(batch, index, update.CanonicalKey, update.New)
-		if err != nil {
-			return fmt.Errorf("failed setting idempotency key base: %w", err)
-		}
-		if err := b.attrs.IdempotencyKeys.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
-			return fmt.Errorf("compacting old idempotency key base: %w", err)
-		}
+	if err := mergeSimple(b.attrs.IdempotencyKeys, batch, index, idempotencyUpdates); err != nil {
+		return fmt.Errorf("failed merging idempotency key attributes: %w", err)
 	}
 
 	// Process References updates
@@ -167,15 +173,8 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if err != nil {
 		return fmt.Errorf("failed to merge references: %w", err)
 	}
-	for _, update := range referenceUpdates {
-		// References are immutable once set, store as base value
-		err := b.attrs.References.SetBase(batch, index, update.CanonicalKey, update.New)
-		if err != nil {
-			return fmt.Errorf("failed setting reference base: %w", err)
-		}
-		if err := b.attrs.References.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
-			return fmt.Errorf("compacting old reference base: %w", err)
-		}
+	if err := mergeSimple(b.attrs.References, batch, index, referenceUpdates); err != nil {
+		return fmt.Errorf("failed merging reference attributes: %w", err)
 	}
 
 	for key, updates := range b.TransactionsUpdates {

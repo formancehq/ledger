@@ -58,7 +58,7 @@ func TestCompactToBase(t *testing.T) {
 	// Write a ledger entry at index 5
 	ledgerAttr := NewLedgerAttribute()
 	batch := s.NewBatch()
-	err = ledgerAttr.SetBase(batch, 5, canonicalKey, &commonpb.LedgerInfo{
+	err = ledgerAttr.Set(batch, 5, canonicalKey, &commonpb.LedgerInfo{
 		Name: "test-ledger",
 	})
 	require.NoError(t, err)
@@ -96,13 +96,13 @@ func TestCompactSurvivesCloseReopen(t *testing.T) {
 
 		ledgerAttr := NewLedgerAttribute()
 		batch := s.NewBatch()
-		err = ledgerAttr.SetBase(batch, 5, canonicalKey, &commonpb.LedgerInfo{
+		err = ledgerAttr.Set(batch, 5, canonicalKey, &commonpb.LedgerInfo{
 			Name: "test-ledger",
 		})
 		require.NoError(t, err)
 
 		boundaryAttr := NewBoundaryAttribute()
-		err = boundaryAttr.SetBase(batch, 5, canonicalKey, &raftcmdpb.LedgerBoundaries{
+		err = boundaryAttr.Set(batch, 5, canonicalKey, &raftcmdpb.LedgerBoundaries{
 			NextTransactionId: 1,
 			NextLogId:         1,
 		})
@@ -155,13 +155,13 @@ func TestCompactSurvivesCheckpointAndRestore(t *testing.T) {
 
 		ledgerAttr := NewLedgerAttribute()
 		batch := s.NewBatch()
-		err = ledgerAttr.SetBase(batch, 5, canonicalKey, &commonpb.LedgerInfo{
+		err = ledgerAttr.Set(batch, 5, canonicalKey, &commonpb.LedgerInfo{
 			Name: "test-ledger",
 		})
 		require.NoError(t, err)
 
 		boundaryAttr := NewBoundaryAttribute()
-		err = boundaryAttr.SetBase(batch, 5, canonicalKey, &raftcmdpb.LedgerBoundaries{
+		err = boundaryAttr.Set(batch, 5, canonicalKey, &raftcmdpb.LedgerBoundaries{
 			NextTransactionId: 1,
 			NextLogId:         1,
 		})
@@ -276,13 +276,13 @@ func TestCompactSurvivesTarCycle(t *testing.T) {
 
 		ledgerAttr := NewLedgerAttribute()
 		batch := s.NewBatch()
-		err = ledgerAttr.SetBase(batch, 5, canonicalKey, &commonpb.LedgerInfo{
+		err = ledgerAttr.Set(batch, 5, canonicalKey, &commonpb.LedgerInfo{
 			Name: "test-ledger",
 		})
 		require.NoError(t, err)
 
 		boundaryAttr := NewBoundaryAttribute()
-		err = boundaryAttr.SetBase(batch, 5, canonicalKey, &raftcmdpb.LedgerBoundaries{
+		err = boundaryAttr.Set(batch, 5, canonicalKey, &raftcmdpb.LedgerBoundaries{
 			NextTransactionId: 1,
 			NextLogId:         1,
 		})
@@ -364,13 +364,13 @@ func TestCompactSurvivesTarCycleAndHardLink(t *testing.T) {
 
 		batch := s.NewBatch()
 		ledgerAttr := NewLedgerAttribute()
-		err = ledgerAttr.SetBase(batch, 5, canonicalKey, &commonpb.LedgerInfo{
+		err = ledgerAttr.Set(batch, 5, canonicalKey, &commonpb.LedgerInfo{
 			Name: "test-ledger",
 		})
 		require.NoError(t, err)
 
 		boundaryAttr := NewBoundaryAttribute()
-		err = boundaryAttr.SetBase(batch, 5, canonicalKey, &raftcmdpb.LedgerBoundaries{
+		err = boundaryAttr.Set(batch, 5, canonicalKey, &raftcmdpb.LedgerBoundaries{
 			NextTransactionId: 1,
 			NextLogId:         1,
 		})
@@ -461,13 +461,13 @@ func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 
 		batch := s.NewBatch()
 		ledgerAttr := NewLedgerAttribute()
-		err = ledgerAttr.SetBase(batch, 5, canonicalKey, &commonpb.LedgerInfo{
+		err = ledgerAttr.Set(batch, 5, canonicalKey, &commonpb.LedgerInfo{
 			Name: "test-ledger",
 		})
 		require.NoError(t, err)
 
 		boundaryAttr := NewBoundaryAttribute()
-		err = boundaryAttr.SetBase(batch, 5, canonicalKey, &raftcmdpb.LedgerBoundaries{
+		err = boundaryAttr.Set(batch, 5, canonicalKey, &raftcmdpb.LedgerBoundaries{
 			NextTransactionId: 1,
 			NextLogId:         1,
 		})
@@ -573,14 +573,14 @@ func TestCompactFlushedBoundaries(t *testing.T) {
 
 		batch := s.NewBatch()
 		ledgerAttr := NewLedgerAttribute()
-		err = ledgerAttr.SetBase(batch, 5, canonicalKey, &commonpb.LedgerInfo{
+		err = ledgerAttr.Set(batch, 5, canonicalKey, &commonpb.LedgerInfo{
 			Name: "test-ledger",
 		})
 		require.NoError(t, err)
 
 		// Boundary is flushed to Pebble by the Raft loop before checkpoint
 		boundaryAttr := NewBoundaryAttribute()
-		err = boundaryAttr.SetBase(batch, 5, canonicalKey, &raftcmdpb.LedgerBoundaries{
+		err = boundaryAttr.Set(batch, 5, canonicalKey, &raftcmdpb.LedgerBoundaries{
 			NextTransactionId: 5,
 			NextLogId:         3,
 		})

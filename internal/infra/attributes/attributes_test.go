@@ -110,11 +110,11 @@ func TestDeleteRemovesAllEntries(t *testing.T) {
 
 	testKey := []byte("test-ledger\x00delete-account\x00status")
 
-	// Set a base value and some diffs for metadata
+	// Set metadata values at two indexes
 	batch := store.NewBatch()
-	err := attrs.Metadata.SetBase(batch, 5, testKey, commonpb.NewStringValue("active"))
+	err := attrs.Metadata.Set(batch, 5, testKey, commonpb.NewStringValue("active"))
 	require.NoError(t, err)
-	err = attrs.Metadata.AddDiff(batch, 10, testKey, commonpb.NewStringValue("inactive"))
+	err = attrs.Metadata.Set(batch, 10, testKey, commonpb.NewStringValue("inactive"))
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)
@@ -153,7 +153,7 @@ func TestDeleteThenReAdd(t *testing.T) {
 
 	// Set initial value
 	batch := store.NewBatch()
-	err := attrs.Metadata.SetBase(batch, 5, testKey, commonpb.NewStringValue("original"))
+	err := attrs.Metadata.Set(batch, 5, testKey, commonpb.NewStringValue("original"))
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)
@@ -167,7 +167,7 @@ func TestDeleteThenReAdd(t *testing.T) {
 
 	// Re-add with a new value
 	batch = store.NewBatch()
-	err = attrs.Metadata.AddDiff(batch, 20, testKey, commonpb.NewStringValue("new-value"))
+	err = attrs.Metadata.Set(batch, 20, testKey, commonpb.NewStringValue("new-value"))
 	require.NoError(t, err)
 	err = batch.Commit()
 	require.NoError(t, err)

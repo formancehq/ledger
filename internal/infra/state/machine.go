@@ -332,7 +332,7 @@ func (fsm *Machine) writeBoundariesToCheckpoint(checkpointPath string) error {
 	batch := db.NewBatch()
 	for keyStr, value := range fsm.dirtyBoundaryKeys {
 		canonicalKey := []byte(keyStr)
-		if err := fsm.Registry.Attrs.Boundary.SetBase(batch, fsm.lastAppliedIndex, canonicalKey, value); err != nil {
+		if err := fsm.Registry.Attrs.Boundary.Set(batch, fsm.lastAppliedIndex, canonicalKey, value); err != nil {
 			_ = batch.Cancel()
 			_ = db.Close()
 			return fmt.Errorf("setting boundary base: %w", err)
@@ -655,7 +655,7 @@ func (fsm *Machine) compactVolumeDiffs(batch *dal.Batch, compactionIndex uint64,
 func (fsm *Machine) flushBoundaries(batch *dal.Batch, index uint64) error {
 	for keyStr, value := range fsm.dirtyBoundaryKeys {
 		canonicalKey := []byte(keyStr)
-		if err := fsm.Registry.Attrs.Boundary.SetBase(batch, index, canonicalKey, value); err != nil {
+		if err := fsm.Registry.Attrs.Boundary.Set(batch, index, canonicalKey, value); err != nil {
 			return fmt.Errorf("setting boundary base: %w", err)
 		}
 		if err := fsm.Registry.Attrs.Boundary.DeleteOldest(batch, index, canonicalKey); err != nil {

@@ -208,8 +208,8 @@ func TestAccumulatorFeedAndFlush(t *testing.T) {
 	keyB := []byte("ledger\x00bob\x00field1")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Metadata.SetBase(batch, 1, keyA, commonpb.NewStringValue("alice-val")))
-	require.NoError(t, attrs.Metadata.SetBase(batch, 1, keyB, commonpb.NewStringValue("bob-val")))
+	require.NoError(t, attrs.Metadata.Set(batch, 1, keyA, commonpb.NewStringValue("alice-val")))
+	require.NoError(t, attrs.Metadata.Set(batch, 1, keyB, commonpb.NewStringValue("bob-val")))
 	require.NoError(t, batch.Commit())
 
 	// Use ComputeAllForPrefix to get all entries under the ledger prefix
@@ -334,9 +334,9 @@ func TestIdempotencyKeysAttribute(t *testing.T) {
 
 	testKey := []byte("idem-key-1")
 
-	// Base takes precedence over diff for idempotency keys
+	// Set a value, then overwrite with a later Set — latest wins
 	batch := store.NewBatch()
-	require.NoError(t, attrs.IdempotencyKeys.AddDiff(batch, 1, testKey, &commonpb.IdempotencyKeyValue{
+	require.NoError(t, attrs.IdempotencyKeys.Set(batch, 1, testKey, &commonpb.IdempotencyKeyValue{
 		LogSequence: 10,
 	}))
 	require.NoError(t, batch.Commit())
@@ -345,9 +345,9 @@ func TestIdempotencyKeysAttribute(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), result.LogSequence)
 
-	// Now set base - base should take precedence
+	// Overwrite with a later Set
 	batch = store.NewBatch()
-	require.NoError(t, attrs.IdempotencyKeys.SetBase(batch, 2, testKey, &commonpb.IdempotencyKeyValue{
+	require.NoError(t, attrs.IdempotencyKeys.Set(batch, 2, testKey, &commonpb.IdempotencyKeyValue{
 		LogSequence: 20,
 	}))
 	require.NoError(t, batch.Commit())
@@ -365,9 +365,9 @@ func TestReferenceAttribute(t *testing.T) {
 
 	testKey := []byte("\x00\x00\x00\x01ref-1")
 
-	// Base takes precedence over diff for references
+	// Set a value, then overwrite with a later Set — latest wins
 	batch := store.NewBatch()
-	require.NoError(t, attrs.References.AddDiff(batch, 1, testKey, &commonpb.TransactionReferenceValue{
+	require.NoError(t, attrs.References.Set(batch, 1, testKey, &commonpb.TransactionReferenceValue{
 		TransactionId: 42,
 	}))
 	require.NoError(t, batch.Commit())
@@ -376,9 +376,9 @@ func TestReferenceAttribute(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), result.TransactionId)
 
-	// Set a base - should take precedence
+	// Overwrite with a later Set
 	batch = store.NewBatch()
-	require.NoError(t, attrs.References.SetBase(batch, 2, testKey, &commonpb.TransactionReferenceValue{
+	require.NoError(t, attrs.References.Set(batch, 2, testKey, &commonpb.TransactionReferenceValue{
 		TransactionId: 99,
 	}))
 	require.NoError(t, batch.Commit())
@@ -408,9 +408,9 @@ func TestLedgerAttribute(t *testing.T) {
 
 	testKey := []byte("my-ledger")
 
-	// Set base
+	// Set a value
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Ledger.SetBase(batch, 1, testKey, &commonpb.LedgerInfo{
+	require.NoError(t, attrs.Ledger.Set(batch, 1, testKey, &commonpb.LedgerInfo{
 		Name: "my-ledger",
 	}))
 	require.NoError(t, batch.Commit())
@@ -419,9 +419,9 @@ func TestLedgerAttribute(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "my-ledger", result.Name)
 
-	// Diff overrides the base for ledger info
+	// Overwrite with a later Set — latest wins
 	batch = store.NewBatch()
-	require.NoError(t, attrs.Ledger.AddDiff(batch, 2, testKey, &commonpb.LedgerInfo{
+	require.NoError(t, attrs.Ledger.Set(batch, 2, testKey, &commonpb.LedgerInfo{
 		Name: "my-ledger-renamed",
 	}))
 	require.NoError(t, batch.Commit())
@@ -440,7 +440,7 @@ func TestBoundaryAttribute(t *testing.T) {
 	testKey := []byte("boundary-ledger")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Boundary.SetBase(batch, 1, testKey, &raftcmdpb.LedgerBoundaries{
+	require.NoError(t, attrs.Boundary.Set(batch, 1, testKey, &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 10,
 		NextLogId:   20,
 	}))
@@ -482,13 +482,13 @@ func TestAccumulatorFeedPublicMethod(t *testing.T) {
 	require.NoError(t, feedErr)
 	require.True(t, matched)
 
-	// Feed a diff entry for the same canonical key
-	diffValue := commonpb.NewStringValue("diff-val")
-	diffBytes, err := proto.Marshal(diffValue)
+	// Feed a second base entry for the same canonical key (overwrites first)
+	overwriteValue := commonpb.NewStringValue("overwrite-val")
+	overwriteBytes, err := proto.Marshal(overwriteValue)
 	require.NoError(t, err)
-	diffKey := makePebbleKey(canonical, dal.AttributePrefixMetadata, 5, 1) // entryType=1 is diff
+	overwriteKey := makePebbleKey(canonical, dal.AttributePrefixMetadata, 5, 0) // entryType=0 is base
 
-	matched, feedErr = acc.Feed(diffKey, diffBytes)
+	matched, feedErr = acc.Feed(overwriteKey, overwriteBytes)
 	require.NoError(t, feedErr)
 	require.True(t, matched)
 
@@ -562,7 +562,7 @@ func TestCompactAllForBackup(t *testing.T) {
 		InputKnown: commonpb.NewUint256FromUint64(500),
 	}))
 	// Also add metadata entries
-	require.NoError(t, attrs.Metadata.SetBase(batch, 1, []byte("ledger\x00alice\x00field"), commonpb.NewStringValue("val")))
+	require.NoError(t, attrs.Metadata.Set(batch, 1, []byte("ledger\x00alice\x00field"), commonpb.NewStringValue("val")))
 	require.NoError(t, batch.Commit())
 
 	// Run compaction - CompactAllForBackup creates its own batch and Attributes internally
