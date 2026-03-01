@@ -32,8 +32,20 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 	afterAddress := r.URL.Query().Get("after")
 	prefix := r.URL.Query().Get("prefix")
 
+	// Build an optional address-prefix filter from query parameter
+	var filter *commonpb.QueryFilter
+	if prefix != "" {
+		filter = &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Address{
+				Address: &commonpb.AddressMatch{
+					Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
+				},
+			},
+		}
+	}
+
 	ctx := r.Context()
-	cursor, err := s.backend.ListAccounts(ctx, ledgerName, pageSize, afterAddress, prefix)
+	cursor, err := s.backend.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter)
 	if err != nil {
 		handleError(w, r, err)
 		return

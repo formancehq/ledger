@@ -183,18 +183,18 @@ func (mr *MockControllerMockRecorder) GetTransaction(ctx, ledgerName, transactio
 }
 
 // ListAccounts mocks base method.
-func (m *MockController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress, prefix string) (dal.Cursor[*commonpb.Account], error) {
+func (m *MockController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Account], error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListAccounts", ctx, ledgerName, pageSize, afterAddress, prefix)
+	ret := m.ctrl.Call(m, "ListAccounts", ctx, ledgerName, pageSize, afterAddress, filter)
 	ret0, _ := ret[0].(dal.Cursor[*commonpb.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListAccounts indicates an expected call of ListAccounts.
-func (mr *MockControllerMockRecorder) ListAccounts(ctx, ledgerName, pageSize, afterAddress, prefix any) *gomock.Call {
+func (mr *MockControllerMockRecorder) ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAccounts", reflect.TypeOf((*MockController)(nil).ListAccounts), ctx, ledgerName, pageSize, afterAddress, prefix)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAccounts", reflect.TypeOf((*MockController)(nil).ListAccounts), ctx, ledgerName, pageSize, afterAddress, filter)
 }
 
 // ListAuditEntries mocks base method.

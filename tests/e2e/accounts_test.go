@@ -16,13 +16,24 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// prefixFilter builds a QueryFilter for an address prefix match.
+func prefixFilter(prefix string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Address{
+			Address: &commonpb.AddressMatch{
+				Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
+			},
+		},
+	}
+}
+
 // listAllAccounts collects all accounts from the streaming RPC into a slice
-func listAllAccounts(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterAddress string, prefix string) ([]*commonpb.Account, error) {
+func listAllAccounts(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter) ([]*commonpb.Account, error) {
 	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
 		Ledger:       ledgerName,
 		PageSize:     pageSize,
 		AfterAddress: afterAddress,
-		Prefix:       prefix,
+		Filter:       filter,
 	})
 	if err != nil {
 		return nil, err
@@ -89,7 +100,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			// The bbolt read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 				// world + alice + bob + charlie = 4 accounts
 				g.Expect(accounts).To(HaveLen(4))
@@ -97,7 +108,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should return accounts in alphabetical order", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(4))
 
@@ -109,7 +120,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should respect page size limit", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 2, "", "")
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 2, "", nil)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(2))
 
@@ -120,12 +131,12 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should paginate with afterAddress", func() {
 			// First page: 2 accounts
-			firstPage, err := listAllAccounts(ctx, client, ledgerName, 2, "", "")
+			firstPage, err := listAllAccounts(ctx, client, ledgerName, 2, "", nil)
 			Expect(err).To(Succeed())
 			Expect(firstPage).To(HaveLen(2))
 
 			// Second page: after the last account from first page
-			secondPage, err := listAllAccounts(ctx, client, ledgerName, 2, firstPage[1].Address, "")
+			secondPage, err := listAllAccounts(ctx, client, ledgerName, 2, firstPage[1].Address, nil)
 			Expect(err).To(Succeed())
 			Expect(secondPage).To(HaveLen(2))
 
@@ -137,7 +148,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			}
 
 			// Third page: should be empty
-			thirdPage, err := listAllAccounts(ctx, client, ledgerName, 2, secondPage[1].Address, "")
+			thirdPage, err := listAllAccounts(ctx, client, ledgerName, 2, secondPage[1].Address, nil)
 			Expect(err).To(Succeed())
 			Expect(thirdPage).To(BeEmpty())
 		})
@@ -149,13 +160,13 @@ var _ = Describe("Accounts", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			accounts, err := listAllAccounts(ctx, client, emptyLedgerName, 0, "", "")
+			accounts, err := listAllAccounts(ctx, client, emptyLedgerName, 0, "", nil)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(BeEmpty())
 		})
 
 		It("Should return error for non-existent ledger", func() {
-			_, err := listAllAccounts(ctx, client, "non-existent-ledger", 0, "", "")
+			_, err := listAllAccounts(ctx, client, "non-existent-ledger", 0, "", nil)
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -175,7 +186,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
 			Expect(err).To(Succeed())
 
 			// Find alice in the list
@@ -226,7 +237,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			// The bbolt read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "users:")
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", prefixFilter("users:"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(2))
 				g.Expect(accounts[0].Address).To(Equal("users:alice"))
@@ -235,7 +246,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should filter merchants by prefix", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "merchants:")
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", prefixFilter("merchants:"))
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(2))
 			Expect(accounts[0].Address).To(Equal("merchants:shop1"))
@@ -243,26 +254,26 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should return empty list for non-matching prefix", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "nonexistent:")
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", prefixFilter("nonexistent:"))
 			Expect(err).To(Succeed())
 			Expect(accounts).To(BeEmpty())
 		})
 
 		It("Should combine prefix filter with pagination", func() {
 			// Get first page of users
-			firstPage, err := listAllAccounts(ctx, client, ledgerName, 1, "", "users:")
+			firstPage, err := listAllAccounts(ctx, client, ledgerName, 1, "", prefixFilter("users:"))
 			Expect(err).To(Succeed())
 			Expect(firstPage).To(HaveLen(1))
 			Expect(firstPage[0].Address).To(Equal("users:alice"))
 
 			// Get second page of users
-			secondPage, err := listAllAccounts(ctx, client, ledgerName, 1, firstPage[0].Address, "users:")
+			secondPage, err := listAllAccounts(ctx, client, ledgerName, 1, firstPage[0].Address, prefixFilter("users:"))
 			Expect(err).To(Succeed())
 			Expect(secondPage).To(HaveLen(1))
 			Expect(secondPage[0].Address).To(Equal("users:bob"))
 
 			// Third page should be empty
-			thirdPage, err := listAllAccounts(ctx, client, ledgerName, 1, secondPage[0].Address, "users:")
+			thirdPage, err := listAllAccounts(ctx, client, ledgerName, 1, secondPage[0].Address, prefixFilter("users:"))
 			Expect(err).To(Succeed())
 			Expect(thirdPage).To(BeEmpty())
 		})
@@ -302,7 +313,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			// The bbolt read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 
 				// Collect all addresses
@@ -323,7 +334,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should list all accounts in alphabetical order", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
 			Expect(err).To(Succeed())
 
 			// Alphabetical: destination-only, normal-account, unfunded-source, world
@@ -361,7 +372,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			// The bbolt read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 
 				// Should have exactly 2 accounts: multi-asset and world
@@ -400,7 +411,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 			// Wait for the async index builder to catch up
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(2)) // world + account-1
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -419,7 +430,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(4)) // world + account-1 + account-2 + account-3
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -470,7 +481,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			// The bbolt read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
-				accountsA, err := listAllAccounts(ctx, client, ledgerA, 0, "", "")
+				accountsA, err := listAllAccounts(ctx, client, ledgerA, 0, "", nil)
 				g.Expect(err).To(Succeed())
 				g.Expect(accountsA).To(HaveLen(3)) // world + alice + bob
 
@@ -483,7 +494,7 @@ var _ = Describe("Accounts", Ordered, func() {
 				g.Expect(addressesA).To(HaveKey("bob"))
 				g.Expect(addressesA).NotTo(HaveKey("charlie"))
 
-				accountsB, err := listAllAccounts(ctx, client, ledgerB, 0, "", "")
+				accountsB, err := listAllAccounts(ctx, client, ledgerB, 0, "", nil)
 				g.Expect(err).To(Succeed())
 				g.Expect(accountsB).To(HaveLen(2)) // world + charlie
 

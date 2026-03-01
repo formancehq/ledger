@@ -265,7 +265,7 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 
 // ListAccounts returns a cursor over accounts for a ledger (alphabetical order).
 // Uses the bbolt read index for entity discovery and Pebble for enrichment.
-func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (dal.Cursor[*commonpb.Account], error) {
+func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Account], error) {
 	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -276,18 +276,6 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 
 	if pageSize == 0 {
 		pageSize = math.MaxUint32
-	}
-
-	// Build an optional address-prefix filter for the Compile step
-	var filter *commonpb.QueryFilter
-	if prefix != "" {
-		filter = &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
-				},
-			},
-		}
 	}
 
 	// Discover account addresses from bbolt
@@ -405,7 +393,7 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(_ context.Context, ledger
 // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts.
 func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
 	// Reuse ListAccounts with pageSize=0 (no limit) to get all accounts
-	cursor, err := ctrl.ListAccounts(ctx, ledgerName, 0, "", "")
+	cursor, err := ctrl.ListAccounts(ctx, ledgerName, 0, "", nil)
 	if err != nil {
 		return nil, err
 	}

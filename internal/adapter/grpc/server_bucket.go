@@ -237,10 +237,10 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		return fmt.Errorf("ledger name is required")
 	}
 
-	impl.logger.Debugf("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, prefix=%q)",
-		req.Ledger, req.PageSize, req.AfterAddress, req.Prefix)
+	impl.logger.Debugf("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, hasFilter=%v)",
+		req.Ledger, req.PageSize, req.AfterAddress, req.Filter != nil)
 
-	cursor, err := impl.ctrl.ListAccounts(stream.Context(), req.Ledger, req.PageSize, req.AfterAddress, req.Prefix)
+	cursor, err := impl.ctrl.ListAccounts(stream.Context(), req.Ledger, req.PageSize, req.AfterAddress, req.Filter)
 	if err != nil {
 		return fmt.Errorf("listing accounts: %w", err)
 	}

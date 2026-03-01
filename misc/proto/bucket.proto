@@ -101,8 +101,8 @@ message ListAccountsRequest {
   uint32 page_size = 2;
   // after_address is the account address to start after (for pagination, exclusive)
   string after_address = 3;
-  // prefix filters accounts by address prefix (e.g. "users:")
-  string prefix = 4;
+  // filter is a rich boolean filter (metadata conditions, address matching, AND/OR/NOT)
+  common.QueryFilter filter = 4;
 }
 
 message CreateLedgerRequest {

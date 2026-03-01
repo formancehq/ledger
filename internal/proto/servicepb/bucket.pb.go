@@ -360,8 +360,8 @@ type ListAccountsRequest struct {
 	PageSize uint32 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// after_address is the account address to start after (for pagination, exclusive)
 	AfterAddress string `protobuf:"bytes,3,opt,name=after_address,json=afterAddress,proto3" json:"after_address,omitempty"`
-	// prefix filters accounts by address prefix (e.g. "users:")
-	Prefix        string `protobuf:"bytes,4,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	// filter is a rich boolean filter (metadata conditions, address matching, AND/OR/NOT)
+	Filter        *commonpb.QueryFilter `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -417,11 +417,11 @@ func (x *ListAccountsRequest) GetAfterAddress() string {
 	return ""
 }
 
-func (x *ListAccountsRequest) GetPrefix() string {
+func (x *ListAccountsRequest) GetFilter() *commonpb.QueryFilter {
 	if x != nil {
-		return x.Prefix
+		return x.Filter
 	}
-	return ""
+	return nil
 }
 
 type CreateLedgerRequest struct {
@@ -5121,12 +5121,12 @@ const file_bucket_proto_rawDesc = "" +
 	"\x17ListTransactionsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12\x1e\n" +
-	"\vafter_tx_id\x18\x03 \x01(\x04R\tafterTxId\"\x87\x01\n" +
+	"\vafter_tx_id\x18\x03 \x01(\x04R\tafterTxId\"\x9c\x01\n" +
 	"\x13ListAccountsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12#\n" +
-	"\rafter_address\x18\x03 \x01(\tR\fafterAddress\x12\x16\n" +
-	"\x06prefix\x18\x04 \x01(\tR\x06prefix\"\xde\x01\n" +
+	"\rafter_address\x18\x03 \x01(\tR\fafterAddress\x12+\n" +
+	"\x06filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\x06filter\"\xde\x01\n" +
 	"\x13CreateLedgerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12J\n" +
 	"\x0einitial_schema\x18\x03 \x03(\v2#.common.SetMetadataFieldTypeCommandR\rinitialSchema\x12&\n" +
@@ -5599,25 +5599,25 @@ var file_bucket_proto_goTypes = []any{
 	nil,                                          // 83: ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry
 	nil,                                          // 84: ledger.ExecutePreparedQueryRequest.ParametersEntry
 	(*commonpb.Transaction)(nil),                 // 85: common.Transaction
-	(*commonpb.SetMetadataFieldTypeCommand)(nil), // 86: common.SetMetadataFieldTypeCommand
-	(commonpb.LedgerMode)(0),                     // 87: common.LedgerMode
-	(*commonpb.MirrorSourceConfig)(nil),          // 88: common.MirrorSourceConfig
-	(*commonpb.Log)(nil),                         // 89: common.Log
-	(*signaturepb.RequestSignature)(nil),         // 90: signature.RequestSignature
-	(*commonpb.SinkConfig)(nil),                  // 91: common.SinkConfig
-	(commonpb.TargetType)(0),                     // 92: common.TargetType
-	(commonpb.MetadataType)(0),                   // 93: common.MetadataType
-	(*commonpb.Posting)(nil),                     // 94: common.Posting
-	(*commonpb.Script)(nil),                      // 95: common.Script
-	(*commonpb.Timestamp)(nil),                   // 96: common.Timestamp
-	(*commonpb.MetadataSet)(nil),                 // 97: common.MetadataSet
-	(*commonpb.SaveMetadataCommand)(nil),         // 98: common.SaveMetadataCommand
-	(*commonpb.DeleteMetadataCommand)(nil),       // 99: common.DeleteMetadataCommand
-	(*commonpb.SinkStatus)(nil),                  // 100: common.SinkStatus
-	(commonpb.MetadataConversionStatus)(0),       // 101: common.MetadataConversionStatus
-	(*commonpb.ChartOfAccounts)(nil),             // 102: common.ChartOfAccounts
-	(*commonpb.PreparedQuery)(nil),               // 103: common.PreparedQuery
-	(*commonpb.QueryFilter)(nil),                 // 104: common.QueryFilter
+	(*commonpb.QueryFilter)(nil),                 // 86: common.QueryFilter
+	(*commonpb.SetMetadataFieldTypeCommand)(nil), // 87: common.SetMetadataFieldTypeCommand
+	(commonpb.LedgerMode)(0),                     // 88: common.LedgerMode
+	(*commonpb.MirrorSourceConfig)(nil),          // 89: common.MirrorSourceConfig
+	(*commonpb.Log)(nil),                         // 90: common.Log
+	(*signaturepb.RequestSignature)(nil),         // 91: signature.RequestSignature
+	(*commonpb.SinkConfig)(nil),                  // 92: common.SinkConfig
+	(commonpb.TargetType)(0),                     // 93: common.TargetType
+	(commonpb.MetadataType)(0),                   // 94: common.MetadataType
+	(*commonpb.Posting)(nil),                     // 95: common.Posting
+	(*commonpb.Script)(nil),                      // 96: common.Script
+	(*commonpb.Timestamp)(nil),                   // 97: common.Timestamp
+	(*commonpb.MetadataSet)(nil),                 // 98: common.MetadataSet
+	(*commonpb.SaveMetadataCommand)(nil),         // 99: common.SaveMetadataCommand
+	(*commonpb.DeleteMetadataCommand)(nil),       // 100: common.DeleteMetadataCommand
+	(*commonpb.SinkStatus)(nil),                  // 101: common.SinkStatus
+	(commonpb.MetadataConversionStatus)(0),       // 102: common.MetadataConversionStatus
+	(*commonpb.ChartOfAccounts)(nil),             // 103: common.ChartOfAccounts
+	(*commonpb.PreparedQuery)(nil),               // 104: common.PreparedQuery
 	(commonpb.QueryMode)(0),                      // 105: common.QueryMode
 	(*commonpb.PreparedQueryCursor)(nil),         // 106: common.PreparedQueryCursor
 	(*commonpb.AggregateResult)(nil),             // 107: common.AggregateResult
@@ -5629,138 +5629,139 @@ var file_bucket_proto_goTypes = []any{
 }
 var file_bucket_proto_depIdxs = []int32{
 	85,  // 0: ledger.GetTransactionResponse.transaction:type_name -> common.Transaction
-	86,  // 1: ledger.CreateLedgerRequest.initial_schema:type_name -> common.SetMetadataFieldTypeCommand
-	87,  // 2: ledger.CreateLedgerRequest.mode:type_name -> common.LedgerMode
-	88,  // 3: ledger.CreateLedgerRequest.mirror_source:type_name -> common.MirrorSourceConfig
-	14,  // 4: ledger.ApplyRequest.requests:type_name -> ledger.Request
-	89,  // 5: ledger.ApplyResponse.logs:type_name -> common.Log
-	40,  // 6: ledger.Request.apply:type_name -> ledger.LedgerApplyRequest
-	7,   // 7: ledger.Request.create_ledger:type_name -> ledger.CreateLedgerRequest
-	8,   // 8: ledger.Request.delete_ledger:type_name -> ledger.DeleteLedgerRequest
-	18,  // 9: ledger.Request.register_signing_key:type_name -> ledger.RegisterSigningKeyRequest
-	19,  // 10: ledger.Request.revoke_signing_key:type_name -> ledger.RevokeSigningKeyRequest
-	20,  // 11: ledger.Request.set_signing_config:type_name -> ledger.SetSigningConfigRequest
-	16,  // 12: ledger.Request.add_events_sink:type_name -> ledger.AddEventsSinkRequest
-	17,  // 13: ledger.Request.remove_events_sink:type_name -> ledger.RemoveEventsSinkRequest
-	22,  // 14: ledger.Request.close_period:type_name -> ledger.ClosePeriodRequest
-	23,  // 15: ledger.Request.seal_period:type_name -> ledger.SealPeriodRequest
-	24,  // 16: ledger.Request.archive_period:type_name -> ledger.ArchivePeriodRequest
-	25,  // 17: ledger.Request.confirm_archive_period:type_name -> ledger.ConfirmArchivePeriodRequest
-	27,  // 18: ledger.Request.set_maintenance_mode:type_name -> ledger.SetMaintenanceModeRequest
-	28,  // 19: ledger.Request.set_period_schedule:type_name -> ledger.SetPeriodScheduleRequest
-	29,  // 20: ledger.Request.delete_period_schedule:type_name -> ledger.DeletePeriodScheduleRequest
-	30,  // 21: ledger.Request.set_metadata_field_type:type_name -> ledger.SetMetadataFieldTypeRequest
-	31,  // 22: ledger.Request.remove_metadata_field_type:type_name -> ledger.RemoveMetadataFieldTypeRequest
-	32,  // 23: ledger.Request.set_audit_config:type_name -> ledger.SetAuditConfigRequest
-	15,  // 24: ledger.Request.promote_ledger:type_name -> ledger.PromoteLedgerRequest
-	71,  // 25: ledger.Request.create_prepared_query:type_name -> ledger.CreatePreparedQueryRequest
-	73,  // 26: ledger.Request.update_prepared_query:type_name -> ledger.UpdatePreparedQueryRequest
-	75,  // 27: ledger.Request.delete_prepared_query:type_name -> ledger.DeletePreparedQueryRequest
-	90,  // 28: ledger.Request.signature:type_name -> signature.RequestSignature
-	91,  // 29: ledger.AddEventsSinkRequest.config:type_name -> common.SinkConfig
-	92,  // 30: ledger.SetMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
-	93,  // 31: ledger.SetMetadataFieldTypeRequest.type:type_name -> common.MetadataType
-	92,  // 32: ledger.RemoveMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
-	37,  // 33: ledger.DiscoveryResponse.response_signing:type_name -> ledger.ResponseSigningInfo
-	94,  // 34: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
-	95,  // 35: ledger.CreateTransactionPayload.script:type_name -> common.Script
-	96,  // 36: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
-	97,  // 37: ledger.CreateTransactionPayload.metadata:type_name -> common.MetadataSet
-	81,  // 38: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
-	97,  // 39: ledger.RevertTransactionPayload.metadata:type_name -> common.MetadataSet
-	38,  // 40: ledger.LedgerApplyRequest.create_transaction:type_name -> ledger.CreateTransactionPayload
-	98,  // 41: ledger.LedgerApplyRequest.add_metadata:type_name -> common.SaveMetadataCommand
-	39,  // 42: ledger.LedgerApplyRequest.revert_transaction:type_name -> ledger.RevertTransactionPayload
-	99,  // 43: ledger.LedgerApplyRequest.delete_metadata:type_name -> common.DeleteMetadataCommand
-	43,  // 44: ledger.GetStoreMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
-	44,  // 45: ledger.PebbleMetrics.block_cache:type_name -> ledger.BlockCacheMetrics
-	45,  // 46: ledger.PebbleMetrics.compact:type_name -> ledger.CompactMetrics
-	46,  // 47: ledger.PebbleMetrics.flush:type_name -> ledger.FlushMetrics
-	47,  // 48: ledger.PebbleMetrics.mem_table:type_name -> ledger.MemTableMetrics
-	48,  // 49: ledger.PebbleMetrics.snapshots:type_name -> ledger.SnapshotsMetrics
-	49,  // 50: ledger.PebbleMetrics.table:type_name -> ledger.TableMetrics
-	50,  // 51: ledger.PebbleMetrics.table_cache:type_name -> ledger.TableCacheMetrics
-	51,  // 52: ledger.PebbleMetrics.wal:type_name -> ledger.WALMetrics
-	52,  // 53: ledger.PebbleMetrics.keys:type_name -> ledger.KeysMetrics
-	53,  // 54: ledger.PebbleMetrics.levels:type_name -> ledger.LevelMetrics
-	56,  // 55: ledger.CheckStoreEvent.error:type_name -> ledger.CheckStoreError
-	57,  // 56: ledger.CheckStoreEvent.progress:type_name -> ledger.CheckStoreProgress
-	0,   // 57: ledger.CheckStoreError.error_type:type_name -> ledger.CheckStoreErrorType
-	91,  // 58: ledger.GetEventsSinksResponse.sinks:type_name -> common.SinkConfig
-	100, // 59: ledger.GetEventsSinksResponse.sink_statuses:type_name -> common.SinkStatus
-	82,  // 60: ledger.GetMetadataSchemaStatusResponse.account_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry
-	83,  // 61: ledger.GetMetadataSchemaStatusResponse.transaction_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry
-	93,  // 62: ledger.MetadataFieldStatus.declared_type:type_name -> common.MetadataType
-	101, // 63: ledger.MetadataFieldStatus.status:type_name -> common.MetadataConversionStatus
-	102, // 64: ledger.AnalyzeAccountsResponse.suggested_chart:type_name -> common.ChartOfAccounts
-	69,  // 65: ledger.AnalyzeAccountsResponse.patterns:type_name -> ledger.AccountPattern
-	70,  // 66: ledger.AccountPattern.segments:type_name -> ledger.PatternSegment
-	1,   // 67: ledger.PatternSegment.type:type_name -> ledger.PatternSegmentType
-	103, // 68: ledger.CreatePreparedQueryRequest.query:type_name -> common.PreparedQuery
-	104, // 69: ledger.UpdatePreparedQueryRequest.filter:type_name -> common.QueryFilter
-	103, // 70: ledger.ListPreparedQueriesResponse.queries:type_name -> common.PreparedQuery
-	84,  // 71: ledger.ExecutePreparedQueryRequest.parameters:type_name -> ledger.ExecutePreparedQueryRequest.ParametersEntry
-	105, // 72: ledger.ExecutePreparedQueryRequest.mode:type_name -> common.QueryMode
-	106, // 73: ledger.ExecutePreparedQueryResponse.cursor:type_name -> common.PreparedQueryCursor
-	107, // 74: ledger.ExecutePreparedQueryResponse.aggregate:type_name -> common.AggregateResult
-	97,  // 75: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataSet
-	66,  // 76: ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
-	66,  // 77: ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
-	10,  // 78: ledger.BucketService.ListLedgers:input_type -> ledger.ListLedgersRequest
-	11,  // 79: ledger.BucketService.GetLedger:input_type -> ledger.GetLedgerRequest
-	2,   // 80: ledger.BucketService.GetAccount:input_type -> ledger.GetAccountRequest
-	3,   // 81: ledger.BucketService.GetTransaction:input_type -> ledger.GetTransactionRequest
-	5,   // 82: ledger.BucketService.ListTransactions:input_type -> ledger.ListTransactionsRequest
-	6,   // 83: ledger.BucketService.ListAccounts:input_type -> ledger.ListAccountsRequest
-	12,  // 84: ledger.BucketService.Apply:input_type -> ledger.ApplyRequest
-	41,  // 85: ledger.BucketService.GetStoreMetrics:input_type -> ledger.GetStoreMetricsRequest
-	54,  // 86: ledger.BucketService.CheckStore:input_type -> ledger.CheckStoreRequest
-	58,  // 87: ledger.BucketService.ListAuditEntries:input_type -> ledger.ListAuditEntriesRequest
-	59,  // 88: ledger.BucketService.GetAuditEntry:input_type -> ledger.GetAuditEntryRequest
-	62,  // 89: ledger.BucketService.GetEventsSinks:input_type -> ledger.GetEventsSinksRequest
-	26,  // 90: ledger.BucketService.ListPeriods:input_type -> ledger.ListPeriodsRequest
-	60,  // 91: ledger.BucketService.ListLogs:input_type -> ledger.ListLogsRequest
-	61,  // 92: ledger.BucketService.GetLog:input_type -> ledger.GetLogRequest
-	33,  // 93: ledger.BucketService.GetPeriodSchedule:input_type -> ledger.GetPeriodScheduleRequest
-	21,  // 94: ledger.BucketService.ListSigningKeys:input_type -> ledger.ListSigningKeysRequest
-	35,  // 95: ledger.BucketService.Discovery:input_type -> ledger.DiscoveryRequest
-	64,  // 96: ledger.BucketService.GetMetadataSchemaStatus:input_type -> ledger.GetMetadataSchemaStatusRequest
-	67,  // 97: ledger.BucketService.AnalyzeAccounts:input_type -> ledger.AnalyzeAccountsRequest
-	71,  // 98: ledger.BucketService.CreatePreparedQuery:input_type -> ledger.CreatePreparedQueryRequest
-	73,  // 99: ledger.BucketService.UpdatePreparedQuery:input_type -> ledger.UpdatePreparedQueryRequest
-	75,  // 100: ledger.BucketService.DeletePreparedQuery:input_type -> ledger.DeletePreparedQueryRequest
-	77,  // 101: ledger.BucketService.ListPreparedQueries:input_type -> ledger.ListPreparedQueriesRequest
-	79,  // 102: ledger.BucketService.ExecutePreparedQuery:input_type -> ledger.ExecutePreparedQueryRequest
-	108, // 103: ledger.BucketService.ListLedgers:output_type -> common.LedgerInfo
-	108, // 104: ledger.BucketService.GetLedger:output_type -> common.LedgerInfo
-	109, // 105: ledger.BucketService.GetAccount:output_type -> common.Account
-	4,   // 106: ledger.BucketService.GetTransaction:output_type -> ledger.GetTransactionResponse
-	85,  // 107: ledger.BucketService.ListTransactions:output_type -> common.Transaction
-	109, // 108: ledger.BucketService.ListAccounts:output_type -> common.Account
-	13,  // 109: ledger.BucketService.Apply:output_type -> ledger.ApplyResponse
-	42,  // 110: ledger.BucketService.GetStoreMetrics:output_type -> ledger.GetStoreMetricsResponse
-	55,  // 111: ledger.BucketService.CheckStore:output_type -> ledger.CheckStoreEvent
-	110, // 112: ledger.BucketService.ListAuditEntries:output_type -> audit.AuditEntry
-	110, // 113: ledger.BucketService.GetAuditEntry:output_type -> audit.AuditEntry
-	63,  // 114: ledger.BucketService.GetEventsSinks:output_type -> ledger.GetEventsSinksResponse
-	111, // 115: ledger.BucketService.ListPeriods:output_type -> common.Period
-	89,  // 116: ledger.BucketService.ListLogs:output_type -> common.Log
-	89,  // 117: ledger.BucketService.GetLog:output_type -> common.Log
-	34,  // 118: ledger.BucketService.GetPeriodSchedule:output_type -> ledger.GetPeriodScheduleResponse
-	112, // 119: ledger.BucketService.ListSigningKeys:output_type -> common.SigningKey
-	36,  // 120: ledger.BucketService.Discovery:output_type -> ledger.DiscoveryResponse
-	65,  // 121: ledger.BucketService.GetMetadataSchemaStatus:output_type -> ledger.GetMetadataSchemaStatusResponse
-	68,  // 122: ledger.BucketService.AnalyzeAccounts:output_type -> ledger.AnalyzeAccountsResponse
-	72,  // 123: ledger.BucketService.CreatePreparedQuery:output_type -> ledger.CreatePreparedQueryResponse
-	74,  // 124: ledger.BucketService.UpdatePreparedQuery:output_type -> ledger.UpdatePreparedQueryResponse
-	76,  // 125: ledger.BucketService.DeletePreparedQuery:output_type -> ledger.DeletePreparedQueryResponse
-	78,  // 126: ledger.BucketService.ListPreparedQueries:output_type -> ledger.ListPreparedQueriesResponse
-	80,  // 127: ledger.BucketService.ExecutePreparedQuery:output_type -> ledger.ExecutePreparedQueryResponse
-	103, // [103:128] is the sub-list for method output_type
-	78,  // [78:103] is the sub-list for method input_type
-	78,  // [78:78] is the sub-list for extension type_name
-	78,  // [78:78] is the sub-list for extension extendee
-	0,   // [0:78] is the sub-list for field type_name
+	86,  // 1: ledger.ListAccountsRequest.filter:type_name -> common.QueryFilter
+	87,  // 2: ledger.CreateLedgerRequest.initial_schema:type_name -> common.SetMetadataFieldTypeCommand
+	88,  // 3: ledger.CreateLedgerRequest.mode:type_name -> common.LedgerMode
+	89,  // 4: ledger.CreateLedgerRequest.mirror_source:type_name -> common.MirrorSourceConfig
+	14,  // 5: ledger.ApplyRequest.requests:type_name -> ledger.Request
+	90,  // 6: ledger.ApplyResponse.logs:type_name -> common.Log
+	40,  // 7: ledger.Request.apply:type_name -> ledger.LedgerApplyRequest
+	7,   // 8: ledger.Request.create_ledger:type_name -> ledger.CreateLedgerRequest
+	8,   // 9: ledger.Request.delete_ledger:type_name -> ledger.DeleteLedgerRequest
+	18,  // 10: ledger.Request.register_signing_key:type_name -> ledger.RegisterSigningKeyRequest
+	19,  // 11: ledger.Request.revoke_signing_key:type_name -> ledger.RevokeSigningKeyRequest
+	20,  // 12: ledger.Request.set_signing_config:type_name -> ledger.SetSigningConfigRequest
+	16,  // 13: ledger.Request.add_events_sink:type_name -> ledger.AddEventsSinkRequest
+	17,  // 14: ledger.Request.remove_events_sink:type_name -> ledger.RemoveEventsSinkRequest
+	22,  // 15: ledger.Request.close_period:type_name -> ledger.ClosePeriodRequest
+	23,  // 16: ledger.Request.seal_period:type_name -> ledger.SealPeriodRequest
+	24,  // 17: ledger.Request.archive_period:type_name -> ledger.ArchivePeriodRequest
+	25,  // 18: ledger.Request.confirm_archive_period:type_name -> ledger.ConfirmArchivePeriodRequest
+	27,  // 19: ledger.Request.set_maintenance_mode:type_name -> ledger.SetMaintenanceModeRequest
+	28,  // 20: ledger.Request.set_period_schedule:type_name -> ledger.SetPeriodScheduleRequest
+	29,  // 21: ledger.Request.delete_period_schedule:type_name -> ledger.DeletePeriodScheduleRequest
+	30,  // 22: ledger.Request.set_metadata_field_type:type_name -> ledger.SetMetadataFieldTypeRequest
+	31,  // 23: ledger.Request.remove_metadata_field_type:type_name -> ledger.RemoveMetadataFieldTypeRequest
+	32,  // 24: ledger.Request.set_audit_config:type_name -> ledger.SetAuditConfigRequest
+	15,  // 25: ledger.Request.promote_ledger:type_name -> ledger.PromoteLedgerRequest
+	71,  // 26: ledger.Request.create_prepared_query:type_name -> ledger.CreatePreparedQueryRequest
+	73,  // 27: ledger.Request.update_prepared_query:type_name -> ledger.UpdatePreparedQueryRequest
+	75,  // 28: ledger.Request.delete_prepared_query:type_name -> ledger.DeletePreparedQueryRequest
+	91,  // 29: ledger.Request.signature:type_name -> signature.RequestSignature
+	92,  // 30: ledger.AddEventsSinkRequest.config:type_name -> common.SinkConfig
+	93,  // 31: ledger.SetMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
+	94,  // 32: ledger.SetMetadataFieldTypeRequest.type:type_name -> common.MetadataType
+	93,  // 33: ledger.RemoveMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
+	37,  // 34: ledger.DiscoveryResponse.response_signing:type_name -> ledger.ResponseSigningInfo
+	95,  // 35: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
+	96,  // 36: ledger.CreateTransactionPayload.script:type_name -> common.Script
+	97,  // 37: ledger.CreateTransactionPayload.timestamp:type_name -> common.Timestamp
+	98,  // 38: ledger.CreateTransactionPayload.metadata:type_name -> common.MetadataSet
+	81,  // 39: ledger.CreateTransactionPayload.account_metadata:type_name -> ledger.CreateTransactionPayload.AccountMetadataEntry
+	98,  // 40: ledger.RevertTransactionPayload.metadata:type_name -> common.MetadataSet
+	38,  // 41: ledger.LedgerApplyRequest.create_transaction:type_name -> ledger.CreateTransactionPayload
+	99,  // 42: ledger.LedgerApplyRequest.add_metadata:type_name -> common.SaveMetadataCommand
+	39,  // 43: ledger.LedgerApplyRequest.revert_transaction:type_name -> ledger.RevertTransactionPayload
+	100, // 44: ledger.LedgerApplyRequest.delete_metadata:type_name -> common.DeleteMetadataCommand
+	43,  // 45: ledger.GetStoreMetricsResponse.metrics:type_name -> ledger.PebbleMetrics
+	44,  // 46: ledger.PebbleMetrics.block_cache:type_name -> ledger.BlockCacheMetrics
+	45,  // 47: ledger.PebbleMetrics.compact:type_name -> ledger.CompactMetrics
+	46,  // 48: ledger.PebbleMetrics.flush:type_name -> ledger.FlushMetrics
+	47,  // 49: ledger.PebbleMetrics.mem_table:type_name -> ledger.MemTableMetrics
+	48,  // 50: ledger.PebbleMetrics.snapshots:type_name -> ledger.SnapshotsMetrics
+	49,  // 51: ledger.PebbleMetrics.table:type_name -> ledger.TableMetrics
+	50,  // 52: ledger.PebbleMetrics.table_cache:type_name -> ledger.TableCacheMetrics
+	51,  // 53: ledger.PebbleMetrics.wal:type_name -> ledger.WALMetrics
+	52,  // 54: ledger.PebbleMetrics.keys:type_name -> ledger.KeysMetrics
+	53,  // 55: ledger.PebbleMetrics.levels:type_name -> ledger.LevelMetrics
+	56,  // 56: ledger.CheckStoreEvent.error:type_name -> ledger.CheckStoreError
+	57,  // 57: ledger.CheckStoreEvent.progress:type_name -> ledger.CheckStoreProgress
+	0,   // 58: ledger.CheckStoreError.error_type:type_name -> ledger.CheckStoreErrorType
+	92,  // 59: ledger.GetEventsSinksResponse.sinks:type_name -> common.SinkConfig
+	101, // 60: ledger.GetEventsSinksResponse.sink_statuses:type_name -> common.SinkStatus
+	82,  // 61: ledger.GetMetadataSchemaStatusResponse.account_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry
+	83,  // 62: ledger.GetMetadataSchemaStatusResponse.transaction_fields:type_name -> ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry
+	94,  // 63: ledger.MetadataFieldStatus.declared_type:type_name -> common.MetadataType
+	102, // 64: ledger.MetadataFieldStatus.status:type_name -> common.MetadataConversionStatus
+	103, // 65: ledger.AnalyzeAccountsResponse.suggested_chart:type_name -> common.ChartOfAccounts
+	69,  // 66: ledger.AnalyzeAccountsResponse.patterns:type_name -> ledger.AccountPattern
+	70,  // 67: ledger.AccountPattern.segments:type_name -> ledger.PatternSegment
+	1,   // 68: ledger.PatternSegment.type:type_name -> ledger.PatternSegmentType
+	104, // 69: ledger.CreatePreparedQueryRequest.query:type_name -> common.PreparedQuery
+	86,  // 70: ledger.UpdatePreparedQueryRequest.filter:type_name -> common.QueryFilter
+	104, // 71: ledger.ListPreparedQueriesResponse.queries:type_name -> common.PreparedQuery
+	84,  // 72: ledger.ExecutePreparedQueryRequest.parameters:type_name -> ledger.ExecutePreparedQueryRequest.ParametersEntry
+	105, // 73: ledger.ExecutePreparedQueryRequest.mode:type_name -> common.QueryMode
+	106, // 74: ledger.ExecutePreparedQueryResponse.cursor:type_name -> common.PreparedQueryCursor
+	107, // 75: ledger.ExecutePreparedQueryResponse.aggregate:type_name -> common.AggregateResult
+	98,  // 76: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataSet
+	66,  // 77: ledger.GetMetadataSchemaStatusResponse.AccountFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
+	66,  // 78: ledger.GetMetadataSchemaStatusResponse.TransactionFieldsEntry.value:type_name -> ledger.MetadataFieldStatus
+	10,  // 79: ledger.BucketService.ListLedgers:input_type -> ledger.ListLedgersRequest
+	11,  // 80: ledger.BucketService.GetLedger:input_type -> ledger.GetLedgerRequest
+	2,   // 81: ledger.BucketService.GetAccount:input_type -> ledger.GetAccountRequest
+	3,   // 82: ledger.BucketService.GetTransaction:input_type -> ledger.GetTransactionRequest
+	5,   // 83: ledger.BucketService.ListTransactions:input_type -> ledger.ListTransactionsRequest
+	6,   // 84: ledger.BucketService.ListAccounts:input_type -> ledger.ListAccountsRequest
+	12,  // 85: ledger.BucketService.Apply:input_type -> ledger.ApplyRequest
+	41,  // 86: ledger.BucketService.GetStoreMetrics:input_type -> ledger.GetStoreMetricsRequest
+	54,  // 87: ledger.BucketService.CheckStore:input_type -> ledger.CheckStoreRequest
+	58,  // 88: ledger.BucketService.ListAuditEntries:input_type -> ledger.ListAuditEntriesRequest
+	59,  // 89: ledger.BucketService.GetAuditEntry:input_type -> ledger.GetAuditEntryRequest
+	62,  // 90: ledger.BucketService.GetEventsSinks:input_type -> ledger.GetEventsSinksRequest
+	26,  // 91: ledger.BucketService.ListPeriods:input_type -> ledger.ListPeriodsRequest
+	60,  // 92: ledger.BucketService.ListLogs:input_type -> ledger.ListLogsRequest
+	61,  // 93: ledger.BucketService.GetLog:input_type -> ledger.GetLogRequest
+	33,  // 94: ledger.BucketService.GetPeriodSchedule:input_type -> ledger.GetPeriodScheduleRequest
+	21,  // 95: ledger.BucketService.ListSigningKeys:input_type -> ledger.ListSigningKeysRequest
+	35,  // 96: ledger.BucketService.Discovery:input_type -> ledger.DiscoveryRequest
+	64,  // 97: ledger.BucketService.GetMetadataSchemaStatus:input_type -> ledger.GetMetadataSchemaStatusRequest
+	67,  // 98: ledger.BucketService.AnalyzeAccounts:input_type -> ledger.AnalyzeAccountsRequest
+	71,  // 99: ledger.BucketService.CreatePreparedQuery:input_type -> ledger.CreatePreparedQueryRequest
+	73,  // 100: ledger.BucketService.UpdatePreparedQuery:input_type -> ledger.UpdatePreparedQueryRequest
+	75,  // 101: ledger.BucketService.DeletePreparedQuery:input_type -> ledger.DeletePreparedQueryRequest
+	77,  // 102: ledger.BucketService.ListPreparedQueries:input_type -> ledger.ListPreparedQueriesRequest
+	79,  // 103: ledger.BucketService.ExecutePreparedQuery:input_type -> ledger.ExecutePreparedQueryRequest
+	108, // 104: ledger.BucketService.ListLedgers:output_type -> common.LedgerInfo
+	108, // 105: ledger.BucketService.GetLedger:output_type -> common.LedgerInfo
+	109, // 106: ledger.BucketService.GetAccount:output_type -> common.Account
+	4,   // 107: ledger.BucketService.GetTransaction:output_type -> ledger.GetTransactionResponse
+	85,  // 108: ledger.BucketService.ListTransactions:output_type -> common.Transaction
+	109, // 109: ledger.BucketService.ListAccounts:output_type -> common.Account
+	13,  // 110: ledger.BucketService.Apply:output_type -> ledger.ApplyResponse
+	42,  // 111: ledger.BucketService.GetStoreMetrics:output_type -> ledger.GetStoreMetricsResponse
+	55,  // 112: ledger.BucketService.CheckStore:output_type -> ledger.CheckStoreEvent
+	110, // 113: ledger.BucketService.ListAuditEntries:output_type -> audit.AuditEntry
+	110, // 114: ledger.BucketService.GetAuditEntry:output_type -> audit.AuditEntry
+	63,  // 115: ledger.BucketService.GetEventsSinks:output_type -> ledger.GetEventsSinksResponse
+	111, // 116: ledger.BucketService.ListPeriods:output_type -> common.Period
+	90,  // 117: ledger.BucketService.ListLogs:output_type -> common.Log
+	90,  // 118: ledger.BucketService.GetLog:output_type -> common.Log
+	34,  // 119: ledger.BucketService.GetPeriodSchedule:output_type -> ledger.GetPeriodScheduleResponse
+	112, // 120: ledger.BucketService.ListSigningKeys:output_type -> common.SigningKey
+	36,  // 121: ledger.BucketService.Discovery:output_type -> ledger.DiscoveryResponse
+	65,  // 122: ledger.BucketService.GetMetadataSchemaStatus:output_type -> ledger.GetMetadataSchemaStatusResponse
+	68,  // 123: ledger.BucketService.AnalyzeAccounts:output_type -> ledger.AnalyzeAccountsResponse
+	72,  // 124: ledger.BucketService.CreatePreparedQuery:output_type -> ledger.CreatePreparedQueryResponse
+	74,  // 125: ledger.BucketService.UpdatePreparedQuery:output_type -> ledger.UpdatePreparedQueryResponse
+	76,  // 126: ledger.BucketService.DeletePreparedQuery:output_type -> ledger.DeletePreparedQueryResponse
+	78,  // 127: ledger.BucketService.ListPreparedQueries:output_type -> ledger.ListPreparedQueriesResponse
+	80,  // 128: ledger.BucketService.ExecutePreparedQuery:output_type -> ledger.ExecutePreparedQueryResponse
+	104, // [104:129] is the sub-list for method output_type
+	79,  // [79:104] is the sub-list for method input_type
+	79,  // [79:79] is the sub-list for extension type_name
+	79,  // [79:79] is the sub-list for extension extendee
+	0,   // [0:79] is the sub-list for field type_name
 }
 
 func init() { file_bucket_proto_init() }

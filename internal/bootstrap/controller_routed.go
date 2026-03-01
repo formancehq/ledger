@@ -163,12 +163,12 @@ func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, ad
 	return c.GetAccount(ctx, ledgerName, address)
 }
 
-func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (dal.Cursor[*commonpb.Account], error) {
+func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Account], error) {
 	c, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, prefix)
+	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter)
 }
 
 func (b *RoutedController) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {

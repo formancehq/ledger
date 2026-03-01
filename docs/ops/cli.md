@@ -401,6 +401,7 @@ ledgerctl accounts list [flags]
 | `--ledger` | | Name of the ledger |
 | `--page-size` | `10` | Number of accounts per page |
 | `--prefix` | | Filter accounts by address prefix (e.g. `users:`) |
+| `--filter` | | Filter expression (see [Filter Expression Syntax](#filter-expression-syntax)) |
 | `--all` | `false` | Fetch all accounts at once (no pagination) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
@@ -410,6 +411,8 @@ ledgerctl accounts list [flags]
 - If `--ledger` is not provided and only one ledger exists, it will be used automatically
 - If multiple ledgers exist, you will be prompted to select one
 - Use `--prefix` to filter by address prefix (e.g. `users:` lists only accounts starting with `users:`)
+- Use `--filter` for rich boolean filter expressions on metadata and addresses
+- If both `--prefix` and `--filter` are provided, they are combined with AND
 
 **Example:**
 
@@ -420,11 +423,102 @@ ledgerctl accounts list --ledger my-ledger
 # Filter by prefix
 ledgerctl accounts list --ledger my-ledger --prefix users:
 
+# Filter by metadata
+ledgerctl accounts list --ledger my-ledger --filter "metadata[category] == premium"
+
+# Complex filter expression
+ledgerctl accounts list --ledger my-ledger --filter "metadata[active] == true and address ^= users:"
+
+# Combine prefix and filter (equivalent to AND)
+ledgerctl accounts list --ledger my-ledger --prefix users: --filter "metadata[tier] == gold"
+
 # Fetch all accounts at once
 ledgerctl accounts list --ledger my-ledger --all
 
 # Output as JSON
 ledgerctl accounts list --ledger my-ledger --json
+```
+
+##### Filter Expression Syntax
+
+The `--filter` flag accepts a human-readable boolean expression that maps to the underlying `QueryFilter` model.
+
+**Grammar:**
+
+```
+expression     := or_expr
+or_expr        := and_expr ("or" and_expr)*
+and_expr       := unary_expr ("and" unary_expr)*
+unary_expr     := "not" unary_expr | primary
+primary        := "(" expression ")" | condition
+condition      := metadata_cond | address_cond
+metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | "exists")
+address_cond   := "address" ("==" VALUE | "^=" VALUE)
+```
+
+**Conditions:**
+
+| Syntax | Description |
+|--------|-------------|
+| `metadata[key] == value` | Metadata equality (auto-typed: `true`/`false` → bool, integer → int64, else → string) |
+| `metadata[key] != value` | Metadata inequality (desugars to `not (metadata[key] == value)`) |
+| `metadata[key] exists` | Metadata key existence check |
+| `address == value` | Exact address match |
+| `address ^= value` | Address prefix match |
+
+**Boolean operators** (precedence: `not` > `and` > `or`):
+
+| Operator | Description |
+|----------|-------------|
+| `and` | Both conditions must match |
+| `or` | At least one condition must match |
+| `not` | Negation |
+| `(expr)` | Grouping to override precedence |
+
+**Values:**
+
+| Format | Example | Type |
+|--------|---------|------|
+| Bare word | `premium` | string |
+| Quoted string | `"hello world"` or `'hello world'` | string |
+| Integer | `42`, `-5` | int64 |
+| Boolean | `true`, `false` | bool |
+
+**Examples:**
+
+```bash
+# Simple metadata match
+--filter "metadata[category] == premium"
+
+# Quoted value with spaces
+--filter 'metadata[name] == "John Doe"'
+
+# Boolean metadata
+--filter "metadata[active] == true"
+
+# Integer metadata
+--filter "metadata[age] == 42"
+
+# Metadata existence
+--filter "metadata[category] exists"
+
+# Address prefix
+--filter "address ^= users:"
+
+# Exact address
+--filter 'address == "users:alice"'
+
+# AND (both must match)
+--filter "metadata[active] == true and address ^= users:"
+
+# OR (either must match)
+--filter "metadata[category] == premium or metadata[category] == gold"
+
+# NOT
+--filter "not metadata[blocked] == true"
+
+# Grouping
+--filter "(metadata[a] == x or metadata[b] == y) and address ^= users:"
 ```
 
 #### accounts get

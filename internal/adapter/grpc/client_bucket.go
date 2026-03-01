@@ -65,12 +65,12 @@ func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, ad
 	return nil, fmt.Errorf("GetAccount is not available via gRPC client - use local reads")
 }
 
-func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (dal.Cursor[*commonpb.Account], error) {
+func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Account], error) {
 	stream, err := g.client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
 		Ledger:       ledgerName,
 		PageSize:     pageSize,
 		AfterAddress: afterAddress,
-		Prefix:       prefix,
+		Filter:       filter,
 	})
 	if err != nil {
 		return nil, err
