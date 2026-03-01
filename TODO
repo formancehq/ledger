@@ -14,8 +14,10 @@ Business:
 ** allow set metadata type on mirror mode
 ** Add self update
 ** First usage detection and display
-* docs:
-** migrate existing clients
+
+Docs:
+* Clean relying parties distinctions
+* migrate existing clients
 
 Tests:
 * Convert K6 tests to GRPC
@@ -28,7 +30,6 @@ Refactor:
 * Check all commands match a log type payload
 * Log signal broadcast
 * Simplify attributes system
-* Smart compaction
 
 Later:
 * Events
