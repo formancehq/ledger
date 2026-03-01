@@ -6135,14 +6135,12 @@ func (x *NotFilter) GetFilter() *QueryFilter {
 	return nil
 }
 
-// FieldRef identifies the data source for a condition.
+// FieldRef identifies the metadata key for a condition.
+// The execution context (QueryTarget) determines whether this refers to
+// account or transaction metadata.
 type FieldRef struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Source:
-	//
-	//	*FieldRef_AccountMetadata
-	//	*FieldRef_TransactionMetadata
-	Source        isFieldRef_Source `protobuf_oneof:"source"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Metadata      string                 `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6177,46 +6175,12 @@ func (*FieldRef) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{88}
 }
 
-func (x *FieldRef) GetSource() isFieldRef_Source {
+func (x *FieldRef) GetMetadata() string {
 	if x != nil {
-		return x.Source
-	}
-	return nil
-}
-
-func (x *FieldRef) GetAccountMetadata() string {
-	if x != nil {
-		if x, ok := x.Source.(*FieldRef_AccountMetadata); ok {
-			return x.AccountMetadata
-		}
+		return x.Metadata
 	}
 	return ""
 }
-
-func (x *FieldRef) GetTransactionMetadata() string {
-	if x != nil {
-		if x, ok := x.Source.(*FieldRef_TransactionMetadata); ok {
-			return x.TransactionMetadata
-		}
-	}
-	return ""
-}
-
-type isFieldRef_Source interface {
-	isFieldRef_Source()
-}
-
-type FieldRef_AccountMetadata struct {
-	AccountMetadata string `protobuf:"bytes,1,opt,name=account_metadata,json=accountMetadata,proto3,oneof"`
-}
-
-type FieldRef_TransactionMetadata struct {
-	TransactionMetadata string `protobuf:"bytes,2,opt,name=transaction_metadata,json=transactionMetadata,proto3,oneof"`
-}
-
-func (*FieldRef_AccountMetadata) isFieldRef_Source() {}
-
-func (*FieldRef_TransactionMetadata) isFieldRef_Source() {}
 
 // FieldCondition = FieldRef × Condition.
 type FieldCondition struct {
@@ -7506,11 +7470,9 @@ const file_common_proto_rawDesc = "" +
 	"\bOrFilter\x12-\n" +
 	"\afilters\x18\x01 \x03(\v2\x13.common.QueryFilterR\afilters\"8\n" +
 	"\tNotFilter\x12+\n" +
-	"\x06filter\x18\x01 \x01(\v2\x13.common.QueryFilterR\x06filter\"v\n" +
-	"\bFieldRef\x12+\n" +
-	"\x10account_metadata\x18\x01 \x01(\tH\x00R\x0faccountMetadata\x123\n" +
-	"\x14transaction_metadata\x18\x02 \x01(\tH\x00R\x13transactionMetadataB\b\n" +
-	"\x06source\"\xdc\x02\n" +
+	"\x06filter\x18\x01 \x01(\v2\x13.common.QueryFilterR\x06filter\"&\n" +
+	"\bFieldRef\x12\x1a\n" +
+	"\bmetadata\x18\x01 \x01(\tR\bmetadata\"\xdc\x02\n" +
 	"\x0eFieldCondition\x12&\n" +
 	"\x05field\x18\x01 \x01(\v2\x10.common.FieldRefR\x05field\x12:\n" +
 	"\vstring_cond\x18\x02 \x01(\v2\x17.common.StringConditionH\x00R\n" +
@@ -7978,10 +7940,6 @@ func file_common_proto_init() {
 		(*QueryFilter_And)(nil),
 		(*QueryFilter_Or)(nil),
 		(*QueryFilter_Not)(nil),
-	}
-	file_common_proto_msgTypes[88].OneofWrappers = []any{
-		(*FieldRef_AccountMetadata)(nil),
-		(*FieldRef_TransactionMetadata)(nil),
 	}
 	file_common_proto_msgTypes[89].OneofWrappers = []any{
 		(*FieldCondition_StringCond)(nil),

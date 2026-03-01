@@ -65,6 +65,8 @@ service BucketService {
   rpc ListPreparedQueries(ListPreparedQueriesRequest) returns (ListPreparedQueriesResponse);
   // ExecutePreparedQuery executes a prepared query against the read index store
   rpc ExecutePreparedQuery(ExecutePreparedQueryRequest) returns (ExecutePreparedQueryResponse);
+  // GetIndexStatus returns the current state of the read index builder
+  rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
 }
 
 // ============================================================================
@@ -93,6 +95,8 @@ message ListTransactionsRequest {
   // after_tx_id is the transaction ID to start after (for pagination, exclusive)
   // Use 0 or omit to start from the latest transaction
   uint64 after_tx_id = 3;
+  // filter is a rich boolean filter (metadata conditions, address matching, AND/OR/NOT)
+  common.QueryFilter filter = 4;
 }
 
 message ListAccountsRequest {
@@ -624,4 +628,17 @@ message ExecutePreparedQueryResponse {
     common.PreparedQueryCursor cursor = 1;
     common.AggregateResult aggregate = 2;
   }
+}
+
+// ============================================================================
+// Index Status Messages
+// ============================================================================
+
+message GetIndexStatusRequest {}
+
+message GetIndexStatusResponse {
+  uint64 last_indexed_sequence = 1;
+  uint64 last_log_sequence = 2;
+  uint64 lag = 3;
+  uint64 index_file_size = 4;
 }

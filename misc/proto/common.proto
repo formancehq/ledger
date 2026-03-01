@@ -682,12 +682,11 @@ message NotFilter {
   QueryFilter filter = 1;
 }
 
-// FieldRef identifies the data source for a condition.
+// FieldRef identifies the metadata key for a condition.
+// The execution context (QueryTarget) determines whether this refers to
+// account or transaction metadata.
 message FieldRef {
-  oneof source {
-    string account_metadata = 1;
-    string transaction_metadata = 2;
-  }
+  string metadata = 1;
 }
 
 // FieldCondition = FieldRef × Condition.

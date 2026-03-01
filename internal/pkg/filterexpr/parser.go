@@ -327,9 +327,7 @@ func (p *parser) parseMetadataCondition() (*commonpb.QueryFilter, error) {
 		return nil, fmt.Errorf("unexpected end of expression after metadata[%s]", keyTok)
 	}
 
-	field := &commonpb.FieldRef{
-		Source: &commonpb.FieldRef_AccountMetadata{AccountMetadata: keyTok},
-	}
+	field := &commonpb.FieldRef{Metadata: keyTok}
 
 	switch {
 	case t.kind == tokenOpEq:
@@ -463,3 +461,4 @@ func (p *parser) isKeyword(keyword string) bool {
 	t := p.peek()
 	return t != nil && t.kind == tokenWord && t.value == keyword
 }
+

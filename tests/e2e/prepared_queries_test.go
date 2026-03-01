@@ -16,14 +16,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// stringFilter creates a QueryFilter for account metadata string equality.
+// stringFilter creates a QueryFilter for metadata string equality.
 func stringFilter(metaKey, value string) *commonpb.QueryFilter {
 	return &commonpb.QueryFilter{
 		Filter: &commonpb.QueryFilter_Field{
 			Field: &commonpb.FieldCondition{
-				Field: &commonpb.FieldRef{
-					Source: &commonpb.FieldRef_AccountMetadata{AccountMetadata: metaKey},
-				},
+				Field:     &commonpb.FieldRef{Metadata: metaKey},
 				Condition: &commonpb.FieldCondition_StringCond{
 					StringCond: &commonpb.StringCondition{
 						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: value},
@@ -34,14 +32,12 @@ func stringFilter(metaKey, value string) *commonpb.QueryFilter {
 	}
 }
 
-// paramStringFilter creates a QueryFilter for account metadata string equality using a parameter.
+// paramStringFilter creates a QueryFilter for metadata string equality using a parameter.
 func paramStringFilter(metaKey, paramName string) *commonpb.QueryFilter {
 	return &commonpb.QueryFilter{
 		Filter: &commonpb.QueryFilter_Field{
 			Field: &commonpb.FieldCondition{
-				Field: &commonpb.FieldRef{
-					Source: &commonpb.FieldRef_AccountMetadata{AccountMetadata: metaKey},
-				},
+				Field:     &commonpb.FieldRef{Metadata: metaKey},
 				Condition: &commonpb.FieldCondition_StringCond{
 					StringCond: &commonpb.StringCondition{
 						Value: &commonpb.StringCondition_Param{Param: paramName},

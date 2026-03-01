@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
@@ -18,6 +19,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 	ggrpc "google.golang.org/grpc"
 )
 
@@ -26,6 +28,7 @@ type BucketServiceServerImpl struct {
 	logger         logging.Logger
 	ctrl           ctrl.Controller
 	store          *dal.Store
+	readStore      *readstore.Store
 	attrs          *attributes.Attributes
 	sharedState    *state.SharedState
 	receiptSigner  *receipt.Signer
@@ -33,11 +36,12 @@ type BucketServiceServerImpl struct {
 	authCfg        internalauth.AuthConfig
 }
 
-func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig) servicepb.BucketServiceServer {
 	return &BucketServiceServerImpl{
 		logger:         logger,
 		ctrl:           ctrl,
 		store:          s,
+		readStore:      rs,
 		attrs:          attrs,
 		sharedState:    sharedState,
 		receiptSigner:  receiptSigner,
@@ -175,10 +179,10 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		return fmt.Errorf("ledger name is required")
 	}
 
-	impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d)",
-		req.Ledger, req.PageSize, req.AfterTxId)
+	impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, hasFilter=%v)",
+		req.Ledger, req.PageSize, req.AfterTxId, req.Filter != nil)
 
-	cursor, err := impl.ctrl.ListTransactions(stream.Context(), req.Ledger, req.PageSize, req.AfterTxId)
+	cursor, err := impl.ctrl.ListTransactions(stream.Context(), req.Ledger, req.PageSize, req.AfterTxId, req.Filter)
 	if err != nil {
 		return fmt.Errorf("listing transactions: %w", err)
 	}
@@ -264,6 +268,39 @@ func (impl *BucketServiceServerImpl) GetStoreMetrics(ctx context.Context, _ *ser
 	return &servicepb.GetStoreMetricsResponse{
 		Available: true,
 		Metrics:   metrics,
+	}, nil
+}
+
+func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
+	lastIndexed, err := impl.readStore.LastIndexedSequence()
+	if err != nil {
+		return nil, fmt.Errorf("reading last indexed sequence: %w", err)
+	}
+
+	lastLog, err := query.ReadLastSequence(impl.store)
+	if err != nil {
+		return nil, fmt.Errorf("reading last log sequence: %w", err)
+	}
+
+	var lag uint64
+	if lastLog > lastIndexed {
+		lag = lastLog - lastIndexed
+	}
+
+	var fileSize uint64
+	if info, err := os.Stat(impl.readStore.Path()); err == nil {
+		fileSize = uint64(info.Size())
+	}
+
+	return &servicepb.GetIndexStatusResponse{
+		LastIndexedSequence: lastIndexed,
+		LastLogSequence:     lastLog,
+		Lag:                 lag,
+		IndexFileSize:       fileSize,
 	}, nil
 }
 

@@ -18,7 +18,7 @@ type mockBackend struct {
 	listLedgersFn              func(ctx context.Context) (dal.Cursor[*commonpb.LedgerInfo], error)
 	getLedgerByNameFn           func(ctx context.Context, name string) (*commonpb.LedgerInfo, error)
 	getTransactionFn           func(ctx context.Context, ledgerName string, txID uint64) (*commonpb.Transaction, error)
-	listTransactionsFn         func(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (dal.Cursor[*commonpb.Transaction], error)
+	listTransactionsFn         func(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Transaction], error)
 	getAccountFn               func(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error)
 	listAccountsFn             func(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Account], error)
 	listLogsFn                 func(ctx context.Context, afterSequence uint64, pageSize uint32) (dal.Cursor[*commonpb.Log], error)
@@ -69,9 +69,9 @@ func (m *mockBackend) GetTransaction(ctx context.Context, ledgerName string, txI
 	return nil, nil
 }
 
-func (m *mockBackend) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (dal.Cursor[*commonpb.Transaction], error) {
+func (m *mockBackend) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Transaction], error) {
 	if m.listTransactionsFn != nil {
-		return m.listTransactionsFn(ctx, ledgerName, pageSize, afterTxID)
+		return m.listTransactionsFn(ctx, ledgerName, pageSize, afterTxID, filter)
 	}
 	return dal.NewSliceCursor[*commonpb.Transaction](nil), nil
 }

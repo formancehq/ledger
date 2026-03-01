@@ -85,6 +85,7 @@ func (m *ListTransactionsRequest) CloneVT() *ListTransactionsRequest {
 	r.Ledger = m.Ledger
 	r.PageSize = m.PageSize
 	r.AfterTxId = m.AfterTxId
+	r.Filter = m.Filter.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1881,6 +1882,42 @@ func (m *ExecutePreparedQueryResponse_Aggregate) CloneVT() isExecutePreparedQuer
 	return r
 }
 
+func (m *GetIndexStatusRequest) CloneVT() *GetIndexStatusRequest {
+	if m == nil {
+		return (*GetIndexStatusRequest)(nil)
+	}
+	r := new(GetIndexStatusRequest)
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *GetIndexStatusRequest) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *GetIndexStatusResponse) CloneVT() *GetIndexStatusResponse {
+	if m == nil {
+		return (*GetIndexStatusResponse)(nil)
+	}
+	r := new(GetIndexStatusResponse)
+	r.LastIndexedSequence = m.LastIndexedSequence
+	r.LastLogSequence = m.LastLogSequence
+	r.Lag = m.Lag
+	r.IndexFileSize = m.IndexFileSize
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *GetIndexStatusResponse) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (this *GetAccountRequest) EqualVT(that *GetAccountRequest) bool {
 	if this == that {
 		return true
@@ -1960,6 +1997,9 @@ func (this *ListTransactionsRequest) EqualVT(that *ListTransactionsRequest) bool
 		return false
 	}
 	if this.AfterTxId != that.AfterTxId {
+		return false
+	}
+	if !this.Filter.EqualVT(that.Filter) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -4741,6 +4781,50 @@ func (this *ExecutePreparedQueryResponse_Aggregate) EqualVT(thatIface isExecuteP
 	return true
 }
 
+func (this *GetIndexStatusRequest) EqualVT(that *GetIndexStatusRequest) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *GetIndexStatusRequest) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*GetIndexStatusRequest)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *GetIndexStatusResponse) EqualVT(that *GetIndexStatusResponse) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.LastIndexedSequence != that.LastIndexedSequence {
+		return false
+	}
+	if this.LastLogSequence != that.LastLogSequence {
+		return false
+	}
+	if this.Lag != that.Lag {
+		return false
+	}
+	if this.IndexFileSize != that.IndexFileSize {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *GetIndexStatusResponse) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*GetIndexStatusResponse)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (m *GetAccountRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -4912,6 +4996,16 @@ func (m *ListTransactionsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Filter != nil {
+		size, err := m.Filter.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x22
 	}
 	if m.AfterTxId != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AfterTxId))
@@ -9352,6 +9446,92 @@ func (m *ExecutePreparedQueryResponse_Aggregate) MarshalToSizedBufferVT(dAtA []b
 	}
 	return len(dAtA) - i, nil
 }
+func (m *GetIndexStatusRequest) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GetIndexStatusRequest) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *GetIndexStatusRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *GetIndexStatusResponse) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GetIndexStatusResponse) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *GetIndexStatusResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.IndexFileSize != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.IndexFileSize))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.Lag != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Lag))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.LastLogSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastLogSequence))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.LastIndexedSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastIndexedSequence))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *GetAccountRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -9420,6 +9600,10 @@ func (m *ListTransactionsRequest) SizeVT() (n int) {
 	}
 	if m.AfterTxId != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.AfterTxId))
+	}
+	if m.Filter != nil {
+		l = m.Filter.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -11239,6 +11423,38 @@ func (m *ExecutePreparedQueryResponse_Aggregate) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *GetIndexStatusRequest) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *GetIndexStatusResponse) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.LastIndexedSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.LastIndexedSequence))
+	}
+	if m.LastLogSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.LastLogSequence))
+	}
+	if m.Lag != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Lag))
+	}
+	if m.IndexFileSize != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.IndexFileSize))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *GetAccountRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -11674,6 +11890,42 @@ func (m *ListTransactionsRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Filter", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Filter == nil {
+				m.Filter = &commonpb.QueryFilter{}
+			}
+			if err := m.Filter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -21789,6 +22041,184 @@ func (m *ExecutePreparedQueryResponse) UnmarshalVT(dAtA []byte) error {
 				m.Result = &ExecutePreparedQueryResponse_Aggregate{Aggregate: v}
 			}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *GetIndexStatusRequest) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: GetIndexStatusRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: GetIndexStatusRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *GetIndexStatusResponse) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: GetIndexStatusResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: GetIndexStatusResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastIndexedSequence", wireType)
+			}
+			m.LastIndexedSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LastIndexedSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastLogSequence", wireType)
+			}
+			m.LastLogSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LastLogSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Lag", wireType)
+			}
+			m.Lag = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Lag |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IndexFileSize", wireType)
+			}
+			m.IndexFileSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.IndexFileSize |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

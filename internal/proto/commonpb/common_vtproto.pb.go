@@ -2235,9 +2235,7 @@ func (m *FieldRef) CloneVT() *FieldRef {
 		return (*FieldRef)(nil)
 	}
 	r := new(FieldRef)
-	if m.Source != nil {
-		r.Source = m.Source.(interface{ CloneVT() isFieldRef_Source }).CloneVT()
-	}
+	r.Metadata = m.Metadata
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2247,24 +2245,6 @@ func (m *FieldRef) CloneVT() *FieldRef {
 
 func (m *FieldRef) CloneMessageVT() proto.Message {
 	return m.CloneVT()
-}
-
-func (m *FieldRef_AccountMetadata) CloneVT() isFieldRef_Source {
-	if m == nil {
-		return (*FieldRef_AccountMetadata)(nil)
-	}
-	r := new(FieldRef_AccountMetadata)
-	r.AccountMetadata = m.AccountMetadata
-	return r
-}
-
-func (m *FieldRef_TransactionMetadata) CloneVT() isFieldRef_Source {
-	if m == nil {
-		return (*FieldRef_TransactionMetadata)(nil)
-	}
-	r := new(FieldRef_TransactionMetadata)
-	r.TransactionMetadata = m.TransactionMetadata
-	return r
 }
 
 func (m *FieldCondition) CloneVT() *FieldCondition {
@@ -6168,15 +6148,8 @@ func (this *FieldRef) EqualVT(that *FieldRef) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.Source == nil && that.Source != nil {
+	if this.Metadata != that.Metadata {
 		return false
-	} else if this.Source != nil {
-		if that.Source == nil {
-			return false
-		}
-		if !this.Source.(interface{ EqualVT(isFieldRef_Source) bool }).EqualVT(that.Source) {
-			return false
-		}
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -6188,40 +6161,6 @@ func (this *FieldRef) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *FieldRef_AccountMetadata) EqualVT(thatIface isFieldRef_Source) bool {
-	that, ok := thatIface.(*FieldRef_AccountMetadata)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.AccountMetadata != that.AccountMetadata {
-		return false
-	}
-	return true
-}
-
-func (this *FieldRef_TransactionMetadata) EqualVT(thatIface isFieldRef_Source) bool {
-	that, ok := thatIface.(*FieldRef_TransactionMetadata)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.TransactionMetadata != that.TransactionMetadata {
-		return false
-	}
-	return true
-}
-
 func (this *FieldCondition) EqualVT(that *FieldCondition) bool {
 	if this == that {
 		return true
@@ -12349,46 +12288,16 @@ func (m *FieldRef) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if vtmsg, ok := m.Source.(interface {
-		MarshalToSizedBufferVT([]byte) (int, error)
-	}); ok {
-		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
+	if len(m.Metadata) > 0 {
+		i -= len(m.Metadata)
+		copy(dAtA[i:], m.Metadata)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Metadata)))
+		i--
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
 
-func (m *FieldRef_AccountMetadata) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *FieldRef_AccountMetadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i -= len(m.AccountMetadata)
-	copy(dAtA[i:], m.AccountMetadata)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.AccountMetadata)))
-	i--
-	dAtA[i] = 0xa
-	return len(dAtA) - i, nil
-}
-func (m *FieldRef_TransactionMetadata) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *FieldRef_TransactionMetadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i -= len(m.TransactionMetadata)
-	copy(dAtA[i:], m.TransactionMetadata)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.TransactionMetadata)))
-	i--
-	dAtA[i] = 0x12
-	return len(dAtA) - i, nil
-}
 func (m *FieldCondition) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -15527,33 +15436,14 @@ func (m *FieldRef) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if vtmsg, ok := m.Source.(interface{ SizeVT() int }); ok {
-		n += vtmsg.SizeVT()
+	l = len(m.Metadata)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *FieldRef_AccountMetadata) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.AccountMetadata)
-	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	return n
-}
-func (m *FieldRef_TransactionMetadata) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.TransactionMetadata)
-	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	return n
-}
 func (m *FieldCondition) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -28793,7 +28683,7 @@ func (m *FieldRef) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AccountMetadata", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -28821,39 +28711,7 @@ func (m *FieldRef) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Source = &FieldRef_AccountMetadata{AccountMetadata: string(dAtA[iNdEx:postIndex])}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TransactionMetadata", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Source = &FieldRef_TransactionMetadata{TransactionMetadata: string(dAtA[iNdEx:postIndex])}
+			m.Metadata = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

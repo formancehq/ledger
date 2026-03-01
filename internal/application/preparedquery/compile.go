@@ -119,8 +119,8 @@ func compileFieldCondition(
 		return nil, fmt.Errorf("field condition has no field reference")
 	}
 
-	ns, entityLen := fieldRefNamespaceAndLen(fc.Field)
-	metaKey := fieldRefKey(fc.Field)
+	ns, entityLen := targetNamespaceAndLen(target)
+	metaKey := fc.Field.GetMetadata()
 
 	b := tx.Bucket(readstore.BucketMetadataIndex)
 	if b == nil {
@@ -393,28 +393,6 @@ func targetNamespaceAndLen(target commonpb.QueryTarget) (string, int) {
 		return readstore.NamespaceTransaction, 8
 	}
 	return readstore.NamespaceAccount, 0
-}
-
-// fieldRefNamespaceAndLen returns the namespace and entity length from a FieldRef.
-func fieldRefNamespaceAndLen(ref *commonpb.FieldRef) (string, int) {
-	switch ref.Source.(type) {
-	case *commonpb.FieldRef_TransactionMetadata:
-		return readstore.NamespaceTransaction, 8
-	default:
-		return readstore.NamespaceAccount, 0
-	}
-}
-
-// fieldRefKey returns the metadata key name from a FieldRef.
-func fieldRefKey(ref *commonpb.FieldRef) string {
-	switch s := ref.Source.(type) {
-	case *commonpb.FieldRef_AccountMetadata:
-		return s.AccountMetadata
-	case *commonpb.FieldRef_TransactionMetadata:
-		return s.TransactionMetadata
-	default:
-		return ""
-	}
 }
 
 func resolveString(cond *commonpb.StringCondition, params map[string]string) (string, error) {

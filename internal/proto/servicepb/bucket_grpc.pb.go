@@ -46,6 +46,7 @@ const (
 	BucketService_DeletePreparedQuery_FullMethodName     = "/ledger.BucketService/DeletePreparedQuery"
 	BucketService_ListPreparedQueries_FullMethodName     = "/ledger.BucketService/ListPreparedQueries"
 	BucketService_ExecutePreparedQuery_FullMethodName    = "/ledger.BucketService/ExecutePreparedQuery"
+	BucketService_GetIndexStatus_FullMethodName          = "/ledger.BucketService/GetIndexStatus"
 )
 
 // BucketServiceClient is the client API for BucketService service.
@@ -104,6 +105,8 @@ type BucketServiceClient interface {
 	ListPreparedQueries(ctx context.Context, in *ListPreparedQueriesRequest, opts ...grpc.CallOption) (*ListPreparedQueriesResponse, error)
 	// ExecutePreparedQuery executes a prepared query against the read index store
 	ExecutePreparedQuery(ctx context.Context, in *ExecutePreparedQueryRequest, opts ...grpc.CallOption) (*ExecutePreparedQueryResponse, error)
+	// GetIndexStatus returns the current state of the read index builder
+	GetIndexStatus(ctx context.Context, in *GetIndexStatusRequest, opts ...grpc.CallOption) (*GetIndexStatusResponse, error)
 }
 
 type bucketServiceClient struct {
@@ -436,6 +439,16 @@ func (c *bucketServiceClient) ExecutePreparedQuery(ctx context.Context, in *Exec
 	return out, nil
 }
 
+func (c *bucketServiceClient) GetIndexStatus(ctx context.Context, in *GetIndexStatusRequest, opts ...grpc.CallOption) (*GetIndexStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetIndexStatusResponse)
+	err := c.cc.Invoke(ctx, BucketService_GetIndexStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BucketServiceServer is the server API for BucketService service.
 // All implementations must embed UnimplementedBucketServiceServer
 // for forward compatibility.
@@ -492,6 +505,8 @@ type BucketServiceServer interface {
 	ListPreparedQueries(context.Context, *ListPreparedQueriesRequest) (*ListPreparedQueriesResponse, error)
 	// ExecutePreparedQuery executes a prepared query against the read index store
 	ExecutePreparedQuery(context.Context, *ExecutePreparedQueryRequest) (*ExecutePreparedQueryResponse, error)
+	// GetIndexStatus returns the current state of the read index builder
+	GetIndexStatus(context.Context, *GetIndexStatusRequest) (*GetIndexStatusResponse, error)
 	mustEmbedUnimplementedBucketServiceServer()
 }
 
@@ -576,6 +591,9 @@ func (UnimplementedBucketServiceServer) ListPreparedQueries(context.Context, *Li
 }
 func (UnimplementedBucketServiceServer) ExecutePreparedQuery(context.Context, *ExecutePreparedQueryRequest) (*ExecutePreparedQueryResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ExecutePreparedQuery not implemented")
+}
+func (UnimplementedBucketServiceServer) GetIndexStatus(context.Context, *GetIndexStatusRequest) (*GetIndexStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetIndexStatus not implemented")
 }
 func (UnimplementedBucketServiceServer) mustEmbedUnimplementedBucketServiceServer() {}
 func (UnimplementedBucketServiceServer) testEmbeddedByValue()                       {}
@@ -992,6 +1010,24 @@ func _BucketService_ExecutePreparedQuery_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_GetIndexStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetIndexStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetIndexStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetIndexStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetIndexStatus(ctx, req.(*GetIndexStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BucketService_ServiceDesc is the grpc.ServiceDesc for BucketService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1066,6 +1102,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExecutePreparedQuery",
 			Handler:    _BucketService_ExecutePreparedQuery_Handler,
+		},
+		{
+			MethodName: "GetIndexStatus",
+			Handler:    _BucketService_GetIndexStatus_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

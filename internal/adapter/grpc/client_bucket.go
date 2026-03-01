@@ -45,11 +45,12 @@ func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string
 	return resp.Transaction, nil
 }
 
-func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (dal.Cursor[*commonpb.Transaction], error) {
+func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Transaction], error) {
 	stream, err := g.client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger:    ledgerName,
 		PageSize:  pageSize,
 		AfterTxId: afterTxID,
+		Filter:    filter,
 	})
 	if err != nil {
 		return nil, err

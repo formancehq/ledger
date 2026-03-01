@@ -280,8 +280,8 @@ func Module() fx.Option {
 			fx.Annotate(func(cfg Config, logger logging.Logger, keySet oidc.KeySet) (internalauth.AuthConfig, error) {
 				return buildAuthConfig(cfg, logger, keySet)
 			}, fx.ParamTags(``, ``, `optional:"true"`)),
-			func(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig) servicepb.BucketServiceServer {
-				return grpcadp.NewBucketServiceServer(logger, ctrl, s, attrs, ss, signer, respSigner, authCfg)
+			func(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig) servicepb.BucketServiceServer {
+				return grpcadp.NewBucketServiceServer(logger, ctrl, s, rs, attrs, ss, signer, respSigner, authCfg)
 			},
 			func(logger logging.Logger, s *dal.Store) snapshotpb.SnapshotServiceServer {
 				return grpcadp.NewSnapshotServiceServer(logger, s)

@@ -23,12 +23,16 @@ func timestampToStdTime(ts *commonpb.Timestamp) time.Time {
 }
 
 // listAllTransactions collects all transactions from the streaming RPC into a slice
-func listAllTransactions(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64) ([]*commonpb.Transaction, error) {
-	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
+func listAllTransactions(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64, filters ...*commonpb.QueryFilter) ([]*commonpb.Transaction, error) {
+	req := &servicepb.ListTransactionsRequest{
 		Ledger:    ledgerName,
 		PageSize:  pageSize,
 		AfterTxId: afterTxID,
-	})
+	}
+	if len(filters) > 0 {
+		req.Filter = filters[0]
+	}
+	stream, err := client.ListTransactions(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -997,4 +1001,213 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(ct2.PostCommitVolumes).To(BeNil())
 		})
 	})
+
+	Context("When listing transactions with metadata filter", Ordered, func() {
+		var ledgerName = "tx-filter-ledger"
+
+		BeforeAll(func() {
+			// Create ledger
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			// Create transactions with various metadata
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "users:alice", big.NewInt(100), "USD"),
+					}, map[string]string{"category": "payment", "priority": "high"}, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "users:bob", big.NewInt(200), "EUR"),
+					}, map[string]string{"category": "refund", "priority": "low"}, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "merchants:shop1", big.NewInt(300), "USD"),
+					}, map[string]string{"category": "payment", "priority": "low"}, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "users:charlie", big.NewInt(400), "GBP"),
+					}, map[string]string{"category": "transfer"}, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "merchants:shop2", big.NewInt(500), "USD"),
+					}, nil, nil), // No metadata
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Wait for the index builder to catch up
+			Eventually(func(g Gomega) {
+				txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0)
+				g.Expect(err).To(Succeed())
+				g.Expect(txs).To(HaveLen(5))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should filter transactions by exact metadata string value", func() {
+			filter := txMetadataStringFilter("category", "payment")
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(HaveLen(2))
+
+			// Verify all returned transactions have category=payment
+			for _, tx := range txs {
+				Expect(tx.Metadata).NotTo(BeNil())
+				Expect(tx.Metadata.ToMap()["category"]).To(Equal("payment"))
+			}
+		})
+
+		It("Should filter transactions returning single match", func() {
+			filter := txMetadataStringFilter("category", "refund")
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(HaveLen(1))
+			Expect(txs[0].Metadata.ToMap()["category"]).To(Equal("refund"))
+		})
+
+		It("Should return empty list when no transactions match the filter", func() {
+			filter := txMetadataStringFilter("category", "nonexistent")
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(BeEmpty())
+		})
+
+		It("Should filter transactions by metadata key existence", func() {
+			filter := txMetadataExistsFilter("priority")
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			// 3 transactions have "priority" metadata (alice, bob, shop1)
+			Expect(txs).To(HaveLen(3))
+		})
+
+		It("Should combine filters with AND", func() {
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_And{
+					And: &commonpb.AndFilter{
+						Filters: []*commonpb.QueryFilter{
+							txMetadataStringFilter("category", "payment"),
+							txMetadataStringFilter("priority", "high"),
+						},
+					},
+				},
+			}
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(HaveLen(1))
+			Expect(txs[0].Metadata.ToMap()["category"]).To(Equal("payment"))
+			Expect(txs[0].Metadata.ToMap()["priority"]).To(Equal("high"))
+		})
+
+		It("Should combine filters with OR", func() {
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Or{
+					Or: &commonpb.OrFilter{
+						Filters: []*commonpb.QueryFilter{
+							txMetadataStringFilter("category", "refund"),
+							txMetadataStringFilter("category", "transfer"),
+						},
+					},
+				},
+			}
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(HaveLen(2))
+		})
+
+		It("Should negate a filter with NOT", func() {
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Not{
+					Not: &commonpb.NotFilter{
+						Filter: txMetadataStringFilter("category", "payment"),
+					},
+				},
+			}
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			// 5 total - 2 with category=payment = 3
+			Expect(txs).To(HaveLen(3))
+		})
+
+		It("Should respect pagination with filter", func() {
+			filter := txMetadataExistsFilter("priority")
+
+			// Get first page (2 items)
+			firstPage, err := listAllTransactions(ctx, client, ledgerName, 2, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(firstPage).To(HaveLen(2))
+
+			// Results should be newest first
+			Expect(firstPage[0].Id).To(BeNumerically(">", firstPage[1].Id))
+
+			// Get second page
+			secondPage, err := listAllTransactions(ctx, client, ledgerName, 2, firstPage[1].Id, filter)
+			Expect(err).To(Succeed())
+			Expect(secondPage).To(HaveLen(1))
+
+			// No overlap
+			for _, tx1 := range firstPage {
+				for _, tx2 := range secondPage {
+					Expect(tx1.Id).NotTo(Equal(tx2.Id))
+				}
+			}
+		})
+
+		It("Should return filtered results in newest-first order", func() {
+			filter := txMetadataStringFilter("category", "payment")
+			txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+			Expect(err).To(Succeed())
+			Expect(txs).To(HaveLen(2))
+			// Newest first
+			Expect(txs[0].Id).To(BeNumerically(">", txs[1].Id))
+		})
+
+		It("Should isolate transaction metadata from account metadata", func() {
+			// Set account metadata on users:alice
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					saveAccountMetadataAction(ledgerName, "users:alice", map[string]string{
+						"tier": "gold",
+					}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Filter by tier=gold on transaction metadata should return nothing,
+			// because "tier" is only on the account, not on any transaction.
+			Eventually(func(g Gomega) {
+				filter := txMetadataStringFilter("tier", "gold")
+				txs, err := listAllTransactions(ctx, client, ledgerName, 0, 0, filter)
+				g.Expect(err).To(Succeed())
+				g.Expect(txs).To(BeEmpty())
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+	})
 })
+
+// txMetadataStringFilter builds a QueryFilter for a transaction metadata string equality.
+func txMetadataStringFilter(key, value string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field:     &commonpb.FieldRef{Metadata: key},
+				Condition: &commonpb.FieldCondition_StringCond{
+					StringCond: &commonpb.StringCondition{
+						Value: &commonpb.StringCondition_Hardcoded{Hardcoded: value},
+					},
+				},
+			},
+		},
+	}
+}
+
+// txMetadataExistsFilter builds a QueryFilter for transaction metadata key existence.
+func txMetadataExistsFilter(key string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field:     &commonpb.FieldRef{Metadata: key},
+				Condition: &commonpb.FieldCondition_ExistsCond{
+					ExistsCond: &commonpb.ExistsCondition{},
+				},
+			},
+		},
+	}
+}

@@ -65,6 +65,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
 | Store backup | ✅ | ❌ | Point-in-time Pebble backup as tar archive |
+| Index status | ✅ | ❌ | Read index builder progress (lag, file size) |
 | **Periods** |
 | Close period | ✅ | ❌ | Two-step close: ClosePeriod → SealPeriod |
 | Seal period (background) | ✅ | ❌ | Background sealer computes BLAKE3 sealing hash |
@@ -508,6 +509,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListSigningKeys` | Stream all registered signing keys | ✅ |
 | `Discovery` | Return server capabilities (response signing config) | ✅ |
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
+| `GetIndexStatus` | Read index builder progress (lag, file size) | ✅ |
 
 ### Apply Method
 

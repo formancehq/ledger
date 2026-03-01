@@ -1,6 +1,7 @@
 package ctrl
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -209,7 +210,7 @@ func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates 
 
 // ListTransactions returns a cursor over transactions for a ledger (newest first).
 // Uses the bbolt read index for entity discovery and Pebble for enrichment.
-func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (dal.Cursor[*commonpb.Transaction], error) {
+func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Transaction], error) {
 	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -224,23 +225,11 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 
 	// Discover transaction IDs from bbolt (reverse order = newest first)
 	var entityIDs [][]byte
-	var hasMore bool
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(readstore.BucketExistence)
-		if b == nil {
-			return nil
+		if filter != nil {
+			return ctrl.listTransactionsFiltered(tx, ledgerInfo.Name, pageSize, afterTxID, filter, &entityIDs)
 		}
-		kb := readstore.NewKeyBuilder()
-		prefix := readstore.ExistencePrefix(kb, ledgerInfo.Name, readstore.NamespaceTransaction)
-		iter := readstore.NewReversePrefixIterator(b.Cursor(), prefix, len(prefix), 8)
-
-		var before []byte
-		if afterTxID > 0 {
-			before = make([]byte, 8)
-			binary.BigEndian.PutUint64(before, afterTxID)
-		}
-		entityIDs, hasMore = readstore.PaginateReverse(iter, pageSize, before)
-		return nil
+		return ctrl.listTransactionsUnfiltered(tx, ledgerInfo.Name, pageSize, afterTxID, &entityIDs)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing transactions from index: %w", err)
@@ -259,8 +248,76 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 		txns = append(txns, tx)
 	}
 
-	_ = hasMore // pagination is handled by the caller via pageSize
 	return dal.NewClosingCursor(dal.NewSliceCursor(txns), handle), nil
+}
+
+// listTransactionsUnfiltered uses reverse prefix iteration for newest-first ordering.
+func (ctrl *DefaultController) listTransactionsUnfiltered(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, out *[][]byte) error {
+	b := tx.Bucket(readstore.BucketExistence)
+	if b == nil {
+		return nil
+	}
+	kb := readstore.NewKeyBuilder()
+	prefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceTransaction)
+	iter := readstore.NewReversePrefixIterator(b.Cursor(), prefix, len(prefix), 8)
+
+	var before []byte
+	if afterTxID > 0 {
+		before = make([]byte, 8)
+		binary.BigEndian.PutUint64(before, afterTxID)
+	}
+	*out, _ = readstore.PaginateReverse(iter, pageSize, before)
+	return nil
+}
+
+// listTransactionsFiltered compiles a filter, collects matching IDs, reverses
+// them for newest-first ordering, and applies pagination.
+func (ctrl *DefaultController) listTransactionsFiltered(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, out *[][]byte) error {
+	kb := readstore.NewKeyBuilder()
+	iter, err := preparedquery.Compile(
+		tx, kb, filter,
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		ledgerName, nil,
+	)
+	if err != nil {
+		return fmt.Errorf("compiling transaction filter: %w", err)
+	}
+	defer iter.Close()
+
+	// Collect all matching IDs (forward sorted, ascending)
+	var all [][]byte
+	for iter.Next() {
+		cp := make([]byte, len(iter.Current()))
+		copy(cp, iter.Current())
+		all = append(all, cp)
+	}
+
+	// Reverse for newest-first ordering
+	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
+		all[i], all[j] = all[j], all[i]
+	}
+
+	// Apply pagination: skip past afterTxID
+	if afterTxID > 0 {
+		afterBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(afterBytes, afterTxID)
+		skip := 0
+		for _, id := range all {
+			if bytes.Compare(id, afterBytes) >= 0 {
+				skip++
+			} else {
+				break
+			}
+		}
+		all = all[skip:]
+	}
+
+	if uint32(len(all)) > pageSize {
+		all = all[:pageSize]
+	}
+
+	*out = all
+	return nil
 }
 
 // ListAccounts returns a cursor over accounts for a ledger (alphabetical order).

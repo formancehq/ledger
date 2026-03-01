@@ -18,7 +18,7 @@ func TestParse(t *testing.T) {
 
 		fc := filter.GetField()
 		require.NotNil(t, fc)
-		assert.Equal(t, "category", fc.Field.GetAccountMetadata())
+		assert.Equal(t, "category", fc.Field.GetMetadata())
 		sc := fc.GetStringCond()
 		require.NotNil(t, sc)
 		assert.Equal(t, "premium", sc.GetHardcoded())
@@ -31,7 +31,7 @@ func TestParse(t *testing.T) {
 
 		fc := filter.GetField()
 		require.NotNil(t, fc)
-		assert.Equal(t, "name", fc.Field.GetAccountMetadata())
+		assert.Equal(t, "name", fc.Field.GetMetadata())
 		sc := fc.GetStringCond()
 		require.NotNil(t, sc)
 		assert.Equal(t, "hello world", sc.GetHardcoded())
@@ -111,7 +111,7 @@ func TestParse(t *testing.T) {
 
 		fc := filter.GetField()
 		require.NotNil(t, fc)
-		assert.Equal(t, "category", fc.Field.GetAccountMetadata())
+		assert.Equal(t, "category", fc.Field.GetMetadata())
 		assert.NotNil(t, fc.GetExistsCond())
 	})
 
@@ -124,7 +124,7 @@ func TestParse(t *testing.T) {
 		require.NotNil(t, notF)
 		fc := notF.Filter.GetField()
 		require.NotNil(t, fc)
-		assert.Equal(t, "category", fc.Field.GetAccountMetadata())
+		assert.Equal(t, "category", fc.Field.GetMetadata())
 		sc := fc.GetStringCond()
 		require.NotNil(t, sc)
 		assert.Equal(t, "premium", sc.GetHardcoded())
@@ -171,11 +171,11 @@ func TestParse(t *testing.T) {
 
 		fc0 := andF.Filters[0].GetField()
 		require.NotNil(t, fc0)
-		assert.Equal(t, "a", fc0.Field.GetAccountMetadata())
+		assert.Equal(t, "a", fc0.Field.GetMetadata())
 
 		fc1 := andF.Filters[1].GetField()
 		require.NotNil(t, fc1)
-		assert.Equal(t, "b", fc1.Field.GetAccountMetadata())
+		assert.Equal(t, "b", fc1.Field.GetMetadata())
 	})
 
 	t.Run("OR", func(t *testing.T) {
