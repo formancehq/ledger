@@ -106,6 +106,7 @@ func GetClusterClient(cmd *cobra.Command) (clusterpb.ClusterServiceClient, *grpc
 
 // GetContext returns a context with the configured timeout.
 // If --consistency is set, appends x-consistency metadata to the outgoing gRPC context.
+// If --auth-token is set, appends the Authorization: Bearer header.
 func GetContext(cmd *cobra.Command) (context.Context, context.CancelFunc) {
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 	if timeout == 0 {
@@ -115,7 +116,27 @@ func GetContext(cmd *cobra.Command) (context.Context, context.CancelFunc) {
 	if consistency, _ := cmd.Flags().GetString("consistency"); consistency != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, "x-consistency", consistency)
 	}
+	if token := resolveAuthToken(cmd); token != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+	}
 	return context.WithTimeout(ctx, timeout)
+}
+
+// resolveAuthToken reads the --auth-token flag value.
+// If the value starts with "@", it reads the token from the specified file.
+func resolveAuthToken(cmd *cobra.Command) string {
+	token, _ := cmd.Flags().GetString("auth-token")
+	if token == "" {
+		return ""
+	}
+	if strings.HasPrefix(token, "@") {
+		data, err := os.ReadFile(token[1:])
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(data))
+	}
+	return token
 }
 
 // ParseKeyValue parses a string in the format "key=value" and returns the key and value.

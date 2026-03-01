@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"net/http"
@@ -243,6 +244,151 @@ func TestRequireScope_WriteScope(t *testing.T) {
 	token = signToken(t, privKey, newTestClaims("ledger:read"))
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodPut, "/test", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	handler.ServeHTTP(w, r)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+// --- EdDSA (Ed25519) HTTP middleware tests ---
+
+func TestHTTPAuthMiddleware_EdDSA_ValidToken(t *testing.T) {
+	t.Parallel()
+
+	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
+	var capturedSubject string
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := ClaimsFromContext(r.Context())
+		if claims != nil {
+			capturedSubject = claims.GetSubject()
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	cfg := AuthConfig{
+		Enabled: true,
+		KeySet:  edKeySet,
+		Service: "ledger",
+		Ed25519AllowedScopes: map[string][]string{
+			"ed-http-key": {"ledger:read", "ledger:write"},
+		},
+	}
+	handler := HTTPAuthMiddleware(cfg)(inner)
+
+	claims := newTestClaims("ledger:read")
+	claims.Issuer = ""
+	token := signEdDSA(t, edPriv, "ed-http-key", claims)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	handler.ServeHTTP(w, r)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "test-user", capturedSubject)
+}
+
+func TestHTTPAuthMiddleware_EdDSA_ExcessiveScopes(t *testing.T) {
+	t.Parallel()
+
+	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
+	cfg := AuthConfig{
+		Enabled: true,
+		KeySet:  edKeySet,
+		Service: "ledger",
+		Ed25519AllowedScopes: map[string][]string{
+			"ed-http-key": {"ledger:read"},
+		},
+	}
+	handler := HTTPAuthMiddleware(cfg)(ok200)
+
+	// Token claims admin but key only allows read
+	claims := newTestClaims("ledger:admin")
+	claims.Issuer = ""
+	token := signEdDSA(t, edPriv, "ed-http-key", claims)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	handler.ServeHTTP(w, r)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestHTTPAuthMiddleware_EdDSA_UnknownKey(t *testing.T) {
+	t.Parallel()
+
+	// Sign with a key that's not in the keyset
+	_, unknownPriv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	_, edKeySet := ed25519TestKeyPair(t, "known-key")
+
+	cfg := AuthConfig{
+		Enabled: true,
+		KeySet:  edKeySet,
+		Service: "ledger",
+	}
+	handler := HTTPAuthMiddleware(cfg)(ok200)
+
+	claims := newTestClaims("ledger:read")
+	claims.Issuer = ""
+	token := signEdDSA(t, unknownPriv, "unknown-key", claims)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	handler.ServeHTTP(w, r)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestRequireScope_EdDSA_MatchingScope(t *testing.T) {
+	t.Parallel()
+
+	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
+	cfg := AuthConfig{
+		Enabled:     true,
+		KeySet:      edKeySet,
+		Service:     "ledger",
+		CheckScopes: true,
+		Ed25519AllowedScopes: map[string][]string{
+			"ed-http-key": {"ledger:read", "ledger:write"},
+		},
+	}
+
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeWrite)(ok200))
+
+	claims := newTestClaims("ledger:write")
+	claims.Issuer = ""
+	token := signEdDSA(t, edPriv, "ed-http-key", claims)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/test", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	handler.ServeHTTP(w, r)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestRequireScope_EdDSA_WrongScope(t *testing.T) {
+	t.Parallel()
+
+	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
+	cfg := AuthConfig{
+		Enabled:     true,
+		KeySet:      edKeySet,
+		Service:     "ledger",
+		CheckScopes: true,
+		Ed25519AllowedScopes: map[string][]string{
+			"ed-http-key": {"ledger:read", "ledger:write"},
+		},
+	}
+
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeAdmin)(ok200))
+
+	// Token has read scope, route requires admin
+	claims := newTestClaims("ledger:read")
+	claims.Issuer = ""
+	token := signEdDSA(t, edPriv, "ed-http-key", claims)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/test", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
 	handler.ServeHTTP(w, r)
 	assert.Equal(t, http.StatusForbidden, w.Code)

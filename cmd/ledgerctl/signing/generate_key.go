@@ -1,13 +1,10 @@
 package signing
 
 import (
-	"crypto/ed25519"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
-	"os"
 	"path/filepath"
 
+	cryptosigning "github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/spf13/cobra"
 )
 
@@ -31,29 +28,16 @@ Creates two files:
 func runGenerateKey(_ *cobra.Command, args []string) error {
 	outputDir := args[0]
 
-	if err := os.MkdirAll(outputDir, 0700); err != nil {
-		return fmt.Errorf("creating output directory: %w", err)
+	keyID, err := cryptosigning.GenerateKeyPair(outputDir)
+	if err != nil {
+		return err
 	}
-
-	seed := make([]byte, ed25519.SeedSize)
-	if _, err := rand.Read(seed); err != nil {
-		return fmt.Errorf("generating random seed: %w", err)
-	}
-
-	privKey := ed25519.NewKeyFromSeed(seed)
-	pubKey := privKey.Public().(ed25519.PublicKey)
 
 	seedPath := filepath.Join(outputDir, "seed.hex")
-	if err := os.WriteFile(seedPath, []byte(hex.EncodeToString(seed)+"\n"), 0600); err != nil {
-		return fmt.Errorf("writing seed file: %w", err)
-	}
-
 	pubKeyPath := filepath.Join(outputDir, "pubkey.hex")
-	if err := os.WriteFile(pubKeyPath, []byte(hex.EncodeToString(pubKey)+"\n"), 0644); err != nil {
-		return fmt.Errorf("writing public key file: %w", err)
-	}
 
 	fmt.Printf("Ed25519 keypair generated in %s/\n", outputDir)
+	fmt.Printf("  Key ID:          %s\n", keyID)
 	fmt.Printf("  Seed (private):  %s  (mode 0600)\n", seedPath)
 	fmt.Printf("  Public key:      %s\n", pubKeyPath)
 	fmt.Println()

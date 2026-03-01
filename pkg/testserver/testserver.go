@@ -242,3 +242,10 @@ func WithAuthService(service string) testservice.InstrumentationFunc {
 	}
 }
 
+func WithAuthEd25519Keys(path string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--auth-ed25519-keys", path)
+		return nil
+	}
+}
+

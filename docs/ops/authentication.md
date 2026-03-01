@@ -64,6 +64,98 @@ HTTP clients must include the JWT token in the `Authorization` header:
 Authorization: Bearer <token>
 ```
 
+## Ed25519 Key-Based Authentication
+
+For machine-to-machine deployments without an OIDC provider, the server supports Ed25519 key-based authentication. Clients sign JWT tokens (EdDSA, RFC 8037) with their private key, and the server verifies with configured public keys.
+
+Both OIDC and Ed25519 modes can coexist. When `--auth-ed25519-keys` is configured, a composite key set routes EdDSA tokens to the static key set and others to the OIDC key set.
+
+### Server Setup
+
+1. Generate a keypair:
+
+```bash
+ledgerctl auth generate-key ./keys
+```
+
+2. Create an `auth-keys.json` config file:
+
+```json
+{
+  "keys": [
+    {
+      "keyId": "<key-id-from-step-1>",
+      "publicKeyFile": "./keys/pubkey.hex",
+      "scopes": ["ledger:read", "ledger:write"]
+    }
+  ]
+}
+```
+
+3. Start the server with Ed25519 authentication:
+
+```bash
+ledger-v3-poc run --auth-ed25519-keys auth-keys.json --bootstrap --node-id 1 --cluster-id test
+```
+
+Setting `--auth-ed25519-keys` automatically enables `--auth-enabled` and `--auth-check-scopes`.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--auth-ed25519-keys` | string | `""` | Path to JSON file with Ed25519 public keys and scopes |
+
+### Client Usage
+
+1. Generate a JWT token:
+
+```bash
+TOKEN=$(ledgerctl auth generate-token \
+  --signing-key ./keys/seed.hex \
+  --key-id <key-id> \
+  --subject ci-bot \
+  --scopes ledger:read,ledger:write \
+  --expiration 1h)
+```
+
+2. Use the token with ledgerctl:
+
+```bash
+ledgerctl --auth-token "$TOKEN" ledgers list
+# Or via environment variable:
+AUTH_TOKEN="$TOKEN" ledgerctl ledgers list
+# Or read from a file:
+ledgerctl --auth-token @token.txt ledgers list
+```
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `ledgerctl auth generate-key <dir>` | Generate an Ed25519 keypair |
+| `ledgerctl auth generate-token` | Generate a signed EdDSA JWT token |
+
+**generate-token flags:**
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--signing-key` | yes | | Path to Ed25519 seed file |
+| `--key-id` | yes | | Key ID matching the server config |
+| `--subject` | yes | | JWT subject claim |
+| `--scopes` | no | | Comma-separated scopes |
+| `--expiration` | no | `1h` | Token validity duration |
+
+### Scope Enforcement
+
+Ed25519 keys have a per-key scope allowlist defined in `auth-keys.json`. A token cannot claim scopes beyond what the key allows, even if the JWT payload contains them. This provides defense-in-depth: the server restricts what each key can do, independent of what the client requests.
+
+### Security Notes
+
+- Keep seed files (`seed.hex`) secret and with `0600` permissions
+- Public key files (`pubkey.hex`) can be safely distributed
+- Tokens are self-signed (no OIDC issuer); the issuer claim is not checked for EdDSA tokens
+- Token expiration is always enforced
+- Rotate keys by adding new entries to `auth-keys.json` and removing old ones
+
 ## Disabling Authentication
 
 By default, authentication is disabled (`--auth-enabled=false`). All requests are accepted without tokens. This is suitable for development, testing, or environments where authentication is handled at the network level (e.g., service mesh).

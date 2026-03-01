@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -277,4 +278,170 @@ func TestAuthenticate_WrongIssuer(t *testing.T) {
 	st, ok := status.FromError(err)
 	require.True(t, ok)
 	assert.Equal(t, codes.Unauthenticated, st.Code())
+}
+
+// --- Ed25519 (EdDSA) tests ---
+
+func ed25519TestKeyPair(t *testing.T, keyID string) (ed25519.PrivateKey, oidc.KeySet) {
+	t.Helper()
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	pub := priv.Public().(ed25519.PublicKey)
+
+	jwk := jose.JSONWebKey{
+		Key:       pub,
+		KeyID:     keyID,
+		Algorithm: string(jose.EdDSA),
+		Use:       "sig",
+	}
+	return priv, oidc.NewStaticKeySet(jwk)
+}
+
+func signEdDSA(t *testing.T, privKey ed25519.PrivateKey, keyID string, claims *oidc.AccessTokenClaims) string {
+	t.Helper()
+
+	payload, err := json.Marshal(claims)
+	require.NoError(t, err)
+
+	signer, err := jose.NewSigner(jose.SigningKey{
+		Algorithm: jose.EdDSA,
+		Key:       &jose.JSONWebKey{Key: privKey, KeyID: keyID},
+	}, nil)
+	require.NoError(t, err)
+
+	jws, err := signer.Sign(payload)
+	require.NoError(t, err)
+
+	token, err := jws.CompactSerialize()
+	require.NoError(t, err)
+	return token
+}
+
+func TestAuthenticate_EdDSA_Valid(t *testing.T) {
+	t.Parallel()
+
+	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-key")
+	cfg := AuthConfig{
+		Enabled:     true,
+		KeySet:      edKeySet,
+		Service:     "ledger",
+		CheckScopes: true,
+		Ed25519AllowedScopes: map[string][]string{
+			"ed-key": {"ledger:read", "ledger:write"},
+		},
+	}
+
+	claims := newTestClaims("ledger:read")
+	claims.Issuer = "" // EdDSA tokens are self-signed, no issuer
+	token := signEdDSA(t, edPriv, "ed-key", claims)
+	ctx := ctxWithBearer(token)
+
+	newCtx, err := Authenticate(ctx, cfg, ScopeRead)
+	require.NoError(t, err)
+	got := ClaimsFromContext(newCtx)
+	require.NotNil(t, got)
+	assert.Equal(t, "test-user", got.GetSubject())
+}
+
+func TestAuthenticate_EdDSA_ExcessiveScopes(t *testing.T) {
+	t.Parallel()
+
+	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-key")
+	cfg := AuthConfig{
+		Enabled:     true,
+		KeySet:      edKeySet,
+		Service:     "ledger",
+		CheckScopes: true,
+		Ed25519AllowedScopes: map[string][]string{
+			"ed-key": {"ledger:read"},
+		},
+	}
+
+	// Token claims ledger:admin but key only allows ledger:read
+	claims := newTestClaims("ledger:admin")
+	claims.Issuer = ""
+	token := signEdDSA(t, edPriv, "ed-key", claims)
+	ctx := ctxWithBearer(token)
+
+	_, err := Authenticate(ctx, cfg, ScopeAdmin)
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Unauthenticated, st.Code())
+}
+
+func TestAuthenticate_EdDSA_UnknownKey(t *testing.T) {
+	t.Parallel()
+
+	// Create a key but sign with a different keyID than what's in the keyset
+	_, unknownPriv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	_, edKeySet := ed25519TestKeyPair(t, "known-key")
+
+	cfg := AuthConfig{
+		Enabled:     true,
+		KeySet:      edKeySet,
+		Service:     "ledger",
+		CheckScopes: false,
+	}
+
+	claims := newTestClaims("ledger:read")
+	claims.Issuer = ""
+	token := signEdDSA(t, unknownPriv, "unknown-key", claims)
+	ctx := ctxWithBearer(token)
+
+	_, err = Authenticate(ctx, cfg)
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Unauthenticated, st.Code())
+}
+
+func TestAuthenticate_EdDSA_Expired(t *testing.T) {
+	t.Parallel()
+
+	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-key")
+	cfg := AuthConfig{
+		Enabled:     true,
+		KeySet:      edKeySet,
+		Service:     "ledger",
+		CheckScopes: false,
+	}
+
+	claims := newTestClaims("ledger:read")
+	claims.Issuer = ""
+	pastTime := time.Now().Add(-1 * time.Hour)
+	claims.Expiration = oidc.FromTime(oidc.Time(pastTime.Unix()).AsTime())
+
+	token := signEdDSA(t, edPriv, "ed-key", claims)
+	ctx := ctxWithBearer(token)
+
+	_, err := Authenticate(ctx, cfg)
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Unauthenticated, st.Code())
+}
+
+func TestAuthenticate_EdDSA_NoIssuerCheck(t *testing.T) {
+	t.Parallel()
+
+	// EdDSA tokens should not fail due to issuer mismatch
+	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-key")
+	cfg := AuthConfig{
+		Enabled:     true,
+		KeySet:      edKeySet,
+		Issuer:      "https://oidc-issuer.example.com", // OIDC issuer configured but should be ignored for EdDSA
+		Service:     "ledger",
+		CheckScopes: false,
+	}
+
+	claims := newTestClaims("ledger:read")
+	claims.Issuer = "some-other-issuer" // Different from cfg.Issuer — should still pass
+	token := signEdDSA(t, edPriv, "ed-key", claims)
+	ctx := ctxWithBearer(token)
+
+	newCtx, err := Authenticate(ctx, cfg)
+	require.NoError(t, err)
+	require.NotNil(t, ClaimsFromContext(newCtx))
 }

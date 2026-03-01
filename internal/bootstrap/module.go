@@ -268,16 +268,13 @@ func Module() fx.Option {
 
 				return grpcadp.NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, tlsOpt), nil
 			},
-			fx.Annotate(func(cfg Config, logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, keySet oidc.KeySet) servicepb.BucketServiceServer {
-				authCfg := internalauth.AuthConfig{
-					Enabled:     cfg.AuthConfig.Enabled,
-					KeySet:      keySet,
-					Issuer:      cfg.AuthConfig.Issuer,
-					Service:     cfg.AuthConfig.Service,
-					CheckScopes: cfg.AuthConfig.CheckScopes,
-				}
+			// Provide a single AuthConfig used by gRPC and HTTP handlers.
+			fx.Annotate(func(cfg Config, logger logging.Logger, keySet oidc.KeySet) (internalauth.AuthConfig, error) {
+				return buildAuthConfig(cfg, logger, keySet)
+			}, fx.ParamTags(``, ``, `optional:"true"`)),
+			func(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig) servicepb.BucketServiceServer {
 				return grpcadp.NewBucketServiceServer(logger, ctrl, s, attrs, ss, signer, respSigner, authCfg)
-			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `optional:"true"`)),
+			},
 			func(logger logging.Logger, s *dal.Store) snapshotpb.SnapshotServiceServer {
 				return grpcadp.NewSnapshotServiceServer(logger, s)
 			},
@@ -289,20 +286,13 @@ func Module() fx.Option {
 					meterProvider.Meter("storage"),
 				)
 			},
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, ss *state.SharedState, logger logging.Logger, cfg Config, keySet oidc.KeySet) clusterpb.ClusterServiceServer {
-				authCfg := internalauth.AuthConfig{
-					Enabled:     cfg.AuthConfig.Enabled,
-					KeySet:      keySet,
-					Issuer:      cfg.AuthConfig.Issuer,
-					Service:     cfg.AuthConfig.Service,
-					CheckScopes: cfg.AuthConfig.CheckScopes,
-				}
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, ss *state.SharedState, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig) clusterpb.ClusterServiceServer {
 				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, ss, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 					authCfg,
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, `optional:"true"`)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``)),
 			fx.Annotate(func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
 				return clusterhealth.NewHealthChecker(
 					n, collector, servicePool,
@@ -328,16 +318,9 @@ func Module() fx.Option {
 				return n
 			},
 			httpcompat.NewServer,
-			fx.Annotate(func(cfg Config, logger logging.Logger, backend httpcompat.Backend, keySet oidc.KeySet) http.Handler {
-				authCfg := internalauth.AuthConfig{
-					Enabled:     cfg.AuthConfig.Enabled,
-					KeySet:      keySet,
-					Issuer:      cfg.AuthConfig.Issuer,
-					Service:     cfg.AuthConfig.Service,
-					CheckScopes: cfg.AuthConfig.CheckScopes,
-				}
+			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig) http.Handler {
 				return httpcompat.NewHandler(logger, backend, authCfg)
-			}, fx.ParamTags(``, ``, ``, `optional:"true"`)),
+			},
 			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
 				return httpcompat.NewDefaultBackend(node, ctrl)
 			},
@@ -869,6 +852,37 @@ func handleConfChangeEvent(
 			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to remove peer from service pool")
 		}
 	}
+}
+
+// buildAuthConfig constructs an AuthConfig from the server configuration and optional OIDC KeySet.
+// If Ed25519 keys are configured, it creates a composite KeySet that handles both OIDC and EdDSA tokens.
+func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) (internalauth.AuthConfig, error) {
+	authCfg := internalauth.AuthConfig{
+		Enabled:     cfg.AuthConfig.Enabled,
+		Issuer:      cfg.AuthConfig.Issuer,
+		Service:     cfg.AuthConfig.Service,
+		CheckScopes: cfg.AuthConfig.CheckScopes,
+	}
+
+	if cfg.AuthConfig.Ed25519KeysFile != "" {
+		ed25519KeySet, allowedScopes, err := internalauth.LoadEd25519KeySet(cfg.AuthConfig.Ed25519KeysFile)
+		if err != nil {
+			return authCfg, fmt.Errorf("loading Ed25519 keys: %w", err)
+		}
+
+		authCfg.KeySet = internalauth.NewCompositeKeySet(ed25519KeySet, oidcKeySet)
+		authCfg.Ed25519AllowedScopes = allowedScopes
+		authCfg.Enabled = true
+		authCfg.CheckScopes = true
+
+		logger.WithFields(map[string]any{
+			"keys_count": len(allowedScopes),
+		}).Infof("Ed25519 authentication enabled")
+	} else {
+		authCfg.KeySet = oidcKeySet
+	}
+
+	return authCfg, nil
 }
 
 // handleLeadershipChangeEvent notifies the event and mirror Managers of leadership changes.

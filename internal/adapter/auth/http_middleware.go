@@ -32,7 +32,7 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			claims, err := validateToken(r.Context(), token, cfg.Issuer, cfg.KeySet)
+			claims, err := validateToken(r.Context(), token, cfg)
 			if err != nil {
 				http.Error(w, "invalid token: "+err.Error(), http.StatusUnauthorized)
 				return

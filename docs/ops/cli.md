@@ -29,6 +29,7 @@ These flags are available for all commands:
 | `--signing-key-id` | `default` | Key ID for request signatures |
 | `--response-verify-key` | | Path to Ed25519 public key file for verifying server response signatures |
 | `--consistency` | | Read consistency level: `stale`, `leader`, or `linearizable` (default) |
+| `--auth-token` | | Bearer token for authentication (JWT string or `@path-to-file`) |
 
 ### Read Consistency
 
@@ -1529,6 +1530,43 @@ ledgerctl cluster maintenance disable
 ledgerctl cluster maintenance enable --signing-key /path/to/seed
 ```
 
+### auth
+
+Ed25519 authentication utilities for key generation and token creation. See [Authentication Guide](authentication.md) for full details.
+
+#### auth generate-key
+
+Generate an Ed25519 keypair for JWT authentication.
+
+```bash
+ledgerctl auth generate-key <output-directory>
+```
+
+Creates `seed.hex` (private, mode 0600) and `pubkey.hex` (public) in the output directory.
+
+#### auth generate-token
+
+Generate a signed EdDSA JWT token for use with servers configured with `--auth-ed25519-keys`.
+
+```bash
+ledgerctl auth generate-token \
+  --signing-key ./keys/seed.hex \
+  --key-id my-key-id \
+  --subject ci-bot \
+  --scopes ledger:read,ledger:write \
+  --expiration 1h
+```
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--signing-key` | yes | | Path to Ed25519 seed file |
+| `--key-id` | yes | | Key ID matching the server config |
+| `--subject` | yes | | JWT subject claim |
+| `--scopes` | no | | Comma-separated scopes |
+| `--expiration` | no | `1h` | Token validity duration |
+
+The token is printed to stdout and can be used with `--auth-token` or the `Authorization: Bearer` header.
+
 ### signing
 
 ![Signing Demo](../../misc/demo/demo_signing.gif)
@@ -1979,18 +2017,26 @@ Enable JWT/OIDC authentication with scope-based authorization. See [Authenticati
 | `--auth-check-scopes` | bool | `false` | Enforce scope-based authorization |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 | `--auth-read-key-set-max-retries` | int | `10` | Maximum retries when fetching the JWKS key set |
+| `--auth-ed25519-keys` | string | `""` | Path to JSON file with Ed25519 public keys and scopes (auto-enables auth) |
 
 ```bash
-# Start server with authentication enabled
+# Start server with OIDC authentication
 ledger-v3-poc run \
   --auth-enabled \
   --auth-issuer https://auth.example.com \
   --auth-check-scopes \
   --auth-service ledger \
   [other flags...]
+
+# Start server with Ed25519 key-based authentication
+ledger-v3-poc run \
+  --auth-ed25519-keys auth-keys.json \
+  [other flags...]
 ```
 
-When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. Four scopes are used: `ledger:read`, `ledger:write`, `ledger:admin`, `ledger:cluster`.
+When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. Three scopes are used: `ledger:read`, `ledger:write`, `ledger:admin`.
+
+When `--auth-ed25519-keys` is set, both OIDC and Ed25519 authentication can coexist. See [Authentication Guide](authentication.md) for full Ed25519 setup instructions.
 
 ---
 

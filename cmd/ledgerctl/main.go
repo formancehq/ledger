@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/service"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/accounts"
+	authcmd "github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/auth"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/audit"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cluster"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/events"
@@ -40,6 +41,7 @@ func newRootCommand() *cobra.Command {
 			bindEnvToFlag(cmd, "insecure", "INSECURE")
 			bindEnvToFlag(cmd, "tls-ca-cert", "TLS_CA_CERT")
 			bindEnvToFlag(cmd, "consistency", "CONSISTENCY")
+			bindEnvToFlag(cmd, "auth-token", "AUTH_TOKEN")
 		},
 	}
 
@@ -58,6 +60,9 @@ func newRootCommand() *cobra.Command {
 	// Add persistent flag for read consistency level.
 	rootCmd.PersistentFlags().String("consistency", "", "Read consistency level: stale, leader, or linearizable (default) (env: CONSISTENCY)")
 
+	// Add persistent flag for bearer token authentication.
+	rootCmd.PersistentFlags().String("auth-token", "", "Bearer token for authentication (JWT string or @path-to-file) (env: AUTH_TOKEN)")
+
 	// Add subcommands.
 	rootCmd.AddCommand(ledgers.NewCommand())
 	rootCmd.AddCommand(accounts.NewCommand())
@@ -70,6 +75,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(events.NewCommand())
 	rootCmd.AddCommand(periods.NewCommand())
 	rootCmd.AddCommand(restore.NewCommand())
+	rootCmd.AddCommand(authcmd.NewCommand())
 	rootCmd.AddCommand(newVersionCommand())
 
 	return rootCmd
