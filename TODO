@@ -7,6 +7,15 @@ Business:
 * Mirror mode
 * Numscript
 ** Add typed variables
+* ledgerctl:
+** backup progress
+** watch command
+** wrap long address in table views
+** allow set metadata type on mirror mode
+** Add self update
+** First usage detection and display
+* docs:
+** migrate existing clients
 
 Tests:
 * Convert K6 tests to GRPC
@@ -18,6 +27,8 @@ Refactor:
 * Split admission
 * Check all commands match a log type payload
 * Log signal broadcast
+* Simplify attributes system
+* Smart compaction
 
 Later:
 * Events
