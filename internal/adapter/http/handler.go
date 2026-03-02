@@ -22,9 +22,15 @@ import (
 func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.AuthConfig) http.Handler {
 	r := chi.NewRouter()
 
-	// Scope-bound middleware helpers
-	requireRead := internalauth.RequireScope(authCfg, internalauth.ScopeRead)
-	requireWrite := internalauth.RequireScope(authCfg, internalauth.ScopeWrite)
+	// Granular scope-bound middleware helpers
+	requireLedgersRead := internalauth.RequireScope(authCfg, internalauth.ScopeLedgersRead)
+	requireLedgersWrite := internalauth.RequireScope(authCfg, internalauth.ScopeLedgersWrite)
+	requireTransactionsRead := internalauth.RequireScope(authCfg, internalauth.ScopeTransactionsRead)
+	requireTransactionsWrite := internalauth.RequireScope(authCfg, internalauth.ScopeTransactionsWrite)
+	requireAccountsRead := internalauth.RequireScope(authCfg, internalauth.ScopeAccountsRead)
+	requireMetadataWrite := internalauth.RequireScope(authCfg, internalauth.ScopeMetadataWrite)
+	requireQueriesRead := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesRead)
+	requireQueriesWrite := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesWrite)
 
 	// Apply middlewares
 	r.Use(
@@ -63,47 +69,61 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 		r.With(contentTypeMiddleware).Group(func(r chi.Router) {
 			r.Get("/health", server.handleHealth)
 
-			// Read scope
-			r.With(requireRead).Group(func(r chi.Router) {
+			// Ledgers read scope
+			r.With(requireLedgersRead).Group(func(r chi.Router) {
 				r.Get("/", server.handleListAllLedgers)
 				r.Get("/{ledgerName}", server.handleGetLedger)
 				r.Get("/{ledgerName}/stats", server.handleGetLedgerStats)
+			})
+
+			// Transactions read scope
+			r.With(requireTransactionsRead).Group(func(r chi.Router) {
 				r.Get("/{ledgerName}/transactions/{transactionId}", server.handleGetTransaction)
+			})
+
+			// Accounts read scope
+			r.With(requireAccountsRead).Group(func(r chi.Router) {
 				r.Get("/{ledgerName}/accounts", server.handleListAccounts)
 				r.Get("/{ledgerName}/accounts/{address}", server.handleGetAccount)
 				r.Get("/{ledgerName}/metadata-schema", server.handleGetMetadataSchema)
 				r.Get("/{ledgerName}/analyze-accounts", server.handleAnalyzeAccounts)
 			})
 
-			// Write scope
-			r.With(requireWrite).Group(func(r chi.Router) {
+			// Ledgers write scope
+			r.With(requireLedgersWrite).Group(func(r chi.Router) {
 				r.Post("/{ledgerName}", server.handleCreateLedger)
 				r.Delete("/{ledgerName}", server.handleDeleteLedger)
 				r.Post("/{ledgerName}/promote", server.handlePromoteLedger)
+			})
+
+			// Transactions write scope
+			r.With(requireTransactionsWrite).Group(func(r chi.Router) {
 				r.Post("/{ledgerName}/transactions", server.handleCreateTransaction)
 				r.Post("/{ledgerName}/transactions/{transactionId}/revert", server.handleRevertTransaction)
+			})
+
+			// Metadata write scope
+			r.With(requireMetadataWrite).Group(func(r chi.Router) {
 				r.Post("/{ledgerName}/transactions/{transactionId}/metadata", server.handleSaveTransactionMetadata)
 				r.Delete("/{ledgerName}/transactions/{transactionId}/metadata/{key}", server.handleDeleteTransactionMetadata)
 				r.Post("/{ledgerName}/accounts/{address}/metadata", server.handleSaveAccountMetadata)
 				r.Delete("/{ledgerName}/accounts/{address}/metadata/{key}", server.handleDeleteAccountMetadata)
-				r.Post("/{ledgerName}/bulk", server.handleBulk)
-				r.Post("/{ledgerName}/_bulk", server.handleBulk)
-			})
-
-			// Write scope (metadata schema management)
-			r.With(requireWrite).Group(func(r chi.Router) {
 				r.Put("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleSetMetadataType)
 				r.Delete("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleRemoveMetadataType)
 			})
 
+			// Bulk endpoints: per-element scope check handled inside the handler
+			r.Post("/{ledgerName}/bulk", server.handleBulk)
+			r.Post("/{ledgerName}/_bulk", server.handleBulk)
+
 			// Prepared queries (read)
-			r.With(requireRead).Group(func(r chi.Router) {
+			r.With(requireQueriesRead).Group(func(r chi.Router) {
 				r.Get("/{ledgerName}/prepared-queries", server.handleListPreparedQueries)
 				r.Post("/{ledgerName}/prepared-queries/{queryName}/execute", server.handleExecutePreparedQuery)
 			})
 
 			// Prepared queries (write)
-			r.With(requireWrite).Group(func(r chi.Router) {
+			r.With(requireQueriesWrite).Group(func(r chi.Router) {
 				r.Post("/{ledgerName}/prepared-queries", server.handleCreatePreparedQuery)
 				r.Put("/{ledgerName}/prepared-queries/{queryName}", server.handleUpdatePreparedQuery)
 				r.Delete("/{ledgerName}/prepared-queries/{queryName}", server.handleDeletePreparedQuery)

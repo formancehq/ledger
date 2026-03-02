@@ -885,6 +885,7 @@ func handleConfChangeEvent(
 
 // buildAuthConfig constructs an AuthConfig from the server configuration and optional OIDC KeySet.
 // If Ed25519 keys are configured, it creates a composite KeySet that handles both OIDC and EdDSA tokens.
+// Scope mapping is loaded from file, env var, or defaults to the backward-compatible mapping.
 func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) (internalauth.AuthConfig, error) {
 	authCfg := internalauth.AuthConfig{
 		Enabled:     cfg.AuthConfig.Enabled,
@@ -911,7 +912,42 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 		authCfg.KeySet = oidcKeySet
 	}
 
+	// Load scope mapping: file > env var > default
+	scopeMapping, err := loadScopeMapping(cfg, logger)
+	if err != nil {
+		return authCfg, err
+	}
+	authCfg.ScopeMapping = scopeMapping
+
 	return authCfg, nil
+}
+
+// loadScopeMapping loads the scope mapping from file, env var JSON, or defaults.
+func loadScopeMapping(cfg Config, logger logging.Logger) (internalauth.ScopeMapping, error) {
+	if cfg.AuthConfig.ScopeMappingFile != "" {
+		mapping, err := internalauth.LoadScopeMappingFromFile(cfg.AuthConfig.ScopeMappingFile)
+		if err != nil {
+			return nil, fmt.Errorf("loading scope mapping file: %w", err)
+		}
+		logger.WithFields(map[string]any{
+			"file":       cfg.AuthConfig.ScopeMappingFile,
+			"keys_count": len(mapping),
+		}).Infof("Custom scope mapping loaded from file")
+		return mapping, nil
+	}
+
+	if cfg.AuthConfig.ScopeMappingJSON != "" {
+		mapping, err := internalauth.ParseScopeMappingJSON([]byte(cfg.AuthConfig.ScopeMappingJSON))
+		if err != nil {
+			return nil, fmt.Errorf("parsing AUTH_SCOPE_MAPPING env var: %w", err)
+		}
+		logger.WithFields(map[string]any{
+			"keys_count": len(mapping),
+		}).Infof("Custom scope mapping loaded from env var")
+		return mapping, nil
+	}
+
+	return internalauth.DefaultMapping(cfg.AuthConfig.Service), nil
 }
 
 // handleLeadershipChangeEvent notifies the event and mirror Managers of leadership changes.

@@ -977,6 +977,32 @@ spec:
                         description: Enabled enables audit logging.
                         type: boolean
                     type: object
+                  auth:
+                    description: Auth holds authentication and authorization configuration.
+                    properties:
+                      checkScopes:
+                        description: CheckScopes enables scope checking.
+                        type: boolean
+                      enabled:
+                        description: Enabled enables authentication.
+                        type: boolean
+                      issuer:
+                        description: Issuer is the OIDC token issuer URL.
+                        type: string
+                      scopeMapping:
+                        additionalProperties:
+                          items:
+                            type: string
+                          type: array
+                        description: |-
+                          ScopeMapping maps virtual scopes (e.g. "ledger:read") to granular scopes.
+                          When provided, overrides the default mapping and --auth-service is ignored for scope resolution.
+                        type: object
+                      service:
+                        description: Service is the scope prefix (e.g. "ledger" for
+                          "ledger:read").
+                        type: string
+                    type: object
                   bindAddr:
                     default: 0.0.0.0:7777
                     description: BindAddr is the Raft transport bind address.

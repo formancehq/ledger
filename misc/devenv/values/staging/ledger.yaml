@@ -60,6 +60,25 @@ config:
       uploadRate: "30s"
   coldStorage:
     driver: "s3"
+  auth:
+    scopeMapping:
+      "ledger:read":
+        - "ledgers:read"
+        - "transactions:read"
+        - "accounts:read"
+        - "audit:read"
+        - "ops:read"
+        - "queries:read"
+      "ledger:write":
+        - "ledgers:write"
+        - "transactions:write"
+        - "metadata:write"
+        - "audit:write"
+        - "ops:write"
+        - "queries:write"
+      "ledger:admin":
+        - "cluster:read"
+        - "cluster:write"
   raft:
     electionTick: 10
     heartbeatTick: 1

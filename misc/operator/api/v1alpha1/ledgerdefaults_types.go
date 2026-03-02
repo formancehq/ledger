@@ -130,6 +130,10 @@ type LedgerDefaultsConfig struct {
 	// Monitoring configuration (OpenTelemetry).
 	// +optional
 	Monitoring *MonitoringConfig `json:"monitoring,omitempty"`
+
+	// Auth holds authentication and authorization configuration.
+	// +optional
+	Auth *AuthorizationConfig `json:"auth,omitempty"`
 }
 
 func init() {

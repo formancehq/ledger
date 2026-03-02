@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -181,6 +182,20 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 		if memLimit, ok := ledger.Spec.Resources.Limits[corev1.ResourceMemory]; ok {
 			goMemLimit := memLimit.Value() * 9 / 10
 			envs = append(envs, intEnv("GOMEMLIMIT", goMemLimit))
+		}
+	}
+
+	// Auth
+	if cfg.Auth != nil {
+		envs = append(envs, boolEnv("AUTH_ENABLED", cfg.Auth.Enabled))
+		envs = appendIfStr(envs, "AUTH_ISSUER", cfg.Auth.Issuer)
+		envs = appendIfStr(envs, "AUTH_SERVICE", cfg.Auth.Service)
+		envs = appendIfBool(envs, "AUTH_CHECK_SCOPES", cfg.Auth.CheckScopes)
+		if len(cfg.Auth.ScopeMapping) > 0 {
+			data, err := json.Marshal(cfg.Auth.ScopeMapping)
+			if err == nil {
+				envs = append(envs, strEnv("AUTH_SCOPE_MAPPING", string(data)))
+			}
 		}
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"runtime"
 	"runtime/debug"
 	"time"
@@ -152,6 +153,9 @@ func NewRunCommand() *cobra.Command {
 
 	// Ed25519 authentication keys
 	runCmd.Flags().String("auth-ed25519-keys", "", "Path to JSON file with Ed25519 public keys and scopes for authentication")
+
+	// Scope mapping: virtual → granular scope expansion
+	runCmd.Flags().String("auth-scope-mapping-file", "", "Path to JSON file mapping virtual scopes (e.g. ledger:read) to granular scopes")
 
 	// Configuration safety
 	runCmd.Flags().Bool("unsafe-skip-config-validation", false, "Skip startup configuration safety checks (DANGEROUS: allows node-id/cluster-id changes)")
@@ -415,12 +419,16 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 
 	// Authentication configuration
 	ed25519KeysFile := getString("auth-ed25519-keys", "")
+	scopeMappingFile := getString("auth-scope-mapping-file", "")
+	scopeMappingJSON := os.Getenv("AUTH_SCOPE_MAPPING") // env var only (used by operator)
 	cfg.AuthConfig = bootstrap.AuthFlagConfig{
-		Enabled:         getBool(auth.AuthEnabledFlag, false),
-		Issuer:          getString(auth.AuthIssuerFlag, ""),
-		Service:         getString(auth.AuthServiceFlag, "ledger"),
-		CheckScopes:     getBool(auth.AuthCheckScopesFlag, false),
-		Ed25519KeysFile: ed25519KeysFile,
+		Enabled:          getBool(auth.AuthEnabledFlag, false),
+		Issuer:           getString(auth.AuthIssuerFlag, ""),
+		Service:          getString(auth.AuthServiceFlag, "ledger"),
+		CheckScopes:      getBool(auth.AuthCheckScopesFlag, false),
+		Ed25519KeysFile:  ed25519KeysFile,
+		ScopeMappingFile: scopeMappingFile,
+		ScopeMappingJSON: scopeMappingJSON,
 	}
 	// Auto-enable auth when Ed25519 keys are configured.
 	if ed25519KeysFile != "" {

@@ -92,6 +92,40 @@ func TestHTTPAuthMiddleware_ValidToken_ClaimsInContext(t *testing.T) {
 	assert.Equal(t, "test-user", capturedSubject)
 }
 
+func TestHTTPAuthMiddleware_ExpandsScopesInContext(t *testing.T) {
+	t.Parallel()
+
+	privKey, keySet := testKeyPair(t)
+	var capturedScopes map[Scope]struct{}
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedScopes = ExpandedScopesFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+
+	cfg := AuthConfig{
+		Enabled:      true,
+		KeySet:       keySet,
+		Issuer:       testIssuer,
+		Service:      "ledger",
+		CheckScopes:  true,
+		ScopeMapping: DefaultMapping("ledger"),
+	}
+	handler := HTTPAuthMiddleware(cfg)(inner)
+
+	token := signToken(t, privKey, newTestClaims("ledger:read"))
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/test-ledger", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	handler.ServeHTTP(w, r)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, capturedScopes)
+	assert.True(t, HasScope(capturedScopes, ScopeLedgersRead))
+	assert.True(t, HasScope(capturedScopes, ScopeTransactionsRead))
+	assert.True(t, HasScope(capturedScopes, ScopeAccountsRead))
+	assert.False(t, HasScope(capturedScopes, ScopeTransactionsWrite))
+}
+
 func TestHTTPAuthMiddleware_ExpiredToken(t *testing.T) {
 	t.Parallel()
 
@@ -160,7 +194,7 @@ func TestHTTPAuthMiddleware_InvalidSignature(t *testing.T) {
 func TestRequireScope_Disabled(t *testing.T) {
 	t.Parallel()
 
-	handler := RequireScope(AuthConfig{Enabled: false}, ScopeWrite)(ok200)
+	handler := RequireScope(AuthConfig{Enabled: false}, ScopeTransactionsWrite)(ok200)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/test", nil)
@@ -171,7 +205,7 @@ func TestRequireScope_Disabled(t *testing.T) {
 func TestRequireScope_ScopesNotChecked(t *testing.T) {
 	t.Parallel()
 
-	handler := RequireScope(AuthConfig{Enabled: true, CheckScopes: false}, ScopeWrite)(ok200)
+	handler := RequireScope(AuthConfig{Enabled: true, CheckScopes: false}, ScopeTransactionsWrite)(ok200)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/test", nil)
@@ -182,7 +216,13 @@ func TestRequireScope_ScopesNotChecked(t *testing.T) {
 func TestRequireScope_NoClaims(t *testing.T) {
 	t.Parallel()
 
-	handler := RequireScope(AuthConfig{Enabled: true, CheckScopes: true, Service: "ledger"}, ScopeWrite)(ok200)
+	cfg := AuthConfig{
+		Enabled:      true,
+		CheckScopes:  true,
+		Service:      "ledger",
+		ScopeMapping: DefaultMapping("ledger"),
+	}
+	handler := RequireScope(cfg, ScopeTransactionsWrite)(ok200)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/test", nil)
@@ -194,10 +234,18 @@ func TestRequireScope_MatchingScope(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
-	cfg := AuthConfig{Enabled: true, KeySet: keySet, Issuer: testIssuer, Service: "ledger", CheckScopes: true}
+	cfg := AuthConfig{
+		Enabled:      true,
+		KeySet:       keySet,
+		Issuer:       testIssuer,
+		Service:      "ledger",
+		CheckScopes:  true,
+		ScopeMapping: DefaultMapping("ledger"),
+	}
 
 	// Chain: auth middleware → require write → handler
-	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeWrite)(ok200))
+	// Token has "ledger:write" which expands to include ScopeTransactionsWrite
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeTransactionsWrite)(ok200))
 
 	token := signToken(t, privKey, newTestClaims("ledger:write"))
 	w := httptest.NewRecorder()
@@ -211,10 +259,17 @@ func TestRequireScope_WrongScope(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
-	cfg := AuthConfig{Enabled: true, KeySet: keySet, Issuer: testIssuer, Service: "ledger", CheckScopes: true}
+	cfg := AuthConfig{
+		Enabled:      true,
+		KeySet:       keySet,
+		Issuer:       testIssuer,
+		Service:      "ledger",
+		CheckScopes:  true,
+		ScopeMapping: DefaultMapping("ledger"),
+	}
 
-	// Token has read, route requires write
-	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeWrite)(ok200))
+	// Token has "ledger:read" (expands to read scopes), route requires ScopeTransactionsWrite
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeTransactionsWrite)(ok200))
 
 	token := signToken(t, privKey, newTestClaims("ledger:read"))
 	w := httptest.NewRecorder()
@@ -228,9 +283,16 @@ func TestRequireScope_WriteScope(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
-	cfg := AuthConfig{Enabled: true, KeySet: keySet, Issuer: testIssuer, Service: "ledger", CheckScopes: true}
+	cfg := AuthConfig{
+		Enabled:      true,
+		KeySet:       keySet,
+		Issuer:       testIssuer,
+		Service:      "ledger",
+		CheckScopes:  true,
+		ScopeMapping: DefaultMapping("ledger"),
+	}
 
-	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeWrite)(ok200))
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeTransactionsWrite)(ok200))
 
 	// With write scope → 200
 	token := signToken(t, privKey, newTestClaims("ledger:write"))
@@ -344,16 +406,18 @@ func TestRequireScope_EdDSA_MatchingScope(t *testing.T) {
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
 	cfg := AuthConfig{
-		Enabled:     true,
-		KeySet:      edKeySet,
-		Service:     "ledger",
-		CheckScopes: true,
+		Enabled:      true,
+		KeySet:       edKeySet,
+		Service:      "ledger",
+		CheckScopes:  true,
+		ScopeMapping: DefaultMapping("ledger"),
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-http-key": {"ledger:read", "ledger:write"},
 		},
 	}
 
-	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeWrite)(ok200))
+	// Token has "ledger:write" which expands to include ScopeTransactionsWrite
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeTransactionsWrite)(ok200))
 
 	claims := newTestClaims("ledger:write")
 	claims.Issuer = ""
@@ -371,18 +435,19 @@ func TestRequireScope_EdDSA_WrongScope(t *testing.T) {
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
 	cfg := AuthConfig{
-		Enabled:     true,
-		KeySet:      edKeySet,
-		Service:     "ledger",
-		CheckScopes: true,
+		Enabled:      true,
+		KeySet:       edKeySet,
+		Service:      "ledger",
+		CheckScopes:  true,
+		ScopeMapping: DefaultMapping("ledger"),
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-http-key": {"ledger:read", "ledger:write"},
 		},
 	}
 
-	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeAdmin)(ok200))
+	// Token has "ledger:read" (expands to read scopes), route requires ScopeClusterRead (admin)
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeClusterRead)(ok200))
 
-	// Token has read scope, route requires admin
 	claims := newTestClaims("ledger:read")
 	claims.Issuer = ""
 	token := signEdDSA(t, edPriv, "ed-http-key", claims)

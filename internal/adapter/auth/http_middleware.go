@@ -6,10 +6,9 @@ import (
 	"strings"
 )
 
-// HTTPAuthMiddleware returns an HTTP middleware that validates JWT tokens and
-// stores the claims in the request context. It does NOT check scopes — use
-// RequireScope for that.
-// Public endpoints (/health, /debug/*) are skipped.
+// HTTPAuthMiddleware returns an HTTP middleware that validates JWT tokens,
+// stores the claims in the request context, and expands scopes through the
+// scope mapping. Public endpoints (/health, /debug/*) are skipped.
 // When cfg.Enabled is false, requests pass through without authentication.
 func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -39,13 +38,20 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 			}
 
 			ctx := WithClaims(r.Context(), claims)
+
+			// Expand scopes through the mapping and store in context
+			if cfg.CheckScopes {
+				effective := cfg.ScopeMapping.ExpandScopes(claims.Scopes)
+				ctx = WithExpandedScopes(ctx, effective)
+			}
+
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
 // RequireScope returns an HTTP middleware that checks the authenticated user
-// has all the given scopes. Must be used after HTTPAuthMiddleware.
+// has all the given granular scopes. Must be used after HTTPAuthMiddleware.
 // When cfg.Enabled is false or cfg.CheckScopes is false, it passes through.
 func RequireScope(cfg AuthConfig, scopes ...Scope) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -55,17 +61,15 @@ func RequireScope(cfg AuthConfig, scopes ...Scope) func(http.Handler) http.Handl
 				return
 			}
 
-			claims := ClaimsFromContext(r.Context())
-			if claims == nil {
+			effective := ExpandedScopesFromContext(r.Context())
+			if effective == nil {
 				http.Error(w, "missing authentication", http.StatusUnauthorized)
 				return
 			}
 
-			for _, scope := range scopes {
-				if !HasScope([]string(claims.Scopes), scope, cfg.Service) {
-					http.Error(w, "missing required scope "+scope.WithService(cfg.Service), http.StatusForbidden)
-					return
-				}
+			if !HasScope(effective, scopes...) {
+				http.Error(w, "missing required scope", http.StatusForbidden)
+				return
 			}
 
 			next.ServeHTTP(w, r)

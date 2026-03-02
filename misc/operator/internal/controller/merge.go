@@ -110,6 +110,9 @@ func mergeDefaultsConfig(spec *ledgerv1alpha1.LedgerServiceConfig, defaults *led
 	if spec.Monitoring == nil {
 		spec.Monitoring = defaults.Monitoring
 	}
+	if spec.Auth == nil {
+		spec.Auth = defaults.Auth
+	}
 }
 
 // mergeColdStorageConfig merges cold storage defaults at field level so that

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -43,6 +44,20 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		elements = append(elements, elem)
+	}
+
+	// Per-element scope check: verify the caller has the required scope for each element.
+	effective := internalauth.ExpandedScopesFromContext(r.Context())
+	if effective != nil {
+		for i, elem := range elements {
+			req := convertBulkElementToRequest(ledgerName, elem)
+			required := internalauth.RequiredScopeForRequest(req)
+			if !internalauth.HasScope(effective, required) {
+				writeBulkErrorResponse(w, http.StatusForbidden, "PERMISSION_DENIED",
+					fmt.Errorf("element %d requires scope %s", i, required))
+				return
+			}
+		}
 	}
 
 	// Process bulk

@@ -60,7 +60,7 @@ func NewClusterServiceServer(
 }
 
 func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
 		return nil, err
 	}
 
@@ -167,7 +167,7 @@ func (impl *ClusterServiceServerImpl) fetchPeerSyncProgress(ctx context.Context,
 }
 
 func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
 		return nil, err
 	}
 
@@ -203,7 +203,7 @@ func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, re
 }
 
 func (impl *ClusterServiceServerImpl) GetDiskUsage(ctx context.Context, _ *clusterpb.GetDiskUsageRequest) (*clusterpb.DiskUsage, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
 		return nil, err
 	}
 
@@ -219,7 +219,7 @@ func (impl *ClusterServiceServerImpl) GetDiskUsage(ctx context.Context, _ *clust
 }
 
 func (impl *ClusterServiceServerImpl) GetNodeTime(ctx context.Context, _ *clusterpb.GetNodeTimeRequest) (*clusterpb.NodeTime, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
 		return nil, err
 	}
 
@@ -229,7 +229,7 @@ func (impl *ClusterServiceServerImpl) GetNodeTime(ctx context.Context, _ *cluste
 }
 
 func (impl *ClusterServiceServerImpl) Backup(req *clusterpb.BackupRequest, stream ggrpc.ServerStreamingServer[clusterpb.BackupResponse]) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeAdmin); err != nil {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
 		return err
 	}
 
@@ -333,7 +333,7 @@ func (impl *ClusterServiceServerImpl) backupLocal(stream ggrpc.ServerStreamingSe
 }
 
 func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
 		return nil, err
 	}
 
@@ -404,7 +404,7 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 }
 
 func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *clusterpb.PromoteLearnerRequest) (*clusterpb.PromoteLearnerResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
 		return nil, err
 	}
 
@@ -436,7 +436,7 @@ func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *c
 }
 
 func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clusterpb.RemoveNodeRequest) (*clusterpb.RemoveNodeResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAdmin); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
 		return nil, err
 	}
 

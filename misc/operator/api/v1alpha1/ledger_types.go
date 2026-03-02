@@ -247,6 +247,34 @@ type LedgerServiceConfig struct {
 	// Monitoring configuration (OpenTelemetry).
 	// +optional
 	Monitoring *MonitoringConfig `json:"monitoring,omitempty"`
+
+	// Auth holds authentication and authorization configuration.
+	// +optional
+	Auth *AuthorizationConfig `json:"auth,omitempty"`
+}
+
+// AuthorizationConfig holds authentication and authorization configuration.
+type AuthorizationConfig struct {
+	// Enabled enables authentication.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Issuer is the OIDC token issuer URL.
+	// +optional
+	Issuer string `json:"issuer,omitempty"`
+
+	// Service is the scope prefix (e.g. "ledger" for "ledger:read").
+	// +optional
+	Service string `json:"service,omitempty"`
+
+	// CheckScopes enables scope checking.
+	// +optional
+	CheckScopes *bool `json:"checkScopes,omitempty"`
+
+	// ScopeMapping maps virtual scopes (e.g. "ledger:read") to granular scopes.
+	// When provided, overrides the default mapping and --auth-service is ignored for scope resolution.
+	// +optional
+	ScopeMapping map[string][]string `json:"scopeMapping,omitempty"`
 }
 
 // PebbleConfig holds Pebble storage engine configuration.

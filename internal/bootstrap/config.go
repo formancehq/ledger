@@ -13,11 +13,13 @@ import (
 
 // AuthFlagConfig captures the authentication flag values without runtime objects.
 type AuthFlagConfig struct {
-	Enabled        bool
-	Issuer         string
-	Service        string
-	CheckScopes    bool
-	Ed25519KeysFile string
+	Enabled          bool
+	Issuer           string
+	Service          string
+	CheckScopes      bool
+	Ed25519KeysFile  string
+	ScopeMappingFile string // path to JSON file mapping virtual scopes to granular scopes
+	ScopeMappingJSON string // raw JSON string mapping (used by operator, env var AUTH_SCOPE_MAPPING)
 }
 
 type TLSConfig struct {

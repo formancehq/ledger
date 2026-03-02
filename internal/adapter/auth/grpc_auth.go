@@ -18,12 +18,13 @@ type AuthConfig struct {
 	Issuer               string
 	Service              string
 	CheckScopes          bool
+	ScopeMapping         ScopeMapping
 	Ed25519AllowedScopes map[string][]string // keyID -> allowed scopes (nil = no Ed25519 auth)
 }
 
 // Authenticate validates the JWT from gRPC metadata and checks required scopes.
 // If auth is disabled, returns the original context unchanged.
-// Returns the context enriched with claims, or a gRPC status error.
+// Returns the context enriched with claims and expanded scopes, or a gRPC status error.
 func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context.Context, error) {
 	if !cfg.Enabled {
 		return ctx, nil
@@ -39,16 +40,19 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 		return ctx, status.Errorf(codes.Unauthenticated, "invalid token: %v", err)
 	}
 
+	ctx = WithClaims(ctx, claims)
+
 	if cfg.CheckScopes {
-		for _, scope := range scopes {
-			if !HasScope(claims.Scopes, scope, cfg.Service) {
-				return ctx, status.Errorf(codes.PermissionDenied,
-					"missing required scope %s", scope.WithService(cfg.Service))
-			}
+		effective := cfg.ScopeMapping.ExpandScopes(claims.Scopes)
+		ctx = WithExpandedScopes(ctx, effective)
+
+		if !HasScope(effective, scopes...) {
+			return ctx, status.Errorf(codes.PermissionDenied,
+				"missing required scope (required: %v)", scopes)
 		}
 	}
 
-	return WithClaims(ctx, claims), nil
+	return ctx, nil
 }
 
 // bearerTokenFromContext extracts the Bearer token from gRPC incoming metadata.

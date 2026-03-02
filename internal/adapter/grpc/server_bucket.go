@@ -19,6 +19,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	ggrpc "google.golang.org/grpc"
 )
 
@@ -50,12 +52,26 @@ func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.
 }
 
 func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeWrite); err != nil {
+	// Authenticate the token and expand scopes, but don't check a specific scope yet.
+	ctx, err := internalauth.Authenticate(ctx, impl.authCfg)
+	if err != nil {
 		return nil, err
 	}
 
 	if len(req.Requests) == 0 {
 		return nil, fmt.Errorf("at least one request is required")
+	}
+
+	// Per-request scope check: each request in the batch may require a different granular scope.
+	if impl.authCfg.Enabled && impl.authCfg.CheckScopes {
+		effective := internalauth.ExpandedScopesFromContext(ctx)
+		for i, r := range req.Requests {
+			required := internalauth.RequiredScopeForRequest(r)
+			if !internalauth.HasScope(effective, required) {
+				return nil, status.Errorf(codes.PermissionDenied,
+					"request %d requires scope %s", i, required)
+			}
+		}
 	}
 
 	impl.logger.Debugf("Apply request received with %d requests", len(req.Requests))
@@ -109,7 +125,7 @@ func (impl *BucketServiceServerImpl) signReceiptIfNeeded(log *commonpb.Log) {
 }
 
 func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsRequest, stream servicepb.BucketService_ListPeriodsServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return err
 	}
 
@@ -126,7 +142,7 @@ func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsReque
 }
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
 		return nil, err
 	}
 
@@ -179,7 +195,7 @@ func (impl *BucketServiceServerImpl) waitMinLogSequence(ctx context.Context, min
 }
 
 func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransactionsRequest, stream servicepb.BucketService_ListTransactionsServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
 		return err
 	}
 
@@ -203,7 +219,7 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 }
 
 func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersRequest, stream servicepb.BucketService_ListLedgersServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
 		return err
 	}
 
@@ -222,7 +238,7 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 }
 
 func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
 		return nil, err
 	}
 
@@ -233,7 +249,7 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 }
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
 		return nil, err
 	}
 
@@ -245,7 +261,7 @@ func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servic
 }
 
 func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsRequest, stream servicepb.BucketService_ListAccountsServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
 		return err
 	}
 
@@ -269,7 +285,7 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 }
 
 func (impl *BucketServiceServerImpl) GetStoreMetrics(ctx context.Context, _ *servicepb.GetStoreMetricsRequest) (*servicepb.GetStoreMetricsResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return nil, err
 	}
 
@@ -288,7 +304,7 @@ func (impl *BucketServiceServerImpl) GetStoreMetrics(ctx context.Context, _ *ser
 }
 
 func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return nil, err
 	}
 
@@ -321,7 +337,7 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 }
 
 func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, stream servicepb.BucketService_CheckStoreServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return err
 	}
 
@@ -332,7 +348,7 @@ func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, 
 }
 
 func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *servicepb.GetAuditEntryRequest) (*auditpb.AuditEntry, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAuditRead); err != nil {
 		return nil, err
 	}
 
@@ -340,7 +356,7 @@ func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *ser
 }
 
 func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEntriesRequest, stream servicepb.BucketService_ListAuditEntriesServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeAuditRead); err != nil {
 		return err
 	}
 
@@ -357,7 +373,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 }
 
 func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.GetLogRequest) (*commonpb.Log, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return nil, err
 	}
 
@@ -365,7 +381,7 @@ func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.
 }
 
 func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return err
 	}
 
@@ -387,7 +403,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 }
 
 func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *servicepb.GetEventsSinksRequest) (*servicepb.GetEventsSinksResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return nil, err
 	}
 
@@ -408,7 +424,7 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 }
 
 func (impl *BucketServiceServerImpl) GetPeriodSchedule(ctx context.Context, _ *servicepb.GetPeriodScheduleRequest) (*servicepb.GetPeriodScheduleResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return nil, err
 	}
 
@@ -420,7 +436,7 @@ func (impl *BucketServiceServerImpl) GetPeriodSchedule(ctx context.Context, _ *s
 }
 
 func (impl *BucketServiceServerImpl) ListSigningKeys(_ *servicepb.ListSigningKeysRequest, stream servicepb.BucketService_ListSigningKeysServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return err
 	}
 
@@ -433,7 +449,7 @@ func (impl *BucketServiceServerImpl) ListSigningKeys(_ *servicepb.ListSigningKey
 }
 
 func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context, req *servicepb.GetMetadataSchemaStatusRequest) (*servicepb.GetMetadataSchemaStatusResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
 		return nil, err
 	}
 
@@ -441,7 +457,7 @@ func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context
 }
 
 func (impl *BucketServiceServerImpl) AnalyzeAccounts(ctx context.Context, req *servicepb.AnalyzeAccountsRequest) (*servicepb.AnalyzeAccountsResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
 		return nil, err
 	}
 
@@ -453,7 +469,7 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(ctx context.Context, req *s
 }
 
 func (impl *BucketServiceServerImpl) CreatePreparedQuery(ctx context.Context, req *servicepb.CreatePreparedQueryRequest) (*servicepb.CreatePreparedQueryResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeWrite); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesWrite); err != nil {
 		return nil, err
 	}
 
@@ -469,7 +485,7 @@ func (impl *BucketServiceServerImpl) CreatePreparedQuery(ctx context.Context, re
 }
 
 func (impl *BucketServiceServerImpl) UpdatePreparedQuery(ctx context.Context, req *servicepb.UpdatePreparedQueryRequest) (*servicepb.UpdatePreparedQueryResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeWrite); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesWrite); err != nil {
 		return nil, err
 	}
 
@@ -485,7 +501,7 @@ func (impl *BucketServiceServerImpl) UpdatePreparedQuery(ctx context.Context, re
 }
 
 func (impl *BucketServiceServerImpl) DeletePreparedQuery(ctx context.Context, req *servicepb.DeletePreparedQueryRequest) (*servicepb.DeletePreparedQueryResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeWrite); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesWrite); err != nil {
 		return nil, err
 	}
 
@@ -501,7 +517,7 @@ func (impl *BucketServiceServerImpl) DeletePreparedQuery(ctx context.Context, re
 }
 
 func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, req *servicepb.ListPreparedQueriesRequest) (*servicepb.ListPreparedQueriesResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
 		return nil, err
 	}
 
@@ -513,7 +529,7 @@ func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, re
 }
 
 func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
 		return nil, err
 	}
 
@@ -521,7 +537,7 @@ func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, r
 }
 
 func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
 		return nil, err
 	}
 
