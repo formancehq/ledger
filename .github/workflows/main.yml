@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   Dirty:
-    runs-on: ubuntu-latest
+    runs-on: shipfox-4vcpu-ubuntu-2404
     env:
       GOPATH: /tmp/go
       GOLANGCI_LINT_CACHE: /tmp/golangci-lint
@@ -39,7 +39,7 @@ jobs:
           fi
 
   Tests:
-    runs-on: ubuntu-latest
+    runs-on: shipfox-4vcpu-ubuntu-2404
     env:
       GOPATH: /tmp/go
     steps:
@@ -53,7 +53,7 @@ jobs:
           nix develop --command go test ./... -timeout 10m
 
   Build:
-    runs-on: ubuntu-latest
+    runs-on: shipfox-4vcpu-ubuntu-2404
     env:
       GOPATH: /tmp/go
     steps:

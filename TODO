@@ -8,14 +8,23 @@ Business:
 * Operator auto generate keys
 * Account types instead of segment filtering
 * Numscript
+* Progression of metadata type changes
+* Add aggregations
+* Query validations against types
+* Collect read statistics
+* Mirror
+* Numscript
 ** Add typed variables
 * ledgerctl:
 ** Add self update
 ** First usage detection and display
+* accounts migration
+* transactions workflows
 
 Docs:
 * Clean relying parties distinctions
 * migrate existing clients
+* Complexities
 
 Tests:
 * Convert K6 tests to GRPC
