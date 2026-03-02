@@ -48,6 +48,7 @@ Examples:
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
+	cmd.Flags().Bool("profile", false, "Display query execution profile (iterator stats, timing)")
 
 	return cmd
 }
@@ -72,6 +73,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	fetchAll, _ := cmd.Flags().GetBool("all")
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
+	showProfile, _ := cmd.Flags().GetBool("profile")
 
 	// Build the filter from --filter and --prefix flags
 	filter, err := buildAccountFilter(filterExpr, prefix)
@@ -80,10 +82,10 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if fetchAll {
-		return fetchAllAccounts(cmd, client, ledgerName, filter, reverse, jsonOutput, minLogSeq)
+		return fetchAllAccounts(cmd, client, ledgerName, filter, reverse, jsonOutput, minLogSeq, showProfile)
 	}
 
-	return fetchAccountsWithPager(cmd, client, ledgerName, pageSize, filter, reverse, jsonOutput, minLogSeq)
+	return fetchAccountsWithPager(cmd, client, ledgerName, pageSize, filter, reverse, jsonOutput, minLogSeq, showProfile)
 }
 
 // buildAccountFilter combines --filter and --prefix flags into a single QueryFilter.
@@ -124,9 +126,13 @@ func buildAccountFilter(filterExpr, prefix string) (*commonpb.QueryFilter, error
 	}
 }
 
-func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool, minLogSeq uint64) error {
+func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool, minLogSeq uint64, showProfile bool) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
+
+	if showProfile {
+		ctx = cmdutil.ProfileContext(ctx)
+	}
 
 	spinner, _ := pterm.DefaultSpinner.Start("Fetching all accounts...")
 
@@ -170,15 +176,22 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 	}
 
 	renderAccountsTable(accounts)
+
+	if showProfile {
+		cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
+	}
 	return nil
 }
 
-func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool, minLogSeq uint64) error {
+func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool, minLogSeq uint64, showProfile bool) error {
 	var afterAddress string
 	pageNum := 1
 
 	for {
 		ctx, cancel := cmdutil.GetContext(cmd)
+		if showProfile {
+			ctx = cmdutil.ProfileContext(ctx)
+		}
 
 		spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching page %d...", pageNum))
 
@@ -234,6 +247,10 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 			pterm.Printf("Accounts (Page %d)\n", pageNum)
 			pterm.Println(pterm.Gray("─────────────────────────────────"))
 			renderAccountsTable(accounts)
+		}
+
+		if showProfile {
+			cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
 		}
 
 		if uint32(len(accounts)) < pageSize {

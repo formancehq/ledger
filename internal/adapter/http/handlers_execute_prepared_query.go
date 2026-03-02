@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -59,11 +60,15 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		Mode:           mode,
 	}
 
-	resp, err := s.backend.ExecutePreparedQuery(r.Context(), req)
+	ctx, profile := query.WithProfile(r.Context())
+	resp, err := s.backend.ExecutePreparedQuery(ctx, req)
 	if err != nil {
 		handleError(w, r, err)
 		return
 	}
 
+	if wantsHTTPProfile(r) {
+		writeProfileHeader(w, profile)
+	}
 	writeJSONResponse(w, http.StatusOK, resp)
 }

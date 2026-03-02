@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
@@ -19,35 +20,45 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	ggrpc "google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
+)
+
+const (
+	metadataKeyQueryProfile       = "x-query-profile"
+	metadataKeyQueryProfileResult = "x-query-profile-result-bin"
 )
 
 type BucketServiceServerImpl struct {
 	servicepb.UnimplementedBucketServiceServer
-	logger         logging.Logger
-	ctrl           ctrl.Controller
-	store          *dal.Store
-	readStore      *readstore.Store
-	attrs          *attributes.Attributes
-	sharedState    *state.SharedState
-	receiptSigner  *receipt.Signer
-	responseSigner *signing.ResponseSigner
-	authCfg        internalauth.AuthConfig
+	logger                 logging.Logger
+	ctrl                   ctrl.Controller
+	store                  *dal.Store
+	readStore              *readstore.Store
+	attrs                  *attributes.Attributes
+	sharedState            *state.SharedState
+	receiptSigner          *receipt.Signer
+	responseSigner         *signing.ResponseSigner
+	authCfg                internalauth.AuthConfig
+	queryProfileThreshold  time.Duration
 }
 
-func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration) servicepb.BucketServiceServer {
 	return &BucketServiceServerImpl{
-		logger:         logger,
-		ctrl:           ctrl,
-		store:          s,
-		readStore:      rs,
-		attrs:          attrs,
-		sharedState:    sharedState,
-		receiptSigner:  receiptSigner,
-		responseSigner: responseSigner,
-		authCfg:        authCfg,
+		logger:                 logger,
+		ctrl:                   ctrl,
+		store:                  s,
+		readStore:              rs,
+		attrs:                  attrs,
+		sharedState:            sharedState,
+		receiptSigner:          receiptSigner,
+		responseSigner:         responseSigner,
+		authCfg:                authCfg,
+		queryProfileThreshold:  queryProfileThreshold,
 	}
 }
 
@@ -210,12 +221,16 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 	impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, hasFilter=%v, reverse=%v)",
 		req.Ledger, req.PageSize, req.AfterTxId, req.Filter != nil, req.Reverse)
 
-	cursor, err := impl.ctrl.ListTransactions(stream.Context(), req.Ledger, req.PageSize, req.AfterTxId, req.Filter, req.Reverse)
+	profileCtx, profile := query.WithProfile(stream.Context())
+
+	cursor, err := impl.ctrl.ListTransactions(profileCtx, req.Ledger, req.PageSize, req.AfterTxId, req.Filter, req.Reverse)
 	if err != nil {
 		return fmt.Errorf("listing transactions: %w", err)
 	}
 
-	return sendCursorToStream(cursor, stream, "transaction")
+	err = sendCursorToStream(cursor, stream, "transaction")
+	impl.emitProfile(stream.Context(), profile)
+	return err
 }
 
 func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersRequest, stream servicepb.BucketService_ListLedgersServer) error {
@@ -276,12 +291,16 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 	impl.logger.Debugf("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, hasFilter=%v, reverse=%v)",
 		req.Ledger, req.PageSize, req.AfterAddress, req.Filter != nil, req.Reverse)
 
-	cursor, err := impl.ctrl.ListAccounts(stream.Context(), req.Ledger, req.PageSize, req.AfterAddress, req.Filter, req.Reverse)
+	profileCtx, profile := query.WithProfile(stream.Context())
+
+	cursor, err := impl.ctrl.ListAccounts(profileCtx, req.Ledger, req.PageSize, req.AfterAddress, req.Filter, req.Reverse)
 	if err != nil {
 		return fmt.Errorf("listing accounts: %w", err)
 	}
 
-	return sendCursorToStream(cursor, stream, "account")
+	err = sendCursorToStream(cursor, stream, "account")
+	impl.emitProfile(stream.Context(), profile)
+	return err
 }
 
 func (impl *BucketServiceServerImpl) GetStoreMetrics(ctx context.Context, _ *servicepb.GetStoreMetricsRequest) (*servicepb.GetStoreMetricsResponse, error) {
@@ -545,7 +564,11 @@ func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, r
 		return nil, err
 	}
 
-	return impl.ctrl.ExecutePreparedQuery(ctx, req)
+	profileCtx, profile := query.WithProfile(ctx)
+
+	resp, err := impl.ctrl.ExecutePreparedQuery(profileCtx, req)
+	impl.emitProfile(ctx, profile)
+	return resp, err
 }
 
 func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
@@ -569,6 +592,33 @@ func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.D
 		}
 	}
 	return resp, nil
+}
+
+func (impl *BucketServiceServerImpl) emitProfile(ctx context.Context, profile *query.QueryProfile) {
+	if profile == nil {
+		return
+	}
+	if profile.TotalDuration() >= impl.queryProfileThreshold {
+		profile.LogTo(impl.logger)
+		profile.EmitToSpan(trace.SpanFromContext(ctx))
+	}
+	if wantsProfile(ctx) {
+		_ = ggrpc.SetTrailer(ctx, profileToMetadata(profile))
+	}
+}
+
+func wantsProfile(ctx context.Context) bool {
+	md, ok := metadata.FromIncomingContext(ctx)
+	return ok && len(md.Get(metadataKeyQueryProfile)) > 0
+}
+
+func profileToMetadata(profile *query.QueryProfile) metadata.MD {
+	pb := profile.ToProto()
+	data, err := proto.Marshal(pb)
+	if err != nil {
+		return nil
+	}
+	return metadata.Pairs(metadataKeyQueryProfileResult, string(data))
 }
 
 func RegisterBucketService(server *ggrpc.Server, ledgerServiceServer servicepb.BucketServiceServer) {

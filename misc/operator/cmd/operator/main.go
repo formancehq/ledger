@@ -45,6 +45,14 @@ func main() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(ledgerv1alpha1.AddToScheme(scheme))
 
+	secretsNS := f.secretsNamespace
+	if secretsNS == "" {
+		secretsNS = os.Getenv("POD_NAMESPACE")
+	}
+	if secretsNS == "" {
+		secretsNS = "default"
+	}
+
 	mgrOpts := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
@@ -57,6 +65,9 @@ func main() {
 	if f.watchNamespace != "" {
 		mgrOpts.Cache.DefaultNamespaces = map[string]cache.Config{
 			f.watchNamespace: {},
+		}
+		if secretsNS != f.watchNamespace {
+			mgrOpts.Cache.DefaultNamespaces[secretsNS] = cache.Config{}
 		}
 	}
 
@@ -82,14 +93,6 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LedgerService")
 		os.Exit(1)
-	}
-
-	secretsNS := f.secretsNamespace
-	if secretsNS == "" {
-		secretsNS = os.Getenv("POD_NAMESPACE")
-	}
-	if secretsNS == "" {
-		secretsNS = "default"
 	}
 
 	if err = (&controller.LedgerClusterAgentReconciler{

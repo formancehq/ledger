@@ -34,6 +34,7 @@ func Execute(
 	pebbleStore *dal.Store,
 	volumeAttr *attributes.AccumulatingAttribute[*raftcmdpb.VolumePair],
 	req *servicepb.ExecutePreparedQueryRequest,
+	profile *QueryProfile,
 ) (*servicepb.ExecutePreparedQueryResponse, error) {
 	// Read the prepared query from Pebble
 	pq, err := ReadPreparedQuery(pebbleStore, req.Ledger, req.QueryName)
@@ -79,7 +80,7 @@ func Execute(
 		kb := readstore.NewKeyBuilder()
 
 		// Compile filter into iterator tree
-		iter, compileErr := Compile(tx, kb, pq.Filter, pq.Target, req.Ledger, req.Parameters, schema)
+		iter, compileErr := Compile(tx, kb, pq.Filter, pq.Target, req.Ledger, req.Parameters, schema, profile)
 		if compileErr != nil {
 			return fmt.Errorf("compiling filter: %w", compileErr)
 		}
@@ -88,7 +89,7 @@ func Execute(
 		switch req.Mode {
 		case commonpb.QueryMode_QUERY_MODE_LIST:
 			var listErr error
-			resp, listErr = executeList(iter, pq.Target, req)
+			resp, listErr = executeList(iter, pq.Target, req, profile)
 			return listErr
 
 		case commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
@@ -119,6 +120,7 @@ func executeList(
 	iter readstore.EntityIterator,
 	target commonpb.QueryTarget,
 	req *servicepb.ExecutePreparedQueryRequest,
+	profile *QueryProfile,
 ) (*servicepb.ExecutePreparedQueryResponse, error) {
 	pageSize := req.PageSize
 	if pageSize == 0 {
@@ -136,6 +138,9 @@ func executeList(
 	}
 
 	entities, hasMore := readstore.PaginateForward(iter, pageSize, afterEntity)
+	if profile != nil {
+		profile.ItemsCollected = len(entities)
+	}
 	if len(entities) == 0 {
 		return emptyListResponse(pageSize), nil
 	}

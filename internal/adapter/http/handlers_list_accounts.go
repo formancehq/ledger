@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -46,7 +47,7 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 
 	reverse := r.URL.Query().Get("reverse") == "true"
 
-	ctx := r.Context()
+	ctx, profile := query.WithProfile(r.Context())
 	cursor, err := s.backend.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 	if err != nil {
 		handleError(w, r, err)
@@ -69,5 +70,8 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 		accounts = append(accounts, account)
 	}
 
+	if wantsHTTPProfile(r) {
+		writeProfileHeader(w, profile)
+	}
 	writeOK(w, accounts)
 }
