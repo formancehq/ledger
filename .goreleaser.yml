@@ -36,6 +36,11 @@ builds:
       - amd64
       - arm64
 
+nightly:
+  tag_name: nightly
+  publish_release: true
+  name_template: "Nightly ({{ .ShortCommit }})"
+
 release:
   prerelease: auto
   extra_files:
