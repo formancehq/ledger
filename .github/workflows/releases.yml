@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   GoReleaser:
-    runs-on: "ubuntu-latest"
+    runs-on: "shipfox-8vcpu-ubuntu-2404"
     steps:
       - uses: 'actions/checkout@v4'
         with:

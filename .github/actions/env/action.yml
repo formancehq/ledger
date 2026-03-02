@@ -21,4 +21,7 @@ runs:
           branch="${GITHUB_REF##*/}"
         fi
         git checkout -b "$branch" || true
-
+    - name: Install earthly
+      uses: earthly/actions-setup@v1
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}

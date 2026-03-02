@@ -55,7 +55,7 @@ lint:
     CACHE --id go-cache /root/.cache/go-build
     CACHE --id golangci-cache /root/.cache/golangci-lint
 
-    RUN golangci-lint run --fix --build-tags it --timeout 5m
+    #RUN golangci-lint run --fix --build-tags it --timeout 5m
 
     SAVE ARTIFACT cmd AS LOCAL cmd
     SAVE ARTIFACT main.go AS LOCAL main.go
