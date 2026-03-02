@@ -2,7 +2,7 @@
   description = "A Nix-flake-based Go 1.24 development environment";
 
   inputs = {
-    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1.*.tar.gz";
+    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2511";
 
     nur = {
       url = "github:nix-community/NUR";
