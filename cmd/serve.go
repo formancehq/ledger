@@ -69,11 +69,13 @@ const (
 	BulkMaxSizeFlag            = "bulk-max-size"
 	BulkParallelFlag           = "bulk-parallel"
 
-	DefaultPageSizeFlag   = "default-page-size"
-	MaxPageSizeFlag       = "max-page-size"
-	WorkerEnabledFlag     = "worker"
-	SemconvMetricsNames   = "semconv-metrics-names"
-	SchemaEnforcementMode = "schema-enforcement-mode"
+	DefaultPageSizeFlag            = "default-page-size"
+	MaxPageSizeFlag                = "max-page-size"
+	WorkerEnabledFlag              = "worker"
+	SemconvMetricsNames            = "semconv-metrics-names"
+	SchemaEnforcementMode          = "schema-enforcement-mode"
+	ExperimentalGlobalExporterFlag = "experimental-global-exporter"
+	GlobalExporterResetFlag        = "global-exporter-reset"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -203,6 +205,8 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
 	cmd.Flags().Bool(SemconvMetricsNames, false, "Use semconv metrics names (recommended)")
 	cmd.Flags().String(SchemaEnforcementMode, "audit", "Schema enforcement mode. Values: `audit`, `strict`")
+	cmd.Flags().String(ExperimentalGlobalExporterFlag, "", "Global logs exporter configuration (<driver>:<config>)")
+	cmd.Flags().Bool(GlobalExporterResetFlag, false, "Reset global logs exporter state and re-export all logs from the beginning")
 
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
