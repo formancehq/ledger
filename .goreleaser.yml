@@ -9,7 +9,7 @@ builds:
       - -X main.Version={{ .Version }}
       - -X main.Commit={{ .ShortCommit }}
       - -X main.BuildDate={{ .Date }}
-      - -extldflags "-static"
+      - -extldflags=-static
     env:
       - CGO_ENABLED=0
     goos:
@@ -26,7 +26,7 @@ builds:
       - -X main.Version={{ .Version }}
       - -X main.Commit={{ .ShortCommit }}
       - -X main.BuildDate={{ .Date }}
-      - -extldflags "-static"
+      - -extldflags=-static
     env:
       - CGO_ENABLED=0
     goos:
