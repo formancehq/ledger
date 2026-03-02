@@ -3,6 +3,7 @@ package ledger
 import (
 	"errors"
 	"fmt"
+
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/pkg/features"
@@ -46,61 +47,108 @@ func (h aggregatedBalancesResourceRepositoryHandler) filters() []filter {
 	}
 }
 
+func (h aggregatedBalancesResourceRepositoryHandler) skipFilter(query repositoryHandlerBuildContext[ledgercontroller.GetAggregatedVolumesOptions]) bool {
+	needAddressSegments := query.useFilter("address", isPartialAddress)
+	return query.UsePIT() && needAddressSegments && !query.useFilter("metadata")
+}
+
 func (h aggregatedBalancesResourceRepositoryHandler) buildDataset(store *Store, query repositoryHandlerBuildContext[ledgercontroller.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
 	if query.UsePIT() {
-		ret := store.newScopedSelect().
-			ModelTableExpr(store.GetPrefixedRelationName("moves")).
-			DistinctOn("accounts_address, asset").
-			Column("accounts_address", "asset")
+		needAddressSegments := query.useFilter("address", isPartialAddress)
+
+		dateFilterColumn := "effective_date"
 		if query.Opts.UseInsertionDate {
 			if !store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
 				return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
 			}
-
-			ret = ret.
-				ColumnExpr("first_value(post_commit_volumes) over (partition by (accounts_address, asset) order by seq desc) as volumes").
-				Where("insertion_date <= ?", query.PIT)
+			dateFilterColumn = "insertion_date"
 		} else {
 			if !store.ledger.HasFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes, "SYNC") {
 				return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistoryPostCommitEffectiveVolumes)
 			}
-
-			ret = ret.
-				ColumnExpr("first_value(post_commit_effective_volumes) over (partition by (accounts_address, asset) order by effective_date desc, seq desc) as volumes").
-				Where("effective_date <= ?", query.PIT)
 		}
 
-		if query.useFilter("address", isPartialAddress) {
-			subQuery := store.newScopedSelect().
+		// Optimization: when filtering on partial addresses, first identify eligible accounts
+		// then INNER JOIN with moves. This is more efficient than LATERAL JOIN + filtering after.
+		useAddressOptimization := needAddressSegments && !query.useFilter("metadata")
+		if useAddressOptimization {
+			// Build eligible accounts subquery with address filters pre-applied
+			eligibleAccounts := store.newScopedSelect().
 				TableExpr(store.GetPrefixedRelationName("accounts")).
-				Column("address_array").
-				Where("accounts.address = accounts_address")
+				Column("address", "address_array")
 
-			ret = ret.
-				ColumnExpr("accounts.address_array as accounts_address_array").
-				Join(`join lateral (?) accounts on true`, subQuery)
+			where, args, err := filterInvolvedAccounts(query.Builder, "address")
+			if err != nil {
+				return nil, err
+			}
+			if len(args) > 0 {
+				eligibleAccounts = eligibleAccounts.Where(where, args...)
+			} else {
+				eligibleAccounts = eligibleAccounts.Where(where)
+			}
+
+			ret := store.newScopedSelect().
+				ModelTableExpr(store.GetPrefixedRelationName("moves")+" moves").
+				DistinctOn("moves.accounts_address, moves.asset").
+				Column("moves.accounts_address", "moves.asset").
+				ColumnExpr("eligible_accounts.address_array as accounts_address_array").
+				Join("inner join (?) eligible_accounts on eligible_accounts.address = moves.accounts_address", eligibleAccounts).
+				Where("moves."+dateFilterColumn+" <= ?", query.PIT)
+
+			if query.Opts.UseInsertionDate {
+				ret = ret.ColumnExpr("first_value(moves.post_commit_volumes) over (partition by (moves.accounts_address, moves.asset) order by moves.seq desc) as volumes")
+			} else {
+				ret = ret.ColumnExpr("first_value(moves.post_commit_effective_volumes) over (partition by (moves.accounts_address, moves.asset) order by moves.effective_date desc, moves.seq desc) as volumes")
+			}
+
+			return ret, nil
+		} else {
+			ret := store.newScopedSelect().
+				ModelTableExpr(store.GetPrefixedRelationName("moves")+" moves").
+				DistinctOn("moves.accounts_address, moves.asset").
+				Column("moves.accounts_address", "moves.asset").
+				Where("moves."+dateFilterColumn+" <= ?", query.PIT)
+
+			if query.Opts.UseInsertionDate {
+				ret = ret.ColumnExpr("first_value(moves.post_commit_volumes) over (partition by (moves.accounts_address, moves.asset) order by moves.seq desc) as volumes")
+			} else {
+				ret = ret.ColumnExpr("first_value(moves.post_commit_effective_volumes) over (partition by (moves.accounts_address, moves.asset) order by moves.effective_date desc, moves.seq desc) as volumes")
+			}
+
+			// When we have partial address filters with other filters (like metadata),
+			// we need to join with accounts to get the address_array for filtering
+			if needAddressSegments {
+				subQuery := store.newScopedSelect().
+					TableExpr(store.GetPrefixedRelationName("accounts")).
+					Column("address_array").
+					Where("accounts.address = moves.accounts_address")
+
+				ret = ret.
+					ColumnExpr("accounts.address_array as accounts_address_array").
+					Join(`join lateral (?) accounts on true`, subQuery)
+			}
+
+			if query.useFilter("metadata") {
+				subQuery := store.newScopedSelect().
+					DistinctOn("accounts_address").
+					ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
+					ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
+					Where("accounts_metadata.accounts_address = moves.accounts_address").
+					Where("date <= ?", query.PIT)
+
+				ret = ret.
+					Join(`left join lateral (?) accounts_metadata on true`, subQuery).
+					Column("metadata")
+			}
+
+			return ret, nil
 		}
-
-		if query.useFilter("metadata") {
-			subQuery := store.newScopedSelect().
-				DistinctOn("accounts_address").
-				ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
-				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
-				Where("accounts_metadata.accounts_address = moves.accounts_address").
-				Where("date <= ?", query.PIT)
-
-			ret = ret.
-				Join(`left join lateral (?) accounts_metadata on true`, subQuery).
-				Column("metadata")
-		}
-
-		return ret, nil
 	} else {
 		ret := store.newScopedSelect().
 			ModelTableExpr(store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
-			ColumnExpr("(input, output)::"+store.GetPrefixedRelationName("volumes")+" as volumes")
+			ColumnExpr("(input, output)::" + store.GetPrefixedRelationName("volumes") + " as volumes")
 
 		if query.useFilter("metadata") || query.useFilter("address", isPartialAddress) {
 			subQuery := store.newScopedSelect().

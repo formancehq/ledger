@@ -3,11 +3,12 @@ package ledger
 import (
 	"errors"
 	"fmt"
+	"strings"
+
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
-	"strings"
 )
 
 type volumesResourceHandler struct{}
@@ -54,6 +55,12 @@ func (h volumesResourceHandler) filters() []filter {
 	}
 }
 
+func (h volumesResourceHandler) skipFilter(query repositoryHandlerBuildContext[ledgercontroller.GetVolumesOptions]) bool {
+	usesPITOrOOT := query.UsePIT() || query.UseOOT()
+	needAddressSegments := query.useFilter("address", isPartialAddress)
+	return usesPITOrOOT && needAddressSegments && !query.useFilter("balance(\\[.*])?") && !query.useFilter("metadata")
+}
+
 func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandlerBuildContext[ledgercontroller.GetVolumesOptions]) (*bun.SelectQuery, error) {
 
 	var selectVolumes *bun.SelectQuery
@@ -90,50 +97,96 @@ func (h volumesResourceHandler) buildDataset(store *Store, query repositoryHandl
 			return nil, ledgercontroller.NewErrMissingFeature(features.FeatureMovesHistory)
 		}
 
-		selectVolumes = store.newScopedSelect().
-			Column("asset").
-			ColumnExpr("accounts_address as account").
-			ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
-			ColumnExpr("sum(case when is_source then amount else 0 end) as output").
-			ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
-			ModelTableExpr(store.GetPrefixedRelationName("moves")).
-			GroupExpr("accounts_address, asset").
-			Order("accounts_address", "asset")
-
 		dateFilterColumn := "effective_date"
 		if query.Opts.UseInsertionDate {
 			dateFilterColumn = "insertion_date"
 		}
 
-		if query.UsePIT() {
-			selectVolumes = selectVolumes.Where(dateFilterColumn+" <= ?", query.PIT)
-		}
-
-		if query.UseOOT() {
-			selectVolumes = selectVolumes.Where(dateFilterColumn+" >= ?", query.OOT)
-		}
-
-		if needAddressSegments {
-			subQuery := store.newScopedSelect().
+		// Optimization: when filtering on partial addresses, first identify eligible accounts
+		// then INNER JOIN with moves. This is more efficient than LATERAL JOIN + filtering after.
+		useAddressOptimization := needAddressSegments && !query.useFilter("balance(\\[.*])?") && !query.useFilter("metadata")
+		if useAddressOptimization {
+			// Build eligible accounts subquery with address filters pre-applied
+			eligibleAccounts := store.newScopedSelect().
 				TableExpr(store.GetPrefixedRelationName("accounts")).
-				Column("address_array").
-				Where("accounts.address = accounts_address")
+				Column("address", "address_array")
 
-			selectVolumes.
-				ColumnExpr("(array_agg(accounts.address_array))[1] as account_array").
-				Join(`join lateral (?) accounts on true`, subQuery)
-		}
+			where, args, err := filterInvolvedAccounts(query.Builder, "address")
+			if err != nil {
+				return nil, err
+			}
+			if len(args) > 0 {
+				eligibleAccounts = eligibleAccounts.Where(where, args...)
+			} else {
+				eligibleAccounts = eligibleAccounts.Where(where)
+			}
 
-		if query.useFilter("metadata") {
-			subQuery := store.newScopedSelect().
-				DistinctOn("accounts_address").
-				ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
-				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
-				Where("accounts_metadata.accounts_address = moves.accounts_address")
+			selectVolumes = store.newScopedSelect().
+				Column("moves.asset").
+				ColumnExpr("moves.accounts_address as account").
+				ColumnExpr("sum(case when not moves.is_source then moves.amount else 0 end) as input").
+				ColumnExpr("sum(case when moves.is_source then moves.amount else 0 end) as output").
+				ColumnExpr("sum(case when not moves.is_source then moves.amount else -moves.amount end) as balance").
+				ColumnExpr("(array_agg(eligible_accounts.address_array))[1] as account_array").
+				ModelTableExpr(store.GetPrefixedRelationName("moves")+" moves").
+				Join("inner join (?) eligible_accounts on eligible_accounts.address = moves.accounts_address", eligibleAccounts).
+				GroupExpr("moves.accounts_address, moves.asset").
+				Order("moves.accounts_address", "moves.asset")
 
-			selectVolumes = selectVolumes.
-				Join(`left join lateral (?) accounts_metadata on true`, subQuery).
-				ColumnExpr("(array_agg(metadata))[1] as metadata")
+			if query.UsePIT() {
+				selectVolumes = selectVolumes.Where("moves."+dateFilterColumn+" <= ?", query.PIT)
+			}
+
+			if query.UseOOT() {
+				selectVolumes = selectVolumes.Where("moves."+dateFilterColumn+" >= ?", query.OOT)
+			}
+		} else {
+			selectVolumes = store.newScopedSelect().
+				Column("asset").
+				ColumnExpr("accounts_address as account").
+				ColumnExpr("sum(case when not is_source then amount else 0 end) as input").
+				ColumnExpr("sum(case when is_source then amount else 0 end) as output").
+				ColumnExpr("sum(case when not is_source then amount else -amount end) as balance").
+				ModelTableExpr(store.GetPrefixedRelationName("moves")+" moves").
+				GroupExpr("accounts_address, asset").
+				Order("accounts_address", "asset")
+
+			if query.UsePIT() {
+				selectVolumes = selectVolumes.Where(dateFilterColumn+" <= ?", query.PIT)
+			}
+
+			if query.UseOOT() {
+				selectVolumes = selectVolumes.Where(dateFilterColumn+" >= ?", query.OOT)
+			}
+
+			// When we have partial address filters with other filters (like metadata),
+			// we need to join with accounts to get the address_array for filtering
+			if needAddressSegments {
+				subQuery := store.newScopedSelect().
+					TableExpr(store.GetPrefixedRelationName("accounts")).
+					Column("address_array").
+					Where("accounts.address = moves.accounts_address")
+
+				selectVolumes = selectVolumes.
+					ColumnExpr("(array_agg(accounts.address_array))[1] as account_array").
+					Join(`join lateral (?) accounts on true`, subQuery)
+			}
+
+			if query.useFilter("metadata") {
+				subQuery := store.newScopedSelect().
+					DistinctOn("accounts_address").
+					ModelTableExpr(store.GetPrefixedRelationName("accounts_metadata")).
+					ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
+					Where("accounts_metadata.accounts_address = moves.accounts_address")
+
+				if query.UsePIT() {
+					subQuery = subQuery.Where("date <= ?", query.PIT)
+				}
+
+				selectVolumes = selectVolumes.
+					Join(`left join lateral (?) accounts_metadata on true`, subQuery).
+					ColumnExpr("(array_agg(metadata))[1] as metadata")
+			}
 		}
 	}
 
