@@ -16,7 +16,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/portforward"
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/restart"
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/scale"
-	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/status"
 )
 
 func newRootCommand() *cobra.Command {
@@ -37,7 +36,6 @@ func newRootCommand() *cobra.Command {
 		get.NewCommand(opts),
 		create.NewCommand(opts),
 		deletecmd.NewCommand(opts),
-		status.NewCommand(opts),
 		scale.NewCommand(opts),
 		restart.NewCommand(opts),
 		logs.NewCommand(opts),

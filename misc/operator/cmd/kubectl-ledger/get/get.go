@@ -14,7 +14,7 @@ import (
 func NewCommand(opts *cmdutil.Options) *cobra.Command {
 	return &cobra.Command{
 		Use:     "get [name]",
-		Aliases: []string{"describe", "show", "inspect"},
+		Aliases: []string{"describe", "show", "inspect", "status", "st"},
 		Short:   "Show details of a LedgerService deployment",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -177,6 +177,25 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		}
 		cmdutil.RenderTable([]string{"TYPE", "STATUS", "REASON", "MESSAGE", "AGE"}, condRows)
 	}
+
+	// Config section
+	pterm.DefaultSection.Println("Config")
+	cfg := &ledger.Spec.Config
+	debug := "false"
+	if cfg.Debug {
+		debug = pterm.Yellow("true")
+	}
+	cmdutil.RenderTable(
+		[]string{"KEY", "VALUE"},
+		[][]string{
+			{"Cluster ID", cfg.ClusterID},
+			{"HTTP Port", fmt.Sprintf("%d", cfg.HttpPort)},
+			{"gRPC Port", fmt.Sprintf("%d", cfg.GrpcPort)},
+			{"Bind Addr", cfg.BindAddr},
+			{"Image", cmdutil.FormatImage(ledger.Spec.Image)},
+			{"Debug", debug},
+		},
+	)
 
 	return nil
 }
