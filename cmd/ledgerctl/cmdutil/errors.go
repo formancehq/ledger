@@ -9,22 +9,48 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/pterm/pterm"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 // FormatGRPCError returns a clean error for gRPC errors suitable for CLI display.
 // For business errors, it reconstructs the typed error and uses its message.
-// For other gRPC errors, it uses the status message (without gRPC framing).
+// For other gRPC errors, it uses a human-friendly message based on the status code.
 // For non-gRPC errors, it wraps the original error.
 func FormatGRPCError(context string, err error) error {
 	if bizErr := BusinessErrorFromGRPC(err); bizErr != nil {
 		printErrorDetails(bizErr.Err)
 		return fmt.Errorf("%s: %s", context, bizErr.Err.Error())
 	}
-	if st, ok := status.FromError(err); ok {
-		return fmt.Errorf("%s: %s", context, st.Message())
+
+	// status.Convert always returns a status (wrapping non-gRPC errors as Unknown).
+	// This handles streaming errors that don't implement GRPCStatus() directly.
+	st := status.Convert(err)
+	if st.Code() != codes.OK {
+		if msg := friendlyMessage(st); msg != "" {
+			return fmt.Errorf("%s: %s", context, msg)
+		}
 	}
+
 	return fmt.Errorf("%s: %w", context, err)
+}
+
+// friendlyMessage returns a human-readable message for common gRPC status codes.
+func friendlyMessage(st *status.Status) string {
+	switch st.Code() {
+	case codes.Unauthenticated:
+		return "authentication required (check your credentials or token)"
+	case codes.PermissionDenied:
+		return fmt.Sprintf("access denied: %s", st.Message())
+	case codes.Unavailable:
+		return fmt.Sprintf("server unavailable: %s", st.Message())
+	case codes.DeadlineExceeded:
+		return "request timed out"
+	case codes.Unimplemented:
+		return fmt.Sprintf("not supported by server: %s", st.Message())
+	default:
+		return st.Message()
+	}
 }
 
 // printErrorDetails prints structured details for specific business error types.
@@ -50,8 +76,8 @@ func printErrorDetails(err error) {
 // BusinessErrorFromGRPC extracts a BusinessError from a gRPC status error.
 // Returns nil if the error is not a business error (no ErrorInfo with domain "ledger").
 func BusinessErrorFromGRPC(err error) *domain.BusinessError {
-	st, ok := status.FromError(err)
-	if !ok {
+	st := status.Convert(err)
+	if st.Code() == codes.OK {
 		return nil
 	}
 
