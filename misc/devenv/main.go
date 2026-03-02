@@ -637,7 +637,7 @@ func main() {
 			return fmt.Errorf("failed to deploy Grafana: %w", err)
 		}
 
-		// Apply Ledger CRDs (LedgerService + LedgerDefaults)
+		// Apply Ledger CRDs (LedgerService + LedgerDefaults + LedgerClusterAgent)
 		ledgerServiceCRD, err := k8syaml.NewConfigFile(ctx, "ledgerservice-crd", &k8syaml.ConfigFileArgs{
 			File: "../operator/config/crd/bases/ledger.formance.com_ledgerservices.yaml",
 		}, pulumi.Provider(k8sProvider))
@@ -650,6 +650,13 @@ func main() {
 		}, pulumi.Provider(k8sProvider))
 		if err != nil {
 			return fmt.Errorf("failed to apply LedgerDefaults CRD: %w", err)
+		}
+
+		ledgerClusterAgentCRD, err := k8syaml.NewConfigFile(ctx, "ledgerclusteragent-crd", &k8syaml.ConfigFileArgs{
+			File: "../operator/config/crd/bases/ledger.formance.com_ledgerclusteragents.yaml",
+		}, pulumi.Provider(k8sProvider))
+		if err != nil {
+			return fmt.Errorf("failed to apply LedgerClusterAgent CRD: %w", err)
 		}
 
 		// Deploy ledger operator via its Helm chart
@@ -668,7 +675,7 @@ func main() {
 			},
 			ForceUpdate: pulumi.Bool(true),
 		},
-			pulumi.DependsOn([]pulumi.Resource{namespace, ledgerServiceCRD, ledgerDefaultsCRD, ledgerOperatorImage}),
+			pulumi.DependsOn([]pulumi.Resource{namespace, ledgerServiceCRD, ledgerDefaultsCRD, ledgerClusterAgentCRD, ledgerOperatorImage}),
 			pulumi.Provider(k8sProvider),
 		)
 		if err != nil {

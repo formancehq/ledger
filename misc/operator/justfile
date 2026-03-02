@@ -4,6 +4,13 @@ generate:
     {{controller-gen}} object:headerFile="" paths=./api/... \
         crd output:crd:dir=config/crd/bases \
         rbac:roleName=ledger-operator output:rbac:dir=config/rbac paths=./...
+    @just _sync-chart
+
+# Sync generated RBAC rules into the Helm chart ClusterRole template.
+# controller-gen produces config/rbac/role.yaml from kubebuilder annotations;
+# this script injects those rules into the chart and appends static extras.
+_sync-chart:
+    ./scripts/sync-chart-rbac.sh
 
 build:
     go build -o build/operator ./cmd/operator
