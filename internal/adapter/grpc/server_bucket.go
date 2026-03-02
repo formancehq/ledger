@@ -469,7 +469,7 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(ctx context.Context, req *s
 }
 
 func (impl *BucketServiceServerImpl) AnalyzeTransactions(ctx context.Context, req *servicepb.AnalyzeTransactionsRequest) (*servicepb.AnalyzeTransactionsResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
 		return nil, err
 	}
 
