@@ -41,6 +41,7 @@ const (
 	BucketService_Discovery_FullMethodName               = "/ledger.BucketService/Discovery"
 	BucketService_GetMetadataSchemaStatus_FullMethodName = "/ledger.BucketService/GetMetadataSchemaStatus"
 	BucketService_AnalyzeAccounts_FullMethodName         = "/ledger.BucketService/AnalyzeAccounts"
+	BucketService_AnalyzeTransactions_FullMethodName     = "/ledger.BucketService/AnalyzeTransactions"
 	BucketService_CreatePreparedQuery_FullMethodName     = "/ledger.BucketService/CreatePreparedQuery"
 	BucketService_UpdatePreparedQuery_FullMethodName     = "/ledger.BucketService/UpdatePreparedQuery"
 	BucketService_DeletePreparedQuery_FullMethodName     = "/ledger.BucketService/DeletePreparedQuery"
@@ -96,6 +97,8 @@ type BucketServiceClient interface {
 	GetMetadataSchemaStatus(ctx context.Context, in *GetMetadataSchemaStatusRequest, opts ...grpc.CallOption) (*GetMetadataSchemaStatusResponse, error)
 	// AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts
 	AnalyzeAccounts(ctx context.Context, in *AnalyzeAccountsRequest, opts ...grpc.CallOption) (*AnalyzeAccountsResponse, error)
+	// AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns
+	AnalyzeTransactions(ctx context.Context, in *AnalyzeTransactionsRequest, opts ...grpc.CallOption) (*AnalyzeTransactionsResponse, error)
 	// CreatePreparedQuery creates a named prepared query for a ledger
 	CreatePreparedQuery(ctx context.Context, in *CreatePreparedQueryRequest, opts ...grpc.CallOption) (*CreatePreparedQueryResponse, error)
 	// UpdatePreparedQuery updates the filter of an existing prepared query
@@ -392,6 +395,16 @@ func (c *bucketServiceClient) AnalyzeAccounts(ctx context.Context, in *AnalyzeAc
 	return out, nil
 }
 
+func (c *bucketServiceClient) AnalyzeTransactions(ctx context.Context, in *AnalyzeTransactionsRequest, opts ...grpc.CallOption) (*AnalyzeTransactionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AnalyzeTransactionsResponse)
+	err := c.cc.Invoke(ctx, BucketService_AnalyzeTransactions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *bucketServiceClient) CreatePreparedQuery(ctx context.Context, in *CreatePreparedQueryRequest, opts ...grpc.CallOption) (*CreatePreparedQueryResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreatePreparedQueryResponse)
@@ -508,6 +521,8 @@ type BucketServiceServer interface {
 	GetMetadataSchemaStatus(context.Context, *GetMetadataSchemaStatusRequest) (*GetMetadataSchemaStatusResponse, error)
 	// AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts
 	AnalyzeAccounts(context.Context, *AnalyzeAccountsRequest) (*AnalyzeAccountsResponse, error)
+	// AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns
+	AnalyzeTransactions(context.Context, *AnalyzeTransactionsRequest) (*AnalyzeTransactionsResponse, error)
 	// CreatePreparedQuery creates a named prepared query for a ledger
 	CreatePreparedQuery(context.Context, *CreatePreparedQueryRequest) (*CreatePreparedQueryResponse, error)
 	// UpdatePreparedQuery updates the filter of an existing prepared query
@@ -591,6 +606,9 @@ func (UnimplementedBucketServiceServer) GetMetadataSchemaStatus(context.Context,
 }
 func (UnimplementedBucketServiceServer) AnalyzeAccounts(context.Context, *AnalyzeAccountsRequest) (*AnalyzeAccountsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AnalyzeAccounts not implemented")
+}
+func (UnimplementedBucketServiceServer) AnalyzeTransactions(context.Context, *AnalyzeTransactionsRequest) (*AnalyzeTransactionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AnalyzeTransactions not implemented")
 }
 func (UnimplementedBucketServiceServer) CreatePreparedQuery(context.Context, *CreatePreparedQueryRequest) (*CreatePreparedQueryResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreatePreparedQuery not implemented")
@@ -938,6 +956,24 @@ func _BucketService_AnalyzeAccounts_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_AnalyzeTransactions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AnalyzeTransactionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).AnalyzeTransactions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_AnalyzeTransactions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).AnalyzeTransactions(ctx, req.(*AnalyzeTransactionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BucketService_CreatePreparedQuery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreatePreparedQueryRequest)
 	if err := dec(in); err != nil {
@@ -1118,6 +1154,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AnalyzeAccounts",
 			Handler:    _BucketService_AnalyzeAccounts_Handler,
+		},
+		{
+			MethodName: "AnalyzeTransactions",
+			Handler:    _BucketService_AnalyzeTransactions_Handler,
 		},
 		{
 			MethodName: "CreatePreparedQuery",

@@ -10,30 +10,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func makeAccount(address string) *commonpb.Account {
-	return &commonpb.Account{Address: address}
+func makeCompactAccount(address string) CompactAccount {
+	return CompactAccount{Address: address}
 }
 
-func makeAccountWithAssets(address string, assets ...string) *commonpb.Account {
-	volumes := make(map[string]*commonpb.VolumesWithBalance, len(assets))
-	for _, a := range assets {
-		volumes[a] = &commonpb.VolumesWithBalance{Input: "100", Output: "0", Balance: "100"}
-	}
-	return &commonpb.Account{Address: address, Volumes: volumes}
+func makeCompactAccountWithAssets(address string, assets ...string) CompactAccount {
+	return CompactAccount{Address: address, Assets: assets}
 }
 
-func makeAccountWithMetadata(address string, keys ...string) *commonpb.Account {
-	var metadata []*commonpb.Metadata
-	for _, k := range keys {
-		metadata = append(metadata, &commonpb.Metadata{
-			Key:   k,
-			Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}},
-		})
-	}
-	return &commonpb.Account{
-		Address:  address,
-		Metadata: &commonpb.MetadataSet{Metadata: metadata},
-	}
+func makeCompactAccountWithMetadata(address string, keys ...string) CompactAccount {
+	return CompactAccount{Address: address, MetadataKeys: keys}
 }
 
 func TestAnalyze_EmptyAccounts(t *testing.T) {
@@ -50,7 +36,7 @@ func TestAnalyze_EmptyAccounts(t *testing.T) {
 func TestAnalyze_SingleAccount(t *testing.T) {
 	t.Parallel()
 
-	resp := Analyze([]*commonpb.Account{makeAccount("world")}, 0)
+	resp := Analyze([]CompactAccount{makeCompactAccount("world")}, 0)
 
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(1), resp.TotalAccounts)
@@ -68,10 +54,10 @@ func TestAnalyze_SingleAccount(t *testing.T) {
 func TestAnalyze_SimpleFixedHierarchy(t *testing.T) {
 	t.Parallel()
 
-	accounts := []*commonpb.Account{
-		makeAccount("bank:main"),
-		makeAccount("bank:fees"),
-		makeAccount("world"),
+	accounts := []CompactAccount{
+		makeCompactAccount("bank:main"),
+		makeCompactAccount("bank:fees"),
+		makeCompactAccount("world"),
 	}
 
 	resp := Analyze(accounts, 0)
@@ -104,10 +90,10 @@ func TestAnalyze_VariableDetection(t *testing.T) {
 	t.Parallel()
 
 	// Create 15 user accounts with UUIDs — exceeds default threshold of 10
-	var accounts []*commonpb.Account
+	var accounts []CompactAccount
 	for i := 0; i < 15; i++ {
 		uuid := fmt.Sprintf("a0eebc99-9c0b-4ef8-bb6d-6bb9bd38%04x", i)
-		accounts = append(accounts, makeAccount("users:"+uuid))
+		accounts = append(accounts, makeCompactAccount("users:"+uuid))
 	}
 
 	resp := Analyze(accounts, 0)
@@ -137,9 +123,9 @@ func TestAnalyze_VariableDetection(t *testing.T) {
 func TestAnalyze_NumericPattern(t *testing.T) {
 	t.Parallel()
 
-	var accounts []*commonpb.Account
+	var accounts []CompactAccount
 	for i := 0; i < 12; i++ {
-		accounts = append(accounts, makeAccount(fmt.Sprintf("orders:%d", 1000+i)))
+		accounts = append(accounts, makeCompactAccount(fmt.Sprintf("orders:%d", 1000+i)))
 	}
 
 	resp := Analyze(accounts, 0)
@@ -156,10 +142,10 @@ func TestAnalyze_NumericPattern(t *testing.T) {
 func TestAnalyze_DeepNestedHierarchy(t *testing.T) {
 	t.Parallel()
 
-	accounts := []*commonpb.Account{
-		makeAccount("platform:region:eu:main"),
-		makeAccount("platform:region:us:main"),
-		makeAccount("platform:region:eu:fees"),
+	accounts := []CompactAccount{
+		makeCompactAccount("platform:region:eu:main"),
+		makeCompactAccount("platform:region:us:main"),
+		makeCompactAccount("platform:region:eu:fees"),
 	}
 
 	resp := Analyze(accounts, 0)
@@ -175,9 +161,9 @@ func TestAnalyze_DeepNestedHierarchy(t *testing.T) {
 func TestAnalyze_AssetsAggregation(t *testing.T) {
 	t.Parallel()
 
-	accounts := []*commonpb.Account{
-		makeAccountWithAssets("bank:main", "USD", "EUR"),
-		makeAccountWithAssets("bank:fees", "USD"),
+	accounts := []CompactAccount{
+		makeCompactAccountWithAssets("bank:main", "EUR", "USD"),
+		makeCompactAccountWithAssets("bank:fees", "USD"),
 	}
 
 	resp := Analyze(accounts, 0)
@@ -196,9 +182,9 @@ func TestAnalyze_AssetsAggregation(t *testing.T) {
 func TestAnalyze_MetadataKeysAggregation(t *testing.T) {
 	t.Parallel()
 
-	accounts := []*commonpb.Account{
-		makeAccountWithMetadata("users:alice", "role", "email"),
-		makeAccountWithMetadata("users:bob", "role", "phone"),
+	accounts := []CompactAccount{
+		makeCompactAccountWithMetadata("users:alice", "email", "role"),
+		makeCompactAccountWithMetadata("users:bob", "phone", "role"),
 	}
 
 	resp := Analyze(accounts, 0)
@@ -219,9 +205,9 @@ func TestAnalyze_ThresholdConfigurability(t *testing.T) {
 	t.Parallel()
 
 	// Create 5 user accounts with numeric IDs — below default threshold but above 3
-	var accounts []*commonpb.Account
+	var accounts []CompactAccount
 	for i := 0; i < 5; i++ {
-		accounts = append(accounts, makeAccount(fmt.Sprintf("users:%d", 1000+i)))
+		accounts = append(accounts, makeCompactAccount(fmt.Sprintf("users:%d", 1000+i)))
 	}
 
 	// With default threshold (10), should be fixed
@@ -245,15 +231,15 @@ func TestAnalyze_WorldAndUsersPattern(t *testing.T) {
 	t.Parallel()
 
 	// Realistic pattern: world + bank + 15 users with UUIDs + wallet sub-accounts
-	var accounts []*commonpb.Account
-	accounts = append(accounts, makeAccount("world"))
-	accounts = append(accounts, makeAccount("bank:main"))
-	accounts = append(accounts, makeAccount("bank:fees"))
+	var accounts []CompactAccount
+	accounts = append(accounts, makeCompactAccount("world"))
+	accounts = append(accounts, makeCompactAccount("bank:main"))
+	accounts = append(accounts, makeCompactAccount("bank:fees"))
 
 	for i := 0; i < 15; i++ {
 		uuid := fmt.Sprintf("a0eebc99-9c0b-4ef8-bb6d-6bb9bd38%04x", i)
-		accounts = append(accounts, makeAccount("users:"+uuid+":main"))
-		accounts = append(accounts, makeAccount("users:"+uuid+":savings"))
+		accounts = append(accounts, makeCompactAccount("users:"+uuid+":main"))
+		accounts = append(accounts, makeCompactAccount("users:"+uuid+":savings"))
 	}
 
 	resp := Analyze(accounts, 0)

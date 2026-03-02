@@ -444,6 +444,7 @@ Read endpoints comparison with the original ledger:
 | `GET /` | ✅ | ✅ | List all ledgers |
 | `GET /{ledgerName}/metadata-schema` | ✅ | ❌ | Get metadata schema status |
 | `GET /{ledgerName}/analyze-accounts` | ✅ | ❌ | Analyze accounts and suggest Chart of Accounts |
+| `GET /{ledgerName}/analyze-transactions` | ✅ | ❌ | Analyze transaction flow patterns |
 | `PUT /{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Set metadata field type |
 | `DELETE /{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Remove metadata field type |
 | `POST /{ledgerName}/prepared-queries` | ✅ | ❌ | Create a prepared query |

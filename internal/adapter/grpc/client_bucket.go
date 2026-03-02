@@ -181,6 +181,13 @@ func (g *BucketGrpcClient) AnalyzeAccounts(ctx context.Context, ledgerName strin
 	})
 }
 
+func (g *BucketGrpcClient) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+	return g.client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
+		Ledger:            ledgerName,
+		VariableThreshold: variableThreshold,
+	})
+}
+
 func (g *BucketGrpcClient) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
 	resp, err := g.client.ListPreparedQueries(ctx, &servicepb.ListPreparedQueriesRequest{
 		Ledger: ledger,

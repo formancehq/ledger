@@ -600,6 +600,47 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /{ledgerName}/analyze-transactions:
+    get:
+      summary: Analyze transaction flow patterns
+      description: |
+        Scans all transactions in a ledger, discovers flow patterns by normalizing
+        account addresses, and returns statistics per flow type including temporal
+        distribution and volume metrics. Requires `ledger:read` scope.
+      operationId: analyzeTransactions
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: variableThreshold
+          in: query
+          description: Max distinct children before classifying as variable (0 = default 10)
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 0
+      responses:
+        '200':
+          description: Analysis completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeTransactionsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /{ledgerName}/metadata-schema/{targetType}/{key}:
     put:
       summary: Set metadata field type
@@ -2011,6 +2052,103 @@ components:
           type: array
           items:
             type: string
+
+    AnalyzeTransactionsResponse:
+      type: object
+      properties:
+        flowPatterns:
+          type: array
+          items:
+            $ref: '#/components/schemas/FlowPattern'
+        totalTransactions:
+          type: integer
+          format: int64
+        totalReverted:
+          type: integer
+          format: int64
+
+    FlowPattern:
+      type: object
+      properties:
+        signature:
+          type: string
+          description: Canonical flow signature (e.g. "users:{id}:main->bank:fees[USD]")
+        structure:
+          type: string
+          enum: [simple, multiSource, multiDestination, complex]
+        transactionCount:
+          type: integer
+          format: int64
+        postings:
+          type: array
+          items:
+            $ref: '#/components/schemas/NormalizedPosting'
+        temporal:
+          $ref: '#/components/schemas/TemporalStats'
+        volumeStats:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssetVolumeStats'
+        metadataKeys:
+          type: array
+          items:
+            type: string
+
+    NormalizedPosting:
+      type: object
+      properties:
+        sourcePattern:
+          type: string
+        destinationPattern:
+          type: string
+        asset:
+          type: string
+
+    TemporalStats:
+      type: object
+      properties:
+        firstSeen:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+        transactionsPerDay:
+          type: number
+          format: double
+        peakHours:
+          type: array
+          items:
+            $ref: '#/components/schemas/HourBucket'
+
+    HourBucket:
+      type: object
+      properties:
+        hour:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 23
+        count:
+          type: integer
+          format: int64
+
+    AssetVolumeStats:
+      type: object
+      properties:
+        asset:
+          type: string
+        totalVolume:
+          type: string
+        averageVolume:
+          type: string
+        minVolume:
+          type: string
+        maxVolume:
+          type: string
+        transactionCount:
+          type: integer
+          format: int64
 
     CreatePreparedQueryRequest:
       type: object

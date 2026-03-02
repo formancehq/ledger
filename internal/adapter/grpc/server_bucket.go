@@ -468,6 +468,18 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(ctx context.Context, req *s
 	return impl.ctrl.AnalyzeAccounts(ctx, req.Ledger, req.VariableThreshold)
 }
 
+func (impl *BucketServiceServerImpl) AnalyzeTransactions(ctx context.Context, req *servicepb.AnalyzeTransactionsRequest) (*servicepb.AnalyzeTransactionsResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
+	if req.Ledger == "" {
+		return nil, fmt.Errorf("ledger name is required")
+	}
+
+	return impl.ctrl.AnalyzeTransactions(ctx, req.Ledger, req.VariableThreshold)
+}
+
 func (impl *BucketServiceServerImpl) CreatePreparedQuery(ctx context.Context, req *servicepb.CreatePreparedQueryRequest) (*servicepb.CreatePreparedQueryResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesWrite); err != nil {
 		return nil, err

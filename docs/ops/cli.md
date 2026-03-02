@@ -1027,6 +1027,38 @@ ledgerctl tx dm 42 reason -y
 ledgerctl transactions delete-metadata
 ```
 
+#### transactions analyze
+
+Analyze all transactions in a ledger and discover flow patterns by normalizing account addresses. Shows statistics per flow type including temporal distribution and volume metrics.
+
+**Aliases:** `analyse`
+
+```bash
+ledgerctl transactions analyze [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--threshold` | `0` | Variable threshold (0 = default 10): max distinct children before classifying as variable |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Analyze transactions with rich terminal output
+ledgerctl transactions analyze --ledger my-ledger
+
+# Increase variable threshold
+ledgerctl transactions analyze --ledger my-ledger --threshold 20
+
+# Output as JSON (for programmatic consumption)
+ledgerctl transactions analyze --ledger my-ledger --json
+```
+
 ---
 
 ### store

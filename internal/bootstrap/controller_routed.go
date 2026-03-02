@@ -195,6 +195,14 @@ func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName strin
 	return c.AnalyzeAccounts(ctx, ledgerName, variableThreshold)
 }
 
+func (b *RoutedController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+	c, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.AnalyzeTransactions(ctx, ledgerName, variableThreshold)
+}
+
 func (b *RoutedController) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
 	// Read from local store - prepared queries are replicated via Raft
 	return b.localController.ListPreparedQueries(ctx, ledger)

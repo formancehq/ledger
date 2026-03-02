@@ -603,7 +603,7 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 	}
 	defer func() { _ = cursor.Close() }()
 
-	var accounts []*commonpb.Account
+	var accounts []analysis.CompactAccount
 	for {
 		acc, err := cursor.Next()
 		if err == io.EOF {
@@ -612,10 +612,33 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 		if err != nil {
 			return nil, fmt.Errorf("reading accounts for analysis: %w", err)
 		}
-		accounts = append(accounts, acc)
+		accounts = append(accounts, analysis.ExtractCompactAccount(acc))
 	}
 
 	return analysis.Analyze(accounts, variableThreshold), nil
+}
+
+// AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns.
+func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+	cursor, err := ctrl.ListTransactions(ctx, ledgerName, 0, 0, nil, false)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cursor.Close() }()
+
+	var transactions []analysis.CompactTransaction
+	for {
+		tx, err := cursor.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("reading transactions for analysis: %w", err)
+		}
+		transactions = append(transactions, analysis.ExtractCompactTransaction(tx))
+	}
+
+	return analysis.AnalyzeTransactions(transactions, variableThreshold), nil
 }
 
 // ListLogs returns a cursor over system logs.
