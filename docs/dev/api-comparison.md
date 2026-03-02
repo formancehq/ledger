@@ -239,7 +239,7 @@ Mirror mode enables one-way synchronization from an existing v2 ledger into a v3
 Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying the source configuration.
 
 **Source types:**
-- **HTTP** (`type: "http"`) — Polls the v2 API endpoint `GET /v2/{ledger}/logs`. Fields: `baseUrl`, `authToken` (optional).
+- **HTTP** (`type: "http"`) — Polls the v2 API endpoint `GET /v2/{ledger}/logs`. Fields: `baseUrl`, `oauth2ClientId`, `oauth2ClientSecret`, `oauth2TokenEndpoint`, `oauth2Scopes` (optional, for OAuth2 client credentials authentication).
 - **PostgreSQL** (`type: "postgres"`) — Reads directly from the v2 ledger's PostgreSQL database. Fields: `dsn`.
 
 If `type` is omitted, defaults to `"http"`.

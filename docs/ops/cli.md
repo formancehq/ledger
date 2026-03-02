@@ -154,7 +154,10 @@ ledgerctl ledgers create [flags]
 | `--mirror-source-type` | `http` | Mirror source type: `http` or `postgres` |
 | `--mirror-ledger-name` | | Source ledger name in the v2 system (defaults to ledger name) |
 | `--mirror-base-url` | | Base URL of the v2 API (required for `http` source) |
-| `--mirror-auth-token` | | Auth token for the v2 API (for `http` source) |
+| `--mirror-oauth2-client-id` | | OAuth2 client ID for the v2 API (for `http` source) |
+| `--mirror-oauth2-client-secret` | | OAuth2 client secret for the v2 API (for `http` source) |
+| `--mirror-oauth2-token-endpoint` | | OAuth2 token endpoint URL (for `http` source) |
+| `--mirror-oauth2-scopes` | | OAuth2 scopes (for `http` source, repeatable) |
 | `--mirror-dsn` | | PostgreSQL DSN (required for `postgres` source) |
 | `--mirror-batch-size` | `0` | Max logs per batch (0 = server default, capped by `--mirror-max-batch-size`) |
 | `--json` | `false` | Output as JSON |
@@ -179,11 +182,13 @@ ledgerctl ledgers create --name my-ledger --metadata description="My ledger" --m
 # Create with typed metadata schema
 ledgerctl ledgers create --name my-ledger --schema account:age:int64 --schema account:active:bool
 
-# Create a mirror ledger from an HTTP v2 source
+# Create a mirror ledger from an HTTP v2 source with OAuth2
 ledgerctl ledgers create --name my-mirror \
   --mode mirror \
   --mirror-base-url https://v2-api.example.com \
-  --mirror-auth-token my-token
+  --mirror-oauth2-client-id my-client-id \
+  --mirror-oauth2-client-secret my-client-secret \
+  --mirror-oauth2-token-endpoint https://auth.example.com/token
 
 # Create a mirror ledger from a PostgreSQL v2 source
 ledgerctl ledgers create --name my-mirror \

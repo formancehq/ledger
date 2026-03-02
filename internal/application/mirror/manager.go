@@ -3,6 +3,7 @@ package mirror
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -171,7 +172,11 @@ func (m *Manager) teardown() {
 func createSource(cfg *commonpb.MirrorSourceConfig) (v2.Source, error) {
 	switch s := cfg.GetType().(type) {
 	case *commonpb.MirrorSourceConfig_Http:
-		return v2.NewHTTPSource(s.Http.BaseUrl, cfg.LedgerName, s.Http.AuthToken), nil
+		var httpClient *http.Client
+		if cc := s.Http.Oauth2ClientCredentials; cc != nil {
+			httpClient = v2.NewOAuth2ClientCredentialsClient(cc.ClientId, cc.ClientSecret, cc.TokenEndpoint, cc.Scopes)
+		}
+		return v2.NewHTTPSource(s.Http.BaseUrl, cfg.LedgerName, httpClient), nil
 	case *commonpb.MirrorSourceConfig_Postgres:
 		return v2.NewPostgresSource(context.Background(), s.Postgres.Dsn, cfg.LedgerName)
 	default:

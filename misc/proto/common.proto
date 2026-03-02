@@ -534,7 +534,14 @@ message MirrorSourceConfig {
 
 message HttpMirrorSourceConfig {
   string base_url = 1;
-  string auth_token = 2;
+  OAuth2ClientCredentials oauth2_client_credentials = 2;
+}
+
+message OAuth2ClientCredentials {
+  string client_id = 1;
+  string client_secret = 2;
+  string token_endpoint = 3;
+  repeated string scopes = 4;
 }
 
 message PostgresMirrorSourceConfig {

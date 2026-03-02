@@ -1841,9 +1841,20 @@ components:
         baseUrl:
           type: string
           description: Base URL of the v2 API (required for HTTP source)
-        authToken:
+        oauth2ClientId:
           type: string
-          description: Bearer token for authenticating with the v2 API (optional, HTTP source only)
+          description: OAuth2 client ID for the v2 API (HTTP source only)
+        oauth2ClientSecret:
+          type: string
+          description: OAuth2 client secret for the v2 API (HTTP source only)
+        oauth2TokenEndpoint:
+          type: string
+          description: OAuth2 token endpoint URL (HTTP source only)
+        oauth2Scopes:
+          type: array
+          items:
+            type: string
+          description: OAuth2 scopes (HTTP source only)
         dsn:
           type: string
           description: PostgreSQL connection string (required for PostgreSQL source)

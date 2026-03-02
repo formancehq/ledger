@@ -21,7 +21,6 @@ func TestHTTPSource_FetchLogs_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v2/default/logs", r.URL.Path)
 		require.Equal(t, "10", r.URL.Query().Get("pageSize"))
-		require.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(V2LogPage{
@@ -34,7 +33,7 @@ func TestHTTPSource_FetchLogs_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	source := NewHTTPSource(srv.URL, "default", "test-token")
+	source := NewHTTPSource(srv.URL, "default", nil)
 	defer func() { _ = source.Close() }()
 
 	result, hasMore, err := source.FetchLogs(context.Background(), 0, 10)
@@ -64,19 +63,17 @@ func TestHTTPSource_FetchLogs_WithAfterID(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	source := NewHTTPSource(srv.URL, "default", "")
+	source := NewHTTPSource(srv.URL, "default", nil)
 	result, hasMore, err := source.FetchLogs(context.Background(), 5, 10)
 	require.NoError(t, err)
 	require.True(t, hasMore)
 	require.Len(t, result, 1)
 }
 
-func TestHTTPSource_FetchLogs_NoAuthToken(t *testing.T) {
+func TestHTTPSource_FetchLogs_NilClient(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Empty(t, r.Header.Get("Authorization"))
-
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(V2LogPage{
 			Cursor: V2LogCursor{Data: nil},
@@ -84,7 +81,7 @@ func TestHTTPSource_FetchLogs_NoAuthToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	source := NewHTTPSource(srv.URL, "my-ledger", "")
+	source := NewHTTPSource(srv.URL, "my-ledger", nil)
 	result, hasMore, err := source.FetchLogs(context.Background(), 0, 10)
 	require.NoError(t, err)
 	require.False(t, hasMore)
@@ -100,7 +97,7 @@ func TestHTTPSource_FetchLogs_ServerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	source := NewHTTPSource(srv.URL, "default", "")
+	source := NewHTTPSource(srv.URL, "default", nil)
 	_, _, err := source.FetchLogs(context.Background(), 0, 10)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "500")
@@ -115,7 +112,7 @@ func TestHTTPSource_FetchLogs_InvalidJSON(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	source := NewHTTPSource(srv.URL, "default", "")
+	source := NewHTTPSource(srv.URL, "default", nil)
 	_, _, err := source.FetchLogs(context.Background(), 0, 10)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "decoding")
@@ -130,7 +127,7 @@ func TestHTTPSource_FetchLogs_ContextCancelled(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	source := NewHTTPSource(srv.URL, "default", "")
+	source := NewHTTPSource(srv.URL, "default", nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -142,7 +139,7 @@ func TestHTTPSource_FetchLogs_ContextCancelled(t *testing.T) {
 func TestHTTPSource_Close(t *testing.T) {
 	t.Parallel()
 
-	source := NewHTTPSource("http://localhost:0", "default", "")
+	source := NewHTTPSource("http://localhost:0", "default", nil)
 	err := source.Close()
 	require.NoError(t, err)
 }
@@ -167,7 +164,7 @@ func TestHTTPSource_GetLatestLogID_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	source := NewHTTPSource(srv.URL, "default", "")
+	source := NewHTTPSource(srv.URL, "default", nil)
 	latestID, err := source.GetLatestLogID(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), latestID)
@@ -184,7 +181,7 @@ func TestHTTPSource_GetLatestLogID_Empty(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	source := NewHTTPSource(srv.URL, "default", "")
+	source := NewHTTPSource(srv.URL, "default", nil)
 	latestID, err := source.GetLatestLogID(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), latestID)
@@ -199,7 +196,7 @@ func TestHTTPSource_GetLatestLogID_ServerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	source := NewHTTPSource(srv.URL, "default", "")
+	source := NewHTTPSource(srv.URL, "default", nil)
 	_, err := source.GetLatestLogID(context.Background())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "500")
@@ -223,7 +220,7 @@ func TestHTTPSource_FetchLogs_HasMore(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	source := NewHTTPSource(srv.URL, "default", "token")
+	source := NewHTTPSource(srv.URL, "default", nil)
 	result, hasMore, err := source.FetchLogs(context.Background(), 0, 2)
 	require.NoError(t, err)
 	require.True(t, hasMore)

@@ -41,8 +41,8 @@ func renderMirrorSource(src *commonpb.MirrorSourceConfig) {
 	case *commonpb.MirrorSourceConfig_Http:
 		pterm.Printf("  Type:    HTTP\n")
 		pterm.Printf("  URL:     %s\n", s.Http.BaseUrl)
-		if s.Http.AuthToken != "" {
-			pterm.Printf("  Auth:    ****\n")
+		if cc := s.Http.Oauth2ClientCredentials; cc != nil {
+			pterm.Printf("  OAuth2:  client_id=%s endpoint=%s\n", cc.ClientId, cc.TokenEndpoint)
 		}
 	case *commonpb.MirrorSourceConfig_Postgres:
 		pterm.Printf("  Type:    PostgreSQL\n")
@@ -93,7 +93,10 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 	hasMirrorFlags := cmd.Flags().Changed("mirror-source-type") ||
 		cmd.Flags().Changed("mirror-ledger-name") ||
 		cmd.Flags().Changed("mirror-base-url") ||
-		cmd.Flags().Changed("mirror-auth-token") ||
+		cmd.Flags().Changed("mirror-oauth2-client-id") ||
+		cmd.Flags().Changed("mirror-oauth2-client-secret") ||
+		cmd.Flags().Changed("mirror-oauth2-token-endpoint") ||
+		cmd.Flags().Changed("mirror-oauth2-scopes") ||
 		cmd.Flags().Changed("mirror-dsn") ||
 		cmd.Flags().Changed("mirror-batch-size")
 
@@ -131,12 +134,23 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 		if baseURL == "" {
 			return 0, nil, fmt.Errorf("--mirror-base-url is required for http mirror source")
 		}
-		authToken, _ := cmd.Flags().GetString("mirror-auth-token")
+		httpCfg := &commonpb.HttpMirrorSourceConfig{
+			BaseUrl: baseURL,
+		}
+		oauth2ClientID, _ := cmd.Flags().GetString("mirror-oauth2-client-id")
+		oauth2TokenEndpoint, _ := cmd.Flags().GetString("mirror-oauth2-token-endpoint")
+		if oauth2ClientID != "" || oauth2TokenEndpoint != "" {
+			oauth2ClientSecret, _ := cmd.Flags().GetString("mirror-oauth2-client-secret")
+			oauth2Scopes, _ := cmd.Flags().GetStringArray("mirror-oauth2-scopes")
+			httpCfg.Oauth2ClientCredentials = &commonpb.OAuth2ClientCredentials{
+				ClientId:      oauth2ClientID,
+				ClientSecret:  oauth2ClientSecret,
+				TokenEndpoint: oauth2TokenEndpoint,
+				Scopes:        oauth2Scopes,
+			}
+		}
 		cfg.Type = &commonpb.MirrorSourceConfig_Http{
-			Http: &commonpb.HttpMirrorSourceConfig{
-				BaseUrl:   baseURL,
-				AuthToken: authToken,
-			},
+			Http: httpCfg,
 		}
 	case "postgres":
 		dsn, _ := cmd.Flags().GetString("mirror-dsn")

@@ -14,17 +14,19 @@ import (
 type HTTPSource struct {
 	baseURL    string
 	ledgerName string
-	authToken  string
 	httpClient *http.Client
 }
 
 // NewHTTPSource creates a new HTTP-based v2 log source.
-func NewHTTPSource(baseURL, ledgerName, authToken string) *HTTPSource {
+// If httpClient is nil, a default http.Client is used.
+func NewHTTPSource(baseURL, ledgerName string, httpClient *http.Client) *HTTPSource {
+	if httpClient == nil {
+		httpClient = &http.Client{}
+	}
 	return &HTTPSource{
 		baseURL:    baseURL,
 		ledgerName: ledgerName,
-		authToken:  authToken,
-		httpClient: &http.Client{},
+		httpClient: httpClient,
 	}
 }
 
@@ -41,10 +43,6 @@ func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
-	}
-
-	if s.authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+s.authToken)
 	}
 
 	resp, err := s.httpClient.Do(req)

@@ -19,12 +19,15 @@ type createLedgerBody struct {
 
 // mirrorSourceBody holds the mirror source configuration.
 type mirrorSourceBody struct {
-	LedgerName string `json:"ledgerName"`
-	Type       string `json:"type"`              // "http" (default) or "postgres"
-	BaseURL    string `json:"baseUrl,omitempty"`  // HTTP source
-	AuthToken  string `json:"authToken,omitempty"` // HTTP source
-	DSN        string `json:"dsn,omitempty"`       // Postgres source
-	BatchSize  uint32 `json:"batchSize,omitempty"` // Max logs per batch (0 = default 100)
+	LedgerName          string   `json:"ledgerName"`
+	Type                string   `json:"type"`                           // "http" (default) or "postgres"
+	BaseURL             string   `json:"baseUrl,omitempty"`              // HTTP source
+	OAuth2ClientID      string   `json:"oauth2ClientId,omitempty"`       // HTTP source OAuth2
+	OAuth2ClientSecret  string   `json:"oauth2ClientSecret,omitempty"`   // HTTP source OAuth2
+	OAuth2TokenEndpoint string   `json:"oauth2TokenEndpoint,omitempty"`  // HTTP source OAuth2
+	OAuth2Scopes        []string `json:"oauth2Scopes,omitempty"`         // HTTP source OAuth2
+	DSN                 string   `json:"dsn,omitempty"`                  // Postgres source
+	BatchSize           uint32   `json:"batchSize,omitempty"`            // Max logs per batch (0 = default 100)
 }
 
 // handleCreateLedger handles POST /{ledgerName} to create a new ledger
@@ -81,11 +84,19 @@ func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, 
 	}
 	switch body.Type {
 	case "http", "":
+		httpCfg := &commonpb.HttpMirrorSourceConfig{
+			BaseUrl: body.BaseURL,
+		}
+		if body.OAuth2ClientID != "" || body.OAuth2TokenEndpoint != "" {
+			httpCfg.Oauth2ClientCredentials = &commonpb.OAuth2ClientCredentials{
+				ClientId:      body.OAuth2ClientID,
+				ClientSecret:  body.OAuth2ClientSecret,
+				TokenEndpoint: body.OAuth2TokenEndpoint,
+				Scopes:        body.OAuth2Scopes,
+			}
+		}
 		cfg.Type = &commonpb.MirrorSourceConfig_Http{
-			Http: &commonpb.HttpMirrorSourceConfig{
-				BaseUrl:   body.BaseURL,
-				AuthToken: body.AuthToken,
-			},
+			Http: httpCfg,
 		}
 	case "postgres":
 		cfg.Type = &commonpb.MirrorSourceConfig_Postgres{

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	v2 "github.com/formancehq/ledger-v3-poc/internal/adapter/v2"
@@ -480,4 +481,250 @@ var _ = Describe("Mirror", Ordered, func() {
 			Expect(info.Reason).To(Equal(domain.ErrReasonLedgerNotInMirrorMode))
 		})
 	})
+
+	Context("When syncing from a v2 source with OAuth2 client credentials", Ordered, func() {
+		var (
+			mockV2    *authMockV2Server
+			mockOAuth *mockOAuth2TokenServer
+		)
+
+		BeforeAll(func() {
+			mockOAuth = newMockOAuth2TokenServer("test-client-id", "test-client-secret")
+			DeferCleanup(mockOAuth.Close)
+
+			mockV2 = newAuthMockV2Server(mockOAuth.accessToken)
+			DeferCleanup(mockV2.Close)
+
+			// Seed v2 logs before creating the mirror
+			mockV2.addLog(newV2TransactionLog(1, 0, "world", "oauth2:user1", "500", "USD/2"))
+			mockV2.addLog(newV2SetMetadataLog(2, "ACCOUNT", "oauth2:user1", map[string]any{"provider": "oauth2"}))
+
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{{
+					Type: &servicepb.Request_CreateLedger{
+						CreateLedger: &servicepb.CreateLedgerRequest{
+							Name: "mirror-oauth2",
+							Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+							MirrorSource: &commonpb.MirrorSourceConfig{
+								LedgerName: "default",
+								Type: &commonpb.MirrorSourceConfig_Http{
+									Http: &commonpb.HttpMirrorSourceConfig{
+										BaseUrl: mockV2.URL(),
+										Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{
+											ClientId:      "test-client-id",
+											ClientSecret:  "test-client-secret",
+											TokenEndpoint: mockOAuth.TokenEndpoint(),
+										},
+									},
+								},
+							},
+						},
+					},
+				}},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should obtain an OAuth2 token and sync transactions", func() {
+			Eventually(func(g Gomega) {
+				stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
+					Ledger:   "mirror-oauth2",
+					PageSize: 10,
+				})
+				g.Expect(err).To(Succeed())
+
+				var txs []*commonpb.Transaction
+				for {
+					tx, err := stream.Recv()
+					if err == io.EOF {
+						break
+					}
+					g.Expect(err).To(Succeed())
+					txs = append(txs, tx)
+				}
+
+				g.Expect(len(txs)).To(BeNumerically(">=", 1))
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should have used the OAuth2 token for v2 API calls", func() {
+			Expect(mockV2.authenticatedRequests()).To(BeNumerically(">", 0))
+			Expect(mockV2.unauthenticatedRequests()).To(Equal(int64(0)))
+		})
+
+		It("Should have requested a token from the OAuth2 server", func() {
+			Expect(mockOAuth.tokenRequestCount()).To(BeNumerically(">", 0))
+		})
+
+		It("Should sync account metadata via OAuth2-authenticated requests", func() {
+			Eventually(func(g Gomega) {
+				account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+					Ledger:  "mirror-oauth2",
+					Address: "oauth2:user1",
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(account).NotTo(BeNil())
+
+				providerVal := findMetadataValue(account.Metadata, "provider")
+				g.Expect(providerVal).NotTo(BeNil())
+				g.Expect(providerVal.GetStringValue()).To(Equal("oauth2"))
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		})
+	})
 })
+
+// mockOAuth2TokenServer is a minimal OAuth2 token endpoint that supports
+// the client_credentials grant type for testing.
+type mockOAuth2TokenServer struct {
+	clientID     string
+	clientSecret string
+	accessToken  string
+	tokenReqs    atomic.Int64
+	srv          *httptest.Server
+}
+
+func newMockOAuth2TokenServer(clientID, clientSecret string) *mockOAuth2TokenServer {
+	m := &mockOAuth2TokenServer{
+		clientID:     clientID,
+		clientSecret: clientSecret,
+		accessToken:  "mock-access-token-e2e",
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/token", m.handleToken)
+	m.srv = httptest.NewServer(mux)
+	return m
+}
+
+func (m *mockOAuth2TokenServer) TokenEndpoint() string {
+	return m.srv.URL + "/token"
+}
+
+func (m *mockOAuth2TokenServer) Close() {
+	m.srv.Close()
+}
+
+func (m *mockOAuth2TokenServer) tokenRequestCount() int64 {
+	return m.tokenReqs.Load()
+}
+
+func (m *mockOAuth2TokenServer) handleToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	_ = r.ParseForm()
+	if r.FormValue("grant_type") != "client_credentials" {
+		http.Error(w, `{"error":"unsupported_grant_type"}`, http.StatusBadRequest)
+		return
+	}
+
+	// golang.org/x/oauth2/clientcredentials sends credentials via Basic auth
+	clientID, clientSecret, ok := r.BasicAuth()
+	if !ok {
+		clientID = r.FormValue("client_id")
+		clientSecret = r.FormValue("client_secret")
+	}
+
+	if clientID != m.clientID || clientSecret != m.clientSecret {
+		http.Error(w, `{"error":"invalid_client"}`, http.StatusUnauthorized)
+		return
+	}
+
+	m.tokenReqs.Add(1)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"access_token": m.accessToken,
+		"token_type":   "Bearer",
+		"expires_in":   3600,
+	})
+}
+
+// authMockV2Server is a mock v2 server that requires Bearer token authentication.
+type authMockV2Server struct {
+	mu              sync.Mutex
+	logs            []v2.V2Log
+	expectedToken   string
+	authReqs        atomic.Int64
+	unauthReqs      atomic.Int64
+	srv             *httptest.Server
+}
+
+func newAuthMockV2Server(expectedToken string) *authMockV2Server {
+	m := &authMockV2Server{
+		expectedToken: expectedToken,
+	}
+	m.srv = httptest.NewServer(http.HandlerFunc(m.handler))
+	return m
+}
+
+func (m *authMockV2Server) URL() string {
+	return m.srv.URL
+}
+
+func (m *authMockV2Server) Close() {
+	m.srv.Close()
+}
+
+func (m *authMockV2Server) addLog(log v2.V2Log) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.logs = append(m.logs, log)
+}
+
+func (m *authMockV2Server) authenticatedRequests() int64 {
+	return m.authReqs.Load()
+}
+
+func (m *authMockV2Server) unauthenticatedRequests() int64 {
+	return m.unauthReqs.Load()
+}
+
+func (m *authMockV2Server) handler(w http.ResponseWriter, r *http.Request) {
+	// Check Bearer token
+	auth := r.Header.Get("Authorization")
+	if auth != "Bearer "+m.expectedToken {
+		m.unauthReqs.Add(1)
+		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+	m.authReqs.Add(1)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	afterStr := r.URL.Query().Get("after")
+	var afterID uint64
+	if afterStr != "" {
+		_, _ = fmt.Sscanf(afterStr, "%d", &afterID)
+	}
+
+	var result []v2.V2Log
+	for _, log := range m.logs {
+		if log.ID > afterID {
+			result = append(result, log)
+		}
+	}
+
+	pageSizeStr := r.URL.Query().Get("pageSize")
+	pageSize := 100
+	if pageSizeStr != "" {
+		_, _ = fmt.Sscanf(pageSizeStr, "%d", &pageSize)
+	}
+
+	hasMore := false
+	if len(result) > pageSize {
+		result = result[:pageSize]
+		hasMore = true
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v2.V2LogPage{
+		Cursor: v2.V2LogCursor{
+			PageSize: pageSize,
+			HasMore:  hasMore,
+			Data:     result,
+		},
+	})
+}

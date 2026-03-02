@@ -1723,7 +1723,7 @@ func (m *HttpMirrorSourceConfig) CloneVT() *HttpMirrorSourceConfig {
 	}
 	r := new(HttpMirrorSourceConfig)
 	r.BaseUrl = m.BaseUrl
-	r.AuthToken = m.AuthToken
+	r.Oauth2ClientCredentials = m.Oauth2ClientCredentials.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1732,6 +1732,30 @@ func (m *HttpMirrorSourceConfig) CloneVT() *HttpMirrorSourceConfig {
 }
 
 func (m *HttpMirrorSourceConfig) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *OAuth2ClientCredentials) CloneVT() *OAuth2ClientCredentials {
+	if m == nil {
+		return (*OAuth2ClientCredentials)(nil)
+	}
+	r := new(OAuth2ClientCredentials)
+	r.ClientId = m.ClientId
+	r.ClientSecret = m.ClientSecret
+	r.TokenEndpoint = m.TokenEndpoint
+	if rhs := m.Scopes; rhs != nil {
+		tmpContainer := make([]string, len(rhs))
+		copy(tmpContainer, rhs)
+		r.Scopes = tmpContainer
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *OAuth2ClientCredentials) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -5367,7 +5391,7 @@ func (this *HttpMirrorSourceConfig) EqualVT(that *HttpMirrorSourceConfig) bool {
 	if this.BaseUrl != that.BaseUrl {
 		return false
 	}
-	if this.AuthToken != that.AuthToken {
+	if !this.Oauth2ClientCredentials.EqualVT(that.Oauth2ClientCredentials) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -5375,6 +5399,40 @@ func (this *HttpMirrorSourceConfig) EqualVT(that *HttpMirrorSourceConfig) bool {
 
 func (this *HttpMirrorSourceConfig) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*HttpMirrorSourceConfig)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *OAuth2ClientCredentials) EqualVT(that *OAuth2ClientCredentials) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.ClientId != that.ClientId {
+		return false
+	}
+	if this.ClientSecret != that.ClientSecret {
+		return false
+	}
+	if this.TokenEndpoint != that.TokenEndpoint {
+		return false
+	}
+	if len(this.Scopes) != len(that.Scopes) {
+		return false
+	}
+	for i, vx := range this.Scopes {
+		vy := that.Scopes[i]
+		if vx != vy {
+			return false
+		}
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *OAuth2ClientCredentials) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*OAuth2ClientCredentials)
 	if !ok {
 		return false
 	}
@@ -11065,10 +11123,13 @@ func (m *HttpMirrorSourceConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.AuthToken) > 0 {
-		i -= len(m.AuthToken)
-		copy(dAtA[i:], m.AuthToken)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.AuthToken)))
+	if m.Oauth2ClientCredentials != nil {
+		size, err := m.Oauth2ClientCredentials.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x12
 	}
@@ -11076,6 +11137,69 @@ func (m *HttpMirrorSourceConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= len(m.BaseUrl)
 		copy(dAtA[i:], m.BaseUrl)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.BaseUrl)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *OAuth2ClientCredentials) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *OAuth2ClientCredentials) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *OAuth2ClientCredentials) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Scopes) > 0 {
+		for iNdEx := len(m.Scopes) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Scopes[iNdEx])
+			copy(dAtA[i:], m.Scopes[iNdEx])
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Scopes[iNdEx])))
+			i--
+			dAtA[i] = 0x22
+		}
+	}
+	if len(m.TokenEndpoint) > 0 {
+		i -= len(m.TokenEndpoint)
+		copy(dAtA[i:], m.TokenEndpoint)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.TokenEndpoint)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.ClientSecret) > 0 {
+		i -= len(m.ClientSecret)
+		copy(dAtA[i:], m.ClientSecret)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ClientSecret)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.ClientId) > 0 {
+		i -= len(m.ClientId)
+		copy(dAtA[i:], m.ClientId)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ClientId)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -14962,9 +15086,37 @@ func (m *HttpMirrorSourceConfig) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.AuthToken)
+	if m.Oauth2ClientCredentials != nil {
+		l = m.Oauth2ClientCredentials.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *OAuth2ClientCredentials) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.ClientId)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.ClientSecret)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.TokenEndpoint)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.Scopes) > 0 {
+		for _, s := range m.Scopes {
+			l = len(s)
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
 	}
 	n += len(m.unknownFields)
 	return n
@@ -26073,7 +26225,94 @@ func (m *HttpMirrorSourceConfig) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AuthToken", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Oauth2ClientCredentials", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Oauth2ClientCredentials == nil {
+				m.Oauth2ClientCredentials = &OAuth2ClientCredentials{}
+			}
+			if err := m.Oauth2ClientCredentials.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *OAuth2ClientCredentials) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: OAuth2ClientCredentials: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: OAuth2ClientCredentials: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClientId", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -26101,7 +26340,103 @@ func (m *HttpMirrorSourceConfig) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.AuthToken = string(dAtA[iNdEx:postIndex])
+			m.ClientId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClientSecret", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ClientSecret = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TokenEndpoint", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TokenEndpoint = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Scopes", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Scopes = append(m.Scopes, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

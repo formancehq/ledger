@@ -35,7 +35,10 @@ func NewCreateCommand() *cobra.Command {
 	cmd.Flags().String("mirror-source-type", "http", "Mirror source type: http or postgres")
 	cmd.Flags().String("mirror-ledger-name", "", "Source ledger name in the v2 system (defaults to ledger name)")
 	cmd.Flags().String("mirror-base-url", "", "Base URL of the v2 API (for http source)")
-	cmd.Flags().String("mirror-auth-token", "", "Auth token for the v2 API (for http source)")
+	cmd.Flags().String("mirror-oauth2-client-id", "", "OAuth2 client ID for the v2 API (for http source)")
+	cmd.Flags().String("mirror-oauth2-client-secret", "", "OAuth2 client secret for the v2 API (for http source)")
+	cmd.Flags().String("mirror-oauth2-token-endpoint", "", "OAuth2 token endpoint URL (for http source)")
+	cmd.Flags().StringArray("mirror-oauth2-scopes", nil, "OAuth2 scopes (for http source, can be repeated)")
 	cmd.Flags().String("mirror-dsn", "", "PostgreSQL DSN (for postgres source)")
 	cmd.Flags().Uint32("mirror-batch-size", 0, "Max logs per batch (0 = default 100)")
 

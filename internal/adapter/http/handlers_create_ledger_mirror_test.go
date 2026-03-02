@@ -36,7 +36,7 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 	}
 	srv := newTestServer(t, backend)
 
-	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"http","baseUrl":"http://v2:3068","authToken":"secret"}}`
+	body := `{"mode":"MIRROR","mirrorSource":{"ledgerName":"default","type":"http","baseUrl":"http://v2:3068","oauth2ClientId":"my-id","oauth2ClientSecret":"my-secret","oauth2TokenEndpoint":"https://auth.example.com/token","oauth2Scopes":["ledger:read"]}}`
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/mirror-ledger", strings.NewReader(body), map[string]string{
 		"ledgerName": "mirror-ledger",
@@ -56,7 +56,11 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 	httpCfg := createReq.MirrorSource.GetHttp()
 	require.NotNil(t, httpCfg)
 	require.Equal(t, "http://v2:3068", httpCfg.BaseUrl)
-	require.Equal(t, "secret", httpCfg.AuthToken)
+	require.NotNil(t, httpCfg.Oauth2ClientCredentials)
+	require.Equal(t, "my-id", httpCfg.Oauth2ClientCredentials.ClientId)
+	require.Equal(t, "my-secret", httpCfg.Oauth2ClientCredentials.ClientSecret)
+	require.Equal(t, "https://auth.example.com/token", httpCfg.Oauth2ClientCredentials.TokenEndpoint)
+	require.Equal(t, []string{"ledger:read"}, httpCfg.Oauth2ClientCredentials.Scopes)
 }
 
 func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
@@ -159,10 +163,13 @@ func TestMirrorSourceToProto_HTTP(t *testing.T) {
 	t.Parallel()
 
 	body := &mirrorSourceBody{
-		LedgerName: "src-ledger",
-		Type:       "http",
-		BaseURL:    "http://localhost:3068",
-		AuthToken:  "my-token",
+		LedgerName:          "src-ledger",
+		Type:                "http",
+		BaseURL:             "http://localhost:3068",
+		OAuth2ClientID:      "my-client-id",
+		OAuth2ClientSecret:  "my-client-secret",
+		OAuth2TokenEndpoint: "https://auth.example.com/token",
+		OAuth2Scopes:        []string{"ledger:read"},
 	}
 
 	cfg, err := mirrorSourceToProto(body)
@@ -172,7 +179,11 @@ func TestMirrorSourceToProto_HTTP(t *testing.T) {
 	httpCfg := cfg.GetHttp()
 	require.NotNil(t, httpCfg)
 	require.Equal(t, "http://localhost:3068", httpCfg.BaseUrl)
-	require.Equal(t, "my-token", httpCfg.AuthToken)
+	require.NotNil(t, httpCfg.Oauth2ClientCredentials)
+	require.Equal(t, "my-client-id", httpCfg.Oauth2ClientCredentials.ClientId)
+	require.Equal(t, "my-client-secret", httpCfg.Oauth2ClientCredentials.ClientSecret)
+	require.Equal(t, "https://auth.example.com/token", httpCfg.Oauth2ClientCredentials.TokenEndpoint)
+	require.Equal(t, []string{"ledger:read"}, httpCfg.Oauth2ClientCredentials.Scopes)
 }
 
 func TestMirrorSourceToProto_Postgres(t *testing.T) {
@@ -204,7 +215,10 @@ func TestMirrorSourceToProto_EmptyType(t *testing.T) {
 
 	cfg, err := mirrorSourceToProto(body)
 	require.NoError(t, err)
-	require.NotNil(t, cfg.GetHttp())
+
+	httpCfg := cfg.GetHttp()
+	require.NotNil(t, httpCfg)
+	require.Nil(t, httpCfg.Oauth2ClientCredentials)
 }
 
 func TestMirrorSourceToProto_Unsupported(t *testing.T) {

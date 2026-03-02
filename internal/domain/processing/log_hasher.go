@@ -195,7 +195,14 @@ func (h *logHasher) hashMirrorSourceConfig(cfg *commonpb.MirrorSourceConfig) {
 	case *commonpb.MirrorSourceConfig_Http:
 		h.writeDiscriminator(1)
 		h.writeString(s.Http.GetBaseUrl())
-		h.writeString(s.Http.GetAuthToken())
+		if cc := s.Http.GetOauth2ClientCredentials(); cc != nil {
+			h.writeString(cc.GetClientId())
+			h.writeString(cc.GetClientSecret())
+			h.writeString(cc.GetTokenEndpoint())
+			for _, scope := range cc.GetScopes() {
+				h.writeString(scope)
+			}
+		}
 	case *commonpb.MirrorSourceConfig_Postgres:
 		h.writeDiscriminator(2)
 		h.writeString(s.Postgres.GetDsn())
