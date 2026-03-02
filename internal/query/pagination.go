@@ -1,4 +1,4 @@
-package preparedquery
+package query
 
 import (
 	"encoding/base64"

@@ -1,4 +1,4 @@
-package preparedquery
+package query
 
 import (
 	"encoding/binary"
@@ -9,7 +9,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 	bolt "go.etcd.io/bbolt"
@@ -37,7 +36,7 @@ func Execute(
 	req *servicepb.ExecutePreparedQueryRequest,
 ) (*servicepb.ExecutePreparedQueryResponse, error) {
 	// Read the prepared query from Pebble
-	pq, err := query.ReadPreparedQuery(pebbleStore, req.Ledger, req.QueryName)
+	pq, err := ReadPreparedQuery(pebbleStore, req.Ledger, req.QueryName)
 	if err != nil {
 		return nil, fmt.Errorf("reading prepared query: %w", err)
 	}
@@ -68,7 +67,7 @@ func Execute(
 	}
 
 	// Fetch ledger info for schema-based filter validation
-	ledgerInfo, err := query.GetLedgerByName(pebbleStore, req.Ledger)
+	ledgerInfo, err := GetLedgerByName(pebbleStore, req.Ledger)
 	if err != nil {
 		return nil, fmt.Errorf("reading ledger info: %w", err)
 	}

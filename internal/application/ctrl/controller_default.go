@@ -11,7 +11,6 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/application/analysis"
-	"github.com/formancehq/ledger-v3-poc/internal/application/preparedquery"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
@@ -224,7 +223,7 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 		pageSize = math.MaxUint32
 	}
 
-	schemaFields := preparedquery.SchemaFieldsForTarget(ledgerInfo.MetadataSchema, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.MetadataSchema, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 
 	var entityIDs [][]byte
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
@@ -263,7 +262,7 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 // paginate forward directly.
 func (ctrl *DefaultController) listTransactionsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, out *[][]byte) error {
 	kb := readstore.NewKeyBuilder()
-	iter, err := preparedquery.Compile(
+	iter, err := query.Compile(
 		tx, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		ledgerName, nil, schema,
@@ -305,7 +304,7 @@ func (ctrl *DefaultController) listTransactionsDescUnfiltered(tx *bolt.Tx, ledge
 // them for newest-first ordering, and applies pagination.
 func (ctrl *DefaultController) listTransactionsDescFiltered(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, out *[][]byte) error {
 	kb := readstore.NewKeyBuilder()
-	iter, err := preparedquery.Compile(
+	iter, err := query.Compile(
 		tx, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		ledgerName, nil, schema,
@@ -367,7 +366,7 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 		pageSize = math.MaxUint32
 	}
 
-	schemaFields := preparedquery.SchemaFieldsForTarget(ledgerInfo.MetadataSchema, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.MetadataSchema, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
 	var addresses [][]byte
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
@@ -398,7 +397,7 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 // listAccountsAscending returns accounts in alphabetical order (A→Z).
 func (ctrl *DefaultController) listAccountsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, out *[][]byte) error {
 	kb := readstore.NewKeyBuilder()
-	iter, err := preparedquery.Compile(
+	iter, err := query.Compile(
 		tx, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		ledgerName, nil, schema,
@@ -421,7 +420,7 @@ func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName st
 	if filter != nil {
 		// Filtered: collect all ascending, reverse, then paginate manually
 		kb := readstore.NewKeyBuilder()
-		iter, err := preparedquery.Compile(
+		iter, err := query.Compile(
 			tx, kb, filter,
 			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			ledgerName, nil, schema,
@@ -677,7 +676,7 @@ func (ctrl *DefaultController) ListPreparedQueries(_ context.Context, ledger str
 
 // ExecutePreparedQuery executes a prepared query against the read index store.
 func (ctrl *DefaultController) ExecutePreparedQuery(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
-	return preparedquery.Execute(ctrl.readStore, ctrl.store, ctrl.attrs.Volume, req)
+	return query.Execute(ctrl.readStore, ctrl.store, ctrl.attrs.Volume, req)
 }
 
 // Apply applies a list of requests and returns the resulting logs.
