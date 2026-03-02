@@ -235,12 +235,24 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		appModule = bootstrap.Module()
 	}
 
+	// Build authentication module.
+	// Only use go-libs OIDC module when an issuer is configured; otherwise
+	// skip OIDC discovery to avoid a crash on empty issuer URL.
+	// Ed25519-only auth works without OIDC (the KeySet parameter in
+	// buildAuthConfig is optional).
+	var authModule fx.Option
+	if cfg.AuthConfig.Issuer != "" {
+		authModule = auth.FXModuleFromFlags(cmd)
+	} else {
+		authModule = fx.Module("auth")
+	}
+
 	// Create fx application options
 	opts := []fx.Option{
 		// Provide configuration
 		fx.Supply(*cfg),
-		// Add authentication module from go-libs (OIDC discovery + JWT validation)
-		auth.FXModuleFromFlags(cmd),
+		// Add authentication module (OIDC discovery when issuer is configured)
+		authModule,
 		// Add OpenTelemetry modules from go-libs (using flags)
 		otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(fmt.Sprintf("%s-%s", version, commit))),
 		otlptraces.FXModuleFromFlags(cmd),
