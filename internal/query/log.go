@@ -87,7 +87,7 @@ func ReadLogBySequence(reader dal.PebbleReader, sequence uint64) (*commonpb.Log,
 
 // ReadLogsSince returns a cursor over global log entries after the given sequence from the given reader.
 // Pass afterSequence=0 to return all log entries.
-func ReadLogsSince(reader dal.PebbleReader, afterSequence uint64) (dal.Cursor[*commonpb.Log], error) {
+func ReadLogsSince(reader dal.PebbleReader, afterSequence uint64, opts ...dal.ProtoCursorOption) (dal.Cursor[*commonpb.Log], error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixLog)
 	if afterSequence > 0 {
@@ -108,5 +108,5 @@ func ReadLogsSince(reader dal.PebbleReader, afterSequence uint64) (dal.Cursor[*c
 		return nil, fmt.Errorf("creating iterator for logs: %w", err)
 	}
 
-	return dal.NewProtoCursor[*commonpb.Log](iter), nil
+	return dal.NewProtoCursor[*commonpb.Log](iter, opts...), nil
 }

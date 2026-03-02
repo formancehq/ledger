@@ -30,10 +30,14 @@ type Builder struct {
 	notifications *signal.Notifications
 	w             worker.Worker
 
-	lastIndexedSeq  atomic.Uint64
-	pebbleLastSeq   atomic.Uint64
-	logsIndexed     atomic.Uint64
+	lastIndexedSeq      atomic.Uint64
+	pebbleLastSeq       atomic.Uint64
+	logsIndexed         atomic.Uint64
 	metricsRegistration metric.Registration
+
+	// Reusable scratch objects to reduce allocations in the hot loop.
+	kb       *readstore.KeyBuilder
+	accounts map[string]struct{}
 }
 
 // NewBuilder creates a new index builder.
@@ -48,6 +52,8 @@ func NewBuilder(
 		readStore:   readStore,
 		logger:      logger.WithFields(map[string]any{"cmp": "index-builder"}),
 		meter:       meter,
+		kb:          readstore.NewKeyBuilder(),
+		accounts:    make(map[string]struct{}, 64),
 	}
 }
 
@@ -187,59 +193,71 @@ func (b *Builder) loop(stop <-chan struct{}) {
 }
 
 // processLogs reads logs from Pebble starting after the given cursor,
-// batches them into groups of indexBatchSize, and writes each batch
-// in a single bbolt transaction to amortize fsync overhead.
+// indexes them in batches of indexBatchSize within a single bbolt
+// transaction to amortize fsync overhead. Logs are consumed on the fly
+// (no intermediate slice) so the proto object can be GC'd immediately.
 func (b *Builder) processLogs(cursor uint64) (uint64, error) {
-	logsCursor, err := query.ReadLogsSince(b.pebbleStore, cursor)
+	logsCursor, err := query.ReadLogsSince(b.pebbleStore, cursor, dal.WithReuse())
 	if err != nil {
 		return cursor, err
 	}
 	defer func() { _ = logsCursor.Close() }()
 
 	for {
-		// Collect up to indexBatchSize logs.
-		batch := make([]*commonpb.Log, 0, indexBatchSize)
-		for len(batch) < indexBatchSize {
-			log, err := logsCursor.Next()
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				return cursor, err
-			}
-			batch = append(batch, log)
-		}
+		var (
+			batchCount int
+			lastSeq    uint64
+			eof        bool
+		)
 
-		if len(batch) == 0 {
-			break
-		}
-
-		// Write entire batch in a single bbolt transaction.
-		lastSeq := batch[len(batch)-1].Sequence
+		// Open one bbolt write tx and stream up to indexBatchSize logs into it.
 		if err := b.readStore.Update(func(tx *bolt.Tx) error {
-			for _, log := range batch {
+			for batchCount < indexBatchSize {
+				log, err := logsCursor.Next()
+				if err != nil {
+					if err == io.EOF {
+						eof = true
+						break
+					}
+					return err
+				}
+
 				if err := b.indexLogEntry(tx, log); err != nil {
 					return err
 				}
+				lastSeq = log.Sequence
+				batchCount++
 			}
-			return b.readStore.WriteProgress(tx, lastSeq)
+
+			if batchCount > 0 {
+				return b.readStore.WriteProgress(tx, lastSeq)
+			}
+			return nil
 		}); err != nil {
 			b.logger.WithFields(map[string]any{
-				"batchSize": len(batch),
+				"batchSize": batchCount,
 				"lastSeq":   lastSeq,
 				"error":     err,
 			}).Errorf("Error processing batch")
 			return cursor, err
 		}
 
+		if batchCount == 0 {
+			break
+		}
+
 		cursor = lastSeq
 		b.lastIndexedSeq.Store(cursor)
-		b.logsIndexed.Add(uint64(len(batch)))
+		b.logsIndexed.Add(uint64(batchCount))
 		b.readStore.NotifyProgress()
 
 		// Sample pebble last sequence periodically.
 		if pebbleLast, err := query.ReadLastSequence(b.pebbleStore); err == nil {
 			b.pebbleLastSeq.Store(pebbleLast)
+		}
+
+		if eof {
+			break
 		}
 	}
 
@@ -271,19 +289,17 @@ func (b *Builder) indexLogEntry(tx *bolt.Tx, log *commonpb.Log) error {
 		return nil
 	}
 
-	kb := readstore.NewKeyBuilder()
-
 	switch p := ledgerLog.Data.Payload.(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		return b.indexCreatedTransaction(tx, kb, ledgerName, p.CreatedTransaction)
+		return b.indexCreatedTransaction(tx, b.kb, ledgerName, p.CreatedTransaction)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		return b.indexRevertedTransaction(tx, kb, ledgerName, p.RevertedTransaction)
+		return b.indexRevertedTransaction(tx, b.kb, ledgerName, p.RevertedTransaction)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
-		return b.indexSavedMetadata(tx, kb, ledgerName, p.SavedMetadata)
+		return b.indexSavedMetadata(tx, b.kb, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
-		return b.indexDeletedMetadata(tx, kb, ledgerName, p.DeletedMetadata)
+		return b.indexDeletedMetadata(tx, b.kb, ledgerName, p.DeletedMetadata)
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
-		return b.indexSetMetadataFieldType(tx, kb, ledgerName, p.SetMetadataFieldType)
+		return b.indexSetMetadataFieldType(tx, b.kb, ledgerName, p.SetMetadataFieldType)
 	}
 
 	return nil
@@ -311,11 +327,11 @@ func (b *Builder) indexCreatedTransaction(
 		return err
 	}
 
-	// Collect unique accounts from postings
-	accounts := make(map[string]struct{})
+	// Collect unique accounts from postings (reuse builder's map)
+	clear(b.accounts)
 	for _, posting := range txn.Postings {
-		accounts[posting.Source] = struct{}{}
-		accounts[posting.Destination] = struct{}{}
+		b.accounts[posting.Source] = struct{}{}
+		b.accounts[posting.Destination] = struct{}{}
 
 		// Account→transaction mapping (any role)
 		if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Source, txn.Id); err != nil {
@@ -334,7 +350,7 @@ func (b *Builder) indexCreatedTransaction(
 	}
 
 	// Account existence for all accounts in postings
-	for account := range accounts {
+	for account := range b.accounts {
 		if err := readstore.WriteAccountExistence(tx, kb, ledger, account); err != nil {
 			return err
 		}
@@ -400,11 +416,11 @@ func (b *Builder) indexRevertedTransaction(
 		return err
 	}
 
-	// Account existence + account→tx mapping for revert postings
-	accounts := make(map[string]struct{})
+	// Account existence + account→tx mapping for revert postings (reuse builder's map)
+	clear(b.accounts)
 	for _, posting := range revertTxn.Postings {
-		accounts[posting.Source] = struct{}{}
-		accounts[posting.Destination] = struct{}{}
+		b.accounts[posting.Source] = struct{}{}
+		b.accounts[posting.Destination] = struct{}{}
 		if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Source, revertTxn.Id); err != nil {
 			return err
 		}
@@ -419,7 +435,7 @@ func (b *Builder) indexRevertedTransaction(
 			return err
 		}
 	}
-	for account := range accounts {
+	for account := range b.accounts {
 		if err := readstore.WriteAccountExistence(tx, kb, ledger, account); err != nil {
 			return err
 		}

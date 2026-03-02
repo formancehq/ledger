@@ -757,18 +757,45 @@ func iterateRawRange(db *pebble.DB, lowerBound, upperBound []byte, fn func(key, 
 	return iter.Error()
 }
 
-// ProtoCursor implements Cursor[T] for Pebble where T is a proto.Message pointer.
-type ProtoCursor[T proto.Message] struct {
-	iter    *pebble.Iterator
-	started bool
-	elemTyp reflect.Type
+// vtUnmarshaler is implemented by vtprotobuf-generated messages.
+type vtUnmarshaler interface {
+	UnmarshalVT([]byte) error
 }
 
-func NewProtoCursor[T proto.Message](iter *pebble.Iterator) *ProtoCursor[T] {
+// ProtoCursorOption configures a ProtoCursor.
+type ProtoCursorOption func(*protoCursorConfig)
+
+type protoCursorConfig struct {
+	reuse bool
+}
+
+// WithReuse enables object reuse: the same proto message is reset and
+// unmarshaled into on each Next() call instead of allocating a new one.
+// The caller must NOT retain the returned pointer across calls to Next().
+func WithReuse() ProtoCursorOption {
+	return func(c *protoCursorConfig) { c.reuse = true }
+}
+
+// ProtoCursor implements Cursor[T] for Pebble where T is a proto.Message pointer.
+type ProtoCursor[T proto.Message] struct {
+	iter     *pebble.Iterator
+	started  bool
+	elemTyp  reflect.Type
+	reuse    bool
+	hasItem  bool
+	item     T // reused when reuse=true
+}
+
+func NewProtoCursor[T proto.Message](iter *pebble.Iterator, opts ...ProtoCursorOption) *ProtoCursor[T] {
+	var cfg protoCursorConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
 	var zero T
 	return &ProtoCursor[T]{
 		iter:    iter,
 		elemTyp: reflect.TypeOf(zero).Elem(),
+		reuse:   cfg.reuse,
 	}
 }
 
@@ -796,8 +823,24 @@ func (c *ProtoCursor[T]) Next() (T, error) {
 		return zero, fmt.Errorf("reading value: %w", err)
 	}
 
-	item := reflect.New(c.elemTyp).Interface().(T)
-	if err := proto.Unmarshal(value, item); err != nil {
+	var item T
+	if c.reuse && c.hasItem {
+		proto.Reset(c.item)
+		item = c.item
+	} else {
+		item = reflect.New(c.elemTyp).Interface().(T)
+		if c.reuse {
+			c.item = item
+			c.hasItem = true
+		}
+	}
+
+	// Fast path: vtprotobuf UnmarshalVT avoids reflection-based decoding.
+	if vu, ok := any(item).(vtUnmarshaler); ok {
+		if err := vu.UnmarshalVT(value); err != nil {
+			return zero, fmt.Errorf("unmarshaling: %w", err)
+		}
+	} else if err := proto.Unmarshal(value, item); err != nil {
 		return zero, fmt.Errorf("unmarshaling: %w", err)
 	}
 	return item, nil
