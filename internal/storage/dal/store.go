@@ -275,10 +275,26 @@ func NewStore(
 			logger.WithFields(map[string]any{
 				"l0FileCount": m.Levels[0].NumFiles,
 				"threshold":   startupL0CompactThreshold,
-			}).Infof("L0 file count exceeds startup compaction threshold, compacting before serving reads")
+			}).Infof("L0 file count exceeds startup compaction threshold, compacting prefix-by-prefix before serving reads")
 			compactStart := time.Now()
-			if err := db.Compact(nil, []byte{0xFF}, false); err != nil {
-				logger.WithFields(map[string]any{"error": err}).Infof("Startup compaction failed (non-fatal)")
+			var compactErr error
+			for _, p := range allPrefixes() {
+				prefixStart := time.Now()
+				if err := db.Compact([]byte{p.start}, []byte{p.end}, false); err != nil {
+					logger.WithFields(map[string]any{
+						"prefix": p.name,
+						"error":  err,
+					}).Infof("Startup prefix compaction failed (non-fatal)")
+					compactErr = err
+					continue
+				}
+				logger.WithFields(map[string]any{
+					"prefix":   p.name,
+					"duration": time.Since(prefixStart).String(),
+				}).Infof("Startup prefix compaction complete")
+			}
+			if compactErr != nil {
+				logger.WithFields(map[string]any{"error": compactErr}).Infof("Startup compaction had failures (non-fatal)")
 			} else {
 				m2 := db.Metrics()
 				logger.WithFields(map[string]any{

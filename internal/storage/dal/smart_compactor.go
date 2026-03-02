@@ -15,22 +15,45 @@ const (
 	// keep this low.
 	idleL0Threshold = 4
 
-	// defaultIdleCheckInterval is how often we check for idle compaction.
+	// defaultIdleCheckInterval is how often we check for compaction.
 	defaultIdleCheckInterval = 30 * time.Second
 )
 
-// SmartCompactor monitors Pebble's L0 file count and triggers zone-aware compaction:
+// compactPrefix defines a key-range [start, end) that db.Compact covers.
+type compactPrefix struct {
+	name  string
+	start byte
+	end   byte
+}
+
+// coldPrefixes are write-once, immutable after creation. Safe to compact even
+// under active traffic — no concurrent writes target these ranges.
+var coldPrefixes = []compactPrefix{
+	{"logs", KeyPrefixLog, KeyPrefixLog + 1},
+	{"audit", KeyPrefixAudit, KeyPrefixAudit + 1},
+	{"tx-updates", KeyPrefixTransactionUpdate, KeyPrefixTransactionUpdate + 1},
+}
+
+// attributesPrefix is actively written (generation-rotation pruning).
+// Only compact when the node is idle to avoid interfering with writes.
+var attributesPrefix = compactPrefix{"attributes", KeyPrefixAttributes, KeyPrefixAttributes + 1}
+
+// allPrefixes returns cold + attributes prefixes for full compaction (e.g. startup).
+func allPrefixes() []compactPrefix {
+	return append(coldPrefixes, attributesPrefix)
+}
+
+// SmartCompactor monitors Pebble's L0 file count and triggers prefix-aware compaction:
 //
-//   - Idle compaction: when no new flushes occur and L0 exceeds idleL0Threshold,
-//     compact only the attributes zone [0xF1, 0xF2) where DeleteRange tombstones
-//     from generation-rotation pruning benefit from compaction.
+//   - Periodic compaction: when L0 exceeds idleL0Threshold, compact cold prefixes
+//     (logs, audit, tx-updates) one at a time. These are write-once and safe to
+//     compact under traffic. If additionally idle (no new flushes), also compact
+//     the attributes prefix.
 //   - Cold compaction: triggered on-demand (via coldRequestCh) after period archival
-//     purges data in the cold zone [0x01, 0xF1). This pushes tombstones down the LSM
-//     to reclaim space.
+//     purges data in the cold zone. Compacts only cold prefixes.
 //
-// The cold zone (logs, audit, tx updates) is immutable write-once data that does not
-// benefit from compaction unless a purge just deleted data. The system zone is tiny
-// and handled natively by Pebble. Startup compaction remains full-range (in store.go).
+// Each db.Compact covers a single prefix, so Pebble only buffers one prefix's
+// worth of data at a time — reducing peak memory versus a full-range compaction.
 type SmartCompactor struct {
 	store  *Store
 	logger logging.Logger
@@ -56,7 +79,7 @@ func NewSmartCompactor(store *Store, logger logging.Logger, coldRequestCh <-chan
 	}
 }
 
-// Start launches the background goroutine that listens for idle ticks and cold compaction requests.
+// Start launches the background goroutine that listens for periodic ticks and cold compaction requests.
 func (c *SmartCompactor) Start() {
 	db := c.store.getDB()
 	c.prevFlushCount.Store(int64(db.Metrics().Flush.Count))
@@ -69,9 +92,9 @@ func (c *SmartCompactor) Start() {
 			case <-stop:
 				return
 			case <-ticker.C:
-				c.checkIdle()
+				c.periodicCheck()
 			case <-c.coldRequestCh:
-				c.compactZone("cold", []byte{KeyPrefixLog}, []byte{KeyPrefixAttributes})
+				c.compactPrefixes("post-purge", coldPrefixes)
 			}
 		}
 	})
@@ -84,8 +107,10 @@ func (c *SmartCompactor) Stop() {
 	c.compactWg.Wait()
 }
 
-// checkIdle detects idle periods (no new flushes) and triggers attributes-zone compaction.
-func (c *SmartCompactor) checkIdle() {
+// periodicCheck runs every interval. If L0 is above threshold, it compacts cold
+// prefixes unconditionally (write-once data, safe under traffic). If additionally
+// idle (no new flushes since last check), it also compacts attributes.
+func (c *SmartCompactor) periodicCheck() {
 	if c.compacting.Load() {
 		return
 	}
@@ -95,55 +120,69 @@ func (c *SmartCompactor) checkIdle() {
 
 	currentFlushCount := int64(m.Flush.Count)
 	prevFlushCount := c.prevFlushCount.Swap(currentFlushCount)
-
 	idle := currentFlushCount == prevFlushCount
-	l0Files := m.Levels[0].NumFiles
 
-	if !idle || l0Files <= idleL0Threshold {
+	l0Files := m.Levels[0].NumFiles
+	if l0Files <= idleL0Threshold {
 		return
 	}
 
-	c.compactZone("attributes", []byte{KeyPrefixAttributes}, []byte{KeyPrefixAttributes + 1})
+	if idle {
+		c.compactPrefixes("idle", allPrefixes())
+	} else {
+		c.compactPrefixes("periodic", coldPrefixes)
+	}
 }
 
-// compactZone runs db.Compact(start, end) in a background goroutine with logging.
-// Guarded by the compacting atomic to prevent concurrent compactions.
-func (c *SmartCompactor) compactZone(zone string, start, end []byte) {
+// compactPrefixes runs db.Compact for each prefix sequentially in a background
+// goroutine. Guarded by the compacting atomic to prevent concurrent compactions.
+func (c *SmartCompactor) compactPrefixes(reason string, prefixes []compactPrefix) {
 	if !c.compacting.CompareAndSwap(false, true) {
 		c.logger.WithFields(map[string]any{
-			"zone": zone,
-		}).Infof("Skipping zone compaction (another compaction in progress)")
+			"reason": reason,
+		}).Infof("Skipping compaction (another compaction in progress)")
 		return
 	}
 
 	db := c.store.getDB()
 	m := db.Metrics()
-	l0Files := m.Levels[0].NumFiles
 
 	c.logger.WithFields(map[string]any{
-		"zone":        zone,
-		"l0FileCount": l0Files,
+		"reason":      reason,
+		"prefixCount": len(prefixes),
+		"l0FileCount": m.Levels[0].NumFiles,
 		"l0Size":      m.Levels[0].Size,
-	}).Infof("Starting zone compaction")
+	}).Infof("Starting prefix-by-prefix compaction")
 
 	c.compactWg.Add(1)
 	go func() {
 		defer c.compactWg.Done()
 		defer c.compacting.Store(false)
-		compactStart := time.Now()
-		if err := db.Compact(start, end, false); err != nil {
+
+		overallStart := time.Now()
+		for _, p := range prefixes {
+			prefixStart := time.Now()
+			if err := db.Compact([]byte{p.start}, []byte{p.end}, false); err != nil {
+				c.logger.WithFields(map[string]any{
+					"reason": reason,
+					"prefix": p.name,
+					"error":  err,
+				}).Infof("Prefix compaction failed (non-fatal)")
+				continue
+			}
 			c.logger.WithFields(map[string]any{
-				"zone":  zone,
-				"error": err,
-			}).Infof("Zone compaction failed (non-fatal)")
-			return
+				"reason":   reason,
+				"prefix":   p.name,
+				"duration": time.Since(prefixStart).String(),
+			}).Infof("Prefix compaction complete")
 		}
+
 		m2 := db.Metrics()
 		c.logger.WithFields(map[string]any{
-			"zone":        zone,
-			"duration":    time.Since(compactStart).String(),
+			"reason":      reason,
+			"duration":    time.Since(overallStart).String(),
 			"l0FileCount": m2.Levels[0].NumFiles,
 			"l0Size":      m2.Levels[0].Size,
-		}).Infof("Zone compaction complete")
+		}).Infof("All prefix compactions complete")
 	}()
 }
