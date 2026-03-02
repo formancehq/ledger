@@ -8,9 +8,10 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
+	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
@@ -27,6 +28,7 @@ type ClusterServiceServerImpl struct {
 	collector        *diskusage.Collector
 	store            *dal.Store
 	sharedState      *state.SharedState
+	indexBuilder     *indexbuilder.Builder
 	logger           logging.Logger
 	localRaftAddr    string // This node's own Raft advertise address
 	localServiceAddr string // This node's own gRPC service address
@@ -40,6 +42,7 @@ func NewClusterServiceServer(
 	collector *diskusage.Collector,
 	store *dal.Store,
 	sharedState *state.SharedState,
+	indexBuilder *indexbuilder.Builder,
 	logger logging.Logger,
 	localRaftAddr string,
 	localServiceAddr string,
@@ -52,6 +55,7 @@ func NewClusterServiceServer(
 		collector:        collector,
 		store:            store,
 		sharedState:      sharedState,
+		indexBuilder:     indexBuilder,
 		logger:           logger.WithField("component", "cluster-server"),
 		localRaftAddr:    localRaftAddr,
 		localServiceAddr: localServiceAddr,
@@ -123,7 +127,14 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 	// Populate maintenance mode from shared state
 	clusterState.MaintenanceMode = impl.sharedState.MaintenanceMode()
 
-	// Populate peer addresses and sync progress from each node
+	// Populate local index builder progress on ClusterState (for backward compat / single-node view)
+	localIndexProgress := &clusterpb.IndexProgress{
+		LastIndexedSequence: impl.indexBuilder.LastIndexedSequence(),
+		PebbleLastSequence:  impl.indexBuilder.PebbleLastSequence(),
+	}
+	clusterState.IndexProgress = localIndexProgress
+
+	// Populate peer addresses, sync progress, and index progress from each node
 	localNodeID := impl.node.GetNodeID()
 	for _, nodeInfo := range clusterState.Nodes {
 		nodeID := uint64(nodeInfo.Id)
@@ -132,20 +143,25 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 			nodeInfo.ServiceAddress = impl.localServiceAddr
 			// Local sync progress is already in clusterState.SyncProgress
 			nodeInfo.SyncProgress = clusterState.SyncProgress
+			nodeInfo.IndexProgress = localIndexProgress
 		} else {
 			nodeInfo.RaftAddress = impl.raftTransport.GetPeerAddress(nodeID)
 			nodeInfo.ServiceAddress = impl.servicePool.GetPeerAddress(nodeID)
-			// Query the peer for its sync progress
-			nodeInfo.SyncProgress = impl.fetchPeerSyncProgress(ctx, nodeID)
+			// Query the peer for its sync progress and index progress
+			peerState := impl.fetchPeerState(ctx, nodeID)
+			if peerState != nil {
+				nodeInfo.SyncProgress = peerState.SyncProgress
+				nodeInfo.IndexProgress = peerState.IndexProgress
+			}
 		}
 	}
 
 	return clusterState, nil
 }
 
-// fetchPeerSyncProgress queries a peer node for its local sync progress.
+// fetchPeerState queries a peer node for its local cluster state (sync progress, index progress, etc).
 // Returns nil if the peer is unreachable.
-func (impl *ClusterServiceServerImpl) fetchPeerSyncProgress(ctx context.Context, nodeID uint64) *clusterpb.SyncProgress {
+func (impl *ClusterServiceServerImpl) fetchPeerState(ctx context.Context, nodeID uint64) *clusterpb.ClusterState {
 	conn := impl.servicePool.GetConnection(nodeID)
 	if conn == nil {
 		return nil
@@ -163,7 +179,7 @@ func (impl *ClusterServiceServerImpl) fetchPeerSyncProgress(ctx context.Context,
 		return nil
 	}
 
-	return peerState.SyncProgress
+	return peerState
 }
 
 func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {

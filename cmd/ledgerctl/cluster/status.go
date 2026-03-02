@@ -146,7 +146,7 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 		b.WriteString(sectionStr)
 
 		nodeData := [][]string{
-			{"ID", "SUFFRAGE", "STATUS", "MATCH", "NEXT", "STATE", "REPLICATION", "SYNC"},
+			{"ID", "SUFFRAGE", "STATUS", "MATCH", "NEXT", "STATE", "REPLICATION", "SYNC", "INDEX"},
 		}
 
 		// Sort nodes by ID for consistent display
@@ -189,6 +189,8 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 				syncStr = pterm.Gray("unknown")
 			}
 
+			indexStr := formatIndexProgress(node.IndexProgress)
+
 			nodeData = append(nodeData, []string{
 				fmt.Sprintf("%d", node.Id),
 				node.Suffrage,
@@ -198,6 +200,7 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 				stateStr,
 				progressStr,
 				syncStr,
+				indexStr,
 			})
 		}
 
@@ -323,4 +326,44 @@ func getLeaderDisplay(leaderID uint32) string {
 		return pterm.Red("No leader")
 	}
 	return pterm.Green(fmt.Sprintf("%d", leaderID))
+}
+
+// formatIndexProgress formats index builder progress for the node table.
+func formatIndexProgress(ip *clusterpb.IndexProgress) string {
+	if ip == nil {
+		return pterm.Gray("unknown")
+	}
+
+	if ip.PebbleLastSequence == 0 {
+		return pterm.Green("ok")
+	}
+
+	lag := int64(ip.PebbleLastSequence) - int64(ip.LastIndexedSequence)
+	if lag <= 0 {
+		return pterm.Green("ok")
+	}
+
+	pctBehind := float64(lag) / float64(ip.PebbleLastSequence) * 100
+	label := fmt.Sprintf("%s behind (%.1f%%)", formatNumber(uint64(lag)), pctBehind)
+
+	if lag < 1000 {
+		return pterm.Yellow(label)
+	}
+	return pterm.Red(label)
+}
+
+// formatNumber formats an integer with comma separators (e.g. 70000000 -> "70,000,000").
+func formatNumber(n uint64) string {
+	s := fmt.Sprintf("%d", n)
+	if len(s) <= 3 {
+		return s
+	}
+	var result []byte
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			result = append(result, ',')
+		}
+		result = append(result, byte(c))
+	}
+	return string(result)
 }

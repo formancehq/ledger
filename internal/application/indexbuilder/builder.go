@@ -1,7 +1,9 @@
 package indexbuilder
 
 import (
+	"context"
 	"io"
+	"sync/atomic"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -12,7 +14,10 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 	bolt "go.etcd.io/bbolt"
+	"go.opentelemetry.io/otel/metric"
 )
+
+const indexBatchSize = 1000
 
 // Builder tails the system log and populates the bbolt read store indexes.
 // It runs as a background goroutine on ALL nodes (not just the leader).
@@ -21,8 +26,14 @@ type Builder struct {
 	pebbleStore   *dal.Store
 	readStore     *readstore.Store
 	logger        logging.Logger
+	meter         metric.Meter
 	notifications *signal.Notifications
 	w             worker.Worker
+
+	lastIndexedSeq  atomic.Uint64
+	pebbleLastSeq   atomic.Uint64
+	logsIndexed     atomic.Uint64
+	metricsRegistration metric.Registration
 }
 
 // NewBuilder creates a new index builder.
@@ -30,11 +41,13 @@ func NewBuilder(
 	pebbleStore *dal.Store,
 	readStore *readstore.Store,
 	logger logging.Logger,
+	meter metric.Meter,
 ) *Builder {
 	return &Builder{
 		pebbleStore: pebbleStore,
 		readStore:   readStore,
 		logger:      logger.WithFields(map[string]any{"cmp": "index-builder"}),
+		meter:       meter,
 	}
 }
 
@@ -43,15 +56,86 @@ func (b *Builder) SetNotifications(n *signal.Notifications) {
 	b.notifications = n
 }
 
-// Start begins the background index-building loop.
+// Start begins the background index-building loop and registers OTEL metrics.
 func (b *Builder) Start() {
+	if reg, err := b.registerMetrics(); err == nil {
+		b.metricsRegistration = reg
+	}
 	b.w = worker.New()
 	b.w.Run(b.loop)
 }
 
-// Stop gracefully stops the background loop.
+// Stop gracefully stops the background loop and unregisters OTEL metrics.
 func (b *Builder) Stop() {
 	b.w.Stop()
+	if b.metricsRegistration != nil {
+		_ = b.metricsRegistration.Unregister()
+	}
+}
+
+// LastIndexedSequence returns the last indexed sequence (from the atomic cache).
+func (b *Builder) LastIndexedSequence() uint64 {
+	return b.lastIndexedSeq.Load()
+}
+
+// PebbleLastSequence returns the last known Pebble sequence (from the atomic cache).
+func (b *Builder) PebbleLastSequence() uint64 {
+	return b.pebbleLastSeq.Load()
+}
+
+// registerMetrics registers observable gauges for index builder progress.
+func (b *Builder) registerMetrics() (metric.Registration, error) {
+	lastIndexedGauge, err := b.meter.Int64ObservableGauge(
+		"index.builder.last_indexed_sequence",
+		metric.WithDescription("Last log sequence indexed in bbolt"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	pebbleLastGauge, err := b.meter.Int64ObservableGauge(
+		"index.builder.pebble_last_sequence",
+		metric.WithDescription("Last log sequence in Pebble"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	lagGauge, err := b.meter.Int64ObservableGauge(
+		"index.builder.lag",
+		metric.WithDescription("Number of logs the index builder is behind Pebble"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	logsIndexedGauge, err := b.meter.Int64ObservableGauge(
+		"index.builder.logs_indexed_total",
+		metric.WithDescription("Total number of logs indexed since process start"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return b.meter.RegisterCallback(
+		func(_ context.Context, o metric.Observer) error {
+			indexed := int64(b.lastIndexedSeq.Load())
+			pebbleLast := int64(b.pebbleLastSeq.Load())
+			lag := pebbleLast - indexed
+			if lag < 0 {
+				lag = 0
+			}
+			o.ObserveInt64(lastIndexedGauge, indexed)
+			o.ObserveInt64(pebbleLastGauge, pebbleLast)
+			o.ObserveInt64(lagGauge, lag)
+			o.ObserveInt64(logsIndexedGauge, int64(b.logsIndexed.Load()))
+			return nil
+		},
+		lastIndexedGauge,
+		pebbleLastGauge,
+		lagGauge,
+		logsIndexedGauge,
+	)
 }
 
 func (b *Builder) loop(stop <-chan struct{}) {
@@ -60,6 +144,13 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		b.logger.Errorf("Failed to read progress: %v", err)
 		return
 	}
+	b.lastIndexedSeq.Store(cursor)
+
+	// Seed pebble last sequence.
+	if pebbleLast, err := query.ReadLastSequence(b.pebbleStore); err == nil {
+		b.pebbleLastSeq.Store(pebbleLast)
+	}
+
 	b.logger.WithFields(map[string]any{"cursor": cursor}).Infof("Index builder started")
 
 	// Initial catch-up
@@ -96,7 +187,8 @@ func (b *Builder) loop(stop <-chan struct{}) {
 }
 
 // processLogs reads logs from Pebble starting after the given cursor,
-// processes each log, and returns the updated cursor position.
+// batches them into groups of indexBatchSize, and writes each batch
+// in a single bbolt transaction to amortize fsync overhead.
 func (b *Builder) processLogs(cursor uint64) (uint64, error) {
 	logsCursor, err := query.ReadLogsSince(b.pebbleStore, cursor)
 	if err != nil {
@@ -105,24 +197,50 @@ func (b *Builder) processLogs(cursor uint64) (uint64, error) {
 	defer func() { _ = logsCursor.Close() }()
 
 	for {
-		log, err := logsCursor.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
+		// Collect up to indexBatchSize logs.
+		batch := make([]*commonpb.Log, 0, indexBatchSize)
+		for len(batch) < indexBatchSize {
+			log, err := logsCursor.Next()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return cursor, err
 			}
-			return cursor, err
+			batch = append(batch, log)
 		}
 
-		if err := b.processLog(log); err != nil {
+		if len(batch) == 0 {
+			break
+		}
+
+		// Write entire batch in a single bbolt transaction.
+		lastSeq := batch[len(batch)-1].Sequence
+		if err := b.readStore.Update(func(tx *bolt.Tx) error {
+			for _, log := range batch {
+				if err := b.indexLogEntry(tx, log); err != nil {
+					return err
+				}
+			}
+			return b.readStore.WriteProgress(tx, lastSeq)
+		}); err != nil {
 			b.logger.WithFields(map[string]any{
-				"sequence": log.Sequence,
-				"error":    err,
-			}).Errorf("Error processing log entry")
+				"batchSize": len(batch),
+				"lastSeq":   lastSeq,
+				"error":     err,
+			}).Errorf("Error processing batch")
 			return cursor, err
 		}
 
-		cursor = log.Sequence
+		cursor = lastSeq
+		b.lastIndexedSeq.Store(cursor)
+		b.logsIndexed.Add(uint64(len(batch)))
 		b.readStore.NotifyProgress()
+
+		// Sample pebble last sequence periodically.
+		if pebbleLast, err := query.ReadLastSequence(b.pebbleStore); err == nil {
+			b.pebbleLastSeq.Store(pebbleLast)
+		}
 	}
 
 	return cursor, nil
@@ -135,61 +253,40 @@ func (b *Builder) RebuildAll() (uint64, error) {
 	return b.processLogs(0)
 }
 
-// processLog dispatches a single log entry to the appropriate handler
-// and updates the progress cursor in bbolt.
-func (b *Builder) processLog(log *commonpb.Log) error {
+// indexLogEntry dispatches a single log entry to the appropriate index handler.
+// It does NOT call WriteProgress — the caller batches that.
+func (b *Builder) indexLogEntry(tx *bolt.Tx, log *commonpb.Log) error {
 	if log.Payload == nil {
 		return nil
 	}
 
-	// Only process ApplyLedgerLog entries — other log types (create/delete ledger,
-	// signing keys, periods, etc.) don't produce indexable data.
 	applyLog, ok := log.Payload.Type.(*commonpb.LogPayload_Apply)
 	if !ok {
-		// Still advance the cursor past non-apply logs.
-		return b.readStore.Update(func(tx *bolt.Tx) error {
-			return b.readStore.WriteProgress(tx, log.Sequence)
-		})
+		return nil
 	}
 
 	ledgerName := applyLog.Apply.LedgerName
 	ledgerLog := applyLog.Apply.Log
 	if ledgerLog == nil || ledgerLog.Data == nil {
-		return b.readStore.Update(func(tx *bolt.Tx) error {
-			return b.readStore.WriteProgress(tx, log.Sequence)
-		})
+		return nil
 	}
 
-	return b.readStore.Update(func(tx *bolt.Tx) error {
-		kb := readstore.NewKeyBuilder()
+	kb := readstore.NewKeyBuilder()
 
-		switch p := ledgerLog.Data.Payload.(type) {
-		case *commonpb.LedgerLogPayload_CreatedTransaction:
-			if err := b.indexCreatedTransaction(tx, kb, ledgerName, p.CreatedTransaction); err != nil {
-				return err
-			}
-		case *commonpb.LedgerLogPayload_RevertedTransaction:
-			if err := b.indexRevertedTransaction(tx, kb, ledgerName, p.RevertedTransaction); err != nil {
-				return err
-			}
-		case *commonpb.LedgerLogPayload_SavedMetadata:
-			if err := b.indexSavedMetadata(tx, kb, ledgerName, p.SavedMetadata); err != nil {
-				return err
-			}
-		case *commonpb.LedgerLogPayload_DeletedMetadata:
-			if err := b.indexDeletedMetadata(tx, kb, ledgerName, p.DeletedMetadata); err != nil {
-				return err
-			}
-		case *commonpb.LedgerLogPayload_SetMetadataFieldType:
-			if err := b.indexSetMetadataFieldType(tx, kb, ledgerName, p.SetMetadataFieldType); err != nil {
-				return err
-			}
-			// ConvertMetadataBatch and MetadataConversionComplete are no-ops for the
-			// index builder — schema changes are handled by SetMetadataFieldType.
-		}
+	switch p := ledgerLog.Data.Payload.(type) {
+	case *commonpb.LedgerLogPayload_CreatedTransaction:
+		return b.indexCreatedTransaction(tx, kb, ledgerName, p.CreatedTransaction)
+	case *commonpb.LedgerLogPayload_RevertedTransaction:
+		return b.indexRevertedTransaction(tx, kb, ledgerName, p.RevertedTransaction)
+	case *commonpb.LedgerLogPayload_SavedMetadata:
+		return b.indexSavedMetadata(tx, kb, ledgerName, p.SavedMetadata)
+	case *commonpb.LedgerLogPayload_DeletedMetadata:
+		return b.indexDeletedMetadata(tx, kb, ledgerName, p.DeletedMetadata)
+	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+		return b.indexSetMetadataFieldType(tx, kb, ledgerName, p.SetMetadataFieldType)
+	}
 
-		return b.readStore.WriteProgress(tx, log.Sequence)
-	})
+	return nil
 }
 
 // indexCreatedTransaction handles CreatedTransaction logs by indexing:

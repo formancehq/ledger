@@ -12,6 +12,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel/metric/noop"
 )
 
 // NewRebuildIndexesCommand creates the store rebuild-indexes command.
@@ -74,7 +75,7 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	// Rebuild.
 	spinner, _ = pterm.DefaultSpinner.Start("Rebuilding indexes from system logs...")
 
-	builder := indexbuilder.NewBuilder(pebbleStore, rs, logger)
+	builder := indexbuilder.NewBuilder(pebbleStore, rs, logger, noop.Meter{})
 
 	lastSeq, err := builder.RebuildAll()
 	if err != nil {

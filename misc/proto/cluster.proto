@@ -56,6 +56,7 @@ message NodeInfo {
   string raft_address = 4;  // Raft transport address
   string service_address = 5;  // Service API address
   SyncProgress sync_progress = 6;  // Checkpoint sync progress (populated by leader querying each node)
+  IndexProgress index_progress = 7;  // Index builder progress (populated by leader querying each node)
 }
 
 // ProgressInfo represents the progress information for a node
@@ -91,6 +92,13 @@ message ClusterState {
   RaftStatus raft_status = 5;   // Complete Raft status information
   bool maintenance_mode = 6;    // Whether maintenance mode is active
   SyncProgress sync_progress = 7; // Local node checkpoint sync progress
+  IndexProgress index_progress = 8; // Local index builder progress
+}
+
+// IndexProgress tracks the index builder's position relative to Pebble.
+message IndexProgress {
+  uint64 last_indexed_sequence = 1;  // bbolt progress cursor
+  uint64 pebble_last_sequence = 2;   // latest Pebble log sequence
 }
 
 // SyncProgress tracks the progress of a checkpoint fetch on the local node.
