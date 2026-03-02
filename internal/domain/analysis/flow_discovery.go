@@ -5,14 +5,15 @@ import (
 	"math/big"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
-// AnalyzeTransactions scans a slice of transactions and returns an AnalyzeTransactionsResponse
+// AnalyzeTransactions scans a slice of compact transactions and returns an AnalyzeTransactionsResponse
 // with discovered flow patterns, temporal stats, volume stats, and metadata keys.
-func AnalyzeTransactions(txns []*commonpb.Transaction, variableThreshold uint32) *servicepb.AnalyzeTransactionsResponse {
+func AnalyzeTransactions(txns []CompactTransaction, variableThreshold uint32) *servicepb.AnalyzeTransactionsResponse {
 	if variableThreshold == 0 {
 		variableThreshold = DefaultVariableThreshold
 	}
@@ -30,14 +31,15 @@ func AnalyzeTransactions(txns []*commonpb.Transaction, variableThreshold uint32)
 
 	// Phase 2: Normalize postings and compute signatures
 	type txGroup struct {
-		signature  string
-		postings   []*servicepb.NormalizedPosting
-		structure  servicepb.PostingStructure
-		txns       []*commonpb.Transaction
+		signature string
+		postings  []*servicepb.NormalizedPosting
+		structure servicepb.PostingStructure
+		txns      []CompactTransaction
 	}
 	groups := make(map[string]*txGroup)
 
-	for _, tx := range txns {
+	for i := range txns {
+		tx := &txns[i]
 		if tx.Reverted {
 			resp.TotalReverted++
 		}
@@ -55,7 +57,7 @@ func AnalyzeTransactions(txns []*commonpb.Transaction, variableThreshold uint32)
 			}
 			groups[sig] = g
 		}
-		g.txns = append(g.txns, tx)
+		g.txns = append(g.txns, txns[i])
 	}
 
 	// Phase 3: Aggregate per group
@@ -85,12 +87,12 @@ func AnalyzeTransactions(txns []*commonpb.Transaction, variableThreshold uint32)
 
 // buildTrieFromTransactions collects all source/destination addresses from transactions
 // and builds a trie from them.
-func buildTrieFromTransactions(txns []*commonpb.Transaction) *trieNode {
+func buildTrieFromTransactions(txns []CompactTransaction) *trieNode {
 	root := newTrieNode()
-	for _, tx := range txns {
-		for _, p := range tx.Postings {
-			insertAddress(root, p.Source)
-			insertAddress(root, p.Destination)
+	for i := range txns {
+		for j := range txns[i].Postings {
+			insertAddress(root, txns[i].Postings[j].Source)
+			insertAddress(root, txns[i].Postings[j].Destination)
 		}
 	}
 	return root
@@ -140,13 +142,13 @@ func normalizeAddress(address string, root *trieNode, threshold uint32) string {
 }
 
 // normalizePostings normalizes all postings of a transaction.
-func normalizePostings(postings []*commonpb.Posting, root *trieNode, threshold uint32) []*servicepb.NormalizedPosting {
+func normalizePostings(postings []CompactPosting, root *trieNode, threshold uint32) []*servicepb.NormalizedPosting {
 	normalized := make([]*servicepb.NormalizedPosting, 0, len(postings))
-	for _, p := range postings {
+	for i := range postings {
 		normalized = append(normalized, &servicepb.NormalizedPosting{
-			SourcePattern:      normalizeAddress(p.Source, root, threshold),
-			DestinationPattern: normalizeAddress(p.Destination, root, threshold),
-			Asset:              p.Asset,
+			SourcePattern:      normalizeAddress(postings[i].Source, root, threshold),
+			DestinationPattern: normalizeAddress(postings[i].Destination, root, threshold),
+			Asset:              postings[i].Asset,
 		})
 	}
 	return normalized
@@ -188,42 +190,45 @@ func classifyPostingStructure(postings []*servicepb.NormalizedPosting) servicepb
 	}
 }
 
-// computeTemporalStats computes temporal statistics for a group of transactions.
-func computeTemporalStats(txns []*commonpb.Transaction) *servicepb.TemporalStats {
+// computeTemporalStats computes temporal statistics for a group of compact transactions.
+func computeTemporalStats(txns []CompactTransaction) *servicepb.TemporalStats {
 	if len(txns) == 0 {
 		return nil
 	}
 
 	var (
-		firstSeen *commonpb.Timestamp
-		lastSeen  *commonpb.Timestamp
+		firstSeen uint64
+		lastSeen  uint64
+		hasSeen   bool
 		hours     [24]uint64
 	)
 
-	for _, tx := range txns {
-		ts := tx.Timestamp
-		if ts == nil {
+	for i := range txns {
+		if !txns[i].HasTimestamp {
 			continue
 		}
-		if firstSeen == nil || ts.Data < firstSeen.Data {
+		ts := txns[i].Timestamp
+		if !hasSeen || ts < firstSeen {
 			firstSeen = ts
 		}
-		if lastSeen == nil || ts.Data > lastSeen.Data {
+		if !hasSeen || ts > lastSeen {
 			lastSeen = ts
 		}
-		hour := ts.AsTime().UTC().Hour()
+		hasSeen = true
+		hour := time.UnixMicro(int64(ts)).UTC().Hour()
 		hours[hour]++
 	}
 
-	stats := &servicepb.TemporalStats{
-		FirstSeen: firstSeen,
-		LastSeen:  lastSeen,
+	stats := &servicepb.TemporalStats{}
+	if hasSeen {
+		stats.FirstSeen = &commonpb.Timestamp{Data: firstSeen}
+		stats.LastSeen = &commonpb.Timestamp{Data: lastSeen}
 	}
 
 	// Transactions per day
-	if firstSeen != nil && lastSeen != nil {
-		first := firstSeen.AsTime()
-		last := lastSeen.AsTime()
+	if hasSeen {
+		first := time.UnixMicro(int64(firstSeen))
+		last := time.UnixMicro(int64(lastSeen))
 		daySpan := last.Sub(first).Hours() / 24
 		if daySpan < 1 {
 			daySpan = 1
@@ -244,8 +249,8 @@ func computeTemporalStats(txns []*commonpb.Transaction) *servicepb.TemporalStats
 	return stats
 }
 
-// computeVolumeStats computes volume statistics per asset across all transactions in a group.
-func computeVolumeStats(txns []*commonpb.Transaction) []*servicepb.AssetVolumeStats {
+// computeVolumeStats computes volume statistics per asset across all compact transactions in a group.
+func computeVolumeStats(txns []CompactTransaction) []*servicepb.AssetVolumeStats {
 	type assetAccum struct {
 		total *big.Int
 		min   *big.Int
@@ -255,25 +260,25 @@ func computeVolumeStats(txns []*commonpb.Transaction) []*servicepb.AssetVolumeSt
 
 	accums := make(map[string]*assetAccum)
 
-	for _, tx := range txns {
-		for _, p := range tx.Postings {
-			amount := p.Amount.ToBigInt()
+	for i := range txns {
+		for j := range txns[i].Postings {
+			p := &txns[i].Postings[j]
 			acc, ok := accums[p.Asset]
 			if !ok {
 				acc = &assetAccum{
 					total: new(big.Int),
-					min:   new(big.Int).Set(amount),
-					max:   new(big.Int).Set(amount),
+					min:   new(big.Int).Set(p.Amount),
+					max:   new(big.Int).Set(p.Amount),
 				}
 				accums[p.Asset] = acc
 			}
-			acc.total.Add(acc.total, amount)
+			acc.total.Add(acc.total, p.Amount)
 			acc.count++
-			if amount.Cmp(acc.min) < 0 {
-				acc.min.Set(amount)
+			if p.Amount.Cmp(acc.min) < 0 {
+				acc.min.Set(p.Amount)
 			}
-			if amount.Cmp(acc.max) > 0 {
-				acc.max.Set(amount)
+			if p.Amount.Cmp(acc.max) > 0 {
+				acc.max.Set(p.Amount)
 			}
 		}
 	}
@@ -302,18 +307,14 @@ func computeVolumeStats(txns []*commonpb.Transaction) []*servicepb.AssetVolumeSt
 	return stats
 }
 
-// collectTransactionMetadataKeys collects distinct metadata keys from all transactions.
-func collectTransactionMetadataKeys(txns []*commonpb.Transaction) []string {
+// collectTransactionMetadataKeys collects distinct metadata keys from all compact transactions.
+func collectTransactionMetadataKeys(txns []CompactTransaction) []string {
 	var allKeys []string
-	for _, tx := range txns {
-		if tx.Metadata == nil || len(tx.Metadata.Metadata) == 0 {
+	for i := range txns {
+		if len(txns[i].MetadataKeys) == 0 {
 			continue
 		}
-		keys := make([]string, 0, len(tx.Metadata.Metadata))
-		for _, m := range tx.Metadata.Metadata {
-			keys = append(keys, m.Key)
-		}
-		allKeys = mergeDistinct(allKeys, keys)
+		allKeys = mergeDistinct(allKeys, txns[i].MetadataKeys)
 	}
 	return allKeys
 }

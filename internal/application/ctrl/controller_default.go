@@ -603,7 +603,7 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 	}
 	defer func() { _ = cursor.Close() }()
 
-	var accounts []*commonpb.Account
+	var accounts []analysis.CompactAccount
 	for {
 		acc, err := cursor.Next()
 		if err == io.EOF {
@@ -612,7 +612,7 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 		if err != nil {
 			return nil, fmt.Errorf("reading accounts for analysis: %w", err)
 		}
-		accounts = append(accounts, acc)
+		accounts = append(accounts, analysis.ExtractCompactAccount(acc))
 	}
 
 	return analysis.Analyze(accounts, variableThreshold), nil
@@ -626,7 +626,7 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 	}
 	defer func() { _ = cursor.Close() }()
 
-	var transactions []*commonpb.Transaction
+	var transactions []analysis.CompactTransaction
 	for {
 		tx, err := cursor.Next()
 		if err == io.EOF {
@@ -635,7 +635,7 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 		if err != nil {
 			return nil, fmt.Errorf("reading transactions for analysis: %w", err)
 		}
-		transactions = append(transactions, tx)
+		transactions = append(transactions, analysis.ExtractCompactTransaction(tx))
 	}
 
 	return analysis.AnalyzeTransactions(transactions, variableThreshold), nil

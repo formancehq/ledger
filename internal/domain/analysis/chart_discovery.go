@@ -40,9 +40,9 @@ func newTrieNode() *trieNode {
 	}
 }
 
-// Analyze scans a slice of accounts and returns an AnalyzeAccountsResponse with
+// Analyze scans a slice of compact accounts and returns an AnalyzeAccountsResponse with
 // a suggested ChartOfAccounts, discovered patterns, and total account count.
-func Analyze(accounts []*commonpb.Account, variableThreshold uint32) *servicepb.AnalyzeAccountsResponse {
+func Analyze(accounts []CompactAccount, variableThreshold uint32) *servicepb.AnalyzeAccountsResponse {
 	if variableThreshold == 0 {
 		variableThreshold = DefaultVariableThreshold
 	}
@@ -68,8 +68,8 @@ func Analyze(accounts []*commonpb.Account, variableThreshold uint32) *servicepb.
 		}
 		// Mark terminating node with account data
 		node.terminating++
-		node.assets = mergeDistinct(node.assets, collectAssets(acc))
-		node.metadataKeys = mergeDistinct(node.metadataKeys, collectMetadataKeys(acc))
+		node.assets = mergeDistinct(node.assets, acc.Assets)
+		node.metadataKeys = mergeDistinct(node.metadataKeys, acc.MetadataKeys)
 	}
 
 	// Convert trie to chart segments
