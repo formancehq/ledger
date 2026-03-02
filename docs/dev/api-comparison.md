@@ -438,7 +438,7 @@ Read endpoints comparison with the original ledger:
 | `GET /{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
 | `GET /{ledgerName}/logs` | ✅ | ✅ | List logs (gRPC stream) |
 | `GET /{ledgerName}/aggregate/balances` | ❌ | ✅ | Balance aggregation |
-| `GET /{ledgerName}/stats` | ❌ | ✅ | Ledger statistics |
+| `GET /{ledgerName}/stats` | ✅ | ✅ | Ledger statistics (account + transaction count) |
 | `GET /{ledgerName}` | ✅ | ✅ | Get ledger info |
 | `POST /{ledgerName}/promote` | ✅ | ❌ | Promote mirror ledger to normal mode |
 | `GET /` | ✅ | ✅ | List all ledgers |
@@ -510,6 +510,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `Discovery` | Return server capabilities (response signing config) | ✅ |
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
 | `GetIndexStatus` | Read index builder progress (lag, file size) | ✅ |
+| `GetLedgerStats` | Get aggregate statistics (account + transaction count) | ✅ |
 
 ### Apply Method
 

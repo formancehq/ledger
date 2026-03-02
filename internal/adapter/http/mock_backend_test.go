@@ -30,6 +30,7 @@ type mockBackend struct {
 	getMetadataSchemaStatusFn  func(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error)
 	analyzeAccountsFn          func(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error)
 	getClusterStateFn          func(ctx context.Context) (*clusterpb.ClusterState, error)
+	getLedgerStatsFn           func(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error)
 }
 
 func (m *mockBackend) IsHealthy() bool { return m.healthy }
@@ -152,6 +153,13 @@ func (m *mockBackend) ListPreparedQueries(_ context.Context, _ string) ([]*commo
 
 func (m *mockBackend) ExecutePreparedQuery(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 	return nil, nil
+}
+
+func (m *mockBackend) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
+	if m.getLedgerStatsFn != nil {
+		return m.getLedgerStatsFn(ctx, ledgerName)
+	}
+	return &commonpb.LedgerStats{}, nil
 }
 
 var _ Backend = (*mockBackend)(nil)

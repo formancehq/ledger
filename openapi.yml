@@ -138,6 +138,36 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /{ledgerName}/stats:
+    get:
+      summary: Get ledger statistics
+      description: Returns aggregate statistics (account count, transaction count) for a ledger. Requires `ledger:read` scope.
+      operationId: getLedgerStats
+      tags:
+        - Ledgers
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+      responses:
+        '200':
+          description: Ledger statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetLedgerStatsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /{ledgerName}/promote:
     post:
       summary: Promote a mirror ledger
@@ -1405,6 +1435,31 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/Account'
+
+    GetLedgerStatsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/LedgerStats'
+
+    LedgerStats:
+      type: object
+      required:
+        - accountCount
+        - transactionCount
+      properties:
+        accountCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of accounts in the ledger
+        transactionCount:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Number of transactions in the ledger
 
     Account:
       type: object

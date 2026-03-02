@@ -205,6 +205,14 @@ func (b *RoutedController) ExecutePreparedQuery(ctx context.Context, req *servic
 	return b.localController.ExecutePreparedQuery(ctx, req)
 }
 
+func (b *RoutedController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
+	c, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.GetLedgerStats(ctx, ledgerName)
+}
+
 var _ ctrl.Controller = (*RoutedController)(nil)
 
 func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {

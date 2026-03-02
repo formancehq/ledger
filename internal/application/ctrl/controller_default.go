@@ -496,6 +496,48 @@ func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, 
 	return scanAccount(handle, ctrl.attrs, ledgerInfo.Name, address, ledgerInfo.MetadataSchema)
 }
 
+// GetLedgerStats returns aggregate statistics (account count, transaction count) for a ledger.
+func (ctrl *DefaultController) GetLedgerStats(_ context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
+	_, err := query.GetLedgerByName(ctrl.store, ledgerName)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+		}
+		return nil, err
+	}
+
+	var stats commonpb.LedgerStats
+	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(readstore.BucketExistence)
+		if b == nil {
+			return nil
+		}
+
+		kb := readstore.NewKeyBuilder()
+
+		// Count accounts
+		accountPrefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceAccount)
+		accountIter := readstore.NewPrefixIterator(b.Cursor(), accountPrefix, len(accountPrefix), 0)
+		for accountIter.Next() {
+			stats.AccountCount++
+		}
+
+		// Count transactions
+		txPrefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceTransaction)
+		txIter := readstore.NewPrefixIterator(b.Cursor(), txPrefix, len(txPrefix), 8)
+		for txIter.Next() {
+			stats.TransactionCount++
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading ledger stats: %w", err)
+	}
+
+	return &stats, nil
+}
+
 func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (*commonpb.LedgerInfo, error) {
 	ledgerInfo, err := query.GetLedgerByName(ctrl.store, name)
 	if err != nil {

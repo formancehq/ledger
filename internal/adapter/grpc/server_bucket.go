@@ -520,6 +520,18 @@ func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, r
 	return impl.ctrl.ExecutePreparedQuery(ctx, req)
 }
 
+func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeRead); err != nil {
+		return nil, err
+	}
+
+	if req.Ledger == "" {
+		return nil, fmt.Errorf("ledger name is required")
+	}
+
+	return impl.ctrl.GetLedgerStats(ctx, req.Ledger)
+}
+
 func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {
 	resp := &servicepb.DiscoveryResponse{}
 	if impl.responseSigner != nil {

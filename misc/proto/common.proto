@@ -798,3 +798,9 @@ message PreparedQueryCursor {
   repeated string account_data = 5;
   repeated uint64 transaction_data = 6;
 }
+
+// LedgerStats contains aggregate statistics for a ledger.
+message LedgerStats {
+  uint64 account_count = 1;
+  uint64 transaction_count = 2;
+}

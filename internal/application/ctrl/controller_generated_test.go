@@ -137,6 +137,21 @@ func (mr *MockControllerMockRecorder) GetLedgerByName(ctx, name any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerByName", reflect.TypeOf((*MockController)(nil).GetLedgerByName), ctx, name)
 }
 
+// GetLedgerStats mocks base method.
+func (m *MockController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLedgerStats", ctx, ledgerName)
+	ret0, _ := ret[0].(*commonpb.LedgerStats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLedgerStats indicates an expected call of GetLedgerStats.
+func (mr *MockControllerMockRecorder) GetLedgerStats(ctx, ledgerName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLedgerStats", reflect.TypeOf((*MockController)(nil).GetLedgerStats), ctx, ledgerName)
+}
+
 // GetLog mocks base method.
 func (m *MockController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
 	m.ctrl.T.Helper()

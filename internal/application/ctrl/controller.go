@@ -21,6 +21,9 @@ type Controller interface {
 	GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error)
 	ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error)
 
+	// Stats operations
+	GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error)
+
 	// Log operations
 	ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32) (dal.Cursor[*commonpb.Log], error)
 	GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error)

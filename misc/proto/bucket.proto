@@ -67,6 +67,8 @@ service BucketService {
   rpc ExecutePreparedQuery(ExecutePreparedQueryRequest) returns (ExecutePreparedQueryResponse);
   // GetIndexStatus returns the current state of the read index builder
   rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
+  // GetLedgerStats returns aggregate statistics for a ledger
+  rpc GetLedgerStats(GetLedgerStatsRequest) returns (common.LedgerStats);
 }
 
 // ============================================================================
@@ -657,4 +659,8 @@ message GetIndexStatusResponse {
   uint64 last_log_sequence = 2;
   uint64 lag = 3;
   uint64 index_file_size = 4;
+}
+
+message GetLedgerStatsRequest {
+  string ledger = 1;
 }

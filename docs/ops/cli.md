@@ -268,6 +268,37 @@ ledgerctl ledgers promote my-mirror-ledger -y
 ledgerctl ledgers promote
 ```
 
+#### ledgers stats
+
+Get aggregate statistics (account count, transaction count) for a ledger.
+
+**Aliases:** `st`
+
+```bash
+ledgerctl ledgers stats [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Ledger name (interactive selection if omitted) |
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Get stats for a specific ledger
+ledgerctl ledgers stats --ledger my-ledger
+
+# Get stats as JSON
+ledgerctl ledgers stats --ledger my-ledger --json
+
+# Interactive mode (will prompt for ledger selection)
+ledgerctl ledgers stats
+```
+
 #### ledgers set-metadata-type
 
 Declare a typed metadata field on a ledger. Once set, all new metadata values for this key must conform to the declared type. Existing untyped values will be converted in the background.

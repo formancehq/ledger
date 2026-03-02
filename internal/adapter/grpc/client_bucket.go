@@ -195,4 +195,10 @@ func (g *BucketGrpcClient) ExecutePreparedQuery(ctx context.Context, req *servic
 	return g.client.ExecutePreparedQuery(ctx, req)
 }
 
+func (g *BucketGrpcClient) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
+	return g.client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{
+		Ledger: ledgerName,
+	})
+}
+
 var _ ctrl.Controller = (*BucketGrpcClient)(nil)
