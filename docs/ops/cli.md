@@ -2533,3 +2533,47 @@ ledgerctl events remove-sink --name primary
 | `--timeout` | `10s` | Request timeout |
 
 See [Event System Architecture](../dev/architecture/events.md) for details on the event system design.
+
+---
+
+### upgrade
+
+Self-update `ledgerctl` to the latest version from GitHub releases. Downloads the archive, verifies the SHA256 checksum, and replaces the binary in-place.
+
+```bash
+ledgerctl upgrade [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--channel` | `nightly` | Release channel: `nightly` or `stable` |
+| `--force` | `false` | Upgrade even if already on the latest version |
+| `--dry-run` | `false` | Check for updates without installing |
+
+**Behavior:**
+- Downloads the latest release from `formancehq/ledger-v3-poc` GitHub releases
+- Verifies the archive's SHA256 checksum against `checksums.txt`
+- Extracts the `ledgerctl` binary and atomically replaces the current binary
+- If the current version is `dev` (built without ldflags), warns and requires `--force`
+
+**Channels:**
+- **`nightly`** (default): The rolling nightly build, tagged `nightly` on GitHub. Version format: `nightly-<shortcommit>`.
+- **`stable`**: The latest tagged release matching `v*.*.*` semver format.
+
+**Example:**
+
+```bash
+# Check for nightly updates (default channel)
+ledgerctl upgrade --dry-run
+
+# Upgrade to the latest nightly build
+ledgerctl upgrade
+
+# Upgrade to the latest stable release
+ledgerctl upgrade --channel stable
+
+# Force upgrade even if already up to date
+ledgerctl upgrade --force
+```

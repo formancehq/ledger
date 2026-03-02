@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/signing"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/store"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/transactions"
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/upgrade"
 	"github.com/pterm/pterm"
 	"github.com/pterm/pterm/putils"
 	"github.com/spf13/cobra"
@@ -77,6 +78,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(restore.NewCommand())
 	rootCmd.AddCommand(authcmd.NewCommand())
 	rootCmd.AddCommand(newVersionCommand())
+	rootCmd.AddCommand(upgrade.NewCommand(version))
 
 	return rootCmd
 }
