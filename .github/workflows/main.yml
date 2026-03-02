@@ -7,6 +7,9 @@ on:
   pull_request:
     types: [assigned, opened, synchronize, reopened]
 
+permissions:
+  contents: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -65,3 +68,23 @@ jobs:
         uses: ./.github/actions/default
       - run: >
           nix develop --command go build ./...
+
+  Release-Latest:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [Dirty, Tests, Build]
+    runs-on: shipfox-4vcpu-ubuntu-2404
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Release nightly
+        run: >
+          nix develop --command just release-ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
