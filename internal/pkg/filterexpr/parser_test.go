@@ -475,4 +475,153 @@ func TestParse(t *testing.T) {
 		_, err := Parse("(metadata[key] == val")
 		require.Error(t, err)
 	})
+
+	// --- Parameter tests ---
+
+	t.Run("param: metadata string equality", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("metadata[category] == $val")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		assert.Equal(t, "category", fc.Field.GetMetadata())
+		sc := fc.GetStringCond()
+		require.NotNil(t, sc)
+		assert.Equal(t, "val", sc.GetParam())
+	})
+
+	t.Run("param: metadata != desugars to not param", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("metadata[category] != $val")
+		require.NoError(t, err)
+
+		notF := filter.GetNot()
+		require.NotNil(t, notF)
+		fc := notF.Filter.GetField()
+		require.NotNil(t, fc)
+		sc := fc.GetStringCond()
+		require.NotNil(t, sc)
+		assert.Equal(t, "val", sc.GetParam())
+	})
+
+	t.Run("param: metadata greater than", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("metadata[age] > $min")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		ic := fc.GetIntCond()
+		require.NotNil(t, ic)
+		assert.Equal(t, "min", ic.ParamMin)
+		assert.True(t, ic.MinExclusive)
+		assert.Empty(t, ic.ParamMax)
+	})
+
+	t.Run("param: metadata greater than or equal", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("metadata[age] >= $min")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		ic := fc.GetIntCond()
+		require.NotNil(t, ic)
+		assert.Equal(t, "min", ic.ParamMin)
+		assert.False(t, ic.MinExclusive)
+	})
+
+	t.Run("param: metadata less than", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("metadata[age] < $max")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		ic := fc.GetIntCond()
+		require.NotNil(t, ic)
+		assert.Equal(t, "max", ic.ParamMax)
+		assert.True(t, ic.MaxExclusive)
+		assert.Empty(t, ic.ParamMin)
+	})
+
+	t.Run("param: metadata less than or equal", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("metadata[age] <= $max")
+		require.NoError(t, err)
+
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		ic := fc.GetIntCond()
+		require.NotNil(t, ic)
+		assert.Equal(t, "max", ic.ParamMax)
+		assert.False(t, ic.MaxExclusive)
+	})
+
+	t.Run("param: address exact", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("address == $addr")
+		require.NoError(t, err)
+
+		am := filter.GetAddress()
+		require.NotNil(t, am)
+		assert.Equal(t, "addr", am.GetParamExact())
+		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_ANY, am.GetRole())
+	})
+
+	t.Run("param: address prefix", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("address ^= $prefix")
+		require.NoError(t, err)
+
+		am := filter.GetAddress()
+		require.NotNil(t, am)
+		assert.Equal(t, "prefix", am.GetParamPrefix())
+	})
+
+	t.Run("param: source exact", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("source == $src")
+		require.NoError(t, err)
+
+		am := filter.GetAddress()
+		require.NotNil(t, am)
+		assert.Equal(t, "src", am.GetParamExact())
+		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_SOURCE, am.GetRole())
+	})
+
+	t.Run("param: destination prefix", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("destination ^= $dst")
+		require.NoError(t, err)
+
+		am := filter.GetAddress()
+		require.NotNil(t, am)
+		assert.Equal(t, "dst", am.GetParamPrefix())
+		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION, am.GetRole())
+	})
+
+	t.Run("param: combined with hardcoded in AND", func(t *testing.T) {
+		t.Parallel()
+		filter, err := Parse("metadata[tier] == $tier and metadata[age] >= $min_age")
+		require.NoError(t, err)
+
+		andF := filter.GetAnd()
+		require.NotNil(t, andF)
+		require.Len(t, andF.Filters, 2)
+
+		fc0 := andF.Filters[0].GetField()
+		require.NotNil(t, fc0)
+		sc := fc0.GetStringCond()
+		require.NotNil(t, sc)
+		assert.Equal(t, "tier", sc.GetParam())
+
+		fc1 := andF.Filters[1].GetField()
+		require.NotNil(t, fc1)
+		ic := fc1.GetIntCond()
+		require.NotNil(t, ic)
+		assert.Equal(t, "min_age", ic.ParamMin)
+		assert.False(t, ic.MinExclusive)
+	})
 }

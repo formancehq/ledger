@@ -3,10 +3,38 @@ package filterexpr
 import (
 	"fmt"
 	"strconv"
-	"strings"
-	"unicode"
 
+	"github.com/alecthomas/participle/v2"
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+)
+
+// Custom lexer: Keywords are matched before Ident so that reserved words
+// (and, or, not, metadata, address, source, destination, exists, true, false)
+// cannot be consumed as bare values.
+var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
+	{Name: "Whitespace", Pattern: `\s+`},
+	{Name: "OpEq", Pattern: `==`},
+	{Name: "OpNe", Pattern: `!=`},
+	{Name: "OpPrefix", Pattern: `\^=`},
+	{Name: "OpGte", Pattern: `>=`},
+	{Name: "OpLte", Pattern: `<=`},
+	{Name: "OpGt", Pattern: `>`},
+	{Name: "OpLt", Pattern: `<`},
+	{Name: "LBracket", Pattern: `\[`},
+	{Name: "RBracket", Pattern: `\]`},
+	{Name: "LParen", Pattern: `\(`},
+	{Name: "RParen", Pattern: `\)`},
+	{Name: "Dollar", Pattern: `\$`},
+	{Name: "String", Pattern: `"[^"]*"|'[^']*'`},
+	{Name: "Keyword", Pattern: `\b(and|or|not|metadata|address|source|destination|exists|true|false)\b`},
+	{Name: "Number", Pattern: `-?[0-9]+`},
+	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_:.\-/]*`},
+})
+
+var filterParser = participle.MustBuild[OrExpr](
+	participle.Lexer(filterLexer),
+	participle.Elide("Whitespace"),
 )
 
 // Parse parses a human-readable filter expression into a QueryFilter.
@@ -20,270 +48,72 @@ import (
 //	primary        := "(" expression ")" | condition
 //	condition      := metadata_cond | address_cond | source_cond | destination_cond
 //	metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "exists")
-//	address_cond   := "address" ("==" VALUE | "^=" VALUE)
-//	source_cond    := "source" ("==" VALUE | "^=" VALUE)
-//	destination_cond := "destination" ("==" VALUE | "^=" VALUE)
+//	address_cond   := ("address" | "source" | "destination") ("==" VALUE | "^=" VALUE)
+//	value          := "$" Ident | "true" | "false" | String | Number | Ident
 func Parse(input string) (*commonpb.QueryFilter, error) {
-	p := &parser{tokens: tokenize(input)}
-	filter, err := p.parseExpression()
+	ast, err := filterParser.ParseString("", input)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse error: %w", err)
 	}
-	if p.pos < len(p.tokens) {
-		return nil, fmt.Errorf("unexpected token %q at position %d", p.tokens[p.pos].value, p.tokens[p.pos].pos)
+	return ast.toProto()
+}
+
+// --- AST types ---
+
+type OrExpr struct {
+	Operands []*AndExpr `parser:"@@ ('or' @@)*"`
+}
+
+func (e *OrExpr) toProto() (*commonpb.QueryFilter, error) {
+	if len(e.Operands) == 1 {
+		return e.Operands[0].toProto()
 	}
-	return filter, nil
-}
-
-// Token types
-type tokenKind int
-
-const (
-	tokenWord tokenKind = iota
-	tokenString
-	tokenLBracket
-	tokenRBracket
-	tokenLParen
-	tokenRParen
-	tokenOpEq
-	tokenOpNe
-	tokenOpPrefix
-	tokenOpGt
-	tokenOpGte
-	tokenOpLt
-	tokenOpLte
-)
-
-type token struct {
-	kind  tokenKind
-	value string
-	pos   int
-}
-
-func tokenize(input string) []token {
-	var tokens []token
-	i := 0
-	for i < len(input) {
-		// Skip whitespace
-		if unicode.IsSpace(rune(input[i])) {
-			i++
-			continue
-		}
-
-		pos := i
-
-		// Two-character operators
-		if i+1 < len(input) {
-			twoChar := input[i : i+2]
-			switch twoChar {
-			case "==":
-				tokens = append(tokens, token{kind: tokenOpEq, value: "==", pos: pos})
-				i += 2
-				continue
-			case "!=":
-				tokens = append(tokens, token{kind: tokenOpNe, value: "!=", pos: pos})
-				i += 2
-				continue
-			case "^=":
-				tokens = append(tokens, token{kind: tokenOpPrefix, value: "^=", pos: pos})
-				i += 2
-				continue
-			case ">=":
-				tokens = append(tokens, token{kind: tokenOpGte, value: ">=", pos: pos})
-				i += 2
-				continue
-			case "<=":
-				tokens = append(tokens, token{kind: tokenOpLte, value: "<=", pos: pos})
-				i += 2
-				continue
-			}
-		}
-
-		// Single-character tokens
-		switch input[i] {
-		case '[':
-			tokens = append(tokens, token{kind: tokenLBracket, value: "[", pos: pos})
-			i++
-			continue
-		case ']':
-			tokens = append(tokens, token{kind: tokenRBracket, value: "]", pos: pos})
-			i++
-			continue
-		case '(':
-			tokens = append(tokens, token{kind: tokenLParen, value: "(", pos: pos})
-			i++
-			continue
-		case ')':
-			tokens = append(tokens, token{kind: tokenRParen, value: ")", pos: pos})
-			i++
-			continue
-		case '>':
-			tokens = append(tokens, token{kind: tokenOpGt, value: ">", pos: pos})
-			i++
-			continue
-		case '<':
-			tokens = append(tokens, token{kind: tokenOpLt, value: "<", pos: pos})
-			i++
-			continue
-		}
-
-		// Quoted strings
-		if input[i] == '"' || input[i] == '\'' {
-			quote := input[i]
-			i++
-			start := i
-			for i < len(input) && input[i] != quote {
-				i++
-			}
-			if i >= len(input) {
-				tokens = append(tokens, token{kind: tokenString, value: input[start:], pos: pos})
-			} else {
-				tokens = append(tokens, token{kind: tokenString, value: input[start:i], pos: pos})
-				i++ // skip closing quote
-			}
-			continue
-		}
-
-		// Words (bare words, keywords, numbers, etc.)
-		start := i
-		for i < len(input) && !unicode.IsSpace(rune(input[i])) && !strings.ContainsRune("[]()!=^><", rune(input[i])) {
-			i++
-		}
-		if i > start {
-			tokens = append(tokens, token{kind: tokenWord, value: input[start:i], pos: pos})
-		}
-	}
-	return tokens
-}
-
-type parser struct {
-	tokens []token
-	pos    int
-}
-
-func (p *parser) peek() *token {
-	if p.pos >= len(p.tokens) {
-		return nil
-	}
-	return &p.tokens[p.pos]
-}
-
-func (p *parser) advance() token {
-	t := p.tokens[p.pos]
-	p.pos++
-	return t
-}
-
-func (p *parser) expect(kind tokenKind) (token, error) {
-	t := p.peek()
-	if t == nil {
-		return token{}, fmt.Errorf("unexpected end of expression, expected %s", kindName(kind))
-	}
-	if t.kind != kind {
-		return token{}, fmt.Errorf("expected %s at position %d, got %q", kindName(kind), t.pos, t.value)
-	}
-	return p.advance(), nil
-}
-
-func kindName(k tokenKind) string {
-	switch k {
-	case tokenWord:
-		return "word"
-	case tokenString:
-		return "string"
-	case tokenLBracket:
-		return "'['"
-	case tokenRBracket:
-		return "']'"
-	case tokenLParen:
-		return "'('"
-	case tokenRParen:
-		return "')'"
-	case tokenOpEq:
-		return "'=='"
-	case tokenOpNe:
-		return "'!='"
-	case tokenOpPrefix:
-		return "'^='"
-	case tokenOpGt:
-		return "'>'"
-	case tokenOpGte:
-		return "'>='"
-	case tokenOpLt:
-		return "'<'"
-	case tokenOpLte:
-		return "'<='"
-	default:
-		return "unknown"
-	}
-}
-
-func (p *parser) parseExpression() (*commonpb.QueryFilter, error) {
-	return p.parseOr()
-}
-
-func (p *parser) parseOr() (*commonpb.QueryFilter, error) {
-	left, err := p.parseAnd()
-	if err != nil {
-		return nil, err
-	}
-
-	var operands []*commonpb.QueryFilter
-	for p.isKeyword("or") {
-		p.advance()
-		if operands == nil {
-			operands = []*commonpb.QueryFilter{left}
-		}
-		right, err := p.parseAnd()
+	filters := make([]*commonpb.QueryFilter, len(e.Operands))
+	for i, op := range e.Operands {
+		f, err := op.toProto()
 		if err != nil {
 			return nil, err
 		}
-		operands = append(operands, right)
+		filters[i] = f
 	}
-
-	if operands != nil {
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Or{
-				Or: &commonpb.OrFilter{Filters: operands},
-			},
-		}, nil
-	}
-	return left, nil
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Or{
+			Or: &commonpb.OrFilter{Filters: filters},
+		},
+	}, nil
 }
 
-func (p *parser) parseAnd() (*commonpb.QueryFilter, error) {
-	left, err := p.parseUnary()
-	if err != nil {
-		return nil, err
-	}
+type AndExpr struct {
+	Operands []*UnaryExpr `parser:"@@ ('and' @@)*"`
+}
 
-	var operands []*commonpb.QueryFilter
-	for p.isKeyword("and") {
-		p.advance()
-		if operands == nil {
-			operands = []*commonpb.QueryFilter{left}
-		}
-		right, err := p.parseUnary()
+func (e *AndExpr) toProto() (*commonpb.QueryFilter, error) {
+	if len(e.Operands) == 1 {
+		return e.Operands[0].toProto()
+	}
+	filters := make([]*commonpb.QueryFilter, len(e.Operands))
+	for i, op := range e.Operands {
+		f, err := op.toProto()
 		if err != nil {
 			return nil, err
 		}
-		operands = append(operands, right)
+		filters[i] = f
 	}
-
-	if operands != nil {
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_And{
-				And: &commonpb.AndFilter{Filters: operands},
-			},
-		}, nil
-	}
-	return left, nil
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: filters},
+		},
+	}, nil
 }
 
-func (p *parser) parseUnary() (*commonpb.QueryFilter, error) {
-	if p.isKeyword("not") {
-		p.advance()
-		inner, err := p.parseUnary()
+type UnaryExpr struct {
+	Not     *UnaryExpr `parser:"  'not' @@"`
+	Primary *Primary   `parser:"| @@"`
+}
+
+func (e *UnaryExpr) toProto() (*commonpb.QueryFilter, error) {
+	if e.Not != nil {
+		inner, err := e.Not.toProto()
 		if err != nil {
 			return nil, err
 		}
@@ -293,96 +123,46 @@ func (p *parser) parseUnary() (*commonpb.QueryFilter, error) {
 			},
 		}, nil
 	}
-	return p.parsePrimary()
+	return e.Primary.toProto()
 }
 
-func (p *parser) parsePrimary() (*commonpb.QueryFilter, error) {
-	t := p.peek()
-	if t == nil {
-		return nil, fmt.Errorf("unexpected end of expression")
-	}
-
-	// Grouped expression
-	if t.kind == tokenLParen {
-		p.advance()
-		expr, err := p.parseExpression()
-		if err != nil {
-			return nil, err
-		}
-		if _, err := p.expect(tokenRParen); err != nil {
-			return nil, err
-		}
-		return expr, nil
-	}
-
-	// Condition
-	return p.parseCondition()
+type Primary struct {
+	Group     *OrExpr    `parser:"  '(' @@ ')'"`
+	Condition *Condition `parser:"| @@"`
 }
 
-func (p *parser) parseCondition() (*commonpb.QueryFilter, error) {
-	t := p.peek()
-	if t == nil {
-		return nil, fmt.Errorf("unexpected end of expression, expected condition")
+func (p *Primary) toProto() (*commonpb.QueryFilter, error) {
+	if p.Group != nil {
+		return p.Group.toProto()
 	}
-
-	switch {
-	case t.kind == tokenWord && t.value == "metadata":
-		return p.parseMetadataCondition()
-	case t.kind == tokenWord && t.value == "address":
-		return p.parseAddressConditionWithRole(commonpb.AddressRole_ADDRESS_ROLE_ANY)
-	case t.kind == tokenWord && t.value == "source":
-		return p.parseAddressConditionWithRole(commonpb.AddressRole_ADDRESS_ROLE_SOURCE)
-	case t.kind == tokenWord && t.value == "destination":
-		return p.parseAddressConditionWithRole(commonpb.AddressRole_ADDRESS_ROLE_DESTINATION)
-	default:
-		return nil, fmt.Errorf("expected 'metadata', 'address', 'source' or 'destination' at position %d, got %q", t.pos, t.value)
-	}
+	return p.Condition.toProto()
 }
 
-func (p *parser) parseMetadataCondition() (*commonpb.QueryFilter, error) {
-	p.advance() // consume "metadata"
+type Condition struct {
+	Metadata *MetadataCond `parser:"  @@"`
+	Address  *AddressCond  `parser:"| @@"`
+}
 
-	if _, err := p.expect(tokenLBracket); err != nil {
-		return nil, err
+func (c *Condition) toProto() (*commonpb.QueryFilter, error) {
+	if c.Metadata != nil {
+		return c.Metadata.toProto()
 	}
+	return c.Address.toProto()
+}
 
-	keyTok, err := p.parseValue()
-	if err != nil {
-		return nil, fmt.Errorf("expected metadata key: %w", err)
-	}
+// --- Metadata conditions ---
 
-	if _, err := p.expect(tokenRBracket); err != nil {
-		return nil, err
-	}
+type MetadataCond struct {
+	Key     string       `parser:"'metadata' '[' @(Ident | Keyword | String | Number) ']'"`
+	Exists  bool         `parser:"( @'exists'"`
+	Compare *MetadataOp  `parser:"| @@ )"`
+}
 
-	// Check for operator
-	t := p.peek()
-	if t == nil {
-		return nil, fmt.Errorf("unexpected end of expression after metadata[%s]", keyTok)
-	}
+func (m *MetadataCond) toProto() (*commonpb.QueryFilter, error) {
+	key := unquote(m.Key)
+	field := &commonpb.FieldRef{Metadata: key}
 
-	field := &commonpb.FieldRef{Metadata: keyTok}
-
-	switch {
-	case t.kind == tokenOpEq:
-		p.advance()
-		return p.parseMetadataEqualityCondition(field)
-	case t.kind == tokenOpNe:
-		p.advance()
-		inner, err := p.parseMetadataEqualityCondition(field)
-		if err != nil {
-			return nil, err
-		}
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Not{
-				Not: &commonpb.NotFilter{Filter: inner},
-			},
-		}, nil
-	case t.kind == tokenOpGt || t.kind == tokenOpGte || t.kind == tokenOpLt || t.kind == tokenOpLte:
-		op := p.advance()
-		return p.parseMetadataRangeCondition(field, op.kind)
-	case t.kind == tokenWord && t.value == "exists":
-		p.advance()
+	if m.Exists {
 		return &commonpb.QueryFilter{
 			Filter: &commonpb.QueryFilter_Field{
 				Field: &commonpb.FieldCondition{
@@ -391,21 +171,125 @@ func (p *parser) parseMetadataCondition() (*commonpb.QueryFilter, error) {
 				},
 			},
 		}, nil
+	}
+	return m.Compare.toProto(field)
+}
+
+type MetadataOp struct {
+	Eq  *Value `parser:"  '==' @@"`
+	Ne  *Value `parser:"| '!=' @@"`
+	Gte *Value `parser:"| '>=' @@"`
+	Gt  *Value `parser:"| '>' @@"`
+	Lte *Value `parser:"| '<=' @@"`
+	Lt  *Value `parser:"| '<' @@"`
+}
+
+func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, error) {
+	switch {
+	case op.Eq != nil:
+		return metadataEqualityToProto(field, op.Eq)
+	case op.Ne != nil:
+		inner, err := metadataEqualityToProto(field, op.Ne)
+		if err != nil {
+			return nil, err
+		}
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Not{
+				Not: &commonpb.NotFilter{Filter: inner},
+			},
+		}, nil
+	case op.Gt != nil:
+		return metadataRangeToProto(field, op.Gt, ">")
+	case op.Gte != nil:
+		return metadataRangeToProto(field, op.Gte, ">=")
+	case op.Lt != nil:
+		return metadataRangeToProto(field, op.Lt, "<")
+	case op.Lte != nil:
+		return metadataRangeToProto(field, op.Lte, "<=")
 	default:
-		return nil, fmt.Errorf("expected '==', '!=', '>', '>=', '<', '<=' or 'exists' at position %d, got %q", t.pos, t.value)
+		return nil, fmt.Errorf("missing operator")
 	}
 }
 
-func (p *parser) parseMetadataEqualityCondition(field *commonpb.FieldRef) (*commonpb.QueryFilter, error) {
-	val, err := p.parseValue()
-	if err != nil {
-		return nil, fmt.Errorf("expected value: %w", err)
+// --- Address conditions ---
+
+type AddressCond struct {
+	Keyword string `parser:"@('address' | 'source' | 'destination')"`
+	Exact   *Value `parser:"( '==' @@"`
+	Prefix  *Value `parser:"| '^=' @@ )"`
+}
+
+func (a *AddressCond) toProto() (*commonpb.QueryFilter, error) {
+	role := commonpb.AddressRole_ADDRESS_ROLE_ANY
+	switch a.Keyword {
+	case "source":
+		role = commonpb.AddressRole_ADDRESS_ROLE_SOURCE
+	case "destination":
+		role = commonpb.AddressRole_ADDRESS_ROLE_DESTINATION
 	}
 
-	// Auto-type the value: bool, int64, or string
+	am := &commonpb.AddressMatch{Role: role}
+	if a.Exact != nil {
+		if a.Exact.Param != "" {
+			am.Match = &commonpb.AddressMatch_ParamExact{ParamExact: a.Exact.Param}
+		} else {
+			am.Match = &commonpb.AddressMatch_HardcodedExact{HardcodedExact: a.Exact.resolve()}
+		}
+	} else {
+		if a.Prefix.Param != "" {
+			am.Match = &commonpb.AddressMatch_ParamPrefix{ParamPrefix: a.Prefix.Param}
+		} else {
+			am.Match = &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: a.Prefix.resolve()}
+		}
+	}
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Address{Address: am},
+	}, nil
+}
+
+// --- Value ---
+
+type Value struct {
+	Param  string `parser:"  '$' @Ident"`
+	Str    string `parser:"| @String"`
+	Num    string `parser:"| @Number"`
+	Bool   string `parser:"| @('true' | 'false')"`
+	Bare   string `parser:"| @Ident"`
+}
+
+func (v *Value) resolve() string {
+	if v.Str != "" {
+		return unquote(v.Str)
+	}
+	if v.Num != "" {
+		return v.Num
+	}
+	if v.Bool != "" {
+		return v.Bool
+	}
+	return v.Bare
+}
+
+// --- Proto conversion helpers ---
+
+func metadataEqualityToProto(field *commonpb.FieldRef, val *Value) (*commonpb.QueryFilter, error) {
 	fc := &commonpb.FieldCondition{Field: field}
 
-	switch val {
+	if val.Param != "" {
+		// Parameterized: default to string
+		fc.Condition = &commonpb.FieldCondition_StringCond{
+			StringCond: &commonpb.StringCondition{
+				Value: &commonpb.StringCondition_Param{Param: val.Param},
+			},
+		}
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Field{Field: fc},
+		}, nil
+	}
+
+	raw := val.resolve()
+
+	switch raw {
 	case "true":
 		fc.Condition = &commonpb.FieldCondition_BoolCond{
 			BoolCond: &commonpb.BoolCondition{
@@ -419,7 +303,7 @@ func (p *parser) parseMetadataEqualityCondition(field *commonpb.FieldRef) (*comm
 			},
 		}
 	default:
-		if intVal, intErr := strconv.ParseInt(val, 10, 64); intErr == nil {
+		if intVal, intErr := strconv.ParseInt(raw, 10, 64); intErr == nil {
 			fc.Condition = &commonpb.FieldCondition_IntCond{
 				IntCond: &commonpb.IntCondition{
 					Min: &intVal,
@@ -429,7 +313,7 @@ func (p *parser) parseMetadataEqualityCondition(field *commonpb.FieldRef) (*comm
 		} else {
 			fc.Condition = &commonpb.FieldCondition_StringCond{
 				StringCond: &commonpb.StringCondition{
-					Value: &commonpb.StringCondition_Hardcoded{Hardcoded: val},
+					Value: &commonpb.StringCondition_Hardcoded{Hardcoded: raw},
 				},
 			}
 		}
@@ -440,28 +324,48 @@ func (p *parser) parseMetadataEqualityCondition(field *commonpb.FieldRef) (*comm
 	}, nil
 }
 
-func (p *parser) parseMetadataRangeCondition(field *commonpb.FieldRef, opKind tokenKind) (*commonpb.QueryFilter, error) {
-	val, err := p.parseValue()
-	if err != nil {
-		return nil, fmt.Errorf("expected value: %w", err)
+func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*commonpb.QueryFilter, error) {
+	if val.Param != "" {
+		ic := &commonpb.IntCondition{}
+		switch op {
+		case ">":
+			ic.ParamMin = val.Param
+			ic.MinExclusive = true
+		case ">=":
+			ic.ParamMin = val.Param
+		case "<":
+			ic.ParamMax = val.Param
+			ic.MaxExclusive = true
+		case "<=":
+			ic.ParamMax = val.Param
+		}
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Field{
+				Field: &commonpb.FieldCondition{
+					Field:     field,
+					Condition: &commonpb.FieldCondition_IntCond{IntCond: ic},
+				},
+			},
+		}, nil
 	}
 
-	intVal, intErr := strconv.ParseInt(val, 10, 64)
+	raw := val.resolve()
+	intVal, intErr := strconv.ParseInt(raw, 10, 64)
 	if intErr != nil {
-		return nil, fmt.Errorf("range operators only support integer values, got %q", val)
+		return nil, fmt.Errorf("range operators only support integer values, got %q", raw)
 	}
 
 	ic := &commonpb.IntCondition{}
-	switch opKind {
-	case tokenOpGt:
+	switch op {
+	case ">":
 		ic.Min = &intVal
 		ic.MinExclusive = true
-	case tokenOpGte:
+	case ">=":
 		ic.Min = &intVal
-	case tokenOpLt:
+	case "<":
 		ic.Max = &intVal
 		ic.MaxExclusive = true
-	case tokenOpLte:
+	case "<=":
 		ic.Max = &intVal
 	}
 
@@ -475,64 +379,9 @@ func (p *parser) parseMetadataRangeCondition(field *commonpb.FieldRef, opKind to
 	}, nil
 }
 
-func (p *parser) parseAddressConditionWithRole(role commonpb.AddressRole) (*commonpb.QueryFilter, error) {
-	keyword := p.advance().value // consume "address", "source", or "destination"
-
-	t := p.peek()
-	if t == nil {
-		return nil, fmt.Errorf("unexpected end of expression after %q", keyword)
+func unquote(s string) string {
+	if len(s) >= 2 && ((s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'')) {
+		return s[1 : len(s)-1]
 	}
-
-	switch t.kind {
-	case tokenOpEq:
-		p.advance()
-		val, err := p.parseValue()
-		if err != nil {
-			return nil, fmt.Errorf("expected address value: %w", err)
-		}
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: val},
-					Role:  role,
-				},
-			},
-		}, nil
-	case tokenOpPrefix:
-		p.advance()
-		val, err := p.parseValue()
-		if err != nil {
-			return nil, fmt.Errorf("expected address prefix value: %w", err)
-		}
-		return &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{
-					Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: val},
-					Role:  role,
-				},
-			},
-		}, nil
-	default:
-		return nil, fmt.Errorf("expected '==' or '^=' after %q at position %d, got %q", keyword, t.pos, t.value)
-	}
+	return s
 }
-
-func (p *parser) parseValue() (string, error) {
-	t := p.peek()
-	if t == nil {
-		return "", fmt.Errorf("unexpected end of expression, expected value")
-	}
-
-	switch t.kind {
-	case tokenString, tokenWord:
-		return p.advance().value, nil
-	default:
-		return "", fmt.Errorf("expected value at position %d, got %q", t.pos, t.value)
-	}
-}
-
-func (p *parser) isKeyword(keyword string) bool {
-	t := p.peek()
-	return t != nil && t.kind == tokenWord && t.value == keyword
-}
-
