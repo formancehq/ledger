@@ -75,11 +75,16 @@ var _ = Context("Ledger application lifecycle tests", func() {
 			})
 		})
 		When("restarting the service", func() {
-			BeforeEach(func(ctx context.Context) {
-				testServer, err := testServer.Wait(ctx)
+			BeforeEach(func(specContext SpecContext) {
+				testServer, err := testServer.Wait(specContext)
 				Expect(err).To(BeNil())
 
-				Expect(testServer.Restart(ctx)).To(BeNil())
+				// Use context.Background() for the restart so the new service context
+				// is not tied to ginkgo's spec context lifecycle. This is consistent
+				// with how DeferNew starts the service initially (with context.Background()),
+				// and prevents the spec context cancellation from racing with the
+				// DeferCleanup's 10-second stop timeout.
+				Expect(testServer.Restart(context.Background())).To(BeNil())
 			})
 			It("should be ok", func() {})
 		})
