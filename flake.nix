@@ -65,6 +65,7 @@
             mockgen
             protoc-gen-go
             protoc-gen-go-grpc
+            protoc-gen-go-vtproto
             golangci-lint
             setup-envtest
           ];
