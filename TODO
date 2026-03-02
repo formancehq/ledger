@@ -30,6 +30,7 @@ Tests:
 * Convert K6 tests to GRPC
 * Read heavy with K6
 * Check schema eviction with time
+* Auto port discovery
 
 Refactor:
 * Simplify processor
@@ -38,7 +39,6 @@ Refactor:
 * Refactor Go-Libs
 * Clean protobuf
 * Prevent concurrent tests
-* Keep attributes in pebble cache?
 * Index tracking
 * Apply configuration schema
 * Stop lifecycle
