@@ -91,6 +91,24 @@ func ListLedgerDefaults(ctx context.Context, c client.Client) (*ledgerv1alpha1.L
 	return &list, nil
 }
 
+// GetLedgerClusterAgent fetches a single cluster-scoped LedgerClusterAgent CR.
+func GetLedgerClusterAgent(ctx context.Context, c client.Client, name string) (*ledgerv1alpha1.LedgerClusterAgent, error) {
+	var agent ledgerv1alpha1.LedgerClusterAgent
+	if err := c.Get(ctx, types.NamespacedName{Name: name}, &agent); err != nil {
+		return nil, err
+	}
+	return &agent, nil
+}
+
+// ListLedgerClusterAgents lists all cluster-scoped LedgerClusterAgent CRs.
+func ListLedgerClusterAgents(ctx context.Context, c client.Client) (*ledgerv1alpha1.LedgerClusterAgentList, error) {
+	var list ledgerv1alpha1.LedgerClusterAgentList
+	if err := c.List(ctx, &list); err != nil {
+		return nil, err
+	}
+	return &list, nil
+}
+
 // PodReadyCount returns a "ready/total" string for a pod's containers.
 func PodReadyCount(p *corev1.Pod) string {
 	ready := 0

@@ -8,7 +8,8 @@ const (
 	labelManagedBy = "app.kubernetes.io/managed-by"
 	labelInstance  = "app.kubernetes.io/instance"
 	labelName      = "app.kubernetes.io/name"
-	annotationSpecHash = "ledger.formance.com/spec-hash"
+	annotationSpecHash     = "ledger.formance.com/spec-hash"
+	annotationAuthKeysHash = "ledger.formance.com/auth-keys-hash"
 )
 
 // selectorLabels returns the labels used to select pods owned by this LedgerService.

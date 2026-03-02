@@ -19,10 +19,11 @@ import (
 )
 
 type flags struct {
-	metricsAddr    string
-	probeAddr      string
-	leaderElect    bool
-	watchNamespace string
+	metricsAddr      string
+	probeAddr        string
+	leaderElect      bool
+	watchNamespace   string
+	secretsNamespace string
 }
 
 func main() {
@@ -31,6 +32,7 @@ func main() {
 	flag.StringVar(&f.probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&f.leaderElect, "leader-elect", false, "Enable leader election for controller manager.")
 	flag.StringVar(&f.watchNamespace, "watch-namespace", "", "Namespace to watch. Empty string watches all namespaces.")
+	flag.StringVar(&f.secretsNamespace, "secrets-namespace", "", "Namespace for agent key secrets. Defaults to POD_NAMESPACE or 'default'.")
 
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
@@ -79,6 +81,23 @@ func main() {
 		Clientset: clientset,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LedgerService")
+		os.Exit(1)
+	}
+
+	secretsNS := f.secretsNamespace
+	if secretsNS == "" {
+		secretsNS = os.Getenv("POD_NAMESPACE")
+	}
+	if secretsNS == "" {
+		secretsNS = "default"
+	}
+
+	if err = (&controller.LedgerClusterAgentReconciler{
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		SecretsNamespace: secretsNS,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "LedgerClusterAgent")
 		os.Exit(1)
 	}
 

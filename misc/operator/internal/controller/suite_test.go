@@ -25,6 +25,8 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
 
+const agentSecretsNamespace = "agent-secrets"
+
 var (
 	testEnv   *envtest.Environment
 	k8sClient client.Client
@@ -77,7 +79,23 @@ func TestMain(m *testing.M) {
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		panic(fmt.Sprintf("setting up controller: %v", err))
+		panic(fmt.Sprintf("setting up LedgerService controller: %v", err))
+	}
+
+	// Create the namespace for agent secrets before starting the reconciler.
+	agentNs := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: agentSecretsNamespace},
+	}
+	if err := k8sClient.Create(context.Background(), agentNs); err != nil {
+		panic(fmt.Sprintf("creating agent-secrets namespace: %v", err))
+	}
+
+	if err := (&LedgerClusterAgentReconciler{
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		SecretsNamespace: agentSecretsNamespace,
+	}).SetupWithManager(mgr); err != nil {
+		panic(fmt.Sprintf("setting up LedgerClusterAgent controller: %v", err))
 	}
 
 	go func() {
@@ -134,6 +152,21 @@ func newLedgerDefaults(name string) *ledgerv1alpha1.LedgerDefaults {
 			Image: ledgerv1alpha1.ImageSpec{
 				Repository: "ghcr.io/formancehq/ledger-v3-poc",
 				Tag:        "v1.0.0",
+			},
+		},
+	}
+}
+
+// newLedgerClusterAgent returns a cluster-scoped LedgerClusterAgent with a label selector.
+func newLedgerClusterAgent(name string, scopes []string, matchLabels map[string]string) *ledgerv1alpha1.LedgerClusterAgent {
+	return &ledgerv1alpha1.LedgerClusterAgent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: ledgerv1alpha1.LedgerClusterAgentSpec{
+			Scopes: scopes,
+			Selector: metav1.LabelSelector{
+				MatchLabels: matchLabels,
 			},
 		},
 	}

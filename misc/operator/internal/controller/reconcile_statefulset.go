@@ -16,7 +16,7 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
 
-func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.LedgerService, specHash string) error {
+func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo) error {
 	logger := log.FromContext(ctx)
 
 	desiredReplicas := int32(3)
@@ -56,7 +56,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
 		sts.Labels = commonLabels(ledger)
-		sts.Spec = buildStatefulSetSpec(ledger, specHash)
+		sts.Spec = buildStatefulSetSpec(ledger, specHash, agents)
 		return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
 	})
 	if err != nil {
@@ -73,7 +73,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 	return nil
 }
 
-func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string) appsv1.StatefulSetSpec {
+func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo) appsv1.StatefulSetSpec {
 	replicas := int32(3)
 	if ledger.Spec.Replicas != nil {
 		replicas = *ledger.Spec.Replicas
@@ -90,7 +90,7 @@ func buildStatefulSetSpec(ledger *ledgerv1alpha1.LedgerService, specHash string)
 			MatchLabels: selectorLabels(ledger),
 		},
 		PersistentVolumeClaimRetentionPolicy: buildRetentionPolicy(ledger),
-		Template:                             buildPodTemplate(ledger, specHash),
+		Template:                             buildPodTemplate(ledger, specHash, agents),
 		VolumeClaimTemplates:                 buildVolumeClaimTemplates(ledger),
 	}
 
@@ -117,7 +117,7 @@ func buildRetentionPolicy(ledger *ledgerv1alpha1.LedgerService) *appsv1.Stateful
 	}
 }
 
-func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string) corev1.PodTemplateSpec {
+func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, agents []agentKeyInfo) corev1.PodTemplateSpec {
 	cfg := &ledger.Spec.Config
 
 	// Pod annotations with spec hash for rolling updates
@@ -126,6 +126,9 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string) cor
 		podAnnotations[k] = v
 	}
 	podAnnotations[annotationSpecHash] = specHash
+	if len(agents) > 0 {
+		podAnnotations[annotationAuthKeysHash] = computeAuthKeysHash(agents)
+	}
 
 	// Container ports
 	ports := []corev1.ContainerPort{
@@ -181,13 +184,31 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string) cor
 		})
 	}
 
+	if len(agents) > 0 {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "auth-keys",
+			MountPath: "/auth-keys",
+			ReadOnly:  true,
+		})
+		volumes = append(volumes, corev1.Volume{
+			Name: "auth-keys",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: authKeysConfigMapName(ledger),
+					},
+				},
+			},
+		})
+	}
+
 	container := corev1.Container{
 		Name:            "ledger",
 		Image:           fmt.Sprintf("%s:%s", ledger.Spec.Image.Repository, ledger.Spec.Image.Tag),
 		ImagePullPolicy: pullPolicy,
 		Ports:           ports,
 		Env:             buildEnvVars(ledger),
-		Command:         buildCommand(ledger),
+		Command:         buildCommand(ledger, agents),
 		VolumeMounts:    volumeMounts,
 		Resources:       ledger.Spec.Resources,
 	}
@@ -291,7 +312,7 @@ func buildAffinity(ledger *ledgerv1alpha1.LedgerService) *corev1.Affinity {
 	return affinity
 }
 
-func buildCommand(ledger *ledgerv1alpha1.LedgerService) []string {
+func buildCommand(ledger *ledgerv1alpha1.LedgerService, agents []agentKeyInfo) []string {
 	cfg := &ledger.Spec.Config
 	hlsSvcName := headlessServiceName(ledger)
 
@@ -319,6 +340,10 @@ fi`, cfg.DataDir, bootstrap0)
 	if cfg.ResponseSigning != nil && cfg.ResponseSigning.Enabled {
 		extraFlags += ` \
   --response-signing-key "$RESPONSE_SIGNING_KEY"`
+	}
+	if len(agents) > 0 {
+		extraFlags += ` \
+  --auth-ed25519-keys "/auth-keys/auth-keys.json"`
 	}
 
 	script := fmt.Sprintf(`NODE_ID=$((POD_INDEX + 1))

@@ -1,3 +1,4 @@
+---
 # LedgerService optimized for fast mirror ingestion (single-replica, write-heavy).
 #
 # Tuning rationale:
@@ -85,3 +86,14 @@ spec:
       size: 300Gi
     wal:
       size: 15Gi
+---
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerClusterAgent
+metadata:
+  name: agent-gfyrag
+spec:
+  scopes:
+    - ledger:read
+    - ledger:write
+    - ledger:admin
+  selector: {}

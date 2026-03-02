@@ -7,6 +7,21 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - configmaps
+  - secrets
+  - serviceaccounts
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - persistentvolumeclaims
   verbs:
   - delete
@@ -24,19 +39,6 @@ rules:
   - pods/exec
   verbs:
   - create
-- apiGroups:
-  - ""
-  resources:
-  - serviceaccounts
-  - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
 - apiGroups:
   - apps
   resources:
@@ -64,14 +66,7 @@ rules:
 - apiGroups:
   - ledger.formance.com
   resources:
-  - ledgerdefaults
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ledger.formance.com
-  resources:
+  - ledgerclusteragents
   - ledgerservices
   verbs:
   - create
@@ -84,17 +79,27 @@ rules:
 - apiGroups:
   - ledger.formance.com
   resources:
+  - ledgerclusteragents/finalizers
   - ledgerservices/finalizers
   verbs:
   - update
 - apiGroups:
   - ledger.formance.com
   resources:
+  - ledgerclusteragents/status
   - ledgerservices/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - ledger.formance.com
+  resources:
+  - ledgerdefaults
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - monitoring.coreos.com
   resources:

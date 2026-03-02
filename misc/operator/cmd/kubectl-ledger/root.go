@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
+	agentscmd "github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/agents"
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/cmdutil"
 	configcmd "github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/config"
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/create"
@@ -43,6 +44,7 @@ func newRootCommand() *cobra.Command {
 		portforward.NewCommand(opts),
 		configcmd.NewCommand(opts),
 		defaultscmd.NewCommand(opts),
+		agentscmd.NewCommand(opts),
 		explain.NewCommand(),
 		newVersionCommand(),
 	)

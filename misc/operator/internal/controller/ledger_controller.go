@@ -36,8 +36,11 @@ type LedgerServiceReconciler struct {
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices/finalizers,verbs=update
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerdefaults,verbs=get;list;watch
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerclusteragents,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=delete;list
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
 // +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
@@ -131,8 +134,15 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	// StatefulSet needs the specHash
-	if err := r.reconcileStatefulSet(ctx, ledger, specHash); err != nil {
+	// Reconcile auth keys from LedgerClusterAgents (before StatefulSet).
+	agents, err := r.reconcileAuthKeys(ctx, ledger)
+	if err != nil {
+		logger.Error(err, "failed to reconcile auth keys")
+		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
+	}
+
+	// StatefulSet needs the specHash and agent info
+	if err := r.reconcileStatefulSet(ctx, ledger, specHash, agents); err != nil {
 		logger.Error(err, "failed to reconcile StatefulSet")
 		return ctrl.Result{}, fmt.Errorf("reconciling StatefulSet: %w", err)
 	}
@@ -153,10 +163,12 @@ func (r *LedgerServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ServiceAccount{}).
+		Owns(&corev1.ConfigMap{}).
 		Owns(&networkingv1.Ingress{}).
 		Owns(&policyv1.PodDisruptionBudget{}).
 		Owns(&networkingv1.NetworkPolicy{}).
 		Watches(&ledgerv1alpha1.LedgerDefaults{}, handler.EnqueueRequestsFromMapFunc(r.ledgerDefaultsToLedgerServices)).
+		Watches(&ledgerv1alpha1.LedgerClusterAgent{}, handler.EnqueueRequestsFromMapFunc(r.ledgerClusterAgentToLedgerServices)).
 		Complete(r)
 }
 

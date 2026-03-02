@@ -109,6 +109,53 @@ func ResolveLedgerDefaultsName(ctx context.Context, opts *Options, args []string
 	return selected, nil
 }
 
+// ResolveLedgerClusterAgentName returns the LedgerClusterAgent name from args
+// or by interactive selection. LedgerClusterAgent is cluster-scoped so no namespace needed.
+func ResolveLedgerClusterAgentName(ctx context.Context, opts *Options, args []string) (string, error) {
+	if len(args) > 0 {
+		return args[0], nil
+	}
+
+	crdClient, err := opts.CRDClient()
+	if err != nil {
+		return "", fmt.Errorf("creating client: %w", err)
+	}
+
+	spinner, _ := pterm.DefaultSpinner.Start("Fetching LedgerClusterAgent resources...")
+
+	agents, err := ListLedgerClusterAgents(ctx, crdClient)
+	if err != nil {
+		spinner.Fail("Failed to list LedgerClusterAgent resources")
+		return "", fmt.Errorf("listing agents: %w", err)
+	}
+
+	_ = spinner.Stop()
+
+	if len(agents.Items) == 0 {
+		return "", fmt.Errorf("no LedgerClusterAgent resources found")
+	}
+
+	names := make([]string, len(agents.Items))
+	for i := range agents.Items {
+		names[i] = agents.Items[i].Name
+	}
+
+	if len(names) == 1 {
+		pterm.Info.Printfln("Using agent: %s", pterm.Cyan(names[0]))
+		return names[0], nil
+	}
+
+	selected, err := pterm.DefaultInteractiveSelect.
+		WithOptions(names).
+		WithDefaultText("Select a LedgerClusterAgent").
+		Show()
+	if err != nil {
+		return "", fmt.Errorf("failed to select agent: %w", err)
+	}
+
+	return selected, nil
+}
+
 // PromptText prompts the user for a text value with an optional default.
 func PromptText(prompt, defaultValue string) (string, error) {
 	input := pterm.DefaultInteractiveTextInput.WithDefaultText(prompt)
