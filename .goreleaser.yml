@@ -40,7 +40,6 @@ nightly:
   tag_name: nightly
   publish_release: true
   version_template: nightly-{{ .ShortCommit }}
-  name_template: "Nightly ({{ .ShortCommit }})"
 
 release:
   prerelease: auto
@@ -49,10 +48,11 @@ release:
 
 archives:
   - id: "{{ .ProjectName }}"
-    builds:
+    ids:
       - ledger-server
       - ledgerctl
-    format: tar.gz
+    formats:
+      - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Os }}-{{ .Arch }}"
 
 checksum:
