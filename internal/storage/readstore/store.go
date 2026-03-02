@@ -48,7 +48,20 @@ func New(dir string, logger logging.Logger) (*Store, error) {
 		"fileSize": fileSize,
 	}).Infof("Opening bbolt read index")
 	openStart := time.Now()
-	db, err := bolt.Open(dbPath, 0o600, nil)
+	db, err := bolt.Open(dbPath, 0o600, &bolt.Options{
+		// The read index is a derived view rebuilt from Pebble (the Raft log
+		// is the source of truth). We can safely disable fsync: on crash the
+		// index builder simply replays from its last progress cursor.
+		NoSync: true,
+		// Skip writing the freelist to disk on every commit. On restart bbolt
+		// rebuilds it by scanning the file (~seconds for a multi-GB DB).
+		NoFreelistSync: true,
+		// O(1) page alloc/dealloc instead of O(n) with the default array type.
+		FreelistType: bolt.FreelistMapType,
+		// Pre-allocate 1 GB of virtual address space so mmap doesn't need to
+		// grow (and stall the writer) as the database file expands.
+		InitialMmapSize: 1 << 30,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("opening bbolt database: %w", err)
 	}
