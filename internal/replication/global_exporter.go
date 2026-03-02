@@ -38,12 +38,12 @@ type GlobalExporterRunnerConfig struct {
 }
 
 type GlobalExporterRunner struct {
-	store       GlobalExporterStateStore
-	rawDriver   drivers.Driver
-	openLedger  func(ctx context.Context, name string) (LogFetcher, error)
-	logger      logging.Logger
-	config      GlobalExporterRunnerConfig
-	stopChannel chan chan error
+	store         GlobalExporterStateStore
+	rawDriver     drivers.Driver
+	getLogFetcher func(ctx context.Context, name string) (LogFetcher, error)
+	logger        logging.Logger
+	config        GlobalExporterRunnerConfig
+	stopChannel   chan chan error
 }
 
 func NewGlobalExporterRunner(
@@ -63,10 +63,22 @@ func NewGlobalExporterRunner(
 		config.LogsPageSize = DefaultGlobalExporterLogsPageSize
 	}
 
+	fetcherCache := map[string]LogFetcher{}
+
 	return &GlobalExporterRunner{
-		store:       store,
-		rawDriver:   rawDriver,
-		openLedger:  openLedger,
+		store:     store,
+		rawDriver: rawDriver,
+		getLogFetcher: func(ctx context.Context, name string) (LogFetcher, error) {
+			if fetcher, ok := fetcherCache[name]; ok {
+				return fetcher, nil
+			}
+			fetcher, err := openLedger(ctx, name)
+			if err != nil {
+				return nil, err
+			}
+			fetcherCache[name] = fetcher
+			return fetcher, nil
+		},
 		logger:      logger.WithField("component", "global-exporter"),
 		config:      config,
 		stopChannel: make(chan chan error, 1),
@@ -167,7 +179,7 @@ func (r *GlobalExporterRunner) exportLedgerLogs(
 	lastLogID uint64,
 	hasState bool,
 ) bool {
-	fetcher, err := r.openLedger(ctx, ledgerName)
+	fetcher, err := r.getLogFetcher(ctx, ledgerName)
 	if err != nil {
 		r.logger.Errorf("Error opening ledger %s: %v", ledgerName, err)
 		return false
