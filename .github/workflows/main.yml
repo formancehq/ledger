@@ -30,9 +30,10 @@ jobs:
       GOPATH: /tmp/go
       GOLANGCI_LINT_CACHE: /tmp/golangci-lint
     steps:
-      - uses: 'actions/checkout@v4'
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
       - name: Setup Env
         uses: ./.github/actions/default
         with:
@@ -45,7 +46,7 @@ jobs:
         id: changed-files
         shell: bash
         run: |
-          hasChanged=$(git status --porcelain) 
+          hasChanged=$(git status --porcelain)
           if (( $(echo ${#hasChanged}) != 0 )); then
             git status
             echo "There are changes in the repository"
@@ -58,9 +59,10 @@ jobs:
     env:
       GOPATH: /tmp/go
     steps:
-      - uses: 'actions/checkout@v4'
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
       - name: Setup Env
         uses: ./.github/actions/default
         with:
@@ -76,6 +78,9 @@ jobs:
 
   GoReleaser:
     runs-on: "shipfox-4vcpu-ubuntu-2404"
+    permissions:
+      id-token: write
+      attestations: write
     if: contains(github.event.pull_request.labels.*.name, 'build-images') || github.ref == 'refs/heads/main' || github.event_name == 'merge_group'
     steps:
       - name: Set up QEMU
@@ -86,9 +91,10 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           version: "latest"
-      - uses: 'actions/checkout@v4'
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - name: Setup Env
         uses: ./.github/actions/default
@@ -112,36 +118,77 @@ jobs:
           FURY_TOKEN: ${{ secrets.FURY_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: goreleaser-metadata
+          path: |
+            dist/*.json
+            dist/ledger_checksums.txt
+          retention-days: 7
+          compression-level: 0
+
+      # Generate attestations for the goreleaser output archives
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-checksums: ./dist/ledger_checksums.txt
+      # Generate attestations for the goreleaser output binaries
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ./dist/*/**
+      # Extract image metadata from the artifacts.json file
+      - run: |
+          jq -r '[ .[]|select(.type=="Docker Manifest") | .extra.Digest         ] | to_entries | .[] | ( "digest"+ (.key | tostring) + "=" + .value )' < dist/artifacts.json >> "$GITHUB_OUTPUT"
+          jq -r '[ .[]|select(.type=="Docker Manifest") | .name | split(":")[0] ] | to_entries | .[] | ( "name"+ (.key | tostring) + "=" + .value )'   < dist/artifacts.json >> "$GITHUB_OUTPUT"
+        id: image_metadata
+      # Generate attestations for docker images
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-digest: ${{ steps.image_metadata.outputs.digest0 }}
+          subject-name: ${{ steps.image_metadata.outputs.name0 }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-digest: ${{ steps.image_metadata.outputs.digest1 }}
+          subject-name: ${{ steps.image_metadata.outputs.name1 }}
+          push-to-registry: true
 
   Deploy:
-    runs-on: "shipfox-2vcpu-ubuntu-2404"
+    runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main'
     environment: staging
+    permissions:
+      id-token: write
     needs:
       - GoReleaser
       - Tests
     steps:
       - name: Tailscale
-        uses: tailscale/github-action@v3
+        uses: tailscale/github-action@v4
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
+          oauth-client-id: ${{ secrets.TS_OIDC_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_OIDC_AUDIENCE }}
+          tags: ${{ vars.TS_TAGS }}
+          version: ${{ vars.TS_VERSION }}
+          args: ${{ vars.TS_ARGS }}
+          retry: ${{ vars.TS_RETRY }}
+          timeout: ${{ vars.TS_TIMEOUT }}
+          ping: ${{ vars.TS_PING }}
       - uses: earthly/actions-setup@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           version: "latest"
-      - uses: 'actions/checkout@v4'
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: tree:0 # treeless clone, faster to clone as history and blobs are only fetched when needed.
       - name: "Deploy in staging"
         env:
           TAG: ${{ github.sha }}
           COMPONENT: ledger
           ARGOCD_REGION_AUTH_TOKEN: ${{ secrets.ARGOCD_REGION_AUTH_TOKEN }}
         run: >
-          earthly  
-          --no-output 
+          earthly
+          --no-output
           --secret AUTH_TOKEN=$ARGOCD_REGION_AUTH_TOKEN
           +deploy-staging
           --TAG=$TAG
