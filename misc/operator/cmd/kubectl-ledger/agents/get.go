@@ -2,10 +2,11 @@ package agents
 
 import (
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"sigs.k8s.io/yaml"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 	"github.com/formancehq/ledger-v3-poc/operator/cmd/kubectl-ledger/cmdutil"
@@ -52,18 +53,63 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 
 func renderAgentDetails(agent *ledgerv1alpha1.LedgerClusterAgent) error {
 	pterm.Println()
-	pterm.DefaultSection.Printfln("LedgerClusterAgent: %s", pterm.Cyan(agent.Name))
 
-	// Show spec and status as YAML for readability.
-	type agentView struct {
-		Spec   ledgerv1alpha1.LedgerClusterAgentSpec   `json:"spec"`
-		Status ledgerv1alpha1.LedgerClusterAgentStatus `json:"status"`
+	// Overview section
+	phase := cmdutil.PhaseColor(agentPhaseColor(agent.Status.Phase))
+	keyID := agent.Status.KeyID
+	if keyID == "" {
+		keyID = pterm.Gray("<pending>")
+	}
+	secretRef := pterm.Gray("<none>")
+	if agent.Status.SecretRef.Name != "" {
+		secretRef = fmt.Sprintf("%s/%s", agent.Status.SecretRef.Namespace, agent.Status.SecretRef.Name)
+	}
+	scopes := strings.Join(agent.Spec.Scopes, ", ")
+	if scopes == "" {
+		scopes = pterm.Gray("<none>")
 	}
 
-	b, err := yaml.Marshal(agentView{Spec: agent.Spec, Status: agent.Status})
-	if err != nil {
-		return fmt.Errorf("marshaling agent: %w", err)
+	pterm.DefaultSection.Println("Overview")
+	cmdutil.RenderTable(
+		[]string{"FIELD", "VALUE"},
+		[][]string{
+			{"Name", pterm.Cyan(agent.Name)},
+			{"Phase", phase},
+			{"Key ID", keyID},
+			{"Secret", secretRef},
+			{"Scopes", scopes},
+			{"Matched Services", fmt.Sprintf("%d", len(agent.Status.MatchedServices))},
+			{"Age", cmdutil.FormatAge(time.Since(agent.CreationTimestamp.Time))},
+		},
+	)
+
+	// Matched services section
+	if len(agent.Status.MatchedServices) > 0 {
+		pterm.DefaultSection.Println("Matched Services")
+		svcRows := make([][]string, 0, len(agent.Status.MatchedServices))
+		for i := range agent.Status.MatchedServices {
+			ms := &agent.Status.MatchedServices[i]
+			svcRows = append(svcRows, []string{ms.Namespace, ms.Name})
+		}
+		cmdutil.RenderTable([]string{"NAMESPACE", "NAME"}, svcRows)
 	}
-	fmt.Print(string(b))
+
+	// Conditions section
+	if len(agent.Status.Conditions) > 0 {
+		pterm.DefaultSection.Println("Conditions")
+		condRows := make([][]string, 0, len(agent.Status.Conditions))
+		for i := range agent.Status.Conditions {
+			c := &agent.Status.Conditions[i]
+			condRows = append(condRows, []string{
+				c.Type,
+				string(c.Status),
+				c.Reason,
+				c.Message,
+				cmdutil.FormatAge(time.Since(c.LastTransitionTime.Time)),
+			})
+		}
+		cmdutil.RenderTable([]string{"TYPE", "STATUS", "REASON", "MESSAGE", "AGE"}, condRows)
+	}
+
 	return nil
 }

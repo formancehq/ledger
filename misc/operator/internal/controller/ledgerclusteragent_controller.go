@@ -94,6 +94,15 @@ func (r *LedgerClusterAgentReconciler) Reconcile(ctx context.Context, req ctrl.R
 	})
 	if err != nil {
 		logger.Error(err, "failed to reconcile agent secret")
+		meta.SetStatusCondition(&agent.Status.Conditions, metav1.Condition{
+			Type:               "Ready",
+			Status:             metav1.ConditionFalse,
+			Reason:             "SecretFailed",
+			Message:            err.Error(),
+			ObservedGeneration: agent.Generation,
+		})
+		agent.Status.Phase = "Error"
+		_ = r.Status().Update(ctx, agent) //nolint:errcheck // best-effort status update
 		return ctrl.Result{}, fmt.Errorf("reconciling secret: %w", err)
 	}
 	if result != controllerutil.OperationResultNone {
