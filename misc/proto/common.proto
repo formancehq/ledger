@@ -234,6 +234,9 @@ message LogPayload {
     DeletePeriodScheduleLog delete_period_schedule = 15;
     SetAuditConfigLog set_audit_config = 16;
     PromoteLedgerLog promote_ledger = 17;
+    CreatedPreparedQueryLog created_prepared_query = 18;
+    UpdatedPreparedQueryLog updated_prepared_query = 19;
+    DeletedPreparedQueryLog deleted_prepared_query = 20;
   }
 }
 
@@ -296,6 +299,25 @@ message DeletePeriodScheduleLog {}
 // SetAuditConfigLog records an audit configuration change.
 message SetAuditConfigLog {
   bool enabled = 1;
+}
+
+// CreatedPreparedQueryLog records the creation of a prepared query.
+message CreatedPreparedQueryLog {
+  PreparedQuery query = 1;
+}
+
+// UpdatedPreparedQueryLog records the update of a prepared query filter.
+message UpdatedPreparedQueryLog {
+  string ledger = 1;
+  string name = 2;
+  QueryFilter previous_filter = 3;
+  QueryFilter new_filter = 4;
+}
+
+// DeletedPreparedQueryLog records the deletion of a prepared query.
+message DeletedPreparedQueryLog {
+  string ledger = 1;
+  string name = 2;
 }
 
 // ============================================================================
@@ -632,4 +654,140 @@ message ChartSegment {
 message ChartVariable {
   string name = 1;             // Human-readable name (e.g. "userId", "walletId")
   string inferred_pattern = 2; // Regex pattern inferred from observed values (e.g. UUID regex)
+}
+
+// ============================================================================
+// Prepared Queries — Filter Model
+// ============================================================================
+
+message QueryFilter {
+  oneof filter {
+    FieldCondition field = 1;
+    AddressMatch address = 2;
+    AndFilter and = 3;
+    OrFilter or = 4;
+    NotFilter not = 5;
+  }
+}
+
+message AndFilter {
+  repeated QueryFilter filters = 1;
+}
+
+message OrFilter {
+  repeated QueryFilter filters = 1;
+}
+
+message NotFilter {
+  QueryFilter filter = 1;
+}
+
+// FieldRef identifies the metadata key for a condition.
+// The execution context (QueryTarget) determines whether this refers to
+// account or transaction metadata.
+message FieldRef {
+  string metadata = 1;
+}
+
+// FieldCondition = FieldRef × Condition.
+message FieldCondition {
+  FieldRef field = 1;
+  oneof condition {
+    StringCondition string_cond = 2;
+    IntCondition int_cond = 3;
+    UintCondition uint_cond = 4;
+    BoolCondition bool_cond = 5;
+    ExistsCondition exists_cond = 6;
+  }
+}
+
+message StringCondition {
+  oneof value {
+    string hardcoded = 1;
+    string param = 2;
+  }
+}
+
+message IntCondition {
+  optional int64 min = 1;
+  optional int64 max = 2;
+  bool min_exclusive = 3;
+  bool max_exclusive = 4;
+  string param_min = 5;
+  string param_max = 6;
+}
+
+message UintCondition {
+  optional uint64 min = 1;
+  optional uint64 max = 2;
+  bool min_exclusive = 3;
+  bool max_exclusive = 4;
+  string param_min = 5;
+  string param_max = 6;
+}
+
+message BoolCondition {
+  oneof value {
+    bool hardcoded = 1;
+    string param = 2;
+  }
+}
+
+message ExistsCondition {
+  bool include_null = 1;
+}
+
+enum AddressRole {
+  ADDRESS_ROLE_ANY = 0;
+  ADDRESS_ROLE_SOURCE = 1;
+  ADDRESS_ROLE_DESTINATION = 2;
+}
+
+message AddressMatch {
+  oneof match {
+    string hardcoded_prefix = 1;
+    string hardcoded_exact = 2;
+    string param_prefix = 3;
+    string param_exact = 4;
+  }
+  AddressRole role = 5;
+}
+
+enum QueryTarget {
+  QUERY_TARGET_ACCOUNTS = 0;
+  QUERY_TARGET_TRANSACTIONS = 1;
+}
+
+enum QueryMode {
+  QUERY_MODE_LIST = 0;
+  QUERY_MODE_AGGREGATE_VOLUMES = 1;
+}
+
+// PreparedQuery is a named, parameterized query template stored in the primary store.
+message PreparedQuery {
+  string name = 1;
+  string ledger = 2;
+  QueryFilter filter = 3;
+  QueryTarget target = 4;
+}
+
+// AggregatedVolume represents per-asset aggregated input/output volumes.
+message AggregatedVolume {
+  string asset = 1;
+  Uint256 input = 2;
+  Uint256 output = 3;
+}
+
+message AggregateResult {
+  repeated AggregatedVolume volumes = 1;
+}
+
+// PreparedQueryCursor follows the cursor-based pagination pattern.
+message PreparedQueryCursor {
+  uint32 page_size = 1;
+  bool has_more = 2;
+  string previous = 3;
+  string next = 4;
+  repeated string account_data = 5;
+  repeated uint64 transaction_data = 6;
 }

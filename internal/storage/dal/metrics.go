@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-func NewMetricsListener(m metric.Meter) *pebble.EventListener {
+func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.EventListener {
 	flushTotal, err := m.Int64Counter(
 		"pebble.flush.total",
 		metric.WithDescription("Number of Pebble flush operations"),
@@ -107,6 +107,8 @@ func NewMetricsListener(m metric.Meter) *pebble.EventListener {
 		},
 
 		WriteStallBegin: func(info pebble.WriteStallBeginInfo) {
+			stallState.OnStallBegin()
+
 			attrs := []attribute.KeyValue{
 				attribute.String("reason", info.Reason),
 			}
@@ -126,6 +128,8 @@ func NewMetricsListener(m metric.Meter) *pebble.EventListener {
 		},
 
 		WriteStallEnd: func() {
+			stallState.OnStallEnd()
+
 			mu.Lock()
 			if !stallOn {
 				mu.Unlock()

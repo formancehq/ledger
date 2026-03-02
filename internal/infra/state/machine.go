@@ -114,13 +114,17 @@ type Machine struct {
 	// ledger config changes. Used by the mirror Manager.
 	mirrorNotifier Notifier
 
+	// indexNotifier is notified after new logs are committed.
+	// Used by the index builder to update the read store.
+	indexNotifier Notifier
+
 	// snapshotBuf is a reusable buffer for snapshot serialization to avoid
 	// repeated allocations (snapshots can be large).
 	snapshotBuf []byte
 
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, numscriptCacheSize int) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, numscriptCacheSize int) (*Machine, error) {
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(dataStore)
 	if err != nil {
 		return nil, err
@@ -248,6 +252,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		processor:                   processor,
 		eventNotifier:               eventNotifier,
 		mirrorNotifier:              mirrorNotifier,
+		indexNotifier:               indexNotifier,
 		keyStore:                    ks,
 		sharedState:                 sharedState,
 		Registry:                    NewStateRegistry(cache, attrs),
@@ -495,6 +500,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 
 	// Notify mirror Manager that new logs are available.
 	fsm.mirrorNotifier.NotifyLogsCommitted()
+
+	// Notify index builder that new logs are available.
+	fsm.indexNotifier.NotifyLogsCommitted()
 	if mirrorConfigChanged {
 		fsm.mirrorNotifier.NotifyConfigChanged()
 	}

@@ -1,12 +1,14 @@
 package ctrl
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 
-	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/application/analysis"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
@@ -16,6 +18,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
+	bolt "go.etcd.io/bbolt"
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package ctrl . Admission
@@ -32,6 +36,7 @@ type DefaultController struct {
 	admission Admission
 	store     *dal.Store
 	attrs     *attributes.Attributes
+	readStore *readstore.Store
 }
 
 // NewDefaultController creates a new default controller
@@ -40,12 +45,14 @@ func NewDefaultController(
 	store *dal.Store,
 	logger logging.Logger,
 	attrs *attributes.Attributes,
+	readStore *readstore.Store,
 ) *DefaultController {
 	return &DefaultController{
 		logger:    logger,
 		admission: admission,
 		store:     store,
 		attrs:     attrs,
+		readStore: readStore,
 	}
 }
 
@@ -200,9 +207,10 @@ func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates 
 	return tx, nil
 }
 
-// ListTransactions returns a cursor over transactions for a ledger (newest first).
-// Uses a single reverse iterator over transaction update keys for efficiency.
-func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (dal.Cursor[*commonpb.Transaction], error) {
+// ListTransactions returns a cursor over transactions for a ledger.
+// Default order is newest-first; reverse=true gives oldest-first.
+// Uses the bbolt read index for entity discovery and Pebble for enrichment.
+func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
 	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -211,44 +219,141 @@ func (ctrl *DefaultController) ListTransactions(_ context.Context, ledgerName st
 		return nil, err
 	}
 
-	handle := ctrl.store.NewReadHandle()
-
-	// Build iterator bounds for [keyPrefixTransactionUpdate][ledgerName]\x00...[afterTxID or max]
-	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixTransactionUpdate).
-		PutLedgerName(ledgerInfo.Name)
-	lowerBound := kb.Snapshot()
-
-	if afterTxID > 0 {
-		kb.PutUInt64(afterTxID)
-	} else {
-		kb.PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+	if pageSize == 0 {
+		pageSize = math.MaxUint32
 	}
-	upperBound := kb.Build()
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
+	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.MetadataSchema, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+
+	var entityIDs [][]byte
+	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
+		if reverse {
+			// Oldest-first (ascending txID): compiled iterator is naturally ascending
+			return ctrl.listTransactionsAscending(tx, ledgerInfo.Name, pageSize, afterTxID, filter, schemaFields, &entityIDs)
+		}
+		// Newest-first (descending txID) — default
+		if filter != nil {
+			return ctrl.listTransactionsDescFiltered(tx, ledgerInfo.Name, pageSize, afterTxID, filter, schemaFields, &entityIDs)
+		}
+		return ctrl.listTransactionsDescUnfiltered(tx, ledgerInfo.Name, pageSize, afterTxID, &entityIDs)
 	})
 	if err != nil {
-		_ = handle.Close()
-		return nil, fmt.Errorf("creating iterator for transaction list: %w", err)
+		return nil, fmt.Errorf("listing transactions from index: %w", err)
 	}
 
-	return &transactionCursor{
-		handle:     handle,
-		iter:       iter,
-		pageSize:   pageSize,
-		lastTxID:   ^uint64(0),
-		txIDOffset: 1 + len(ledgerInfo.Name) + 1,
-		schema:     ledgerInfo.MetadataSchema,
-	}, nil
+	// Enrich each transaction ID from Pebble
+	handle := ctrl.store.NewReadHandle()
+	txns := make([]*commonpb.Transaction, 0, len(entityIDs))
+	for _, eid := range entityIDs {
+		txID := binary.BigEndian.Uint64(eid)
+		tx, txErr := buildTransaction(handle, ledgerInfo.Name, txID, ledgerInfo.MetadataSchema)
+		if txErr != nil {
+			_ = handle.Close()
+			return nil, txErr
+		}
+		txns = append(txns, tx)
+	}
+
+	return dal.NewClosingCursor(dal.NewSliceCursor(txns), handle), nil
 }
 
-// ListAccounts returns a cursor over accounts for a ledger (alphabetical order).
-// Uses a single forward iterator over the attribute range to discover accounts
-// and collect metadata in one pass.
-func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (dal.Cursor[*commonpb.Account], error) {
+// listTransactionsAscending returns transactions in oldest-first order.
+// The compiled iterator (filtered or not) is naturally ascending, so we
+// paginate forward directly.
+func (ctrl *DefaultController) listTransactionsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, out *[][]byte) error {
+	kb := readstore.NewKeyBuilder()
+	iter, err := query.Compile(
+		tx, kb, filter,
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		ledgerName, nil, schema,
+	)
+	if err != nil {
+		return fmt.Errorf("compiling transaction filter: %w", err)
+	}
+	defer iter.Close()
+
+	var after []byte
+	if afterTxID > 0 {
+		after = make([]byte, 8)
+		binary.BigEndian.PutUint64(after, afterTxID)
+	}
+	*out, _ = readstore.PaginateForward(iter, pageSize, after)
+	return nil
+}
+
+// listTransactionsDescUnfiltered uses reverse prefix iteration for newest-first ordering.
+func (ctrl *DefaultController) listTransactionsDescUnfiltered(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, out *[][]byte) error {
+	b := tx.Bucket(readstore.BucketExistence)
+	if b == nil {
+		return nil
+	}
+	kb := readstore.NewKeyBuilder()
+	prefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceTransaction)
+	iter := readstore.NewReversePrefixIterator(b.Cursor(), prefix, len(prefix), 8)
+
+	var before []byte
+	if afterTxID > 0 {
+		before = make([]byte, 8)
+		binary.BigEndian.PutUint64(before, afterTxID)
+	}
+	*out, _ = readstore.PaginateReverse(iter, pageSize, before)
+	return nil
+}
+
+// listTransactionsDescFiltered compiles a filter, collects matching IDs, reverses
+// them for newest-first ordering, and applies pagination.
+func (ctrl *DefaultController) listTransactionsDescFiltered(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, out *[][]byte) error {
+	kb := readstore.NewKeyBuilder()
+	iter, err := query.Compile(
+		tx, kb, filter,
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		ledgerName, nil, schema,
+	)
+	if err != nil {
+		return fmt.Errorf("compiling transaction filter: %w", err)
+	}
+	defer iter.Close()
+
+	// Collect all matching IDs (forward sorted, ascending)
+	var all [][]byte
+	for iter.Next() {
+		cp := make([]byte, len(iter.Current()))
+		copy(cp, iter.Current())
+		all = append(all, cp)
+	}
+
+	// Reverse for newest-first ordering
+	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
+		all[i], all[j] = all[j], all[i]
+	}
+
+	// Apply pagination: skip past afterTxID
+	if afterTxID > 0 {
+		afterBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(afterBytes, afterTxID)
+		skip := 0
+		for _, id := range all {
+			if bytes.Compare(id, afterBytes) >= 0 {
+				skip++
+			} else {
+				break
+			}
+		}
+		all = all[skip:]
+	}
+
+	if uint32(len(all)) > pageSize {
+		all = all[:pageSize]
+	}
+
+	*out = all
+	return nil
+}
+
+// ListAccounts returns a cursor over accounts for a ledger.
+// Default order is alphabetical (A→Z); reverse=true gives reverse-alphabetical (Z→A).
+// Uses the bbolt read index for entity discovery and Pebble for enrichment.
+func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
 	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -257,50 +362,123 @@ func (ctrl *DefaultController) ListAccounts(_ context.Context, ledgerName string
 		return nil, err
 	}
 
-	handle := ctrl.store.NewReadHandle()
-
-	// Build lower bound: [0xF1][ledgerName]\x00 optionally followed by [afterAddress]\x02 or [prefix]
-	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixAttributes).PutLedgerName(ledgerInfo.Name)
-	if afterAddress != "" {
-		kb.PutString(afterAddress).PutByte(0x02) // skip past both \x00 (Volume) and \x01 (Metadata)
-	} else if prefix != "" {
-		kb.PutString(prefix)
+	if pageSize == 0 {
+		pageSize = math.MaxUint32
 	}
-	lowerBound := kb.Build()
 
-	// Build upper bound: [0xF1][ledgerName]\x00[IncrementBytes(prefix)] or past ledger range
-	kb.PutByte(dal.KeyPrefixAttributes)
-	if prefix != "" {
-		if incPrefix := attributes.IncrementBytes([]byte(prefix)); incPrefix != nil {
-			kb.PutLedgerName(ledgerInfo.Name).PutBytes(incPrefix)
-		} else {
-			// prefix overflow: go past entire ledger range
-			kb.PutString(ledgerInfo.Name).PutByte(0x01)
+	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.MetadataSchema, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+
+	var addresses [][]byte
+	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
+		if reverse {
+			return ctrl.listAccountsDescending(tx, ledgerInfo.Name, pageSize, afterAddress, filter, schemaFields, &addresses)
 		}
-	} else {
-		// After all entries for this ledger: [0xF1][name]\x01 (any byte > \x00 after name)
-		kb.PutString(ledgerInfo.Name).PutByte(0x01)
-	}
-	upperBound := kb.Build()
-
-	iter, err := handle.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
+		return ctrl.listAccountsAscending(tx, ledgerInfo.Name, pageSize, afterAddress, filter, schemaFields, &addresses)
 	})
 	if err != nil {
-		_ = handle.Close()
-		return nil, fmt.Errorf("creating iterator for account list: %w", err)
+		return nil, fmt.Errorf("listing accounts from index: %w", err)
 	}
 
-	return &accountCursor{
-		handle:   handle,
-		iter:     iter,
-		volAcc:   ctrl.attrs.Volume.NewAccumulator(),
-		metaAcc:  ctrl.attrs.Metadata.NewAccumulator(),
-		schema:   ledgerInfo.MetadataSchema,
-		pageSize: pageSize,
-	}, nil
+	// Enrich each account from Pebble
+	handle := ctrl.store.NewReadHandle()
+	accounts := make([]*commonpb.Account, 0, len(addresses))
+	for _, addr := range addresses {
+		acc, accErr := scanAccount(handle, ctrl.attrs, ledgerInfo.Name, string(addr), ledgerInfo.MetadataSchema)
+		if accErr != nil {
+			_ = handle.Close()
+			return nil, accErr
+		}
+		accounts = append(accounts, acc)
+	}
+
+	return dal.NewClosingCursor(dal.NewSliceCursor(accounts), handle), nil
+}
+
+// listAccountsAscending returns accounts in alphabetical order (A→Z).
+func (ctrl *DefaultController) listAccountsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, out *[][]byte) error {
+	kb := readstore.NewKeyBuilder()
+	iter, err := query.Compile(
+		tx, kb, filter,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		ledgerName, nil, schema,
+	)
+	if err != nil {
+		return fmt.Errorf("compiling account filter: %w", err)
+	}
+	defer iter.Close()
+
+	var after []byte
+	if afterAddress != "" {
+		after = []byte(afterAddress)
+	}
+	*out, _ = readstore.PaginateForward(iter, pageSize, after)
+	return nil
+}
+
+// listAccountsDescending returns accounts in reverse-alphabetical order (Z→A).
+func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, out *[][]byte) error {
+	if filter != nil {
+		// Filtered: collect all ascending, reverse, then paginate manually
+		kb := readstore.NewKeyBuilder()
+		iter, err := query.Compile(
+			tx, kb, filter,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			ledgerName, nil, schema,
+		)
+		if err != nil {
+			return fmt.Errorf("compiling account filter: %w", err)
+		}
+		defer iter.Close()
+
+		var all [][]byte
+		for iter.Next() {
+			cp := make([]byte, len(iter.Current()))
+			copy(cp, iter.Current())
+			all = append(all, cp)
+		}
+
+		// Reverse for Z→A ordering
+		for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
+			all[i], all[j] = all[j], all[i]
+		}
+
+		// Apply pagination: skip past afterAddress
+		if afterAddress != "" {
+			afterBytes := []byte(afterAddress)
+			skip := 0
+			for _, addr := range all {
+				if bytes.Compare(addr, afterBytes) >= 0 {
+					skip++
+				} else {
+					break
+				}
+			}
+			all = all[skip:]
+		}
+
+		if uint32(len(all)) > pageSize {
+			all = all[:pageSize]
+		}
+
+		*out = all
+		return nil
+	}
+
+	// Unfiltered: use ReversePrefixIterator directly on the existence bucket
+	b := tx.Bucket(readstore.BucketExistence)
+	if b == nil {
+		return nil
+	}
+	kb := readstore.NewKeyBuilder()
+	prefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceAccount)
+	iter := readstore.NewReversePrefixIterator(b.Cursor(), prefix, len(prefix), 0)
+
+	var before []byte
+	if afterAddress != "" {
+		before = []byte(afterAddress)
+	}
+	*out, _ = readstore.PaginateReverse(iter, pageSize, before)
+	return nil
 }
 
 func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, address string) (*commonpb.Account, error) {
@@ -377,7 +555,7 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(_ context.Context, ledger
 // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts.
 func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
 	// Reuse ListAccounts with pageSize=0 (no limit) to get all accounts
-	cursor, err := ctrl.ListAccounts(ctx, ledgerName, 0, "", "")
+	cursor, err := ctrl.ListAccounts(ctx, ledgerName, 0, "", nil, false)
 	if err != nil {
 		return nil, err
 	}
@@ -489,6 +667,16 @@ func (ctrl *DefaultController) ListSigningKeys(_ context.Context) (dal.Cursor[*c
 		return nil, err
 	}
 	return dal.NewClosingCursor(cursor, handle), nil
+}
+
+// ListPreparedQueries returns all prepared queries for a ledger.
+func (ctrl *DefaultController) ListPreparedQueries(_ context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
+	return query.ReadPreparedQueries(ctrl.store, ledger)
+}
+
+// ExecutePreparedQuery executes a prepared query against the read index store.
+func (ctrl *DefaultController) ExecutePreparedQuery(_ context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	return query.Execute(ctrl.readStore, ctrl.store, ctrl.attrs.Volume, req)
 }
 
 // Apply applies a list of requests and returns the resulting logs.

@@ -202,6 +202,30 @@ func DeleteSinkConfig(b *dal.Batch, name string) error {
 	return nil
 }
 
+// SavePreparedQuery stores a prepared query in the batch.
+func SavePreparedQuery(b *dal.Batch, pq *commonpb.PreparedQuery) error {
+	b.KeyBuilder.PutByte(dal.KeyPrefixPreparedQuery).
+		PutLedgerName(pq.Ledger).
+		PutString(pq.Name)
+
+	if err := b.SetProto(b.KeyBuilder.Build(), pq); err != nil {
+		return fmt.Errorf("saving prepared query: %w", err)
+	}
+	return nil
+}
+
+// DeletePreparedQuery removes a prepared query from the batch.
+func DeletePreparedQuery(b *dal.Batch, ledger, name string) error {
+	b.KeyBuilder.PutByte(dal.KeyPrefixPreparedQuery).
+		PutLedgerName(ledger).
+		PutString(name)
+
+	if err := b.DeleteKey(b.KeyBuilder.Build()); err != nil {
+		return fmt.Errorf("deleting prepared query: %w", err)
+	}
+	return nil
+}
+
 // SetSinkCursor writes a per-sink events cursor to the batch (Raft-replicated).
 func SetSinkCursor(b *dal.Batch, sinkName string, sequence uint64) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixSinkCursor).

@@ -19,6 +19,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// ErrStoreClosed is returned when a store operation is attempted after the
+// Pebble database has been closed. This prevents panics during shutdown races.
+var ErrStoreClosed = errors.New("store closed")
+
 const (
 	liveDir                 = "live"
 	currentCheckpointFile   = "CURRENT_CHECKPOINT"
@@ -29,22 +33,44 @@ const (
 // Store is a Pebble implementation of dal.Store
 // It stores balances and account metadata
 type Store struct {
-	dbMu              sync.RWMutex // protects db during RestoreCheckpoint
-	db                *pebble.DB
+	dbMu sync.RWMutex  // protects DB lifecycle (RestoreCheckpoint, Close)
+	db   *pebble.DB
 	opts              *pebble.Options
 	logger            logging.Logger
 	dataDir           string
 	currentCheckPoint uint64
 	oldestCheckpoint  uint64
 	maxCheckpoints    int
+	stallState        *WriteStallState
 }
 
-// getDB returns the current pebble.DB, safe for concurrent use with RestoreCheckpoint.
+// getDB returns the current pebble.DB.
+// Callers that create iterators (NewIter, IterateColdKVPairs) must hold
+// dbMu.RLock to prevent RestoreCheckpoint/Close from closing the DB
+// between the read and the iterator creation.
 func (s *Store) getDB() *pebble.DB {
-	s.dbMu.RLock()
-	db := s.db
-	s.dbMu.RUnlock()
-	return db
+	return s.db
+}
+
+// WriteStallWaitCh returns a channel that blocks while Pebble is in a write stall.
+// When not stalled, the channel is already closed (non-blocking).
+// Safe to call on stores opened read-only (returns a pre-closed channel).
+func (s *Store) WriteStallWaitCh() <-chan struct{} {
+	if s.stallState == nil {
+		ch := make(chan struct{})
+		close(ch)
+		return ch
+	}
+	return s.stallState.WaitCh()
+}
+
+// IsWriteStalled returns true if Pebble is currently in a write stall.
+// Safe to call on stores opened read-only (always returns false).
+func (s *Store) IsWriteStalled() bool {
+	if s.stallState == nil {
+		return false
+	}
+	return s.stallState.IsStalled()
 }
 
 // Key prefixes for Pebble storage, organized into three zones:
@@ -83,6 +109,7 @@ var (
 	KeyPrefixSinkStatus           byte = 0xFC // [KeyPrefixSinkStatus][name] -> SinkStatus protobuf
 	KeyPrefixMaintenanceMode      byte = 0xFD // [KeyPrefixMaintenanceMode] -> maintenance mode byte (0x00=false, 0x01=true)
 	KeyPrefixPersistedConfig      byte = 0xFE // [KeyPrefixPersistedConfig] -> PersistedConfig JSON (startup safety checks)
+	KeyPrefixPreparedQuery         byte = 0xE0 // [KeyPrefixPreparedQuery][name\x00][queryName] -> PreparedQuery protobuf
 	KeyPrefixMirrorSourceHead     byte = 0xEB // [KeyPrefixMirrorSourceHead][ledger_name] -> uint64 (latest known v2 source log ID)
 	KeyPrefixMirrorCursor         byte = 0xEC // [KeyPrefixMirrorCursor][ledger_name] -> uint64 (last ingested v2 log ID)
 	KeyPrefixMirrorStatus         byte = 0xED // [KeyPrefixMirrorStatus][ledger_name] -> MirrorSyncError protobuf
@@ -105,8 +132,10 @@ func NewStore(
 	cfg Config,
 ) (*Store, error) {
 
+	stallState := NewWriteStallState()
+
 	opts := &pebble.Options{
-		EventListener: NewMetricsListener(meter),
+		EventListener: NewMetricsListener(meter, stallState),
 		// 1) Absorb more writes before flush => fewer SST files, fewer compactions.
 		MemTableSize:                cfg.MemTableSize,
 		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
@@ -307,14 +336,15 @@ func NewStore(
 	}
 
 	store := &Store{
-		db:                db,
 		opts:              opts,
 		logger:            logger.WithField("cmp", "pebble"),
 		dataDir:           dataDir,
 		currentCheckPoint: currentCheckpoint,
 		oldestCheckpoint:  oldestCheckpoint,
 		maxCheckpoints:    cfg.MaxCheckpoints,
+		stallState:        stallState,
 	}
+	store.db = db
 
 	// Clean up any orphaned backup checkpoints from a previous crash
 	store.cleanupTemporaryCheckpoints()
@@ -377,13 +407,15 @@ func (s *Store) WarmBlockCache() {
 	}).Infof("Block cache warmup complete")
 }
 
-// Close closes the Pebble database
+// Close closes the Pebble database.
 func (s *Store) Close() error {
 	s.dbMu.Lock()
 	defer s.dbMu.Unlock()
 
-	if s.db != nil {
-		if err := s.db.Close(); err != nil {
+	db := s.db
+	if db != nil {
+		s.db = nil
+		if err := db.Close(); err != nil {
 			return fmt.Errorf("closing store: %w", err)
 		}
 	}
@@ -562,7 +594,8 @@ func (s *Store) PrepareCheckpointRestore(checkpointID uint64) (string, error) {
 
 // RestoreCheckpoint restores the database from a checkpoint.
 // This closes the current database, replaces it with the checkpoint, and reopens.
-// Holds dbMu write lock to prevent concurrent reads from seeing a closed DB.
+// Holds dbMu exclusively so concurrent NewIter/IterateColdKVPairs calls block
+// until the new DB is ready, preventing panics on the closed DB.
 func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	s.dbMu.Lock()
 	defer s.dbMu.Unlock()
@@ -574,18 +607,20 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		return fmt.Errorf("checkpoint %d not found: %w", checkpointID, err)
 	}
 
+	oldDB := s.db
+
 	// Preserve this node's persisted config before replacing the database.
 	// The checkpoint originates from the leader and contains the leader's
 	// config (including its node-id). After restore we must re-write this
 	// node's own identity so that startup config validation passes.
 	var preservedConfig []byte
-	if value, closer, err := s.db.Get([]byte{KeyPrefixPersistedConfig}); err == nil {
+	if value, closer, err := oldDB.Get([]byte{KeyPrefixPersistedConfig}); err == nil {
 		preservedConfig = append([]byte(nil), value...)
 		_ = closer.Close()
 	}
 
 	// Close the current database
-	if err := s.db.Close(); err != nil {
+	if err := oldDB.Close(); err != nil {
 		return fmt.Errorf("closing current database: %w", err)
 	}
 
@@ -601,26 +636,27 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	}
 
 	// Reopen the database with the same options
-	db, err := pebble.Open(liveDirectory, s.opts)
+	newDB, err := pebble.Open(liveDirectory, s.opts)
 	if err != nil {
 		return fmt.Errorf("reopening database: %w", err)
 	}
-	s.db = db
+
+	s.db = newDB
 
 	// Re-write this node's persisted config into the restored database.
 	// After writing, flush and recreate the checkpoint so the config survives
 	// the next startup (NewStore re-links live from the checkpoint directory).
 	if preservedConfig != nil {
-		if err := s.db.Set([]byte{KeyPrefixPersistedConfig}, preservedConfig, pebble.Sync); err != nil {
+		if err := newDB.Set([]byte{KeyPrefixPersistedConfig}, preservedConfig, pebble.Sync); err != nil {
 			return fmt.Errorf("re-writing persisted config after checkpoint restore: %w", err)
 		}
-		if err := s.db.Flush(); err != nil {
+		if err := newDB.Flush(); err != nil {
 			return fmt.Errorf("flushing persisted config after checkpoint restore: %w", err)
 		}
 		if err := os.RemoveAll(checkpointDir); err != nil {
 			return fmt.Errorf("removing old checkpoint dir for re-checkpoint: %w", err)
 		}
-		if err := s.db.Checkpoint(checkpointDir); err != nil {
+		if err := newDB.Checkpoint(checkpointDir); err != nil {
 			return fmt.Errorf("re-creating checkpoint with preserved config: %w", err)
 		}
 	}
@@ -659,7 +695,13 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 // Transaction updates are not archived: they are redundant with log entries which already
 // contain all creation, revert, and metadata information.
 func (s *Store) IterateColdKVPairs(startSeq, closeSeq uint64, fn func(key, value []byte) error) error {
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+
 	db := s.getDB()
+	if db == nil {
+		return ErrStoreClosed
+	}
 
 	for _, prefix := range ColdSequencePrefixes {
 		kb := NewKeyBuilder()
@@ -753,7 +795,14 @@ func (c *ProtoCursor[T]) Close() error {
 }
 
 func (s *Store) NewIter(p *pebble.IterOptions) (*pebble.Iterator, error) {
-	return s.getDB().NewIter(p)
+	s.dbMu.RLock()
+	defer s.dbMu.RUnlock()
+
+	db := s.getDB()
+	if db == nil {
+		return nil, ErrStoreClosed
+	}
+	return db.NewIter(p)
 }
 
 func HardLink(srcDir, dstDir string) error {

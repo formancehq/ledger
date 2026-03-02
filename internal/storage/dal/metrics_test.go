@@ -28,7 +28,7 @@ func TestNewMetricsListener(t *testing.T) {
 	t.Parallel()
 
 	meter := noop.NewMeterProvider().Meter("test")
-	listener := NewMetricsListener(meter)
+	listener := NewMetricsListener(meter, NewWriteStallState())
 	require.NotNil(t, listener)
 	require.NotNil(t, listener.FlushEnd)
 	require.NotNil(t, listener.CompactionEnd)
@@ -40,7 +40,7 @@ func TestMetricsListener_Callbacks(t *testing.T) {
 	t.Parallel()
 
 	meter := noop.NewMeterProvider().Meter("test")
-	listener := NewMetricsListener(meter)
+	listener := NewMetricsListener(meter, NewWriteStallState())
 
 	// Exercise FlushEnd callback (should not panic)
 	listener.FlushEnd(pebble.FlushInfo{

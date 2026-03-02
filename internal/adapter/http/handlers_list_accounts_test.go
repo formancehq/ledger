@@ -15,7 +15,7 @@ func TestHandleListAccounts_Success(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ string) (dal.Cursor[*commonpb.Account], error) {
+		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
 			return dal.NewSliceCursor([]*commonpb.Account{
 				{Address: "users:001"},
 				{Address: "users:002"},
@@ -40,7 +40,7 @@ func TestHandleListAccounts_WithPagination(t *testing.T) {
 	var capturedPageSize uint32
 	var capturedAfter string
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, pageSize uint32, afterAddress string, _ string) (dal.Cursor[*commonpb.Account], error) {
+		listAccountsFn: func(_ context.Context, _ string, pageSize uint32, afterAddress string, _ *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
 			capturedPageSize = pageSize
 			capturedAfter = afterAddress
 			return dal.NewSliceCursor[*commonpb.Account](nil), nil

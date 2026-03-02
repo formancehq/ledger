@@ -1,0 +1,97 @@
+package readstore
+
+import "bytes"
+
+// AndIterator implements merge-intersect of N sorted EntityIterators.
+// It produces entities that appear in ALL child iterators.
+type AndIterator struct {
+	children  []EntityIterator
+	current   []byte
+	exhausted bool
+}
+
+// NewAndIterator creates a new AND iterator over the given children.
+// At least two children are required.
+func NewAndIterator(children ...EntityIterator) *AndIterator {
+	return &AndIterator{children: children}
+}
+
+func (it *AndIterator) Next() bool {
+	if it.exhausted || len(it.children) == 0 {
+		return false
+	}
+
+	// Advance first child
+	if !it.children[0].Next() {
+		it.exhausted = true
+		return false
+	}
+
+	return it.converge()
+}
+
+func (it *AndIterator) Current() []byte {
+	return it.current
+}
+
+func (it *AndIterator) SeekGE(target []byte) bool {
+	if it.exhausted || len(it.children) == 0 {
+		return false
+	}
+
+	// Seek all children to target
+	if !it.children[0].SeekGE(target) {
+		it.exhausted = true
+		return false
+	}
+
+	return it.converge()
+}
+
+func (it *AndIterator) Close() {
+	for _, child := range it.children {
+		child.Close()
+	}
+}
+
+// converge finds the next entity that exists in all children.
+// Assumes children[0] is already positioned at a valid entity.
+func (it *AndIterator) converge() bool {
+	candidate := it.children[0].Current()
+
+	for {
+		allMatch := true
+		for i := 1; i < len(it.children); i++ {
+			cmp := bytes.Compare(it.children[i].Current(), candidate)
+
+			if cmp < 0 {
+				// Child is behind — seek forward
+				if !it.children[i].SeekGE(candidate) {
+					it.exhausted = true
+					return false
+				}
+				cmp = bytes.Compare(it.children[i].Current(), candidate)
+			}
+
+			if cmp > 0 {
+				// Child jumped ahead — use its value as the new candidate
+				candidate = it.children[i].Current()
+				allMatch = false
+
+				// Seek the first child to the new candidate
+				if !it.children[0].SeekGE(candidate) {
+					it.exhausted = true
+					return false
+				}
+				candidate = it.children[0].Current()
+				break // restart the inner loop
+			}
+			// cmp == 0: this child matches, continue to next
+		}
+
+		if allMatch {
+			it.current = candidate
+			return true
+		}
+	}
+}

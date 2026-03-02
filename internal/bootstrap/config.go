@@ -34,6 +34,11 @@ type HealthConfig struct {
 	ClockSkewThreshold time.Duration
 }
 
+// ReadIndexConfig holds configuration for the bbolt read index store.
+type ReadIndexConfig struct {
+	Dir string // empty = default (<data-dir>/read-indexes/)
+}
+
 type Config struct {
 	RaftConfig                 node.NodeConfig
 	Debug                      bool
@@ -55,6 +60,7 @@ type Config struct {
 	NumscriptCacheSize         int
 	MirrorMaxBatchSize         int
 	UnsafeSkipConfigValidation bool
+	ReadIndexConfig            ReadIndexConfig
 }
 
 func (c Config) Validate() error {

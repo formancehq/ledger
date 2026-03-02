@@ -40,6 +40,8 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		sinkAlreadyExists            *domain.ErrSinkAlreadyExists
 		sinkNotFound                 *domain.ErrSinkNotFound
 		metadataNotFound             *domain.ErrMetadataNotFound
+		preparedQueryAlreadyExists   *domain.ErrPreparedQueryAlreadyExists
+		preparedQueryNotFound        *domain.ErrPreparedQueryNotFound
 		periodNotFound               *domain.ErrPeriodNotFound
 		periodNotClosing             *domain.ErrPeriodNotClosing
 		invalidReceipt               *domain.ErrInvalidReceipt
@@ -134,6 +136,22 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		code = codes.NotFound
 		reason = domain.ErrReasonSinkNotFound
 		metadata = map[string]string{"name": sinkNotFound.Name}
+
+	case errors.As(inner, &preparedQueryAlreadyExists):
+		code = codes.AlreadyExists
+		reason = domain.ErrReasonPreparedQueryAlreadyExists
+		metadata = map[string]string{
+			"ledger": preparedQueryAlreadyExists.Ledger,
+			"name":   preparedQueryAlreadyExists.Name,
+		}
+
+	case errors.As(inner, &preparedQueryNotFound):
+		code = codes.NotFound
+		reason = domain.ErrReasonPreparedQueryNotFound
+		metadata = map[string]string{
+			"ledger": preparedQueryNotFound.Ledger,
+			"name":   preparedQueryNotFound.Name,
+		}
 
 	case errors.As(inner, &metadataNotFound):
 		code = codes.NotFound

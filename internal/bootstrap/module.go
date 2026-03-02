@@ -36,8 +36,10 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
+	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -143,6 +145,7 @@ func Module() fx.Option {
 				ss *state.SharedState,
 				eventNotifications *signal.Notifications,
 				mirrorNotifications *signal.Notifications,
+				indexNotifications *signal.Notifications,
 			) (*state.Machine, error) {
 				machineStart := time.Now()
 				m, err := state.NewMachine(
@@ -156,6 +159,7 @@ func Module() fx.Option {
 					ss,
 					eventNotifications,
 					mirrorNotifications,
+					indexNotifications,
 					cfg.NumscriptCacheSize,
 				)
 				if err != nil {
@@ -165,7 +169,7 @@ func Module() fx.Option {
 					"duration": time.Since(machineStart).String(),
 				}).Infof("FSM Machine created")
 				return m, nil
-			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`)),
+			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`)),
 			func(
 				params struct {
 					fx.In
@@ -276,8 +280,8 @@ func Module() fx.Option {
 			fx.Annotate(func(cfg Config, logger logging.Logger, keySet oidc.KeySet) (internalauth.AuthConfig, error) {
 				return buildAuthConfig(cfg, logger, keySet)
 			}, fx.ParamTags(``, ``, `optional:"true"`)),
-			func(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig) servicepb.BucketServiceServer {
-				return grpcadp.NewBucketServiceServer(logger, ctrl, s, attrs, ss, signer, respSigner, authCfg)
+			func(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig) servicepb.BucketServiceServer {
+				return grpcadp.NewBucketServiceServer(logger, ctrl, s, rs, attrs, ss, signer, respSigner, authCfg)
 			},
 			func(logger logging.Logger, s *dal.Store) snapshotpb.SnapshotServiceServer {
 				return grpcadp.NewSnapshotServiceServer(logger, s)
@@ -314,12 +318,25 @@ func Module() fx.Option {
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"events"`)),
 			fx.Annotate(events.NewManager, fx.ParamTags(``, ``, ``, `name:"events"`)),
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"mirror"`)),
+			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"index"`)),
 			fx.Annotate(func(store *dal.Store, proposer mirror.Proposer, c *cache.Cache, attrs *attributes.Attributes, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, cfg Config) *mirror.Manager {
 				return mirror.NewManager(store, proposer, c, attrs, logger, notifications, meterProvider, cfg.MirrorMaxBatchSize)
 			}, fx.ParamTags(``, ``, ``, ``, ``, `name:"mirror"`, ``, ``)),
 			// Provide mirror.Proposer from the Raft node
 			func(n *node.Node) mirror.Proposer {
 				return n
+			},
+			// Read index store (bbolt) — always enabled
+			func(cfg Config, logger logging.Logger) (*readstore.Store, error) {
+				dir := cfg.ReadIndexConfig.Dir
+				if dir == "" {
+					dir = filepath.Join(cfg.DataDir, "read-indexes")
+				}
+				return readstore.New(dir, logger)
+			},
+			// Index builder — tails the Raft log to populate the read index
+			func(store *dal.Store, rs *readstore.Store, logger logging.Logger) *indexbuilder.Builder {
+				return indexbuilder.NewBuilder(store, rs, logger)
 			},
 			httpcompat.NewServer,
 			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig) http.Handler {
@@ -484,13 +501,14 @@ func Module() fx.Option {
 				store *dal.Store,
 				logger logging.Logger,
 				attrs *attributes.Attributes,
+				rs *readstore.Store,
 			) ctrl.Controller {
 				return NewRoutedController(
-					ctrl.NewDefaultController(admission, store, logger, attrs),
+					ctrl.NewDefaultController(admission, store, logger, attrs, rs),
 					raftNode,
 					servicePool,
 				)
-			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``)),
 		),
 		fx.Decorate(func(
 			params struct {
@@ -814,6 +832,13 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, converter *state.MetadataConverter) {
 				lc.Append(worker.FxHook(converter))
 			},
+			// Start and stop the index builder.
+			// The builder has its own dedicated Notifications signal to receive
+			// log-committed events from the FSM without competing with other consumers.
+			fx.Annotate(func(lc fx.Lifecycle, builder *indexbuilder.Builder, notifications *signal.Notifications) {
+				builder.SetNotifications(notifications)
+				lc.Append(worker.FxHook(builder))
+			}, fx.ParamTags(``, ``, `name:"index"`)),
 		),
 	)
 }

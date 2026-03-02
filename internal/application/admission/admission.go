@@ -1150,6 +1150,27 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				Ledger: reqType.PromoteLedger.Ledger,
 			},
 		}
+	case *servicepb.Request_CreatePreparedQuery:
+		order.Type = &raftcmdpb.Order_CreatePreparedQuery{
+			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
+				Query: reqType.CreatePreparedQuery.Query,
+			},
+		}
+	case *servicepb.Request_UpdatePreparedQuery:
+		order.Type = &raftcmdpb.Order_UpdatePreparedQuery{
+			UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{
+				Ledger: reqType.UpdatePreparedQuery.Ledger,
+				Name:   reqType.UpdatePreparedQuery.Name,
+				Filter: reqType.UpdatePreparedQuery.Filter,
+			},
+		}
+	case *servicepb.Request_DeletePreparedQuery:
+		order.Type = &raftcmdpb.Order_DeletePreparedQuery{
+			DeletePreparedQuery: &raftcmdpb.DeletePreparedQueryOrder{
+				Ledger: reqType.DeletePreparedQuery.Ledger,
+				Name:   reqType.DeletePreparedQuery.Name,
+			},
+		}
 	case *servicepb.Request_SetMetadataFieldType:
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{

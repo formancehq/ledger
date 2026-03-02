@@ -74,41 +74,48 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		})
 
 		It("Should return correct total accounts", func() {
-			resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
-				Ledger: ledgerName,
-			})
-			Expect(err).To(Succeed())
-			// world + bank:main + bank:fees = 3
-			Expect(resp.TotalAccounts).To(Equal(uint64(3)))
+			// Index builder processes logs asynchronously; poll until indexes are up to date.
+			Eventually(func(g Gomega) {
+				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+				// world + bank:main + bank:fees = 3
+				g.Expect(resp.TotalAccounts).To(Equal(uint64(3)))
+			}).Should(Succeed())
 		})
 
 		It("Should discover patterns", func() {
-			resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
-				Ledger: ledgerName,
-			})
-			Expect(err).To(Succeed())
-			Expect(resp.Patterns).NotTo(BeEmpty())
+			Eventually(func(g Gomega) {
+				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp.Patterns).NotTo(BeEmpty())
+			}).Should(Succeed())
 		})
 
 		It("Should suggest a chart with fixed segments", func() {
-			resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
-				Ledger: ledgerName,
-			})
-			Expect(err).To(Succeed())
-			Expect(resp.SuggestedChart).NotTo(BeNil())
-			Expect(resp.SuggestedChart.Segments).NotTo(BeEmpty())
+			Eventually(func(g Gomega) {
+				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp.SuggestedChart).NotTo(BeNil())
+				g.Expect(resp.SuggestedChart.Segments).NotTo(BeEmpty())
 
-			// Find the "bank" segment in the chart
-			var bankSeg *commonpb.ChartSegment
-			for _, seg := range resp.SuggestedChart.Segments {
-				if seg.FixedValue == "bank" {
-					bankSeg = seg
-					break
+				// Find the "bank" segment in the chart
+				var bankSeg *commonpb.ChartSegment
+				for _, seg := range resp.SuggestedChart.Segments {
+					if seg.FixedValue == "bank" {
+						bankSeg = seg
+						break
+					}
 				}
-			}
-			Expect(bankSeg).NotTo(BeNil(), "expected 'bank' segment in chart")
-			// bank should have children (main, fees)
-			Expect(bankSeg.Children).NotTo(BeEmpty())
+				g.Expect(bankSeg).NotTo(BeNil(), "expected 'bank' segment in chart")
+				// bank should have children (main, fees)
+				g.Expect(bankSeg.Children).NotTo(BeEmpty())
+			}).Should(Succeed())
 		})
 	})
 
@@ -137,49 +144,53 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		})
 
 		It("Should detect variable segments", func() {
-			resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
-				Ledger: ledgerName,
-			})
-			Expect(err).To(Succeed())
-			// 15 user accounts + world = 16
-			Expect(resp.TotalAccounts).To(Equal(uint64(16)))
+			Eventually(func(g Gomega) {
+				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+				// 15 user accounts + world = 16
+				g.Expect(resp.TotalAccounts).To(Equal(uint64(16)))
 
-			// Chart should have a "users" segment with a variable child
-			Expect(resp.SuggestedChart).NotTo(BeNil())
-			var usersSeg *commonpb.ChartSegment
-			for _, seg := range resp.SuggestedChart.Segments {
-				if seg.FixedValue == "users" {
-					usersSeg = seg
-					break
-				}
-			}
-			Expect(usersSeg).NotTo(BeNil(), "expected 'users' segment in chart")
-			Expect(usersSeg.Children).To(HaveLen(1))
-			Expect(usersSeg.Children[0].Variable).NotTo(BeNil(), "expected variable child under 'users'")
-		})
-
-		It("Should include patterns with variable segments", func() {
-			resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
-				Ledger: ledgerName,
-			})
-			Expect(err).To(Succeed())
-
-			// Find the users pattern
-			var usersPattern *servicepb.AccountPattern
-			for _, p := range resp.Patterns {
-				for _, s := range p.Segments {
-					if s.Type == servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
-						usersPattern = p
+				// Chart should have a "users" segment with a variable child
+				g.Expect(resp.SuggestedChart).NotTo(BeNil())
+				var usersSeg *commonpb.ChartSegment
+				for _, seg := range resp.SuggestedChart.Segments {
+					if seg.FixedValue == "users" {
+						usersSeg = seg
 						break
 					}
 				}
-				if usersPattern != nil {
-					break
+				g.Expect(usersSeg).NotTo(BeNil(), "expected 'users' segment in chart")
+				g.Expect(usersSeg.Children).To(HaveLen(1))
+				g.Expect(usersSeg.Children[0].Variable).NotTo(BeNil(), "expected variable child under 'users'")
+			}).Should(Succeed())
+		})
+
+		It("Should include patterns with variable segments", func() {
+			Eventually(func(g Gomega) {
+				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+
+				// Find the users pattern
+				var usersPattern *servicepb.AccountPattern
+				for _, p := range resp.Patterns {
+					for _, s := range p.Segments {
+						if s.Type == servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
+							usersPattern = p
+							break
+						}
+					}
+					if usersPattern != nil {
+						break
+					}
 				}
-			}
-			Expect(usersPattern).NotTo(BeNil(), "expected a pattern with variable segments")
-			Expect(usersPattern.AccountCount).To(Equal(uint64(15)))
-			Expect(usersPattern.Assets).To(ContainElement("USD"))
+				g.Expect(usersPattern).NotTo(BeNil(), "expected a pattern with variable segments")
+				g.Expect(usersPattern.AccountCount).To(Equal(uint64(15)))
+				g.Expect(usersPattern.Assets).To(ContainElement("USD"))
+			}).Should(Succeed())
 		})
 	})
 
@@ -206,47 +217,51 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		})
 
 		It("Should treat children as fixed with default threshold", func() {
-			resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
-				Ledger:            ledgerName,
-				VariableThreshold: 0, // default = 10
-			})
-			Expect(err).To(Succeed())
+			Eventually(func(g Gomega) {
+				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+					Ledger:            ledgerName,
+					VariableThreshold: 0, // default = 10
+				})
+				g.Expect(err).To(Succeed())
 
-			// 5 children < 10 threshold, so they should be fixed
-			Expect(resp.SuggestedChart).NotTo(BeNil())
-			var deptSeg *commonpb.ChartSegment
-			for _, seg := range resp.SuggestedChart.Segments {
-				if seg.FixedValue == "dept" {
-					deptSeg = seg
-					break
+				// 5 children < 10 threshold, so they should be fixed
+				g.Expect(resp.SuggestedChart).NotTo(BeNil())
+				var deptSeg *commonpb.ChartSegment
+				for _, seg := range resp.SuggestedChart.Segments {
+					if seg.FixedValue == "dept" {
+						deptSeg = seg
+						break
+					}
 				}
-			}
-			Expect(deptSeg).NotTo(BeNil())
-			// All children should be fixed (no variable)
-			for _, child := range deptSeg.Children {
-				Expect(child.Variable).To(BeNil(), "expected fixed children with default threshold")
-			}
+				g.Expect(deptSeg).NotTo(BeNil())
+				// All children should be fixed (no variable)
+				for _, child := range deptSeg.Children {
+					g.Expect(child.Variable).To(BeNil(), "expected fixed children with default threshold")
+				}
+			}).Should(Succeed())
 		})
 
 		It("Should treat children as variable with low threshold", func() {
-			resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
-				Ledger:            ledgerName,
-				VariableThreshold: 3, // 5 children > 3 threshold → variable
-			})
-			Expect(err).To(Succeed())
+			Eventually(func(g Gomega) {
+				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+					Ledger:            ledgerName,
+					VariableThreshold: 3, // 5 children > 3 threshold → variable
+				})
+				g.Expect(err).To(Succeed())
 
-			Expect(resp.SuggestedChart).NotTo(BeNil())
-			var deptSeg *commonpb.ChartSegment
-			for _, seg := range resp.SuggestedChart.Segments {
-				if seg.FixedValue == "dept" {
-					deptSeg = seg
-					break
+				g.Expect(resp.SuggestedChart).NotTo(BeNil())
+				var deptSeg *commonpb.ChartSegment
+				for _, seg := range resp.SuggestedChart.Segments {
+					if seg.FixedValue == "dept" {
+						deptSeg = seg
+						break
+					}
 				}
-			}
-			Expect(deptSeg).NotTo(BeNil())
-			// With threshold=3, 5 children should be classified as variable
-			Expect(deptSeg.Children).To(HaveLen(1))
-			Expect(deptSeg.Children[0].Variable).NotTo(BeNil(), "expected variable child with low threshold")
+				g.Expect(deptSeg).NotTo(BeNil())
+				// With threshold=3, 5 children should be classified as variable
+				g.Expect(deptSeg.Children).To(HaveLen(1))
+				g.Expect(deptSeg.Children[0].Variable).NotTo(BeNil(), "expected variable child with low threshold")
+			}).Should(Succeed())
 		})
 	})
 
@@ -294,36 +309,40 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		})
 
 		It("Should include metadata keys in patterns", func() {
-			resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
-				Ledger: ledgerName,
-			})
-			Expect(err).To(Succeed())
+			Eventually(func(g Gomega) {
+				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
 
-			// Collect all metadata keys across all patterns
-			allMetadataKeys := make(map[string]bool)
-			for _, p := range resp.Patterns {
-				for _, k := range p.MetadataKeys {
-					allMetadataKeys[k] = true
+				// Collect all metadata keys across all patterns
+				allMetadataKeys := make(map[string]bool)
+				for _, p := range resp.Patterns {
+					for _, k := range p.MetadataKeys {
+						allMetadataKeys[k] = true
+					}
 				}
-			}
-			Expect(allMetadataKeys).To(HaveKey("role"))
+				g.Expect(allMetadataKeys).To(HaveKey("role"))
+			}).Should(Succeed())
 		})
 
 		It("Should include multiple assets in patterns", func() {
-			resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
-				Ledger: ledgerName,
-			})
-			Expect(err).To(Succeed())
+			Eventually(func(g Gomega) {
+				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
 
-			// Collect all assets across all patterns
-			allAssets := make(map[string]bool)
-			for _, p := range resp.Patterns {
-				for _, a := range p.Assets {
-					allAssets[a] = true
+				// Collect all assets across all patterns
+				allAssets := make(map[string]bool)
+				for _, p := range resp.Patterns {
+					for _, a := range p.Assets {
+						allAssets[a] = true
+					}
 				}
-			}
-			Expect(allAssets).To(HaveKey("USD"))
-			Expect(allAssets).To(HaveKey("EUR"))
+				g.Expect(allAssets).To(HaveKey("USD"))
+				g.Expect(allAssets).To(HaveKey("EUR"))
+			}).Should(Succeed())
 		})
 	})
 
@@ -370,50 +389,56 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		})
 
 		It("Should return the correct total accounts", func() {
-			resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
-				Ledger: ledgerName,
-			})
-			Expect(err).To(Succeed())
-			// world + bank:main + bank:fees + 12*2 user accounts = 27
-			Expect(resp.TotalAccounts).To(Equal(uint64(27)))
+			Eventually(func(g Gomega) {
+				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+				// world + bank:main + bank:fees + 12*2 user accounts = 27
+				g.Expect(resp.TotalAccounts).To(Equal(uint64(27)))
+			}).Should(Succeed())
 		})
 
 		It("Should produce a chart with both fixed and variable segments", func() {
-			resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
-				Ledger: ledgerName,
-			})
-			Expect(err).To(Succeed())
-			Expect(resp.SuggestedChart).NotTo(BeNil())
+			Eventually(func(g Gomega) {
+				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp.SuggestedChart).NotTo(BeNil())
 
-			// Should have at least "bank", "users", and "world" top-level segments
-			segNames := make(map[string]bool)
-			for _, seg := range resp.SuggestedChart.Segments {
-				segNames[seg.FixedValue] = true
-			}
-			Expect(segNames).To(HaveKey("bank"))
-			Expect(segNames).To(HaveKey("users"))
-			Expect(segNames).To(HaveKey("world"))
+				// Should have at least "bank", "users", and "world" top-level segments
+				segNames := make(map[string]bool)
+				for _, seg := range resp.SuggestedChart.Segments {
+					segNames[seg.FixedValue] = true
+				}
+				g.Expect(segNames).To(HaveKey("bank"))
+				g.Expect(segNames).To(HaveKey("users"))
+				g.Expect(segNames).To(HaveKey("world"))
+			}).Should(Succeed())
 		})
 
 		It("Should detect variable user IDs under users segment", func() {
-			resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
-				Ledger: ledgerName,
-			})
-			Expect(err).To(Succeed())
+			Eventually(func(g Gomega) {
+				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
 
-			var usersSeg *commonpb.ChartSegment
-			for _, seg := range resp.SuggestedChart.Segments {
-				if seg.FixedValue == "users" {
-					usersSeg = seg
-					break
+				var usersSeg *commonpb.ChartSegment
+				for _, seg := range resp.SuggestedChart.Segments {
+					if seg.FixedValue == "users" {
+						usersSeg = seg
+						break
+					}
 				}
-			}
-			Expect(usersSeg).NotTo(BeNil())
-			// users should have exactly one variable child (the user ID)
-			Expect(usersSeg.Children).To(HaveLen(1))
-			Expect(usersSeg.Children[0].Variable).NotTo(BeNil())
-			// Under the variable user ID, there should be fixed children: main, savings
-			Expect(usersSeg.Children[0].Children).NotTo(BeEmpty())
+				g.Expect(usersSeg).NotTo(BeNil())
+				// users should have exactly one variable child (the user ID)
+				g.Expect(usersSeg.Children).To(HaveLen(1))
+				g.Expect(usersSeg.Children[0].Variable).NotTo(BeNil())
+				// Under the variable user ID, there should be fixed children: main, savings
+				g.Expect(usersSeg.Children[0].Children).NotTo(BeEmpty())
+			}).Should(Succeed())
 		})
 	})
 })

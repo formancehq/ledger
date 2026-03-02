@@ -94,6 +94,19 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Put("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleSetMetadataType)
 				r.Delete("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleRemoveMetadataType)
 			})
+
+			// Prepared queries (read)
+			r.With(requireRead).Group(func(r chi.Router) {
+				r.Get("/{ledgerName}/prepared-queries", server.handleListPreparedQueries)
+				r.Post("/{ledgerName}/prepared-queries/{queryName}/execute", server.handleExecutePreparedQuery)
+			})
+
+			// Prepared queries (write)
+			r.With(requireWrite).Group(func(r chi.Router) {
+				r.Post("/{ledgerName}/prepared-queries", server.handleCreatePreparedQuery)
+				r.Put("/{ledgerName}/prepared-queries/{queryName}", server.handleUpdatePreparedQuery)
+				r.Delete("/{ledgerName}/prepared-queries/{queryName}", server.handleDeletePreparedQuery)
+			})
 		})
 	}
 

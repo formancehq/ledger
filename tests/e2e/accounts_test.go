@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"math/big"
+	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -15,13 +16,24 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// prefixFilter builds a QueryFilter for an address prefix match.
+func prefixFilter(prefix string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Address{
+			Address: &commonpb.AddressMatch{
+				Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
+			},
+		},
+	}
+}
+
 // listAllAccounts collects all accounts from the streaming RPC into a slice
-func listAllAccounts(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterAddress string, prefix string) ([]*commonpb.Account, error) {
+func listAllAccounts(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter) ([]*commonpb.Account, error) {
 	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
 		Ledger:       ledgerName,
 		PageSize:     pageSize,
 		AfterAddress: afterAddress,
-		Prefix:       prefix,
+		Filter:       filter,
 	})
 	if err != nil {
 		return nil, err
@@ -85,14 +97,18 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should list all accounts", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
-			Expect(err).To(Succeed())
-			// world + alice + bob + charlie = 4 accounts
-			Expect(accounts).To(HaveLen(4))
+			// The bbolt read index is populated asynchronously by the index builder,
+			// so we need to wait for it to catch up after writing data.
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
+				g.Expect(err).To(Succeed())
+				// world + alice + bob + charlie = 4 accounts
+				g.Expect(accounts).To(HaveLen(4))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should return accounts in alphabetical order", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(4))
 
@@ -104,7 +120,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should respect page size limit", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 2, "", "")
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 2, "", nil)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(2))
 
@@ -115,12 +131,12 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should paginate with afterAddress", func() {
 			// First page: 2 accounts
-			firstPage, err := listAllAccounts(ctx, client, ledgerName, 2, "", "")
+			firstPage, err := listAllAccounts(ctx, client, ledgerName, 2, "", nil)
 			Expect(err).To(Succeed())
 			Expect(firstPage).To(HaveLen(2))
 
 			// Second page: after the last account from first page
-			secondPage, err := listAllAccounts(ctx, client, ledgerName, 2, firstPage[1].Address, "")
+			secondPage, err := listAllAccounts(ctx, client, ledgerName, 2, firstPage[1].Address, nil)
 			Expect(err).To(Succeed())
 			Expect(secondPage).To(HaveLen(2))
 
@@ -132,7 +148,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			}
 
 			// Third page: should be empty
-			thirdPage, err := listAllAccounts(ctx, client, ledgerName, 2, secondPage[1].Address, "")
+			thirdPage, err := listAllAccounts(ctx, client, ledgerName, 2, secondPage[1].Address, nil)
 			Expect(err).To(Succeed())
 			Expect(thirdPage).To(BeEmpty())
 		})
@@ -144,13 +160,13 @@ var _ = Describe("Accounts", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			accounts, err := listAllAccounts(ctx, client, emptyLedgerName, 0, "", "")
+			accounts, err := listAllAccounts(ctx, client, emptyLedgerName, 0, "", nil)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(BeEmpty())
 		})
 
 		It("Should return error for non-existent ledger", func() {
-			_, err := listAllAccounts(ctx, client, "non-existent-ledger", 0, "", "")
+			_, err := listAllAccounts(ctx, client, "non-existent-ledger", 0, "", nil)
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -170,7 +186,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
 			Expect(err).To(Succeed())
 
 			// Find alice in the list
@@ -218,15 +234,19 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should filter accounts by prefix", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "users:")
-			Expect(err).To(Succeed())
-			Expect(accounts).To(HaveLen(2))
-			Expect(accounts[0].Address).To(Equal("users:alice"))
-			Expect(accounts[1].Address).To(Equal("users:bob"))
+			// The bbolt read index is populated asynchronously by the index builder,
+			// so we need to wait for it to catch up after writing data.
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", prefixFilter("users:"))
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(2))
+				g.Expect(accounts[0].Address).To(Equal("users:alice"))
+				g.Expect(accounts[1].Address).To(Equal("users:bob"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should filter merchants by prefix", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "merchants:")
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", prefixFilter("merchants:"))
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(2))
 			Expect(accounts[0].Address).To(Equal("merchants:shop1"))
@@ -234,26 +254,26 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should return empty list for non-matching prefix", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "nonexistent:")
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", prefixFilter("nonexistent:"))
 			Expect(err).To(Succeed())
 			Expect(accounts).To(BeEmpty())
 		})
 
 		It("Should combine prefix filter with pagination", func() {
 			// Get first page of users
-			firstPage, err := listAllAccounts(ctx, client, ledgerName, 1, "", "users:")
+			firstPage, err := listAllAccounts(ctx, client, ledgerName, 1, "", prefixFilter("users:"))
 			Expect(err).To(Succeed())
 			Expect(firstPage).To(HaveLen(1))
 			Expect(firstPage[0].Address).To(Equal("users:alice"))
 
 			// Get second page of users
-			secondPage, err := listAllAccounts(ctx, client, ledgerName, 1, firstPage[0].Address, "users:")
+			secondPage, err := listAllAccounts(ctx, client, ledgerName, 1, firstPage[0].Address, prefixFilter("users:"))
 			Expect(err).To(Succeed())
 			Expect(secondPage).To(HaveLen(1))
 			Expect(secondPage[0].Address).To(Equal("users:bob"))
 
 			// Third page should be empty
-			thirdPage, err := listAllAccounts(ctx, client, ledgerName, 1, secondPage[0].Address, "users:")
+			thirdPage, err := listAllAccounts(ctx, client, ledgerName, 1, secondPage[0].Address, prefixFilter("users:"))
 			Expect(err).To(Succeed())
 			Expect(thirdPage).To(BeEmpty())
 		})
@@ -290,27 +310,31 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should include source-only accounts (accounts with only outputs)", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
-			Expect(err).To(Succeed())
+			// The bbolt read index is populated asynchronously by the index builder,
+			// so we need to wait for it to catch up after writing data.
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
+				g.Expect(err).To(Succeed())
 
-			// Collect all addresses
-			addresses := make(map[string]bool)
-			for _, a := range accounts {
-				addresses[a.Address] = true
-			}
+				// Collect all addresses
+				addresses := make(map[string]bool)
+				for _, a := range accounts {
+					addresses[a.Address] = true
+				}
 
-			// unfunded-source has only Output (was source in force transaction)
-			Expect(addresses).To(HaveKey("unfunded-source"))
-			// destination-only has only Input
-			Expect(addresses).To(HaveKey("destination-only"))
-			// normal-account has Input
-			Expect(addresses).To(HaveKey("normal-account"))
-			// world has Output
-			Expect(addresses).To(HaveKey("world"))
+				// unfunded-source has only Output (was source in force transaction)
+				g.Expect(addresses).To(HaveKey("unfunded-source"))
+				// destination-only has only Input
+				g.Expect(addresses).To(HaveKey("destination-only"))
+				// normal-account has Input
+				g.Expect(addresses).To(HaveKey("normal-account"))
+				// world has Output
+				g.Expect(addresses).To(HaveKey("world"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should list all accounts in alphabetical order", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
 			Expect(err).To(Succeed())
 
 			// Alphabetical: destination-only, normal-account, unfunded-source, world
@@ -345,18 +369,22 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should not duplicate accounts with multiple assets", func() {
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
-			Expect(err).To(Succeed())
+			// The bbolt read index is populated asynchronously by the index builder,
+			// so we need to wait for it to catch up after writing data.
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
+				g.Expect(err).To(Succeed())
 
-			// Should have exactly 2 accounts: multi-asset and world
-			Expect(accounts).To(HaveLen(2))
+				// Should have exactly 2 accounts: multi-asset and world
+				g.Expect(accounts).To(HaveLen(2))
 
-			addresses := make(map[string]int)
-			for _, a := range accounts {
-				addresses[a.Address]++
-			}
-			Expect(addresses["multi-asset"]).To(Equal(1))
-			Expect(addresses["world"]).To(Equal(1))
+				addresses := make(map[string]int)
+				for _, a := range accounts {
+					addresses[a.Address]++
+				}
+				g.Expect(addresses["multi-asset"]).To(Equal(1))
+				g.Expect(addresses["world"]).To(Equal(1))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 
@@ -381,9 +409,12 @@ var _ = Describe("Accounts", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", "")
-			Expect(err).To(Succeed())
-			Expect(accounts).To(HaveLen(2)) // world + account-1
+			// Wait for the async index builder to catch up
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(2)) // world + account-1
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// Second batch
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
@@ -398,9 +429,225 @@ var _ = Describe("Accounts", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			accounts, err = listAllAccounts(ctx, client, ledgerName, 0, "", "")
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(4)) // world + account-1 + account-2 + account-3
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+	})
+
+	Context("When listing accounts with metadata range filter", Ordered, func() {
+		var ledgerName = "accounts-range-filter-ledger"
+
+		BeforeAll(func() {
+			// Create ledger with int64 schema for "age"
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "age",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+					}),
+				},
+			})
 			Expect(err).To(Succeed())
-			Expect(accounts).To(HaveLen(4)) // world + account-1 + account-2 + account-3
+
+			// Create accounts with transactions and set typed int metadata
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "alice", big.NewInt(100), "USD"),
+					}, nil, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "bob", big.NewInt(200), "USD"),
+					}, nil, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "charlie", big.NewInt(300), "USD"),
+					}, nil, nil),
+					createTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "dave", big.NewInt(400), "USD"),
+					}, nil, nil),
+					// alice=20, bob=35, charlie=50, dave=65
+					saveAccountMetadataAction(ledgerName, "alice", map[string]string{"age": "20"}),
+					saveAccountMetadataAction(ledgerName, "bob", map[string]string{"age": "35"}),
+					saveAccountMetadataAction(ledgerName, "charlie", map[string]string{"age": "50"}),
+					saveAccountMetadataAction(ledgerName, "dave", map[string]string{"age": "65"}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Wait for index builder to catch up (5 accounts: world + 4 users)
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(5))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should filter accounts with > (greater than)", func() {
+			// age > 35 should match charlie(50), dave(65)
+			val := int64(35)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Min:          &val,
+								MinExclusive: true,
+							},
+						},
+					},
+				},
+			}
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(2))
+				addresses := []string{accounts[0].Address, accounts[1].Address}
+				g.Expect(addresses).To(ContainElements("charlie", "dave"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should filter accounts with >= (greater than or equal)", func() {
+			// age >= 35 should match bob(35), charlie(50), dave(65)
+			val := int64(35)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Min: &val,
+							},
+						},
+					},
+				},
+			}
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(HaveLen(3))
+			addresses := make([]string, len(accounts))
+			for i, a := range accounts {
+				addresses[i] = a.Address
+			}
+			Expect(addresses).To(ContainElements("bob", "charlie", "dave"))
+		})
+
+		It("Should filter accounts with < (less than)", func() {
+			// age < 50 should match alice(20), bob(35)
+			val := int64(50)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Max:          &val,
+								MaxExclusive: true,
+							},
+						},
+					},
+				},
+			}
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(HaveLen(2))
+			addresses := []string{accounts[0].Address, accounts[1].Address}
+			Expect(addresses).To(ContainElements("alice", "bob"))
+		})
+
+		It("Should filter accounts with <= (less than or equal)", func() {
+			// age <= 50 should match alice(20), bob(35), charlie(50)
+			val := int64(50)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Max: &val,
+							},
+						},
+					},
+				},
+			}
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(HaveLen(3))
+			addresses := make([]string, len(accounts))
+			for i, a := range accounts {
+				addresses[i] = a.Address
+			}
+			Expect(addresses).To(ContainElements("alice", "bob", "charlie"))
+		})
+
+		It("Should filter accounts with combined range (>= AND <)", func() {
+			// age >= 30 AND age < 60 should match bob(35), charlie(50)
+			minVal := int64(30)
+			maxVal := int64(60)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_And{
+					And: &commonpb.AndFilter{
+						Filters: []*commonpb.QueryFilter{
+							{
+								Filter: &commonpb.QueryFilter_Field{
+									Field: &commonpb.FieldCondition{
+										Field: &commonpb.FieldRef{Metadata: "age"},
+										Condition: &commonpb.FieldCondition_IntCond{
+											IntCond: &commonpb.IntCondition{
+												Min: &minVal,
+											},
+										},
+									},
+								},
+							},
+							{
+								Filter: &commonpb.QueryFilter_Field{
+									Field: &commonpb.FieldCondition{
+										Field: &commonpb.FieldRef{Metadata: "age"},
+										Condition: &commonpb.FieldCondition_IntCond{
+											IntCond: &commonpb.IntCondition{
+												Max:          &maxVal,
+												MaxExclusive: true,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(HaveLen(2))
+			addresses := []string{accounts[0].Address, accounts[1].Address}
+			Expect(addresses).To(ContainElements("bob", "charlie"))
+		})
+
+		It("Should return empty list when no accounts match the range", func() {
+			// age > 100 should match nobody
+			val := int64(100)
+			filter := &commonpb.QueryFilter{
+				Filter: &commonpb.QueryFilter_Field{
+					Field: &commonpb.FieldCondition{
+						Field: &commonpb.FieldRef{Metadata: "age"},
+						Condition: &commonpb.FieldCondition_IntCond{
+							IntCond: &commonpb.IntCondition{
+								Min:          &val,
+								MinExclusive: true,
+							},
+						},
+					},
+				},
+			}
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(BeEmpty())
 		})
 	})
 
@@ -445,31 +692,35 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should only return accounts from the requested ledger", func() {
-			accountsA, err := listAllAccounts(ctx, client, ledgerA, 0, "", "")
-			Expect(err).To(Succeed())
-			Expect(accountsA).To(HaveLen(3)) // world + alice + bob
+			// The bbolt read index is populated asynchronously by the index builder,
+			// so we need to wait for it to catch up after writing data.
+			Eventually(func(g Gomega) {
+				accountsA, err := listAllAccounts(ctx, client, ledgerA, 0, "", nil)
+				g.Expect(err).To(Succeed())
+				g.Expect(accountsA).To(HaveLen(3)) // world + alice + bob
 
-			addressesA := make(map[string]bool)
-			for _, a := range accountsA {
-				addressesA[a.Address] = true
-			}
-			Expect(addressesA).To(HaveKey("world"))
-			Expect(addressesA).To(HaveKey("alice"))
-			Expect(addressesA).To(HaveKey("bob"))
-			Expect(addressesA).NotTo(HaveKey("charlie"))
+				addressesA := make(map[string]bool)
+				for _, a := range accountsA {
+					addressesA[a.Address] = true
+				}
+				g.Expect(addressesA).To(HaveKey("world"))
+				g.Expect(addressesA).To(HaveKey("alice"))
+				g.Expect(addressesA).To(HaveKey("bob"))
+				g.Expect(addressesA).NotTo(HaveKey("charlie"))
 
-			accountsB, err := listAllAccounts(ctx, client, ledgerB, 0, "", "")
-			Expect(err).To(Succeed())
-			Expect(accountsB).To(HaveLen(2)) // world + charlie
+				accountsB, err := listAllAccounts(ctx, client, ledgerB, 0, "", nil)
+				g.Expect(err).To(Succeed())
+				g.Expect(accountsB).To(HaveLen(2)) // world + charlie
 
-			addressesB := make(map[string]bool)
-			for _, a := range accountsB {
-				addressesB[a.Address] = true
-			}
-			Expect(addressesB).To(HaveKey("world"))
-			Expect(addressesB).To(HaveKey("charlie"))
-			Expect(addressesB).NotTo(HaveKey("alice"))
-			Expect(addressesB).NotTo(HaveKey("bob"))
+				addressesB := make(map[string]bool)
+				for _, a := range accountsB {
+					addressesB[a.Address] = true
+				}
+				g.Expect(addressesB).To(HaveKey("world"))
+				g.Expect(addressesB).To(HaveKey("charlie"))
+				g.Expect(addressesB).NotTo(HaveKey("alice"))
+				g.Expect(addressesB).NotTo(HaveKey("bob"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 })

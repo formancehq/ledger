@@ -156,6 +156,9 @@ func NewRunCommand() *cobra.Command {
 	// Configuration safety
 	runCmd.Flags().Bool("unsafe-skip-config-validation", false, "Skip startup configuration safety checks (DANGEROUS: allows node-id/cluster-id changes)")
 
+	// Read index configuration
+	runCmd.Flags().String("read-index-dir", "", "Directory for the read index bbolt database (default: <data-dir>/read-indexes/)")
+
 	return runCmd
 }
 
@@ -427,6 +430,11 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 
 	// Configuration safety
 	cfg.UnsafeSkipConfigValidation = getBool("unsafe-skip-config-validation", false)
+
+	// Read index configuration
+	cfg.ReadIndexConfig = bootstrap.ReadIndexConfig{
+		Dir: getString("read-index-dir", ""),
+	}
 
 	// Join mode: discover peers from an existing cluster member
 	joinAddr := getString("join", "")

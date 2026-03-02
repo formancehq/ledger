@@ -15,7 +15,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |
-| List transactions | ✅ | ✅ | gRPC stream with pagination |
+| List transactions | ✅ | ✅ | gRPC stream with pagination; supports `source`/`destination` address filtering |
 | **Metadata** |
 | Save account metadata | ✅ | ✅ | |
 | Delete account metadata | ✅ | ✅ | |
@@ -37,7 +37,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | List ledgers | ✅ | ✅ | |
 | **Accounts (Read)** |
 | Get account | ✅ | ✅ | Includes volumes per asset |
-| List accounts | ✅ | ✅ | Supports prefix filter and cursor pagination |
+| List accounts | ✅ | ✅ | Supports rich boolean filter (metadata equality/range/existence, address) with schema validation and cursor pagination |
 | Get account balances | ⚠️ | ✅ | Included in account volumes |
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |
@@ -65,6 +65,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
 | Store backup | ✅ | ❌ | Point-in-time Pebble backup as tar archive |
+| Index status | ✅ | ❌ | Read index builder progress (lag, file size) |
 | **Periods** |
 | Close period | ✅ | ❌ | Two-step close: ClosePeriod → SealPeriod |
 | Seal period (background) | ✅ | ❌ | Background sealer computes BLAKE3 sealing hash |
@@ -74,6 +75,13 @@ This document compares the POC's API with the original Formance ledger API and d
 | Period crash recovery | ✅ | ❌ | Automatic recovery for both crash windows |
 | Archive period | ✅ | ❌ | Two-step archive: ArchivePeriod → ConfirmArchivePeriod with cold storage export |
 | Store restore | ✅ | ❌ | Upload backup, validate, preview, finalize (--restore mode) |
+| **Prepared Queries** |
+| Create prepared query | ✅ | ❌ | Reusable parameterized filter queries |
+| Update prepared query | ✅ | ❌ | |
+| Delete prepared query | ✅ | ❌ | |
+| List prepared queries | ✅ | ❌ | |
+| Execute prepared query (list) | ✅ | ❌ | Returns matching entities with cursor pagination; validates filters against metadata schema |
+| Execute prepared query (aggregate) | ✅ | ❌ | Returns aggregated volumes per asset; validates filters against metadata schema |
 | **Volumes (responses)** |
 | postCommitVolumes | ✅ | ✅ | Opt-in via `expandVolumes` in request body |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |
@@ -424,7 +432,7 @@ Read endpoints comparison with the original ledger:
 |----------|-----|----------|-------|
 | `GET /{ledgerName}/transactions/{id}` | ✅ | ✅ | Get a transaction by ID |
 | `GET /{ledgerName}/transactions` | ✅ | ✅ | List transactions (gRPC stream) |
-| `GET /{ledgerName}/accounts` | ✅ | ✅ | List accounts (prefix filter, cursor pagination) |
+| `GET /{ledgerName}/accounts` | ✅ | ✅ | List accounts (rich boolean filter, cursor pagination) |
 | `GET /{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
 | `GET /{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
 | `GET /{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
@@ -438,6 +446,11 @@ Read endpoints comparison with the original ledger:
 | `GET /{ledgerName}/analyze-accounts` | ✅ | ❌ | Analyze accounts and suggest Chart of Accounts |
 | `PUT /{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Set metadata field type |
 | `DELETE /{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Remove metadata field type |
+| `POST /{ledgerName}/prepared-queries` | ✅ | ❌ | Create a prepared query |
+| `PUT /{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Update a prepared query |
+| `DELETE /{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Delete a prepared query |
+| `GET /{ledgerName}/prepared-queries` | ✅ | ❌ | List prepared queries |
+| `POST /{ledgerName}/prepared-queries/{queryName}/execute` | ✅ | ❌ | Execute a prepared query |
 
 ---
 
@@ -496,6 +509,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListSigningKeys` | Stream all registered signing keys | ✅ |
 | `Discovery` | Return server capabilities (response signing config) | ✅ |
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
+| `GetIndexStatus` | Read index builder progress (lag, file size) | ✅ |
 
 ### Apply Method
 
@@ -546,6 +560,8 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Audit disabled | `FAILED_PRECONDITION` | `AUDIT_DISABLED` | *(none)* |
 | Ledger in mirror mode | `FAILED_PRECONDITION` | `LEDGER_IN_MIRROR_MODE` | `name` |
 | Ledger not in mirror mode | `FAILED_PRECONDITION` | `LEDGER_NOT_IN_MIRROR_MODE` | `name` |
+| Prepared query already exists | `ALREADY_EXISTS` | `PREPARED_QUERY_ALREADY_EXISTS` | `name` |
+| Prepared query not found | `NOT_FOUND` | `PREPARED_QUERY_NOT_FOUND` | `name` |
 
 **Client-side usage (Go):**
 ```go

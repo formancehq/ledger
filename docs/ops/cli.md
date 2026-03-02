@@ -401,15 +401,19 @@ ledgerctl accounts list [flags]
 | `--ledger` | | Name of the ledger |
 | `--page-size` | `10` | Number of accounts per page |
 | `--prefix` | | Filter accounts by address prefix (e.g. `users:`) |
+| `--filter` | | Filter expression (see [Filter Expression Syntax](#filter-expression-syntax)) |
+| `--reverse` | `false` | Reverse iteration order (Z→A instead of A→Z) |
 | `--all` | `false` | Fetch all accounts at once (no pagination) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
-- Accounts are listed in alphabetical order
+- Accounts are listed in alphabetical order by default; use `--reverse` for reverse-alphabetical (Z→A)
 - If `--ledger` is not provided and only one ledger exists, it will be used automatically
 - If multiple ledgers exist, you will be prompted to select one
 - Use `--prefix` to filter by address prefix (e.g. `users:` lists only accounts starting with `users:`)
+- Use `--filter` for rich boolean filter expressions on metadata and addresses
+- If both `--prefix` and `--filter` are provided, they are combined with AND
 
 **Example:**
 
@@ -420,11 +424,129 @@ ledgerctl accounts list --ledger my-ledger
 # Filter by prefix
 ledgerctl accounts list --ledger my-ledger --prefix users:
 
+# Filter by metadata
+ledgerctl accounts list --ledger my-ledger --filter "metadata[category] == premium"
+
+# Complex filter expression
+ledgerctl accounts list --ledger my-ledger --filter "metadata[active] == true and address ^= users:"
+
+# Combine prefix and filter (equivalent to AND)
+ledgerctl accounts list --ledger my-ledger --prefix users: --filter "metadata[tier] == gold"
+
 # Fetch all accounts at once
 ledgerctl accounts list --ledger my-ledger --all
 
 # Output as JSON
 ledgerctl accounts list --ledger my-ledger --json
+```
+
+##### Filter Expression Syntax
+
+The `--filter` flag accepts a human-readable boolean expression that maps to the underlying `QueryFilter` model.
+
+**Grammar:**
+
+```
+expression     := or_expr
+or_expr        := and_expr ("or" and_expr)*
+and_expr       := unary_expr ("and" unary_expr)*
+unary_expr     := "not" unary_expr | primary
+primary        := "(" expression ")" | condition
+condition      := metadata_cond | address_cond | source_cond | destination_cond
+metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "exists")
+address_cond   := "address" ("==" VALUE | "^=" VALUE)
+source_cond    := "source" ("==" VALUE | "^=" VALUE)
+destination_cond := "destination" ("==" VALUE | "^=" VALUE)
+```
+
+**Conditions:**
+
+| Syntax | Description |
+|--------|-------------|
+| `metadata[key] == value` | Metadata equality (auto-typed: `true`/`false` → bool, integer → int64, else → string) |
+| `metadata[key] != value` | Metadata inequality (desugars to `not (metadata[key] == value)`) |
+| `metadata[key] > value` | Metadata greater than (integer values only) |
+| `metadata[key] >= value` | Metadata greater than or equal (integer values only) |
+| `metadata[key] < value` | Metadata less than (integer values only) |
+| `metadata[key] <= value` | Metadata less than or equal (integer values only) |
+| `metadata[key] exists` | Metadata key existence check |
+| `address == value` | Exact address match (any role: source or destination) |
+| `address ^= value` | Address prefix match (any role: source or destination) |
+| `source == value` | Exact source address match (transactions only) |
+| `source ^= value` | Source address prefix match (transactions only) |
+| `destination == value` | Exact destination address match (transactions only) |
+| `destination ^= value` | Destination address prefix match (transactions only) |
+
+**Boolean operators** (precedence: `not` > `and` > `or`):
+
+| Operator | Description |
+|----------|-------------|
+| `and` | Both conditions must match |
+| `or` | At least one condition must match |
+| `not` | Negation |
+| `(expr)` | Grouping to override precedence |
+
+**Values:**
+
+| Format | Example | Type |
+|--------|---------|------|
+| Bare word | `premium` | string |
+| Quoted string | `"hello world"` or `'hello world'` | string |
+| Integer | `42`, `-5` | int64 |
+| Boolean | `true`, `false` | bool |
+
+**Schema validation:** When a ledger declares a metadata schema (e.g., `account:age:int64`), filter conditions are validated against the declared types at compile time. Type mismatches produce clear error messages (e.g., using a string condition on an `int64` field). Integer conditions on unsigned fields (e.g., `uint64`) are automatically coerced to unsigned conditions. The `exists` condition is always valid regardless of schema type.
+
+**Examples:**
+
+```bash
+# Simple metadata match
+--filter "metadata[category] == premium"
+
+# Quoted value with spaces
+--filter 'metadata[name] == "John Doe"'
+
+# Boolean metadata
+--filter "metadata[active] == true"
+
+# Integer metadata
+--filter "metadata[age] == 42"
+
+# Integer range (greater than)
+--filter "metadata[age] > 18"
+
+# Integer range (combined with AND)
+--filter "metadata[score] >= 50 and metadata[score] <= 100"
+
+# Metadata existence
+--filter "metadata[category] exists"
+
+# Address prefix
+--filter "address ^= users:"
+
+# Exact address
+--filter 'address == "users:alice"'
+
+# Source address (transactions only)
+--filter 'source ^= "merchants:"'
+
+# Destination address (transactions only)
+--filter 'destination == "users:alice"'
+
+# Source AND destination combined
+--filter 'source ^= "merchants:" and destination ^= "users:"'
+
+# AND (both must match)
+--filter "metadata[active] == true and address ^= users:"
+
+# OR (either must match)
+--filter "metadata[category] == premium or metadata[category] == gold"
+
+# NOT
+--filter "not metadata[blocked] == true"
+
+# Grouping
+--filter "(metadata[a] == x or metadata[b] == y) and address ^= users:"
 ```
 
 #### accounts get
@@ -591,12 +713,14 @@ ledgerctl transactions list [flags]
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
 | `--page-size` | `10` | Number of transactions per page |
+| `--filter` | | Filter expression (e.g. `"metadata[category] == premium"`) |
+| `--reverse` | `false` | Reverse iteration order (oldest first instead of newest first) |
 | `--all` | `false` | Fetch all transactions at once (no pagination) |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
-- Transactions are displayed **newest first**
+- Transactions are displayed **newest first** by default; use `--reverse` for oldest first
 - Interactive pagination: press Enter to load the next page, or 'q' to quit
 - In JSON mode, only the first page is output (no interactive pagination)
 
@@ -608,6 +732,9 @@ ledgerctl transactions list --ledger my-ledger
 
 # Custom page size
 ledgerctl transactions list --ledger my-ledger --page-size 20
+
+# Oldest first
+ledgerctl transactions list --ledger my-ledger --reverse
 
 # Fetch all transactions at once
 ledgerctl transactions list --ledger my-ledger --all
@@ -1016,6 +1143,40 @@ ledgerctl store bootstrap --input backup.tar --data-dir ./fresh-data --validate
 
 # Non-interactive (scripted)
 ledgerctl store bootstrap -i backup.tar --data-dir ./fresh-data --yes
+```
+
+---
+
+### store rebuild-indexes
+
+Rebuild the bbolt read indexes from Pebble system logs. This is a purely offline operation — no server needed. Use this after restoring from a backup or when the read index becomes corrupted or out of date.
+
+```bash
+ledgerctl store rebuild-indexes --data-dir /path/to/data [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--data-dir` | | Pebble data directory (required) |
+| `--read-index-dir` | | Read index output directory (default: `<data-dir>/read-indexes/`) |
+
+**Behavior:**
+
+1. Opens the Pebble data directory in read-only mode
+2. Opens or creates the bbolt read index store
+3. Replays all system logs from scratch, rebuilding inverted indexes for metadata, account/transaction existence, and account-to-transaction mappings
+4. Reports the last processed log sequence on completion
+
+**Example:**
+
+```bash
+# Rebuild with default read index location
+ledgerctl store rebuild-indexes --data-dir ./data
+
+# Rebuild to a custom read index directory
+ledgerctl store rebuild-indexes --data-dir ./data --read-index-dir ./custom-indexes
 ```
 
 ---
@@ -2003,6 +2164,28 @@ ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create -
 ```
 
 Clients can also discover the server's public key via the `Discovery` RPC.
+
+---
+
+### Server Read Index Flags
+
+The bbolt-based read index store is always active. An index builder tails the system logs and populates inverted indexes in a bbolt database. The read index is used for prepared queries and listing operations (accounts, transactions).
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--read-index-dir` | string | `""` | Directory for the bbolt read index database (default: `<data-dir>/read-indexes/`) |
+
+```bash
+# Use default directory (<data-dir>/read-indexes/)
+ledger-v3-poc run [other flags...]
+
+# Use custom directory
+ledger-v3-poc run --read-index-dir /ssd/read-indexes [other flags...]
+```
+
+The index builder runs on ALL nodes (not just the leader), so follower nodes can also serve prepared query reads. Listings are eventually consistent (the bbolt index may lag behind the latest Raft commits).
+
+After restoring from a backup, use `ledgerctl store rebuild-indexes` to backfill the index from existing data.
 
 ---
 

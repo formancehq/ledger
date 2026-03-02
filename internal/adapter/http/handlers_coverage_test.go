@@ -699,7 +699,7 @@ func TestHandleListAccounts_BackendError(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ string) (dal.Cursor[*commonpb.Account], error) {
+		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
 			return nil, commonpb.ErrNoLeader
 		},
 	}
@@ -719,7 +719,7 @@ func TestHandleListAccounts_CursorIterationError(t *testing.T) {
 	t.Parallel()
 
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ string) (dal.Cursor[*commonpb.Account], error) {
+		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, _ *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
 			return &errorCursor[*commonpb.Account]{err: errors.New("cursor iteration failed")}, nil
 		},
 	}
@@ -738,10 +738,10 @@ func TestHandleListAccounts_CursorIterationError(t *testing.T) {
 func TestHandleListAccounts_WithPrefix(t *testing.T) {
 	t.Parallel()
 
-	var capturedPrefix string
+	var capturedFilter *commonpb.QueryFilter
 	backend := &mockBackend{
-		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, prefix string) (dal.Cursor[*commonpb.Account], error) {
-			capturedPrefix = prefix
+		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, filter *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
+			capturedFilter = filter
 			return dal.NewSliceCursor[*commonpb.Account](nil), nil
 		},
 	}
@@ -755,7 +755,8 @@ func TestHandleListAccounts_WithPrefix(t *testing.T) {
 	srv.handleListAccounts(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, "users:", capturedPrefix)
+	require.NotNil(t, capturedFilter)
+	require.Equal(t, "users:", capturedFilter.GetAddress().GetHardcodedPrefix())
 }
 
 // --------------------------------------------------------------------------

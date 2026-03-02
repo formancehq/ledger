@@ -58,7 +58,7 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, error
 	if err == nil {
 		return b.localController, nil
 	}
-	if errors.Is(err, node.ErrNodeSyncing) {
+	if errors.Is(err, node.ErrNodeSyncing) || errors.Is(err, node.ErrNotLeader) {
 		return b.getLeaderCtrl()
 	}
 	return nil, err
@@ -115,12 +115,12 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 	return c.GetTransaction(ctx, ledgerName, transactionID)
 }
 
-func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64) (dal.Cursor[*commonpb.Transaction], error) {
+func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
 	c, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return c.ListTransactions(ctx, ledgerName, pageSize, afterTxID)
+	return c.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
 }
 
 func (b *RoutedController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32) (dal.Cursor[*commonpb.Log], error) {
@@ -163,12 +163,12 @@ func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, ad
 	return c.GetAccount(ctx, ledgerName, address)
 }
 
-func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, prefix string) (dal.Cursor[*commonpb.Account], error) {
+func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
 	c, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, prefix)
+	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 }
 
 func (b *RoutedController) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
@@ -193,6 +193,16 @@ func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName strin
 		return nil, err
 	}
 	return c.AnalyzeAccounts(ctx, ledgerName, variableThreshold)
+}
+
+func (b *RoutedController) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
+	// Read from local store - prepared queries are replicated via Raft
+	return b.localController.ListPreparedQueries(ctx, ledger)
+}
+
+func (b *RoutedController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	// Execute locally - both read index and Pebble data are available on all nodes
+	return b.localController.ExecutePreparedQuery(ctx, req)
 }
 
 var _ ctrl.Controller = (*RoutedController)(nil)
