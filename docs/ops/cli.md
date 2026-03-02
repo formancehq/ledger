@@ -1761,7 +1761,7 @@ ledgerctl cluster maintenance enable --signing-key /path/to/seed
 
 ### auth
 
-Ed25519 authentication utilities for key generation and token creation. See [Authentication Guide](authentication.md) for full details.
+Authentication utilities for key generation, token creation, and credential storage. See [Authentication Guide](authentication.md) for full details.
 
 #### auth generate-key
 
@@ -1793,8 +1793,140 @@ ledgerctl auth generate-token \
 | `--subject` | yes | | JWT subject claim |
 | `--scopes` | no | | Comma-separated scopes |
 | `--expiration` | no | `1h` | Token validity duration |
+| `--store` | no | `false` | Store the generated token in the OS keychain (keyed by `--server`) |
 
-The token is printed to stdout and can be used with `--auth-token` or the `Authorization: Bearer` header.
+The token is printed to stdout and can be used with `--auth-token` or the `Authorization: Bearer` header. When `--store` is set, the token is also stored in the OS keychain for the current `--server` address, and a confirmation is printed to stderr.
+
+```bash
+# Generate and store in keychain
+ledgerctl auth generate-token \
+  --signing-key ./keys/seed.hex \
+  --key-id my-key-id \
+  --subject ci-bot \
+  --store
+
+# Generate, store, and also pipe to a file
+ledgerctl auth generate-token \
+  --signing-key ./keys/seed.hex \
+  --key-id my-key-id \
+  --subject ci-bot \
+  --store > token.txt
+```
+
+#### auth login
+
+Generate a signed EdDSA JWT token and store it in the OS keychain for the current `--server` address. Subsequent commands automatically use the stored token without `--auth-token`.
+
+```bash
+ledgerctl auth login [flags]
+```
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--signing-key` | * | | Path to Ed25519 seed file |
+| `--key-id` | * | | Key ID matching the server config |
+| `--subject` | * | | JWT subject claim |
+| `--scopes` | no | | Comma-separated scopes |
+| `--expiration` | no | `1h` | Token validity duration |
+| `--bundle` | no | | Path to JSON key bundle file (or `-` for stdin) |
+
+\* Required when not using `--bundle` or stdin pipe. When a bundle is provided, explicit flags override bundle values.
+
+**Behavior:**
+- Generates a signed JWT token using the provided Ed25519 key (from flags or bundle)
+- Stores the token in the OS keychain (macOS Keychain, Linux libsecret, Windows Credential Manager)
+- Displays a JWT summary (subject, expiry, scopes)
+- Accepts a JSON key bundle via `--bundle <path>`, `--bundle -`, or a piped stdin
+
+**Bundle format:**
+
+```json
+{
+  "signingKey": "<64-char hex seed>",
+  "keyId": "agent-key-id",
+  "scopes": ["ledger:read", "ledger:write"],
+  "subject": "my-agent"
+}
+```
+
+**Example:**
+
+```bash
+# Login with flags (generate + store)
+ledgerctl auth login \
+  --signing-key ./keys/seed.hex \
+  --key-id my-key-id \
+  --subject ci-bot \
+  --scopes ledger:read,ledger:write
+
+# Login with a bundle file
+ledgerctl auth login --bundle agent-bundle.json
+
+# Login from a piped bundle (e.g. from kubectl-ledger)
+kubectl ledger agents get-key my-agent --bundle - | ledgerctl auth login
+
+# Override the subject from a bundle
+kubectl ledger agents get-key my-agent --bundle - | ledgerctl auth login --subject ci-bot
+
+# All subsequent commands use the stored token automatically
+ledgerctl ledgers list
+
+# Login to a different server
+ledgerctl --server prod:8888 auth login \
+  --signing-key ./keys/seed.hex \
+  --key-id my-key-id \
+  --subject ci-bot
+```
+
+#### auth logout
+
+Remove the stored token from the OS keychain for the current `--server` address.
+
+```bash
+ledgerctl auth logout
+```
+
+**Behavior:**
+- Removes the token for the current `--server` from the OS keychain
+- Gracefully handles the case when no token is stored
+
+**Example:**
+
+```bash
+# Remove token for default server
+ledgerctl auth logout
+
+# Remove token for a specific server
+ledgerctl --server prod:8888 auth logout
+```
+
+#### auth status
+
+Show the current authentication status and decoded JWT claims.
+
+**Aliases:** `whoami`
+
+```bash
+ledgerctl auth status
+```
+
+**Behavior:**
+- Shows the token source (flag, environment, keychain, or none)
+- Decodes JWT claims without signature verification
+- Displays: server, source, subject, key ID, scopes, issued/expiry, valid/expired status
+
+**Example:**
+
+```bash
+# Check auth status for default server
+ledgerctl auth status
+
+# Check for a specific server
+ledgerctl --server prod:8888 auth status
+
+# Using alias
+ledgerctl auth whoami
+```
 
 ### signing
 

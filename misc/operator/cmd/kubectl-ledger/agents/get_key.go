@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 type getKeyFlags struct {
 	outputDir string
 	seedOnly  bool
+	bundle    string
 }
 
 func newGetKeyCommand(opts *cmdutil.Options) *cobra.Command {
@@ -29,7 +31,9 @@ associated with a LedgerClusterAgent. By default, displays key-id, public key,
 and seed in a formatted table.
 
 Use --output-dir to write seed.hex and pubkey.hex files to a directory.
-Use --seed-only to print just the seed hex to stdout (useful for piping).`,
+Use --seed-only to print just the seed hex to stdout (useful for piping).
+Use --bundle - to output a JSON key bundle to stdout (for piping to ledgerctl auth login).
+Use --bundle <path> to write the bundle to a file.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGetKey(cmd, opts, &f, args)
@@ -38,6 +42,8 @@ Use --seed-only to print just the seed hex to stdout (useful for piping).`,
 
 	cmd.Flags().StringVarP(&f.outputDir, "output-dir", "d", "", "Write seed.hex and pubkey.hex to this directory")
 	cmd.Flags().BoolVar(&f.seedOnly, "seed-only", false, "Print only the seed hex to stdout")
+	cmd.Flags().StringVar(&f.bundle, "bundle", "", "Output a JSON key bundle (use - for stdout, or a file path)")
+	cmd.MarkFlagsMutuallyExclusive("output-dir", "seed-only", "bundle")
 
 	return cmd
 }
@@ -80,6 +86,45 @@ func runGetKey(cmd *cobra.Command, opts *cmdutil.Options, f *getKeyFlags, args [
 
 	if f.seedOnly {
 		fmt.Print(seedHex)
+		return nil
+	}
+
+	if f.bundle != "" {
+		b := struct {
+			SigningKey string   `json:"signingKey"`
+			KeyID      string   `json:"keyId"`
+			Scopes     []string `json:"scopes"`
+			Subject    string   `json:"subject"`
+		}{
+			SigningKey: seedHex,
+			KeyID:      keyID,
+			Scopes:     agent.Spec.Scopes,
+			Subject:    name,
+		}
+
+		if f.bundle == "-" {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(b)
+		}
+
+		file, err := os.OpenFile(f.bundle, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		if err != nil {
+			return fmt.Errorf("creating bundle file: %w", err)
+		}
+
+		enc := json.NewEncoder(file)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(b); err != nil {
+			_ = file.Close() // best-effort close on encode error
+			return fmt.Errorf("writing bundle: %w", err)
+		}
+
+		if err := file.Close(); err != nil {
+			return fmt.Errorf("closing bundle file: %w", err)
+		}
+
+		pterm.Success.Printfln("Bundle written to %s", f.bundle)
 		return nil
 	}
 

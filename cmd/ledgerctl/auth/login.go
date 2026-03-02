@@ -1,0 +1,214 @@
+package auth
+
+import (
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"time"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+	"golang.org/x/term"
+)
+
+// keyBundle is the JSON format for agent key bundles produced by
+// `kubectl ledger agents get-key --bundle`.
+type keyBundle struct {
+	SigningKey string   `json:"signingKey"`
+	KeyID      string   `json:"keyId"`
+	Scopes     []string `json:"scopes"`
+	Subject    string   `json:"subject"`
+}
+
+// NewLoginCommand returns the "auth login" command.
+func NewLoginCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "login",
+		Short: "Generate a token and store it in the OS keychain",
+		Long: `Generate a signed EdDSA JWT token and store it in the OS keychain
+(macOS Keychain, Linux libsecret, Windows Credential Manager) for the
+current --server address.
+
+Subsequent commands automatically use the stored token without --auth-token.
+
+Accepts a JSON key bundle via --bundle or stdin pipe (produced by
+kubectl ledger agents get-key --bundle). Explicit flags override bundle values.`,
+		RunE: runLogin,
+	}
+
+	addTokenGenerationFlags(cmd)
+	cmd.Flags().String("bundle", "", "Path to JSON key bundle file (or - for stdin)")
+
+	return cmd
+}
+
+func runLogin(cmd *cobra.Command, _ []string) error {
+	p, err := resolveLoginParams(cmd)
+	if err != nil {
+		return err
+	}
+
+	token, err := signToken(p)
+	if err != nil {
+		return err
+	}
+
+	server, _ := cmd.Flags().GetString("server")
+
+	if err := cmdutil.GetKeyring(cmd).Set(server, token); err != nil {
+		return fmt.Errorf("storing token in keychain: %w", err)
+	}
+
+	pterm.Success.Printfln("Logged in to %s", pterm.Bold.Sprint(server))
+	printTokenSummary(token)
+
+	return nil
+}
+
+// resolveLoginParams builds tokenParams from a bundle (file, stdin pipe) and/or flags.
+// Explicit flags always override bundle values.
+func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
+	bundle, err := readBundle(cmd)
+	if err != nil {
+		return tokenParams{}, err
+	}
+
+	signingKeyPath, _ := cmd.Flags().GetString("signing-key")
+	keyID, _ := cmd.Flags().GetString("key-id")
+	subject, _ := cmd.Flags().GetString("subject")
+	scopes, _ := cmd.Flags().GetStringSlice("scopes")
+	expiration, _ := cmd.Flags().GetDuration("expiration")
+
+	var seed []byte
+
+	if bundle != nil {
+		// Decode the hex seed from the bundle.
+		decoded, err := hex.DecodeString(bundle.SigningKey)
+		if err != nil {
+			return tokenParams{}, fmt.Errorf("decoding bundle signingKey: %w", err)
+		}
+		seed = decoded
+
+		// Use bundle values as defaults; explicit flags override.
+		if keyID == "" {
+			keyID = bundle.KeyID
+		}
+		if subject == "" {
+			subject = bundle.Subject
+		}
+		if len(scopes) == 0 {
+			scopes = bundle.Scopes
+		}
+	}
+
+	// If no bundle seed, fall back to --signing-key file.
+	if seed == nil {
+		if signingKeyPath == "" {
+			return tokenParams{}, fmt.Errorf("either --bundle/stdin or --signing-key is required")
+		}
+
+		var loadErr error
+		seed, loadErr = signing.LoadSeedFromFile(signingKeyPath)
+		if loadErr != nil {
+			return tokenParams{}, fmt.Errorf("loading signing key: %w", loadErr)
+		}
+	}
+
+	if keyID == "" {
+		return tokenParams{}, fmt.Errorf("required flag \"key-id\" not set")
+	}
+	if subject == "" {
+		return tokenParams{}, fmt.Errorf("required flag \"subject\" not set")
+	}
+
+	return tokenParams{
+		seed:       seed,
+		keyID:      keyID,
+		subject:    subject,
+		scopes:     scopes,
+		expiration: expiration,
+	}, nil
+}
+
+// readBundle reads a key bundle from --bundle flag, explicit "-" for stdin, or
+// a piped stdin (non-terminal). Returns nil if no bundle source is available.
+func readBundle(cmd *cobra.Command) (*keyBundle, error) {
+	bundlePath, _ := cmd.Flags().GetString("bundle")
+
+	var data []byte
+	switch {
+	case bundlePath == "-":
+		// Explicit stdin.
+		var err error
+		data, err = io.ReadAll(os.Stdin)
+		if err != nil {
+			return nil, fmt.Errorf("reading bundle from stdin: %w", err)
+		}
+	case bundlePath != "":
+		// File path.
+		var err error
+		data, err = os.ReadFile(bundlePath)
+		if err != nil {
+			return nil, fmt.Errorf("reading bundle file: %w", err)
+		}
+	case !term.IsTerminal(int(os.Stdin.Fd())):
+		// Piped stdin (no --bundle flag but stdin is not a terminal).
+		var err error
+		data, err = io.ReadAll(os.Stdin)
+		if err != nil {
+			return nil, fmt.Errorf("reading bundle from stdin: %w", err)
+		}
+		// If stdin was empty (e.g. redirected from /dev/null), treat as no bundle.
+		if len(data) == 0 {
+			return nil, nil
+		}
+	default:
+		return nil, nil
+	}
+
+	var b keyBundle
+	if err := json.Unmarshal(data, &b); err != nil {
+		return nil, fmt.Errorf("parsing bundle JSON: %w", err)
+	}
+	return &b, nil
+}
+
+// printTokenSummary decodes the JWT (without verification) and displays a summary.
+func printTokenSummary(tokenStr string) {
+	parser := jwt.NewParser()
+	claims := jwt.MapClaims{}
+	_, _, err := parser.ParseUnverified(tokenStr, claims)
+	if err != nil {
+		pterm.Warning.Printfln("Could not decode token: %v", err)
+		return
+	}
+
+	var rows [][]string
+	if sub, _ := claims.GetSubject(); sub != "" {
+		rows = append(rows, []string{"Subject", sub})
+	}
+	if iss, _ := claims.GetIssuer(); iss != "" {
+		rows = append(rows, []string{"Issuer", iss})
+	}
+	if scopes, ok := claims["scope"].(string); ok && scopes != "" {
+		rows = append(rows, []string{"Scopes", scopes})
+	}
+	if exp, _ := claims.GetExpirationTime(); exp != nil {
+		remaining := time.Until(exp.Time)
+		status := pterm.Green("valid")
+		if remaining <= 0 {
+			status = pterm.Red("EXPIRED")
+		}
+		rows = append(rows, []string{"Expires", fmt.Sprintf("%s (%s)", exp.Format(time.RFC3339), status)})
+	}
+
+	if len(rows) > 0 {
+		data := append([][]string{{"Claim", "Value"}}, rows...)
+		_ = pterm.DefaultTable.WithHasHeader().WithData(data).Render()
+	}
+}

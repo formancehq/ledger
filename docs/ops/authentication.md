@@ -154,6 +154,96 @@ Ed25519 keys have a per-key scope allowlist defined in `auth-keys.json`. A token
 - Token expiration is always enforced
 - Rotate keys by adding new entries to `auth-keys.json` and removing old ones
 
+## Credential Storage
+
+`ledgerctl` can store JWT tokens in the OS keychain (macOS Keychain, Linux libsecret, Windows Credential Manager) to avoid passing `--auth-token` on every command.
+
+### Token Resolution Priority
+
+When making API calls, `ledgerctl` resolves the bearer token in this order:
+
+1. `--auth-token` flag (or `AUTH_TOKEN` env var)
+2. OS keychain (keyed by `--server` address)
+3. No authentication
+
+### Workflows
+
+**Login (generate and store a token):**
+
+```bash
+ledgerctl auth login \
+  --signing-key ./keys/seed.hex \
+  --key-id my-key-id \
+  --subject ci-bot \
+  --scopes ledger:read,ledger:write
+
+# All subsequent commands use the stored token automatically
+ledgerctl ledgers list
+```
+
+**Login with a key bundle (Kubernetes agents):**
+
+The `kubectl ledger agents get-key --bundle -` command outputs a JSON key bundle that can be piped directly into `ledgerctl auth login`:
+
+```bash
+# Single-pipe workflow
+kubectl ledger agents get-key my-agent --bundle - | ledgerctl auth login
+
+# Override subject from the bundle
+kubectl ledger agents get-key my-agent --bundle - | ledgerctl auth login --subject ci-bot
+
+# Or save the bundle to a file
+kubectl ledger agents get-key my-agent --bundle agent-bundle.json
+ledgerctl auth login --bundle agent-bundle.json
+```
+
+The bundle JSON format:
+
+```json
+{
+  "signingKey": "<64-char hex seed>",
+  "keyId": "agent-key-id",
+  "scopes": ["ledger:read", "ledger:write"],
+  "subject": "my-agent"
+}
+```
+
+Explicit flags (`--subject`, `--key-id`, `--scopes`, `--signing-key`, `--expiration`) always override bundle values.
+
+**Check status:**
+
+```bash
+ledgerctl auth status
+# Shows: server, token source, subject, scopes, expiry
+```
+
+**Remove stored credentials:**
+
+```bash
+ledgerctl auth logout
+```
+
+**Multi-server usage:**
+
+```bash
+# Login to different servers
+ledgerctl --server dev:8888 auth login --signing-key ./keys/seed.hex --key-id dev --subject ci
+ledgerctl --server prod:8888 auth login --signing-key ./keys/seed.hex --key-id prod --subject ci
+
+# Commands automatically use the correct token
+ledgerctl --server dev:8888 ledgers list   # uses dev token
+ledgerctl --server prod:8888 ledgers list  # uses prod token
+```
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `ledgerctl auth login` | Generate a token and store it in the OS keychain |
+| `ledgerctl auth logout` | Remove a stored token |
+| `ledgerctl auth status` | Show current authentication status |
+| `ledgerctl auth generate-token --store` | Generate and store a token |
+
 ## Disabling Authentication
 
 By default, authentication is disabled (`--auth-enabled=false`). All requests are accepted without tokens. This is suitable for development, testing, or environments where authentication is handled at the network level (e.g., service mesh).

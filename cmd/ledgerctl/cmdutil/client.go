@@ -122,21 +122,54 @@ func GetContext(cmd *cobra.Command) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, timeout)
 }
 
-// resolveAuthToken reads the --auth-token flag value.
-// If the value starts with "@", it reads the token from the specified file.
+// resolveAuthToken resolves the bearer token using the following priority:
+//  1. --auth-token flag (or AUTH_TOKEN env via bindEnvToFlag)
+//  2. OS keychain (keyed by --server address)
+//  3. No authentication (empty string)
 func resolveAuthToken(cmd *cobra.Command) string {
 	token, _ := cmd.Flags().GetString("auth-token")
-	if token == "" {
-		return ""
-	}
-	if strings.HasPrefix(token, "@") {
-		data, err := os.ReadFile(token[1:])
-		if err != nil {
-			return ""
+	if token != "" {
+		if strings.HasPrefix(token, "@") {
+			data, err := os.ReadFile(token[1:])
+			if err != nil {
+				return ""
+			}
+			return strings.TrimSpace(string(data))
 		}
-		return strings.TrimSpace(string(data))
+		return token
 	}
-	return token
+
+	// Fall back to OS keychain.
+	server, _ := cmd.Flags().GetString("server")
+	if t, err := GetKeyring(cmd).Get(server); err == nil {
+		return t
+	}
+
+	return ""
+}
+
+// ResolveTokenSource returns a human-readable description of where the auth token comes from.
+func ResolveTokenSource(cmd *cobra.Command) (source string, token string) {
+	if t, _ := cmd.Flags().GetString("auth-token"); t != "" {
+		if strings.HasPrefix(t, "@") {
+			data, err := os.ReadFile(t[1:])
+			if err != nil {
+				return "file (error)", ""
+			}
+			return "file (" + t[1:] + ")", strings.TrimSpace(string(data))
+		}
+		if _, ok := os.LookupEnv("AUTH_TOKEN"); ok && !cmd.Flags().Changed("auth-token") {
+			return "environment (AUTH_TOKEN)", t
+		}
+		return "flag (--auth-token)", t
+	}
+
+	server, _ := cmd.Flags().GetString("server")
+	if t, err := GetKeyring(cmd).Get(server); err == nil {
+		return "keychain", t
+	}
+
+	return "none", ""
 }
 
 // ParseKeyValue parses a string in the format "key=value" and returns the key and value.
