@@ -55,6 +55,8 @@ service BucketService {
   rpc GetMetadataSchemaStatus(GetMetadataSchemaStatusRequest) returns (GetMetadataSchemaStatusResponse);
   // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts
   rpc AnalyzeAccounts(AnalyzeAccountsRequest) returns (AnalyzeAccountsResponse);
+  // AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns
+  rpc AnalyzeTransactions(AnalyzeTransactionsRequest) returns (AnalyzeTransactionsResponse);
   // CreatePreparedQuery creates a named prepared query for a ledger
   rpc CreatePreparedQuery(CreatePreparedQueryRequest) returns (CreatePreparedQueryResponse);
   // UpdatePreparedQuery updates the filter of an existing prepared query
@@ -596,6 +598,67 @@ message PatternSegment {
 enum PatternSegmentType {
   PATTERN_SEGMENT_TYPE_FIXED = 0;
   PATTERN_SEGMENT_TYPE_VARIABLE = 1;
+}
+
+// ============================================================================
+// Transaction Analysis Messages
+// ============================================================================
+
+message AnalyzeTransactionsRequest {
+  string ledger = 1;
+  // variable_threshold is the max distinct children before a trie node is classified
+  // as variable. 0 uses the default (10).
+  uint32 variable_threshold = 2;
+}
+
+message AnalyzeTransactionsResponse {
+  repeated FlowPattern flow_patterns = 1;
+  uint64 total_transactions = 2;
+  uint64 total_reverted = 3;
+}
+
+message FlowPattern {
+  string signature = 1;                    // e.g. "users:{id}:main -> bank:fees [USD]"
+  PostingStructure structure = 2;
+  uint64 transaction_count = 3;
+  repeated NormalizedPosting postings = 4;
+  TemporalStats temporal = 5;
+  repeated AssetVolumeStats volume_stats = 6;
+  repeated string metadata_keys = 7;      // Distinct metadata keys observed
+}
+
+message NormalizedPosting {
+  string source_pattern = 1;       // e.g. "users:{id}:main"
+  string destination_pattern = 2;  // e.g. "bank:fees"
+  string asset = 3;
+}
+
+enum PostingStructure {
+  POSTING_STRUCTURE_SIMPLE = 0;            // 1 posting
+  POSTING_STRUCTURE_MULTI_SOURCE = 1;      // N sources, 1 destination
+  POSTING_STRUCTURE_MULTI_DESTINATION = 2; // 1 source, N destinations (split)
+  POSTING_STRUCTURE_COMPLEX = 3;           // N sources, N destinations
+}
+
+message TemporalStats {
+  common.Timestamp first_seen = 1;
+  common.Timestamp last_seen = 2;
+  double transactions_per_day = 3;
+  repeated HourBucket peak_hours = 4;   // 24 entries max
+}
+
+message HourBucket {
+  uint32 hour = 1;    // 0-23
+  uint64 count = 2;
+}
+
+message AssetVolumeStats {
+  string asset = 1;
+  string total_volume = 2;      // big.Int decimal string
+  string average_volume = 3;
+  string min_volume = 4;
+  string max_volume = 5;
+  uint64 transaction_count = 6;
 }
 
 // ============================================================================

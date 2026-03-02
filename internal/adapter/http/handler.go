@@ -73,6 +73,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Get("/{ledgerName}/accounts/{address}", server.handleGetAccount)
 				r.Get("/{ledgerName}/metadata-schema", server.handleGetMetadataSchema)
 				r.Get("/{ledgerName}/analyze-accounts", server.handleAnalyzeAccounts)
+			r.Get("/{ledgerName}/analyze-transactions", server.handleAnalyzeTransactions)
 			})
 
 			// Write scope

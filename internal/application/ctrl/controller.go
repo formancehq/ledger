@@ -43,6 +43,7 @@ type Controller interface {
 
 	// Analysis operations
 	AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error)
+	AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error)
 
 	// Prepared query operations (read-only)
 	ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error)

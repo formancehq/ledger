@@ -17,6 +17,7 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewRevertCommand())
 	cmd.AddCommand(NewSetMetadataCommand())
 	cmd.AddCommand(NewDeleteMetadataCommand())
+	cmd.AddCommand(NewAnalyzeCommand())
 
 	return cmd
 }
