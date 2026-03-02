@@ -39,6 +39,7 @@ builds:
 nightly:
   tag_name: nightly
   publish_release: true
+  version_template: nightly-{{ .ShortCommit }}
   name_template: "Nightly ({{ .ShortCommit }})"
 
 release:
