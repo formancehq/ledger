@@ -190,7 +190,6 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 		envs = append(envs, boolEnv("AUTH_ENABLED", cfg.Auth.Enabled))
 		envs = appendIfStr(envs, "AUTH_ISSUER", cfg.Auth.Issuer)
 		envs = appendIfStr(envs, "AUTH_SERVICE", cfg.Auth.Service)
-		envs = appendIfBool(envs, "AUTH_CHECK_SCOPES", cfg.Auth.CheckScopes)
 		if len(cfg.Auth.ScopeMapping) > 0 {
 			data, err := json.Marshal(cfg.Auth.ScopeMapping)
 			if err == nil {

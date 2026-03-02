@@ -980,9 +980,6 @@ spec:
                   auth:
                     description: Auth holds authentication and authorization configuration.
                     properties:
-                      checkScopes:
-                        description: CheckScopes enables scope checking.
-                        type: boolean
                       enabled:
                         description: Enabled enables authentication.
                         type: boolean

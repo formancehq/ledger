@@ -2263,9 +2263,8 @@ Enable JWT/OIDC authentication with scope-based authorization. See [Authenticati
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--auth-enabled` | bool | `false` | Enable JWT authentication |
+| `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
-| `--auth-check-scopes` | bool | `false` | Enforce scope-based authorization |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 | `--auth-read-key-set-max-retries` | int | `10` | Maximum retries when fetching the JWKS key set |
 | `--auth-ed25519-keys` | string | `""` | Path to JSON file with Ed25519 public keys and scopes (auto-enables auth) |
@@ -2275,7 +2274,6 @@ Enable JWT/OIDC authentication with scope-based authorization. See [Authenticati
 ledger-v3-poc run \
   --auth-enabled \
   --auth-issuer https://auth.example.com \
-  --auth-check-scopes \
   --auth-service ledger \
   [other flags...]
 

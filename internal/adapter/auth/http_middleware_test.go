@@ -107,7 +107,6 @@ func TestHTTPAuthMiddleware_ExpandsScopesInContext(t *testing.T) {
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		Service:      "ledger",
-		CheckScopes:  true,
 		ScopeMapping: DefaultMapping("ledger"),
 	}
 	handler := HTTPAuthMiddleware(cfg)(inner)
@@ -202,10 +201,11 @@ func TestRequireScope_Disabled(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestRequireScope_ScopesNotChecked(t *testing.T) {
+func TestRequireScope_AuthDisabled(t *testing.T) {
 	t.Parallel()
 
-	handler := RequireScope(AuthConfig{Enabled: true, CheckScopes: false}, ScopeTransactionsWrite)(ok200)
+	// When auth is disabled, scope check is skipped
+	handler := RequireScope(AuthConfig{Enabled: false}, ScopeTransactionsWrite)(ok200)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/test", nil)
@@ -218,7 +218,6 @@ func TestRequireScope_NoClaims(t *testing.T) {
 
 	cfg := AuthConfig{
 		Enabled:      true,
-		CheckScopes:  true,
 		Service:      "ledger",
 		ScopeMapping: DefaultMapping("ledger"),
 	}
@@ -239,7 +238,6 @@ func TestRequireScope_MatchingScope(t *testing.T) {
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		Service:      "ledger",
-		CheckScopes:  true,
 		ScopeMapping: DefaultMapping("ledger"),
 	}
 
@@ -264,7 +262,6 @@ func TestRequireScope_WrongScope(t *testing.T) {
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		Service:      "ledger",
-		CheckScopes:  true,
 		ScopeMapping: DefaultMapping("ledger"),
 	}
 
@@ -288,7 +285,6 @@ func TestRequireScope_WriteScope(t *testing.T) {
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		Service:      "ledger",
-		CheckScopes:  true,
 		ScopeMapping: DefaultMapping("ledger"),
 	}
 
@@ -409,7 +405,6 @@ func TestRequireScope_EdDSA_MatchingScope(t *testing.T) {
 		Enabled:      true,
 		KeySet:       edKeySet,
 		Service:      "ledger",
-		CheckScopes:  true,
 		ScopeMapping: DefaultMapping("ledger"),
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-http-key": {"ledger:read", "ledger:write"},
@@ -438,7 +433,6 @@ func TestRequireScope_EdDSA_WrongScope(t *testing.T) {
 		Enabled:      true,
 		KeySet:       edKeySet,
 		Service:      "ledger",
-		CheckScopes:  true,
 		ScopeMapping: DefaultMapping("ledger"),
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-http-key": {"ledger:read", "ledger:write"},

@@ -2,12 +2,18 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/oidc"
 	jose "github.com/go-jose/go-jose/v4"
+	"go.opentelemetry.io/otel/attribute"
+	otelcodes "go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -17,7 +23,6 @@ type AuthConfig struct {
 	KeySet               oidc.KeySet
 	Issuer               string
 	Service              string
-	CheckScopes          bool
 	ScopeMapping         ScopeMapping
 	Ed25519AllowedScopes map[string][]string // keyID -> allowed scopes (nil = no Ed25519 auth)
 }
@@ -32,24 +37,27 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 
 	token, err := bearerTokenFromContext(ctx)
 	if err != nil {
+		logAuthFailure(ctx, "", "missing_token", err)
 		return ctx, status.Error(codes.Unauthenticated, err.Error())
 	}
 
+	keyID := extractKeyID(token)
+
 	claims, err := validateToken(ctx, token, cfg)
 	if err != nil {
+		logAuthFailure(ctx, keyID, "invalid_token", err)
 		return ctx, status.Errorf(codes.Unauthenticated, "invalid token: %v", err)
 	}
 
 	ctx = WithClaims(ctx, claims)
 
-	if cfg.CheckScopes {
-		effective := cfg.ScopeMapping.ExpandScopes(claims.Scopes)
-		ctx = WithExpandedScopes(ctx, effective)
+	effective := cfg.ScopeMapping.ExpandScopes(claims.Scopes)
+	ctx = WithExpandedScopes(ctx, effective)
 
-		if !HasScope(effective, scopes...) {
-			return ctx, status.Errorf(codes.PermissionDenied,
-				"missing required scope (required: %v)", scopes)
-		}
+	if !HasScope(effective, scopes...) {
+		logAuthFailure(ctx, keyID, "missing_scope", fmt.Errorf("required: %v, have: %v", scopes, claims.Scopes))
+		return ctx, status.Errorf(codes.PermissionDenied,
+			"missing required scope (required: %v)", scopes)
 	}
 
 	return ctx, nil
@@ -131,4 +139,42 @@ func extractKeyID(token string) string {
 		return ""
 	}
 	return jws.Signatures[0].Header.KeyID
+}
+
+// logAuthFailure logs an authentication or authorization failure with structured fields
+// and records it on the current OpenTelemetry span. Setting the span status to Error
+// ensures the ErrorAwareSamplingExporter always exports auth failures regardless of
+// sampling ratio.
+func logAuthFailure(ctx context.Context, keyID, reason string, err error) {
+	fields := map[string]any{
+		"reason": reason,
+		"error":  err.Error(),
+	}
+	if keyID != "" {
+		fields["keyId"] = keyID
+	}
+
+	var remoteAddr string
+	if p, ok := peer.FromContext(ctx); ok {
+		remoteAddr = p.Addr.String()
+		fields["remoteAddr"] = remoteAddr
+	}
+
+	logging.FromContext(ctx).WithFields(fields).Infof("auth failure")
+
+	// Record on the OTEL span so auth failures are always exported (error-aware sampling).
+	span := trace.SpanFromContext(ctx)
+	attrs := []attribute.KeyValue{
+		attribute.String("auth.failure.reason", reason),
+		attribute.String("auth.failure.error", err.Error()),
+	}
+	if keyID != "" {
+		attrs = append(attrs, attribute.String("auth.key_id", keyID))
+	}
+	if remoteAddr != "" {
+		attrs = append(attrs, attribute.String("auth.remote_addr", remoteAddr))
+	}
+	span.SetAttributes(attrs...)
+	span.RecordError(err)
+	span.SetStatus(otelcodes.Error, "auth failure: "+reason)
 }

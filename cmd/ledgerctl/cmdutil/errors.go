@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
@@ -39,7 +40,7 @@ func FormatGRPCError(context string, err error) error {
 func friendlyMessage(st *status.Status) string {
 	switch st.Code() {
 	case codes.Unauthenticated:
-		return "authentication required (check your credentials or token)"
+		return formatAuthError(st.Message())
 	case codes.PermissionDenied:
 		return fmt.Sprintf("access denied: %s", st.Message())
 	case codes.Unavailable:
@@ -51,6 +52,28 @@ func friendlyMessage(st *status.Status) string {
 	default:
 		return st.Message()
 	}
+}
+
+// formatAuthError returns a helpful message for authentication failures,
+// including the specific reason from the server when available.
+func formatAuthError(serverMsg string) string {
+	if serverMsg == "" {
+		return "authentication failed (check your credentials or token)"
+	}
+
+	msg := fmt.Sprintf("authentication failed: %s", serverMsg)
+
+	// Add hints for common failure reasons.
+	switch {
+	case strings.Contains(serverMsg, "expired"):
+		msg += "\nhint: generate a new token with 'ledgerctl auth token'"
+	case strings.Contains(serverMsg, "signature"):
+		msg += "\nhint: verify the signing key matches the server's configuration"
+	case strings.Contains(serverMsg, "missing"):
+		msg += "\nhint: set a token with 'ledgerctl auth token' or --token flag"
+	}
+
+	return msg
 }
 
 // printErrorDetails prints structured details for specific business error types.

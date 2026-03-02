@@ -160,7 +160,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 				testserver.WithRaftHeartbeatTick(1),
 				testserver.WithRaftElectionTick(10),
 				testserver.WithBootstrap(),
-				// Ed25519 auth (auto-enables --auth-enabled and --auth-check-scopes)
+				// Ed25519 auth (auto-enables --auth-enabled)
 				testserver.WithAuthEd25519Keys(configPath),
 				testserver.WithAuthService("ledger"),
 			),

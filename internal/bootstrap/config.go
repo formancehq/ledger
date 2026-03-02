@@ -16,7 +16,6 @@ type AuthFlagConfig struct {
 	Enabled          bool
 	Issuer           string
 	Service          string
-	CheckScopes      bool
 	Ed25519KeysFile  string
 	ScopeMappingFile string // path to JSON file mapping virtual scopes to granular scopes
 	ScopeMappingJSON string // raw JSON string mapping (used by operator, env var AUTH_SCOPE_MAPPING)

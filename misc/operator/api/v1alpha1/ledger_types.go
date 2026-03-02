@@ -267,10 +267,6 @@ type AuthorizationConfig struct {
 	// +optional
 	Service string `json:"service,omitempty"`
 
-	// CheckScopes enables scope checking.
-	// +optional
-	CheckScopes *bool `json:"checkScopes,omitempty"`
-
 	// ScopeMapping maps virtual scopes (e.g. "ledger:read") to granular scopes.
 	// When provided, overrides the default mapping and --auth-service is ignored for scope resolution.
 	// +optional

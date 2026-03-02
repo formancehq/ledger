@@ -440,7 +440,6 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 		Enabled:          getBool(auth.AuthEnabledFlag, false),
 		Issuer:           getString(auth.AuthIssuerFlag, ""),
 		Service:          getString(auth.AuthServiceFlag, "ledger"),
-		CheckScopes:      getBool(auth.AuthCheckScopesFlag, false),
 		Ed25519KeysFile:  ed25519KeysFile,
 		ScopeMappingFile: scopeMappingFile,
 		ScopeMappingJSON: scopeMappingJSON,
@@ -448,7 +447,6 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	// Auto-enable auth when Ed25519 keys are configured.
 	if ed25519KeysFile != "" {
 		cfg.AuthConfig.Enabled = true
-		cfg.AuthConfig.CheckScopes = true
 	}
 
 	// Configuration safety

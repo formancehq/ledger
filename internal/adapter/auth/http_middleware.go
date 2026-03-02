@@ -2,8 +2,11 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 // HTTPAuthMiddleware returns an HTTP middleware that validates JWT tokens,
@@ -27,12 +30,16 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 
 			token, err := bearerTokenFromHTTP(r)
 			if err != nil {
+				logHTTPAuthFailure(r, "", "missing_token", err)
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
 			}
 
+			keyID := extractKeyID(token)
+
 			claims, err := validateToken(r.Context(), token, cfg)
 			if err != nil {
+				logHTTPAuthFailure(r, keyID, "invalid_token", err)
 				http.Error(w, "invalid token: "+err.Error(), http.StatusUnauthorized)
 				return
 			}
@@ -40,10 +47,8 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 			ctx := WithClaims(r.Context(), claims)
 
 			// Expand scopes through the mapping and store in context
-			if cfg.CheckScopes {
-				effective := cfg.ScopeMapping.ExpandScopes(claims.Scopes)
-				ctx = WithExpandedScopes(ctx, effective)
-			}
+			effective := cfg.ScopeMapping.ExpandScopes(claims.Scopes)
+			ctx = WithExpandedScopes(ctx, effective)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -52,22 +57,24 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 
 // RequireScope returns an HTTP middleware that checks the authenticated user
 // has all the given granular scopes. Must be used after HTTPAuthMiddleware.
-// When cfg.Enabled is false or cfg.CheckScopes is false, it passes through.
+// When cfg.Enabled is false, it passes through.
 func RequireScope(cfg AuthConfig, scopes ...Scope) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !cfg.Enabled || !cfg.CheckScopes {
+			if !cfg.Enabled {
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			effective := ExpandedScopesFromContext(r.Context())
 			if effective == nil {
+				logHTTPAuthFailure(r, "", "missing_auth", errors.New("no expanded scopes in context"))
 				http.Error(w, "missing authentication", http.StatusUnauthorized)
 				return
 			}
 
 			if !HasScope(effective, scopes...) {
+				logHTTPAuthFailure(r, "", "missing_scope", fmt.Errorf("required: %v", scopes))
 				http.Error(w, "missing required scope", http.StatusForbidden)
 				return
 			}
@@ -75,6 +82,19 @@ func RequireScope(cfg AuthConfig, scopes ...Scope) func(http.Handler) http.Handl
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// logHTTPAuthFailure logs an authentication failure from an HTTP request with structured fields.
+func logHTTPAuthFailure(r *http.Request, keyID, reason string, err error) {
+	fields := map[string]any{
+		"reason":     reason,
+		"error":      err.Error(),
+		"remoteAddr": r.RemoteAddr,
+	}
+	if keyID != "" {
+		fields["keyId"] = keyID
+	}
+	logging.FromContext(r.Context()).WithFields(fields).Infof("auth failure")
 }
 
 // bearerTokenFromHTTP extracts the Bearer token from the HTTP Authorization header.

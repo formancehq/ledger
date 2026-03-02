@@ -8,7 +8,6 @@ The ledger supports optional JWT/OIDC authentication with scope-based authorizat
 ledger-v3-poc run \
   --auth-enabled \
   --auth-issuer https://auth.example.com \
-  --auth-check-scopes \
   --auth-service ledger
 ```
 
@@ -16,9 +15,8 @@ ledger-v3-poc run \
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--auth-enabled` | bool | `false` | Enable JWT authentication |
+| `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
-| `--auth-check-scopes` | bool | `false` | Enforce scope-based authorization |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 | `--auth-read-key-set-max-retries` | int | `10` | Maximum retries when fetching the JWKS key set |
 
@@ -26,7 +24,7 @@ When `--auth-enabled` is set:
 1. The server performs OIDC discovery at `<issuer>/.well-known/openid-configuration`
 2. Downloads the JWKS (JSON Web Key Set) from the discovered `jwks_uri`
 3. Validates JWT signatures, issuer, and expiration on every request
-4. Optionally checks scopes if `--auth-check-scopes` is enabled
+4. Enforces scope-based authorization on all endpoints
 
 ## Scopes
 
@@ -98,7 +96,7 @@ ledgerctl auth generate-key ./keys
 ledger-v3-poc run --auth-ed25519-keys auth-keys.json --bootstrap --node-id 1 --cluster-id test
 ```
 
-Setting `--auth-ed25519-keys` automatically enables `--auth-enabled` and `--auth-check-scopes`.
+Setting `--auth-ed25519-keys` automatically enables `--auth-enabled`.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|

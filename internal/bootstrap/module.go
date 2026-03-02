@@ -888,10 +888,9 @@ func handleConfChangeEvent(
 // Scope mapping is loaded from file, env var, or defaults to the backward-compatible mapping.
 func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) (internalauth.AuthConfig, error) {
 	authCfg := internalauth.AuthConfig{
-		Enabled:     cfg.AuthConfig.Enabled,
-		Issuer:      cfg.AuthConfig.Issuer,
-		Service:     cfg.AuthConfig.Service,
-		CheckScopes: cfg.AuthConfig.CheckScopes,
+		Enabled: cfg.AuthConfig.Enabled,
+		Issuer:  cfg.AuthConfig.Issuer,
+		Service: cfg.AuthConfig.Service,
 	}
 
 	if cfg.AuthConfig.Ed25519KeysFile != "" {
@@ -903,7 +902,6 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 		authCfg.KeySet = internalauth.NewCompositeKeySet(ed25519KeySet, oidcKeySet)
 		authCfg.Ed25519AllowedScopes = allowedScopes
 		authCfg.Enabled = true
-		authCfg.CheckScopes = true
 
 		logger.WithFields(map[string]any{
 			"keys_count": len(allowedScopes),

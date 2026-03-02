@@ -167,7 +167,6 @@ var _ = Describe("Auth", Ordered, func() {
 				// Auth configuration
 				testserver.WithAuthEnabled(),
 				testserver.WithAuthIssuer(oidcServer.URL),
-				testserver.WithAuthCheckScopes(),
 				testserver.WithAuthService("ledger"),
 			),
 		)

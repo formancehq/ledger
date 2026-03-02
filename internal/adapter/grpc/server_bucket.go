@@ -74,7 +74,7 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	}
 
 	// Per-request scope check: each request in the batch may require a different granular scope.
-	if impl.authCfg.Enabled && impl.authCfg.CheckScopes {
+	if impl.authCfg.Enabled {
 		effective := internalauth.ExpandedScopesFromContext(ctx)
 		for i, r := range req.Requests {
 			required := internalauth.RequiredScopeForRequest(r)

@@ -228,13 +228,6 @@ func WithAuthIssuer(issuer string) testservice.InstrumentationFunc {
 	}
 }
 
-func WithAuthCheckScopes() testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--auth-check-scopes")
-		return nil
-	}
-}
-
 func WithAuthService(service string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--auth-service", service)

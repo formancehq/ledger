@@ -72,17 +72,15 @@ func ctxWithBearer(token string) context.Context {
 	return metadata.NewIncomingContext(context.Background(), md)
 }
 
-func testAuthConfig(t *testing.T, keySet oidc.KeySet, checkScopes bool) AuthConfig {
+func testAuthConfig(t *testing.T, keySet oidc.KeySet) AuthConfig {
 	t.Helper()
-	cfg := AuthConfig{
+	return AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		Service:      "ledger",
-		CheckScopes:  checkScopes,
 		ScopeMapping: DefaultMapping("ledger"),
 	}
-	return cfg
 }
 
 func TestAuthenticate_Disabled(t *testing.T) {
@@ -97,7 +95,7 @@ func TestAuthenticate_NoScopes(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
-	cfg := testAuthConfig(t, keySet, true)
+	cfg := testAuthConfig(t, keySet)
 
 	// Authenticate with no required scopes (public endpoint)
 	token := signToken(t, privKey, newTestClaims())
@@ -114,7 +112,7 @@ func TestAuthenticate_MissingToken(t *testing.T) {
 	t.Parallel()
 
 	_, keySet := testKeyPair(t)
-	cfg := testAuthConfig(t, keySet, true)
+	cfg := testAuthConfig(t, keySet)
 
 	// No authorization header
 	_, err := Authenticate(context.Background(), cfg, ScopeLedgersRead)
@@ -128,7 +126,7 @@ func TestAuthenticate_ValidToken_VirtualToGranular(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
-	cfg := testAuthConfig(t, keySet, true)
+	cfg := testAuthConfig(t, keySet)
 
 	// Token has virtual scope "ledger:read" which expands to include ScopeLedgersRead
 	token := signToken(t, privKey, newTestClaims("ledger:read"))
@@ -150,7 +148,7 @@ func TestAuthenticate_WrongScope(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
-	cfg := testAuthConfig(t, keySet, true)
+	cfg := testAuthConfig(t, keySet)
 
 	// Token has only "ledger:write" (expands to write scopes), but we require a read scope
 	token := signToken(t, privKey, newTestClaims("ledger:write"))
@@ -167,7 +165,7 @@ func TestAuthenticate_ExpiredToken(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
-	cfg := testAuthConfig(t, keySet, false)
+	cfg := testAuthConfig(t, keySet)
 
 	claims := newTestClaims("ledger:read")
 	pastTime := time.Now().Add(-1 * time.Hour)
@@ -183,26 +181,28 @@ func TestAuthenticate_ExpiredToken(t *testing.T) {
 	assert.Equal(t, codes.Unauthenticated, st.Code())
 }
 
-func TestAuthenticate_ScopesNotChecked(t *testing.T) {
+func TestAuthenticate_NoScopesDenied(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
-	cfg := testAuthConfig(t, keySet, false)
+	cfg := testAuthConfig(t, keySet)
 
-	// Token has no scopes, but CheckScopes is false
+	// Token has no scopes — should be denied when a scope is required
 	token := signToken(t, privKey, newTestClaims())
 	ctx := ctxWithBearer(token)
 
-	newCtx, err := Authenticate(ctx, cfg, ScopeLedgersRead)
-	require.NoError(t, err)
-	require.NotNil(t, newCtx)
+	_, err := Authenticate(ctx, cfg, ScopeLedgersRead)
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.PermissionDenied, st.Code())
 }
 
 func TestAuthenticate_WriteScope(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
-	cfg := testAuthConfig(t, keySet, true)
+	cfg := testAuthConfig(t, keySet)
 
 	// Token has "ledger:write" → expands to include ScopeTransactionsWrite
 	token := signToken(t, privKey, newTestClaims("ledger:write"))
@@ -217,7 +217,7 @@ func TestAuthenticate_AdminScope(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
-	cfg := testAuthConfig(t, keySet, true)
+	cfg := testAuthConfig(t, keySet)
 
 	// Token has "ledger:admin" → expands to ScopeClusterRead, ScopeClusterWrite
 	token := signToken(t, privKey, newTestClaims("ledger:admin"))
@@ -236,7 +236,7 @@ func TestAuthenticate_WrongIssuer(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
-	cfg := testAuthConfig(t, keySet, false)
+	cfg := testAuthConfig(t, keySet)
 
 	claims := newTestClaims("ledger:read")
 	claims.Issuer = "https://wrong-issuer.example.com"
@@ -296,7 +296,6 @@ func TestAuthenticate_EdDSA_Valid(t *testing.T) {
 		Enabled:      true,
 		KeySet:       edKeySet,
 		Service:      "ledger",
-		CheckScopes:  true,
 		ScopeMapping: DefaultMapping("ledger"),
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-key": {"ledger:read", "ledger:write"},
@@ -323,7 +322,6 @@ func TestAuthenticate_EdDSA_ExcessiveScopes(t *testing.T) {
 		Enabled:      true,
 		KeySet:       edKeySet,
 		Service:      "ledger",
-		CheckScopes:  true,
 		ScopeMapping: DefaultMapping("ledger"),
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-key": {"ledger:read"},
@@ -355,7 +353,6 @@ func TestAuthenticate_EdDSA_UnknownKey(t *testing.T) {
 		Enabled:     true,
 		KeySet:      edKeySet,
 		Service:     "ledger",
-		CheckScopes: false,
 	}
 
 	claims := newTestClaims("ledger:read")
@@ -378,7 +375,6 @@ func TestAuthenticate_EdDSA_Expired(t *testing.T) {
 		Enabled:     true,
 		KeySet:      edKeySet,
 		Service:     "ledger",
-		CheckScopes: false,
 	}
 
 	claims := newTestClaims("ledger:read")
@@ -406,7 +402,6 @@ func TestAuthenticate_EdDSA_NoIssuerCheck(t *testing.T) {
 		KeySet:      edKeySet,
 		Issuer:      "https://oidc-issuer.example.com", // OIDC issuer configured but should be ignored for EdDSA
 		Service:     "ledger",
-		CheckScopes: false,
 	}
 
 	claims := newTestClaims("ledger:read")
@@ -423,7 +418,7 @@ func TestAuthenticate_GranularScopePassThrough(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
-	cfg := testAuthConfig(t, keySet, true)
+	cfg := testAuthConfig(t, keySet)
 
 	// Token has granular scope directly (identity pass-through)
 	token := signToken(t, privKey, newTestClaims("transactions:read"))

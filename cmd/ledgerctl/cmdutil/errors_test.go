@@ -213,6 +213,41 @@ func TestBusinessErrorRoundTrip(t *testing.T) {
 	}
 }
 
+func TestFormatGRPCError_Unauthenticated_IncludesServerMessage(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := status.Error(codes.Unauthenticated, "invalid token: token has expired")
+	err := FormatGRPCError("list ledgers", grpcErr)
+	require.Contains(t, err.Error(), "token has expired")
+	require.Contains(t, err.Error(), "hint:")
+}
+
+func TestFormatGRPCError_Unauthenticated_SignatureError(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := status.Error(codes.Unauthenticated, "invalid token: invalid signature")
+	err := FormatGRPCError("list ledgers", grpcErr)
+	require.Contains(t, err.Error(), "invalid signature")
+	require.Contains(t, err.Error(), "signing key")
+}
+
+func TestFormatGRPCError_Unauthenticated_MissingToken(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := status.Error(codes.Unauthenticated, "missing authorization header")
+	err := FormatGRPCError("list ledgers", grpcErr)
+	require.Contains(t, err.Error(), "missing authorization header")
+	require.Contains(t, err.Error(), "hint:")
+}
+
+func TestFormatGRPCError_PermissionDenied(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := status.Error(codes.PermissionDenied, "missing required scope (required: [ledgers:read])")
+	err := FormatGRPCError("list ledgers", grpcErr)
+	require.Contains(t, err.Error(), "missing required scope")
+}
+
 // serverSideConvert simulates the server-side conversion (imported from the application package).
 // Since we can't import the internal package from cmd, we replicate the logic for round-trip testing.
 func serverSideConvert(bizErr *domain.BusinessError) *status.Status {
