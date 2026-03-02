@@ -53,9 +53,6 @@ func New(dir string, logger logging.Logger) (*Store, error) {
 		// is the source of truth). We can safely disable fsync: on crash the
 		// index builder simply replays from its last progress cursor.
 		NoSync: true,
-		// Skip writing the freelist to disk on every commit. On restart bbolt
-		// rebuilds it by scanning the file (~seconds for a multi-GB DB).
-		NoFreelistSync: true,
 		// O(1) page alloc/dealloc instead of O(n) with the default array type.
 		FreelistType: bolt.FreelistMapType,
 		// Pre-allocate 1 GB of virtual address space so mmap doesn't need to
