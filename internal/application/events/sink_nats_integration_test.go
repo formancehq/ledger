@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
 	"github.com/formancehq/ledger-v3-poc/internal/application/events"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -163,7 +164,7 @@ func TestNATSSinkIntegration_PublishAndConsume(t *testing.T) {
 
 	// Wait for cursor to advance
 	require.Eventually(t, func() bool {
-		cursor, err := events.ReadSinkCursor(store,"nats-sink")
+		cursor, err := query.ReadSinkCursor(store,"nats-sink")
 		return err == nil && cursor >= 2
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process all logs")
 
@@ -256,7 +257,7 @@ func TestNATSSinkIntegration_ProtobufFormat(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := events.ReadSinkCursor(store,"proto-sink")
+		cursor, err := query.ReadSinkCursor(store,"proto-sink")
 		return err == nil && cursor >= 1
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process log")
 
@@ -390,7 +391,7 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := events.ReadSinkCursor(store,"routing-sink")
+		cursor, err := query.ReadSinkCursor(store,"routing-sink")
 		return err == nil && cursor >= 4
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process all 4 logs")
 

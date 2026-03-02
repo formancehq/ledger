@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/application/events"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -204,7 +205,7 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 	require.Equal(t, uint64(2), published[1].LogSequence)
 
 	// Verify cursor was advanced
-	cursor, err := events.ReadSinkCursor(store, "test-sink")
+	cursor, err := query.ReadSinkCursor(store, "test-sink")
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), cursor)
 }
@@ -349,7 +350,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 	emitter1.Stop()
 
 	// Verify cursor is at 3
-	cursor, err := events.ReadSinkCursor(store, "test-sink")
+	cursor, err := query.ReadSinkCursor(store, "test-sink")
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), cursor)
 
@@ -393,7 +394,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 	require.Equal(t, uint64(4), published[0].LogSequence)
 
 	// Final cursor should be at 4
-	cursor, err = events.ReadSinkCursor(store, "test-sink")
+	cursor, err = query.ReadSinkCursor(store, "test-sink")
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), cursor)
 }
@@ -609,7 +610,7 @@ func TestEmitterIntegration_Batching(t *testing.T) {
 	}
 
 	// Cursor should be at 10
-	cursor, err := events.ReadSinkCursor(store, "test-sink")
+	cursor, err := query.ReadSinkCursor(store, "test-sink")
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), cursor)
 }
@@ -693,7 +694,7 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := events.ReadSinkCursor(store, "filter-sink")
+		cursor, err := query.ReadSinkCursor(store, "filter-sink")
 		return err == nil && cursor >= 3
 	}, 5*time.Second, 10*time.Millisecond, "emitter should advance cursor past all logs")
 

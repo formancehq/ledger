@@ -130,7 +130,7 @@ func (e *Emitter) Stop() {
 func (e *Emitter) run() {
 	defer close(e.stopped)
 
-	cursor, err := ReadSinkCursor(e.store, e.sinkName)
+	cursor, err := query.ReadSinkCursor(e.store, e.sinkName)
 	if err != nil {
 		e.logger.Errorf("Failed to read sink cursor: %v", err)
 		return

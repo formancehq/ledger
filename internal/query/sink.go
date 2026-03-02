@@ -1,4 +1,4 @@
-package events
+package query
 
 import (
 	"encoding/binary"

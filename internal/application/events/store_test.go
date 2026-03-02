@@ -5,8 +5,8 @@ import (
 
 	libtime "github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/application/events"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +26,7 @@ func TestSinkCursor(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		cursor, err := events.ReadSinkCursor(s, "my-sink")
+		cursor, err := query.ReadSinkCursor(s, "my-sink")
 		require.NoError(t, err)
 		require.Equal(t, uint64(0), cursor)
 	})
@@ -37,7 +37,7 @@ func TestSinkCursor(t *testing.T) {
 
 		setSinkCursorViaBatch(t, s, "my-sink", 42)
 
-		cursor, err := events.ReadSinkCursor(s, "my-sink")
+		cursor, err := query.ReadSinkCursor(s, "my-sink")
 		require.NoError(t, err)
 		require.Equal(t, uint64(42), cursor)
 	})
@@ -49,7 +49,7 @@ func TestSinkCursor(t *testing.T) {
 		setSinkCursorViaBatch(t, s, "my-sink", 10)
 		setSinkCursorViaBatch(t, s, "my-sink", 20)
 
-		cursor, err := events.ReadSinkCursor(s, "my-sink")
+		cursor, err := query.ReadSinkCursor(s, "my-sink")
 		require.NoError(t, err)
 		require.Equal(t, uint64(20), cursor)
 	})
@@ -62,7 +62,7 @@ func TestSinkCursor(t *testing.T) {
 
 		// Read multiple times to ensure consistency
 		for range 3 {
-			cursor, err := events.ReadSinkCursor(s, "my-sink")
+			cursor, err := query.ReadSinkCursor(s, "my-sink")
 			require.NoError(t, err)
 			require.Equal(t, uint64(99), cursor)
 		}
@@ -75,11 +75,11 @@ func TestSinkCursor(t *testing.T) {
 		setSinkCursorViaBatch(t, s, "sink-a", 10)
 		setSinkCursorViaBatch(t, s, "sink-b", 20)
 
-		cursorA, err := events.ReadSinkCursor(s, "sink-a")
+		cursorA, err := query.ReadSinkCursor(s, "sink-a")
 		require.NoError(t, err)
 		require.Equal(t, uint64(10), cursorA)
 
-		cursorB, err := events.ReadSinkCursor(s, "sink-b")
+		cursorB, err := query.ReadSinkCursor(s, "sink-b")
 		require.NoError(t, err)
 		require.Equal(t, uint64(20), cursorB)
 	})
@@ -92,7 +92,7 @@ func TestSinkStatus(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		statuses, err := events.ReadAllSinkStatuses(s)
+		statuses, err := query.ReadAllSinkStatuses(s)
 		require.NoError(t, err)
 		require.Empty(t, statuses)
 	})
@@ -112,7 +112,7 @@ func TestSinkStatus(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		statuses, err := events.ReadAllSinkStatuses(s)
+		statuses, err := query.ReadAllSinkStatuses(s)
 		require.NoError(t, err)
 		require.Len(t, statuses, 1)
 		require.Equal(t, "nats-1", statuses[0].SinkName)
@@ -137,7 +137,7 @@ func TestSinkStatus(t *testing.T) {
 		require.NoError(t, state.ClearSinkStatus(batch, "nats-1"))
 		require.NoError(t, batch.Commit())
 
-		statuses, err := events.ReadAllSinkStatuses(s)
+		statuses, err := query.ReadAllSinkStatuses(s)
 		require.NoError(t, err)
 		require.Empty(t, statuses)
 	})
@@ -157,7 +157,7 @@ func TestSinkStatus(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		statuses, err := events.ReadAllSinkStatuses(s)
+		statuses, err := query.ReadAllSinkStatuses(s)
 		require.NoError(t, err)
 		require.Len(t, statuses, 2)
 	})
@@ -170,7 +170,7 @@ func TestSinkConfig(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		configs, err := events.ReadAllSinkConfigs(s)
+		configs, err := query.ReadAllSinkConfigs(s)
 		require.NoError(t, err)
 		require.Empty(t, configs)
 	})
@@ -194,7 +194,7 @@ func TestSinkConfig(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		cfg, err := events.ReadSinkConfig(s, "primary-nats")
+		cfg, err := query.ReadSinkConfig(s, "primary-nats")
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 		require.Equal(t, "primary-nats", cfg.Name)
@@ -228,7 +228,7 @@ func TestSinkConfig(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		configs, err := events.ReadAllSinkConfigs(s)
+		configs, err := query.ReadAllSinkConfigs(s)
 		require.NoError(t, err)
 		require.Len(t, configs, 2)
 	})
@@ -260,13 +260,13 @@ func TestSinkConfig(t *testing.T) {
 		require.NoError(t, state.DeleteSinkConfig(batch, "sink-a"))
 		require.NoError(t, batch.Commit())
 
-		configs, err := events.ReadAllSinkConfigs(s)
+		configs, err := query.ReadAllSinkConfigs(s)
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
 		require.Equal(t, "sink-b", configs[0].Name)
 
 		// Verify the deleted one returns nil
-		cfg, err := events.ReadSinkConfig(s, "sink-a")
+		cfg, err := query.ReadSinkConfig(s, "sink-a")
 		require.NoError(t, err)
 		require.Nil(t, cfg)
 	})
@@ -297,14 +297,14 @@ func TestSinkConfig(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		cfg, err := events.ReadSinkConfig(s, "my-sink")
+		cfg, err := query.ReadSinkConfig(s, "my-sink")
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 		require.Equal(t, "protobuf", cfg.Format)
 		require.Equal(t, "nats://new:4222", cfg.GetNats().Url)
 
 		// Should still be only one config
-		configs, err := events.ReadAllSinkConfigs(s)
+		configs, err := query.ReadAllSinkConfigs(s)
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
 	})

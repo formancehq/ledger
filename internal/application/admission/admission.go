@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/application/events"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
@@ -582,7 +581,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		if !a.cache.SinkConfigs.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
 			result, err := a.loaders.SinkConfigs.LoadOrWait(id, boundary, func() (*commonpb.SinkConfig, error) {
-				return events.ReadSinkConfig(a.store, sinkKey.Name)
+				return query.ReadSinkConfig(a.store, sinkKey.Name)
 			})
 			if err != nil {
 				return nil, fmt.Errorf("loading sink config %q from store: %w", sinkKey.Name, err)

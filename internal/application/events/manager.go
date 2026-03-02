@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -102,7 +103,7 @@ func (m *Manager) reconcile() {
 		return
 	}
 
-	sinkCfgs, err := ReadAllSinkConfigs(m.store)
+	sinkCfgs, err := query.ReadAllSinkConfigs(m.store)
 	if err != nil {
 		m.logger.Errorf("Failed to load sink configs: %v", err)
 		return

@@ -10,7 +10,7 @@ import (
 	"math"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/application/analysis"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/analysis"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"

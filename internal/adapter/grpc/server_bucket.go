@@ -14,7 +14,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/application/check"
 	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
-	"github.com/formancehq/ledger-v3-poc/internal/application/events"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
@@ -367,12 +366,12 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 		return nil, err
 	}
 
-	sinks, err := events.ReadAllSinkConfigs(impl.store)
+	sinks, err := query.ReadAllSinkConfigs(impl.store)
 	if err != nil {
 		return nil, fmt.Errorf("loading sink configs: %w", err)
 	}
 
-	statuses, err := events.ReadAllSinkStatuses(impl.store)
+	statuses, err := query.ReadAllSinkStatuses(impl.store)
 	if err != nil {
 		return nil, fmt.Errorf("loading sink statuses: %w", err)
 	}
