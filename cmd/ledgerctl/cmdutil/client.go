@@ -77,6 +77,8 @@ func GetClient(cmd *cobra.Command) (servicepb.BucketServiceClient, *grpc.ClientC
 	conn, err := grpc.NewClient(serverAddr,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithDefaultServiceConfig(GRPCRetryPolicy), // Retry on UNAVAILABLE (no leader) up to 50 times with 200ms delay (10s max)
+		grpc.WithUnaryInterceptor(TracingUnaryInterceptor()),
+		grpc.WithStreamInterceptor(TracingStreamInterceptor()),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
@@ -96,6 +98,8 @@ func GetClusterClient(cmd *cobra.Command) (clusterpb.ClusterServiceClient, *grpc
 
 	conn, err := grpc.NewClient(serverAddr,
 		grpc.WithTransportCredentials(creds),
+		grpc.WithUnaryInterceptor(TracingUnaryInterceptor()),
+		grpc.WithStreamInterceptor(TracingStreamInterceptor()),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to gRPC server: %w", err)
