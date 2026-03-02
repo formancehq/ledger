@@ -727,3 +727,29 @@ message GetIndexStatusResponse {
 message GetLedgerStatsRequest {
   string ledger = 1;
 }
+
+// ============================================================================
+// Query Profile Messages
+// ============================================================================
+
+// QueryProfile contains execution statistics for a read query.
+// Returned to clients via gRPC trailing metadata when requested.
+message QueryProfile {
+  int64 index_duration_us = 1;
+  int64 enrichment_duration_us = 2;
+  int32 items_collected = 3;
+  int32 enriched_count = 4;
+  int32 materialized_ranges = 5;
+  int32 materialized_items = 6;
+  IteratorProfile root_iterator = 7;
+}
+
+// IteratorProfile describes a single iterator node in the query execution tree.
+message IteratorProfile {
+  string label = 1;
+  string kind = 2;
+  string bucket = 3;
+  int64 next_calls = 4;
+  int64 seek_calls = 5;
+  repeated IteratorProfile children = 6;
+}

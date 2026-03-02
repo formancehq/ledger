@@ -1,9 +1,12 @@
 package http
 
 import (
+	"encoding/base64"
 	"net/http"
 
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
+	"google.golang.org/protobuf/proto"
 )
 
 // ErrorResponse represents an error response structure
@@ -64,4 +67,28 @@ func writeInternalServerError(w http.ResponseWriter, r *http.Request, err error)
 // queryParamBool returns true if the query parameter exists and is "true"
 func queryParamBool(r *http.Request, key string) bool {
 	return r.URL.Query().Get(key) == "true"
+}
+
+const (
+	httpHeaderQueryProfile       = "X-Query-Profile"
+	httpHeaderQueryProfileResult = "X-Query-Profile-Result"
+)
+
+// wantsHTTPProfile returns true if the client sent the X-Query-Profile header.
+func wantsHTTPProfile(r *http.Request) bool {
+	return r.Header.Get(httpHeaderQueryProfile) != ""
+}
+
+// writeProfileHeader serializes the query profile as base64-encoded protobuf
+// and sets it as the X-Query-Profile-Result response header.
+func writeProfileHeader(w http.ResponseWriter, profile *query.QueryProfile) {
+	if profile == nil {
+		return
+	}
+	pb := profile.ToProto()
+	data, err := proto.Marshal(pb)
+	if err != nil {
+		return
+	}
+	w.Header().Set(httpHeaderQueryProfileResult, base64.StdEncoding.EncodeToString(data))
 }

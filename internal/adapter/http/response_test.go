@@ -1,12 +1,18 @@
 package http
 
 import (
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestWriteJSONResponse(t *testing.T) {
@@ -78,6 +84,72 @@ func TestWriteErrorResponse_NilError(t *testing.T) {
 	resp := decodeResponse[ErrorResponse](t, w)
 	require.Equal(t, "TEST", resp.ErrorCode)
 	require.Equal(t, "", resp.ErrorMessage)
+}
+
+func TestWantsHTTPProfile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		header   string
+		expected bool
+	}{
+		{"with header", "true", true},
+		{"with any value", "1", true},
+		{"without header", "", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tc.header != "" {
+				r.Header.Set("X-Query-Profile", tc.header)
+			}
+			assert.Equal(t, tc.expected, wantsHTTPProfile(r))
+		})
+	}
+}
+
+func TestWriteProfileHeader(t *testing.T) {
+	t.Parallel()
+
+	profile := &query.QueryProfile{
+		IndexDuration:  5 * time.Millisecond,
+		ItemsCollected: 10,
+		Root: &query.IteratorStats{
+			Label:     "PrefixIterator(exist:ledger:a:)",
+			Kind:      "Prefix",
+			NextCalls: 15,
+		},
+	}
+
+	w := httptest.NewRecorder()
+	writeProfileHeader(w, profile)
+
+	headerVal := w.Header().Get("X-Query-Profile-Result")
+	require.NotEmpty(t, headerVal)
+
+	// Decode and verify
+	data, err := base64.StdEncoding.DecodeString(headerVal)
+	require.NoError(t, err)
+
+	var pb servicepb.QueryProfile
+	require.NoError(t, proto.Unmarshal(data, &pb))
+
+	assert.Equal(t, int64(5000), pb.IndexDurationUs)
+	assert.Equal(t, int32(10), pb.ItemsCollected)
+	require.NotNil(t, pb.RootIterator)
+	assert.Equal(t, "Prefix", pb.RootIterator.Kind)
+	assert.Equal(t, int64(15), pb.RootIterator.NextCalls)
+}
+
+func TestWriteProfileHeader_NilProfile(t *testing.T) {
+	t.Parallel()
+
+	w := httptest.NewRecorder()
+	writeProfileHeader(w, nil)
+
+	assert.Empty(t, w.Header().Get("X-Query-Profile-Result"))
 }
 
 func TestQueryParamBool(t *testing.T) {

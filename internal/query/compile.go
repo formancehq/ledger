@@ -14,6 +14,8 @@ import (
 // Compile translates a QueryFilter proto into an EntityIterator tree.
 // The params map resolves parameterized conditions at execution time.
 // The schema map (optional) validates condition types against declared metadata field types.
+// When profile is non-nil, each iterator is wrapped in a TrackedIterator and
+// profile.Root is set to the root of the iterator stats tree.
 func Compile(
 	tx *bolt.Tx,
 	kb *readstore.KeyBuilder,
@@ -22,46 +24,56 @@ func Compile(
 	ledger string,
 	params map[string]string,
 	schema map[string]*commonpb.MetadataFieldSchema,
+	profile *QueryProfile,
 ) (readstore.EntityIterator, error) {
 	if filter == nil {
-		return compileUniverse(tx, kb, target, ledger)
+		return compileUniverse(tx, kb, target, ledger, profile)
 	}
 
 	switch f := filter.Filter.(type) {
 	case *commonpb.QueryFilter_Field:
-		return compileFieldCondition(tx, kb, f.Field, target, ledger, params, schema)
+		return compileFieldCondition(tx, kb, f.Field, target, ledger, params, schema, profile)
 	case *commonpb.QueryFilter_Address:
-		return compileAddressMatch(tx, kb, f.Address, target, ledger, params)
+		return compileAddressMatch(tx, kb, f.Address, target, ledger, params, profile)
 	case *commonpb.QueryFilter_And:
-		return compileAnd(tx, kb, f.And, target, ledger, params, schema)
+		return compileAnd(tx, kb, f.And, target, ledger, params, schema, profile)
 	case *commonpb.QueryFilter_Or:
-		return compileOr(tx, kb, f.Or, target, ledger, params, schema)
+		return compileOr(tx, kb, f.Or, target, ledger, params, schema, profile)
 	case *commonpb.QueryFilter_Not:
-		return compileNot(tx, kb, f.Not, target, ledger, params, schema)
+		return compileNot(tx, kb, f.Not, target, ledger, params, schema, profile)
 	default:
 		return nil, fmt.Errorf("unknown filter type: %T", filter.Filter)
 	}
 }
 
 // compileUniverse returns an iterator over ALL entities (no filter).
-func compileUniverse(tx *bolt.Tx, kb *readstore.KeyBuilder, target commonpb.QueryTarget, ledger string) (readstore.EntityIterator, error) {
+func compileUniverse(tx *bolt.Tx, kb *readstore.KeyBuilder, target commonpb.QueryTarget, ledger string, profile *QueryProfile) (readstore.EntityIterator, error) {
 	b := tx.Bucket(readstore.BucketExistence)
 	if b == nil {
 		return &SliceIterator{}, nil
 	}
 	ns, entityLen := targetNamespaceAndLen(target)
 	prefix := readstore.ExistencePrefix(kb, ledger, ns)
-	return readstore.NewPrefixIterator(b.Cursor(), prefix, len(prefix), entityLen), nil
+	iter := readstore.NewPrefixIterator(b.Cursor(), prefix, len(prefix), entityLen)
+	return trackIterator(iter, profile, &IteratorStats{
+		Label:  fmt.Sprintf("PrefixIterator(exist:%s:%s:)", ledger, ns),
+		Kind:   "Prefix",
+		Bucket: "exist",
+	}), nil
 }
 
 // compileAnd compiles an AND filter into a merge-intersect iterator.
-func compileAnd(tx *bolt.Tx, kb *readstore.KeyBuilder, and *commonpb.AndFilter, target commonpb.QueryTarget, ledger string, params map[string]string, schema map[string]*commonpb.MetadataFieldSchema) (readstore.EntityIterator, error) {
+func compileAnd(tx *bolt.Tx, kb *readstore.KeyBuilder, and *commonpb.AndFilter, target commonpb.QueryTarget, ledger string, params map[string]string, schema map[string]*commonpb.MetadataFieldSchema, profile *QueryProfile) (readstore.EntityIterator, error) {
 	children := make([]readstore.EntityIterator, 0, len(and.Filters))
+	var childStats []*IteratorStats
 	for _, f := range and.Filters {
-		child, err := Compile(tx, kb, f, target, ledger, params, schema)
+		child, err := Compile(tx, kb, f, target, ledger, params, schema, profile)
 		if err != nil {
 			closeAll(children)
 			return nil, err
+		}
+		if profile != nil {
+			childStats = append(childStats, profile.Root)
 		}
 		children = append(children, child)
 	}
@@ -71,17 +83,26 @@ func compileAnd(tx *bolt.Tx, kb *readstore.KeyBuilder, and *commonpb.AndFilter, 
 	if len(children) == 1 {
 		return children[0], nil
 	}
-	return readstore.NewAndIterator(children...), nil
+	andIter := readstore.NewAndIterator(children...)
+	return trackIterator(andIter, profile, &IteratorStats{
+		Label:    "AndIterator",
+		Kind:     "And",
+		Children: childStats,
+	}), nil
 }
 
 // compileOr compiles an OR filter into a merge-union iterator.
-func compileOr(tx *bolt.Tx, kb *readstore.KeyBuilder, or *commonpb.OrFilter, target commonpb.QueryTarget, ledger string, params map[string]string, schema map[string]*commonpb.MetadataFieldSchema) (readstore.EntityIterator, error) {
+func compileOr(tx *bolt.Tx, kb *readstore.KeyBuilder, or *commonpb.OrFilter, target commonpb.QueryTarget, ledger string, params map[string]string, schema map[string]*commonpb.MetadataFieldSchema, profile *QueryProfile) (readstore.EntityIterator, error) {
 	children := make([]readstore.EntityIterator, 0, len(or.Filters))
+	var childStats []*IteratorStats
 	for _, f := range or.Filters {
-		child, err := Compile(tx, kb, f, target, ledger, params, schema)
+		child, err := Compile(tx, kb, f, target, ledger, params, schema, profile)
 		if err != nil {
 			closeAll(children)
 			return nil, err
+		}
+		if profile != nil {
+			childStats = append(childStats, profile.Root)
 		}
 		children = append(children, child)
 	}
@@ -91,21 +112,39 @@ func compileOr(tx *bolt.Tx, kb *readstore.KeyBuilder, or *commonpb.OrFilter, tar
 	if len(children) == 1 {
 		return children[0], nil
 	}
-	return readstore.NewOrIterator(children...), nil
+	orIter := readstore.NewOrIterator(children...)
+	return trackIterator(orIter, profile, &IteratorStats{
+		Label:    "OrIterator",
+		Kind:     "Or",
+		Children: childStats,
+	}), nil
 }
 
 // compileNot compiles a NOT filter into a merge-difference iterator.
-func compileNot(tx *bolt.Tx, kb *readstore.KeyBuilder, not *commonpb.NotFilter, target commonpb.QueryTarget, ledger string, params map[string]string, schema map[string]*commonpb.MetadataFieldSchema) (readstore.EntityIterator, error) {
-	universe, err := compileUniverse(tx, kb, target, ledger)
+func compileNot(tx *bolt.Tx, kb *readstore.KeyBuilder, not *commonpb.NotFilter, target commonpb.QueryTarget, ledger string, params map[string]string, schema map[string]*commonpb.MetadataFieldSchema, profile *QueryProfile) (readstore.EntityIterator, error) {
+	universe, err := compileUniverse(tx, kb, target, ledger, profile)
 	if err != nil {
 		return nil, err
 	}
-	child, err := Compile(tx, kb, not.Filter, target, ledger, params, schema)
+	var universeStats *IteratorStats
+	if profile != nil {
+		universeStats = profile.Root
+	}
+	child, err := Compile(tx, kb, not.Filter, target, ledger, params, schema, profile)
 	if err != nil {
 		universe.Close()
 		return nil, err
 	}
-	return readstore.NewNotIterator(universe, child), nil
+	var childStats *IteratorStats
+	if profile != nil {
+		childStats = profile.Root
+	}
+	notIter := readstore.NewNotIterator(universe, child)
+	return trackIterator(notIter, profile, &IteratorStats{
+		Label:    "NotIterator",
+		Kind:     "Not",
+		Children: []*IteratorStats{universeStats, childStats},
+	}), nil
 }
 
 // compileFieldCondition compiles a FieldCondition (metadata filter) into a leaf iterator.
@@ -117,6 +156,7 @@ func compileFieldCondition(
 	ledger string,
 	params map[string]string,
 	schema map[string]*commonpb.MetadataFieldSchema,
+	profile *QueryProfile,
 ) (readstore.EntityIterator, error) {
 	if fc.Field == nil {
 		return nil, fmt.Errorf("field condition has no field reference")
@@ -146,15 +186,15 @@ func compileFieldCondition(
 
 	switch cond := fc.Condition.(type) {
 	case *commonpb.FieldCondition_StringCond:
-		return compileStringCondition(cursor, prefix, entityLen, cond.StringCond, params)
+		return compileStringCondition(cursor, prefix, entityLen, cond.StringCond, params, ledger, ns, metaKey, profile)
 	case *commonpb.FieldCondition_IntCond:
-		return compileIntCondition(cursor, prefix, entityLen, cond.IntCond, params)
+		return compileIntCondition(cursor, prefix, entityLen, cond.IntCond, params, ledger, ns, metaKey, profile)
 	case *commonpb.FieldCondition_UintCond:
-		return compileUintCondition(cursor, prefix, entityLen, cond.UintCond, params)
+		return compileUintCondition(cursor, prefix, entityLen, cond.UintCond, params, ledger, ns, metaKey, profile)
 	case *commonpb.FieldCondition_BoolCond:
-		return compileBoolCondition(cursor, prefix, entityLen, cond.BoolCond, params)
+		return compileBoolCondition(cursor, prefix, entityLen, cond.BoolCond, params, ledger, ns, metaKey, profile)
 	case *commonpb.FieldCondition_ExistsCond:
-		return compileExistsCondition(tx, kb, ledger, ns, metaKey, entityLen, cond.ExistsCond)
+		return compileExistsCondition(tx, kb, ledger, ns, metaKey, entityLen, cond.ExistsCond, profile)
 	default:
 		return nil, fmt.Errorf("unknown condition type: %T", fc.Condition)
 	}
@@ -162,13 +202,18 @@ func compileFieldCondition(
 
 // compileStringCondition — point scan on exact string value.
 // Entities are naturally sorted (same value prefix → entity suffix determines order).
-func compileStringCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond *commonpb.StringCondition, params map[string]string) (readstore.EntityIterator, error) {
+func compileStringCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond *commonpb.StringCondition, params map[string]string, ledger, ns, metaKey string, profile *QueryProfile) (readstore.EntityIterator, error) {
 	value, err := resolveString(cond, params)
 	if err != nil {
 		return nil, err
 	}
 	fullPrefix := readstore.EncodeString(append([]byte{}, prefix...), value)
-	return readstore.NewPrefixIterator(cursor, fullPrefix, len(fullPrefix), entityLen), nil
+	iter := readstore.NewPrefixIterator(cursor, fullPrefix, len(fullPrefix), entityLen)
+	return trackIterator(iter, profile, &IteratorStats{
+		Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=string)", ledger, ns, metaKey),
+		Kind:   "Prefix",
+		Bucket: "midx",
+	}), nil
 }
 
 // resolvedIntBounds holds resolved min/max bounds for an int64 range condition.
@@ -239,7 +284,7 @@ func resolveIntBounds(cond *commonpb.IntCondition, params map[string]string) (re
 // For equality conditions (single value), uses streaming PrefixIterator.
 // For multi-value ranges, materializes + sorts because entities are not
 // sorted by entity ID across different values.
-func compileIntCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond *commonpb.IntCondition, params map[string]string) (readstore.EntityIterator, error) {
+func compileIntCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond *commonpb.IntCondition, params map[string]string, ledger, ns, metaKey string, profile *QueryProfile) (readstore.EntityIterator, error) {
 	bounds, err := resolveIntBounds(cond, params)
 	if err != nil {
 		return nil, err
@@ -249,7 +294,12 @@ func compileIntCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond
 	// within the value prefix, so we can stream instead of materializing.
 	if bounds.isEquality() {
 		fullPrefix := readstore.EncodeInt64(append([]byte{}, prefix...), bounds.min)
-		return readstore.NewPrefixIterator(cursor, fullPrefix, len(fullPrefix), entityLen), nil
+		iter := readstore.NewPrefixIterator(cursor, fullPrefix, len(fullPrefix), entityLen)
+		return trackIterator(iter, profile, &IteratorStats{
+			Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=int)", ledger, ns, metaKey),
+			Kind:   "Prefix",
+			Bucket: "midx",
+		}), nil
 	}
 
 	// General range: materialize + sort
@@ -270,7 +320,12 @@ func compileIntCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond
 	}
 
 	entityOffset := len(prefix) + 1 + 8 // prefix + typeTag(1) + int64(8)
-	return materializeRange(cursor, lower, upper, entityOffset, entityLen), nil
+	iter := materializeRange(cursor, lower, upper, entityOffset, entityLen, profile)
+	return trackIterator(iter, profile, &IteratorStats{
+		Label:  fmt.Sprintf("SliceIterator(midx:%s:%s:%s=int range)", ledger, ns, metaKey),
+		Kind:   "Range",
+		Bucket: "midx",
+	}), nil
 }
 
 // resolvedUintBounds holds resolved min/max bounds for a uint64 range condition.
@@ -336,7 +391,7 @@ func resolveUintBounds(cond *commonpb.UintCondition, params map[string]string) (
 // compileUintCondition — range scan on encoded uint64 values.
 // For equality conditions, uses streaming PrefixIterator (same optimization as int).
 // For multi-value ranges, materializes + sorts.
-func compileUintCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond *commonpb.UintCondition, params map[string]string) (readstore.EntityIterator, error) {
+func compileUintCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond *commonpb.UintCondition, params map[string]string, ledger, ns, metaKey string, profile *QueryProfile) (readstore.EntityIterator, error) {
 	bounds, err := resolveUintBounds(cond, params)
 	if err != nil {
 		return nil, err
@@ -345,7 +400,12 @@ func compileUintCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, con
 	// Equality optimization: single value range → streaming
 	if bounds.isEquality() {
 		fullPrefix := readstore.EncodeUint64(append([]byte{}, prefix...), bounds.min)
-		return readstore.NewPrefixIterator(cursor, fullPrefix, len(fullPrefix), entityLen), nil
+		iter := readstore.NewPrefixIterator(cursor, fullPrefix, len(fullPrefix), entityLen)
+		return trackIterator(iter, profile, &IteratorStats{
+			Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=uint)", ledger, ns, metaKey),
+			Kind:   "Prefix",
+			Bucket: "midx",
+		}), nil
 	}
 
 	// General range: materialize + sort
@@ -366,17 +426,27 @@ func compileUintCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, con
 	}
 
 	entityOffset := len(prefix) + 1 + 8
-	return materializeRange(cursor, lower, upper, entityOffset, entityLen), nil
+	iter := materializeRange(cursor, lower, upper, entityOffset, entityLen, profile)
+	return trackIterator(iter, profile, &IteratorStats{
+		Label:  fmt.Sprintf("SliceIterator(midx:%s:%s:%s=uint range)", ledger, ns, metaKey),
+		Kind:   "Range",
+		Bucket: "midx",
+	}), nil
 }
 
 // compileBoolCondition — point scan on exact bool value.
-func compileBoolCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond *commonpb.BoolCondition, params map[string]string) (readstore.EntityIterator, error) {
+func compileBoolCondition(cursor *bolt.Cursor, prefix []byte, entityLen int, cond *commonpb.BoolCondition, params map[string]string, ledger, ns, metaKey string, profile *QueryProfile) (readstore.EntityIterator, error) {
 	value, err := resolveBool(cond, params)
 	if err != nil {
 		return nil, err
 	}
 	fullPrefix := readstore.EncodeBool(append([]byte{}, prefix...), value)
-	return readstore.NewPrefixIterator(cursor, fullPrefix, len(fullPrefix), entityLen), nil
+	iter := readstore.NewPrefixIterator(cursor, fullPrefix, len(fullPrefix), entityLen)
+	return trackIterator(iter, profile, &IteratorStats{
+		Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=bool)", ledger, ns, metaKey),
+		Kind:   "Prefix",
+		Bucket: "midx",
+	}), nil
 }
 
 // compileExistsCondition — streaming scan on the entity-ordered existence index (eidx).
@@ -387,6 +457,7 @@ func compileExistsCondition(
 	ledger, ns, metaKey string,
 	entityLen int,
 	cond *commonpb.ExistsCondition,
+	profile *QueryProfile,
 ) (readstore.EntityIterator, error) {
 	b := tx.Bucket(readstore.BucketEntityExists)
 	if b == nil {
@@ -396,14 +467,46 @@ func compileExistsCondition(
 	nonNullPrefix := readstore.EntityExistsNonNullPrefix(kb, ledger, ns, metaKey)
 	if !cond.IncludeNull {
 		// Only non-null entries
-		return readstore.NewPrefixIterator(b.Cursor(), nonNullPrefix, len(nonNullPrefix), entityLen), nil
+		iter := readstore.NewPrefixIterator(b.Cursor(), nonNullPrefix, len(nonNullPrefix), entityLen)
+		return trackIterator(iter, profile, &IteratorStats{
+			Label:  fmt.Sprintf("PrefixIterator(eidx:%s:%s:%s non-null)", ledger, ns, metaKey),
+			Kind:   "Prefix",
+			Bucket: "eidx",
+		}), nil
 	}
 
 	// Both non-null and null entries: merge two prefix iterators
 	nullPrefix := readstore.EntityExistsNullPrefix(kb, ledger, ns, metaKey)
 	nonNullIter := readstore.NewPrefixIterator(b.Cursor(), nonNullPrefix, len(nonNullPrefix), entityLen)
 	nullIter := readstore.NewPrefixIterator(b.Cursor(), nullPrefix, len(nullPrefix), entityLen)
-	return readstore.NewOrIterator(nonNullIter, nullIter), nil
+
+	nonNullTracked := trackIterator(nonNullIter, profile, &IteratorStats{
+		Label:  fmt.Sprintf("PrefixIterator(eidx:%s:%s:%s non-null)", ledger, ns, metaKey),
+		Kind:   "Prefix",
+		Bucket: "eidx",
+	})
+	var nonNullStats *IteratorStats
+	if profile != nil {
+		nonNullStats = profile.Root
+	}
+
+	nullTracked := trackIterator(nullIter, profile, &IteratorStats{
+		Label:  fmt.Sprintf("PrefixIterator(eidx:%s:%s:%s null)", ledger, ns, metaKey),
+		Kind:   "Prefix",
+		Bucket: "eidx",
+	})
+	var nullStats *IteratorStats
+	if profile != nil {
+		nullStats = profile.Root
+	}
+
+	orIter := readstore.NewOrIterator(nonNullTracked, nullTracked)
+	return trackIterator(orIter, profile, &IteratorStats{
+		Label:    fmt.Sprintf("OrIterator(eidx:%s:%s:%s exists)", ledger, ns, metaKey),
+		Kind:     "Or",
+		Bucket:   "eidx",
+		Children: []*IteratorStats{nonNullStats, nullStats},
+	}), nil
 }
 
 // addressRoleBucket returns the bbolt bucket for the given address role.
@@ -426,31 +529,32 @@ func compileAddressMatch(
 	target commonpb.QueryTarget,
 	ledger string,
 	params map[string]string,
+	profile *QueryProfile,
 ) (readstore.EntityIterator, error) {
 	role := am.Role
 	switch m := am.Match.(type) {
 	case *commonpb.AddressMatch_HardcodedPrefix:
-		return compileAddressPrefix(tx, kb, m.HardcodedPrefix, target, ledger, role)
+		return compileAddressPrefix(tx, kb, m.HardcodedPrefix, target, ledger, role, profile)
 	case *commonpb.AddressMatch_HardcodedExact:
-		return compileAddressExact(tx, kb, m.HardcodedExact, target, ledger, role)
+		return compileAddressExact(tx, kb, m.HardcodedExact, target, ledger, role, profile)
 	case *commonpb.AddressMatch_ParamPrefix:
 		value, ok := params[m.ParamPrefix]
 		if !ok {
 			return nil, fmt.Errorf("parameter %q not provided", m.ParamPrefix)
 		}
-		return compileAddressPrefix(tx, kb, value, target, ledger, role)
+		return compileAddressPrefix(tx, kb, value, target, ledger, role, profile)
 	case *commonpb.AddressMatch_ParamExact:
 		value, ok := params[m.ParamExact]
 		if !ok {
 			return nil, fmt.Errorf("parameter %q not provided", m.ParamExact)
 		}
-		return compileAddressExact(tx, kb, value, target, ledger, role)
+		return compileAddressExact(tx, kb, value, target, ledger, role, profile)
 	default:
 		return nil, fmt.Errorf("unknown address match type: %T", am.Match)
 	}
 }
 
-func compileAddressPrefix(tx *bolt.Tx, kb *readstore.KeyBuilder, addrPrefix string, target commonpb.QueryTarget, ledger string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
+func compileAddressPrefix(tx *bolt.Tx, kb *readstore.KeyBuilder, addrPrefix string, target commonpb.QueryTarget, ledger string, role commonpb.AddressRole, profile *QueryProfile) (readstore.EntityIterator, error) {
 	b := tx.Bucket(readstore.BucketExistence)
 	if b == nil {
 		return &SliceIterator{}, nil
@@ -461,15 +565,30 @@ func compileAddressPrefix(tx *bolt.Tx, kb *readstore.KeyBuilder, addrPrefix stri
 	scanPrefix := append(append([]byte{}, prefix...), addrPrefix...)
 
 	accountIter := readstore.NewPrefixIterator(b.Cursor(), scanPrefix, len(prefix), 0)
+	trackedAccount := trackIterator(accountIter, profile, &IteratorStats{
+		Label:  fmt.Sprintf("PrefixIterator(exist:%s:a:%s*)", ledger, addrPrefix),
+		Kind:   "Prefix",
+		Bucket: "exist",
+	})
 
 	if target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		return accountIter, nil
+		return trackedAccount, nil
 	}
 	// TRANSACTIONS target: translate matching accounts → transaction IDs
-	return readstore.NewAddressTxIterator(tx, kb, ledger, accountIter, addressRoleBucket(role)), nil
+	var accountStats *IteratorStats
+	if profile != nil {
+		accountStats = profile.Root
+	}
+	addrTxIter := readstore.NewAddressTxIterator(tx, kb, ledger, trackedAccount, addressRoleBucket(role))
+	return trackIterator(addrTxIter, profile, &IteratorStats{
+		Label:    fmt.Sprintf("AddressTxIterator(%s)", ledger),
+		Kind:     "AddressTx",
+		Bucket:   "atx",
+		Children: []*IteratorStats{accountStats},
+	}), nil
 }
 
-func compileAddressExact(tx *bolt.Tx, kb *readstore.KeyBuilder, exactAddr string, target commonpb.QueryTarget, ledger string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
+func compileAddressExact(tx *bolt.Tx, kb *readstore.KeyBuilder, exactAddr string, target commonpb.QueryTarget, ledger string, role commonpb.AddressRole, profile *QueryProfile) (readstore.EntityIterator, error) {
 	b := tx.Bucket(readstore.BucketExistence)
 	if b == nil {
 		return &SliceIterator{}, nil
@@ -483,14 +602,42 @@ func compileAddressExact(tx *bolt.Tx, kb *readstore.KeyBuilder, exactAddr string
 	}
 
 	if target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		return &SliceIterator{entities: [][]byte{[]byte(exactAddr)}}, nil
+		iter := &SliceIterator{entities: [][]byte{[]byte(exactAddr)}}
+		return trackIterator(iter, profile, &IteratorStats{
+			Label: fmt.Sprintf("SliceIterator(exact:%s)", exactAddr),
+			Kind:  "Slice",
+		}), nil
 	}
 	// TRANSACTIONS target: wrap single account in AddressTxIterator
 	singleIter := &SliceIterator{entities: [][]byte{[]byte(exactAddr)}}
-	return readstore.NewAddressTxIterator(tx, kb, ledger, singleIter, addressRoleBucket(role)), nil
+	trackedSingle := trackIterator(singleIter, profile, &IteratorStats{
+		Label: fmt.Sprintf("SliceIterator(exact:%s)", exactAddr),
+		Kind:  "Slice",
+	})
+	var singleStats *IteratorStats
+	if profile != nil {
+		singleStats = profile.Root
+	}
+	addrTxIter := readstore.NewAddressTxIterator(tx, kb, ledger, trackedSingle, addressRoleBucket(role))
+	return trackIterator(addrTxIter, profile, &IteratorStats{
+		Label:    fmt.Sprintf("AddressTxIterator(%s)", ledger),
+		Kind:     "AddressTx",
+		Bucket:   "atx",
+		Children: []*IteratorStats{singleStats},
+	}), nil
 }
 
 // --- Helpers ---
+
+// trackIterator wraps an iterator with a TrackedIterator when profiling is active.
+// It also sets profile.Root to the new stats node.
+func trackIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *IteratorStats) readstore.EntityIterator {
+	if profile == nil {
+		return iter
+	}
+	profile.Root = stats
+	return NewTrackedIterator(iter, stats)
+}
 
 // targetNamespaceAndLen returns the namespace and entity length for a query target.
 func targetNamespaceAndLen(target commonpb.QueryTarget) (string, int) {
@@ -551,7 +698,11 @@ func resolveParamUint64(params map[string]string, name string) (uint64, error) {
 }
 
 // materializeRange scans a bbolt range and collects sorted entity IDs.
-func materializeRange(cursor *bolt.Cursor, lower, upper []byte, entityOffset, entityLen int) *SliceIterator {
+// When profile is non-nil, it increments MaterializedRanges and MaterializedItems.
+func materializeRange(cursor *bolt.Cursor, lower, upper []byte, entityOffset, entityLen int, profile *QueryProfile) *SliceIterator {
+	if profile != nil {
+		profile.MaterializedRanges++
+	}
 	var entities [][]byte
 	for k, _ := cursor.Seek(lower); k != nil && bytes.Compare(k, upper) < 0; k, _ = cursor.Next() {
 		entity := extractEntityAtOffset(k, entityOffset, entityLen)
@@ -560,6 +711,9 @@ func materializeRange(cursor *bolt.Cursor, lower, upper []byte, entityOffset, en
 			copy(cp, entity)
 			entities = append(entities, cp)
 		}
+	}
+	if profile != nil {
+		profile.MaterializedItems += len(entities)
 	}
 	sortEntities(entities)
 	return &SliceIterator{entities: entities}

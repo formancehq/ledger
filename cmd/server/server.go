@@ -163,6 +163,9 @@ func NewRunCommand() *cobra.Command {
 	// Read index configuration
 	runCmd.Flags().String("read-index-dir", "", "Directory for the read index bbolt database (default: <data-dir>/read-indexes/)")
 
+	// Query profiling
+	runCmd.Flags().Duration("query-profile-threshold", 10*time.Millisecond, "Log and emit OTel attributes for queries exceeding this duration (0 to disable)")
+
 	return runCmd
 }
 
@@ -443,6 +446,9 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	cfg.ReadIndexConfig = bootstrap.ReadIndexConfig{
 		Dir: getString("read-index-dir", ""),
 	}
+
+	// Query profiling
+	cfg.QueryProfileThreshold = getDuration("query-profile-threshold", 10*time.Millisecond)
 
 	// Join mode: discover peers from an existing cluster member
 	joinAddr := getString("join", "")

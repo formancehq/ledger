@@ -63,6 +63,7 @@ type Config struct {
 	MirrorMaxBatchSize         int
 	UnsafeSkipConfigValidation bool
 	ReadIndexConfig            ReadIndexConfig
+	QueryProfileThreshold      time.Duration
 }
 
 func (c Config) Validate() error {
