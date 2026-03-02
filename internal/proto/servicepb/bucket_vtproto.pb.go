@@ -87,6 +87,7 @@ func (m *ListTransactionsRequest) CloneVT() *ListTransactionsRequest {
 	r.AfterTxId = m.AfterTxId
 	r.Filter = m.Filter.CloneVT()
 	r.Reverse = m.Reverse
+	r.MinLogSequence = m.MinLogSequence
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -108,6 +109,7 @@ func (m *ListAccountsRequest) CloneVT() *ListAccountsRequest {
 	r.AfterAddress = m.AfterAddress
 	r.Filter = m.Filter.CloneVT()
 	r.Reverse = m.Reverse
+	r.MinLogSequence = m.MinLogSequence
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1386,6 +1388,7 @@ func (m *ListAuditEntriesRequest) CloneVT() *ListAuditEntriesRequest {
 	r := new(ListAuditEntriesRequest)
 	r.FailuresOnly = m.FailuresOnly
 	r.PageSize = m.PageSize
+	r.MinLogSequence = m.MinLogSequence
 	if rhs := m.AfterSequence; rhs != nil {
 		tmpVal := *rhs
 		r.AfterSequence = &tmpVal
@@ -1424,6 +1427,7 @@ func (m *ListLogsRequest) CloneVT() *ListLogsRequest {
 	}
 	r := new(ListLogsRequest)
 	r.PageSize = m.PageSize
+	r.MinLogSequence = m.MinLogSequence
 	if rhs := m.AfterSequence; rhs != nil {
 		tmpVal := *rhs
 		r.AfterSequence = &tmpVal
@@ -2007,6 +2011,9 @@ func (this *ListTransactionsRequest) EqualVT(that *ListTransactionsRequest) bool
 	if this.Reverse != that.Reverse {
 		return false
 	}
+	if this.MinLogSequence != that.MinLogSequence {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -2036,6 +2043,9 @@ func (this *ListAccountsRequest) EqualVT(that *ListAccountsRequest) bool {
 		return false
 	}
 	if this.Reverse != that.Reverse {
+		return false
+	}
+	if this.MinLogSequence != that.MinLogSequence {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -4099,6 +4109,9 @@ func (this *ListAuditEntriesRequest) EqualVT(that *ListAuditEntriesRequest) bool
 	if this.PageSize != that.PageSize {
 		return false
 	}
+	if this.MinLogSequence != that.MinLogSequence {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -4138,6 +4151,9 @@ func (this *ListLogsRequest) EqualVT(that *ListLogsRequest) bool {
 		return false
 	}
 	if this.PageSize != that.PageSize {
+		return false
+	}
+	if this.MinLogSequence != that.MinLogSequence {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -5005,6 +5021,11 @@ func (m *ListTransactionsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.MinLogSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinLogSequence))
+		i--
+		dAtA[i] = 0x30
+	}
 	if m.Reverse {
 		i--
 		if m.Reverse {
@@ -5074,6 +5095,11 @@ func (m *ListAccountsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.MinLogSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinLogSequence))
+		i--
+		dAtA[i] = 0x30
 	}
 	if m.Reverse {
 		i--
@@ -8315,6 +8341,11 @@ func (m *ListAuditEntriesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.MinLogSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinLogSequence))
+		i--
+		dAtA[i] = 0x20
+	}
 	if m.PageSize != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PageSize))
 		i--
@@ -8405,6 +8436,11 @@ func (m *ListLogsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.MinLogSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinLogSequence))
+		i--
+		dAtA[i] = 0x18
 	}
 	if m.PageSize != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PageSize))
@@ -9636,6 +9672,9 @@ func (m *ListTransactionsRequest) SizeVT() (n int) {
 	if m.Reverse {
 		n += 2
 	}
+	if m.MinLogSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinLogSequence))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -9663,6 +9702,9 @@ func (m *ListAccountsRequest) SizeVT() (n int) {
 	}
 	if m.Reverse {
 		n += 2
+	}
+	if m.MinLogSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinLogSequence))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -11005,6 +11047,9 @@ func (m *ListAuditEntriesRequest) SizeVT() (n int) {
 	if m.PageSize != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.PageSize))
 	}
+	if m.MinLogSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinLogSequence))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -11033,6 +11078,9 @@ func (m *ListLogsRequest) SizeVT() (n int) {
 	}
 	if m.PageSize != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.PageSize))
+	}
+	if m.MinLogSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinLogSequence))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -11980,6 +12028,25 @@ func (m *ListTransactionsRequest) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Reverse = bool(v != 0)
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinLogSequence", wireType)
+			}
+			m.MinLogSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MinLogSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -12170,6 +12237,25 @@ func (m *ListAccountsRequest) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Reverse = bool(v != 0)
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinLogSequence", wireType)
+			}
+			m.MinLogSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MinLogSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -19380,6 +19466,25 @@ func (m *ListAuditEntriesRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinLogSequence", wireType)
+			}
+			m.MinLogSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MinLogSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -19536,6 +19641,25 @@ func (m *ListLogsRequest) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.PageSize |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinLogSequence", wireType)
+			}
+			m.MinLogSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MinLogSequence |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

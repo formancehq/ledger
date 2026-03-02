@@ -32,6 +32,7 @@ func NewListCommand() *cobra.Command {
 	cmd.Flags().Bool("failures-only", false, "Show only failed entries")
 	cmd.Flags().Uint64("after", 0, "Show entries after this sequence number")
 	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of entries per page (0 = unlimited)")
+	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -52,11 +53,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 		failuresOnly, _ = cmd.Flags().GetBool("failures-only")
 		after, _        = cmd.Flags().GetUint64("after")
 		pageSize, _     = cmd.Flags().GetUint32("page-size")
+		minLogSeq, _    = cmd.Flags().GetUint64("min-log-sequence")
 	)
 
 	req := &servicepb.ListAuditEntriesRequest{
-		FailuresOnly: failuresOnly,
-		PageSize:     pageSize,
+		FailuresOnly:   failuresOnly,
+		PageSize:       pageSize,
+		MinLogSequence: minLogSeq,
 	}
 	if cmd.Flags().Changed("after") {
 		req.AfterSequence = &after

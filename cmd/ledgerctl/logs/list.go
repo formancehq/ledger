@@ -27,6 +27,7 @@ func NewListCommand() *cobra.Command {
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Uint64("after", 0, "Show logs after this sequence number")
 	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of logs per page (0 = unlimited)")
+	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -46,10 +47,12 @@ func runList(cmd *cobra.Command, _ []string) error {
 		jsonOutput, _ = cmd.Flags().GetBool("json")
 		after, _      = cmd.Flags().GetUint64("after")
 		pageSize, _   = cmd.Flags().GetUint32("page-size")
+		minLogSeq, _  = cmd.Flags().GetUint64("min-log-sequence")
 	)
 
 	req := &servicepb.ListLogsRequest{
-		PageSize: pageSize,
+		PageSize:       pageSize,
+		MinLogSequence: minLogSeq,
 	}
 	if cmd.Flags().Changed("after") {
 		req.AfterSequence = &after

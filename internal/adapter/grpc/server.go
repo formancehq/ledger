@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	ggrpc "google.golang.org/grpc"
@@ -269,6 +270,24 @@ func convertToGRPCError(err error) error {
 		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
 			Reason: domain.ErrReasonPeriodNotArchiving,
 			Domain: "ledger",
+		})
+		if detailErr == nil {
+			return detailed.Err()
+		}
+		return st.Err()
+	}
+
+	// Convert ErrReadIndexNotCaughtUp to FailedPrecondition with details
+	var notCaughtUp *query.ErrReadIndexNotCaughtUp
+	if errors.As(err, &notCaughtUp) {
+		st := status.New(codes.FailedPrecondition, notCaughtUp.Error())
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: "READ_INDEX_NOT_CAUGHT_UP",
+			Domain: "ledger",
+			Metadata: map[string]string{
+				"requested": fmt.Sprintf("%d", notCaughtUp.Requested),
+				"current":   fmt.Sprintf("%d", notCaughtUp.Current),
+			},
 		})
 		if detailErr == nil {
 			return detailed.Err()

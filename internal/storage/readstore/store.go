@@ -1,10 +1,12 @@
 package readstore
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -20,6 +22,12 @@ type Store struct {
 	db     *bolt.DB
 	logger logging.Logger
 	path   string
+
+	// progressMu and progressCond allow callers to wait until the indexed
+	// sequence reaches a target value.  The index builder calls
+	// NotifyProgress after each WriteProgress to wake up waiters.
+	progressMu   sync.Mutex
+	progressCond *sync.Cond
 }
 
 // New opens or creates a bbolt database at the given directory.
@@ -71,11 +79,13 @@ func New(dir string, logger logging.Logger) (*Store, error) {
 		return nil, fmt.Errorf("initializing buckets: %w", err)
 	}
 
-	return &Store{
+	s := &Store{
 		db:     db,
 		logger: logger.WithFields(map[string]any{"cmp": "read-store"}),
 		path:   dbPath,
-	}, nil
+	}
+	s.progressCond = sync.NewCond(&s.progressMu)
+	return s, nil
 }
 
 // Close closes the underlying bbolt database.
@@ -141,4 +151,54 @@ func (s *Store) LastIndexedSequence() (uint64, error) {
 		return readErr
 	})
 	return seq, err
+}
+
+// NotifyProgress wakes all goroutines waiting in WaitForSequence.
+// Must be called after WriteProgress commits successfully.
+func (s *Store) NotifyProgress() {
+	s.progressCond.Broadcast()
+}
+
+// WaitForSequence blocks until LastIndexedSequence >= minSeq or the context
+// is cancelled.  Returns nil when the target is reached, or ctx.Err() on
+// cancellation / timeout.
+func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {
+	// Fast path: already caught up.
+	cur, err := s.LastIndexedSequence()
+	if err != nil {
+		return fmt.Errorf("reading index progress: %w", err)
+	}
+	if cur >= minSeq {
+		return nil
+	}
+
+	// Spawn a goroutine that broadcasts when the context is cancelled so
+	// the Wait() below is unblocked.
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			s.progressCond.Broadcast()
+		case <-done:
+		}
+	}()
+
+	s.progressMu.Lock()
+	for {
+		if ctx.Err() != nil {
+			s.progressMu.Unlock()
+			return ctx.Err()
+		}
+		cur, err = s.LastIndexedSequence()
+		if err != nil {
+			s.progressMu.Unlock()
+			return fmt.Errorf("reading index progress: %w", err)
+		}
+		if cur >= minSeq {
+			s.progressMu.Unlock()
+			return nil
+		}
+		s.progressCond.Wait()
+	}
 }

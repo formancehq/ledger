@@ -122,6 +122,7 @@ func (b *Builder) processLogs(cursor uint64) (uint64, error) {
 		}
 
 		cursor = log.Sequence
+		b.readStore.NotifyProgress()
 	}
 
 	return cursor, nil

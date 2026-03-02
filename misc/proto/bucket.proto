@@ -99,6 +99,9 @@ message ListTransactionsRequest {
   common.QueryFilter filter = 4;
   // reverse inverts the default iteration order (newest-first becomes oldest-first)
   bool reverse = 5;
+  // min_log_sequence requires the store to have applied at least this log sequence before reading.
+  // If the store has not caught up, the server returns FailedPrecondition.
+  uint64 min_log_sequence = 6;
 }
 
 message ListAccountsRequest {
@@ -111,6 +114,9 @@ message ListAccountsRequest {
   common.QueryFilter filter = 4;
   // reverse inverts the default iteration order (alphabetical becomes reverse-alphabetical)
   bool reverse = 5;
+  // min_log_sequence requires the store to have applied at least this log sequence before reading.
+  // If the store has not caught up, the server returns FailedPrecondition.
+  uint64 min_log_sequence = 6;
 }
 
 message CreateLedgerRequest {
@@ -492,6 +498,9 @@ message ListAuditEntriesRequest {
   bool failures_only = 2;
   // page_size is the maximum number of audit entries to return (0 = no limit)
   uint32 page_size = 3;
+  // min_log_sequence requires the store to have applied at least this log sequence before reading.
+  // If the store has not caught up, the server returns FailedPrecondition.
+  uint64 min_log_sequence = 4;
 }
 
 message GetAuditEntryRequest {
@@ -505,6 +514,9 @@ message GetAuditEntryRequest {
 message ListLogsRequest {
   optional uint64 after_sequence = 1;
   uint32 page_size = 2;
+  // min_log_sequence requires the store to have applied at least this log sequence before reading.
+  // If the store has not caught up, the server returns FailedPrecondition.
+  uint64 min_log_sequence = 3;
 }
 
 message GetLogRequest {

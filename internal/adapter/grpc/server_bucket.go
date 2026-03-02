@@ -169,6 +169,15 @@ func (impl *BucketServiceServerImpl) computeTransactionReceipt(ledger string, tx
 	return impl.receiptSigner.Sign(ledger, txID, tx.Postings, tx.Timestamp, created.PeriodId)
 }
 
+// waitMinLogSequence blocks until the bbolt read index has processed at
+// least the requested minimum log sequence, or the context is cancelled.
+func (impl *BucketServiceServerImpl) waitMinLogSequence(ctx context.Context, minLogSequence uint64) error {
+	if minLogSequence == 0 {
+		return nil
+	}
+	return impl.readStore.WaitForSequence(ctx, minLogSequence)
+}
+
 func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransactionsRequest, stream servicepb.BucketService_ListTransactionsServer) error {
 	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
 		return err
@@ -176,6 +185,10 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 
 	if req.Ledger == "" {
 		return fmt.Errorf("ledger name is required")
+	}
+
+	if err := impl.waitMinLogSequence(stream.Context(), req.MinLogSequence); err != nil {
+		return err
 	}
 
 	impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, hasFilter=%v, reverse=%v)",
@@ -238,6 +251,10 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 
 	if req.Ledger == "" {
 		return fmt.Errorf("ledger name is required")
+	}
+
+	if err := impl.waitMinLogSequence(stream.Context(), req.MinLogSequence); err != nil {
+		return err
 	}
 
 	impl.logger.Debugf("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, hasFilter=%v, reverse=%v)",
@@ -327,6 +344,10 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		return err
 	}
 
+	if err := impl.waitMinLogSequence(stream.Context(), req.MinLogSequence); err != nil {
+		return err
+	}
+
 	cursor, err := impl.ctrl.ListAuditEntries(stream.Context(), req.AfterSequence, req.FailuresOnly, req.PageSize) //nolint:protogetter
 	if err != nil {
 		return fmt.Errorf("listing audit entries: %w", err)
@@ -345,6 +366,10 @@ func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.
 
 func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
 	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeRead); err != nil {
+		return err
+	}
+
+	if err := impl.waitMinLogSequence(stream.Context(), req.MinLogSequence); err != nil {
 		return err
 	}
 

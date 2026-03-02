@@ -301,9 +301,12 @@ type ListTransactionsRequest struct {
 	// filter is a rich boolean filter (metadata conditions, address matching, AND/OR/NOT)
 	Filter *commonpb.QueryFilter `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	// reverse inverts the default iteration order (newest-first becomes oldest-first)
-	Reverse       bool `protobuf:"varint,5,opt,name=reverse,proto3" json:"reverse,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Reverse bool `protobuf:"varint,5,opt,name=reverse,proto3" json:"reverse,omitempty"`
+	// min_log_sequence requires the store to have applied at least this log sequence before reading.
+	// If the store has not caught up, the server returns FailedPrecondition.
+	MinLogSequence uint64 `protobuf:"varint,6,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListTransactionsRequest) Reset() {
@@ -371,6 +374,13 @@ func (x *ListTransactionsRequest) GetReverse() bool {
 	return false
 }
 
+func (x *ListTransactionsRequest) GetMinLogSequence() uint64 {
+	if x != nil {
+		return x.MinLogSequence
+	}
+	return 0
+}
+
 type ListAccountsRequest struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
@@ -381,9 +391,12 @@ type ListAccountsRequest struct {
 	// filter is a rich boolean filter (metadata conditions, address matching, AND/OR/NOT)
 	Filter *commonpb.QueryFilter `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	// reverse inverts the default iteration order (alphabetical becomes reverse-alphabetical)
-	Reverse       bool `protobuf:"varint,5,opt,name=reverse,proto3" json:"reverse,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Reverse bool `protobuf:"varint,5,opt,name=reverse,proto3" json:"reverse,omitempty"`
+	// min_log_sequence requires the store to have applied at least this log sequence before reading.
+	// If the store has not caught up, the server returns FailedPrecondition.
+	MinLogSequence uint64 `protobuf:"varint,6,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListAccountsRequest) Reset() {
@@ -449,6 +462,13 @@ func (x *ListAccountsRequest) GetReverse() bool {
 		return x.Reverse
 	}
 	return false
+}
+
+func (x *ListAccountsRequest) GetMinLogSequence() uint64 {
+	if x != nil {
+		return x.MinLogSequence
+	}
+	return 0
 }
 
 type CreateLedgerRequest struct {
@@ -3873,9 +3893,12 @@ type ListAuditEntriesRequest struct {
 	AfterSequence *uint64                `protobuf:"varint,1,opt,name=after_sequence,json=afterSequence,proto3,oneof" json:"after_sequence,omitempty"`
 	FailuresOnly  bool                   `protobuf:"varint,2,opt,name=failures_only,json=failuresOnly,proto3" json:"failures_only,omitempty"`
 	// page_size is the maximum number of audit entries to return (0 = no limit)
-	PageSize      uint32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	PageSize uint32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// min_log_sequence requires the store to have applied at least this log sequence before reading.
+	// If the store has not caught up, the server returns FailedPrecondition.
+	MinLogSequence uint64 `protobuf:"varint,4,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListAuditEntriesRequest) Reset() {
@@ -3929,6 +3952,13 @@ func (x *ListAuditEntriesRequest) GetPageSize() uint32 {
 	return 0
 }
 
+func (x *ListAuditEntriesRequest) GetMinLogSequence() uint64 {
+	if x != nil {
+		return x.MinLogSequence
+	}
+	return 0
+}
+
 type GetAuditEntryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Sequence      uint64                 `protobuf:"varint,1,opt,name=sequence,proto3" json:"sequence,omitempty"`
@@ -3977,8 +4007,11 @@ type ListLogsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AfterSequence *uint64                `protobuf:"varint,1,opt,name=after_sequence,json=afterSequence,proto3,oneof" json:"after_sequence,omitempty"`
 	PageSize      uint32                 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// min_log_sequence requires the store to have applied at least this log sequence before reading.
+	// If the store has not caught up, the server returns FailedPrecondition.
+	MinLogSequence uint64 `protobuf:"varint,3,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListLogsRequest) Reset() {
@@ -4021,6 +4054,13 @@ func (x *ListLogsRequest) GetAfterSequence() uint64 {
 func (x *ListLogsRequest) GetPageSize() uint32 {
 	if x != nil {
 		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListLogsRequest) GetMinLogSequence() uint64 {
+	if x != nil {
+		return x.MinLogSequence
 	}
 	return 0
 }
@@ -5248,19 +5288,21 @@ const file_bucket_proto_rawDesc = "" +
 	"\x0etransaction_id\x18\x02 \x01(\x04R\rtransactionId\"i\n" +
 	"\x16GetTransactionResponse\x125\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\x12\x18\n" +
-	"\areceipt\x18\x02 \x01(\tR\areceipt\"\xb5\x01\n" +
+	"\areceipt\x18\x02 \x01(\tR\areceipt\"\xdf\x01\n" +
 	"\x17ListTransactionsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12\x1e\n" +
 	"\vafter_tx_id\x18\x03 \x01(\x04R\tafterTxId\x12+\n" +
 	"\x06filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\x06filter\x12\x18\n" +
-	"\areverse\x18\x05 \x01(\bR\areverse\"\xb6\x01\n" +
+	"\areverse\x18\x05 \x01(\bR\areverse\x12(\n" +
+	"\x10min_log_sequence\x18\x06 \x01(\x04R\x0eminLogSequence\"\xe0\x01\n" +
 	"\x13ListAccountsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12#\n" +
 	"\rafter_address\x18\x03 \x01(\tR\fafterAddress\x12+\n" +
 	"\x06filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\x06filter\x12\x18\n" +
-	"\areverse\x18\x05 \x01(\bR\areverse\"\xde\x01\n" +
+	"\areverse\x18\x05 \x01(\bR\areverse\x12(\n" +
+	"\x10min_log_sequence\x18\x06 \x01(\x04R\x0eminLogSequence\"\xde\x01\n" +
 	"\x13CreateLedgerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12J\n" +
 	"\x0einitial_schema\x18\x03 \x03(\v2#.common.SetMetadataFieldTypeCommandR\rinitialSchema\x12&\n" +
@@ -5500,17 +5542,19 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12CheckStoreProgress\x12!\n" +
 	"\flogs_checked\x18\x01 \x01(\x04R\vlogsChecked\x12\x1d\n" +
 	"\n" +
-	"total_logs\x18\x02 \x01(\x04R\ttotalLogs\"\x9a\x01\n" +
+	"total_logs\x18\x02 \x01(\x04R\ttotalLogs\"\xc4\x01\n" +
 	"\x17ListAuditEntriesRequest\x12*\n" +
 	"\x0eafter_sequence\x18\x01 \x01(\x04H\x00R\rafterSequence\x88\x01\x01\x12#\n" +
 	"\rfailures_only\x18\x02 \x01(\bR\ffailuresOnly\x12\x1b\n" +
-	"\tpage_size\x18\x03 \x01(\rR\bpageSizeB\x11\n" +
+	"\tpage_size\x18\x03 \x01(\rR\bpageSize\x12(\n" +
+	"\x10min_log_sequence\x18\x04 \x01(\x04R\x0eminLogSequenceB\x11\n" +
 	"\x0f_after_sequence\"2\n" +
 	"\x14GetAuditEntryRequest\x12\x1a\n" +
-	"\bsequence\x18\x01 \x01(\x04R\bsequence\"m\n" +
+	"\bsequence\x18\x01 \x01(\x04R\bsequence\"\x97\x01\n" +
 	"\x0fListLogsRequest\x12*\n" +
 	"\x0eafter_sequence\x18\x01 \x01(\x04H\x00R\rafterSequence\x88\x01\x01\x12\x1b\n" +
-	"\tpage_size\x18\x02 \x01(\rR\bpageSizeB\x11\n" +
+	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12(\n" +
+	"\x10min_log_sequence\x18\x03 \x01(\x04R\x0eminLogSequenceB\x11\n" +
 	"\x0f_after_sequence\"+\n" +
 	"\rGetLogRequest\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x04R\bsequence\"\x17\n" +
