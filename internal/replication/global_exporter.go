@@ -119,6 +119,13 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 
 	nextInterval := time.Duration(0)
 
+	// Load exporter states once from the DB; updated in-memory after each successful export.
+	states, err := r.store.ListGlobalExporterStates(ctx)
+	if err != nil {
+		r.logger.Errorf("Error loading initial global exporter states: %v", err)
+		return
+	}
+
 	for {
 		select {
 		case ch := <-r.stopChannel:
@@ -129,12 +136,6 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 
 		// Reset to default poll interval; exportLedgerLogs may set it to 0 if HasMore
 		nextInterval = r.config.PollInterval
-
-		states, err := r.store.ListGlobalExporterStates(ctx)
-		if err != nil {
-			r.logger.Errorf("Error listing global exporter states: %v", err)
-			continue
-		}
 
 		var nextQuery common.PaginatedQuery[systemstore.ListLedgersQueryPayload] = common.InitialPaginatedQuery[systemstore.ListLedgersQueryPayload]{
 			PageSize: 100,
@@ -150,8 +151,7 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 			}
 
 			for _, l := range cursor.Data {
-				lastLogID, hasState := states[l.Name]
-				stopped := r.exportLedgerLogs(ctx, facade, l.Name, lastLogID, hasState)
+				stopped := r.exportLedgerLogs(ctx, facade, l.Name, states)
 				if stopped {
 					return
 				}
@@ -176,9 +176,9 @@ func (r *GlobalExporterRunner) exportLedgerLogs(
 	ctx context.Context,
 	driver drivers.Driver,
 	ledgerName string,
-	lastLogID uint64,
-	hasState bool,
+	states map[string]uint64,
 ) bool {
+	lastLogID, hasState := states[ledgerName]
 	fetcher, err := r.getLogFetcher(ctx, ledgerName)
 	if err != nil {
 		r.logger.Errorf("Error opening ledger %s: %v", ledgerName, err)
@@ -246,12 +246,13 @@ func (r *GlobalExporterRunner) exportLedgerLogs(
 			break
 		}
 
-		// Persist state after successful batch
+		// Persist state after successful batch and update in-memory cache
 		lastLog := logs.Data[len(logs.Data)-1]
 		if lastLog.ID != nil {
 			if err := r.store.UpdateGlobalExporterState(ctx, ledgerName, *lastLog.ID); err != nil {
 				r.logger.Errorf("Failed to persist state for ledger %s: %v", ledgerName, err)
 			}
+			states[ledgerName] = *lastLog.ID
 		}
 
 		if !logs.HasMore {
