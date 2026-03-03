@@ -3,11 +3,12 @@ set dotenv-load
 default:
   @just --list
 
-pre-commit: tidy generate lint export-docs-events openapi generate-client
+pre-commit: tidy generate generate-client lint export-docs-events openapi
 pc: pre-commit
 
 lint:
-    golangci-lint run --fix --build-tags it --timeout 5m
+    golangci-lint --version
+    golangci-lint run --fix --build-tags it,local --timeout 5m
     for d in $(ls tools); do \
         pushd tools/$d; \
         golangci-lint run --fix --build-tags it --timeout 5m; \
@@ -41,12 +42,15 @@ tests:
     cat coverage.txt | grep -v debug.go | grep -v "/machine/" | grep -v "pb.go" > coverage2.txt
     mv coverage2.txt coverage.txt
 
+fmt:
+    @golangci-lint fmt
+
 openapi:
     yq eval-all '. as $item ireduce ({}; . * $item)' openapi/v1.yaml openapi/v2.yaml openapi/overlay.yaml > openapi.yaml
     npx -y widdershins {{justfile_directory()}}/openapi/v2.yaml -o {{justfile_directory()}}/docs/api/README.md --search false --language_tabs 'http:HTTP' --summary --omitHeader
 
 generate-client: openapi
-    @cd pkg/client && speakeasy run --skip-versioning
+    if [ ! -z "${SPEAKEASY_API_KEY:-}" ]; then cd pkg/client && speakeasy run --skip-versioning; fi
 
 release-local:
     @goreleaser release --nightly --skip=publish --clean
