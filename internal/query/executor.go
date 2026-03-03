@@ -80,7 +80,7 @@ func Execute(
 		kb := readstore.NewKeyBuilder()
 
 		// Compile filter into iterator tree
-		iter, compileErr := Compile(tx, kb, pq.Filter, pq.Target, req.Ledger, req.Parameters, schema, profile)
+		iter, compileErr := Compile(tx, kb, pq.Filter, pq.Target, req.Ledger, req.Parameters, schema, ledgerInfo.AddressIndexes, profile)
 		if compileErr != nil {
 			return fmt.Errorf("compiling filter: %w", compileErr)
 		}
