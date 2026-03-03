@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 const (
@@ -70,12 +73,42 @@ func fetchStableRelease() (*releaseInfo, error) {
 	return nil, fmt.Errorf("no stable release found; use --channel nightly")
 }
 
+var (
+	githubToken     string
+	githubTokenOnce sync.Once
+)
+
+// resolveGitHubToken returns a GitHub token from GITHUB_TOKEN env var,
+// falling back to `gh auth token` if the CLI is installed.
+func resolveGitHubToken() string {
+	githubTokenOnce.Do(func() {
+		if t := os.Getenv("GITHUB_TOKEN"); t != "" {
+			githubToken = t
+			return
+		}
+		out, err := exec.Command("gh", "auth", "token").Output()
+		if err == nil {
+			githubToken = strings.TrimSpace(string(out))
+		}
+	})
+
+	return githubToken
+}
+
+// setGitHubAuth adds the Authorization header if a token is available.
+func setGitHubAuth(req *http.Request) {
+	if token := resolveGitHubToken(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+}
+
 func githubGet(url string, target any) error {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
+	setGitHubAuth(req)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -84,7 +117,13 @@ func githubGet(url string, target any) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusForbidden {
-		return fmt.Errorf("GitHub API rate limit exceeded; try again later")
+		return fmt.Errorf("GitHub API rate limit exceeded; try again later or set GITHUB_TOKEN")
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		if resolveGitHubToken() == "" {
+			return fmt.Errorf("GitHub API returned 404 for %s (the repo may be private; set GITHUB_TOKEN or run `gh auth login`)", url)
+		}
+		return fmt.Errorf("GitHub API returned 404 for %s (check that the token has access to the repo)", url)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GitHub API returned %s for %s", resp.Status, url)
@@ -95,6 +134,29 @@ func githubGet(url string, target any) error {
 	}
 
 	return nil
+}
+
+// githubDownload performs an HTTP GET with GitHub authentication (if available)
+// and returns the response. The caller must close the response body.
+func githubDownload(url string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("Accept", "application/octet-stream")
+	setGitHubAuth(req)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching %s: %w", url, err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("HTTP %s for %s", resp.Status, url)
+	}
+
+	return resp, nil
 }
 
 // archiveAssetName returns the expected archive filename for the current OS/arch.

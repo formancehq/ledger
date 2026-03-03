@@ -9,11 +9,22 @@ Business:
 * Add aggregations
 * Query validations against types
 * Numscript
+* Fetch all the production
 ** Add typed variables
 * ledgerctl:
 ** Add self update
+** Profiles
 ** First usage detection and display
 * accounts migration
+* bbolt very late
+* Kubectl ledger
+** Add watch command
+* Operator
+** Embed CRD instead of relying on pulumi
+* CI
+** Add e2e tests
+* Checkpoint when promoting ledger to be able to shutdown the mirrored ledger properly
+* Block cache warmup removal? background?
 
 Docs:
 * Clean relying parties distinctions

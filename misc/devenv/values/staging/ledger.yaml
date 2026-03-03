@@ -76,9 +76,6 @@ config:
         - "audit:write"
         - "ops:write"
         - "queries:write"
-      "ledger:admin":
-        - "cluster:read"
-        - "cluster:write"
   raft:
     electionTick: 10
     heartbeatTick: 1

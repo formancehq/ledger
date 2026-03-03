@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 
@@ -47,15 +46,11 @@ func downloadAndVerify(archiveAsset, checksumsAsset *assetInfo, spinner *pterm.S
 	// 1. Download checksums.txt (small, in memory).
 	spinner.UpdateText("Downloading checksums...")
 
-	checksumsResp, err := http.Get(checksumsAsset.BrowserDownloadURL)
+	checksumsResp, err := githubDownload(checksumsAsset.BrowserDownloadURL)
 	if err != nil {
 		return "", fmt.Errorf("downloading checksums: %w", err)
 	}
 	defer func() { _ = checksumsResp.Body.Close() }()
-
-	if checksumsResp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("downloading checksums: HTTP %s", checksumsResp.Status)
-	}
 
 	checksums, err := parseChecksums(checksumsResp.Body)
 	if err != nil {
@@ -70,15 +65,11 @@ func downloadAndVerify(archiveAsset, checksumsAsset *assetInfo, spinner *pterm.S
 	// 2. Download archive to temp file, computing SHA256 as we go.
 	spinner.UpdateText(fmt.Sprintf("Downloading %s...", archiveAsset.Name))
 
-	archiveResp, err := http.Get(archiveAsset.BrowserDownloadURL)
+	archiveResp, err := githubDownload(archiveAsset.BrowserDownloadURL)
 	if err != nil {
 		return "", fmt.Errorf("downloading archive: %w", err)
 	}
 	defer func() { _ = archiveResp.Body.Close() }()
-
-	if archiveResp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("downloading archive: HTTP %s", archiveResp.Status)
-	}
 
 	tmpArchive, err := os.CreateTemp("", "ledgerctl-upgrade-*.tar.gz")
 	if err != nil {

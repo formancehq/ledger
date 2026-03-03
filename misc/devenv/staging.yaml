@@ -85,7 +85,7 @@ spec:
     retentionPolicy:
       whenDeleted: Delete
     data:
-      size: 300Gi
+      size: 500Gi
     wal:
       size: 15Gi
 ---

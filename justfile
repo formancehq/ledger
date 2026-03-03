@@ -40,11 +40,11 @@ run:
 run-client *ARGS:
     go run ./cmd/ledgerctl {{ARGS}}
 
-# Install ledgerctl and kubectl-ledger plugin into $GOPATH/bin
+# Install ledgerctl and kubectl-ledger plugin into $(go env GOPATH)/bin
 install: install-client install-kubectl-plugin
 
 install-client:
-    go build -o $GOPATH/bin/ledgerctl ./cmd/ledgerctl
+    go build -o $(go env GOPATH)/bin/ledgerctl ./cmd/ledgerctl
     #todo: make optional or configurable or whatever
     ledgerctl completion zsh > ~/.oh-my-zsh/custom/completions/_ledgerctl
 
@@ -212,6 +212,6 @@ _generate-demo tapes:
 build-kubectl-plugin:
     cd misc/operator && go build -o ../../build/kubectl-ledger ./cmd/kubectl-ledger
 
-# Install the kubectl-ledger plugin into $GOPATH/bin (makes it available as `kubectl ledger`)
+# Install the kubectl-ledger plugin into $(go env GOPATH)/bin (makes it available as `kubectl ledger`)
 install-kubectl-plugin:
-    cd misc/operator && go build -o $GOPATH/bin/kubectl-ledger ./cmd/kubectl-ledger
+    cd misc/operator && go build -o $(go env GOPATH)/bin/kubectl-ledger ./cmd/kubectl-ledger
