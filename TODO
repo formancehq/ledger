@@ -3,7 +3,6 @@ API:
 * Clean HTTP layer / GRPC proxy
 
 Business:
-* Chart of account
 * Account types instead of segment filtering
 * Progression of metadata type changes
 * Add aggregations
@@ -11,13 +10,9 @@ Business:
 * Numscript
 * Fetch all the production
 ** Add typed variables
-* Chart of accounts
 * ledgerctl:
-** Add self update
-** Profiles
 ** First usage detection and display
 * accounts migration
-* bbolt very late
 * Kubectl ledger
 ** Add watch command
 * Operator

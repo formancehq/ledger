@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/semver"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 

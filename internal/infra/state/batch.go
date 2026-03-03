@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/semver"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
