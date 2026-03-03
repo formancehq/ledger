@@ -636,6 +636,7 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(_ context.Context, ledger
 }
 
 // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts.
+// Uses streaming iteration to avoid loading all accounts into memory.
 func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
 	// Reuse ListAccounts with pageSize=0 (no limit) to get all accounts
 	cursor, err := ctrl.ListAccounts(ctx, ledgerName, 0, "", nil, false)
@@ -644,23 +645,20 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 	}
 	defer func() { _ = cursor.Close() }()
 
-	var accounts []analysis.CompactAccount
-	for {
+	next := func() (analysis.CompactAccount, error) {
 		acc, err := cursor.Next()
-		if err == io.EOF {
-			break
-		}
 		if err != nil {
-			return nil, fmt.Errorf("reading accounts for analysis: %w", err)
+			return analysis.CompactAccount{}, err
 		}
-		accounts = append(accounts, analysis.ExtractCompactAccount(acc))
+		return analysis.ExtractCompactAccount(acc), nil
 	}
 
-	return analysis.Analyze(accounts, variableThreshold), nil
+	return analysis.AnalyzeFromIterator(next, variableThreshold)
 }
 
 // AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns.
-// Uses a single sequential Pebble log scan instead of per-transaction random seeks.
+// Uses two sequential Pebble log scans with streaming processing to avoid loading
+// all transactions into memory (O(unique addresses + unique signatures) instead of O(N)).
 func (ctrl *DefaultController) AnalyzeTransactions(_ context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
@@ -672,12 +670,99 @@ func (ctrl *DefaultController) AnalyzeTransactions(_ context.Context, ledgerName
 		return nil, fmt.Errorf("validating ledger for analysis: %w", err)
 	}
 
-	transactions, err := query.ScanTransactionsForAnalysis(handle, ledgerName)
-	if err != nil {
-		return nil, fmt.Errorf("scanning transactions for analysis: %w", err)
+	// makeStreamIter returns an iterator function that streams CompactTransactions
+	// from a fresh log scan. Each call creates a new scan cursor.
+	var totalReverted uint64
+	var pass1Done bool
+	makeStreamIter := func() (func() (analysis.CompactTransaction, error), func()) {
+		var (
+			cursor dal.Cursor[*commonpb.Log]
+			done   bool
+		)
+		next := func() (analysis.CompactTransaction, error) {
+			if done {
+				return analysis.CompactTransaction{}, io.EOF
+			}
+			// Lazy cursor creation on first call
+			if cursor == nil {
+				var err error
+				cursor, err = query.ReadLogsSince(handle, 0, dal.WithReuse())
+				if err != nil {
+					return analysis.CompactTransaction{}, fmt.Errorf("creating log cursor for analysis: %w", err)
+				}
+			}
+
+			for {
+				log, err := cursor.Next()
+				if err == io.EOF {
+					done = true
+					return analysis.CompactTransaction{}, io.EOF
+				}
+				if err != nil {
+					return analysis.CompactTransaction{}, fmt.Errorf("reading log for analysis: %w", err)
+				}
+
+				if log.Payload == nil {
+					continue
+				}
+				applyLog, ok := log.Payload.Type.(*commonpb.LogPayload_Apply)
+				if !ok {
+					continue
+				}
+				if applyLog.Apply.LedgerName != ledgerName {
+					continue
+				}
+				ledgerLog := applyLog.Apply.Log
+				if ledgerLog == nil || ledgerLog.Data == nil {
+					continue
+				}
+
+				switch p := ledgerLog.Data.Payload.(type) {
+				case *commonpb.LedgerLogPayload_CreatedTransaction:
+					if p.CreatedTransaction.Transaction == nil {
+						continue
+					}
+					return analysis.ExtractCompactTransaction(p.CreatedTransaction.Transaction), nil
+
+				case *commonpb.LedgerLogPayload_RevertedTransaction:
+					// Count reverted during pass 1 only
+					if !pass1Done {
+						totalReverted++
+					}
+					if p.RevertedTransaction.RevertTransaction != nil {
+						return analysis.ExtractCompactTransaction(p.RevertedTransaction.RevertTransaction), nil
+					}
+					continue
+				default:
+					continue
+				}
+			}
+		}
+		cleanup := func() {
+			if cursor != nil {
+				_ = cursor.Close()
+			}
+		}
+		return next, cleanup
 	}
 
-	return analysis.AnalyzeTransactions(transactions, variableThreshold), nil
+	pass1, cleanup1 := makeStreamIter()
+	defer cleanup1()
+
+	pass2Fn, cleanup2 := makeStreamIter()
+	defer cleanup2()
+
+	// After pass1 completes inside AnalyzeTransactionsFromIterators, totalReverted
+	// will have been counted. Mark pass1Done to avoid double counting during pass2.
+	wrappedPass1 := func() (analysis.CompactTransaction, error) {
+		ct, err := pass1()
+		if err == io.EOF {
+			pass1Done = true
+		}
+		return ct, err
+	}
+
+	return analysis.AnalyzeTransactionsFromIterators(wrappedPass1, pass2Fn, func() uint64 { return totalReverted }, variableThreshold)
 }
 
 // ListLogs returns a cursor over system logs.

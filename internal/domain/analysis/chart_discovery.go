@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"fmt"
+	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -43,19 +44,44 @@ func newTrieNode() *trieNode {
 // Analyze scans a slice of compact accounts and returns an AnalyzeAccountsResponse with
 // a suggested ChartOfAccounts, discovered patterns, and total account count.
 func Analyze(accounts []CompactAccount, variableThreshold uint32) *servicepb.AnalyzeAccountsResponse {
+	i := 0
+	next := func() (CompactAccount, error) {
+		if i >= len(accounts) {
+			return CompactAccount{}, io.EOF
+		}
+		acc := accounts[i]
+		i++
+		return acc, nil
+	}
+	resp, err := AnalyzeFromIterator(next, variableThreshold)
+	if err != nil {
+		// Slice iterator never returns a non-EOF error.
+		panic(fmt.Sprintf("unexpected error from slice iterator: %v", err))
+	}
+	return resp
+}
+
+// AnalyzeFromIterator incrementally builds a trie from accounts yielded by next.
+// Each account is discarded after insertion, so memory is O(unique address segments)
+// instead of O(N accounts).
+func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
 	if variableThreshold == 0 {
 		variableThreshold = DefaultVariableThreshold
 	}
 
-	if len(accounts) == 0 {
-		return &servicepb.AnalyzeAccountsResponse{
-			SuggestedChart: &commonpb.ChartOfAccounts{},
-		}
-	}
-
-	// Build trie
 	root := newTrieNode()
-	for _, acc := range accounts {
+	var totalAccounts uint64
+
+	for {
+		acc, err := next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("reading account for analysis: %w", err)
+		}
+
+		totalAccounts++
 		segments := strings.Split(acc.Address, ":")
 		node := root
 		for _, seg := range segments {
@@ -66,10 +92,15 @@ func Analyze(accounts []CompactAccount, variableThreshold uint32) *servicepb.Ana
 			}
 			node = child
 		}
-		// Mark terminating node with account data
 		node.terminating++
 		node.assets = mergeDistinct(node.assets, acc.Assets)
 		node.metadataKeys = mergeDistinct(node.metadataKeys, acc.MetadataKeys)
+	}
+
+	if totalAccounts == 0 {
+		return &servicepb.AnalyzeAccountsResponse{
+			SuggestedChart: &commonpb.ChartOfAccounts{},
+		}, nil
 	}
 
 	// Convert trie to chart tree
@@ -84,8 +115,8 @@ func Analyze(accounts []CompactAccount, variableThreshold uint32) *servicepb.Ana
 			Roots: roots,
 		},
 		Patterns:      patterns,
-		TotalAccounts: uint64(len(accounts)),
-	}
+		TotalAccounts: totalAccounts,
+	}, nil
 }
 
 // childInfo holds information about a trie node's child during classification.
