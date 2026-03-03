@@ -32,7 +32,10 @@ type Store struct {
 
 // New opens or creates a bbolt database at the given directory.
 // It creates all required buckets on first open.
-func New(dir string, logger logging.Logger) (*Store, error) {
+// When noFreelistSync is true, bbolt skips serializing the freelist on each
+// commit, which significantly reduces CPU during bulk writes. The freelist
+// is rebuilt from a full page scan on the next Open().
+func New(dir string, noFreelistSync bool, logger logging.Logger) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("creating read store directory: %w", err)
 	}
@@ -44,8 +47,9 @@ func New(dir string, logger logging.Logger) (*Store, error) {
 		fileSize = info.Size()
 	}
 	logger.WithFields(map[string]any{
-		"path":     dbPath,
-		"fileSize": fileSize,
+		"path":           dbPath,
+		"fileSize":       fileSize,
+		"noFreelistSync": noFreelistSync,
 	}).Infof("Opening bbolt read index")
 	openStart := time.Now()
 	db, err := bolt.Open(dbPath, 0o600, &bolt.Options{
@@ -55,6 +59,10 @@ func New(dir string, logger logging.Logger) (*Store, error) {
 		NoSync: true,
 		// O(1) page alloc/dealloc instead of O(n) with the default array type.
 		FreelistType: bolt.FreelistMapType,
+		// When enabled, skip writing the freelist to disk on each commit.
+		// The freelist is rebuilt by scanning all pages on the next Open().
+		// This trades slower startup for faster bulk-write throughput.
+		NoFreelistSync: noFreelistSync,
 		// Pre-allocate 1 GB of virtual address space so mmap doesn't need to
 		// grow (and stall the writer) as the database file expands.
 		InitialMmapSize: 1 << 30,

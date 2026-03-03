@@ -1357,6 +1357,16 @@ spec:
                             type: array
                         type: object
                     type: object
+                  readIndex:
+                    description: ReadIndex configuration for the bbolt read index
+                      store.
+                    properties:
+                      noFreelistSync:
+                        description: |-
+                          NoFreelistSync skips freelist serialization on commit.
+                          Enables faster writes at the cost of slower database reopen.
+                        type: boolean
+                    type: object
                   responseSigning:
                     description: ResponseSigning configuration (Ed25519).
                     properties:

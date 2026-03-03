@@ -28,6 +28,7 @@ corrupted or out of date.`,
 
 	cmd.Flags().String("data-dir", "", "Pebble data directory (required)")
 	cmd.Flags().String("read-index-dir", "", "Read index output directory (default: <data-dir>/read-indexes/)")
+	cmd.Flags().Bool("read-index-no-freelist-sync", false, "Skip bbolt freelist serialization (faster rebuild)")
 
 	_ = cmd.MarkFlagRequired("data-dir")
 
@@ -36,8 +37,9 @@ corrupted or out of date.`,
 
 func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	var (
-		dataDir, _      = cmd.Flags().GetString("data-dir")
-		readIndexDir, _ = cmd.Flags().GetString("read-index-dir")
+		dataDir, _           = cmd.Flags().GetString("data-dir")
+		readIndexDir, _      = cmd.Flags().GetString("read-index-dir")
+		noFreelistSync, _    = cmd.Flags().GetBool("read-index-no-freelist-sync")
 	)
 
 	if readIndexDir == "" {
@@ -61,7 +63,7 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	// Open or create bbolt read index.
 	spinner, _ = pterm.DefaultSpinner.Start("Opening read index store...")
 
-	rs, err := readstore.New(readIndexDir, logger)
+	rs, err := readstore.New(readIndexDir, noFreelistSync, logger)
 	if err != nil {
 		spinner.Fail("Failed to open read index store")
 		return fmt.Errorf("opening read index store: %w", err)

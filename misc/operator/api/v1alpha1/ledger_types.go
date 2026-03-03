@@ -251,6 +251,18 @@ type LedgerServiceConfig struct {
 	// Auth holds authentication and authorization configuration.
 	// +optional
 	Auth *AuthorizationConfig `json:"auth,omitempty"`
+
+	// ReadIndex configuration for the bbolt read index store.
+	// +optional
+	ReadIndex *ReadIndexConfig `json:"readIndex,omitempty"`
+}
+
+// ReadIndexConfig holds bbolt read index configuration.
+type ReadIndexConfig struct {
+	// NoFreelistSync skips freelist serialization on commit.
+	// Enables faster writes at the cost of slower database reopen.
+	// +optional
+	NoFreelistSync *bool `json:"noFreelistSync,omitempty"`
 }
 
 // AuthorizationConfig holds authentication and authorization configuration.

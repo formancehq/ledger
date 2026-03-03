@@ -332,7 +332,7 @@ func Module() fx.Option {
 				if dir == "" {
 					dir = filepath.Join(cfg.DataDir, "read-indexes")
 				}
-				return readstore.New(dir, logger)
+				return readstore.New(dir, cfg.ReadIndexConfig.NoFreelistSync, logger)
 			},
 			// Index builder — tails the Raft log to populate the read index
 			func(store *dal.Store, rs *readstore.Store, logger logging.Logger, meterProvider metric.MeterProvider) *indexbuilder.Builder {

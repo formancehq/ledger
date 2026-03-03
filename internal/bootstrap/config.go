@@ -37,7 +37,8 @@ type HealthConfig struct {
 
 // ReadIndexConfig holds configuration for the bbolt read index store.
 type ReadIndexConfig struct {
-	Dir string // empty = default (<data-dir>/read-indexes/)
+	Dir            string // empty = default (<data-dir>/read-indexes/)
+	NoFreelistSync bool   // skip freelist serialization on commit (faster writes, slower open)
 }
 
 type Config struct {

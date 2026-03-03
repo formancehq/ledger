@@ -198,6 +198,11 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 		}
 	}
 
+	// Read index
+	if cfg.ReadIndex != nil {
+		envs = appendIfBool(envs, "READ_INDEX_NO_FREELIST_SYNC", cfg.ReadIndex.NoFreelistSync)
+	}
+
 	// Response signing
 	if cfg.ResponseSigning != nil && cfg.ResponseSigning.Enabled {
 		secretKey := cfg.ResponseSigning.SecretKey

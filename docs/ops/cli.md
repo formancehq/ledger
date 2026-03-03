@@ -2704,6 +2704,7 @@ The bbolt-based read index store is always active. An index builder tails the sy
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--read-index-dir` | string | `""` | Directory for the bbolt read index database (default: `<data-dir>/read-indexes/`) |
+| `--read-index-no-freelist-sync` | bool | `false` | Skip freelist serialization on each bbolt commit. Faster bulk writes but slower reopen (freelist rebuilt by scanning). |
 
 ```bash
 # Use default directory (<data-dir>/read-indexes/)
