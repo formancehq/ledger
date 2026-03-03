@@ -35,6 +35,10 @@ const (
 	WorkerBucketCleanupScheduleFlag        = "worker-bucket-cleanup-schedule"
 
 	WorkerGRPCAddressFlag = "worker-grpc-address"
+
+	WorkerGlobalExporterFlag        = "worker-global-exporter"
+	WorkerGlobalExporterResetFlag   = "worker-global-exporter-reset"
+	WorkerGlobalExporterWorkersFlag = "worker-global-exporter-workers"
 )
 
 type WorkerGRPCConfig struct {
@@ -52,6 +56,10 @@ type WorkerConfiguration struct {
 
 	BucketCleanupRetentionPeriod time.Duration `mapstructure:"worker-bucket-cleanup-retention-period"`
 	BucketCleanupCRONSpec        cron.Schedule `mapstructure:"worker-bucket-cleanup-schedule"`
+
+	GlobalExporter        string `mapstructure:"worker-global-exporter"`
+	GlobalExporterReset   bool   `mapstructure:"worker-global-exporter-reset"`
+	GlobalExporterWorkers int    `mapstructure:"worker-global-exporter-workers"`
 }
 
 func (cfg WorkerConfiguration) Validate() error {
@@ -82,6 +90,9 @@ func addWorkerFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(WorkerPipelinesLogsPageSize, 100, "Pipelines logs page size")
 	cmd.Flags().Duration(WorkerBucketCleanupRetentionPeriodFlag, 30*24*time.Hour, "Retention period for deleted buckets before hard delete")
 	cmd.Flags().String(WorkerBucketCleanupScheduleFlag, "0 0 * * * *", "Schedule for bucket cleanup (cron format)")
+	cmd.Flags().String(WorkerGlobalExporterFlag, "", "Global logs exporter configuration (<driver>:<config>)")
+	cmd.Flags().Bool(WorkerGlobalExporterResetFlag, false, "Reset global logs exporter state and re-export all logs from the beginning")
+	cmd.Flags().Int(WorkerGlobalExporterWorkersFlag, replication.DefaultGlobalExporterWorkers, "Number of concurrent workers for the global logs exporter")
 }
 
 // NewWorkerCommand constructs the "worker" Cobra command which initializes and runs the worker service using loaded configuration and composed FX modules.
@@ -106,21 +117,28 @@ func NewWorkerCommand() *cobra.Command {
 				return err
 			}
 
-			return service.New(cmd.OutOrStdout(),
+			options := []fx.Option{
 				fx.NopLogger,
 				otlpModule(cmd, cfg.commonConfig),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{}),
 				drivers.NewFXModule(),
 				fx.Invoke(alldrivers.Register),
-				newWorkerModule(cfg.WorkerConfiguration),
 				worker.NewGRPCServerFXModule(worker.GRPCServerModuleConfig{
 					Address: cfg.Address,
 					ServerOptions: []grpc.ServerOption{
 						grpc.Creds(insecure.NewCredentials()),
 					},
 				}),
-			).Run(cmd)
+			}
+
+			workerModule, err := newWorkerModule(cfg.WorkerConfiguration)
+			if err != nil {
+				return fmt.Errorf("failed to build worker module: %w", err)
+			}
+			options = append(options, workerModule)
+
+			return service.New(cmd.OutOrStdout(), options...).Run(cmd)
 		},
 	}
 
@@ -135,23 +153,36 @@ func NewWorkerCommand() *cobra.Command {
 	return cmd
 }
 
-// newWorkerModule creates an fx.Option that configures the worker module using the provided WorkerConfiguration.
-// It maps the configuration into AsyncBlockRunnerConfig, ReplicationConfig, and BucketCleanupRunnerConfig for the worker.
-func newWorkerModule(configuration WorkerConfiguration) fx.Option {
-	return worker.NewFXModule(worker.ModuleConfig{
-		AsyncBlockRunnerConfig: storage.AsyncBlockRunnerConfig{
-			MaxBlockSize: configuration.HashLogsBlockMaxSize,
-			Schedule:     configuration.HashLogsBlockCRONSpec,
-		},
-		ReplicationConfig: replication.WorkerModuleConfig{
-			PushRetryPeriod: configuration.PushRetryPeriod,
-			PullInterval:    configuration.PullInterval,
-			SyncPeriod:      configuration.SyncPeriod,
-			LogsPageSize:    configuration.LogsPageSize,
-		},
-		BucketCleanupRunnerConfig: storage.BucketCleanupRunnerConfig{
-			RetentionPeriod: configuration.BucketCleanupRetentionPeriod,
-			Schedule:        configuration.BucketCleanupCRONSpec,
-		},
-	})
+func newWorkerModule(configuration WorkerConfiguration) (fx.Option, error) {
+	workerModules := []fx.Option{
+		worker.NewFXModule(worker.ModuleConfig{
+			AsyncBlockRunnerConfig: storage.AsyncBlockRunnerConfig{
+				MaxBlockSize: configuration.HashLogsBlockMaxSize,
+				Schedule:     configuration.HashLogsBlockCRONSpec,
+			},
+			ReplicationConfig: replication.WorkerModuleConfig{
+				PushRetryPeriod: configuration.PushRetryPeriod,
+				PullInterval:    configuration.PullInterval,
+				SyncPeriod:      configuration.SyncPeriod,
+				LogsPageSize:    configuration.LogsPageSize,
+			},
+			BucketCleanupRunnerConfig: storage.BucketCleanupRunnerConfig{
+				RetentionPeriod: configuration.BucketCleanupRetentionPeriod,
+				Schedule:        configuration.BucketCleanupCRONSpec,
+			},
+		}),
+	}
+
+	if configuration.GlobalExporter != "" {
+		driverName, driverConfig, err := parseGlobalExporter(configuration.GlobalExporter)
+		if err != nil {
+			return nil, fmt.Errorf("parsing global-logs-exporter: %w", err)
+		}
+		workerModules = append(workerModules, replication.NewFXGlobalExporterModule(driverName, driverConfig, replication.GlobalExporterRunnerConfig{
+			Workers: configuration.GlobalExporterWorkers,
+			Reset:   configuration.GlobalExporterReset,
+		}))
+	}
+
+	return fx.Options(workerModules...), nil
 }

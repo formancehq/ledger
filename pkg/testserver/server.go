@@ -121,14 +121,14 @@ func ExperimentalGlobalExporterInstrumentation(driverDeferred *deferred.Deferred
 		if err != nil {
 			return fmt.Errorf("marshalling global exporter config: %w", err)
 		}
-		runConfiguration.AppendArgs("--"+cmd.ExperimentalGlobalExporterFlag, driver.Name()+":"+string(config))
+		runConfiguration.AppendArgs("--"+cmd.WorkerGlobalExporterFlag, driver.Name()+":"+string(config))
 		return nil
 	}
 }
 
 func GlobalExporterResetInstrumentation() testservice.InstrumentationFunc {
 	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
-		runConfiguration.AppendArgs("--" + cmd.GlobalExporterResetFlag)
+		runConfiguration.AppendArgs("--" + cmd.WorkerGlobalExporterResetFlag)
 		return nil
 	}
 }

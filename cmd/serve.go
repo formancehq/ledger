@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
@@ -20,7 +18,6 @@ import (
 	"github.com/formancehq/go-libs/v4/aws/iam"
 	"github.com/formancehq/go-libs/v4/ballast"
 	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v4/health"
 	"github.com/formancehq/go-libs/v4/httpserver"
 	"github.com/formancehq/go-libs/v4/logging"
@@ -30,7 +27,6 @@ import (
 	"github.com/formancehq/go-libs/v4/publish"
 	"github.com/formancehq/go-libs/v4/service"
 
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api"
 	"github.com/formancehq/ledger/internal/bus"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
@@ -69,14 +65,11 @@ const (
 	BulkMaxSizeFlag            = "bulk-max-size"
 	BulkParallelFlag           = "bulk-parallel"
 
-	DefaultPageSizeFlag            = "default-page-size"
-	MaxPageSizeFlag                = "max-page-size"
-	WorkerEnabledFlag              = "worker"
-	SemconvMetricsNames            = "semconv-metrics-names"
-	SchemaEnforcementMode          = "schema-enforcement-mode"
-	ExperimentalGlobalExporterFlag = "experimental-global-exporter"
-	GlobalExporterResetFlag        = "global-exporter-reset"
-	GlobalExporterWorkersFlag      = "global-exporter-workers"
+	DefaultPageSizeFlag   = "default-page-size"
+	MaxPageSizeFlag       = "max-page-size"
+	WorkerEnabledFlag     = "worker"
+	SemconvMetricsNames   = "semconv-metrics-names"
+	SchemaEnforcementMode = "schema-enforcement-mode"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -165,19 +158,13 @@ func NewServeCommand() *cobra.Command {
 				}),
 			}
 
-			if cfg.ExperimentalGlobalExporter != "" {
-				driverName, rawConfig, err := parseGlobalExporter(cfg.ExperimentalGlobalExporter)
-				if err != nil {
-					return fmt.Errorf("parsing global-logs-exporter: %w", err)
-				}
-				options = append(options, globalExporterModule(driverName, rawConfig, cfg.GlobalExporterReset, cfg.GlobalExporterWorkers))
-			}
-
 			if cfg.WorkerEnabled {
-				options = append(options,
-					newWorkerModule(cfg.WorkerConfiguration),
-					replication.NewFXEmbeddedClientModule(),
-				)
+				workerModule, err := newWorkerModule(cfg.WorkerConfiguration)
+				if err != nil {
+					return fmt.Errorf("failed to build worker module: %w", err)
+				}
+				options = append(options, workerModule)
+				options = append(options, replication.NewFXEmbeddedClientModule())
 			} else {
 				options = append(options,
 					worker.NewGRPCClientFxModule(
@@ -206,10 +193,6 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
 	cmd.Flags().Bool(SemconvMetricsNames, false, "Use semconv metrics names (recommended)")
 	cmd.Flags().String(SchemaEnforcementMode, "audit", "Schema enforcement mode. Values: `audit`, `strict`")
-	cmd.Flags().String(ExperimentalGlobalExporterFlag, "", "Global logs exporter configuration (<driver>:<config>)")
-	cmd.Flags().Bool(GlobalExporterResetFlag, false, "Reset global logs exporter state and re-export all logs from the beginning")
-	cmd.Flags().Int(GlobalExporterWorkersFlag, replication.DefaultGlobalExporterWorkers, "Number of concurrent workers for the global logs exporter")
-
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
 	otlp.AddFlags(cmd.Flags())
@@ -269,46 +252,6 @@ func assembleFinalRouter(
 	wrappedRouter.Mount("/", handler)
 
 	return wrappedRouter
-}
-
-func globalExporterModule(driverName string, rawConfig json.RawMessage, reset bool, workers int) fx.Option {
-	return fx.Options(
-		fx.Provide(func(registry *drivers.Registry, logger logging.Logger, store systemcontroller.Store, sysDriver systemcontroller.Driver) (*replication.GlobalExporterRunner, error) {
-			d, err := registry.CreateFromConfig(driverName, rawConfig)
-			if err != nil {
-				return nil, fmt.Errorf("creating global log exporter driver %q: %w", driverName, err)
-			}
-			return replication.NewGlobalExporterRunner(
-				store,
-				d,
-				func(ctx context.Context, name string) (replication.LogFetcher, error) {
-					ledgerStore, _, err := sysDriver.OpenLedger(ctx, name)
-					if err != nil {
-						return nil, err
-					}
-					return replication.LogFetcherFn(func(ctx context.Context, q storagecommon.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Log], error) {
-						return ledgerStore.Logs().Paginate(ctx, q)
-					}), nil
-				},
-				logger,
-				replication.GlobalExporterRunnerConfig{
-					Reset:   reset,
-					Workers: workers,
-				},
-			), nil
-		}),
-		fx.Invoke(func(lc fx.Lifecycle, runner *replication.GlobalExporterRunner) {
-			lc.Append(fx.Hook{
-				OnStart: func(ctx context.Context) error {
-					go runner.Run(context.WithoutCancel(ctx))
-					return nil
-				},
-				OnStop: func(ctx context.Context) error {
-					return runner.Shutdown(ctx)
-				},
-			})
-		}),
-	)
 }
 
 func otlpModule(cmd *cobra.Command, cfg commonConfig) fx.Option {
