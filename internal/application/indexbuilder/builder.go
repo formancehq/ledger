@@ -1104,7 +1104,9 @@ func matchesBackfillIndex(a, b indexID) bool {
 	return false
 }
 
-// processBackfills advances each active backfill task by one batch.
+// processBackfills advances each active backfill task until caught up or stopped.
+// A single Pebble iterator is kept open per task across multiple bbolt batches,
+// avoiding the overhead of repeated NewIter/First calls during catch-up.
 // When a backfill catches up to globalCursor, it proposes IndexReady (leader only).
 func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 	if len(b.backfillTasks) == 0 {
@@ -1140,20 +1142,22 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 			continue
 		}
 
-		// Process one batch of backfill.
-		if err := b.processBackfillBatch(task); err != nil {
+		// Process all available batches with a single iterator.
+		if err := b.processBackfill(stop, task); err != nil {
 			b.logger.WithFields(map[string]any{
 				"ledger": task.ledger,
 				"cursor": task.cursor,
 				"error":  err,
-			}).Errorf("Error processing backfill batch")
+			}).Errorf("Error processing backfill")
 		}
 	}
 }
 
-// processBackfillBatch reads up to backfillBatchSize logs from Pebble and indexes
-// them using only the backfilling index's configuration. Existence writes are skipped.
-func (b *Builder) processBackfillBatch(task *backfillTask) error {
+// processBackfill reads logs from Pebble using a single iterator and indexes
+// them in batches of backfillBatchSize using only the backfilling index's
+// configuration. The iterator stays open across batches to avoid repeated
+// NewIter/First overhead during catch-up. Existence writes are skipped.
+func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) error {
 	logsCursor, err := query.ReadLogsSince(b.pebbleStore, task.cursor, dal.WithReuse())
 	if err != nil {
 		return err
@@ -1172,46 +1176,62 @@ func (b *Builder) processBackfillBatch(task *backfillTask) error {
 		b.backfillMode = false
 	}()
 
-	var (
-		batchCount int
-		lastSeq    uint64
-	)
+	for {
+		select {
+		case <-stop:
+			return nil
+		default:
+		}
 
-	if err := b.readStore.Update(func(tx *bolt.Tx) error {
-		for batchCount < backfillBatchSize {
-			log, err := logsCursor.Next()
-			if err != nil {
-				if err == io.EOF {
-					break
+		var (
+			batchCount int
+			lastSeq    uint64
+			eof        bool
+		)
+
+		if err := b.readStore.Update(func(tx *bolt.Tx) error {
+			for batchCount < backfillBatchSize {
+				log, err := logsCursor.Next()
+				if err != nil {
+					if err == io.EOF {
+						eof = true
+						break
+					}
+					return err
 				}
-				return err
-			}
 
-			// Skip config-mutation log types during backfill.
-			if !isDataLog(log) {
+				// Skip config-mutation log types during backfill.
+				if !isDataLog(log) {
+					lastSeq = log.Sequence
+					batchCount++
+					continue
+				}
+
+				if err := b.indexLogEntry(tx, log); err != nil {
+					return err
+				}
 				lastSeq = log.Sequence
 				batchCount++
-				continue
 			}
 
-			if err := b.indexLogEntry(tx, log); err != nil {
-				return err
+			// Persist backfill cursor.
+			if batchCount > 0 {
+				return b.readStore.WriteBackfillProgress(tx, task.bbKey, lastSeq)
 			}
-			lastSeq = log.Sequence
-			batchCount++
+			return nil
+		}); err != nil {
+			return err
 		}
 
-		// Persist backfill cursor.
-		if batchCount > 0 {
-			return b.readStore.WriteBackfillProgress(tx, task.bbKey, lastSeq)
+		if batchCount == 0 {
+			break
 		}
-		return nil
-	}); err != nil {
-		return err
-	}
 
-	if batchCount > 0 {
 		task.cursor = lastSeq
+
+		if eof {
+			break
+		}
 	}
 
 	return nil
