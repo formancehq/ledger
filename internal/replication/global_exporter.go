@@ -105,7 +105,7 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 	if r.config.Reset {
 		r.logger.Infof("Resetting global exporter state — all logs will be re-exported")
 		if err := r.store.DeleteAllGlobalExporterStates(ctx); err != nil {
-			r.logger.Errorf("Failed to reset global exporter state: %v", err)
+			panic("Failed to reset global exporter state")
 		}
 	}
 
