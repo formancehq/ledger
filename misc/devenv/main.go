@@ -639,21 +639,21 @@ func main() {
 
 		// Apply Ledger CRDs (LedgerService + LedgerDefaults + LedgerClusterAgent)
 		ledgerServiceCRD, err := k8syaml.NewConfigFile(ctx, "ledgerservice-crd", &k8syaml.ConfigFileArgs{
-			File: "../operator/config/crd/bases/ledger.formance.com_ledgerservices.yaml",
+			File: "../operator/chart/crds/ledger.formance.com_ledgerservices.yaml",
 		}, pulumi.Provider(k8sProvider))
 		if err != nil {
 			return fmt.Errorf("failed to apply LedgerService CRD: %w", err)
 		}
 
 		ledgerDefaultsCRD, err := k8syaml.NewConfigFile(ctx, "ledgerdefaults-crd", &k8syaml.ConfigFileArgs{
-			File: "../operator/config/crd/bases/ledger.formance.com_ledgerdefaults.yaml",
+			File: "../operator/chart/crds/ledger.formance.com_ledgerdefaults.yaml",
 		}, pulumi.Provider(k8sProvider))
 		if err != nil {
 			return fmt.Errorf("failed to apply LedgerDefaults CRD: %w", err)
 		}
 
 		ledgerClusterAgentCRD, err := k8syaml.NewConfigFile(ctx, "ledgerclusteragent-crd", &k8syaml.ConfigFileArgs{
-			File: "../operator/config/crd/bases/ledger.formance.com_ledgerclusteragents.yaml",
+			File: "../operator/chart/crds/ledger.formance.com_ledgerclusteragents.yaml",
 		}, pulumi.Provider(k8sProvider))
 		if err != nil {
 			return fmt.Errorf("failed to apply LedgerClusterAgent CRD: %w", err)

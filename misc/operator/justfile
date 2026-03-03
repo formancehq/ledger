@@ -11,6 +11,8 @@ generate:
 # this script injects those rules into the chart and appends static extras.
 _sync-chart:
     ./scripts/sync-chart-rbac.sh
+    mkdir -p chart/crds
+    cp config/crd/bases/*.yaml chart/crds/
 
 build:
     go build -o build/operator ./cmd/operator
