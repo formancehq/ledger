@@ -350,10 +350,10 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 
 	// Read per-index backfill progress from bbolt.
 	var progress []*servicepb.IndexBackfillProgress
-	_ = impl.readStore.View(func(tx *bolt.Tx) error {
-		all, err := impl.readStore.ReadAllBackfillProgress(tx)
-		if err != nil {
-			return err
+	if err := impl.readStore.View(func(tx *bolt.Tx) error {
+		all, readErr := impl.readStore.ReadAllBackfillProgress(tx)
+		if readErr != nil {
+			return readErr
 		}
 		for key, cursor := range all {
 			ledger, kind, details, ok := readstore.ParseBackfillKey([]byte(key))
@@ -384,7 +384,9 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 			progress = append(progress, entry)
 		}
 		return nil
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("reading backfill progress: %w", err)
+	}
 
 	return &servicepb.GetIndexStatusResponse{
 		LastIndexedSequence: lastIndexed,

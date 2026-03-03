@@ -64,7 +64,10 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 
 	if hasBuilding {
 		idxStatus, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{})
-		if err == nil {
+		if err != nil {
+			spinner.Fail(fmt.Sprintf("Failed to fetch index status: %v", err))
+			// Continue without progress info — indexes will show as BUILDING without percentage.
+		} else {
 			lastLogSeq = idxStatus.LastLogSequence
 			progressMap = buildProgressMap(ledgerName, idxStatus.BackfillProgress)
 		}
@@ -168,11 +171,14 @@ func indexStatusWithProgress(status commonpb.IndexBuildStatus, progressMap map[s
 	if progressMap == nil || lastLogSeq == 0 {
 		return indexBuildStatusString(status)
 	}
-	if cursor, ok := progressMap[key]; ok {
-		pct := cursor * 100 / lastLogSeq
-		return pterm.Yellow(fmt.Sprintf("BUILDING (%d%%)", pct))
+	cursor, ok := progressMap[key]
+	if !ok {
+		// Backfill task exists but hasn't written its first batch yet
+		// (initial log catch-up is still running).
+		return pterm.Yellow("BUILDING (starting...)")
 	}
-	return indexBuildStatusString(status)
+	pct := cursor * 100 / lastLogSeq
+	return pterm.Yellow(fmt.Sprintf("BUILDING (%d%%)", pct))
 }
 
 // addMetadataIndexRowsWithProgress adds rows for indexed metadata fields with progress info.
