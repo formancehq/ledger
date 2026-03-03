@@ -261,6 +261,8 @@ message LogPayload {
     CreatedPreparedQueryLog created_prepared_query = 18;
     UpdatedPreparedQueryLog updated_prepared_query = 19;
     DeletedPreparedQueryLog deleted_prepared_query = 20;
+    SavedNumscriptLog saved_numscript = 21;
+    DeletedNumscriptLog deleted_numscript = 22;
   }
 }
 
@@ -356,6 +358,28 @@ enum EventType {
   DELETED_METADATA = 4;
   CREATED_LEDGER = 5;
   DELETED_LEDGER = 6;
+}
+
+// ============================================================================
+// Numscript Library Messages
+// ============================================================================
+
+// NumscriptInfo represents a stored numscript with versioning.
+message NumscriptInfo {
+  string name = 1;
+  string content = 2;
+  string version = 3;
+  Timestamp created_at = 4;
+}
+
+// SavedNumscriptLog records a numscript being saved to the library.
+message SavedNumscriptLog {
+  NumscriptInfo info = 1;
+}
+
+// DeletedNumscriptLog records a numscript being deleted from the library.
+message DeletedNumscriptLog {
+  string name = 1;
 }
 
 // SinkConfig wraps a single sink configuration with per-sink settings.

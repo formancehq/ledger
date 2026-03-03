@@ -122,38 +122,44 @@ func (al *AttributeLoader[T]) MarkApplied(key attributes.U128) {
 // Loaders groups all attribute loaders by type.
 // Similar to Cache, it provides type-safe access to loaders for each attribute type.
 type Loaders struct {
-	Volumes         *AttributeLoader[*raftcmdpb.VolumePair]
-	IdempotencyKeys *AttributeLoader[*commonpb.IdempotencyKeyValue]
-	References      *AttributeLoader[*commonpb.TransactionReferenceValue]
-	Ledgers         *AttributeLoader[*commonpb.LedgerInfo]
-	Boundaries      *AttributeLoader[*raftcmdpb.LedgerBoundaries]
-	SinkConfigs     *AttributeLoader[*commonpb.SinkConfig]
-	AccountMetadata *AttributeLoader[*commonpb.MetadataValue]
+	Volumes           *AttributeLoader[*raftcmdpb.VolumePair]
+	IdempotencyKeys   *AttributeLoader[*commonpb.IdempotencyKeyValue]
+	References        *AttributeLoader[*commonpb.TransactionReferenceValue]
+	Ledgers           *AttributeLoader[*commonpb.LedgerInfo]
+	Boundaries        *AttributeLoader[*raftcmdpb.LedgerBoundaries]
+	SinkConfigs       *AttributeLoader[*commonpb.SinkConfig]
+	AccountMetadata   *AttributeLoader[*commonpb.MetadataValue]
+	NumscriptVersions *AttributeLoader[string]
+	NumscriptEntries  *AttributeLoader[bool]
 }
 
 // NewLoaders creates a new Loaders instance with all attribute loaders initialized.
 func NewLoaders() *Loaders {
 	return &Loaders{
-		Volumes:         NewAttributeLoader[*raftcmdpb.VolumePair](),
-		IdempotencyKeys: NewAttributeLoader[*commonpb.IdempotencyKeyValue](),
-		References:      NewAttributeLoader[*commonpb.TransactionReferenceValue](),
-		Ledgers:         NewAttributeLoader[*commonpb.LedgerInfo](),
-		Boundaries:      NewAttributeLoader[*raftcmdpb.LedgerBoundaries](),
-		SinkConfigs:     NewAttributeLoader[*commonpb.SinkConfig](),
-		AccountMetadata: NewAttributeLoader[*commonpb.MetadataValue](),
+		Volumes:           NewAttributeLoader[*raftcmdpb.VolumePair](),
+		IdempotencyKeys:   NewAttributeLoader[*commonpb.IdempotencyKeyValue](),
+		References:        NewAttributeLoader[*commonpb.TransactionReferenceValue](),
+		Ledgers:           NewAttributeLoader[*commonpb.LedgerInfo](),
+		Boundaries:        NewAttributeLoader[*raftcmdpb.LedgerBoundaries](),
+		SinkConfigs:       NewAttributeLoader[*commonpb.SinkConfig](),
+		AccountMetadata:   NewAttributeLoader[*commonpb.MetadataValue](),
+		NumscriptVersions: NewAttributeLoader[string](),
+		NumscriptEntries:  NewAttributeLoader[bool](),
 	}
 }
 
 // LoadedKeysTracker tracks which keys were loaded for each attribute type.
 // Used to clean up loaded entries after a command is applied.
 type LoadedKeysTracker struct {
-	Volumes         []attributes.U128
-	IdempotencyKeys []attributes.U128
-	References      []attributes.U128
-	Ledgers         []attributes.U128
-	Boundaries      []attributes.U128
-	SinkConfigs     []attributes.U128
-	AccountMetadata []attributes.U128
+	Volumes           []attributes.U128
+	IdempotencyKeys   []attributes.U128
+	References        []attributes.U128
+	Ledgers           []attributes.U128
+	Boundaries        []attributes.U128
+	SinkConfigs       []attributes.U128
+	AccountMetadata   []attributes.U128
+	NumscriptVersions []attributes.U128
+	NumscriptEntries  []attributes.U128
 }
 
 // NewLoadedKeysTracker creates a new empty tracker.
@@ -183,5 +189,11 @@ func (t *LoadedKeysTracker) MarkApplied(loaders *Loaders) {
 	}
 	for _, key := range t.AccountMetadata {
 		loaders.AccountMetadata.MarkApplied(key)
+	}
+	for _, key := range t.NumscriptVersions {
+		loaders.NumscriptVersions.MarkApplied(key)
+	}
+	for _, key := range t.NumscriptEntries {
+		loaders.NumscriptEntries.MarkApplied(key)
 	}
 }

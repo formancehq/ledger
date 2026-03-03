@@ -18,7 +18,9 @@ type DerivedRegistry struct {
 	References      *attributes.DerivedKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
 	Ledgers         *attributes.DerivedKeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
 	Boundaries      *attributes.DerivedKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
-	SinkConfigs     *attributes.DerivedKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
+	SinkConfigs       *attributes.DerivedKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
+	NumscriptVersions *attributes.DerivedKeyStore[domain.NumscriptVersionKey, string]
+	NumscriptEntries  *attributes.DerivedKeyStore[domain.NumscriptEntryKey, bool]
 
 	// PendingReversions holds transaction keys marked as reverted in the
 	// current proposal. These are flushed to the parent bitset on Merge.
@@ -32,14 +34,16 @@ type DerivedRegistry struct {
 // Each DerivedKeyStore reads from the parent KeyStore and buffers writes locally.
 func NewDerivedRegistry(reg *StateRegistry) *DerivedRegistry {
 	return &DerivedRegistry{
-		Volumes:          attributes.NewDerivedKeyStore(reg.Volumes, (*raftcmdpb.VolumePair).CloneVT),
-		AccountMetadata:  attributes.NewDerivedKeyStore(reg.AccountMetadata, (*commonpb.MetadataValue).CloneVT),
-		IdempotencyKeys:  attributes.NewDerivedKeyStore(reg.IdempotencyKeys, (*commonpb.IdempotencyKeyValue).CloneVT),
-		References:       attributes.NewDerivedKeyStore(reg.References, (*commonpb.TransactionReferenceValue).CloneVT),
-		Ledgers:          attributes.NewDerivedKeyStore(reg.Ledgers, (*commonpb.LedgerInfo).CloneVT),
-		Boundaries:       attributes.NewDerivedKeyStore(reg.Boundaries, (*raftcmdpb.LedgerBoundaries).CloneVT),
-		SinkConfigs:      attributes.NewDerivedKeyStore(reg.SinkConfigs, (*commonpb.SinkConfig).CloneVT),
-		parentReversions: reg.Reversions,
+		Volumes:           attributes.NewDerivedKeyStore(reg.Volumes, (*raftcmdpb.VolumePair).CloneVT),
+		AccountMetadata:   attributes.NewDerivedKeyStore(reg.AccountMetadata, (*commonpb.MetadataValue).CloneVT),
+		IdempotencyKeys:   attributes.NewDerivedKeyStore(reg.IdempotencyKeys, (*commonpb.IdempotencyKeyValue).CloneVT),
+		References:        attributes.NewDerivedKeyStore(reg.References, (*commonpb.TransactionReferenceValue).CloneVT),
+		Ledgers:           attributes.NewDerivedKeyStore(reg.Ledgers, (*commonpb.LedgerInfo).CloneVT),
+		Boundaries:        attributes.NewDerivedKeyStore(reg.Boundaries, (*raftcmdpb.LedgerBoundaries).CloneVT),
+		SinkConfigs:       attributes.NewDerivedKeyStore(reg.SinkConfigs, (*commonpb.SinkConfig).CloneVT),
+		NumscriptVersions: attributes.NewDerivedKeyStore(reg.NumscriptVersions, nil), // string is a value type
+		NumscriptEntries:  attributes.NewDerivedKeyStore(reg.NumscriptEntries, nil),  // bool is a value type
+		parentReversions:  reg.Reversions,
 	}
 }
 

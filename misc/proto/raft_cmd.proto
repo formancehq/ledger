@@ -50,6 +50,8 @@ message Order {
     CreatePreparedQueryOrder create_prepared_query = 21;
     UpdatePreparedQueryOrder update_prepared_query = 22;
     DeletePreparedQueryOrder delete_prepared_query = 23;
+    SaveNumscriptOrder save_numscript = 24;
+    DeleteNumscriptOrder delete_numscript = 25;
   }
   signature.RequestSignature signature = 5;
 }
@@ -121,6 +123,17 @@ message DeletePeriodScheduleOrder {}
 message SetAuditConfigOrder {
   bool enabled = 1;
 }
+
+message SaveNumscriptOrder {
+  string name = 1;
+  string content = 2;
+  string version = 3;
+}
+
+message DeleteNumscriptOrder {
+  string name = 1;
+}
+
 
 message CreateLedgerOrder {
   string name = 1;
@@ -379,6 +392,8 @@ message Preload {
      PreloadTransactionReference transaction_reference = 6;
      PreloadSinkConfig sink_config = 7;
      PreloadAccountMetadata account_metadata = 8;
+     PreloadNumscriptVersion numscript_version = 9;
+     PreloadNumscriptEntry numscript_entry = 10;
   }
 }
 
@@ -419,6 +434,16 @@ message PreloadSinkConfig {
 message PreloadAccountMetadata {
   AttributeID id = 1;
   common.MetadataValue value = 2;
+}
+
+message PreloadNumscriptVersion {
+  AttributeID id = 1;
+  string version = 2;
+}
+
+message PreloadNumscriptEntry {
+  AttributeID id = 1;
+  bool exists = 2;
 }
 
 // ============================================================================

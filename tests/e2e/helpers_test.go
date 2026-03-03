@@ -695,6 +695,84 @@ func saveTypedTransactionMetadataAction(ledgerName string, txID uint64, metadata
 	}
 }
 
+// saveNumscriptAction creates an action for saving a numscript to the library.
+func saveNumscriptAction(name, content string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_SaveNumscript{
+			SaveNumscript: &servicepb.SaveNumscriptRequest{
+				Name:    name,
+				Content: content,
+			},
+		},
+	}
+}
+
+// saveNumscriptWithVersionAction creates an action for saving a numscript with a specific version.
+func saveNumscriptWithVersionAction(name, content, version string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_SaveNumscript{
+			SaveNumscript: &servicepb.SaveNumscriptRequest{
+				Name:    name,
+				Content: content,
+				Version: version,
+			},
+		},
+	}
+}
+
+// deleteNumscriptAction creates an action for deleting a numscript from the library.
+func deleteNumscriptAction(name string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_DeleteNumscript{
+			DeleteNumscript: &servicepb.DeleteNumscriptRequest{
+				Name: name,
+			},
+		},
+	}
+}
+
+// createScriptRefTransactionAction creates a transaction using a script reference from the library.
+func createScriptRefTransactionAction(ledgerName, scriptName, version string, vars map[string]string, metadata map[string]string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledgerName,
+				Data: &servicepb.LedgerApplyRequest_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						ScriptReference: &servicepb.ScriptReference{
+							Name:    scriptName,
+							Version: version,
+							Vars:    vars,
+						},
+						Metadata: commonpb.MetadataSetFromMap(metadata),
+					},
+				},
+			},
+		},
+	}
+}
+
+// listNumscripts collects all numscripts from the streaming RPC.
+func listNumscripts(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.NumscriptInfo, error) {
+	stream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	var scripts []*commonpb.NumscriptInfo
+	for {
+		info, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		scripts = append(scripts, info)
+	}
+	return scripts, nil
+}
+
 // findMetadataValue looks up a key in a MetadataSet and returns the *MetadataValue (nil if not found).
 func findMetadataValue(ms *commonpb.MetadataSet, key string) *commonpb.MetadataValue {
 	if ms == nil {

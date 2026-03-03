@@ -221,6 +221,16 @@ func (b *RoutedController) GetLedgerStats(ctx context.Context, ledgerName string
 	return c.GetLedgerStats(ctx, ledgerName)
 }
 
+func (b *RoutedController) GetNumscript(ctx context.Context, name string, version string) (*commonpb.NumscriptInfo, error) {
+	// Read from local store - numscripts are replicated via Raft
+	return b.localController.GetNumscript(ctx, name, version)
+}
+
+func (b *RoutedController) ListNumscripts(ctx context.Context) ([]*commonpb.NumscriptInfo, error) {
+	// Read from local store - numscripts are replicated via Raft
+	return b.localController.ListNumscripts(ctx)
+}
+
 var _ ctrl.Controller = (*RoutedController)(nil)
 
 func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {

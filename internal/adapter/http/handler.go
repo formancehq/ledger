@@ -72,6 +72,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			// Ledgers read scope
 			r.With(requireLedgersRead).Group(func(r chi.Router) {
 				r.Get("/", server.handleListAllLedgers)
+				r.Get("/numscripts", server.handleListNumscripts)
+				r.Get("/numscripts/{name}", server.handleGetNumscript)
 				r.Get("/{ledgerName}", server.handleGetLedger)
 				r.Get("/{ledgerName}/stats", server.handleGetLedgerStats)
 			})
@@ -92,6 +94,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 
 			// Ledgers write scope
 			r.With(requireLedgersWrite).Group(func(r chi.Router) {
+				r.Put("/numscripts/{name}", server.handleSaveNumscript)
+				r.Delete("/numscripts/{name}", server.handleDeleteNumscript)
 				r.Post("/{ledgerName}", server.handleCreateLedger)
 				r.Delete("/{ledgerName}", server.handleDeleteLedger)
 				r.Post("/{ledgerName}/promote", server.handlePromoteLedger)

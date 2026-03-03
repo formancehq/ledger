@@ -25,29 +25,32 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 	inner := bizErr.Err
 
 	var (
-		ledgerAlreadyExists          *domain.ErrLedgerAlreadyExists
-		ledgerNotFound               *domain.ErrLedgerNotFound
-		ledgerInMirrorMode           *domain.ErrLedgerInMirrorMode
-		ledgerNotInMirrorMode        *domain.ErrLedgerNotInMirrorMode
-		idempotencyKeyConflict       *domain.ErrIdempotencyKeyConflict
-		transactionReferenceConflict *domain.ErrTransactionReferenceConflict
-		transactionNotFound          *domain.ErrTransactionNotFound
-		transactionAlreadyReverted   *domain.ErrTransactionAlreadyReverted
-		insufficientFunds            *domain.ErrInsufficientFunds
-		balanceNotFound              *domain.ErrBalanceNotFound
-		balanceNotPreloaded          *numscript.ErrBalanceNotPreloaded
-		numscriptParse               *numscript.ErrNumscriptParse
-		sinkAlreadyExists            *domain.ErrSinkAlreadyExists
-		sinkNotFound                 *domain.ErrSinkNotFound
-		metadataNotFound             *domain.ErrMetadataNotFound
-		preparedQueryAlreadyExists   *domain.ErrPreparedQueryAlreadyExists
-		preparedQueryNotFound        *domain.ErrPreparedQueryNotFound
-		periodNotFound               *domain.ErrPeriodNotFound
-		periodNotClosing             *domain.ErrPeriodNotClosing
-		invalidReceipt               *domain.ErrInvalidReceipt
-		invalidCronExpression        *domain.ErrInvalidCronExpression
-		indexNotFound                *domain.ErrIndexNotFound
-		indexBuilding                *domain.ErrIndexBuilding
+		ledgerAlreadyExists           *domain.ErrLedgerAlreadyExists
+		ledgerNotFound                *domain.ErrLedgerNotFound
+		ledgerInMirrorMode            *domain.ErrLedgerInMirrorMode
+		ledgerNotInMirrorMode         *domain.ErrLedgerNotInMirrorMode
+		idempotencyKeyConflict        *domain.ErrIdempotencyKeyConflict
+		transactionReferenceConflict  *domain.ErrTransactionReferenceConflict
+		transactionNotFound           *domain.ErrTransactionNotFound
+		transactionAlreadyReverted    *domain.ErrTransactionAlreadyReverted
+		insufficientFunds             *domain.ErrInsufficientFunds
+		balanceNotFound               *domain.ErrBalanceNotFound
+		balanceNotPreloaded           *numscript.ErrBalanceNotPreloaded
+		numscriptParse                *numscript.ErrNumscriptParse
+		numscriptNotFound             *domain.ErrNumscriptNotFound
+		numscriptVersionAlreadyExists *domain.ErrNumscriptVersionAlreadyExists
+		numscriptInvalidVersion       *domain.ErrNumscriptInvalidVersion
+		sinkAlreadyExists             *domain.ErrSinkAlreadyExists
+		sinkNotFound                  *domain.ErrSinkNotFound
+		metadataNotFound              *domain.ErrMetadataNotFound
+		preparedQueryAlreadyExists    *domain.ErrPreparedQueryAlreadyExists
+		preparedQueryNotFound         *domain.ErrPreparedQueryNotFound
+		periodNotFound                *domain.ErrPeriodNotFound
+		periodNotClosing              *domain.ErrPeriodNotClosing
+		invalidReceipt                *domain.ErrInvalidReceipt
+		invalidCronExpression         *domain.ErrInvalidCronExpression
+		indexNotFound                 *domain.ErrIndexNotFound
+		indexBuilding                 *domain.ErrIndexBuilding
 	)
 
 	switch {
@@ -129,6 +132,21 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		reason = domain.ErrReasonNumscriptParseError
 		metadata = map[string]string{"details": numscriptParse.Details}
 
+	case errors.As(inner, &numscriptNotFound):
+		code = codes.NotFound
+		reason = domain.ErrReasonNumscriptNotFound
+		metadata = map[string]string{"name": numscriptNotFound.Name}
+
+	case errors.As(inner, &numscriptVersionAlreadyExists):
+		code = codes.AlreadyExists
+		reason = domain.ErrReasonNumscriptVersionAlreadyExists
+		metadata = map[string]string{"name": numscriptVersionAlreadyExists.Name, "version": numscriptVersionAlreadyExists.Version}
+
+	case errors.As(inner, &numscriptInvalidVersion):
+		code = codes.InvalidArgument
+		reason = domain.ErrReasonNumscriptInvalidVersion
+		metadata = map[string]string{"version": numscriptInvalidVersion.Version}
+
 	case errors.As(inner, &sinkAlreadyExists):
 		code = codes.AlreadyExists
 		reason = domain.ErrReasonSinkAlreadyExists
@@ -192,7 +210,10 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 	case errors.Is(inner, domain.ErrTargetRequired),
 		errors.Is(inner, domain.ErrMetadataKeyRequired),
 		errors.Is(inner, numscript.ErrScriptRequired),
-		errors.Is(inner, admission.ErrIdempotencyKeyTooLong):
+		errors.Is(inner, admission.ErrIdempotencyKeyTooLong),
+		errors.Is(inner, domain.ErrNumscriptNameRequired),
+		errors.Is(inner, domain.ErrNumscriptContentRequired),
+		errors.Is(inner, domain.ErrScriptAndReferenceConflict):
 		code = codes.InvalidArgument
 		reason = domain.ErrReasonValidation
 

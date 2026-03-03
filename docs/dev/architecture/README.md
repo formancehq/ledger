@@ -67,6 +67,9 @@ Why monetary amounts use fixed-size Uint256 instead of BigInt.
 ### [Typed Metadata](./typed-metadata.md)
 Typed metadata values (string, int64, uint64, bool, NullValue), per-ledger metadata schema declaration, type conversion matrix, and hybrid conversion strategy (lazy reads + automatic background batches).
 
+### [Numscript Library](./numscript-library.md)
+Global repository for storing, retrieving, and managing reusable numscript programs with semantic versioning. Covers version resolution, script references in transactions, storage layout, and admission preloading.
+
 ## Operations-Related Architecture
 
 These documents have been moved to the [Operations Guide](../../ops/) for better discoverability by sysadmins:

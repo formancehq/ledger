@@ -78,7 +78,9 @@ type Buffered struct {
 	pendingMetadataConvertRequests []MetadataConvertRequest
 
 	// Pending prepared query changes (ledger/name -> query or nil for deletion)
-	pendingPreparedQueries map[domain.PreparedQueryKey]*commonpb.PreparedQuery
+	pendingPreparedQueries  map[domain.PreparedQueryKey]*commonpb.PreparedQuery
+	pendingNumscriptWrites  []*commonpb.NumscriptInfo
+	pendingNumscriptDeletes []string
 }
 
 // purgeRange identifies a period's sequence range to delete from Pebble during Merge().
@@ -244,6 +246,15 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		b.fsm.Periods.SetSchedule(*b.pendingPeriodScheduleUpdate)
 	}
 
+	// Merge NumscriptVersions and NumscriptEntries overlays into the underlying KeyStores
+	// (no Pebble attribute writes — the actual Pebble writes are handled by pendingNumscriptWrites / pendingNumscriptDeletes below).
+	if _, _, err := b.Derived.NumscriptVersions.Merge(); err != nil {
+		return fmt.Errorf("failed to merge numscript versions: %w", err)
+	}
+	if _, _, err := b.Derived.NumscriptEntries.Merge(); err != nil {
+		return fmt.Errorf("failed to merge numscript entries: %w", err)
+	}
+
 	sinkUpdates, sinkDeletions, err := b.Derived.SinkConfigs.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge sink configs: %w", err)
@@ -284,6 +295,18 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	for i := range b.purgeRanges {
 		if err := b.executePurge(batch, &b.purgeRanges[i]); err != nil {
 			return fmt.Errorf("purging archived period %d data: %w", b.purgeRanges[i].periodID, err)
+		}
+	}
+
+	// Process numscript writes
+	for _, info := range b.pendingNumscriptWrites {
+		if err := SaveNumscript(batch, info); err != nil {
+			return fmt.Errorf("saving numscript %q: %w", info.Name, err)
+		}
+	}
+	for _, name := range b.pendingNumscriptDeletes {
+		if err := ClearNumscriptLatestVersion(batch, name); err != nil {
+			return fmt.Errorf("clearing numscript latest version %q: %w", name, err)
 		}
 	}
 
@@ -735,6 +758,32 @@ func (b *Buffered) DeletePreparedQuery(ledger, name string) {
 		b.pendingPreparedQueries = make(map[domain.PreparedQueryKey]*commonpb.PreparedQuery)
 	}
 	b.pendingPreparedQueries[domain.PreparedQueryKey{Ledger: ledger, Name: name}] = nil
+}
+
+// Numscript library operations
+
+func (b *Buffered) GetNumscriptLatestVersion(name string) (string, error) {
+	return b.Derived.NumscriptVersions.Get(domain.NumscriptVersionKey{Name: name})
+}
+
+func (b *Buffered) PutNumscript(info *commonpb.NumscriptInfo) {
+	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Name: info.Name}, info.Version)
+	b.Derived.NumscriptEntries.Put(domain.NumscriptEntryKey{Name: info.Name, Version: info.Version}, true)
+	b.pendingNumscriptWrites = append(b.pendingNumscriptWrites, info)
+}
+
+func (b *Buffered) DeleteNumscriptLatest(name string) {
+	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Name: name}, "")
+	b.pendingNumscriptDeletes = append(b.pendingNumscriptDeletes, name)
+}
+
+func (b *Buffered) NumscriptVersionExists(name, version string) (bool, error) {
+	exists, err := b.Derived.NumscriptEntries.Get(domain.NumscriptEntryKey{Name: name, Version: version})
+	if err != nil {
+		// Not in cache — treat as not existing (admission ensures preloading)
+		return false, nil
+	}
+	return exists, nil
 }
 
 // Ensure Buffered implements InMemoryStore

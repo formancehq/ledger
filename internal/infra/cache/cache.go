@@ -159,6 +159,8 @@ type Cache struct {
 	Ledgers             *AttributeCache[*commonpb.LedgerInfo]
 	Boundaries          *AttributeCache[*raftcmdpb.LedgerBoundaries]
 	SinkConfigs         *AttributeCache[*commonpb.SinkConfig]
+	NumscriptVersions   *AttributeCache[string]
+	NumscriptEntries    *AttributeCache[bool]
 	BaseIndex           DualGen[uint64]
 	GenerationThreshold uint64
 
@@ -183,6 +185,8 @@ func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
 	c.Ledgers.Rotate()
 	c.Boundaries.Rotate()
 	c.SinkConfigs.Rotate()
+	c.NumscriptVersions.Rotate()
+	c.NumscriptEntries.Rotate()
 	c.BaseIndex.Rotate(index)
 	c.currentGeneration.Store(newGeneration)
 
@@ -203,6 +207,8 @@ func (c *Cache) Reset() {
 	c.Ledgers.Reset()
 	c.Boundaries.Reset()
 	c.SinkConfigs.Reset()
+	c.NumscriptVersions.Reset()
+	c.NumscriptEntries.Reset()
 	c.BaseIndex = newDualGen[uint64](0, 0)
 	c.currentGeneration.Store(0)
 }
@@ -274,6 +280,10 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 				metric.WithAttributes(attribute.String("type", "boundaries")))
 			o.ObserveInt64(sizeGauge, int64(c.SinkConfigs.Size()),
 				metric.WithAttributes(attribute.String("type", "sink_configs")))
+			o.ObserveInt64(sizeGauge, int64(c.NumscriptVersions.Size()),
+				metric.WithAttributes(attribute.String("type", "numscript_versions")))
+			o.ObserveInt64(sizeGauge, int64(c.NumscriptEntries.Size()),
+				metric.WithAttributes(attribute.String("type", "numscript_entries")))
 			return nil
 		},
 		sizeGauge,
@@ -335,6 +345,8 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret.Ledgers = newAttributeCache[*commonpb.LedgerInfo](ret, "ledgers")
 	ret.Boundaries = newAttributeCache[*raftcmdpb.LedgerBoundaries](ret, "boundaries")
 	ret.SinkConfigs = newAttributeCache[*commonpb.SinkConfig](ret, "sink_configs")
+	ret.NumscriptVersions = newAttributeCache[string](ret, "numscript_versions")
+	ret.NumscriptEntries = newAttributeCache[bool](ret, "numscript_entries")
 
 	if err := ret.initMetrics(m); err != nil {
 		return nil, fmt.Errorf("initializing cache metrics: %w", err)

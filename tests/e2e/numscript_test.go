@@ -744,9 +744,10 @@ send [USD/2 10000] (
 			// Find the posting to platform:fees (commission)
 			var platformPosting, sellerPosting *commonpb.Posting
 			for _, p := range createdTx.Transaction.Postings {
-				if p.Destination == "platform:fees" {
+				switch p.Destination {
+				case "platform:fees":
 					platformPosting = p
-				} else if p.Destination == "sellers:acme" {
+				case "sellers:acme":
 					sellerPosting = p
 				}
 			}

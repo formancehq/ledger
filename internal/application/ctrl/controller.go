@@ -49,6 +49,10 @@ type Controller interface {
 	ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error)
 	ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error)
 
+	// Numscript library operations
+	GetNumscript(ctx context.Context, name string, version string) (*commonpb.NumscriptInfo, error)
+	ListNumscripts(ctx context.Context) ([]*commonpb.NumscriptInfo, error)
+
 	// Write operations - single entry point for all requests
 	Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
 }

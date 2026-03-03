@@ -26,6 +26,7 @@ Design draft for advanced read capabilities: ListAccounts with prefix filtering,
 
 - **Typed Metadata** — moved to [architecture/typed-metadata.md](../dev/architecture/typed-metadata.md)
 - **Data Retention & Cold Storage** — moved to [architecture/periods.md](../dev/architecture/periods.md)
+- **Numscript Library** — moved to [architecture/numscript-library.md](../dev/architecture/numscript-library.md)
 
 ---
 

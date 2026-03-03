@@ -786,6 +786,29 @@ func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *se
 	return query.Execute(ctrl.readStore, ctrl.store, ctrl.attrs.Volume, req, profile)
 }
 
+// GetNumscript returns a numscript by name and optional version ("" = latest).
+func (ctrl *DefaultController) GetNumscript(_ context.Context, name string, version string) (*commonpb.NumscriptInfo, error) {
+	handle := ctrl.store.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
+	info, err := query.ReadNumscript(handle, name, version)
+	if err != nil {
+		return nil, fmt.Errorf("reading numscript %q: %w", name, err)
+	}
+	if info == nil {
+		return nil, commonpb.NewNotFoundError("numscript %q not found", name)
+	}
+	return info, nil
+}
+
+// ListNumscripts returns the latest version of all numscripts.
+func (ctrl *DefaultController) ListNumscripts(_ context.Context) ([]*commonpb.NumscriptInfo, error) {
+	handle := ctrl.store.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
+	return query.ReadAllNumscripts(handle)
+}
+
 // Apply applies a list of requests and returns the resulting logs.
 // The controller forwards requests to the Raft admission layer.
 // The FSM is responsible for interpreting orders, validating, and applying changes.

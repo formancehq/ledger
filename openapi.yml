@@ -899,6 +899,157 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /numscripts:
+    get:
+      summary: List all numscripts
+      description: Returns a list of all saved numscripts with their latest version info.
+      operationId: listNumscripts
+      tags:
+        - Numscript Library
+      responses:
+        '200':
+          description: List of numscripts retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListNumscriptsResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /numscripts/{name}:
+    get:
+      summary: Get a numscript
+      description: |
+        Retrieves a numscript by name. Use the `version` query parameter to get a specific
+        semver version. If omitted or empty, the latest version is returned.
+      operationId: getNumscript
+      tags:
+        - Numscript Library
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the numscript
+        - name: version
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Semver version to retrieve (e.g. "1.0.0"). If omitted or empty, the latest version is returned.
+      responses:
+        '200':
+          description: Numscript retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetNumscriptResponse'
+        '404':
+          description: Numscript not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Save a numscript
+      description: |
+        Saves a numscript with the given name. The `version` field in the request body controls
+        versioning behavior:
+        - A semver string (e.g. "2.0.0") creates a new version. Fails if the version already exists.
+        - The special value "latest" overwrites the content of the current latest version.
+        - If omitted or empty, defaults to "latest".
+      operationId: saveNumscript
+      tags:
+        - Numscript Library
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the numscript
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveNumscriptRequest'
+      responses:
+        '201':
+          description: Numscript saved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetNumscriptResponse'
+        '204':
+          description: Numscript saved (no content returned)
+        '400':
+          description: Bad request (invalid version format, parse error, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete a numscript
+      description: Deletes a numscript by name. Removes the latest version entry.
+      operationId: deleteNumscript
+      tags:
+        - Numscript Library
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the numscript
+      responses:
+        '204':
+          description: Numscript deleted successfully
+        '404':
+          description: Numscript not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /{ledgerName}/_bulk:
     post:
       summary: Bulk operations
@@ -1960,6 +2111,46 @@ components:
           default: 0
           description: Max logs per batch (0 = server default 100, capped by server's --mirror-max-batch-size)
 
+    SaveNumscriptRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          description: The numscript source code
+        version:
+          type: string
+          description: |
+            Semver version string (e.g. "1.0.0") or the special value "latest".
+            - A semver string creates a new version. Fails if the version already exists.
+            - "latest" overwrites the content of the current latest version.
+            - If omitted or empty, defaults to "latest".
+          example: "1.0.0"
+
+    NumscriptInfo:
+      type: object
+      required:
+        - name
+        - content
+        - version
+        - createdAt
+      properties:
+        name:
+          type: string
+          description: Name of the numscript
+        content:
+          type: string
+          description: The numscript source code
+        version:
+          type: string
+          description: Semver version string (e.g. "1.0.0")
+          example: "1.0.0"
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation/update timestamp (ISO 8601 format)
+
     PromoteLedgerResponse:
       type: object
       required:
@@ -1967,6 +2158,25 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/LedgerInfo'
+
+    GetNumscriptResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/NumscriptInfo'
+
+    ListNumscriptsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/NumscriptInfo'
+          description: List of all numscripts
 
     AnalyzeAccountsResponse:
       type: object
