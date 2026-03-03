@@ -660,23 +660,21 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 }
 
 // AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns.
-func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
-	cursor, err := ctrl.ListTransactions(ctx, ledgerName, 0, 0, nil, false)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = cursor.Close() }()
+// Uses a single sequential Pebble log scan instead of per-transaction random seeks.
+func (ctrl *DefaultController) AnalyzeTransactions(_ context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+	handle := ctrl.store.NewReadHandle()
+	defer func() { _ = handle.Close() }()
 
-	var transactions []analysis.CompactTransaction
-	for {
-		tx, err := cursor.Next()
-		if err == io.EOF {
-			break
+	if _, err := query.GetLedgerByName(handle, ledgerName); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
-		if err != nil {
-			return nil, fmt.Errorf("reading transactions for analysis: %w", err)
-		}
-		transactions = append(transactions, analysis.ExtractCompactTransaction(tx))
+		return nil, fmt.Errorf("validating ledger for analysis: %w", err)
+	}
+
+	transactions, err := query.ScanTransactionsForAnalysis(handle, ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("scanning transactions for analysis: %w", err)
 	}
 
 	return analysis.AnalyzeTransactions(transactions, variableThreshold), nil
