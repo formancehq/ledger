@@ -46,7 +46,9 @@ type GlobalExporterRunner struct {
 	getLogFetcher func(ctx context.Context, name string) (LogFetcher, error)
 	logger        logging.Logger
 	config        GlobalExporterRunnerConfig
-	stopChannel   chan chan error
+	stopOnce      sync.Once
+	stopCh        chan struct{}
+	doneCh        chan struct{}
 }
 
 func NewGlobalExporterRunner(
@@ -88,13 +90,16 @@ func NewGlobalExporterRunner(
 			fetcherCache[name] = fetcher
 			return fetcher, nil
 		},
-		logger:      logger.WithField("component", "global-exporter"),
-		config:      config,
-		stopChannel: make(chan chan error, 1),
+		logger: logger.WithField("component", "global-exporter"),
+		config: config,
+		stopCh: make(chan struct{}),
+		doneCh: make(chan struct{}),
 	}
 }
 
 func (r *GlobalExporterRunner) Run(ctx context.Context) {
+	defer close(r.doneCh)
+
 	r.logger.Infof("Global exporter runner starting")
 
 	if r.config.Reset {
@@ -120,9 +125,7 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 	select {
 	case <-facade.Ready():
 		r.logger.Infof("Global exporter driver ready")
-	case ch := <-r.stopChannel:
-		r.logger.Infof("Stop signal received before driver ready")
-		close(ch)
+	case <-r.stopCh:
 		return
 	}
 
@@ -142,9 +145,7 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 
 	for {
 		select {
-		case ch := <-r.stopChannel:
-			cancelWorkers()
-			close(ch)
+		case <-r.stopCh:
 			return
 		case <-time.After(nextInterval):
 		}
@@ -188,10 +189,7 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 		}
 		close(work)
 
-		numWorkers := r.config.Workers
-		if numWorkers > len(ledgerNames) {
-			numWorkers = len(ledgerNames)
-		}
+		numWorkers := min(r.config.Workers, len(ledgerNames))
 
 		workersDone := make(chan struct{})
 		var wg sync.WaitGroup
@@ -212,10 +210,9 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 		// Wait for workers to finish or a stop signal.
 		select {
 		case <-workersDone:
-		case ch := <-r.stopChannel:
+		case <-r.stopCh:
 			cancelWorkers()
 			<-workersDone
-			close(ch)
 			return
 		}
 	}
@@ -329,17 +326,11 @@ func (r *GlobalExporterRunner) exportLedgerLogs(
 
 func (r *GlobalExporterRunner) Shutdown(ctx context.Context) error {
 	r.logger.Infof("Shutting down global exporter runner")
-	errorChannel := make(chan error, 1)
+	r.stopOnce.Do(func() { close(r.stopCh) })
 	select {
+	case <-r.doneCh:
+		return nil
 	case <-ctx.Done():
 		return ctx.Err()
-	case r.stopChannel <- errorChannel:
-		r.logger.Debugf("Shutdown signal sent")
-		select {
-		case err := <-errorChannel:
-			return err
-		case <-ctx.Done():
-			return ctx.Err()
-		}
 	}
 }
