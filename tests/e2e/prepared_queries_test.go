@@ -128,9 +128,12 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 		})
 
 		It("Should create a prepared query", func() {
@@ -225,7 +228,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 		const ledgerName = "pq-exec-string"
 
 		BeforeAll(func() {
-			// Create ledger with schema
+			// Create ledger with schema and index
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					createLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
@@ -235,9 +238,12 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 
 			// Create transactions to establish accounts
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
@@ -419,9 +425,14 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier"),
 				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
 
 			// Create accounts
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
@@ -559,9 +570,12 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
@@ -639,9 +653,14 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{
+					createLedgerAction(ledgerName, nil),
+					createAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY),
+				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForAddressIndexReady(ctx, client, ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY)
 
 			// tx0: world→alice, tx1: world→bob, tx2: alice→charlie
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
@@ -712,9 +731,12 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 
 			// world→alice 100 USD, world→alice 50 EUR, world→bob 200 USD
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
@@ -804,9 +826,12 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 		})
 
 		It("Should return NOT_FOUND when executing a non-existent query", func() {

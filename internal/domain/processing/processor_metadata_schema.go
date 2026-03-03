@@ -25,6 +25,15 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 		Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
 	}
 
+	// Preserve indexed flag from any existing field schema. If the field
+	// is currently indexed, set status to BUILDING because index entries
+	// have a mix of old and new encodings during type conversion.
+	_, existing := schemaFieldForTarget(info.MetadataSchema, order.TargetType, order.Key)
+	if existing != nil && existing.Indexed {
+		field.Indexed = true
+		field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
+	}
+
 	switch order.TargetType {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 		if info.MetadataSchema.AccountFields == nil {

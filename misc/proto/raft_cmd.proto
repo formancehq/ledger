@@ -195,6 +195,33 @@ message LedgerApplyOrder {
     RemoveMetadataFieldTypeOrder remove_metadata_field_type = 7;
     ConvertMetadataBatchOrder convert_metadata_batch = 8;
     MetadataConversionCompleteOrder conversion_complete = 9;
+    CreateIndexOrder create_index = 10;
+    DropIndexOrder drop_index = 11;
+    IndexReadyOrder index_ready = 12;
+  }
+}
+
+// CreateIndexOrder requests the creation of a new index.
+message CreateIndexOrder {
+  oneof index {
+    common.AddressRole address_role = 1;
+    common.MetadataIndexTarget metadata = 2;
+  }
+}
+
+// DropIndexOrder requests the removal of an index.
+message DropIndexOrder {
+  oneof index {
+    common.AddressRole address_role = 1;
+    common.MetadataIndexTarget metadata = 2;
+  }
+}
+
+// IndexReadyOrder signals that an index has finished building.
+message IndexReadyOrder {
+  oneof index {
+    common.AddressRole address_role = 1;
+    common.MetadataIndexTarget metadata = 2;
   }
 }
 

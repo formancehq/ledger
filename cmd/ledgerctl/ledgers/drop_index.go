@@ -1,0 +1,138 @@
+package ledgers
+
+import (
+	"fmt"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+)
+
+// NewDropIndexCommand creates the ledgers drop-index command.
+func NewDropIndexCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "drop-index [flags]",
+		Aliases: []string{"di"},
+		Short:   "Drop an index from a ledger",
+		Long: `Drop an opt-in index from a ledger. This stops the index from being updated
+and frees the associated storage.
+
+Index types:
+  address              Account→transaction mapping (any role)
+  source-address       Source account→transaction mapping
+  dest-address         Destination account→transaction mapping
+  metadata             Metadata field index (requires --target and --key)
+
+Examples:
+  ledgerctl ledgers drop-index --ledger my-ledger --type address
+  ledgerctl ledgers drop-index --ledger my-ledger --type metadata --target account --key category`,
+		Args: cobra.NoArgs,
+		RunE: runDropIndex,
+	}
+
+	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmd.Flags().String("type", "", "Index type: address, source-address, dest-address, metadata")
+	cmd.Flags().String("target", "", "Target type for metadata index: account or transaction")
+	cmd.Flags().String("key", "", "Metadata key name (for metadata index)")
+	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
+
+	return cmd
+}
+
+func runDropIndex(cmd *cobra.Command, _ []string) error {
+	client, conn, err := cmdutil.GetClient(cmd)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.Close() }()
+
+	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
+	if err != nil {
+		return err
+	}
+
+	indexType, _ := cmd.Flags().GetString("type")
+	if indexType == "" {
+		result, err := pterm.DefaultInteractiveSelect.
+			WithOptions([]string{"address", "source-address", "dest-address", "metadata"}).
+			WithDefaultText("Select index type to drop").
+			Show()
+		if err != nil {
+			return fmt.Errorf("failed to read input: %w", err)
+		}
+		indexType = result
+	}
+
+	req := &servicepb.DropIndexRequest{
+		Ledger: ledgerName,
+	}
+
+	var indexDesc string
+	switch indexType {
+	case "address":
+		req.Index = &servicepb.DropIndexRequest_AddressRole{
+			AddressRole: commonpb.AddressRole_ADDRESS_ROLE_ANY,
+		}
+		indexDesc = "address (any role)"
+	case "source-address":
+		req.Index = &servicepb.DropIndexRequest_AddressRole{
+			AddressRole: commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
+		}
+		indexDesc = "source-address"
+	case "dest-address":
+		req.Index = &servicepb.DropIndexRequest_AddressRole{
+			AddressRole: commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
+		}
+		indexDesc = "dest-address"
+	case "metadata":
+		target, key, err := resolveMetadataIndexFlags(cmd)
+		if err != nil {
+			return err
+		}
+		req.Index = &servicepb.DropIndexRequest_Metadata{
+			Metadata: &commonpb.MetadataIndexTarget{
+				Target: target,
+				Key:    key,
+			},
+		}
+		indexDesc = fmt.Sprintf("metadata %s.%s", cmdutil.TargetTypeString(target), key)
+	default:
+		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, or metadata", indexType)
+	}
+
+	ctx, cancel := cmdutil.GetContext(cmd)
+	defer cancel()
+
+	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Dropping index %s on %s...", indexDesc, ledgerName))
+
+	requests := []*servicepb.Request{
+		{
+			Type: &servicepb.Request_DropIndex{
+				DropIndex: req,
+			},
+		},
+	}
+
+	if err := cmdutil.SignRequests(cmd, requests); err != nil {
+		spinner.Fail("Failed to sign request")
+		return err
+	}
+
+	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
+	if err != nil {
+		spinner.Fail("Failed to drop index")
+		return cmdutil.FormatGRPCError("failed to drop index", err)
+	}
+
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
+		spinner.Fail("Response signature verification failed")
+		return fmt.Errorf("response signature verification failed: %w", err)
+	}
+
+	spinner.Success(fmt.Sprintf("Dropped index %s from ledger %s", indexDesc, ledgerName))
+
+	return nil
+}

@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
@@ -17,23 +18,73 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-const indexBatchSize = 1000
+const (
+	indexBatchSize    = 1000
+	backfillBatchSize = 500
+)
+
+// Proposer proposes Raft commands to the cluster.
+// Implemented by a thin adapter around *node.Node (bootstrap.NodeProposer).
+type Proposer interface {
+	ProposeOrders(orders ...*raftcmdpb.Order) error
+}
+
+// indexID identifies a specific index (address role or metadata field).
+type indexID struct {
+	addressRole *commonpb.AddressRole         // set for address indexes
+	metadata    *commonpb.MetadataIndexTarget // set for metadata indexes
+}
+
+// backfillTask tracks the progress of backfilling a single index.
+type backfillTask struct {
+	ledger string
+	index  indexID
+	cursor uint64 // current position (persisted in bbolt)
+	bbKey  []byte // precomputed bbolt key for progress persistence
+}
+
+// metadataIndexKey identifies a metadata index by target type and key name.
+type metadataIndexKey struct {
+	Target commonpb.TargetType
+	Key    string
+}
+
+// ledgerIndexConfig caches which indexes are enabled and ready for a ledger.
+type ledgerIndexConfig struct {
+	addressIndexed  map[commonpb.AddressRole]bool // true = indexed (READY or BUILDING)
+	metadataIndexed map[metadataIndexKey]bool      // true = indexed (READY or BUILDING)
+}
 
 // Builder tails the system log and populates the bbolt read store indexes.
 // It runs as a background goroutine on ALL nodes (not just the leader).
 // Progress is stored locally in bbolt (no Raft needed).
+//
+// When a new index is created, the builder also backfills historical data.
+// Only the leader proposes IndexReady through Raft when backfill completes.
 type Builder struct {
 	pebbleStore   *dal.Store
 	readStore     *readstore.Store
 	logger        logging.Logger
 	meter         metric.Meter
 	notifications *signal.Notifications
+	proposer      Proposer
+	isLeader      func() bool
 	w             worker.Worker
 
 	lastIndexedSeq      atomic.Uint64
 	pebbleLastSeq       atomic.Uint64
 	logsIndexed         atomic.Uint64
 	metricsRegistration metric.Registration
+
+	// Per-ledger index configuration cache.
+	indexConfig map[string]*ledgerIndexConfig
+
+	// Active backfill tasks for BUILDING indexes.
+	backfillTasks []*backfillTask
+
+	// backfillMode is set to true during backfill log replay to skip
+	// existence writes (already written by normal processing).
+	backfillMode bool
 
 	// Reusable scratch objects to reduce allocations in the hot loop.
 	kb       *readstore.KeyBuilder
@@ -52,14 +103,143 @@ func NewBuilder(
 		readStore:   readStore,
 		logger:      logger.WithFields(map[string]any{"cmp": "index-builder"}),
 		meter:       meter,
+		indexConfig: make(map[string]*ledgerIndexConfig),
 		kb:          readstore.NewKeyBuilder(),
 		accounts:    make(map[string]struct{}, 64),
 	}
 }
 
+// initIndexConfig scans all ledgers from Pebble and populates the index config cache.
+// It also detects BUILDING indexes and creates backfill tasks, loading persisted
+// cursors from bbolt so backfills survive restarts.
+func (b *Builder) initIndexConfig() {
+	handle := b.pebbleStore.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
+	cursor, err := query.ReadLedgers(handle)
+	if err != nil {
+		b.logger.Errorf("Failed to read ledgers for index config: %v", err)
+		return
+	}
+	defer func() { _ = cursor.Close() }()
+
+	for {
+		info, err := cursor.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			b.logger.Errorf("Error reading ledger info: %v", err)
+			return
+		}
+		if info.DeletedAt != nil {
+			continue
+		}
+		b.loadLedgerIndexConfig(info)
+	}
+
+	// Load persisted backfill progress from bbolt.
+	if len(b.backfillTasks) > 0 {
+		_ = b.readStore.View(func(tx *bolt.Tx) error {
+			for _, task := range b.backfillTasks {
+				if c, ok := b.readStore.ReadBackfillProgress(tx, task.bbKey); ok {
+					task.cursor = c
+				}
+			}
+			return nil
+		})
+		b.logger.WithFields(map[string]any{
+			"count": len(b.backfillTasks),
+		}).Infof("Loaded backfill tasks for BUILDING indexes")
+	}
+}
+
+// loadLedgerIndexConfig populates the index config cache for a single ledger.
+// Both READY and BUILDING indexes are included so that normal processing writes
+// to new indexes immediately (covering logs after CreateIndex).
+func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
+	cfg := &ledgerIndexConfig{
+		addressIndexed:  make(map[commonpb.AddressRole]bool),
+		metadataIndexed: make(map[metadataIndexKey]bool),
+	}
+
+	// Address indexes — include both READY and BUILDING.
+	if ac := info.AddressIndexes; ac != nil {
+		for _, entry := range []struct {
+			role    commonpb.AddressRole
+			enabled bool
+			status  commonpb.IndexBuildStatus
+		}{
+			{commonpb.AddressRole_ADDRESS_ROLE_ANY, ac.Address, ac.AddressStatus},
+			{commonpb.AddressRole_ADDRESS_ROLE_SOURCE, ac.Source, ac.SourceStatus},
+			{commonpb.AddressRole_ADDRESS_ROLE_DESTINATION, ac.Destination, ac.DestinationStatus},
+		} {
+			if !entry.enabled {
+				continue
+			}
+			cfg.addressIndexed[entry.role] = true
+			if entry.status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+				b.addBackfillTaskForAddress(info.Name, entry.role)
+			}
+		}
+	}
+
+	// Metadata indexes — include both READY and BUILDING.
+	if info.MetadataSchema != nil {
+		b.loadMetadataIndexes(cfg, info.Name, commonpb.TargetType_TARGET_TYPE_ACCOUNT, info.MetadataSchema.AccountFields)
+		b.loadMetadataIndexes(cfg, info.Name, commonpb.TargetType_TARGET_TYPE_TRANSACTION, info.MetadataSchema.TransactionFields)
+	}
+
+	b.indexConfig[info.Name] = cfg
+}
+
+// loadMetadataIndexes loads metadata indexes for a given target type.
+func (b *Builder) loadMetadataIndexes(
+	cfg *ledgerIndexConfig,
+	ledger string,
+	target commonpb.TargetType,
+	fields map[string]*commonpb.MetadataFieldSchema,
+) {
+	for key, field := range fields {
+		if !field.Indexed {
+			continue
+		}
+		mk := metadataIndexKey{Target: target, Key: key}
+		cfg.metadataIndexed[mk] = true
+		if field.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+			b.addBackfillTaskForMetadata(ledger, target, key)
+		}
+	}
+}
+
+// isAddressIndexed checks if a specific address role index is enabled and ready.
+func (b *Builder) isAddressIndexed(ledger string, role commonpb.AddressRole) bool {
+	cfg, ok := b.indexConfig[ledger]
+	if !ok {
+		return false
+	}
+	return cfg.addressIndexed[role]
+}
+
+// isMetadataIndexed checks if a specific metadata index is enabled and ready.
+func (b *Builder) isMetadataIndexed(ledger string, target commonpb.TargetType, key string) bool {
+	cfg, ok := b.indexConfig[ledger]
+	if !ok {
+		return false
+	}
+	return cfg.metadataIndexed[metadataIndexKey{Target: target, Key: key}]
+}
+
 // SetNotifications sets the dedicated Notifications signal for the builder.
 func (b *Builder) SetNotifications(n *signal.Notifications) {
 	b.notifications = n
+}
+
+// SetProposer sets the Raft proposer and leader check function.
+// Must be called before Start.
+func (b *Builder) SetProposer(p Proposer, isLeader func() bool) {
+	b.proposer = p
+	b.isLeader = isLeader
 }
 
 // Start begins the background index-building loop and registers OTEL metrics.
@@ -145,6 +325,9 @@ func (b *Builder) registerMetrics() (metric.Registration, error) {
 }
 
 func (b *Builder) loop(stop <-chan struct{}) {
+	// Initialize index config cache from Pebble before processing any logs.
+	b.initIndexConfig()
+
 	cursor, err := b.readStore.LastIndexedSequence()
 	if err != nil {
 		b.logger.Errorf("Failed to read progress: %v", err)
@@ -163,6 +346,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 	if cursor, err = b.processLogs(cursor); err != nil {
 		b.logger.Errorf("Error during initial catch-up: %v", err)
 	}
+	b.processBackfills(stop, cursor)
 
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -189,6 +373,8 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		if cursor, err = b.processLogs(cursor); err != nil {
 			b.logger.Errorf("Error processing logs: %v", err)
 		}
+
+		b.processBackfills(stop, cursor)
 	}
 }
 
@@ -300,6 +486,12 @@ func (b *Builder) indexLogEntry(tx *bolt.Tx, log *commonpb.Log) error {
 		return b.indexDeletedMetadata(tx, b.kb, ledgerName, p.DeletedMetadata)
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
 		return b.indexSetMetadataFieldType(tx, b.kb, ledgerName, p.SetMetadataFieldType)
+	case *commonpb.LedgerLogPayload_CreateIndex:
+		b.handleCreateIndexLog(ledgerName, p.CreateIndex)
+	case *commonpb.LedgerLogPayload_DropIndex:
+		b.handleDropIndexLog(ledgerName, p.DropIndex)
+	case *commonpb.LedgerLogPayload_IndexReady:
+		b.handleIndexReadyLog(ledgerName, p.IndexReady)
 	}
 
 	return nil
@@ -322,47 +514,66 @@ func (b *Builder) indexCreatedTransaction(
 	}
 	txn := ct.Transaction
 
-	// Transaction existence
-	if err := readstore.WriteTransactionExistence(tx, kb, ledger, txn.Id); err != nil {
-		return err
+	// Transaction existence (skip during backfill — already written by normal processing)
+	if !b.backfillMode {
+		if err := readstore.WriteTransactionExistence(tx, kb, ledger, txn.Id); err != nil {
+			return err
+		}
 	}
 
 	// Collect unique accounts from postings (reuse builder's map)
+	indexAny := b.isAddressIndexed(ledger, commonpb.AddressRole_ADDRESS_ROLE_ANY)
+	indexSrc := b.isAddressIndexed(ledger, commonpb.AddressRole_ADDRESS_ROLE_SOURCE)
+	indexDst := b.isAddressIndexed(ledger, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION)
+
 	clear(b.accounts)
 	for _, posting := range txn.Postings {
 		b.accounts[posting.Source] = struct{}{}
 		b.accounts[posting.Destination] = struct{}{}
 
 		// Account→transaction mapping (any role)
-		if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Source, txn.Id); err != nil {
-			return err
-		}
-		if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Destination, txn.Id); err != nil {
-			return err
+		if indexAny {
+			if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Source, txn.Id); err != nil {
+				return err
+			}
+			if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Destination, txn.Id); err != nil {
+				return err
+			}
 		}
 		// Role-specific mappings
-		if err := readstore.WriteSourceAccountTxMapping(tx, kb, ledger, posting.Source, txn.Id); err != nil {
-			return err
+		if indexSrc {
+			if err := readstore.WriteSourceAccountTxMapping(tx, kb, ledger, posting.Source, txn.Id); err != nil {
+				return err
+			}
 		}
-		if err := readstore.WriteDestAccountTxMapping(tx, kb, ledger, posting.Destination, txn.Id); err != nil {
-			return err
+		if indexDst {
+			if err := readstore.WriteDestAccountTxMapping(tx, kb, ledger, posting.Destination, txn.Id); err != nil {
+				return err
+			}
 		}
 	}
 
-	// Account existence for all accounts in postings
-	for account := range b.accounts {
-		if err := readstore.WriteAccountExistence(tx, kb, ledger, account); err != nil {
-			return err
+	// Account existence for all accounts in postings (skip during backfill)
+	if !b.backfillMode {
+		for account := range b.accounts {
+			if err := readstore.WriteAccountExistence(tx, kb, ledger, account); err != nil {
+				return err
+			}
 		}
 	}
 
 	// Account existence + metadata from account_metadata map
 	for account, metadataSet := range ct.AccountMetadata {
-		if err := readstore.WriteAccountExistence(tx, kb, ledger, account); err != nil {
-			return err
+		if !b.backfillMode {
+			if err := readstore.WriteAccountExistence(tx, kb, ledger, account); err != nil {
+				return err
+			}
 		}
 		if metadataSet != nil {
 			for _, md := range metadataSet.Metadata {
+				if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, md.Key) {
+					continue
+				}
 				reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, md.Key)
 				encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
 				if err := readstore.UpdateMetadataIndex(
@@ -381,6 +592,9 @@ func (b *Builder) indexCreatedTransaction(
 		txIDBytes := make([]byte, 0, 8)
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txn.Id)
 		for _, md := range txn.Metadata.Metadata {
+			if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, md.Key) {
+				continue
+			}
 			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txn.Id, md.Key)
 			encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
 			if err := readstore.UpdateMetadataIndex(
@@ -411,33 +625,47 @@ func (b *Builder) indexRevertedTransaction(
 	}
 	revertTxn := rt.RevertTransaction
 
-	// Revert transaction existence
-	if err := readstore.WriteTransactionExistence(tx, kb, ledger, revertTxn.Id); err != nil {
-		return err
+	// Revert transaction existence (skip during backfill)
+	if !b.backfillMode {
+		if err := readstore.WriteTransactionExistence(tx, kb, ledger, revertTxn.Id); err != nil {
+			return err
+		}
 	}
 
 	// Account existence + account→tx mapping for revert postings (reuse builder's map)
+	indexAny := b.isAddressIndexed(ledger, commonpb.AddressRole_ADDRESS_ROLE_ANY)
+	indexSrc := b.isAddressIndexed(ledger, commonpb.AddressRole_ADDRESS_ROLE_SOURCE)
+	indexDst := b.isAddressIndexed(ledger, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION)
+
 	clear(b.accounts)
 	for _, posting := range revertTxn.Postings {
 		b.accounts[posting.Source] = struct{}{}
 		b.accounts[posting.Destination] = struct{}{}
-		if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Source, revertTxn.Id); err != nil {
-			return err
-		}
-		if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Destination, revertTxn.Id); err != nil {
-			return err
+		if indexAny {
+			if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Source, revertTxn.Id); err != nil {
+				return err
+			}
+			if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Destination, revertTxn.Id); err != nil {
+				return err
+			}
 		}
 		// Role-specific mappings
-		if err := readstore.WriteSourceAccountTxMapping(tx, kb, ledger, posting.Source, revertTxn.Id); err != nil {
-			return err
+		if indexSrc {
+			if err := readstore.WriteSourceAccountTxMapping(tx, kb, ledger, posting.Source, revertTxn.Id); err != nil {
+				return err
+			}
 		}
-		if err := readstore.WriteDestAccountTxMapping(tx, kb, ledger, posting.Destination, revertTxn.Id); err != nil {
-			return err
+		if indexDst {
+			if err := readstore.WriteDestAccountTxMapping(tx, kb, ledger, posting.Destination, revertTxn.Id); err != nil {
+				return err
+			}
 		}
 	}
-	for account := range b.accounts {
-		if err := readstore.WriteAccountExistence(tx, kb, ledger, account); err != nil {
-			return err
+	if !b.backfillMode {
+		for account := range b.accounts {
+			if err := readstore.WriteAccountExistence(tx, kb, ledger, account); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -446,6 +674,9 @@ func (b *Builder) indexRevertedTransaction(
 		txIDBytes := make([]byte, 0, 8)
 		txIDBytes = readstore.EncodeTxID(txIDBytes, revertTxn.Id)
 		for _, md := range revertTxn.Metadata.Metadata {
+			if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, md.Key) {
+				continue
+			}
 			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, revertTxn.Id, md.Key)
 			encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
 			if err := readstore.UpdateMetadataIndex(
@@ -476,6 +707,9 @@ func (b *Builder) indexSavedMetadata(
 	case *commonpb.Target_Account:
 		account := t.Account.Addr
 		for _, md := range sm.Metadata.Metadata {
+			if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, md.Key) {
+				continue
+			}
 			reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, md.Key)
 			encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
 			if err := readstore.UpdateMetadataIndex(
@@ -491,6 +725,9 @@ func (b *Builder) indexSavedMetadata(
 		txIDBytes := make([]byte, 0, 8)
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txID)
 		for _, md := range sm.Metadata.Metadata {
+			if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, md.Key) {
+				continue
+			}
 			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, md.Key)
 			encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
 			if err := readstore.UpdateMetadataIndex(
@@ -519,6 +756,9 @@ func (b *Builder) indexDeletedMetadata(
 
 	switch t := dm.Target.Target.(type) {
 	case *commonpb.Target_Account:
+		if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, dm.Key) {
+			return nil
+		}
 		account := t.Account.Addr
 		reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, dm.Key)
 		return readstore.DeleteMetadataEntry(
@@ -527,6 +767,9 @@ func (b *Builder) indexDeletedMetadata(
 			[]byte(account),
 		)
 	case *commonpb.Target_Transaction:
+		if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, dm.Key) {
+			return nil
+		}
 		txID := t.Transaction.Id
 		txIDBytes := make([]byte, 0, 8)
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txID)
@@ -553,6 +796,11 @@ func (b *Builder) indexSetMetadataFieldType(
 	ledger string,
 	smft *commonpb.SetMetadataFieldTypeLog,
 ) error {
+	// Only re-encode if this metadata key is indexed.
+	if !b.isMetadataIndexed(ledger, smft.TargetType, smft.Key) {
+		return nil
+	}
+
 	var ns string
 	switch smft.TargetType {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
@@ -679,6 +927,73 @@ func extractMetadataKeyFromReverseMap(key, nsPrefix []byte, ns string) string {
 	return ""
 }
 
+// handleCreateIndexLog updates the index config cache when a CreateIndex log is processed.
+// The index starts in BUILDING state — it is NOT marked as ready here.
+// A backfill task is created to replay historical logs for the new index.
+func (b *Builder) handleCreateIndexLog(ledger string, log *commonpb.CreateIndexLog) {
+	cfg := b.getOrCreateLedgerConfig(ledger)
+	switch idx := log.Index.(type) {
+	case *commonpb.CreateIndexLog_AddressRole:
+		cfg.addressIndexed[idx.AddressRole] = true
+		b.addBackfillTaskForAddress(ledger, idx.AddressRole)
+	case *commonpb.CreateIndexLog_Metadata:
+		cfg.metadataIndexed[metadataIndexKey{
+			Target: idx.Metadata.Target,
+			Key:    idx.Metadata.Key,
+		}] = true
+		b.addBackfillTaskForMetadata(ledger, idx.Metadata.Target, idx.Metadata.Key)
+	}
+}
+
+// handleDropIndexLog updates the index config cache when a DropIndex log is processed.
+// It also removes any active backfill task for the dropped index.
+func (b *Builder) handleDropIndexLog(ledger string, log *commonpb.DropIndexLog) {
+	cfg := b.getOrCreateLedgerConfig(ledger)
+	switch idx := log.Index.(type) {
+	case *commonpb.DropIndexLog_AddressRole:
+		delete(cfg.addressIndexed, idx.AddressRole)
+		role := idx.AddressRole
+		b.removeBackfillTask(indexID{addressRole: &role})
+	case *commonpb.DropIndexLog_Metadata:
+		delete(cfg.metadataIndexed, metadataIndexKey{
+			Target: idx.Metadata.Target,
+			Key:    idx.Metadata.Key,
+		})
+		b.removeBackfillTask(indexID{metadata: idx.Metadata})
+	}
+}
+
+// handleIndexReadyLog updates the index config cache when an IndexReady log is processed.
+// This marks the index as READY and removes any residual backfill task.
+func (b *Builder) handleIndexReadyLog(ledger string, log *commonpb.IndexReadyLog) {
+	cfg := b.getOrCreateLedgerConfig(ledger)
+	switch idx := log.Index.(type) {
+	case *commonpb.IndexReadyLog_AddressRole:
+		cfg.addressIndexed[idx.AddressRole] = true
+		role := idx.AddressRole
+		b.removeBackfillTask(indexID{addressRole: &role})
+	case *commonpb.IndexReadyLog_Metadata:
+		cfg.metadataIndexed[metadataIndexKey{
+			Target: idx.Metadata.Target,
+			Key:    idx.Metadata.Key,
+		}] = true
+		b.removeBackfillTask(indexID{metadata: idx.Metadata})
+	}
+}
+
+// getOrCreateLedgerConfig returns the index config for a ledger, creating it if needed.
+func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
+	cfg, ok := b.indexConfig[ledger]
+	if !ok {
+		cfg = &ledgerIndexConfig{
+			addressIndexed:  make(map[commonpb.AddressRole]bool),
+			metadataIndexed: make(map[metadataIndexKey]bool),
+		}
+		b.indexConfig[ledger] = cfg
+	}
+	return cfg
+}
+
 // extractEntityIDFromReverseMap extracts the entity ID portion from a reverse map key.
 func extractEntityIDFromReverseMap(key, nsPrefix []byte, ns string) []byte {
 	suffix := key[len(nsPrefix):]
@@ -697,3 +1012,290 @@ func extractEntityIDFromReverseMap(key, nsPrefix []byte, ns string) []byte {
 	}
 	return suffix
 }
+
+// --- Backfill helpers ---
+
+// backfillBBKey builds the bbolt key for persisting backfill progress.
+// Format:
+//
+//	Address: [ledger\x00]a[role_byte]
+//	Metadata: [ledger\x00]m[target_byte][key]
+func backfillBBKey(ledger string, id indexID) []byte {
+	if id.addressRole != nil {
+		key := make([]byte, 0, len(ledger)+3)
+		key = append(key, ledger...)
+		key = append(key, 0x00, 'a', byte(*id.addressRole))
+		return key
+	}
+	if id.metadata != nil {
+		key := make([]byte, 0, len(ledger)+3+len(id.metadata.Key))
+		key = append(key, ledger...)
+		key = append(key, 0x00, 'm', byte(id.metadata.Target))
+		key = append(key, id.metadata.Key...)
+		return key
+	}
+	return nil
+}
+
+// addBackfillTaskForAddress creates a backfill task for an address index.
+func (b *Builder) addBackfillTaskForAddress(ledger string, role commonpb.AddressRole) {
+	id := indexID{addressRole: &role}
+	// Avoid duplicates.
+	for _, t := range b.backfillTasks {
+		if string(t.bbKey) == string(backfillBBKey(ledger, id)) {
+			return
+		}
+	}
+	task := &backfillTask{
+		ledger: ledger,
+		index:  id,
+		cursor: 0,
+		bbKey:  backfillBBKey(ledger, id),
+	}
+	b.backfillTasks = append(b.backfillTasks, task)
+}
+
+// addBackfillTaskForMetadata creates a backfill task for a metadata index.
+func (b *Builder) addBackfillTaskForMetadata(ledger string, target commonpb.TargetType, key string) {
+	id := indexID{metadata: &commonpb.MetadataIndexTarget{Target: target, Key: key}}
+	bbKey := backfillBBKey(ledger, id)
+	// Avoid duplicates.
+	for _, t := range b.backfillTasks {
+		if string(t.bbKey) == string(bbKey) {
+			return
+		}
+	}
+	task := &backfillTask{
+		ledger: ledger,
+		index:  id,
+		cursor: 0,
+		bbKey:  bbKey,
+	}
+	b.backfillTasks = append(b.backfillTasks, task)
+}
+
+// removeBackfillTask removes a backfill task by index ID and deletes its
+// progress from bbolt.
+func (b *Builder) removeBackfillTask(id indexID) {
+	for i, t := range b.backfillTasks {
+		if matchesBackfillIndex(t.index, id) {
+			// Delete persisted progress.
+			_ = b.readStore.Update(func(tx *bolt.Tx) error {
+				return b.readStore.DeleteBackfillProgress(tx, t.bbKey)
+			})
+			// Remove from slice (order doesn't matter).
+			b.backfillTasks[i] = b.backfillTasks[len(b.backfillTasks)-1]
+			b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
+			return
+		}
+	}
+}
+
+// matchesBackfillIndex checks if two indexIDs represent the same index.
+func matchesBackfillIndex(a, b indexID) bool {
+	if a.addressRole != nil && b.addressRole != nil {
+		return *a.addressRole == *b.addressRole
+	}
+	if a.metadata != nil && b.metadata != nil {
+		return a.metadata.Target == b.metadata.Target && a.metadata.Key == b.metadata.Key
+	}
+	return false
+}
+
+// processBackfills advances each active backfill task by one batch.
+// When a backfill catches up to globalCursor, it proposes IndexReady (leader only).
+func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
+	if len(b.backfillTasks) == 0 {
+		return
+	}
+
+	// Process each task (iterate backward for safe removal).
+	for i := len(b.backfillTasks) - 1; i >= 0; i-- {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+
+		task := b.backfillTasks[i]
+
+		if task.cursor >= globalCursor {
+			// Backfill is caught up — propose IndexReady.
+			b.logger.WithFields(map[string]any{
+				"ledger": task.ledger,
+				"cursor": task.cursor,
+			}).Infof("Backfill complete, proposing IndexReady")
+			b.proposeIndexReady(task)
+
+			// Delete persisted progress.
+			_ = b.readStore.Update(func(tx *bolt.Tx) error {
+				return b.readStore.DeleteBackfillProgress(tx, task.bbKey)
+			})
+
+			// Remove from slice.
+			b.backfillTasks[i] = b.backfillTasks[len(b.backfillTasks)-1]
+			b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
+			continue
+		}
+
+		// Process one batch of backfill.
+		if err := b.processBackfillBatch(task); err != nil {
+			b.logger.WithFields(map[string]any{
+				"ledger": task.ledger,
+				"cursor": task.cursor,
+				"error":  err,
+			}).Errorf("Error processing backfill batch")
+		}
+	}
+}
+
+// processBackfillBatch reads up to backfillBatchSize logs from Pebble and indexes
+// them using only the backfilling index's configuration. Existence writes are skipped.
+func (b *Builder) processBackfillBatch(task *backfillTask) error {
+	logsCursor, err := query.ReadLogsSince(b.pebbleStore, task.cursor, dal.WithReuse())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = logsCursor.Close() }()
+
+	// Build a temporary index config with only the backfilling index enabled.
+	tmpConfig := b.buildBackfillConfig(task)
+
+	// Swap index config, enable backfill mode.
+	origConfig := b.indexConfig
+	b.indexConfig = tmpConfig
+	b.backfillMode = true
+	defer func() {
+		b.indexConfig = origConfig
+		b.backfillMode = false
+	}()
+
+	var (
+		batchCount int
+		lastSeq    uint64
+	)
+
+	if err := b.readStore.Update(func(tx *bolt.Tx) error {
+		for batchCount < backfillBatchSize {
+			log, err := logsCursor.Next()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return err
+			}
+
+			// Skip config-mutation log types during backfill.
+			if !isDataLog(log) {
+				lastSeq = log.Sequence
+				batchCount++
+				continue
+			}
+
+			if err := b.indexLogEntry(tx, log); err != nil {
+				return err
+			}
+			lastSeq = log.Sequence
+			batchCount++
+		}
+
+		// Persist backfill cursor.
+		if batchCount > 0 {
+			return b.readStore.WriteBackfillProgress(tx, task.bbKey, lastSeq)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if batchCount > 0 {
+		task.cursor = lastSeq
+	}
+
+	return nil
+}
+
+// buildBackfillConfig creates a temporary indexConfig map containing only the
+// backfilling index's ledger config with only that index enabled.
+func (b *Builder) buildBackfillConfig(task *backfillTask) map[string]*ledgerIndexConfig {
+	cfg := &ledgerIndexConfig{
+		addressIndexed:  make(map[commonpb.AddressRole]bool),
+		metadataIndexed: make(map[metadataIndexKey]bool),
+	}
+	if task.index.addressRole != nil {
+		cfg.addressIndexed[*task.index.addressRole] = true
+	}
+	if task.index.metadata != nil {
+		cfg.metadataIndexed[metadataIndexKey{
+			Target: task.index.metadata.Target,
+			Key:    task.index.metadata.Key,
+		}] = true
+	}
+	return map[string]*ledgerIndexConfig{task.ledger: cfg}
+}
+
+// isDataLog returns true if the log entry contains indexable data
+// (transactions, metadata). Returns false for config-mutation logs
+// (CreateIndex, DropIndex, IndexReady, etc.) which must be skipped during backfill.
+func isDataLog(log *commonpb.Log) bool {
+	if log.Payload == nil {
+		return false
+	}
+	applyLog, ok := log.Payload.Type.(*commonpb.LogPayload_Apply)
+	if !ok {
+		return false
+	}
+	if applyLog.Apply.Log == nil || applyLog.Apply.Log.Data == nil {
+		return false
+	}
+	switch applyLog.Apply.Log.Data.Payload.(type) {
+	case *commonpb.LedgerLogPayload_CreatedTransaction,
+		*commonpb.LedgerLogPayload_RevertedTransaction,
+		*commonpb.LedgerLogPayload_SavedMetadata,
+		*commonpb.LedgerLogPayload_DeletedMetadata:
+		return true
+	default:
+		return false
+	}
+}
+
+// proposeIndexReady proposes an IndexReady order through Raft (leader only).
+func (b *Builder) proposeIndexReady(task *backfillTask) {
+	if b.proposer == nil || b.isLeader == nil || !b.isLeader() {
+		return
+	}
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: task.ledger,
+			},
+		},
+	}
+
+	if task.index.addressRole != nil {
+		order.GetApply().Data = &raftcmdpb.LedgerApplyOrder_IndexReady{
+			IndexReady: &raftcmdpb.IndexReadyOrder{
+				Index: &raftcmdpb.IndexReadyOrder_AddressRole{
+					AddressRole: *task.index.addressRole,
+				},
+			},
+		}
+	} else if task.index.metadata != nil {
+		order.GetApply().Data = &raftcmdpb.LedgerApplyOrder_IndexReady{
+			IndexReady: &raftcmdpb.IndexReadyOrder{
+				Index: &raftcmdpb.IndexReadyOrder_Metadata{
+					Metadata: task.index.metadata,
+				},
+			},
+		}
+	}
+
+	if err := b.proposer.ProposeOrders(order); err != nil {
+		b.logger.WithFields(map[string]any{
+			"ledger": task.ledger,
+			"error":  err,
+		}).Errorf("Failed to propose IndexReady")
+	}
+}
+

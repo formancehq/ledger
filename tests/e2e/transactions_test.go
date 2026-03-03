@@ -1006,11 +1006,20 @@ var _ = Describe("Transactions", Ordered, func() {
 		var ledgerName = "tx-filter-ledger"
 
 		BeforeAll(func() {
-			// Create ledger
+			// Create ledger and metadata indexes for the fields we'll filter on
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{
+					createLedgerAction(ledgerName, nil),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category"),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority"),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tier"),
+				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category")
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority")
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tier")
 
 			// Create transactions with various metadata
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
@@ -1185,7 +1194,7 @@ var _ = Describe("Transactions", Ordered, func() {
 		var ledgerName = "tx-range-filter-ledger"
 
 		BeforeAll(func() {
-			// Create ledger with int64 schema for transaction "score"
+			// Create ledger with int64 schema for transaction "score" and its index
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					createLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
@@ -1195,9 +1204,12 @@ var _ = Describe("Transactions", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 						},
 					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "score"),
 				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "score")
 
 			// Create transactions with varying "score" metadata
 			// tx1: score=10, tx2: score=30, tx3: score=50, tx4: score=70, tx5: no score
@@ -1384,11 +1396,20 @@ var _ = Describe("Transactions", Ordered, func() {
 		var ledgerName = "tx-src-dst-filter-ledger"
 
 		BeforeAll(func() {
-			// Create ledger
+			// Create ledger with all address indexes (any, source, destination)
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{
+					createLedgerAction(ledgerName, nil),
+					createAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY),
+					createAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_SOURCE),
+					createAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION),
+				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForAddressIndexReady(ctx, client, ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY)
+			waitForAddressIndexReady(ctx, client, ledgerName, commonpb.AddressRole_ADDRESS_ROLE_SOURCE)
+			waitForAddressIndexReady(ctx, client, ledgerName, commonpb.AddressRole_ADDRESS_ROLE_DESTINATION)
 
 			// Create transactions:
 			// tx1: A → B

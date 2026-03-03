@@ -78,6 +78,7 @@ func New(dir string, logger logging.Logger) (*Store, error) {
 			BucketSourceAccountTx,
 			BucketDestAccountTx,
 			BucketProgress,
+			BucketBackfill,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(bucket); err != nil {
 				return fmt.Errorf("creating bucket %q: %w", string(bucket), err)
@@ -167,6 +168,57 @@ func (s *Store) LastIndexedSequence() (uint64, error) {
 // Must be called after WriteProgress commits successfully.
 func (s *Store) NotifyProgress() {
 	s.progressCond.Broadcast()
+}
+
+// WriteBackfillProgress stores a backfill cursor in the backfill bucket.
+func (s *Store) WriteBackfillProgress(tx *bolt.Tx, key []byte, cursor uint64) error {
+	b := tx.Bucket(BucketBackfill)
+	if b == nil {
+		return fmt.Errorf("backfill bucket not found")
+	}
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], cursor)
+	return b.Put(key, buf[:])
+}
+
+// ReadBackfillProgress reads a backfill cursor from the backfill bucket.
+// Returns (cursor, true) if found, (0, false) if the key does not exist.
+func (s *Store) ReadBackfillProgress(tx *bolt.Tx, key []byte) (uint64, bool) {
+	b := tx.Bucket(BucketBackfill)
+	if b == nil {
+		return 0, false
+	}
+	v := b.Get(key)
+	if v == nil || len(v) != 8 {
+		return 0, false
+	}
+	return binary.BigEndian.Uint64(v), true
+}
+
+// DeleteBackfillProgress removes a backfill cursor from the backfill bucket.
+func (s *Store) DeleteBackfillProgress(tx *bolt.Tx, key []byte) error {
+	b := tx.Bucket(BucketBackfill)
+	if b == nil {
+		return nil
+	}
+	return b.Delete(key)
+}
+
+// ReadAllBackfillProgress returns all backfill cursors for startup recovery.
+func (s *Store) ReadAllBackfillProgress(tx *bolt.Tx) (map[string]uint64, error) {
+	b := tx.Bucket(BucketBackfill)
+	if b == nil {
+		return nil, nil
+	}
+	result := make(map[string]uint64)
+	c := b.Cursor()
+	for k, v := c.First(); k != nil; k, v = c.Next() {
+		if len(v) != 8 {
+			continue
+		}
+		result[string(k)] = binary.BigEndian.Uint64(v)
+	}
+	return result, nil
 }
 
 // WaitForSequence blocks until LastIndexedSequence >= minSeq or the context

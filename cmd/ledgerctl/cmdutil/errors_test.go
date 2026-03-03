@@ -195,6 +195,8 @@ func TestBusinessErrorRoundTrip(t *testing.T) {
 		{"balance not found", &domain.ErrBalanceNotFound{Account: "a", Asset: "USD"}},
 		{"balance not preloaded", &numscript.ErrBalanceNotPreloaded{Account: "a", Asset: "USD"}},
 		{"numscript parse error", &numscript.ErrNumscriptParse{Details: "bad syntax"}},
+		{"index not found", &domain.ErrIndexNotFound{Index: "metadata[\"role\"] on a:"}},
+		{"index building", &domain.ErrIndexBuilding{Index: "metadata[\"role\"] on a:"}},
 	}
 
 	for _, tt := range tests {
@@ -289,6 +291,12 @@ func serverSideConvert(bizErr *domain.BusinessError) *status.Status {
 	case *numscript.ErrNumscriptParse:
 		code, reason = codes.InvalidArgument, domain.ErrReasonNumscriptParseError
 		metadata = map[string]string{"details": e.Details}
+	case *domain.ErrIndexNotFound:
+		code, reason = codes.FailedPrecondition, domain.ErrReasonIndexNotFound
+		metadata = map[string]string{"index": e.Index}
+	case *domain.ErrIndexBuilding:
+		code, reason = codes.FailedPrecondition, domain.ErrReasonIndexBuilding
+		metadata = map[string]string{"index": e.Index}
 	default:
 		return status.New(codes.Internal, inner.Error())
 	}

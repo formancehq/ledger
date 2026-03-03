@@ -1195,6 +1195,34 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				},
 			},
 		}
+	case *servicepb.Request_CreateIndex:
+		createIndexOrder := &raftcmdpb.CreateIndexOrder{}
+		switch idx := reqType.CreateIndex.Index.(type) {
+		case *servicepb.CreateIndexRequest_AddressRole:
+			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_AddressRole{AddressRole: idx.AddressRole}
+		case *servicepb.CreateIndexRequest_Metadata:
+			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_Metadata{Metadata: idx.Metadata}
+		}
+		order.Type = &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: reqType.CreateIndex.Ledger,
+				Data:   &raftcmdpb.LedgerApplyOrder_CreateIndex{CreateIndex: createIndexOrder},
+			},
+		}
+	case *servicepb.Request_DropIndex:
+		dropIndexOrder := &raftcmdpb.DropIndexOrder{}
+		switch idx := reqType.DropIndex.Index.(type) {
+		case *servicepb.DropIndexRequest_AddressRole:
+			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_AddressRole{AddressRole: idx.AddressRole}
+		case *servicepb.DropIndexRequest_Metadata:
+			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_Metadata{Metadata: idx.Metadata}
+		}
+		order.Type = &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: reqType.DropIndex.Ledger,
+				Data:   &raftcmdpb.LedgerApplyOrder_DropIndex{DropIndex: dropIndexOrder},
+			},
+		}
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.Type)
 	}

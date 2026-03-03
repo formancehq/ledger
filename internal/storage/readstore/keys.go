@@ -47,6 +47,13 @@ var (
 	// Key: "lastSeq"
 	// Value: uint64 big-endian
 	BucketProgress = []byte("prog")
+
+	// BucketBackfill stores per-index backfill progress cursors.
+	// Key: [ledger\x00][a|m][details]
+	//   Address: [ledger\x00]a[role_byte]
+	//   Metadata: [ledger\x00]m[target_byte][key]
+	// Value: uint64 big-endian (cursor position)
+	BucketBackfill = []byte("bfil")
 )
 
 // Namespace prefixes to distinguish accounts and transactions in shared buckets.

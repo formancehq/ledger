@@ -441,7 +441,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		var ledgerName = "accounts-range-filter-ledger"
 
 		BeforeAll(func() {
-			// Create ledger with int64 schema for "age"
+			// Create ledger with int64 schema for "age" and its index
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					createLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
@@ -451,9 +451,12 @@ var _ = Describe("Accounts", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 						},
 					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age"),
 				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age")
 
 			// Create accounts with transactions and set typed int metadata
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{

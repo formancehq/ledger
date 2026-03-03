@@ -82,6 +82,10 @@ This document compares the POC's API with the original Formance ledger API and d
 | List prepared queries | ✅ | ❌ | |
 | Execute prepared query (list) | ✅ | ❌ | Returns matching entities with cursor pagination; validates filters against metadata schema |
 | Execute prepared query (aggregate) | ✅ | ❌ | Returns aggregated volumes per asset; validates filters against metadata schema |
+| **User-Configurable Indexes** |
+| Create index | ✅ | ❌ | Opt-in address or metadata indexes per ledger |
+| Drop index | ✅ | ❌ | Remove an index from a ledger |
+| List indexes | ✅ | ❌ | View all indexes with build status (via GetLedger) |
 | **Volumes (responses)** |
 | postCommitVolumes | ✅ | ✅ | Opt-in via `expandVolumes` in request body |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |

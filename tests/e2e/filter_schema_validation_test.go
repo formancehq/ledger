@@ -101,9 +101,17 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
 						},
 					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age"),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "name"),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "active"),
 				},
 			})
 			Expect(err).To(Succeed())
+
+			// Wait for indexes to become READY (backfill must complete)
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age")
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "name")
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "active")
 
 			// Create an account so execution has something to scan
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
@@ -223,9 +231,12 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
 						},
 					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "counter"),
 				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "counter")
 
 			// Create accounts with uint64 metadata
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
@@ -321,9 +332,14 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
 						},
 					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score"),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "visits"),
 				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "visits")
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
@@ -373,9 +389,12 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 						},
 					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority"),
 				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority")
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
@@ -408,15 +427,21 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 	// ========================================================================
 	// No schema: validation is skipped (backward compat)
 	// ========================================================================
-	Context("No schema — validation skipped", Ordered, func() {
-		const ledgerName = "pq-no-schema"
+	Context("Auto-created schema via index — type validation applies", Ordered, func() {
+		const ledgerName = "pq-auto-schema"
 
 		BeforeAll(func() {
-			// Create ledger WITHOUT schema
+			// Create ledger without explicit schema, but with a metadata index.
+			// Creating a metadata index auto-creates a STRING schema field.
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{
+					createLedgerAction(ledgerName, nil),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "anything"),
+				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "anything")
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
@@ -429,12 +454,12 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 			Expect(err).To(Succeed())
 		})
 
-		It("Should allow any filter type on unschema'd fields", func() {
-			// Use int filter on a field that has no schema — should NOT error
+		It("Should reject int filter on auto-created STRING field", func() {
+			// Auto-created schema type is STRING, so int filter should fail with type mismatch
 			val := int64(42)
 			_, err := client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
 				Query: &commonpb.PreparedQuery{
-					Name:   "no-schema-int",
+					Name:   "auto-schema-int",
 					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 					Filter: intFilter("anything", &val, nil, false, false),
@@ -442,16 +467,17 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			// Execution should succeed (no type validation), even if it finds no results
+			// Execution should fail with type mismatch
 			_, err = client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
 				Ledger:    ledgerName,
-				QueryName: "no-schema-int",
+				QueryName: "auto-schema-int",
 				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
 			})
-			Expect(err).To(Succeed())
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("cannot use integer condition"))
 		})
 
-		It("Should allow string filter on ListAccounts without schema", func() {
+		It("Should allow string filter on ListAccounts with auto-created schema", func() {
 			Eventually(func(g Gomega) {
 				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", stringFilter("anything", "hello"))
 				g.Expect(err).To(Succeed())

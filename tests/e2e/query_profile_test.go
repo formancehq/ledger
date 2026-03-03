@@ -179,9 +179,12 @@ var _ = Describe("QueryProfile", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{

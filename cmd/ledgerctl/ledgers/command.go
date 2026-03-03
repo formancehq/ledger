@@ -22,6 +22,9 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewRemoveMetadataTypeCommand())
 	cmd.AddCommand(NewGetSchemaCommand())
 	cmd.AddCommand(NewStatsCommand())
+	cmd.AddCommand(NewCreateIndexCommand())
+	cmd.AddCommand(NewDropIndexCommand())
+	cmd.AddCommand(NewListIndexesCommand())
 
 	return cmd
 }

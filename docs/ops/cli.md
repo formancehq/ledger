@@ -410,6 +410,127 @@ ledgerctl ledgers get-schema my-ledger --json
 ledgerctl ledgers schema my-ledger
 ```
 
+#### ledgers create-index
+
+Create an opt-in index on a ledger. Indexes are built in the background and queries will be rejected until the index reaches READY status.
+
+**Aliases:** `ci`
+
+```bash
+ledgerctl ledgers create-index [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata` |
+| `--target` | | Target type for metadata index: `account` or `transaction` |
+| `--key` | | Metadata key name (for metadata index) |
+| `--timeout` | `10s` | Request timeout |
+
+**Index types:**
+
+| Type | Description |
+|------|-------------|
+| `address` | Account-to-transaction mapping for any posting role |
+| `source-address` | Source account-to-transaction mapping |
+| `dest-address` | Destination account-to-transaction mapping |
+| `metadata` | Metadata field index (requires `--target` and `--key`) |
+
+**Behavior:**
+- The index starts building in the background immediately
+- Queries using the index will be rejected until the index reaches READY status
+- Creating an index that already exists and is READY is idempotent (no error)
+
+**Example:**
+
+```bash
+# Create address index (any role)
+ledgerctl ledgers create-index --ledger my-ledger --type address
+
+# Create source-only address index
+ledgerctl ledgers create-index --ledger my-ledger --type source-address
+
+# Create metadata index
+ledgerctl ledgers create-index --ledger my-ledger --type metadata --target account --key category
+
+# Interactive mode
+ledgerctl ledgers create-index
+```
+
+#### ledgers drop-index
+
+Drop an opt-in index from a ledger. This stops the index from being updated.
+
+**Aliases:** `di`
+
+```bash
+ledgerctl ledgers drop-index [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata` |
+| `--target` | | Target type for metadata index: `account` or `transaction` |
+| `--key` | | Metadata key name (for metadata index) |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Queries using the dropped index will be rejected after the drop
+- Dropping a non-existent index returns an error
+
+**Example:**
+
+```bash
+# Drop address index
+ledgerctl ledgers drop-index --ledger my-ledger --type address
+
+# Drop metadata index
+ledgerctl ledgers drop-index --ledger my-ledger --type metadata --target account --key category
+```
+
+#### ledgers list-indexes
+
+List all configured indexes on a ledger with their build status.
+
+**Aliases:** `li`, `indexes`
+
+```bash
+ledgerctl ledgers list-indexes [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Name of the ledger |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Shows all active indexes with their build status (BUILDING or READY)
+- If no indexes are configured, shows a hint to create one
+
+**Example:**
+
+```bash
+# List all indexes
+ledgerctl ledgers list-indexes --ledger my-ledger
+```
+
+**Sample output:**
+
+```
+TYPE             TARGET       KEY        STATUS
+address          -            -          READY
+source-address   -            -          BUILDING
+metadata         account      category   READY
+```
+
 ---
 
 ### accounts

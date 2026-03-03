@@ -169,11 +169,19 @@ enum MetadataConversionStatus {
   METADATA_CONVERSION_CONVERTING = 1;
 }
 
+enum IndexBuildStatus {
+  INDEX_BUILD_STATUS_UNSPECIFIED = 0;
+  INDEX_BUILD_STATUS_BUILDING = 1;
+  INDEX_BUILD_STATUS_READY = 2;
+}
+
 message MetadataFieldSchema {
   MetadataType type = 1;
   MetadataConversionStatus status = 2;
   uint64 total_keys = 3;
   uint64 converted_keys = 4;
+  bool indexed = 5;
+  IndexBuildStatus index_build_status = 6;
 }
 
 message MetadataSchema {
@@ -185,6 +193,22 @@ message SetMetadataFieldTypeCommand {
   TargetType target_type = 1;
   string key = 2;
   MetadataType type = 3;
+}
+
+// AddressIndexConfig controls per-role account-transaction indexes on a ledger.
+message AddressIndexConfig {
+  bool address = 1;
+  bool source = 2;
+  bool destination = 3;
+  IndexBuildStatus address_status = 4;
+  IndexBuildStatus source_status = 5;
+  IndexBuildStatus destination_status = 6;
+}
+
+// MetadataIndexTarget identifies a metadata index by target type and key.
+message MetadataIndexTarget {
+  TargetType target = 1;
+  string key = 2;
 }
 
 // ============================================================================
@@ -420,6 +444,33 @@ message LedgerLogPayload {
     ConvertMetadataBatchLog convert_metadata_batch = 7;
     MetadataConversionCompleteLog metadata_conversion_complete = 8;
     FillGapLog fill_gap = 9;
+    CreateIndexLog create_index = 10;
+    DropIndexLog drop_index = 11;
+    IndexReadyLog index_ready = 12;
+  }
+}
+
+// CreateIndexLog records the creation of an index.
+message CreateIndexLog {
+  oneof index {
+    AddressRole address_role = 1;
+    MetadataIndexTarget metadata = 2;
+  }
+}
+
+// DropIndexLog records the removal of an index.
+message DropIndexLog {
+  oneof index {
+    AddressRole address_role = 1;
+    MetadataIndexTarget metadata = 2;
+  }
+}
+
+// IndexReadyLog records that an index has finished building.
+message IndexReadyLog {
+  oneof index {
+    AddressRole address_role = 1;
+    MetadataIndexTarget metadata = 2;
   }
 }
 
@@ -580,6 +631,7 @@ message LedgerInfo {
   LedgerMode mode = 6;                      // Normal or mirror mode
   MirrorSourceConfig mirror_source = 7;     // Mirror source config (set when mode=MIRROR)
   MirrorSyncProgress mirror_sync_progress = 8;  // Populated at read time for MIRROR ledgers
+  AddressIndexConfig address_indexes = 9;   // Per-role account-transaction index config
 }
 
 // ============================================================================
