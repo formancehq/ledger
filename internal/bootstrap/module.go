@@ -287,9 +287,14 @@ func Module() fx.Option {
 				return grpcadp.NewSnapshotServiceServer(logger, s)
 			},
 			func(cfg Config, meterProvider metric.MeterProvider) *diskusage.Collector {
+				readIndexDir := cfg.ReadIndexConfig.Dir
+				if readIndexDir == "" {
+					readIndexDir = filepath.Join(cfg.DataDir, "read-indexes")
+				}
 				return diskusage.NewCollector(
 					cfg.RaftConfig.WalDir,
 					cfg.DataDir,
+					readIndexDir,
 					10*time.Second,
 					meterProvider.Meter("storage"),
 				)

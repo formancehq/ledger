@@ -794,11 +794,12 @@ type DiskUsage struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	SpoolBytes           int64                  `protobuf:"varint,1,opt,name=spool_bytes,json=spoolBytes,proto3" json:"spool_bytes,omitempty"`                                   // Spool directory size in bytes
 	WalBytes             int64                  `protobuf:"varint,2,opt,name=wal_bytes,json=walBytes,proto3" json:"wal_bytes,omitempty"`                                         // WAL directory size in bytes (excluding spool)
-	DataBytes            int64                  `protobuf:"varint,3,opt,name=data_bytes,json=dataBytes,proto3" json:"data_bytes,omitempty"`                                      // Data directory size in bytes
+	DataBytes            int64                  `protobuf:"varint,3,opt,name=data_bytes,json=dataBytes,proto3" json:"data_bytes,omitempty"`                                      // Data directory size in bytes (excluding read index)
 	WalVolumeBytes       int64                  `protobuf:"varint,4,opt,name=wal_volume_bytes,json=walVolumeBytes,proto3" json:"wal_volume_bytes,omitempty"`                     // Total WAL volume size in bytes
 	DataVolumeBytes      int64                  `protobuf:"varint,5,opt,name=data_volume_bytes,json=dataVolumeBytes,proto3" json:"data_volume_bytes,omitempty"`                  // Total data volume size in bytes
 	WalVolumeTotalBytes  int64                  `protobuf:"varint,6,opt,name=wal_volume_total_bytes,json=walVolumeTotalBytes,proto3" json:"wal_volume_total_bytes,omitempty"`    // Total capacity of the WAL filesystem in bytes
 	DataVolumeTotalBytes int64                  `protobuf:"varint,7,opt,name=data_volume_total_bytes,json=dataVolumeTotalBytes,proto3" json:"data_volume_total_bytes,omitempty"` // Total capacity of the data filesystem in bytes
+	ReadIndexBytes       int64                  `protobuf:"varint,8,opt,name=read_index_bytes,json=readIndexBytes,proto3" json:"read_index_bytes,omitempty"`                     // bbolt read index size in bytes
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -878,6 +879,13 @@ func (x *DiskUsage) GetWalVolumeTotalBytes() int64 {
 func (x *DiskUsage) GetDataVolumeTotalBytes() int64 {
 	if x != nil {
 		return x.DataVolumeTotalBytes
+	}
+	return 0
+}
+
+func (x *DiskUsage) GetReadIndexBytes() int64 {
+	if x != nil {
+		return x.ReadIndexBytes
 	}
 	return 0
 }
@@ -1424,7 +1432,7 @@ const file_cluster_proto_rawDesc = "" +
 	"\x13GetDiskUsageRequest\"\x14\n" +
 	"\x12GetNodeTimeRequest\"-\n" +
 	"\bNodeTime\x12!\n" +
-	"\ftimestamp_us\x18\x01 \x01(\x04R\vtimestampUs\"\xaa\x02\n" +
+	"\ftimestamp_us\x18\x01 \x01(\x04R\vtimestampUs\"\xd4\x02\n" +
 	"\tDiskUsage\x12\x1f\n" +
 	"\vspool_bytes\x18\x01 \x01(\x03R\n" +
 	"spoolBytes\x12\x1b\n" +
@@ -1434,7 +1442,8 @@ const file_cluster_proto_rawDesc = "" +
 	"\x10wal_volume_bytes\x18\x04 \x01(\x03R\x0ewalVolumeBytes\x12*\n" +
 	"\x11data_volume_bytes\x18\x05 \x01(\x03R\x0fdataVolumeBytes\x123\n" +
 	"\x16wal_volume_total_bytes\x18\x06 \x01(\x03R\x13walVolumeTotalBytes\x125\n" +
-	"\x17data_volume_total_bytes\x18\a \x01(\x03R\x14dataVolumeTotalBytes\"x\n" +
+	"\x17data_volume_total_bytes\x18\a \x01(\x03R\x14dataVolumeTotalBytes\x12(\n" +
+	"\x10read_index_bytes\x18\b \x01(\x03R\x0ereadIndexBytes\"x\n" +
 	"\x11AddLearnerRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +

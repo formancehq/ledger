@@ -63,6 +63,7 @@ func displayDiskUsage(usage *clusterpb.DiskUsage) {
 		{"Spool", cmdutil.FormatBytes(uint64(usage.SpoolBytes))},
 		{"WAL", cmdutil.FormatBytes(uint64(usage.WalBytes))},
 		{"Data", cmdutil.FormatBytes(uint64(usage.DataBytes))},
+		{"Read Index", cmdutil.FormatBytes(uint64(usage.ReadIndexBytes))},
 	}
 	_ = pterm.DefaultTable.WithHasHeader(true).WithData(componentData).Render()
 	pterm.Println()

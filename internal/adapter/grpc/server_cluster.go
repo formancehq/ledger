@@ -227,6 +227,7 @@ func (impl *ClusterServiceServerImpl) GetDiskUsage(ctx context.Context, _ *clust
 		SpoolBytes:           impl.collector.SpoolBytes(),
 		WalBytes:             impl.collector.WALBytes(),
 		DataBytes:            impl.collector.DataBytes(),
+		ReadIndexBytes:       impl.collector.ReadIndexBytes(),
 		WalVolumeBytes:       impl.collector.WALVolumeBytes(),
 		DataVolumeBytes:      impl.collector.DataVolumeBytes(),
 		WalVolumeTotalBytes:  impl.collector.WALVolumeTotalBytes(),

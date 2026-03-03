@@ -67,15 +67,17 @@ var (
 // Collector periodically computes directory sizes in the background and
 // exposes cached values to OTEL observable gauge callbacks.
 type Collector struct {
-	walDir   string
-	dataDir  string
-	spoolDir string
-	interval time.Duration
-	meter    metric.Meter
+	walDir       string
+	dataDir      string
+	spoolDir     string
+	readIndexDir string
+	interval     time.Duration
+	meter        metric.Meter
 
 	spoolBytes           atomic.Int64
 	walBytes             atomic.Int64
 	dataBytes            atomic.Int64
+	readIndexBytes       atomic.Int64
 	walVolumeBytes       atomic.Int64
 	dataVolumeBytes      atomic.Int64
 	walVolumeTotalBytes  atomic.Int64
@@ -88,14 +90,15 @@ type Collector struct {
 // NewCollector creates a new Collector that will periodically compute disk usage
 // for the given directories at the specified interval. The meter is used to
 // register OTEL observable gauges on Start and unregister them on Stop.
-func NewCollector(walDir, dataDir string, interval time.Duration, meter metric.Meter) *Collector {
+func NewCollector(walDir, dataDir, readIndexDir string, interval time.Duration, meter metric.Meter) *Collector {
 	return &Collector{
-		walDir:   walDir,
-		dataDir:  dataDir,
-		spoolDir: filepath.Join(walDir, "spool"),
-		interval: interval,
-		meter:    meter,
-		w:        worker.New(),
+		walDir:       walDir,
+		dataDir:      dataDir,
+		spoolDir:     filepath.Join(walDir, "spool"),
+		readIndexDir: readIndexDir,
+		interval:     interval,
+		meter:        meter,
+		w:            worker.New(),
 	}
 }
 
@@ -130,7 +133,10 @@ func (c *Collector) collect() {
 	if size, err := dirSizeExcluding(c.walDir, c.spoolDir); err == nil {
 		c.walBytes.Store(size)
 	}
-	if size, err := DirSize(c.dataDir); err == nil {
+	if size, err := DirSize(c.readIndexDir); err == nil {
+		c.readIndexBytes.Store(size)
+	}
+	if size, err := dirSizeExcluding(c.dataDir, c.readIndexDir); err == nil {
 		c.dataBytes.Store(size)
 	}
 	if size, err := DirSize(c.walDir); err == nil {
@@ -162,8 +168,11 @@ func (c *Collector) SpoolBytes() int64 { return c.spoolBytes.Load() }
 // WALBytes returns the last computed WAL directory size in bytes (excluding spool).
 func (c *Collector) WALBytes() int64 { return c.walBytes.Load() }
 
-// DataBytes returns the last computed data directory size in bytes.
+// DataBytes returns the last computed data directory size in bytes (excluding read index).
 func (c *Collector) DataBytes() int64 { return c.dataBytes.Load() }
+
+// ReadIndexBytes returns the last computed bbolt read index size in bytes.
+func (c *Collector) ReadIndexBytes() int64 { return c.readIndexBytes.Load() }
 
 // WALVolumeBytes returns the last computed total WAL volume size in bytes.
 func (c *Collector) WALVolumeBytes() int64 { return c.walVolumeBytes.Load() }
@@ -206,6 +215,8 @@ func (c *Collector) registerMetrics() (metric.Registration, error) {
 				metric.WithAttributes(componentKey.String("wal")))
 			o.ObserveInt64(componentGauge, c.dataBytes.Load(),
 				metric.WithAttributes(componentKey.String("data")))
+			o.ObserveInt64(componentGauge, c.readIndexBytes.Load(),
+				metric.WithAttributes(componentKey.String("readindex")))
 
 			o.ObserveInt64(volumeGauge, c.walVolumeBytes.Load(),
 				metric.WithAttributes(volumeKey.String("wal")))

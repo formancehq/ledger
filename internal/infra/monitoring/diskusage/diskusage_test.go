@@ -81,19 +81,25 @@ func TestCollector_StartAndStop(t *testing.T) {
 	spoolDir := filepath.Join(walDir, "spool")
 	require.NoError(t, os.MkdirAll(spoolDir, 0755))
 
+	// Create readindex subdir inside dataDir
+	readIndexDir := filepath.Join(dataDir, "read-indexes")
+	require.NoError(t, os.MkdirAll(readIndexDir, 0755))
+
 	// Create test files
 	require.NoError(t, os.WriteFile(filepath.Join(walDir, "wal.log"), []byte("wal data"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(spoolDir, "spool.dat"), []byte("spool"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "data.db"), []byte("database content"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(readIndexDir, "readindex.db"), []byte("index data"), 0644))
 
 	provider := sdkmetric.NewMeterProvider(newTestMeter())
-	c := NewCollector(walDir, dataDir, 100*time.Millisecond, provider.Meter("test"))
+	c := NewCollector(walDir, dataDir, readIndexDir, 100*time.Millisecond, provider.Meter("test"))
 	c.Start()
 
 	// After Start, collect should have run once synchronously
 	require.Greater(t, c.SpoolBytes(), int64(0))
 	require.GreaterOrEqual(t, c.WALBytes(), int64(0))
 	require.Greater(t, c.DataBytes(), int64(0))
+	require.Greater(t, c.ReadIndexBytes(), int64(0))
 	require.Greater(t, c.WALVolumeBytes(), int64(0))
 	require.Greater(t, c.DataVolumeBytes(), int64(0))
 	require.Greater(t, c.WALVolumeTotalBytes(), int64(0))
@@ -107,14 +113,16 @@ func TestCollector_RegisterMetrics(t *testing.T) {
 
 	walDir := t.TempDir()
 	dataDir := t.TempDir()
+	readIndexDir := filepath.Join(dataDir, "read-indexes")
 	require.NoError(t, os.MkdirAll(filepath.Join(walDir, "spool"), 0755))
+	require.NoError(t, os.MkdirAll(readIndexDir, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(walDir, "wal.log"), []byte("wal"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "data.db"), []byte("data"), 0644))
 
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 
-	c := NewCollector(walDir, dataDir, time.Hour, provider.Meter("test"))
+	c := NewCollector(walDir, dataDir, readIndexDir, time.Hour, provider.Meter("test"))
 	c.collect()
 
 	// Start registers metrics internally
@@ -134,19 +142,24 @@ func TestCollector_AtomicReads(t *testing.T) {
 
 	walDir := t.TempDir()
 	dataDir := t.TempDir()
+	readIndexDir := filepath.Join(dataDir, "read-indexes")
 	require.NoError(t, os.MkdirAll(filepath.Join(walDir, "spool"), 0755))
+	require.NoError(t, os.MkdirAll(readIndexDir, 0755))
 
 	provider := sdkmetric.NewMeterProvider(newTestMeter())
-	c := NewCollector(walDir, dataDir, time.Hour, provider.Meter("test")) // long interval - we'll call collect manually
+	c := NewCollector(walDir, dataDir, readIndexDir, time.Hour, provider.Meter("test")) // long interval - we'll call collect manually
 
 	// Before collect, everything should be 0
 	require.Equal(t, int64(0), c.SpoolBytes())
 	require.Equal(t, int64(0), c.WALBytes())
 	require.Equal(t, int64(0), c.DataBytes())
+	require.Equal(t, int64(0), c.ReadIndexBytes())
 
-	// Write a file and collect
+	// Write files and collect
 	require.NoError(t, os.WriteFile(filepath.Join(dataDir, "file.db"), []byte("content"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(readIndexDir, "readindex.db"), []byte("idx"), 0644))
 	c.collect()
 
-	require.Equal(t, int64(7), c.DataBytes())
+	require.Equal(t, int64(7), c.DataBytes())     // "content" only, readindex excluded
+	require.Equal(t, int64(3), c.ReadIndexBytes()) // "idx"
 }

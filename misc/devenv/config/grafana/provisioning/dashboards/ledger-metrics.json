@@ -10041,7 +10041,7 @@
             "type": "prometheus",
             "uid": "VictoriaMetrics"
           },
-          "description": "Disk space used by each storage component (spool, WAL, data). Updated every 10 seconds by a background collector.",
+          "description": "Disk space used by each storage component (spool, WAL, data, read index). Updated every 10 seconds by a background collector.",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -10154,6 +10154,18 @@
               "legendFormat": "Data (Node {{service.node_id}})",
               "range": true,
               "refId": "C"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "storage.disk.component.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", component=\"readindex\"}",
+              "interval": "1s",
+              "legendFormat": "Read Index (Node {{service.node_id}})",
+              "range": true,
+              "refId": "D"
             }
           ],
           "title": "Disk Usage by Component",
