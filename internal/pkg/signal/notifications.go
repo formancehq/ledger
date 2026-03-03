@@ -1,11 +1,18 @@
 package signal
 
+import "sync/atomic"
+
 // Notifications holds the signals shared between the FSM and a Manager
 // (events or mirror). It is created independently (no dependency on Node or
 // Manager) to break the circular dependency in the fx graph.
 type Notifications struct {
 	LogCommitted  Signal
 	ConfigChanged Signal
+
+	// LastSequence caches the most recent log sequence written by the FSM.
+	// Updated atomically before LogCommitted fires, so readers can cheaply
+	// obtain the latest Pebble sequence without opening an iterator.
+	LastSequence atomic.Uint64
 }
 
 // NewNotifications creates a new Notifications with buffered(1) signals.
@@ -16,8 +23,10 @@ func NewNotifications() *Notifications {
 	}
 }
 
-// NotifyLogsCommitted signals that new logs have been committed.
-func (n *Notifications) NotifyLogsCommitted() {
+// NotifyLogsCommitted stores the latest log sequence and signals that new logs
+// have been committed.
+func (n *Notifications) NotifyLogsCommitted(lastSeq uint64) {
+	n.LastSequence.Store(lastSeq)
 	n.LogCommitted.Notify()
 }
 

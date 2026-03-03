@@ -437,9 +437,11 @@ func (b *Builder) processLogs(cursor uint64) (uint64, error) {
 		b.logsIndexed.Add(uint64(batchCount))
 		b.readStore.NotifyProgress()
 
-		// Sample pebble last sequence periodically.
-		if pebbleLast, err := query.ReadLastSequence(b.pebbleStore); err == nil {
-			b.pebbleLastSeq.Store(pebbleLast)
+		// Sample pebble last sequence from the cached atomic (written by the FSM
+		// before signalling LogCommitted). This avoids opening a Pebble iterator
+		// and deserializing a protobuf just to read a counter.
+		if cached := b.notifications.LastSequence.Load(); cached > 0 {
+			b.pebbleLastSeq.Store(cached)
 		}
 
 		if eof {

@@ -157,7 +157,7 @@ func TestManager_LogNotificationForwarding(t *testing.T) {
 	manager.OnLeadershipChange(true)
 
 	// Log notifications should not block or panic
-	for range 5 {
-		notifications.NotifyLogsCommitted()
+	for i := range 5 {
+		notifications.NotifyLogsCommitted(uint64(i + 1))
 	}
 }

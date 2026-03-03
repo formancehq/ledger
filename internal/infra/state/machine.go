@@ -31,15 +31,15 @@ import (
 // Notifier is notified by the FSM when logs are committed or config changes.
 // Used by the events Manager and mirror Manager.
 type Notifier interface {
-	NotifyLogsCommitted()
+	NotifyLogsCommitted(lastSeq uint64)
 	NotifyConfigChanged()
 }
 
 // NoopNotifier is a no-op implementation of Notifier for use in tests.
 type NoopNotifier struct{}
 
-func (NoopNotifier) NotifyLogsCommitted() {}
-func (NoopNotifier) NotifyConfigChanged() {}
+func (NoopNotifier) NotifyLogsCommitted(uint64) {}
+func (NoopNotifier) NotifyConfigChanged()       {}
 
 type Machine struct {
 	logger    logging.Logger
@@ -493,16 +493,17 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	}
 
 	// Notify event Manager that new logs are available.
-	fsm.eventNotifier.NotifyLogsCommitted()
+	lastSeq := fsm.nextSequenceID - 1
+	fsm.eventNotifier.NotifyLogsCommitted(lastSeq)
 	if eventsConfigChanged {
 		fsm.eventNotifier.NotifyConfigChanged()
 	}
 
 	// Notify mirror Manager that new logs are available.
-	fsm.mirrorNotifier.NotifyLogsCommitted()
+	fsm.mirrorNotifier.NotifyLogsCommitted(lastSeq)
 
 	// Notify index builder that new logs are available.
-	fsm.indexNotifier.NotifyLogsCommitted()
+	fsm.indexNotifier.NotifyLogsCommitted(lastSeq)
 	if mirrorConfigChanged {
 		fsm.mirrorNotifier.NotifyConfigChanged()
 	}
