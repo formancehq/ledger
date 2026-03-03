@@ -9,7 +9,7 @@ on:
       parallelism:
         description: "Number of parallel benchmarks to run"
         required: false
-        default: 5
+        default: "5"
       duration:
         description: "Duration of each benchmark"
         required: false
