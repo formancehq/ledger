@@ -49,6 +49,8 @@ const (
 	BucketService_ExecutePreparedQuery_FullMethodName    = "/ledger.BucketService/ExecutePreparedQuery"
 	BucketService_GetIndexStatus_FullMethodName          = "/ledger.BucketService/GetIndexStatus"
 	BucketService_GetLedgerStats_FullMethodName          = "/ledger.BucketService/GetLedgerStats"
+	BucketService_GetNumscript_FullMethodName            = "/ledger.BucketService/GetNumscript"
+	BucketService_ListNumscripts_FullMethodName          = "/ledger.BucketService/ListNumscripts"
 )
 
 // BucketServiceClient is the client API for BucketService service.
@@ -113,6 +115,10 @@ type BucketServiceClient interface {
 	GetIndexStatus(ctx context.Context, in *GetIndexStatusRequest, opts ...grpc.CallOption) (*GetIndexStatusResponse, error)
 	// GetLedgerStats returns aggregate statistics for a ledger
 	GetLedgerStats(ctx context.Context, in *GetLedgerStatsRequest, opts ...grpc.CallOption) (*commonpb.LedgerStats, error)
+	// GetNumscript returns a numscript by name and optional version
+	GetNumscript(ctx context.Context, in *GetNumscriptRequest, opts ...grpc.CallOption) (*commonpb.NumscriptInfo, error)
+	// ListNumscripts streams all numscripts (latest version of each)
+	ListNumscripts(ctx context.Context, in *ListNumscriptsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.NumscriptInfo], error)
 }
 
 type bucketServiceClient struct {
@@ -475,6 +481,35 @@ func (c *bucketServiceClient) GetLedgerStats(ctx context.Context, in *GetLedgerS
 	return out, nil
 }
 
+func (c *bucketServiceClient) GetNumscript(ctx context.Context, in *GetNumscriptRequest, opts ...grpc.CallOption) (*commonpb.NumscriptInfo, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(commonpb.NumscriptInfo)
+	err := c.cc.Invoke(ctx, BucketService_GetNumscript_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bucketServiceClient) ListNumscripts(ctx context.Context, in *ListNumscriptsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.NumscriptInfo], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &BucketService_ServiceDesc.Streams[8], BucketService_ListNumscripts_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ListNumscriptsRequest, commonpb.NumscriptInfo]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListNumscriptsClient = grpc.ServerStreamingClient[commonpb.NumscriptInfo]
+
 // BucketServiceServer is the server API for BucketService service.
 // All implementations must embed UnimplementedBucketServiceServer
 // for forward compatibility.
@@ -537,6 +572,10 @@ type BucketServiceServer interface {
 	GetIndexStatus(context.Context, *GetIndexStatusRequest) (*GetIndexStatusResponse, error)
 	// GetLedgerStats returns aggregate statistics for a ledger
 	GetLedgerStats(context.Context, *GetLedgerStatsRequest) (*commonpb.LedgerStats, error)
+	// GetNumscript returns a numscript by name and optional version
+	GetNumscript(context.Context, *GetNumscriptRequest) (*commonpb.NumscriptInfo, error)
+	// ListNumscripts streams all numscripts (latest version of each)
+	ListNumscripts(*ListNumscriptsRequest, grpc.ServerStreamingServer[commonpb.NumscriptInfo]) error
 	mustEmbedUnimplementedBucketServiceServer()
 }
 
@@ -630,6 +669,12 @@ func (UnimplementedBucketServiceServer) GetIndexStatus(context.Context, *GetInde
 }
 func (UnimplementedBucketServiceServer) GetLedgerStats(context.Context, *GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetLedgerStats not implemented")
+}
+func (UnimplementedBucketServiceServer) GetNumscript(context.Context, *GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetNumscript not implemented")
+}
+func (UnimplementedBucketServiceServer) ListNumscripts(*ListNumscriptsRequest, grpc.ServerStreamingServer[commonpb.NumscriptInfo]) error {
+	return status.Error(codes.Unimplemented, "method ListNumscripts not implemented")
 }
 func (UnimplementedBucketServiceServer) mustEmbedUnimplementedBucketServiceServer() {}
 func (UnimplementedBucketServiceServer) testEmbeddedByValue()                       {}
@@ -1100,6 +1145,35 @@ func _BucketService_GetLedgerStats_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_GetNumscript_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNumscriptRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetNumscript(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetNumscript_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetNumscript(ctx, req.(*GetNumscriptRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BucketService_ListNumscripts_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListNumscriptsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(BucketServiceServer).ListNumscripts(m, &grpc.GenericServerStream[ListNumscriptsRequest, commonpb.NumscriptInfo]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type BucketService_ListNumscriptsServer = grpc.ServerStreamingServer[commonpb.NumscriptInfo]
+
 // BucketService_ServiceDesc is the grpc.ServiceDesc for BucketService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1187,6 +1261,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetLedgerStats",
 			Handler:    _BucketService_GetLedgerStats_Handler,
 		},
+		{
+			MethodName: "GetNumscript",
+			Handler:    _BucketService_GetNumscript_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -1227,6 +1305,11 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ListSigningKeys",
 			Handler:       _BucketService_ListSigningKeys_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ListNumscripts",
+			Handler:       _BucketService_ListNumscripts_Handler,
 			ServerStreams: true,
 		},
 	},
