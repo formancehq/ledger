@@ -48,7 +48,7 @@ Examples:
 	cmd.Flags().Bool("json", false, "Output as JSON")
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
-	cmd.Flags().Bool("profile", false, "Display query execution profile (iterator stats, timing)")
+	cmd.Flags().Bool("analyze", false, "Display query execution profile (iterator stats, timing)")
 
 	return cmd
 }
@@ -73,7 +73,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	fetchAll, _ := cmd.Flags().GetBool("all")
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
-	showProfile, _ := cmd.Flags().GetBool("profile")
+	showProfile, _ := cmd.Flags().GetBool("analyze")
 
 	// Build the filter from --filter and --prefix flags
 	filter, err := buildAccountFilter(filterExpr, prefix)
