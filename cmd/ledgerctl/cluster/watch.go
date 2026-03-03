@@ -38,6 +38,9 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 	}
 	defer func() { _ = conn.Close() }()
 
+	ctx, cancel := cmdutil.GetContext(cmd)
+	defer cancel()
+
 	area, _ := pterm.DefaultArea.WithRemoveWhenDone(true).Start()
 	defer func() { _ = area.Stop() }()
 
@@ -46,11 +49,11 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 
 	// Poll immediately on start, then on each tick.
 	for {
-		output := pollClusterStatus(cmd.Context(), client, nodeID, reqTimeout, interval)
+		output := pollClusterStatus(ctx, client, nodeID, reqTimeout, interval)
 		area.Update(output)
 
 		select {
-		case <-cmd.Context().Done():
+		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
 		}
