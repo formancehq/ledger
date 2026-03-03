@@ -16,12 +16,12 @@ func NewDeleteCommand() *cobra.Command {
 		Use:     "delete <name>",
 		Aliases: []string{"rm", "remove"},
 		Short:   "Delete a numscript from the library",
-		Long: `Delete a numscript from the global library.
+		Long: `Delete a numscript from a ledger's library.
 
 This removes the latest version pointer. Historical versions are preserved.
 
 Examples:
-  ledgerctl numscripts delete transfer`,
+  ledgerctl numscripts delete transfer --ledger myledger`,
 		Args: cobra.ExactArgs(1),
 		RunE: runDelete,
 	}
@@ -41,6 +41,12 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
+	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
+	if err != nil {
+		return err
+	}
+
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -50,7 +56,8 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		{
 			Type: &servicepb.Request_DeleteNumscript{
 				DeleteNumscript: &servicepb.DeleteNumscriptRequest{
-					Name: name,
+					Ledger: ledgerName,
+					Name:   name,
 				},
 			},
 		},
@@ -72,7 +79,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	spinner.Success("Deleted")
 
 	pterm.Println()
-	pterm.Printf("Numscript: %s (deleted)\n", pterm.Gray(name))
+	pterm.Printf("Numscript: %s (deleted from %s)\n", pterm.Gray(name), pterm.Cyan(ledgerName))
 
 	return nil
 }

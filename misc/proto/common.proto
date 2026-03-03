@@ -419,6 +419,7 @@ message NumscriptInfo {
   string content = 2;
   string version = 3;
   Timestamp created_at = 4;
+  string ledger = 5;
 }
 
 // SavedNumscriptLog records a numscript being saved to the library.
@@ -429,6 +430,7 @@ message SavedNumscriptLog {
 // DeletedNumscriptLog records a numscript being deleted from the library.
 message DeletedNumscriptLog {
   string name = 1;
+  string ledger = 2;
 }
 
 // SinkConfig wraps a single sink configuration with per-sink settings.

@@ -17,10 +17,10 @@ func NewListCommand() *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List all numscripts in the library",
-		Long: `List all numscripts in the global library (latest version of each).
+		Long: `List all numscripts in a ledger's library (latest version of each).
 
 Examples:
-  ledgerctl numscripts list`,
+  ledgerctl numscripts list --ledger myledger`,
 		Args: cobra.NoArgs,
 		RunE: runList,
 	}
@@ -38,10 +38,16 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	defer func() { _ = conn.Close() }()
 
+	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
+	if err != nil {
+		return err
+	}
+
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	stream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{})
+	stream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{Ledger: ledgerName})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to list numscripts", err)
 	}
@@ -76,10 +82,9 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if count == 0 {
-		pterm.Info.Println("No numscripts in library.")
+		pterm.Info.Printfln("No numscripts in library for ledger %s.", ledgerName)
 		pterm.Println(pterm.Gray("Hint: Save a numscript using:"))
-		pterm.FgCyan.Println("  ledgerctl numscripts save <name> --file <path>")
-
+		pterm.FgCyan.Printfln("  ledgerctl numscripts save <name> --ledger %s --file <path>", ledgerName)
 		return nil
 	}
 

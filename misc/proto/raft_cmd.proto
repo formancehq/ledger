@@ -128,10 +128,12 @@ message SaveNumscriptOrder {
   string name = 1;
   string content = 2;
   string version = 3;
+  string ledger = 4;
 }
 
 message DeleteNumscriptOrder {
   string name = 1;
+  string ledger = 2;
 }
 
 

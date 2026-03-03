@@ -17,14 +17,14 @@ func NewSaveCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "save <name>",
 		Short: "Save a numscript to the library",
-		Long: `Save a numscript to the global library.
+		Long: `Save a numscript to a ledger's library.
 
 If a script with the same name already exists, a new version is created.
 The script content is read from a file (--file) or stdin.
 
 Examples:
-  ledgerctl numscripts save transfer --file transfer.num
-  cat transfer.num | ledgerctl numscripts save transfer`,
+  ledgerctl numscripts save transfer --ledger myledger --file transfer.num
+  cat transfer.num | ledgerctl numscripts save transfer --ledger myledger`,
 		Args: cobra.ExactArgs(1),
 		RunE: runSave,
 	}
@@ -70,6 +70,12 @@ func runSave(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
+	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
+	if err != nil {
+		return err
+	}
+
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -81,6 +87,7 @@ func runSave(cmd *cobra.Command, args []string) error {
 		{
 			Type: &servicepb.Request_SaveNumscript{
 				SaveNumscript: &servicepb.SaveNumscriptRequest{
+					Ledger:  ledgerName,
 					Name:    name,
 					Content: string(content),
 					Version: version,
@@ -106,9 +113,9 @@ func runSave(cmd *cobra.Command, args []string) error {
 		if saved := resp.GetLogs()[0].GetPayload().GetSavedNumscript(); saved != nil {
 			spinner.Success("Saved")
 			pterm.Println()
+			pterm.Printf("Ledger:  %s\n", pterm.Cyan(ledgerName))
 			pterm.Printf("Name:    %s\n", pterm.Cyan(saved.GetInfo().GetName()))
 			pterm.Printf("Version: %s\n", saved.GetInfo().GetVersion())
-
 			return nil
 		}
 	}

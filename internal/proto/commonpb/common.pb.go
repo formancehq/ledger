@@ -3886,6 +3886,7 @@ type NumscriptInfo struct {
 	Content       string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
 	Version       string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
 	CreatedAt     *Timestamp             `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Ledger        string                 `protobuf:"bytes,5,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3948,6 +3949,13 @@ func (x *NumscriptInfo) GetCreatedAt() *Timestamp {
 	return nil
 }
 
+func (x *NumscriptInfo) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
+}
+
 // SavedNumscriptLog records a numscript being saved to the library.
 type SavedNumscriptLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3997,6 +4005,7 @@ func (x *SavedNumscriptLog) GetInfo() *NumscriptInfo {
 type DeletedNumscriptLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4034,6 +4043,13 @@ func (*DeletedNumscriptLog) Descriptor() ([]byte, []int) {
 func (x *DeletedNumscriptLog) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *DeletedNumscriptLog) GetLedger() string {
+	if x != nil {
+		return x.Ledger
 	}
 	return ""
 }
@@ -9339,17 +9355,19 @@ const file_common_proto_rawDesc = "" +
 	"new_filter\x18\x04 \x01(\v2\x13.common.QueryFilterR\tnewFilter\"E\n" +
 	"\x17DeletedPreparedQueryLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\"\x89\x01\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\xa1\x01\n" +
 	"\rNumscriptInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x120\n" +
 	"\n" +
-	"created_at\x18\x04 \x01(\v2\x11.common.TimestampR\tcreatedAt\">\n" +
+	"created_at\x18\x04 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12\x16\n" +
+	"\x06ledger\x18\x05 \x01(\tR\x06ledger\">\n" +
 	"\x11SavedNumscriptLog\x12)\n" +
-	"\x04info\x18\x01 \x01(\v2\x15.common.NumscriptInfoR\x04info\")\n" +
+	"\x04info\x18\x01 \x01(\v2\x15.common.NumscriptInfoR\x04info\"A\n" +
 	"\x13DeletedNumscriptLog\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x86\x03\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
+	"\x06ledger\x18\x02 \x01(\tR\x06ledger\"\x86\x03\n" +
 	"\n" +
 	"SinkConfig\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12,\n" +

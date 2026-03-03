@@ -865,13 +865,15 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /numscripts:
+  /{ledgerName}/numscripts:
     get:
       summary: List all numscripts
-      description: Returns a list of all saved numscripts with their latest version info.
+      description: Returns a list of all saved numscripts for a ledger with their latest version info.
       operationId: listNumscripts
       tags:
         - Numscript Library
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
       responses:
         '200':
           description: List of numscripts retrieved successfully
@@ -888,16 +890,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /numscripts/{name}:
+  /{ledgerName}/numscripts/{name}:
     get:
       summary: Get a numscript
       description: |
-        Retrieves a numscript by name. Use the `version` query parameter to get a specific
+        Retrieves a numscript by name from a ledger. Use the `version` query parameter to get a specific
         semver version. If omitted or empty, the latest version is returned.
       operationId: getNumscript
       tags:
         - Numscript Library
       parameters:
+        - $ref: '#/components/parameters/LedgerName'
         - name: name
           in: path
           required: true
@@ -935,7 +938,7 @@ paths:
     put:
       summary: Save a numscript
       description: |
-        Saves a numscript with the given name. The `version` field in the request body controls
+        Saves a numscript to a ledger's library. The `version` field in the request body controls
         versioning behavior:
         - A semver string (e.g. "2.0.0") creates a new version. Fails if the version already exists.
         - The special value "latest" overwrites the content of the current latest version.
@@ -944,6 +947,7 @@ paths:
       tags:
         - Numscript Library
       parameters:
+        - $ref: '#/components/parameters/LedgerName'
         - name: name
           in: path
           required: true
@@ -987,11 +991,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
     delete:
       summary: Delete a numscript
-      description: Deletes a numscript by name. Removes the latest version entry.
+      description: Deletes a numscript from a ledger's library. Removes the latest version entry.
       operationId: deleteNumscript
       tags:
         - Numscript Library
       parameters:
+        - $ref: '#/components/parameters/LedgerName'
         - name: name
           in: path
           required: true

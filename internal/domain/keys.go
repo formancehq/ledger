@@ -241,27 +241,37 @@ type PreparedQueryKey struct {
 	Name   string
 }
 
-// NumscriptVersionKey uniquely identifies a numscript by name for version tracking.
+// NumscriptVersionKey uniquely identifies a numscript by ledger and name for version tracking.
 type NumscriptVersionKey struct {
-	Name string
+	Ledger string
+	Name   string
 }
 
 func (k NumscriptVersionKey) Bytes() []byte {
-	return []byte(k.Name)
+	ret := make([]byte, len(k.Ledger)+1+len(k.Name))
+	n := copy(ret, k.Ledger)
+	ret[n] = 0x00
+	n++
+	copy(ret[n:], k.Name)
+	return ret
 }
 
-// NumscriptEntryKey uniquely identifies a specific numscript version entry.
+// NumscriptEntryKey uniquely identifies a specific numscript version entry scoped to a ledger.
 type NumscriptEntryKey struct {
+	Ledger  string
 	Name    string
 	Version string
 }
 
 func (k NumscriptEntryKey) Bytes() []byte {
-	ret := make([]byte, len(k.Name)+1+len(k.Version))
-	n := copy(ret, k.Name)
+	ret := make([]byte, len(k.Ledger)+1+len(k.Name)+1+len(k.Version))
+	n := copy(ret, k.Ledger)
 	ret[n] = 0x00
-	copy(ret[n+1:], k.Version)
-
+	n++
+	n += copy(ret[n:], k.Name)
+	ret[n] = 0x00
+	n++
+	copy(ret[n:], k.Version)
 	return ret
 }
 

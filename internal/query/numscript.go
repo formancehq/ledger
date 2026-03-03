@@ -1,13 +1,10 @@
 package query
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
@@ -16,11 +13,11 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// ReadNumscriptLatestVersion reads the latest version string for a numscript by name.
+// ReadNumscriptLatestVersion reads the latest version string for a numscript by ledger and name.
 // Returns "" if the numscript does not exist.
-func ReadNumscriptLatestVersion(ctx context.Context, reader dal.PebbleReader, name string) (string, error) {
+func ReadNumscriptLatestVersion(reader dal.PebbleReader, ledger, name string) (string, error) {
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixNumscriptLatest).PutString(name)
+	kb.PutByte(dal.KeyPrefixNumscriptLatest).PutLedgerName(ledger).PutString(name)
 
 	value, closer, err := reader.Get(kb.Build())
 	if err != nil {
@@ -28,7 +25,7 @@ func ReadNumscriptLatestVersion(ctx context.Context, reader dal.PebbleReader, na
 			return "", nil
 		}
 
-		return "", fmt.Errorf("reading numscript latest version for %q: %w", name, err)
+		return "", fmt.Errorf("reading numscript latest version for %s/%q: %w", ledger, name, err)
 	}
 
 	defer func() { _ = closer.Close() }()
@@ -36,7 +33,7 @@ func ReadNumscriptLatestVersion(ctx context.Context, reader dal.PebbleReader, na
 	return string(value), nil
 }
 
-// ReadNumscript reads a numscript by name and version spec.
+// ReadNumscript reads a numscript by ledger, name and version spec.
 //   - ""          → read latest pointer, then fetch that version
 //   - "latest"    → direct Get on the latest slot
 //   - "1.0.0"     → direct Get on exact semver
@@ -44,16 +41,9 @@ func ReadNumscriptLatestVersion(ctx context.Context, reader dal.PebbleReader, na
 //   - "1"         → range scan [1.0.0, 2.0.0), iter.Last()
 //
 // Returns nil if the numscript or version does not exist.
-func ReadNumscript(ctx context.Context, reader dal.PebbleReader, name string, version string) (*commonpb.NumscriptInfo, error) {
-	_, span := queryTracer.Start(ctx, "query.get_numscript",
-		trace.WithAttributes(
-			attribute.String("name", name),
-			attribute.String("version", version),
-		))
-	defer span.End()
-
+func ReadNumscript(reader dal.PebbleReader, ledger, name string, version string) (*commonpb.NumscriptInfo, error) {
 	if version == "" {
-		latestVersion, err := ReadNumscriptLatestVersion(ctx, reader, name)
+		latestVersion, err := ReadNumscriptLatestVersion(reader, ledger, name)
 		if err != nil {
 			return nil, err
 		}
@@ -62,11 +52,11 @@ func ReadNumscript(ctx context.Context, reader dal.PebbleReader, name string, ve
 			return nil, nil
 		}
 
-		return ReadNumscript(ctx, reader, name, latestVersion)
+		return ReadNumscript(reader, ledger, name, latestVersion)
 	}
 
 	if version == "latest" {
-		return readNumscriptLatestSlot(reader, name)
+		return readNumscriptLatestSlot(reader, ledger, name)
 	}
 
 	major, minor, patch, depth, err := semver.ParsePartial(version)
@@ -76,16 +66,17 @@ func ReadNumscript(ctx context.Context, reader dal.PebbleReader, name string, ve
 	}
 
 	if depth == 3 {
-		return readNumscriptExactSemver(reader, name, major, minor, patch)
+		return readNumscriptExactSemver(reader, ledger, name, major, minor, patch)
 	}
 
-	return resolvePartialVersion(reader, name, major, minor, depth)
+	return resolvePartialVersion(reader, ledger, name, major, minor, depth)
 }
 
 // readNumscriptLatestSlot does a direct Get on the "latest" slot key.
-func readNumscriptLatestSlot(reader dal.PebbleReader, name string) (*commonpb.NumscriptInfo, error) {
+func readNumscriptLatestSlot(reader dal.PebbleReader, ledger, name string) (*commonpb.NumscriptInfo, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixNumscript).
+		PutLedgerName(ledger).
 		PutString(name).
 		PutByte(0x00).
 		PutByte(domain.NumscriptVersionTagLatest)
@@ -94,9 +85,10 @@ func readNumscriptLatestSlot(reader dal.PebbleReader, name string) (*commonpb.Nu
 }
 
 // readNumscriptExactSemver does a direct Get on the exact semver key.
-func readNumscriptExactSemver(reader dal.PebbleReader, name string, major, minor, patch uint32) (*commonpb.NumscriptInfo, error) {
+func readNumscriptExactSemver(reader dal.PebbleReader, ledger, name string, major, minor, patch uint32) (*commonpb.NumscriptInfo, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixNumscript).
+		PutLedgerName(ledger).
 		PutString(name).
 		PutByte(0x00).
 		PutByte(domain.NumscriptVersionTagSemver).
@@ -130,12 +122,13 @@ func readNumscriptFromKey(reader dal.PebbleReader, key []byte, name, version str
 
 // resolvePartialVersion performs a range scan to find the highest matching semver.
 // depth=1: scan [major.0.0, major+1.0.0)
-// depth=2: scan [major.minor.0, major.minor+1.0).
-func resolvePartialVersion(reader dal.PebbleReader, name string, major, minor uint32, depth int) (*commonpb.NumscriptInfo, error) {
+// depth=2: scan [major.minor.0, major.minor+1.0)
+func resolvePartialVersion(reader dal.PebbleReader, ledger, name string, major, minor uint32, depth int) (*commonpb.NumscriptInfo, error) {
 	kb := dal.NewKeyBuilder()
 
-	// Build lower bound: [prefix][name]\x00\x00[major][minor][patch=0]
+	// Build lower bound: [prefix][ledger\x00][name]\x00\x00[major][minor][patch=0]
 	kb.PutByte(dal.KeyPrefixNumscript).
+		PutLedgerName(ledger).
 		PutString(name).
 		PutByte(0x00).
 		PutByte(domain.NumscriptVersionTagSemver).
@@ -146,6 +139,7 @@ func resolvePartialVersion(reader dal.PebbleReader, name string, major, minor ui
 
 	// Build upper bound depending on depth
 	kb.PutByte(dal.KeyPrefixNumscript).
+		PutLedgerName(ledger).
 		PutString(name).
 		PutByte(0x00).
 		PutByte(domain.NumscriptVersionTagSemver)
@@ -188,13 +182,15 @@ func resolvePartialVersion(reader dal.PebbleReader, name string, major, minor ui
 	return info, nil
 }
 
-// ReadAllNumscripts reads all numscripts (latest version of each) from the given reader.
-func ReadAllNumscripts(ctx context.Context, reader dal.PebbleReader) ([]*commonpb.NumscriptInfo, error) {
-	_, span := queryTracer.Start(ctx, "query.list_numscripts")
-	defer span.End()
+// ReadAllNumscripts reads all numscripts for a ledger (latest version of each) from the given reader.
+func ReadAllNumscripts(reader dal.PebbleReader, ledger string) ([]*commonpb.NumscriptInfo, error) {
+	kb := dal.NewKeyBuilder()
+	lowerBound := kb.PutByte(dal.KeyPrefixNumscriptLatest).PutLedgerName(ledger).Build()
 
-	lowerBound := []byte{dal.KeyPrefixNumscriptLatest}
-	upperBound := []byte{dal.KeyPrefixNumscriptLatest + 1}
+	// Upper bound: same prefix + ledger + \x01 (just past all names for this ledger)
+	kb.PutByte(dal.KeyPrefixNumscriptLatest).PutLedgerName(ledger)
+	// Append 0xFF to create an upper bound past all names
+	upperBound := append(kb.Build(), 0xFF)
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,
@@ -206,11 +202,15 @@ func ReadAllNumscripts(ctx context.Context, reader dal.PebbleReader) ([]*commonp
 
 	defer func() { _ = iter.Close() }()
 
+	// Key format: [prefix(1)][ledger\x00][name]
+	// Compute offset past the prefix + ledger + null separator
+	nameOffset := 1 + len(ledger) + 1
+
 	var scripts []*commonpb.NumscriptInfo
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
-		name := string(key[1:]) // skip prefix byte
+		name := string(key[nameOffset:])
 
 		value, err := iter.ValueAndErr()
 		if err != nil {
@@ -222,7 +222,7 @@ func ReadAllNumscripts(ctx context.Context, reader dal.PebbleReader) ([]*commonp
 			continue
 		}
 
-		info, err := ReadNumscript(ctx, reader, name, version)
+		info, err := ReadNumscript(reader, ledger, name, version)
 		if err != nil {
 			return nil, fmt.Errorf("reading numscript %q v%s: %w", name, version, err)
 		}

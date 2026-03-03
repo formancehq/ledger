@@ -201,11 +201,11 @@ func (m *mockBackend) GetLedgerStats(ctx context.Context, ledgerName string) (*c
 	return &commonpb.LedgerStats{}, nil
 }
 
-func (m *mockBackend) GetNumscript(_ context.Context, _ string, _ string) (*commonpb.NumscriptInfo, error) {
+func (m *mockBackend) GetNumscript(_ context.Context, _, _ string, _ string) (*commonpb.NumscriptInfo, error) {
 	return nil, nil
 }
 
-func (m *mockBackend) ListNumscripts(_ context.Context) ([]*commonpb.NumscriptInfo, error) {
+func (m *mockBackend) ListNumscripts(_ context.Context, _ string) ([]*commonpb.NumscriptInfo, error) {
 	return nil, nil
 }
 

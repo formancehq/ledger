@@ -269,15 +269,16 @@ func (g *BucketGrpcClient) GetLedgerStats(ctx context.Context, ledgerName string
 	})
 }
 
-func (g *BucketGrpcClient) GetNumscript(ctx context.Context, name string, version string) (*commonpb.NumscriptInfo, error) {
+func (g *BucketGrpcClient) GetNumscript(ctx context.Context, ledger, name string, version string) (*commonpb.NumscriptInfo, error) {
 	return g.client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+		Ledger:  ledger,
 		Name:    name,
 		Version: version,
 	})
 }
 
-func (g *BucketGrpcClient) ListNumscripts(ctx context.Context) ([]*commonpb.NumscriptInfo, error) {
-	stream, err := g.client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{})
+func (g *BucketGrpcClient) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
+	stream, err := g.client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{Ledger: ledger})
 	if err != nil {
 		return nil, fmt.Errorf("gRPC ListNumscripts call failed: %w", err)
 	}

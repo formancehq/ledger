@@ -551,6 +551,66 @@ reference        -            -          READY
 timestamp        -            -          BUILDING (starting...)
 ```
 
+#### ledgers catalog
+
+Show a ledger's full configuration catalog: chart of accounts, indexes, prepared queries, and numscript library.
+
+**Aliases:** `cat`
+
+```bash
+ledgerctl ledgers catalog <name> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--expand` | `false` | Show full content of numscripts and prepared query filters |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Summary view (default)
+ledgerctl ledgers catalog myledger
+
+# Expanded view with numscript source code and query filters
+ledgerctl ledgers catalog myledger --expand
+```
+
+**Sample output:**
+
+```
+Catalog for ledger: myledger
+═════════════════════════════════════
+
+ Chart of Accounts (STRICT)
+
+  bank
+    main  (account)
+  users
+    :id [a-z0-9]+  (account)
+      wallets
+        :currency [A-Z]{3}  (account)
+
+ Indexes
+
+TYPE             TARGET       KEY        STATUS
+address          -            -          READY
+metadata         account      category   READY
+
+ Prepared Queries
+
+NAME           TARGET
+active-users   accounts
+
+ Numscript Library
+
+NAME       VERSION   CREATED AT
+transfer   2.0.0     2025-01-15T10:30:00Z
+refund     1.0.0     2025-01-15T10:30:00Z
+```
+
 ---
 
 ### accounts
@@ -2745,6 +2805,106 @@ ledgerctl periods archive 1
 - The period must be in `CLOSED` state (sealed). `OPEN`, `CLOSING`, or `ARCHIVED` periods are rejected.
 - Archival is asynchronous: the command returns immediately after validation, and a background Archiver exports the data and confirms the transition to `ARCHIVED`.
 - Cold storage is configured on the server with `--cold-storage-driver`, `--cold-storage-path`, and S3 flags (`--cold-storage-bucket-id`, `--cold-storage-s3-bucket`, `--cold-storage-s3-region`, `--cold-storage-s3-endpoint`).
+
+---
+
+### numscripts
+
+Manage the numscript library (per-ledger reusable scripts with semver versioning).
+
+**Aliases:** `ns`
+
+**Persistent Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | | Ledger name (interactive selection if omitted) |
+
+#### numscripts list
+
+List all numscripts in a ledger's library (latest version of each).
+
+**Aliases:** `ls`
+
+```bash
+ledgerctl numscripts list --ledger <ledger-name> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `10s` | Request timeout |
+
+#### numscripts get
+
+Get a numscript from the library by name.
+
+```bash
+ledgerctl numscripts get <name> --ledger <ledger-name> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--version` | | Specific version to retrieve (empty = latest) |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Get the latest version
+ledgerctl numscripts get transfer --ledger myledger
+
+# Get a specific version
+ledgerctl numscripts get transfer --ledger myledger --version 1.0.0
+```
+
+#### numscripts save
+
+Save a numscript to a ledger's library. If a script with the same name already exists, a new version is created.
+
+```bash
+ledgerctl numscripts save <name> --ledger <ledger-name> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--file` | | Path to the numscript file (reads stdin if omitted) |
+| `--version` | | Semver version (e.g. `1.0.0`) or empty for latest |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Save from a file
+ledgerctl numscripts save transfer --ledger myledger --file transfer.num
+
+# Save with a specific version
+ledgerctl numscripts save transfer --ledger myledger --file transfer.num --version 2.0.0
+
+# Save from stdin
+cat transfer.num | ledgerctl numscripts save transfer --ledger myledger
+```
+
+#### numscripts delete
+
+Delete a numscript from the library.
+
+**Aliases:** `rm`, `remove`
+
+```bash
+ledgerctl numscripts delete <name> --ledger <ledger-name> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `10s` | Request timeout |
 
 ---
 

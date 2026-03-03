@@ -99,8 +99,8 @@ type InMemoryStore interface {
 	DeletePreparedQuery(ledger, name string)
 
 	// Numscript library operations
-	GetNumscriptLatestVersion(name string) (string, error)
-	NumscriptVersionExists(name, version string) (bool, error)
+	GetNumscriptLatestVersion(ledger, name string) (string, error)
+	NumscriptVersionExists(ledger, name, version string) (bool, error)
 	PutNumscript(info *commonpb.NumscriptInfo)
-	DeleteNumscriptLatest(name string)
+	DeleteNumscriptLatest(ledger, name string)
 }

@@ -642,24 +642,24 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 		case *raftcmdpb.Order_PromoteLedger:
 			p.Ledgers[domain.LedgerKey{Name: orderType.PromoteLedger.GetLedger()}] = struct{}{}
 		case *raftcmdpb.Order_SaveNumscript:
-			nsKey := domain.NumscriptVersionKey{Name: orderType.SaveNumscript.GetName()}
+			nsKey := domain.NumscriptVersionKey{Ledger: orderType.SaveNumscript.GetLedger(), Name: orderType.SaveNumscript.GetName()}
 			if p.NumscriptVersions == nil {
 				p.NumscriptVersions = make(map[domain.NumscriptVersionKey]func() (string, error))
 			}
 
 			p.NumscriptVersions[nsKey] = func() (string, error) {
-				return query.ReadNumscriptLatestVersion(ctx, a.store, nsKey.Name)
+				return query.ReadNumscriptLatestVersion(a.store, nsKey.Ledger, nsKey.Name)
 			}
 			// For semver saves, preload the specific version entry for immutability check
 			version := orderType.SaveNumscript.GetVersion()
 			if version != "" && version != "latest" {
-				entryKey := domain.NumscriptEntryKey{Name: orderType.SaveNumscript.GetName(), Version: version}
+				entryKey := domain.NumscriptEntryKey{Ledger: orderType.SaveNumscript.GetLedger(), Name: orderType.SaveNumscript.GetName(), Version: version}
 				if p.NumscriptEntries == nil {
 					p.NumscriptEntries = make(map[domain.NumscriptEntryKey]func() (bool, error))
 				}
 
 				p.NumscriptEntries[entryKey] = func() (bool, error) {
-					info, err := query.ReadNumscript(ctx, a.store, entryKey.Name, entryKey.Version)
+					info, err := query.ReadNumscript(a.store, entryKey.Ledger, entryKey.Name, entryKey.Version)
 					if err != nil {
 						return false, err
 					}
@@ -668,13 +668,13 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				}
 			}
 		case *raftcmdpb.Order_DeleteNumscript:
-			nsKey := domain.NumscriptVersionKey{Name: orderType.DeleteNumscript.GetName()}
+			nsKey := domain.NumscriptVersionKey{Ledger: orderType.DeleteNumscript.GetLedger(), Name: orderType.DeleteNumscript.GetName()}
 			if p.NumscriptVersions == nil {
 				p.NumscriptVersions = make(map[domain.NumscriptVersionKey]func() (string, error))
 			}
 
 			p.NumscriptVersions[nsKey] = func() (string, error) {
-				return query.ReadNumscriptLatestVersion(ctx, a.store, nsKey.Name)
+				return query.ReadNumscriptLatestVersion(a.store, nsKey.Ledger, nsKey.Name)
 			}
 		case *raftcmdpb.Order_Apply:
 			ledgerKey := domain.LedgerKey{Name: orderType.Apply.GetLedger()}
@@ -1031,12 +1031,14 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				Name:    reqType.SaveNumscript.GetName(),
 				Content: reqType.SaveNumscript.GetContent(),
 				Version: reqType.SaveNumscript.GetVersion(),
+				Ledger:  reqType.SaveNumscript.GetLedger(),
 			},
 		}
 	case *servicepb.Request_DeleteNumscript:
 		order.Type = &raftcmdpb.Order_DeleteNumscript{
 			DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{
-				Name: reqType.DeleteNumscript.GetName(),
+				Name:   reqType.DeleteNumscript.GetName(),
+				Ledger: reqType.DeleteNumscript.GetLedger(),
 			},
 		}
 	case *servicepb.Request_AddAccountType:
@@ -1113,7 +1115,7 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 				}
 			}
 
-			info, err := query.ReadNumscript(context.Background(), a.store, ct.GetScriptReference().GetName(), ct.GetScriptReference().GetVersion())
+			info, err := query.ReadNumscript(a.store, apply.GetLedger(), ct.GetScriptReference().GetName(), ct.GetScriptReference().GetVersion())
 			if err != nil {
 				return nil, fmt.Errorf("reading numscript %q: %w", ct.GetScriptReference().GetName(), err)
 			}

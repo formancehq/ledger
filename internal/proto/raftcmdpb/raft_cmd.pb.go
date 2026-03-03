@@ -1337,6 +1337,7 @@ type SaveNumscriptOrder struct {
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Content       string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
 	Version       string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
+	Ledger        string                 `protobuf:"bytes,4,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1392,9 +1393,17 @@ func (x *SaveNumscriptOrder) GetVersion() string {
 	return ""
 }
 
+func (x *SaveNumscriptOrder) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
+}
+
 type DeleteNumscriptOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1432,6 +1441,13 @@ func (*DeleteNumscriptOrder) Descriptor() ([]byte, []int) {
 func (x *DeleteNumscriptOrder) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *DeleteNumscriptOrder) GetLedger() string {
+	if x != nil {
+		return x.Ledger
 	}
 	return ""
 }
@@ -5913,13 +5929,19 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x04cron\x18\x01 \x01(\tR\x04cron\"\x1b\n" +
 	"\x19DeletePeriodScheduleOrder\"/\n" +
 	"\x13SetAuditConfigOrder\x12\x18\n" +
-	"\aenabled\x18\x01 \x01(\bR\aenabled\"\\\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\"t\n" +
 	"\x12SaveNumscriptOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x18\n" +
-	"\aversion\x18\x03 \x01(\tR\aversion\"*\n" +
+	"\aversion\x18\x03 \x01(\tR\aversion\x12\x16\n" +
+	"\x06ledger\x18\x04 \x01(\tR\x06ledger\"B\n" +
 	"\x14DeleteNumscriptOrder\x12\x12\n" +
+<<<<<<< HEAD
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x90\x04\n" +
+=======
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
+	"\x06ledger\x18\x02 \x01(\tR\x06ledger\"\xea\x02\n" +
+>>>>>>> aa2002db (feat: make numscripts per-ledger and add ledgerctl ledgers catalog command)
 	"\x11CreateLedgerOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12J\n" +
 	"\x0einitial_schema\x18\x02 \x03(\v2#.common.SetMetadataFieldTypeCommandR\rinitialSchema\x12&\n" +

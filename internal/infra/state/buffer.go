@@ -94,7 +94,13 @@ type Buffered struct {
 	// Pending prepared query changes (ledger/name -> query or nil for deletion)
 	pendingPreparedQueries  map[domain.PreparedQueryKey]*commonpb.PreparedQuery
 	pendingNumscriptWrites  []*commonpb.NumscriptInfo
-	pendingNumscriptDeletes []string
+	pendingNumscriptDeletes []numscriptDeleteEntry
+}
+
+// numscriptDeleteEntry identifies a numscript to soft-delete, scoped to a ledger.
+type numscriptDeleteEntry struct {
+	ledger string
+	name   string
 }
 
 // purgeRange identifies a period's sequence range to delete from Pebble during Merge().
@@ -340,10 +346,9 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		}
 	}
 
-	for _, name := range b.pendingNumscriptDeletes {
-		err := ClearNumscriptLatestVersion(batch, name)
-		if err != nil {
-			return fmt.Errorf("clearing numscript latest version %q: %w", name, err)
+	for _, entry := range b.pendingNumscriptDeletes {
+		if err := ClearNumscriptLatestVersion(batch, entry.ledger, entry.name); err != nil {
+			return fmt.Errorf("clearing numscript latest version %s/%q: %w", entry.ledger, entry.name, err)
 		}
 	}
 
@@ -788,23 +793,23 @@ func (b *Buffered) DeletePreparedQuery(ledger, name string) {
 
 // Numscript library operations
 
-func (b *Buffered) GetNumscriptLatestVersion(name string) (string, error) {
-	return b.Derived.NumscriptVersions.Get(domain.NumscriptVersionKey{Name: name})
+func (b *Buffered) GetNumscriptLatestVersion(ledger, name string) (string, error) {
+	return b.Derived.NumscriptVersions.Get(domain.NumscriptVersionKey{Ledger: ledger, Name: name})
 }
 
 func (b *Buffered) PutNumscript(info *commonpb.NumscriptInfo) {
-	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Name: info.GetName()}, info.GetVersion())
-	b.Derived.NumscriptEntries.Put(domain.NumscriptEntryKey{Name: info.GetName(), Version: info.GetVersion()}, true)
+	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Ledger: info.GetLedger(), Name: info.GetName()}, info.GetVersion())
+	b.Derived.NumscriptEntries.Put(domain.NumscriptEntryKey{Ledger: info.GetLedger(), Name: info.GetName(), Version: info.GetVersion()}, true)
 	b.pendingNumscriptWrites = append(b.pendingNumscriptWrites, info)
 }
 
-func (b *Buffered) DeleteNumscriptLatest(name string) {
-	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Name: name}, "")
-	b.pendingNumscriptDeletes = append(b.pendingNumscriptDeletes, name)
+func (b *Buffered) DeleteNumscriptLatest(ledger, name string) {
+	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Ledger: ledger, Name: name}, "")
+	b.pendingNumscriptDeletes = append(b.pendingNumscriptDeletes, numscriptDeleteEntry{ledger: ledger, name: name})
 }
 
-func (b *Buffered) NumscriptVersionExists(name, version string) (bool, error) {
-	exists, err := b.Derived.NumscriptEntries.Get(domain.NumscriptEntryKey{Name: name, Version: version})
+func (b *Buffered) NumscriptVersionExists(ledger, name, version string) (bool, error) {
+	exists, err := b.Derived.NumscriptEntries.Get(domain.NumscriptEntryKey{Ledger: ledger, Name: name, Version: version})
 	if err != nil {
 		// Not in cache — treat as not existing (admission ensures preloading)
 		return false, nil

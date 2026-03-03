@@ -7,8 +7,10 @@ func NewCommand() *cobra.Command {
 		Use:     "numscripts",
 		Aliases: []string{"numscript", "ns"},
 		Short:   "Manage numscript library",
-		Long:    "Commands for managing the global numscript library (save, get, list, delete)",
+		Long:    "Commands for managing the per-ledger numscript library (save, get, list, delete)",
 	}
+
+	cmd.PersistentFlags().String("ledger", "", "Ledger name (interactive selection if omitted)")
 
 	cmd.AddCommand(NewSaveCommand())
 	cmd.AddCommand(NewGetCommand())

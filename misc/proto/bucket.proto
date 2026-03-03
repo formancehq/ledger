@@ -331,21 +331,26 @@ message SaveNumscriptRequest {
   string name = 1;
   string content = 2;
   string version = 3;
+  string ledger = 4;
 }
 
 // DeleteNumscriptRequest removes a numscript from the library (versions preserved).
 message DeleteNumscriptRequest {
   string name = 1;
+  string ledger = 2;
 }
 
 // GetNumscriptRequest retrieves a numscript by name and optional version.
 message GetNumscriptRequest {
   string name = 1;
   string version = 2; // "" = latest
+  string ledger = 3;
 }
 
-// ListNumscriptsRequest lists all numscripts (latest version of each).
-message ListNumscriptsRequest {}
+// ListNumscriptsRequest lists all numscripts for a ledger (latest version of each).
+message ListNumscriptsRequest {
+  string ledger = 1;
+}
 
 // ScriptReference references a numscript from the library by name and optional version.
 message ScriptReference {

@@ -380,11 +380,12 @@ func SetLastAppliedTimestamp(b *dal.Batch, timestamp uint64) error {
 }
 
 // SaveNumscript stores a versioned numscript entry and updates the latest version pointer.
-// Semver versions are encoded as [prefix][name]\x00\x00[major_u32BE][minor_u32BE][patch_u32BE].
-// The "latest" slot is encoded as [prefix][name]\x00\x01.
+// Semver versions are encoded as [prefix][ledger\x00][name]\x00\x00[major_u32BE][minor_u32BE][patch_u32BE].
+// The "latest" slot is encoded as [prefix][ledger\x00][name]\x00\x01.
 func SaveNumscript(b *dal.Batch, info *commonpb.NumscriptInfo) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixNumscript).
+		PutLedgerName(info.GetLedger()).
 		PutString(info.GetName()).
 		PutByte(0x00)
 
@@ -408,9 +409,10 @@ func SaveNumscript(b *dal.Batch, info *commonpb.NumscriptInfo) error {
 		return fmt.Errorf("saving numscript %q v%s: %w", info.GetName(), info.GetVersion(), err)
 	}
 
-	// Update latest version pointer: [prefix][name] -> version string bytes
+	// Update latest version pointer: [prefix][ledger\x00][name] -> version string bytes
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixNumscriptLatest).
+		PutLedgerName(info.GetLedger()).
 		PutString(info.GetName())
 
 	err = b.SetBytes(b.KeyBuilder.Build(), []byte(info.GetVersion()))
@@ -423,9 +425,10 @@ func SaveNumscript(b *dal.Batch, info *commonpb.NumscriptInfo) error {
 
 // ClearNumscriptLatestVersion soft-deletes a numscript by writing an empty version pointer.
 // The version entries remain in Pebble and are still accessible by explicit version.
-func ClearNumscriptLatestVersion(b *dal.Batch, name string) error {
+func ClearNumscriptLatestVersion(b *dal.Batch, ledger, name string) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixNumscriptLatest).
+		PutLedgerName(ledger).
 		PutString(name)
 
 	err := b.SetBytes(b.KeyBuilder.Build(), nil)

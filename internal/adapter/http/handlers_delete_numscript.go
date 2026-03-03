@@ -9,8 +9,9 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
-// handleDeleteNumscript handles DELETE /numscripts/{name} to delete a numscript.
+// handleDeleteNumscript handles DELETE /{ledgerName}/numscripts/{name} to delete a numscript.
 func (s *Server) handleDeleteNumscript(w http.ResponseWriter, r *http.Request) {
+	ledger := chi.URLParam(r, "ledgerName")
 	name := chi.URLParam(r, "name")
 	if name == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("numscript name is required"))
@@ -21,7 +22,8 @@ func (s *Server) handleDeleteNumscript(w http.ResponseWriter, r *http.Request) {
 	_, err := s.backend.Apply(r.Context(), &servicepb.Request{
 		Type: &servicepb.Request_DeleteNumscript{
 			DeleteNumscript: &servicepb.DeleteNumscriptRequest{
-				Name: name,
+				Ledger: ledger,
+				Name:   name,
 			},
 		},
 	})

@@ -58,10 +58,10 @@ This document compares the POC's API with the original Formance ledger API and d
 | **Reference Uniqueness** |
 | Unique reference validation | ✅ | ✅ | Per-ledger uniqueness, HTTP 409 on conflict |
 | **Numscript Library** |
-| Save numscript (versioned) | ✅ | ❌ | Semver versioning (e.g. "1.0.0") |
-| Get numscript (by version) | ✅ | ❌ | Query param `?version=1.0.0`, empty = latest |
-| List numscripts | ✅ | ❌ | Lists all saved numscripts |
-| Delete numscript | ✅ | ❌ | Deletes latest version entry |
+| Save numscript (versioned) | ✅ | ❌ | Per-ledger, semver versioning (e.g. "1.0.0") |
+| Get numscript (by version) | ✅ | ❌ | Per-ledger, query param `?version=1.0.0`, empty = latest |
+| List numscripts | ✅ | ❌ | Per-ledger, lists all saved numscripts |
+| Delete numscript | ✅ | ❌ | Per-ledger, deletes latest version entry |
 | **Audit Log** |
 | Audit log (success + failure) | ✅ | ❌ | Replicated via Raft, stored in Pebble |
 | Audit log disable/enable | ✅ | ❌ | `ledgerctl audit enable/disable` (dynamic via RPC) |
@@ -311,23 +311,23 @@ Promoting a non-mirror ledger returns HTTP 400 (`LEDGER_NOT_IN_MIRROR_MODE`) or 
 The numscript library allows saving, retrieving, and managing reusable numscript programs with semver versioning.
 
 **Endpoints:**
-- `GET /numscripts` - List all saved numscripts
-- `GET /numscripts/{name}?version=` - Get a numscript by name (optional version query param)
-- `PUT /numscripts/{name}` - Save a numscript (create new version or overwrite latest)
-- `DELETE /numscripts/{name}` - Delete a numscript
+- `GET /{ledgerName}/numscripts` - List all saved numscripts for a ledger
+- `GET /{ledgerName}/numscripts/{name}?version=` - Get a numscript by name (optional version query param)
+- `PUT /{ledgerName}/numscripts/{name}` - Save a numscript (create new version or overwrite latest)
+- `DELETE /{ledgerName}/numscripts/{name}` - Delete a numscript
 
 **Versioning:**
 
 Numscripts use **semantic versioning** (semver) with the format `major.minor.patch` (e.g. `"1.0.0"`).
 
-When saving a numscript via `PUT /numscripts/{name}`, the request body includes:
+When saving a numscript via `PUT /{ledgerName}/numscripts/{name}`, the request body includes:
 - `content` (required): The numscript source code
 - `version` (optional): Controls versioning behavior:
   - A semver string (e.g. `"2.0.0"`) creates a new version. Fails with 409 if the version already exists.
   - The special value `"latest"` overwrites the content of the current latest version.
   - If omitted or empty, defaults to `"latest"`.
 
-When retrieving a numscript via `GET /numscripts/{name}`, the `version` query parameter selects which version to return. If omitted or empty, the latest version is returned.
+When retrieving a numscript via `GET /{ledgerName}/numscripts/{name}`, the `version` query parameter selects which version to return. If omitted or empty, the latest version is returned.
 
 **Response schema (NumscriptInfo):**
 - `name` (string): Numscript name
@@ -562,15 +562,18 @@ Read endpoints comparison with the original ledger:
 | `DELETE /{ledgerName}/prepared-queries/{queryName}` | ✅ | ❌ | Delete a prepared query |
 | `GET /{ledgerName}/prepared-queries` | ✅ | ❌ | List prepared queries |
 | `POST /{ledgerName}/prepared-queries/{queryName}/execute` | ✅ | ❌ | Execute a prepared query |
-| `GET /numscripts` | ✅ | ❌ | List all numscripts |
-| `GET /numscripts/{name}?version=` | ✅ | ❌ | Get numscript (semver version, empty = latest) |
-| `PUT /numscripts/{name}` | ✅ | ❌ | Save numscript (semver versioned) |
-| `DELETE /numscripts/{name}` | ✅ | ❌ | Delete numscript |
+| `GET /{ledgerName}/numscripts` | ✅ | ❌ | List all numscripts for a ledger |
+| `GET /{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (semver version, empty = latest) |
+| `PUT /{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save numscript (semver versioned) |
+| `DELETE /{ledgerName}/numscripts/{name}` | ✅ | ❌ | Delete numscript |
 | `GET /{ledgerName}/account-types` | ✅ | ❌ | List account types |
 | `GET /{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Get account type |
 | `POST /{ledgerName}/account-types` | ✅ | ❌ | Add account type |
 | `PATCH /{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Update account type |
 | `DELETE /{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type |
+| `GET /{ledgerName}/chart-of-accounts` | ✅ | ❌ | Get chart of accounts |
+| `PUT /{ledgerName}/chart-of-accounts` | ✅ | ❌ | Set chart of accounts |
+| `PUT /{ledgerName}/chart-of-accounts/enforcement-mode` | ✅ | ❌ | Set enforcement mode |
 
 ---
 

@@ -213,18 +213,18 @@ func (mr *MockControllerMockRecorder) GetMetadataSchemaStatus(ctx, ledgerName an
 }
 
 // GetNumscript mocks base method.
-func (m *MockController) GetNumscript(ctx context.Context, name, version string) (*commonpb.NumscriptInfo, error) {
+func (m *MockController) GetNumscript(ctx context.Context, ledger, name, version string) (*commonpb.NumscriptInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetNumscript", ctx, name, version)
+	ret := m.ctrl.Call(m, "GetNumscript", ctx, ledger, name, version)
 	ret0, _ := ret[0].(*commonpb.NumscriptInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetNumscript indicates an expected call of GetNumscript.
-func (mr *MockControllerMockRecorder) GetNumscript(ctx, name, version any) *gomock.Call {
+func (mr *MockControllerMockRecorder) GetNumscript(ctx, ledger, name, version any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNumscript", reflect.TypeOf((*MockController)(nil).GetNumscript), ctx, name, version)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNumscript", reflect.TypeOf((*MockController)(nil).GetNumscript), ctx, ledger, name, version)
 }
 
 // GetTransaction mocks base method.
@@ -303,18 +303,18 @@ func (mr *MockControllerMockRecorder) ListLogs(ctx, afterSequence, pageSize, fil
 }
 
 // ListNumscripts mocks base method.
-func (m *MockController) ListNumscripts(ctx context.Context) ([]*commonpb.NumscriptInfo, error) {
+func (m *MockController) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListNumscripts", ctx)
+	ret := m.ctrl.Call(m, "ListNumscripts", ctx, ledger)
 	ret0, _ := ret[0].([]*commonpb.NumscriptInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListNumscripts indicates an expected call of ListNumscripts.
-func (mr *MockControllerMockRecorder) ListNumscripts(ctx any) *gomock.Call {
+func (mr *MockControllerMockRecorder) ListNumscripts(ctx, ledger any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNumscripts", reflect.TypeOf((*MockController)(nil).ListNumscripts), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNumscripts", reflect.TypeOf((*MockController)(nil).ListNumscripts), ctx, ledger)
 }
 
 // ListPeriods mocks base method.

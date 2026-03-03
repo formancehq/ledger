@@ -770,14 +770,14 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 }
 
 func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *servicepb.GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {
-	return impl.ctrl.GetNumscript(ctx, req.GetName(), req.GetVersion())
+	return impl.ctrl.GetNumscript(ctx, req.GetLedger(), req.GetName(), req.GetVersion())
 }
 
 func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscriptsRequest, stream servicepb.BucketService_ListNumscriptsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListNumscripts")
 	defer span.End()
 
-	scripts, err := impl.ctrl.ListNumscripts(ctx)
+	scripts, err := impl.ctrl.ListNumscripts(ctx, req.GetLedger())
 	if err != nil {
 		return fmt.Errorf("listing numscripts: %w", err)
 	}

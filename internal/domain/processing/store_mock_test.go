@@ -103,15 +103,15 @@ func (mr *MockInMemoryStoreMockRecorder) DeleteAccountMetadata(key any) *gomock.
 }
 
 // DeleteNumscriptLatest mocks base method.
-func (m *MockInMemoryStore) DeleteNumscriptLatest(name string) {
+func (m *MockInMemoryStore) DeleteNumscriptLatest(ledger, name string) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeleteNumscriptLatest", name)
+	m.ctrl.Call(m, "DeleteNumscriptLatest", ledger, name)
 }
 
 // DeleteNumscriptLatest indicates an expected call of DeleteNumscriptLatest.
-func (mr *MockInMemoryStoreMockRecorder) DeleteNumscriptLatest(name any) *gomock.Call {
+func (mr *MockInMemoryStoreMockRecorder) DeleteNumscriptLatest(ledger, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNumscriptLatest", reflect.TypeOf((*MockInMemoryStore)(nil).DeleteNumscriptLatest), name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNumscriptLatest", reflect.TypeOf((*MockInMemoryStore)(nil).DeleteNumscriptLatest), ledger, name)
 }
 
 // DeletePeriodSchedule mocks base method.
@@ -299,18 +299,18 @@ func (mr *MockInMemoryStoreMockRecorder) GetNextSequenceID() *gomock.Call {
 }
 
 // GetNumscriptLatestVersion mocks base method.
-func (m *MockInMemoryStore) GetNumscriptLatestVersion(name string) (string, error) {
+func (m *MockInMemoryStore) GetNumscriptLatestVersion(ledger, name string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetNumscriptLatestVersion", name)
+	ret := m.ctrl.Call(m, "GetNumscriptLatestVersion", ledger, name)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetNumscriptLatestVersion indicates an expected call of GetNumscriptLatestVersion.
-func (mr *MockInMemoryStoreMockRecorder) GetNumscriptLatestVersion(name any) *gomock.Call {
+func (mr *MockInMemoryStoreMockRecorder) GetNumscriptLatestVersion(ledger, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNumscriptLatestVersion", reflect.TypeOf((*MockInMemoryStore)(nil).GetNumscriptLatestVersion), name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNumscriptLatestVersion", reflect.TypeOf((*MockInMemoryStore)(nil).GetNumscriptLatestVersion), ledger, name)
 }
 
 // GetPeriodByID mocks base method.
@@ -461,18 +461,18 @@ func (mr *MockInMemoryStoreMockRecorder) IncrementNextSequenceID() *gomock.Call 
 }
 
 // NumscriptVersionExists mocks base method.
-func (m *MockInMemoryStore) NumscriptVersionExists(name, version string) (bool, error) {
+func (m *MockInMemoryStore) NumscriptVersionExists(ledger, name, version string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NumscriptVersionExists", name, version)
+	ret := m.ctrl.Call(m, "NumscriptVersionExists", ledger, name, version)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // NumscriptVersionExists indicates an expected call of NumscriptVersionExists.
-func (mr *MockInMemoryStoreMockRecorder) NumscriptVersionExists(name, version any) *gomock.Call {
+func (mr *MockInMemoryStoreMockRecorder) NumscriptVersionExists(ledger, name, version any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NumscriptVersionExists", reflect.TypeOf((*MockInMemoryStore)(nil).NumscriptVersionExists), name, version)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NumscriptVersionExists", reflect.TypeOf((*MockInMemoryStore)(nil).NumscriptVersionExists), ledger, name, version)
 }
 
 // PutAccountMetadata mocks base method.

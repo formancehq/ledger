@@ -1006,13 +1006,13 @@ func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *se
 	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, req, profile)
 }
 
-// GetNumscript returns a numscript by name and optional version ("" = latest).
-func (ctrl *DefaultController) GetNumscript(ctx context.Context, name string, version string) (*commonpb.NumscriptInfo, error) {
+// GetNumscript returns a numscript by ledger, name and optional version ("" = latest).
+func (ctrl *DefaultController) GetNumscript(_ context.Context, ledger, name string, version string) (*commonpb.NumscriptInfo, error) {
 	handle := ctrl.store.NewReadHandle()
 
 	defer func() { _ = handle.Close() }()
 
-	info, err := query.ReadNumscript(ctx, handle, name, version)
+	info, err := query.ReadNumscript(handle, ledger, name, version)
 	if err != nil {
 		return nil, fmt.Errorf("reading numscript %q: %w", name, err)
 	}
@@ -1024,13 +1024,13 @@ func (ctrl *DefaultController) GetNumscript(ctx context.Context, name string, ve
 	return info, nil
 }
 
-// ListNumscripts returns the latest version of all numscripts.
-func (ctrl *DefaultController) ListNumscripts(ctx context.Context) ([]*commonpb.NumscriptInfo, error) {
+// ListNumscripts returns the latest version of all numscripts for a ledger.
+func (ctrl *DefaultController) ListNumscripts(_ context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
 	handle := ctrl.store.NewReadHandle()
 
 	defer func() { _ = handle.Close() }()
 
-	return query.ReadAllNumscripts(ctx, handle)
+	return query.ReadAllNumscripts(handle, ledger)
 }
 
 // Apply applies a list of requests and returns the resulting logs.

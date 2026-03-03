@@ -2514,6 +2514,7 @@ type SaveNumscriptRequest struct {
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Content       string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
 	Version       string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
+	Ledger        string                 `protobuf:"bytes,4,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2569,10 +2570,18 @@ func (x *SaveNumscriptRequest) GetVersion() string {
 	return ""
 }
 
+func (x *SaveNumscriptRequest) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
+}
+
 // DeleteNumscriptRequest removes a numscript from the library (versions preserved).
 type DeleteNumscriptRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Ledger        string                 `protobuf:"bytes,2,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2614,11 +2623,19 @@ func (x *DeleteNumscriptRequest) GetName() string {
 	return ""
 }
 
+func (x *DeleteNumscriptRequest) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
+}
+
 // GetNumscriptRequest retrieves a numscript by name and optional version.
 type GetNumscriptRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"` // "" = latest
+	Ledger        string                 `protobuf:"bytes,3,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2667,9 +2684,17 @@ func (x *GetNumscriptRequest) GetVersion() string {
 	return ""
 }
 
-// ListNumscriptsRequest lists all numscripts (latest version of each).
+func (x *GetNumscriptRequest) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
+}
+
+// ListNumscriptsRequest lists all numscripts for a ledger (latest version of each).
 type ListNumscriptsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2702,6 +2727,13 @@ func (x *ListNumscriptsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListNumscriptsRequest.ProtoReflect.Descriptor instead.
 func (*ListNumscriptsRequest) Descriptor() ([]byte, []int) {
 	return file_bucket_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *ListNumscriptsRequest) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
 }
 
 // ScriptReference references a numscript from the library by name and optional version.
@@ -7916,17 +7948,21 @@ const file_bucket_proto_rawDesc = "" +
 	"logBuiltin\x12<\n" +
 	"\vtransaction\x18\x03 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
 	"\aaccount\x18\x04 \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
-	"\x05index\"^\n" +
+	"\x05index\"v\n" +
 	"\x14SaveNumscriptRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x18\n" +
-	"\aversion\x18\x03 \x01(\tR\aversion\",\n" +
+	"\aversion\x18\x03 \x01(\tR\aversion\x12\x16\n" +
+	"\x06ledger\x18\x04 \x01(\tR\x06ledger\"D\n" +
 	"\x16DeleteNumscriptRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"C\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
+	"\x06ledger\x18\x02 \x01(\tR\x06ledger\"[\n" +
 	"\x13GetNumscriptRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\tR\aversion\"\x17\n" +
-	"\x15ListNumscriptsRequest\"\xaf\x01\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\x12\x16\n" +
+	"\x06ledger\x18\x03 \x01(\tR\x06ledger\"/\n" +
+	"\x15ListNumscriptsRequest\x12\x16\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\xaf\x01\n" +
 	"\x0fScriptReference\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x125\n" +

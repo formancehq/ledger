@@ -13,13 +13,13 @@ func NewGetCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <name>",
 		Short: "Get a numscript from the library",
-		Long: `Get a numscript from the global library by name.
+		Long: `Get a numscript from a ledger's library by name.
 
 By default, returns the latest version. Use --version to get a specific version.
 
 Examples:
-  ledgerctl numscripts get transfer
-  ledgerctl numscripts get transfer --version 2`,
+  ledgerctl numscripts get transfer --ledger myledger
+  ledgerctl numscripts get transfer --ledger myledger --version 2`,
 		Args: cobra.ExactArgs(1),
 		RunE: runGet,
 	}
@@ -41,10 +41,17 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = conn.Close() }()
 
+	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
+	if err != nil {
+		return err
+	}
+
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
 	info, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+		Ledger:  ledgerName,
 		Name:    name,
 		Version: version,
 	})
@@ -52,6 +59,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return cmdutil.FormatGRPCError("failed to get numscript", err)
 	}
 
+	pterm.Printf("Ledger:     %s\n", pterm.Cyan(ledgerName))
 	pterm.Printf("Name:       %s\n", pterm.Cyan(info.GetName()))
 	pterm.Printf("Version:    %s\n", info.GetVersion())
 

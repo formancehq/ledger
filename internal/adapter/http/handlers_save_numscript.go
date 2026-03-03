@@ -10,8 +10,9 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
-// handleSaveNumscript handles POST /numscripts/{name} to save a numscript.
+// handleSaveNumscript handles PUT /{ledgerName}/numscripts/{name} to save a numscript.
 func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
+	ledger := chi.URLParam(r, "ledgerName")
 	name := chi.URLParam(r, "name")
 	if name == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("numscript name is required"))
@@ -32,6 +33,7 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 	logs, err := s.backend.Apply(r.Context(), &servicepb.Request{
 		Type: &servicepb.Request_SaveNumscript{
 			SaveNumscript: &servicepb.SaveNumscriptRequest{
+				Ledger:  ledger,
 				Name:    name,
 				Content: body.Content,
 				Version: body.Version,
