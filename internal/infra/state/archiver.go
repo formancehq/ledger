@@ -2,12 +2,12 @@ package state
 
 import (
 	"archive/tar"
-	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -124,15 +124,34 @@ func (a *Archiver) archive(req ArchiveRequest) error {
 
 	a.logger.WithFields(logFields).Infof("Starting period archival")
 
-	// Build the tar.gz archive in memory
-	archiveData, err := a.buildArchive(req)
-	if err != nil {
-		return fmt.Errorf("building archive: %w", err)
-	}
+	// Stream the tar.gz archive directly to cold storage via a pipe,
+	// avoiding buffering the entire archive in memory.
+	pr, pw := io.Pipe()
 
-	// Upload to cold storage
-	if err := a.coldStorage.Archive(ctx, a.bucketID, req.PeriodID, bytes.NewReader(archiveData)); err != nil {
-		return fmt.Errorf("uploading archive: %w", err)
+	streamErrCh := make(chan error, 1)
+	go func() {
+		err := a.streamArchive(req, pw)
+		_ = pw.CloseWithError(err) // signals EOF (or error) to the reader side
+		streamErrCh <- err
+	}()
+
+	// Upload to cold storage — reads from the pipe as streamArchive writes.
+	uploadErr := a.coldStorage.Archive(ctx, a.bucketID, req.PeriodID, pr)
+
+	// Close the reader so the writer goroutine doesn't block if upload failed early.
+	_ = pr.CloseWithError(uploadErr)
+
+	// Wait for the writer goroutine to finish.
+	streamErr := <-streamErrCh
+
+	if streamErr != nil && uploadErr != nil {
+		return fmt.Errorf("streaming archive: %w (upload also failed: %v)", streamErr, uploadErr)
+	}
+	if streamErr != nil {
+		return fmt.Errorf("streaming archive: %w", streamErr)
+	}
+	if uploadErr != nil {
+		return fmt.Errorf("uploading archive: %w", uploadErr)
 	}
 
 	// Verify the upload
@@ -144,10 +163,7 @@ func (a *Archiver) archive(req ArchiveRequest) error {
 		return fmt.Errorf("archive verification failed: archive not found after upload")
 	}
 
-	a.logger.WithFields(map[string]any{
-		"periodId":    req.PeriodID,
-		"archiveSize": len(archiveData),
-	}).Infof("Period archival complete, proposing ConfirmArchivePeriod")
+	a.logger.WithFields(logFields).Infof("Period archival complete, proposing ConfirmArchivePeriod")
 
 	// Propose ConfirmArchivePeriod back into Raft
 	a.proposeFn(req.PeriodID)
@@ -163,18 +179,21 @@ type periodMetadata struct {
 	ArchivedAt    string `json:"archivedAt"`
 }
 
-// buildArchive creates a tar.gz archive containing period metadata and a raw
-// binary dump of all cold-storable Pebble KV pairs for the period.
+// streamArchive writes a tar.gz archive to w containing period metadata and a
+// raw binary dump of all cold-storable Pebble KV pairs for the period.
+//
+// It uses a two-pass approach over IterateColdKVPairs to avoid buffering:
+//   - Pass 1: compute the total data.bin size (tar needs it upfront)
+//   - Pass 2: stream KV pairs directly through tar → gzip → w
 //
 // Archive layout:
 //   - metadata.json  — period ID, sequence range, archival timestamp
 //   - data.bin       — raw KV pairs: [keyLen:4][key][valueLen:4][value]...
-func (a *Archiver) buildArchive(req ArchiveRequest) ([]byte, error) {
-	var buf bytes.Buffer
-	gzWriter := gzip.NewWriter(&buf)
+func (a *Archiver) streamArchive(req ArchiveRequest, w io.Writer) error {
+	gzWriter := gzip.NewWriter(w)
 	tarWriter := tar.NewWriter(gzWriter)
 
-	// 1. Add period metadata JSON
+	// 1. Add period metadata JSON (always small, OK to buffer)
 	meta := periodMetadata{
 		PeriodID:      req.PeriodID,
 		StartSequence: req.StartSequence,
@@ -183,40 +202,62 @@ func (a *Archiver) buildArchive(req ArchiveRequest) ([]byte, error) {
 	}
 	metaJSON, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("marshaling period metadata: %w", err)
+		return fmt.Errorf("marshaling period metadata: %w", err)
 	}
 	if err := addTarEntry(tarWriter, "metadata.json", metaJSON); err != nil {
-		return nil, err
+		return err
 	}
 
-	// 2. Dump all cold-storable KV pairs as raw binary
-	var dataBuf bytes.Buffer
-	var lenBuf [4]byte
+	// 2. Dump all cold-storable KV pairs as raw binary (two-pass streaming)
+	// Pass 1: compute data.bin size so we can write the tar header.
+	var dataSize int64
 	if err := a.dataStore.IterateColdKVPairs(req.StartSequence, req.CloseSequence, func(key, value []byte) error {
-		binary.BigEndian.PutUint32(lenBuf[:], uint32(len(key)))
-		dataBuf.Write(lenBuf[:])
-		dataBuf.Write(key)
-		binary.BigEndian.PutUint32(lenBuf[:], uint32(len(value)))
-		dataBuf.Write(lenBuf[:])
-		dataBuf.Write(value)
+		dataSize += 4 + int64(len(key)) + 4 + int64(len(value))
 		return nil
 	}); err != nil {
-		return nil, fmt.Errorf("iterating cold KV pairs: %w", err)
+		return fmt.Errorf("computing data size: %w", err)
 	}
-	if dataBuf.Len() > 0 {
-		if err := addTarEntry(tarWriter, "data.bin", dataBuf.Bytes()); err != nil {
-			return nil, err
+
+	// Pass 2: stream KV pairs directly into the tar entry.
+	if dataSize > 0 {
+		if err := tarWriter.WriteHeader(&tar.Header{
+			Name: "data.bin",
+			Mode: 0o644,
+			Size: dataSize,
+		}); err != nil {
+			return fmt.Errorf("writing tar header for data.bin: %w", err)
+		}
+
+		var lenBuf [4]byte
+		if err := a.dataStore.IterateColdKVPairs(req.StartSequence, req.CloseSequence, func(key, value []byte) error {
+			binary.BigEndian.PutUint32(lenBuf[:], uint32(len(key)))
+			if _, err := tarWriter.Write(lenBuf[:]); err != nil {
+				return err
+			}
+			if _, err := tarWriter.Write(key); err != nil {
+				return err
+			}
+			binary.BigEndian.PutUint32(lenBuf[:], uint32(len(value)))
+			if _, err := tarWriter.Write(lenBuf[:]); err != nil {
+				return err
+			}
+			if _, err := tarWriter.Write(value); err != nil {
+				return err
+			}
+			return nil
+		}); err != nil {
+			return fmt.Errorf("streaming cold KV pairs: %w", err)
 		}
 	}
 
 	if err := tarWriter.Close(); err != nil {
-		return nil, fmt.Errorf("closing tar writer: %w", err)
+		return fmt.Errorf("closing tar writer: %w", err)
 	}
 	if err := gzWriter.Close(); err != nil {
-		return nil, fmt.Errorf("closing gzip writer: %w", err)
+		return fmt.Errorf("closing gzip writer: %w", err)
 	}
 
-	return buf.Bytes(), nil
+	return nil
 }
 
 // addTarEntry adds a file entry to a tar archive.
