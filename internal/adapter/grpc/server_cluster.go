@@ -497,6 +497,21 @@ func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clust
 	return &clusterpb.RemoveNodeResponse{}, nil
 }
 
+func (impl *ClusterServiceServerImpl) CompactStore(ctx context.Context, _ *clusterpb.CompactStoreRequest) (*clusterpb.CompactStoreResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
+		return nil, err
+	}
+
+	start := time.Now()
+	if err := impl.store.CompactAll(); err != nil {
+		return nil, fmt.Errorf("compaction failed: %w", err)
+	}
+
+	return &clusterpb.CompactStoreResponse{
+		DurationMs: time.Since(start).Milliseconds(),
+	}, nil
+}
+
 func RegisterClusterService(server *ggrpc.Server, clusterServiceServer clusterpb.ClusterServiceServer) {
 	clusterpb.RegisterClusterServiceServer(server, clusterServiceServer)
 }

@@ -263,6 +263,24 @@ func (e *ErrPreparedQueryNotFound) Error() string {
 	return fmt.Sprintf("prepared query %s/%s not found", e.Ledger, e.Name)
 }
 
+// ErrIndexNotFound is returned when a query references an index that does not exist.
+type ErrIndexNotFound struct {
+	Index string
+}
+
+func (e *ErrIndexNotFound) Error() string {
+	return fmt.Sprintf("index not found: %s", e.Index)
+}
+
+// ErrIndexBuilding is returned when a query references an index that is still being built.
+type ErrIndexBuilding struct {
+	Index string
+}
+
+func (e *ErrIndexBuilding) Error() string {
+	return fmt.Sprintf("index is still building: %s", e.Index)
+}
+
 // ErrInvalidReceipt is returned when a JWT receipt fails verification.
 type ErrInvalidReceipt struct {
 	Reason string

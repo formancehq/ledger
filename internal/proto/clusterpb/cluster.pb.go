@@ -1274,6 +1274,86 @@ func (x *BackupResponse) GetStatusMessage() string {
 	return ""
 }
 
+type CompactStoreRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompactStoreRequest) Reset() {
+	*x = CompactStoreRequest{}
+	mi := &file_cluster_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompactStoreRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompactStoreRequest) ProtoMessage() {}
+
+func (x *CompactStoreRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompactStoreRequest.ProtoReflect.Descriptor instead.
+func (*CompactStoreRequest) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{21}
+}
+
+type CompactStoreResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DurationMs    int64                  `protobuf:"varint,1,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"` // Wall-clock duration of the compaction in milliseconds
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompactStoreResponse) Reset() {
+	*x = CompactStoreResponse{}
+	mi := &file_cluster_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompactStoreResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompactStoreResponse) ProtoMessage() {}
+
+func (x *CompactStoreResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompactStoreResponse.ProtoReflect.Descriptor instead.
+func (*CompactStoreResponse) Descriptor() ([]byte, []int) {
+	return file_cluster_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *CompactStoreResponse) GetDurationMs() int64 {
+	if x != nil {
+		return x.DurationMs
+	}
+	return 0
+}
+
 var File_cluster_proto protoreflect.FileDescriptor
 
 const file_cluster_proto_rawDesc = "" +
@@ -1375,7 +1455,11 @@ const file_cluster_proto_rawDesc = "" +
 	"\x0econtent_sha256\x18\x04 \x01(\tR\rcontentSha256\x12!\n" +
 	"\fcontent_size\x18\x05 \x01(\x04R\vcontentSize\x120\n" +
 	"\x14estimated_total_size\x18\x06 \x01(\x04R\x12estimatedTotalSize\x12%\n" +
-	"\x0estatus_message\x18\a \x01(\tR\rstatusMessage2\xd9\x04\n" +
+	"\x0estatus_message\x18\a \x01(\tR\rstatusMessage\"\x15\n" +
+	"\x13CompactStoreRequest\"7\n" +
+	"\x14CompactStoreResponse\x12\x1f\n" +
+	"\vduration_ms\x18\x01 \x01(\x03R\n" +
+	"durationMs2\xa6\x05\n" +
 	"\x0eClusterService\x12I\n" +
 	"\x0fGetClusterState\x12\x1f.cluster.GetClusterStateRequest\x1a\x15.cluster.ClusterState\x12@\n" +
 	"\fGetDiskUsage\x12\x1c.cluster.GetDiskUsageRequest\x1a\x12.cluster.DiskUsage\x12=\n" +
@@ -1386,7 +1470,8 @@ const file_cluster_proto_rawDesc = "" +
 	"AddLearner\x12\x1a.cluster.AddLearnerRequest\x1a\x1b.cluster.AddLearnerResponse\x12Q\n" +
 	"\x0ePromoteLearner\x12\x1e.cluster.PromoteLearnerRequest\x1a\x1f.cluster.PromoteLearnerResponse\x12E\n" +
 	"\n" +
-	"RemoveNode\x12\x1a.cluster.RemoveNodeRequest\x1a\x1b.cluster.RemoveNodeResponseB>Z<github.com/formancehq/ledger-v3-poc/internal/proto/clusterpbb\x06proto3"
+	"RemoveNode\x12\x1a.cluster.RemoveNodeRequest\x1a\x1b.cluster.RemoveNodeResponse\x12K\n" +
+	"\fCompactStore\x12\x1c.cluster.CompactStoreRequest\x1a\x1d.cluster.CompactStoreResponseB>Z<github.com/formancehq/ledger-v3-poc/internal/proto/clusterpbb\x06proto3"
 
 var (
 	file_cluster_proto_rawDescOnce sync.Once
@@ -1400,7 +1485,7 @@ func file_cluster_proto_rawDescGZIP() []byte {
 	return file_cluster_proto_rawDescData
 }
 
-var file_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_cluster_proto_goTypes = []any{
 	(*GetClusterStateRequest)(nil),     // 0: cluster.GetClusterStateRequest
 	(*NodeInfo)(nil),                   // 1: cluster.NodeInfo
@@ -1423,13 +1508,15 @@ var file_cluster_proto_goTypes = []any{
 	(*RemoveNodeResponse)(nil),         // 18: cluster.RemoveNodeResponse
 	(*BackupRequest)(nil),              // 19: cluster.BackupRequest
 	(*BackupResponse)(nil),             // 20: cluster.BackupResponse
-	nil,                                // 21: cluster.RaftStatus.ProgressEntry
+	(*CompactStoreRequest)(nil),        // 21: cluster.CompactStoreRequest
+	(*CompactStoreResponse)(nil),       // 22: cluster.CompactStoreResponse
+	nil,                                // 23: cluster.RaftStatus.ProgressEntry
 }
 var file_cluster_proto_depIdxs = []int32{
 	2,  // 0: cluster.NodeInfo.progress:type_name -> cluster.ProgressInfo
 	6,  // 1: cluster.NodeInfo.sync_progress:type_name -> cluster.SyncProgress
 	5,  // 2: cluster.NodeInfo.index_progress:type_name -> cluster.IndexProgress
-	21, // 3: cluster.RaftStatus.progress:type_name -> cluster.RaftStatus.ProgressEntry
+	23, // 3: cluster.RaftStatus.progress:type_name -> cluster.RaftStatus.ProgressEntry
 	1,  // 4: cluster.ClusterState.nodes:type_name -> cluster.NodeInfo
 	3,  // 5: cluster.ClusterState.raft_status:type_name -> cluster.RaftStatus
 	6,  // 6: cluster.ClusterState.sync_progress:type_name -> cluster.SyncProgress
@@ -1443,16 +1530,18 @@ var file_cluster_proto_depIdxs = []int32{
 	13, // 14: cluster.ClusterService.AddLearner:input_type -> cluster.AddLearnerRequest
 	15, // 15: cluster.ClusterService.PromoteLearner:input_type -> cluster.PromoteLearnerRequest
 	17, // 16: cluster.ClusterService.RemoveNode:input_type -> cluster.RemoveNodeRequest
-	4,  // 17: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
-	12, // 18: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
-	11, // 19: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
-	8,  // 20: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
-	20, // 21: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
-	14, // 22: cluster.ClusterService.AddLearner:output_type -> cluster.AddLearnerResponse
-	16, // 23: cluster.ClusterService.PromoteLearner:output_type -> cluster.PromoteLearnerResponse
-	18, // 24: cluster.ClusterService.RemoveNode:output_type -> cluster.RemoveNodeResponse
-	17, // [17:25] is the sub-list for method output_type
-	9,  // [9:17] is the sub-list for method input_type
+	21, // 17: cluster.ClusterService.CompactStore:input_type -> cluster.CompactStoreRequest
+	4,  // 18: cluster.ClusterService.GetClusterState:output_type -> cluster.ClusterState
+	12, // 19: cluster.ClusterService.GetDiskUsage:output_type -> cluster.DiskUsage
+	11, // 20: cluster.ClusterService.GetNodeTime:output_type -> cluster.NodeTime
+	8,  // 21: cluster.ClusterService.TransferLeadership:output_type -> cluster.TransferLeadershipResponse
+	20, // 22: cluster.ClusterService.Backup:output_type -> cluster.BackupResponse
+	14, // 23: cluster.ClusterService.AddLearner:output_type -> cluster.AddLearnerResponse
+	16, // 24: cluster.ClusterService.PromoteLearner:output_type -> cluster.PromoteLearnerResponse
+	18, // 25: cluster.ClusterService.RemoveNode:output_type -> cluster.RemoveNodeResponse
+	22, // 26: cluster.ClusterService.CompactStore:output_type -> cluster.CompactStoreResponse
+	18, // [18:27] is the sub-list for method output_type
+	9,  // [9:18] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
 	9,  // [9:9] is the sub-list for extension extendee
 	0,  // [0:9] is the sub-list for field type_name
@@ -1469,7 +1558,7 @@ func file_cluster_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cluster_proto_rawDesc), len(file_cluster_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   22,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

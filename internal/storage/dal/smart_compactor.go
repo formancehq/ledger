@@ -1,6 +1,7 @@
 package dal
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -132,6 +133,20 @@ func (c *SmartCompactor) periodicCheck() {
 	} else {
 		c.compactPrefixes("periodic", coldPrefixes)
 	}
+}
+
+// CompactAll runs a synchronous prefix-by-prefix compaction of the entire
+// Pebble keyspace. It reuses the same prefix list as the background
+// SmartCompactor but blocks until all prefixes are compacted.
+// Returns the first error encountered.
+func (s *Store) CompactAll() error {
+	db := s.getDB()
+	for _, p := range allPrefixes() {
+		if err := db.Compact([]byte{p.start}, []byte{p.end}, false); err != nil {
+			return fmt.Errorf("compacting prefix %s: %w", p.name, err)
+		}
+	}
+	return nil
 }
 
 // compactPrefixes runs db.Compact for each prefix sequentially in a background

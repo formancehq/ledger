@@ -1257,6 +1257,41 @@ ledgerctl store check
 ledgerctl store check --json
 ```
 
+#### store compact
+
+Trigger a synchronous compaction of the local Pebble store. Useful after bulk deletes, period archival, or before taking a backup.
+
+**Aliases:** `gc`
+
+```bash
+ledgerctl store compact [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `50s` | Request timeout |
+
+**Behavior:**
+- Runs a prefix-by-prefix compaction on the connected node (node-local, not forwarded to leader)
+- Blocks until all prefixes are compacted
+- Returns the wall-clock duration of the compaction
+
+**Example:**
+
+```bash
+# Compact the local store
+ledgerctl store compact
+
+# Output as JSON (for scripting)
+ledgerctl store compact --json
+
+# Short form
+ledgerctl s gc
+```
+
 #### store backup
 
 Download a point-in-time backup of the Pebble store as a tar archive. The request is forwarded to the cluster leader to ensure the most up-to-date state.
