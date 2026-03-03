@@ -290,20 +290,3 @@ func (e *ErrInvalidReceipt) Error() string {
 	return fmt.Sprintf("invalid receipt: %s", e.Reason)
 }
 
-// ErrIndexNotFound is returned when a query requires an index that has not been created.
-type ErrIndexNotFound struct {
-	Index string
-}
-
-func (e *ErrIndexNotFound) Error() string {
-	return fmt.Sprintf("index not found: %s", e.Index)
-}
-
-// ErrIndexBuilding is returned when a query requires an index that is still being built.
-type ErrIndexBuilding struct {
-	Index string
-}
-
-func (e *ErrIndexBuilding) Error() string {
-	return fmt.Sprintf("index is still building: %s", e.Index)
-}
