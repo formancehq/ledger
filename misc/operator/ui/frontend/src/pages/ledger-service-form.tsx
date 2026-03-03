@@ -86,6 +86,14 @@ export function LedgerServiceFormPage() {
     setInitialized(true);
   }
 
+  // For guests, auto-select the first available defaults when none is chosen
+  if (isGuest && defaultsList?.length && !spec.defaultsRef) {
+    setSpec((prev) => ({
+      ...prev,
+      defaultsRef: defaultsList[0].ledgerDefaults.metadata.name,
+    }));
+  }
+
   // Resolve the LedgerDefaults spec from the selected defaultsRef
   const defaultsSpec: LedgerDefaultsSpec | undefined = useMemo(() => {
     const ref = spec.defaultsRef;
@@ -220,7 +228,7 @@ export function LedgerServiceFormPage() {
           </h1>
           <p className="text-sm text-muted-foreground">Namespace: {ns}</p>
         </div>
-        <Button onClick={handleSave} disabled={isPending || (!isEdit && !formName)}>
+        <Button onClick={handleSave} disabled={isPending || (!isEdit && !formName) || (isGuest && !spec.defaultsRef)}>
           <Save className="h-4 w-4" />
           {isPending ? "Saving..." : isEdit ? "Save Changes" : "Create"}
         </Button>
@@ -274,10 +282,10 @@ export function LedgerServiceFormPage() {
               }
             >
               <SelectTrigger id="ls-defaults-ref">
-                <SelectValue placeholder="None" />
+                <SelectValue placeholder={isGuest ? "Select a configuration" : "None"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__">None</SelectItem>
+                {!isGuest && <SelectItem value="__none__">None</SelectItem>}
                 {defaultsList?.map(({ ledgerDefaults: d }) => (
                   <SelectItem key={d.metadata.name} value={d.metadata.name}>
                     {d.metadata.name}

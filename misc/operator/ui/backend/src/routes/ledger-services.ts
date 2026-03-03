@@ -36,8 +36,16 @@ app.post("/namespaces/:ns/ledger-services", async (c) => {
   const ns = c.req.param("ns");
   const body = await c.req.json();
 
-  // Annotate with owner info from the authenticated session (if any)
+  // Guests must select a pre-registered configuration
   const session = c.get("session");
+  if (session?.role === "guest" && !body.spec?.defaultsRef) {
+    return c.json(
+      { error: { message: "Forbidden: guests must select a configuration (defaultsRef)", requiredRole: "admin" } },
+      403
+    );
+  }
+
+  // Annotate with owner info from the authenticated session (if any)
   if (session) {
     body.metadata ??= {};
     body.metadata.annotations = {
