@@ -7,11 +7,11 @@ import (
 	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // NewCatalogCommand creates the ledgers catalog command.
@@ -242,7 +242,6 @@ func renderCatalogPreparedQueries(queries []*commonpb.PreparedQuery, expand bool
 		return
 	}
 
-	marshaler := protojson.MarshalOptions{Indent: "  ", EmitUnpopulated: false}
 	for i, q := range queries {
 		if i > 0 {
 			pterm.Println()
@@ -253,15 +252,7 @@ func renderCatalogPreparedQueries(queries []*commonpb.PreparedQuery, expand bool
 		pterm.Printf("    Ledger: %s\n", q.Ledger)
 
 		if q.Filter != nil {
-			pterm.Printf("    Filter:\n")
-			filterJSON, err := marshaler.Marshal(q.Filter)
-			if err != nil {
-				pterm.Printf("      %s\n", pterm.Red("(failed to marshal filter)"))
-			} else {
-				for _, line := range strings.Split(string(filterJSON), "\n") {
-					pterm.Printf("      %s\n", line)
-				}
-			}
+			pterm.Printf("    Filter: %s\n", filterexpr.Format(q.Filter))
 		} else {
 			pterm.Printf("    Filter: %s\n", pterm.Gray("(none)"))
 		}
