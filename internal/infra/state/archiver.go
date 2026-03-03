@@ -71,7 +71,7 @@ func (a *Archiver) Start() {
 	a.w.Run(func(stop <-chan struct{}) {
 		worker.DrainChannel(stop, a.archiveRequestCh, func(req ArchiveRequest) {
 			worker.RetryWithBackoff(stop, a.logger, func() error {
-				return a.archive(req)
+				return a.archive(stop, req)
 			})
 		})
 	})
@@ -91,8 +91,19 @@ func (a *Archiver) Stop() {
 //   - If the archive does not exist yet and this node is not the leader,
 //     return worker.ErrNotLeader so the retry loop waits and re-checks.
 //   - Only the leader builds, uploads, and proposes.
-func (a *Archiver) archive(req ArchiveRequest) error {
-	ctx := context.Background()
+func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
+	// Derive a cancellable context from the worker's stop channel so that
+	// cold storage I/O (Exists, Archive) is interrupted during shutdown.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-stop:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
 	logFields := map[string]any{
 		"periodId":      req.PeriodID,
 		"startSequence": req.StartSequence,

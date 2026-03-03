@@ -130,7 +130,9 @@ func (s *ServiceServer) Stop() error {
 		select {
 		case <-done:
 		case <-time.After(2 * time.Second):
+			s.logger.Infof("Graceful stop timed out, forcing stop")
 			s.server.Stop()
+			<-done // Wait for the GracefulStop goroutine to exit
 		}
 		s.server = nil
 	}

@@ -541,6 +541,7 @@ func Module() fx.Option {
 				runtime *dal.Store,
 				wal *wal.DefaultWAL,
 				rs *readstore.Store,
+				sp *spool.Default,
 				cfg Config,
 				logger logging.Logger,
 			) {

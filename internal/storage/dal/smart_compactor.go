@@ -44,6 +44,10 @@ type SmartCompactor struct {
 	compacting    atomic.Bool
 	compactWg     sync.WaitGroup
 	coldRequestCh <-chan struct{}
+
+	// stopCh is the worker's stop channel, stored by Start() so that background
+	// compaction goroutines can check for shutdown between prefix iterations.
+	stopCh <-chan struct{}
 }
 
 // NewSmartCompactor creates a new SmartCompactor for the given store.
@@ -61,6 +65,7 @@ func NewSmartCompactor(store *Store, logger logging.Logger, coldRequestCh <-chan
 // Start launches the background goroutine that listens for cold compaction requests.
 func (c *SmartCompactor) Start() {
 	c.w.Run(func(stop <-chan struct{}) {
+		c.stopCh = stop // store for use by compaction goroutines
 		for {
 			select {
 			case <-stop:
@@ -73,10 +78,21 @@ func (c *SmartCompactor) Start() {
 }
 
 // Stop signals the background goroutine to stop, then waits for any in-flight
-// compaction goroutine to finish before returning.
+// compaction goroutine to finish before returning. A 10-second deadline prevents
+// a long-running db.Compact from blocking shutdown indefinitely.
 func (c *SmartCompactor) Stop() {
 	c.w.Stop()
-	c.compactWg.Wait()
+
+	done := make(chan struct{})
+	go func() {
+		c.compactWg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		c.logger.Infof("In-flight compaction did not finish within 10s, proceeding with shutdown")
+	}
 }
 
 // CompactAll runs a synchronous prefix-by-prefix compaction of the entire
@@ -120,6 +136,17 @@ func (c *SmartCompactor) compactPrefixes(reason string, prefixes []compactPrefix
 
 		overallStart := time.Now()
 		for _, p := range prefixes {
+			// Check for shutdown between prefix iterations so we abort early
+			// rather than starting another potentially long db.Compact call.
+			select {
+			case <-c.stopCh:
+				c.logger.WithFields(map[string]any{
+					"reason": reason,
+				}).Infof("Compaction aborted due to shutdown")
+				return
+			default:
+			}
+
 			prefixStart := time.Now()
 			if err := db.Compact([]byte{p.start}, []byte{p.end}, false); err != nil {
 				c.logger.WithFields(map[string]any{

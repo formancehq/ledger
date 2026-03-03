@@ -17,6 +17,11 @@ import (
 // ErrUnhealthy is returned when the cluster is not healthy (e.g. disk usage or clock skew exceeded threshold).
 var ErrUnhealthy = errors.New("cluster is unhealthy")
 
+// healthCheckCallTimeout is the per-gRPC-call timeout used when checking peer
+// health. It prevents a single unreachable peer from blocking the entire
+// health-check cycle (and therefore blocking shutdown).
+const healthCheckCallTimeout = 5 * time.Second
+
 // Checker is the interface for health checking. It allows consumers (e.g. admission)
 // to query the cluster health without depending on a concrete implementation.
 //
@@ -73,9 +78,11 @@ func NewHealthChecker(
 
 // Start launches the background goroutine that periodically checks disk usage.
 func (hc *HealthChecker) Start() {
-	hc.check()
+	hc.check(make(chan struct{})) // initial check with no-op stop
 	hc.w.Run(func(stop <-chan struct{}) {
-		worker.RunTicker(stop, hc.interval, hc.check)
+		worker.RunTicker(stop, hc.interval, func() {
+			hc.check(stop)
+		})
 	})
 }
 
@@ -91,10 +98,25 @@ func (hc *HealthChecker) IsHealthy() bool {
 
 // check performs the disk usage check on all nodes if this node is the leader.
 // It updates the healthy state atomically.
-func (hc *HealthChecker) check() {
+//
+// stop is the worker's stop channel; it is used to derive a cancellable context
+// so that in-flight gRPC calls are interrupted promptly during shutdown.
+func (hc *HealthChecker) check(stop <-chan struct{}) {
 	if !hc.node.IsLeader() {
 		return
 	}
+
+	// Create a base context that cancels on shutdown. Each gRPC call gets
+	// its own child context with a per-call timeout (healthCheckCallTimeout).
+	baseCtx, baseCancel := context.WithCancel(context.Background())
+	defer baseCancel()
+	go func() {
+		select {
+		case <-stop:
+			baseCancel()
+		case <-baseCtx.Done():
+		}
+	}()
 
 	healthy := !hc.exceedsThreshold(
 		hc.node.GetNodeID(),
@@ -106,6 +128,13 @@ func (hc *HealthChecker) check() {
 
 	// Check peers dynamically from the service pool
 	for _, peerID := range hc.servicePool.PeerIDs() {
+		// Abort early if shutting down.
+		select {
+		case <-baseCtx.Done():
+			return
+		default:
+		}
+
 		conn := hc.servicePool.GetConnection(peerID)
 		if conn == nil {
 			continue
@@ -114,7 +143,9 @@ func (hc *HealthChecker) check() {
 		client := clusterpb.NewClusterServiceClient(conn)
 
 		// Check disk usage
-		resp, err := client.GetDiskUsage(context.Background(), &clusterpb.GetDiskUsageRequest{})
+		callCtx, callCancel := context.WithTimeout(baseCtx, healthCheckCallTimeout)
+		resp, err := client.GetDiskUsage(callCtx, &clusterpb.GetDiskUsageRequest{})
+		callCancel()
 		if err != nil {
 			hc.logger.WithFields(map[string]any{
 				"node_id": peerID,
@@ -132,7 +163,7 @@ func (hc *HealthChecker) check() {
 
 		// Check clock skew
 		if hc.clockSkewThreshold > 0 {
-			if hc.exceedsClockSkew(client, peerID) {
+			if hc.exceedsClockSkew(baseCtx, client, peerID) {
 				healthy = false
 			}
 		}
@@ -179,9 +210,12 @@ func (hc *HealthChecker) exceedsThreshold(nodeID uint64, walUsed, walTotal, data
 
 // exceedsClockSkew queries a peer's physical clock and returns true if the skew
 // exceeds the configured threshold.
-func (hc *HealthChecker) exceedsClockSkew(client clusterpb.ClusterServiceClient, nodeID uint64) bool {
+func (hc *HealthChecker) exceedsClockSkew(baseCtx context.Context, client clusterpb.ClusterServiceClient, nodeID uint64) bool {
+	callCtx, callCancel := context.WithTimeout(baseCtx, healthCheckCallTimeout)
+	defer callCancel()
+
 	beforeCall := time.Now()
-	resp, err := client.GetNodeTime(context.Background(), &clusterpb.GetNodeTimeRequest{})
+	resp, err := client.GetNodeTime(callCtx, &clusterpb.GetNodeTimeRequest{})
 	if err != nil {
 		hc.logger.WithFields(map[string]any{
 			"node_id": nodeID,
