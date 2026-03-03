@@ -229,9 +229,9 @@ func formatNodeProgress(prog *clusterpb.ProgressInfo, commitIndex uint64, isLead
 		pct = 100
 	}
 
-	lag := commitIndex - prog.Match
-	lagStr := ""
-	if lag > 0 {
+	var lagStr string
+	if prog.Match < commitIndex {
+		lag := commitIndex - prog.Match
 		lagStr = fmt.Sprintf(" (%d behind)", lag)
 	}
 
