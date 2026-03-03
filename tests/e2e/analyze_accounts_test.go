@@ -102,17 +102,11 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.SuggestedChart).NotTo(BeNil())
-				g.Expect(resp.SuggestedChart.Segments).NotTo(BeEmpty())
+				g.Expect(resp.SuggestedChart.Roots).NotTo(BeEmpty())
 
 				// Find the "bank" segment in the chart
-				var bankSeg *commonpb.ChartSegment
-				for _, seg := range resp.SuggestedChart.Segments {
-					if seg.FixedValue == "bank" {
-						bankSeg = seg
-						break
-					}
-				}
-				g.Expect(bankSeg).NotTo(BeNil(), "expected 'bank' segment in chart")
+				bankSeg, ok := resp.SuggestedChart.Roots["bank"]
+				g.Expect(ok).To(BeTrue(), "expected 'bank' root in chart")
 				// bank should have children (main, fees)
 				g.Expect(bankSeg.Children).NotTo(BeEmpty())
 			}).Should(Succeed())
@@ -152,18 +146,11 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 				// 15 user accounts + world = 16
 				g.Expect(resp.TotalAccounts).To(Equal(uint64(16)))
 
-				// Chart should have a "users" segment with a variable child
+				// Chart should have a "users" root with a variable child
 				g.Expect(resp.SuggestedChart).NotTo(BeNil())
-				var usersSeg *commonpb.ChartSegment
-				for _, seg := range resp.SuggestedChart.Segments {
-					if seg.FixedValue == "users" {
-						usersSeg = seg
-						break
-					}
-				}
-				g.Expect(usersSeg).NotTo(BeNil(), "expected 'users' segment in chart")
-				g.Expect(usersSeg.Children).To(HaveLen(1))
-				g.Expect(usersSeg.Children[0].Variable).NotTo(BeNil(), "expected variable child under 'users'")
+				usersSeg, ok := resp.SuggestedChart.Roots["users"]
+				g.Expect(ok).To(BeTrue(), "expected 'users' root in chart")
+				g.Expect(usersSeg.Variable).NotTo(BeNil(), "expected variable child under 'users'")
 			}).Should(Succeed())
 		})
 
@@ -226,18 +213,11 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 				// 5 children < 10 threshold, so they should be fixed
 				g.Expect(resp.SuggestedChart).NotTo(BeNil())
-				var deptSeg *commonpb.ChartSegment
-				for _, seg := range resp.SuggestedChart.Segments {
-					if seg.FixedValue == "dept" {
-						deptSeg = seg
-						break
-					}
-				}
-				g.Expect(deptSeg).NotTo(BeNil())
+				deptSeg, ok := resp.SuggestedChart.Roots["dept"]
+				g.Expect(ok).To(BeTrue(), "expected 'dept' root")
 				// All children should be fixed (no variable)
-				for _, child := range deptSeg.Children {
-					g.Expect(child.Variable).To(BeNil(), "expected fixed children with default threshold")
-				}
+				g.Expect(deptSeg.Variable).To(BeNil(), "expected no variable with default threshold")
+				g.Expect(deptSeg.Children).NotTo(BeEmpty(), "expected fixed children")
 			}).Should(Succeed())
 		})
 
@@ -250,17 +230,10 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 				g.Expect(err).To(Succeed())
 
 				g.Expect(resp.SuggestedChart).NotTo(BeNil())
-				var deptSeg *commonpb.ChartSegment
-				for _, seg := range resp.SuggestedChart.Segments {
-					if seg.FixedValue == "dept" {
-						deptSeg = seg
-						break
-					}
-				}
-				g.Expect(deptSeg).NotTo(BeNil())
+				deptSeg, ok := resp.SuggestedChart.Roots["dept"]
+				g.Expect(ok).To(BeTrue(), "expected 'dept' root")
 				// With threshold=3, 5 children should be classified as variable
-				g.Expect(deptSeg.Children).To(HaveLen(1))
-				g.Expect(deptSeg.Children[0].Variable).NotTo(BeNil(), "expected variable child with low threshold")
+				g.Expect(deptSeg.Variable).NotTo(BeNil(), "expected variable child with low threshold")
 			}).Should(Succeed())
 		})
 	})
@@ -407,14 +380,10 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.SuggestedChart).NotTo(BeNil())
 
-				// Should have at least "bank", "users", and "world" top-level segments
-				segNames := make(map[string]bool)
-				for _, seg := range resp.SuggestedChart.Segments {
-					segNames[seg.FixedValue] = true
-				}
-				g.Expect(segNames).To(HaveKey("bank"))
-				g.Expect(segNames).To(HaveKey("users"))
-				g.Expect(segNames).To(HaveKey("world"))
+				// Should have "bank", "users", and "world" top-level roots
+				g.Expect(resp.SuggestedChart.Roots).To(HaveKey("bank"))
+				g.Expect(resp.SuggestedChart.Roots).To(HaveKey("users"))
+				g.Expect(resp.SuggestedChart.Roots).To(HaveKey("world"))
 			}).Should(Succeed())
 		})
 
@@ -425,19 +394,12 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 				})
 				g.Expect(err).To(Succeed())
 
-				var usersSeg *commonpb.ChartSegment
-				for _, seg := range resp.SuggestedChart.Segments {
-					if seg.FixedValue == "users" {
-						usersSeg = seg
-						break
-					}
-				}
-				g.Expect(usersSeg).NotTo(BeNil())
-				// users should have exactly one variable child (the user ID)
-				g.Expect(usersSeg.Children).To(HaveLen(1))
-				g.Expect(usersSeg.Children[0].Variable).NotTo(BeNil())
+				usersSeg, ok := resp.SuggestedChart.Roots["users"]
+				g.Expect(ok).To(BeTrue(), "expected 'users' root")
+				// users should have a variable child (the user ID)
+				g.Expect(usersSeg.Variable).NotTo(BeNil())
 				// Under the variable user ID, there should be fixed children: main, savings
-				g.Expect(usersSeg.Children[0].Children).NotTo(BeEmpty())
+				g.Expect(usersSeg.Variable.Children).NotTo(BeEmpty())
 			}).Should(Succeed())
 		})
 	})

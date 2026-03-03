@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
@@ -106,30 +107,67 @@ func renderAnalysisResult(resp *servicepb.AnalyzeAccountsResponse) {
 	}
 
 	// Chart tree
-	if resp.SuggestedChart != nil && len(resp.SuggestedChart.Segments) > 0 {
+	if resp.SuggestedChart != nil && len(resp.SuggestedChart.Roots) > 0 {
 		pterm.DefaultSection.Println("Suggested Chart of Accounts")
 		tree := pterm.TreeNode{Text: "root"}
-		for _, seg := range resp.SuggestedChart.Segments {
-			tree.Children = append(tree.Children, buildTreeNode(seg))
+		keys := sortedMapKeys(resp.SuggestedChart.Roots)
+		for _, key := range keys {
+			tree.Children = append(tree.Children, buildSegmentTreeNode(key, resp.SuggestedChart.Roots[key]))
 		}
 		_ = pterm.DefaultTree.WithRoot(tree).Render()
 	}
 }
 
-func buildTreeNode(seg *commonpb.ChartSegment) pterm.TreeNode {
-	var label string
-	if seg.Variable != nil {
-		label = fmt.Sprintf("{%s}", seg.Variable.Name)
-		if seg.Variable.InferredPattern != "" {
-			label += pterm.Gray(fmt.Sprintf(" ~ %s", seg.Variable.InferredPattern))
-		}
-	} else {
-		label = seg.FixedValue
+func buildSegmentTreeNode(name string, seg *commonpb.ChartSegment) pterm.TreeNode {
+	label := name
+	if seg.Account {
+		label += pterm.Gray(" [account]")
 	}
 
 	node := pterm.TreeNode{Text: label}
-	for _, child := range seg.Children {
-		node.Children = append(node.Children, buildTreeNode(child))
+
+	// Add fixed children (sorted)
+	for _, key := range sortedMapKeys(seg.Children) {
+		node.Children = append(node.Children, buildSegmentTreeNode(key, seg.Children[key]))
 	}
+
+	// Add variable child
+	if seg.Variable != nil {
+		node.Children = append(node.Children, buildVariableTreeNode(seg.Variable))
+	}
+
 	return node
+}
+
+func buildVariableTreeNode(v *commonpb.ChartVariable) pterm.TreeNode {
+	label := fmt.Sprintf("{%s}", v.Name)
+	if v.Pattern != "" {
+		label += pterm.Gray(fmt.Sprintf(" ~ %s", v.Pattern))
+	}
+	if v.Account {
+		label += pterm.Gray(" [account]")
+	}
+
+	node := pterm.TreeNode{Text: label}
+
+	// Add fixed children
+	for _, key := range sortedMapKeys(v.Children) {
+		node.Children = append(node.Children, buildSegmentTreeNode(key, v.Children[key]))
+	}
+
+	// Add nested variable
+	if v.Variable != nil {
+		node.Children = append(node.Children, buildVariableTreeNode(v.Variable))
+	}
+
+	return node
+}
+
+func sortedMapKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

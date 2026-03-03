@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,7 +27,7 @@ func TestAnalyze_EmptyAccounts(t *testing.T) {
 	resp := Analyze(nil, 0)
 	require.NotNil(t, resp)
 	require.NotNil(t, resp.SuggestedChart)
-	assert.Empty(t, resp.SuggestedChart.Segments)
+	assert.Empty(t, resp.SuggestedChart.Roots)
 	assert.Empty(t, resp.Patterns)
 	assert.Equal(t, uint64(0), resp.TotalAccounts)
 }
@@ -41,9 +40,11 @@ func TestAnalyze_SingleAccount(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(1), resp.TotalAccounts)
 
-	// Chart: single fixed segment "world"
-	require.Len(t, resp.SuggestedChart.Segments, 1)
-	assert.Equal(t, "world", resp.SuggestedChart.Segments[0].FixedValue)
+	// Chart: single root "world" segment
+	require.Len(t, resp.SuggestedChart.Roots, 1)
+	worldSeg, ok := resp.SuggestedChart.Roots["world"]
+	require.True(t, ok, "expected 'world' root")
+	assert.True(t, worldSeg.Account)
 
 	// Pattern: "world"
 	require.Len(t, resp.Patterns, 1)
@@ -65,22 +66,18 @@ func TestAnalyze_SimpleFixedHierarchy(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(3), resp.TotalAccounts)
 
-	// Chart should have 2 top-level segments: "bank" and "world"
-	require.Len(t, resp.SuggestedChart.Segments, 2)
+	// Chart should have 2 top-level roots: "bank" and "world"
+	require.Len(t, resp.SuggestedChart.Roots, 2)
 
-	// Find bank segment
-	var bankSeg *commonpb.ChartSegment
-	for _, s := range resp.SuggestedChart.Segments {
-		if s.FixedValue == "bank" {
-			bankSeg = s
-		}
-	}
-	require.NotNil(t, bankSeg, "expected 'bank' segment")
+	// Check bank segment
+	bankSeg, ok := resp.SuggestedChart.Roots["bank"]
+	require.True(t, ok, "expected 'bank' root")
 	require.Len(t, bankSeg.Children, 2) // fees, main
 
-	childValues := []string{bankSeg.Children[0].FixedValue, bankSeg.Children[1].FixedValue}
-	assert.Contains(t, childValues, "main")
-	assert.Contains(t, childValues, "fees")
+	_, hasFees := bankSeg.Children["fees"]
+	_, hasMain := bankSeg.Children["main"]
+	assert.True(t, hasFees, "expected 'fees' child")
+	assert.True(t, hasMain, "expected 'main' child")
 
 	// Patterns should include "bank:main", "bank:fees", "world"
 	assert.Len(t, resp.Patterns, 3)
@@ -101,14 +98,13 @@ func TestAnalyze_VariableDetection(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(15), resp.TotalAccounts)
 
-	// Chart: one top-level "users" segment with a variable child
-	require.Len(t, resp.SuggestedChart.Segments, 1)
-	usersSeg := resp.SuggestedChart.Segments[0]
-	assert.Equal(t, "users", usersSeg.FixedValue)
-	require.Len(t, usersSeg.Children, 1)
-	assert.NotNil(t, usersSeg.Children[0].Variable)
-	assert.Equal(t, "id", usersSeg.Children[0].Variable.Name)
-	assert.Equal(t, uuidPattern, usersSeg.Children[0].Variable.InferredPattern)
+	// Chart: one root "users" segment with a variable child
+	require.Len(t, resp.SuggestedChart.Roots, 1)
+	usersSeg, ok := resp.SuggestedChart.Roots["users"]
+	require.True(t, ok, "expected 'users' root")
+	require.NotNil(t, usersSeg.Variable, "expected variable child")
+	assert.Equal(t, "id", usersSeg.Variable.Name)
+	assert.Equal(t, uuidPattern, usersSeg.Variable.Pattern)
 
 	// Pattern: "users:{id}"
 	require.Len(t, resp.Patterns, 1)
@@ -130,13 +126,12 @@ func TestAnalyze_NumericPattern(t *testing.T) {
 
 	resp := Analyze(accounts, 0)
 
-	require.Len(t, resp.SuggestedChart.Segments, 1)
-	seg := resp.SuggestedChart.Segments[0]
-	assert.Equal(t, "orders", seg.FixedValue)
-	require.Len(t, seg.Children, 1)
-	require.NotNil(t, seg.Children[0].Variable)
-	assert.Equal(t, "number", seg.Children[0].Variable.Name)
-	assert.Equal(t, numericPattern, seg.Children[0].Variable.InferredPattern)
+	require.Len(t, resp.SuggestedChart.Roots, 1)
+	ordersSeg, ok := resp.SuggestedChart.Roots["orders"]
+	require.True(t, ok, "expected 'orders' root")
+	require.NotNil(t, ordersSeg.Variable, "expected variable child")
+	assert.Equal(t, "number", ordersSeg.Variable.Name)
+	assert.Equal(t, numericPattern, ordersSeg.Variable.Pattern)
 }
 
 func TestAnalyze_DeepNestedHierarchy(t *testing.T) {
@@ -154,8 +149,9 @@ func TestAnalyze_DeepNestedHierarchy(t *testing.T) {
 	assert.Equal(t, uint64(3), resp.TotalAccounts)
 
 	// Should have a nested structure: platform -> region -> (eu, us) -> (main, fees)
-	require.Len(t, resp.SuggestedChart.Segments, 1)
-	assert.Equal(t, "platform", resp.SuggestedChart.Segments[0].FixedValue)
+	require.Len(t, resp.SuggestedChart.Roots, 1)
+	_, ok := resp.SuggestedChart.Roots["platform"]
+	assert.True(t, ok, "expected 'platform' root")
 }
 
 func TestAnalyze_AssetsAggregation(t *testing.T) {
@@ -212,19 +208,18 @@ func TestAnalyze_ThresholdConfigurability(t *testing.T) {
 
 	// With default threshold (10), should be fixed
 	resp := Analyze(accounts, 0)
-	require.Len(t, resp.SuggestedChart.Segments, 1)
-	usersSeg := resp.SuggestedChart.Segments[0]
+	require.Len(t, resp.SuggestedChart.Roots, 1)
+	usersSeg, ok := resp.SuggestedChart.Roots["users"]
+	require.True(t, ok)
 	require.Len(t, usersSeg.Children, 5)
-	for _, child := range usersSeg.Children {
-		assert.NotEmpty(t, child.FixedValue, "expected fixed children with default threshold")
-	}
+	assert.Nil(t, usersSeg.Variable, "expected no variable with default threshold")
 
 	// With threshold=3, should become variable (5 numeric IDs > threshold 3)
 	resp2 := Analyze(accounts, 3)
-	require.Len(t, resp2.SuggestedChart.Segments, 1)
-	usersSeg2 := resp2.SuggestedChart.Segments[0]
-	require.Len(t, usersSeg2.Children, 1)
-	assert.NotNil(t, usersSeg2.Children[0].Variable, "expected variable child with threshold=3")
+	require.Len(t, resp2.SuggestedChart.Roots, 1)
+	usersSeg2, ok := resp2.SuggestedChart.Roots["users"]
+	require.True(t, ok)
+	assert.NotNil(t, usersSeg2.Variable, "expected variable child with threshold=3")
 }
 
 func TestAnalyze_WorldAndUsersPattern(t *testing.T) {
@@ -247,8 +242,8 @@ func TestAnalyze_WorldAndUsersPattern(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(33), resp.TotalAccounts)
 
-	// Chart should have top-level: bank, users, world
-	require.Len(t, resp.SuggestedChart.Segments, 3)
+	// Chart should have top-level roots: bank, users, world
+	require.Len(t, resp.SuggestedChart.Roots, 3)
 }
 
 func TestInferPattern(t *testing.T) {

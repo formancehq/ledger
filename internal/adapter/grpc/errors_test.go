@@ -327,6 +327,34 @@ func TestBusinessErrorToGRPCStatus_InvalidCronExpression(t *testing.T) {
 	require.Equal(t, "expected 5 fields", info.Metadata["details"])
 }
 
+func TestBusinessErrorToGRPCStatus_AccountNotInChart(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &domain.BusinessError{Err: &domain.ErrAccountNotInChart{Address: "invalid:addr:here"}}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, domain.ErrReasonAccountNotInChart, info.Reason)
+	require.Equal(t, errorDomain, info.Domain)
+	require.Equal(t, "invalid:addr:here", info.Metadata["address"])
+}
+
+func TestBusinessErrorToGRPCStatus_InvalidChart(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &domain.BusinessError{Err: &domain.ErrInvalidChart{Details: "missing root segment"}}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.InvalidArgument, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, domain.ErrReasonInvalidChart, info.Reason)
+	require.Equal(t, errorDomain, info.Domain)
+	require.Equal(t, "missing root segment", info.Metadata["details"])
+}
+
 func TestBusinessErrorToGRPCStatus_UnknownError(t *testing.T) {
 	t.Parallel()
 

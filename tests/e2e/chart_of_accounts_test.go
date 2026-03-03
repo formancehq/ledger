@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -130,7 +130,7 @@ var _ = Describe("ChartOfAccounts", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonAccountNotInChart))
+			Expect(info.Reason).To(Equal(domain.ErrReasonAccountNotInChart))
 		})
 	})
 
@@ -176,7 +176,7 @@ var _ = Describe("ChartOfAccounts", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonAccountNotInChart))
+			Expect(info.Reason).To(Equal(domain.ErrReasonAccountNotInChart))
 		})
 
 		It("Should allow valid addresses after chart is set with no warnings", func() {
@@ -221,7 +221,7 @@ var _ = Describe("ChartOfAccounts", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonAccountNotInChart))
+			Expect(info.Reason).To(Equal(domain.ErrReasonAccountNotInChart))
 		})
 
 		It("Should switch to audit mode and allow invalid addresses with warnings", func() {
@@ -269,7 +269,7 @@ var _ = Describe("ChartOfAccounts", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonAccountNotInChart))
+			Expect(info.Reason).To(Equal(domain.ErrReasonAccountNotInChart))
 		})
 	})
 
@@ -308,7 +308,7 @@ var _ = Describe("ChartOfAccounts", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonAccountNotInChart))
+			Expect(info.Reason).To(Equal(domain.ErrReasonAccountNotInChart))
 		})
 	})
 
@@ -348,7 +348,7 @@ var _ = Describe("ChartOfAccounts", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonAccountNotInChart))
+			Expect(info.Reason).To(Equal(domain.ErrReasonAccountNotInChart))
 		})
 	})
 
@@ -405,7 +405,7 @@ var _ = Describe("ChartOfAccounts", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonInvalidChart))
+			Expect(info.Reason).To(Equal(domain.ErrReasonInvalidChart))
 		})
 
 		It("Should reject a chart with empty roots", func() {
@@ -420,7 +420,7 @@ var _ = Describe("ChartOfAccounts", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonInvalidChart))
+			Expect(info.Reason).To(Equal(domain.ErrReasonInvalidChart))
 		})
 	})
 
@@ -462,7 +462,7 @@ var _ = Describe("ChartOfAccounts", Ordered, func() {
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonAccountNotInChart))
+			Expect(info.Reason).To(Equal(domain.ErrReasonAccountNotInChart))
 		})
 
 		It("Should allow metadata on invalid accounts in audit mode with warnings", func() {
@@ -531,7 +531,7 @@ send [USD/2 100] (
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonAccountNotInChart))
+			Expect(info.Reason).To(Equal(domain.ErrReasonAccountNotInChart))
 		})
 	})
 
@@ -550,7 +550,7 @@ send [USD/2 100] (
 
 			info := extractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
-			Expect(info.Reason).To(Equal(processing.ErrReasonInvalidChart))
+			Expect(info.Reason).To(Equal(domain.ErrReasonInvalidChart))
 		})
 	})
 })

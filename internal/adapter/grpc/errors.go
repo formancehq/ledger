@@ -51,6 +51,8 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		invalidCronExpression         *domain.ErrInvalidCronExpression
 		indexNotFound                 *domain.ErrIndexNotFound
 		indexBuilding                 *domain.ErrIndexBuilding
+		accountNotInChart             *domain.ErrAccountNotInChart
+		invalidChart                  *domain.ErrInvalidChart
 	)
 
 	switch {
@@ -238,6 +240,16 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		code = codes.FailedPrecondition
 		reason = domain.ErrReasonIndexBuilding
 		metadata = map[string]string{"index": indexBuilding.Index}
+
+	case errors.As(inner, &accountNotInChart):
+		code = codes.FailedPrecondition
+		reason = domain.ErrReasonAccountNotInChart
+		metadata = map[string]string{"address": accountNotInChart.Address}
+
+	case errors.As(inner, &invalidChart):
+		code = codes.InvalidArgument
+		reason = domain.ErrReasonInvalidChart
+		metadata = map[string]string{"details": invalidChart.Details}
 
 	default:
 		// Unknown business error — fall back to Internal

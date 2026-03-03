@@ -25,10 +25,10 @@ func TestHandleAnalyzeAccounts_Success(t *testing.T) {
 			return &servicepb.AnalyzeAccountsResponse{
 				TotalAccounts: 42,
 				SuggestedChart: &commonpb.ChartOfAccounts{
-					Segments: []*commonpb.ChartSegment{
-						{FixedValue: "users", Children: []*commonpb.ChartSegment{
-							{Variable: &commonpb.ChartVariable{Name: "user_id", InferredPattern: "^[a-f0-9-]+$"}},
-						}},
+					Roots: map[string]*commonpb.ChartSegment{
+						"users": {
+							Variable: &commonpb.ChartVariable{Name: "user_id", Pattern: "^[a-f0-9-]+$", Account: true},
+						},
 					},
 				},
 				Patterns: []*servicepb.AccountPattern{
@@ -61,11 +61,11 @@ func TestHandleAnalyzeAccounts_Success(t *testing.T) {
 	resp := wrapper.Data
 	require.Equal(t, uint64(42), resp.TotalAccounts)
 	require.NotNil(t, resp.SuggestedChart)
-	require.Len(t, resp.SuggestedChart.Segments, 1)
-	require.Equal(t, "users", resp.SuggestedChart.Segments[0].FixedValue)
-	require.Len(t, resp.SuggestedChart.Segments[0].Children, 1)
-	require.NotNil(t, resp.SuggestedChart.Segments[0].Children[0].Variable)
-	require.Equal(t, "user_id", resp.SuggestedChart.Segments[0].Children[0].Variable.Name)
+	require.Len(t, resp.SuggestedChart.Roots, 1)
+	usersSeg, ok := resp.SuggestedChart.Roots["users"]
+	require.True(t, ok, "expected 'users' root")
+	require.NotNil(t, usersSeg.Variable)
+	require.Equal(t, "user_id", usersSeg.Variable.Name)
 
 	require.Len(t, resp.Patterns, 1)
 	require.Equal(t, "users:{user_id}", resp.Patterns[0].Pattern)

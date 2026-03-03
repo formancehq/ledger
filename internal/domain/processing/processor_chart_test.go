@@ -7,7 +7,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -273,7 +272,7 @@ func TestProcessSetChartOfAccounts(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			require.NotNil(t, info.ChartOfAccounts)
@@ -321,7 +320,7 @@ func TestProcessSetChartOfAccounts_InvalidChart(t *testing.T) {
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger"}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 
 	// Chart with no account nodes
 	chart := &commonpb.ChartOfAccounts{
@@ -363,7 +362,7 @@ func TestProcessSetChartOfAccounts_LedgerNotFound(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	mockStore.EXPECT().GetBoundaries("missing").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("missing").Return(nil, false)
+	mockStore.EXPECT().GetLedger("missing").Return(nil, false).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_Apply{
@@ -405,7 +404,7 @@ func TestProcessSetChartEnforcementMode(t *testing.T) {
 	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger"}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
 			require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.EnforcementMode)
@@ -450,7 +449,7 @@ func TestProcessSetChartEnforcementMode_LedgerNotFound(t *testing.T) {
 
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	mockStore.EXPECT().GetBoundaries("missing").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("missing").Return(nil, false)
+	mockStore.EXPECT().GetLedger("missing").Return(nil, false).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_Apply{
@@ -496,7 +495,7 @@ func TestProcessAddMetadata_ChartValidation_Strict(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_Apply{
@@ -553,7 +552,7 @@ func TestProcessAddMetadata_ChartValidation_ValidAccount(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutAccountMetadata(gomock.Any(), gomock.Any())
@@ -609,7 +608,7 @@ func TestProcessAddMetadata_ChartValidation_Audit(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().PutAccountMetadata(gomock.Any(), gomock.Any())
@@ -673,13 +672,13 @@ func TestProcessCreateTransaction_ChartValidation_Audit_Warnings(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(gomock.Any(), gomock.Any())
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
-	mockStore.EXPECT().GetVolume(gomock.Any()).Return(nil, dal.ErrNotFound).AnyTimes()
+	mockStore.EXPECT().GetVolume(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
 	mockStore.EXPECT().PutVolume(gomock.Any(), gomock.Any()).AnyTimes()
 
 	order := &raftcmdpb.Order{
@@ -734,13 +733,13 @@ func TestProcessCreateTransaction_ChartValidation_NoWarnings(t *testing.T) {
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
-	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true)
+	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(gomock.Any(), gomock.Any())
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
-	mockStore.EXPECT().GetVolume(gomock.Any()).Return(nil, dal.ErrNotFound).AnyTimes()
+	mockStore.EXPECT().GetVolume(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
 	mockStore.EXPECT().PutVolume(gomock.Any(), gomock.Any()).AnyTimes()
 
 	order := &raftcmdpb.Order{

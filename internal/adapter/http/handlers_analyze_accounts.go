@@ -5,31 +5,15 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/go-chi/chi/v5"
 )
 
 // analyzeAccountsResponseJSON is the camelCase JSON DTO for AnalyzeAccountsResponse.
 type analyzeAccountsResponseJSON struct {
-	SuggestedChart *chartOfAccountsJSON `json:"suggestedChart"`
+	SuggestedChart *chartJSON            `json:"suggestedChart"`
 	Patterns       []*accountPatternJSON `json:"patterns"`
-	TotalAccounts  uint64               `json:"totalAccounts"`
-}
-
-type chartOfAccountsJSON struct {
-	Segments []*chartSegmentJSON `json:"segments"`
-}
-
-type chartSegmentJSON struct {
-	FixedValue string             `json:"fixedValue,omitempty"`
-	Variable   *chartVariableJSON `json:"variable,omitempty"`
-	Children   []*chartSegmentJSON `json:"children,omitempty"`
-}
-
-type chartVariableJSON struct {
-	Name            string `json:"name"`
-	InferredPattern string `json:"inferredPattern,omitempty"`
+	TotalAccounts  uint64                `json:"totalAccounts"`
 }
 
 type accountPatternJSON struct {
@@ -56,7 +40,7 @@ func toAnalyzeAccountsJSON(resp *servicepb.AnalyzeAccountsResponse) *analyzeAcco
 	}
 
 	if resp.SuggestedChart != nil {
-		result.SuggestedChart = toChartOfAccountsJSON(resp.SuggestedChart)
+		result.SuggestedChart = toChartJSON(resp.SuggestedChart)
 	}
 
 	result.Patterns = make([]*accountPatternJSON, 0, len(resp.Patterns))
@@ -64,35 +48,6 @@ func toAnalyzeAccountsJSON(resp *servicepb.AnalyzeAccountsResponse) *analyzeAcco
 		result.Patterns = append(result.Patterns, toAccountPatternJSON(p))
 	}
 
-	return result
-}
-
-func toChartOfAccountsJSON(chart *commonpb.ChartOfAccounts) *chartOfAccountsJSON {
-	result := &chartOfAccountsJSON{
-		Segments: make([]*chartSegmentJSON, 0, len(chart.Segments)),
-	}
-	for _, s := range chart.Segments {
-		result.Segments = append(result.Segments, toChartSegmentJSON(s))
-	}
-	return result
-}
-
-func toChartSegmentJSON(seg *commonpb.ChartSegment) *chartSegmentJSON {
-	result := &chartSegmentJSON{
-		FixedValue: seg.FixedValue,
-	}
-	if seg.Variable != nil {
-		result.Variable = &chartVariableJSON{
-			Name:            seg.Variable.Name,
-			InferredPattern: seg.Variable.InferredPattern,
-		}
-	}
-	if len(seg.Children) > 0 {
-		result.Children = make([]*chartSegmentJSON, 0, len(seg.Children))
-		for _, child := range seg.Children {
-			result.Children = append(result.Children, toChartSegmentJSON(child))
-		}
-	}
 	return result
 }
 

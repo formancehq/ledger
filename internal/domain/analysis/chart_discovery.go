@@ -72,8 +72,8 @@ func Analyze(accounts []CompactAccount, variableThreshold uint32) *servicepb.Ana
 		node.metadataKeys = mergeDistinct(node.metadataKeys, acc.MetadataKeys)
 	}
 
-	// Convert trie to chart segments
-	chartSegments := classifyChildren(root, variableThreshold)
+	// Convert trie to chart tree
+	roots, _ := classifyChildren(root, variableThreshold)
 
 	// Extract patterns
 	var patterns []*servicepb.AccountPattern
@@ -81,28 +81,31 @@ func Analyze(accounts []CompactAccount, variableThreshold uint32) *servicepb.Ana
 
 	return &servicepb.AnalyzeAccountsResponse{
 		SuggestedChart: &commonpb.ChartOfAccounts{
-			Segments: chartSegments,
+			Roots: roots,
 		},
 		Patterns:      patterns,
 		TotalAccounts: uint64(len(accounts)),
 	}
 }
 
-// classifyChildren converts a trie node's children into ChartSegment protos.
+// childInfo holds information about a trie node's child during classification.
+type childInfo struct {
+	key   string
+	node  *trieNode
+	count int
+}
+
+// classifyChildren converts a trie node's children into a map of fixed ChartSegments
+// and an optional ChartVariable for the variable portion.
 // If the number of distinct children exceeds the threshold, children are merged
 // into a single variable segment. When there's a mix of common fixed values and
 // many unique values, the common ones stay fixed and the rest become variable.
-func classifyChildren(node *trieNode, threshold uint32) []*commonpb.ChartSegment {
+func classifyChildren(node *trieNode, threshold uint32) (map[string]*commonpb.ChartSegment, *commonpb.ChartVariable) {
 	if len(node.children) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// Count total accounts under each child (recursive)
-	type childInfo struct {
-		key   string
-		node  *trieNode
-		count int
-	}
 	var infos []childInfo
 	for key, child := range node.children {
 		infos = append(infos, childInfo{key: key, node: child, count: countAccounts(child)})
@@ -118,23 +121,12 @@ func classifyChildren(node *trieNode, threshold uint32) []*commonpb.ChartSegment
 
 	if uint32(len(infos)) <= threshold {
 		// All children are fixed
-		var segments []*commonpb.ChartSegment
-		// Sort alphabetically for output stability
-		sort.Slice(infos, func(i, j int) bool { return infos[i].key < infos[j].key })
-		for _, info := range infos {
-			segments = append(segments, &commonpb.ChartSegment{
-				FixedValue: info.key,
-				Children:   classifyChildren(info.node, threshold),
-			})
-		}
-		return segments
+		return buildFixedMap(infos, threshold), nil
 	}
 
 	// Too many children: check for mixed case
 	// Heuristic: children appearing more than once or matching a "common" pattern
 	// stay as fixed; the rest become variable.
-	// Simple approach: if a child key contains only letters/underscores and has
-	// significant presence (>= 1% of total or appears multiple times in tree), keep as fixed.
 	totalChildAccounts := 0
 	for _, info := range infos {
 		totalChildAccounts += info.count
@@ -163,15 +155,7 @@ func classifyChildren(node *trieNode, threshold uint32) []*commonpb.ChartSegment
 		// to actually all be fixed — reconsider
 		if uint32(len(variableInfos)) <= threshold && len(fixedInfos) > 0 {
 			// The variable set is small, keep them all fixed
-			sort.Slice(infos, func(i, j int) bool { return infos[i].key < infos[j].key })
-			var segments []*commonpb.ChartSegment
-			for _, info := range infos {
-				segments = append(segments, &commonpb.ChartSegment{
-					FixedValue: info.key,
-					Children:   classifyChildren(info.node, threshold),
-				})
-			}
-			return segments
+			return buildFixedMap(infos, threshold), nil
 		}
 	}
 
@@ -183,30 +167,36 @@ func classifyChildren(node *trieNode, threshold uint32) []*commonpb.ChartSegment
 		mergeTrieNodes(mergedVariableNode, info.node)
 	}
 
-	varName := inferVariableName(variableKeys)
-	varPattern := inferPattern(variableKeys)
-
-	var segments []*commonpb.ChartSegment
-
-	// Add fixed segments first (sorted)
-	sort.Slice(fixedInfos, func(i, j int) bool { return fixedInfos[i].key < fixedInfos[j].key })
-	for _, info := range fixedInfos {
-		segments = append(segments, &commonpb.ChartSegment{
-			FixedValue: info.key,
-			Children:   classifyChildren(info.node, threshold),
-		})
+	varChildren, varVariable := classifyChildren(mergedVariableNode, threshold)
+	chartVar := &commonpb.ChartVariable{
+		Name:     inferVariableName(variableKeys),
+		Pattern:  inferPattern(variableKeys),
+		Account:  mergedVariableNode.terminating > 0,
+		Children: varChildren,
+		Variable: varVariable,
 	}
 
-	// Add variable segment
-	segments = append(segments, &commonpb.ChartSegment{
-		Variable: &commonpb.ChartVariable{
-			Name:            varName,
-			InferredPattern: varPattern,
-		},
-		Children: classifyChildren(mergedVariableNode, threshold),
-	})
+	// Add fixed segments
+	var fixedMap map[string]*commonpb.ChartSegment
+	if len(fixedInfos) > 0 {
+		fixedMap = buildFixedMap(fixedInfos, threshold)
+	}
 
-	return segments
+	return fixedMap, chartVar
+}
+
+// buildFixedMap creates a map of fixed ChartSegments from classified child nodes.
+func buildFixedMap(infos []childInfo, threshold uint32) map[string]*commonpb.ChartSegment {
+	m := make(map[string]*commonpb.ChartSegment, len(infos))
+	for _, info := range infos {
+		children, variable := classifyChildren(info.node, threshold)
+		m[info.key] = &commonpb.ChartSegment{
+			Account:  info.node.terminating > 0,
+			Children: children,
+			Variable: variable,
+		}
+	}
+	return m
 }
 
 // mergeTrieNodes merges src's children into dst.
