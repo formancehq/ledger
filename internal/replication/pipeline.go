@@ -114,10 +114,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 				exportContext, cancel := context.WithCancel(ctx)
 				go func() {
 					_, err := p.exporter.Accept(exportContext, collectionutils.Map(logs.Data, func(log ledger.Log) drivers.LogWithLedger {
-						return drivers.LogWithLedger{
-							Log:    log,
-							Ledger: p.pipeline.Ledger,
-						}
+						return drivers.NewLogWithLedger(p.pipeline.Ledger, log)
 					})...)
 					errChan <- err
 				}()

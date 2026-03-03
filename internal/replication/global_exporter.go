@@ -2,6 +2,7 @@ package replication
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
@@ -28,12 +29,14 @@ var (
 	DefaultGlobalExporterPollInterval    = 1 * time.Second
 	DefaultGlobalExporterPushRetryPeriod = 10 * time.Second
 	DefaultGlobalExporterLogsPageSize    = uint64(100)
+	DefaultGlobalExporterWorkers         = 8
 )
 
 type GlobalExporterRunnerConfig struct {
 	PollInterval    time.Duration
 	PushRetryPeriod time.Duration
 	LogsPageSize    uint64
+	Workers         int
 	Reset           bool
 }
 
@@ -62,13 +65,19 @@ func NewGlobalExporterRunner(
 	if config.LogsPageSize == 0 {
 		config.LogsPageSize = DefaultGlobalExporterLogsPageSize
 	}
+	if config.Workers == 0 {
+		config.Workers = DefaultGlobalExporterWorkers
+	}
 
+	var fetcherMu sync.Mutex
 	fetcherCache := map[string]LogFetcher{}
 
 	return &GlobalExporterRunner{
 		store:     store,
 		rawDriver: rawDriver,
 		getLogFetcher: func(ctx context.Context, name string) (LogFetcher, error) {
+			fetcherMu.Lock()
+			defer fetcherMu.Unlock()
 			if fetcher, ok := fetcherCache[name]; ok {
 				return fetcher, nil
 			}
@@ -125,64 +134,110 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 		r.logger.Errorf("Error loading initial global exporter states: %v", err)
 		return
 	}
+	var statesMu sync.Mutex
+
+	// workerCtx is cancelled when shutdown is requested, signalling workers to stop.
+	workerCtx, cancelWorkers := context.WithCancel(ctx)
+	defer cancelWorkers()
 
 	for {
 		select {
 		case ch := <-r.stopChannel:
+			cancelWorkers()
 			close(ch)
 			return
 		case <-time.After(nextInterval):
 		}
 
-		// Reset to default poll interval; exportLedgerLogs may set it to 0 if HasMore
 		nextInterval = r.config.PollInterval
 
+		// Collect all ledger names for this cycle.
+		var ledgerNames []string
 		var nextQuery common.PaginatedQuery[systemstore.ListLedgersQueryPayload] = common.InitialPaginatedQuery[systemstore.ListLedgersQueryPayload]{
 			PageSize: 100,
 			Column:   "id",
 			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		}
-
 		for {
 			cursor, err := r.store.Ledgers().Paginate(ctx, nextQuery)
 			if err != nil {
 				r.logger.Errorf("Error listing ledgers: %v", err)
 				break
 			}
-
 			for _, l := range cursor.Data {
-				stopped := r.exportLedgerLogs(ctx, facade, l.Name, states)
-				if stopped {
-					return
-				}
+				ledgerNames = append(ledgerNames, l.Name)
 			}
-
 			if !cursor.HasMore {
 				break
 			}
-
 			nextQuery, err = common.UnmarshalCursor[systemstore.ListLedgersQueryPayload](cursor.Next)
 			if err != nil {
 				r.logger.Errorf("Error paginating ledgers: %v", err)
 				break
 			}
 		}
+
+		if len(ledgerNames) == 0 {
+			continue
+		}
+
+		// Fan out to worker pool.
+		work := make(chan string, len(ledgerNames))
+		for _, name := range ledgerNames {
+			work <- name
+		}
+		close(work)
+
+		numWorkers := r.config.Workers
+		if numWorkers > len(ledgerNames) {
+			numWorkers = len(ledgerNames)
+		}
+
+		workersDone := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(numWorkers)
+		for range numWorkers {
+			go func() {
+				defer wg.Done()
+				for name := range work {
+					r.exportLedgerLogs(workerCtx, facade, name, &statesMu, states)
+				}
+			}()
+		}
+		go func() {
+			wg.Wait()
+			close(workersDone)
+		}()
+
+		// Wait for workers to finish or a stop signal.
+		select {
+		case <-workersDone:
+		case ch := <-r.stopChannel:
+			cancelWorkers()
+			<-workersDone
+			close(ch)
+			return
+		}
 	}
 }
 
 // exportLedgerLogs fetches and pushes logs for a single ledger, retrying on
-// failure. Returns true if a stop signal was received and the caller should exit.
+// failure. Returns when the ledger is fully caught up or ctx is cancelled.
 func (r *GlobalExporterRunner) exportLedgerLogs(
 	ctx context.Context,
 	driver drivers.Driver,
 	ledgerName string,
+	statesMu *sync.Mutex,
 	states map[string]uint64,
-) bool {
+) {
+	statesMu.Lock()
 	lastLogID, hasState := states[ledgerName]
+	statesMu.Unlock()
+
 	fetcher, err := r.getLogFetcher(ctx, ledgerName)
 	if err != nil {
 		r.logger.Errorf("Error opening ledger %s: %v", ledgerName, err)
-		return false
+		return
 	}
 
 	var builder query.Builder
@@ -203,11 +258,11 @@ func (r *GlobalExporterRunner) exportLedgerLogs(
 		logs, err := fetcher.ListLogs(ctx, logQuery)
 		if err != nil {
 			r.logger.Errorf("Error fetching logs for ledger %s: %v", ledgerName, err)
-			return false
+			return
 		}
 
 		if len(logs.Data) == 0 {
-			return false
+			return
 		}
 
 		// Push batch with retry
@@ -228,50 +283,46 @@ func (r *GlobalExporterRunner) exportLedgerLogs(
 				if err != nil {
 					r.logger.Errorf("Error pushing logs for ledger %s: %v, retrying in %s", ledgerName, err, r.config.PushRetryPeriod)
 					select {
-					case ch := <-r.stopChannel:
-						r.logger.Infof("Global exporter runner terminated")
-						close(ch)
-						return true
+					case <-ctx.Done():
+						return
 					case <-time.After(r.config.PushRetryPeriod):
 						continue
 					}
 				}
-			case ch := <-r.stopChannel:
+			case <-ctx.Done():
 				cancel()
-				r.logger.Infof("Global exporter runner terminated")
-				close(ch)
-				return true
+				return
 			}
 
 			break
 		}
 
 		// Persist state after successful batch and update in-memory cache
-		lastLog := logs.Data[len(logs.Data)-1]
-		if lastLog.ID != nil {
-			if err := r.store.UpdateGlobalExporterState(ctx, ledgerName, *lastLog.ID); err != nil {
+		lastLogID := logs.Data[len(logs.Data)-1].ID
+		if lastLogID != nil {
+			if err := r.store.UpdateGlobalExporterState(ctx, ledgerName, *lastLogID); err != nil {
 				r.logger.Errorf("Failed to persist state for ledger %s: %v", ledgerName, err)
 			}
-			states[ledgerName] = *lastLog.ID
+			statesMu.Lock()
+			states[ledgerName] = *lastLogID
+			statesMu.Unlock()
 		}
 
 		if !logs.HasMore {
-			return false
+			return
 		}
 
-		// Check for stop signal before fetching next page
+		// Check for cancellation before fetching next page
 		select {
-		case ch := <-r.stopChannel:
-			r.logger.Infof("Global exporter runner terminated")
-			close(ch)
-			return true
+		case <-ctx.Done():
+			return
 		default:
 		}
 
 		logQuery, err = common.UnmarshalCursor[any](logs.Next)
 		if err != nil {
 			r.logger.Errorf("Error paginating logs for ledger %s: %v", ledgerName, err)
-			return false
+			return
 		}
 	}
 }

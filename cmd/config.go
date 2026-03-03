@@ -21,6 +21,7 @@ type commonConfig struct {
 	ExperimentalExporters       bool                         `mapstructure:"experimental-exporters"`
 	ExperimentalGlobalExporter  string                       `mapstructure:"experimental-global-exporter"`
 	GlobalExporterReset         bool                         `mapstructure:"global-exporter-reset"`
+	GlobalExporterWorkers       int                          `mapstructure:"global-exporter-workers"`
 	SemconvMetricsNames         bool                         `mapstructure:"semconv-metrics-names"`
 	SchemaEnforcementMode       ledger.SchemaEnforcementMode `mapstructure:"schema-enforcement-mode"`
 }

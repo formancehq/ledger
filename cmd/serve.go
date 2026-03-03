@@ -76,6 +76,7 @@ const (
 	SchemaEnforcementMode          = "schema-enforcement-mode"
 	ExperimentalGlobalExporterFlag = "experimental-global-exporter"
 	GlobalExporterResetFlag        = "global-exporter-reset"
+	GlobalExporterWorkersFlag      = "global-exporter-workers"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -169,7 +170,7 @@ func NewServeCommand() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("parsing global-logs-exporter: %w", err)
 				}
-				options = append(options, globalExporterModule(driverName, rawConfig, cfg.GlobalExporterReset))
+				options = append(options, globalExporterModule(driverName, rawConfig, cfg.GlobalExporterReset, cfg.GlobalExporterWorkers))
 			}
 
 			if cfg.WorkerEnabled {
@@ -207,6 +208,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(SchemaEnforcementMode, "audit", "Schema enforcement mode. Values: `audit`, `strict`")
 	cmd.Flags().String(ExperimentalGlobalExporterFlag, "", "Global logs exporter configuration (<driver>:<config>)")
 	cmd.Flags().Bool(GlobalExporterResetFlag, false, "Reset global logs exporter state and re-export all logs from the beginning")
+	cmd.Flags().Int(GlobalExporterWorkersFlag, replication.DefaultGlobalExporterWorkers, "Number of concurrent workers for the global logs exporter")
 
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
@@ -269,7 +271,7 @@ func assembleFinalRouter(
 	return wrappedRouter
 }
 
-func globalExporterModule(driverName string, rawConfig json.RawMessage, reset bool) fx.Option {
+func globalExporterModule(driverName string, rawConfig json.RawMessage, reset bool, workers int) fx.Option {
 	return fx.Options(
 		fx.Provide(func(registry *drivers.Registry, logger logging.Logger, store systemcontroller.Store, sysDriver systemcontroller.Driver) (*replication.GlobalExporterRunner, error) {
 			d, err := registry.CreateFromConfig(driverName, rawConfig)
@@ -290,7 +292,8 @@ func globalExporterModule(driverName string, rawConfig json.RawMessage, reset bo
 				},
 				logger,
 				replication.GlobalExporterRunnerConfig{
-					Reset: reset,
+					Reset:   reset,
+					Workers: workers,
 				},
 			), nil
 		}),
