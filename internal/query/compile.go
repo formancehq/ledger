@@ -38,8 +38,10 @@ type metadataCtx struct {
 
 // Compile translates a QueryFilter proto into an EntityIterator tree.
 // The params map resolves parameterized conditions at execution time.
-// The schema map (optional) validates condition types against declared metadata field types.
-// The addrCfg (optional) checks that required address indexes are available.
+// The schema map validates condition types against declared metadata field types;
+// a nil schema causes ErrIndexNotFound for any metadata field condition.
+// The addrCfg checks that required address indexes are available;
+// a nil addrCfg causes ErrIndexNotFound for any address filter on transactions.
 // When profile is non-nil, each iterator is wrapped in a TrackedIterator and
 // profile.Root is set to the root of the iterator stats tree.
 func Compile(
@@ -199,20 +201,21 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 	metaKey := fc.Field.GetMetadata()
 
 	// Validate index availability and condition type against declared schema type.
-	if ctx.schema != nil {
-		targetName := targetHumanName(ctx.target)
-		fieldSchema, ok := ctx.schema[metaKey]
-		if !ok || !fieldSchema.Indexed {
-			return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
-		}
-		if fieldSchema.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-			return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
-		}
-		var err error
-		fc, err = validateAndCoerceCondition(fc, fieldSchema)
-		if err != nil {
-			return nil, err
-		}
+	targetName := targetHumanName(ctx.target)
+	if ctx.schema == nil {
+		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
+	}
+	fieldSchema, ok := ctx.schema[metaKey]
+	if !ok || !fieldSchema.Indexed {
+		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
+	}
+	if fieldSchema.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
+	}
+	var err error
+	fc, err = validateAndCoerceCondition(fc, fieldSchema)
+	if err != nil {
+		return nil, err
 	}
 
 	b := ctx.tx.Bucket(readstore.BucketMetadataIndex)
@@ -793,13 +796,9 @@ func closeAll(iters []readstore.EntityIterator) {
 }
 
 // checkAddressRoleIndexed validates that the requested address role index
-// exists and is ready. Returns nil if addrCfg is nil (backward compatible:
-// no config means all address indexes are available).
+// exists and is ready. Returns ErrIndexNotFound when addrCfg is nil (no
+// address indexes configured).
 func checkAddressRoleIndexed(addrCfg *commonpb.AddressIndexConfig, role commonpb.AddressRole) error {
-	if addrCfg == nil {
-		return nil
-	}
-
 	var (
 		indexed bool
 		status  commonpb.IndexBuildStatus
@@ -808,11 +807,20 @@ func checkAddressRoleIndexed(addrCfg *commonpb.AddressIndexConfig, role commonpb
 
 	switch role {
 	case commonpb.AddressRole_ADDRESS_ROLE_ANY:
-		indexed, status, label = addrCfg.Address, addrCfg.AddressStatus, "address"
+		label = "address"
+		if addrCfg != nil {
+			indexed, status = addrCfg.Address, addrCfg.AddressStatus
+		}
 	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
-		indexed, status, label = addrCfg.Source, addrCfg.SourceStatus, "source"
+		label = "source"
+		if addrCfg != nil {
+			indexed, status = addrCfg.Source, addrCfg.SourceStatus
+		}
 	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
-		indexed, status, label = addrCfg.Destination, addrCfg.DestinationStatus, "destination"
+		label = "destination"
+		if addrCfg != nil {
+			indexed, status = addrCfg.Destination, addrCfg.DestinationStatus
+		}
 	default:
 		return nil
 	}
