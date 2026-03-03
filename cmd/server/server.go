@@ -163,6 +163,7 @@ func NewRunCommand() *cobra.Command {
 	// Read index configuration
 	runCmd.Flags().String("read-index-dir", "", "Directory for the read index bbolt database (default: <data-dir>/read-indexes/)")
 	runCmd.Flags().Bool("read-index-no-freelist-sync", false, "Skip bbolt freelist serialization on commit (faster bulk writes, slower reopen)")
+	runCmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per bbolt write transaction (0 = default 1000)")
 
 	// Query profiling
 	runCmd.Flags().Duration("query-profile-threshold", 10*time.Millisecond, "Log and emit OTel attributes for queries exceeding this duration (0 to disable)")
@@ -457,6 +458,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	cfg.ReadIndexConfig = bootstrap.ReadIndexConfig{
 		Dir:            getString("read-index-dir", ""),
 		NoFreelistSync: getBool("read-index-no-freelist-sync", false),
+		BatchSize:      getInt("read-index-batch-size", 0),
 	}
 
 	// Query profiling

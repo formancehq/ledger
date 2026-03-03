@@ -263,6 +263,12 @@ type ReadIndexConfig struct {
 	// Enables faster writes at the cost of slower database reopen.
 	// +optional
 	NoFreelistSync *bool `json:"noFreelistSync,omitempty"`
+
+	// BatchSize is the number of log entries per bbolt write transaction.
+	// Higher values amortize commit overhead but use more memory.
+	// Default: 1000.
+	// +optional
+	BatchSize *int32 `json:"batchSize,omitempty"`
 }
 
 // AuthorizationConfig holds authentication and authorization configuration.

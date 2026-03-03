@@ -335,8 +335,8 @@ func Module() fx.Option {
 				return readstore.New(dir, cfg.ReadIndexConfig.NoFreelistSync, logger)
 			},
 			// Index builder — tails the Raft log to populate the read index
-			func(store *dal.Store, rs *readstore.Store, logger logging.Logger, meterProvider metric.MeterProvider) *indexbuilder.Builder {
-				return indexbuilder.NewBuilder(store, rs, logger, meterProvider.Meter("index.builder"))
+			func(store *dal.Store, rs *readstore.Store, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *indexbuilder.Builder {
+				return indexbuilder.NewBuilder(store, rs, logger, meterProvider.Meter("index.builder"), cfg.ReadIndexConfig.BatchSize)
 			},
 			httpcompat.NewServer,
 			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig) http.Handler {

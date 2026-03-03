@@ -29,6 +29,7 @@ corrupted or out of date.`,
 	cmd.Flags().String("data-dir", "", "Pebble data directory (required)")
 	cmd.Flags().String("read-index-dir", "", "Read index output directory (default: <data-dir>/read-indexes/)")
 	cmd.Flags().Bool("read-index-no-freelist-sync", false, "Skip bbolt freelist serialization (faster rebuild)")
+	cmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per bbolt write transaction (0 = default 1000)")
 
 	_ = cmd.MarkFlagRequired("data-dir")
 
@@ -37,9 +38,10 @@ corrupted or out of date.`,
 
 func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	var (
-		dataDir, _           = cmd.Flags().GetString("data-dir")
-		readIndexDir, _      = cmd.Flags().GetString("read-index-dir")
-		noFreelistSync, _    = cmd.Flags().GetBool("read-index-no-freelist-sync")
+		dataDir, _        = cmd.Flags().GetString("data-dir")
+		readIndexDir, _   = cmd.Flags().GetString("read-index-dir")
+		noFreelistSync, _ = cmd.Flags().GetBool("read-index-no-freelist-sync")
+		batchSize, _      = cmd.Flags().GetInt("read-index-batch-size")
 	)
 
 	if readIndexDir == "" {
@@ -75,7 +77,7 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	// Rebuild.
 	spinner, _ = pterm.DefaultSpinner.Start("Rebuilding indexes from system logs...")
 
-	builder := indexbuilder.NewBuilder(pebbleStore, rs, logger, noop.Meter{})
+	builder := indexbuilder.NewBuilder(pebbleStore, rs, logger, noop.Meter{}, batchSize)
 
 	lastSeq, err := builder.RebuildAll()
 	if err != nil {

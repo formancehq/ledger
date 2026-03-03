@@ -1361,6 +1361,13 @@ spec:
                     description: ReadIndex configuration for the bbolt read index
                       store.
                     properties:
+                      batchSize:
+                        description: |-
+                          BatchSize is the number of log entries per bbolt write transaction.
+                          Higher values amortize commit overhead but use more memory.
+                          Default: 1000.
+                        format: int32
+                        type: integer
                       noFreelistSync:
                         description: |-
                           NoFreelistSync skips freelist serialization on commit.

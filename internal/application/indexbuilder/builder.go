@@ -18,10 +18,9 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-const (
-	indexBatchSize    = 1000
-	backfillBatchSize = 500
-)
+// DefaultBatchSize is the default number of log entries per bbolt write
+// transaction. Can be overridden via --read-index-batch-size.
+const DefaultBatchSize = 1000
 
 // Proposer proposes Raft commands to the cluster.
 // Implemented by a thin adapter around *node.Node (bootstrap.NodeProposer).
@@ -86,25 +85,37 @@ type Builder struct {
 	// existence writes (already written by normal processing).
 	backfillMode bool
 
+	// Batch size for normal index processing and backfill.
+	batchSize int
+
 	// Reusable scratch objects to reduce allocations in the hot loop.
 	kb       *readstore.KeyBuilder
+	wb       *readstore.WriteBatch
 	accounts map[string]struct{}
 }
 
 // NewBuilder creates a new index builder.
+// batchSize controls how many log entries are buffered per bbolt write transaction.
+// Use 0 for the default (DefaultBatchSize).
 func NewBuilder(
 	pebbleStore *dal.Store,
 	readStore *readstore.Store,
 	logger logging.Logger,
 	meter metric.Meter,
+	batchSize int,
 ) *Builder {
+	if batchSize <= 0 {
+		batchSize = DefaultBatchSize
+	}
 	return &Builder{
 		pebbleStore: pebbleStore,
 		readStore:   readStore,
 		logger:      logger.WithFields(map[string]any{"cmp": "index-builder"}),
 		meter:       meter,
+		batchSize:   batchSize,
 		indexConfig: make(map[string]*ledgerIndexConfig),
 		kb:          readstore.NewKeyBuilder(),
+		wb:          readstore.NewWriteBatch(),
 		accounts:    make(map[string]struct{}, 64),
 	}
 }
@@ -396,9 +407,12 @@ func (b *Builder) processLogs(cursor uint64) (uint64, error) {
 			eof        bool
 		)
 
-		// Open one bbolt write tx and stream up to indexBatchSize logs into it.
+		// Open one bbolt write tx and stream up to batchSize logs into it.
+		// Writes are buffered in a WriteBatch and flushed sorted by key to
+		// minimize random B+ tree page access.
 		if err := b.readStore.Update(func(tx *bolt.Tx) error {
-			for batchCount < indexBatchSize {
+			b.wb.Init(tx)
+			for batchCount < b.batchSize {
 				log, err := logsCursor.Next()
 				if err != nil {
 					if err == io.EOF {
@@ -416,6 +430,9 @@ func (b *Builder) processLogs(cursor uint64) (uint64, error) {
 			}
 
 			if batchCount > 0 {
+				if err := b.wb.Flush(); err != nil {
+					return err
+				}
 				return b.readStore.WriteProgress(tx, lastSeq)
 			}
 			return nil
@@ -487,6 +504,12 @@ func (b *Builder) indexLogEntry(tx *bolt.Tx, log *commonpb.Log) error {
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(tx, b.kb, ledgerName, p.DeletedMetadata)
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+		// Schema changes scan buckets directly with cursors — flush buffered
+		// writes first so the cursors see a consistent state.
+		if err := b.wb.Flush(); err != nil {
+			return err
+		}
+		b.wb.Init(tx) // re-init after flush (Flush calls Reset)
 		return b.indexSetMetadataFieldType(tx, b.kb, ledgerName, p.SetMetadataFieldType)
 	case *commonpb.LedgerLogPayload_CreateIndex:
 		b.handleCreateIndexLog(ledgerName, p.CreateIndex)
@@ -516,11 +539,11 @@ func (b *Builder) indexCreatedTransaction(
 	}
 	txn := ct.Transaction
 
+	wb := b.wb
+
 	// Transaction existence (skip during backfill — already written by normal processing)
 	if !b.backfillMode {
-		if err := readstore.WriteTransactionExistence(tx, kb, ledger, txn.Id); err != nil {
-			return err
-		}
+		wb.WriteTransactionExistence(kb, ledger, txn.Id)
 	}
 
 	// Collect unique accounts from postings (reuse builder's map)
@@ -535,41 +558,29 @@ func (b *Builder) indexCreatedTransaction(
 
 		// Account→transaction mapping (any role)
 		if indexAny {
-			if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Source, txn.Id); err != nil {
-				return err
-			}
-			if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Destination, txn.Id); err != nil {
-				return err
-			}
+			wb.WriteAccountTxMapping(kb, ledger, posting.Source, txn.Id)
+			wb.WriteAccountTxMapping(kb, ledger, posting.Destination, txn.Id)
 		}
 		// Role-specific mappings
 		if indexSrc {
-			if err := readstore.WriteSourceAccountTxMapping(tx, kb, ledger, posting.Source, txn.Id); err != nil {
-				return err
-			}
+			wb.WriteSourceAccountTxMapping(kb, ledger, posting.Source, txn.Id)
 		}
 		if indexDst {
-			if err := readstore.WriteDestAccountTxMapping(tx, kb, ledger, posting.Destination, txn.Id); err != nil {
-				return err
-			}
+			wb.WriteDestAccountTxMapping(kb, ledger, posting.Destination, txn.Id)
 		}
 	}
 
 	// Account existence for all accounts in postings (skip during backfill)
 	if !b.backfillMode {
 		for account := range b.accounts {
-			if err := readstore.WriteAccountExistence(tx, kb, ledger, account); err != nil {
-				return err
-			}
+			wb.WriteAccountExistence(kb, ledger, account)
 		}
 	}
 
 	// Account existence + metadata from account_metadata map
 	for account, metadataSet := range ct.AccountMetadata {
 		if !b.backfillMode {
-			if err := readstore.WriteAccountExistence(tx, kb, ledger, account); err != nil {
-				return err
-			}
+			wb.WriteAccountExistence(kb, ledger, account)
 		}
 		if metadataSet != nil {
 			for _, md := range metadataSet.Metadata {
@@ -578,13 +589,11 @@ func (b *Builder) indexCreatedTransaction(
 				}
 				reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, md.Key)
 				encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
-				if err := readstore.UpdateMetadataIndex(
-					tx, kb, reverseKey,
+				wb.UpdateMetadataIndex(
+					kb, reverseKey,
 					ledger, readstore.NamespaceAccount, md.Key,
 					encodedValue, []byte(account),
-				); err != nil {
-					return err
-				}
+				)
 			}
 		}
 	}
@@ -599,13 +608,11 @@ func (b *Builder) indexCreatedTransaction(
 			}
 			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txn.Id, md.Key)
 			encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
-			if err := readstore.UpdateMetadataIndex(
-				tx, kb, reverseKey,
+			wb.UpdateMetadataIndex(
+				kb, reverseKey,
 				ledger, readstore.NamespaceTransaction, md.Key,
 				encodedValue, txIDBytes,
-			); err != nil {
-				return err
-			}
+			)
 		}
 	}
 
@@ -626,12 +633,11 @@ func (b *Builder) indexRevertedTransaction(
 		return nil
 	}
 	revertTxn := rt.RevertTransaction
+	wb := b.wb
 
 	// Revert transaction existence (skip during backfill)
 	if !b.backfillMode {
-		if err := readstore.WriteTransactionExistence(tx, kb, ledger, revertTxn.Id); err != nil {
-			return err
-		}
+		wb.WriteTransactionExistence(kb, ledger, revertTxn.Id)
 	}
 
 	// Account existence + account→tx mapping for revert postings (reuse builder's map)
@@ -644,30 +650,20 @@ func (b *Builder) indexRevertedTransaction(
 		b.accounts[posting.Source] = struct{}{}
 		b.accounts[posting.Destination] = struct{}{}
 		if indexAny {
-			if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Source, revertTxn.Id); err != nil {
-				return err
-			}
-			if err := readstore.WriteAccountTxMapping(tx, kb, ledger, posting.Destination, revertTxn.Id); err != nil {
-				return err
-			}
+			wb.WriteAccountTxMapping(kb, ledger, posting.Source, revertTxn.Id)
+			wb.WriteAccountTxMapping(kb, ledger, posting.Destination, revertTxn.Id)
 		}
 		// Role-specific mappings
 		if indexSrc {
-			if err := readstore.WriteSourceAccountTxMapping(tx, kb, ledger, posting.Source, revertTxn.Id); err != nil {
-				return err
-			}
+			wb.WriteSourceAccountTxMapping(kb, ledger, posting.Source, revertTxn.Id)
 		}
 		if indexDst {
-			if err := readstore.WriteDestAccountTxMapping(tx, kb, ledger, posting.Destination, revertTxn.Id); err != nil {
-				return err
-			}
+			wb.WriteDestAccountTxMapping(kb, ledger, posting.Destination, revertTxn.Id)
 		}
 	}
 	if !b.backfillMode {
 		for account := range b.accounts {
-			if err := readstore.WriteAccountExistence(tx, kb, ledger, account); err != nil {
-				return err
-			}
+			wb.WriteAccountExistence(kb, ledger, account)
 		}
 	}
 
@@ -681,13 +677,11 @@ func (b *Builder) indexRevertedTransaction(
 			}
 			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, revertTxn.Id, md.Key)
 			encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
-			if err := readstore.UpdateMetadataIndex(
-				tx, kb, reverseKey,
+			wb.UpdateMetadataIndex(
+				kb, reverseKey,
 				ledger, readstore.NamespaceTransaction, md.Key,
 				encodedValue, txIDBytes,
-			); err != nil {
-				return err
-			}
+			)
 		}
 	}
 
@@ -705,6 +699,8 @@ func (b *Builder) indexSavedMetadata(
 		return nil
 	}
 
+	wb := b.wb
+
 	switch t := sm.Target.Target.(type) {
 	case *commonpb.Target_Account:
 		account := t.Account.Addr
@@ -714,13 +710,11 @@ func (b *Builder) indexSavedMetadata(
 			}
 			reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, md.Key)
 			encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
-			if err := readstore.UpdateMetadataIndex(
-				tx, kb, reverseKey,
+			wb.UpdateMetadataIndex(
+				kb, reverseKey,
 				ledger, readstore.NamespaceAccount, md.Key,
 				encodedValue, []byte(account),
-			); err != nil {
-				return err
-			}
+			)
 		}
 	case *commonpb.Target_Transaction:
 		txID := t.Transaction.Id
@@ -732,13 +726,11 @@ func (b *Builder) indexSavedMetadata(
 			}
 			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, md.Key)
 			encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
-			if err := readstore.UpdateMetadataIndex(
-				tx, kb, reverseKey,
+			wb.UpdateMetadataIndex(
+				kb, reverseKey,
 				ledger, readstore.NamespaceTransaction, md.Key,
 				encodedValue, txIDBytes,
-			); err != nil {
-				return err
-			}
+			)
 		}
 	}
 
@@ -756,6 +748,8 @@ func (b *Builder) indexDeletedMetadata(
 		return nil
 	}
 
+	wb := b.wb
+
 	switch t := dm.Target.Target.(type) {
 	case *commonpb.Target_Account:
 		if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, dm.Key) {
@@ -763,8 +757,8 @@ func (b *Builder) indexDeletedMetadata(
 		}
 		account := t.Account.Addr
 		reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, dm.Key)
-		return readstore.DeleteMetadataEntry(
-			tx, kb, reverseKey,
+		wb.DeleteMetadataEntry(
+			kb, reverseKey,
 			ledger, readstore.NamespaceAccount, dm.Key,
 			[]byte(account),
 		)
@@ -776,8 +770,8 @@ func (b *Builder) indexDeletedMetadata(
 		txIDBytes := make([]byte, 0, 8)
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txID)
 		reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, dm.Key)
-		return readstore.DeleteMetadataEntry(
-			tx, kb, reverseKey,
+		wb.DeleteMetadataEntry(
+			kb, reverseKey,
 			ledger, readstore.NamespaceTransaction, dm.Key,
 			txIDBytes,
 		)
@@ -1190,7 +1184,8 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) erro
 		)
 
 		if err := b.readStore.Update(func(tx *bolt.Tx) error {
-			for batchCount < backfillBatchSize {
+			b.wb.Init(tx)
+			for batchCount < b.batchSize {
 				log, err := logsCursor.Next()
 				if err != nil {
 					if err == io.EOF {
@@ -1216,6 +1211,9 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) erro
 
 			// Persist backfill cursor.
 			if batchCount > 0 {
+				if err := b.wb.Flush(); err != nil {
+					return err
+				}
 				return b.readStore.WriteBackfillProgress(tx, task.bbKey, lastSeq)
 			}
 			return nil

@@ -39,6 +39,7 @@ type HealthConfig struct {
 type ReadIndexConfig struct {
 	Dir            string // empty = default (<data-dir>/read-indexes/)
 	NoFreelistSync bool   // skip freelist serialization on commit (faster writes, slower open)
+	BatchSize      int    // log entries per bbolt write transaction (0 = default 1000)
 }
 
 type Config struct {
