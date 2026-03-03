@@ -540,6 +540,8 @@ func Module() fx.Option {
 				lc fx.Lifecycle,
 				runtime *dal.Store,
 				wal *wal.DefaultWAL,
+				rs *readstore.Store,
+				cfg Config,
 				logger logging.Logger,
 			) {
 				lc.Append(fx.Hook{
@@ -550,6 +552,19 @@ func Module() fx.Option {
 				lc.Append(fx.Hook{
 					OnStop: func(_ context.Context) error {
 						return runtime.Close()
+					},
+				})
+				// Sync the bbolt freelist to disk before closing so the next
+				// Open() can load it directly instead of scanning all pages.
+				lc.Append(fx.Hook{
+					OnStop: func(_ context.Context) error {
+						if cfg.ReadIndexConfig.NoFreelistSync {
+							if err := rs.SyncFreelist(); err != nil {
+								logger.Errorf("Failed to sync read index freelist: %v", err)
+								// Non-fatal: the index will just rebuild the freelist on next open.
+							}
+						}
+						return rs.Close()
 					},
 				})
 			},

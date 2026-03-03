@@ -87,6 +87,16 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success(fmt.Sprintf("Rebuild complete (last log sequence: %d)", lastSeq))
 
+	// Sync freelist to disk so the next Open() is fast.
+	if noFreelistSync {
+		spinner, _ = pterm.DefaultSpinner.Start("Syncing freelist to disk...")
+		if err := rs.SyncFreelist(); err != nil {
+			spinner.Fail("Failed to sync freelist")
+			return fmt.Errorf("syncing freelist: %w", err)
+		}
+		spinner.Success("Freelist synced")
+	}
+
 	return nil
 }
 

@@ -107,6 +107,27 @@ func New(dir string, noFreelistSync bool, logger logging.Logger) (*Store, error)
 	return s, nil
 }
 
+// SyncFreelist persists the in-memory freelist to disk so that the next
+// Open() can load it directly instead of scanning all pages (O(N) on the
+// number of database pages). This is useful after bulk writes with
+// NoFreelistSync=true: call SyncFreelist once before Close to avoid a
+// very slow page scan on the next startup.
+//
+// The method temporarily disables NoFreelistSync and performs a no-op
+// read-write transaction whose Commit() writes the freelist page.
+func (s *Store) SyncFreelist() error {
+	s.db.NoFreelistSync = false
+	s.logger.Infof("Syncing bbolt freelist to disk (may take a moment for large databases)...")
+	start := time.Now()
+	err := s.db.Update(func(_ *bolt.Tx) error { return nil })
+	if err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to sync freelist")
+		return fmt.Errorf("syncing freelist: %w", err)
+	}
+	s.logger.WithFields(map[string]any{"duration": time.Since(start).String()}).Infof("Freelist synced to disk")
+	return nil
+}
+
 // Close closes the underlying bbolt database.
 func (s *Store) Close() error {
 	return s.db.Close()
