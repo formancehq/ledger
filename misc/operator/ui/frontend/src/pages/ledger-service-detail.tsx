@@ -45,6 +45,7 @@ import {
 import { PodLogsPanel } from "@/components/pod-logs-panel";
 import { PodTerminalDialog } from "@/components/pod-terminal-dialog";
 import { PageWithInfo, InfoSection } from "@/components/info-panel";
+import { useRole } from "@/auth/use-auth";
 import type { PodSummary } from "shared";
 
 export function LedgerServiceDetailPage() {
@@ -64,6 +65,8 @@ export function LedgerServiceDetailPage() {
   const [logsOpen, setLogsOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [selectedPod, setSelectedPod] = useState<PodSummary | null>(null);
+  const role = useRole();
+  const isGuest = role === "guest";
 
   if (isLoading) {
     return (
@@ -230,12 +233,14 @@ export function LedgerServiceDetailPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <Link to={`/namespaces/${ns}/ledger-services/${name}/edit`}>
-              <Pencil className="h-4 w-4" />
-              Edit
-            </Link>
-          </Button>
+          {!isGuest && (
+            <Button variant="outline" size="sm" asChild>
+              <Link to={`/namespaces/${ns}/ledger-services/${name}/edit`}>
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Link>
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -293,7 +298,7 @@ export function LedgerServiceDetailPage() {
           </TabsTrigger>
           <TabsTrigger value="storage">Storage</TabsTrigger>
           <TabsTrigger value="conditions">Conditions</TabsTrigger>
-          <TabsTrigger value="config">Config</TabsTrigger>
+          {!isGuest && <TabsTrigger value="config">Config</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="overview">
@@ -614,15 +619,17 @@ export function LedgerServiceDetailPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="config">
-          <Card>
-            <CardContent className="pt-6">
-              <pre className="text-xs bg-muted p-4 rounded-md overflow-auto max-h-96">
-                {JSON.stringify(svc.spec, null, 2)}
-              </pre>
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {!isGuest && (
+          <TabsContent value="config">
+            <Card>
+              <CardContent className="pt-6">
+                <pre className="text-xs bg-muted p-4 rounded-md overflow-auto max-h-96">
+                  {JSON.stringify(svc.spec, null, 2)}
+                </pre>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Scale Dialog */}
@@ -641,9 +648,15 @@ export function LedgerServiceDetailPage() {
               id="replicas"
               type="number"
               min={1}
+              max={isGuest ? 5 : undefined}
               value={scaleValue}
               onChange={(e) => setScaleValue(e.target.value)}
             />
+            {isGuest && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Guest accounts can scale up to 5 replicas. Contact an admin for more.
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setScaleOpen(false)}>

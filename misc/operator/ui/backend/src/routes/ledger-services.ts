@@ -62,6 +62,16 @@ app.delete("/namespaces/:ns/ledger-services/:name", async (c) => {
 app.patch("/namespaces/:ns/ledger-services/:name/scale", async (c) => {
   const { ns, name } = c.req.param();
   const { replicas } = await c.req.json<{ replicas: number }>();
+
+  // Guests can only scale up to 5 replicas
+  const session = c.get("session");
+  if (session?.role === "guest" && replicas > 5) {
+    return c.json(
+      { error: { message: "Forbidden: guests can scale to a maximum of 5 replicas", requiredRole: "admin" } },
+      403
+    );
+  }
+
   const result = await patchLedgerService(ns, name, {
     spec: { replicas },
   });

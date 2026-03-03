@@ -79,5 +79,14 @@ auth:
   #     --from-literal=session-secret=$(openssl rand -hex 32)
   existingSecret: ""
 
+  # Map user emails to roles. Roles: "admin" (full access), "guest" (limited).
+  # Use "*" as a catch-all for unmatched emails.
+  # When empty or no match, users default to "guest" (secure by default).
+  roleMapping: {}
+  # Example:
+  #   roleMapping:
+  #     "admin@company.com": "admin"
+  #     "*": "guest"
+
 nameOverride: ""
 fullnameOverride: ""

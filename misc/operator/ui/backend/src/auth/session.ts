@@ -21,10 +21,13 @@
 
 import { randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 
+import type { UserRole } from "./roles.js";
+
 export interface SessionData {
   userId: string;
   email?: string;
   name?: string;
+  role: UserRole;
   createdAt: number;
 }
 

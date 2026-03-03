@@ -37,6 +37,7 @@ import {
   deleteSessionFromCookie,
   getCookieName,
 } from "./session.js";
+import { resolveRole } from "./roles.js";
 
 // In-memory state store for CSRF protection (state -> timestamp).
 // Each login attempt generates a unique random state that must match on callback.
@@ -73,6 +74,7 @@ export function createAuthRoutes(config: AuthConfig | null): Hono {
         id: session.userId,
         email: session.email,
         name: session.name,
+        role: session.role,
       },
     });
   });
@@ -128,10 +130,12 @@ export function createAuthRoutes(config: AuthConfig | null): Hono {
       );
 
       const claims = tokens.claims();
+      const email = claims?.email as string | undefined;
       const session = createSession({
         userId: claims?.sub ?? "unknown",
-        email: claims?.email as string | undefined,
+        email,
         name: claims?.name as string | undefined,
+        role: resolveRole(email, config.roleMapping),
         createdAt: Date.now(),
       });
 

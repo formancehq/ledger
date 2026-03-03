@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { LedgerDefaultsSpec, LedgerDefaultsConfig } from "shared";
 import {
@@ -38,6 +38,7 @@ import { SchedulingSection } from "@/components/forms/sections/scheduling-sectio
 import { ColdStorageSection } from "@/components/forms/sections/cold-storage-section";
 import { computeDiff, formatValue } from "@/lib/diff";
 import { toast } from "@/lib/use-toast";
+import { useRole } from "@/auth/use-auth";
 import { ArrowLeft, Save } from "lucide-react";
 import { PageWithInfo, InfoSection } from "@/components/info-panel";
 
@@ -45,6 +46,14 @@ export function LedgerDefaultsFormPage() {
   const { name } = useParams<{ name?: string }>();
   const navigate = useNavigate();
   const isEdit = !!name;
+  const role = useRole();
+
+  useEffect(() => {
+    if (role === "guest") {
+      toast({ title: "Access denied", description: "Configurations require admin access.", variant: "destructive" });
+      navigate("/", { replace: true });
+    }
+  }, [role, navigate]);
 
   const { data: detailData, isLoading } = useLedgerDefaultsDetail(name ?? "");
   const createMutation = useCreateLedgerDefaults();

@@ -9,7 +9,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useNamespaces } from "@/api/hooks";
 import { useWatch } from "@/api/use-watch";
-import { useAuth, useLogout } from "@/auth/use-auth";
+import { useAuth, useLogout, useRole } from "@/auth/use-auth";
+import { Badge } from "@/components/ui/badge";
 import { Database, Settings, Box, LogOut, User } from "lucide-react";
 
 const LAST_NS_KEY = "ledger-ui-namespace";
@@ -32,9 +33,14 @@ function UserInfo() {
       <div className="p-3 flex items-center gap-2">
         <User className="h-4 w-4 shrink-0 text-muted-foreground" />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">
-            {auth.user.name ?? auth.user.email ?? auth.user.id}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-medium truncate">
+              {auth.user.name ?? auth.user.email ?? auth.user.id}
+            </p>
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+              {auth.user.role === "admin" ? "Admin" : "Guest"}
+            </Badge>
+          </div>
           {auth.user.name && auth.user.email && (
             <p className="text-xs text-muted-foreground truncate">{auth.user.email}</p>
           )}
@@ -55,6 +61,7 @@ export function Layout() {
   const { ns } = useParams<{ ns: string }>();
   const navigate = useNavigate();
   const { data: namespaces } = useNamespaces();
+  const role = useRole();
 
   const currentNs = ns || localStorage.getItem(LAST_NS_KEY) || "";
 
@@ -109,13 +116,15 @@ export function Layout() {
               Services
             </Link>
           )}
-          <Link
-            to="/ledger-defaults"
-            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-sidebar-accent"
-          >
-            <Settings className="h-4 w-4" />
-            Configurations
-          </Link>
+          {role === "admin" && (
+            <Link
+              to="/ledger-defaults"
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-sidebar-accent"
+            >
+              <Settings className="h-4 w-4" />
+              Configurations
+            </Link>
+          )}
         </nav>
 
         <UserInfo />

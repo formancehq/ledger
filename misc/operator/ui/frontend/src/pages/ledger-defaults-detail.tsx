@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useLedgerDefaultsDetail, useCreateLedgerDefaults, useDeleteLedgerDefaults } from "@/api/hooks";
+import { useRole } from "@/auth/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -30,6 +31,7 @@ import { PageWithInfo, InfoSection } from "@/components/info-panel";
 export function LedgerDefaultsDetailPage() {
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
+  const role = useRole();
   const { data, isLoading } = useLedgerDefaultsDetail(name ?? "");
   const createMutation = useCreateLedgerDefaults();
   const deleteMutation = useDeleteLedgerDefaults();
@@ -37,6 +39,13 @@ export function LedgerDefaultsDetailPage() {
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [duplicateName, setDuplicateName] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  useEffect(() => {
+    if (role === "guest") {
+      toast({ title: "Access denied", description: "Configurations require admin access.", variant: "destructive" });
+      navigate("/", { replace: true });
+    }
+  }, [role, navigate]);
 
   const handleDuplicate = () => {
     if (!duplicateName || !data) return;

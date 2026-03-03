@@ -65,6 +65,10 @@ spec:
         - name: AUTH_POST_LOGOUT_REDIRECT_URI
           value: {{ .Values.auth.postLogoutRedirectUri | quote }}
         {{- end }}
+        {{- if .Values.auth.roleMapping }}
+        - name: AUTH_ROLE_MAPPING
+          value: {{ .Values.auth.roleMapping | toJson | quote }}
+        {{- end }}
         {{- end }}
         livenessProbe:
           httpGet:

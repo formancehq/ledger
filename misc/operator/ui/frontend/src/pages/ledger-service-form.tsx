@@ -50,6 +50,7 @@ import { ServiceSection } from "@/components/forms/sections/service-section";
 import { IngressSection } from "@/components/forms/sections/ingress-section";
 import { computeDiff, formatValue } from "@/lib/diff";
 import { toast } from "@/lib/use-toast";
+import { useRole } from "@/auth/use-auth";
 import { ArrowLeft, Save } from "lucide-react";
 import { PageWithInfo, InfoSection } from "@/components/info-panel";
 
@@ -57,6 +58,14 @@ export function LedgerServiceFormPage() {
   const { ns, name } = useParams<{ ns: string; name?: string }>();
   const navigate = useNavigate();
   const isEdit = !!name;
+  const role = useRole();
+  const isGuest = role === "guest";
+
+  // Guests cannot edit — redirect to detail page
+  if (isGuest && isEdit) {
+    navigate(`/namespaces/${ns}/ledger-services/${name}`, { replace: true });
+    return null;
+  }
 
   const { data: detailData, isLoading } = useLedgerServiceDetail(
     ns ?? "",
@@ -248,9 +257,14 @@ export function LedgerServiceFormPage() {
                 <SelectItem value="1">1</SelectItem>
                 <SelectItem value="3">3</SelectItem>
                 <SelectItem value="5">5</SelectItem>
-                <SelectItem value="7">7</SelectItem>
+                {!isGuest && <SelectItem value="7">7</SelectItem>}
               </SelectContent>
             </Select>
+            {isGuest && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Guest accounts can scale up to 5 replicas.
+              </p>
+            )}
           </FormField>
           <FormField label="Defaults Reference" htmlFor="ls-defaults-ref">
             <Select
@@ -274,87 +288,91 @@ export function LedgerServiceFormPage() {
           </FormField>
         </FormSection>
 
-        <ImageSection
-          value={spec.image}
-          defaults={defaultsSpec?.image}
-          onChange={(image) => setSpec((prev) => ({ ...prev, image }))}
-        />
-        <ConfigSection
-          value={spec.config}
-          onChange={(config) => setSpec((prev) => ({ ...prev, config }))}
-        />
-        <PebbleSection
-          value={spec.config?.pebble}
-          defaults={defaultsSpec?.config?.pebble}
-          onChange={(pebble) => updateConfig({ pebble })}
-        />
-        <RaftSection
-          value={spec.config?.raft}
-          defaults={defaultsSpec?.config?.raft}
-          onChange={(raft) => updateConfig({ raft })}
-        />
-        <HealthSection
-          value={spec.config?.health}
-          defaults={defaultsSpec?.config?.health}
-          onChange={(health) => updateConfig({ health })}
-        />
-        <SecuritySection
-          tls={spec.config?.tls}
-          responseSigning={spec.config?.responseSigning}
-          defaultTls={defaultsSpec?.config?.tls}
-          defaultResponseSigning={defaultsSpec?.config?.responseSigning}
-          onTlsChange={(tls) => updateConfig({ tls })}
-          onResponseSigningChange={(responseSigning) =>
-            updateConfig({ responseSigning })
-          }
-        />
-        <MonitoringSection
-          value={spec.config?.monitoring}
-          defaults={defaultsSpec?.config?.monitoring}
-          onChange={(monitoring) => updateConfig({ monitoring })}
-        />
-        <ColdStorageSection
-          value={spec.config?.coldStorage}
-          defaults={defaultsSpec?.config?.coldStorage}
-          onChange={(coldStorage) => updateConfig({ coldStorage })}
-        />
-        <PersistenceSection
-          value={spec.persistence}
-          onChange={(persistence) => setSpec((prev) => ({ ...prev, persistence }))}
-        />
-        <ServiceSection
-          service={spec.service}
-          headlessService={spec.headlessService}
-          onServiceChange={(service) => setSpec((prev) => ({ ...prev, service }))}
-          onHeadlessChange={(headlessService) =>
-            setSpec((prev) => ({ ...prev, headlessService }))
-          }
-        />
-        <IngressSection
-          ingress={spec.ingress}
-          ingressGrpc={spec.ingressGrpc}
-          onIngressChange={(ingress) => setSpec((prev) => ({ ...prev, ingress }))}
-          onIngressGrpcChange={(ingressGrpc) =>
-            setSpec((prev) => ({ ...prev, ingressGrpc }))
-          }
-        />
-        <SchedulingSection
-          resources={spec.resources}
-          podAntiAffinity={spec.podAntiAffinity}
-          podDisruptionBudget={spec.podDisruptionBudget}
-          defaultResources={defaultsSpec?.resources}
-          defaultAntiAffinity={defaultsSpec?.podAntiAffinity}
-          defaultPdb={defaultsSpec?.podDisruptionBudget}
-          onResourcesChange={(resources) =>
-            setSpec((prev) => ({ ...prev, resources }))
-          }
-          onAntiAffinityChange={(podAntiAffinity) =>
-            setSpec((prev) => ({ ...prev, podAntiAffinity }))
-          }
-          onPdbChange={(podDisruptionBudget) =>
-            setSpec((prev) => ({ ...prev, podDisruptionBudget }))
-          }
-        />
+        {!isGuest && (
+          <>
+            <ImageSection
+              value={spec.image}
+              defaults={defaultsSpec?.image}
+              onChange={(image) => setSpec((prev) => ({ ...prev, image }))}
+            />
+            <ConfigSection
+              value={spec.config}
+              onChange={(config) => setSpec((prev) => ({ ...prev, config }))}
+            />
+            <PebbleSection
+              value={spec.config?.pebble}
+              defaults={defaultsSpec?.config?.pebble}
+              onChange={(pebble) => updateConfig({ pebble })}
+            />
+            <RaftSection
+              value={spec.config?.raft}
+              defaults={defaultsSpec?.config?.raft}
+              onChange={(raft) => updateConfig({ raft })}
+            />
+            <HealthSection
+              value={spec.config?.health}
+              defaults={defaultsSpec?.config?.health}
+              onChange={(health) => updateConfig({ health })}
+            />
+            <SecuritySection
+              tls={spec.config?.tls}
+              responseSigning={spec.config?.responseSigning}
+              defaultTls={defaultsSpec?.config?.tls}
+              defaultResponseSigning={defaultsSpec?.config?.responseSigning}
+              onTlsChange={(tls) => updateConfig({ tls })}
+              onResponseSigningChange={(responseSigning) =>
+                updateConfig({ responseSigning })
+              }
+            />
+            <MonitoringSection
+              value={spec.config?.monitoring}
+              defaults={defaultsSpec?.config?.monitoring}
+              onChange={(monitoring) => updateConfig({ monitoring })}
+            />
+            <ColdStorageSection
+              value={spec.config?.coldStorage}
+              defaults={defaultsSpec?.config?.coldStorage}
+              onChange={(coldStorage) => updateConfig({ coldStorage })}
+            />
+            <PersistenceSection
+              value={spec.persistence}
+              onChange={(persistence) => setSpec((prev) => ({ ...prev, persistence }))}
+            />
+            <ServiceSection
+              service={spec.service}
+              headlessService={spec.headlessService}
+              onServiceChange={(service) => setSpec((prev) => ({ ...prev, service }))}
+              onHeadlessChange={(headlessService) =>
+                setSpec((prev) => ({ ...prev, headlessService }))
+              }
+            />
+            <IngressSection
+              ingress={spec.ingress}
+              ingressGrpc={spec.ingressGrpc}
+              onIngressChange={(ingress) => setSpec((prev) => ({ ...prev, ingress }))}
+              onIngressGrpcChange={(ingressGrpc) =>
+                setSpec((prev) => ({ ...prev, ingressGrpc }))
+              }
+            />
+            <SchedulingSection
+              resources={spec.resources}
+              podAntiAffinity={spec.podAntiAffinity}
+              podDisruptionBudget={spec.podDisruptionBudget}
+              defaultResources={defaultsSpec?.resources}
+              defaultAntiAffinity={defaultsSpec?.podAntiAffinity}
+              defaultPdb={defaultsSpec?.podDisruptionBudget}
+              onResourcesChange={(resources) =>
+                setSpec((prev) => ({ ...prev, resources }))
+              }
+              onAntiAffinityChange={(podAntiAffinity) =>
+                setSpec((prev) => ({ ...prev, podAntiAffinity }))
+              }
+              onPdbChange={(podDisruptionBudget) =>
+                setSpec((prev) => ({ ...prev, podDisruptionBudget }))
+              }
+            />
+          </>
+        )}
       </Accordion>
 
       {/* Diff Preview Dialog */}

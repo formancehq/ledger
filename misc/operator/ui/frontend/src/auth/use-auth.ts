@@ -1,5 +1,5 @@
 /**
- * React hooks for authentication.
+ * React hooks for authentication and authorization.
  *
  * useAuth()   — fetches the current auth status from the backend (GET /api/auth/me).
  *               Returns { enabled, authenticated, user } so components can adapt:
@@ -7,16 +7,22 @@
  *               - authenticated  → user is logged in, show their info
  *               - !authenticated → redirect to login
  *
+ * useRole()   — returns the current user's role ("admin" or "guest").
+ *               Defaults to "admin" when auth is disabled (no restrictions).
+ *
  * useLogout() — returns an async function that logs the user out (POST /api/auth/logout),
  *               clears the React Query cache, and redirects to the post-logout page.
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+export type UserRole = "admin" | "guest";
+
 export interface AuthUser {
   id: string;
   email?: string;
   name?: string;
+  role?: UserRole;
 }
 
 export interface AuthStatus {
@@ -45,6 +51,17 @@ export function useAuth() {
     staleTime: 60_000,
     retry: false,
   });
+}
+
+/**
+ * Returns the current user's role.
+ * When auth is disabled, returns "admin" (no restrictions).
+ * When auth is enabled but user data is unavailable, returns "guest" (secure default).
+ */
+export function useRole(): UserRole {
+  const { data } = useAuth();
+  if (!data?.enabled) return "admin";
+  return data.user?.role ?? "guest";
 }
 
 /** Returns an async logout function. Clears cache and redirects. */

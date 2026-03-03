@@ -27,6 +27,7 @@ export interface AuthConfig {
   redirectUri: string;
   scopes: string;
   postLogoutRedirectUri: string;
+  roleMapping: Record<string, string>;
 }
 
 /** true when the AUTH_ENABLED env var is set to "true" (case-insensitive). */
@@ -59,6 +60,16 @@ export function loadAuthConfig(): AuthConfig | null {
   const scopes = process.env.AUTH_SCOPES ?? "openid profile email";
   const postLogoutRedirectUri = process.env.AUTH_POST_LOGOUT_REDIRECT_URI ?? "/";
 
+  let roleMapping: Record<string, string> = {};
+  const rawRoleMapping = process.env.AUTH_ROLE_MAPPING;
+  if (rawRoleMapping) {
+    try {
+      roleMapping = JSON.parse(rawRoleMapping);
+    } catch {
+      console.warn("AUTH_ROLE_MAPPING is not valid JSON, ignoring");
+    }
+  }
+
   return {
     issuerUrl,
     clientId,
@@ -67,5 +78,6 @@ export function loadAuthConfig(): AuthConfig | null {
     redirectUri,
     scopes,
     postLogoutRedirectUri,
+    roleMapping,
   };
 }

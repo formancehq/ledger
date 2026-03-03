@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useLedgerDefaults, useDeleteLedgerDefaults } from "@/api/hooks";
+import { useRole } from "@/auth/use-auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -26,10 +27,19 @@ import { Plus, Trash2 } from "lucide-react";
 import { PageWithInfo, InfoSection } from "@/components/info-panel";
 
 export function LedgerDefaultsListPage() {
+  const navigate = useNavigate();
+  const role = useRole();
   const { data, isLoading } = useLedgerDefaults();
   const deleteMutation = useDeleteLedgerDefaults();
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (role === "guest") {
+      toast({ title: "Access denied", description: "Configurations require admin access.", variant: "destructive" });
+      navigate("/", { replace: true });
+    }
+  }, [role, navigate]);
 
   const handleDelete = () => {
     if (!deleteTarget) return;
