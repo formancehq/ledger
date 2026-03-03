@@ -380,17 +380,18 @@ func (s *Store) Flush() error {
 	return s.getDB().Flush()
 }
 
-// WarmBlockCache iterates the attributes zone [0xF1, 0xF2) to preload
-// Pebble's block cache. This turns the first query on a cold start from a
-// full disk scan into cache hits, which dramatically improves latency for
-// read-heavy commands such as "accounts analysis".
+// WarmBlockCache iterates the attributes zone [0xF1, 0xF2) and the system
+// zone [0xF2, 0xFF) to preload Pebble's block cache. This turns the first
+// query on a cold start from a full disk scan into cache hits, which
+// dramatically improves latency for read-heavy commands such as "accounts
+// analysis".
 func (s *Store) WarmBlockCache() {
 	start := time.Now()
 	db := s.getDB()
 
 	iter, err := db.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{KeyPrefixAttributes},
-		UpperBound: []byte{KeyPrefixAttributes + 1},
+		UpperBound: []byte{0xFF},
 	})
 	if err != nil {
 		s.logger.WithFields(map[string]any{"error": err}).
