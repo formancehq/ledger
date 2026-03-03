@@ -129,9 +129,13 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		return nil, fmt.Errorf("creating append batch size histogram: %w", err)
 	}
 
-	s.zapLogger, err = zap.NewDevelopment()
-	if err != nil {
-		return nil, fmt.Errorf("creating zap logger: %w", err)
+	type zapProvider interface {
+		Zap() *zap.Logger
+	}
+	if zp, ok := logger.(zapProvider); ok {
+		s.zapLogger = zp.Zap()
+	} else {
+		s.zapLogger = zap.NewNop()
 	}
 	zapLogger := s.zapLogger
 

@@ -9,12 +9,14 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp"
-	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -89,28 +91,33 @@ func Logger(cfg ModuleConfig) (logging.Logger, error) {
 
 	global.SetLoggerProvider(loggerProvider)
 
-	l := logrus.New()
-	l.AddHook(&otelLogrusHook{
-		Logger: loggerProvider.Logger("root"),
-	})
-	l.SetOutput(cfg.Output)
+	// Build the console core (writes to cfg.Output).
+	level := zapcore.InfoLevel
 	if cfg.Debug {
-		l.Level = logrus.DebugLevel
+		level = zapcore.DebugLevel
 	}
 
-	var formatter logrus.Formatter
+	var encoder zapcore.Encoder
 	if cfg.FormatJSON {
-		jsonFormatter := &logrus.JSONFormatter{}
-		formatter = jsonFormatter
+		encoderCfg := zap.NewProductionEncoderConfig()
+		encoderCfg.EncodeTime = zapcore.TimeEncoderOfLayout(time.RFC3339Nano)
+		encoder = zapcore.NewJSONEncoder(encoderCfg)
 	} else {
-		textFormatter := new(logrus.TextFormatter)
-		textFormatter.FullTimestamp = true
-		textFormatter.TimestampFormat = time.RFC3339Nano
-		formatter = textFormatter
+		encoderCfg := zap.NewDevelopmentEncoderConfig()
+		encoderCfg.EncodeTime = zapcore.TimeEncoderOfLayout(time.RFC3339Nano)
+		encoder = zapcore.NewConsoleEncoder(encoderCfg)
 	}
 
-	l.SetFormatter(formatter)
-	ret := logging.NewLogrus(l)
+	consoleCore := zapcore.NewCore(encoder, zapcore.AddSync(cfg.Output), level)
+
+	// Build the OTel bridge core.
+	otelCore := otelzap.NewCore("root", otelzap.WithLoggerProvider(loggerProvider))
+
+	// Combine both cores.
+	core := zapcore.NewTee(consoleCore, otelCore)
+	l := zap.New(core)
+
+	ret := NewZapLogger(l.Sugar())
 	logger := ret.WithFields(cfg.Fields)
 
 	return logger, nil

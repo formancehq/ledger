@@ -2,15 +2,13 @@ package store
 
 import (
 	"fmt"
-	"io"
 	"path/filepath"
 
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 	"github.com/pterm/pterm"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/metric/noop"
 )
@@ -46,7 +44,7 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 		readIndexDir = filepath.Join(dataDir, "read-indexes")
 	}
 
-	logger := newSilentLogger()
+	logger := otlplogs.NopLogger()
 
 	// Open Pebble read-only.
 	spinner, _ := pterm.DefaultSpinner.Start("Opening Pebble store (read-only)...")
@@ -88,8 +86,3 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func newSilentLogger() logging.Logger {
-	l := logrus.New()
-	l.SetOutput(io.Discard)
-	return logging.NewLogrus(l)
-}

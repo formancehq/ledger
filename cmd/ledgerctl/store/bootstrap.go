@@ -13,14 +13,14 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/application/check"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/tarutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/pterm/pterm"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -86,7 +86,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	spinner.Success("Backup extracted")
 
 	// Open staging as read-only to read metadata.
-	logger := newQuietLogger()
+	logger := otlplogs.NopLogger()
 
 	store, err := dal.OpenReadOnly(stagingDir, logger)
 	if err != nil {
@@ -276,8 +276,3 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 	return nil
 }
 
-func newQuietLogger() logging.Logger {
-	l := logrus.New()
-	l.SetOutput(io.Discard)
-	return logging.NewLogrus(l)
-}

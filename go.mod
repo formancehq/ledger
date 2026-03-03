@@ -29,7 +29,6 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
 	github.com/pterm/pterm v0.12.82
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
@@ -43,16 +42,17 @@ require (
 	go.etcd.io/etcd/client/pkg/v3 v3.5.25
 	go.etcd.io/etcd/raft/v3 v3.5.25
 	go.etcd.io/etcd/server/v3 v3.5.25
+	go.opentelemetry.io/contrib/bridges/otelzap v0.16.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.62.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0
-	go.opentelemetry.io/otel v1.39.0
+	go.opentelemetry.io/otel v1.41.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.15.0
-	go.opentelemetry.io/otel/log v0.14.0
-	go.opentelemetry.io/otel/metric v1.39.0
+	go.opentelemetry.io/otel/log v0.17.0
+	go.opentelemetry.io/otel/metric v1.41.0
 	go.opentelemetry.io/otel/sdk v1.39.0
 	go.opentelemetry.io/otel/sdk/log v0.15.0
 	go.opentelemetry.io/otel/sdk/metric v1.39.0
-	go.opentelemetry.io/otel/trace v1.39.0
+	go.opentelemetry.io/otel/trace v1.41.0
 	go.uber.org/fx v1.24.0
 	go.uber.org/mock v0.5.2
 	go.uber.org/zap v1.27.1
@@ -226,6 +226,7 @@ require (
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/shirou/gopsutil/v4 v4.25.6 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
+	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/testcontainers/testcontainers-go v0.40.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
