@@ -22,6 +22,7 @@ These flags are available for all commands:
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--profile` | | Connection profile name (env: `LEDGERCTL_PROFILE`) |
 | `--server` | `localhost:8888` | gRPC server address |
 | `--insecure` | `false` | Use insecure connection (no TLS) |
 | `--tls-ca-cert` | | Path to CA certificate file (PEM) for server verification |
@@ -2049,6 +2050,179 @@ ledgerctl --server prod:8888 auth status
 ledgerctl auth whoami
 ```
 
+### profile
+
+Manage named connection profiles. Each profile stores a server address and TLS settings. Auth tokens in the OS keychain are keyed by server address, so switching profiles automatically switches auth context.
+
+**Aliases:** `profiles`, `prof`
+
+**Config file location:** `~/.config/ledgerctl/config.json` (Linux), `~/Library/Application Support/ledgerctl/config.json` (macOS)
+
+**Flag resolution priority:** Explicit CLI flag > Environment variable > Profile value > Cobra default
+
+#### profile create
+
+Create a new connection profile.
+
+```bash
+ledgerctl profile create <name> --server <addr> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--server` | *(required)* | gRPC server address |
+| `--insecure` | `false` | Use insecure connection (no TLS) |
+| `--tls-ca-cert` | | Path to CA certificate file (PEM) |
+| `--use` | `false` | Set this profile as the active profile |
+
+**Behavior:**
+- Errors if the profile name already exists
+- Automatically sets the profile as active if it's the first profile
+- Use `--use` to activate immediately even when other profiles exist
+
+**Example:**
+
+```bash
+# Create a local development profile
+ledgerctl profile create local --server localhost:8888 --insecure
+
+# Create a production profile and activate it
+ledgerctl profile create prod --server ledger.prod.example.com:443 --use
+
+# Create a profile with custom CA
+ledgerctl profile create staging --server ledger.staging.example.com:443 --tls-ca-cert /path/to/ca.pem
+```
+
+#### profile list
+
+List all connection profiles.
+
+**Aliases:** `ls`, `l`
+
+```bash
+ledgerctl profile list
+```
+
+**Behavior:**
+- Shows a table with all profiles sorted by name
+- Active profile is marked with `*`
+- Shows a hint if no profiles are configured
+
+**Example:**
+
+```bash
+ledgerctl profile list
+#    NAME     SERVER                          INSECURE  TLS CA CERT
+# *  prod     ledger.prod.example.com:443
+#    local    localhost:8888                  true
+#    staging  ledger.staging.example.com:443            /path/to/ca.pem
+```
+
+#### profile use
+
+Set the active connection profile.
+
+```bash
+ledgerctl profile use <name>
+```
+
+**Behavior:**
+- Errors if the profile name is not found
+
+**Example:**
+
+```bash
+# Switch to production profile
+ledgerctl profile use prod
+
+# Switch to local development
+ledgerctl profile use local
+```
+
+#### profile delete
+
+Delete a connection profile.
+
+**Aliases:** `rm`, `remove`
+
+```bash
+ledgerctl profile delete <name> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-y, --yes` | `false` | Skip confirmation prompt |
+
+**Behavior:**
+- Prompts for confirmation before deleting (use `-y` to skip)
+- Clears the active profile if the deleted profile was active
+
+**Example:**
+
+```bash
+# Delete with confirmation prompt
+ledgerctl profile delete staging
+
+# Delete without confirmation
+ledgerctl profile delete staging -y
+```
+
+#### profile show
+
+Show details of a connection profile.
+
+**Aliases:** `get`, `describe`
+
+```bash
+ledgerctl profile show [name]
+```
+
+**Behavior:**
+- Defaults to the active profile if no name is given
+- Shows server address, TLS settings, and auth status (whether a token is stored in the keychain for this profile's server)
+
+**Example:**
+
+```bash
+# Show active profile
+ledgerctl profile show
+
+# Show a specific profile
+ledgerctl profile show prod
+```
+
+---
+
+**Profile workflow example:**
+
+```bash
+# Create profiles for different environments
+ledgerctl profile create local --server localhost:8888 --insecure
+ledgerctl profile create prod --server ledger.prod.example.com:443
+
+# Switch to production
+ledgerctl profile use prod
+
+# Auth works naturally with profiles (token keyed by server address)
+ledgerctl auth login --bundle key.json
+ledgerctl auth status
+
+# Override profile for a single command
+ledgerctl --profile local ledgers list
+
+# Environment variable override
+LEDGERCTL_PROFILE=local ledgerctl ledgers list
+
+# Explicit flags always win over profile values
+ledgerctl --server other:8888 ledgers list
+```
+
+---
+
 ### signing
 
 ![Signing Demo](../../misc/demo/demo_signing.gif)
@@ -2671,6 +2845,7 @@ Global flags can be set via environment variables:
 
 | Environment Variable | Flag |
 |---------------------|------|
+| `LEDGERCTL_PROFILE` | `--profile` |
 | `SERVER` | `--server` |
 | `INSECURE` | `--insecure` |
 | `TLS_CA_CERT` | `--tls-ca-cert` |

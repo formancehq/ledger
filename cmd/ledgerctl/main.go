@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -9,10 +10,12 @@ import (
 	authcmd "github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/auth"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/audit"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cluster"
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/events"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/ledgers"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/logs"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/periods"
+	profilecmd "github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/profile"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/restore"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/signing"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/store"
@@ -36,15 +39,41 @@ func newRootCommand() *cobra.Command {
 		Short:        "Ledger v3 CLI client",
 		Long:         "Command-line client for interacting with Ledger v3 servers via gRPC",
 		SilenceUsage: true,
-		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
-			// Bind environment variables to flags when the flag was not explicitly set.
-			bindEnvToFlag(cmd, "server", "SERVER")
-			bindEnvToFlag(cmd, "insecure", "INSECURE")
-			bindEnvToFlag(cmd, "tls-ca-cert", "TLS_CA_CERT")
-			bindEnvToFlag(cmd, "consistency", "CONSISTENCY")
-			bindEnvToFlag(cmd, "auth-token", "AUTH_TOKEN")
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			// Load config and resolve the active profile.
+			cfg, err := cmdutil.LoadConfig()
+			if err != nil {
+				return err
+			}
+
+			// Resolve profile name: --profile flag > LEDGERCTL_PROFILE env > config activeProfile.
+			profileName, _ := cmd.Flags().GetString("profile")
+			profileExplicit := cmd.Flags().Changed("profile")
+			if profileName == "" {
+				if v, ok := os.LookupEnv("LEDGERCTL_PROFILE"); ok && v != "" {
+					profileName = strings.TrimSpace(v)
+					profileExplicit = true
+				}
+			}
+
+			name, p := cmdutil.GetActiveProfile(cfg, profileName)
+			if profileExplicit && p == nil {
+				return fmt.Errorf("profile %q not found", name)
+			}
+
+			// Resolve flags: explicit CLI flag > env var > profile value > cobra default.
+			resolveFlag(cmd, "server", "SERVER", cmdutil.ProfileFlagValue(p, "server"))
+			resolveFlag(cmd, "insecure", "INSECURE", cmdutil.ProfileFlagValue(p, "insecure"))
+			resolveFlag(cmd, "tls-ca-cert", "TLS_CA_CERT", cmdutil.ProfileFlagValue(p, "tls-ca-cert"))
+			resolveFlag(cmd, "consistency", "CONSISTENCY", "")
+			resolveFlag(cmd, "auth-token", "AUTH_TOKEN", "")
+
+			return nil
 		},
 	}
+
+	// Add persistent flags for connection profiles.
+	rootCmd.PersistentFlags().String("profile", "", "Connection profile name (env: LEDGERCTL_PROFILE)")
 
 	// Add persistent flags for server connection.
 	rootCmd.PersistentFlags().String("server", "localhost:8888", "gRPC server address (env: SERVER)")
@@ -77,20 +106,26 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(periods.NewCommand())
 	rootCmd.AddCommand(restore.NewCommand())
 	rootCmd.AddCommand(authcmd.NewCommand())
+	rootCmd.AddCommand(profilecmd.NewCommand())
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(upgrade.NewCommand(version))
 
 	return rootCmd
 }
 
-// bindEnvToFlag sets a cobra flag's value from an environment variable
-// when the flag was not explicitly provided on the command line.
-func bindEnvToFlag(cmd *cobra.Command, flagName, envVar string) {
+// resolveFlag sets a cobra flag's value using the first available source:
+// explicit CLI flag > environment variable > profile value > cobra default.
+// It only writes to the flag when it was not explicitly set on the command line.
+func resolveFlag(cmd *cobra.Command, flagName, envVar, profileValue string) {
 	if cmd.Flags().Changed(flagName) {
 		return
 	}
 	if v, ok := os.LookupEnv(envVar); ok && v != "" {
 		_ = cmd.Flags().Set(flagName, strings.TrimSpace(v))
+		return
+	}
+	if profileValue != "" {
+		_ = cmd.Flags().Set(flagName, profileValue)
 	}
 }
 
