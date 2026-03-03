@@ -57,6 +57,19 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to get ledger", err)
 	}
 
+	// Check if any index is in BUILDING state before fetching progress.
+	hasBuilding := hasBuildingIndexes(ledger)
+	var progressMap map[string]uint64
+	var lastLogSeq uint64
+
+	if hasBuilding {
+		idxStatus, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{})
+		if err == nil {
+			lastLogSeq = idxStatus.LastLogSequence
+			progressMap = buildProgressMap(ledgerName, idxStatus.BackfillProgress)
+		}
+	}
+
 	_ = spinner.Stop()
 
 	pterm.Println()
@@ -70,20 +83,23 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	// Address indexes
 	if ac := ledger.AddressIndexes; ac != nil {
 		if ac.Address {
-			table = append(table, []string{"address", "-", "-", indexBuildStatusString(ac.AddressStatus)})
+			table = append(table, []string{"address", "-", "-",
+				indexStatusWithProgress(ac.AddressStatus, progressMap, lastLogSeq, "a:0")})
 		}
 		if ac.Source {
-			table = append(table, []string{"source-address", "-", "-", indexBuildStatusString(ac.SourceStatus)})
+			table = append(table, []string{"source-address", "-", "-",
+				indexStatusWithProgress(ac.SourceStatus, progressMap, lastLogSeq, "a:1")})
 		}
 		if ac.Destination {
-			table = append(table, []string{"dest-address", "-", "-", indexBuildStatusString(ac.DestinationStatus)})
+			table = append(table, []string{"dest-address", "-", "-",
+				indexStatusWithProgress(ac.DestinationStatus, progressMap, lastLogSeq, "a:2")})
 		}
 	}
 
 	// Metadata indexes
 	if schema := ledger.MetadataSchema; schema != nil {
-		addMetadataIndexRows(&table, "account", schema.AccountFields)
-		addMetadataIndexRows(&table, "transaction", schema.TransactionFields)
+		addMetadataIndexRowsWithProgress(&table, "account", schema.AccountFields, progressMap, lastLogSeq, commonpb.TargetType_TARGET_TYPE_ACCOUNT)
+		addMetadataIndexRowsWithProgress(&table, "transaction", schema.TransactionFields, progressMap, lastLogSeq, commonpb.TargetType_TARGET_TYPE_TRANSACTION)
 	}
 
 	if len(table) == 1 {
@@ -98,8 +114,69 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// addMetadataIndexRows adds rows for indexed metadata fields to the table.
-func addMetadataIndexRows(table *pterm.TableData, targetName string, fields map[string]*commonpb.MetadataFieldSchema) {
+// hasBuildingIndexes returns true if any index on the ledger has BUILDING status.
+func hasBuildingIndexes(ledger *commonpb.LedgerInfo) bool {
+	if ac := ledger.AddressIndexes; ac != nil {
+		if ac.Address && ac.AddressStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+			return true
+		}
+		if ac.Source && ac.SourceStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+			return true
+		}
+		if ac.Destination && ac.DestinationStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+			return true
+		}
+	}
+	if schema := ledger.MetadataSchema; schema != nil {
+		for _, f := range schema.AccountFields {
+			if f.Indexed && f.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+				return true
+			}
+		}
+		for _, f := range schema.TransactionFields {
+			if f.Indexed && f.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// buildProgressMap creates a lookup map from backfill progress entries.
+// Keys use the format "a:<role_int>" for address indexes or "m:<target_int>:<key>" for metadata.
+func buildProgressMap(ledgerName string, entries []*servicepb.IndexBackfillProgress) map[string]uint64 {
+	m := make(map[string]uint64, len(entries))
+	for _, e := range entries {
+		if e.Ledger != ledgerName {
+			continue
+		}
+		switch idx := e.Index.(type) {
+		case *servicepb.IndexBackfillProgress_AddressRole:
+			m[fmt.Sprintf("a:%d", idx.AddressRole)] = e.Cursor
+		case *servicepb.IndexBackfillProgress_Metadata:
+			m[fmt.Sprintf("m:%d:%s", idx.Metadata.Target, idx.Metadata.Key)] = e.Cursor
+		}
+	}
+	return m
+}
+
+// indexStatusWithProgress returns the status string, appending progress percentage for BUILDING indexes.
+func indexStatusWithProgress(status commonpb.IndexBuildStatus, progressMap map[string]uint64, lastLogSeq uint64, key string) string {
+	if status != commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+		return indexBuildStatusString(status)
+	}
+	if progressMap == nil || lastLogSeq == 0 {
+		return indexBuildStatusString(status)
+	}
+	if cursor, ok := progressMap[key]; ok {
+		pct := cursor * 100 / lastLogSeq
+		return pterm.Yellow(fmt.Sprintf("BUILDING (%d%%)", pct))
+	}
+	return indexBuildStatusString(status)
+}
+
+// addMetadataIndexRowsWithProgress adds rows for indexed metadata fields with progress info.
+func addMetadataIndexRowsWithProgress(table *pterm.TableData, targetName string, fields map[string]*commonpb.MetadataFieldSchema, progressMap map[string]uint64, lastLogSeq uint64, targetType commonpb.TargetType) {
 	keys := make([]string, 0, len(fields))
 	for k, f := range fields {
 		if f.Indexed {
@@ -109,11 +186,12 @@ func addMetadataIndexRows(table *pterm.TableData, targetName string, fields map[
 	sort.Strings(keys)
 
 	for _, key := range keys {
+		progressKey := fmt.Sprintf("m:%d:%s", targetType, key)
 		*table = append(*table, []string{
 			"metadata",
 			targetName,
 			key,
-			indexBuildStatusString(fields[key].IndexBuildStatus),
+			indexStatusWithProgress(fields[key].IndexBuildStatus, progressMap, lastLogSeq, progressKey),
 		})
 	}
 }

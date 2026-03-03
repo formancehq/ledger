@@ -274,6 +274,26 @@ func EntityExistsNonNullPrefix(kb *KeyBuilder, ledger, ns, metaKey string) []byt
 		Snapshot()
 }
 
+// ParseBackfillKey decodes a bbolt backfill key into its components.
+// Format:
+//
+//	Address:  [ledger\x00]a[role_byte]
+//	Metadata: [ledger\x00]m[target_byte][key]
+//
+// Returns the ledger name, kind byte ('a' or 'm'), remaining details, and ok.
+func ParseBackfillKey(key []byte) (ledger string, kind byte, details []byte, ok bool) {
+	// Find the null separator between ledger name and type indicator.
+	for i, b := range key {
+		if b == 0x00 {
+			if i+1 >= len(key) {
+				return "", 0, nil, false
+			}
+			return string(key[:i]), key[i+1], key[i+2:], true
+		}
+	}
+	return "", 0, nil, false
+}
+
 // EntityExistsNullPrefix returns the prefix for scanning null-valued entities
 // that have a given metadata key.
 //

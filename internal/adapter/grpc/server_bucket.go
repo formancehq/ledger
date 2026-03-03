@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
+	bolt "go.etcd.io/bbolt"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -347,11 +348,50 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 		fileSize = uint64(info.Size())
 	}
 
+	// Read per-index backfill progress from bbolt.
+	var progress []*servicepb.IndexBackfillProgress
+	_ = impl.readStore.View(func(tx *bolt.Tx) error {
+		all, err := impl.readStore.ReadAllBackfillProgress(tx)
+		if err != nil {
+			return err
+		}
+		for key, cursor := range all {
+			ledger, kind, details, ok := readstore.ParseBackfillKey([]byte(key))
+			if !ok {
+				continue
+			}
+			entry := &servicepb.IndexBackfillProgress{
+				Ledger: ledger,
+				Cursor: cursor,
+			}
+			switch kind {
+			case 'a':
+				if len(details) >= 1 {
+					entry.Index = &servicepb.IndexBackfillProgress_AddressRole{
+						AddressRole: commonpb.AddressRole(details[0]),
+					}
+				}
+			case 'm':
+				if len(details) >= 1 {
+					entry.Index = &servicepb.IndexBackfillProgress_Metadata{
+						Metadata: &commonpb.MetadataIndexTarget{
+							Target: commonpb.TargetType(details[0]),
+							Key:    string(details[1:]),
+						},
+					}
+				}
+			}
+			progress = append(progress, entry)
+		}
+		return nil
+	})
+
 	return &servicepb.GetIndexStatusResponse{
 		LastIndexedSequence: lastIndexed,
 		LastLogSequence:     lastLog,
 		Lag:                 lag,
 		IndexFileSize:       fileSize,
+		BackfillProgress:    progress,
 	}, nil
 }
 

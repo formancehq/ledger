@@ -2400,6 +2400,13 @@ func (m *GetIndexStatusResponse) CloneVT() *GetIndexStatusResponse {
 	r.LastLogSequence = m.LastLogSequence
 	r.Lag = m.Lag
 	r.IndexFileSize = m.IndexFileSize
+	if rhs := m.BackfillProgress; rhs != nil {
+		tmpContainer := make([]*IndexBackfillProgress, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.BackfillProgress = tmpContainer
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2409,6 +2416,47 @@ func (m *GetIndexStatusResponse) CloneVT() *GetIndexStatusResponse {
 
 func (m *GetIndexStatusResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
+}
+
+func (m *IndexBackfillProgress) CloneVT() *IndexBackfillProgress {
+	if m == nil {
+		return (*IndexBackfillProgress)(nil)
+	}
+	r := new(IndexBackfillProgress)
+	r.Ledger = m.Ledger
+	r.Cursor = m.Cursor
+	if m.Index != nil {
+		r.Index = m.Index.(interface {
+			CloneVT() isIndexBackfillProgress_Index
+		}).CloneVT()
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *IndexBackfillProgress) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *IndexBackfillProgress_AddressRole) CloneVT() isIndexBackfillProgress_Index {
+	if m == nil {
+		return (*IndexBackfillProgress_AddressRole)(nil)
+	}
+	r := new(IndexBackfillProgress_AddressRole)
+	r.AddressRole = m.AddressRole
+	return r
+}
+
+func (m *IndexBackfillProgress_Metadata) CloneVT() isIndexBackfillProgress_Index {
+	if m == nil {
+		return (*IndexBackfillProgress_Metadata)(nil)
+	}
+	r := new(IndexBackfillProgress_Metadata)
+	r.Metadata = m.Metadata.CloneVT()
+	return r
 }
 
 func (m *GetLedgerStatsRequest) CloneVT() *GetLedgerStatsRequest {
@@ -6202,6 +6250,23 @@ func (this *GetIndexStatusResponse) EqualVT(that *GetIndexStatusResponse) bool {
 	if this.IndexFileSize != that.IndexFileSize {
 		return false
 	}
+	if len(this.BackfillProgress) != len(that.BackfillProgress) {
+		return false
+	}
+	for i, vx := range this.BackfillProgress {
+		vy := that.BackfillProgress[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &IndexBackfillProgress{}
+			}
+			if q == nil {
+				q = &IndexBackfillProgress{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -6212,6 +6277,82 @@ func (this *GetIndexStatusResponse) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
+func (this *IndexBackfillProgress) EqualVT(that *IndexBackfillProgress) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Index == nil && that.Index != nil {
+		return false
+	} else if this.Index != nil {
+		if that.Index == nil {
+			return false
+		}
+		if !this.Index.(interface {
+			EqualVT(isIndexBackfillProgress_Index) bool
+		}).EqualVT(that.Index) {
+			return false
+		}
+	}
+	if this.Ledger != that.Ledger {
+		return false
+	}
+	if this.Cursor != that.Cursor {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *IndexBackfillProgress) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*IndexBackfillProgress)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *IndexBackfillProgress_AddressRole) EqualVT(thatIface isIndexBackfillProgress_Index) bool {
+	that, ok := thatIface.(*IndexBackfillProgress_AddressRole)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.AddressRole != that.AddressRole {
+		return false
+	}
+	return true
+}
+
+func (this *IndexBackfillProgress_Metadata) EqualVT(thatIface isIndexBackfillProgress_Index) bool {
+	that, ok := thatIface.(*IndexBackfillProgress_Metadata)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Metadata, that.Metadata; p != q {
+		if p == nil {
+			p = &commonpb.MetadataIndexTarget{}
+		}
+		if q == nil {
+			q = &commonpb.MetadataIndexTarget{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *GetLedgerStatsRequest) EqualVT(that *GetLedgerStatsRequest) bool {
 	if this == that {
 		return true
@@ -12239,6 +12380,18 @@ func (m *GetIndexStatusResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.BackfillProgress) > 0 {
+		for iNdEx := len(m.BackfillProgress) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.BackfillProgress[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
 	if m.IndexFileSize != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.IndexFileSize))
 		i--
@@ -12262,6 +12415,91 @@ func (m *GetIndexStatusResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	return len(dAtA) - i, nil
 }
 
+func (m *IndexBackfillProgress) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *IndexBackfillProgress) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IndexBackfillProgress) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if vtmsg, ok := m.Index.(interface {
+		MarshalToSizedBufferVT([]byte) (int, error)
+	}); ok {
+		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
+	if m.Cursor != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Cursor))
+		i--
+		dAtA[i] = 0x20
+	}
+	if len(m.Ledger) > 0 {
+		i -= len(m.Ledger)
+		copy(dAtA[i:], m.Ledger)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *IndexBackfillProgress_AddressRole) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IndexBackfillProgress_AddressRole) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AddressRole))
+	i--
+	dAtA[i] = 0x10
+	return len(dAtA) - i, nil
+}
+func (m *IndexBackfillProgress_Metadata) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IndexBackfillProgress_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Metadata != nil {
+		size, err := m.Metadata.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
+	}
+	return len(dAtA) - i, nil
+}
 func (m *GetLedgerStatsRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -14902,10 +15140,57 @@ func (m *GetIndexStatusResponse) SizeVT() (n int) {
 	if m.IndexFileSize != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.IndexFileSize))
 	}
+	if len(m.BackfillProgress) > 0 {
+		for _, e := range m.BackfillProgress {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
 	n += len(m.unknownFields)
 	return n
 }
 
+func (m *IndexBackfillProgress) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Ledger)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if vtmsg, ok := m.Index.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
+	}
+	if m.Cursor != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Cursor))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *IndexBackfillProgress_AddressRole) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.AddressRole))
+	return n
+}
+func (m *IndexBackfillProgress_Metadata) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Metadata != nil {
+		l = m.Metadata.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *GetLedgerStatsRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -28701,6 +28986,203 @@ func (m *GetIndexStatusResponse) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.IndexFileSize |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BackfillProgress", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.BackfillProgress = append(m.BackfillProgress, &IndexBackfillProgress{})
+			if err := m.BackfillProgress[len(m.BackfillProgress)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *IndexBackfillProgress) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: IndexBackfillProgress: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: IndexBackfillProgress: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Ledger = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AddressRole", wireType)
+			}
+			var v commonpb.AddressRole
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.AddressRole(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &IndexBackfillProgress_AddressRole{AddressRole: v}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Index.(*IndexBackfillProgress_Metadata); ok {
+				if err := oneof.Metadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &commonpb.MetadataIndexTarget{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Index = &IndexBackfillProgress_Metadata{Metadata: v}
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cursor", wireType)
+			}
+			m.Cursor = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Cursor |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

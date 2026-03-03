@@ -806,6 +806,17 @@ message GetIndexStatusResponse {
   uint64 last_log_sequence = 2;
   uint64 lag = 3;
   uint64 index_file_size = 4;
+  repeated IndexBackfillProgress backfill_progress = 5;
+}
+
+// IndexBackfillProgress reports per-index backfill cursor position.
+message IndexBackfillProgress {
+  string ledger = 1;
+  oneof index {
+    common.AddressRole address_role = 2;
+    common.MetadataIndexTarget metadata = 3;
+  }
+  uint64 cursor = 4;
 }
 
 message GetLedgerStatsRequest {
