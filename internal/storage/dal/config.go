@@ -17,12 +17,12 @@ type Config struct {
 
 	// L0CompactionThreshold triggers L0->L1 compactions when L0 files reach this count.
 	// Lower values prevent runaway L0 growth but increase compaction frequency.
-	// Default: 64
+	// Default: 4
 	L0CompactionThreshold int `yaml:"l0CompactionThreshold"`
 
 	// L0StopWritesThreshold is the L0 file count at which writes are stopped.
 	// Higher values allow more L0 files before stalling, but increase read amplification.
-	// Default: 256
+	// Default: 16
 	L0StopWritesThreshold int `yaml:"l0StopWritesThreshold"`
 
 	// LBaseMaxBytes is the maximum size of the base level (L1) in bytes.
@@ -77,8 +77,8 @@ func DefaultConfig() Config {
 	return Config{
 		MemTableSize:                256 << 20, // 256MB
 		MemTableStopWritesThreshold: 6,
-		L0CompactionThreshold:       16,
-		L0StopWritesThreshold:       64,
+		L0CompactionThreshold:       4,
+		L0StopWritesThreshold:       16,
 		LBaseMaxBytes:               2 << 30,    // 2GB
 		CacheSize:                   1024 << 20, // 1GB
 		TargetFileSize:              256 << 20,  // 256MB

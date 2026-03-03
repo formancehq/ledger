@@ -46,8 +46,8 @@ Optimized for ledger workloads with high write throughput:
 ```go
 MemTableSize:                256 << 20  // 256MB memtable (absorb more writes before flush)
 MemTableStopWritesThreshold: 6          // Reduce write stalls
-L0CompactionThreshold:       16         // Runtime threshold (operator typically overrides to 64)
-L0StopWritesThreshold:       64         // Higher threshold for stop-the-world writes
+L0CompactionThreshold:       4          // Low threshold: Pebble auto-compacts aggressively
+L0StopWritesThreshold:       16         // ~4x ratio above compaction threshold
 LBaseMaxBytes:               2 << 30    // 2GB base level
 CacheSize:                   1024 << 20 // 1GB block cache
 TargetFileSize:              256 << 20  // 256MB per SST file
@@ -145,32 +145,26 @@ Pebble uses a checkpoint-based system for durability:
 
 ### L0 Compaction Management
 
-Pebble's runtime `L0CompactionThreshold` is set high (e.g. 64) to maximize write throughput during bulk operations. This means L0 files can accumulate below the threshold without triggering automatic compaction. While harmless during normal operation (the block cache keeps hot data in RAM), these accumulated L0 files become a problem on restart: with a cold cache, every read must scan each L0 file individually from disk, causing multi-minute stalls.
+The `L0CompactionThreshold` is set low (default 4) so that Pebble auto-compacts aggressively and L0 never accumulates excessively. Combined with the extended block cache warmup covering `[0xF1, 0xFF)` on startup, this eliminates the need for manual startup or periodic compaction.
 
 The key space is divided into three zones with different compaction characteristics:
 
 - **Cold zone** `[0x01, 0xF1)` — logs, audit, tx updates. Immutable, sequential, write-once data. Compacting this zone only benefits after a period purge deletes data.
-- **Attributes zone** `[0xF1, 0xF2)` — volumes, metadata, etc. The only zone that benefits from regular compaction: `DeleteRange` tombstones from generation-rotation pruning need to be pushed down the LSM.
+- **Attributes zone** `[0xF1, 0xF2)` — volumes, metadata, etc. `DeleteRange` tombstones from generation-rotation pruning are pushed down the LSM by Pebble's automatic compaction (triggered at L0 threshold).
 - **System zone** `[0xF2, 0xFF]` — tiny singleton keys, Pebble handles natively.
 
-Four mechanisms keep L0 under control:
+Two mechanisms keep L0 under control:
 
-1. **Startup compaction** (`store.go:NewStore`): When the database opens from a checkpoint with more than 4 L0 files, a full-range `db.Compact(nil, 0xFF)` runs synchronously before serving any reads. Full range is correct here because the block cache is cold. After compaction, the checkpoint is overwritten with the clean LSM state so subsequent restarts skip the compaction.
+1. **Post-purge compaction — cold zone** (`smart_compactor.go`): When a `ConfirmArchivePeriod` is applied and period data is purged, the FSM signals the `SmartCompactor` via a channel. The compactor then runs `db.Compact` prefix-by-prefix over the cold zone to push the purge tombstones down the LSM and reclaim space.
 
-2. **Idle compaction — attributes zone** (`smart_compactor.go`): A background goroutine checks every 30 seconds whether the database is idle (no new memtable flushes since last check). If idle and L0 exceeds 4 files, it triggers `db.Compact(0xF1, 0xF2)` — only the attributes zone where `DeleteRange` tombstones from generation rotation benefit from compaction. The cold zone is skipped because it contains immutable write-once data with no overlapping versions.
-
-3. **Post-purge compaction — cold zone** (`smart_compactor.go`): When a `ConfirmArchivePeriod` is applied and period data is purged, the FSM signals the `SmartCompactor` via a channel. The compactor then runs `db.Compact(0x01, 0xF1)` to push the purge tombstones down the LSM and reclaim space.
-
-4. **Pebble automatic compaction**: Pebble's built-in compaction runs when L0 reaches the runtime threshold (default 64). This handles steady-state write workloads.
+2. **Pebble automatic compaction**: Pebble's built-in compaction runs when L0 reaches the threshold (default 4). This handles steady-state write workloads and keeps L0 clean at all times.
 
 | Mechanism | Zone | Trigger | Blocking | When |
 |-----------|------|---------|----------|------|
-| Startup compaction | Full range | L0 > 4 at boot | Yes (before serving) | Every restart with dirty L0 |
-| Idle compaction | Attributes `[0xF1, 0xF2)` | No flushes for 30s + L0 > 4 | No (background goroutine) | After write bursts |
 | Post-purge compaction | Cold `[0x01, 0xF1)` | Period purge applied | No (background goroutine) | After period archival |
-| Pebble automatic | Full range | L0 >= runtime threshold | No (background) | During sustained writes |
+| Pebble automatic | Full range | L0 >= threshold (4) | No (background) | During sustained writes |
 
-Source files: `internal/storage/dal/store.go` (startup), `internal/storage/dal/smart_compactor.go` (idle + post-purge).
+Source files: `internal/storage/dal/smart_compactor.go` (post-purge).
 
 ### Metrics
 
@@ -192,8 +186,8 @@ Pebble can be configured using command-line flags:
 ./ledger serve \
   --pebble-memtable-size=268435456 \
   --pebble-memtable-stop-writes-threshold=6 \
-  --pebble-l0-compaction-threshold=64 \
-  --pebble-l0-stop-writes-threshold=256 \
+  --pebble-l0-compaction-threshold=4 \
+  --pebble-l0-stop-writes-threshold=16 \
   --pebble-lbase-max-bytes=2147483648 \
   --pebble-cache-size=1073741824 \
   --pebble-target-file-size=268435456 \
