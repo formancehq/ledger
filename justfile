@@ -40,6 +40,9 @@ run:
 run-client *ARGS:
     go run ./cmd/ledgerctl {{ARGS}}
 
+# Install ledgerctl and kubectl-ledger plugin into $GOPATH/bin
+install: install-client install-kubectl-plugin
+
 install-client:
     go build -o $GOPATH/bin/ledgerctl ./cmd/ledgerctl
     #todo: make optional or configurable or whatever
