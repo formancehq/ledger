@@ -40,7 +40,7 @@ spec:
     auth:
       enabled: true
     readIndex:
-      noFreelistSync: true
+      noFreelistSync: false
       batchSize: 10000
 
     pebble:
