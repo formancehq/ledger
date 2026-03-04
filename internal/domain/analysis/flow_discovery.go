@@ -35,7 +35,7 @@ func AnalyzeTransactions(txns []CompactTransaction, variableThreshold uint32) *s
 	}
 
 	count := totalReverted
-	resp, err := AnalyzeTransactionsFromIterators(makeIter(), makeIter(), func() uint64 { return count }, variableThreshold)
+	resp, err := AnalyzeTransactionsFromIterators(makeIter(), makeIter(), func() uint64 { return count }, variableThreshold, nil)
 	if err != nil {
 		// Slice iterators never return a non-EOF error.
 		panic(fmt.Sprintf("unexpected error from slice iterator: %v", err))
@@ -182,11 +182,14 @@ func (g *txGroupAccum) toFlowPattern() *servicepb.FlowPattern {
 // the streaming path cannot retroactively mark already-yielded transactions as reverted.
 // Each transaction is discarded after processing, so memory is
 // O(unique address segments + unique flow signatures) instead of O(N transactions).
+// If onProgress is non-nil, it is called periodically with (processed, total) counts.
+// During pass1 processed goes 0→totalLogs; during pass2 it goes totalLogs→2*totalLogs.
 func AnalyzeTransactionsFromIterators(
 	pass1 func() (CompactTransaction, error),
 	pass2 func() (CompactTransaction, error),
 	revertedCount func() uint64,
 	variableThreshold uint32,
+	onProgress func(processed, total uint64),
 ) (*servicepb.AnalyzeTransactionsResponse, error) {
 	if variableThreshold == 0 {
 		variableThreshold = DefaultVariableThreshold
@@ -195,6 +198,7 @@ func AnalyzeTransactionsFromIterators(
 	// Pass 1: Build address trie + count totals
 	root := newTrieNode()
 	var totalTransactions uint64
+	var pass1Processed uint64
 	for {
 		ct, err := pass1()
 		if err == io.EOF {
@@ -204,6 +208,10 @@ func AnalyzeTransactionsFromIterators(
 			return nil, fmt.Errorf("pass 1 (trie building): %w", err)
 		}
 		totalTransactions++
+		pass1Processed++
+		if onProgress != nil && pass1Processed%progressReportInterval == 0 {
+			onProgress(pass1Processed, 0)
+		}
 		for j := range ct.Postings {
 			insertAddress(root, ct.Postings[j].Source)
 			insertAddress(root, ct.Postings[j].Destination)
@@ -218,8 +226,13 @@ func AnalyzeTransactionsFromIterators(
 		return resp, nil
 	}
 
+	// Pre-compute normalization info on the trie (once, not per-transaction).
+	precomputeNormalization(root, variableThreshold)
+
 	// Pass 2: Normalize + aggregate incrementally
+	addrCache := make(map[string]string)
 	groups := make(map[string]*txGroupAccum)
+	var pass2Processed uint64
 	for {
 		ct, err := pass2()
 		if err == io.EOF {
@@ -229,7 +242,12 @@ func AnalyzeTransactionsFromIterators(
 			return nil, fmt.Errorf("pass 2 (aggregation): %w", err)
 		}
 
-		normalized := normalizePostings(ct.Postings, root, variableThreshold)
+		pass2Processed++
+		if onProgress != nil && pass2Processed%progressReportInterval == 0 {
+			onProgress(pass1Processed+pass2Processed, pass1Processed*2)
+		}
+
+		normalized := normalizePostings(ct.Postings, root, addrCache)
 		sig := computeFlowSignature(normalized)
 
 		g, ok := groups[sig]
@@ -277,54 +295,108 @@ func insertAddress(root *trieNode, address string) {
 }
 
 // normalizeAddress replaces variable segments in an address with placeholder names
-// using the trie to determine which segments are variable.
-func normalizeAddress(address string, root *trieNode, threshold uint32) string {
-	segments := strings.Split(address, ":")
-	result := make([]string, len(segments))
+// using pre-computed normalization info on the trie (see precomputeNormalization).
+func normalizeAddress(address string, root *trieNode) string {
+	var b strings.Builder
+	b.Grow(len(address) + 16)
 	node := root
-	for i, seg := range segments {
-		if node != nil && uint32(len(node.children)) > threshold {
-			// Variable segment: infer placeholder name
-			keys := sortedKeys(node.children)
-			varName := inferVariableName(keys)
-			result[i] = fmt.Sprintf("{%s}", varName)
-			// Follow merged children for next level
-			merged := newTrieNode()
-			for _, child := range node.children {
-				mergeTrieNodes(merged, child)
+	first := true
+	start := 0
+	for i := 0; i <= len(address); i++ {
+		if i == len(address) || address[i] == ':' {
+			if !first {
+				b.WriteByte(':')
 			}
-			node = merged
-		} else {
-			result[i] = seg
-			if node != nil {
-				node = node.children[seg]
+			first = false
+			seg := address[start:i]
+			if node != nil && node.varPlaceholder != "" {
+				b.WriteString(node.varPlaceholder)
+				node = node.mergedChild
+			} else {
+				b.WriteString(seg)
+				if node != nil {
+					node = node.children[seg]
+				}
 			}
+			start = i + 1
 		}
 	}
-	return strings.Join(result, ":")
+	return b.String()
+}
+
+// cachedNormalizeAddress returns the normalized form of address, using a cache
+// to avoid redundant trie traversals for repeated addresses.
+func cachedNormalizeAddress(address string, root *trieNode, cache map[string]string) string {
+	if cached, ok := cache[address]; ok {
+		return cached
+	}
+	result := normalizeAddress(address, root)
+	cache[address] = result
+	return result
 }
 
 // normalizePostings normalizes all postings of a transaction.
-func normalizePostings(postings []CompactPosting, root *trieNode, threshold uint32) []*servicepb.NormalizedPosting {
-	normalized := make([]*servicepb.NormalizedPosting, 0, len(postings))
+func normalizePostings(postings []CompactPosting, root *trieNode, addrCache map[string]string) []*servicepb.NormalizedPosting {
+	normalized := make([]*servicepb.NormalizedPosting, len(postings))
 	for i := range postings {
-		normalized = append(normalized, &servicepb.NormalizedPosting{
-			SourcePattern:      normalizeAddress(postings[i].Source, root, threshold),
-			DestinationPattern: normalizeAddress(postings[i].Destination, root, threshold),
+		normalized[i] = &servicepb.NormalizedPosting{
+			SourcePattern:      cachedNormalizeAddress(postings[i].Source, root, addrCache),
+			DestinationPattern: cachedNormalizeAddress(postings[i].Destination, root, addrCache),
 			Asset:              postings[i].Asset,
-		})
+		}
 	}
 	return normalized
 }
 
 // computeFlowSignature returns a canonical, sorted signature string from normalized postings.
 func computeFlowSignature(postings []*servicepb.NormalizedPosting) string {
-	parts := make([]string, 0, len(postings))
-	for _, p := range postings {
-		parts = append(parts, fmt.Sprintf("%s->%s[%s]", p.SourcePattern, p.DestinationPattern, p.Asset))
+	if len(postings) == 1 {
+		// Fast path: single posting, no sorting needed.
+		p := postings[0]
+		return p.SourcePattern + "->" + p.DestinationPattern + "[" + p.Asset + "]"
+	}
+	parts := make([]string, len(postings))
+	for i, p := range postings {
+		parts[i] = p.SourcePattern + "->" + p.DestinationPattern + "[" + p.Asset + "]"
 	}
 	sort.Strings(parts)
 	return strings.Join(parts, ";")
+}
+
+// precomputeNormalization walks the trie once after Pass 1 and caches
+// varPlaceholder and mergedChild on each variable node, so that
+// normalizeAddress becomes a simple traversal without allocations.
+func precomputeNormalization(node *trieNode, threshold uint32) {
+	if uint32(len(node.children)) > threshold {
+		keys := make([]string, 0, len(node.children))
+		for k := range node.children {
+			keys = append(keys, k)
+		}
+		node.varPlaceholder = "{" + inferVariableName(keys) + "}"
+		node.mergedChild = newTrieNode()
+		for _, child := range node.children {
+			mergeTrieNodesStructure(node.mergedChild, child)
+		}
+		precomputeNormalization(node.mergedChild, threshold)
+	} else {
+		for _, child := range node.children {
+			precomputeNormalization(child, threshold)
+		}
+	}
+}
+
+// mergeTrieNodesStructure merges only the tree structure (children and terminating count),
+// always creating new destination nodes to avoid mutating the source trie.
+func mergeTrieNodesStructure(dst, src *trieNode) {
+	dst.terminating += src.terminating
+	for key, srcChild := range src.children {
+		dstChild, ok := dst.children[key]
+		if !ok {
+			dstChild = newTrieNode()
+			dst.children[key] = dstChild
+		}
+		mergeTrieNodesStructure(dstChild, srcChild)
+	}
 }
 
 // classifyPostingStructure determines the posting structure type.

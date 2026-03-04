@@ -3,6 +3,7 @@ package transactions
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -59,13 +60,40 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start("Analyzing transactions...")
 
-	resp, err := client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
+	stream, err := client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
 		Ledger:            ledgerName,
 		VariableThreshold: threshold,
 	})
 	if err != nil {
 		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to analyze transactions", err)
+	}
+
+	var resp *servicepb.AnalyzeTransactionsResponse
+	for {
+		event, err := stream.Recv()
+		if err != nil {
+			_ = spinner.Stop()
+			if err == io.EOF {
+				return fmt.Errorf("stream ended without result")
+			}
+			return cmdutil.FormatGRPCError("failed to analyze transactions", err)
+		}
+		switch t := event.Type.(type) {
+		case *servicepb.AnalyzeTransactionsEvent_Progress:
+			p := t.Progress
+			if p.Total > 0 {
+				pct := p.Processed * 100 / p.Total
+				spinner.UpdateText(fmt.Sprintf("Analyzing transactions... %d/%d logs (%d%%)", p.Processed, p.Total, pct))
+			} else {
+				spinner.UpdateText(fmt.Sprintf("Analyzing transactions... %d logs scanned", p.Processed))
+			}
+		case *servicepb.AnalyzeTransactionsEvent_Result:
+			resp = t.Result
+		}
+		if resp != nil {
+			break
+		}
 	}
 
 	_ = spinner.Stop()

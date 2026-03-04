@@ -150,7 +150,7 @@ func (s *Server) handleAnalyzeTransactions(w http.ResponseWriter, r *http.Reques
 		variableThreshold = uint32(parsed)
 	}
 
-	resp, err := s.backend.AnalyzeTransactions(r.Context(), ledgerName, variableThreshold)
+	resp, err := s.backend.AnalyzeTransactions(r.Context(), ledgerName, variableThreshold, nil)
 	if err != nil {
 		handleError(w, r, err)
 		return

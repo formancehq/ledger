@@ -43,33 +43,33 @@ func (m *MockController) EXPECT() *MockControllerMockRecorder {
 }
 
 // AnalyzeAccounts mocks base method.
-func (m *MockController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
+func (m *MockController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AnalyzeAccounts", ctx, ledgerName, variableThreshold)
+	ret := m.ctrl.Call(m, "AnalyzeAccounts", ctx, ledgerName, variableThreshold, onProgress)
 	ret0, _ := ret[0].(*servicepb.AnalyzeAccountsResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AnalyzeAccounts indicates an expected call of AnalyzeAccounts.
-func (mr *MockControllerMockRecorder) AnalyzeAccounts(ctx, ledgerName, variableThreshold any) *gomock.Call {
+func (mr *MockControllerMockRecorder) AnalyzeAccounts(ctx, ledgerName, variableThreshold, onProgress any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AnalyzeAccounts", reflect.TypeOf((*MockController)(nil).AnalyzeAccounts), ctx, ledgerName, variableThreshold)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AnalyzeAccounts", reflect.TypeOf((*MockController)(nil).AnalyzeAccounts), ctx, ledgerName, variableThreshold, onProgress)
 }
 
 // AnalyzeTransactions mocks base method.
-func (m *MockController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+func (m *MockController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(uint64, uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AnalyzeTransactions", ctx, ledgerName, variableThreshold)
+	ret := m.ctrl.Call(m, "AnalyzeTransactions", ctx, ledgerName, variableThreshold, onProgress)
 	ret0, _ := ret[0].(*servicepb.AnalyzeTransactionsResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AnalyzeTransactions indicates an expected call of AnalyzeTransactions.
-func (mr *MockControllerMockRecorder) AnalyzeTransactions(ctx, ledgerName, variableThreshold any) *gomock.Call {
+func (mr *MockControllerMockRecorder) AnalyzeTransactions(ctx, ledgerName, variableThreshold, onProgress any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AnalyzeTransactions", reflect.TypeOf((*MockController)(nil).AnalyzeTransactions), ctx, ledgerName, variableThreshold)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AnalyzeTransactions", reflect.TypeOf((*MockController)(nil).AnalyzeTransactions), ctx, ledgerName, variableThreshold, onProgress)
 }
 
 // Apply mocks base method.

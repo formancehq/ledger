@@ -3,6 +3,7 @@ package accounts
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -60,13 +61,35 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start("Analyzing accounts...")
 
-	resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+	stream, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
 		Ledger:            ledgerName,
 		VariableThreshold: threshold,
 	})
 	if err != nil {
 		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to analyze accounts", err)
+	}
+
+	var resp *servicepb.AnalyzeAccountsResponse
+	for {
+		event, err := stream.Recv()
+		if err != nil {
+			_ = spinner.Stop()
+			if err == io.EOF {
+				return fmt.Errorf("stream ended without result")
+			}
+			return cmdutil.FormatGRPCError("failed to analyze accounts", err)
+		}
+		switch t := event.Type.(type) {
+		case *servicepb.AnalyzeAccountsEvent_Progress:
+			p := t.Progress
+			spinner.UpdateText(fmt.Sprintf("Analyzing accounts... %d scanned", p.Processed))
+		case *servicepb.AnalyzeAccountsEvent_Result:
+			resp = t.Result
+		}
+		if resp != nil {
+			break
+		}
 	}
 
 	_ = spinner.Stop()

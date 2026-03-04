@@ -54,9 +54,9 @@ service BucketService {
   // GetMetadataSchemaStatus returns the conversion status for all declared metadata fields
   rpc GetMetadataSchemaStatus(GetMetadataSchemaStatusRequest) returns (GetMetadataSchemaStatusResponse);
   // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts
-  rpc AnalyzeAccounts(AnalyzeAccountsRequest) returns (AnalyzeAccountsResponse);
+  rpc AnalyzeAccounts(AnalyzeAccountsRequest) returns (stream AnalyzeAccountsEvent);
   // AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns
-  rpc AnalyzeTransactions(AnalyzeTransactionsRequest) returns (AnalyzeTransactionsResponse);
+  rpc AnalyzeTransactions(AnalyzeTransactionsRequest) returns (stream AnalyzeTransactionsEvent);
   // CreatePreparedQuery creates a named prepared query for a ledger
   rpc CreatePreparedQuery(CreatePreparedQueryRequest) returns (CreatePreparedQueryResponse);
   // UpdatePreparedQuery updates the filter of an existing prepared query
@@ -657,6 +657,29 @@ message AnalyzeAccountsResponse {
   common.ChartOfAccounts suggested_chart = 1;
   repeated AccountPattern patterns = 2;
   uint64 total_accounts = 3;
+}
+
+// AnalyzeProgress reports scan progress for long-running analysis operations.
+message AnalyzeProgress {
+  uint64 processed = 1;
+  uint64 total = 2;
+  string phase = 3;  // "scanning", "pass1", "pass2"
+}
+
+// AnalyzeAccountsEvent wraps progress or result events for the streaming AnalyzeAccounts RPC.
+message AnalyzeAccountsEvent {
+  oneof type {
+    AnalyzeProgress progress = 1;
+    AnalyzeAccountsResponse result = 2;
+  }
+}
+
+// AnalyzeTransactionsEvent wraps progress or result events for the streaming AnalyzeTransactions RPC.
+message AnalyzeTransactionsEvent {
+  oneof type {
+    AnalyzeProgress progress = 1;
+    AnalyzeTransactionsResponse result = 2;
+  }
 }
 
 // AccountPattern describes a discovered address pattern and its statistics.

@@ -99,7 +99,7 @@ func (s *Server) handleAnalyzeAccounts(w http.ResponseWriter, r *http.Request) {
 		variableThreshold = uint32(parsed)
 	}
 
-	resp, err := s.backend.AnalyzeAccounts(r.Context(), ledgerName, variableThreshold)
+	resp, err := s.backend.AnalyzeAccounts(r.Context(), ledgerName, variableThreshold, nil)
 	if err != nil {
 		handleError(w, r, err)
 		return

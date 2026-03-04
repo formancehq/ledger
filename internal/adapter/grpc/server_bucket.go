@@ -545,28 +545,65 @@ func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context
 	return impl.ctrl.GetMetadataSchemaStatus(ctx, req.Ledger)
 }
 
-func (impl *BucketServiceServerImpl) AnalyzeAccounts(ctx context.Context, req *servicepb.AnalyzeAccountsRequest) (*servicepb.AnalyzeAccountsResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
-		return nil, err
+func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccountsRequest, stream servicepb.BucketService_AnalyzeAccountsServer) error {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
+		return err
 	}
 
 	if req.Ledger == "" {
-		return nil, fmt.Errorf("ledger name is required")
+		return fmt.Errorf("ledger name is required")
 	}
 
-	return impl.ctrl.AnalyzeAccounts(ctx, req.Ledger, req.VariableThreshold)
+	onProgress := func(processed, total uint64) {
+		_ = stream.Send(&servicepb.AnalyzeAccountsEvent{
+			Type: &servicepb.AnalyzeAccountsEvent_Progress{
+				Progress: &servicepb.AnalyzeProgress{
+					Processed: processed,
+					Total:     total,
+					Phase:     "scanning",
+				},
+			},
+		})
+	}
+
+	resp, err := impl.ctrl.AnalyzeAccounts(stream.Context(), req.Ledger, req.VariableThreshold, onProgress)
+	if err != nil {
+		return err
+	}
+
+	return stream.Send(&servicepb.AnalyzeAccountsEvent{
+		Type: &servicepb.AnalyzeAccountsEvent_Result{Result: resp},
+	})
 }
 
-func (impl *BucketServiceServerImpl) AnalyzeTransactions(ctx context.Context, req *servicepb.AnalyzeTransactionsRequest) (*servicepb.AnalyzeTransactionsResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
-		return nil, err
+func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeTransactionsRequest, stream servicepb.BucketService_AnalyzeTransactionsServer) error {
+	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
+		return err
 	}
 
 	if req.Ledger == "" {
-		return nil, fmt.Errorf("ledger name is required")
+		return fmt.Errorf("ledger name is required")
 	}
 
-	return impl.ctrl.AnalyzeTransactions(ctx, req.Ledger, req.VariableThreshold)
+	onProgress := func(processed, total uint64) {
+		_ = stream.Send(&servicepb.AnalyzeTransactionsEvent{
+			Type: &servicepb.AnalyzeTransactionsEvent_Progress{
+				Progress: &servicepb.AnalyzeProgress{
+					Processed: processed,
+					Total:     total,
+				},
+			},
+		})
+	}
+
+	resp, err := impl.ctrl.AnalyzeTransactions(stream.Context(), req.Ledger, req.VariableThreshold, onProgress)
+	if err != nil {
+		return err
+	}
+
+	return stream.Send(&servicepb.AnalyzeTransactionsEvent{
+		Type: &servicepb.AnalyzeTransactionsEvent_Result{Result: resp},
+	})
 }
 
 func (impl *BucketServiceServerImpl) CreatePreparedQuery(ctx context.Context, req *servicepb.CreatePreparedQueryRequest) (*servicepb.CreatePreparedQueryResponse, error) {

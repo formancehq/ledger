@@ -202,20 +202,20 @@ func (b *RoutedController) GetMetadataSchemaStatus(ctx context.Context, ledgerNa
 	return c.GetMetadataSchemaStatus(ctx, ledgerName)
 }
 
-func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
+func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
 	c, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return c.AnalyzeAccounts(ctx, ledgerName, variableThreshold)
+	return c.AnalyzeAccounts(ctx, ledgerName, variableThreshold, onProgress)
 }
 
-func (b *RoutedController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+func (b *RoutedController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
 	c, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return c.AnalyzeTransactions(ctx, ledgerName, variableThreshold)
+	return c.AnalyzeTransactions(ctx, ledgerName, variableThreshold, onProgress)
 }
 
 func (b *RoutedController) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {

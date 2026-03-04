@@ -677,7 +677,7 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledg
 // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts.
 // Uses a direct Pebble key scan to extract account addresses, asset names, and
 // metadata key names without reading values or going through the bbolt read index.
-func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
+func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
 	if _, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -694,13 +694,13 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 	}
 	defer func() { _ = it.Close() }()
 
-	return analysis.AnalyzeFromIterator(it.Next, variableThreshold)
+	return analysis.AnalyzeFromIterator(it.Next, variableThreshold, onProgress)
 }
 
 // AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns.
 // Uses two sequential Pebble log scans with streaming processing to avoid loading
 // all transactions into memory (O(unique addresses + unique signatures) instead of O(N)).
-func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
@@ -803,7 +803,7 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 		return ct, err
 	}
 
-	return analysis.AnalyzeTransactionsFromIterators(wrappedPass1, pass2Fn, func() uint64 { return totalReverted }, variableThreshold)
+	return analysis.AnalyzeTransactionsFromIterators(wrappedPass1, pass2Fn, func() uint64 { return totalReverted }, variableThreshold, onProgress)
 }
 
 // ListLogs returns a cursor over system logs.

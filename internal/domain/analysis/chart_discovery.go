@@ -3,7 +3,6 @@ package analysis
 import (
 	"fmt"
 	"io"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -19,13 +18,57 @@ const DefaultVariableThreshold = 10
 const maxExamples = 5
 
 var (
-	uuidRegex        = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
-	numericRegex     = regexp.MustCompile(`^[0-9]+$`)
-	alphanumRegex    = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
-	uuidPattern      = `^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`
-	numericPattern   = `^[0-9]+$`
-	alphanumPattern  = `^[a-zA-Z0-9_-]+$`
+	uuidPattern     = `^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`
+	numericPattern  = `^[0-9]+$`
+	alphanumPattern = `^[a-zA-Z0-9_-]+$`
 )
+
+// isUUID checks if s matches the UUID pattern without using regexp.
+func isUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i := 0; i < 36; i++ {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if s[i] != '-' {
+				return false
+			}
+		} else {
+			c := s[i]
+			if !((c >= 'a' && c <= 'f') || (c >= '0' && c <= '9')) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// isNumeric checks if s matches ^[0-9]+$ without using regexp.
+func isNumeric(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// isAlphanumeric checks if s matches ^[a-zA-Z0-9_-]+$ without using regexp.
+func isAlphanumeric(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
 
 // trieNode represents a single node in the address trie.
 type trieNode struct {
@@ -33,6 +76,9 @@ type trieNode struct {
 	terminating  int      // number of accounts that terminate at this node
 	assets       []string // distinct assets for accounts terminating here
 	metadataKeys []string // distinct metadata keys for accounts terminating here
+	// Pre-computed normalization cache (set by precomputeNormalization).
+	varPlaceholder string    // e.g. "{id}" when this is a variable node; empty otherwise
+	mergedChild    *trieNode // merged children node for variable segment traversal
 }
 
 func newTrieNode() *trieNode {
@@ -40,6 +86,9 @@ func newTrieNode() *trieNode {
 		children: make(map[string]*trieNode),
 	}
 }
+
+// progressReportInterval is the number of items between progress callbacks.
+const progressReportInterval = 500
 
 // Analyze scans a slice of compact accounts and returns an AnalyzeAccountsResponse with
 // a suggested ChartOfAccounts, discovered patterns, and total account count.
@@ -53,7 +102,7 @@ func Analyze(accounts []CompactAccount, variableThreshold uint32) *servicepb.Ana
 		i++
 		return acc, nil
 	}
-	resp, err := AnalyzeFromIterator(next, variableThreshold)
+	resp, err := AnalyzeFromIterator(next, variableThreshold, nil)
 	if err != nil {
 		// Slice iterator never returns a non-EOF error.
 		panic(fmt.Sprintf("unexpected error from slice iterator: %v", err))
@@ -64,7 +113,8 @@ func Analyze(accounts []CompactAccount, variableThreshold uint32) *servicepb.Ana
 // AnalyzeFromIterator incrementally builds a trie from accounts yielded by next.
 // Each account is discarded after insertion, so memory is O(unique address segments)
 // instead of O(N accounts).
-func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
+// If onProgress is non-nil, it is called periodically with (processed, total) counts.
+func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
 	if variableThreshold == 0 {
 		variableThreshold = DefaultVariableThreshold
 	}
@@ -82,6 +132,9 @@ func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold 
 		}
 
 		totalAccounts++
+		if onProgress != nil && totalAccounts%progressReportInterval == 0 {
+			onProgress(totalAccounts, 0)
+		}
 		segments := strings.Split(acc.Address, ":")
 		node := root
 		for _, seg := range segments {
@@ -323,10 +376,10 @@ func inferPattern(values []string) string {
 	allNumeric := true
 
 	for _, v := range values {
-		if !uuidRegex.MatchString(v) {
+		if !isUUID(v) {
 			allUUID = false
 		}
-		if !numericRegex.MatchString(v) {
+		if !isNumeric(v) {
 			allNumeric = false
 		}
 		if !allUUID && !allNumeric {
@@ -343,7 +396,7 @@ func inferPattern(values []string) string {
 
 	allAlphanum := true
 	for _, v := range values {
-		if !alphanumRegex.MatchString(v) {
+		if !isAlphanumeric(v) {
 			allAlphanum = false
 			break
 		}
@@ -364,10 +417,10 @@ func inferVariableName(values []string) string {
 	allUUID := true
 	allNumeric := true
 	for _, v := range values {
-		if !uuidRegex.MatchString(v) {
+		if !isUUID(v) {
 			allUUID = false
 		}
-		if !numericRegex.MatchString(v) {
+		if !isNumeric(v) {
 			allNumeric = false
 		}
 		if !allUUID && !allNumeric {
@@ -391,10 +444,10 @@ func isLikelyFixedName(key string) bool {
 		return false
 	}
 	// UUIDs and long numeric strings are not fixed names
-	if uuidRegex.MatchString(key) {
+	if isUUID(key) {
 		return false
 	}
-	if numericRegex.MatchString(key) && len(key) > 3 {
+	if isNumeric(key) && len(key) > 3 {
 		return false
 	}
 	// Must start with a letter

@@ -149,14 +149,14 @@ func (m *mockBackend) GetMetadataSchemaStatus(ctx context.Context, ledgerName st
 	return nil, nil
 }
 
-func (m *mockBackend) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
+func (m *mockBackend) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
 	if m.analyzeAccountsFn != nil {
 		return m.analyzeAccountsFn(ctx, ledgerName, variableThreshold)
 	}
 	return nil, nil
 }
 
-func (m *mockBackend) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+func (m *mockBackend) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
 	if m.analyzeTransactionsFn != nil {
 		return m.analyzeTransactionsFn(ctx, ledgerName, variableThreshold)
 	}

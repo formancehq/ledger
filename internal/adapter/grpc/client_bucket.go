@@ -175,18 +175,60 @@ func (g *BucketGrpcClient) GetMetadataSchemaStatus(ctx context.Context, ledgerNa
 	})
 }
 
-func (g *BucketGrpcClient) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
-	return g.client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+func (g *BucketGrpcClient) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
+	stream, err := g.client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
 		Ledger:            ledgerName,
 		VariableThreshold: variableThreshold,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("gRPC AnalyzeAccounts stream: %w", err)
+	}
+
+	for {
+		event, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				return nil, fmt.Errorf("AnalyzeAccounts stream ended without result")
+			}
+			return nil, fmt.Errorf("receiving AnalyzeAccounts event: %w", err)
+		}
+		switch t := event.Type.(type) {
+		case *servicepb.AnalyzeAccountsEvent_Progress:
+			if onProgress != nil {
+				onProgress(t.Progress.Processed, t.Progress.Total)
+			}
+		case *servicepb.AnalyzeAccountsEvent_Result:
+			return t.Result, nil
+		}
+	}
 }
 
-func (g *BucketGrpcClient) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
-	return g.client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
+func (g *BucketGrpcClient) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
+	stream, err := g.client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
 		Ledger:            ledgerName,
 		VariableThreshold: variableThreshold,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("gRPC AnalyzeTransactions stream: %w", err)
+	}
+
+	for {
+		event, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				return nil, fmt.Errorf("AnalyzeTransactions stream ended without result")
+			}
+			return nil, fmt.Errorf("receiving AnalyzeTransactions event: %w", err)
+		}
+		switch t := event.Type.(type) {
+		case *servicepb.AnalyzeTransactionsEvent_Progress:
+			if onProgress != nil {
+				onProgress(t.Progress.Processed, t.Progress.Total)
+			}
+		case *servicepb.AnalyzeTransactionsEvent_Result:
+			return t.Result, nil
+		}
+	}
 }
 
 func (g *BucketGrpcClient) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
