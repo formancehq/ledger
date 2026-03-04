@@ -23,12 +23,6 @@ func applyDefaultsFromRef(spec *ledgerv1alpha1.LedgerServiceSpec, defaults *ledg
 	}
 
 	// Pointer fields: LedgerService non-nil wins (whole-block replacement).
-	if spec.LivenessProbe == nil {
-		spec.LivenessProbe = defaults.LivenessProbe
-	}
-	if spec.ReadinessProbe == nil {
-		spec.ReadinessProbe = defaults.ReadinessProbe
-	}
 	if spec.PodSecurityContext == nil {
 		spec.PodSecurityContext = defaults.PodSecurityContext
 	}

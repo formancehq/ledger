@@ -99,17 +99,16 @@ func Module() fx.Option {
 				}
 
 				if !cfg.Restore {
+					logger.Infof("Validating persisted configuration...")
+					configStart := time.Now()
 					if err := ValidateOrPersistConfig(store, cfg, logger, cfg.UnsafeSkipConfigValidation); err != nil {
 						_ = store.Close()
 						return nil, fmt.Errorf("configuration safety check failed: %w", err)
 					}
+					logger.WithFields(map[string]any{
+						"duration": time.Since(configStart).String(),
+					}).Infof("Configuration validation done")
 				}
-
-				// Preload system/config keys into the block cache so that
-				// NewMachine reads (periods, signing config, etc.) hit warm
-				// cache. This is fast (few keys) unlike the full attributes
-				// warmup which runs in the background after servers start.
-				store.WarmSystemKeys()
 
 				return store, nil
 			},
@@ -854,9 +853,8 @@ func Module() fx.Option {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						go func() {
-							logger.Infof("Starting background block cache warmup")
+							store.WarmSystemKeys()
 							store.WarmBlockCache()
-							logger.Infof("Block cache warmup completed")
 						}()
 						return nil
 					},

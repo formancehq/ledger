@@ -631,16 +631,6 @@ func (in *LedgerDefaultsSpec) DeepCopyInto(out *LedgerDefaultsSpec) {
 	in.ServiceAccount.DeepCopyInto(&out.ServiceAccount)
 	in.Config.DeepCopyInto(&out.Config)
 	in.Resources.DeepCopyInto(&out.Resources)
-	if in.LivenessProbe != nil {
-		in, out := &in.LivenessProbe, &out.LivenessProbe
-		*out = new(v1.Probe)
-		(*in).DeepCopyInto(*out)
-	}
-	if in.ReadinessProbe != nil {
-		in, out := &in.ReadinessProbe, &out.ReadinessProbe
-		*out = new(v1.Probe)
-		(*in).DeepCopyInto(*out)
-	}
 	if in.PodSecurityContext != nil {
 		in, out := &in.PodSecurityContext, &out.PodSecurityContext
 		*out = new(v1.PodSecurityContext)
@@ -881,16 +871,6 @@ func (in *LedgerServiceSpec) DeepCopyInto(out *LedgerServiceSpec) {
 	}
 	in.Persistence.DeepCopyInto(&out.Persistence)
 	in.Resources.DeepCopyInto(&out.Resources)
-	if in.LivenessProbe != nil {
-		in, out := &in.LivenessProbe, &out.LivenessProbe
-		*out = new(v1.Probe)
-		(*in).DeepCopyInto(*out)
-	}
-	if in.ReadinessProbe != nil {
-		in, out := &in.ReadinessProbe, &out.ReadinessProbe
-		*out = new(v1.Probe)
-		(*in).DeepCopyInto(*out)
-	}
 	if in.PodAnnotations != nil {
 		in, out := &in.PodAnnotations, &out.PodAnnotations
 		*out = make(map[string]string, len(*in))

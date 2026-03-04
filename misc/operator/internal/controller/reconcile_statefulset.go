@@ -217,21 +217,11 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 	if ledger.Spec.SecurityContext != nil {
 		container.SecurityContext = ledger.Spec.SecurityContext
 	}
-	if ledger.Spec.LivenessProbe != nil {
-		container.LivenessProbe = ledger.Spec.LivenessProbe
-	}
-	if ledger.Spec.ReadinessProbe != nil {
-		container.ReadinessProbe = ledger.Spec.ReadinessProbe
-	}
-
-	// Default probes: if no liveness/readiness was configured (neither from CRD
-	// nor LedgerDefaults), use built-in defaults targeting /livez and /readyz.
-	if container.LivenessProbe == nil {
-		container.LivenessProbe = defaultLivenessProbe()
-	}
-	if container.ReadinessProbe == nil {
-		container.ReadinessProbe = defaultReadinessProbe()
-	}
+	// Probes are set by the operator — it knows the application's health
+	// endpoints and startup characteristics. Not exposed in the CRD.
+	container.LivenessProbe = defaultLivenessProbe()
+	container.ReadinessProbe = defaultReadinessProbe()
+	container.StartupProbe = defaultStartupProbe()
 
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: serviceAccountName(ledger),
@@ -471,5 +461,22 @@ func defaultReadinessProbe() *corev1.Probe {
 		InitialDelaySeconds: 5,
 		PeriodSeconds:       5,
 		FailureThreshold:    3,
+	}
+}
+
+// defaultStartupProbe returns a startup probe that gives the process up to
+// 5 minutes (failureThreshold 30 * periodSeconds 10) to finish initialising.
+// This prevents the liveness probe from killing pods that are warming up a
+// large Pebble database on cold start.
+func defaultStartupProbe() *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Path: "/livez",
+				Port: intstr.FromString("http"),
+			},
+		},
+		PeriodSeconds:    10,
+		FailureThreshold: 30,
 	}
 }

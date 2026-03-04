@@ -94,14 +94,6 @@ type LedgerServiceSpec struct {
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
-	// LivenessProbe configuration.
-	// +optional
-	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
-
-	// ReadinessProbe configuration.
-	// +optional
-	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`
-
 	// PodAnnotations to add to each pod.
 	// +optional
 	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`

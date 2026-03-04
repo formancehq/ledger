@@ -195,16 +195,10 @@ func TestApplyDefaultsFromRef_NilSubStructs(t *testing.T) {
 	assert.Nil(t, spec.NodeSelector)
 }
 
-func TestApplyDefaultsFromRef_ProbeAndSecurityContext(t *testing.T) {
+func TestApplyDefaultsFromRef_SecurityContext(t *testing.T) {
 	t.Parallel()
 
 	defaults := &ledgerv1alpha1.LedgerDefaultsSpec{
-		LivenessProbe: &corev1.Probe{
-			InitialDelaySeconds: 10,
-		},
-		ReadinessProbe: &corev1.Probe{
-			InitialDelaySeconds: 5,
-		},
 		PodSecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: boolPtr(true),
 		},
@@ -213,19 +207,10 @@ func TestApplyDefaultsFromRef_ProbeAndSecurityContext(t *testing.T) {
 		},
 	}
 
-	// Spec has its own liveness probe, other fields nil.
-	spec := &ledgerv1alpha1.LedgerServiceSpec{
-		LivenessProbe: &corev1.Probe{
-			InitialDelaySeconds: 30,
-		},
-	}
+	spec := &ledgerv1alpha1.LedgerServiceSpec{}
 
 	applyDefaultsFromRef(spec, defaults)
 
-	// LivenessProbe from spec wins.
-	assert.Equal(t, int32(30), spec.LivenessProbe.InitialDelaySeconds)
-	// ReadinessProbe from defaults.
-	assert.Equal(t, int32(5), spec.ReadinessProbe.InitialDelaySeconds)
 	// Security contexts from defaults.
 	assert.True(t, *spec.PodSecurityContext.RunAsNonRoot)
 	assert.True(t, *spec.SecurityContext.ReadOnlyRootFilesystem)

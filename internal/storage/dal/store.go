@@ -313,6 +313,7 @@ func (s *Store) Flush() error {
 // fast (few keys) and should run synchronously before NewMachine so that FSM
 // startup reads hit warm cache.
 func (s *Store) WarmSystemKeys() {
+	s.logger.Infof("Starting system key warmup...")
 	start := time.Now()
 	db := s.getDB()
 
@@ -323,6 +324,7 @@ func (s *Store) WarmSystemKeys() {
 
 	var totalKeys int64
 	for _, r := range ranges {
+		rangeStart := time.Now()
 		keys, err := s.warmRange(db, r[0], r[1])
 		if err != nil {
 			s.logger.WithFields(map[string]any{"error": err}).
@@ -330,6 +332,11 @@ func (s *Store) WarmSystemKeys() {
 			return
 		}
 		totalKeys += keys
+		s.logger.WithFields(map[string]any{
+			"range":    fmt.Sprintf("[0x%02X, 0x%02X)", r[0], r[1]),
+			"keys":     keys,
+			"duration": time.Since(rangeStart).String(),
+		}).Infof("System key warmup range done")
 	}
 
 	s.logger.WithFields(map[string]any{

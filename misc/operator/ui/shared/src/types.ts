@@ -355,8 +355,6 @@ export interface LedgerServiceSpec {
   ingressGrpc?: IngressGrpcSpec;
   persistence?: PersistenceSpec;
   resources?: ResourceRequirements;
-  livenessProbe?: unknown;
-  readinessProbe?: unknown;
   podAnnotations?: Record<string, string>;
   nodeSelector?: Record<string, string>;
   tolerations?: unknown[];
@@ -396,8 +394,6 @@ export interface LedgerDefaultsSpec {
   serviceAccount?: ServiceAccountSpec;
   config?: LedgerDefaultsConfig;
   resources?: ResourceRequirements;
-  livenessProbe?: unknown;
-  readinessProbe?: unknown;
   podSecurityContext?: unknown;
   securityContext?: unknown;
   nodeSelector?: Record<string, string>;
