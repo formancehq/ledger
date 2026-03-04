@@ -35,8 +35,14 @@ type mockBackend struct {
 	getLedgerStatsFn           func(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error)
 }
 
-func (m *mockBackend) IsHealthy() bool { return m.healthy }
-func (m *mockBackend) IsReady() bool   { return m.ready }
+func (m *mockBackend) IsHealthy() bool        { return m.healthy }
+func (m *mockBackend) IsReady() bool           { return m.ready }
+func (m *mockBackend) NotReadyReasons() []string {
+	if m.ready {
+		return nil
+	}
+	return []string{"mock: not ready"}
+}
 
 func (m *mockBackend) GetClusterState(ctx context.Context) (*clusterpb.ClusterState, error) {
 	if m.getClusterStateFn != nil {

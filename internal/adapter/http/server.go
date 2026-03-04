@@ -30,6 +30,7 @@ type Backend interface {
 	GetClusterState(context context.Context) (*clusterpb.ClusterState, error)
 	IsHealthy() bool
 	IsReady() bool
+	NotReadyReasons() []string
 }
 
 type DefaultBackend struct {
@@ -51,6 +52,22 @@ func (b *DefaultBackend) IsHealthy() bool {
 // health checks pass.
 func (b *DefaultBackend) IsReady() bool {
 	return b.Node.IsHealthy() && b.Node.GetLeader() != 0 && b.healthChecker.IsHealthy()
+}
+
+// NotReadyReasons returns a list of human-readable reasons why the node is not
+// ready. Returns nil when the node is fully ready.
+func (b *DefaultBackend) NotReadyReasons() []string {
+	var reasons []string
+	if !b.Node.IsHealthy() {
+		reasons = append(reasons, "raft state machine is not healthy")
+	}
+	if b.Node.GetLeader() == 0 {
+		reasons = append(reasons, "no leader elected")
+	}
+	if !b.healthChecker.IsHealthy() {
+		reasons = append(reasons, "cluster health check failing (disk usage or clock skew)")
+	}
+	return reasons
 }
 
 var _ Backend = (*DefaultBackend)(nil)

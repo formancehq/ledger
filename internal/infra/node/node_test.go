@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
@@ -30,7 +30,7 @@ import (
 
 // listLedgerContains checks if a ledger with the given name exists in the store
 func listLedgerContains(s *dal.Store, name string) bool {
-	cursor, err := query.ReadLedgers(s)
+	cursor, err := query.ReadLedgers(context.Background(), s)
 	if err != nil {
 		return false
 	}
@@ -547,7 +547,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	// Recreate resources from the same directories
 	w, err := wal.New(clusterNode.WalDir, c.logger, noop.Meter{})
 	if err != nil {
-		return nil, fmt.Errorf("recreating DefaultWAL: %w", err)
+		return nil, fmt.Errorf("recreating wal: %w", err)
 	}
 
 	defaultSpool, err := spool.NewDefault(spool.DefaultSpoolConfig{
@@ -1221,7 +1221,7 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	// Track when the follower receives a snapshot
 	snapshotAppliedToWAL := make(chan struct{}, 1)
 	follower.WALInterceptor.SetApplySnapshotInterceptor(func(delegate wal.WAL, snapshot raftpb.Snapshot) error {
-		t.Logf("Follower %d: ApplySnapshot to DefaultWAL at index %d", follower.ID, snapshot.Metadata.Index)
+		t.Logf("Follower %d: ApplySnapshot to wal at index %d", follower.ID, snapshot.Metadata.Index)
 		err := delegate.ApplySnapshot(snapshot)
 		if err == nil {
 			select {
@@ -1249,9 +1249,9 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	// Wait for the snapshot to be applied to DefaultWAL
 	select {
 	case <-snapshotAppliedToWAL:
-		t.Logf("Snapshot applied to DefaultWAL successfully")
+		t.Logf("Snapshot applied to wal successfully")
 	case <-time.After(5 * time.Second):
-		t.Fatal("Timeout waiting for snapshot to be applied to DefaultWAL")
+		t.Fatal("Timeout waiting for snapshot to be applied to wal")
 	}
 
 	// Wait for the follower node to fail due to checkpoint restore error
@@ -1451,7 +1451,7 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 	t.Logf("Initial %d ledgers verified", numInitialLedgers)
 
 	// Set up interceptor to make DefaultWAL.CreateSnapshot fail
-	var errSnapshotFailed = errors.New("simulated DefaultWAL snapshot failure")
+	var errSnapshotFailed = errors.New("simulated wal snapshot failure")
 	node.WALInterceptor.SetCreateSnapshotInterceptor(func(delegate wal.WAL, i uint64, r *raftpb.ConfState, data []byte) error {
 		t.Logf("DefaultWAL.CreateSnapshot called at index %d - returning error", i)
 		return errSnapshotFailed
@@ -1523,7 +1523,7 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 		// Node is still running, good
 	}
 
-	t.Log("Test passed: node recovered correctly after DefaultWAL snapshot failure, entries replayed correctly")
+	t.Log("Test passed: node recovered correctly after wal snapshot failure, entries replayed correctly")
 }
 
 func TestForceRemoveNode_DisconnectedNode(t *testing.T) {

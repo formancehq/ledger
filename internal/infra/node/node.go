@@ -837,6 +837,16 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		wasLeader := actualNodeLastSoftState != nil && actualNodeLastSoftState.RaftState == raft.StateLeader
 		isLeader := ss.RaftState == raft.StateLeader
 
+		// Fail pending ReadIndex requests whenever the leader changes.
+		// They were dispatched to the old leader and won't be answered.
+		var previousLead uint64
+		if actualNodeLastSoftState != nil {
+			previousLead = actualNodeLastSoftState.Lead
+		}
+		if previousLead != ss.Lead {
+			node.failAllPendingReads(ErrNotLeader)
+		}
+
 		if wasLeader != isLeader {
 			status := node.rawNode.Status()
 			logger := node.logger.WithFields(map[string]any{
@@ -847,7 +857,6 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			// leadership loss
 			if wasLeader && !isLeader {
 				logger.Infof("Leadership lost")
-				node.failAllPendingReads(ErrNotLeader)
 				if node.observer != nil {
 					node.observer.Emit(LeadershipChangeEvent{IsLeader: false})
 				}
