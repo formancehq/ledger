@@ -298,13 +298,13 @@ export function LedgerServiceDetailPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="overview">
+      <Tabs defaultValue="connect">
         <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="connect">
             <Plug className="h-3.5 w-3.5 mr-1" />
             Connect
           </TabsTrigger>
+          <TabsTrigger value="overview">General</TabsTrigger>
           <TabsTrigger value="pods">Pods ({pods.length})</TabsTrigger>
           <TabsTrigger value="events">
             Events ({events.length})
