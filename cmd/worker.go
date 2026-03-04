@@ -36,9 +36,8 @@ const (
 
 	WorkerGRPCAddressFlag = "worker-grpc-address"
 
-	WorkerGlobalExporterFlag        = "worker-global-exporter"
-	WorkerGlobalExporterResetFlag   = "worker-global-exporter-reset"
-	WorkerGlobalExporterWorkersFlag = "worker-global-exporter-workers"
+	WorkerGlobalExporterFlag      = "worker-global-exporter"
+	WorkerGlobalExporterResetFlag = "worker-global-exporter-reset"
 )
 
 type WorkerGRPCConfig struct {
@@ -57,9 +56,8 @@ type WorkerConfiguration struct {
 	BucketCleanupRetentionPeriod time.Duration `mapstructure:"worker-bucket-cleanup-retention-period"`
 	BucketCleanupCRONSpec        cron.Schedule `mapstructure:"worker-bucket-cleanup-schedule"`
 
-	GlobalExporter        string `mapstructure:"worker-global-exporter"`
-	GlobalExporterReset   bool   `mapstructure:"worker-global-exporter-reset"`
-	GlobalExporterWorkers int    `mapstructure:"worker-global-exporter-workers"`
+	GlobalExporter      string `mapstructure:"worker-global-exporter"`
+	GlobalExporterReset bool   `mapstructure:"worker-global-exporter-reset"`
 }
 
 func (cfg WorkerConfiguration) Validate() error {
@@ -92,7 +90,6 @@ func addWorkerFlags(cmd *cobra.Command) {
 	cmd.Flags().String(WorkerBucketCleanupScheduleFlag, "0 0 * * * *", "Schedule for bucket cleanup (cron format)")
 	cmd.Flags().String(WorkerGlobalExporterFlag, "", "Global logs exporter configuration (<driver>:<config>)")
 	cmd.Flags().Bool(WorkerGlobalExporterResetFlag, false, "Reset global logs exporter state and re-export all logs from the beginning")
-	cmd.Flags().Int(WorkerGlobalExporterWorkersFlag, replication.DefaultGlobalExporterWorkers, "Number of concurrent workers for the global logs exporter")
 }
 
 // NewWorkerCommand constructs the "worker" Cobra command which initializes and runs the worker service using loaded configuration and composed FX modules.
@@ -179,8 +176,7 @@ func newWorkerModule(configuration WorkerConfiguration) (fx.Option, error) {
 			return nil, fmt.Errorf("parsing global-logs-exporter: %w", err)
 		}
 		workerModules = append(workerModules, replication.NewFXGlobalExporterModule(driverName, driverConfig, replication.GlobalExporterRunnerConfig{
-			Workers: configuration.GlobalExporterWorkers,
-			Reset:   configuration.GlobalExporterReset,
+			Reset: configuration.GlobalExporterReset,
 		}))
 	}
 

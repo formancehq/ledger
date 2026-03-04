@@ -17,24 +17,42 @@ import (
 	"github.com/formancehq/ledger/internal/storage/common"
 )
 
-func runPipeline(t *testing.T, ctx context.Context, pipeline ledger.Pipeline, store LogFetcher, driver drivers.Driver) (*PipelineHandler, <-chan uint64) {
+type testProgressTracker struct {
+	ledgerName string
+	lastLogID  *uint64
+	ch         chan uint64
+}
+
+func (t *testProgressTracker) LedgerName() string {
+	return t.ledgerName
+}
+
+func (t *testProgressTracker) LastLogID() *uint64 {
+	return t.lastLogID
+}
+
+func (t *testProgressTracker) UpdateLastLogID(_ context.Context, id uint64) error {
+	t.lastLogID = &id
+	t.ch <- id
+	return nil
+}
+
+func runPipeline(t *testing.T, ctx context.Context, tracker *testProgressTracker, store LogFetcher, driver drivers.Driver) *PipelineHandler {
 	t.Helper()
 
 	handler := NewPipelineHandler(
-		pipeline,
+		tracker,
 		store,
 		driver,
 		logging.Testing(),
 	)
 
-	lastLogIDChannel := make(chan uint64)
-
-	go handler.Run(ctx, lastLogIDChannel)
+	go handler.Run(ctx)
 	t.Cleanup(func() {
 		require.NoError(t, handler.Shutdown(ctx))
 	})
 
-	return handler, lastLogIDChannel
+	return handler
 }
 
 func TestPipeline(t *testing.T) {
@@ -83,14 +101,16 @@ func TestPipeline(t *testing.T) {
 		Accept(gomock.Any(), drivers.NewLogWithLedger("testing", log)).
 		Return([]error{nil}, nil)
 
-	pipelineConfiguration := ledger.NewPipelineConfiguration("testing", "testing")
-	pipeline := ledger.NewPipeline(pipelineConfiguration)
+	tracker := &testProgressTracker{
+		ledgerName: "testing",
+		ch:         make(chan uint64, 1),
+	}
 
-	_, lastLogIDChannel := runPipeline(t, ctx, pipeline, logFetcher, driver)
+	runPipeline(t, ctx, tracker, logFetcher, driver)
 
 	close(deliver)
 
-	ShouldReceive(t, 1, lastLogIDChannel)
+	ShouldReceive(t, uint64(1), tracker.ch)
 
 	require.Eventually(t, ctrl.Satisfied, time.Second, 10*time.Millisecond)
 }

@@ -6,10 +6,8 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/collectionutils"
 	"github.com/formancehq/go-libs/v4/logging"
 	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/drivers"
@@ -29,14 +27,35 @@ var (
 	DefaultGlobalExporterPollInterval    = 1 * time.Second
 	DefaultGlobalExporterPushRetryPeriod = 10 * time.Second
 	DefaultGlobalExporterLogsPageSize    = uint64(100)
-	DefaultGlobalExporterWorkers         = 8
 )
+
+type globalExporterProgressTracker struct {
+	ledgerName string
+	lastLogID  *uint64
+	store      GlobalExporterStateStore
+	logger     logging.Logger
+}
+
+func (t *globalExporterProgressTracker) LedgerName() string {
+	return t.ledgerName
+}
+
+func (t *globalExporterProgressTracker) LastLogID() *uint64 {
+	return t.lastLogID
+}
+
+func (t *globalExporterProgressTracker) UpdateLastLogID(ctx context.Context, id uint64) error {
+	t.lastLogID = &id
+	if err := t.store.UpdateGlobalExporterState(ctx, t.ledgerName, id); err != nil {
+		t.logger.Errorf("Failed to persist state for ledger %s: %v", t.ledgerName, err)
+	}
+	return nil
+}
 
 type GlobalExporterRunnerConfig struct {
 	PollInterval    time.Duration
 	PushRetryPeriod time.Duration
 	LogsPageSize    uint64
-	Workers         int
 	Reset           bool
 }
 
@@ -66,9 +85,6 @@ func NewGlobalExporterRunner(
 	}
 	if config.LogsPageSize == 0 {
 		config.LogsPageSize = DefaultGlobalExporterLogsPageSize
-	}
-	if config.Workers == 0 {
-		config.Workers = DefaultGlobalExporterWorkers
 	}
 
 	var fetcherMu sync.Mutex
@@ -129,19 +145,33 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 		return
 	}
 
-	nextInterval := time.Duration(0)
-
-	// Load exporter states once from the DB; updated in-memory after each successful export.
+	// Load exporter states once from the DB; updated in-memory by trackers.
 	states, err := r.store.ListGlobalExporterStates(ctx)
 	if err != nil {
 		r.logger.Errorf("Error loading initial global exporter states: %v", err)
 		return
 	}
-	var statesMu sync.Mutex
 
-	// workerCtx is cancelled when shutdown is requested, signalling workers to stop.
-	workerCtx, cancelWorkers := context.WithCancel(ctx)
-	defer cancelWorkers()
+	handlers := map[string]*PipelineHandler{}
+	var wg sync.WaitGroup
+
+	defer func() {
+		// Shut down all handlers on exit
+		for name, handler := range handlers {
+			if err := handler.Shutdown(ctx); err != nil {
+				r.logger.Errorf("Error shutting down handler for ledger %s: %v", name, err)
+			}
+		}
+		wg.Wait()
+	}()
+
+	pipelineOpts := []PipelineOption{
+		WithPullPeriod(r.config.PollInterval),
+		WithPushRetryPeriod(r.config.PushRetryPeriod),
+		WithLogsPageSize(r.config.LogsPageSize),
+	}
+
+	nextInterval := time.Duration(0)
 
 	for {
 		select {
@@ -178,148 +208,44 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 			}
 		}
 
-		if len(ledgerNames) == 0 {
-			continue
-		}
-
-		// Fan out to worker pool.
-		work := make(chan string, len(ledgerNames))
+		// Spawn a PipelineHandler for each new ledger
 		for _, name := range ledgerNames {
-			work <- name
-		}
-		close(work)
+			if _, exists := handlers[name]; exists {
+				continue
+			}
 
-		numWorkers := min(r.config.Workers, len(ledgerNames))
+			fetcher, err := r.getLogFetcher(ctx, name)
+			if err != nil {
+				r.logger.Errorf("Error opening ledger %s: %v", name, err)
+				continue
+			}
 
-		workersDone := make(chan struct{})
-		var wg sync.WaitGroup
-		wg.Add(numWorkers)
-		for range numWorkers {
+			var lastLogID *uint64
+			if id, ok := states[name]; ok {
+				lastLogID = &id
+			}
+
+			tracker := &globalExporterProgressTracker{
+				ledgerName: name,
+				lastLogID:  lastLogID,
+				store:      r.store,
+				logger:     r.logger,
+			}
+
+			handler := NewPipelineHandler(
+				tracker,
+				fetcher,
+				facade,
+				r.logger,
+				pipelineOpts...,
+			)
+			handlers[name] = handler
+
+			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				for name := range work {
-					r.exportLedgerLogs(workerCtx, facade, name, &statesMu, states)
-				}
+				handler.Run(ctx)
 			}()
-		}
-		go func() {
-			wg.Wait()
-			close(workersDone)
-		}()
-
-		// Wait for workers to finish or a stop signal.
-		select {
-		case <-workersDone:
-		case <-r.stopCh:
-			cancelWorkers()
-			<-workersDone
-			return
-		}
-	}
-}
-
-// exportLedgerLogs fetches and pushes logs for a single ledger, retrying on
-// failure. Returns when the ledger is fully caught up or ctx is cancelled.
-func (r *GlobalExporterRunner) exportLedgerLogs(
-	ctx context.Context,
-	driver drivers.Driver,
-	ledgerName string,
-	statesMu *sync.Mutex,
-	states map[string]uint64,
-) {
-	statesMu.Lock()
-	lastLogID, hasState := states[ledgerName]
-	statesMu.Unlock()
-
-	fetcher, err := r.getLogFetcher(ctx, ledgerName)
-	if err != nil {
-		r.logger.Errorf("Error opening ledger %s: %v", ledgerName, err)
-		return
-	}
-
-	var builder query.Builder
-	if hasState {
-		builder = query.Gt("id", lastLogID)
-	}
-
-	var logQuery common.PaginatedQuery[any] = common.InitialPaginatedQuery[any]{
-		PageSize: r.config.LogsPageSize,
-		Column:   "id",
-		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
-		Options: common.ResourceQuery[any]{
-			Builder: builder,
-		},
-	}
-
-	for {
-		logs, err := fetcher.ListLogs(ctx, logQuery)
-		if err != nil {
-			r.logger.Errorf("Error fetching logs for ledger %s: %v", ledgerName, err)
-			return
-		}
-
-		if len(logs.Data) == 0 {
-			return
-		}
-
-		// Push batch with retry
-		for {
-			r.logger.Debugf("Pushing %d logs for ledger %s", len(logs.Data), ledgerName)
-			errChan := make(chan error, 1)
-			exportCtx, cancel := context.WithCancel(ctx)
-			go func() {
-				_, err := driver.Accept(exportCtx, collectionutils.Map(logs.Data, func(log ledger.Log) drivers.LogWithLedger {
-					return drivers.NewLogWithLedger(ledgerName, log)
-				})...)
-				errChan <- err
-			}()
-
-			select {
-			case err := <-errChan:
-				cancel()
-				if err != nil {
-					r.logger.Errorf("Error pushing logs for ledger %s: %v, retrying in %s", ledgerName, err, r.config.PushRetryPeriod)
-					select {
-					case <-ctx.Done():
-						return
-					case <-time.After(r.config.PushRetryPeriod):
-						continue
-					}
-				}
-			case <-ctx.Done():
-				cancel()
-				return
-			}
-
-			break
-		}
-
-		// Persist state after successful batch and update in-memory cache
-		lastLogID := logs.Data[len(logs.Data)-1].ID
-		if lastLogID != nil {
-			if err := r.store.UpdateGlobalExporterState(ctx, ledgerName, *lastLogID); err != nil {
-				r.logger.Errorf("Failed to persist state for ledger %s: %v", ledgerName, err)
-			}
-			statesMu.Lock()
-			states[ledgerName] = *lastLogID
-			statesMu.Unlock()
-		}
-
-		if !logs.HasMore {
-			return
-		}
-
-		// Check for cancellation before fetching next page
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		logQuery, err = common.UnmarshalCursor[any](logs.Next)
-		if err != nil {
-			r.logger.Errorf("Error paginating logs for ledger %s: %v", ledgerName, err)
-			return
 		}
 	}
 }
