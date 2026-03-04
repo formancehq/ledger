@@ -846,20 +846,6 @@ func Module() fx.Option {
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
 				))
 			},
-			// Warm the Pebble block cache in the background so that /livez and
-			// /readyz are reachable immediately on startup (avoids k8s probe
-			// timeouts on large databases where warmup takes tens of seconds).
-			func(lc fx.Lifecycle, store *dal.Store, logger logging.Logger) {
-				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						go func() {
-							store.WarmSystemKeys()
-							store.WarmBlockCache()
-						}()
-						return nil
-					},
-				})
-			},
 			func(lc fx.Lifecycle, collector *diskusage.Collector) {
 				lc.Append(worker.FxHook(collector))
 			},
