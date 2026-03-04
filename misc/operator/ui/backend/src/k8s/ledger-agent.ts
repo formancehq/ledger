@@ -65,9 +65,8 @@ export async function createLedgerAgent(
 }
 
 function isNotFound(err: unknown): boolean {
-  return (
-    err instanceof Error &&
-    "statusCode" in err &&
-    (err as Error & { statusCode: number }).statusCode === 404
-  );
+  if (!(err instanceof Error)) return false;
+  // @kubernetes/client-node v1.x throws ApiException with a `code` property.
+  if ("code" in err && (err as Error & { code: number }).code === 404) return true;
+  return false;
 }
