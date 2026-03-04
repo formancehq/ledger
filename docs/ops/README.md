@@ -16,3 +16,4 @@ Everything you need to deploy, monitor, and operate a Ledger v3 cluster.
 | Monitor disk usage | [disk-space.md](./disk-space.md) |
 | Verify data integrity | [correctness.md](./correctness.md) |
 | Tune performance | [performance-tuning.md](./performance-tuning.md) |
+| Understand memory usage | [memory.md](./memory.md) |
