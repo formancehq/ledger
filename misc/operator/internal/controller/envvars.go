@@ -205,6 +205,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 		if cfg.ReadIndex.FreelistSyncInterval != nil {
 			envs = appendIfStr(envs, "READ_INDEX_FREELIST_SYNC_INTERVAL", *cfg.ReadIndex.FreelistSyncInterval)
 		}
+		envs = appendIfInt64(envs, "READ_INDEX_INITIAL_MMAP_SIZE", cfg.ReadIndex.InitialMmapSize)
 	}
 
 	// Response signing

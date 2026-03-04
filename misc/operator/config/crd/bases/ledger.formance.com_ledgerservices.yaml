@@ -1375,6 +1375,13 @@ spec:
                           loss on crash to at most one interval of freelist rebuild time.
                           Default: 5m. Set to "0" to disable periodic sync.
                         type: string
+                      initialMmapSize:
+                        description: |-
+                          InitialMmapSize is the initial mmap size for the bbolt database in bytes.
+                          Pre-allocating virtual address space prevents mmap stalls as the DB grows.
+                          Default: 1073741824 (1 GiB).
+                        format: int64
+                        type: integer
                       noFreelistSync:
                         description: |-
                           NoFreelistSync skips freelist serialization on commit.

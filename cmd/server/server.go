@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
@@ -165,6 +166,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Bool("read-index-no-freelist-sync", false, "Skip bbolt freelist serialization on commit (faster bulk writes, slower reopen)")
 	runCmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per bbolt write transaction (0 = default 1000)")
 	runCmd.Flags().Duration("read-index-freelist-sync-interval", 5*time.Minute, "Periodic freelist sync interval when no-freelist-sync is enabled (0 to disable)")
+	runCmd.Flags().Int("read-index-initial-mmap-size", 0, "Initial mmap size for the bbolt read index in bytes (0 = default 1 GiB)")
 
 	// Query profiling
 	runCmd.Flags().Duration("query-profile-threshold", 10*time.Millisecond, "Log and emit OTel attributes for queries exceeding this duration (0 to disable)")
@@ -211,6 +213,8 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	} else {
 		logger.Infof("GOMAXPROCS=%d NumCPU=%d GOMEMLIMIT=%dMiB", runtime.GOMAXPROCS(0), runtime.NumCPU(), memlimit/(1024*1024))
 	}
+
+	logMemoryEstimate(logger, cfg, memlimit)
 
 	// Configure Pyroscope profiling
 	pyroscopeCfg := pyroscopeConfigFromFlags(cmd)
@@ -461,6 +465,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 		NoFreelistSync:       getBool("read-index-no-freelist-sync", false),
 		BatchSize:            getInt("read-index-batch-size", 0),
 		FreelistSyncInterval: getDuration("read-index-freelist-sync-interval", 5*time.Minute),
+		InitialMmapSize:      getInt("read-index-initial-mmap-size", 0),
 	}
 
 	// Query profiling
@@ -565,6 +570,61 @@ func discoverPeersFromCluster(serviceAddr string, tlsCfg bootstrap.TLSConfig) ([
 	}
 
 	return peers, nil
+}
+
+const (
+	// Fixed memory estimates for components not directly configurable.
+	goRuntimeEstimate  int64 = 200 << 20 // 200 MiB — GC, stacks, goroutines
+
+	// FSM cache heuristics: each raft entry touches ~30 unique cache keys
+	// across 9 AttributeCache instances, averaging ~300 bytes per entry.
+	// Total = 2 generations * RotationThreshold * keysPerEntry * bytesPerKey.
+	fsmCacheKeysPerEntry  int64 = 30
+	fsmCacheBytesPerKey   int64 = 300
+	fsmCacheGenerations   int64 = 2
+)
+
+func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit int64) {
+	mib := func(b int64) int64 { return b / (1 << 20) }
+
+	pebbleCache := int64(cfg.PebbleConfig.CacheSize)
+	memtables := int64(cfg.PebbleConfig.MemTableSize) * int64(cfg.PebbleConfig.MemTableStopWritesThreshold)
+
+	bboltMmapEstimate := int64(cfg.ReadIndexConfig.InitialMmapSize)
+	if bboltMmapEstimate == 0 {
+		bboltMmapEstimate = 1 << 30 // default 1 GiB
+	}
+
+	transportBuf := int64(cfg.RaftConfig.TransportBufferSize)
+	if transportBuf == 0 {
+		transportBuf = 10 * 1024 * 1024 // default 10 MiB
+	}
+	peerCount := int64(len(cfg.RaftConfig.Peers))
+	if peerCount == 0 {
+		peerCount = 1
+	}
+	transportTotal := transportBuf * peerCount
+
+	rotationThreshold := int64(cfg.RaftConfig.RotationThreshold)
+	if rotationThreshold == 0 {
+		rotationThreshold = 1000
+	}
+	fsmCache := fsmCacheGenerations * rotationThreshold * fsmCacheKeysPerEntry * fsmCacheBytesPerKey
+
+	total := pebbleCache + memtables + bboltMmapEstimate + transportTotal + fsmCache + goRuntimeEstimate
+
+	logger.Infof(
+		"Memory estimate: pebbleCache=%dMiB memtables=%dMiB bboltMmap=%dMiB transport=%dMiB fsmCache=%dMiB goRuntime=%dMiB total=%dMiB",
+		mib(pebbleCache), mib(memtables), mib(bboltMmapEstimate),
+		mib(transportTotal), mib(fsmCache), mib(goRuntimeEstimate), mib(total),
+	)
+
+	if memlimit != math.MaxInt64 && total > memlimit {
+		logger.Errorf(
+			"WARNING: estimated memory usage (%dMiB) exceeds GOMEMLIMIT (%dMiB) — risk of OOM. Consider increasing memory limits or reducing pebble-cache-size / pebble-memtable-size.",
+			mib(total), mib(memlimit),
+		)
+	}
 }
 
 // loadPebbleConfig loads Pebble configuration from command flags with defaults.

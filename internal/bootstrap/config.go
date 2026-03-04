@@ -41,6 +41,7 @@ type ReadIndexConfig struct {
 	NoFreelistSync       bool          // skip freelist serialization on commit (faster writes, slower open)
 	BatchSize            int           // log entries per bbolt write transaction (0 = default 1000)
 	FreelistSyncInterval time.Duration // periodic freelist sync interval (0 = disabled, default 5m)
+	InitialMmapSize      int           // bbolt initial mmap size in bytes (0 = default 1 GiB)
 }
 
 type Config struct {

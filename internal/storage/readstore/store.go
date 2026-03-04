@@ -30,12 +30,21 @@ type Store struct {
 	progressCond *sync.Cond
 }
 
+// DefaultInitialMmapSize is the default initial mmap size for the bbolt database (1 GiB).
+// Pre-allocating virtual address space prevents mmap stalls as the DB grows.
+const DefaultInitialMmapSize = 1 << 30
+
 // New opens or creates a bbolt database at the given directory.
 // It creates all required buckets on first open.
 // When noFreelistSync is true, bbolt skips serializing the freelist on each
 // commit, which significantly reduces CPU during bulk writes. The freelist
 // is rebuilt from a full page scan on the next Open().
-func New(dir string, noFreelistSync bool, logger logging.Logger) (*Store, error) {
+// When initialMmapSize is 0, DefaultInitialMmapSize (1 GiB) is used.
+func New(dir string, noFreelistSync bool, initialMmapSize int, logger logging.Logger) (*Store, error) {
+	if initialMmapSize == 0 {
+		initialMmapSize = DefaultInitialMmapSize
+	}
+
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("creating read store directory: %w", err)
 	}
@@ -47,9 +56,10 @@ func New(dir string, noFreelistSync bool, logger logging.Logger) (*Store, error)
 		fileSize = info.Size()
 	}
 	logger.WithFields(map[string]any{
-		"path":           dbPath,
-		"fileSize":       fileSize,
-		"noFreelistSync": noFreelistSync,
+		"path":            dbPath,
+		"fileSize":        fileSize,
+		"noFreelistSync":  noFreelistSync,
+		"initialMmapSize": initialMmapSize,
 	}).Infof("Opening bbolt read index")
 	openStart := time.Now()
 	db, err := bolt.Open(dbPath, 0o600, &bolt.Options{
@@ -63,9 +73,9 @@ func New(dir string, noFreelistSync bool, logger logging.Logger) (*Store, error)
 		// The freelist is rebuilt by scanning all pages on the next Open().
 		// This trades slower startup for faster bulk-write throughput.
 		NoFreelistSync: noFreelistSync,
-		// Pre-allocate 1 GB of virtual address space so mmap doesn't need to
+		// Pre-allocate virtual address space so mmap doesn't need to
 		// grow (and stall the writer) as the database file expands.
-		InitialMmapSize: 1 << 30,
+		InitialMmapSize: initialMmapSize,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("opening bbolt database: %w", err)

@@ -65,7 +65,7 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	// Open or create bbolt read index.
 	spinner, _ = pterm.DefaultSpinner.Start("Opening read index store...")
 
-	rs, err := readstore.New(readIndexDir, noFreelistSync, logger)
+	rs, err := readstore.New(readIndexDir, noFreelistSync, 0, logger)
 	if err != nil {
 		spinner.Fail("Failed to open read index store")
 		return fmt.Errorf("opening read index store: %w", err)

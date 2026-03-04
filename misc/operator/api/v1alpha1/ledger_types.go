@@ -276,6 +276,12 @@ type ReadIndexConfig struct {
 	// Default: 5m. Set to "0" to disable periodic sync.
 	// +optional
 	FreelistSyncInterval *string `json:"freelistSyncInterval,omitempty"`
+
+	// InitialMmapSize is the initial mmap size for the bbolt database in bytes.
+	// Pre-allocating virtual address space prevents mmap stalls as the DB grows.
+	// Default: 1073741824 (1 GiB).
+	// +optional
+	InitialMmapSize *int64 `json:"initialMmapSize,omitempty"`
 }
 
 // AuthorizationConfig holds authentication and authorization configuration.
