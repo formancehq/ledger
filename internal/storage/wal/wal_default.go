@@ -148,7 +148,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	}
 	var snap walpb.Snapshot
 	if err == nil {
-		s.logger.Infof("DefaultWAL creation completed, opening existing DefaultWAL")
+		s.logger.Infof("WAL creation completed, opening existing DefaultWAL")
 		data, err := os.ReadFile(s.stateFile)
 		if err != nil && !os.IsNotExist(err) {
 			return nil, err
