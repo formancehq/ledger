@@ -307,41 +307,48 @@ func (s *Store) Flush() error {
 	return s.getDB().Flush()
 }
 
-// WarmBlockCache iterates the attributes zone [0xF1, 0xF2) and the system
-// zone [0xF2, 0xFF) to preload Pebble's block cache. This turns the first
-// query on a cold start from a full disk scan into cache hits, which
-// dramatically improves latency for read-heavy commands such as "accounts
-// analysis".
-func (s *Store) WarmBlockCache() {
-	s.logger.Infof("Starting Pebble block cache warmup (attributes + system zones)...")
+// WarmSystemKeys preloads the system/config key zones into Pebble's block
+// cache. This covers [0xE0, 0xF1) and [0xF2, 0xFF) — everything except the
+// bulky attributes zone (0xF1) which contains volumes and metadata. This is
+// fast (few keys) and should run synchronously before NewMachine so that FSM
+// startup reads hit warm cache.
+func (s *Store) WarmSystemKeys() {
 	start := time.Now()
 	db := s.getDB()
 
-	iter, err := db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{KeyPrefixAttributes},
-		UpperBound: []byte{0xFF},
-	})
-	if err != nil {
-		s.logger.WithFields(map[string]any{"error": err}).
-			Errorf("Block cache warmup failed to create iterator")
-		return
+	ranges := [][2]byte{
+		{0xE0, KeyPrefixAttributes},          // 0xE0..0xF0 (numscripts, mirror, audit, period schedule, etc.)
+		{KeyPrefixAttributes + 1, 0xFF},      // 0xF2..0xFE (applied index, ledger info, periods, signing, etc.)
 	}
-	defer func() { _ = iter.Close() }()
 
-	var keys int64
-	for iter.First(); iter.Valid(); iter.Next() {
-		// Reading the value forces Pebble to load the data block into the
-		// block cache. Keys alone only load index blocks.
-		if _, err := iter.ValueAndErr(); err != nil {
+	var totalKeys int64
+	for _, r := range ranges {
+		keys, err := s.warmRange(db, r[0], r[1])
+		if err != nil {
 			s.logger.WithFields(map[string]any{"error": err}).
-				Errorf("Block cache warmup aborted on value read error")
+				Errorf("System key warmup failed")
 			return
 		}
-		keys++
+		totalKeys += keys
 	}
-	if err := iter.Error(); err != nil {
+
+	s.logger.WithFields(map[string]any{
+		"duration": time.Since(start).String(),
+		"keys":     totalKeys,
+	}).Infof("System key warmup complete")
+}
+
+// WarmBlockCache iterates the attributes zone [0xF1, 0xF2) to preload
+// Pebble's block cache. This is the heavyweight warmup (volumes, metadata,
+// etc.) and should run in the background after servers are listening.
+func (s *Store) WarmBlockCache() {
+	start := time.Now()
+	db := s.getDB()
+
+	keys, err := s.warmRange(db, KeyPrefixAttributes, KeyPrefixAttributes+1)
+	if err != nil {
 		s.logger.WithFields(map[string]any{"error": err}).
-			Errorf("Block cache warmup iterator error")
+			Errorf("Block cache warmup failed")
 		return
 	}
 
@@ -351,7 +358,31 @@ func (s *Store) WarmBlockCache() {
 		"keys":            keys,
 		"blockCacheSize":  m.BlockCache.Size,
 		"blockCacheCount": m.BlockCache.Count,
-	}).Infof("Block cache warmup complete")
+	}).Infof("Block cache warmup complete (attributes zone)")
+}
+
+// warmRange iterates [lower, upper) reading every value to populate the block cache.
+func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
+	iter, err := db.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{lower},
+		UpperBound: []byte{upper},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("creating warmup iterator [0x%02X, 0x%02X): %w", lower, upper, err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	var keys int64
+	for iter.First(); iter.Valid(); iter.Next() {
+		if _, err := iter.ValueAndErr(); err != nil {
+			return keys, fmt.Errorf("warmup value read error at key %d: %w", keys, err)
+		}
+		keys++
+	}
+	if err := iter.Error(); err != nil {
+		return keys, fmt.Errorf("warmup iterator error: %w", err)
+	}
+	return keys, nil
 }
 
 // Close closes the Pebble database.

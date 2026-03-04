@@ -105,6 +105,12 @@ func Module() fx.Option {
 					}
 				}
 
+				// Preload system/config keys into the block cache so that
+				// NewMachine reads (periods, signing config, etc.) hit warm
+				// cache. This is fast (few keys) unlike the full attributes
+				// warmup which runs in the background after servers start.
+				store.WarmSystemKeys()
+
 				return store, nil
 			},
 			func(store *dal.Store, logger logging.Logger, machine *state.Machine) *dal.SmartCompactor {

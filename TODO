@@ -34,6 +34,7 @@ Refactor:
 * bbolt fill percent
 * bbolt compact
 * configuration via command
+* reorganize storage keys
 
 Later:
 * Events
