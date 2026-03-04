@@ -218,6 +218,10 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		trace.WithAttributes(attribute.String("ledger", req.Ledger)))
 	defer span.End()
 
+	// Also record events on the otelgrpc parent span so they survive even if
+	// child spans are lost due to transport closing before batch export.
+	parentSpan := trace.SpanFromContext(stream.Context())
+
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
 		return err
 	}
@@ -230,6 +234,8 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		return err
 	}
 
+	parentSpan.AddEvent("handler.query_start")
+
 	impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, hasFilter=%v, reverse=%v)",
 		req.Ledger, req.PageSize, req.AfterTxId, req.Filter != nil, req.Reverse)
 
@@ -240,6 +246,8 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		return fmt.Errorf("listing transactions: %w", err)
 	}
 
+	parentSpan.AddEvent("handler.streaming_start")
+
 	err = sendCursorToStream(cursor, stream, "transaction")
 	impl.emitProfile(ctx, profile)
 	return err
@@ -249,11 +257,13 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListLedgers")
 	defer span.End()
 
+	parentSpan := trace.SpanFromContext(stream.Context())
+
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
 		return err
 	}
 
-	impl.logger.Debugf("ListLedgers request received")
+	parentSpan.AddEvent("handler.query_start")
 
 	cursor, err := impl.ctrl.ListLedgers(ctx)
 	if err != nil {
@@ -263,6 +273,8 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 	if req.PageSize > 0 {
 		cursor = dal.NewLimitedCursor(cursor, req.PageSize)
 	}
+
+	parentSpan.AddEvent("handler.streaming_start")
 
 	return sendCursorToStream(cursor, stream, "ledger")
 }
@@ -298,6 +310,8 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		trace.WithAttributes(attribute.String("ledger", req.Ledger)))
 	defer span.End()
 
+	parentSpan := trace.SpanFromContext(stream.Context())
+
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
 		return err
 	}
@@ -310,6 +324,8 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		return err
 	}
 
+	parentSpan.AddEvent("handler.query_start")
+
 	impl.logger.Debugf("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, hasFilter=%v, reverse=%v)",
 		req.Ledger, req.PageSize, req.AfterAddress, req.Filter != nil, req.Reverse)
 
@@ -319,6 +335,8 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 	if err != nil {
 		return fmt.Errorf("listing accounts: %w", err)
 	}
+
+	parentSpan.AddEvent("handler.streaming_start")
 
 	err = sendCursorToStream(cursor, stream, "account")
 	impl.emitProfile(ctx, profile)
