@@ -21,6 +21,8 @@ Business:
 ** Add e2e tests
 * Checkpoint when promoting ledger to be able to shutdown the mirrored ledger properly
 * Block cache warmup removal? background?
+* Mirror multiple
+* Bounded memory + boundary check at startup
 
 Docs:
 * Clean relying parties distinctions

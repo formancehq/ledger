@@ -39,6 +39,10 @@ spec:
   config:
     auth:
       enabled: true
+    readIndex:
+      noFreelistSync: true
+      batchSize: 10000
+
     pebble:
       memTableSize: 268435456              # 256 MB (4× current 64 MB)
       memTableStopWritesThreshold: 4       # up to 1 GB buffered before stall

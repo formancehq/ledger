@@ -980,9 +980,6 @@ spec:
                   auth:
                     description: Auth holds authentication and authorization configuration.
                     properties:
-                      checkScopes:
-                        description: CheckScopes enables scope checking.
-                        type: boolean
                       enabled:
                         description: Enabled enables authentication.
                         type: boolean
@@ -1359,6 +1356,23 @@ spec:
                               type: integer
                             type: array
                         type: object
+                    type: object
+                  readIndex:
+                    description: ReadIndex configuration for the bbolt read index
+                      store.
+                    properties:
+                      batchSize:
+                        description: |-
+                          BatchSize is the number of log entries per bbolt write transaction.
+                          Higher values amortize commit overhead but use more memory.
+                          Default: 1000.
+                        format: int32
+                        type: integer
+                      noFreelistSync:
+                        description: |-
+                          NoFreelistSync skips freelist serialization on commit.
+                          Enables faster writes at the cost of slower database reopen.
+                        type: boolean
                     type: object
                   responseSigning:
                     description: ResponseSigning configuration (Ed25519).
