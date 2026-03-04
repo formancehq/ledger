@@ -130,6 +130,86 @@ var _ = Context("Global logs exporter tests", func() {
 			})
 		})
 
+		Context("multiple ledgers", func() {
+			db := UseTemplatedDatabase()
+			testServer := DeferTestServer(
+				DeferMap(db, (*pgtesting.Database).ConnectionOptions),
+				testservice.WithInstruments(
+					testservice.NatsInstrumentation(DeferMap(natsServer, (*natstesting.NatsServer).ClientURL)),
+					testservice.DebugInstrumentation(debug),
+					testservice.OutputInstrumentation(GinkgoWriter),
+					ExperimentalEnableWorker(),
+					ExperimentalGlobalExporterInstrumentation(httpDriverDeferred),
+				),
+				testservice.WithLogger(GinkgoT()),
+			)
+
+			BeforeEach(func(specContext SpecContext) {
+				client := Wait(specContext, DeferClient(testServer))
+
+				// Create two separate ledgers
+				_, err := client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+					Ledger: "ledger-a",
+				})
+				Expect(err).To(BeNil())
+
+				_, err = client.Ledger.V2.CreateLedger(ctx, operations.V2CreateLedgerRequest{
+					Ledger: "ledger-b",
+				})
+				Expect(err).To(BeNil())
+			})
+
+			When("transactions are created on both ledgers", func() {
+				BeforeEach(func(specContext SpecContext) {
+					client := Wait(specContext, DeferClient(testServer))
+
+					_, err := client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+						Ledger: "ledger-a",
+						V2PostTransaction: components.V2PostTransaction{
+							Postings: []components.V2Posting{{
+								Amount:      big.NewInt(100),
+								Asset:       "USD",
+								Destination: "bank",
+								Source:      "world",
+							}},
+						},
+					})
+					Expect(err).To(Succeed())
+
+					_, err = client.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+						Ledger: "ledger-b",
+						V2PostTransaction: components.V2PostTransaction{
+							Postings: []components.V2Posting{{
+								Amount:      big.NewInt(200),
+								Asset:       "EUR",
+								Destination: "merchant",
+								Source:      "world",
+							}},
+						},
+					})
+					Expect(err).To(Succeed())
+				})
+
+				It("should export logs from both ledgers", func() {
+					Eventually(func(g Gomega) {
+						messages, err := httpDriver.ReadMessages(ctx)
+						g.Expect(err).To(BeNil())
+						g.Expect(messages).To(HaveLen(2))
+
+						ledgers := map[string]bool{}
+						for _, msg := range messages {
+							ledgers[msg.Ledger] = true
+						}
+						g.Expect(ledgers).To(HaveKey("ledger-a"))
+						g.Expect(ledgers).To(HaveKey("ledger-b"))
+					}).
+						WithTimeout(10 * time.Second).
+						WithPolling(100 * time.Millisecond).
+						Should(Succeed())
+				})
+			})
+		})
+
 		Context("catch-up after restart", func() {
 			db := UseTemplatedDatabase()
 			connectionOptions := DeferMap(db, (*pgtesting.Database).ConnectionOptions)
