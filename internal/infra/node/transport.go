@@ -1004,6 +1004,17 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	pending := make(map[uint64]uint64)
 	lastPing := atomic.Value{}
 	mu := sync.Mutex{}
+	defer func() {
+		mu.Lock()
+		orphaned := len(pending)
+		mu.Unlock()
+		if orphaned > 0 {
+			conn.pendingResponseCounter.Add(context.Background(), -float64(orphaned))
+			conn.logger.WithFields(map[string]any{
+				"orphanedMessages": orphaned,
+			}).Infof("Cleaned up orphaned pending responses on connection close")
+		}
+	}()
 
 	// Create a channel to signal when all receive goroutines have stopped
 	var receiveWg sync.WaitGroup
