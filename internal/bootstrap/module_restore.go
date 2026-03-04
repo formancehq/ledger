@@ -29,7 +29,7 @@ func RestoreModule() fx.Option {
 				if err != nil {
 					return nil, fmt.Errorf("loading TLS credentials for restore server: %w", err)
 				}
-				return grpcadp.NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, tlsOpt), nil
+				return grpcadp.NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsOpt), nil
 			},
 			func(cfg Config, logger logging.Logger) *grpcadp.RestoreServiceServerImpl {
 				return grpcadp.NewRestoreServiceServer(cfg.DataDir, logger)

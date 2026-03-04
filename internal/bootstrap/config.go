@@ -67,6 +67,7 @@ type Config struct {
 	UnsafeSkipConfigValidation bool
 	ReadIndexConfig            ReadIndexConfig
 	QueryProfileThreshold      time.Duration
+	GRPCSlowThreshold          time.Duration
 }
 
 func (c Config) Validate() error {

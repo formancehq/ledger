@@ -184,7 +184,7 @@ func recoveryStreamInterceptor(logger logging.Logger) ggrpc.StreamServerIntercep
 }
 
 // loggingInterceptor logs every unary RPC with method, duration, and status code.
-func loggingInterceptor(logger logging.Logger) ggrpc.UnaryServerInterceptor {
+func loggingInterceptor(logger logging.Logger, slowThreshold time.Duration) ggrpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
 		start := time.Now()
 		resp, err := handler(ctx, req)
@@ -198,7 +198,7 @@ func loggingInterceptor(logger logging.Logger) ggrpc.UnaryServerInterceptor {
 		if err != nil {
 			fields["error"] = err.Error()
 			logger.WithFields(fields).Errorf("gRPC call failed")
-		} else if duration > 500*time.Millisecond {
+		} else if duration > slowThreshold {
 			fields["slow"] = true
 			logger.WithFields(fields).Infof("gRPC call slow")
 		} else if strings.HasPrefix(info.FullMethod, "/grpc.health.v1.Health/") {
@@ -211,7 +211,7 @@ func loggingInterceptor(logger logging.Logger) ggrpc.UnaryServerInterceptor {
 }
 
 // loggingStreamInterceptor logs every streaming RPC with method, duration, and status code.
-func loggingStreamInterceptor(logger logging.Logger) ggrpc.StreamServerInterceptor {
+func loggingStreamInterceptor(logger logging.Logger, slowThreshold time.Duration) ggrpc.StreamServerInterceptor {
 	return func(srv any, ss ggrpc.ServerStream, info *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
 		start := time.Now()
 		err := handler(srv, ss)
@@ -225,7 +225,7 @@ func loggingStreamInterceptor(logger logging.Logger) ggrpc.StreamServerIntercept
 		if err != nil {
 			fields["error"] = err.Error()
 			logger.WithFields(fields).Errorf("gRPC stream failed")
-		} else if duration > 500*time.Millisecond {
+		} else if duration > slowThreshold {
 			fields["slow"] = true
 			logger.WithFields(fields).Infof("gRPC stream slow")
 		} else {
@@ -394,7 +394,7 @@ func NewRaftServer(port int, logger logging.Logger, tlsOpt ggrpc.ServerOption) *
 // This server includes OpenTelemetry instrumentation and error conversion.
 // Authentication is handled explicitly in each service method via auth.Authenticate.
 // If tlsOpt is non-nil, it is appended to the server options to enable TLS.
-func NewServiceServer(port int, logger logging.Logger, debug bool, tlsOpt ggrpc.ServerOption) *ServiceServer {
+func NewServiceServer(port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsOpt ggrpc.ServerOption) *ServiceServer {
 	// Recovery interceptor must be first (outermost) to catch panics from all handlers
 	unaryInterceptors := []ggrpc.UnaryServerInterceptor{
 		recoveryInterceptor(logger),
@@ -408,8 +408,8 @@ func NewServiceServer(port int, logger logging.Logger, debug bool, tlsOpt ggrpc.
 	}
 
 	// Always log method, duration, and error for observability.
-	unaryInterceptors = append(unaryInterceptors, loggingInterceptor(logger))
-	streamInterceptors = append(streamInterceptors, loggingStreamInterceptor(logger))
+	unaryInterceptors = append(unaryInterceptors, loggingInterceptor(logger, slowThreshold))
+	streamInterceptors = append(streamInterceptors, loggingStreamInterceptor(logger, slowThreshold))
 
 	opts := []ggrpc.ServerOption{
 		ggrpc.StatsHandler(otelgrpc.NewServerHandler()),

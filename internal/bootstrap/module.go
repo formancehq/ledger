@@ -275,7 +275,7 @@ func Module() fx.Option {
 					return nil, fmt.Errorf("loading TLS credentials for service server: %w", err)
 				}
 
-				return grpcadp.NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, tlsOpt), nil
+				return grpcadp.NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsOpt), nil
 			},
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(func(cfg Config, logger logging.Logger, keySet oidc.KeySet) (internalauth.AuthConfig, error) {
@@ -296,6 +296,7 @@ func Module() fx.Option {
 					cfg.RaftConfig.WalDir,
 					cfg.DataDir,
 					readIndexDir,
+					filepath.Join(readIndexDir, "readindex.db"),
 					10*time.Second,
 					meterProvider.Meter("storage"),
 				)

@@ -171,6 +171,9 @@ func NewRunCommand() *cobra.Command {
 	// Query profiling
 	runCmd.Flags().Duration("query-profile-threshold", 10*time.Millisecond, "Log and emit OTel attributes for queries exceeding this duration (0 to disable)")
 
+	// gRPC slow threshold
+	runCmd.Flags().Duration("grpc-slow-threshold", time.Second, "Duration above which a gRPC call is logged as slow")
+
 	return runCmd
 }
 
@@ -470,6 +473,9 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 
 	// Query profiling
 	cfg.QueryProfileThreshold = getDuration("query-profile-threshold", 10*time.Millisecond)
+
+	// gRPC slow threshold
+	cfg.GRPCSlowThreshold = getDuration("grpc-slow-threshold", time.Second)
 
 	// Join mode: discover peers from an existing cluster member
 	joinAddr := getString("join", "")
