@@ -637,26 +637,21 @@ func main() {
 			return fmt.Errorf("failed to deploy Grafana: %w", err)
 		}
 
-		// Apply Ledger CRDs (LedgerService + LedgerDefaults + LedgerClusterAgent)
-		ledgerServiceCRD, err := k8syaml.NewConfigFile(ctx, "ledgerservice-crd", &k8syaml.ConfigFileArgs{
-			File: "../operator/chart/crds/ledger.formance.com_ledgerservices.yaml",
-		}, pulumi.Provider(k8sProvider))
+		// Apply all Ledger CRDs from the operator chart
+		crdFiles, err := filepath.Glob(filepath.Join("..", "operator", "chart", "crds", "*.yaml"))
 		if err != nil {
-			return fmt.Errorf("failed to apply LedgerService CRD: %w", err)
+			return fmt.Errorf("failed to glob CRD files: %w", err)
 		}
-
-		ledgerDefaultsCRD, err := k8syaml.NewConfigFile(ctx, "ledgerdefaults-crd", &k8syaml.ConfigFileArgs{
-			File: "../operator/chart/crds/ledger.formance.com_ledgerdefaults.yaml",
-		}, pulumi.Provider(k8sProvider))
-		if err != nil {
-			return fmt.Errorf("failed to apply LedgerDefaults CRD: %w", err)
-		}
-
-		ledgerClusterAgentCRD, err := k8syaml.NewConfigFile(ctx, "ledgerclusteragent-crd", &k8syaml.ConfigFileArgs{
-			File: "../operator/chart/crds/ledger.formance.com_ledgerclusteragents.yaml",
-		}, pulumi.Provider(k8sProvider))
-		if err != nil {
-			return fmt.Errorf("failed to apply LedgerClusterAgent CRD: %w", err)
+		var ledgerCRDs []pulumi.Resource
+		for _, crdFile := range crdFiles {
+			name := strings.TrimSuffix(filepath.Base(crdFile), filepath.Ext(crdFile))
+			crd, err := k8syaml.NewConfigFile(ctx, name+"-crd", &k8syaml.ConfigFileArgs{
+				File: crdFile,
+			}, pulumi.Provider(k8sProvider))
+			if err != nil {
+				return fmt.Errorf("failed to apply CRD %s: %w", name, err)
+			}
+			ledgerCRDs = append(ledgerCRDs, crd)
 		}
 
 		// Deploy ledger operator via its Helm chart
@@ -675,7 +670,7 @@ func main() {
 			},
 			ForceUpdate: pulumi.Bool(true),
 		},
-			pulumi.DependsOn([]pulumi.Resource{namespace, ledgerServiceCRD, ledgerDefaultsCRD, ledgerClusterAgentCRD, ledgerOperatorImage}),
+			pulumi.DependsOn(append([]pulumi.Resource{namespace, ledgerOperatorImage}, ledgerCRDs...)),
 			pulumi.Provider(k8sProvider),
 		)
 		if err != nil {
@@ -729,7 +724,7 @@ func main() {
 				Values:      uiValues,
 				ForceUpdate: pulumi.Bool(true),
 			},
-				pulumi.DependsOn([]pulumi.Resource{namespace, ledgerServiceCRD, ledgerDefaultsCRD, ledgerOperator, operatorUIImage}),
+				pulumi.DependsOn(append([]pulumi.Resource{namespace, ledgerOperator, operatorUIImage}, ledgerCRDs...)),
 				pulumi.Provider(k8sProvider),
 			)
 			if err != nil {
@@ -895,7 +890,7 @@ func main() {
 			ctx.Export("coldStorageBucket", coldBucket.Bucket)
 		}
 
-		defaultsDeps := []pulumi.Resource{ledgerDefaultsCRD, ledgerOperator}
+		defaultsDeps := append([]pulumi.Resource{ledgerOperator}, ledgerCRDs...)
 		defaultsDeps = append(defaultsDeps, coldStorageDeps...)
 
 		_, err = apiextensions.NewCustomResource(ctx, "ledger-defaults", &apiextensions.CustomResourceArgs{
