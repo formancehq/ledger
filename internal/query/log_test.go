@@ -1,6 +1,7 @@
 package query_test
 
 import (
+	"context"
 	"math/big"
 	"testing"
 
@@ -18,12 +19,12 @@ func TestReadLogBySequence(t *testing.T) {
 	testLogs := createTestLogs("test-ledger")
 	appendLogs(t, s, 0, testLogs...)
 
-	log, err := query.ReadLogBySequence(s, 1)
+	log, err := query.ReadLogBySequence(context.Background(), s,1)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	require.Equal(t, uint64(1), log.Sequence)
 
-	log, err = query.ReadLogBySequence(s, 999)
+	log, err = query.ReadLogBySequence(context.Background(), s,999)
 	require.NoError(t, err)
 	require.Nil(t, log)
 }
@@ -75,7 +76,7 @@ func TestReadLogsSince(t *testing.T) {
 		t.Parallel()
 		s := newTestStore(t)
 
-		cursor, err := query.ReadLogsSince(s, 0)
+		cursor, err := query.ReadLogsSince(context.Background(), s,0)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Empty(t, logs)
@@ -90,7 +91,7 @@ func TestReadLogsSince(t *testing.T) {
 		appendLogs(t, s, 1, testLogs...)
 
 		// afterSequence=0 should return all logs
-		cursor, err := query.ReadLogsSince(s, 0)
+		cursor, err := query.ReadLogsSince(context.Background(), s,0)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Len(t, logs, 4)
@@ -107,7 +108,7 @@ func TestReadLogsSince(t *testing.T) {
 		appendLogs(t, s, 1, testLogs...)
 
 		// afterSequence=2 should return logs 3 and 4
-		cursor, err := query.ReadLogsSince(s, 2)
+		cursor, err := query.ReadLogsSince(context.Background(), s,2)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Len(t, logs, 2)
@@ -124,7 +125,7 @@ func TestReadLogsSince(t *testing.T) {
 		appendLogs(t, s, 1, testLogs...)
 
 		// afterSequence=4 (last log) should return empty
-		cursor, err := query.ReadLogsSince(s, 4)
+		cursor, err := query.ReadLogsSince(context.Background(), s,4)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Empty(t, logs)
@@ -138,7 +139,7 @@ func TestReadLogsSince(t *testing.T) {
 		testLogs := createTestLogs("test-ledger")
 		appendLogs(t, s, 1, testLogs...)
 
-		cursor, err := query.ReadLogsSince(s, 999)
+		cursor, err := query.ReadLogsSince(context.Background(), s,999)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Empty(t, logs)
@@ -153,7 +154,7 @@ func TestReadLogsSince(t *testing.T) {
 		appendLogs(t, s, 1, testLogs...)
 
 		// Simulate emitter: read all, then read after cursor
-		cursor, err := query.ReadLogsSince(s, 0)
+		cursor, err := query.ReadLogsSince(context.Background(), s,0)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Len(t, logs, 4)
@@ -165,7 +166,7 @@ func TestReadLogsSince(t *testing.T) {
 		appendLogs(t, s, 2, moreLogs...)
 
 		// Read only new logs
-		cursor, err = query.ReadLogsSince(s, lastSeq)
+		cursor, err = query.ReadLogsSince(context.Background(), s,lastSeq)
 		require.NoError(t, err)
 		newLogs := collectLogs(t, cursor)
 		require.Len(t, newLogs, 4) // 4 new logs starting from sequence 5
@@ -232,7 +233,7 @@ func TestReadLogsSince(t *testing.T) {
 		}
 		appendLogs(t, s, 1, mixedLogs...)
 
-		cursor, err := query.ReadLogsSince(s, 0)
+		cursor, err := query.ReadLogsSince(context.Background(), s,0)
 		require.NoError(t, err)
 		logs := collectLogs(t, cursor)
 		require.Len(t, logs, 3)

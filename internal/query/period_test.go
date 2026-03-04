@@ -1,6 +1,7 @@
 package query_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -26,7 +27,7 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s.Close() })
 
-		periods, err := query.ReadAllPeriods(s)
+		periods, err := query.ReadAllPeriods(context.Background(), s)
 		require.NoError(t, err)
 		require.Nil(t, periods)
 
@@ -51,7 +52,7 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, state.StoreNextPeriodID(batch, 2))
 		require.NoError(t, batch.Commit())
 
-		periods, err := query.ReadAllPeriods(s)
+		periods, err := query.ReadAllPeriods(context.Background(), s)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
 		require.Equal(t, uint64(1), periods[0].Id)
@@ -95,7 +96,7 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		// Verify periods are returned ordered by ID
-		periods, err := query.ReadAllPeriods(s)
+		periods, err := query.ReadAllPeriods(context.Background(), s)
 		require.NoError(t, err)
 		require.Len(t, periods, 3)
 		require.Equal(t, uint64(1), periods[0].Id)
@@ -143,7 +144,7 @@ func TestReadPeriods(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		periods, err := query.ReadAllPeriods(s)
+		periods, err := query.ReadAllPeriods(context.Background(), s)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
 		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, periods[0].Status)
@@ -184,7 +185,7 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s2.Close() })
 
-		periods, err := query.ReadAllPeriods(s2)
+		periods, err := query.ReadAllPeriods(context.Background(), s2)
 		require.NoError(t, err)
 		require.Len(t, periods, 2)
 		require.Equal(t, uint64(1), periods[0].Id)
@@ -242,7 +243,7 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		// Verify all data was written atomically
-		periods, err := query.ReadAllPeriods(s)
+		periods, err := query.ReadAllPeriods(context.Background(), s)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
 

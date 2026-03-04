@@ -186,7 +186,7 @@ func readBootstrapPreviewData(store *dal.Store) (lastAppliedIndex, lastAppliedTi
 		return 0, 0, nil, fmt.Errorf("getting last applied timestamp: %w", err)
 	}
 
-	cursor, err := query.ReadLedgers(store)
+	cursor, err := query.ReadLedgers(context.Background(), store)
 	if err != nil {
 		return 0, 0, nil, fmt.Errorf("listing ledgers: %w", err)
 	}

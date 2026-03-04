@@ -1,13 +1,14 @@
 package state
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/holiman/uint256"
@@ -743,7 +744,8 @@ func (b *Buffered) GetPreparedQuery(ledger, name string) (*commonpb.PreparedQuer
 	if pq, ok := b.pendingPreparedQueries[key]; ok {
 		return pq, nil // nil means deleted
 	}
-	return query.ReadPreparedQuery(b.fsm.dataStore, ledger, name)
+	// todo: remove from the hotpath!!!
+	return query.ReadPreparedQuery(context.Background(), b.fsm.dataStore, ledger, name)
 }
 
 func (b *Buffered) PutPreparedQuery(pq *commonpb.PreparedQuery) {

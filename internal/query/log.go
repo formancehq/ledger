@@ -1,9 +1,12 @@
 package query
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -61,7 +64,10 @@ func ReadLastSequence(reader dal.PebbleReader) (uint64, error) {
 }
 
 // ReadLogBySequence retrieves a log by its sequence number from the given reader.
-func ReadLogBySequence(reader dal.PebbleReader, sequence uint64) (*commonpb.Log, error) {
+func ReadLogBySequence(ctx context.Context, reader dal.PebbleReader, sequence uint64) (*commonpb.Log, error) {
+	_, span := queryTracer.Start(ctx, "query.get_log",
+		trace.WithAttributes(attribute.Int64("sequence", int64(sequence))))
+	defer span.End()
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixLog).
 		PutUInt64(sequence)
@@ -87,7 +93,9 @@ func ReadLogBySequence(reader dal.PebbleReader, sequence uint64) (*commonpb.Log,
 
 // ReadLogsSince returns a cursor over global log entries after the given sequence from the given reader.
 // Pass afterSequence=0 to return all log entries.
-func ReadLogsSince(reader dal.PebbleReader, afterSequence uint64, opts ...dal.ProtoCursorOption) (dal.Cursor[*commonpb.Log], error) {
+func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence uint64, opts ...dal.ProtoCursorOption) (dal.Cursor[*commonpb.Log], error) {
+	_, span := queryTracer.Start(ctx, "query.list_logs")
+	defer span.End()
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixLog)
 	if afterSequence > 0 {

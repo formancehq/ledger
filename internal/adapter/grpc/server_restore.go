@@ -218,7 +218,7 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 }
 
 // PreviewRestore returns a summary of the staged backup data.
-func (s *RestoreServiceServerImpl) PreviewRestore(_ context.Context, _ *restorepb.PreviewRestoreRequest) (*restorepb.PreviewRestoreResponse, error) {
+func (s *RestoreServiceServerImpl) PreviewRestore(ctx context.Context, _ *restorepb.PreviewRestoreRequest) (*restorepb.PreviewRestoreResponse, error) {
 	s.mu.Lock()
 	uploaded := s.uploaded
 	s.mu.Unlock()
@@ -250,7 +250,7 @@ func (s *RestoreServiceServerImpl) PreviewRestore(_ context.Context, _ *restorep
 		return nil, fmt.Errorf("getting last sequence: %w", err)
 	}
 
-	cursor, err := query.ReadLedgers(store)
+	cursor, err := query.ReadLedgers(ctx, store)
 	if err != nil {
 		return nil, fmt.Errorf("listing ledgers: %w", err)
 	}

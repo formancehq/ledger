@@ -183,7 +183,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	}
 
 	stepStart = time.Now()
-	periodsFromStore, err := query.ReadAllPeriods(dataStore)
+	periodsFromStore, err := query.ReadAllPeriods(context.Background(), dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading periods from store: %w", err)
 	}
@@ -1728,7 +1728,7 @@ func (fsm *Machine) dispatchMetadataConversionRequests() {
 	handle := fsm.dataStore.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	cursor, err := query.ReadLedgers(handle)
+	cursor, err := query.ReadLedgers(context.Background(), handle)
 	if err != nil {
 		fsm.logger.Errorf("Failed to read ledgers for metadata conversion recovery: %v", err)
 		return

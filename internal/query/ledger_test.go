@@ -20,7 +20,7 @@ func TestReadLedgers(t *testing.T) {
 	s := newTestStore(t)
 
 	// Initially no ledgers
-	cursor, err := query.ReadLedgers(s)
+	cursor, err := query.ReadLedgers(context.Background(), s)
 	require.NoError(t, err)
 	ledgers, err := collectLedgers(cursor)
 	require.NoError(t, err)
@@ -28,7 +28,7 @@ func TestReadLedgers(t *testing.T) {
 
 	// Register first ledger
 	registerLedger(t, s, "ledger-1")
-	cursor, err = query.ReadLedgers(s)
+	cursor, err = query.ReadLedgers(context.Background(), s)
 	require.NoError(t, err)
 	ledgers, err = collectLedgers(cursor)
 	require.NoError(t, err)
@@ -37,7 +37,7 @@ func TestReadLedgers(t *testing.T) {
 
 	// Register second ledger
 	registerLedger(t, s, "ledger-2")
-	cursor, err = query.ReadLedgers(s)
+	cursor, err = query.ReadLedgers(context.Background(), s)
 	require.NoError(t, err)
 	ledgers, err = collectLedgers(cursor)
 	require.NoError(t, err)
@@ -98,7 +98,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify ledger exists and is not deleted
-	cursor, err := query.ReadLedgers(s)
+	cursor, err := query.ReadLedgers(context.Background(), s)
 	require.NoError(t, err)
 	ledgers, err := collectLedgers(cursor)
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify ledger still exists but is marked as deleted
-	cursor, err = query.ReadLedgers(s)
+	cursor, err = query.ReadLedgers(context.Background(), s)
 	require.NoError(t, err)
 	ledgers, err = collectLedgers(cursor)
 	require.NoError(t, err)

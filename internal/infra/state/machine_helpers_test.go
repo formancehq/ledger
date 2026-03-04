@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"testing"
 
 	libtime "github.com/formancehq/go-libs/v3/time"
@@ -200,7 +201,7 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 	s := newTestStore(t)
 
 	// Empty store
-	cursor, err := query.ReadAuditEntries(s, nil)
+	cursor, err := query.ReadAuditEntries(context.Background(), s,nil)
 	require.NoError(t, err)
 	_, curErr := cursor.Next()
 	require.Error(t, curErr) // io.EOF
@@ -216,7 +217,7 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Read all
-	cursor, err = query.ReadAuditEntries(s, nil)
+	cursor, err = query.ReadAuditEntries(context.Background(), s,nil)
 	require.NoError(t, err)
 	var entries []*auditpb.AuditEntry
 	for {
@@ -231,7 +232,7 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 
 	// Read after sequence 1
 	afterSeq := uint64(1)
-	cursor, err = query.ReadAuditEntries(s, &afterSeq)
+	cursor, err = query.ReadAuditEntries(context.Background(), s,&afterSeq)
 	require.NoError(t, err)
 	entries = nil
 	for {

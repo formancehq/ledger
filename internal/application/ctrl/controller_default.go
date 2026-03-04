@@ -63,9 +63,9 @@ func NewDefaultController(
 }
 
 // ListLedgers returns a cursor over all active (non-deleted) ledgers
-func (ctrl *DefaultController) ListLedgers(_ context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
+func (ctrl *DefaultController) ListLedgers(ctx context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := query.ReadLedgers(handle)
+	cursor, err := query.ReadLedgers(ctx, handle)
 	if err != nil {
 		_ = handle.Close()
 		return nil, err
@@ -96,17 +96,17 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName st
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	return buildTransaction(handle, ledgerInfo.Name, transactionID, ledgerInfo.MetadataSchema)
+	return buildTransaction(ctx, handle, ledgerInfo.Name, transactionID, ledgerInfo.MetadataSchema)
 }
 
 // buildTransaction builds a transaction from updates and logs using the given reader.
-func buildTransaction(reader dal.PebbleReader, ledger string, transactionID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
-	updates, err := query.ReadTransactionUpdates(reader, ledger, transactionID)
+func buildTransaction(ctx context.Context, reader dal.PebbleReader, ledger string, transactionID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
+	updates, err := query.ReadTransactionUpdates(ctx, reader, ledger, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("getting transaction updates for %d: %w", transactionID, err)
 	}
 
-	return assembleTransaction(reader, transactionID, updates, schema)
+	return assembleTransaction(ctx, reader, transactionID, updates, schema)
 }
 
 // enforceTransactionSchema converts transaction metadata values in-place
@@ -129,7 +129,7 @@ func enforceTransactionSchema(schema *commonpb.MetadataSchema, metadata []*commo
 // assembleTransaction builds a transaction from a slice of updates and a log reader.
 // The updates must be in chronological order (lowest byLog first).
 // If schema is non-nil, read-time type enforcement is applied to the final metadata.
-func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates []*commonpb.TransactionUpdate, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
+func assembleTransaction(ctx context.Context, reader dal.PebbleReader, transactionID uint64, updates []*commonpb.TransactionUpdate, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
 	var (
 		sequence         uint64
 		reverted         bool
@@ -159,7 +159,7 @@ func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates 
 		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
 	}
 
-	log, err := query.ReadLogBySequence(reader, sequence)
+	log, err := query.ReadLogBySequence(ctx, reader, sequence)
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
 	}
@@ -274,7 +274,7 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 	txns := make([]*commonpb.Transaction, 0, len(entityIDs))
 	for _, eid := range entityIDs {
 		txID := binary.BigEndian.Uint64(eid)
-		tx, txErr := buildTransaction(handle, ledgerInfo.Name, txID, ledgerInfo.MetadataSchema)
+		tx, txErr := buildTransaction(ctx, handle, ledgerInfo.Name, txID, ledgerInfo.MetadataSchema)
 		if txErr != nil {
 			_ = handle.Close()
 			return nil, txErr
@@ -725,7 +725,7 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 			// Lazy cursor creation on first call
 			if cursor == nil {
 				var err error
-				cursor, err = query.ReadLogsSince(handle, 0, dal.WithReuse())
+				cursor, err = query.ReadLogsSince(ctx, handle, 0, dal.WithReuse())
 				if err != nil {
 					return analysis.CompactTransaction{}, fmt.Errorf("creating log cursor for analysis: %w", err)
 				}
@@ -805,9 +805,9 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 }
 
 // ListLogs returns a cursor over system logs.
-func (ctrl *DefaultController) ListLogs(_ context.Context, afterSequence uint64, pageSize uint32) (dal.Cursor[*commonpb.Log], error) {
+func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32) (dal.Cursor[*commonpb.Log], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := query.ReadLogsSince(handle, afterSequence)
+	cursor, err := query.ReadLogsSince(ctx, handle, afterSequence)
 	if err != nil {
 		_ = handle.Close()
 		return nil, fmt.Errorf("listing logs: %w", err)
@@ -822,9 +822,9 @@ func (ctrl *DefaultController) ListLogs(_ context.Context, afterSequence uint64,
 }
 
 // ListAuditEntries returns a cursor over audit entries, applying optional filters.
-func (ctrl *DefaultController) ListAuditEntries(_ context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (dal.Cursor[*auditpb.AuditEntry], error) {
+func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (dal.Cursor[*auditpb.AuditEntry], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := query.ReadAuditEntries(handle, afterSequence)
+	cursor, err := query.ReadAuditEntries(ctx, handle, afterSequence)
 	if err != nil {
 		_ = handle.Close()
 		return nil, fmt.Errorf("listing audit entries: %w", err)
@@ -846,11 +846,11 @@ func (ctrl *DefaultController) ListAuditEntries(_ context.Context, afterSequence
 }
 
 // GetLog returns a single system log by sequence number.
-func (ctrl *DefaultController) GetLog(_ context.Context, sequence uint64) (*commonpb.Log, error) {
+func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	log, err := query.ReadLogBySequence(handle, sequence)
+	log, err := query.ReadLogBySequence(ctx, handle, sequence)
 	if err != nil {
 		return nil, fmt.Errorf("getting log %d: %w", sequence, err)
 	}
@@ -861,11 +861,11 @@ func (ctrl *DefaultController) GetLog(_ context.Context, sequence uint64) (*comm
 }
 
 // GetAuditEntry returns a single audit entry by sequence number.
-func (ctrl *DefaultController) GetAuditEntry(_ context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
+func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	entry, err := query.ReadAuditEntry(handle, sequence)
+	entry, err := query.ReadAuditEntry(ctx, handle, sequence)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("audit entry %d not found", sequence)
@@ -876,9 +876,9 @@ func (ctrl *DefaultController) GetAuditEntry(_ context.Context, sequence uint64)
 }
 
 // ListPeriods returns a cursor over all non-purged periods from the store.
-func (ctrl *DefaultController) ListPeriods(_ context.Context) (dal.Cursor[*commonpb.Period], error) {
+func (ctrl *DefaultController) ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.Period], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := query.ReadPeriods(handle)
+	cursor, err := query.ReadPeriods(ctx, handle)
 	if err != nil {
 		_ = handle.Close()
 		return nil, err
@@ -887,9 +887,9 @@ func (ctrl *DefaultController) ListPeriods(_ context.Context) (dal.Cursor[*commo
 }
 
 // ListSigningKeys returns a cursor over all registered signing keys.
-func (ctrl *DefaultController) ListSigningKeys(_ context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
+func (ctrl *DefaultController) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := query.ReadSigningKeysCursor(handle)
+	cursor, err := query.ReadSigningKeysCursor(ctx, handle)
 	if err != nil {
 		_ = handle.Close()
 		return nil, err
@@ -898,22 +898,22 @@ func (ctrl *DefaultController) ListSigningKeys(_ context.Context) (dal.Cursor[*c
 }
 
 // ListPreparedQueries returns all prepared queries for a ledger.
-func (ctrl *DefaultController) ListPreparedQueries(_ context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
-	return query.ReadPreparedQueries(ctrl.store, ledger)
+func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
+	return query.ReadPreparedQueries(ctx, ctrl.store, ledger)
 }
 
 // ExecutePreparedQuery executes a prepared query against the read index store.
 func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 	profile := query.ProfileFromContext(ctx)
-	return query.Execute(ctrl.readStore, ctrl.store, ctrl.attrs.Volume, req, profile)
+	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, req, profile)
 }
 
 // GetNumscript returns a numscript by name and optional version ("" = latest).
-func (ctrl *DefaultController) GetNumscript(_ context.Context, name string, version string) (*commonpb.NumscriptInfo, error) {
+func (ctrl *DefaultController) GetNumscript(ctx context.Context, name string, version string) (*commonpb.NumscriptInfo, error) {
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	info, err := query.ReadNumscript(handle, name, version)
+	info, err := query.ReadNumscript(ctx, handle, name, version)
 	if err != nil {
 		return nil, fmt.Errorf("reading numscript %q: %w", name, err)
 	}
@@ -924,11 +924,11 @@ func (ctrl *DefaultController) GetNumscript(_ context.Context, name string, vers
 }
 
 // ListNumscripts returns the latest version of all numscripts.
-func (ctrl *DefaultController) ListNumscripts(_ context.Context) ([]*commonpb.NumscriptInfo, error) {
+func (ctrl *DefaultController) ListNumscripts(ctx context.Context) ([]*commonpb.NumscriptInfo, error) {
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	return query.ReadAllNumscripts(handle)
+	return query.ReadAllNumscripts(ctx, handle)
 }
 
 // Apply applies a list of requests and returns the resulting logs.

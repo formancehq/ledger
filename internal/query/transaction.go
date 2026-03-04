@@ -1,9 +1,12 @@
 package query
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
@@ -12,7 +15,14 @@ import (
 )
 
 // ReadTransactionUpdates retrieves all updates for a transaction ID from the given reader, ordered by ByLog.
-func ReadTransactionUpdates(reader dal.PebbleReader, ledger string, transactionID uint64) ([]*commonpb.TransactionUpdate, error) {
+func ReadTransactionUpdates(ctx context.Context, reader dal.PebbleReader, ledger string, transactionID uint64) ([]*commonpb.TransactionUpdate, error) {
+	_, span := queryTracer.Start(ctx, "query.read_tx_updates",
+		trace.WithAttributes(
+			attribute.String("ledger", ledger),
+			attribute.Int64("transaction_id", int64(transactionID)),
+		))
+	defer span.End()
+
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixTransactionUpdate).
 		PutLedgerName(ledger).
@@ -53,8 +63,8 @@ func ReadTransactionUpdates(reader dal.PebbleReader, ledger string, transactionI
 
 // FindTransactionCreationLog returns the system log that created a transaction.
 // It finds the TransactionInit update and retrieves the log.
-func FindTransactionCreationLog(reader dal.PebbleReader, ledgerName string, txID uint64) (*commonpb.Log, error) {
-	updates, err := ReadTransactionUpdates(reader, ledgerName, txID)
+func FindTransactionCreationLog(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64) (*commonpb.Log, error) {
+	updates, err := ReadTransactionUpdates(ctx, reader, ledgerName, txID)
 	if err != nil {
 		return nil, fmt.Errorf("getting transaction updates for %d: %w", txID, err)
 	}
@@ -75,7 +85,7 @@ func FindTransactionCreationLog(reader dal.PebbleReader, ledgerName string, txID
 		return nil, domain.ErrNotFound
 	}
 
-	log, err := ReadLogBySequence(reader, sequence)
+	log, err := ReadLogBySequence(ctx, reader, sequence)
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
 	}

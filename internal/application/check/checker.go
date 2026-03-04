@@ -298,7 +298,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			continue
 		}
 
-		actualUpdates, err := query.ReadTransactionUpdates(c.store, tk.Ledger, tk.ID)
+		actualUpdates, err := query.ReadTransactionUpdates(context.Background(), c.store, tk.Ledger, tk.ID)
 		if err != nil {
 			return fmt.Errorf("getting transaction updates for ledger %s tx %d: %w", tk.Ledger, tk.ID, err)
 		}

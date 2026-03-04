@@ -1,15 +1,24 @@
 package query
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ReadPreparedQuery reads a single prepared query by ledger and name.
-func ReadPreparedQuery(reader dal.PebbleReader, ledger, name string) (*commonpb.PreparedQuery, error) {
+func ReadPreparedQuery(ctx context.Context, reader dal.PebbleReader, ledger, name string) (*commonpb.PreparedQuery, error) {
+	_, span := queryTracer.Start(ctx, "query.get_prepared_query",
+		trace.WithAttributes(
+			attribute.String("ledger", ledger),
+			attribute.String("name", name),
+		))
+	defer span.End()
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixPreparedQuery)
 	kb.PutLedgerName(ledger)
@@ -34,7 +43,10 @@ func ReadPreparedQuery(reader dal.PebbleReader, ledger, name string) (*commonpb.
 }
 
 // ReadPreparedQueries reads all prepared queries for a ledger.
-func ReadPreparedQueries(reader dal.PebbleReader, ledger string) ([]*commonpb.PreparedQuery, error) {
+func ReadPreparedQueries(ctx context.Context, reader dal.PebbleReader, ledger string) ([]*commonpb.PreparedQuery, error) {
+	_, span := queryTracer.Start(ctx, "query.list_prepared_queries",
+		trace.WithAttributes(attribute.String("ledger", ledger)))
+	defer span.End()
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixPreparedQuery)
 	kb.PutLedgerName(ledger)

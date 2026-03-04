@@ -1,6 +1,7 @@
 package query
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -13,7 +14,9 @@ import (
 )
 
 // ReadPeriods returns a cursor over all periods from the given reader, ordered by period ID.
-func ReadPeriods(reader dal.PebbleReader) (dal.Cursor[*commonpb.Period], error) {
+func ReadPeriods(ctx context.Context, reader dal.PebbleReader) (dal.Cursor[*commonpb.Period], error) {
+	_, span := queryTracer.Start(ctx, "query.list_periods")
+	defer span.End()
 	lowerBound := []byte{dal.KeyPrefixPeriods}
 	upperBound := []byte{dal.KeyPrefixPeriods, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 
@@ -30,8 +33,11 @@ func ReadPeriods(reader dal.PebbleReader) (dal.Cursor[*commonpb.Period], error) 
 
 // ReadAllPeriods returns all periods stored in Pebble, ordered by period ID.
 // Returns nil if no periods have been persisted yet.
-func ReadAllPeriods(reader dal.PebbleReader) ([]*commonpb.Period, error) {
-	cursor, err := ReadPeriods(reader)
+func ReadAllPeriods(ctx context.Context, reader dal.PebbleReader) ([]*commonpb.Period, error) {
+	_, span := queryTracer.Start(ctx, "query.list_all_periods")
+	defer span.End()
+
+	cursor, err := ReadPeriods(ctx, reader)
 	if err != nil {
 		return nil, err
 	}

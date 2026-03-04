@@ -54,7 +54,7 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, error) {
 	consistency := grpcadp.ConsistencyFromContext(ctx)
 
-	_, span := routerTracer.Start(ctx, "router.read_ctrl",
+	ctx, span := routerTracer.Start(ctx, "router.read_ctrl",
 		trace.WithAttributes(attribute.String("consistency", consistency)))
 	defer span.End()
 

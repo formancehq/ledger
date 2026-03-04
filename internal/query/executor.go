@@ -13,6 +13,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 	bolt "go.etcd.io/bbolt"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const defaultPageSize = 100
@@ -31,14 +33,22 @@ func (e *ErrReadIndexNotCaughtUp) Error() string {
 // Execute runs a prepared query against the read index (bbolt) and, for
 // AGGREGATE_VOLUMES mode, crosses into Pebble for volume data.
 func Execute(
+	ctx context.Context,
 	rs *readstore.Store,
 	pebbleStore *dal.Store,
 	volumeAttr *attributes.AccumulatingAttribute[*raftcmdpb.VolumePair],
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 ) (*servicepb.ExecutePreparedQueryResponse, error) {
+	ctx, span := queryTracer.Start(ctx, "query.execute_prepared",
+		trace.WithAttributes(
+			attribute.String("ledger", req.Ledger),
+			attribute.String("query", req.QueryName),
+		))
+	defer span.End()
+
 	// Read the prepared query from Pebble
-	pq, err := ReadPreparedQuery(pebbleStore, req.Ledger, req.QueryName)
+	pq, err := ReadPreparedQuery(ctx, pebbleStore, req.Ledger, req.QueryName)
 	if err != nil {
 		return nil, fmt.Errorf("reading prepared query: %w", err)
 	}
@@ -69,7 +79,7 @@ func Execute(
 	}
 
 	// Fetch ledger info for schema-based filter validation
-	ledgerInfo, err := GetLedgerByName(context.TODO(), pebbleStore, req.Ledger)
+	ledgerInfo, err := GetLedgerByName(ctx, pebbleStore, req.Ledger)
 	if err != nil {
 		return nil, fmt.Errorf("reading ledger info: %w", err)
 	}

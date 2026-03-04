@@ -1,11 +1,14 @@
 package query
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
@@ -15,7 +18,7 @@ import (
 
 // ReadNumscriptLatestVersion reads the latest version string for a numscript by name.
 // Returns "" if the numscript does not exist.
-func ReadNumscriptLatestVersion(reader dal.PebbleReader, name string) (string, error) {
+func ReadNumscriptLatestVersion(ctx context.Context, reader dal.PebbleReader, name string) (string, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixNumscriptLatest).PutString(name)
 
@@ -39,16 +42,23 @@ func ReadNumscriptLatestVersion(reader dal.PebbleReader, name string) (string, e
 //   - "1"         → range scan [1.0.0, 2.0.0), iter.Last()
 //
 // Returns nil if the numscript or version does not exist.
-func ReadNumscript(reader dal.PebbleReader, name string, version string) (*commonpb.NumscriptInfo, error) {
+func ReadNumscript(ctx context.Context, reader dal.PebbleReader, name string, version string) (*commonpb.NumscriptInfo, error) {
+	_, span := queryTracer.Start(ctx, "query.get_numscript",
+		trace.WithAttributes(
+			attribute.String("name", name),
+			attribute.String("version", version),
+		))
+	defer span.End()
+
 	if version == "" {
-		latestVersion, err := ReadNumscriptLatestVersion(reader, name)
+		latestVersion, err := ReadNumscriptLatestVersion(ctx, reader, name)
 		if err != nil {
 			return nil, err
 		}
 		if latestVersion == "" {
 			return nil, nil
 		}
-		return ReadNumscript(reader, name, latestVersion)
+		return ReadNumscript(ctx, reader, name, latestVersion)
 	}
 
 	if version == "latest" {
@@ -169,7 +179,9 @@ func resolvePartialVersion(reader dal.PebbleReader, name string, major, minor ui
 }
 
 // ReadAllNumscripts reads all numscripts (latest version of each) from the given reader.
-func ReadAllNumscripts(reader dal.PebbleReader) ([]*commonpb.NumscriptInfo, error) {
+func ReadAllNumscripts(ctx context.Context, reader dal.PebbleReader) ([]*commonpb.NumscriptInfo, error) {
+	_, span := queryTracer.Start(ctx, "query.list_numscripts")
+	defer span.End()
 	lowerBound := []byte{dal.KeyPrefixNumscriptLatest}
 	upperBound := []byte{dal.KeyPrefixNumscriptLatest + 1}
 
@@ -196,7 +208,7 @@ func ReadAllNumscripts(reader dal.PebbleReader) ([]*commonpb.NumscriptInfo, erro
 			continue
 		}
 
-		info, err := ReadNumscript(reader, name, version)
+		info, err := ReadNumscript(ctx, reader, name, version)
 		if err != nil {
 			return nil, fmt.Errorf("reading numscript %q v%s: %w", name, version, err)
 		}

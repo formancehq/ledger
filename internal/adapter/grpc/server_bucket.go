@@ -172,7 +172,7 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 
 	resp := &servicepb.GetTransactionResponse{Transaction: tx}
 	if impl.receiptSigner != nil {
-		receiptToken, err := impl.computeTransactionReceipt(req.Ledger, req.TransactionId, tx)
+		receiptToken, err := impl.computeTransactionReceipt(ctx, req.Ledger, req.TransactionId, tx)
 		if err == nil {
 			resp.Receipt = receiptToken
 		}
@@ -182,8 +182,8 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 
 // computeTransactionReceipt computes a JWT receipt for an existing transaction
 // by looking up its creation log to extract the period ID.
-func (impl *BucketServiceServerImpl) computeTransactionReceipt(ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
-	log, err := query.FindTransactionCreationLog(impl.store, ledger, txID)
+func (impl *BucketServiceServerImpl) computeTransactionReceipt(ctx context.Context, ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
+	log, err := query.FindTransactionCreationLog(ctx, impl.store, ledger, txID)
 	if err != nil {
 		return "", err
 	}

@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"testing"
 
 	"github.com/cockroachdb/pebble"
@@ -244,7 +245,7 @@ func TestPurgeTransactionUpdates(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify all 5 updates exist
-	updates, err := query.ReadTransactionUpdates(s, "test", 1)
+	updates, err := query.ReadTransactionUpdates(context.Background(), s,"test", 1)
 	require.NoError(t, err)
 	require.Len(t, updates, 5)
 
@@ -254,7 +255,7 @@ func TestPurgeTransactionUpdates(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify only updates with byLog 5 and 25 remain
-	updates, err = query.ReadTransactionUpdates(s, "test", 1)
+	updates, err = query.ReadTransactionUpdates(context.Background(), s,"test", 1)
 	require.NoError(t, err)
 	require.Len(t, updates, 2)
 	require.Equal(t, uint64(5), updates[0].ByLog)
@@ -282,13 +283,13 @@ func TestAppendAuditEntries(t *testing.T) {
 	require.Equal(t, uint64(3), lastSeq)
 
 	// Read single entry
-	entry, err := query.ReadAuditEntry(s, 2)
+	entry, err := query.ReadAuditEntry(context.Background(), s,2)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), entry.Sequence)
 	require.Equal(t, uint64(20), entry.ProposalId)
 
 	// Read non-existent entry
-	_, err = query.ReadAuditEntry(s, 999)
+	_, err = query.ReadAuditEntry(context.Background(), s,999)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 }
 
@@ -354,19 +355,19 @@ func TestReadTransactionUpdates(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Read updates for transaction 100
-	updates, err := query.ReadTransactionUpdates(s, "test", 100)
+	updates, err := query.ReadTransactionUpdates(context.Background(), s,"test", 100)
 	require.NoError(t, err)
 	require.Len(t, updates, 2)
 	require.Equal(t, uint64(1), updates[0].ByLog)
 	require.Equal(t, uint64(5), updates[1].ByLog)
 
 	// Read updates for transaction 200
-	updates, err = query.ReadTransactionUpdates(s, "test", 200)
+	updates, err = query.ReadTransactionUpdates(context.Background(), s,"test", 200)
 	require.NoError(t, err)
 	require.Len(t, updates, 1)
 
 	// Read updates for non-existent transaction
-	updates, err = query.ReadTransactionUpdates(s, "test", 999)
+	updates, err = query.ReadTransactionUpdates(context.Background(), s,"test", 999)
 	require.NoError(t, err)
 	require.Empty(t, updates)
 }
@@ -406,17 +407,17 @@ func TestFindTransactionCreationLog(t *testing.T) {
 	appendLogs(t, s, 1, logs...)
 
 	// Find the creation log
-	log, err := query.FindTransactionCreationLog(s, "find-tx-ledger", 1)
+	log, err := query.FindTransactionCreationLog(context.Background(), s,"find-tx-ledger", 1)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	require.Equal(t, uint64(5), log.Sequence)
 
 	// Non-existent transaction should return ErrNotFound
-	_, err = query.FindTransactionCreationLog(s, "find-tx-ledger", 999)
+	_, err = query.FindTransactionCreationLog(context.Background(), s,"find-tx-ledger", 999)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Non-existent ledger should return error
-	_, err = query.FindTransactionCreationLog(s, "non-existent", 1)
+	_, err = query.FindTransactionCreationLog(context.Background(), s,"non-existent", 1)
 	require.Error(t, err)
 }
 
@@ -450,7 +451,7 @@ func TestReadSigningKeysCursorFunc(t *testing.T) {
 	s := newTestStore(t)
 
 	// Empty store
-	cursor, err := query.ReadSigningKeysCursor(s)
+	cursor, err := query.ReadSigningKeysCursor(context.Background(), s)
 	require.NoError(t, err)
 	var keys []*commonpb.SigningKey
 	for {
@@ -476,7 +477,7 @@ func TestReadSigningKeysCursorFunc(t *testing.T) {
 	require.NoError(t, SaveSigningKey(batch, "child-key", pubKey2, "root-key"))
 	require.NoError(t, batch.Commit())
 
-	cursor, err = query.ReadSigningKeysCursor(s)
+	cursor, err = query.ReadSigningKeysCursor(context.Background(), s)
 	require.NoError(t, err)
 	keys = nil
 	for {
@@ -507,7 +508,7 @@ func TestReadAuditEntry(t *testing.T) {
 	s := newTestStore(t)
 
 	// Non-existent entry
-	_, err := query.ReadAuditEntry(s, 99)
+	_, err := query.ReadAuditEntry(context.Background(), s,99)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Add entry and read back
@@ -521,7 +522,7 @@ func TestReadAuditEntry(t *testing.T) {
 	))
 	require.NoError(t, batch.Commit())
 
-	entry, err := query.ReadAuditEntry(s, 42)
+	entry, err := query.ReadAuditEntry(context.Background(), s,42)
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), entry.Sequence)
 	require.Equal(t, uint64(100), entry.ProposalId)

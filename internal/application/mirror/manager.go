@@ -114,7 +114,7 @@ func (m *Manager) reconcile() {
 		return
 	}
 
-	mirrorLedgers, err := query.ReadMirrorLedgers(m.store)
+	mirrorLedgers, err := query.ReadMirrorLedgers(context.Background(), m.store)
 	if err != nil {
 		m.logger.Errorf("Failed to load mirror ledgers: %v", err)
 		return

@@ -1,6 +1,7 @@
 package query
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -64,7 +65,9 @@ func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, error
 
 // ReadSigningKeysCursor returns a cursor over all registered signing keys.
 // The number of keys is always small, so we load them all and use a slice cursor.
-func ReadSigningKeysCursor(reader dal.PebbleReader) (dal.Cursor[*commonpb.SigningKey], error) {
+func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (dal.Cursor[*commonpb.SigningKey], error) {
+	_, span := queryTracer.Start(ctx, "query.list_signing_keys")
+	defer span.End()
 	keys, err := ReadSigningKeys(reader)
 	if err != nil {
 		return nil, err

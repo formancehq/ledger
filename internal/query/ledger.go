@@ -19,7 +19,9 @@ import (
 var queryTracer = otel.Tracer("query")
 
 // ReadLedgers returns a cursor over all registered ledgers from the given reader.
-func ReadLedgers(reader dal.PebbleReader) (dal.Cursor[*commonpb.LedgerInfo], error) {
+func ReadLedgers(ctx context.Context, reader dal.PebbleReader) (dal.Cursor[*commonpb.LedgerInfo], error) {
+	_, span := queryTracer.Start(ctx, "query.list_ledgers")
+	defer span.End()
 	lowerBound := []byte{dal.KeyPrefixLedgerInfo}
 	upperBound := []byte{dal.KeyPrefixLedgerInfo + 1}
 

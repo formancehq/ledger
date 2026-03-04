@@ -133,8 +133,8 @@ func ReadMirrorSyncProgress(ctx context.Context, reader dal.PebbleReader, ledger
 }
 
 // ReadMirrorLedgers returns all ledgers in MIRROR mode.
-func ReadMirrorLedgers(reader dal.PebbleReader) ([]*commonpb.LedgerInfo, error) {
-	cursor, err := ReadLedgers(reader)
+func ReadMirrorLedgers(ctx context.Context, reader dal.PebbleReader) ([]*commonpb.LedgerInfo, error) {
+	cursor, err := ReadLedgers(ctx, reader)
 	if err != nil {
 		return nil, fmt.Errorf("reading ledgers: %w", err)
 	}

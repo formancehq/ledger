@@ -127,7 +127,7 @@ func (b *Builder) initIndexConfig() {
 	handle := b.pebbleStore.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	cursor, err := query.ReadLedgers(handle)
+	cursor, err := query.ReadLedgers(context.Background(), handle)
 	if err != nil {
 		b.logger.Errorf("Failed to read ledgers for index config: %v", err)
 		return
@@ -394,7 +394,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 // transaction to amortize fsync overhead. Logs are consumed on the fly
 // (no intermediate slice) so the proto object can be GC'd immediately.
 func (b *Builder) processLogs(cursor uint64) (uint64, error) {
-	logsCursor, err := query.ReadLogsSince(b.pebbleStore, cursor, dal.WithReuse())
+	logsCursor, err := query.ReadLogsSince(context.Background(), b.pebbleStore, cursor, dal.WithReuse())
 	if err != nil {
 		return cursor, err
 	}
@@ -1152,7 +1152,7 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 // configuration. The iterator stays open across batches to avoid repeated
 // NewIter/First overhead during catch-up. Existence writes are skipped.
 func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) error {
-	logsCursor, err := query.ReadLogsSince(b.pebbleStore, task.cursor, dal.WithReuse())
+	logsCursor, err := query.ReadLogsSince(context.Background(), b.pebbleStore, task.cursor, dal.WithReuse())
 	if err != nil {
 		return err
 	}

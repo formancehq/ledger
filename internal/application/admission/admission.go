@@ -655,7 +655,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		if !a.cache.NumscriptVersions.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
 			result, err := a.loaders.NumscriptVersions.LoadOrWait(id, boundary, func() (string, error) {
-				return query.ReadNumscriptLatestVersion(a.store, nsKey.Name)
+				return query.ReadNumscriptLatestVersion(ctx, a.store, nsKey.Name)
 			})
 			if err != nil {
 				return nil, fmt.Errorf("loading numscript version for %q from store: %w", nsKey.Name, err)
@@ -708,7 +708,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		if !a.cache.NumscriptEntries.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
 			result, err := a.loaders.NumscriptEntries.LoadOrWait(id, boundary, func() (bool, error) {
-				info, err := query.ReadNumscript(a.store, entryKey.Name, entryKey.Version)
+				info, err := query.ReadNumscript(ctx, a.store, entryKey.Name, entryKey.Version)
 				if err != nil {
 					return false, err
 				}
@@ -899,7 +899,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			logs[i] = created
 		} else if refSeq := logOrRef.GetReferenceSequence(); refSeq > 0 {
-			log, fetchErr := query.ReadLogBySequence(a.store, refSeq)
+			log, fetchErr := query.ReadLogBySequence(ctx, a.store, refSeq)
 			if fetchErr != nil {
 				return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, fetchErr)
 			}
@@ -1457,7 +1457,7 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 					Err: domain.ErrScriptAndReferenceConflict,
 				}
 			}
-			info, err := query.ReadNumscript(a.store, ct.ScriptReference.Name, ct.ScriptReference.Version)
+			info, err := query.ReadNumscript(context.Background(), a.store, ct.ScriptReference.Name, ct.ScriptReference.Version)
 			if err != nil {
 				return nil, fmt.Errorf("reading numscript %q: %w", ct.ScriptReference.Name, err)
 			}
@@ -1565,7 +1565,7 @@ func (a *Admission) requestsToOrders(reqs []*servicepb.Request) ([]*raftcmdpb.Or
 // getTransactionPostings retrieves the postings of an original transaction from the store.
 // It uses FindTransactionCreationLog to locate the creation log and extract postings.
 func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint64) ([]*commonpb.Posting, error) {
-	log, err := query.FindTransactionCreationLog(a.store, ledgerName, transactionID)
+	log, err := query.FindTransactionCreationLog(context.Background(), a.store, ledgerName, transactionID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, &domain.BusinessError{Err: &domain.ErrTransactionNotFound{TransactionID: transactionID}}

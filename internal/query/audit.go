@@ -1,10 +1,13 @@
 package query
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
@@ -51,7 +54,10 @@ func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
 
 // ReadAuditEntries returns a cursor over audit entries after the given sequence from the given reader.
 // Use afterSequence=nil to return all entries, or a pointer to a sequence to filter.
-func ReadAuditEntries(reader dal.PebbleReader, afterSequence *uint64) (dal.Cursor[*auditpb.AuditEntry], error) {
+func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequence *uint64) (dal.Cursor[*auditpb.AuditEntry], error) {
+	_, span := queryTracer.Start(ctx, "query.list_audit_entries")
+	defer span.End()
+
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixAudit)
 	if afterSequence != nil {
@@ -77,7 +83,11 @@ func ReadAuditEntries(reader dal.PebbleReader, afterSequence *uint64) (dal.Curso
 
 // ReadAuditEntry returns a single audit entry by sequence number.
 // Returns domain.ErrNotFound if the entry does not exist.
-func ReadAuditEntry(reader dal.PebbleReader, sequence uint64) (*auditpb.AuditEntry, error) {
+func ReadAuditEntry(ctx context.Context, reader dal.PebbleReader, sequence uint64) (*auditpb.AuditEntry, error) {
+	_, span := queryTracer.Start(ctx, "query.get_audit_entry",
+		trace.WithAttributes(attribute.Int64("sequence", int64(sequence))))
+	defer span.End()
+
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixAudit).PutUInt64(sequence)
 	key := kb.Build()
