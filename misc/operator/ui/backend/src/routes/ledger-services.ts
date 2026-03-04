@@ -6,8 +6,10 @@ import {
   deleteLedgerService,
   patchLedgerService,
 } from "../k8s/ledger-service.js";
+import { getLedgerAgent, createLedgerAgent } from "../k8s/ledger-agent.js";
 import { listPods, listPvcs, listServices, listEvents } from "../k8s/resources.js";
 import type { AuthEnv } from "../auth/middleware.js";
+import type { SessionData } from "../auth/session.js";
 
 const app = new Hono<AuthEnv>();
 
@@ -45,7 +47,8 @@ app.post("/namespaces/:ns/ledger-services", async (c) => {
     );
   }
 
-  // Annotate with owner info from the authenticated session (if any)
+  // Annotate and label with owner info from the authenticated session (if any)
+  const ownerLabel = session ? sanitizeK8sLabelValue(session.userId) : undefined;
   if (session) {
     body.metadata ??= {};
     body.metadata.annotations = {
@@ -53,9 +56,20 @@ app.post("/namespaces/:ns/ledger-services", async (c) => {
       "ledger.formance.com/created-by": session.userId,
       ...(session.email && { "ledger.formance.com/created-by-email": session.email }),
     };
+    body.metadata.labels = {
+      ...body.metadata.labels,
+      ...(ownerLabel && { "ledger.formance.com/owner": ownerLabel }),
+    };
   }
 
   const result = await createLedgerService(ns, body);
+
+  // Create a LedgerAgent for the authenticated user so they can immediately
+  // interact with the cluster using Ed25519 request signing.
+  if (session && ownerLabel) {
+    await ensureLedgerAgentForUser(ns, session, ownerLabel);
+  }
+
   return c.json(result, 201);
 });
 
@@ -106,5 +120,70 @@ app.post("/namespaces/:ns/ledger-services/:name/restart", async (c) => {
   });
   return c.json(result);
 });
+
+/**
+ * Sanitize a string for use as a Kubernetes label value.
+ * Label values must be 63 chars or less, alphanumeric + [-_.], and must
+ * start and end with an alphanumeric character.
+ */
+function sanitizeK8sLabelValue(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "-")   // replace invalid chars
+    .replace(/^[^a-z0-9]+/, "")       // strip leading non-alphanum
+    .replace(/[^a-z0-9]+$/, "")       // strip trailing non-alphanum
+    .slice(0, 63);
+}
+
+/**
+ * Sanitize a string for use as a Kubernetes resource name.
+ * Names must be lowercase alphanumeric + hyphens, max 253 chars,
+ * start and end with alphanumeric.
+ */
+function sanitizeK8sName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")      // replace invalid chars with hyphens
+    .replace(/-+/g, "-")              // collapse multiple hyphens
+    .replace(/^-+/, "")               // strip leading hyphens
+    .replace(/-+$/, "")               // strip trailing hyphens
+    .slice(0, 253);
+}
+
+/**
+ * Ensure a LedgerAgent exists for the given user in the namespace.
+ * The agent matches all LedgerServices labeled with the user's owner label.
+ * If the agent already exists, this is a no-op.
+ */
+async function ensureLedgerAgentForUser(
+  namespace: string,
+  session: SessionData,
+  ownerLabel: string,
+): Promise<void> {
+  const agentName = sanitizeK8sName(`user-${ownerLabel}`);
+  if (!agentName) return;
+
+  // Check if agent already exists (idempotent)
+  const existing = await getLedgerAgent(namespace, agentName);
+  if (existing) return;
+
+  await createLedgerAgent(namespace, {
+    metadata: {
+      name: agentName,
+      annotations: {
+        "ledger.formance.com/created-by": session.userId,
+        ...(session.email && { "ledger.formance.com/created-by-email": session.email }),
+      },
+    },
+    spec: {
+      scopes: ["read", "write"],
+      selector: {
+        matchLabels: {
+          "ledger.formance.com/owner": ownerLabel,
+        },
+      },
+    },
+  });
+}
 
 export default app;

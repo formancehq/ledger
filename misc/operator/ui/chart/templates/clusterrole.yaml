@@ -13,6 +13,10 @@ rules:
 - apiGroups: ["ledger.formance.com"]
   resources: ["ledgerdefaults"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# LedgerAgents CRDs - get + create (auto-provisioned for authenticated users)
+- apiGroups: ["ledger.formance.com"]
+  resources: ["ledgeragents"]
+  verbs: ["get", "create"]
 # Pods - list
 - apiGroups: [""]
   resources: ["pods"]
