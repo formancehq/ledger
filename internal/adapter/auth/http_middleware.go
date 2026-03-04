@@ -23,7 +23,7 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 
 			// Public endpoints: no auth required
 			path := strings.TrimPrefix(r.URL.Path, "/v2")
-			if path == "/health" || strings.HasPrefix(path, "/debug/") {
+			if path == "/health" || path == "/livez" || path == "/readyz" || strings.HasPrefix(path, "/debug/") {
 				next.ServeHTTP(w, r)
 				return
 			}
