@@ -25,10 +25,10 @@ type GlobalExporterStateStore interface {
 }
 
 var (
-	DefaultGlobalExporterPollInterval           = 1 * time.Second
-	DefaultGlobalExporterPushRetryPeriod        = 10 * time.Second
-	DefaultGlobalExporterLogsPageSize           = uint64(100)
-	DefaultGlobalExporterLedgerPollInterval     = 10 * time.Second
+	DefaultGlobalExporterPollInterval       = 1 * time.Second
+	DefaultGlobalExporterPushRetryPeriod    = 10 * time.Second
+	DefaultGlobalExporterLogsPageSize       = uint64(100)
+	DefaultGlobalExporterLedgerPollInterval = 10 * time.Second
 )
 
 type globalExporterProgressTracker struct {
@@ -159,8 +159,8 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 	}
 
 	var (
-		handlers        []*PipelineHandler
-		wg              sync.WaitGroup
+		handlers         []*PipelineHandler
+		wg               sync.WaitGroup
 		lastSeenLedgerID int
 	)
 
@@ -200,6 +200,8 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 			},
 			Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		}
+
+	syncLedgers:
 		for {
 			cursor, err := r.store.Ledgers().Paginate(ctx, nextQuery)
 			if err != nil {
@@ -211,7 +213,8 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 				fetcher, err := r.getLogFetcher(ctx, l.Name)
 				if err != nil {
 					r.logger.Errorf("Error opening ledger %s: %v", l.Name, err)
-					continue
+					// Stop advancing lastSeenLedgerID so that this ledger is retried next cycle.
+					break syncLedgers
 				}
 
 				var lastLogID *uint64
@@ -241,9 +244,7 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 					handler.Run(ctx)
 				}()
 
-				if l.ID > lastSeenLedgerID {
-					lastSeenLedgerID = l.ID
-				}
+				lastSeenLedgerID = l.ID
 			}
 
 			if !cursor.HasMore {
