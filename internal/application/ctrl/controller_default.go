@@ -20,8 +20,13 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	bolt "go.etcd.io/bbolt"
 )
+
+var tracer = otel.Tracer("ctrl")
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package ctrl . Admission
 type Admission interface {
@@ -72,7 +77,14 @@ func (ctrl *DefaultController) ListLedgers(_ context.Context) (dal.Cursor[*commo
 	return dal.NewClosingCursor(filtered, handle), nil
 }
 
-func (ctrl *DefaultController) GetTransaction(_ context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+	_, span := tracer.Start(ctx, "ctrl.get_transaction",
+		trace.WithAttributes(
+			attribute.String("ledger", ledgerName),
+			attribute.Int64("transaction_id", int64(transactionID)),
+		))
+	defer span.End()
+
 	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -212,6 +224,14 @@ func assembleTransaction(reader dal.PebbleReader, transactionID uint64, updates 
 // Default order is newest-first; reverse=true gives oldest-first.
 // Uses the bbolt read index for entity discovery and Pebble for enrichment.
 func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
+	ctx, span := tracer.Start(ctx, "ctrl.list_transactions",
+		trace.WithAttributes(
+			attribute.String("ledger", ledgerName),
+			attribute.Int("page_size", int(pageSize)),
+			attribute.Bool("reverse", reverse),
+		))
+	defer span.End()
+
 	profile := query.ProfileFromContext(ctx)
 
 	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
@@ -375,6 +395,14 @@ func (ctrl *DefaultController) listTransactionsDescFiltered(tx *bolt.Tx, ledgerN
 // Default order is alphabetical (A→Z); reverse=true gives reverse-alphabetical (Z→A).
 // Uses the bbolt read index for entity discovery and Pebble for enrichment.
 func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
+	ctx, span := tracer.Start(ctx, "ctrl.list_accounts",
+		trace.WithAttributes(
+			attribute.String("ledger", ledgerName),
+			attribute.Int("page_size", int(pageSize)),
+			attribute.Bool("reverse", reverse),
+		))
+	defer span.End()
+
 	profile := query.ProfileFromContext(ctx)
 
 	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
@@ -522,7 +550,14 @@ func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName st
 	return nil
 }
 
-func (ctrl *DefaultController) GetAccount(_ context.Context, ledgerName string, address string) (*commonpb.Account, error) {
+func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
+	_, span := tracer.Start(ctx, "ctrl.get_account",
+		trace.WithAttributes(
+			attribute.String("ledger", ledgerName),
+			attribute.String("address", address),
+		))
+	defer span.End()
+
 	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -579,7 +614,11 @@ func (ctrl *DefaultController) GetLedgerStats(_ context.Context, ledgerName stri
 	return &stats, nil
 }
 
-func (ctrl *DefaultController) GetLedgerByName(_ context.Context, name string) (*commonpb.LedgerInfo, error) {
+func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
+	_, span := tracer.Start(ctx, "ctrl.get_ledger",
+		trace.WithAttributes(attribute.String("ledger", name)))
+	defer span.End()
+
 	ledgerInfo, err := query.GetLedgerByName(ctrl.store, name)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -897,6 +936,10 @@ func (ctrl *DefaultController) ListNumscripts(_ context.Context) ([]*commonpb.Nu
 // The FSM is responsible for interpreting orders, validating, and applying changes.
 // Idempotency is handled in the FSM to ensure consistency.
 func (ctrl *DefaultController) Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
+	ctx, span := tracer.Start(ctx, "ctrl.apply",
+		trace.WithAttributes(attribute.Int("request_count", len(requests))))
+	defer span.End()
+
 	if len(requests) == 0 {
 		return nil, fmt.Errorf("at least one request is required")
 	}

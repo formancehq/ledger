@@ -12,7 +12,12 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var routerTracer = otel.Tracer("router")
 
 type RoutedController struct {
 	*node.Node
@@ -47,18 +52,28 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 // For linearizable reads, if the local node is still syncing the read is
 // transparently forwarded to the leader.
 func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, error) {
-	switch grpcadp.ConsistencyFromContext(ctx) {
+	consistency := grpcadp.ConsistencyFromContext(ctx)
+
+	_, span := routerTracer.Start(ctx, "router.read_ctrl",
+		trace.WithAttributes(attribute.String("consistency", consistency)))
+	defer span.End()
+
+	switch consistency {
 	case grpcadp.ConsistencyStale:
+		span.SetAttributes(attribute.String("route", "local_stale"))
 		return b.localController, nil
 	case grpcadp.ConsistencyLeader:
+		span.SetAttributes(attribute.String("route", "leader"))
 		return b.getLeaderCtrl()
 	}
 
 	err := b.ReadIndexAndWait(ctx)
 	if err == nil {
+		span.SetAttributes(attribute.String("route", "local_linearizable"))
 		return b.localController, nil
 	}
 	if errors.Is(err, node.ErrNodeSyncing) || errors.Is(err, node.ErrNotLeader) {
+		span.SetAttributes(attribute.String("route", "leader_fallback"))
 		return b.getLeaderCtrl()
 	}
 	return nil, err

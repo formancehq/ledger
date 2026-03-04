@@ -180,6 +180,56 @@ func recoveryStreamInterceptor(logger logging.Logger) ggrpc.StreamServerIntercep
 	}
 }
 
+// loggingInterceptor logs every unary RPC with method, duration, and status code.
+func loggingInterceptor(logger logging.Logger) ggrpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
+		start := time.Now()
+		resp, err := handler(ctx, req)
+		duration := time.Since(start)
+
+		fields := map[string]any{
+			"method":   info.FullMethod,
+			"duration": duration.String(),
+			"code":     status.Code(err).String(),
+		}
+		if err != nil {
+			fields["error"] = err.Error()
+			logger.WithFields(fields).Errorf("gRPC call failed")
+		} else if duration > 500*time.Millisecond {
+			fields["slow"] = true
+			logger.WithFields(fields).Infof("gRPC call slow")
+		} else {
+			logger.WithFields(fields).Infof("gRPC call")
+		}
+		return resp, err
+	}
+}
+
+// loggingStreamInterceptor logs every streaming RPC with method, duration, and status code.
+func loggingStreamInterceptor(logger logging.Logger) ggrpc.StreamServerInterceptor {
+	return func(srv any, ss ggrpc.ServerStream, info *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
+		start := time.Now()
+		err := handler(srv, ss)
+		duration := time.Since(start)
+
+		fields := map[string]any{
+			"method":   info.FullMethod,
+			"duration": duration.String(),
+			"code":     status.Code(err).String(),
+		}
+		if err != nil {
+			fields["error"] = err.Error()
+			logger.WithFields(fields).Errorf("gRPC stream failed")
+		} else if duration > 500*time.Millisecond {
+			fields["slow"] = true
+			logger.WithFields(fields).Infof("gRPC stream slow")
+		} else {
+			logger.WithFields(fields).Infof("gRPC stream")
+		}
+		return err
+	}
+}
+
 // errorConversionInterceptor converts known errors to proper gRPC status codes
 func errorConversionInterceptor() ggrpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
@@ -352,24 +402,9 @@ func NewServiceServer(port int, logger logging.Logger, debug bool, tlsOpt ggrpc.
 		errorConversionStreamInterceptor(),
 	}
 
-	// Add logging interceptor in debug mode
-	if debug {
-		unaryInterceptors = append(unaryInterceptors,
-			func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
-				logger.WithFields(map[string]any{
-					"method": info.FullMethod,
-				}).Debug("gRPC request received")
-				resp, err := handler(ctx, req)
-				if err != nil {
-					logger.WithFields(map[string]any{
-						"method": info.FullMethod,
-						"error":  err.Error(),
-					}).Debug("gRPC request failed")
-				}
-				return resp, err
-			},
-		)
-	}
+	// Always log method, duration, and error for observability.
+	unaryInterceptors = append(unaryInterceptors, loggingInterceptor(logger))
+	streamInterceptors = append(streamInterceptors, loggingStreamInterceptor(logger))
 
 	opts := []ggrpc.ServerOption{
 		ggrpc.StatsHandler(otelgrpc.NewServerHandler()),

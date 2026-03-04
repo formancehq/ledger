@@ -10,8 +10,13 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"go.etcd.io/etcd/raft/v3"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var readIndexTracer = otel.Tracer("node.read_index")
 
 // readIndexRequest wraps a Future that will be resolved with the commit index
 // when the Raft leader confirms the ReadIndex request.
@@ -82,6 +87,9 @@ func (node *Node) ReadIndex(ctx context.Context) (uint64, error) {
 // Returns ErrNodeSyncing if the node is still catching up with the cluster.
 // Callers (e.g. RoutedController) should forward the read to the leader in that case.
 func (node *Node) ReadIndexAndWait(ctx context.Context) error {
+	ctx, span := readIndexTracer.Start(ctx, "node.read_index_and_wait")
+	defer span.End()
+
 	if node.isSyncing() {
 		return ErrNodeSyncing
 	}
@@ -91,14 +99,23 @@ func (node *Node) ReadIndexAndWait(ctx context.Context) error {
 	}
 
 	start := time.Now()
+
+	ctx, riSpan := readIndexTracer.Start(ctx, "node.read_index_quorum")
 	commitIndex, err := node.ReadIndex(ctx)
+	riSpan.End()
 	if err != nil {
 		return err
 	}
 
+	span.SetAttributes(attribute.Int64("commit_index", int64(commitIndex)))
+
+	_, waitSpan := readIndexTracer.Start(ctx, "node.wait_for_applied",
+		trace.WithAttributes(attribute.Int64("target_index", int64(commitIndex))))
 	if err := node.fsm.WaitForApplied(ctx, commitIndex); err != nil {
+		waitSpan.End()
 		return err
 	}
+	waitSpan.End()
 
 	if node.readIndexDurationHistogram != nil {
 		node.readIndexDurationHistogram.Record(ctx, time.Since(start).Microseconds())

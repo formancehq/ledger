@@ -26,10 +26,14 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var tracer = otel.Tracer("admission")
 
 // marshalBufPool holds reusable buffers for proto.MarshalAppend to avoid
 // repeated buffer growth allocations in the proposal hot path.
@@ -267,7 +271,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	// Verify signatures and resolve signed payloads
+	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
 	requests, err := a.verifyAndResolveSignatures(requests)
+	sigSpan.End()
 	if err != nil {
 		return nil, err
 	}
@@ -293,6 +299,20 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	cmd := commands.NewCommand(orders...)
 	cmd.Preload.LastPersistedIndex = boundary
+
+	// Preload all data from store/cache
+	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
+		trace.WithAttributes(
+			attribute.Int("preload.ledgers", len(needs.Ledgers)),
+			attribute.Int("preload.boundaries", len(needs.Boundaries)),
+			attribute.Int("preload.volumes", len(needs.Volumes)),
+			attribute.Int("preload.idempotency_keys", len(needs.IdempotencyKeys)),
+			attribute.Int("preload.references", len(needs.References)),
+			attribute.Int("preload.sink_configs", len(needs.SinkConfigs)),
+			attribute.Int("preload.numscript_versions", len(needs.NumscriptVersions)),
+			attribute.Int("preload.numscript_entries", len(needs.NumscriptEntries)),
+			attribute.Int("preload.metadata", len(needs.Metadata)),
+		))
 
 	// Preload ledgers (for CreateLedger/DeleteLedger orders)
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Ledgers)),
@@ -791,6 +811,8 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		}
 	}
 
+	preloadSpan.End()
+
 	// Step 5: Propose command - reacquire lock to serialize proposals
 	start := time.Now()
 	defer func() {
@@ -799,6 +821,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	// Marshal into a pooled buffer to avoid repeated growth allocations.
 	// Copy to exact-size slice since Raft retains a reference to proposal data.
+	ctx, marshalSpan := tracer.Start(ctx, "admission.marshal")
 	bufp := marshalBufPool.Get().(*[]byte)
 	size := cmd.SizeVT()
 	buf := *bufp
@@ -809,6 +832,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 	n, err := cmd.MarshalToVT(buf)
 	if err != nil {
+		marshalSpan.End()
 		*bufp = buf
 		marshalBufPool.Put(bufp)
 		return nil, fmt.Errorf("marshaling command: %w", err)
@@ -822,12 +846,16 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	copy(proposalData, cmdData)
 	*bufp = buf // preserve grown capacity for future calls
 	marshalBufPool.Put(bufp)
+	marshalSpan.SetAttributes(attribute.Int("command.size_bytes", len(proposalData)))
+	marshalSpan.End()
 
 	proposal := node.NewProposal(cmd.Id, proposalData)
 
+	ctx, proposeSpan := tracer.Start(ctx, "admission.propose")
 	proposeStart := time.Now()
 	fsmFuture, err := a.proposer.Propose(proposal)
 	if err != nil {
+		proposeSpan.End()
 		// Clean up loaded keys on error
 		loadedKeys.MarkApplied(a.loaders)
 		a.logger.WithFields(map[string]any{
@@ -840,17 +868,21 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	a.proposeQueueLoadHistogram.Record(context.Background(), int64(a.proposeQueueInflight.Add(1)))
 
 	if _, err := proposal.Wait(); err != nil {
+		proposeSpan.End()
 		// Clean up loaded keys on error
 		loadedKeys.MarkApplied(a.loaders)
 		a.proposeQueueInflight.Add(-1)
 		return nil, err
 	}
 	a.proposeDurationHistogram.Record(ctx, time.Since(proposeStart).Microseconds())
+	proposeSpan.End()
 
 	// Wait for FSM to apply the command
+	ctx, fsmSpan := tracer.Start(ctx, "admission.fsm_wait")
 	fsmWaitStart := time.Now()
 	result, err := fsmFuture.Wait()
 	a.fsmFutureWaitHistogram.Record(ctx, time.Since(fsmWaitStart).Microseconds())
+	fsmSpan.End()
 
 	// Decrement inflight counter after command is fully processed
 	a.proposeQueueInflight.Add(-1)
