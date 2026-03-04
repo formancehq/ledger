@@ -163,8 +163,6 @@
       "type": "object",
       "required": [
         "chart",
-        "transactions",
-        "queries",
         "version",
         "createdAt"
       ]
