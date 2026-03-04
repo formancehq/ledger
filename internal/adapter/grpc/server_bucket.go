@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 	bolt "go.etcd.io/bbolt"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -28,6 +29,8 @@ import (
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
+
+var bucketTracer = otel.Tracer("grpc.bucket")
 
 const (
 	metadataKeyQueryProfile       = "x-query-profile"
@@ -254,6 +257,9 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 }
 
 func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+	ctx, span := bucketTracer.Start(ctx, "grpc.GetLedger")
+	defer span.End()
+
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
 		return nil, err
 	}
