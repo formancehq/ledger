@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -200,6 +201,8 @@ func loggingInterceptor(logger logging.Logger) ggrpc.UnaryServerInterceptor {
 		} else if duration > 500*time.Millisecond {
 			fields["slow"] = true
 			logger.WithFields(fields).Infof("gRPC call slow")
+		} else if strings.HasPrefix(info.FullMethod, "/grpc.health.v1.Health/") {
+			logger.WithFields(fields).Debugf("gRPC call")
 		} else {
 			logger.WithFields(fields).Infof("gRPC call")
 		}

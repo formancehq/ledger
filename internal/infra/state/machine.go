@@ -125,15 +125,20 @@ type Machine struct {
 }
 
 func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, numscriptCacheSize int) (*Machine, error) {
+	stepStart := time.Now()
+
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(dataStore)
 	if err != nil {
 		return nil, err
 	}
+	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadLastAppliedIndex done")
 
+	stepStart = time.Now()
 	lastAppliedTimestamp, err := query.ReadLastAppliedTimestamp(dataStore)
 	if err != nil {
 		return nil, err
 	}
+	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadLastAppliedTimestamp done")
 
 	logsAppendedCounter, err := meter.Int64Counter(
 		"raft.fsm.logs_appended",
@@ -177,10 +182,12 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		return nil, fmt.Errorf("creating batch_commit_duration histogram: %w", err)
 	}
 
+	stepStart = time.Now()
 	periodsFromStore, err := query.ReadAllPeriods(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading periods from store: %w", err)
 	}
+	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String(), "count": len(periodsFromStore)}).Infof("FSM: ReadAllPeriods done")
 
 	allPeriods := make(map[uint64]*commonpb.Period, len(periodsFromStore))
 	var currentOpenPeriod, closingPeriod *commonpb.Period
@@ -194,22 +201,29 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		}
 	}
 
+	stepStart = time.Now()
 	nextPeriodID, err := query.ReadNextPeriodID(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading next period ID from store: %w", err)
 	}
+	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadNextPeriodID done")
 
+	stepStart = time.Now()
 	periodSchedule, err := query.ReadPeriodSchedule(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading period schedule from store: %w", err)
 	}
+	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadPeriodSchedule done")
 
+	stepStart = time.Now()
 	processor, err := processing.NewRequestProcessor(meter, numscriptCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("creating request processor: %w", err)
 	}
+	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: NewRequestProcessor done")
 
 	// Load signing keys from Pebble on startup
+	stepStart = time.Now()
 	if ks != nil {
 		signingKeys, err := query.ReadSigningKeys(dataStore)
 		if err != nil {
@@ -219,8 +233,10 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 			ks.AddPublicKey(keyID, entry.PublicKey, entry.ParentKeyID)
 		}
 	}
+	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadSigningKeys done")
 
 	// Load shared runtime flags from Pebble on startup
+	stepStart = time.Now()
 	requireSig, err := query.ReadSigningConfig(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading signing config from store: %w", err)
@@ -238,6 +254,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		return nil, fmt.Errorf("loading audit config from store: %w", err)
 	}
 	sharedState.SetAuditEnabled(auditEnabled)
+	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadSharedState done")
 
 	fsm := &Machine{
 		logger:                      logger,
