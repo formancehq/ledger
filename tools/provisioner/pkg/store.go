@@ -4,16 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"os"
-
+	"github.com/formancehq/go-libs/v3/pointer"
 	"gopkg.in/yaml.v3"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-
-	"github.com/formancehq/go-libs/v4/pointer"
+	"os"
 )
 
 type Store interface {

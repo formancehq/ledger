@@ -2,15 +2,12 @@ package ledger
 
 import (
 	"fmt"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/ledger/pkg/features"
+	"github.com/uptrace/bun"
 	"regexp"
 	"slices"
-
-	"github.com/uptrace/bun"
-
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/time"
-
-	"github.com/formancehq/ledger/pkg/features"
 )
 
 const (
@@ -22,11 +19,10 @@ type Ledger struct {
 	bun.BaseModel `bun:"_system.ledgers,alias:ledgers"`
 
 	Configuration
-	ID        int        `json:"id" bun:"id,type:int,scanonly"`
-	Name      string     `json:"name" bun:"name,type:varchar(255),pk"`
-	AddedAt   time.Time  `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
-	State     string     `json:"-" bun:"state,type:varchar(255),nullzero"`
-	DeletedAt *time.Time `json:"deletedAt,omitempty" bun:"deleted_at,type:timestamp,nullzero"`
+	ID      int       `json:"id" bun:"id,type:int,scanonly"`
+	Name    string    `json:"name" bun:"name,type:varchar(255),pk"`
+	AddedAt time.Time `json:"addedAt" bun:"added_at,type:timestamp,nullzero"`
+	State   string    `json:"-" bun:"state,type:varchar(255),nullzero"`
 }
 
 func (l Ledger) HasFeature(feature, value string) bool {

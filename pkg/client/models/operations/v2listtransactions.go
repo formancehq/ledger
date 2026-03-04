@@ -10,27 +10,27 @@ import (
 	"time"
 )
 
-// QueryParamOrder - Deprecated: Use sort param
-type QueryParamOrder string
+// Order - Deprecated: Use sort param
+type Order string
 
 const (
-	QueryParamOrderEffective QueryParamOrder = "effective"
+	OrderEffective Order = "effective"
 )
 
-func (e QueryParamOrder) ToPointer() *QueryParamOrder {
+func (e Order) ToPointer() *Order {
 	return &e
 }
-func (e *QueryParamOrder) UnmarshalJSON(data []byte) error {
+func (e *Order) UnmarshalJSON(data []byte) error {
 	var v string
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
 	}
 	switch v {
 	case "effective":
-		*e = QueryParamOrder(v)
+		*e = Order(v)
 		return nil
 	default:
-		return fmt.Errorf("invalid value for QueryParamOrder: %v", v)
+		return fmt.Errorf("invalid value for Order: %v", v)
 	}
 }
 
@@ -51,8 +51,8 @@ type V2ListTransactionsRequest struct {
 	// Deprecated: Use sort param
 	//
 	// Deprecated: This will be removed in a future release, please migrate away from it as soon as possible.
-	Order   *QueryParamOrder `queryParam:"style=form,explode=true,name=order"`
-	Reverse *bool            `queryParam:"style=form,explode=true,name=reverse"`
+	Order   *Order `queryParam:"style=form,explode=true,name=order"`
+	Reverse *bool  `queryParam:"style=form,explode=true,name=reverse"`
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
@@ -106,7 +106,7 @@ func (o *V2ListTransactionsRequest) GetPit() *time.Time {
 	return o.Pit
 }
 
-func (o *V2ListTransactionsRequest) GetOrder() *QueryParamOrder {
+func (o *V2ListTransactionsRequest) GetOrder() *Order {
 	if o == nil {
 		return nil
 	}

@@ -9,25 +9,25 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nats-io/nats.go"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/pointer"
-	. "github.com/formancehq/go-libs/v4/testing/api"
-	. "github.com/formancehq/go-libs/v4/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v4/testing/platform/natstesting"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
-
+	"github.com/formancehq/go-libs/v3/pointer"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	ledger "github.com/formancehq/ledger/internal"
+	ledgerevents "github.com/formancehq/ledger/pkg/events"
+	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
+	"github.com/nats-io/nats.go"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	. "github.com/formancehq/go-libs/v3/testing/api"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	. "github.com/formancehq/ledger/pkg/testserver"
-	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
+
+	"github.com/formancehq/go-libs/v3/metadata"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 var _ = Context("Ledger engine tests", func() {
@@ -124,9 +124,6 @@ var _ = Context("Ledger engine tests", func() {
 				components.CreateV2BulkElementRevertTransaction(components.V2BulkElementRevertTransaction{
 					Data: &components.V2BulkElementRevertTransactionData{
 						ID: big.NewInt(1),
-						Metadata: metadata.Metadata{
-							"foo": "bar",
-						},
 					},
 				}),
 			}
@@ -154,10 +151,6 @@ var _ = Context("Ledger engine tests", func() {
 			Expect(err).To(Succeed())
 
 			Expect(bulkResponse.V2BulkResponse.Data[3].V2BulkElementResultRevertTransaction.Data.ID).To(Equal(big.NewInt(2)))
-			Expect(bulkResponse.V2BulkResponse.Data[3].V2BulkElementResultRevertTransaction.Data.Metadata).To(Equal(map[string]string{
-				"com.formance.spec/state/reverts": big.NewInt(1).String(),
-				"foo":                             "bar",
-			}))
 
 			Expect(tx.V2GetTransactionResponse.Data).To(Equal(components.V2Transaction{
 				ID: big.NewInt(1),

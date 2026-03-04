@@ -1,18 +1,19 @@
 package v1
 
 import (
-	"errors"
+	"github.com/formancehq/ledger/internal/api/common"
+	"go.opentelemetry.io/otel/trace"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-	"go.opentelemetry.io/otel/trace"
+	"errors"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/api/common"
 	"github.com/formancehq/ledger/internal/controller/system"
+
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	ledger "github.com/formancehq/ledger/internal"
+
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/go-chi/chi/v5"
 )
 
 func autoCreateMiddleware(backend system.Controller, tracer trace.Tracer) func(handler http.Handler) http.Handler {

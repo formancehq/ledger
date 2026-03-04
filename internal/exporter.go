@@ -2,11 +2,10 @@ package ledger
 
 import (
 	"encoding/json"
-
-	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v3/time"
+	"github.com/google/uuid"
 )
 
 type ExporterConfiguration struct {

@@ -2,43 +2,44 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/formancehq/ledger/internal/replication"
+	drivers "github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/formancehq/ledger/internal/worker"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"net/http"
 	"net/http/pprof"
 	"time"
 
+	apilib "github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/health"
+	"github.com/formancehq/go-libs/v3/httpserver"
+	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/go-chi/chi/v5"
-	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/sdk/metric"
-	"go.uber.org/fx"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
-	apilib "github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/aws/iam"
-	"github.com/formancehq/go-libs/v4/ballast"
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/health"
-	"github.com/formancehq/go-libs/v4/httpserver"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/otlp"
-	"github.com/formancehq/go-libs/v4/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/v4/otlp/otlptraces"
-	"github.com/formancehq/go-libs/v4/publish"
-	"github.com/formancehq/go-libs/v4/service"
-
-	"github.com/formancehq/ledger/internal/api"
 	"github.com/formancehq/ledger/internal/bus"
+
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/aws/iam"
+	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
+	"github.com/formancehq/go-libs/v3/publish"
+	"github.com/formancehq/ledger/internal/api"
+
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
-	"github.com/formancehq/ledger/internal/replication"
-	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/formancehq/ledger/internal/replication/drivers/alldrivers"
 	"github.com/formancehq/ledger/internal/storage"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
-	"github.com/formancehq/ledger/internal/tracing"
-	"github.com/formancehq/ledger/internal/worker"
+
+	"github.com/formancehq/go-libs/v3/ballast"
+	"github.com/formancehq/go-libs/v3/service"
+	"github.com/spf13/cobra"
+	"go.uber.org/fx"
 )
 
 type ServeCommandConfig struct {
@@ -65,11 +66,9 @@ const (
 	BulkMaxSizeFlag            = "bulk-max-size"
 	BulkParallelFlag           = "bulk-parallel"
 
-	DefaultPageSizeFlag   = "default-page-size"
-	MaxPageSizeFlag       = "max-page-size"
-	WorkerEnabledFlag     = "worker"
-	SemconvMetricsNames   = "semconv-metrics-names"
-	SchemaEnforcementMode = "schema-enforcement-mode"
+	DefaultPageSizeFlag = "default-page-size"
+	MaxPageSizeFlag     = "max-page-size"
+	WorkerEnabledFlag   = "worker"
 )
 
 func NewServeCommand() *cobra.Command {
@@ -83,10 +82,6 @@ func NewServeCommand() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 
-			if err := cfg.Validate(); err != nil {
-				return err
-			}
-
 			connectionOptions, err := bunconnect.ConnectionOptionsFromFlags(cmd)
 			if err != nil {
 				return err
@@ -94,10 +89,12 @@ func NewServeCommand() *cobra.Command {
 
 			options := []fx.Option{
 				fx.NopLogger,
-				otlpModule(cmd, cfg.commonConfig),
+				fx.Supply(connectionOptions),
+				otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(Version)),
+				otlptraces.FXModuleFromFlags(cmd),
+				otlpmetrics.FXModuleFromFlags(cmd),
 				publish.FXModuleFromFlags(cmd, service.IsDebug(cmd)),
 				auth.FXModuleFromFlags(cmd),
-				fx.Supply(connectionOptions),
 				bunconnect.Module(*connectionOptions, service.IsDebug(cmd)),
 				storage.NewFXModule(storage.ModuleConfig{
 					AutoUpgrade: cfg.AutoUpgrade,
@@ -114,8 +111,7 @@ func NewServeCommand() *cobra.Command {
 						MaxRetry: 10,
 						Delay:    time.Millisecond * 100,
 					},
-					EnableFeatures:        cfg.ExperimentalFeaturesEnabled,
-					SchemaEnforcementMode: cfg.commonConfig.SchemaEnforcementMode,
+					EnableFeatures: cfg.ExperimentalFeaturesEnabled,
 				}),
 				bus.NewFxModule(),
 				ballast.Module(cfg.BallastSizeInBytes),
@@ -126,7 +122,7 @@ func NewServeCommand() *cobra.Command {
 						MaxSize:  cfg.BulkMaxSize,
 						Parallel: cfg.BulkParallel,
 					},
-					Pagination: storagecommon.PaginationConfig{
+					Pagination: common.PaginationConfig{
 						MaxPageSize:     cfg.MaxPageSize,
 						DefaultPageSize: cfg.DefaultPageSize,
 					},
@@ -189,8 +185,6 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().Bool(NumscriptInterpreterFlag, false, "Enable experimental numscript rewrite")
 	cmd.Flags().StringSlice(NumscriptInterpreterFlagsToPass, nil, "Feature flags to pass to the experimental numscript interpreter")
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
-	cmd.Flags().Bool(SemconvMetricsNames, false, "Use semconv metrics names (recommended)")
-	cmd.Flags().String(SchemaEnforcementMode, "audit", "Schema enforcement mode. Values: `audit`, `strict`")
 
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
@@ -251,24 +245,4 @@ func assembleFinalRouter(
 	wrappedRouter.Mount("/", handler)
 
 	return wrappedRouter
-}
-
-func otlpModule(cmd *cobra.Command, cfg commonConfig) fx.Option {
-	return fx.Options(
-		otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(Version)),
-		otlptraces.FXModuleFromFlags(cmd),
-		otlpmetrics.ProvideMetricsProviderOption(func() metric.Option {
-			return metric.WithView(func(instrument metric.Instrument) (metric.Stream, bool) {
-				if cfg.SemconvMetricsNames {
-					return metric.Stream{}, false
-				}
-				return metric.Stream{
-					Name:        tracing.LegacyMetricsName(instrument.Name),
-					Description: instrument.Description,
-					Unit:        instrument.Unit,
-				}, true
-			})
-		}),
-		otlpmetrics.FXModuleFromFlags(cmd),
-	)
 }

@@ -4,24 +4,23 @@ package test_suite
 
 import (
 	"fmt"
-	"math/big"
-	"sort"
-	"time"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/pointer"
-	. "github.com/formancehq/go-libs/v4/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v4/testing/platform/natstesting"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
-
+	"github.com/formancehq/go-libs/v3/logging"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
+	"math/big"
+	"sort"
+	"time"
+
+	"github.com/formancehq/go-libs/v3/pointer"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 var _ = Context("Ledger accounts list API tests", func() {

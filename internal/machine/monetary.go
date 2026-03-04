@@ -1,9 +1,10 @@
 package machine
 
 import (
-	"errors"
 	"fmt"
 	"math/big"
+
+	"errors"
 )
 
 type Monetary struct {

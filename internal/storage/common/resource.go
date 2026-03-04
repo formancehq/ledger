@@ -4,33 +4,29 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/query"
+	"github.com/formancehq/go-libs/v3/time"
+	"github.com/uptrace/bun"
 	"slices"
 	"strings"
-
-	"github.com/uptrace/bun"
-
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
-	"github.com/formancehq/go-libs/v4/time"
-
-	"github.com/formancehq/ledger/internal/queries"
 )
 
 func ConvertOperatorToSQL(operator string) string {
 	switch operator {
-	case queries.OperatorMatch:
+	case OperatorMatch:
 		return "="
-	case queries.OperatorLT:
+	case OperatorLT:
 		return "<"
-	case queries.OperatorGT:
+	case OperatorGT:
 		return ">"
-	case queries.OperatorLTE:
+	case OperatorLTE:
 		return "<="
-	case queries.OperatorGTE:
+	case OperatorGTE:
 		return ">="
-	case queries.OperatorLike:
+	case OperatorLike:
 		return "like"
 	}
 	panic("unreachable")
@@ -57,6 +53,20 @@ func AcceptOperators(operators ...string) PropertyValidator {
 		}
 		return nil
 	})
+}
+
+type EntitySchema struct {
+	Fields map[string]Field
+}
+
+func (s EntitySchema) GetFieldByNameOrAlias(name string) (string, *Field) {
+	for fieldName, field := range s.Fields {
+		if fieldName == name || slices.Contains(field.Aliases, name) {
+			return fieldName, &field
+		}
+	}
+
+	return "", nil
 }
 
 type RepositoryHandlerBuildContext[Opts any] struct {
@@ -90,7 +100,7 @@ func (ctx RepositoryHandlerBuildContext[Opts]) UseFilter(v string, matchers ...f
 }
 
 type RepositoryHandler[Opts any] interface {
-	Schema() queries.EntitySchema
+	Schema() EntitySchema
 	BuildDataset(query RepositoryHandlerBuildContext[Opts]) (*bun.SelectQuery, error)
 	ResolveFilter(query ResourceQuery[Opts], operator, property string, value any) (string, []any, error)
 	Project(query ResourceQuery[Opts], selectQuery *bun.SelectQuery) (*bun.SelectQuery, error)
@@ -108,13 +118,14 @@ func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 
 	ret := make(map[string][]any)
 	properties := r.resourceHandler.Schema().Fields
-	if err := builder.Walk(func(operator string, key string, value *any) (err error) {
+	if err := builder.Walk(func(operator string, key string, value any) (err error) {
+
 		for name, property := range properties {
 			key := key
-			if property.Type.Index() != nil {
+			if property.Type.IsIndexable() {
 				key = strings.Split(key, "[")[0]
 			}
-			if !property.MatchKey(name, key) {
+			if !property.matchKey(name, key) {
 				continue
 			}
 
@@ -122,11 +133,11 @@ func (r *ResourceRepository[ResourceType, OptionsType]) validateFilters(builder 
 				return NewErrInvalidQuery("operator '%s' is not allowed for property '%s'", operator, name)
 			}
 
-			if err := property.Type.ValidateValue(operator, *value); err != nil {
-				return NewErrInvalidQuery("invalid value '%v' for property '%s': %s", *value, name, err)
+			if err := property.Type.ValidateValue(value); err != nil {
+				return NewErrInvalidQuery("invalid value '%v' for property '%s': %s", value, name, err)
 			}
 
-			ret[name] = append(ret[name], *value)
+			ret[name] = append(ret[name], value)
 
 			return nil
 		}

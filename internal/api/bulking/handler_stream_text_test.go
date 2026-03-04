@@ -1,17 +1,14 @@
 package bulking
 
 import (
+	"github.com/formancehq/go-libs/v3/api"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/require"
-
-	"github.com/formancehq/go-libs/v4/api"
-
-	ledger "github.com/formancehq/ledger/internal"
 )
 
 func TestBulkHandlerText(t *testing.T) {

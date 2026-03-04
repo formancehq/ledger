@@ -4,21 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"time"
-
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/queries"
-	"github.com/formancehq/ledger/internal/storage/common"
+	"time"
 )
 
-//go:generate mockgen -write_source_comment=false -typed -write_package_comment=false -source controller_with_too_many_client_handling.go -destination controller_with_too_many_client_handling_generated_test.go -package ledger . DelayCalculator
+//go:generate mockgen -write_source_comment=false -typed -write_package_comment=false -source controller_with_too_many_client_handling.go -destination controller_with_too_many_client_handling_generated_test.go -package ledger . DelayCalculator -typed
 type DelayCalculator interface {
 	Next(int) time.Duration
 }
@@ -129,61 +123,6 @@ func (c *ControllerWithTooManyClientHandling) DeleteAccountMetadata(ctx context.
 	})
 
 	return log, idempotencyHit, err
-}
-
-func (c *ControllerWithTooManyClientHandling) InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, bool, error) {
-	var (
-		log            *ledger.Log
-		ret            *ledger.InsertedSchema
-		idempotencyHit bool
-		err            error
-	)
-	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
-		log, ret, idempotencyHit, err = c.Controller.InsertSchema(ctx, parameters)
-		return err
-	})
-
-	return log, ret, idempotencyHit, err
-}
-
-func (c *ControllerWithTooManyClientHandling) GetSchema(ctx context.Context, version string) (*ledger.Schema, error) {
-	var (
-		schema *ledger.Schema
-		err    error
-	)
-	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
-		schema, err = c.Controller.GetSchema(ctx, version)
-		return err
-	})
-
-	return schema, err
-}
-
-func (c *ControllerWithTooManyClientHandling) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
-	var (
-		schemas *bunpaginate.Cursor[ledger.Schema]
-		err     error
-	)
-	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
-		schemas, err = c.Controller.ListSchemas(ctx, query)
-		return err
-	})
-
-	return schemas, err
-}
-
-func (c *ControllerWithTooManyClientHandling) RunQuery(ctx context.Context, schemaVersion string, id string, q common.RunQuery, paginationConfig common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
-	var (
-		resource *queries.ResourceKind
-		cursor   *bunpaginate.Cursor[any]
-		err      error
-	)
-	err = handleRetry(ctx, c.tracer, c.delayCalculator, func(ctx context.Context) error {
-		resource, cursor, err = c.Controller.RunQuery(ctx, schemaVersion, id, q, paginationConfig)
-		return err
-	})
-
-	return resource, cursor, err
 }
 
 func (c *ControllerWithTooManyClientHandling) BeginTX(ctx context.Context, options *sql.TxOptions) (Controller, *bun.Tx, error) {

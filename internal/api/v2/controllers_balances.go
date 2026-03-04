@@ -1,20 +1,18 @@
 package v2
 
 import (
-	"errors"
-	"net/http"
-
-	"github.com/formancehq/go-libs/v4/api"
-
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"net/http"
+
+	"errors"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/ledger/internal/api/common"
 )
 
 func readBalancesAggregated(w http.ResponseWriter, r *http.Request) {
 
-	rq, err := getResourceQuery[ledger.GetAggregatedVolumesOptions](r, func(options *ledger.GetAggregatedVolumesOptions) error {
+	rq, err := getResourceQuery[ledgerstore.GetAggregatedVolumesOptions](r, func(options *ledgerstore.GetAggregatedVolumesOptions) error {
 		options.UseInsertionDate = api.QueryParamBool(r, "use_insertion_date") || api.QueryParamBool(r, "useInsertionDate")
 
 		return nil

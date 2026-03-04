@@ -3,21 +3,19 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"math/big"
-
-	"github.com/uptrace/bun"
-
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/migrations"
-	"github.com/formancehq/go-libs/v4/query"
-	"github.com/formancehq/go-libs/v4/time"
-	"github.com/formancehq/numscript"
-
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/machine/vm"
 	"github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/uptrace/bun"
+	"math/big"
+
+	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/numscript"
+
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/query"
+	"github.com/formancehq/go-libs/v3/time"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/machine/vm"
 )
 
 type Balance struct {
@@ -28,12 +26,12 @@ type Balance struct {
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source store.go -destination store_generated_test.go -package ledger . Store
 type Store interface {
 	BeginTX(ctx context.Context, options *sql.TxOptions) (Store, *bun.Tx, error)
-	Commit(ctx context.Context) error
-	Rollback(ctx context.Context) error
+	Commit() error
+	Rollback() error
 
 	// GetBalances must returns balance and lock account until the end of the TX
 	GetBalances(ctx context.Context, query ledgerstore.BalanceQuery) (ledger.Balances, error)
-	CommitTransaction(ctx context.Context, transaction *ledger.Transaction) error
+	CommitTransaction(ctx context.Context, transaction *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error
 	// RevertTransaction revert the transaction with identifier id
 	// It returns :
 	//  * the reverted transaction
@@ -44,12 +42,8 @@ type Store interface {
 	DeleteTransactionMetadata(ctx context.Context, transactionID uint64, key string, at time.Time) (*ledger.Transaction, bool, error)
 	UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata, at time.Time) error
 	// UpsertAccount returns a boolean indicating if the account was upserted
-	UpsertAccounts(ctx context.Context, accounts ...ledger.AccountWithDefaultMetadata) error
+	UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error
 	DeleteAccountMetadata(ctx context.Context, address, key string) error
-	InsertSchema(ctx context.Context, data *ledger.Schema) error
-	FindSchema(ctx context.Context, version string) (*ledger.Schema, error)
-	FindSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)
-	FindLatestSchemaVersion(ctx context.Context) (*string, error)
 	InsertLog(ctx context.Context, log *ledger.Log) error
 
 	LockLedger(ctx context.Context) (Store, bun.IDB, func() error, error)
@@ -62,8 +56,8 @@ type Store interface {
 	Accounts() common.PaginatedResource[ledger.Account, any]
 	Logs() common.PaginatedResource[ledger.Log, any]
 	Transactions() common.PaginatedResource[ledger.Transaction, any]
-	AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions]
-	Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger.GetVolumesOptions]
+	AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledgerstore.GetAggregatedVolumesOptions]
+	Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledgerstore.GetVolumesOptions]
 }
 
 type vmStoreAdapter struct {

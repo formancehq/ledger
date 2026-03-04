@@ -1,38 +1,31 @@
 package v2
 
 import (
-	"errors"
-	"fmt"
+	"github.com/formancehq/ledger/internal/api/bulking"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v4/api"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+
+	"errors"
+
+	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/numscript"
 
-	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 func createTransaction(w http.ResponseWriter, r *http.Request) {
 	common.WithBody(w, r, func(payload bulking.TransactionRequest) {
 		l := common.LedgerFromContext(r.Context())
 
-		txType := []string{}
-		if len(payload.Postings) > 0 {
-			txType = append(txType, "postings")
-		}
-		if payload.Script.Plain != "" {
-			txType = append(txType, "numscript")
-		}
-		if payload.Script.Template != "" {
-			txType = append(txType, "template")
-		}
-		if len(txType) > 1 {
-			api.BadRequest(w, common.ErrValidation, fmt.Errorf("cannot pass %v and %v in the same request", txType[0], txType[1]))
+		if len(payload.Postings) > 0 && payload.Script.Plain != "" {
+			api.BadRequest(w, common.ErrValidation, errors.New("cannot pass postings and numscript in the same request"))
 			return
-		} else if len(txType) == 0 {
-			api.BadRequest(w, common.ErrNoPostings, errors.New("you must pass either a posting array, a numscript script, or a template"))
+		}
+
+		if len(payload.Postings) == 0 && payload.Script.Plain == "" {
+			api.BadRequest(w, common.ErrNoPostings, errors.New("you need to pass either a posting array or a numscript script"))
 			return
 		}
 		// nodes(gfyrag): parameter 'force' initially sent using a query param

@@ -1,14 +1,13 @@
 package system
 
 import (
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
 	"time"
 
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
-
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
 )
 
 type DatabaseRetryConfiguration struct {
@@ -23,7 +22,6 @@ type ModuleConfiguration struct {
 	NumscriptInterpreter       bool
 	// Ignored whenever NumscriptInterpreter is set to false
 	NumscriptInterpreterFlags []string
-	SchemaEnforcementMode     ledgercontroller.SchemaEnforcementMode
 }
 
 func NewFXModule(configuration ModuleConfiguration) fx.Option {
@@ -70,7 +68,6 @@ func NewFXModule(configuration ModuleConfiguration) fx.Option {
 				WithMeterProvider(meterProvider),
 				WithTracerProvider(tracerProvider),
 				WithEnableFeatures(configuration.EnableFeatures),
-				WithSchemaEnforcementMode(configuration.SchemaEnforcementMode),
 			)
 		}),
 	)

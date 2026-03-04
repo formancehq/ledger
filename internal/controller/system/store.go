@@ -2,13 +2,12 @@ package system
 
 import (
 	"context"
-
-	"github.com/formancehq/go-libs/v4/metadata"
-
-	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/storage/system"
+
+	"github.com/formancehq/go-libs/v3/metadata"
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 type Store interface {
@@ -16,8 +15,6 @@ type Store interface {
 	Ledgers() common.PaginatedResource[ledger.Ledger, system.ListLedgersQueryPayload]
 	UpdateLedgerMetadata(ctx context.Context, name string, m metadata.Metadata) error
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
-	DeleteBucket(ctx context.Context, bucket string) error
-	RestoreBucket(ctx context.Context, bucket string) error
 }
 
 type Driver interface {

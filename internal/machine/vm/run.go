@@ -2,13 +2,13 @@ package vm
 
 import (
 	"fmt"
+	"github.com/formancehq/go-libs/v3/time"
 	"math/big"
 
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/time"
-
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine"
+
+	"github.com/formancehq/go-libs/v3/metadata"
+	ledger "github.com/formancehq/ledger/internal"
 )
 
 type RunScript struct {
@@ -19,9 +19,8 @@ type RunScript struct {
 }
 
 type Script struct {
-	Plain    string            `json:"plain,omitempty"`
-	Template string            `json:"template,omitempty"`
-	Vars     map[string]string `json:"vars" swaggertype:"object"`
+	Plain string            `json:"plain"`
+	Vars  map[string]string `json:"vars" swaggertype:"object"`
 }
 
 type ScriptV1 struct {

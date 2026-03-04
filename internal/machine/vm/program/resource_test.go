@@ -3,9 +3,9 @@ package program
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/formancehq/ledger/internal/machine"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestResource(t *testing.T) {

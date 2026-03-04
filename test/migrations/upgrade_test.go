@@ -3,24 +3,21 @@ package migrations
 import (
 	"flag"
 	"fmt"
-	"os"
-	"strings"
-	"testing"
-
-	"github.com/ory/dockertest/v3"
-	dockerlib "github.com/ory/dockertest/v3/docker"
-	"github.com/stretchr/testify/require"
-	"github.com/xo/dburl"
-
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/testing/docker"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-
+	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/testing/docker"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	"github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/storage/system"
+	"github.com/ory/dockertest/v3"
+	dockerlib "github.com/ory/dockertest/v3/docker"
+	"github.com/stretchr/testify/require"
+	"github.com/xo/dburl"
+	"os"
+	"strings"
+	"testing"
 )
 
 var (

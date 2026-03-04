@@ -4,14 +4,12 @@ package components
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/formancehq/ledger/pkg/client/internal/utils"
 	"math/big"
 	"time"
 )
 
-// V2LogType - The type of operation this log represents
 type V2LogType string
 
 const (
@@ -19,7 +17,6 @@ const (
 	V2LogTypeSetMetadata         V2LogType = "SET_METADATA"
 	V2LogTypeRevertedTransaction V2LogType = "REVERTED_TRANSACTION"
 	V2LogTypeDeleteMetadata      V2LogType = "DELETE_METADATA"
-	V2LogTypeInsertedSchema      V2LogType = "INSERTED_SCHEMA"
 )
 
 func (e V2LogType) ToPointer() *V2LogType {
@@ -38,8 +35,6 @@ func (e *V2LogType) UnmarshalJSON(data []byte) error {
 	case "REVERTED_TRANSACTION":
 		fallthrough
 	case "DELETE_METADATA":
-		fallthrough
-	case "INSERTED_SCHEMA":
 		*e = V2LogType(v)
 		return nil
 	default:
@@ -47,163 +42,12 @@ func (e *V2LogType) UnmarshalJSON(data []byte) error {
 	}
 }
 
-type V2LogDataType string
-
-const (
-	V2LogDataTypeV2LogDataNewTransaction      V2LogDataType = "V2LogDataNewTransaction"
-	V2LogDataTypeV2LogDataSetMetadata         V2LogDataType = "V2LogDataSetMetadata"
-	V2LogDataTypeV2LogDataRevertedTransaction V2LogDataType = "V2LogDataRevertedTransaction"
-	V2LogDataTypeV2LogDataDeleteMetadata      V2LogDataType = "V2LogDataDeleteMetadata"
-	V2LogDataTypeV2LogDataInsertedSchema      V2LogDataType = "V2LogDataInsertedSchema"
-)
-
-// V2LogData - The payload of the log entry. Structure depends on the log type:
-// - NEW_TRANSACTION: V2LogDataNewTransaction
-// - SET_METADATA: V2LogDataSetMetadata
-// - REVERTED_TRANSACTION: V2LogDataRevertedTransaction
-// - DELETE_METADATA: V2LogDataDeleteMetadata
-// - INSERTED_SCHEMA: V2LogDataInsertedSchema
-type V2LogData struct {
-	V2LogDataNewTransaction      *V2LogDataNewTransaction      `queryParam:"inline"`
-	V2LogDataSetMetadata         *V2LogDataSetMetadata         `queryParam:"inline"`
-	V2LogDataRevertedTransaction *V2LogDataRevertedTransaction `queryParam:"inline"`
-	V2LogDataDeleteMetadata      *V2LogDataDeleteMetadata      `queryParam:"inline"`
-	V2LogDataInsertedSchema      *V2LogDataInsertedSchema      `queryParam:"inline"`
-
-	Type V2LogDataType
-}
-
-func CreateV2LogDataV2LogDataNewTransaction(v2LogDataNewTransaction V2LogDataNewTransaction) V2LogData {
-	typ := V2LogDataTypeV2LogDataNewTransaction
-
-	return V2LogData{
-		V2LogDataNewTransaction: &v2LogDataNewTransaction,
-		Type:                    typ,
-	}
-}
-
-func CreateV2LogDataV2LogDataSetMetadata(v2LogDataSetMetadata V2LogDataSetMetadata) V2LogData {
-	typ := V2LogDataTypeV2LogDataSetMetadata
-
-	return V2LogData{
-		V2LogDataSetMetadata: &v2LogDataSetMetadata,
-		Type:                 typ,
-	}
-}
-
-func CreateV2LogDataV2LogDataRevertedTransaction(v2LogDataRevertedTransaction V2LogDataRevertedTransaction) V2LogData {
-	typ := V2LogDataTypeV2LogDataRevertedTransaction
-
-	return V2LogData{
-		V2LogDataRevertedTransaction: &v2LogDataRevertedTransaction,
-		Type:                         typ,
-	}
-}
-
-func CreateV2LogDataV2LogDataDeleteMetadata(v2LogDataDeleteMetadata V2LogDataDeleteMetadata) V2LogData {
-	typ := V2LogDataTypeV2LogDataDeleteMetadata
-
-	return V2LogData{
-		V2LogDataDeleteMetadata: &v2LogDataDeleteMetadata,
-		Type:                    typ,
-	}
-}
-
-func CreateV2LogDataV2LogDataInsertedSchema(v2LogDataInsertedSchema V2LogDataInsertedSchema) V2LogData {
-	typ := V2LogDataTypeV2LogDataInsertedSchema
-
-	return V2LogData{
-		V2LogDataInsertedSchema: &v2LogDataInsertedSchema,
-		Type:                    typ,
-	}
-}
-
-func (u *V2LogData) UnmarshalJSON(data []byte) error {
-
-	var v2LogDataInsertedSchema V2LogDataInsertedSchema = V2LogDataInsertedSchema{}
-	if err := utils.UnmarshalJSON(data, &v2LogDataInsertedSchema, "", true, true); err == nil {
-		u.V2LogDataInsertedSchema = &v2LogDataInsertedSchema
-		u.Type = V2LogDataTypeV2LogDataInsertedSchema
-		return nil
-	}
-
-	var v2LogDataNewTransaction V2LogDataNewTransaction = V2LogDataNewTransaction{}
-	if err := utils.UnmarshalJSON(data, &v2LogDataNewTransaction, "", true, true); err == nil {
-		u.V2LogDataNewTransaction = &v2LogDataNewTransaction
-		u.Type = V2LogDataTypeV2LogDataNewTransaction
-		return nil
-	}
-
-	var v2LogDataRevertedTransaction V2LogDataRevertedTransaction = V2LogDataRevertedTransaction{}
-	if err := utils.UnmarshalJSON(data, &v2LogDataRevertedTransaction, "", true, true); err == nil {
-		u.V2LogDataRevertedTransaction = &v2LogDataRevertedTransaction
-		u.Type = V2LogDataTypeV2LogDataRevertedTransaction
-		return nil
-	}
-
-	var v2LogDataSetMetadata V2LogDataSetMetadata = V2LogDataSetMetadata{}
-	if err := utils.UnmarshalJSON(data, &v2LogDataSetMetadata, "", true, true); err == nil {
-		u.V2LogDataSetMetadata = &v2LogDataSetMetadata
-		u.Type = V2LogDataTypeV2LogDataSetMetadata
-		return nil
-	}
-
-	var v2LogDataDeleteMetadata V2LogDataDeleteMetadata = V2LogDataDeleteMetadata{}
-	if err := utils.UnmarshalJSON(data, &v2LogDataDeleteMetadata, "", true, true); err == nil {
-		u.V2LogDataDeleteMetadata = &v2LogDataDeleteMetadata
-		u.Type = V2LogDataTypeV2LogDataDeleteMetadata
-		return nil
-	}
-
-	return fmt.Errorf("could not unmarshal `%s` into any supported union types for V2LogData", string(data))
-}
-
-func (u V2LogData) MarshalJSON() ([]byte, error) {
-	if u.V2LogDataNewTransaction != nil {
-		return utils.MarshalJSON(u.V2LogDataNewTransaction, "", true)
-	}
-
-	if u.V2LogDataSetMetadata != nil {
-		return utils.MarshalJSON(u.V2LogDataSetMetadata, "", true)
-	}
-
-	if u.V2LogDataRevertedTransaction != nil {
-		return utils.MarshalJSON(u.V2LogDataRevertedTransaction, "", true)
-	}
-
-	if u.V2LogDataDeleteMetadata != nil {
-		return utils.MarshalJSON(u.V2LogDataDeleteMetadata, "", true)
-	}
-
-	if u.V2LogDataInsertedSchema != nil {
-		return utils.MarshalJSON(u.V2LogDataInsertedSchema, "", true)
-	}
-
-	return nil, errors.New("could not marshal union type V2LogData: all fields are null")
-}
-
-// V2Log - Represents an immutable log entry in the ledger. Each log captures an atomic operation
-// with its full payload, enabling audit trails and event sourcing patterns.
-// The data field structure depends on the log type.
 type V2Log struct {
-	// Unique sequential identifier for this log entry within the ledger
-	ID *big.Int `json:"id"`
-	// The type of operation this log represents
-	Type V2LogType `json:"type"`
-	// The payload of the log entry. Structure depends on the log type:
-	// - NEW_TRANSACTION: V2LogDataNewTransaction
-	// - SET_METADATA: V2LogDataSetMetadata
-	// - REVERTED_TRANSACTION: V2LogDataRevertedTransaction
-	// - DELETE_METADATA: V2LogDataDeleteMetadata
-	// - INSERTED_SCHEMA: V2LogDataInsertedSchema
-	//
-	Data V2LogData `json:"data"`
-	// SHA256 hash of the log entry, chained from the previous log for integrity verification
-	Hash string `json:"hash"`
-	// Timestamp when the operation was recorded
-	Date time.Time `json:"date"`
-	// Schema version used for validation when the log was created
-	SchemaVersion *string `json:"schemaVersion,omitempty"`
+	ID   *big.Int       `json:"id"`
+	Type V2LogType      `json:"type"`
+	Data map[string]any `json:"data"`
+	Hash string         `json:"hash"`
+	Date time.Time      `json:"date"`
 }
 
 func (v V2Log) MarshalJSON() ([]byte, error) {
@@ -231,9 +75,9 @@ func (o *V2Log) GetType() V2LogType {
 	return o.Type
 }
 
-func (o *V2Log) GetData() V2LogData {
+func (o *V2Log) GetData() map[string]any {
 	if o == nil {
-		return V2LogData{}
+		return map[string]any{}
 	}
 	return o.Data
 }
@@ -250,11 +94,4 @@ func (o *V2Log) GetDate() time.Time {
 		return time.Time{}
 	}
 	return o.Date
-}
-
-func (o *V2Log) GetSchemaVersion() *string {
-	if o == nil {
-		return nil
-	}
-	return o.SchemaVersion
 }

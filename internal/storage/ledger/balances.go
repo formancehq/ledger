@@ -6,10 +6,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/formancehq/go-libs/v4/platform/postgres"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+
+	"github.com/formancehq/ledger/internal/tracing"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/tracing"
 )
 
 func (store *Store) GetBalances(ctx context.Context, query BalanceQuery) (ledger.Balances, error) {

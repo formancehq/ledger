@@ -2,9 +2,10 @@ package machine
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
+
+	"errors"
 )
 
 type ValueJSON struct {

@@ -4,27 +4,23 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
-	otelchimetric "github.com/riandyrn/otelchi/metric"
-	"go.opentelemetry.io/otel/metric"
-	noopmetrics "go.opentelemetry.io/otel/metric/noop"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/otlp"
+	"github.com/formancehq/go-libs/v3/service"
+	"github.com/formancehq/ledger/internal/api/bulking"
+	"github.com/formancehq/ledger/internal/controller/system"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/otlp"
-	"github.com/formancehq/go-libs/v4/service"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 
-	"github.com/formancehq/ledger/internal/api/bulking"
+	"github.com/formancehq/go-libs/v3/auth"
 	"github.com/formancehq/ledger/internal/api/common"
 	v1 "github.com/formancehq/ledger/internal/api/v1"
 	v2 "github.com/formancehq/ledger/internal/api/v2"
-	"github.com/formancehq/ledger/internal/controller/system"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	"github.com/go-chi/chi/v5"
 )
 
 // todo: refine textual errors
@@ -41,11 +37,6 @@ func NewRouter(
 		opt(&routerOptions)
 	}
 
-	baseCfg := otelchimetric.NewBaseConfig(
-		"ledger",
-		otelchimetric.WithMeterProvider(routerOptions.meterProvider),
-	)
-
 	mux := chi.NewRouter()
 	mux.Use(
 		cors.New(cors.Options{
@@ -59,9 +50,6 @@ func NewRouter(
 		common.LogID(),
 		middleware.RequestLogger(api.NewLogFormatter()),
 		service.OTLPMiddleware("ledger", debug),
-		otelchimetric.NewRequestDurationMillis(baseCfg),
-		otelchimetric.NewRequestInFlight(baseCfg),
-		otelchimetric.NewResponseSizeBytes(baseCfg),
 		func(next http.Handler) http.Handler {
 			fn := func(w http.ResponseWriter, r *http.Request) {
 				defer func() {
@@ -116,10 +104,9 @@ func NewRouter(
 
 type routerOptions struct {
 	tracer           trace.Tracer
-	meterProvider    metric.MeterProvider
 	bulkMaxSize      int
 	bulkerFactory    bulking.BulkerFactory
-	paginationConfig storagecommon.PaginationConfig
+	paginationConfig common.PaginationConfig
 	exporters        bool
 }
 
@@ -143,7 +130,7 @@ func WithBulkerFactory(bf bulking.BulkerFactory) RouterOption {
 	}
 }
 
-func WithPaginationConfiguration(paginationConfig storagecommon.PaginationConfig) RouterOption {
+func WithPaginationConfiguration(paginationConfig common.PaginationConfig) RouterOption {
 	return func(ro *routerOptions) {
 		ro.paginationConfig = paginationConfig
 	}
@@ -155,17 +142,10 @@ func WithExporters(v bool) RouterOption {
 	}
 }
 
-func WithMeterProvider(mp metric.MeterProvider) RouterOption {
-	return func(ro *routerOptions) {
-		ro.meterProvider = mp
-	}
-}
-
 var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
-	WithMeterProvider(noopmetrics.MeterProvider{}),
 	WithBulkMaxSize(DefaultBulkMaxSize),
-	WithPaginationConfiguration(storagecommon.PaginationConfig{
+	WithPaginationConfiguration(common.PaginationConfig{
 		MaxPageSize:     bunpaginate.MaxPageSize,
 		DefaultPageSize: bunpaginate.QueryDefaultPageSize,
 	}),

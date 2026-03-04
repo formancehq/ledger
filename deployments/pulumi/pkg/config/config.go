@@ -14,8 +14,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumix"
 	"gopkg.in/yaml.v3"
 
-	. "github.com/formancehq/go-libs/v4/collectionutils"
-
+	. "github.com/formancehq/go-libs/v3/collectionutils"
 	pulumi_ledger "github.com/formancehq/ledger/deployments/pulumi/pkg"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/api"
 	"github.com/formancehq/ledger/deployments/pulumi/pkg/common"

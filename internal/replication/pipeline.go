@@ -2,17 +2,16 @@ package replication
 
 import (
 	"context"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/query"
+	"github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"time"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
-
-	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/replication/drivers"
-	"github.com/formancehq/ledger/internal/storage/common"
 )
 
 var (
@@ -144,7 +143,6 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 			}
 
 			lastLogID := logs.Data[len(logs.Data)-1].ID
-			p.logger.Debugf("Move last log id to %d", *lastLogID)
 			p.pipeline.LastLogID = lastLogID
 
 			select {
@@ -164,7 +162,7 @@ func (p *PipelineHandler) Run(ctx context.Context, ingestedLogs chan uint64) {
 }
 
 func (p *PipelineHandler) Shutdown(ctx context.Context) error {
-	p.logger.Infof("Shutting down pipeline")
+	p.logger.Infof("Shutdowning pipeline")
 	errorChannel := make(chan error, 1)
 	select {
 	case <-ctx.Done():

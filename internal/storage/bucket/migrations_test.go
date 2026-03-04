@@ -5,26 +5,23 @@ package bucket_test
 import (
 	"errors"
 	"fmt"
-	"io/fs"
-	"testing"
-
-	"github.com/google/uuid"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun/extra/bundebug"
-	"go.opentelemetry.io/otel/trace/noop"
-
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/migrations"
-	"github.com/formancehq/go-libs/v4/pointer"
-
+	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/storage/system"
+	"github.com/google/uuid"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun/extra/bundebug"
+	"go.opentelemetry.io/otel/trace/noop"
+	"io/fs"
+	"testing"
 )
 
 func TestMigrations(t *testing.T) {

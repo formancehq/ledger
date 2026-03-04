@@ -3,7 +3,6 @@ package ledger
 import (
 	"context"
 	"database/sql"
-
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"

@@ -1,16 +1,9 @@
 package common
 
 import (
-	"encoding/json"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"math/big"
-
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
 )
-
-type PaginationConfig struct {
-	MaxPageSize     uint64
-	DefaultPageSize uint64
-}
 
 type (
 	InitialPaginatedQuery[OptionsType any] struct {
@@ -42,27 +35,3 @@ var _ PaginatedQuery[any] = (*InitialPaginatedQuery[any])(nil)
 var _ PaginatedQuery[any] = (*OffsetPaginatedQuery[any])(nil)
 
 var _ PaginatedQuery[any] = (*ColumnPaginatedQuery[any])(nil)
-
-func UnmarshalInitialPaginatedQueryOpts[TO any](from InitialPaginatedQuery[map[string]any]) (*InitialPaginatedQuery[TO], error) {
-	var opts TO
-	marshalled, err := json.Marshal(from.Options.Opts)
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(marshalled, &opts); err != nil {
-		return nil, err
-	} else {
-		return &InitialPaginatedQuery[TO]{
-			PageSize: from.PageSize,
-			Column:   from.Column,
-			Order:    from.Order,
-			Options: ResourceQuery[TO]{
-				PIT:     from.Options.PIT,
-				OOT:     from.Options.OOT,
-				Builder: from.Options.Builder,
-				Expand:  from.Options.Expand,
-				Opts:    opts,
-			},
-		}, nil
-	}
-}

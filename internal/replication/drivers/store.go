@@ -2,7 +2,6 @@ package drivers
 
 import (
 	"context"
-
 	ledger "github.com/formancehq/ledger/internal"
 )
 

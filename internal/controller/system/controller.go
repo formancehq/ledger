@@ -6,20 +6,21 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/formancehq/ledger/internal/storage/common"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/formancehq/ledger/pkg/features"
 	"go.opentelemetry.io/otel/attribute"
+
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	"github.com/formancehq/ledger/internal/tracing"
 
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/formancehq/ledger/internal/storage/common"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
-	"github.com/formancehq/ledger/internal/tracing"
-	"github.com/formancehq/ledger/pkg/features"
 )
 
 type ReplicationBackend interface {
@@ -50,10 +51,6 @@ type Controller interface {
 	CreateLedger(ctx context.Context, name string, configuration ledger.Configuration) error
 	UpdateLedgerMetadata(ctx context.Context, name string, m map[string]string) error
 	DeleteLedgerMetadata(ctx context.Context, param string, key string) error
-	DeleteBucket(ctx context.Context, bucket string) error
-	RestoreBucket(ctx context.Context, bucket string) error
-
-	GetSchemaEnforcementMode(ctx context.Context) ledgercontroller.SchemaEnforcementMode
 }
 
 type DefaultController struct {
@@ -72,8 +69,6 @@ type DefaultController struct {
 	tracerProvider trace.TracerProvider
 	meterProvider  metric.MeterProvider
 	enableFeatures bool
-
-	schemaEnforcementMode ledgercontroller.SchemaEnforcementMode
 }
 
 func (ctrl *DefaultController) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
@@ -161,7 +156,6 @@ func (ctrl *DefaultController) GetLedgerController(ctx context.Context, name str
 			ctrl.defaultParser,
 			ctrl.machineParser,
 			ctrl.interpreterParser,
-			ledgercontroller.WithSchemaEnforcementMode(ctrl.schemaEnforcementMode),
 			ledgercontroller.WithMeter(meter),
 		)
 
@@ -236,28 +230,6 @@ func (ctrl *DefaultController) DeleteLedgerMetadata(ctx context.Context, param s
 	})))
 }
 
-func (ctrl *DefaultController) DeleteBucket(ctx context.Context, bucket string) error {
-	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "DeleteBucket", tracing.NoResult(func(ctx context.Context) error {
-		return ctrl.driver.GetSystemStore().DeleteBucket(ctx, bucket)
-	})))
-}
-
-func (ctrl *DefaultController) RestoreBucket(ctx context.Context, bucket string) error {
-	return tracing.SkipResult(tracing.Trace(ctx, ctrl.tracerProvider.Tracer("system"), "RestoreBucket", tracing.NoResult(func(ctx context.Context) error {
-		return ctrl.driver.GetSystemStore().RestoreBucket(ctx, bucket)
-	})))
-}
-
-func (ctrl *DefaultController) GetSchemaEnforcementMode(ctx context.Context) ledgercontroller.SchemaEnforcementMode {
-	return ctrl.schemaEnforcementMode
-}
-
-// NewDefaultController creates a DefaultController configured with the provided
-// store, listener, replication backend, and optional functional options.
-//
-// The controller is initialized with a new StateRegistry and a default Numscript
-// parser; any of these defaults (and other fields) can be overridden by passing
-// Option values. The returned controller is ready for further initialization or use.
 func NewDefaultController(
 	store Driver,
 	listener ledgercontroller.Listener,
@@ -265,12 +237,11 @@ func NewDefaultController(
 	opts ...Option,
 ) *DefaultController {
 	ret := &DefaultController{
-		driver:                store,
-		listener:              listener,
-		registry:              ledgercontroller.NewStateRegistry(),
-		defaultParser:         ledgercontroller.NewDefaultNumscriptParser(),
-		replicationBackend:    replicationBackend,
-		schemaEnforcementMode: ledgercontroller.SchemaEnforcementAudit,
+		driver:             store,
+		listener:           listener,
+		registry:           ledgercontroller.NewStateRegistry(),
+		defaultParser:      ledgercontroller.NewDefaultNumscriptParser(),
+		replicationBackend: replicationBackend,
 	}
 	for _, opt := range append(defaultOptions, opts...) {
 		opt(ret)
@@ -313,12 +284,6 @@ func WithTracerProvider(t trace.TracerProvider) Option {
 func WithEnableFeatures(v bool) Option {
 	return func(ctrl *DefaultController) {
 		ctrl.enableFeatures = v
-	}
-}
-
-func WithSchemaEnforcementMode(mode ledgercontroller.SchemaEnforcementMode) Option {
-	return func(ctrl *DefaultController) {
-		ctrl.schemaEnforcementMode = mode
 	}
 }
 

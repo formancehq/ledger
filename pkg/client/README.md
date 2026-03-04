@@ -130,9 +130,6 @@ func main() {
 * [ListLedgers](docs/sdks/v2/README.md#listledgers) - List ledgers
 * [GetLedger](docs/sdks/v2/README.md#getledger) - Get a ledger
 * [CreateLedger](docs/sdks/v2/README.md#createledger) - Create a ledger
-* [InsertSchema](docs/sdks/v2/README.md#insertschema) - Insert a schema for a ledger
-* [GetSchema](docs/sdks/v2/README.md#getschema) - Get a schema for a ledger by version
-* [ListSchemas](docs/sdks/v2/README.md#listschemas) - List all schemas for a ledger
 * [UpdateLedgerMetadata](docs/sdks/v2/README.md#updateledgermetadata) - Update ledger metadata
 * [DeleteLedgerMetadata](docs/sdks/v2/README.md#deleteledgermetadata) - Delete ledger metadata by key
 * [GetLedgerInfo](docs/sdks/v2/README.md#getledgerinfo) - Get information about a ledger
@@ -155,14 +152,11 @@ func main() {
 * [ListLogs](docs/sdks/v2/README.md#listlogs) - List the logs from a ledger
 * [ImportLogs](docs/sdks/v2/README.md#importlogs)
 * [ExportLogs](docs/sdks/v2/README.md#exportlogs) - Export logs
-* [RunQuery](docs/sdks/v2/README.md#runquery) - Run a query template
 * [ListExporters](docs/sdks/v2/README.md#listexporters) - List exporters
 * [CreateExporter](docs/sdks/v2/README.md#createexporter) - Create exporter
 * [GetExporterState](docs/sdks/v2/README.md#getexporterstate) - Get exporter state
 * [UpdateExporter](docs/sdks/v2/README.md#updateexporter) - Update exporter
 * [DeleteExporter](docs/sdks/v2/README.md#deleteexporter) - Delete exporter
-* [DeleteBucket](docs/sdks/v2/README.md#deletebucket) - Delete bucket
-* [RestoreBucket](docs/sdks/v2/README.md#restorebucket) - Restore bucket
 * [ListPipelines](docs/sdks/v2/README.md#listpipelines) - List pipelines
 * [CreatePipeline](docs/sdks/v2/README.md#createpipeline) - Create pipeline
 * [GetPipelineState](docs/sdks/v2/README.md#getpipelinestate) - Get pipeline state

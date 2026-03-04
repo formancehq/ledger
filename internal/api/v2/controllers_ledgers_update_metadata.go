@@ -1,14 +1,13 @@
 package v2
 
 import (
+	"github.com/go-chi/chi/v5"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/metadata"
-
 	"github.com/formancehq/ledger/internal/api/common"
+
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/metadata"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 )
 

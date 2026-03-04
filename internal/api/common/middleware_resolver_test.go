@@ -2,19 +2,17 @@ package common
 
 import (
 	"encoding/json"
-	"errors"
+	nooptracer "go.opentelemetry.io/otel/trace/noop"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-	nooptracer "go.opentelemetry.io/otel/trace/noop"
-	"go.uber.org/mock/gomock"
-
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/logging"
-
+	"errors"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/logging"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestResolverMiddleware(t *testing.T) {

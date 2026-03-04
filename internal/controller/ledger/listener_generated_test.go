@@ -11,7 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	metadata "github.com/formancehq/go-libs/v4/metadata"
+	metadata "github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -62,18 +62,6 @@ func (m *MockListener) DeletedMetadata(ctx context.Context, arg1, targetType str
 func (mr *MockListenerMockRecorder) DeletedMetadata(ctx, arg1, targetType, targetID, key any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletedMetadata", reflect.TypeOf((*MockListener)(nil).DeletedMetadata), ctx, arg1, targetType, targetID, key)
-}
-
-// InsertedSchema mocks base method.
-func (m *MockListener) InsertedSchema(ctx context.Context, arg1 string, data ledger.Schema) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "InsertedSchema", ctx, arg1, data)
-}
-
-// InsertedSchema indicates an expected call of InsertedSchema.
-func (mr *MockListenerMockRecorder) InsertedSchema(ctx, arg1, data any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertedSchema", reflect.TypeOf((*MockListener)(nil).InsertedSchema), ctx, arg1, data)
 }
 
 // RevertedTransaction mocks base method.

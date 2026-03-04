@@ -4,26 +4,25 @@ package test_suite
 
 import (
 	"fmt"
-	"math/big"
-	"sort"
-	"time"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/pointer"
-	. "github.com/formancehq/go-libs/v4/testing/api"
-	. "github.com/formancehq/go-libs/v4/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v4/testing/platform/natstesting"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
-
+	"github.com/formancehq/go-libs/v3/logging"
+	. "github.com/formancehq/go-libs/v3/testing/api"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
+	"math/big"
+	"sort"
+	"time"
+
+	"github.com/formancehq/go-libs/v3/pointer"
+
+	"github.com/formancehq/go-libs/v3/metadata"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 var _ = Context("Ledger accounts list API tests", func() {
@@ -321,54 +320,6 @@ var _ = Context("Ledger accounts list API tests", func() {
 
 			accountsCursorResponse := response.V2AccountsCursorResponse.Cursor.Data
 			Expect(accountsCursorResponse).To(HaveLen(2))
-		})
-		It("should be listable on api using $in filter on address", func(specContext SpecContext) {
-			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListAccounts(
-				ctx,
-				operations.V2ListAccountsRequest{
-					Ledger: "default",
-					RequestBody: map[string]interface{}{
-						"$in": map[string]any{
-							"address": []any{"foo:foo", "foo:bar"},
-						},
-					},
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-
-			accountsCursorResponse := response.V2AccountsCursorResponse.Cursor.Data
-			Expect(accountsCursorResponse).To(HaveLen(2))
-			addresses := []string{accountsCursorResponse[0].Address, accountsCursorResponse[1].Address}
-			Expect(addresses).To(ContainElements("foo:foo", "foo:bar"))
-		})
-		It("should be countable on api using $in filter on address", func(specContext SpecContext) {
-			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CountAccounts(
-				ctx,
-				operations.V2CountAccountsRequest{
-					Ledger: "default",
-					RequestBody: map[string]interface{}{
-						"$in": map[string]any{
-							"address": []any{"foo:foo", "foo:bar"},
-						},
-					},
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Headers["Count"]).To(Equal([]string{"2"}))
-
-			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountAccounts(
-				ctx,
-				operations.V2CountAccountsRequest{
-					Ledger: "default",
-					RequestBody: map[string]interface{}{
-						"$in": map[string]any{
-							"address": []any{"not_existing", "also_not_existing"},
-						},
-					},
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
 		})
 	})
 

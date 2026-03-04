@@ -3,12 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-
+	"github.com/formancehq/ledger/deployments/pulumi/pkg/config"
 	"github.com/invopop/jsonschema"
 	"github.com/spf13/cobra"
-
-	"github.com/formancehq/ledger/deployments/pulumi/pkg/config"
+	"os"
 )
 
 func main() {

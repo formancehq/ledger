@@ -11,8 +11,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	metadata "github.com/formancehq/go-libs/v4/metadata"
-	migrations "github.com/formancehq/go-libs/v4/migrations"
+	metadata "github.com/formancehq/go-libs/v3/metadata"
+	migrations "github.com/formancehq/go-libs/v3/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -39,6 +39,21 @@ func NewMockSystemStore(ctrl *gomock.Controller) *MockSystemStore {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockSystemStore) EXPECT() *MockSystemStoreMockRecorder {
 	return m.recorder
+}
+
+// CountLedgersInBucket mocks base method.
+func (m *MockSystemStore) CountLedgersInBucket(ctx context.Context, bucket string) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountLedgersInBucket", ctx, bucket)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountLedgersInBucket indicates an expected call of CountLedgersInBucket.
+func (mr *MockSystemStoreMockRecorder) CountLedgersInBucket(ctx, bucket any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountLedgersInBucket", reflect.TypeOf((*MockSystemStore)(nil).CountLedgersInBucket), ctx, bucket)
 }
 
 // CreateLedger mocks base method.

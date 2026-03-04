@@ -3,14 +3,13 @@ package bus
 import (
 	"context"
 
-	"github.com/ThreeDotsLabs/watermill/message"
-
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/publish"
-
-	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+
+	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/publish"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/events"
 )
 
@@ -24,14 +23,6 @@ func NewLedgerListener(publisher message.Publisher) *LedgerListener {
 	return &LedgerListener{
 		publisher: publisher,
 	}
-}
-
-func (lis *LedgerListener) InsertedSchema(ctx context.Context, l string, data ledger.Schema) {
-	lis.publish(ctx, events.EventTypeInsertedSchema,
-		events.NewEventInsertedSchema(events.InsertedSchema{
-			Ledger: l,
-			Schema: data,
-		}))
 }
 
 func (lis *LedgerListener) CommittedTransactions(ctx context.Context, l string, txs ledger.Transaction, accountMetadata ledger.AccountMetadata) {

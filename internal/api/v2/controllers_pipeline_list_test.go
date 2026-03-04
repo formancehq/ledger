@@ -1,17 +1,15 @@
 package v2
 
 import (
+	"github.com/formancehq/go-libs/v3/auth"
+	ledger "github.com/formancehq/ledger/internal"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-
-	ledger "github.com/formancehq/ledger/internal"
 )
 
 func TestListPipelines(t *testing.T) {

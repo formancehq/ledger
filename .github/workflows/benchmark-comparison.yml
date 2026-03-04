@@ -9,7 +9,7 @@ on:
       parallelism:
         description: "Number of parallel benchmarks to run"
         required: false
-        default: 5
+        default: "5"
       duration:
         description: "Duration of each benchmark"
         required: false
@@ -17,7 +17,7 @@ on:
       count:
         description: "Number of times to run each benchmark "
         required: false
-        default: 1
+        default: "1"
   pull_request:
     types: [assigned, opened, synchronize, reopened, labeled]
 
@@ -53,4 +53,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: graphs
-          path: test/performance/pkg/write/report
+          path: test/performance/report

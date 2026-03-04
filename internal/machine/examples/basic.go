@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/formancehq/go-libs/v4/metadata"
-
-	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/script/compiler"
 	"github.com/formancehq/ledger/internal/machine/vm"
 )

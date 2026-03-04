@@ -4,30 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/pointer"
+	ledger "github.com/formancehq/ledger/internal"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-	"github.com/formancehq/go-libs/v4/pointer"
-
-	ledger "github.com/formancehq/ledger/internal"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 type logProcessor[INPUT any, OUTPUT ledger.LogPayload] struct {
-	deadLockCounter       metric.Int64Counter
-	operation             string
-	schemaEnforcementMode SchemaEnforcementMode
+	deadLockCounter metric.Int64Counter
+	operation       string
 }
 
-func newLogProcessor[INPUT any, OUTPUT ledger.LogPayload](operation string, deadlockCounter metric.Int64Counter, schemaEnforcementMode SchemaEnforcementMode) *logProcessor[INPUT, OUTPUT] {
+func newLogProcessor[INPUT any, OUTPUT ledger.LogPayload](operation string, deadlockCounter metric.Int64Counter) *logProcessor[INPUT, OUTPUT] {
 	return &logProcessor[INPUT, OUTPUT]{
-		operation:             operation,
-		deadLockCounter:       deadlockCounter,
-		schemaEnforcementMode: schemaEnforcementMode,
+		operation:       operation,
+		deadLockCounter: deadlockCounter,
 	}
 }
 
@@ -35,7 +30,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) runTx(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, sqlTX Store, schema *ledger.Schema, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
 	store, _, err := store.BeginTX(ctx, nil)
 	if err != nil {
@@ -44,20 +39,20 @@ func (lp *logProcessor[INPUT, OUTPUT]) runTx(
 
 	log, output, err := lp.runLog(ctx, store, parameters, fn)
 	if err != nil {
-		if rollbackErr := store.Rollback(ctx); rollbackErr != nil {
+		if rollbackErr := store.Rollback(); rollbackErr != nil {
 			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
 		}
 		return nil, nil, err
 	}
 
 	if parameters.DryRun {
-		if rollbackErr := store.Rollback(ctx); rollbackErr != nil {
+		if rollbackErr := store.Rollback(); rollbackErr != nil {
 			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
 		}
 		return log, output, nil
 	}
 
-	if err := store.Commit(ctx); err != nil {
+	if err := store.Commit(); err != nil {
 		return nil, nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
@@ -68,62 +63,16 @@ func (lp *logProcessor[INPUT, OUTPUT]) runLog(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, sqlTX Store, schema *ledger.Schema, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, sqlTX Store, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, error) {
 
-	var schema *ledger.Schema
-	if parameters.SchemaVersion != "" {
-		var err error
-		schema, err = store.FindSchema(ctx, parameters.SchemaVersion)
-		if err != nil {
-			if errors.Is(err, postgres.ErrNotFound) {
-				latestVersion, err := store.FindLatestSchemaVersion(ctx)
-				if err != nil {
-					return nil, nil, err
-				}
-				return nil, nil, newErrSchemaNotFound(parameters.SchemaVersion, latestVersion)
-			}
-			return nil, nil, err
-		}
-	} else {
-		var payload OUTPUT
-		if payload.NeedsSchema() {
-			// Only allow a missing schema validation if the ledger doesn't have one
-			latestVersion, err := store.FindLatestSchemaVersion(ctx)
-			if err != nil {
-				return nil, nil, err
-			}
-			if latestVersion != nil {
-				if lp.schemaEnforcementMode == SchemaEnforcementStrict {
-					return nil, nil, newErrSchemaNotSpecified(*latestVersion)
-				} else {
-					trace.SpanFromContext(ctx).SetAttributes(attribute.Bool("schema_not_specified", true))
-					logging.FromContext(ctx).Error("schema not specified")
-				}
-			}
-		}
-	}
-
-	output, err := fn(ctx, store, schema, parameters)
+	output, err := fn(ctx, store, parameters)
 	if err != nil {
 		return nil, nil, err
 	}
 	log := ledger.NewLog(*output)
 	log.IdempotencyKey = parameters.IdempotencyKey
 	log.IdempotencyHash = ledger.ComputeIdempotencyHash(parameters.Input)
-	log.SchemaVersion = parameters.SchemaVersion
-
-	if schema != nil {
-		if err := log.ValidateWithSchema(*schema); err != nil {
-			err := newErrSchemaValidationError(parameters.SchemaVersion, err)
-			if lp.schemaEnforcementMode == SchemaEnforcementStrict {
-				return nil, nil, err
-			} else {
-				trace.SpanFromContext(ctx).SetAttributes(attribute.String("schema_validation_failed", err.Error()))
-				logging.FromContext(ctx).Errorf("schema validation failed: %s", err)
-			}
-		}
-	}
 
 	err = store.InsertLog(ctx, &log)
 	if err != nil {
@@ -138,7 +87,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, store Store, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, bool, error) {
 	txStore, _, err := store.BeginTX(ctx, nil)
 	if err != nil {
@@ -148,7 +97,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 	if parameters.IdempotencyKey != "" {
 		log, output, err := lp.fetchLogWithIK(ctx, txStore, parameters)
 		if err != nil || output != nil {
-			if rollbackErr := txStore.Rollback(ctx); rollbackErr != nil {
+			if rollbackErr := txStore.Rollback(); rollbackErr != nil {
 				logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
 			}
 			if err != nil {
@@ -160,7 +109,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 
 	log, output, err := lp.runLog(ctx, txStore, parameters, fn)
 	if err != nil {
-		if rollbackErr := txStore.Rollback(ctx); rollbackErr != nil {
+		if rollbackErr := txStore.Rollback(); rollbackErr != nil {
 			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
 		}
 		if errors.Is(err, postgres.ErrDeadlockDetected) || errors.Is(err, ledgerstore.ErrIdempotencyKeyConflict{}) {
@@ -170,12 +119,12 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLog(
 	}
 
 	if parameters.DryRun {
-		if rollbackErr := txStore.Rollback(ctx); rollbackErr != nil {
+		if rollbackErr := txStore.Rollback(); rollbackErr != nil {
 			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
 		}
 		return log, output, false, nil
 	}
-	if err := txStore.Commit(ctx); err != nil {
+	if err := txStore.Commit(); err != nil {
 		return nil, nil, false, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	return log, output, false, nil
@@ -185,7 +134,7 @@ func (lp *logProcessor[INPUT, OUTPUT]) forgeLogRetry(
 	ctx context.Context,
 	store Store,
 	parameters Parameters[INPUT],
-	fn func(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[INPUT]) (*OUTPUT, error),
+	fn func(ctx context.Context, store Store, parameters Parameters[INPUT]) (*OUTPUT, error),
 ) (*ledger.Log, *OUTPUT, bool, error) {
 	for {
 		log, output, err := lp.runTx(ctx, store, parameters, fn)

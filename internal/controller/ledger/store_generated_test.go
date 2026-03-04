@@ -12,10 +12,9 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	metadata "github.com/formancehq/go-libs/v4/metadata"
-	migrations "github.com/formancehq/go-libs/v4/migrations"
-	time "github.com/formancehq/go-libs/v4/time"
+	metadata "github.com/formancehq/go-libs/v3/metadata"
+	migrations "github.com/formancehq/go-libs/v3/migrations"
+	time "github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 	common "github.com/formancehq/ledger/internal/storage/common"
 	ledger0 "github.com/formancehq/ledger/internal/storage/ledger"
@@ -62,10 +61,10 @@ func (mr *MockStoreMockRecorder) Accounts() *gomock.Call {
 }
 
 // AggregatedBalances mocks base method.
-func (m *MockStore) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions] {
+func (m *MockStore) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledger0.GetAggregatedVolumesOptions] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AggregatedBalances")
-	ret0, _ := ret[0].(common.Resource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions])
+	ret0, _ := ret[0].(common.Resource[ledger.AggregatedVolumes, ledger0.GetAggregatedVolumesOptions])
 	return ret0
 }
 
@@ -92,31 +91,31 @@ func (mr *MockStoreMockRecorder) BeginTX(ctx, options any) *gomock.Call {
 }
 
 // Commit mocks base method.
-func (m *MockStore) Commit(ctx context.Context) error {
+func (m *MockStore) Commit() error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Commit", ctx)
+	ret := m.ctrl.Call(m, "Commit")
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Commit indicates an expected call of Commit.
-func (mr *MockStoreMockRecorder) Commit(ctx any) *gomock.Call {
+func (mr *MockStoreMockRecorder) Commit() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockStore)(nil).Commit), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockStore)(nil).Commit))
 }
 
 // CommitTransaction mocks base method.
-func (m *MockStore) CommitTransaction(ctx context.Context, transaction *ledger.Transaction) error {
+func (m *MockStore) CommitTransaction(ctx context.Context, transaction *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CommitTransaction", ctx, transaction)
+	ret := m.ctrl.Call(m, "CommitTransaction", ctx, transaction, accountMetadata)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // CommitTransaction indicates an expected call of CommitTransaction.
-func (mr *MockStoreMockRecorder) CommitTransaction(ctx, transaction any) *gomock.Call {
+func (mr *MockStoreMockRecorder) CommitTransaction(ctx, transaction, accountMetadata any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitTransaction", reflect.TypeOf((*MockStore)(nil).CommitTransaction), ctx, transaction)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitTransaction", reflect.TypeOf((*MockStore)(nil).CommitTransaction), ctx, transaction, accountMetadata)
 }
 
 // DeleteAccountMetadata mocks base method.
@@ -147,51 +146,6 @@ func (m *MockStore) DeleteTransactionMetadata(ctx context.Context, transactionID
 func (mr *MockStoreMockRecorder) DeleteTransactionMetadata(ctx, transactionID, key, at any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTransactionMetadata", reflect.TypeOf((*MockStore)(nil).DeleteTransactionMetadata), ctx, transactionID, key, at)
-}
-
-// FindLatestSchemaVersion mocks base method.
-func (m *MockStore) FindLatestSchemaVersion(ctx context.Context) (*string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindLatestSchemaVersion", ctx)
-	ret0, _ := ret[0].(*string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// FindLatestSchemaVersion indicates an expected call of FindLatestSchemaVersion.
-func (mr *MockStoreMockRecorder) FindLatestSchemaVersion(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindLatestSchemaVersion", reflect.TypeOf((*MockStore)(nil).FindLatestSchemaVersion), ctx)
-}
-
-// FindSchema mocks base method.
-func (m *MockStore) FindSchema(ctx context.Context, version string) (*ledger.Schema, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindSchema", ctx, version)
-	ret0, _ := ret[0].(*ledger.Schema)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// FindSchema indicates an expected call of FindSchema.
-func (mr *MockStoreMockRecorder) FindSchema(ctx, version any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindSchema", reflect.TypeOf((*MockStore)(nil).FindSchema), ctx, version)
-}
-
-// FindSchemas mocks base method.
-func (m *MockStore) FindSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindSchemas", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Schema])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// FindSchemas indicates an expected call of FindSchemas.
-func (mr *MockStoreMockRecorder) FindSchemas(ctx, query any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindSchemas", reflect.TypeOf((*MockStore)(nil).FindSchemas), ctx, query)
 }
 
 // GetBalances mocks base method.
@@ -236,20 +190,6 @@ func (m *MockStore) InsertLog(ctx context.Context, log *ledger.Log) error {
 func (mr *MockStoreMockRecorder) InsertLog(ctx, log any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertLog", reflect.TypeOf((*MockStore)(nil).InsertLog), ctx, log)
-}
-
-// InsertSchema mocks base method.
-func (m *MockStore) InsertSchema(ctx context.Context, data *ledger.Schema) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InsertSchema", ctx, data)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// InsertSchema indicates an expected call of InsertSchema.
-func (mr *MockStoreMockRecorder) InsertSchema(ctx, data any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertSchema", reflect.TypeOf((*MockStore)(nil).InsertSchema), ctx, data)
 }
 
 // IsUpToDate mocks base method.
@@ -330,17 +270,17 @@ func (mr *MockStoreMockRecorder) RevertTransaction(ctx, id, at any) *gomock.Call
 }
 
 // Rollback mocks base method.
-func (m *MockStore) Rollback(ctx context.Context) error {
+func (m *MockStore) Rollback() error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Rollback", ctx)
+	ret := m.ctrl.Call(m, "Rollback")
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Rollback indicates an expected call of Rollback.
-func (mr *MockStoreMockRecorder) Rollback(ctx any) *gomock.Call {
+func (mr *MockStoreMockRecorder) Rollback() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rollback", reflect.TypeOf((*MockStore)(nil).Rollback), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rollback", reflect.TypeOf((*MockStore)(nil).Rollback))
 }
 
 // Transactions mocks base method.
@@ -388,7 +328,7 @@ func (mr *MockStoreMockRecorder) UpdateTransactionMetadata(ctx, transactionID, m
 }
 
 // UpsertAccounts mocks base method.
-func (m *MockStore) UpsertAccounts(ctx context.Context, accounts ...ledger.AccountWithDefaultMetadata) error {
+func (m *MockStore) UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range accounts {
@@ -407,10 +347,10 @@ func (mr *MockStoreMockRecorder) UpsertAccounts(ctx any, accounts ...any) *gomoc
 }
 
 // Volumes mocks base method.
-func (m *MockStore) Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger.GetVolumesOptions] {
+func (m *MockStore) Volumes() common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger0.GetVolumesOptions] {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Volumes")
-	ret0, _ := ret[0].(common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger.GetVolumesOptions])
+	ret0, _ := ret[0].(common.PaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger0.GetVolumesOptions])
 	return ret0
 }
 

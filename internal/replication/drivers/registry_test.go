@@ -3,10 +3,11 @@ package drivers
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRegisterDriver(t *testing.T) {

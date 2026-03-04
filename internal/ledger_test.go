@@ -1,11 +1,9 @@
 package ledger
 
 import (
-	"testing"
-
-	"github.com/stretchr/testify/require"
-
 	"github.com/formancehq/ledger/pkg/features"
+	"github.com/stretchr/testify/require"
+	"testing"
 )
 
 func TestFeatures(t *testing.T) {

@@ -3,35 +3,37 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"reflect"
 
-	"github.com/google/uuid"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/ledger/pkg/features"
 	"github.com/uptrace/bun"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/migrations"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/ledger/internal/tracing"
+
+	"github.com/formancehq/ledger/internal/machine"
+
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+
+	"errors"
+
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/google/uuid"
 
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/machine"
-	"github.com/formancehq/ledger/internal/queries"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	"github.com/formancehq/ledger/internal/tracing"
-	"github.com/formancehq/ledger/pkg/features"
 )
 
 type DefaultController struct {
@@ -48,53 +50,12 @@ type DefaultController struct {
 	executeMachineHistogram metric.Int64Histogram
 	deadLockCounter         metric.Int64Counter
 
-	schemaEnforcementMode SchemaEnforcementMode
-
 	createTransactionLp         *logProcessor[CreateTransaction, ledger.CreatedTransaction]
 	revertTransactionLp         *logProcessor[RevertTransaction, ledger.RevertedTransaction]
 	saveTransactionMetadataLp   *logProcessor[SaveTransactionMetadata, ledger.SavedMetadata]
 	saveAccountMetadataLp       *logProcessor[SaveAccountMetadata, ledger.SavedMetadata]
 	deleteTransactionMetadataLp *logProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]
 	deleteAccountMetadataLp     *logProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]
-	insertSchemaLp              *logProcessor[InsertSchema, ledger.InsertedSchema]
-}
-
-func (ctrl *DefaultController) InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, bool, error) {
-	return ctrl.insertSchemaLp.forgeLog(ctx, ctrl.store, parameters, ctrl.insertSchema)
-}
-
-func (ctrl *DefaultController) insertSchema(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[InsertSchema]) (*ledger.InsertedSchema, error) {
-	schema, err := ledger.NewSchema(parameters.Input.Version, parameters.Input.Data)
-	if err != nil {
-		return nil, fmt.Errorf("creating schema: %w", err)
-	}
-
-	for id, template := range schema.Transactions {
-		parser := ctrl.getParser(ledger.RuntimeType(template.Runtime))
-		_, err := parser.Parse(template.Script)
-		if err != nil {
-			return nil, ledger.NewErrInvalidSchema(fmt.Errorf("invalid template %s: %w", id, err))
-		}
-	}
-
-	if err := store.InsertSchema(ctx, &schema); err != nil {
-		if errors.Is(err, postgres.ErrConstraintsFailed{}) {
-			return nil, newErrSchemaAlreadyExists(parameters.Input.Version)
-		}
-		return nil, err
-	}
-
-	return &ledger.InsertedSchema{
-		Schema: schema,
-	}, nil
-}
-
-func (ctrl *DefaultController) GetSchema(ctx context.Context, version string) (*ledger.Schema, error) {
-	return ctrl.store.FindSchema(ctx, version)
-}
-
-func (ctrl *DefaultController) ListSchemas(ctx context.Context, query storagecommon.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
-	return ctrl.store.FindSchemas(ctx, query)
 }
 
 func (ctrl *DefaultController) Info() ledger.Ledger {
@@ -115,12 +76,12 @@ func (ctrl *DefaultController) BeginTX(ctx context.Context, options *sql.TxOptio
 	return &cp, tx, nil
 }
 
-func (ctrl *DefaultController) Commit(ctx context.Context) error {
-	return ctrl.store.Commit(ctx)
+func (ctrl *DefaultController) Commit(_ context.Context) error {
+	return ctrl.store.Commit()
 }
 
-func (ctrl *DefaultController) Rollback(ctx context.Context) error {
-	return ctrl.store.Rollback(ctx)
+func (ctrl *DefaultController) Rollback(_ context.Context) error {
+	return ctrl.store.Rollback()
 }
 
 func (ctrl *DefaultController) LockLedger(ctx context.Context) (Controller, bun.IDB, func() error, error) {
@@ -147,12 +108,11 @@ func NewDefaultController(
 	opts ...DefaultControllerOption,
 ) *DefaultController {
 	ret := &DefaultController{
-		store:                 store,
-		ledger:                l,
-		parser:                numscriptParser,
-		interpreterParser:     interpreterParser,
-		machineParser:         machineParser,
-		schemaEnforcementMode: SchemaEnforcementAudit,
+		store:             store,
+		ledger:            l,
+		parser:            numscriptParser,
+		interpreterParser: interpreterParser,
+		machineParser:     machineParser,
 	}
 
 	for _, opt := range append(defaultOptions, opts...) {
@@ -160,22 +120,21 @@ func NewDefaultController(
 	}
 
 	var err error
-	ret.executeMachineHistogram, err = ret.meter.Int64Histogram("controller.numscript_run", metric.WithUnit("ms"))
+	ret.executeMachineHistogram, err = ret.meter.Int64Histogram("numscript.run")
 	if err != nil {
 		panic(err)
 	}
-	ret.deadLockCounter, err = ret.meter.Int64Counter("controller.deadlocks")
+	ret.deadLockCounter, err = ret.meter.Int64Counter("deadlocks")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.createTransactionLp = newLogProcessor[CreateTransaction, ledger.CreatedTransaction]("CreateTransaction", ret.deadLockCounter, ret.schemaEnforcementMode)
-	ret.revertTransactionLp = newLogProcessor[RevertTransaction, ledger.RevertedTransaction]("RevertTransaction", ret.deadLockCounter, ret.schemaEnforcementMode)
-	ret.saveTransactionMetadataLp = newLogProcessor[SaveTransactionMetadata, ledger.SavedMetadata]("SaveTransactionMetadata", ret.deadLockCounter, ret.schemaEnforcementMode)
-	ret.saveAccountMetadataLp = newLogProcessor[SaveAccountMetadata, ledger.SavedMetadata]("SaveAccountMetadata", ret.deadLockCounter, ret.schemaEnforcementMode)
-	ret.deleteTransactionMetadataLp = newLogProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]("DeleteTransactionMetadata", ret.deadLockCounter, ret.schemaEnforcementMode)
-	ret.deleteAccountMetadataLp = newLogProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]("DeleteAccountMetadata", ret.deadLockCounter, ret.schemaEnforcementMode)
-	ret.insertSchemaLp = newLogProcessor[InsertSchema, ledger.InsertedSchema]("InsertSchema", ret.deadLockCounter, ret.schemaEnforcementMode)
+	ret.createTransactionLp = newLogProcessor[CreateTransaction, ledger.CreatedTransaction]("CreateTransaction", ret.deadLockCounter)
+	ret.revertTransactionLp = newLogProcessor[RevertTransaction, ledger.RevertedTransaction]("RevertTransaction", ret.deadLockCounter)
+	ret.saveTransactionMetadataLp = newLogProcessor[SaveTransactionMetadata, ledger.SavedMetadata]("SaveTransactionMetadata", ret.deadLockCounter)
+	ret.saveAccountMetadataLp = newLogProcessor[SaveAccountMetadata, ledger.SavedMetadata]("SaveAccountMetadata", ret.deadLockCounter)
+	ret.deleteTransactionMetadataLp = newLogProcessor[DeleteTransactionMetadata, ledger.DeletedMetadata]("DeleteTransactionMetadata", ret.deadLockCounter)
+	ret.deleteAccountMetadataLp = newLogProcessor[DeleteAccountMetadata, ledger.DeletedMetadata]("DeleteAccountMetadata", ret.deadLockCounter)
 
 	return ret
 }
@@ -212,7 +171,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, q storagecommon.R
 	return ctrl.store.Accounts().GetOne(ctx, q)
 }
 
-func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q storagecommon.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (ctrl *DefaultController) GetAggregatedBalances(ctx context.Context, q storagecommon.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	ret, err := ctrl.store.AggregatedBalances().GetOne(ctx, q)
 	if err != nil {
 		return nil, err
@@ -224,7 +183,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, q storagecommon.Pag
 	return ctrl.store.Logs().Paginate(ctx, q)
 }
 
-func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q storagecommon.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (ctrl *DefaultController) GetVolumesWithBalances(ctx context.Context, q storagecommon.PaginatedQuery[ledgerstore.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	return ctrl.store.Volumes().Paginate(ctx, q)
 }
 
@@ -256,7 +215,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 		}
 		err = func() error {
 			defer func() {
-				_ = store.Rollback(ctx)
+				_ = store.Rollback()
 			}()
 
 			if err := ctrl.importLog(ctx, store, log); err != nil {
@@ -269,7 +228,7 @@ func (ctrl *DefaultController) Import(ctx context.Context, stream chan ledger.Lo
 				return fmt.Errorf("importing log %d: %w", *log.ID, err)
 			}
 
-			if err := store.Commit(ctx); err != nil {
+			if err := store.Commit(); err != nil {
 				return fmt.Errorf("committing transaction: %w", err)
 			}
 
@@ -290,25 +249,10 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 		"ImportLog",
 		func(ctx context.Context) (any, error) {
 			switch payload := log.Data.(type) {
-			case ledger.InsertedSchema:
-				if err := store.InsertSchema(ctx, &payload.Schema); err != nil {
-					return nil, fmt.Errorf("failed to insert schema: %w", err)
-				}
 			case ledger.CreatedTransaction:
 				logging.FromContext(ctx).Debugf("Importing transaction %d", *payload.Transaction.ID)
-				var schema *ledger.Schema
-				var err error
-				if log.SchemaVersion != "" {
-					schema, err = store.FindSchema(ctx, log.SchemaVersion)
-					if err != nil {
-						return nil, fmt.Errorf("failed to find schema: %w", err)
-					}
-				}
-				if err := store.CommitTransaction(ctx, &payload.Transaction); err != nil {
+				if err := store.CommitTransaction(ctx, &payload.Transaction, payload.AccountMetadata); err != nil {
 					return nil, fmt.Errorf("failed to commit transaction: %w", err)
-				}
-				if err := ctrl.upsertTransactionAccounts(ctx, schema, &payload.Transaction, payload.AccountMetadata); err != nil {
-					return nil, fmt.Errorf("failed to upsert transaction accounts: %w", err)
 				}
 				logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
 			case ledger.RevertedTransaction:
@@ -321,7 +265,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 				if err != nil {
 					return nil, fmt.Errorf("failed to revert transaction: %w", err)
 				}
-				if err := store.CommitTransaction(ctx, &payload.RevertTransaction); err != nil {
+				if err := store.CommitTransaction(ctx, &payload.RevertTransaction, nil); err != nil {
 					return nil, fmt.Errorf("failed to commit transaction: %w", err)
 				}
 			case ledger.SavedMetadata:
@@ -374,19 +318,6 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 	return err
 }
 
-func (ctrl *DefaultController) upsertTransactionAccounts(ctx context.Context, schema *ledger.Schema, tx *ledger.Transaction, accountMetadata ledger.AccountMetadata) error {
-	accountsToUpsert := tx.AccountsWithDefaultMetadata(schema, accountMetadata)
-
-	err := ctrl.store.UpsertAccounts(
-		ctx,
-		accountsToUpsert...,
-	)
-	if err != nil {
-		return fmt.Errorf("upserting accounts: %w", err)
-	}
-	return nil
-}
-
 func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error {
 	return storagecommon.Iterate(
 		ctx,
@@ -406,43 +337,23 @@ func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error
 	)
 }
 
-func (ctrl *DefaultController) getParser(runtimeType ledger.RuntimeType) NumscriptParser {
-	switch runtimeType {
-	case ledger.RuntimeExperimentalInterpreter:
+func (ctrl *DefaultController) getParser(tx CreateTransaction) NumscriptParser {
+	switch tx.Runtime {
+	case RuntimeExperimentalInterpreter:
 		return ctrl.interpreterParser
-	case ledger.RuntimeMachine:
+	case RuntimeMachine:
 		return ctrl.machineParser
 	default:
 		return ctrl.parser
 	}
 }
 
-func (ctrl *DefaultController) createTransaction(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[CreateTransaction]) (*ledger.CreatedTransaction, error) {
+func (ctrl *DefaultController) createTransaction(ctx context.Context, store Store, parameters Parameters[CreateTransaction]) (*ledger.CreatedTransaction, error) {
+
 	logger := logging.FromContext(ctx).WithField("req", uuid.NewString()[:8])
 	ctx = logging.ContextWithLogger(ctx, logger)
 
-	if schema != nil && len(schema.Transactions) > 0 {
-		if parameters.Input.Template == "" {
-			err := newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("transactions on this ledger must use a template"))
-			if ctrl.schemaEnforcementMode == SchemaEnforcementStrict {
-				return nil, err
-			}
-			trace.SpanFromContext(ctx).SetAttributes(attribute.String("schema_validation_failed", err.Error()))
-			logging.FromContext(ctx).Errorf("schema validation failed: %s", err)
-		}
-		if template, ok := schema.SchemaData.Transactions[parameters.Input.Template]; ok {
-			parameters.Input.Plain = template.Script
-			if parameters.Input.Runtime == "" {
-				parameters.Input.Runtime = template.Runtime
-			}
-		} else {
-			return nil, newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("failed to find transaction template `%s`", parameters.Input.Template))
-		}
-	} else if parameters.Input.Template != "" {
-		return nil, newErrSchemaValidationError(parameters.SchemaVersion, fmt.Errorf("can only use templates on a schema with transaction definitions"))
-	}
-
-	m, err := ctrl.getParser(parameters.Input.Runtime).Parse(parameters.Input.Plain)
+	m, err := ctrl.getParser(parameters.Input).Parse(parameters.Input.Plain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile script: %w", err)
 	}
@@ -453,8 +364,7 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		ctrl.tracer,
 		ctrl.executeMachineHistogram,
 		func(ctx context.Context) (*NumscriptExecutionResult, error) {
-			a, err := m.Execute(ctx, store, parameters.Input.Vars)
-			return a, err
+			return m.Execute(ctx, store, parameters.Input.Vars)
 		},
 	)
 	if err != nil {
@@ -495,13 +405,8 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 		WithPostings(result.Postings...).
 		WithMetadata(finalMetadata).
 		WithTimestamp(parameters.Input.Timestamp).
-		WithReference(parameters.Input.Reference).
-		WithTemplate(parameters.Input.Template)
-	err = store.CommitTransaction(ctx, &transaction)
-	if err != nil {
-		return nil, err
-	}
-	err = ctrl.upsertTransactionAccounts(ctx, schema, &transaction, accountMetadata)
+		WithReference(parameters.Input.Reference)
+	err = store.CommitTransaction(ctx, &transaction, accountMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -516,7 +421,7 @@ func (ctrl *DefaultController) CreateTransaction(ctx context.Context, parameters
 	return ctrl.createTransactionLp.forgeLog(ctx, ctrl.store, parameters, ctrl.createTransaction)
 }
 
-func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
+func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Store, parameters Parameters[RevertTransaction]) (*ledger.RevertedTransaction, error) {
 	var (
 		hasBeenReverted bool
 		err             error
@@ -571,7 +476,7 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Stor
 		}
 	}
 
-	err = store.CommitTransaction(ctx, &reversedTx)
+	err = store.CommitTransaction(ctx, &reversedTx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert transaction: %w", err)
 	}
@@ -586,7 +491,7 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 	return ctrl.revertTransactionLp.forgeLog(ctx, ctrl.store, parameters, ctrl.revertTransaction)
 }
 
-func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[SaveTransactionMetadata]) (*ledger.SavedMetadata, error) {
+func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store Store, parameters Parameters[SaveTransactionMetadata]) (*ledger.SavedMetadata, error) {
 	if _, _, err := store.UpdateTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Metadata, time.Time{}); err != nil {
 		return nil, err
 	}
@@ -603,20 +508,10 @@ func (ctrl *DefaultController) SaveTransactionMetadata(ctx context.Context, para
 	return log, idempotencyHit, err
 }
 
-func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[SaveAccountMetadata]) (*ledger.SavedMetadata, error) {
-	var defaultMetadata metadata.Metadata
-	if schema != nil {
-		accountSchema, _ := schema.Chart.FindAccountSchema(parameters.Input.Address)
-		if accountSchema != nil {
-			defaultMetadata = accountSchema.DefaultMetadata()
-		}
-	}
-	if err := store.UpsertAccounts(ctx, ledger.AccountWithDefaultMetadata{
-		Account: &ledger.Account{
-			Address:  parameters.Input.Address,
-			Metadata: parameters.Input.Metadata,
-		},
-		DefaultMetadata: defaultMetadata,
+func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store Store, parameters Parameters[SaveAccountMetadata]) (*ledger.SavedMetadata, error) {
+	if err := store.UpsertAccounts(ctx, &ledger.Account{
+		Address:  parameters.Input.Address,
+		Metadata: parameters.Input.Metadata,
 	}); err != nil {
 		return nil, err
 	}
@@ -634,7 +529,7 @@ func (ctrl *DefaultController) SaveAccountMetadata(ctx context.Context, paramete
 	return log, idempotencyHit, err
 }
 
-func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[DeleteTransactionMetadata]) (*ledger.DeletedMetadata, error) {
+func (ctrl *DefaultController) deleteTransactionMetadata(ctx context.Context, store Store, parameters Parameters[DeleteTransactionMetadata]) (*ledger.DeletedMetadata, error) {
 	_, modified, err := store.DeleteTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Key, time.Time{})
 	if err != nil {
 		return nil, err
@@ -656,7 +551,7 @@ func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, pa
 	return log, idempotencyHit, err
 }
 
-func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[DeleteAccountMetadata]) (*ledger.DeletedMetadata, error) {
+func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store Store, parameters Parameters[DeleteAccountMetadata]) (*ledger.DeletedMetadata, error) {
 	err := store.DeleteAccountMetadata(ctx, parameters.Input.Address, parameters.Input.Key)
 	if err != nil {
 		return nil, err
@@ -672,162 +567,6 @@ func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store 
 func (ctrl *DefaultController) DeleteAccountMetadata(ctx context.Context, parameters Parameters[DeleteAccountMetadata]) (*ledger.Log, bool, error) {
 	log, _, idempotencyHit, err := ctrl.deleteAccountMetadataLp.forgeLog(ctx, ctrl.store, parameters, ctrl.deleteAccountMetadata)
 	return log, idempotencyHit, err
-}
-
-func (ctrl *DefaultController) runQueryFromCursor(ctx context.Context, template ledger.QueryTemplate, q storagecommon.RunQuery) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
-	var result *bunpaginate.Cursor[any]
-	switch template.Resource {
-	case queries.ResourceKindTransaction:
-		resourceQuery, err := storagecommon.UnmarshalCursor[any](*q.Cursor)
-		if err != nil {
-			return nil, nil, newErrQueryValidation(err)
-		}
-		r, err := ctrl.store.Transactions().Paginate(ctx, resourceQuery)
-		if err != nil {
-			return nil, nil, err
-		}
-		result = bunpaginate.MapCursor(r, func(x ledger.Transaction) any { return x })
-	case queries.ResourceKindAccount:
-		resourceQuery, err := storagecommon.UnmarshalCursor[any](*q.Cursor)
-		if err != nil {
-			return nil, nil, newErrQueryValidation(err)
-		}
-		r, err := ctrl.store.Accounts().Paginate(ctx, resourceQuery)
-		if err != nil {
-			return nil, nil, err
-		}
-		result = bunpaginate.MapCursor(r, func(x ledger.Account) any { return x })
-	case queries.ResourceKindLog:
-		resourceQuery, err := storagecommon.UnmarshalCursor[any](*q.Cursor)
-		if err != nil {
-			return nil, nil, newErrQueryValidation(err)
-		}
-		r, err := ctrl.store.Logs().Paginate(ctx, resourceQuery)
-		if err != nil {
-			return nil, nil, err
-		}
-		result = bunpaginate.MapCursor(r, func(x ledger.Log) any { return x })
-	case queries.ResourceKindVolume:
-		resourceQuery, err := storagecommon.UnmarshalCursor[ledger.GetVolumesOptions](*q.Cursor)
-		if err != nil {
-			return nil, nil, newErrQueryValidation(err)
-		}
-		r, err := ctrl.store.Volumes().Paginate(ctx, resourceQuery)
-		if err != nil {
-			return nil, nil, err
-		}
-		result = bunpaginate.MapCursor(r, func(x ledger.VolumesWithBalanceByAssetByAccount) any { return x })
-	default:
-		return nil, nil, fmt.Errorf("invalid resource type: %v", template.Resource)
-	}
-	return &template.Resource, result, nil
-}
-
-func templateParamsToQuery[Opts any](params ledger.QueryTemplateParams[Opts], builder query.Builder, paginationConfig storagecommon.PaginationConfig) storagecommon.InitialPaginatedQuery[Opts] {
-	if uint64(params.PageSize) > paginationConfig.MaxPageSize {
-		params.PageSize = uint(paginationConfig.MaxPageSize)
-	}
-	return storagecommon.InitialPaginatedQuery[Opts]{
-		Options: storagecommon.ResourceQuery[Opts]{
-			PIT:     params.PIT,
-			OOT:     params.OOT,
-			Builder: builder,
-			Expand:  params.Expand,
-			Opts:    params.Opts,
-		},
-		Column:   params.SortColumn,
-		Order:    params.SortOrder,
-		PageSize: uint64(params.PageSize),
-	}
-}
-
-func (ctrl *DefaultController) RunQuery(ctx context.Context, schemaVersion string, id string, q storagecommon.RunQuery, paginationConfig storagecommon.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
-	schema, err := ctrl.GetSchema(ctx, schemaVersion)
-	if err != nil {
-		return nil, nil, newErrSchemaValidationError(schemaVersion, fmt.Errorf("failed to find schema: %w", err))
-	}
-	if template, ok := schema.Queries[id]; ok {
-		if q.Cursor != nil {
-			return ctrl.runQueryFromCursor(ctx, template, q)
-		} else {
-			var result *bunpaginate.Cursor[any]
-			builder, err := queries.ResolveFilterTemplate(template.Resource, template.Body, template.Vars, q.Vars)
-			if err != nil {
-				return nil, nil, newErrQueryValidation(err)
-			}
-			switch template.Resource {
-			case queries.ResourceKindTransaction:
-				params, err := ledger.QueryTemplateParams[any]{
-					PageSize:   uint(paginationConfig.DefaultPageSize),
-					SortColumn: "id",
-					SortOrder:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				}.Overwrite(template.Params, q.Params)
-				if err != nil {
-					return nil, nil, newErrQueryValidation(err)
-				}
-				resourceQuery := templateParamsToQuery(*params, builder, paginationConfig)
-				r, err := ctrl.store.Transactions().Paginate(ctx, resourceQuery)
-				if err != nil {
-					return nil, nil, err
-				}
-				result = bunpaginate.MapCursor(r, func(x ledger.Transaction) any { return x })
-			case queries.ResourceKindAccount:
-				params, err := ledger.QueryTemplateParams[any]{
-					PageSize:   uint(paginationConfig.DefaultPageSize),
-					SortColumn: "address",
-					SortOrder:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
-				}.Overwrite(template.Params, q.Params)
-				if err != nil {
-					return nil, nil, newErrQueryValidation(err)
-				}
-				resourceQuery := templateParamsToQuery(*params, builder, paginationConfig)
-				r, err := ctrl.store.Accounts().Paginate(ctx, resourceQuery)
-				if err != nil {
-					return nil, nil, err
-				}
-				result = bunpaginate.MapCursor(r, func(x ledger.Account) any { return x })
-			case queries.ResourceKindLog:
-				params, err := ledger.QueryTemplateParams[any]{
-					PageSize:   uint(paginationConfig.DefaultPageSize),
-					SortColumn: "id",
-					SortOrder:  pointer.For(bunpaginate.Order(bunpaginate.OrderDesc)),
-				}.Overwrite(template.Params, q.Params)
-				if err != nil {
-					return nil, nil, newErrQueryValidation(err)
-				}
-				resourceQuery := templateParamsToQuery(*params, builder, paginationConfig)
-				r, err := ctrl.store.Logs().Paginate(ctx, resourceQuery)
-				if err != nil {
-					return nil, nil, err
-				}
-				result = bunpaginate.MapCursor(r, func(x ledger.Log) any { return x })
-			case queries.ResourceKindVolume:
-				params, err := ledger.QueryTemplateParams[ledger.GetVolumesOptions]{
-					PageSize:   uint(paginationConfig.DefaultPageSize),
-					SortColumn: "account",
-					SortOrder:  pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
-					Opts: ledger.GetVolumesOptions{
-						UseInsertionDate: false,
-						GroupLvl:         0,
-					},
-				}.Overwrite(template.Params, q.Params)
-				if err != nil {
-					return nil, nil, newErrQueryValidation(err)
-				}
-				resourceQuery := templateParamsToQuery(*params, builder, paginationConfig)
-				r, err := ctrl.store.Volumes().Paginate(ctx, resourceQuery)
-				if err != nil {
-					return nil, nil, err
-				}
-				result = bunpaginate.MapCursor(r, func(x ledger.VolumesWithBalanceByAssetByAccount) any { return x })
-			default:
-				return nil, nil, fmt.Errorf("invalid resource type: %v", template.Resource)
-			}
-			return &template.Resource, result, nil
-		}
-	} else {
-		return nil, nil, newErrSchemaValidationError(schemaVersion, fmt.Errorf("unknown query template: %s", id))
-	}
 }
 
 var _ Controller = (*DefaultController)(nil)
@@ -847,10 +586,5 @@ func WithMeter(meter metric.Meter) DefaultControllerOption {
 func WithTracer(tracer trace.Tracer) DefaultControllerOption {
 	return func(controller *DefaultController) {
 		controller.tracer = tracer
-	}
-}
-func WithSchemaEnforcementMode(mode SchemaEnforcementMode) DefaultControllerOption {
-	return func(controller *DefaultController) {
-		controller.schemaEnforcementMode = mode
 	}
 }

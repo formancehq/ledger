@@ -1,9 +1,8 @@
 {
-  description = "A Nix-flake-based Go 1.25 development environment";
+  description = "A Nix-flake-based Go 1.24 development environment";
 
   inputs = {
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2511";
-    nixpkgs-unstable.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1";
 
     nur = {
       url = "github:nix-community/NUR";
@@ -11,7 +10,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, nur }:
+  outputs = { self, nixpkgs, nur }:
     let
       supportedSystems = [
         "x86_64-linux"
@@ -30,11 +29,8 @@
                 "goreleaser-pro"
               ];
             };
-            pkgs-unstable = import nixpkgs-unstable {
-              inherit system;
-            };
           in
-          f { pkgs = pkgs; pkgs-unstable = pkgs-unstable; system = system; }
+          f { pkgs = pkgs; system = system; }
         );
 
       speakeasyVersion = "1.563.0";
@@ -53,7 +49,7 @@
 
     in
     {
-      packages = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
+      packages = forEachSupportedSystem ({ pkgs, system }:
         {
           speakeasy = pkgs.stdenv.mkDerivation {
             pname = "speakeasy";
@@ -84,12 +80,13 @@
       defaultPackage.x86_64-darwin  = self.packages.x86_64-darwin.speakeasy;
       defaultPackage.aarch64-darwin = self.packages.aarch64-darwin.speakeasy;
 
-      devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
+      devShells = forEachSupportedSystem ({ pkgs, system }:
         let
           stablePackages = with pkgs; [
             ginkgo
-            go_1_25
+            go_1_24
             go-tools
+            golangci-lint
             gomarkdoc
             goperf
             gotools
@@ -103,9 +100,6 @@
             protoc-gen-go-grpc
             yq-go
           ];
-          unstablePackages = with pkgs-unstable; [
-            golangci-lint
-          ];
           otherPackages = [
             pkgs.nur.repos.goreleaser.goreleaser-pro
             self.packages.${system}.speakeasy
@@ -113,7 +107,7 @@
         in
         {
           default = pkgs.mkShell {
-            packages = stablePackages ++ unstablePackages ++ otherPackages;
+            packages = stablePackages ++ otherPackages;
           };
         }
       );

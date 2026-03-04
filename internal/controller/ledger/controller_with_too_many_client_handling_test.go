@@ -2,17 +2,14 @@ package ledger
 
 import (
 	"errors"
-	"testing"
-
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/time"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/mock/gomock"
-
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-	"github.com/formancehq/go-libs/v4/time"
-
-	ledger "github.com/formancehq/ledger/internal"
+	"testing"
 )
 
 func TestNewControllerWithTooManyClientHandling(t *testing.T) {

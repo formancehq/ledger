@@ -1,10 +1,9 @@
 package events
 
 import (
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/publish"
-	"github.com/formancehq/go-libs/v4/time"
-
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/publish"
+	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
 )
 
@@ -71,20 +70,5 @@ func NewEventDeletedMetadata(deletedMetadata DeletedMetadata) publish.EventMessa
 		Version: EventVersion,
 		Type:    EventTypeDeletedMetadata,
 		Payload: deletedMetadata,
-	}
-}
-
-type InsertedSchema struct {
-	Ledger string        `json:"ledger"`
-	Schema ledger.Schema `json:"schema"`
-}
-
-func NewEventInsertedSchema(insertedSchema InsertedSchema) publish.EventMessage {
-	return publish.EventMessage{
-		Date:    time.Now().Time,
-		App:     EventApp,
-		Version: EventVersion,
-		Type:    EventTypeInsertedSchema,
-		Payload: insertedSchema,
 	}
 }

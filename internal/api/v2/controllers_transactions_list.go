@@ -1,17 +1,14 @@
 package v2
 
 import (
-	"net/http"
-
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	"net/http"
 )
 
-func listTransactions(paginationConfig storagecommon.PaginationConfig) http.HandlerFunc {
+func listTransactions(paginationConfig common.PaginationConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		l := common.LedgerFromContext(r.Context())
 

@@ -2,18 +2,19 @@ package v1
 
 import (
 	_ "embed"
-	"net/http"
-
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/collectionutils"
-
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
-	"github.com/formancehq/ledger/internal/controller/system"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"net/http"
+
+	"github.com/formancehq/ledger/internal/controller/system"
+
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	ledger "github.com/formancehq/ledger/internal"
+
+	"github.com/formancehq/go-libs/v3/collectionutils"
+
+	"github.com/formancehq/go-libs/v3/api"
 )
 
 type ConfigInfo struct {
@@ -23,8 +24,7 @@ type ConfigInfo struct {
 }
 
 type LedgerConfig struct {
-	LedgerStorage         *LedgerStorage                         `json:"storage"`
-	SchemaEnforcementMode ledgercontroller.SchemaEnforcementMode `json:"schemaEnforcementMode"`
+	LedgerStorage *LedgerStorage `json:"storage"`
 }
 
 type LedgerStorage struct {
@@ -55,7 +55,6 @@ func GetInfo(systemController system.Controller, version string) func(w http.Res
 			Server:  "ledger",
 			Version: version,
 			Config: &LedgerConfig{
-				SchemaEnforcementMode: systemController.GetSchemaEnforcementMode(r.Context()),
 				LedgerStorage: &LedgerStorage{
 					Driver:  "postgres",
 					Ledgers: ledgerNames,

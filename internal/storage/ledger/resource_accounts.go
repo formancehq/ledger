@@ -2,21 +2,27 @@ package ledger
 
 import (
 	"fmt"
-
-	"github.com/stoewer/go-strcase"
-	"github.com/uptrace/bun"
-
-	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
+	"github.com/stoewer/go-strcase"
+	"github.com/uptrace/bun"
 )
 
 type accountsResourceHandler struct {
 	store *Store
 }
 
-func (h accountsResourceHandler) Schema() queries.EntitySchema {
-	return queries.AccountSchema
+func (h accountsResourceHandler) Schema() common.EntitySchema {
+	return common.EntitySchema{
+		Fields: map[string]common.Field{
+			"address":        common.NewStringField().Paginated(),
+			"first_usage":    common.NewDateField().Paginated(),
+			"balance":        common.NewNumericMapField(),
+			"metadata":       common.NewStringMapField(),
+			"insertion_date": common.NewDateField().Paginated(),
+			"updated_at":     common.NewDateField().Paginated(),
+		},
+	}
 }
 
 func (h accountsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
@@ -52,20 +58,7 @@ func (h accountsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuild
 func (h accountsResourceHandler) ResolveFilter(opts common.ResourceQuery[any], operator, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
-		fallthrough
-	case property == "account":
-		switch operator {
-		case queries.OperatorIn:
-			addresses, err := assetAddressArray(value)
-			if err != nil {
-				return "", nil, err
-			}
-
-			return "address IN (?)", []any{bun.In(addresses)}, nil
-		default:
-			return filterAccountAddress(value.(string), "address"), nil, nil
-		}
-
+		return filterAccountAddress(value.(string), "address"), nil, nil
 	case property == "first_usage" || property == "insertion_date" || property == "updated_at":
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case balanceRegex.MatchString(property) || property == "balance":
@@ -146,15 +139,15 @@ func (h accountsResourceHandler) Expand(opts common.ResourceQuery[any], property
 		selectRowsQuery = selectRowsQuery.
 			ModelTableExpr(h.store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
-			ColumnExpr("(input, output)::" + h.store.GetPrefixedRelationName("volumes") + " as volumes")
+			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes")
 	}
 
 	return h.store.db.NewSelect().
-			With("rows", selectRowsQuery).
-			ModelTableExpr("rows").
-			Column("accounts_address").
-			ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + strcase.SnakeCase(property)).
-			Group("accounts_address"), &common.JoinCondition{
+		With("rows", selectRowsQuery).
+		ModelTableExpr("rows").
+		Column("accounts_address").
+		ColumnExpr("public.aggregate_objects(json_build_object(asset, json_build_object('input', (volumes).inputs, 'output', (volumes).outputs))::jsonb) as " + strcase.SnakeCase(property)).
+		Group("accounts_address"), &common.JoinCondition{
 			Left:  "address",
 			Right: "accounts_address",
 		}, nil

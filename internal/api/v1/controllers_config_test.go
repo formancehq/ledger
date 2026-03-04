@@ -6,15 +6,15 @@ import (
 	"os"
 	"testing"
 
+	ledger "github.com/formancehq/ledger/internal"
+
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-
-	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 func TestGetInfo(t *testing.T) {
@@ -37,11 +37,6 @@ func TestGetInfo(t *testing.T) {
 			},
 		}, nil)
 
-	systemController.
-		EXPECT().
-		GetSchemaEnforcementMode(gomock.Any()).
-		Return(ledgercontroller.SchemaEnforcementAudit)
-
 	req := httptest.NewRequest(http.MethodGet, "/_info", nil)
 	rec := httptest.NewRecorder()
 
@@ -55,7 +50,6 @@ func TestGetInfo(t *testing.T) {
 		Server:  "ledger",
 		Version: "develop",
 		Config: &LedgerConfig{
-			SchemaEnforcementMode: ledgercontroller.SchemaEnforcementAudit,
 			LedgerStorage: &LedgerStorage{
 				Driver:  "postgres",
 				Ledgers: []string{"a", "b"},

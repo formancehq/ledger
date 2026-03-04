@@ -11,17 +11,16 @@ package vm
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"math/big"
 
-	"github.com/logrusorgru/aurora"
-
-	"github.com/formancehq/go-libs/v4/metadata"
-
+	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine"
+
+	"errors"
 	"github.com/formancehq/ledger/internal/machine/vm/program"
+	"github.com/logrusorgru/aurora"
 )
 
 type Machine struct {

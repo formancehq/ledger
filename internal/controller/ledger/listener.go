@@ -3,8 +3,7 @@ package ledger
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/v4/metadata"
-
+	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger/internal"
 )
 
@@ -14,5 +13,4 @@ type Listener interface {
 	SavedMetadata(ctx context.Context, ledger string, targetType, id string, metadata metadata.Metadata)
 	RevertedTransaction(ctx context.Context, ledger string, reverted, revert ledger.Transaction)
 	DeletedMetadata(ctx context.Context, ledger string, targetType string, targetID any, key string)
-	InsertedSchema(ctx context.Context, ledger string, data ledger.Schema)
 }

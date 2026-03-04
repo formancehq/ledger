@@ -3,7 +3,6 @@
 package operations
 
 import (
-	"github.com/formancehq/ledger/pkg/client/internal/utils"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 )
 
@@ -17,25 +16,11 @@ type V2ListLedgersRequest struct {
 	// No other parameters can be set when this parameter is set.
 	//
 	Cursor *string `queryParam:"style=form,explode=true,name=cursor"`
-	// If true, include deleted ledgers in the results. By default, deleted ledgers are excluded.
-	//
-	IncludeDeleted *bool `default:"false" queryParam:"style=form,explode=true,name=includeDeleted"`
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
 	Sort        *string        `queryParam:"style=form,explode=true,name=sort"`
 	RequestBody map[string]any `request:"mediaType=application/json"`
-}
-
-func (v V2ListLedgersRequest) MarshalJSON() ([]byte, error) {
-	return utils.MarshalJSON(v, "", false)
-}
-
-func (v *V2ListLedgersRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (o *V2ListLedgersRequest) GetPageSize() *int64 {
@@ -50,13 +35,6 @@ func (o *V2ListLedgersRequest) GetCursor() *string {
 		return nil
 	}
 	return o.Cursor
-}
-
-func (o *V2ListLedgersRequest) GetIncludeDeleted() *bool {
-	if o == nil {
-		return nil
-	}
-	return o.IncludeDeleted
 }
 
 func (o *V2ListLedgersRequest) GetSort() *string {

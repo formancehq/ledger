@@ -5,23 +5,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
-	"net/http"
-	"os"
-	"path/filepath"
-	"time"
-
 	"github.com/dop251/goja"
-	"github.com/google/uuid"
-
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/pointer"
-
+	"github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/bulking"
 	"github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"github.com/google/uuid"
+	"math/big"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
 )
 
 type Action struct {
@@ -48,7 +45,7 @@ func (r Action) Apply(ctx context.Context, client *client.V2, l string) ([]compo
 						return &transactionRequest.Timestamp.Time
 					}(),
 					Script: &components.V2PostTransactionScript{
-						Plain: pointer.For(transactionRequest.Script.Plain),
+						Plain: transactionRequest.Script.Plain,
 						Vars: collectionutils.ConvertMap(transactionRequest.Script.Vars, func(from any) string {
 							return fmt.Sprint(from)
 						}),
@@ -222,7 +219,7 @@ func NewGenerator(script string, opts ...Option) (*Generator, error) {
 	}
 
 	err = runtime.Set("read_file", func(path string) string {
-		f, err := os.ReadFile(filepath.Clean(filepath.Join(cfg.rootPath, path)))
+		f, err := os.ReadFile(filepath.Join(cfg.rootPath, path))
 		if err != nil {
 			panic(err)
 		}

@@ -5,26 +5,27 @@ package ledger_test
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
+	"github.com/alitto/pond"
+	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"slices"
 	"testing"
+
+	"errors"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
+
 	libtime "time"
 
-	"github.com/alitto/pond"
-	"github.com/stretchr/testify/require"
-
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
-	"github.com/formancehq/go-libs/v4/time"
-
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTransactionsGetWithVolumes(t *testing.T) {
@@ -39,7 +40,7 @@ func TestTransactionsGetWithVolumes(t *testing.T) {
 		).
 		WithReference("tx1").
 		WithTimestamp(now.Add(-3 * time.Hour))
-	err := commitTransactionAndUpsertAccounts(ctx, store, &tx1)
+	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
 
 	tx2 := ledger.NewTransaction().
@@ -48,7 +49,7 @@ func TestTransactionsGetWithVolumes(t *testing.T) {
 		).
 		WithReference("tx2").
 		WithTimestamp(now.Add(-2 * time.Hour))
-	err = commitTransactionAndUpsertAccounts(ctx, store, &tx2)
+	err = store.CommitTransaction(ctx, &tx2, nil)
 	require.NoError(t, err)
 
 	tx, err := store.Transactions().GetOne(ctx, common.ResourceQuery[any]{
@@ -108,7 +109,7 @@ func TestTransactionsCount(t *testing.T) {
 		tx := ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("world", fmt.Sprintf("account%d", i), "USD", big.NewInt(100)),
 		)
-		err := commitTransactionAndUpsertAccounts(ctx, store, &tx)
+		err := store.CommitTransaction(ctx, &tx, nil)
 		require.NoError(t, err)
 	}
 
@@ -129,7 +130,7 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 			ledger.NewPosting("world", "alice", "USD", big.NewInt(100)),
 		).
 		WithTimestamp(now.Add(-3 * time.Hour))
-	err := commitTransactionAndUpsertAccounts(ctx, store, &tx1)
+	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
 
 	tx2 := ledger.NewTransaction().
@@ -137,7 +138,7 @@ func TestTransactionUpdateMetadata(t *testing.T) {
 			ledger.NewPosting("world", "polo", "USD", big.NewInt(200)),
 		).
 		WithTimestamp(now.Add(-2 * time.Hour))
-	err = commitTransactionAndUpsertAccounts(ctx, store, &tx2)
+	err = store.CommitTransaction(ctx, &tx2, nil)
 	require.NoError(t, err)
 
 	// Update their metadata
@@ -188,7 +189,7 @@ func TestTransactionDeleteMetadata(t *testing.T) {
 		).
 		WithMetadata(metadata.Metadata{"foo1": "bar1", "foo2": "bar2"}).
 		WithTimestamp(now.Add(-3 * time.Hour)))
-	err := commitTransactionAndUpsertAccounts(ctx, store, tx1)
+	err := store.CommitTransaction(ctx, tx1, nil)
 	require.NoError(t, err)
 
 	// Get from database and check metadata presence
@@ -234,7 +235,7 @@ func TestTransactionsCommit(t *testing.T) {
 		tx1 := ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("account:1", "account:2", "USD", big.NewInt(100)),
 		)
-		err := commitTransactionAndUpsertAccounts(ctx, store, &tx1)
+		err := store.CommitTransaction(ctx, &tx1, nil)
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), *tx1.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
@@ -256,7 +257,7 @@ func TestTransactionsCommit(t *testing.T) {
 		tx2 := ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("account:2", "account:3", "USD", big.NewInt(100)),
 		)
-		err = commitTransactionAndUpsertAccounts(ctx, store, &tx2)
+		err = store.CommitTransaction(ctx, &tx2, nil)
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), *tx2.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
@@ -282,7 +283,7 @@ func TestTransactionsCommit(t *testing.T) {
 		tx3 := ledger.NewTransaction().WithPostings(
 			ledger.NewPosting("account:x", "account:x", "USD", big.NewInt(100)),
 		)
-		err := commitTransactionAndUpsertAccounts(ctx, store, &tx3)
+		err := store.CommitTransaction(ctx, &tx3, nil)
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), *tx3.ID)
 		require.Equal(t, ledger.PostCommitVolumes{
@@ -331,6 +332,7 @@ func TestTransactionsCommit(t *testing.T) {
 				pointer.For(ledger.NewTransaction().WithPostings(
 					ledger.NewPosting("account:1", "account:2", "USD", big.NewInt(100)),
 				)),
+				nil,
 			)
 		}()
 
@@ -369,6 +371,7 @@ func TestTransactionsCommit(t *testing.T) {
 				pointer.For(ledger.NewTransaction().WithPostings(
 					ledger.NewPosting("account:2", "account:1", "USD", big.NewInt(100)),
 				)),
+				nil,
 			)
 		}()
 
@@ -426,7 +429,7 @@ func TestTransactionsCommit(t *testing.T) {
 				tx := ledger.NewTransaction().WithPostings(
 					ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
 				)
-				err = commitTransactionAndUpsertAccounts(ctx, store, &tx)
+				err = store.CommitTransaction(ctx, &tx, nil)
 				if err != nil {
 					errChan <- err
 					return
@@ -493,28 +496,28 @@ func TestInsertTransactionInPast(t *testing.T) {
 	tx1 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
 	).WithTimestamp(now)
-	err := commitTransactionAndUpsertAccounts(ctx, store, &tx1)
+	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
 
 	tx2 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("bank", "user1", "USD/2", big.NewInt(50)),
 	).WithTimestamp(now.Add(time.Hour))
 
-	err = commitTransactionAndUpsertAccounts(ctx, store, &tx2)
+	err = store.CommitTransaction(ctx, &tx2, nil)
 	require.NoError(t, err)
 
 	// Insert in past must modify pre/post commit volumes of tx2
 	tx3 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("bank", "user2", "USD/2", big.NewInt(50)),
 	).WithTimestamp(now.Add(30 * time.Minute))
-	err = commitTransactionAndUpsertAccounts(ctx, store, &tx3)
+	err = store.CommitTransaction(ctx, &tx3, nil)
 	require.NoError(t, err)
 
 	// Insert before the oldest tx must update first_usage of involved account
 	tx4 := ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "bank", "USD/2", big.NewInt(100)),
 	).WithTimestamp(now.Add(-time.Minute))
-	err = commitTransactionAndUpsertAccounts(ctx, store, &tx4)
+	err = store.CommitTransaction(ctx, &tx4, nil)
 	require.NoError(t, err)
 
 	tx2FromDatabase, err := store.Transactions().GetOne(ctx, common.ResourceQuery[any]{
@@ -553,7 +556,7 @@ func TestTransactionsRevert(t *testing.T) {
 		).
 		WithMetadata(metadata.Metadata{"category": "1"}).
 		WithTimestamp(now.Add(-3 * time.Hour))
-	err := commitTransactionAndUpsertAccounts(ctx, store, &tx1)
+	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
 
 	// Revert the tx
@@ -673,9 +676,8 @@ func TestTransactionsList(t *testing.T) {
 			ledger.NewPosting("world", "alice", "EUR", big.NewInt(100)),
 		).
 		WithMetadata(metadata.Metadata{"category": "1"}).
-		WithReference("tx1").
 		WithTimestamp(now.Add(-3 * time.Hour))
-	err := commitTransactionAndUpsertAccounts(ctx, store, &tx1)
+	err := store.CommitTransaction(ctx, &tx1, nil)
 	require.NoError(t, err)
 
 	tx2 := ledger.NewTransaction().
@@ -683,9 +685,8 @@ func TestTransactionsList(t *testing.T) {
 			ledger.NewPosting("world", "bob", "USD", big.NewInt(100)),
 		).
 		WithMetadata(metadata.Metadata{"category": "2"}).
-		WithReference("tx2").
 		WithTimestamp(now.Add(-2 * time.Hour))
-	err = commitTransactionAndUpsertAccounts(ctx, store, &tx2)
+	err = store.CommitTransaction(ctx, &tx2, nil)
 	require.NoError(t, err)
 
 	tx3BeforeRevert := ledger.NewTransaction().
@@ -694,7 +695,7 @@ func TestTransactionsList(t *testing.T) {
 		).
 		WithMetadata(metadata.Metadata{"category": "3"}).
 		WithTimestamp(now.Add(-time.Hour))
-	err = commitTransactionAndUpsertAccounts(ctx, store, &tx3BeforeRevert)
+	err = store.CommitTransaction(ctx, &tx3BeforeRevert, nil)
 	require.NoError(t, err)
 
 	_, hasBeenReverted, err := store.RevertTransaction(ctx, *tx3BeforeRevert.ID, time.Time{})
@@ -702,7 +703,7 @@ func TestTransactionsList(t *testing.T) {
 	require.True(t, hasBeenReverted)
 
 	tx4 := tx3BeforeRevert.Reverse().WithTimestamp(now)
-	err = commitTransactionAndUpsertAccounts(ctx, store, &tx4)
+	err = store.CommitTransaction(ctx, &tx4, nil)
 	require.NoError(t, err)
 
 	tx3UpdatedWithMetadata, _, err := store.UpdateTransactionMetadata(ctx, *tx3BeforeRevert.ID, metadata.Metadata{
@@ -726,7 +727,7 @@ func TestTransactionsList(t *testing.T) {
 			ledger.NewPosting("users:marley", "sellers:amazon", "USD", big.NewInt(100)),
 		).
 		WithTimestamp(now)
-	err = commitTransactionAndUpsertAccounts(ctx, store, &tx5)
+	err = store.CommitTransaction(ctx, &tx5, nil)
 	require.NoError(t, err)
 
 	type testCase struct {
@@ -855,72 +856,6 @@ func TestTransactionsList(t *testing.T) {
 				},
 			},
 			expected: []ledger.Transaction{tx5, tx4},
-		},
-		{
-			name: "filter using gte reverted_at",
-			query: common.InitialPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Gte("reverted_at", func() time.Time {
-						// Get reverted_at from tx3, subtract a minute to include it
-						if tx3.RevertedAt != nil {
-							return tx3.RevertedAt.Add(-time.Minute)
-						}
-						return now
-					}()),
-				},
-			},
-			expected: []ledger.Transaction{tx3},
-		},
-		{
-			name: "filter using lte reverted_at",
-			query: common.InitialPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Lte("reverted_at", func() time.Time {
-						// Get reverted_at from tx3, add a minute to include it
-						if tx3.RevertedAt != nil {
-							return tx3.RevertedAt.Add(time.Minute)
-						}
-						return now
-					}()),
-				},
-			},
-			expected: []ledger.Transaction{tx3},
-		},
-		{
-			name: "filter using gte reverted_at with future date",
-			query: common.InitialPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Gte("reverted_at", now.Add(time.Hour)),
-				},
-			},
-			expected: []ledger.Transaction{},
-		},
-		{
-			name: "filter using lte reverted_at with past date",
-			query: common.InitialPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.Lte("reverted_at", now.Add(-2*time.Hour)),
-				},
-			},
-			expected: []ledger.Transaction{},
-		},
-		{
-			name: "filter using $in on addresses",
-			query: common.InitialPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.In("account", []any{"alice", "bob"}),
-				},
-			},
-			expected: []ledger.Transaction{tx2, tx1},
-		},
-		{
-			name: "filter using $in on references",
-			query: common.InitialPaginatedQuery[any]{
-				Options: common.ResourceQuery[any]{
-					Builder: query.In("reference", []any{"tx1", "not-existing"}),
-				},
-			},
-			expected: []ledger.Transaction{tx1},
 		},
 	}
 

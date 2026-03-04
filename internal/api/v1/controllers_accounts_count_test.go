@@ -1,23 +1,23 @@
 package v1
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
-
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/query"
-
 	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	ledgerstorage "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/formancehq/ledger/internal/storage/ledger"
+
+	"errors"
+
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/query"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestAccountsCount(t *testing.T) {
@@ -89,7 +89,7 @@ func TestAccountsCount(t *testing.T) {
 			expectStatusCode:  http.StatusBadRequest,
 			expectedErrorCode: common.ErrValidation,
 			expectBackendCall: true,
-			returnErr:         ledgerstorage.ErrMissingFeature{},
+			returnErr:         ledger.ErrMissingFeature{},
 			expectQuery:       storagecommon.ResourceQuery[any]{},
 		},
 		{

@@ -2,18 +2,15 @@ package testserver
 
 import (
 	"context"
-	"sync"
-	"testing"
-
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/pkg/errors"
-
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/pointer"
-
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	clickhousedriver "github.com/formancehq/ledger/internal/replication/drivers/clickhouse"
+	"github.com/pkg/errors"
+	"sync"
+	"testing"
 )
 
 type ClickhouseDriver struct {

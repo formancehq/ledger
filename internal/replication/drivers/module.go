@@ -1,9 +1,8 @@
 package drivers
 
 import (
-	"go.uber.org/fx"
-
 	"github.com/formancehq/ledger/internal/storage/system"
+	"go.uber.org/fx"
 )
 
 // NewFXModule create a new fx module

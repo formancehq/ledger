@@ -136,8 +136,7 @@ Accept: application/json
 |---|---|---|---|---|
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|includeDeleted|query|boolean|false|If true, include deleted ledgers in the results. By default, deleted ledgers are excluded.|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -149,9 +148,7 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**includeDeleted**: If true, include deleted ledgers in the results. By default, deleted ledgers are excluded.
-
-**sort**: Sort results using a field name and order (ascending or descending).
+**sort**: Sort results using a field name and order (ascending or descending). 
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
@@ -164,13 +161,12 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+    "next": "",
     "data": [
       {
         "name": "string",
         "addedAt": "2019-08-24T14:15:22Z",
         "bucket": "string",
-        "deletedAt": "2019-08-24T14:15:22Z",
         "metadata": {
           "admin": "true"
         },
@@ -228,7 +224,6 @@ Accept: application/json
     "name": "string",
     "addedAt": "2019-08-24T14:15:22Z",
     "bucket": "string",
-    "deletedAt": "2019-08-24T14:15:22Z",
     "metadata": {
       "admin": "true"
     },
@@ -313,383 +308,6 @@ Accept: application/json
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
 Authorization ( Scopes: ledger:write )
-</aside>
-
-## Insert a schema for a ledger
-
-<a id="opIdv2InsertSchema"></a>
-
-> Code samples
-
-```http
-POST http://localhost:8080/v2/{ledger}/schemas/{version} HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
-Idempotency-Key: string
-
-```
-
-`POST /v2/{ledger}/schemas/{version}`
-
-> Body parameter
-
-```json
-{
-  "chart": {
-    "users": {
-      "$userID": {
-        ".pattern": "^[0-9]{16}$"
-      }
-    }
-  },
-  "transactions": {
-    "property1": {
-      "description": "string",
-      "script": "string",
-      "runtime": "experimental-interpreter"
-    },
-    "property2": {
-      "description": "string",
-      "script": "string",
-      "runtime": "experimental-interpreter"
-    }
-  },
-  "queries": {
-    "property1": {
-      "description": "string",
-      "resource": "transactions",
-      "params": {
-        "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
-        "resource": "accounts"
-      },
-      "vars": {
-        "property1": {
-          "type": "string",
-          "default": null
-        },
-        "property2": {
-          "type": "string",
-          "default": null
-        }
-      },
-      "body": {}
-    },
-    "property2": {
-      "description": "string",
-      "resource": "transactions",
-      "params": {
-        "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
-        "resource": "accounts"
-      },
-      "vars": {
-        "property1": {
-          "type": "string",
-          "default": null
-        },
-        "property2": {
-          "type": "string",
-          "default": null
-        }
-      },
-      "body": {}
-    }
-  }
-}
-```
-
-<h3 id="insert-a-schema-for-a-ledger-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|Idempotency-Key|header|string|false|Use an idempotency key|
-|body|body|[V2SchemaData](#schemav2schemadata)|true|none|
-|ledger|path|string|true|Name of the ledger.|
-|version|path|string|true|Schema version.|
-
-> Example responses
-
-> default Response
-
-```json
-{
-  "errorCode": "VALIDATION",
-  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
-}
-```
-
-<h3 id="insert-a-schema-for-a-ledger-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Schema inserted successfully|None|
-|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
-
-### Response Headers
-
-|Status|Header|Type|Format|Description|
-|---|---|---|---|---|
-|204|Idempotency-Hit|string||Indicates that the request was processed using an idempotency key that was already used|
-
-<aside class="warning">
-To perform this operation, you must be authenticated by means of one of the following methods:
-Authorization ( Scopes: ledger:write )
-</aside>
-
-## Get a schema for a ledger by version
-
-<a id="opIdv2GetSchema"></a>
-
-> Code samples
-
-```http
-GET http://localhost:8080/v2/{ledger}/schemas/{version} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
-
-```
-
-`GET /v2/{ledger}/schemas/{version}`
-
-<h3 id="get-a-schema-for-a-ledger-by-version-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|ledger|path|string|true|Name of the ledger.|
-|version|path|string|true|Schema version.|
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "data": {
-    "version": "v1.0.0",
-    "createdAt": "2023-01-01T00:00:00Z",
-    "chart": {
-      "users": {
-        "$userID": {
-          ".pattern": "^[0-9]{16}$"
-        }
-      }
-    },
-    "transactions": {
-      "property1": {
-        "description": "string",
-        "script": "string",
-        "runtime": "experimental-interpreter"
-      },
-      "property2": {
-        "description": "string",
-        "script": "string",
-        "runtime": "experimental-interpreter"
-      }
-    },
-    "queries": {
-      "property1": {
-        "description": "string",
-        "resource": "transactions",
-        "params": {
-          "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
-          "resource": "accounts"
-        },
-        "vars": {
-          "property1": {
-            "type": "string",
-            "default": null
-          },
-          "property2": {
-            "type": "string",
-            "default": null
-          }
-        },
-        "body": {}
-      },
-      "property2": {
-        "description": "string",
-        "resource": "transactions",
-        "params": {
-          "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
-          "resource": "accounts"
-        },
-        "vars": {
-          "property1": {
-            "type": "string",
-            "default": null
-          },
-          "property2": {
-            "type": "string",
-            "default": null
-          }
-        },
-        "body": {}
-      }
-    }
-  }
-}
-```
-
-<h3 id="get-a-schema-for-a-ledger-by-version-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Schema retrieved successfully|[V2SchemaResponse](#schemav2schemaresponse)|
-|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
-
-<aside class="warning">
-To perform this operation, you must be authenticated by means of one of the following methods:
-Authorization ( Scopes: ledger:read )
-</aside>
-
-## List all schemas for a ledger
-
-<a id="opIdv2ListSchemas"></a>
-
-> Code samples
-
-```http
-GET http://localhost:8080/v2/{ledger}/schemas HTTP/1.1
-Host: localhost:8080
-Accept: application/json
-
-```
-
-`GET /v2/{ledger}/schemas`
-
-<h3 id="list-all-schemas-for-a-ledger-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|cursor|query|string|false|The pagination cursor value|
-|pageSize|query|integer|false|The maximum number of results to return per page|
-|sort|query|string|false|The field to sort by|
-|order|query|string|false|The sort order|
-|ledger|path|string|true|Name of the ledger.|
-
-#### Enumerated Values
-
-|Parameter|Value|
-|---|---|
-|sort|created_at|
-|order|asc|
-|order|desc|
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "cursor": {
-    "data": [
-      {
-        "version": "v1.0.0",
-        "createdAt": "2023-01-01T00:00:00Z",
-        "chart": {
-          "users": {
-            "$userID": {
-              ".pattern": "^[0-9]{16}$"
-            }
-          }
-        },
-        "transactions": {
-          "property1": {
-            "description": "string",
-            "script": "string",
-            "runtime": "experimental-interpreter"
-          },
-          "property2": {
-            "description": "string",
-            "script": "string",
-            "runtime": "experimental-interpreter"
-          }
-        },
-        "queries": {
-          "property1": {
-            "description": "string",
-            "resource": "transactions",
-            "params": {
-              "pageSize": 100,
-              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-              "expand": "string",
-              "pit": "2019-08-24T14:15:22Z",
-              "sort": {},
-              "resource": "accounts"
-            },
-            "vars": {
-              "property1": {
-                "type": "string",
-                "default": null
-              },
-              "property2": {
-                "type": "string",
-                "default": null
-              }
-            },
-            "body": {}
-          },
-          "property2": {
-            "description": "string",
-            "resource": "transactions",
-            "params": {
-              "pageSize": 100,
-              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-              "expand": "string",
-              "pit": "2019-08-24T14:15:22Z",
-              "sort": {},
-              "resource": "accounts"
-            },
-            "vars": {
-              "property1": {
-                "type": "string",
-                "default": null
-              },
-              "property2": {
-                "type": "string",
-                "default": null
-              }
-            },
-            "body": {}
-          }
-        }
-      }
-    ],
-    "hasMore": true,
-    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
-    "pageSize": 0
-  }
-}
-```
-
-<h3 id="list-all-schemas-for-a-ledger-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Schemas retrieved successfully|[V2SchemasCursorResponse](#schemav2schemascursorresponse)|
-|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
-
-<aside class="warning">
-To perform this operation, you must be authenticated by means of one of the following methods:
-Authorization ( Scopes: ledger:read )
 </aside>
 
 ## Update ledger metadata
@@ -883,7 +501,6 @@ Accept: application/json
         }
       ],
       "script": {
-        "template": "CUSTOMER_DEPOSIT",
         "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
         "vars": {
           "user": "users:042"
@@ -916,7 +533,6 @@ Accept: application/json
 |continueOnFailure|query|boolean|false|Continue on failure|
 |atomic|query|boolean|false|Make bulk atomic|
 |parallel|query|boolean|false|Process bulk elements in parallel|
-|schemaVersion|query|string|false|Default schema version to use for validation (can be overridden per element)|
 |body|body|[V2Bulk](#schemav2bulk)|true|none|
 
 > Example responses
@@ -1011,8 +627,7 @@ Accept: application/json
               "balance": 90
             }
           }
-        },
-        "template": "string"
+        }
       }
     }
   ],
@@ -1127,7 +742,7 @@ List accounts from a ledger, sorted by address in descending order.
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |expand|query|string|false|none|
 |pit|query|string(date-time)|false|none|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -1139,7 +754,7 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**sort**: Sort results using a field name and order (ascending or descending).
+**sort**: Sort results using a field name and order (ascending or descending). 
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
@@ -1148,12 +763,11 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 ```json
 {
-  "resource": "accounts",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+    "next": "",
     "data": [
       {
         "address": "users:001",
@@ -1323,7 +937,6 @@ Idempotency-Key: string
 |address|path|string|true|Exact address of the account. It must match the following regular expressions pattern:|
 |dryRun|query|boolean|false|Set the dry run mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
-|schemaVersion|query|string|false|Schema version to use for validation|
 |body|body|[V2Metadata](#schemav2metadata)|true|metadata|
 
 #### Detailed descriptions
@@ -1408,7 +1021,7 @@ Delete metadata by key
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Key deleted|None|
+|2XX|Unknown|Key deleted|None|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
 
 <h3 id="delete-metadata-by-key-responseschema">Response Schema</h3>
@@ -1417,7 +1030,7 @@ Delete metadata by key
 
 |Status|Header|Type|Format|Description|
 |---|---|---|---|---|
-|204|Idempotency-Hit|string||Indicates that the request was processed using an idempotency key that was already used|
+|2XX|Idempotency-Hit|string||Indicates that the request was processed using an idempotency key that was already used|
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -1567,7 +1180,7 @@ List transactions from a ledger, sorted by id in descending order.
 |pit|query|string(date-time)|false|none|
 |order|query|string|false|Deprecated: Use sort param|
 |reverse|query|boolean|false|none|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -1579,7 +1192,7 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**sort**: Sort results using a field name and order (ascending or descending).
+**sort**: Sort results using a field name and order (ascending or descending). 
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 #### Enumerated Values
@@ -1594,12 +1207,11 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 ```json
 {
-  "resource": "transactions",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+    "next": "",
     "data": [
       {
         "insertedAt": "2019-08-24T14:15:22Z",
@@ -1683,8 +1295,7 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
               "balance": 90
             }
           }
-        },
-        "template": "string"
+        }
       }
     ]
   }
@@ -1734,7 +1345,6 @@ Idempotency-Key: string
     }
   ],
   "script": {
-    "template": "CUSTOMER_DEPOSIT",
     "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
     "vars": {
       "user": "users:042"
@@ -1765,7 +1375,6 @@ Idempotency-Key: string
 |dryRun|query|boolean|false|Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
 |force|query|boolean|false|Disable balance checks when passing postings|
-|schemaVersion|query|string|false|Schema version to use for validation|
 |body|body|[V2PostTransaction](#schemav2posttransaction)|true|The request body must contain at least one of the following objects:|
 
 #### Detailed descriptions
@@ -1862,8 +1471,7 @@ Idempotency-Key: string
           "balance": 90
         }
       }
-    },
-    "template": "string"
+    }
   }
 }
 ```
@@ -1998,8 +1606,7 @@ Accept: application/json
           "balance": 90
         }
       }
-    },
-    "template": "string"
+    }
   }
 }
 ```
@@ -2049,7 +1656,6 @@ Idempotency-Key: string
 |id|path|integer(bigint)|true|Transaction ID.|
 |dryRun|query|boolean|false|Set the dryRun mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
-|schemaVersion|query|string|false|Schema version to use for validation|
 |body|body|[V2Metadata](#schemav2metadata)|true|metadata|
 
 > Example responses
@@ -2121,7 +1727,6 @@ Idempotency-Key: string
 |force|query|boolean|false|Force revert|
 |atEffectiveDate|query|boolean|false|Revert transaction at effective date of the original tx|
 |dryRun|query|boolean|false|Set the dryRun mode. dry run mode doesn't add the logs to the database or publish a message to the message broker.|
-|schemaVersion|query|string|false|Schema version to use for validation|
 |Idempotency-Key|header|string|false|Use an idempotency key|
 |body|body|[V2RevertTransactionRequest](#schemav2reverttransactionrequest)|false|none|
 
@@ -2213,8 +1818,7 @@ Idempotency-Key: string
           "balance": 90
         }
       }
-    },
-    "template": "string"
+    }
   }
 }
 ```
@@ -2326,7 +1930,7 @@ Accept: application/json
 |startTime|query|string(date-time)|false|none|
 |insertionDate|query|boolean|false|Use insertion date instead of effective date|
 |groupBy|query|integer(int64)|false|Group volumes and balance by the level of the segment of the address|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -2338,7 +1942,7 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**sort**: Sort results using a field name and order (ascending or descending).
+**sort**: Sort results using a field name and order (ascending or descending). 
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
@@ -2347,12 +1951,11 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 ```json
 {
-  "resource": "volumes",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+    "next": "",
     "data": [
       {
         "account": "string",
@@ -2410,7 +2013,7 @@ List the logs from a ledger, sorted by ID in descending order.
 |pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
 |cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |pit|query|string(date-time)|false|none|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
+|sort|query|string|false|Sort results using a field name and order (ascending or descending). |
 |body|body|object|true|none|
 
 #### Detailed descriptions
@@ -2422,7 +2025,7 @@ Set to the value of next for the next page of results.
 Set to the value of previous for the previous page of results.
 No other parameters can be set when this parameter is set.
 
-**sort**: Sort results using a field name and order (ascending or descending).
+**sort**: Sort results using a field name and order (ascending or descending). 
 Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 
 > Example responses
@@ -2431,41 +2034,18 @@ Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is ei
 
 ```json
 {
-  "resource": "logs",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+    "next": "",
     "data": [
       {
         "id": 1234,
         "type": "NEW_TRANSACTION",
-        "data": {
-          "transaction": {
-            "id": 1234,
-            "postings": [
-              {
-                "source": "world",
-                "destination": "users:001",
-                "amount": 100,
-                "asset": "USD/2"
-              }
-            ],
-            "metadata": {},
-            "timestamp": "2024-01-15T10:30:00Z",
-            "insertedAt": "2024-01-15T10:30:00Z",
-            "reverted": false
-          },
-          "accountMetadata": {
-            "users:001": {
-              "created_by": "system"
-            }
-          }
-        },
+        "data": {},
         "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e",
-        "date": "2019-08-24T14:15:22Z",
-        "schemaVersion": "v1.0.0"
+        "date": "2019-08-24T14:15:22Z"
       }
     ]
   }
@@ -2575,254 +2155,6 @@ To perform this operation, you must be authenticated by means of one of the foll
 Authorization ( Scopes: ledger:write )
 </aside>
 
-## Run a query template
-
-<a id="opIdv2RunQuery"></a>
-
-> Code samples
-
-```http
-POST http://localhost:8080/v2/{ledger}/queries/{id}/run?schemaVersion=v1.0.0 HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json
-
-```
-
-`POST /v2/{ledger}/queries/{id}/run`
-
-Run a query template on a ledger
-
-> Body parameter
-
-```json
-{
-  "cursor": "string",
-  "params": {
-    "pageSize": 100,
-    "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-    "expand": "string",
-    "pit": "2019-08-24T14:15:22Z",
-    "sort": {},
-    "resource": "accounts"
-  },
-  "vars": {
-    "property1": "string",
-    "property2": "string"
-  }
-}
-```
-
-<h3 id="run-a-query-template-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|ledger|path|string|true|Name of the ledger.|
-|schemaVersion|query|string|true|Schema version to use for validation|
-|id|path|string|true|Query template ID.|
-|pageSize|query|integer(int64)|false|The maximum number of results to return per page.|
-|cursor|query|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|expand|query|string|false|none|
-|pit|query|string(date-time)|false|none|
-|order|query|string|false|Deprecated: Use sort param|
-|reverse|query|boolean|false|none|
-|sort|query|string|false|Sort results using a field name and order (ascending or descending).|
-|body|body|object|true|none|
-|» cursor|body|string|false|none|
-|» params|body|[V2QueryParams](#schemav2queryparams)|false|none|
-|»» pageSize|body|integer(int64)|false|The maximum number of results to return per page.|
-|»» cursor|body|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
-|»» expand|body|string|false|none|
-|»» pit|body|string(date-time)|false|none|
-|»» sort|body|object|false|Sort results using a field name and order (ascending or descending).|
-|»» *anonymous*|body|object|false|none|
-|»»» resource|body|string|false|none|
-|»» *anonymous*|body|object|false|none|
-|»»» resource|body|string|false|none|
-|»» *anonymous*|body|object|false|none|
-|»»» resource|body|string|false|none|
-|»» *anonymous*|body|object|false|none|
-|»»» resource|body|string|false|none|
-|»»» insertionDate|body|boolean|false|none|
-|»»» groupBy|body|integer|false|none|
-|» vars|body|object|false|none|
-|»» **additionalProperties**|body|string|false|none|
-
-#### Detailed descriptions
-
-**pageSize**: The maximum number of results to return per page.
-
-**cursor**: Parameter used in pagination requests. Maximum page size is set to 15.
-Set to the value of next for the next page of results.
-Set to the value of previous for the previous page of results.
-No other parameters can be set when this parameter is set.
-
-**sort**: Sort results using a field name and order (ascending or descending).
-Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
-
-**»» cursor**: Parameter used in pagination requests. Maximum page size is set to 15.
-Set to the value of next for the next page of results.
-Set to the value of previous for the previous page of results.
-No other parameters can be set when this parameter is set.
-
-**»» sort**: Sort results using a field name and order (ascending or descending).
-Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
-
-#### Enumerated Values
-
-|Parameter|Value|
-|---|---|
-|order|effective|
-|»»» resource|accounts|
-|»»» resource|transactions|
-|»»» resource|logs|
-|»»» resource|volumes|
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "resource": "transactions",
-  "cursor": {
-    "pageSize": 15,
-    "hasMore": false,
-    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
-    "data": [
-      {
-        "insertedAt": "2019-08-24T14:15:22Z",
-        "updatedAt": "2019-08-24T14:15:22Z",
-        "timestamp": "2019-08-24T14:15:22Z",
-        "postings": [
-          {
-            "amount": 100,
-            "asset": "COIN",
-            "destination": "users:002",
-            "source": "users:001"
-          }
-        ],
-        "reference": "ref:001",
-        "metadata": {
-          "admin": "true"
-        },
-        "id": 0,
-        "reverted": true,
-        "revertedAt": "2019-08-24T14:15:22Z",
-        "preCommitVolumes": {
-          "orders:1": {
-            "USD": {
-              "input": 100,
-              "output": 10,
-              "balance": 90
-            }
-          },
-          "orders:2": {
-            "USD": {
-              "input": 100,
-              "output": 10,
-              "balance": 90
-            }
-          }
-        },
-        "postCommitVolumes": {
-          "orders:1": {
-            "USD": {
-              "input": 100,
-              "output": 10,
-              "balance": 90
-            }
-          },
-          "orders:2": {
-            "USD": {
-              "input": 100,
-              "output": 10,
-              "balance": 90
-            }
-          }
-        },
-        "preCommitEffectiveVolumes": {
-          "orders:1": {
-            "USD": {
-              "input": 100,
-              "output": 10,
-              "balance": 90
-            }
-          },
-          "orders:2": {
-            "USD": {
-              "input": 100,
-              "output": 10,
-              "balance": 90
-            }
-          }
-        },
-        "postCommitEffectiveVolumes": {
-          "orders:1": {
-            "USD": {
-              "input": 100,
-              "output": 10,
-              "balance": 90
-            }
-          },
-          "orders:2": {
-            "USD": {
-              "input": 100,
-              "output": 10,
-              "balance": 90
-            }
-          }
-        },
-        "template": "string"
-      }
-    ]
-  }
-}
-```
-
-<h3 id="run-a-query-template-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|OK|Inline|
-|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
-
-<h3 id="run-a-query-template-responseschema">Response Schema</h3>
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|resource|transactions|
-|resource|accounts|
-|resource|logs|
-|type|NEW_TRANSACTION|
-|type|SET_METADATA|
-|type|REVERTED_TRANSACTION|
-|type|DELETE_METADATA|
-|type|INSERTED_SCHEMA|
-|targetType|ACCOUNT|
-|targetType|TRANSACTION|
-|targetType|ACCOUNT|
-|targetType|TRANSACTION|
-|runtime|experimental-interpreter|
-|runtime|machine|
-|resource|transactions|
-|resource|accounts|
-|resource|logs|
-|resource|volumes|
-|resource|accounts|
-|resource|transactions|
-|resource|logs|
-|resource|volumes|
-|resource|volumes|
-
-<aside class="warning">
-To perform this operation, you must be authenticated by means of one of the following methods:
-Authorization ( Scopes: ledger:read )
-</aside>
-
 ## List exporters
 
 <a id="opIdv2ListExporters"></a>
@@ -2849,7 +2181,7 @@ Accept: application/json
       "pageSize": 15,
       "hasMore": false,
       "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-      "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+      "next": "",
       "data": [
         {
           "driver": "string",
@@ -3177,102 +2509,6 @@ Accept: application/json
 This operation does not require authentication
 </aside>
 
-## Delete bucket
-
-<a id="opIdv2DeleteBucket"></a>
-
-> Code samples
-
-```http
-DELETE http://localhost:8080/v2/_/buckets/{bucket} HTTP/1.1
-Host: localhost:8080
-Accept: application/json
-
-```
-
-`DELETE /v2/_/buckets/{bucket}`
-
-Delete a bucket by marking all ledgers in the bucket as deleted (soft delete). All ledgers in the bucket will have their deleted_at field set to the current timestamp.
-
-<h3 id="delete-bucket-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|bucket|path|string|true|The bucket name|
-
-> Example responses
-
-> 404 Response
-
-```json
-{
-  "errorCode": "VALIDATION",
-  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
-}
-```
-
-<h3 id="delete-bucket-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Bucket deleted|None|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Bucket not found|[V2ErrorResponse](#schemav2errorresponse)|
-|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
-
-<aside class="warning">
-To perform this operation, you must be authenticated by means of one of the following methods:
-Authorization ( Scopes: ledger:write )
-</aside>
-
-## Restore bucket
-
-<a id="opIdv2RestoreBucket"></a>
-
-> Code samples
-
-```http
-POST http://localhost:8080/v2/_/buckets/{bucket}/restore HTTP/1.1
-Host: localhost:8080
-Accept: application/json
-
-```
-
-`POST /v2/_/buckets/{bucket}/restore`
-
-Restore a deleted bucket by unmarking all ledgers in the bucket as deleted. All ledgers in the bucket will have their deleted_at field set to NULL.
-
-<h3 id="restore-bucket-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|bucket|path|string|true|The bucket name|
-
-> Example responses
-
-> 404 Response
-
-```json
-{
-  "errorCode": "VALIDATION",
-  "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
-}
-```
-
-<h3 id="restore-bucket-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Bucket restored|None|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Bucket not found|[V2ErrorResponse](#schemav2errorresponse)|
-|default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
-
-<aside class="warning">
-To perform this operation, you must be authenticated by means of one of the following methods:
-Authorization ( Scopes: ledger:write )
-</aside>
-
 ## List pipelines
 
 <a id="opIdv2ListPipelines"></a>
@@ -3305,7 +2541,7 @@ Accept: application/json
       "pageSize": 15,
       "hasMore": false,
       "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-      "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+      "next": "",
       "data": [
         {
           "id": "string",
@@ -3735,7 +2971,7 @@ This operation does not require authentication
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+    "next": "",
     "data": [
       {
         "driver": "string",
@@ -3773,7 +3009,7 @@ This operation does not require authentication
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+    "next": "",
     "data": [
       {
         "id": "string",
@@ -3807,12 +3043,11 @@ This operation does not require authentication
 
 ```json
 {
-  "resource": "accounts",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+    "next": "",
     "data": [
       {
         "address": "users:001",
@@ -3857,19 +3092,12 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|resource|string|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
 |» data|[[V2Account](#schemav2account)]|true|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|resource|accounts|
 
 <h2 id="tocS_V2TransactionsCursorResponse">V2TransactionsCursorResponse</h2>
 <!-- backwards compatibility -->
@@ -3880,12 +3108,11 @@ This operation does not require authentication
 
 ```json
 {
-  "resource": "transactions",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+    "next": "",
     "data": [
       {
         "insertedAt": "2019-08-24T14:15:22Z",
@@ -3969,8 +3196,7 @@ This operation does not require authentication
               "balance": 90
             }
           }
-        },
-        "template": "string"
+        }
       }
     ]
   }
@@ -3982,19 +3208,12 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|resource|string|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
 |» data|[[V2Transaction](#schemav2transaction)]|true|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|resource|transactions|
 
 <h2 id="tocS_V2LogsCursorResponse">V2LogsCursorResponse</h2>
 <!-- backwards compatibility -->
@@ -4005,41 +3224,18 @@ This operation does not require authentication
 
 ```json
 {
-  "resource": "logs",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+    "next": "",
     "data": [
       {
         "id": 1234,
         "type": "NEW_TRANSACTION",
-        "data": {
-          "transaction": {
-            "id": 1234,
-            "postings": [
-              {
-                "source": "world",
-                "destination": "users:001",
-                "amount": 100,
-                "asset": "USD/2"
-              }
-            ],
-            "metadata": {},
-            "timestamp": "2024-01-15T10:30:00Z",
-            "insertedAt": "2024-01-15T10:30:00Z",
-            "reverted": false
-          },
-          "accountMetadata": {
-            "users:001": {
-              "created_by": "system"
-            }
-          }
-        },
+        "data": {},
         "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e",
-        "date": "2019-08-24T14:15:22Z",
-        "schemaVersion": "v1.0.0"
+        "date": "2019-08-24T14:15:22Z"
       }
     ]
   }
@@ -4051,19 +3247,12 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|resource|string|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
-|» data|[[V2Log](#schemav2log)]|true|none|[Represents an immutable log entry in the ledger. Each log captures an atomic operation<br>with its full payload, enabling audit trails and event sourcing patterns.<br>The data field structure depends on the log type.<br>]|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|resource|logs|
+|» data|[[V2Log](#schemav2log)]|true|none|none|
 
 <h2 id="tocS_V2AccountResponse">V2AccountResponse</h2>
 <!-- backwards compatibility -->
@@ -4149,12 +3338,11 @@ This operation does not require authentication
 
 ```json
 {
-  "resource": "volumes",
   "cursor": {
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+    "next": "",
     "data": [
       {
         "account": "string",
@@ -4173,19 +3361,12 @@ This operation does not require authentication
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|resource|string|false|none|none|
 |cursor|object|true|none|none|
 |» pageSize|integer(int64)|true|none|none|
 |» hasMore|boolean|true|none|none|
 |» previous|string|false|none|none|
 |» next|string|false|none|none|
 |» data|[[V2VolumesWithBalance](#schemav2volumeswithbalance)]|true|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|resource|volumes|
 
 <h2 id="tocS_V2VolumesWithBalance">V2VolumesWithBalance</h2>
 <!-- backwards compatibility -->
@@ -4451,8 +3632,7 @@ This operation does not require authentication
         "balance": 90
       }
     }
-  },
-  "template": "string"
+  }
 }
 
 ```
@@ -4474,7 +3654,6 @@ This operation does not require authentication
 |postCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
 |preCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
 |postCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
-|template|string|false|none|none|
 
 <h2 id="tocS_V2PostTransaction">V2PostTransaction</h2>
 <!-- backwards compatibility -->
@@ -4495,7 +3674,6 @@ This operation does not require authentication
     }
   ],
   "script": {
-    "template": "CUSTOMER_DEPOSIT",
     "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
     "vars": {
       "user": "users:042"
@@ -4526,16 +3704,22 @@ This operation does not require authentication
 |timestamp|string(date-time)|false|none|none|
 |postings|[[V2Posting](#schemav2posting)]|false|none|none|
 |script|object|false|none|none|
-|» template|string|false|none|none|
-|» plain|string|false|none|none|
+|» plain|string|true|none|none|
 |» vars|object|false|none|none|
 |»» **additionalProperties**|string|false|none|none|
-|runtime|[Runtime](#schemaruntime)|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|
+|runtime|string|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|
 |reference|string|false|none|none|
 |metadata|[V2Metadata](#schemav2metadata)|true|none|none|
 |accountMetadata|object|false|none|none|
 |» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|none|
 |force|boolean|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|runtime|experimental-interpreter|
+|runtime|machine|
 
 <h2 id="tocS_V2Stats">V2Stats</h2>
 <!-- backwards compatibility -->
@@ -4570,84 +3754,22 @@ This operation does not require authentication
 {
   "id": 1234,
   "type": "NEW_TRANSACTION",
-  "data": {
-    "transaction": {
-      "id": 1234,
-      "postings": [
-        {
-          "source": "world",
-          "destination": "users:001",
-          "amount": 100,
-          "asset": "USD/2"
-        }
-      ],
-      "metadata": {},
-      "timestamp": "2024-01-15T10:30:00Z",
-      "insertedAt": "2024-01-15T10:30:00Z",
-      "reverted": false
-    },
-    "accountMetadata": {
-      "users:001": {
-        "created_by": "system"
-      }
-    }
-  },
+  "data": {},
   "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e",
-  "date": "2019-08-24T14:15:22Z",
-  "schemaVersion": "v1.0.0"
+  "date": "2019-08-24T14:15:22Z"
 }
 
 ```
-
-Represents an immutable log entry in the ledger. Each log captures an atomic operation
-with its full payload, enabling audit trails and event sourcing patterns.
-The data field structure depends on the log type.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|integer(bigint)|true|none|Unique sequential identifier for this log entry within the ledger|
-|type|string|true|none|The type of operation this log represents|
-|data|any|true|none|The payload of the log entry. Structure depends on the log type:<br>- NEW_TRANSACTION: V2LogDataNewTransaction<br>- SET_METADATA: V2LogDataSetMetadata<br>- REVERTED_TRANSACTION: V2LogDataRevertedTransaction<br>- DELETE_METADATA: V2LogDataDeleteMetadata<br>- INSERTED_SCHEMA: V2LogDataInsertedSchema|
-
-oneOf
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|[V2LogDataNewTransaction](#schemav2logdatanewtransaction)|false|none|Payload for NEW_TRANSACTION log entries. Contains the created transaction and any account metadata set during creation.|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|[V2LogDataSetMetadata](#schemav2logdatasetmetadata)|false|none|Payload for SET_METADATA log entries. Contains the target entity and the metadata that was set.|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|[V2LogDataRevertedTransaction](#schemav2logdatarevertedtransaction)|false|none|Payload for REVERTED_TRANSACTION log entries. Contains both the original reverted transaction and the new reverting transaction.|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|[V2LogDataDeleteMetadata](#schemav2logdatadeletemetadata)|false|none|Payload for DELETE_METADATA log entries. Contains the target entity and the metadata key that was deleted.|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|[V2LogDataInsertedSchema](#schemav2logdatainsertedschema)|false|none|Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted into the ledger.|
-
-continued
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|hash|string|true|none|SHA256 hash of the log entry, chained from the previous log for integrity verification|
-|date|string(date-time)|true|none|Timestamp when the operation was recorded|
-|schemaVersion|string|false|none|Schema version used for validation when the log was created|
+|id|integer(bigint)|true|none|none|
+|type|string|true|none|none|
+|data|object|true|none|none|
+|hash|string|true|none|none|
+|date|string(date-time)|true|none|none|
 
 #### Enumerated Values
 
@@ -4657,414 +3779,6 @@ continued
 |type|SET_METADATA|
 |type|REVERTED_TRANSACTION|
 |type|DELETE_METADATA|
-|type|INSERTED_SCHEMA|
-
-<h2 id="tocS_V2LogTransaction">V2LogTransaction</h2>
-<!-- backwards compatibility -->
-<a id="schemav2logtransaction"></a>
-<a id="schema_V2LogTransaction"></a>
-<a id="tocSv2logtransaction"></a>
-<a id="tocsv2logtransaction"></a>
-
-```json
-{
-  "id": 0,
-  "postings": [
-    {
-      "amount": 100,
-      "asset": "COIN",
-      "destination": "users:002",
-      "source": "users:001"
-    }
-  ],
-  "metadata": {
-    "admin": "true"
-  },
-  "timestamp": "2019-08-24T14:15:22Z",
-  "reference": "string",
-  "insertedAt": "2019-08-24T14:15:22Z",
-  "updatedAt": "2019-08-24T14:15:22Z",
-  "revertedAt": "2019-08-24T14:15:22Z",
-  "reverted": true,
-  "template": "string",
-  "postCommitVolumes": {
-    "orders:1": {
-      "USD": {
-        "input": 100,
-        "output": 10,
-        "balance": 90
-      }
-    },
-    "orders:2": {
-      "USD": {
-        "input": 100,
-        "output": 10,
-        "balance": 90
-      }
-    }
-  },
-  "postCommitEffectiveVolumes": {
-    "orders:1": {
-      "USD": {
-        "input": 100,
-        "output": 10,
-        "balance": 90
-      }
-    },
-    "orders:2": {
-      "USD": {
-        "input": 100,
-        "output": 10,
-        "balance": 90
-      }
-    }
-  },
-  "preCommitVolumes": {
-    "orders:1": {
-      "USD": {
-        "input": 100,
-        "output": 10,
-        "balance": 90
-      }
-    },
-    "orders:2": {
-      "USD": {
-        "input": 100,
-        "output": 10,
-        "balance": 90
-      }
-    }
-  },
-  "preCommitEffectiveVolumes": {
-    "orders:1": {
-      "USD": {
-        "input": 100,
-        "output": 10,
-        "balance": 90
-      }
-    },
-    "orders:2": {
-      "USD": {
-        "input": 100,
-        "output": 10,
-        "balance": 90
-      }
-    }
-  }
-}
-
-```
-
-Transaction structure as it appears in log payloads
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|integer(bigint)|true|none|none|
-|postings|[[V2Posting](#schemav2posting)]|true|none|none|
-|metadata|[V2Metadata](#schemav2metadata)|true|none|none|
-|timestamp|string(date-time)|true|none|none|
-|reference|string|false|none|none|
-|insertedAt|string(date-time)|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-|revertedAt|string(date-time)|false|none|none|
-|reverted|boolean|true|none|Indicates if the transaction has been reverted|
-|template|string|false|none|Transaction template used|
-|postCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
-|postCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
-|preCommitVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
-|preCommitEffectiveVolumes|[V2AggregatedVolumes](#schemav2aggregatedvolumes)|false|none|none|
-
-<h2 id="tocS_V2LogDataNewTransaction">V2LogDataNewTransaction</h2>
-<!-- backwards compatibility -->
-<a id="schemav2logdatanewtransaction"></a>
-<a id="schema_V2LogDataNewTransaction"></a>
-<a id="tocSv2logdatanewtransaction"></a>
-<a id="tocsv2logdatanewtransaction"></a>
-
-```json
-{
-  "transaction": {
-    "id": 1234,
-    "postings": [
-      {
-        "source": "world",
-        "destination": "users:001",
-        "amount": 100,
-        "asset": "USD/2"
-      }
-    ],
-    "metadata": {},
-    "timestamp": "2024-01-15T10:30:00Z",
-    "insertedAt": "2024-01-15T10:30:00Z",
-    "reverted": false
-  },
-  "accountMetadata": {
-    "users:001": {
-      "created_by": "system"
-    }
-  }
-}
-
-```
-
-Payload for NEW_TRANSACTION log entries. Contains the created transaction and any account metadata set during creation.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|transaction|[V2LogTransaction](#schemav2logtransaction)|true|none|Transaction structure as it appears in log payloads|
-|accountMetadata|object|true|none|Metadata applied to accounts involved in the transaction|
-|» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|none|
-
-<h2 id="tocS_V2LogDataSetMetadata">V2LogDataSetMetadata</h2>
-<!-- backwards compatibility -->
-<a id="schemav2logdatasetmetadata"></a>
-<a id="schema_V2LogDataSetMetadata"></a>
-<a id="tocSv2logdatasetmetadata"></a>
-<a id="tocsv2logdatasetmetadata"></a>
-
-```json
-{
-  "targetType": "ACCOUNT",
-  "targetId": "users:001",
-  "metadata": {
-    "status": "active",
-    "tier": "premium"
-  }
-}
-
-```
-
-Payload for SET_METADATA log entries. Contains the target entity and the metadata that was set.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|targetType|string|true|none|Type of the target entity|
-|targetId|any|true|none|none|
-
-oneOf
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|string|false|none|Account address (when targetType is ACCOUNT)|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|integer(bigint)|false|none|Transaction ID (when targetType is TRANSACTION)|
-
-continued
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|metadata|[V2Metadata](#schemav2metadata)|true|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|targetType|ACCOUNT|
-|targetType|TRANSACTION|
-
-<h2 id="tocS_V2LogDataRevertedTransaction">V2LogDataRevertedTransaction</h2>
-<!-- backwards compatibility -->
-<a id="schemav2logdatarevertedtransaction"></a>
-<a id="schema_V2LogDataRevertedTransaction"></a>
-<a id="tocSv2logdatarevertedtransaction"></a>
-<a id="tocsv2logdatarevertedtransaction"></a>
-
-```json
-{
-  "revertedTransaction": {
-    "id": 1234,
-    "postings": [
-      {
-        "source": "world",
-        "destination": "users:001",
-        "amount": 100,
-        "asset": "USD/2"
-      }
-    ],
-    "metadata": {},
-    "timestamp": "2024-01-15T10:30:00Z",
-    "reverted": true
-  },
-  "transaction": {
-    "id": 1235,
-    "postings": [
-      {
-        "source": "users:001",
-        "destination": "world",
-        "amount": 100,
-        "asset": "USD/2"
-      }
-    ],
-    "metadata": {
-      "revert": "1234"
-    },
-    "timestamp": "2024-01-15T11:00:00Z",
-    "reverted": false
-  }
-}
-
-```
-
-Payload for REVERTED_TRANSACTION log entries. Contains both the original reverted transaction and the new reverting transaction.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|revertedTransaction|[V2LogTransaction](#schemav2logtransaction)|true|none|The original transaction that was reverted|
-|transaction|[V2LogTransaction](#schemav2logtransaction)|true|none|The new reverting transaction created to cancel the original|
-
-<h2 id="tocS_V2LogDataDeleteMetadata">V2LogDataDeleteMetadata</h2>
-<!-- backwards compatibility -->
-<a id="schemav2logdatadeletemetadata"></a>
-<a id="schema_V2LogDataDeleteMetadata"></a>
-<a id="tocSv2logdatadeletemetadata"></a>
-<a id="tocsv2logdatadeletemetadata"></a>
-
-```json
-{
-  "targetType": "ACCOUNT",
-  "targetId": "users:001",
-  "key": "temporary_flag"
-}
-
-```
-
-Payload for DELETE_METADATA log entries. Contains the target entity and the metadata key that was deleted.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|targetType|string|true|none|Type of the target entity|
-|targetId|any|true|none|none|
-
-oneOf
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|string|false|none|Account address (when targetType is ACCOUNT)|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|integer(bigint)|false|none|Transaction ID (when targetType is TRANSACTION)|
-
-continued
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|key|string|true|none|The metadata key that was deleted|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|targetType|ACCOUNT|
-|targetType|TRANSACTION|
-
-<h2 id="tocS_V2LogDataInsertedSchema">V2LogDataInsertedSchema</h2>
-<!-- backwards compatibility -->
-<a id="schemav2logdatainsertedschema"></a>
-<a id="schema_V2LogDataInsertedSchema"></a>
-<a id="tocSv2logdatainsertedschema"></a>
-<a id="tocsv2logdatainsertedschema"></a>
-
-```json
-{
-  "schema": {
-    "version": "v1.0.0",
-    "createdAt": "2023-01-01T00:00:00Z",
-    "chart": {
-      "users": {
-        "$userID": {
-          ".pattern": "^[0-9]{16}$"
-        }
-      }
-    },
-    "transactions": {
-      "property1": {
-        "description": "string",
-        "script": "string",
-        "runtime": "experimental-interpreter"
-      },
-      "property2": {
-        "description": "string",
-        "script": "string",
-        "runtime": "experimental-interpreter"
-      }
-    },
-    "queries": {
-      "property1": {
-        "description": "string",
-        "resource": "transactions",
-        "params": {
-          "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
-          "resource": "accounts"
-        },
-        "vars": {
-          "property1": {
-            "type": "string",
-            "default": null
-          },
-          "property2": {
-            "type": "string",
-            "default": null
-          }
-        },
-        "body": {}
-      },
-      "property2": {
-        "description": "string",
-        "resource": "transactions",
-        "params": {
-          "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
-          "resource": "accounts"
-        },
-        "vars": {
-          "property1": {
-            "type": "string",
-            "default": null
-          },
-          "property2": {
-            "type": "string",
-            "default": null
-          }
-        },
-        "body": {}
-      }
-    }
-  }
-}
-
-```
-
-Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted into the ledger.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|schema|[V2Schema](#schemav2schema)|true|none|Complete schema structure with metadata|
 
 <h2 id="tocS_V2CreateTransactionResponse">V2CreateTransactionResponse</h2>
 <!-- backwards compatibility -->
@@ -5157,8 +3871,7 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
           "balance": 90
         }
       }
-    },
-    "template": "string"
+    }
   }
 }
 
@@ -5261,8 +3974,7 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
           "balance": 90
         }
       }
-    },
-    "template": "string"
+    }
   }
 }
 
@@ -5363,8 +4075,7 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
           "balance": 90
         }
       }
-    },
-    "template": "string"
+    }
   }
 }
 
@@ -5567,8 +4278,6 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
 |*anonymous*|INTERPRETER_PARSE|
 |*anonymous*|INTERPRETER_RUNTIME|
 |*anonymous*|LEDGER_ALREADY_EXISTS|
-|*anonymous*|SCHEMA_ALREADY_EXISTS|
-|*anonymous*|SCHEMA_NOT_SPECIFIED|
 |*anonymous*|OUTDATED_SCHEMA|
 
 <h2 id="tocS_V2LedgerInfoResponse">V2LedgerInfoResponse</h2>
@@ -5692,7 +4401,6 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
         }
       ],
       "script": {
-        "template": "CUSTOMER_DEPOSIT",
         "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
         "vars": {
           "user": "users:042"
@@ -5768,7 +4476,6 @@ Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted i
       }
     ],
     "script": {
-      "template": "CUSTOMER_DEPOSIT",
       "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
       "vars": {
         "user": "users:042"
@@ -5841,7 +4548,6 @@ xor
       }
     ],
     "script": {
-      "template": "CUSTOMER_DEPOSIT",
       "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n",
       "vars": {
         "user": "users:042"
@@ -5988,10 +4694,7 @@ and
   "data": {
     "id": 0,
     "force": true,
-    "atEffectiveDate": true,
-    "metadata": {
-      "admin": "true"
-    }
+    "atEffectiveDate": true
   }
 }
 
@@ -6014,7 +4717,6 @@ and
 |»» id|integer(bigint)|true|none|none|
 |»» force|boolean|false|none|none|
 |»» atEffectiveDate|boolean|false|none|none|
-|»» metadata|[V2Metadata](#schemav2metadata)|false|none|none|
 
 <h2 id="tocS_V2BulkElementDeleteMetadata">V2BulkElementDeleteMetadata</h2>
 <!-- backwards compatibility -->
@@ -6149,8 +4851,7 @@ and
               "balance": 90
             }
           }
-        },
-        "template": "string"
+        }
       }
     }
   ],
@@ -6261,8 +4962,7 @@ and
           "balance": 90
         }
       }
-    },
-    "template": "string"
+    }
   }
 }
 
@@ -6415,8 +5115,7 @@ xor
           "balance": 90
         }
       }
-    },
-    "template": "string"
+    }
   }
 }
 
@@ -6549,8 +5248,7 @@ and
           "balance": 90
         }
       }
-    },
-    "template": "string"
+    }
   }
 }
 
@@ -6625,888 +5323,6 @@ and
 |» errorDescription|string|true|none|none|
 |» errorDetails|string|false|none|none|
 
-<h2 id="tocS_V2ChartAccountRules">V2ChartAccountRules</h2>
-<!-- backwards compatibility -->
-<a id="schemav2chartaccountrules"></a>
-<a id="schema_V2ChartAccountRules"></a>
-<a id="tocSv2chartaccountrules"></a>
-<a id="tocsv2chartaccountrules"></a>
-
-```json
-{}
-
-```
-
-### Properties
-
-*None*
-
-<h2 id="tocS_V2ChartAccountMetadata">V2ChartAccountMetadata</h2>
-<!-- backwards compatibility -->
-<a id="schemav2chartaccountmetadata"></a>
-<a id="schema_V2ChartAccountMetadata"></a>
-<a id="tocSv2chartaccountmetadata"></a>
-<a id="tocsv2chartaccountmetadata"></a>
-
-```json
-{
-  "default": "string"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|default|string|false|none|none|
-
-<h2 id="tocS_V2ChartSegment">V2ChartSegment</h2>
-<!-- backwards compatibility -->
-<a id="schemav2chartsegment"></a>
-<a id="schema_V2ChartSegment"></a>
-<a id="tocSv2chartsegment"></a>
-<a id="tocsv2chartsegment"></a>
-
-```json
-{
-  "users": {
-    "$userID": {
-      ".pattern": "^[0-9]{16}$"
-    }
-  }
-}
-
-```
-
-Segment within a chart of accounts
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of accounts|
-|.self|object|false|none|none|
-|.pattern|string|false|none|none|
-|.rules|[V2ChartAccountRules](#schemav2chartaccountrules)|false|none|none|
-|.metadata|object|false|none|none|
-|» **additionalProperties**|[V2ChartAccountMetadata](#schemav2chartaccountmetadata)|false|none|none|
-
-<h2 id="tocS_V2ChartOfAccounts">V2ChartOfAccounts</h2>
-<!-- backwards compatibility -->
-<a id="schemav2chartofaccounts"></a>
-<a id="schema_V2ChartOfAccounts"></a>
-<a id="tocSv2chartofaccounts"></a>
-<a id="tocsv2chartofaccounts"></a>
-
-```json
-{
-  "users": {
-    "$userID": {
-      ".pattern": "^[0-9]{16}$"
-    }
-  }
-}
-
-```
-
-Chart of account
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|**additionalProperties**|[V2ChartSegment](#schemav2chartsegment)|false|none|Segment within a chart of accounts|
-
-<h2 id="tocS_Runtime">Runtime</h2>
-<!-- backwards compatibility -->
-<a id="schemaruntime"></a>
-<a id="schema_Runtime"></a>
-<a id="tocSruntime"></a>
-<a id="tocsruntime"></a>
-
-```json
-"experimental-interpreter"
-
-```
-
-The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|string|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|*anonymous*|experimental-interpreter|
-|*anonymous*|machine|
-
-<h2 id="tocS_V2TransactionTemplate">V2TransactionTemplate</h2>
-<!-- backwards compatibility -->
-<a id="schemav2transactiontemplate"></a>
-<a id="schema_V2TransactionTemplate"></a>
-<a id="tocSv2transactiontemplate"></a>
-<a id="tocsv2transactiontemplate"></a>
-
-```json
-{
-  "description": "string",
-  "script": "string",
-  "runtime": "experimental-interpreter"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|description|string|false|none|none|
-|script|string|true|none|none|
-|runtime|[Runtime](#schemaruntime)|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|
-
-<h2 id="tocS_V2TransactionTemplates">V2TransactionTemplates</h2>
-<!-- backwards compatibility -->
-<a id="schemav2transactiontemplates"></a>
-<a id="schema_V2TransactionTemplates"></a>
-<a id="tocSv2transactiontemplates"></a>
-<a id="tocsv2transactiontemplates"></a>
-
-```json
-{
-  "property1": {
-    "description": "string",
-    "script": "string",
-    "runtime": "experimental-interpreter"
-  },
-  "property2": {
-    "description": "string",
-    "script": "string",
-    "runtime": "experimental-interpreter"
-  }
-}
-
-```
-
-Transaction templates
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|**additionalProperties**|[V2TransactionTemplate](#schemav2transactiontemplate)|false|none|none|
-
-<h2 id="tocS_V2QueryTemplateVar">V2QueryTemplateVar</h2>
-<!-- backwards compatibility -->
-<a id="schemav2querytemplatevar"></a>
-<a id="schema_V2QueryTemplateVar"></a>
-<a id="tocSv2querytemplatevar"></a>
-<a id="tocsv2querytemplatevar"></a>
-
-```json
-{
-  "type": "string",
-  "default": null
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|type|string|true|none|none|
-|default|any|false|none|none|
-
-<h2 id="tocS_V2QueryResource">V2QueryResource</h2>
-<!-- backwards compatibility -->
-<a id="schemav2queryresource"></a>
-<a id="schema_V2QueryResource"></a>
-<a id="tocSv2queryresource"></a>
-<a id="tocsv2queryresource"></a>
-
-```json
-"transactions"
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|string|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|*anonymous*|transactions|
-|*anonymous*|accounts|
-|*anonymous*|logs|
-|*anonymous*|volumes|
-
-<h2 id="tocS_V2QueryParams">V2QueryParams</h2>
-<!-- backwards compatibility -->
-<a id="schemav2queryparams"></a>
-<a id="schema_V2QueryParams"></a>
-<a id="tocSv2queryparams"></a>
-<a id="tocsv2queryparams"></a>
-
-```json
-{
-  "pageSize": 100,
-  "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-  "expand": "string",
-  "pit": "2019-08-24T14:15:22Z",
-  "sort": {},
-  "resource": "accounts"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|pageSize|integer(int64)|false|none|The maximum number of results to return per page.|
-|cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
-|expand|string|false|none|none|
-|pit|string(date-time)|false|none|none|
-|sort|[#/components/parameters/sort](#schema#/components/parameters/sort)|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
-
-oneOf
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» resource|string|false|none|none|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» resource|string|false|none|none|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» resource|string|false|none|none|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» resource|string|false|none|none|
-|» insertionDate|boolean|false|none|none|
-|» groupBy|integer|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|resource|accounts|
-|resource|transactions|
-|resource|logs|
-|resource|volumes|
-
-<h2 id="tocS_V2QueryTemplate">V2QueryTemplate</h2>
-<!-- backwards compatibility -->
-<a id="schemav2querytemplate"></a>
-<a id="schema_V2QueryTemplate"></a>
-<a id="tocSv2querytemplate"></a>
-<a id="tocsv2querytemplate"></a>
-
-```json
-{
-  "description": "string",
-  "resource": "transactions",
-  "params": {
-    "pageSize": 100,
-    "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-    "expand": "string",
-    "pit": "2019-08-24T14:15:22Z",
-    "sort": {},
-    "resource": "accounts"
-  },
-  "vars": {
-    "property1": {
-      "type": "string",
-      "default": null
-    },
-    "property2": {
-      "type": "string",
-      "default": null
-    }
-  },
-  "body": {}
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|description|string|false|none|none|
-|resource|[V2QueryResource](#schemav2queryresource)|false|none|none|
-|params|[V2QueryParams](#schemav2queryparams)|false|none|none|
-|vars|object|false|none|none|
-|» **additionalProperties**|[V2QueryTemplateVar](#schemav2querytemplatevar)|false|none|none|
-|body|object|false|none|none|
-
-<h2 id="tocS_V2QueryTemplates">V2QueryTemplates</h2>
-<!-- backwards compatibility -->
-<a id="schemav2querytemplates"></a>
-<a id="schema_V2QueryTemplates"></a>
-<a id="tocSv2querytemplates"></a>
-<a id="tocsv2querytemplates"></a>
-
-```json
-{
-  "property1": {
-    "description": "string",
-    "resource": "transactions",
-    "params": {
-      "pageSize": 100,
-      "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-      "expand": "string",
-      "pit": "2019-08-24T14:15:22Z",
-      "sort": {},
-      "resource": "accounts"
-    },
-    "vars": {
-      "property1": {
-        "type": "string",
-        "default": null
-      },
-      "property2": {
-        "type": "string",
-        "default": null
-      }
-    },
-    "body": {}
-  },
-  "property2": {
-    "description": "string",
-    "resource": "transactions",
-    "params": {
-      "pageSize": 100,
-      "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-      "expand": "string",
-      "pit": "2019-08-24T14:15:22Z",
-      "sort": {},
-      "resource": "accounts"
-    },
-    "vars": {
-      "property1": {
-        "type": "string",
-        "default": null
-      },
-      "property2": {
-        "type": "string",
-        "default": null
-      }
-    },
-    "body": {}
-  }
-}
-
-```
-
-Query templates
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|**additionalProperties**|[V2QueryTemplate](#schemav2querytemplate)|false|none|none|
-
-<h2 id="tocS_V2SchemaData">V2SchemaData</h2>
-<!-- backwards compatibility -->
-<a id="schemav2schemadata"></a>
-<a id="schema_V2SchemaData"></a>
-<a id="tocSv2schemadata"></a>
-<a id="tocsv2schemadata"></a>
-
-```json
-{
-  "chart": {
-    "users": {
-      "$userID": {
-        ".pattern": "^[0-9]{16}$"
-      }
-    }
-  },
-  "transactions": {
-    "property1": {
-      "description": "string",
-      "script": "string",
-      "runtime": "experimental-interpreter"
-    },
-    "property2": {
-      "description": "string",
-      "script": "string",
-      "runtime": "experimental-interpreter"
-    }
-  },
-  "queries": {
-    "property1": {
-      "description": "string",
-      "resource": "transactions",
-      "params": {
-        "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
-        "resource": "accounts"
-      },
-      "vars": {
-        "property1": {
-          "type": "string",
-          "default": null
-        },
-        "property2": {
-          "type": "string",
-          "default": null
-        }
-      },
-      "body": {}
-    },
-    "property2": {
-      "description": "string",
-      "resource": "transactions",
-      "params": {
-        "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
-        "resource": "accounts"
-      },
-      "vars": {
-        "property1": {
-          "type": "string",
-          "default": null
-        },
-        "property2": {
-          "type": "string",
-          "default": null
-        }
-      },
-      "body": {}
-    }
-  }
-}
-
-```
-
-Schema data structure for ledger schemas
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|chart|[V2ChartOfAccounts](#schemav2chartofaccounts)|true|none|Chart of account|
-|transactions|[V2TransactionTemplates](#schemav2transactiontemplates)|false|none|Transaction templates|
-|queries|[V2QueryTemplates](#schemav2querytemplates)|false|none|Query templates|
-
-<h2 id="tocS_V2Schema">V2Schema</h2>
-<!-- backwards compatibility -->
-<a id="schemav2schema"></a>
-<a id="schema_V2Schema"></a>
-<a id="tocSv2schema"></a>
-<a id="tocsv2schema"></a>
-
-```json
-{
-  "version": "v1.0.0",
-  "createdAt": "2023-01-01T00:00:00Z",
-  "chart": {
-    "users": {
-      "$userID": {
-        ".pattern": "^[0-9]{16}$"
-      }
-    }
-  },
-  "transactions": {
-    "property1": {
-      "description": "string",
-      "script": "string",
-      "runtime": "experimental-interpreter"
-    },
-    "property2": {
-      "description": "string",
-      "script": "string",
-      "runtime": "experimental-interpreter"
-    }
-  },
-  "queries": {
-    "property1": {
-      "description": "string",
-      "resource": "transactions",
-      "params": {
-        "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
-        "resource": "accounts"
-      },
-      "vars": {
-        "property1": {
-          "type": "string",
-          "default": null
-        },
-        "property2": {
-          "type": "string",
-          "default": null
-        }
-      },
-      "body": {}
-    },
-    "property2": {
-      "description": "string",
-      "resource": "transactions",
-      "params": {
-        "pageSize": 100,
-        "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-        "expand": "string",
-        "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
-        "resource": "accounts"
-      },
-      "vars": {
-        "property1": {
-          "type": "string",
-          "default": null
-        },
-        "property2": {
-          "type": "string",
-          "default": null
-        }
-      },
-      "body": {}
-    }
-  }
-}
-
-```
-
-Complete schema structure with metadata
-
-### Properties
-
-allOf
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» version|string|true|none|Schema version|
-|» createdAt|string(date-time)|true|none|Schema creation timestamp|
-
-and
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|[V2SchemaData](#schemav2schemadata)|false|none|Schema data structure for ledger schemas|
-
-<h2 id="tocS_V2SchemaResponse">V2SchemaResponse</h2>
-<!-- backwards compatibility -->
-<a id="schemav2schemaresponse"></a>
-<a id="schema_V2SchemaResponse"></a>
-<a id="tocSv2schemaresponse"></a>
-<a id="tocsv2schemaresponse"></a>
-
-```json
-{
-  "data": {
-    "version": "v1.0.0",
-    "createdAt": "2023-01-01T00:00:00Z",
-    "chart": {
-      "users": {
-        "$userID": {
-          ".pattern": "^[0-9]{16}$"
-        }
-      }
-    },
-    "transactions": {
-      "property1": {
-        "description": "string",
-        "script": "string",
-        "runtime": "experimental-interpreter"
-      },
-      "property2": {
-        "description": "string",
-        "script": "string",
-        "runtime": "experimental-interpreter"
-      }
-    },
-    "queries": {
-      "property1": {
-        "description": "string",
-        "resource": "transactions",
-        "params": {
-          "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
-          "resource": "accounts"
-        },
-        "vars": {
-          "property1": {
-            "type": "string",
-            "default": null
-          },
-          "property2": {
-            "type": "string",
-            "default": null
-          }
-        },
-        "body": {}
-      },
-      "property2": {
-        "description": "string",
-        "resource": "transactions",
-        "params": {
-          "pageSize": 100,
-          "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-          "expand": "string",
-          "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
-          "resource": "accounts"
-        },
-        "vars": {
-          "property1": {
-            "type": "string",
-            "default": null
-          },
-          "property2": {
-            "type": "string",
-            "default": null
-          }
-        },
-        "body": {}
-      }
-    }
-  }
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|data|[V2Schema](#schemav2schema)|true|none|Complete schema structure with metadata|
-
-<h2 id="tocS_V2SchemasCursorResponse">V2SchemasCursorResponse</h2>
-<!-- backwards compatibility -->
-<a id="schemav2schemascursorresponse"></a>
-<a id="schema_V2SchemasCursorResponse"></a>
-<a id="tocSv2schemascursorresponse"></a>
-<a id="tocsv2schemascursorresponse"></a>
-
-```json
-{
-  "cursor": {
-    "data": [
-      {
-        "version": "v1.0.0",
-        "createdAt": "2023-01-01T00:00:00Z",
-        "chart": {
-          "users": {
-            "$userID": {
-              ".pattern": "^[0-9]{16}$"
-            }
-          }
-        },
-        "transactions": {
-          "property1": {
-            "description": "string",
-            "script": "string",
-            "runtime": "experimental-interpreter"
-          },
-          "property2": {
-            "description": "string",
-            "script": "string",
-            "runtime": "experimental-interpreter"
-          }
-        },
-        "queries": {
-          "property1": {
-            "description": "string",
-            "resource": "transactions",
-            "params": {
-              "pageSize": 100,
-              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-              "expand": "string",
-              "pit": "2019-08-24T14:15:22Z",
-              "sort": {},
-              "resource": "accounts"
-            },
-            "vars": {
-              "property1": {
-                "type": "string",
-                "default": null
-              },
-              "property2": {
-                "type": "string",
-                "default": null
-              }
-            },
-            "body": {}
-          },
-          "property2": {
-            "description": "string",
-            "resource": "transactions",
-            "params": {
-              "pageSize": 100,
-              "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-              "expand": "string",
-              "pit": "2019-08-24T14:15:22Z",
-              "sort": {},
-              "resource": "accounts"
-            },
-            "vars": {
-              "property1": {
-                "type": "string",
-                "default": null
-              },
-              "property2": {
-                "type": "string",
-                "default": null
-              }
-            },
-            "body": {}
-          }
-        }
-      }
-    ],
-    "hasMore": true,
-    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
-    "pageSize": 0
-  }
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|cursor|[V2SchemasCursor](#schemav2schemascursor)|true|none|none|
-
-<h2 id="tocS_V2SchemasCursor">V2SchemasCursor</h2>
-<!-- backwards compatibility -->
-<a id="schemav2schemascursor"></a>
-<a id="schema_V2SchemasCursor"></a>
-<a id="tocSv2schemascursor"></a>
-<a id="tocsv2schemascursor"></a>
-
-```json
-{
-  "data": [
-    {
-      "version": "v1.0.0",
-      "createdAt": "2023-01-01T00:00:00Z",
-      "chart": {
-        "users": {
-          "$userID": {
-            ".pattern": "^[0-9]{16}$"
-          }
-        }
-      },
-      "transactions": {
-        "property1": {
-          "description": "string",
-          "script": "string",
-          "runtime": "experimental-interpreter"
-        },
-        "property2": {
-          "description": "string",
-          "script": "string",
-          "runtime": "experimental-interpreter"
-        }
-      },
-      "queries": {
-        "property1": {
-          "description": "string",
-          "resource": "transactions",
-          "params": {
-            "pageSize": 100,
-            "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-            "expand": "string",
-            "pit": "2019-08-24T14:15:22Z",
-            "sort": {},
-            "resource": "accounts"
-          },
-          "vars": {
-            "property1": {
-              "type": "string",
-              "default": null
-            },
-            "property2": {
-              "type": "string",
-              "default": null
-            }
-          },
-          "body": {}
-        },
-        "property2": {
-          "description": "string",
-          "resource": "transactions",
-          "params": {
-            "pageSize": 100,
-            "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
-            "expand": "string",
-            "pit": "2019-08-24T14:15:22Z",
-            "sort": {},
-            "resource": "accounts"
-          },
-          "vars": {
-            "property1": {
-              "type": "string",
-              "default": null
-            },
-            "property2": {
-              "type": "string",
-              "default": null
-            }
-          },
-          "body": {}
-        }
-      }
-    }
-  ],
-  "hasMore": true,
-  "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-  "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
-  "pageSize": 0
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|data|[[V2Schema](#schemav2schema)]|true|none|[Complete schema structure with metadata]|
-|hasMore|boolean|true|none|none|
-|previous|string|false|none|none|
-|next|string|false|none|none|
-|pageSize|integer|true|none|none|
-
 <h2 id="tocS_V2CreateLedgerRequest">V2CreateLedgerRequest</h2>
 <!-- backwards compatibility -->
 <a id="schemav2createledgerrequest"></a>
@@ -7549,7 +5365,6 @@ and
   "name": "string",
   "addedAt": "2019-08-24T14:15:22Z",
   "bucket": "string",
-  "deletedAt": "2019-08-24T14:15:22Z",
   "metadata": {
     "admin": "true"
   },
@@ -7569,7 +5384,6 @@ and
 |name|string|true|none|none|
 |addedAt|string(date-time)|true|none|none|
 |bucket|string|true|none|none|
-|deletedAt|string(date-time)¦null|false|none|none|
 |metadata|[V2Metadata](#schemav2metadata)|false|none|none|
 |features|object|false|none|none|
 |» **additionalProperties**|string|false|none|none|
@@ -7588,13 +5402,12 @@ and
     "pageSize": 15,
     "hasMore": false,
     "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
+    "next": "",
     "data": [
       {
         "name": "string",
         "addedAt": "2019-08-24T14:15:22Z",
         "bucket": "string",
-        "deletedAt": "2019-08-24T14:15:22Z",
         "metadata": {
           "admin": "true"
         },
@@ -7652,7 +5465,6 @@ and
     "name": "string",
     "addedAt": "2019-08-24T14:15:22Z",
     "bucket": "string",
-    "deletedAt": "2019-08-24T14:15:22Z",
     "metadata": {
       "admin": "true"
     },

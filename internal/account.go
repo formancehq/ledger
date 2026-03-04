@@ -1,12 +1,10 @@
 package ledger
 
 import (
-	"math/big"
-
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/uptrace/bun"
-
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/time"
+	"math/big"
 )
 
 const (
@@ -18,9 +16,9 @@ type Account struct {
 
 	Address          string            `json:"address" bun:"address"`
 	Metadata         metadata.Metadata `json:"metadata" bun:"metadata,type:jsonb,default:'{}'"`
-	FirstUsage       time.Time         `json:"firstUsage" bun:"first_usage,type:timestamp without time zone,nullzero"`
-	InsertionDate    time.Time         `json:"insertionDate" bun:"insertion_date,type:timestamp without time zone,nullzero"`
-	UpdatedAt        time.Time         `json:"updatedAt" bun:"updated_at,type:timestamp without time zone,nullzero"`
+	FirstUsage       time.Time         `json:"firstUsage" bun:"first_usage,nullzero"`
+	InsertionDate    time.Time         `json:"insertionDate" bun:"insertion_date,nullzero"`
+	UpdatedAt        time.Time         `json:"updatedAt" bun:"updated_at,nullzero"`
 	Volumes          VolumesByAssets   `json:"volumes,omitempty" bun:"volumes,scanonly"`
 	EffectiveVolumes VolumesByAssets   `json:"effectiveVolumes,omitempty" bun:"effective_volumes,scanonly"`
 }
@@ -36,9 +34,4 @@ type AccountsVolumes struct {
 	Asset   string   `bun:"asset,type:varchar"`
 	Input   *big.Int `bun:"input,type:numeric"`
 	Output  *big.Int `bun:"output,type:numeric"`
-}
-
-type AccountWithDefaultMetadata struct {
-	*Account
-	DefaultMetadata metadata.Metadata
 }

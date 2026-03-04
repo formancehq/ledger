@@ -3,22 +3,21 @@ package vm
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
 	"slices"
 	"sync"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/formancehq/go-libs/v4/metadata"
-
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine"
+
+	"errors"
+	"github.com/formancehq/go-libs/v3/metadata"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/script/compiler"
 	"github.com/formancehq/ledger/internal/machine/vm/program"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -2331,6 +2330,90 @@ func TestSaveFromAccount(t *testing.T) {
 			Printed:       []machine.Value{},
 			ErrorContains: "insufficient funds",
 			Error:         &machine.ErrInsufficientFund{},
+		}
+		test(t, tc)
+	})
+
+	// Regression test: save with unbounded overdraft must not panic
+	// This reproduces the exact scenario from production where OP_SAVE panicked
+	// because balances were not fetched when 'save' was followed by 'send' with 'allowing unbounded overdraft'
+	t.Run("save with unbounded overdraft", func(t *testing.T) {
+		script := `
+			save [EUR/4 1500000] from @source
+
+			send [EUR/4 240000] (
+				source = @source allowing unbounded overdraft
+				destination = @destination
+			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("source", "EUR/4", 2000000)
+		tc.expected = CaseResult{
+			Printed: []machine.Value{},
+			Postings: []Posting{
+				{
+					Asset:       "EUR/4",
+					Amount:      machine.NewMonetaryInt(240000),
+					Source:      "source",
+					Destination: "destination",
+				},
+			},
+			Error: nil,
+		}
+		test(t, tc)
+	})
+
+	// Regression test: save all with unbounded overdraft
+	t.Run("save all with unbounded overdraft", func(t *testing.T) {
+		script := `
+			save [EUR/4 *] from @source
+
+			send [EUR/4 100] (
+				source = @source allowing unbounded overdraft
+				destination = @destination
+			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("source", "EUR/4", 500)
+		tc.expected = CaseResult{
+			Printed: []machine.Value{},
+			Postings: []Posting{
+				{
+					Asset:       "EUR/4",
+					Amount:      machine.NewMonetaryInt(100),
+					Source:      "source",
+					Destination: "destination",
+				},
+			},
+			Error: nil,
+		}
+		test(t, tc)
+	})
+
+	// Regression test: save from account not in send statement
+	// This ensures balances are fetched even when the save account is different from send source
+	t.Run("save from different account with unbounded overdraft", func(t *testing.T) {
+		script := `
+			save [USD 100] from @blocked
+
+			send [USD 50] (
+				source = @source allowing unbounded overdraft
+				destination = @destination
+			)`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("blocked", "USD", 200)
+		tc.expected = CaseResult{
+			Printed: []machine.Value{},
+			Postings: []Posting{
+				{
+					Asset:       "USD",
+					Amount:      machine.NewMonetaryInt(50),
+					Source:      "source",
+					Destination: "destination",
+				},
+			},
+			Error: nil,
 		}
 		test(t, tc)
 	})

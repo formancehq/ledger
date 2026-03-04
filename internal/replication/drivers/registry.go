@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/ledger/internal/replication/config"
 	"reflect"
 
+	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/pkg/errors"
-
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-
-	"github.com/formancehq/ledger/internal/replication/config"
 )
 
 // Registry holds all available drivers

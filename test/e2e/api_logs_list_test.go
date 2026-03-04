@@ -4,23 +4,20 @@ package test_suite
 
 import (
 	"fmt"
-	"math/big"
-	"sort"
-	"time"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/pointer"
-	. "github.com/formancehq/go-libs/v4/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
-
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"math/big"
+	"sort"
+	"time"
 )
 
 var _ = Context("Ledger logs list API tests", func() {
@@ -152,113 +149,52 @@ var _ = Context("Ledger logs list API tests", func() {
 			for _, data := range response.V2LogsCursorResponse.Cursor.Data {
 				Expect(data.Hash).NotTo(BeEmpty())
 			}
-		})
-		When("filtering logs by type", func() {
-			It("should filter by NEW_TRANSACTION type", func(specContext SpecContext) {
-				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
-					ctx,
-					operations.V2ListLogsRequest{
-						Ledger: "default",
-						RequestBody: map[string]interface{}{
-							"$match": map[string]any{
-								"type": "NEW_TRANSACTION",
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.V2LogsCursorResponse.Cursor.Data).To(HaveLen(2))
-				for _, log := range response.V2LogsCursorResponse.Cursor.Data {
-					Expect(log.Type).To(Equal(components.V2LogTypeNewTransaction))
-				}
-			})
-			It("should filter by SET_METADATA type", func(specContext SpecContext) {
-				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
-					ctx,
-					operations.V2ListLogsRequest{
-						Ledger: "default",
-						RequestBody: map[string]interface{}{
-							"$match": map[string]any{
-								"type": "SET_METADATA",
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.V2LogsCursorResponse.Cursor.Data).To(HaveLen(1))
-				Expect(response.V2LogsCursorResponse.Cursor.Data[0].Type).To(Equal(components.V2LogTypeSetMetadata))
-			})
-			It("should return empty when filtering by non-existent type", func(specContext SpecContext) {
-				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
-					ctx,
-					operations.V2ListLogsRequest{
-						Ledger: "default",
-						RequestBody: map[string]interface{}{
-							"$match": map[string]any{
-								"type": "REVERTED_TRANSACTION",
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.V2LogsCursorResponse.Cursor.Data).To(HaveLen(0))
-			})
-		})
-		It("should be listed on api with ListLogs with details", func(specContext SpecContext) {
-			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListLogs(
-				ctx,
-				operations.V2ListLogsRequest{
-					Ledger: "default",
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-
-			Expect(response.V2LogsCursorResponse.Cursor.Data).To(HaveLen(3))
 
 			// Cannot check the date and the hash since they are changing at
 			// every run
 			Expect(response.V2LogsCursorResponse.Cursor.Data[0].ID).To(Equal(big.NewInt(3)))
 			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Type).To(Equal(components.V2LogTypeSetMetadata))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Data.V2LogDataSetMetadata).NotTo(BeNil())
-			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Data.V2LogDataSetMetadata.TargetType).To(Equal(components.TargetTypeAccount))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Data.V2LogDataSetMetadata.Metadata).To(Equal(map[string]string{
-				"clientType": "gold",
+			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Data).To(Equal(map[string]any{
+				"targetType": "ACCOUNT",
+				"metadata": map[string]any{
+					"clientType": "gold",
+				},
+				"targetId": "foo:baz",
 			}))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[0].Data.V2LogDataSetMetadata.TargetID.Str).To(Equal(pointer.For("foo:baz")))
 
 			Expect(response.V2LogsCursorResponse.Cursor.Data[1].ID).To(Equal(big.NewInt(2)))
 			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Type).To(Equal(components.V2LogTypeNewTransaction))
 			// Cannot check date and txid inside Data since they are changing at
 			// every run
-			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Data.V2LogDataNewTransaction).NotTo(BeNil())
-			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Data.V2LogDataNewTransaction.AccountMetadata).To(Equal(map[string]map[string]string{}))
-			transaction := response.V2LogsCursorResponse.Cursor.Data[1].Data.V2LogDataNewTransaction.Transaction
-			Expect(transaction.Metadata).To(Equal(map[string]string{
+			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Data["accountMetadata"]).To(Equal(map[string]any{}))
+			Expect(response.V2LogsCursorResponse.Cursor.Data[1].Data["transaction"]).To(BeAssignableToTypeOf(map[string]any{}))
+			transaction := response.V2LogsCursorResponse.Cursor.Data[1].Data["transaction"].(map[string]any)
+			Expect(transaction["metadata"]).To(Equal(map[string]any{
 				"clientType": "silver",
 			}))
-			Expect(transaction.Timestamp.Format(time.RFC3339)).To(Equal("2023-04-12T10:00:00Z"))
-			Expect(transaction.Postings).To(Equal([]components.V2Posting{
-				{
-					Amount:      big.NewInt(200),
-					Asset:       "USD",
-					Source:      "world",
-					Destination: "foo:bar",
+			Expect(transaction["timestamp"]).To(Equal("2023-04-12T10:00:00Z"))
+			Expect(transaction["postings"]).To(Equal([]any{
+				map[string]any{
+					"amount":      float64(200),
+					"asset":       "USD",
+					"source":      "world",
+					"destination": "foo:bar",
 				},
 			}))
 
 			Expect(response.V2LogsCursorResponse.Cursor.Data[2].ID).To(Equal(big.NewInt(1)))
 			Expect(response.V2LogsCursorResponse.Cursor.Data[2].Type).To(Equal(components.V2LogTypeNewTransaction))
-			Expect(response.V2LogsCursorResponse.Cursor.Data[2].Data.V2LogDataNewTransaction).NotTo(BeNil())
-			Expect(response.V2LogsCursorResponse.Cursor.Data[2].Data.V2LogDataNewTransaction.AccountMetadata).To(Equal(map[string]map[string]string{}))
-			transaction = response.V2LogsCursorResponse.Cursor.Data[2].Data.V2LogDataNewTransaction.Transaction
-			Expect(transaction.Metadata).To(Equal(map[string]string{}))
-			Expect(transaction.Timestamp.Format(time.RFC3339)).To(Equal("2023-04-11T10:00:00Z"))
-			Expect(transaction.Postings).To(Equal([]components.V2Posting{
-				{
-					Amount:      big.NewInt(100),
-					Asset:       "USD",
-					Source:      "world",
-					Destination: "foo:foo",
+			Expect(response.V2LogsCursorResponse.Cursor.Data[2].Data["accountMetadata"]).To(Equal(map[string]any{}))
+			Expect(response.V2LogsCursorResponse.Cursor.Data[2].Data["transaction"]).To(BeAssignableToTypeOf(map[string]any{}))
+			transaction = response.V2LogsCursorResponse.Cursor.Data[2].Data["transaction"].(map[string]any)
+			Expect(transaction["metadata"]).To(Equal(map[string]any{}))
+			Expect(transaction["timestamp"]).To(Equal("2023-04-11T10:00:00Z"))
+			Expect(transaction["postings"]).To(Equal([]any{
+				map[string]any{
+					"amount":      float64(100),
+					"asset":       "USD",
+					"source":      "world",
+					"destination": "foo:foo",
 				},
 			}))
 		})
@@ -267,18 +203,18 @@ var _ = Context("Ledger logs list API tests", func() {
 	type expectedLog struct {
 		id       *big.Int
 		typ      components.V2LogType
-		postings []components.V2Posting
+		postings []any
 	}
 
 	var (
 		compareLogs = func(log components.V2Log, expected expectedLog) {
 			Expect(log.ID).To(Equal(expected.id))
 			Expect(log.Type).To(Equal(expected.typ))
-			Expect(log.Data.V2LogDataNewTransaction).NotTo(BeNil())
-			Expect(log.Data.V2LogDataNewTransaction.AccountMetadata).To(Equal(map[string]map[string]string{}))
-			transaction := log.Data.V2LogDataNewTransaction.Transaction
-			Expect(transaction.Metadata).To(Equal(map[string]string{}))
-			Expect(transaction.Postings).To(Equal(expected.postings))
+			Expect(log.Data["accountMetadata"]).To(Equal(map[string]any{}))
+			Expect(log.Data["transaction"]).To(BeAssignableToTypeOf(map[string]any{}))
+			transaction := log.Data["transaction"].(map[string]any)
+			Expect(transaction["metadata"]).To(Equal(map[string]any{}))
+			Expect(transaction["postings"]).To(Equal(expected.postings))
 		}
 	)
 
@@ -315,12 +251,12 @@ var _ = Context("Ledger logs list API tests", func() {
 				expectedLogs = append(expectedLogs, expectedLog{
 					id:  big.NewInt(i + 1),
 					typ: components.V2LogTypeNewTransaction,
-					postings: []components.V2Posting{
-						{
-							Amount:      big.NewInt(100),
-							Asset:       "USD",
-							Source:      "world",
-							Destination: fmt.Sprintf("foo:%d", i),
+					postings: []any{
+						map[string]any{
+							"amount":      float64(100),
+							"asset":       "USD",
+							"source":      "world",
+							"destination": fmt.Sprintf("foo:%d", i),
 						},
 					},
 				})

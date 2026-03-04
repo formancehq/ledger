@@ -3,29 +3,34 @@ package ledger
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
+	"sync/atomic"
 
-	"github.com/uptrace/bun"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/storage/bucket"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"go.opentelemetry.io/otel/metric"
 	noopmetrics "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/migrations"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/bucket"
-	"github.com/formancehq/ledger/internal/storage/common"
-	"github.com/formancehq/ledger/internal/tracing"
+	"errors"
+	"github.com/uptrace/bun"
 )
 
 type Store struct {
 	db     bun.IDB
 	bucket bucket.Bucket
 	ledger ledger.Ledger
+
+	// aloneInBucket is a shared optimization hint (per bucket) indicating whether
+	// this ledger is the only one in its bucket. The pointer is shared across all
+	// stores in the same bucket via the Factory, so updating it from any store
+	// (e.g. when a new ledger is created) immediately affects all stores.
+	aloneInBucket *atomic.Bool
 
 	tracer                             trace.Tracer
 	meter                              metric.Meter
@@ -44,22 +49,19 @@ type Store struct {
 	deleteTransactionMetadataHistogram metric.Int64Histogram
 	updateBalancesHistogram            metric.Int64Histogram
 	getVolumesWithBalancesHistogram    metric.Int64Histogram
-	beginTXHistogram                   metric.Int64Histogram
-	commitTXHistogram                  metric.Int64Histogram
-	rollbackTXHistogram                metric.Int64Histogram
 }
 
 func (store *Store) Volumes() common.PaginatedResource[
 	ledger.VolumesWithBalanceByAssetByAccount,
-	ledger.GetVolumesOptions] {
+	GetVolumesOptions] {
 	return common.NewPaginatedResourceRepository[
 		ledger.VolumesWithBalanceByAssetByAccount,
-		ledger.GetVolumesOptions,
+		GetVolumesOptions,
 	](&volumesResourceHandler{store: store}, "account", bunpaginate.OrderAsc)
 }
 
-func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions] {
-	return common.NewResourceRepository[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions](&aggregatedBalancesResourceRepositoryHandler{
+func (store *Store) AggregatedVolumes() common.Resource[ledger.AggregatedVolumes, GetAggregatedVolumesOptions] {
+	return common.NewResourceRepository[ledger.AggregatedVolumes, GetAggregatedVolumesOptions](&aggregatedBalancesResourceRepositoryHandler{
 		store: store,
 	})
 }
@@ -86,19 +88,8 @@ func (store *Store) Accounts() common.PaginatedResource[
 	}, "address", bunpaginate.OrderAsc)
 }
 
-func (store *Store) Schemas() common.PaginatedResource[
-	ledger.Schema,
-	any] {
-	return common.NewPaginatedResourceRepository[ledger.Schema, any](&schemasResourceHandler{
-		store: store,
-	}, "created_at", bunpaginate.OrderDesc)
-}
-
 func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store, *bun.Tx, error) {
-
-	tx, err := tracing.TraceWithMetric(ctx, "BeginTX", store.tracer, store.beginTXHistogram, func(ctx context.Context) (bun.Tx, error) {
-		return store.db.BeginTx(ctx, options)
-	})
+	tx, err := store.db.BeginTx(ctx, options)
 	if err != nil {
 		return nil, nil, postgres.ResolveError(err)
 	}
@@ -108,25 +99,19 @@ func (store *Store) BeginTX(ctx context.Context, options *sql.TxOptions) (*Store
 	return &cp, &tx, nil
 }
 
-func (store *Store) Commit(ctx context.Context) error {
+func (store *Store) Commit() error {
 	switch db := store.db.(type) {
 	case bun.Tx:
-		_, err := tracing.TraceWithMetric(ctx, "Commit", store.tracer, store.commitTXHistogram, tracing.NoResult(func(ctx context.Context) error {
-			return db.Commit()
-		}))
-		return err
+		return db.Commit()
 	default:
 		return errors.New("cannot commit transaction: not in a transaction")
 	}
 }
 
-func (store *Store) Rollback(ctx context.Context) error {
+func (store *Store) Rollback() error {
 	switch db := store.db.(type) {
 	case bun.Tx:
-		_, err := tracing.TraceWithMetric(ctx, "Rollback", store.tracer, store.rollbackTXHistogram, tracing.NoResult(func(ctx context.Context) error {
-			return db.Rollback()
-		}))
-		return err
+		return db.Rollback()
 	default:
 		return errors.New("cannot rollback transaction: not in a transaction")
 	}
@@ -187,26 +172,23 @@ func (store *Store) LockLedger(ctx context.Context) (*Store, bun.IDB, func() err
 }
 
 // newScopedSelect creates a new select query scoped to the current ledger.
-// notes(gfyrag): The "WHERE ledger = 'XXX'" condition can cause degraded postgres plan.
-// To avoid that, we use a WHERE OR to separate the two cases:
-// 1. Check if the ledger is the only one in the bucket
-// 2. Otherwise, filter by ledger name
+// When the ledger is alone in its bucket, we skip the WHERE clause to avoid
+// a degraded seq scan plan (selectivity ~100%). Otherwise, we filter by ledger
+// name to use the composite index (ledger, id) efficiently.
+//
+// This relies on aloneInBucket being up to date (shared across the bucket).
 func (store *Store) newScopedSelect() *bun.SelectQuery {
 	q := store.db.NewSelect()
-	checkLedgerAlone := store.db.NewSelect().
-		TableExpr("_system.ledgers").
-		ColumnExpr("count = 1").
-		Join("JOIN (?) AS counters ON _system.ledgers.bucket = counters.bucket",
-			store.db.NewSelect().
-				TableExpr("_system.ledgers").
-				ColumnExpr("bucket").
-				ColumnExpr("COUNT(*) AS count").
-				Group("bucket"),
-		).
-		Where("_system.ledgers.name = ?", store.ledger.Name)
+	if store.aloneInBucket == nil || !store.aloneInBucket.Load() {
+		q = q.Where("ledger = ?", store.ledger.Name)
+	}
+	return q
+}
 
-	return q.
-		Where("((?) or ledger = ?)", checkLedgerAlone, store.ledger.Name)
+func (store *Store) SetAloneInBucket(alone bool) {
+	if store.aloneInBucket != nil {
+		store.aloneInBucket.Store(alone)
+	}
 }
 
 func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Store {
@@ -220,92 +202,77 @@ func New(db bun.IDB, bucket bucket.Bucket, l ledger.Ledger, opts ...Option) *Sto
 	}
 
 	var err error
-	ret.beginTXHistogram, err = ret.meter.Int64Histogram("store.begin_tx")
+	ret.checkBucketSchemaHistogram, err = ret.meter.Int64Histogram("store.checkBucketSchema")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.commitTXHistogram, err = ret.meter.Int64Histogram("store.commit_tx")
+	ret.checkLedgerSchemaHistogram, err = ret.meter.Int64Histogram("store.checkLedgerSchema")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.rollbackTXHistogram, err = ret.meter.Int64Histogram("store.rollback_tx")
+	ret.updateAccountsMetadataHistogram, err = ret.meter.Int64Histogram("store.updateAccountsMetadata")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.checkBucketSchemaHistogram, err = ret.meter.Int64Histogram("store.check_bucket_schema", metric.WithUnit("ms"))
+	ret.deleteAccountMetadataHistogram, err = ret.meter.Int64Histogram("store.deleteAccountMetadata")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.checkLedgerSchemaHistogram, err = ret.meter.Int64Histogram("store.check_ledger_schema", metric.WithUnit("ms"))
+	ret.upsertAccountsHistogram, err = ret.meter.Int64Histogram("store.upsertAccounts")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.updateAccountsMetadataHistogram, err = ret.meter.Int64Histogram("store.update_accounts_metadata", metric.WithUnit("ms"))
+	ret.getBalancesHistogram, err = ret.meter.Int64Histogram("store.getBalances")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.deleteAccountMetadataHistogram, err = ret.meter.Int64Histogram("store.delete_account_metadata", metric.WithUnit("ms"))
+	ret.insertLogHistogram, err = ret.meter.Int64Histogram("store.insertLog")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.upsertAccountsHistogram, err = ret.meter.Int64Histogram("store.upsert_accounts", metric.WithUnit("ms"))
+	ret.readLogWithIdempotencyKeyHistogram, err = ret.meter.Int64Histogram("store.readLogWithIdempotencyKey")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.getBalancesHistogram, err = ret.meter.Int64Histogram("store.get_balances", metric.WithUnit("ms"))
+	ret.insertMovesHistogram, err = ret.meter.Int64Histogram("store.insertMoves")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.insertLogHistogram, err = ret.meter.Int64Histogram("store.insert_log", metric.WithUnit("ms"))
+	ret.insertTransactionHistogram, err = ret.meter.Int64Histogram("store.insertTransaction")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.readLogWithIdempotencyKeyHistogram, err = ret.meter.Int64Histogram("store.read_log_with_idempotency_key", metric.WithUnit("ms"))
+	ret.revertTransactionHistogram, err = ret.meter.Int64Histogram("store.revertTransaction")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.insertMovesHistogram, err = ret.meter.Int64Histogram("store.insert_moves", metric.WithUnit("ms"))
+	ret.updateTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.updateTransactionMetadata")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.insertTransactionHistogram, err = ret.meter.Int64Histogram("store.insert_transaction", metric.WithUnit("ms"))
+	ret.deleteTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.deleteTransactionMetadata")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.revertTransactionHistogram, err = ret.meter.Int64Histogram("store.revert_transaction", metric.WithUnit("ms"))
+	ret.updateBalancesHistogram, err = ret.meter.Int64Histogram("store.updateBalances")
 	if err != nil {
 		panic(err)
 	}
 
-	ret.updateTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.update_transaction_metadata", metric.WithUnit("ms"))
-	if err != nil {
-		panic(err)
-	}
-
-	ret.deleteTransactionMetadataHistogram, err = ret.meter.Int64Histogram("store.delete_transaction_metadata", metric.WithUnit("ms"))
-	if err != nil {
-		panic(err)
-	}
-
-	ret.updateBalancesHistogram, err = ret.meter.Int64Histogram("store.update_balances", metric.WithUnit("ms"))
-	if err != nil {
-		panic(err)
-	}
-
-	ret.getVolumesWithBalancesHistogram, err = ret.meter.Int64Histogram("store.get_volumes_with_balances", metric.WithUnit("ms"))
+	ret.getVolumesWithBalancesHistogram, err = ret.meter.Int64Histogram("store.getVolumesWithBalances")
 	if err != nil {
 		panic(err)
 	}

@@ -2,23 +2,18 @@ package system
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"time"
-
-	"github.com/uptrace/bun"
-	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/trace/noop"
-
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/migrations"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/migrations"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/tracing"
+	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 type Store interface {
@@ -28,10 +23,7 @@ type Store interface {
 	Ledgers() common.PaginatedResource[ledger.Ledger, ListLedgersQueryPayload]
 	GetLedger(ctx context.Context, name string) (*ledger.Ledger, error)
 	GetDistinctBuckets(ctx context.Context) ([]string, error)
-	DeleteBucket(ctx context.Context, bucket string) error
-	RestoreBucket(ctx context.Context, bucket string) error
-	GetDeletedBucketsOlderThan(ctx context.Context, olderThan time.Time) ([]string, error)
-	HardDeleteBucket(ctx context.Context, bucket string) error
+	CountLedgersInBucket(ctx context.Context, bucket string) (int, error)
 
 	Migrate(ctx context.Context, options ...migrations.Option) error
 	GetMigrator(options ...migrations.Option) *migrations.Migrator
@@ -67,6 +59,17 @@ func (d *DefaultStore) GetDistinctBuckets(ctx context.Context) ([]string, error)
 	}
 
 	return buckets, nil
+}
+
+func (d *DefaultStore) CountLedgersInBucket(ctx context.Context, bucket string) (int, error) {
+	count, err := d.db.NewSelect().
+		Model(&ledger.Ledger{}).
+		Where("bucket = ?", bucket).
+		Count(ctx)
+	if err != nil {
+		return 0, postgres.ResolveError(err)
+	}
+	return count, nil
 }
 
 func (d *DefaultStore) CreateLedger(ctx context.Context, l *ledger.Ledger) error {
@@ -113,77 +116,12 @@ func (d *DefaultStore) Ledgers() common.PaginatedResource[
 	return common.NewPaginatedResourceRepository[ledger.Ledger, ListLedgersQueryPayload](&ledgersResourceHandler{store: d}, "id", bunpaginate.OrderAsc)
 }
 
-func (d *DefaultStore) DeleteBucket(ctx context.Context, bucket string) error {
-	now := time.Now()
-	_, err := d.db.NewUpdate().
-		Model(&ledger.Ledger{}).
-		Set("deleted_at = ?", now).
-		Where("bucket = ?", bucket).
-		Where("deleted_at IS NULL").
-		Exec(ctx)
-	if err != nil {
-		return fmt.Errorf("deleting bucket: %w", postgres.ResolveError(err))
-	}
-	return nil
-}
-
-func (d *DefaultStore) RestoreBucket(ctx context.Context, bucket string) error {
-	_, err := d.db.NewUpdate().
-		Model(&ledger.Ledger{}).
-		Set("deleted_at = NULL").
-		Where("bucket = ?", bucket).
-		Where("deleted_at IS NOT NULL").
-		Exec(ctx)
-	if err != nil {
-		return fmt.Errorf("restoring bucket: %w", postgres.ResolveError(err))
-	}
-	return nil
-}
-
-func (d *DefaultStore) GetDeletedBucketsOlderThan(ctx context.Context, olderThan time.Time) ([]string, error) {
-	var buckets []string
-	err := d.db.NewSelect().
-		DistinctOn("bucket").
-		Model(&ledger.Ledger{}).
-		Column("bucket").
-		Where("deleted_at IS NOT NULL").
-		Where("deleted_at < ?", olderThan).
-		Scan(ctx, &buckets)
-	if err != nil {
-		return nil, fmt.Errorf("getting deleted buckets: %w", postgres.ResolveError(err))
-	}
-	return buckets, nil
-}
-
-func (d *DefaultStore) HardDeleteBucket(ctx context.Context, bucket string) error {
-	return d.db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-		// Drop the schema (CASCADE will drop all objects in the schema)
-		// Use bun.Ident to safely escape the schema name - bun.Ident implements fmt.Stringer
-		_, err := tx.ExecContext(ctx, `DROP SCHEMA IF EXISTS ? CASCADE`, bun.Ident(bucket))
-		if err != nil {
-			return fmt.Errorf("dropping schema: %w", postgres.ResolveError(err))
-		}
-
-		// Delete all ledgers from _system.ledgers for this bucket
-		_, err = tx.NewDelete().
-			Model(&ledger.Ledger{}).
-			Where("bucket = ?", bucket).
-			Exec(ctx)
-		if err != nil {
-			return fmt.Errorf("deleting ledgers: %w", postgres.ResolveError(err))
-		}
-
-		return nil
-	})
-}
-
 func (d *DefaultStore) GetLedger(ctx context.Context, name string) (*ledger.Ledger, error) {
 	ret := &ledger.Ledger{}
 	if err := d.db.NewSelect().
 		Model(ret).
 		Column("*").
 		Where("name = ?", name).
-		Where("deleted_at IS NULL").
 		Scan(ctx); err != nil {
 		return nil, postgres.ResolveError(err)
 	}

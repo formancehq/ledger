@@ -1,8 +1,9 @@
 package machine
 
 import (
-	"errors"
 	"fmt"
+
+	"errors"
 )
 
 var (

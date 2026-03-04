@@ -4,22 +4,21 @@ package ledger_test
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
+	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"math/big"
 	"math/rand"
 	"testing"
 
+	"errors"
 	"github.com/alitto/pond"
-	"github.com/stretchr/testify/require"
-
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-	"github.com/formancehq/go-libs/v4/time"
-
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	"github.com/formancehq/go-libs/v3/time"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/common"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMovesInsert(t *testing.T) {
@@ -39,7 +38,7 @@ func TestMovesInsert(t *testing.T) {
 		account := &ledger.Account{
 			Address: "world",
 		}
-		err := store.UpsertAccounts(ctx, ledger.AccountWithDefaultMetadata{Account: account})
+		err := store.UpsertAccounts(ctx, account)
 		require.NoError(t, err)
 
 		now := time.Now()
@@ -159,7 +158,7 @@ func TestMovesInsert(t *testing.T) {
 					tx := ledger.NewTransaction().WithPostings(
 						ledger.NewPosting(src, dst, "USD", big.NewInt(1)),
 					)
-					err = commitTransactionAndUpsertAccounts(ctx, storeCP, &tx)
+					err = storeCP.CommitTransaction(ctx, &tx, nil)
 					if errors.Is(err, postgres.ErrDeadlockDetected) {
 						require.NoError(t, sqlTx.Rollback())
 						continue
@@ -172,8 +171,8 @@ func TestMovesInsert(t *testing.T) {
 		}
 		wp.StopAndWait()
 
-		aggregatedVolumes, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]{
-			Opts: ledger.GetAggregatedVolumesOptions{
+		aggregatedVolumes, err := store.AggregatedVolumes().GetOne(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{
+			Opts: ledgerstore.GetAggregatedVolumesOptions{
 				UseInsertionDate: true,
 			},
 		})

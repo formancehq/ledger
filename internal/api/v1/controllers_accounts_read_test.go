@@ -2,23 +2,21 @@ package v1
 
 import (
 	"bytes"
+	"github.com/formancehq/go-libs/v3/query"
+	"github.com/formancehq/ledger/internal/api/common"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
 
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-	"github.com/formancehq/go-libs/v4/query"
-
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/api/common"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
 func TestAccountsRead(t *testing.T) {

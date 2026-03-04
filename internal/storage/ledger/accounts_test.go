@@ -4,22 +4,21 @@ package ledger_test
 
 import (
 	"context"
-	"errors"
+	"github.com/formancehq/ledger/internal/storage/common"
 	"math/big"
 	"testing"
 	libtime "time"
 
-	"github.com/stretchr/testify/require"
+	"errors"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/time"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v3/logging"
 
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/query"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/storage/common"
-	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAccountsList(t *testing.T) {
@@ -28,11 +27,10 @@ func TestAccountsList(t *testing.T) {
 	now := time.Now()
 	ctx := logging.TestingContext()
 
-	tx := ledger.NewTransaction().
+	err := store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
 		WithTimestamp(now).
-		WithInsertedAt(now)
-	err := commitTransactionAndUpsertAccounts(ctx, store, pointer.For(tx))
+		WithInsertedAt(now)), nil)
 	require.NoError(t, err)
 
 	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
@@ -53,28 +51,28 @@ func TestAccountsList(t *testing.T) {
 		},
 	}, time.Time{}))
 
-	err = commitTransactionAndUpsertAccounts(ctx, store, pointer.For(ledger.NewTransaction().
+	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
 		WithTimestamp(now).
-		WithInsertedAt(now)))
+		WithInsertedAt(now)), nil)
 	require.NoError(t, err)
 
-	err = commitTransactionAndUpsertAccounts(ctx, store, pointer.For(ledger.NewTransaction().
+	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(100))).
 		WithTimestamp(now.Add(4*time.Minute)).
-		WithInsertedAt(now.Add(100*time.Millisecond))))
+		WithInsertedAt(now.Add(100*time.Millisecond))), nil)
 	require.NoError(t, err)
 
-	err = commitTransactionAndUpsertAccounts(ctx, store, pointer.For(ledger.NewTransaction().
+	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("account:1", "bank", "USD", big.NewInt(50))).
 		WithTimestamp(now.Add(3*time.Minute)).
-		WithInsertedAt(now.Add(200*time.Millisecond))))
+		WithInsertedAt(now.Add(200*time.Millisecond))), nil)
 	require.NoError(t, err)
 
-	err = commitTransactionAndUpsertAccounts(ctx, store, pointer.For(ledger.NewTransaction().
+	err = store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().
 		WithPostings(ledger.NewPosting("world", "account:1", "USD", big.NewInt(0))).
 		WithTimestamp(now.Add(-time.Minute)).
-		WithInsertedAt(now.Add(200*time.Millisecond))))
+		WithInsertedAt(now.Add(200*time.Millisecond))), nil)
 	require.NoError(t, err)
 
 	t.Run("list all", func(t *testing.T) {
@@ -183,6 +181,7 @@ func TestAccountsList(t *testing.T) {
 			"USD": ledger.NewVolumesInt64(200, 50),
 		}, accounts.Data[0].EffectiveVolumes)
 	})
+
 	t.Run("list using filter on address", func(t *testing.T) {
 		t.Parallel()
 		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
@@ -192,16 +191,6 @@ func TestAccountsList(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Len(t, accounts.Data, 3)
-	})
-	t.Run("list using filter on address and $in", func(t *testing.T) {
-		t.Parallel()
-		accounts, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
-			Options: common.ResourceQuery[any]{
-				Builder: query.In("address", []any{"account:1", "account:2"}),
-			},
-		})
-		require.NoError(t, err)
-		require.Len(t, accounts.Data, 2)
 	})
 	t.Run("list using filter on address and unbounded length", func(t *testing.T) {
 		t.Parallel()
@@ -344,7 +333,7 @@ func TestAccountsGet(t *testing.T) {
 	tx1 := pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "multi", "USD/2", big.NewInt(100)),
 	).WithTimestamp(now))
-	err := commitTransactionAndUpsertAccounts(ctx, store, tx1)
+	err := store.CommitTransaction(ctx, tx1, nil)
 	require.NoError(t, err)
 
 	// sleep for at least the time precision to ensure the next transaction is inserted with a different timestamp
@@ -359,7 +348,7 @@ func TestAccountsGet(t *testing.T) {
 	tx2 := pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "multi", "USD/2", big.NewInt(0)),
 	).WithTimestamp(now.Add(-time.Minute)))
-	err = commitTransactionAndUpsertAccounts(ctx, store, tx2)
+	err = store.CommitTransaction(ctx, tx2, nil)
 	require.NoError(t, err)
 
 	t.Run("find account", func(t *testing.T) {
@@ -475,18 +464,6 @@ func TestAccountsGet(t *testing.T) {
 		})
 		require.Error(t, err)
 	})
-
-	t.Run("filter using $in with partial address should fail", func(t *testing.T) {
-		t.Parallel()
-		_, err := store.Accounts().Paginate(ctx, common.InitialPaginatedQuery[any]{
-			Options: common.ResourceQuery[any]{
-				Builder: query.In("address", []any{"account:", "account:2"}),
-			},
-		})
-		require.Error(t, err)
-		require.True(t, errors.Is(err, ledgerstore.ErrInvalidQuery{}))
-		require.Contains(t, err.Error(), "IN operator only supports full addresses")
-	})
 }
 
 func TestAccountsCount(t *testing.T) {
@@ -495,10 +472,9 @@ func TestAccountsCount(t *testing.T) {
 	store := newLedgerStore(t)
 	ctx := logging.TestingContext()
 
-	tx := ledger.NewTransaction().WithPostings(
+	err := store.CommitTransaction(ctx, pointer.For(ledger.NewTransaction().WithPostings(
 		ledger.NewPosting("world", "central_bank", "USD/2", big.NewInt(100)),
-	)
-	err := commitTransactionAndUpsertAccounts(ctx, store, pointer.For(tx))
+	)), nil)
 	require.NoError(t, err)
 
 	countAccounts, err := store.Accounts().Count(ctx, common.ResourceQuery[any]{})
@@ -521,7 +497,7 @@ func TestAccountsUpsert(t *testing.T) {
 	}
 
 	// Initial insert
-	err := store.UpsertAccounts(ctx, ledger.AccountWithDefaultMetadata{Account: &account1}, ledger.AccountWithDefaultMetadata{Account: &account2})
+	err := store.UpsertAccounts(ctx, &account1, &account2)
 	require.NoError(t, err)
 
 	require.NotEmpty(t, account1.FirstUsage)
@@ -545,6 +521,6 @@ func TestAccountsUpsert(t *testing.T) {
 	}
 
 	// Upsert with no modification
-	err = store.UpsertAccounts(ctx, ledger.AccountWithDefaultMetadata{Account: &account1})
+	err = store.UpsertAccounts(ctx, &account1)
 	require.NoError(t, err)
 }

@@ -1,10 +1,12 @@
 package ledger
 
 import (
-	"github.com/uptrace/bun"
+	"sync"
+	"sync/atomic"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
+	"github.com/uptrace/bun"
 )
 
 type Factory interface {
@@ -14,15 +16,30 @@ type Factory interface {
 type DefaultFactory struct {
 	db      *bun.DB
 	options []Option
+
+	mu          sync.Mutex
+	bucketFlags map[string]*atomic.Bool
 }
 
 func NewFactory(db *bun.DB, options ...Option) *DefaultFactory {
 	return &DefaultFactory{
-		db:      db,
-		options: options,
+		db:          db,
+		options:     options,
+		bucketFlags: make(map[string]*atomic.Bool),
 	}
 }
 
 func (d *DefaultFactory) Create(b bucket.Bucket, l ledger.Ledger) *Store {
-	return New(d.db, b, l, d.options...)
+	d.mu.Lock()
+	flag, ok := d.bucketFlags[l.Bucket]
+	if !ok {
+		flag = &atomic.Bool{}
+		d.bucketFlags[l.Bucket] = flag
+	}
+	d.mu.Unlock()
+
+	store := New(d.db, b, l, d.options...)
+	store.aloneInBucket = flag
+
+	return store
 }

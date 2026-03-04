@@ -3,11 +3,9 @@ package bulking
 import (
 	"bufio"
 	"bytes"
-	"testing"
-
-	"github.com/stretchr/testify/require"
-
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+	"github.com/stretchr/testify/require"
+	"testing"
 )
 
 func TestParseStream(t *testing.T) {

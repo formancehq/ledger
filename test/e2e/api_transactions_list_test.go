@@ -4,30 +4,28 @@ package test_suite
 
 import (
 	"fmt"
-	"math/big"
-	"slices"
-	"sort"
-	"time"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
-	. "github.com/formancehq/go-libs/v4/testing/api"
-	. "github.com/formancehq/go-libs/v4/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
-	libtime "github.com/formancehq/go-libs/v4/time"
-
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/query"
+	. "github.com/formancehq/go-libs/v3/testing/api"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
+	libtime "github.com/formancehq/go-libs/v3/time"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
 	. "github.com/formancehq/ledger/pkg/testserver"
 	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"math/big"
+	"slices"
+	"sort"
+	"time"
+
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/pointer"
 )
 
 var _ = Context("Ledger transactions list API tests", func() {
@@ -274,7 +272,7 @@ var _ = Context("Ledger transactions list API tests", func() {
 			Context("with effective ordering", func() {
 				BeforeEach(func() {
 					//nolint:staticcheck
-					req.Order = pointer.For(operations.QueryParamOrderEffective)
+					req.Order = pointer.For(operations.OrderEffective)
 				})
 				It("Should be ok, and returns transactions ordered by effective timestamp", func() {
 					Expect(rsp.V2TransactionsCursorResponse.Cursor.PageSize).To(Equal(pageSize))
@@ -753,62 +751,6 @@ var _ = Context("Ledger transactions list API tests", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
-
-			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
-				ctx,
-				operations.V2CountTransactionsRequest{
-					Ledger: "default",
-					RequestBody: map[string]interface{}{
-						"$in": map[string]any{
-							"account": []any{"foo:foo", "foo:bar"},
-						},
-					},
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Headers["Count"]).To(Equal([]string{"2"}))
-
-			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
-				ctx,
-				operations.V2CountTransactionsRequest{
-					Ledger: "default",
-					RequestBody: map[string]interface{}{
-						"$in": map[string]any{
-							"source": []any{"world"},
-						},
-					},
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Headers["Count"]).To(Equal([]string{"3"}))
-
-			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
-				ctx,
-				operations.V2CountTransactionsRequest{
-					Ledger: "default",
-					RequestBody: map[string]interface{}{
-						"$in": map[string]any{
-							"destination": []any{"foo:foo", "foo:baz"},
-						},
-					},
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Headers["Count"]).To(Equal([]string{"2"}))
-
-			response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
-				ctx,
-				operations.V2CountTransactionsRequest{
-					Ledger: "default",
-					RequestBody: map[string]interface{}{
-						"$in": map[string]any{
-							"account": []any{"not_existing", "also_not_existing"},
-						},
-					},
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
 		})
 		It("should be listed on api", func(specContext SpecContext) {
 			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
@@ -1068,208 +1010,6 @@ var _ = Context("Ledger transactions list API tests", func() {
 				)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(2))
-			})
-			By("using $in operator on account", func() {
-				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
-					ctx,
-					operations.V2ListTransactionsRequest{
-						Ledger: "default",
-						Expand: pointer.For("volumes,effectiveVolumes"),
-						RequestBody: map[string]interface{}{
-							"$in": map[string]any{
-								"account": []any{"foo:foo", "foo:bar"},
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(2))
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data[0].ID).Should(Equal(t2.V2CreateTransactionResponse.Data.ID))
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data[1].ID).Should(Equal(t1.V2CreateTransactionResponse.Data.ID))
-			})
-			By("using $in operator on source", func() {
-				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
-					ctx,
-					operations.V2ListTransactionsRequest{
-						Ledger: "default",
-						Expand: pointer.For("volumes,effectiveVolumes"),
-						RequestBody: map[string]interface{}{
-							"$in": map[string]any{
-								"source": []any{"world"},
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(3))
-			})
-			By("using $in operator on destination", func() {
-				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
-					ctx,
-					operations.V2ListTransactionsRequest{
-						Ledger: "default",
-						Expand: pointer.For("volumes,effectiveVolumes"),
-						RequestBody: map[string]interface{}{
-							"$in": map[string]any{
-								"destination": []any{"foo:foo", "foo:baz"},
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(2))
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data[0].ID).Should(Equal(t3.V2CreateTransactionResponse.Data.ID))
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data[1].ID).Should(Equal(t1.V2CreateTransactionResponse.Data.ID))
-			})
-			By("using $in operator on account with non-existing addresses", func() {
-				response, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
-					ctx,
-					operations.V2ListTransactionsRequest{
-						Ledger: "default",
-						Expand: pointer.For("volumes,effectiveVolumes"),
-						RequestBody: map[string]interface{}{
-							"$in": map[string]any{
-								"account": []any{"not_existing", "also_not_existing"},
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(0))
-			})
-		})
-		When("reverting a transaction", func() {
-			var (
-				revertTime time.Time
-			)
-			JustBeforeEach(func(specContext SpecContext) {
-				revertTime = time.Now().Round(time.Second).UTC()
-				_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.RevertTransaction(
-					ctx,
-					operations.V2RevertTransactionRequest{
-						Ledger: "default",
-						ID:     t2.V2CreateTransactionResponse.Data.ID,
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-			})
-			It("should filter transactions by reverted_at using $gte", func(specContext SpecContext) {
-				// Filter transactions reverted at or after revertTime (should include t2)
-				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
-					ctx,
-					operations.V2ListTransactionsRequest{
-						Ledger: "default",
-						Expand: pointer.For("volumes,effectiveVolumes"),
-						RequestBody: map[string]interface{}{
-							"$gte": map[string]any{
-								"reverted_at": revertTime.Add(-time.Minute).Format(time.RFC3339),
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(1))
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data[0].ID).To(Equal(t2.V2CreateTransactionResponse.Data.ID))
-			})
-			It("should filter transactions by reverted_at using $lte", func(specContext SpecContext) {
-				// Filter transactions reverted at or before revertTime + 1 minute (should include t2)
-				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
-					ctx,
-					operations.V2ListTransactionsRequest{
-						Ledger: "default",
-						Expand: pointer.For("volumes,effectiveVolumes"),
-						RequestBody: map[string]interface{}{
-							"$lte": map[string]any{
-								"reverted_at": revertTime.Add(time.Minute).Format(time.RFC3339),
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(1))
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data[0].ID).To(Equal(t2.V2CreateTransactionResponse.Data.ID))
-			})
-			It("should filter transactions by reverted_at using $gte with future date", func(specContext SpecContext) {
-				// Filter transactions reverted after a future date (should return empty)
-				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
-					ctx,
-					operations.V2ListTransactionsRequest{
-						Ledger: "default",
-						Expand: pointer.For("volumes,effectiveVolumes"),
-						RequestBody: map[string]interface{}{
-							"$gte": map[string]any{
-								"reverted_at": revertTime.Add(time.Hour).Format(time.RFC3339),
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(0))
-			})
-			It("should filter transactions by reverted_at using $lte with past date", func(specContext SpecContext) {
-				// Filter transactions reverted before a past date (should return empty)
-				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListTransactions(
-					ctx,
-					operations.V2ListTransactionsRequest{
-						Ledger: "default",
-						Expand: pointer.For("volumes,effectiveVolumes"),
-						RequestBody: map[string]interface{}{
-							"$lte": map[string]any{
-								"reverted_at": revertTime.Add(-time.Hour).Format(time.RFC3339),
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.V2TransactionsCursorResponse.Cursor.Data).Should(HaveLen(0))
-			})
-			It("should count transactions by reverted_at using $gte", func(specContext SpecContext) {
-				// Count transactions reverted at or after revertTime
-				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
-					ctx,
-					operations.V2CountTransactionsRequest{
-						Ledger: "default",
-						RequestBody: map[string]interface{}{
-							"$gte": map[string]any{
-								"reverted_at": revertTime.Add(-time.Minute).Format(time.RFC3339),
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.Headers["Count"]).To(Equal([]string{"1"}))
-			})
-			It("should count transactions by reverted_at using $lte", func(specContext SpecContext) {
-				// Count transactions reverted at or before revertTime + 1 minute
-				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
-					ctx,
-					operations.V2CountTransactionsRequest{
-						Ledger: "default",
-						RequestBody: map[string]interface{}{
-							"$lte": map[string]any{
-								"reverted_at": revertTime.Add(time.Minute).Format(time.RFC3339),
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.Headers["Count"]).To(Equal([]string{"1"}))
-			})
-			It("should count transactions by reverted_at with future date", func(specContext SpecContext) {
-				// Count transactions reverted after a future date (should return 0)
-				response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CountTransactions(
-					ctx,
-					operations.V2CountTransactionsRequest{
-						Ledger: "default",
-						RequestBody: map[string]interface{}{
-							"$gte": map[string]any{
-								"reverted_at": revertTime.Add(time.Hour).Format(time.RFC3339),
-							},
-						},
-					},
-				)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(response.Headers["Count"]).To(Equal([]string{"0"}))
 			})
 		})
 		It("should be gettable on api", func(specContext SpecContext) {

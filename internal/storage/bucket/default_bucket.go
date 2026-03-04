@@ -6,19 +6,16 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
-	"text/template"
-
-	"github.com/uptrace/bun"
-	"go.opentelemetry.io/otel/trace"
-
-	"github.com/formancehq/go-libs/v4/migrations"
-
+	"github.com/formancehq/go-libs/v3/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/features"
+	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/trace"
+	"text/template"
 )
 
 // stateless version (+1 regarding directory name, as migrations start from 1 in the lib)
-const MinimalSchemaVersion = 50
+const MinimalSchemaVersion = 26
 
 type DefaultBucket struct {
 	name string

@@ -3,14 +3,11 @@ package testserver
 import (
 	"context"
 	"encoding/json"
-	"sync"
-
-	"github.com/olivere/elastic/v7"
-
-	"github.com/formancehq/go-libs/v4/collectionutils"
-
+	"github.com/formancehq/go-libs/v3/collectionutils"
 	"github.com/formancehq/ledger/internal/replication/drivers"
 	"github.com/formancehq/ledger/internal/replication/drivers/elasticsearch"
+	"github.com/olivere/elastic/v7"
+	"sync"
 )
 
 type ElasticDriver struct {

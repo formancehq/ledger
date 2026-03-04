@@ -2,12 +2,11 @@ package v2
 
 import (
 	"errors"
+	"github.com/formancehq/ledger/internal/api/bulking"
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/go-libs/v4/api"
-
-	"github.com/formancehq/ledger/internal/api/bulking"
+	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/ledger/internal/api/common"
 )
 
@@ -34,8 +33,6 @@ func bulkHandler(bulkerFactory bulking.BulkerFactory, bulkHandlerFactories map[s
 			return
 		}
 
-		schemaVersion := r.URL.Query().Get("schemaVersion")
-
 		l := common.LedgerFromContext(r.Context())
 
 		err := bulkerFactory.CreateBulker(l).Run(r.Context(), send, receive,
@@ -43,7 +40,6 @@ func bulkHandler(bulkerFactory bulking.BulkerFactory, bulkHandlerFactories map[s
 				ContinueOnFailure: api.QueryParamBool(r, "continueOnFailure"),
 				Atomic:            api.QueryParamBool(r, "atomic"),
 				Parallel:          api.QueryParamBool(r, "parallel"),
-				SchemaVersion:     schemaVersion,
 			},
 		)
 		if err != nil {

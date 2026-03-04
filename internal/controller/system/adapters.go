@@ -3,14 +3,12 @@ package system
 import (
 	"context"
 	"database/sql"
-
-	"github.com/uptrace/bun"
-
 	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/storage/driver"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/uptrace/bun"
 )
 
 type DefaultStorageDriverAdapter struct {
@@ -64,15 +62,15 @@ func (d *DefaultStoreAdapter) BeginTX(ctx context.Context, opts *sql.TxOptions) 
 	}, tx, nil
 }
 
-func (d *DefaultStoreAdapter) Commit(ctx context.Context) error {
-	return d.Store.Commit(ctx)
+func (d *DefaultStoreAdapter) Commit() error {
+	return d.Store.Commit()
 }
 
-func (d *DefaultStoreAdapter) Rollback(ctx context.Context) error {
-	return d.Store.Rollback(ctx)
+func (d *DefaultStoreAdapter) Rollback() error {
+	return d.Store.Rollback()
 }
 
-func (d *DefaultStoreAdapter) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions] {
+func (d *DefaultStoreAdapter) AggregatedBalances() common.Resource[ledger.AggregatedVolumes, ledgerstore.GetAggregatedVolumesOptions] {
 	return d.AggregatedVolumes()
 }
 

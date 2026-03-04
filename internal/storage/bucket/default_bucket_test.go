@@ -3,18 +3,17 @@
 package bucket_test
 
 import (
-	"testing"
-
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/trace/noop"
-
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/bun/bundebug"
-	"github.com/formancehq/go-libs/v4/logging"
-
+	"github.com/formancehq/go-libs/v3/bun/bundebug"
 	"github.com/formancehq/ledger/internal/storage/bucket"
 	"github.com/formancehq/ledger/internal/storage/system"
+	"go.opentelemetry.io/otel/trace/noop"
+	"testing"
+
+	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBuckets(t *testing.T) {

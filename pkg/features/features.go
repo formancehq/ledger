@@ -2,10 +2,9 @@ package features
 
 import (
 	"fmt"
+	"github.com/formancehq/go-libs/v3/collectionutils"
 	"slices"
 	"strings"
-
-	"github.com/formancehq/go-libs/v4/collectionutils"
 )
 
 const (

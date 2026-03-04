@@ -2,32 +2,29 @@ package ledger
 
 import (
 	"context"
-	"encoding/json"
 	"math/big"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun"
-	"go.uber.org/mock/gomock"
-
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/migrations"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/query"
-	"github.com/formancehq/go-libs/v4/time"
-
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/machine/vm"
-	"github.com/formancehq/ledger/internal/queries"
+	"github.com/formancehq/go-libs/v3/query"
 	"github.com/formancehq/ledger/internal/storage/common"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
+	"github.com/uptrace/bun"
+
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/migrations"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
-func TestCreateTransactionWithoutSchema(t *testing.T) {
+func TestCreateTransaction(t *testing.T) {
 	t.Parallel()
-
 	ctrl := gomock.NewController(t)
 
 	store := NewMockStore(ctrl)
@@ -49,7 +46,7 @@ func TestCreateTransactionWithoutSchema(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		Commit(gomock.Any()).
+		Commit().
 		Return(nil)
 
 	posting := ledger.NewPosting("world", "bank", "USD", big.NewInt(100))
@@ -60,13 +57,8 @@ func TestCreateTransactionWithoutSchema(t *testing.T) {
 		}, nil)
 
 	store.EXPECT().
-		FindLatestSchemaVersion(gomock.Any()).
-		Return(nil, nil)
-
-	store.EXPECT().
-		CommitTransaction(gomock.Any(), gomock.Any()).
+		CommitTransaction(gomock.Any(), gomock.Any(), map[string]metadata.Metadata{}).
 		Return(nil)
-	store.EXPECT().UpsertAccounts(gomock.Any(), gomock.Any())
 
 	store.EXPECT().
 		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
@@ -78,144 +70,6 @@ func TestCreateTransactionWithoutSchema(t *testing.T) {
 		})
 
 	_, _, _, err := l.CreateTransaction(context.Background(), Parameters[CreateTransaction]{
-		Input: CreateTransaction{
-			RunScript: runScript,
-		},
-	})
-	require.NoError(t, err)
-}
-
-func TestCreateTransactionWithSchema(t *testing.T) {
-	t.Parallel()
-	ctrl := gomock.NewController(t)
-
-	store := NewMockStore(ctrl)
-	numscriptRuntime := NewMockNumscriptRuntime(ctrl)
-	parser := NewMockNumscriptParser(ctrl)
-	machineParser := NewMockNumscriptParser(ctrl)
-	interpreterParser := NewMockNumscriptParser(ctrl)
-
-	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
-
-	script := `
-var {
-	account $dest
-}
-send [EUR/2 100] (
-	source = world
-	destination = $dest
-)`
-
-	schemaVersion := "v1.0"
-	schema := ledger.Schema{
-		SchemaData: ledger.SchemaData{
-			Chart: ledger.ChartOfAccounts{
-				"world": {
-					Account: &ledger.ChartAccount{
-						Metadata: map[string]ledger.ChartAccountMetadata{
-							"foo": {
-								Default: pointer.For("bar"),
-							},
-						},
-					},
-				},
-				"bank": {
-					Account: &ledger.ChartAccount{},
-				},
-			},
-			Transactions: ledger.TransactionTemplates{
-				"TRANSFER": {
-					Description: "Test tx template",
-					Script:      script,
-				},
-			},
-		},
-		Version: schemaVersion,
-	}
-
-	parser.EXPECT().
-		Parse(script).
-		Return(numscriptRuntime, nil)
-
-	store.EXPECT().
-		BeginTX(gomock.Any(), nil).
-		Return(store, &bun.Tx{}, nil)
-
-	store.EXPECT().
-		InsertSchema(gomock.Any(), &schema).
-		Return(nil)
-
-	store.EXPECT().
-		Commit(gomock.Any()).
-		Return(nil)
-
-	store.EXPECT().
-		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
-			return x.(*ledger.Log).Type == ledger.InsertedSchemaLogType
-		})).
-		DoAndReturn(func(_ context.Context, log *ledger.Log) any {
-			log.ID = pointer.For(uint64(0))
-			return log
-		})
-
-	_, _, _, err := l.InsertSchema(context.Background(), Parameters[InsertSchema]{
-		Input: InsertSchema{
-			Version: schema.Version,
-			Data:    schema.SchemaData,
-		},
-	})
-	require.NoError(t, err)
-
-	runScript := RunScript{
-		Script: vm.Script{
-			Plain:    "",
-			Template: "TRANSFER",
-			Vars: map[string]string{
-				"dest": "bank",
-			},
-		},
-	}
-
-	parser.EXPECT().
-		Parse(script).
-		Return(numscriptRuntime, nil)
-
-	store.EXPECT().
-		BeginTX(gomock.Any(), nil).
-		Return(store, &bun.Tx{}, nil)
-
-	numscriptRuntime.EXPECT().
-		Execute(gomock.Any(), store, runScript.Vars).
-		Return(&NumscriptExecutionResult{
-			Postings: ledger.Postings{
-				ledger.NewPosting("world", "bank", "USD", big.NewInt(100)),
-			},
-		}, nil)
-
-	store.EXPECT().
-		Commit(gomock.Any()).
-		Return(nil)
-
-	store.EXPECT().
-		FindSchema(gomock.Any(), "v1.0").
-		Return(&schema, nil)
-
-	store.EXPECT().
-		CommitTransaction(gomock.Any(), gomock.Any()).
-		Return(nil)
-	store.EXPECT().UpsertAccounts(gomock.Any(), gomock.Any())
-
-	store.EXPECT().
-		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
-			return x.(*ledger.Log).Type == ledger.NewTransactionLogType
-		})).
-		DoAndReturn(func(_ context.Context, log *ledger.Log) any {
-			log.ID = pointer.For(uint64(0))
-			return log
-		})
-
-	_, _, _, err = l.CreateTransaction(context.Background(), Parameters[CreateTransaction]{
-		SchemaVersion: schemaVersion,
 		Input: CreateTransaction{
 			RunScript: runScript,
 		},
@@ -240,11 +94,7 @@ func TestRevertTransaction(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		FindLatestSchemaVersion(gomock.Any()).
-		Return(nil, nil)
-
-	store.EXPECT().
-		Commit(gomock.Any()).
+		Commit().
 		Return(nil)
 
 	txToRevert := ledger.Transaction{
@@ -262,7 +112,7 @@ func TestRevertTransaction(t *testing.T) {
 		Return(map[string]map[string]*big.Int{}, nil)
 
 	store.EXPECT().
-		CommitTransaction(gomock.Any(), gomock.Any()).
+		CommitTransaction(gomock.Any(), gomock.Any(), nil).
 		Return(nil)
 
 	store.EXPECT().
@@ -300,11 +150,7 @@ func TestSaveTransactionMetadata(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		FindLatestSchemaVersion(gomock.Any()).
-		Return(nil, nil)
-
-	store.EXPECT().
-		Commit(gomock.Any()).
+		Commit().
 		Return(nil)
 
 	m := metadata.Metadata{
@@ -350,11 +196,7 @@ func TestDeleteTransactionMetadata(t *testing.T) {
 		Return(store, &bun.Tx{}, nil)
 
 	store.EXPECT().
-		FindLatestSchemaVersion(gomock.Any()).
-		Return(nil, nil)
-
-	store.EXPECT().
-		Commit(gomock.Any()).
+		Commit().
 		Return(nil)
 
 	store.EXPECT().
@@ -538,14 +380,14 @@ func TestGetAggregatedBalances(t *testing.T) {
 	machineParser := NewMockNumscriptParser(ctrl)
 	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	aggregatedBalances := NewMockResource[ledger.AggregatedVolumes, ledger.GetAggregatedVolumesOptions](ctrl)
+	aggregatedBalances := NewMockResource[ledger.AggregatedVolumes, ledgerstore.GetAggregatedVolumesOptions](ctrl)
 
 	store.EXPECT().AggregatedBalances().Return(aggregatedBalances)
-	aggregatedBalances.EXPECT().GetOne(gomock.Any(), common.ResourceQuery[ledger.GetAggregatedVolumesOptions]{}).
+	aggregatedBalances.EXPECT().GetOne(gomock.Any(), common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{}).
 		Return(&ledger.AggregatedVolumes{}, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
-	ret, err := l.GetAggregatedBalances(ctx, common.ResourceQuery[ledger.GetAggregatedVolumesOptions]{})
+	ret, err := l.GetAggregatedBalances(ctx, common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]{})
 	require.NoError(t, err)
 	require.Equal(t, ledger.BalancesByAssets{}, ret)
 }
@@ -588,123 +430,22 @@ func TestGetVolumesWithBalances(t *testing.T) {
 	machineParser := NewMockNumscriptParser(ctrl)
 	interpreterParser := NewMockNumscriptParser(ctrl)
 	ctx := logging.TestingContext()
-	volumes := NewMockPaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledger.GetVolumesOptions](ctrl)
+	volumes := NewMockPaginatedResource[ledger.VolumesWithBalanceByAssetByAccount, ledgerstore.GetVolumesOptions](ctrl)
 
 	balancesByAssets := &bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount]{}
 	store.EXPECT().Volumes().Return(volumes)
-	volumes.EXPECT().Paginate(gomock.Any(), common.InitialPaginatedQuery[ledger.GetVolumesOptions]{
+	volumes.EXPECT().Paginate(gomock.Any(), common.InitialPaginatedQuery[ledgerstore.GetVolumesOptions]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	}).Return(balancesByAssets, nil)
 
 	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
-	ret, err := l.GetVolumesWithBalances(ctx, common.InitialPaginatedQuery[ledger.GetVolumesOptions]{
+	ret, err := l.GetVolumesWithBalances(ctx, common.InitialPaginatedQuery[ledgerstore.GetVolumesOptions]{
 		PageSize: bunpaginate.QueryDefaultPageSize,
 		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 	})
 	require.NoError(t, err)
 	require.Equal(t, balancesByAssets, ret)
-}
-
-func TestRunQuery(t *testing.T) {
-	t.Parallel()
-	ctrl := gomock.NewController(t)
-
-	store := NewMockStore(ctrl)
-	parser := NewMockNumscriptParser(ctrl)
-	machineParser := NewMockNumscriptParser(ctrl)
-	interpreterParser := NewMockNumscriptParser(ctrl)
-	accounts := NewMockPaginatedResource[ledger.Account, any](ctrl)
-
-	l := NewDefaultController(ledger.Ledger{}, store, parser, machineParser, interpreterParser)
-
-	schemaVersion := "v1.0"
-	schema := ledger.Schema{
-		SchemaData: ledger.SchemaData{
-			Chart:        ledger.ChartOfAccounts{},
-			Transactions: ledger.TransactionTemplates{},
-			Queries: ledger.QueryTemplates{
-				"FOO": {
-					Description: "Foo template",
-					Resource:    "accounts",
-					Vars: map[string]queries.VarDecl{
-						"aaa": {
-							Type:    queries.NewTypeString(),
-							Default: nil,
-						},
-					},
-					Body: json.RawMessage(`{
-						"$match": {
-							"address": "${aaa}"
-						}
-					}`),
-				},
-			},
-		},
-		Version: schemaVersion,
-	}
-
-	store.EXPECT().
-		BeginTX(gomock.Any(), nil).
-		Return(store, &bun.Tx{}, nil)
-
-	store.EXPECT().
-		InsertSchema(gomock.Any(), &schema).
-		Return(nil)
-
-	store.EXPECT().
-		Commit(gomock.Any()).
-		Return(nil)
-
-	store.EXPECT().
-		InsertLog(gomock.Any(), gomock.Cond(func(x any) bool {
-			return x.(*ledger.Log).Type == ledger.InsertedSchemaLogType
-		})).
-		DoAndReturn(func(_ context.Context, log *ledger.Log) any {
-			log.ID = pointer.For(uint64(0))
-			return log
-		})
-
-	_, _, _, err := l.InsertSchema(context.Background(), Parameters[InsertSchema]{
-		Input: InsertSchema{
-			Version: schema.Version,
-			Data:    schema.SchemaData,
-		},
-	})
-	require.NoError(t, err)
-
-	store.EXPECT().
-		FindSchema(gomock.Any(), "v1.0").
-		Return(&schema, nil)
-
-	store.EXPECT().Accounts().Return(accounts)
-
-	expectedQuery, err := query.ParseJSON(`{"$match": {"address": "bbb"}}`)
-	require.NoError(t, err)
-	cursor := &bunpaginate.Cursor[ledger.Account]{}
-	accounts.EXPECT().Paginate(gomock.Any(), common.InitialPaginatedQuery[any]{
-		PageSize: bunpaginate.QueryDefaultPageSize,
-		Column:   "address",
-		Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
-		Options: common.ResourceQuery[any]{
-			Builder: expectedQuery,
-		},
-	}).Return(cursor, nil)
-
-	resource, ret, err := l.RunQuery(context.Background(), schema.Version, "FOO", common.RunQuery{
-		Vars: map[string]any{
-			"aaa": "bbb",
-		},
-	}, storagecommon.PaginationConfig{
-		MaxPageSize:     bunpaginate.MaxPageSize,
-		DefaultPageSize: bunpaginate.QueryDefaultPageSize,
-	})
-	require.NoError(t, err)
-	require.Equal(t, queries.ResourceKindAccount, *resource)
-	require.Equal(t, &bunpaginate.Cursor[any]{
-		Data: []any{},
-	}, ret)
-
 }
 
 func TestGetMigrationsInfo(t *testing.T) {

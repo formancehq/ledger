@@ -1,11 +1,10 @@
 # Order
 
-The sort order
+Deprecated: Use sort param
 
 
 ## Values
 
-| Name        | Value       |
-| ----------- | ----------- |
-| `OrderAsc`  | asc         |
-| `OrderDesc` | desc        |
+| Name             | Value            |
+| ---------------- | ---------------- |
+| `OrderEffective` | effective        |

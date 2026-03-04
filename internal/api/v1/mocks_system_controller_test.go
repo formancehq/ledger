@@ -11,7 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v4/bun/bunpaginate"
+	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
 	common "github.com/formancehq/ledger/internal/storage/common"
@@ -645,44 +645,6 @@ func (c *SystemControllerCreatePipelineCall) DoAndReturn(f func(context.Context,
 	return c
 }
 
-// DeleteBucket mocks base method.
-func (m *SystemController) DeleteBucket(ctx context.Context, bucket string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteBucket", ctx, bucket)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeleteBucket indicates an expected call of DeleteBucket.
-func (mr *SystemControllerMockRecorder) DeleteBucket(ctx, bucket any) *SystemControllerDeleteBucketCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBucket", reflect.TypeOf((*SystemController)(nil).DeleteBucket), ctx, bucket)
-	return &SystemControllerDeleteBucketCall{Call: call}
-}
-
-// SystemControllerDeleteBucketCall wrap *gomock.Call
-type SystemControllerDeleteBucketCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *SystemControllerDeleteBucketCall) Return(arg0 error) *SystemControllerDeleteBucketCall {
-	c.Call = c.Call.Return(arg0)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *SystemControllerDeleteBucketCall) Do(f func(context.Context, string) error) *SystemControllerDeleteBucketCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *SystemControllerDeleteBucketCall) DoAndReturn(f func(context.Context, string) error) *SystemControllerDeleteBucketCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // DeleteExporter mocks base method.
 func (m *SystemController) DeleteExporter(ctx context.Context, id string) error {
 	m.ctrl.T.Helper()
@@ -953,44 +915,6 @@ func (c *SystemControllerGetPipelineCall) DoAndReturn(f func(context.Context, st
 	return c
 }
 
-// GetSchemaEnforcementMode mocks base method.
-func (m *SystemController) GetSchemaEnforcementMode(ctx context.Context) ledger0.SchemaEnforcementMode {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSchemaEnforcementMode", ctx)
-	ret0, _ := ret[0].(ledger0.SchemaEnforcementMode)
-	return ret0
-}
-
-// GetSchemaEnforcementMode indicates an expected call of GetSchemaEnforcementMode.
-func (mr *SystemControllerMockRecorder) GetSchemaEnforcementMode(ctx any) *SystemControllerGetSchemaEnforcementModeCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSchemaEnforcementMode", reflect.TypeOf((*SystemController)(nil).GetSchemaEnforcementMode), ctx)
-	return &SystemControllerGetSchemaEnforcementModeCall{Call: call}
-}
-
-// SystemControllerGetSchemaEnforcementModeCall wrap *gomock.Call
-type SystemControllerGetSchemaEnforcementModeCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *SystemControllerGetSchemaEnforcementModeCall) Return(arg0 ledger0.SchemaEnforcementMode) *SystemControllerGetSchemaEnforcementModeCall {
-	c.Call = c.Call.Return(arg0)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *SystemControllerGetSchemaEnforcementModeCall) Do(f func(context.Context) ledger0.SchemaEnforcementMode) *SystemControllerGetSchemaEnforcementModeCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *SystemControllerGetSchemaEnforcementModeCall) DoAndReturn(f func(context.Context) ledger0.SchemaEnforcementMode) *SystemControllerGetSchemaEnforcementModeCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // ListExporters mocks base method.
 func (m *SystemController) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger.Exporter], error) {
 	m.ctrl.T.Helper()
@@ -1142,44 +1066,6 @@ func (c *SystemControllerResetPipelineCall) Do(f func(context.Context, string) e
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *SystemControllerResetPipelineCall) DoAndReturn(f func(context.Context, string) error) *SystemControllerResetPipelineCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// RestoreBucket mocks base method.
-func (m *SystemController) RestoreBucket(ctx context.Context, bucket string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RestoreBucket", ctx, bucket)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// RestoreBucket indicates an expected call of RestoreBucket.
-func (mr *SystemControllerMockRecorder) RestoreBucket(ctx, bucket any) *SystemControllerRestoreBucketCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestoreBucket", reflect.TypeOf((*SystemController)(nil).RestoreBucket), ctx, bucket)
-	return &SystemControllerRestoreBucketCall{Call: call}
-}
-
-// SystemControllerRestoreBucketCall wrap *gomock.Call
-type SystemControllerRestoreBucketCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *SystemControllerRestoreBucketCall) Return(arg0 error) *SystemControllerRestoreBucketCall {
-	c.Call = c.Call.Return(arg0)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *SystemControllerRestoreBucketCall) Do(f func(context.Context, string) error) *SystemControllerRestoreBucketCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *SystemControllerRestoreBucketCall) DoAndReturn(f func(context.Context, string) error) *SystemControllerRestoreBucketCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

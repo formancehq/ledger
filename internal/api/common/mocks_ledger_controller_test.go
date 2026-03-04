@@ -12,12 +12,12 @@ import (
 	sql "database/sql"
 	reflect "reflect"
 
-	bunpaginate "github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	migrations "github.com/formancehq/go-libs/v4/migrations"
+	bunpaginate "github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	migrations "github.com/formancehq/go-libs/v3/migrations"
 	ledger "github.com/formancehq/ledger/internal"
 	ledger0 "github.com/formancehq/ledger/internal/controller/ledger"
-	queries "github.com/formancehq/ledger/internal/queries"
 	common "github.com/formancehq/ledger/internal/storage/common"
+	ledger1 "github.com/formancehq/ledger/internal/storage/ledger"
 	bun "github.com/uptrace/bun"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -185,7 +185,7 @@ func (mr *LedgerControllerMockRecorder) GetAccount(ctx, query any) *gomock.Call 
 }
 
 // GetAggregatedBalances mocks base method.
-func (m *LedgerController) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
+func (m *LedgerController) GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledger1.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAggregatedBalances", ctx, q)
 	ret0, _ := ret[0].(ledger.BalancesByAssets)
@@ -212,21 +212,6 @@ func (m *LedgerController) GetMigrationsInfo(ctx context.Context) ([]migrations.
 func (mr *LedgerControllerMockRecorder) GetMigrationsInfo(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMigrationsInfo", reflect.TypeOf((*LedgerController)(nil).GetMigrationsInfo), ctx)
-}
-
-// GetSchema mocks base method.
-func (m *LedgerController) GetSchema(ctx context.Context, version string) (*ledger.Schema, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSchema", ctx, version)
-	ret0, _ := ret[0].(*ledger.Schema)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetSchema indicates an expected call of GetSchema.
-func (mr *LedgerControllerMockRecorder) GetSchema(ctx, version any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSchema", reflect.TypeOf((*LedgerController)(nil).GetSchema), ctx, version)
 }
 
 // GetStats mocks base method.
@@ -260,7 +245,7 @@ func (mr *LedgerControllerMockRecorder) GetTransaction(ctx, query any) *gomock.C
 }
 
 // GetVolumesWithBalances mocks base method.
-func (m *LedgerController) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
+func (m *LedgerController) GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger1.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetVolumesWithBalances", ctx, q)
 	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount])
@@ -300,23 +285,6 @@ func (m *LedgerController) Info() ledger.Ledger {
 func (mr *LedgerControllerMockRecorder) Info() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Info", reflect.TypeOf((*LedgerController)(nil).Info))
-}
-
-// InsertSchema mocks base method.
-func (m *LedgerController) InsertSchema(ctx context.Context, parameters ledger0.Parameters[ledger0.InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InsertSchema", ctx, parameters)
-	ret0, _ := ret[0].(*ledger.Log)
-	ret1, _ := ret[1].(*ledger.InsertedSchema)
-	ret2, _ := ret[2].(bool)
-	ret3, _ := ret[3].(error)
-	return ret0, ret1, ret2, ret3
-}
-
-// InsertSchema indicates an expected call of InsertSchema.
-func (mr *LedgerControllerMockRecorder) InsertSchema(ctx, parameters any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertSchema", reflect.TypeOf((*LedgerController)(nil).InsertSchema), ctx, parameters)
 }
 
 // IsDatabaseUpToDate mocks base method.
@@ -362,21 +330,6 @@ func (m *LedgerController) ListLogs(ctx context.Context, query common.PaginatedQ
 func (mr *LedgerControllerMockRecorder) ListLogs(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*LedgerController)(nil).ListLogs), ctx, query)
-}
-
-// ListSchemas mocks base method.
-func (m *LedgerController) ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListSchemas", ctx, query)
-	ret0, _ := ret[0].(*bunpaginate.Cursor[ledger.Schema])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListSchemas indicates an expected call of ListSchemas.
-func (mr *LedgerControllerMockRecorder) ListSchemas(ctx, query any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSchemas", reflect.TypeOf((*LedgerController)(nil).ListSchemas), ctx, query)
 }
 
 // ListTransactions mocks base method.
@@ -440,22 +393,6 @@ func (m *LedgerController) Rollback(ctx context.Context) error {
 func (mr *LedgerControllerMockRecorder) Rollback(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rollback", reflect.TypeOf((*LedgerController)(nil).Rollback), ctx)
-}
-
-// RunQuery mocks base method.
-func (m *LedgerController) RunQuery(ctx context.Context, schemaVersion, queryId string, runQuery common.RunQuery, defaultPageSize common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RunQuery", ctx, schemaVersion, queryId, runQuery, defaultPageSize)
-	ret0, _ := ret[0].(*queries.ResourceKind)
-	ret1, _ := ret[1].(*bunpaginate.Cursor[any])
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// RunQuery indicates an expected call of RunQuery.
-func (mr *LedgerControllerMockRecorder) RunQuery(ctx, schemaVersion, queryId, runQuery, defaultPageSize any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunQuery", reflect.TypeOf((*LedgerController)(nil).RunQuery), ctx, schemaVersion, queryId, runQuery, defaultPageSize)
 }
 
 // SaveAccountMetadata mocks base method.

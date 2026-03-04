@@ -3,29 +3,36 @@ package ledger
 import (
 	"errors"
 	"fmt"
-	"strings"
-
-	"github.com/uptrace/bun"
-
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
+	"github.com/uptrace/bun"
+	"strings"
 )
 
 type volumesResourceHandler struct {
 	store *Store
 }
 
-func (h volumesResourceHandler) Schema() queries.EntitySchema {
-	return queries.VolumeSchema
+func (h volumesResourceHandler) Schema() common.EntitySchema {
+	return common.EntitySchema{
+		Fields: map[string]common.Field{
+			"address": common.NewStringField().
+				WithAliases("account").
+				Paginated(),
+			"balance":     common.NewNumericMapField(),
+			"first_usage": common.NewDateField(),
+			"metadata":    common.NewStringMapField(),
+		},
+	}
 }
 
-func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuildContext[ledger.GetVolumesOptions]) (*bun.SelectQuery, error) {
+func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuildContext[GetVolumesOptions]) (*bun.SelectQuery, error) {
 
 	var selectVolumes *bun.SelectQuery
 
-	needAddressSegments := query.UseFilter("address", isFilteringOnPartialAddress)
+	needAddressSegments := query.UseFilter("address", func(value any) bool {
+		return isPartialAddress(value.(string))
+	})
 	if !query.UsePIT() && !query.UseOOT() {
 		selectVolumes = h.store.newScopedSelect().
 			Column("asset", "input", "output").
@@ -107,10 +114,6 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 				ColumnExpr("first_value(metadata) over (partition by accounts_address order by revision desc) as metadata").
 				Where("accounts_metadata.accounts_address = moves.accounts_address")
 
-			if query.UsePIT() {
-				subQuery = subQuery.Where("date <= ?", query.PIT)
-			}
-
 			selectVolumes = selectVolumes.
 				Join(`left join lateral (?) accounts_metadata on true`, subQuery).
 				ColumnExpr("(array_agg(metadata))[1] as metadata")
@@ -121,24 +124,14 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 }
 
 func (h volumesResourceHandler) ResolveFilter(
-	_ common.ResourceQuery[ledger.GetVolumesOptions],
+	_ common.ResourceQuery[GetVolumesOptions],
 	operator, property string,
 	value any,
 ) (string, []any, error) {
 
 	switch {
 	case property == "address" || property == "account":
-		switch operator {
-		case queries.OperatorIn:
-			addresses, err := assetAddressArray(value)
-			if err != nil {
-				return "", nil, err
-			}
-
-			return "account IN (?)", []any{bun.In(addresses)}, nil
-		default:
-			return filterAccountAddress(value.(string), "account"), nil, nil
-		}
+		return filterAccountAddress(value.(string), "account"), nil, nil
 	case property == "first_usage":
 		return fmt.Sprintf("first_usage %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case balanceRegex.MatchString(property) || property == "balance":
@@ -170,7 +163,7 @@ func (h volumesResourceHandler) ResolveFilter(
 }
 
 func (h volumesResourceHandler) Project(
-	query common.ResourceQuery[ledger.GetVolumesOptions],
+	query common.ResourceQuery[GetVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	selectQuery = selectQuery.DistinctOn("account, asset")
@@ -193,8 +186,8 @@ func (h volumesResourceHandler) Project(
 		GroupExpr("account, asset"), nil
 }
 
-func (h volumesResourceHandler) Expand(_ common.ResourceQuery[ledger.GetVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
+func (h volumesResourceHandler) Expand(_ common.ResourceQuery[GetVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	return nil, nil, errors.New("no expansion available")
 }
 
-var _ common.RepositoryHandler[ledger.GetVolumesOptions] = volumesResourceHandler{}
+var _ common.RepositoryHandler[GetVolumesOptions] = volumesResourceHandler{}

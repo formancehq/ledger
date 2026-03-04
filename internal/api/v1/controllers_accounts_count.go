@@ -1,15 +1,14 @@
 package v1
 
 import (
-	"errors"
 	"fmt"
+	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+	"github.com/formancehq/ledger/internal/storage/ledger"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v4/api"
-
+	"errors"
+	"github.com/formancehq/go-libs/v3/api"
 	"github.com/formancehq/ledger/internal/api/common"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	ledgerstorage "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 func countAccounts(w http.ResponseWriter, r *http.Request) {
@@ -30,7 +29,7 @@ func countAccounts(w http.ResponseWriter, r *http.Request) {
 	count, err := l.CountAccounts(r.Context(), *rq)
 	if err != nil {
 		switch {
-		case errors.Is(err, storagecommon.ErrInvalidQuery{}) || errors.Is(err, ledgerstorage.ErrMissingFeature{}):
+		case errors.Is(err, storagecommon.ErrInvalidQuery{}) || errors.Is(err, ledger.ErrMissingFeature{}):
 			api.BadRequest(w, common.ErrValidation, err)
 		default:
 			common.HandleCommonErrors(w, r, err)

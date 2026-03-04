@@ -2,6 +2,7 @@ package system
 
 import (
 	"github.com/uptrace/bun"
+
 	"go.uber.org/fx"
 )
 

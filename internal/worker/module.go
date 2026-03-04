@@ -2,18 +2,15 @@ package worker
 
 import (
 	"fmt"
-
+	"github.com/formancehq/go-libs/v3/grpcserver"
+	"github.com/formancehq/go-libs/v3/serverport"
+	"github.com/formancehq/ledger/internal/replication"
+	innergrpc "github.com/formancehq/ledger/internal/replication/grpc"
+	"github.com/formancehq/ledger/internal/storage"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
-
-	"github.com/formancehq/go-libs/v4/grpcserver"
-	"github.com/formancehq/go-libs/v4/serverport"
-
-	"github.com/formancehq/ledger/internal/replication"
-	innergrpc "github.com/formancehq/ledger/internal/replication/grpc"
-	"github.com/formancehq/ledger/internal/storage"
 )
 
 type GRPCServerModuleConfig struct {
@@ -22,20 +19,16 @@ type GRPCServerModuleConfig struct {
 }
 
 type ModuleConfig struct {
-	AsyncBlockRunnerConfig    storage.AsyncBlockRunnerConfig
-	ReplicationConfig         replication.WorkerModuleConfig
-	BucketCleanupRunnerConfig storage.BucketCleanupRunnerConfig
+	AsyncBlockRunnerConfig storage.AsyncBlockRunnerConfig
+	ReplicationConfig      replication.WorkerModuleConfig
 }
 
-// NewFXModule constructs an fx.Option that installs the storage async block runner,
-// the replication worker, and the bucket cleanup runner modules into an Fx application.
-// The provided cfg supplies each submodule's configuration.
 func NewFXModule(cfg ModuleConfig) fx.Option {
 	return fx.Options(
 		// todo: add auto discovery
 		storage.NewAsyncBlockRunnerModule(cfg.AsyncBlockRunnerConfig),
+		// todo: add auto discovery
 		replication.NewWorkerFXModule(cfg.ReplicationConfig),
-		storage.NewBucketCleanupRunnerModule(cfg.BucketCleanupRunnerConfig),
 	)
 }
 

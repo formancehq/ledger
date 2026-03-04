@@ -3,19 +3,21 @@ package ledger
 import (
 	"errors"
 	"fmt"
-
-	"github.com/uptrace/bun"
-
-	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
+	"github.com/uptrace/bun"
 )
 
 type logsResourceHandler struct {
 	store *Store
 }
 
-func (h logsResourceHandler) Schema() queries.EntitySchema {
-	return queries.LogSchema
+func (h logsResourceHandler) Schema() common.EntitySchema {
+	return common.EntitySchema{
+		Fields: map[string]common.Field{
+			"date": common.NewDateField().Paginated(),
+			"id":   common.NewNumericField().Paginated(),
+		},
+	}
 }
 
 func (h logsResourceHandler) BuildDataset(_ common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
@@ -28,8 +30,6 @@ func (h logsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], operator
 	switch property {
 	case "date", "id":
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
-	case "type":
-		return fmt.Sprintf("type %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	default:
 		return "", nil, fmt.Errorf("unknown key '%s' when building query", property)
 	}

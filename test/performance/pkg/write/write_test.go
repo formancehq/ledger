@@ -8,25 +8,22 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	. "github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/time"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"github.com/formancehq/ledger/pkg/generate"
+	"github.com/formancehq/ledger/test/performance/pkg/env"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
-
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
-
-	. "github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/time"
-
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
-	"github.com/formancehq/ledger/pkg/generate"
-	"github.com/formancehq/ledger/test/performance/pkg/env"
 )
 
 func init() {
@@ -213,7 +210,7 @@ func BenchmarkWrite(b *testing.B) {
 			scripts[strings.TrimSuffix(entry.Name(), ".js")] = NewJSActionProviderFactory(rootPath, string(script))
 		}
 	} else {
-		file, err := os.ReadFile(filepath.Clean(scriptFlag))
+		file, err := os.ReadFile(scriptFlag)
 		require.NoError(b, err, "reading file "+scriptFlag)
 
 		rootPath, err := filepath.Abs(filepath.Dir(scriptFlag))
@@ -229,9 +226,9 @@ func BenchmarkWrite(b *testing.B) {
 
 	// Write report
 	if reportFileFlag != "" {
-		require.NoError(b, os.MkdirAll(filepath.Dir(reportFileFlag), 0750))
+		require.NoError(b, os.MkdirAll(filepath.Dir(reportFileFlag), 0755))
 
-		f, err := os.Create(filepath.Clean(reportFileFlag))
+		f, err := os.Create(reportFileFlag)
 		require.NoError(b, err)
 		enc := json.NewEncoder(f)
 		enc.SetIndent("", "  ")

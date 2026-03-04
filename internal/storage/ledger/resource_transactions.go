@@ -2,21 +2,31 @@ package ledger
 
 import (
 	"fmt"
-	"slices"
-
-	"github.com/uptrace/bun"
-
-	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
+	"github.com/uptrace/bun"
+	"slices"
 )
 
 type transactionsResourceHandler struct {
 	store *Store
 }
 
-func (h transactionsResourceHandler) Schema() queries.EntitySchema {
-	return queries.TransactionSchema
+func (h transactionsResourceHandler) Schema() common.EntitySchema {
+	return common.EntitySchema{
+		Fields: map[string]common.Field{
+			"reverted": common.NewBooleanField(),
+			"account": common.NewStringField(),
+			"source": common.NewStringField(),
+			"destination": common.NewStringField(),
+			"timestamp": common.NewDateField().Paginated(),
+			"metadata": common.NewStringMapField(),
+			"id": common.NewNumericField().Paginated(),
+			"reference": common.NewStringField(),
+			"inserted_at": common.NewDateField().Paginated(),
+			"updated_at": common.NewDateField().Paginated(),
+		},
+	}
 }
 
 func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerBuildContext[any]) (*bun.SelectQuery, error) {
@@ -34,7 +44,6 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 			"destinations",
 			"sources_arrays",
 			"destinations_arrays",
-			"template",
 		)
 
 	if slices.Contains(opts.Expand, "volumes") {
@@ -63,11 +72,10 @@ func (h transactionsResourceHandler) BuildDataset(opts common.RepositoryHandlerB
 		ret = ret.ColumnExpr("metadata")
 	}
 
-	// Always use ColumnExpr to create reverted_at alias to avoid ambiguity
 	if opts.UsePIT() {
 		ret = ret.ColumnExpr("(case when transactions.reverted_at <= ? then transactions.reverted_at else null end) as reverted_at", opts.PIT)
 	} else {
-		ret = ret.ColumnExpr("transactions.reverted_at as reverted_at")
+		ret = ret.Column("reverted_at")
 	}
 
 	return ret, nil
@@ -77,65 +85,20 @@ func (h transactionsResourceHandler) ResolveFilter(_ common.ResourceQuery[any], 
 	switch {
 	case property == "id":
 		return fmt.Sprintf("id %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
-	case property == "reference":
-		switch operator {
-		case queries.OperatorIn:
-			return "reference IN (?)", []any{bun.In(value)}, nil
-		default:
-			return fmt.Sprintf("reference %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
-		}
-	case property == "timestamp" || property == "inserted_at" || property == "updated_at":
+	case property == "reference" || property == "timestamp" || property == "inserted_at" || property == "updated_at":
 		return fmt.Sprintf("%s %s ?", property, common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "reverted":
-		ret := "dataset.reverted_at is"
+		ret := "reverted_at is"
 		if value.(bool) {
 			ret += " not"
 		}
 		return ret + " null", nil, nil
-	case property == "reverted_at":
-		return fmt.Sprintf("dataset.reverted_at %s ?", common.ConvertOperatorToSQL(operator)), []any{value}, nil
 	case property == "account":
-		switch operator {
-		case queries.OperatorIn:
-			addresses, err := assetAddressArray(value)
-			if err != nil {
-				return "", nil, err
-			}
-
-			placeholder, args := stringArrayToPostgresArray(addresses)
-			args = append(args, args...) // Duplicate args for sources and destinations
-
-			return "sources \\?| " + placeholder + " OR destinations \\?| " + placeholder, args, nil
-		default:
-			return filterAccountAddressOnTransactions(value.(string), true, true), nil, nil
-		}
+		return filterAccountAddressOnTransactions(value.(string), true, true), nil, nil
 	case property == "source":
-		switch operator {
-		case queries.OperatorIn:
-			addresses, err := assetAddressArray(value)
-			if err != nil {
-				return "", nil, err
-			}
-
-			placeholder, args := stringArrayToPostgresArray(addresses)
-
-			return "sources \\?| " + placeholder, args, nil
-		default:
-			return filterAccountAddressOnTransactions(value.(string), true, false), nil, nil
-		}
+		return filterAccountAddressOnTransactions(value.(string), true, false), nil, nil
 	case property == "destination":
-		switch operator {
-		case queries.OperatorIn:
-			addresses, err := assetAddressArray(value)
-			if err != nil {
-				return "", nil, err
-			}
-
-			placeholder, args := stringArrayToPostgresArray(addresses)
-			return "destinations \\?| " + placeholder, args, nil
-		default:
-			return filterAccountAddressOnTransactions(value.(string), false, true), nil, nil
-		}
+		return filterAccountAddressOnTransactions(value.(string), false, true), nil, nil
 	case common.MetadataRegex.Match([]byte(property)):
 		match := common.MetadataRegex.FindAllStringSubmatch(property, 3)
 

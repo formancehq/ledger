@@ -127,7 +127,6 @@ jobs:
           retention-days: 7
           compression-level: 0
 
-      # TODO(@sylr): Move this to the Release workflow when proven working.
       # Generate attestations for the goreleaser output archives
       - uses: actions/attest-build-provenance@v2
         with:

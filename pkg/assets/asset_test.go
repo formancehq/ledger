@@ -3,9 +3,8 @@ package assets_test
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/formancehq/ledger/pkg/assets"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidAssets(t *testing.T) {

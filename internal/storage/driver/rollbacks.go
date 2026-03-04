@@ -4,8 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"github.com/formancehq/go-libs/v4/migrations"
+	"github.com/formancehq/go-libs/v3/migrations"
 )
 
 func detectDowngrades(migrator *migrations.Migrator, ctx context.Context) error {

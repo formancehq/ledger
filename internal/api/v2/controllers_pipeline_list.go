@@ -1,11 +1,10 @@
 package v2
 
 import (
+	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
 	"net/http"
 
-	"github.com/formancehq/go-libs/v4/api"
-
-	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
+	"github.com/formancehq/go-libs/v3/api"
 )
 
 func listPipelines(systemController systemcontroller.Controller) func(w http.ResponseWriter, r *http.Request) {

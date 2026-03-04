@@ -9,12 +9,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/pointer"
-	. "github.com/formancehq/go-libs/v4/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v4/testing/platform/natstesting"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
@@ -466,55 +466,6 @@ var _ = Context("Idempotency-Hit header tests", func() {
 					Key:            "type",
 					IdempotencyKey: pointer.For("account-delete-key-header-2"),
 				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(response).ToNot(BeNil())
-
-			httpResponse := response.HTTPMeta.GetResponse()
-			Expect(httpResponse).ToNot(BeNil())
-			Expect(httpResponse.Header.Get("Idempotency-Hit")).To(Equal("true"))
-		})
-	})
-
-	When("inserting schema with idempotency key", func() {
-		var (
-			insertSchemaRequest = operations.V2InsertSchemaRequest{
-				V2SchemaData: components.V2SchemaData{
-					Chart: map[string]components.V2ChartSegment{
-						"bank": {},
-					},
-					Transactions: map[string]components.V2TransactionTemplate{},
-				},
-				Version:        "v1.0.0",
-				Ledger:         "default",
-				IdempotencyKey: pointer.For("insert-schema-key-header-1"),
-			}
-		)
-		It("should not have Idempotency-Hit header on first call", func(specContext SpecContext) {
-			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(
-				ctx,
-				insertSchemaRequest,
-			)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(response).ToNot(BeNil())
-
-			httpResponse := response.HTTPMeta.GetResponse()
-			Expect(httpResponse).ToNot(BeNil())
-			Expect(httpResponse.Header.Get("Idempotency-Hit")).To(BeEmpty())
-		})
-
-		It("should have Idempotency-Hit header on second call with same key", func(specContext SpecContext) {
-			// First call
-			_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(
-				ctx,
-				insertSchemaRequest,
-			)
-			Expect(err).ToNot(HaveOccurred())
-
-			// Second call with same idempotency key
-			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.InsertSchema(
-				ctx,
-				insertSchemaRequest,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(response).ToNot(BeNil())

@@ -2,12 +2,11 @@ package ledger
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/internal"
 	"sort"
 	"strings"
 
-	"github.com/formancehq/go-libs/v4/metadata"
-
-	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/go-libs/v3/metadata"
 )
 
 type variable struct {

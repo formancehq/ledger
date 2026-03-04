@@ -6,25 +6,25 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/nats-io/nats.go"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/natstesting"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
+	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/pointer"
-	. "github.com/formancehq/go-libs/v4/testing/api"
-	. "github.com/formancehq/go-libs/v4/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v4/testing/platform/natstesting"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
-
+	"github.com/formancehq/go-libs/v3/logging"
+	. "github.com/formancehq/go-libs/v3/testing/api"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
-	ledgerevents "github.com/formancehq/ledger/pkg/events"
 	. "github.com/formancehq/ledger/pkg/testserver"
-	. "github.com/formancehq/ledger/pkg/testserver/ginkgo"
+
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/pointer"
+	ledgerevents "github.com/formancehq/ledger/pkg/events"
+	"github.com/nats-io/nats.go"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 var _ = Context("Ledger transactions create API tests", func() {
@@ -100,14 +100,14 @@ var _ = Context("Ledger transactions create API tests", func() {
 						Expect(err).ToNot(HaveOccurred())
 
 						req.V2PostTransaction.Script = &components.V2PostTransactionScript{
-							Plain: pointer.For(`
+							Plain: `
 								send [USD 100] (
 									source = @world
 									destination = @alice
 								)			
 								set_account_meta(@alice, "clientType", "silver")
 								set_account_meta(@foo, "status", "pending")
-							`),
+							`,
 						}
 					})
 					It("should override account metadata", func(specContext SpecContext) {
@@ -324,7 +324,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 								Script: &components.V2PostTransactionScript{
 									// note that we're missing newlines here,
 									// so this is only accepted by the "interpreter" runtime
-									Plain: pointer.For(`send [USD 100] ( source = @world destination = @alice )`),
+									Plain: `send [USD 100] ( source = @world destination = @alice )`,
 									Vars:  map[string]string{},
 								},
 							},
@@ -485,10 +485,10 @@ var _ = Context("Ledger transactions create API tests", func() {
 							V2PostTransaction: components.V2PostTransaction{
 								Metadata: map[string]string{},
 								Script: &components.V2PostTransactionScript{
-									Plain: pointer.For(`send [COIN -100] (
+									Plain: `send [COIN -100] (
 								source = @world
 								destination = @bob
-							)`),
+							)`,
 									Vars: map[string]string{},
 								},
 							},
@@ -515,13 +515,13 @@ var _ = Context("Ledger transactions create API tests", func() {
 							V2PostTransaction: components.V2PostTransaction{
 								Metadata: map[string]string{},
 								Script: &components.V2PostTransactionScript{
-									Plain: pointer.For(`vars {
+									Plain: `vars {
 								monetary $amount
 							}
 							send $amount (
 								source = @world
 								destination = @bob
-							)`),
+							)`,
 									Vars: map[string]string{
 										"amount": "USD -100",
 									},
@@ -549,7 +549,7 @@ var _ = Context("Ledger transactions create API tests", func() {
 							V2PostTransaction: components.V2PostTransaction{
 								Metadata: map[string]string{},
 								Script: &components.V2PostTransactionScript{
-									Plain: pointer.For(`XXX`),
+									Plain: `XXX`,
 									Vars:  map[string]string{},
 								},
 							},
@@ -574,11 +574,11 @@ var _ = Context("Ledger transactions create API tests", func() {
 							V2PostTransaction: components.V2PostTransaction{
 								Metadata: map[string]string{},
 								Script: &components.V2PostTransactionScript{
-									Plain: pointer.For(`vars {
+									Plain: `vars {
 								monetary $amount
 							}
 							set_tx_meta("foo", "bar")
-							`),
+							`,
 									Vars: map[string]string{
 										"amount": "USD 100",
 									},
@@ -601,11 +601,11 @@ var _ = Context("Ledger transactions create API tests", func() {
 									"foo": "baz",
 								},
 								Script: &components.V2PostTransactionScript{
-									Plain: pointer.For(`send [COIN 100] (
+									Plain: `send [COIN 100] (
 								source = @world
 								destination = @bob
 							)
-							set_tx_meta("foo", "bar")`),
+							set_tx_meta("foo", "bar")`,
 									Vars: map[string]string{},
 								},
 							},
@@ -624,10 +624,10 @@ var _ = Context("Ledger transactions create API tests", func() {
 							V2PostTransaction: components.V2PostTransaction{
 								Metadata: map[string]string{},
 								Script: &components.V2PostTransactionScript{
-									Plain: pointer.For(`send [COIN 100] (
+									Plain: `send [COIN 100] (
 								source = @world
 								destination = @bob
-							)`),
+							)`,
 									Vars: map[string]string{},
 								},
 							},

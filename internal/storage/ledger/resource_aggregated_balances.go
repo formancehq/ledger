@@ -2,24 +2,25 @@ package ledger
 
 import (
 	"errors"
-
-	"github.com/uptrace/bun"
-
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/pkg/features"
+	"github.com/uptrace/bun"
 )
 
 type aggregatedBalancesResourceRepositoryHandler struct {
 	store *Store
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) Schema() queries.EntitySchema {
-	return queries.AggregatedBalanceSchema
+func (h aggregatedBalancesResourceRepositoryHandler) Schema() common.EntitySchema {
+	return common.EntitySchema{
+		Fields: map[string]common.Field{
+			"address":  common.NewStringField().Paginated(),
+			"metadata": common.NewStringMapField(),
+		},
+	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.RepositoryHandlerBuildContext[ledger.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.RepositoryHandlerBuildContext[GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
 	if query.UsePIT() {
 		ret := h.store.newScopedSelect().
@@ -44,7 +45,9 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 				Where("effective_date <= ?", query.PIT)
 		}
 
-		if query.UseFilter("address", isFilteringOnPartialAddress) {
+		if query.UseFilter("address", func(value any) bool {
+			return isPartialAddress(value.(string))
+		}) {
 			subQuery := h.store.newScopedSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address_array").
@@ -73,9 +76,11 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 		ret := h.store.newScopedSelect().
 			ModelTableExpr(h.store.GetPrefixedRelationName("accounts_volumes")).
 			Column("asset", "accounts_address").
-			ColumnExpr("(input, output)::" + h.store.GetPrefixedRelationName("volumes") + " as volumes")
+			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes")
 
-		if query.UseFilter("metadata") || query.UseFilter("address", isFilteringOnPartialAddress) {
+		if query.UseFilter("metadata") || query.UseFilter("address", func(value any) bool {
+			return isPartialAddress(value.(string))
+		}) {
 			subQuery := h.store.newScopedSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address").
@@ -98,20 +103,10 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.ResourceQuery[ledger.GetAggregatedVolumesOptions], operator, property string, value any) (string, []any, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.ResourceQuery[GetAggregatedVolumesOptions], _, property string, value any) (string, []any, error) {
 	switch {
 	case property == "address":
-		switch operator {
-		case queries.OperatorIn:
-			addresses, err := assetAddressArray(value)
-			if err != nil {
-				return "", nil, err
-			}
-
-			return "accounts_address IN (?)", []any{bun.In(addresses)}, nil
-		default:
-			return filterAccountAddress(value.(string), "accounts_address"), nil, nil
-		}
+		return filterAccountAddress(value.(string), "accounts_address"), nil, nil
 	case common.MetadataRegex.Match([]byte(property)) || property == "metadata":
 		if property == "metadata" {
 			return "metadata -> ? is not null", []any{value}, nil
@@ -127,12 +122,12 @@ func (h aggregatedBalancesResourceRepositoryHandler) ResolveFilter(_ common.Reso
 	}
 }
 
-func (h aggregatedBalancesResourceRepositoryHandler) Expand(_ common.ResourceQuery[ledger.GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
+func (h aggregatedBalancesResourceRepositoryHandler) Expand(_ common.ResourceQuery[GetAggregatedVolumesOptions], property string) (*bun.SelectQuery, *common.JoinCondition, error) {
 	return nil, nil, errors.New("no expand available for aggregated balances")
 }
 
 func (h aggregatedBalancesResourceRepositoryHandler) Project(
-	_ common.ResourceQuery[ledger.GetAggregatedVolumesOptions],
+	_ common.ResourceQuery[GetAggregatedVolumesOptions],
 	selectQuery *bun.SelectQuery,
 ) (*bun.SelectQuery, error) {
 	sumVolumesForAsset := h.store.db.NewSelect().
@@ -146,4 +141,4 @@ func (h aggregatedBalancesResourceRepositoryHandler) Project(
 		ColumnExpr("public.aggregate_objects(json_build_object(asset, volumes)::jsonb) as aggregated"), nil
 }
 
-var _ common.RepositoryHandler[ledger.GetAggregatedVolumesOptions] = aggregatedBalancesResourceRepositoryHandler{}
+var _ common.RepositoryHandler[GetAggregatedVolumesOptions] = aggregatedBalancesResourceRepositoryHandler{}

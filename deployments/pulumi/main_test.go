@@ -2,12 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"os"
-	"testing"
-
 	"github.com/google/uuid"
 	"github.com/pulumi/pulumi/pkg/v3/testing/integration"
 	"github.com/stretchr/testify/require"
+	"os"
+	"testing"
 )
 
 func TestProgram(t *testing.T) {

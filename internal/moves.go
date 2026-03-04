@@ -3,17 +3,16 @@ package ledger
 import (
 	"slices"
 
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v3/time"
 	"github.com/uptrace/bun"
-
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/time"
 )
 
 type Move struct {
 	bun.BaseModel `bun:"table:moves"`
 
-	TransactionID              uint64              `bun:"transactions_id,type:bigint"`
+	TransactionID              uint64                 `bun:"transactions_id,type:bigint"`
 	IsSource                   bool                `bun:"is_source,type:bool"`
 	Account                    string              `bun:"accounts_address,type:varchar"`
 	Amount                     *bunpaginate.BigInt `bun:"amount,type:numeric"`

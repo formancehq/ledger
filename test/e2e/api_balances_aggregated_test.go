@@ -3,22 +3,20 @@
 package test_suite
 
 import (
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/pointer"
+	. "github.com/formancehq/go-libs/v3/testing/deferred/ginkgo"
+	"github.com/formancehq/go-libs/v3/testing/platform/pgtesting"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
+	"github.com/formancehq/ledger/pkg/client/models/components"
+	"github.com/formancehq/ledger/pkg/client/models/operations"
+	. "github.com/formancehq/ledger/pkg/testserver"
+	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
 	"math/big"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/pointer"
-	. "github.com/formancehq/go-libs/v4/testing/deferred/ginkgo"
-	"github.com/formancehq/go-libs/v4/testing/platform/pgtesting"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
-
-	"github.com/formancehq/ledger/pkg/client/models/components"
-	"github.com/formancehq/ledger/pkg/client/models/operations"
-	. "github.com/formancehq/ledger/pkg/testserver"
-	"github.com/formancehq/ledger/pkg/testserver/ginkgo"
 )
 
 var _ = Context("Ledger engine tests", func() {
@@ -179,39 +177,6 @@ var _ = Context("Ledger engine tests", func() {
 
 			Expect(response.V2AggregateBalancesResponse.Data).To(HaveLen(1))
 			Expect(response.V2AggregateBalancesResponse.Data["USD/2"]).To(Equal(big.NewInt(200)))
-		})
-		It("should be ok when aggregating using $in operator on address", func(specContext SpecContext) {
-			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetBalancesAggregated(
-				ctx,
-				operations.V2GetBalancesAggregatedRequest{
-					RequestBody: map[string]any{
-						"$in": map[string]any{
-							"address": []any{"bank1", "bank2"},
-						},
-					},
-					Ledger: "default",
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-
-			Expect(response.V2AggregateBalancesResponse.Data).To(HaveLen(1))
-			Expect(response.V2AggregateBalancesResponse.Data["USD/2"]).To(Equal(big.NewInt(400)))
-		})
-		It("should be ok when aggregating using $in operator on address with non-existing addresses", func(specContext SpecContext) {
-			response, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.GetBalancesAggregated(
-				ctx,
-				operations.V2GetBalancesAggregatedRequest{
-					RequestBody: map[string]any{
-						"$in": map[string]any{
-							"address": []any{"not_existing", "also_not_existing"},
-						},
-					},
-					Ledger: "default",
-				},
-			)
-			Expect(err).ToNot(HaveOccurred())
-
-			Expect(response.V2AggregateBalancesResponse.Data).To(HaveLen(0))
 		})
 		// Test case to reproduce bug: column "accounts_address_array" does not exist
 		// This happens when using $or with both exact addresses AND partial addresses with PIT

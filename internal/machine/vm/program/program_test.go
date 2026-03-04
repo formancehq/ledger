@@ -3,9 +3,8 @@ package program_test
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/formancehq/ledger/internal/machine/script/compiler"
+	"github.com/stretchr/testify/require"
 )
 
 func TestProgram_String(t *testing.T) {

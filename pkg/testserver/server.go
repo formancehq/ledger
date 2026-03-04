@@ -3,18 +3,16 @@ package testserver
 import (
 	"context"
 	"fmt"
-	"time"
-
-	"github.com/formancehq/go-libs/v4/bun/bunconnect"
-	"github.com/formancehq/go-libs/v4/testing/deferred"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
-
+	"github.com/formancehq/go-libs/v3/bun/bunconnect"
+	"github.com/formancehq/go-libs/v3/testing/deferred"
+	"github.com/formancehq/go-libs/v3/testing/testservice"
 	"github.com/formancehq/ledger/cmd"
+	"time"
 )
 
 func GetTestServerOptions(postgresConnectionOptions *deferred.Deferred[bunconnect.ConnectionOptions]) testservice.Option {
 	return testservice.WithInstruments(
-		testservice.AppendArgsInstrumentation("serve", "--"+cmd.BindFlag, ":0", "--schema-enforcement-mode", "strict"),
+		testservice.AppendArgsInstrumentation("serve", "--"+cmd.BindFlag, ":0"),
 		testservice.PostgresInstrumentation(postgresConnectionOptions),
 		testservice.HTTPServerInstrumentation(),
 	)
@@ -106,31 +104,6 @@ func WorkerAddressInstrumentation(addr *deferred.Deferred[string]) testservice.I
 			return fmt.Errorf("waiting for worker address: %w", err)
 		}
 		runConfiguration.AppendArgs("--"+cmd.WorkerGRPCAddressFlag, address)
-		return nil
-	}
-}
-
-// AuthInstrumentation enables authentication for testing
-// This is used for integration tests to verify authentication works correctly
-// The auth module from go-libs uses flags declared in auth/cli.go:
-// - auth-enabled: Enable auth
-// - auth-issuer: Issuer URL
-// - auth-check-scopes: Check scopes
-// - auth-service: Service name
-func AuthInstrumentation(issuer *deferred.Deferred[string]) testservice.InstrumentationFunc {
-	return func(ctx context.Context, runConfiguration *testservice.RunConfiguration) error {
-		// Enable auth
-		runConfiguration.AppendArgs("--auth-enabled")
-		// Set issuer
-		vIssuer, err := issuer.Wait(ctx)
-		if err != nil {
-			return fmt.Errorf("waiting for issuer: %w", err)
-		}
-		runConfiguration.AppendArgs("--auth-issuer", vIssuer)
-		// Enable scope checking
-		runConfiguration.AppendArgs("--auth-check-scopes")
-		// Set service name
-		runConfiguration.AppendArgs("--auth-service", "ledger")
 		return nil
 	}
 }

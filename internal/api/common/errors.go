@@ -2,16 +2,15 @@ package common
 
 import (
 	"errors"
-	"net/http"
-
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/otlp"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 	"github.com/formancehq/ledger/internal/storage/ledger"
+	"net/http"
+
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/otlp"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 const (
@@ -24,8 +23,6 @@ const (
 	ErrMetadataOverride    = "METADATA_OVERRIDE"
 	ErrBulkSizeExceeded    = "BULK_SIZE_EXCEEDED"
 	ErrLedgerAlreadyExists = "LEDGER_ALREADY_EXISTS"
-	ErrSchemaAlreadyExists = "SCHEMA_ALREADY_EXISTS"
-	ErrSchemaNotSpecified  = "SCHEMA_NOT_SPECIFIED"
 
 	ErrInterpreterParse   = "INTERPRETER_PARSE"
 	ErrInterpreterRuntime = "INTERPRETER_RUNTIME"
@@ -39,10 +36,6 @@ func HandleCommonErrors(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, postgres.ErrTooManyClient{}):
 		api.WriteErrorResponse(w, http.StatusServiceUnavailable, api.ErrorInternal, err)
-	case errors.Is(err, ledgercontroller.ErrSchemaNotSpecified{}):
-		api.BadRequest(w, ErrSchemaNotSpecified, err)
-	case errors.Is(err, ledgercontroller.ErrSchemaNotFound{}):
-		api.NotFound(w, err)
 	default:
 		InternalServerError(w, r, err)
 	}
@@ -56,12 +49,6 @@ func HandleCommonWriteErrors(w http.ResponseWriter, r *http.Request, err error) 
 		api.BadRequest(w, ErrValidation, err)
 	case errors.Is(err, ledgercontroller.ErrNotFound):
 		api.NotFound(w, err)
-	case errors.Is(err, ledgercontroller.ErrSchemaValidationError{}):
-		api.BadRequest(w, ErrValidation, err)
-	case errors.Is(err, ledgercontroller.ErrSchemaNotSpecified{}):
-		api.BadRequest(w, ErrSchemaNotSpecified, err)
-	case errors.Is(err, ledgercontroller.ErrSchemaNotFound{}):
-		api.NotFound(w, err)
 	default:
 		HandleCommonErrors(w, r, err)
 	}
@@ -71,8 +58,7 @@ func HandleCommonPaginationErrors(w http.ResponseWriter, r *http.Request, err er
 	switch {
 	case errors.Is(err, storagecommon.ErrInvalidQuery{}) ||
 		errors.Is(err, ledger.ErrMissingFeature{}) ||
-		errors.Is(err, storagecommon.ErrNotPaginatedField{}) ||
-		errors.Is(err, ledgercontroller.ErrSchemaValidationError{}):
+		errors.Is(err, storagecommon.ErrNotPaginatedField{}):
 		api.BadRequest(w, ErrValidation, err)
 	default:
 		HandleCommonErrors(w, r, err)

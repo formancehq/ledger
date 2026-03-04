@@ -3,29 +3,37 @@ package ledger
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
 	"slices"
 	"strings"
 
-	"github.com/uptrace/bun"
+	. "github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/ledger/pkg/features"
+
+	"github.com/formancehq/ledger/internal/tracing"
+
+	"errors"
+
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	. "github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v3/pointer"
 
+	"github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+
+	"github.com/formancehq/go-libs/v3/metadata"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/tracing"
-	"github.com/formancehq/ledger/pkg/features"
+	"github.com/uptrace/bun"
 )
 
-func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction) error {
+func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transaction, accountMetadata map[string]metadata.Metadata) error {
+	if accountMetadata == nil {
+		accountMetadata = make(map[string]metadata.Metadata)
+	}
 
 	postCommitVolumes, err := store.UpdateVolumes(ctx, tx.VolumeUpdates()...)
 	if err != nil {
@@ -36,6 +44,25 @@ func (store *Store) CommitTransaction(ctx context.Context, tx *ledger.Transactio
 	err = store.InsertTransaction(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("failed to insert transaction: %w", err)
+	}
+
+	accountsToUpsert := tx.InvolvedAccounts()
+	accountsToUpsert = append(accountsToUpsert, Keys(accountMetadata)...)
+
+	slices.Sort(accountsToUpsert)
+	accountsToUpsert = slices.Compact(accountsToUpsert)
+
+	err = store.UpsertAccounts(ctx, Map(accountsToUpsert, func(address string) *ledger.Account {
+		return &ledger.Account{
+			Address:       address,
+			FirstUsage:    tx.Timestamp,
+			Metadata:      accountMetadata[address],
+			InsertionDate: tx.InsertedAt,
+			UpdatedAt:     tx.InsertedAt,
+		}
+	})...)
+	if err != nil {
+		return fmt.Errorf("upserting accounts: %w", err)
 	}
 
 	if store.ledger.HasFeature(features.FeatureMovesHistory, "ON") {
@@ -316,24 +343,4 @@ func filterAccountAddressOnTransactions(address string, source, destination bool
 		parts = append(parts, fmt.Sprintf("destinations @> '%s'", string(data)))
 	}
 	return strings.Join(parts, " or ")
-}
-
-func assetAddressArray(v any) ([]string, error) {
-	value := v.([]any)
-	addresses := Map(value, func(v any) string {
-		return v.(string)
-	})
-	for _, address := range addresses {
-		if isPartialAddress(address) {
-			return nil, NewErrInvalidQuery("IN operator only supports full addresses")
-		}
-	}
-
-	return addresses, nil
-}
-
-func stringArrayToPostgresArray(values []string) (string, []any) {
-	placeholder := strings.TrimRight(strings.Repeat("?,", len(values)), ",")
-
-	return "array[" + placeholder + "]", Map(values, ToAny)
 }

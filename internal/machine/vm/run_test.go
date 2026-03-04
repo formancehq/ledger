@@ -6,13 +6,12 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
-	"github.com/formancehq/go-libs/v4/metadata"
-
-	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine"
+
+	"github.com/formancehq/go-libs/v3/metadata"
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/machine/script/compiler"
+	"github.com/stretchr/testify/require"
 )
 
 type runTestCase struct {

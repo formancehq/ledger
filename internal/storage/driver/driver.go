@@ -4,25 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/formancehq/ledger/internal/storage/common"
+	systemstore "github.com/formancehq/ledger/internal/storage/system"
+	"github.com/formancehq/ledger/internal/tracing"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"sync"
 	"time"
 
 	"github.com/alitto/pond"
-	"github.com/uptrace/bun"
-	"go.opentelemetry.io/otel/trace"
-	"go.opentelemetry.io/otel/trace/noop"
-
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/storage/bucket"
-	"github.com/formancehq/ledger/internal/storage/common"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
-	systemstore "github.com/formancehq/ledger/internal/storage/system"
-	"github.com/formancehq/ledger/internal/tracing"
+	"github.com/uptrace/bun"
 )
 
 var ErrBucketOutdated = errors.New("bucket is outdated, you need to upgrade it before adding a new ledger")
@@ -75,7 +73,13 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 			}
 		}
 
+		count, err := systemStore.CountLedgersInBucket(ctx, l.Bucket)
+		if err != nil {
+			return fmt.Errorf("counting ledgers in bucket: %w", err)
+		}
+
 		ret = d.ledgerStoreFactory.Create(b, *l)
+		ret.SetAloneInBucket(count == 1)
 
 		return nil
 	})
@@ -88,12 +92,22 @@ func (d *Driver) CreateLedger(ctx context.Context, l *ledger.Ledger) (*ledgersto
 
 func (d *Driver) OpenLedger(ctx context.Context, name string) (*ledgerstore.Store, *ledger.Ledger, error) {
 	// todo: keep the ledger in cache somewhere to avoid read the ledger at each request, maybe in the factory
-	ret, err := d.systemStoreFactory.Create(d.db).GetLedger(ctx, name)
+	// NOTE: the aloneInBucket flag is now shared per bucket via the Factory,
+	// so all stores in the same bucket see updates immediately.
+	systemStore := d.systemStoreFactory.Create(d.db)
+
+	ret, err := systemStore.GetLedger(ctx, name)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	count, err := systemStore.CountLedgersInBucket(ctx, ret.Bucket)
+	if err != nil {
+		return nil, nil, fmt.Errorf("counting ledgers in bucket: %w", err)
+	}
+
 	store := d.ledgerStoreFactory.Create(d.bucketFactory.Create(ret.Bucket), *ret)
+	store.SetAloneInBucket(count == 1)
 
 	return store, ret, err
 }

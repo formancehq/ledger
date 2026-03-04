@@ -3,28 +3,28 @@ package v2
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/formancehq/go-libs/v3/pointer"
+	"github.com/formancehq/ledger/internal/api/bulking"
+	"github.com/uptrace/bun"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun"
-	"go.uber.org/mock/gomock"
-
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/collectionutils"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/pointer"
-	"github.com/formancehq/go-libs/v4/time"
-
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/api/bulking"
+	"github.com/formancehq/go-libs/v3/collectionutils"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
+
+	"github.com/formancehq/go-libs/v3/time"
+
+	"errors"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/metadata"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestBulk(t *testing.T) {
@@ -169,10 +169,7 @@ func TestBulk(t *testing.T) {
 			body: `[{
 				"action": "REVERT_TRANSACTION",
 				"data": {
-					"id": 1,
-					"metadata": {
-						"foo": "bar"
-					}
+					"id": 1	
 				}
 			}]`,
 			expectations: func(mockLedger *LedgerController) {
@@ -180,9 +177,6 @@ func TestBulk(t *testing.T) {
 					RevertTransaction(gomock.Any(), ledgercontroller.Parameters[ledgercontroller.RevertTransaction]{
 						Input: ledgercontroller.RevertTransaction{
 							TransactionID: 1,
-							Metadata: metadata.Metadata{
-								"foo": "bar",
-							},
 						},
 					}).
 					Return(&ledger.Log{
@@ -193,20 +187,13 @@ func TestBulk(t *testing.T) {
 						},
 						RevertTransaction: ledger.Transaction{
 							ID: pointer.For(uint64(0)),
-							TransactionData: ledger.TransactionData{
-								Metadata: metadata.Metadata{
-									"foo": "bar",
-								},
-							},
 						},
 					}, false, nil)
 			},
 			expectResults: []bulking.APIResult{{
 				Data: map[string]any{
-					"id": float64(0),
-					"metadata": map[string]interface{}{
-						"foo": "bar",
-					},
+					"id":        float64(0),
+					"metadata":  nil,
 					"postings":  nil,
 					"reverted":  false,
 					"timestamp": "0001-01-01T00:00:00Z",

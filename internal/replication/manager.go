@@ -3,19 +3,17 @@ package replication
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/otlp"
+	"github.com/formancehq/go-libs/v3/platform/postgres"
+	ledger "github.com/formancehq/ledger/internal"
+	"github.com/formancehq/ledger/internal/controller/system"
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
-
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/otlp"
-	"github.com/formancehq/go-libs/v4/platform/postgres"
-
-	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/controller/system"
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/ledger/internal/replication/drivers"
+	"github.com/pkg/errors"
 )
 
 type Manager struct {

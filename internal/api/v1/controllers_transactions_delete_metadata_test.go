@@ -2,22 +2,20 @@ package v1
 
 import (
 	"encoding/json"
-	"errors"
+	ledger "github.com/formancehq/ledger/internal"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
 
+	"errors"
+	"github.com/formancehq/go-libs/v3/api"
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/go-libs/v3/logging"
+	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-
-	"github.com/formancehq/go-libs/v4/api"
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/logging"
-
-	ledger "github.com/formancehq/ledger/internal"
-	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 )
 
 func TestTransactionsDeleteMetadata(t *testing.T) {

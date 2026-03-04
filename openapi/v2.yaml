@@ -91,14 +91,6 @@ paths:
           schema:
             type: string
             example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
-        - name: includeDeleted
-          in: query
-          description: |
-            If true, include deleted ledgers in the results. By default, deleted ledgers are excluded.
-          schema:
-            type: boolean
-            default: false
-          example: false
         - $ref: "#/components/parameters/sort"
       requestBody:
         required: true
@@ -178,142 +170,6 @@ paths:
       security:
         - Authorization:
             - ledger:write
-  /v2/{ledger}/schemas/{version}:
-    parameters:
-      - name: ledger
-        in: path
-        description: Name of the ledger.
-        required: true
-        schema:
-          type: string
-          example: ledger001
-      - name: version
-        in: path
-        description: Schema version.
-        required: true
-        schema:
-          type: string
-          example: v1.0.0
-    post:
-      summary: Insert a schema for a ledger
-      operationId: v2InsertSchema
-      x-speakeasy-name-override: InsertSchema
-      tags:
-        - ledger.v2
-      parameters:
-        - name: Idempotency-Key
-          in: header
-          description: Use an idempotency key
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/V2SchemaData"
-      responses:
-        "204":
-          description: Schema inserted successfully
-          headers:
-            Idempotency-Hit:
-              description: Indicates that the request was processed using an idempotency key that was already used
-              schema:
-                type: string
-                example: "true"
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
-      security:
-        - Authorization:
-            - ledger:write
-    get:
-      summary: Get a schema for a ledger by version
-      operationId: v2GetSchema
-      x-speakeasy-name-override: GetSchema
-      tags:
-        - ledger.v2
-      responses:
-        "200":
-          description: Schema retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2SchemaResponse"
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
-      security:
-        - Authorization:
-            - ledger:read
-  /v2/{ledger}/schemas:
-    parameters:
-      - name: ledger
-        in: path
-        description: Name of the ledger.
-        required: true
-        schema:
-          type: string
-          example: ledger001
-    get:
-      summary: List all schemas for a ledger
-      operationId: v2ListSchemas
-      x-speakeasy-name-override: ListSchemas
-      tags:
-        - ledger.v2
-      parameters:
-        - name: cursor
-          in: query
-          description: The pagination cursor value
-          schema:
-            type: string
-        - name: pageSize
-          in: query
-          description: The maximum number of results to return per page
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 1000
-            default: 15
-        - name: sort
-          in: query
-          description: The field to sort by
-          schema:
-            type: string
-            enum:
-              - created_at
-            default: created_at
-        - name: order
-          in: query
-          description: The sort order
-          schema:
-            type: string
-            enum:
-              - asc
-              - desc
-            default: desc
-      responses:
-        "200":
-          description: Schemas retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2SchemasCursorResponse"
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
-      security:
-        - Authorization:
-            - ledger:read
   /v2/{ledger}/metadata:
     parameters:
       - name: ledger
@@ -437,8 +293,8 @@ paths:
           in: query
           description: Continue on failure
           schema:
-            type: boolean
-            example: true
+              type: boolean
+              example: true
         - name: atomic
           in: query
           description: Make bulk atomic
@@ -451,12 +307,6 @@ paths:
           schema:
             type: boolean
             example: true
-        - name: schemaVersion
-          in: query
-          description: Default schema version to use for validation (can be overridden per element)
-          schema:
-            type: string
-            example: v1.0.0
       requestBody:
         required: true
         content:
@@ -707,12 +557,6 @@ paths:
           description: Use an idempotency key
           schema:
             type: string
-        - name: schemaVersion
-          in: query
-          description: Schema version to use for validation
-          schema:
-            type: string
-            example: v1.0.0
       requestBody:
         description: metadata
         content:
@@ -774,7 +618,7 @@ paths:
           schema:
             type: string
       responses:
-        204:
+        2XX:
           description: Key deleted
           headers:
             Idempotency-Hit:
@@ -991,15 +835,10 @@ paths:
         - name: force
           in: query
           description: Disable balance checks when passing postings
+          deprecated: true
           schema:
             type: boolean
             example: true
-        - name: schemaVersion
-          in: query
-          description: Schema version to use for validation
-          schema:
-            type: string
-            example: v1.0.0
       requestBody:
         required: true
         description: |
@@ -1121,12 +960,6 @@ paths:
           description: Use an idempotency key
           schema:
             type: string
-        - name: schemaVersion
-          in: query
-          description: Schema version to use for validation
-          schema:
-            type: string
-            example: v1.0.0
       requestBody:
         required: true
         description: metadata
@@ -1191,7 +1024,7 @@ paths:
           schema:
             type: string
       responses:
-        204:
+        2XX:
           description: Key deleted
           headers:
             Idempotency-Hit:
@@ -1253,12 +1086,6 @@ paths:
           schema:
             type: boolean
             example: true
-        - name: schemaVersion
-          in: query
-          description: Schema version to use for validation
-          schema:
-            type: string
-            example: v1.0.0
         - name: Idempotency-Key
           in: header
           description: Use an idempotency key
@@ -1562,122 +1389,6 @@ paths:
       security:
         - Authorization:
             - ledger:write
-  /v2/{ledger}/queries/{id}/run:
-    post:
-      tags:
-        - ledger.v2
-      summary: Run a query template
-      description: Run a query template on a ledger
-      operationId: v2RunQuery
-      x-speakeasy-name-override: RunQuery
-      parameters:
-        - name: ledger
-          in: path
-          description: Name of the ledger.
-          required: true
-          schema:
-            type: string
-            example: ledger001
-        - name: schemaVersion
-          in: query
-          required: true
-          description: Schema version to use for validation
-          schema:
-            type: string
-            example: v1.0.0
-        - name: id
-          in: path
-          description: Query template ID.
-          required: true
-          schema:
-            type: string
-            example: CUSTOMER_DEPOSIT
-        - name: pageSize
-          in: query
-          description: |
-            The maximum number of results to return per page.
-          example: 100
-          schema:
-            type: integer
-            format: int64
-            minimum: 1
-            maximum: 1000
-        - name: cursor
-          in: query
-          description: >
-            Parameter used in pagination requests. Maximum page size is set to
-            15.
-
-            Set to the value of next for the next page of results.
-
-            Set to the value of previous for the previous page of results.
-
-            No other parameters can be set when this parameter is set.
-          schema:
-            type: string
-            example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
-        - name: expand
-          in: query
-          schema:
-            type: string
-            items:
-              type: string
-        - name: pit
-          in: query
-          required: false
-          schema:
-            type: string
-            format: date-time
-        - name: order
-          in: query
-          required: false
-          deprecated: true
-          description: "Deprecated: Use sort param"
-          schema:
-            type: string
-            enum:
-              - effective
-        - name: reverse
-          in: query
-          required: false
-          schema:
-            type: boolean
-        - $ref: "#/components/parameters/sort"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                cursor:
-                  type: string
-                params:
-                  $ref: "#/components/schemas/V2QueryParams"
-                vars:
-                  type: object
-                  additionalProperties:
-                    type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                oneOf:
-                  - $ref: "#/components/schemas/V2TransactionsCursorResponse"
-                  - $ref: "#/components/schemas/V2AccountsCursorResponse"
-                  - $ref: "#/components/schemas/V2LogsCursorResponse"
-                  - $ref: "#/components/schemas/V2VolumesWithBalanceCursorResponse"
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
-      security:
-        - Authorization:
-            - ledger:read
   /v2/_/exporters:
     get:
       summary: List exporters
@@ -1687,7 +1398,7 @@ paths:
         - ledger.v2
       responses:
         "200":
-          $ref: "#/components/responses/V2ListExportersResponse"
+          $ref: '#/components/responses/V2ListExportersResponse'
         default:
           description: Error
           content:
@@ -1705,10 +1416,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/V2CreateExporterRequest"
+              $ref: '#/components/schemas/V2CreateExporterRequest'
       responses:
         "201":
-          $ref: "#/components/responses/V2CreateExporterResponse"
+          $ref: '#/components/responses/V2CreateExporterResponse'
         default:
           description: Error
           content:
@@ -1731,7 +1442,7 @@ paths:
         - ledger.v2
       responses:
         "200":
-          $ref: "#/components/responses/V2GetExporterStateResponse"
+          $ref: '#/components/responses/V2GetExporterStateResponse'
         default:
           description: Error
           content:
@@ -1749,7 +1460,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/V2UpdateExporterRequest"
+              $ref: '#/components/schemas/V2UpdateExporterRequest'
       responses:
         "204":
           description: Exporter updated
@@ -1777,76 +1488,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/V2ErrorResponse"
-  /v2/_/buckets/{bucket}:
-    parameters:
-      - name: bucket
-        description: The bucket name
-        in: path
-        schema:
-          type: string
-        required: true
-    delete:
-      summary: Delete bucket
-      operationId: v2DeleteBucket
-      x-speakeasy-name-override: DeleteBucket
-      tags:
-        - ledger.v2
-      description: >-
-        Delete a bucket by marking all ledgers in the bucket as deleted (soft delete).
-        All ledgers in the bucket will have their deleted_at field set to the current timestamp.
-      responses:
-        "204":
-          description: Bucket deleted
-        "404":
-          description: Bucket not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
-      security:
-        - Authorization:
-            - ledger:write
-  /v2/_/buckets/{bucket}/restore:
-    parameters:
-      - name: bucket
-        description: The bucket name
-        in: path
-        schema:
-          type: string
-        required: true
-    post:
-      summary: Restore bucket
-      operationId: v2RestoreBucket
-      x-speakeasy-name-override: RestoreBucket
-      tags:
-        - ledger.v2
-      description: >-
-        Restore a deleted bucket by unmarking all ledgers in the bucket as deleted.
-        All ledgers in the bucket will have their deleted_at field set to NULL.
-      responses:
-        "204":
-          description: Bucket restored
-        "404":
-          description: Bucket not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/V2ErrorResponse"
-      security:
-        - Authorization:
-            - ledger:write
   /v2/{ledger}/pipelines:
     parameters:
       - name: ledger
@@ -1864,7 +1505,7 @@ paths:
         - ledger.v2
       responses:
         "200":
-          $ref: "#/components/responses/V2ListPipelinesResponse"
+          $ref: '#/components/responses/V2ListPipelinesResponse'
         default:
           description: Error
           content:
@@ -1881,10 +1522,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/V2CreatePipelineRequest"
+              $ref: '#/components/schemas/V2CreatePipelineRequest'
       responses:
         "201":
-          $ref: "#/components/responses/V2CreatePipelineResponse"
+          $ref: '#/components/responses/V2CreatePipelineResponse'
         default:
           description: Error
           content:
@@ -1914,7 +1555,7 @@ paths:
         - ledger.v2
       responses:
         "200":
-          $ref: "#/components/responses/V2GetPipelineStateResponse"
+          $ref: '#/components/responses/V2GetPipelineStateResponse'
         default:
           description: Error
           content:
@@ -2041,7 +1682,7 @@ components:
       name: sort
       in: query
       description: |
-        Sort results using a field name and order (ascending or descending).
+        Sort results using a field name and order (ascending or descending). 
         Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
       required: false
       schema:
@@ -2056,7 +1697,7 @@ components:
             type: object
             properties:
               data:
-                $ref: "#/components/schemas/V2Pipeline"
+                $ref: '#/components/schemas/V2Pipeline'
             required:
               - data
     V2ListPipelinesResponse:
@@ -2068,12 +1709,12 @@ components:
             properties:
               cursor:
                 allOf:
-                  - $ref: "#/components/schemas/V2PipelinesCursorResponse"
+                  - $ref: '#/components/schemas/V2PipelinesCursorResponse'
                   - properties:
                       data:
                         type: array
                         items:
-                          $ref: "#/components/schemas/V2Pipeline"
+                          $ref: '#/components/schemas/V2Pipeline'
 
     V2GetPipelineStateResponse:
       description: Pipeline information
@@ -2083,7 +1724,7 @@ components:
             type: object
             properties:
               data:
-                $ref: "#/components/schemas/V2Pipeline"
+                $ref: '#/components/schemas/V2Pipeline'
             required:
               - data
 
@@ -2095,7 +1736,7 @@ components:
             type: object
             properties:
               data:
-                $ref: "#/components/schemas/V2Exporter"
+                $ref: '#/components/schemas/V2Exporter'
             required:
               - data
     V2ListExportersResponse:
@@ -2107,13 +1748,13 @@ components:
             properties:
               cursor:
                 allOf:
-                  - $ref: "#/components/schemas/V2ExportersCursorResponse"
+                  - $ref: '#/components/schemas/V2ExportersCursorResponse'
                   - type: object
                     properties:
                       data:
                         type: array
                         items:
-                          $ref: "#/components/schemas/V2Exporter"
+                          $ref: '#/components/schemas/V2Exporter'
 
     V2GetExporterStateResponse:
       description: Exporter information
@@ -2123,7 +1764,7 @@ components:
             type: object
             properties:
               data:
-                $ref: "#/components/schemas/V2Exporter"
+                $ref: '#/components/schemas/V2Exporter'
             required:
               - data
   schemas:
@@ -2153,7 +1794,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
+              example: ""
             data:
               type: array
               items:
@@ -2184,7 +1825,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
+              example: ""
             data:
               type: array
               items:
@@ -2194,10 +1835,6 @@ components:
       required:
         - cursor
       properties:
-        resource:
-          type: string
-          enum:
-            - accounts
         cursor:
           type: object
           required:
@@ -2219,7 +1856,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
+              example: ""
             data:
               type: array
               items:
@@ -2229,10 +1866,6 @@ components:
       required:
         - cursor
       properties:
-        resource:
-          type: string
-          enum:
-            - transactions
         cursor:
           type: object
           required:
@@ -2254,7 +1887,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
+              example: ""
             data:
               type: array
               items:
@@ -2264,10 +1897,6 @@ components:
       required:
         - cursor
       properties:
-        resource:
-          type: string
-          enum:
-            - logs
         cursor:
           type: object
           required:
@@ -2289,7 +1918,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
+              example: ""
             data:
               type: array
               items:
@@ -2313,10 +1942,6 @@ components:
       required:
         - cursor
       properties:
-        resource:
-          type: string
-          enum:
-            - volumes
         cursor:
           type: object
           required:
@@ -2338,7 +1963,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
+              example: ""
             data:
               type: array
               items:
@@ -2482,8 +2107,6 @@ components:
           $ref: "#/components/schemas/V2AggregatedVolumes"
         postCommitEffectiveVolumes:
           $ref: "#/components/schemas/V2AggregatedVolumes"
-        template:
-          type: string
       required:
         - postings
         - timestamp
@@ -2505,9 +2128,6 @@ components:
         script:
           type: object
           properties:
-            template:
-              type: string
-              example: CUSTOMER_DEPOSIT
             plain:
               type: string
               example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
@@ -2518,8 +2138,14 @@ components:
                 type: string
               example:
                 user: users:042
+          required:
+            - plain
         runtime:
-          $ref: "#/components/schemas/Runtime"
+          description: The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
+          type: string
+          enum:
+            - experimental-interpreter
+            - machine
         reference:
           type: string
           example: ref:001
@@ -2547,16 +2173,11 @@ components:
         - transactions
     V2Log:
       type: object
-      description: |
-        Represents an immutable log entry in the ledger. Each log captures an atomic operation
-        with its full payload, enabling audit trails and event sourcing patterns.
-        The data field structure depends on the log type.
       properties:
         id:
           type: integer
           format: bigint
           minimum: 0
-          description: Unique sequential identifier for this log entry within the ledger
           example: 1234
         type:
           type: string
@@ -2565,218 +2186,22 @@ components:
             - SET_METADATA
             - REVERTED_TRANSACTION
             - DELETE_METADATA
-            - INSERTED_SCHEMA
-          description: The type of operation this log represents
         data:
-          description: |
-            The payload of the log entry. Structure depends on the log type:
-            - NEW_TRANSACTION: V2LogDataNewTransaction
-            - SET_METADATA: V2LogDataSetMetadata
-            - REVERTED_TRANSACTION: V2LogDataRevertedTransaction
-            - DELETE_METADATA: V2LogDataDeleteMetadata
-            - INSERTED_SCHEMA: V2LogDataInsertedSchema
-          oneOf:
-            - $ref: "#/components/schemas/V2LogDataNewTransaction"
-            - $ref: "#/components/schemas/V2LogDataSetMetadata"
-            - $ref: "#/components/schemas/V2LogDataRevertedTransaction"
-            - $ref: "#/components/schemas/V2LogDataDeleteMetadata"
-            - $ref: "#/components/schemas/V2LogDataInsertedSchema"
+          type: object
+          properties: {}
+          additionalProperties: true
         hash:
           type: string
-          description: SHA256 hash of the log entry, chained from the previous log for integrity verification
           example: 9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e
         date:
           type: string
           format: date-time
-          description: Timestamp when the operation was recorded
-        schemaVersion:
-          type: string
-          description: Schema version used for validation when the log was created
-          example: v1.0.0
       required:
         - id
         - type
         - data
         - hash
         - date
-    # Log payload schemas - used to document the structure of log data field
-    V2LogTransaction:
-      type: object
-      description: Transaction structure as it appears in log payloads
-      properties:
-        id:
-          type: integer
-          format: bigint
-          minimum: 0
-        postings:
-          type: array
-          items:
-            $ref: "#/components/schemas/V2Posting"
-        metadata:
-          $ref: "#/components/schemas/V2Metadata"
-        timestamp:
-          type: string
-          format: date-time
-        reference:
-          type: string
-        insertedAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-        revertedAt:
-          type: string
-          format: date-time
-        reverted:
-          type: boolean
-          description: Indicates if the transaction has been reverted
-        template:
-          type: string
-          description: Transaction template used
-        postCommitVolumes:
-          $ref: "#/components/schemas/V2AggregatedVolumes"
-        postCommitEffectiveVolumes:
-          $ref: "#/components/schemas/V2AggregatedVolumes"
-        preCommitVolumes:
-          $ref: "#/components/schemas/V2AggregatedVolumes"
-        preCommitEffectiveVolumes:
-          $ref: "#/components/schemas/V2AggregatedVolumes"
-      required:
-        - id
-        - postings
-        - metadata
-        - timestamp
-        - reverted
-    V2LogDataNewTransaction:
-      type: object
-      description: Payload for NEW_TRANSACTION log entries. Contains the created transaction and any account metadata set during creation.
-      properties:
-        transaction:
-          $ref: "#/components/schemas/V2LogTransaction"
-        accountMetadata:
-          type: object
-          description: Metadata applied to accounts involved in the transaction
-          additionalProperties:
-            $ref: "#/components/schemas/V2Metadata"
-      required:
-        - transaction
-        - accountMetadata
-      example:
-        transaction:
-          id: 1234
-          postings:
-            - source: "world"
-              destination: "users:001"
-              amount: 100
-              asset: "USD/2"
-          metadata: {}
-          timestamp: "2024-01-15T10:30:00Z"
-          insertedAt: "2024-01-15T10:30:00Z"
-          reverted: false
-        accountMetadata:
-          "users:001":
-            created_by: "system"
-    V2LogDataSetMetadata:
-      type: object
-      description: Payload for SET_METADATA log entries. Contains the target entity and the metadata that was set.
-      properties:
-        targetType:
-          type: string
-          enum:
-            - ACCOUNT
-            - TRANSACTION
-          description: Type of the target entity
-        targetId:
-          oneOf:
-            - type: string
-              description: Account address (when targetType is ACCOUNT)
-            - type: integer
-              format: bigint
-              description: Transaction ID (when targetType is TRANSACTION)
-        metadata:
-          $ref: "#/components/schemas/V2Metadata"
-      required:
-        - targetType
-        - targetId
-        - metadata
-      example:
-        targetType: "ACCOUNT"
-        targetId: "users:001"
-        metadata:
-          status: "active"
-          tier: "premium"
-    V2LogDataRevertedTransaction:
-      type: object
-      description: Payload for REVERTED_TRANSACTION log entries. Contains both the original reverted transaction and the new reverting transaction.
-      properties:
-        revertedTransaction:
-          $ref: "#/components/schemas/V2LogTransaction"
-          description: The original transaction that was reverted
-        transaction:
-          $ref: "#/components/schemas/V2LogTransaction"
-          description: The new reverting transaction created to cancel the original
-      required:
-        - revertedTransaction
-        - transaction
-      example:
-        revertedTransaction:
-          id: 1234
-          postings:
-            - source: "world"
-              destination: "users:001"
-              amount: 100
-              asset: "USD/2"
-          metadata: {}
-          timestamp: "2024-01-15T10:30:00Z"
-          reverted: true
-        transaction:
-          id: 1235
-          postings:
-            - source: "users:001"
-              destination: "world"
-              amount: 100
-              asset: "USD/2"
-          metadata:
-            revert: "1234"
-          timestamp: "2024-01-15T11:00:00Z"
-          reverted: false
-    V2LogDataDeleteMetadata:
-      type: object
-      description: Payload for DELETE_METADATA log entries. Contains the target entity and the metadata key that was deleted.
-      properties:
-        targetType:
-          type: string
-          enum:
-            - ACCOUNT
-            - TRANSACTION
-          description: Type of the target entity
-        targetId:
-          oneOf:
-            - type: string
-              description: Account address (when targetType is ACCOUNT)
-            - type: integer
-              format: bigint
-              description: Transaction ID (when targetType is TRANSACTION)
-        key:
-          type: string
-          description: The metadata key that was deleted
-      required:
-        - targetType
-        - targetId
-        - key
-      example:
-        targetType: "ACCOUNT"
-        targetId: "users:001"
-        key: "temporary_flag"
-    V2LogDataInsertedSchema:
-      type: object
-      description: Payload for INSERTED_SCHEMA log entries. Contains the schema that was inserted into the ledger.
-      properties:
-        schema:
-          $ref: "#/components/schemas/V2Schema"
-      required:
-        - schema
     V2CreateTransactionResponse:
       properties:
         data:
@@ -2884,8 +2309,6 @@ components:
         - INTERPRETER_PARSE
         - INTERPRETER_RUNTIME
         - LEDGER_ALREADY_EXISTS
-        - SCHEMA_ALREADY_EXISTS
-        - SCHEMA_NOT_SPECIFIED
         - OUTDATED_SCHEMA
       example: VALIDATION
     V2LedgerInfoResponse:
@@ -3006,8 +2429,6 @@ components:
                   type: boolean
                 atEffectiveDate:
                   type: boolean
-                metadata:
-                  $ref: "#/components/schemas/V2Metadata"
               required:
                 - id
     V2BulkElementDeleteMetadata:
@@ -3105,224 +2526,6 @@ components:
           required:
             - errorCode
             - errorDescription
-    V2ChartAccountRules:
-      type: object
-    V2ChartAccountMetadata:
-      type: object
-      properties:
-        default:
-          type: string
-    V2ChartSegment:
-      type: object
-      description: "Segment within a chart of accounts"
-      properties:
-        .self:
-          type: object
-        .pattern:
-          type: string
-        .rules:
-          $ref: "#/components/schemas/V2ChartAccountRules"
-        .metadata:
-          type: object
-          additionalProperties:
-            $ref: "#/components/schemas/V2ChartAccountMetadata"
-      additionalProperties:
-        $ref: "#/components/schemas/V2ChartSegment"
-      example:
-        users:
-          $userID:
-            .pattern: "^[0-9]{16}$"
-    V2ChartOfAccounts:
-      type: object
-      description: "Chart of account"
-      additionalProperties:
-        $ref: "#/components/schemas/V2ChartSegment"
-      example:
-        users:
-          $userID:
-            .pattern: "^[0-9]{16}$"
-    Runtime:
-      type: string
-      description: The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
-      enum:
-        - experimental-interpreter
-        - machine
-    V2TransactionTemplate:
-      type: object
-      properties:
-        description:
-          type: string
-        script:
-          type: string
-        runtime:
-          $ref: "#/components/schemas/Runtime"
-      required:
-        - script
-    V2TransactionTemplates:
-      type: object
-      description: Transaction templates
-      additionalProperties:
-        $ref: "#/components/schemas/V2TransactionTemplate"
-    V2QueryTemplateVar:
-      type: object
-      properties:
-        type:
-          type: string
-        default: {}
-      required:
-        - type
-    V2QueryResource:
-      type: string
-      enum: [transactions, accounts, logs, volumes]
-    V2QueryParams:
-      type: object
-      properties:
-        pageSize:
-          type: integer
-          format: int64
-          minimum: 1
-          maximum: 1000
-          description: |
-            The maximum number of results to return per page.
-          example: 100
-        cursor:
-          description: >
-            Parameter used in pagination requests. Maximum page size is set to
-            15.
-
-            Set to the value of next for the next page of results.
-
-            Set to the value of previous for the previous page of results.
-
-            No other parameters can be set when this parameter is set.
-          type: string
-          example: aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==
-        expand:
-          type: string
-          items:
-            type: string
-        pit:
-          type: string
-          format: date-time
-        sort:
-          $ref: "#/components/parameters/sort"
-      oneOf:
-        - x-speakeasy-name-override: QueryTemplateAccountParams
-          properties:
-            resource:
-              type: string
-              enum:
-                - accounts
-        - x-speakeasy-name-override: QueryTemplateTransactionParams
-          properties:
-            resource:
-              type: string
-              enum:
-                - transactions
-        - x-speakeasy-name-override: QueryTemplateLogParams
-          properties:
-            resource:
-              type: string
-              enum:
-                - logs
-        - x-speakeasy-name-override: QueryTemplateVolumeParams
-          properties:
-            resource:
-              type: string
-              enum:
-                - volumes
-            insertionDate:
-              type: boolean
-            groupBy:
-              type: integer
-    V2QueryTemplate:
-      type: object
-      properties:
-        description:
-          type: string
-        resource:
-          $ref: "#/components/schemas/V2QueryResource"
-        params:
-          $ref: "#/components/schemas/V2QueryParams"
-        vars:
-          type: object
-          additionalProperties:
-            $ref: "#/components/schemas/V2QueryTemplateVar"
-        body:
-          type: object
-          additionalProperties: true
-    V2QueryTemplates:
-      type: object
-      description: Query templates
-      additionalProperties:
-        $ref: "#/components/schemas/V2QueryTemplate"
-    V2SchemaData:
-      type: object
-      description: Schema data structure for ledger schemas
-      properties:
-        chart:
-          $ref: "#/components/schemas/V2ChartOfAccounts"
-        transactions:
-          $ref: "#/components/schemas/V2TransactionTemplates"
-        queries:
-          $ref: "#/components/schemas/V2QueryTemplates"
-      required:
-        - chart
-    V2Schema:
-      type: object
-      description: Complete schema structure with metadata
-
-      allOf:
-        - type: object
-          required:
-            - version
-            - createdAt
-          properties:
-            version:
-              type: string
-              description: Schema version
-              example: "v1.0.0"
-            createdAt:
-              type: string
-              format: date-time
-              description: Schema creation timestamp
-              example: "2023-01-01T00:00:00Z"
-        - $ref: "#/components/schemas/V2SchemaData"
-    V2SchemaResponse:
-      properties:
-        data:
-          $ref: "#/components/schemas/V2Schema"
-      type: object
-      required:
-        - data
-    V2SchemasCursorResponse:
-      properties:
-        cursor:
-          $ref: "#/components/schemas/V2SchemasCursor"
-      type: object
-      required:
-        - cursor
-    V2SchemasCursor:
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/V2Schema"
-        hasMore:
-          type: boolean
-        previous:
-          type: string
-          example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
-        next:
-          type: string
-          example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
-        pageSize:
-          type: integer
-      type: object
-      required:
-        - data
-        - hasMore
-        - pageSize
     V2CreateLedgerRequest:
       type: object
       properties:
@@ -3344,10 +2547,6 @@ components:
           format: date-time
         bucket:
           type: string
-        deletedAt:
-          type: string
-          format: date-time
-          nullable: true
         metadata:
           $ref: "#/components/schemas/V2Metadata"
         features:
@@ -3386,7 +2585,7 @@ components:
               example: YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=
             next:
               type: string
-              example: aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=
+              example: ""
             data:
               type: array
               items:
@@ -3423,9 +2622,9 @@ components:
       required:
         - exporterID
     V2CreateExporterRequest:
-      $ref: "#/components/schemas/V2ExporterConfiguration"
+      $ref: '#/components/schemas/V2ExporterConfiguration'
     V2UpdateExporterRequest:
-      $ref: "#/components/schemas/V2ExporterConfiguration"
+      $ref: '#/components/schemas/V2ExporterConfiguration'
     V2PipelineConfiguration:
       properties:
         ledger:
@@ -3449,7 +2648,7 @@ components:
     V2Exporter:
       type: object
       allOf:
-        - $ref: "#/components/schemas/V2ExporterConfiguration"
+        - $ref: '#/components/schemas/V2ExporterConfiguration'
         - type: object
           properties:
             id:
@@ -3462,7 +2661,7 @@ components:
             - createdAt
     V2Pipeline:
       allOf:
-        - $ref: "#/components/schemas/V2PipelineConfiguration"
+        - $ref: '#/components/schemas/V2PipelineConfiguration'
         - type: object
           properties:
             id:

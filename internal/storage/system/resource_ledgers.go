@@ -2,13 +2,10 @@ package system
 
 import (
 	"errors"
-	"regexp"
-
-	"github.com/uptrace/bun"
-
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/queries"
 	"github.com/formancehq/ledger/internal/storage/common"
+	"github.com/uptrace/bun"
+	"regexp"
 )
 
 var (
@@ -19,29 +16,22 @@ type ledgersResourceHandler struct {
 	store *DefaultStore
 }
 
-func (h ledgersResourceHandler) Schema() queries.EntitySchema {
-	return queries.EntitySchema{
-		Fields: map[string]queries.Field{
-			"bucket":   queries.NewStringField(),
-			"features": queries.NewStringMapField(),
-			"metadata": queries.NewStringMapField(),
-			"name":     queries.NewStringField(),
-			"id":       queries.NewNumericField().Paginated(),
+func (h ledgersResourceHandler) Schema() common.EntitySchema {
+	return common.EntitySchema{
+		Fields: map[string]common.Field{
+			"bucket":   common.NewStringField(),
+			"features": common.NewStringMapField(),
+			"metadata": common.NewStringMapField(),
+			"name":     common.NewStringField(),
+			"id":       common.NewNumericField().Paginated(),
 		},
 	}
 }
 
-func (h ledgersResourceHandler) BuildDataset(ctx common.RepositoryHandlerBuildContext[ListLedgersQueryPayload]) (*bun.SelectQuery, error) {
-	query := h.store.db.NewSelect().
+func (h ledgersResourceHandler) BuildDataset(_ common.RepositoryHandlerBuildContext[ListLedgersQueryPayload]) (*bun.SelectQuery, error) {
+	return h.store.db.NewSelect().
 		Model(&ledger.Ledger{}).
-		Column("*")
-
-	// Only filter out deleted ledgers if IncludeDeleted is false (default behavior)
-	if !ctx.Opts.IncludeDeleted {
-		query = query.Where("deleted_at IS NULL")
-	}
-
-	return query, nil
+		Column("*"), nil
 }
 
 func (h ledgersResourceHandler) ResolveFilter(_ common.ResourceQuery[ListLedgersQueryPayload], operator, property string, value any) (string, []any, error) {

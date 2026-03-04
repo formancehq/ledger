@@ -4,16 +4,15 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/formancehq/go-libs/v3/metadata"
+	"github.com/formancehq/ledger/internal/machine/vm"
+	"github.com/formancehq/ledger/internal/storage/common"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/uptrace/bun"
 
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-	"github.com/formancehq/go-libs/v4/metadata"
-	"github.com/formancehq/go-libs/v4/migrations"
-
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/go-libs/v3/migrations"
 	ledger "github.com/formancehq/ledger/internal"
-	"github.com/formancehq/ledger/internal/machine/vm"
-	"github.com/formancehq/ledger/internal/queries"
-	"github.com/formancehq/ledger/internal/storage/common"
 )
 
 //go:generate mockgen -write_source_comment=false -typed -write_package_comment=false -source controller.go -destination controller_generated_test.go -package ledger . Controller
@@ -38,8 +37,8 @@ type Controller interface {
 	CountTransactions(ctx context.Context, query common.ResourceQuery[any]) (int, error)
 	ListTransactions(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Transaction], error)
 	GetTransaction(ctx context.Context, query common.ResourceQuery[any]) (*ledger.Transaction, error)
-	GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledger.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
-	GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledger.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)
+	GetVolumesWithBalances(ctx context.Context, q common.PaginatedQuery[ledgerstore.GetVolumesOptions]) (*bunpaginate.Cursor[ledger.VolumesWithBalanceByAssetByAccount], error)
+	GetAggregatedBalances(ctx context.Context, q common.ResourceQuery[ledgerstore.GetAggregatedVolumesOptions]) (ledger.BalancesByAssets, error)
 
 	// CreateTransaction accept a numscript script and returns a transaction
 	// It can return following errors:
@@ -80,32 +79,30 @@ type Controller interface {
 	Import(ctx context.Context, stream chan ledger.Log) error
 	// Export allow to export the logs of a ledger
 	Export(ctx context.Context, w ExportWriter) error
-	// InsertSchema Insert a new schema
-	InsertSchema(ctx context.Context, parameters Parameters[InsertSchema]) (*ledger.Log, *ledger.InsertedSchema, bool, error)
-	// GetSchema Get the schema by version
-	GetSchema(ctx context.Context, version string) (*ledger.Schema, error)
-	// ListSchemas List all schemas for the ledger
-	ListSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*bunpaginate.Cursor[ledger.Schema], error)
-
-	// Run a query template on the ledger
-	RunQuery(ctx context.Context, schemaVersion string, queryId string, runQuery common.RunQuery, defaultPageSize common.PaginationConfig) (*queries.ResourceKind, *bunpaginate.Cursor[any], error)
 }
 
 type RunScript = vm.RunScript
 type Script = vm.Script
 type ScriptV1 = vm.ScriptV1
 
+type RuntimeType string
+
+const (
+	RuntimeExperimentalInterpreter RuntimeType = "experimental-interpreter"
+	RuntimeMachine                 RuntimeType = "machine"
+)
+
 type CreateTransaction struct {
 	RunScript
 	AccountMetadata map[string]metadata.Metadata
-	Runtime         ledger.RuntimeType
+	Runtime         RuntimeType
 }
 
 type RevertTransaction struct {
 	Force           bool
 	AtEffectiveDate bool
 	TransactionID   uint64
-	Metadata        metadata.Metadata
+	Metadata metadata.Metadata
 }
 
 type SaveTransactionMetadata struct {
@@ -126,9 +123,4 @@ type DeleteTransactionMetadata struct {
 type DeleteAccountMetadata struct {
 	Address string
 	Key     string
-}
-
-type InsertSchema struct {
-	Version string
-	Data    ledger.SchemaData
 }

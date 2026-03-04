@@ -1,7 +1,7 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: 877e8dc9944e5fd5f1bde6aef1260f57
+  docChecksum: 14988e7aea037b9d5cced1f16beb1a41
   docVersion: v2
   speakeasyVersion: 1.563.0
   generationVersion: 2.629.1
@@ -10,9 +10,7 @@ management:
 features:
   go:
     additionalDependencies: 0.1.0
-    additionalProperties: 0.1.2
     bigint: 0.0.2
-    constsAndDefaults: 0.1.12
     core: 3.8.1
     defaultEnabledRetries: 0.2.0
     deprecations: 2.81.3
@@ -62,7 +60,6 @@ generatedFiles:
   - /models/components/migrationinfo.go
   - /models/components/posting.go
   - /models/components/posttransaction.go
-  - /models/components/runtime.go
   - /models/components/script.go
   - /models/components/scriptresponse.go
   - /models/components/security.go
@@ -85,9 +82,6 @@ generatedFiles:
   - /models/components/v2bulkelementresult.go
   - /models/components/v2bulkelementreverttransaction.go
   - /models/components/v2bulkresponse.go
-  - /models/components/v2chartaccountmetadata.go
-  - /models/components/v2chartaccountrules.go
-  - /models/components/v2chartsegment.go
   - /models/components/v2configinforesponse.go
   - /models/components/v2createexporterresponse.go
   - /models/components/v2createledgerrequest.go
@@ -109,34 +103,18 @@ generatedFiles:
   - /models/components/v2listexportersresponse.go
   - /models/components/v2listpipelinesresponse.go
   - /models/components/v2log.go
-  - /models/components/v2logdatadeletemetadata.go
-  - /models/components/v2logdatainsertedschema.go
-  - /models/components/v2logdatanewtransaction.go
-  - /models/components/v2logdatarevertedtransaction.go
-  - /models/components/v2logdatasetmetadata.go
   - /models/components/v2logscursorresponse.go
-  - /models/components/v2logtransaction.go
   - /models/components/v2migrationinfo.go
   - /models/components/v2pipeline.go
   - /models/components/v2posting.go
   - /models/components/v2posttransaction.go
-  - /models/components/v2queryparams.go
-  - /models/components/v2queryresource.go
-  - /models/components/v2querytemplate.go
-  - /models/components/v2querytemplatevar.go
   - /models/components/v2reverttransactionrequest.go
-  - /models/components/v2schema.go
-  - /models/components/v2schemadata.go
-  - /models/components/v2schemaresponse.go
-  - /models/components/v2schemascursor.go
-  - /models/components/v2schemascursorresponse.go
   - /models/components/v2stats.go
   - /models/components/v2statsresponse.go
   - /models/components/v2targetid.go
   - /models/components/v2targettype.go
   - /models/components/v2transaction.go
   - /models/components/v2transactionscursorresponse.go
-  - /models/components/v2transactiontemplate.go
   - /models/components/v2volume.go
   - /models/components/v2volumeswithbalance.go
   - /models/components/v2volumeswithbalancecursorresponse.go
@@ -172,7 +150,6 @@ generatedFiles:
   - /models/operations/v2createpipeline.go
   - /models/operations/v2createtransaction.go
   - /models/operations/v2deleteaccountmetadata.go
-  - /models/operations/v2deletebucket.go
   - /models/operations/v2deleteexporter.go
   - /models/operations/v2deleteledgermetadata.go
   - /models/operations/v2deletepipeline.go
@@ -185,23 +162,18 @@ generatedFiles:
   - /models/operations/v2getledger.go
   - /models/operations/v2getledgerinfo.go
   - /models/operations/v2getpipelinestate.go
-  - /models/operations/v2getschema.go
   - /models/operations/v2gettransaction.go
   - /models/operations/v2getvolumeswithbalances.go
   - /models/operations/v2importlogs.go
-  - /models/operations/v2insertschema.go
   - /models/operations/v2listaccounts.go
   - /models/operations/v2listexporters.go
   - /models/operations/v2listledgers.go
   - /models/operations/v2listlogs.go
   - /models/operations/v2listpipelines.go
-  - /models/operations/v2listschemas.go
   - /models/operations/v2listtransactions.go
   - /models/operations/v2readstats.go
   - /models/operations/v2resetpipeline.go
-  - /models/operations/v2restorebucket.go
   - /models/operations/v2reverttransaction.go
-  - /models/operations/v2runquery.go
   - /models/operations/v2startpipeline.go
   - /models/operations/v2stoppipeline.go
   - /models/operations/v2updateexporter.go
@@ -222,7 +194,6 @@ generatedFiles:
   - docs/models/components/contract.md
   - docs/models/components/cursor.md
   - docs/models/components/data.md
-  - docs/models/components/dotself.md
   - docs/models/components/errorresponse.md
   - docs/models/components/errorsenum.md
   - docs/models/components/expr.md
@@ -239,11 +210,6 @@ generatedFiles:
   - docs/models/components/posting.md
   - docs/models/components/posttransaction.md
   - docs/models/components/posttransactionscript.md
-  - docs/models/components/querytemplateaccountparams.md
-  - docs/models/components/querytemplatelogparams.md
-  - docs/models/components/querytemplatetransactionparams.md
-  - docs/models/components/querytemplatevolumeparams.md
-  - docs/models/components/resource.md
   - docs/models/components/runtime.md
   - docs/models/components/script.md
   - docs/models/components/scriptresponse.md
@@ -252,8 +218,6 @@ generatedFiles:
   - docs/models/components/stats.md
   - docs/models/components/statsresponse.md
   - docs/models/components/storage.md
-  - docs/models/components/targetid.md
-  - docs/models/components/targettype.md
   - docs/models/components/transaction.md
   - docs/models/components/transactiondata.md
   - docs/models/components/transactionresponse.md
@@ -281,9 +245,6 @@ generatedFiles:
   - docs/models/components/v2bulkelementreverttransaction.md
   - docs/models/components/v2bulkelementreverttransactiondata.md
   - docs/models/components/v2bulkresponse.md
-  - docs/models/components/v2chartaccountmetadata.md
-  - docs/models/components/v2chartaccountrules.md
-  - docs/models/components/v2chartsegment.md
   - docs/models/components/v2configinforesponse.md
   - docs/models/components/v2createexporterresponse.md
   - docs/models/components/v2createledgerrequest.md
@@ -311,18 +272,8 @@ generatedFiles:
   - docs/models/components/v2listpipelinesresponsecursor.md
   - docs/models/components/v2listpipelinesresponsecursorcursor.md
   - docs/models/components/v2log.md
-  - docs/models/components/v2logdata.md
-  - docs/models/components/v2logdatadeletemetadata.md
-  - docs/models/components/v2logdatadeletemetadatatargetid.md
-  - docs/models/components/v2logdatadeletemetadatatargettype.md
-  - docs/models/components/v2logdatainsertedschema.md
-  - docs/models/components/v2logdatanewtransaction.md
-  - docs/models/components/v2logdatarevertedtransaction.md
-  - docs/models/components/v2logdatasetmetadata.md
   - docs/models/components/v2logscursorresponse.md
   - docs/models/components/v2logscursorresponsecursor.md
-  - docs/models/components/v2logscursorresponseresource.md
-  - docs/models/components/v2logtransaction.md
   - docs/models/components/v2logtype.md
   - docs/models/components/v2migrationinfo.md
   - docs/models/components/v2migrationinfostate.md
@@ -330,20 +281,7 @@ generatedFiles:
   - docs/models/components/v2posting.md
   - docs/models/components/v2posttransaction.md
   - docs/models/components/v2posttransactionscript.md
-  - docs/models/components/v2queryparams.md
-  - docs/models/components/v2queryparams1resource.md
-  - docs/models/components/v2queryparams3resource.md
-  - docs/models/components/v2queryparams4resource.md
-  - docs/models/components/v2queryparamsresource.md
-  - docs/models/components/v2queryresource.md
-  - docs/models/components/v2querytemplate.md
-  - docs/models/components/v2querytemplatevar.md
   - docs/models/components/v2reverttransactionrequest.md
-  - docs/models/components/v2schema.md
-  - docs/models/components/v2schemadata.md
-  - docs/models/components/v2schemaresponse.md
-  - docs/models/components/v2schemascursor.md
-  - docs/models/components/v2schemascursorresponse.md
   - docs/models/components/v2stats.md
   - docs/models/components/v2statsresponse.md
   - docs/models/components/v2targetid.md
@@ -351,13 +289,10 @@ generatedFiles:
   - docs/models/components/v2transaction.md
   - docs/models/components/v2transactionscursorresponse.md
   - docs/models/components/v2transactionscursorresponsecursor.md
-  - docs/models/components/v2transactionscursorresponseresource.md
-  - docs/models/components/v2transactiontemplate.md
   - docs/models/components/v2volume.md
   - docs/models/components/v2volumeswithbalance.md
   - docs/models/components/v2volumeswithbalancecursorresponse.md
   - docs/models/components/v2volumeswithbalancecursorresponsecursor.md
-  - docs/models/components/v2volumeswithbalancecursorresponseresource.md
   - docs/models/components/volume.md
   - docs/models/operations/addmetadataontransactionrequest.md
   - docs/models/operations/addmetadataontransactionresponse.md
@@ -394,14 +329,12 @@ generatedFiles:
   - docs/models/operations/metadata.md
   - docs/models/operations/option.md
   - docs/models/operations/order.md
-  - docs/models/operations/queryparamorder.md
   - docs/models/operations/readstatsrequest.md
   - docs/models/operations/readstatsresponse.md
   - docs/models/operations/reverttransactionrequest.md
   - docs/models/operations/reverttransactionresponse.md
   - docs/models/operations/runscriptrequest.md
   - docs/models/operations/runscriptresponse.md
-  - docs/models/operations/sort.md
   - docs/models/operations/updatemappingrequest.md
   - docs/models/operations/updatemappingresponse.md
   - docs/models/operations/v2addmetadataontransactionrequest.md
@@ -423,8 +356,6 @@ generatedFiles:
   - docs/models/operations/v2createtransactionresponse.md
   - docs/models/operations/v2deleteaccountmetadatarequest.md
   - docs/models/operations/v2deleteaccountmetadataresponse.md
-  - docs/models/operations/v2deletebucketrequest.md
-  - docs/models/operations/v2deletebucketresponse.md
   - docs/models/operations/v2deleteexporterrequest.md
   - docs/models/operations/v2deleteexporterresponse.md
   - docs/models/operations/v2deleteledgermetadatarequest.md
@@ -448,16 +379,12 @@ generatedFiles:
   - docs/models/operations/v2getledgerresponse.md
   - docs/models/operations/v2getpipelinestaterequest.md
   - docs/models/operations/v2getpipelinestateresponse.md
-  - docs/models/operations/v2getschemarequest.md
-  - docs/models/operations/v2getschemaresponse.md
   - docs/models/operations/v2gettransactionrequest.md
   - docs/models/operations/v2gettransactionresponse.md
   - docs/models/operations/v2getvolumeswithbalancesrequest.md
   - docs/models/operations/v2getvolumeswithbalancesresponse.md
   - docs/models/operations/v2importlogsrequest.md
   - docs/models/operations/v2importlogsresponse.md
-  - docs/models/operations/v2insertschemarequest.md
-  - docs/models/operations/v2insertschemaresponse.md
   - docs/models/operations/v2listaccountsrequest.md
   - docs/models/operations/v2listaccountsresponse.md
   - docs/models/operations/v2listexportersresponse.md
@@ -467,23 +394,14 @@ generatedFiles:
   - docs/models/operations/v2listlogsresponse.md
   - docs/models/operations/v2listpipelinesrequest.md
   - docs/models/operations/v2listpipelinesresponse.md
-  - docs/models/operations/v2listschemasrequest.md
-  - docs/models/operations/v2listschemasresponse.md
   - docs/models/operations/v2listtransactionsrequest.md
   - docs/models/operations/v2listtransactionsresponse.md
   - docs/models/operations/v2readstatsrequest.md
   - docs/models/operations/v2readstatsresponse.md
   - docs/models/operations/v2resetpipelinerequest.md
   - docs/models/operations/v2resetpipelineresponse.md
-  - docs/models/operations/v2restorebucketrequest.md
-  - docs/models/operations/v2restorebucketresponse.md
   - docs/models/operations/v2reverttransactionrequest.md
   - docs/models/operations/v2reverttransactionresponse.md
-  - docs/models/operations/v2runqueryqueryparamorder.md
-  - docs/models/operations/v2runqueryrequest.md
-  - docs/models/operations/v2runqueryrequestbody.md
-  - docs/models/operations/v2runqueryresponse.md
-  - docs/models/operations/v2runqueryresponsebody.md
   - docs/models/operations/v2startpipelinerequest.md
   - docs/models/operations/v2startpipelineresponse.md
   - docs/models/operations/v2stoppipelinerequest.md
@@ -795,12 +713,11 @@ examples:
           pageSize: 100
           cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
           sort: "id:desc"
-          includeDeleted: false
       requestBody:
         application/json: {"key": "<value>", "key1": "<value>", "key2": "<value>"}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": []}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2GetLedger:
@@ -863,7 +780,6 @@ examples:
           continueOnFailure: true
           atomic: true
           parallel: true
-          schemaVersion: "v1.0.0"
       requestBody:
         application/json: [{"action": "DELETE_METADATA"}]
       responses:
@@ -896,7 +812,7 @@ examples:
         application/json: {}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": [{"address": "users:001", "metadata": {"admin": "true"}, "volumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}, "effectiveVolumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"address": "users:001", "metadata": {"admin": "true"}, "volumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}, "effectiveVolumes": {"USD": {"input": 100, "output": 10, "balance": 90}, "EUR": {"input": 100, "output": 10, "balance": 90}}}]}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2GetAccount:
@@ -918,7 +834,6 @@ examples:
           address: "users:001"
         query:
           dryRun: true
-          schemaVersion: "v1.0.0"
       requestBody:
         application/json: {"admin": "true"}
       responses:
@@ -967,7 +882,7 @@ examples:
         application/json: {}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": [{"timestamp": "2024-10-10T19:56:12.497Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 177096, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "template": "<value>"}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"timestamp": "2024-10-10T19:56:12.497Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 177096, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}]}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2CreateTransaction:
@@ -977,10 +892,8 @@ examples:
           ledger: "ledger001"
         query:
           dryRun: true
-          schemaVersion: "v1.0.0"
-          force: true
       requestBody:
-        application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"template": "CUSTOMER_DEPOSIT", "plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}, "key1": {"admin": "true"}, "key2": {"admin": "true"}}}
+        application/json: {"postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "script": {"plain": "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n", "vars": {"user": "users:042"}}, "reference": "ref:001", "metadata": {"admin": "true"}, "accountMetadata": {"key": {"admin": "true"}, "key1": {"admin": "true"}, "key2": {"admin": "true"}}}
       responses:
         "200":
           application/json: {"data": {"timestamp": "2024-06-10T07:40:23.819Z", "postings": [{"amount": 100, "asset": "COIN", "destination": "users:002", "source": "users:001"}], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 339560, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
@@ -1005,7 +918,6 @@ examples:
           id: 1234
         query:
           dryRun: true
-          schemaVersion: "v1.0.0"
       requestBody:
         application/json: {"admin": "true"}
       responses:
@@ -1029,7 +941,6 @@ examples:
           id: 1234
         query:
           dryRun: true
-          schemaVersion: "v1.0.0"
       responses:
         "201":
           application/json: {"data": {"timestamp": "2025-01-07T04:49:40.482Z", "postings": [], "reference": "ref:001", "metadata": {"admin": "true"}, "id": 670435, "reverted": true, "preCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "preCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}, "postCommitEffectiveVolumes": {"orders:1": {"USD": {"input": 100, "output": 10, "balance": 90}}, "orders:2": {"USD": {"input": 100, "output": 10, "balance": 90}}}}}
@@ -1061,7 +972,7 @@ examples:
         application/json: {"key": "<value>"}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": []}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ListLogs:
@@ -1077,7 +988,7 @@ examples:
         application/json: {}
       responses:
         "200":
-          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": [{"id": 1234, "type": "NEW_TRANSACTION", "data": {"transaction": {"id": 1234, "postings": [{"amount": 100, "asset": "USD/2", "destination": "users:001", "source": "world"}], "metadata": {}, "timestamp": "2024-01-15T10:30:00Z", "insertedAt": "2024-01-15T10:30:00Z", "reverted": false}, "accountMetadata": {"users:001": {"created_by": "system"}}}, "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", "date": "2023-07-05T17:46:45.404Z"}]}}
+          application/json: {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"id": 1234, "type": "NEW_TRANSACTION", "data": {}, "hash": "9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e", "date": "2023-07-05T17:46:45.404Z"}]}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ImportLogs:
@@ -1136,7 +1047,7 @@ examples:
           ledger: "ledger001"
       responses:
         "200":
-          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": [{"ledger": "<value>", "exporterID": "<id>", "id": "<id>", "createdAt": "2023-07-10T16:30:37.234Z"}]}}}
+          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": [{"ledger": "<value>", "exporterID": "<id>", "id": "<id>", "createdAt": "2023-07-10T16:30:37.234Z"}]}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2CreatePipeline:
@@ -1200,7 +1111,7 @@ examples:
     speakeasy-default-v2-list-exporters:
       responses:
         "200":
-          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": []}}}
+          application/json: {"cursor": {"cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "", "data": []}}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2CreateExporter:
@@ -1238,82 +1149,6 @@ examples:
       requestBody:
         application/json: {"driver": "<value>", "config": {"key": "<value>", "key1": "<value>", "key2": "<value>"}}
       responses:
-        "400":
-          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
-        default:
-          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
-  v2DeleteBucket:
-    speakeasy-default-v2-delete-bucket:
-      parameters:
-        path:
-          bucket: "<value>"
-      responses:
-        "404":
-          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
-        default:
-          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
-  v2RestoreBucket:
-    speakeasy-default-v2-restore-bucket:
-      parameters:
-        path:
-          bucket: "<value>"
-      responses:
-        "404":
-          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
-        default:
-          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
-  v2InsertSchema:
-    speakeasy-default-v2-insert-schema:
-      parameters:
-        path:
-          ledger: "ledger001"
-          version: "v1.0.0"
-      requestBody:
-        application/json: {"chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}, "queries": {"key": {"params": {"resource": "accounts", "pageSize": 100, "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="}}}}
-      responses:
-        default:
-          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
-  v2GetSchema:
-    speakeasy-default-v2-get-schema:
-      parameters:
-        path:
-          ledger: "ledger001"
-          version: "v1.0.0"
-      responses:
-        "200":
-          application/json: {"data": {"version": "v1.0.0", "createdAt": "2023-01-01T00:00:00Z", "chart": {"users": {"$userID": {".pattern": "^[0-9]{16}$"}}}, "queries": {"key": {"params": {"resource": "accounts", "pageSize": 100, "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="}}}}}
-        default:
-          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
-  v2ListSchemas:
-    speakeasy-default-v2-list-schemas:
-      parameters:
-        path:
-          ledger: "ledger001"
-        query:
-          pageSize: 15
-          sort: "created_at"
-          order: "desc"
-      responses:
-        "200":
-          application/json: {"cursor": {"data": [], "hasMore": true, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "pageSize": 47856}}
-        default:
-          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
-  v2RunQuery:
-    speakeasy-default-v2-run-query:
-      parameters:
-        path:
-          ledger: "ledger001"
-          id: "CUSTOMER_DEPOSIT"
-        query:
-          pageSize: 100
-          cursor: "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="
-          sort: "id:desc"
-          schemaVersion: "v1.0.0"
-      requestBody:
-        application/json: {"params": {"pageSize": 100, "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="}}
-      responses:
-        "200":
-          application/json: {"resource": "transactions", "cursor": {"pageSize": 15, "hasMore": false, "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=", "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=", "data": []}}
         default:
           application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
 examplesVersion: 1.0.2

@@ -3,29 +3,21 @@ package v2
 import (
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
+	"github.com/formancehq/go-libs/v3/bun/bunpaginate"
+	"github.com/formancehq/ledger/internal/api/bulking"
+	v1 "github.com/formancehq/ledger/internal/api/v1"
 	nooptracer "go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
-
-	"github.com/formancehq/ledger/internal/api/bulking"
-	"github.com/formancehq/ledger/internal/api/common"
-	v1 "github.com/formancehq/ledger/internal/api/v1"
 	systemcontroller "github.com/formancehq/ledger/internal/controller/system"
-	storagecommon "github.com/formancehq/ledger/internal/storage/common"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/formancehq/go-libs/v3/auth"
+	"github.com/formancehq/ledger/internal/api/common"
+	"github.com/go-chi/chi/v5"
 )
 
-// NewRouter creates a chi.Router configured with the v2 HTTP API routes for the ledger service.
-// It registers authentication-protected top-level endpoints (including /_info), an "/_" group
-// that may expose exporter management and bucket operations, ledger-scoped routes (ledger creation,
-// metadata, and nested ledger subroutes such as bulk operations, info, stats, pipelines when
-// enabled, logs, accounts, transactions, aggregated balances, and volumes), and applies tracing
-// attributes for the selected ledger on ledger-scoped requests.
-// The behavior of tracing, bulking, bulk handler factories, pagination, and whether exporter-related
-// endpoints are mounted is controlled via RouterOption arguments.
 func NewRouter(
 	systemController systemcontroller.Controller,
 	authenticator auth.Authenticator,
@@ -54,10 +46,6 @@ func NewRouter(
 					router.Post("/", createExporter(systemController))
 				})
 			}
-			router.Route("/buckets", func(router chi.Router) {
-				router.Delete("/{bucket}", deleteBucket(systemController))
-				router.Post("/{bucket}/restore", restoreBucket(systemController))
-			})
 		})
 		router.Get("/", listLedgers(systemController, routerOptions.paginationConfig))
 		router.Route("/{ledger}", func(router chi.Router) {
@@ -81,11 +69,9 @@ func NewRouter(
 					routerOptions.bulkerFactory,
 					routerOptions.bulkHandlerFactories,
 				))
+
 				router.Get("/_info", getLedgerInfo)
 				router.Get("/stats", readStats)
-				router.Post("/schemas/{version}", insertSchema)
-				router.Get("/schemas/{version}", readSchema)
-				router.Get("/schemas", listSchemas(routerOptions.paginationConfig))
 
 				if routerOptions.exporters {
 					router.Route("/pipelines", func(router chi.Router) {
@@ -128,8 +114,6 @@ func NewRouter(
 				router.Get("/aggregate/balances", readBalancesAggregated)
 
 				router.Get("/volumes", readVolumes(routerOptions.paginationConfig))
-
-				router.Post("/queries/{id}/run", runQuery(routerOptions.paginationConfig))
 			})
 		})
 	})
@@ -141,7 +125,7 @@ type routerOptions struct {
 	tracer               trace.Tracer
 	bulkerFactory        bulking.BulkerFactory
 	bulkHandlerFactories map[string]bulking.HandlerFactory
-	paginationConfig     storagecommon.PaginationConfig
+	paginationConfig     common.PaginationConfig
 	exporters            bool
 }
 
@@ -165,7 +149,7 @@ func WithBulkerFactory(bulkerFactory bulking.BulkerFactory) RouterOption {
 	}
 }
 
-func WithPaginationConfig(paginationConfig storagecommon.PaginationConfig) RouterOption {
+func WithPaginationConfig(paginationConfig common.PaginationConfig) RouterOption {
 	return func(ro *routerOptions) {
 		ro.paginationConfig = paginationConfig
 	}
@@ -189,7 +173,7 @@ var defaultRouterOptions = []RouterOption{
 	WithTracer(nooptracer.Tracer{}),
 	WithBulkerFactory(bulking.NewDefaultBulkerFactory()),
 	WithDefaultBulkHandlerFactories(100),
-	WithPaginationConfig(storagecommon.PaginationConfig{
+	WithPaginationConfig(common.PaginationConfig{
 		DefaultPageSize: bunpaginate.QueryDefaultPageSize,
 		MaxPageSize:     bunpaginate.MaxPageSize,
 	}),
