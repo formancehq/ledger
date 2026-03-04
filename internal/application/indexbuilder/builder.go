@@ -381,8 +381,12 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		default:
 		}
 
-		if cursor, err = b.processLogs(cursor); err != nil {
-			b.logger.Errorf("Error processing logs: %v", err)
+		// Fast path: skip Pebble iterator + bbolt transaction when the FSM
+		// hasn't advanced past our cursor.
+		if cached := b.notifications.LastSequence.Load(); cached == 0 || cached > cursor {
+			if cursor, err = b.processLogs(cursor); err != nil {
+				b.logger.Errorf("Error processing logs: %v", err)
+			}
 		}
 
 		b.processBackfills(stop, cursor)
