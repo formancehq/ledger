@@ -112,9 +112,9 @@ func Module() fx.Option {
 
 				return store, nil
 			},
-			func(store *dal.Store, logger logging.Logger, machine *state.Machine) *dal.SmartCompactor {
-				return dal.NewSmartCompactor(store, logger, machine.ColdCompactionCh())
-			},
+			fx.Annotate(func(cfg Config, store *dal.Store, logger logging.Logger, notifications *signal.Notifications, machine *state.Machine) *dal.SmartCompactor {
+				return dal.NewSmartCompactor(store, logger, notifications, machine.ColdCompactionCh(), cfg.PebbleConfig.IncrementalCompactThreshold)
+			}, fx.ParamTags(``, ``, ``, `name:"events"`, ``)),
 			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
 				return wal.New(cfg.RaftConfig.WalDir, logger.WithFields(map[string]any{
 					"cmp": "wal",

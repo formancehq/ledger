@@ -345,6 +345,12 @@ type PebbleConfig struct {
 	// DisableWAL disables WAL entirely.
 	// +optional
 	DisableWAL *bool `json:"disableWAL,omitempty"`
+
+	// IncrementalCompactThreshold is the number of new log entries before
+	// triggering an incremental compaction of the new range.
+	// Default: 100000.
+	// +optional
+	IncrementalCompactThreshold *int64 `json:"incrementalCompactThreshold,omitempty"`
 }
 
 // RaftConfig holds Raft consensus configuration.

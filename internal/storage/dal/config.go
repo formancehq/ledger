@@ -69,6 +69,11 @@ type Config struct {
 	// Older checkpoints beyond this limit are deleted during snapshot creation.
 	// Default: 10
 	MaxCheckpoints int `yaml:"maxCheckpoints"`
+
+	// IncrementalCompactThreshold is the number of new log entries before the
+	// SmartCompactor triggers an incremental compaction of just the new range.
+	// Default: 100000
+	IncrementalCompactThreshold uint64 `yaml:"incrementalCompactThreshold"`
 }
 
 // DefaultConfig returns the default Pebble configuration.
@@ -88,5 +93,6 @@ func DefaultConfig() Config {
 		WALMinSyncInterval:          0, // immediate sync
 		DisableWAL:                  false,
 		MaxCheckpoints:              10,
+		IncrementalCompactThreshold: 100_000,
 	}
 }

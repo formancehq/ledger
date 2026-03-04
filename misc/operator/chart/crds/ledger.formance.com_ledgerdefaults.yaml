@@ -1200,6 +1200,13 @@ spec:
                       disableWAL:
                         description: DisableWAL disables WAL entirely.
                         type: boolean
+                      incrementalCompactThreshold:
+                        description: |-
+                          IncrementalCompactThreshold is the number of new log entries before
+                          triggering an incremental compaction of the new range.
+                          Default: 100000.
+                        format: int64
+                        type: integer
                       l0CompactionThreshold:
                         description: L0CompactionThreshold is the L0 file count to
                           trigger compaction.

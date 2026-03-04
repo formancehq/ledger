@@ -113,6 +113,7 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Int("pebble-max-concurrent-compactions", 0, "Pebble max concurrent compactions (default: 2)")
 	runCmd.Flags().Duration("pebble-wal-min-sync-interval", 0, "Pebble minimum interval between WAL syncs (default: 0, immediate sync)")
 	runCmd.Flags().Bool("pebble-disable-wal", false, "Pebble disable WAL (WARNING: risks data loss)")
+	runCmd.Flags().Uint64("pebble-incremental-compact-threshold", 0, "New log entries before triggering incremental compaction (default: 100000)")
 	runCmd.Flags().Uint64("cache-rotation-threshold", 1000, "Cache rotation threshold (0 = use default 1000)")
 	runCmd.Flags().Int("numscript-cache-size", 1024, "Maximum number of parsed Numscript programs to cache (LRU eviction)")
 	runCmd.Flags().Int("mirror-max-batch-size", 500, "Maximum allowed batch size for mirror sync (server-side cap on user-configured batch size)")
@@ -680,6 +681,7 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 	cfg.WALBytesPerSync = getInt("pebble-wal-bytes-per-sync", cfg.WALBytesPerSync)
 	cfg.MaxConcurrentCompactions = getInt("pebble-max-concurrent-compactions", cfg.MaxConcurrentCompactions)
 	cfg.WALMinSyncInterval = getDuration("pebble-wal-min-sync-interval", cfg.WALMinSyncInterval)
+	cfg.IncrementalCompactThreshold = getUint64("pebble-incremental-compact-threshold", cfg.IncrementalCompactThreshold)
 
 	// Bool flag: explicitly check if set
 	if disableWAL, _ := cmd.Flags().GetBool("pebble-disable-wal"); disableWAL {

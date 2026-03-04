@@ -159,6 +159,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 		envs = appendIfInt32(envs, "PEBBLE_MAX_CONCURRENT_COMPACTIONS", cfg.Pebble.MaxConcurrentCompactions)
 		envs = appendIfStr(envs, "PEBBLE_WAL_MIN_SYNC_INTERVAL", cfg.Pebble.WalMinSyncInterval)
 		envs = appendIfBool(envs, "PEBBLE_DISABLE_WAL", cfg.Pebble.DisableWAL)
+		envs = appendIfInt64(envs, "PEBBLE_INCREMENTAL_COMPACT_THRESHOLD", cfg.Pebble.IncrementalCompactThreshold)
 	}
 
 	// Monitoring
