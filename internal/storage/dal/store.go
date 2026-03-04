@@ -313,6 +313,7 @@ func (s *Store) Flush() error {
 // dramatically improves latency for read-heavy commands such as "accounts
 // analysis".
 func (s *Store) WarmBlockCache() {
+	s.logger.Infof("Starting Pebble block cache warmup (attributes + system zones)...")
 	start := time.Now()
 	db := s.getDB()
 

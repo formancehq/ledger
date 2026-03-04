@@ -554,19 +554,39 @@ func Module() fx.Option {
 						return runtime.Close()
 					},
 				})
-				// Sync the bbolt freelist to disk before closing so the next
-				// Open() can load it directly instead of scanning all pages.
+				// When NoFreelistSync is enabled, periodically sync the freelist
+			// to disk so that a crash doesn't require a full page scan on
+			// the next Open() (which can take tens of minutes on large DBs).
+			// Also sync once at shutdown for the common graceful-stop case.
+			if cfg.ReadIndexConfig.NoFreelistSync {
+				interval := cfg.ReadIndexConfig.FreelistSyncInterval
+				if interval == 0 {
+					interval = 5 * time.Minute
+				}
+				var cancel context.CancelFunc
 				lc.Append(fx.Hook{
+					OnStart: func(ctx context.Context) error {
+						ctx, cancel = context.WithCancel(context.WithoutCancel(ctx))
+						go rs.RunPeriodicFreelistSync(ctx, interval)
+						return nil
+					},
 					OnStop: func(_ context.Context) error {
-						if cfg.ReadIndexConfig.NoFreelistSync {
-							if err := rs.SyncFreelist(); err != nil {
-								logger.Errorf("Failed to sync read index freelist: %v", err)
-								// Non-fatal: the index will just rebuild the freelist on next open.
-							}
-						}
-						return rs.Close()
+						cancel()
+						return nil
 					},
 				})
+			}
+			lc.Append(fx.Hook{
+				OnStop: func(_ context.Context) error {
+					if cfg.ReadIndexConfig.NoFreelistSync {
+						if err := rs.SyncFreelist(); err != nil {
+							logger.Errorf("Failed to sync read index freelist: %v", err)
+							// Non-fatal: the index will just rebuild the freelist on next open.
+						}
+					}
+					return rs.Close()
+				},
+			})
 			},
 			func(
 				lc fx.Lifecycle,

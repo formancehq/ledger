@@ -269,6 +269,13 @@ type ReadIndexConfig struct {
 	// Default: 1000.
 	// +optional
 	BatchSize *int32 `json:"batchSize,omitempty"`
+
+	// FreelistSyncInterval is the periodic interval at which the freelist
+	// is synced to disk when NoFreelistSync is enabled. This limits data
+	// loss on crash to at most one interval of freelist rebuild time.
+	// Default: 5m. Set to "0" to disable periodic sync.
+	// +optional
+	FreelistSyncInterval *string `json:"freelistSyncInterval,omitempty"`
 }
 
 // AuthorizationConfig holds authentication and authorization configuration.

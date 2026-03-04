@@ -116,16 +116,48 @@ func New(dir string, noFreelistSync bool, logger logging.Logger) (*Store, error)
 // The method temporarily disables NoFreelistSync and performs a no-op
 // read-write transaction whose Commit() writes the freelist page.
 func (s *Store) SyncFreelist() error {
-	s.db.NoFreelistSync = false
 	s.logger.Infof("Syncing bbolt freelist to disk (may take a moment for large databases)...")
 	start := time.Now()
+
+	// Temporarily enable freelist serialization for this single commit,
+	// then restore NoFreelistSync. bbolt serializes all writers so there
+	// is no concurrent access to this field while we hold the write lock.
+	s.db.NoFreelistSync = false
 	err := s.db.Update(func(_ *bolt.Tx) error { return nil })
+	s.db.NoFreelistSync = true
+
 	if err != nil {
 		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to sync freelist")
 		return fmt.Errorf("syncing freelist: %w", err)
 	}
 	s.logger.WithFields(map[string]any{"duration": time.Since(start).String()}).Infof("Freelist synced to disk")
 	return nil
+}
+
+// RunPeriodicFreelistSync syncs the freelist to disk at the given interval.
+// This ensures that after a crash, the next Open() can load the freelist
+// directly instead of scanning all pages (which can take tens of minutes
+// on large databases). The goroutine exits when the context is cancelled.
+func (s *Store) RunPeriodicFreelistSync(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	s.logger.WithFields(map[string]any{
+		"interval": interval.String(),
+	}).Infof("Starting periodic freelist sync")
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.SyncFreelist(); err != nil {
+				s.logger.WithFields(map[string]any{
+					"error": err.Error(),
+				}).Errorf("Periodic freelist sync failed")
+			}
+		}
+	}
 }
 
 // Close closes the underlying bbolt database.

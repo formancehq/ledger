@@ -202,6 +202,9 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 	if cfg.ReadIndex != nil {
 		envs = appendIfBool(envs, "READ_INDEX_NO_FREELIST_SYNC", cfg.ReadIndex.NoFreelistSync)
 		envs = appendIfInt32(envs, "READ_INDEX_BATCH_SIZE", cfg.ReadIndex.BatchSize)
+		if cfg.ReadIndex.FreelistSyncInterval != nil {
+			envs = appendIfStr(envs, "READ_INDEX_FREELIST_SYNC_INTERVAL", *cfg.ReadIndex.FreelistSyncInterval)
+		}
 	}
 
 	// Response signing
