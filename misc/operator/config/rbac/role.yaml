@@ -66,6 +66,7 @@ rules:
 - apiGroups:
   - ledger.formance.com
   resources:
+  - ledgeragents
   - ledgerclusteragents
   - ledgerservices
   verbs:
@@ -79,6 +80,7 @@ rules:
 - apiGroups:
   - ledger.formance.com
   resources:
+  - ledgeragents/finalizers
   - ledgerclusteragents/finalizers
   - ledgerservices/finalizers
   verbs:
@@ -86,6 +88,7 @@ rules:
 - apiGroups:
   - ledger.formance.com
   resources:
+  - ledgeragents/status
   - ledgerclusteragents/status
   - ledgerservices/status
   verbs:

@@ -98,6 +98,13 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("setting up LedgerClusterAgent controller: %v", err))
 	}
 
+	if err := (&LedgerAgentReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		panic(fmt.Sprintf("setting up LedgerAgent controller: %v", err))
+	}
+
 	go func() {
 		if err := mgr.Start(ctx); err != nil {
 			panic(fmt.Sprintf("running manager: %v", err))
@@ -164,6 +171,22 @@ func newLedgerClusterAgent(name string, scopes []string, matchLabels map[string]
 			Name: name,
 		},
 		Spec: ledgerv1alpha1.LedgerClusterAgentSpec{
+			Scopes: scopes,
+			Selector: metav1.LabelSelector{
+				MatchLabels: matchLabels,
+			},
+		},
+	}
+}
+
+// newLedgerAgent returns a namespace-scoped LedgerAgent with a label selector.
+func newLedgerAgent(name, namespace string, scopes []string, matchLabels map[string]string) *ledgerv1alpha1.LedgerAgent {
+	return &ledgerv1alpha1.LedgerAgent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: ledgerv1alpha1.LedgerAgentSpec{
 			Scopes: scopes,
 			Selector: metav1.LabelSelector{
 				MatchLabels: matchLabels,

@@ -37,6 +37,7 @@ type LedgerServiceReconciler struct {
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerservices/finalizers,verbs=update
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerdefaults,verbs=get;list;watch
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgerclusteragents,verbs=get;list;watch
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgeragents,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -169,6 +170,7 @@ func (r *LedgerServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&networkingv1.NetworkPolicy{}).
 		Watches(&ledgerv1alpha1.LedgerDefaults{}, handler.EnqueueRequestsFromMapFunc(r.ledgerDefaultsToLedgerServices)).
 		Watches(&ledgerv1alpha1.LedgerClusterAgent{}, handler.EnqueueRequestsFromMapFunc(r.ledgerClusterAgentToLedgerServices)).
+		Watches(&ledgerv1alpha1.LedgerAgent{}, handler.EnqueueRequestsFromMapFunc(r.ledgerAgentToLedgerServices)).
 		Complete(r)
 }
 

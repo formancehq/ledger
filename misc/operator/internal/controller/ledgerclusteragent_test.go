@@ -37,8 +37,8 @@ func TestComputeAuthKeysHash_Deterministic(t *testing.T) {
 	t.Parallel()
 
 	agents := []agentKeyInfo{
-		{AgentName: "agent-a", KeyID: "abc123", PublicKey: "deadbeef", Scopes: []string{"read"}},
-		{AgentName: "agent-b", KeyID: "def456", PublicKey: "cafebabe", Scopes: []string{"write"}},
+		{ConfigMapPrefix: "agent", AgentName: "agent-a", KeyID: "abc123", PublicKey: "deadbeef", Scopes: []string{"read"}},
+		{ConfigMapPrefix: "agent", AgentName: "agent-b", KeyID: "def456", PublicKey: "cafebabe", Scopes: []string{"write"}},
 	}
 
 	hash1 := computeAuthKeysHash(agents)
@@ -52,10 +52,10 @@ func TestComputeAuthKeysHash_DifferentInput(t *testing.T) {
 	t.Parallel()
 
 	agents1 := []agentKeyInfo{
-		{AgentName: "agent-a", KeyID: "abc123", PublicKey: "deadbeef", Scopes: []string{"read"}},
+		{ConfigMapPrefix: "agent", AgentName: "agent-a", KeyID: "abc123", PublicKey: "deadbeef", Scopes: []string{"read"}},
 	}
 	agents2 := []agentKeyInfo{
-		{AgentName: "agent-b", KeyID: "def456", PublicKey: "cafebabe", Scopes: []string{"write"}},
+		{ConfigMapPrefix: "agent", AgentName: "agent-b", KeyID: "def456", PublicKey: "cafebabe", Scopes: []string{"write"}},
 	}
 
 	hash1 := computeAuthKeysHash(agents1)

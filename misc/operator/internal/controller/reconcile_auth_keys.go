@@ -21,10 +21,13 @@ import (
 
 // agentKeyInfo holds the resolved key information for an agent matching a LedgerService.
 type agentKeyInfo struct {
-	AgentName string
-	KeyID     string
-	PublicKey string // hex-encoded
-	Scopes    []string
+	// ConfigMapPrefix differentiates agent types in the ConfigMap keys.
+	// "agent" for LedgerClusterAgent, "nsagent" for LedgerAgent.
+	ConfigMapPrefix string
+	AgentName       string
+	KeyID           string
+	PublicKey        string // hex-encoded
+	Scopes          []string
 }
 
 // authKeysJSON is the top-level structure for the auth-keys.json file.
@@ -44,70 +47,35 @@ func authKeysConfigMapName(ledger *ledgerv1alpha1.LedgerService) string {
 	return ledger.Name + "-auth-keys"
 }
 
-// reconcileAuthKeys resolves all LedgerClusterAgents matching the given LedgerService,
-// creates/updates (or deletes) a ConfigMap with aggregated auth keys, and returns
-// the list of agent key info for use by the StatefulSet reconciler.
+// reconcileAuthKeys resolves all LedgerClusterAgents and LedgerAgents matching the
+// given LedgerService, creates/updates (or deletes) a ConfigMap with aggregated auth
+// keys, and returns the list of agent key info for use by the StatefulSet reconciler.
 func (r *LedgerServiceReconciler) reconcileAuthKeys(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) ([]agentKeyInfo, error) {
 	logger := log.FromContext(ctx)
 
-	// List all LedgerClusterAgents.
-	var agentList ledgerv1alpha1.LedgerClusterAgentList
-	if err := r.List(ctx, &agentList); err != nil {
-		return nil, fmt.Errorf("listing LedgerClusterAgents: %w", err)
-	}
-
-	// Filter agents whose selector matches this LedgerService's labels.
 	var agents []agentKeyInfo
-	for i := range agentList.Items {
-		agent := &agentList.Items[i]
 
-		selector, err := metav1.LabelSelectorAsSelector(&agent.Spec.Selector)
-		if err != nil {
-			logger.Error(err, "invalid label selector on agent", "agent", agent.Name)
-			continue
-		}
-
-		if !selector.Matches(labels.Set(ledger.Labels)) {
-			continue
-		}
-
-		// Read the agent's Secret to get the public key.
-		if agent.Status.SecretRef.Name == "" {
-			logger.Info("agent secret not yet ready, skipping", "agent", agent.Name)
-			continue
-		}
-
-		secret := &corev1.Secret{}
-		secretKey := types.NamespacedName{
-			Namespace: agent.Status.SecretRef.Namespace,
-			Name:      agent.Status.SecretRef.Name,
-		}
-		if err := r.Get(ctx, secretKey, secret); err != nil {
-			if apierrors.IsNotFound(err) {
-				logger.Info("agent secret not found, skipping", "agent", agent.Name)
-				continue
-			}
-			return nil, fmt.Errorf("fetching secret for agent %q: %w", agent.Name, err)
-		}
-
-		pubKeyHex := string(secret.Data["pubkey.hex"])
-		keyID := string(secret.Data["key-id"])
-		if pubKeyHex == "" || keyID == "" {
-			logger.Info("agent secret missing pubkey.hex or key-id, skipping", "agent", agent.Name)
-			continue
-		}
-
-		agents = append(agents, agentKeyInfo{
-			AgentName: agent.Name,
-			KeyID:     keyID,
-			PublicKey: pubKeyHex,
-			Scopes:    agent.Spec.Scopes,
-		})
+	// Collect keys from cluster-scoped LedgerClusterAgents.
+	clusterAgents, err := r.collectClusterAgentKeys(ctx, ledger)
+	if err != nil {
+		return nil, err
 	}
+	agents = append(agents, clusterAgents...)
 
-	// Sort by agent name for deterministic output.
+	// Collect keys from namespace-scoped LedgerAgents.
+	nsAgents, err := r.collectNamespaceAgentKeys(ctx, ledger)
+	if err != nil {
+		return nil, err
+	}
+	agents = append(agents, nsAgents...)
+
+	logger.V(1).Info("resolved agent keys", "clusterAgents", len(clusterAgents), "nsAgents", len(nsAgents))
+
+	// Sort by prefix+name for deterministic output.
 	sort.Slice(agents, func(i, j int) bool {
-		return agents[i].AgentName < agents[j].AgentName
+		ki := agents[i].ConfigMapPrefix + "/" + agents[i].AgentName
+		kj := agents[j].ConfigMapPrefix + "/" + agents[j].AgentName
+		return ki < kj
 	})
 
 	cmName := authKeysConfigMapName(ledger)
@@ -135,7 +103,7 @@ func (r *LedgerServiceReconciler) reconcileAuthKeys(ctx context.Context, ledger 
 	pubKeyData := make(map[string]string, len(agents))
 
 	for _, a := range agents {
-		pubKeyFileName := fmt.Sprintf("agent-%s-pubkey.hex", a.AgentName)
+		pubKeyFileName := fmt.Sprintf("%s-%s-pubkey.hex", a.ConfigMapPrefix, a.AgentName)
 		authKeys.Keys = append(authKeys.Keys, authKeyEntry{
 			KeyID:         a.KeyID,
 			PublicKeyFile: "/auth-keys/" + pubKeyFileName,
@@ -174,6 +142,121 @@ func (r *LedgerServiceReconciler) reconcileAuthKeys(ctx context.Context, ledger 
 	return agents, nil
 }
 
+// collectClusterAgentKeys lists all LedgerClusterAgents and returns keys for those
+// whose selector matches the given LedgerService.
+func (r *LedgerServiceReconciler) collectClusterAgentKeys(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) ([]agentKeyInfo, error) {
+	logger := log.FromContext(ctx)
+
+	var agentList ledgerv1alpha1.LedgerClusterAgentList
+	if err := r.List(ctx, &agentList); err != nil {
+		return nil, fmt.Errorf("listing LedgerClusterAgents: %w", err)
+	}
+
+	var agents []agentKeyInfo
+	for i := range agentList.Items {
+		agent := &agentList.Items[i]
+
+		selector, err := metav1.LabelSelectorAsSelector(&agent.Spec.Selector)
+		if err != nil {
+			logger.Error(err, "invalid label selector on cluster agent", "agent", agent.Name)
+			continue
+		}
+		if !selector.Matches(labels.Set(ledger.Labels)) {
+			continue
+		}
+
+		info, ok, err := r.readAgentKeyFromSecret(ctx, agent.Name, agent.Status.SecretRef, agent.Spec.Scopes, "agent")
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			agents = append(agents, info)
+		}
+	}
+	return agents, nil
+}
+
+// collectNamespaceAgentKeys lists LedgerAgents in the same namespace as the
+// LedgerService and returns keys for those whose selector matches.
+func (r *LedgerServiceReconciler) collectNamespaceAgentKeys(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) ([]agentKeyInfo, error) {
+	logger := log.FromContext(ctx)
+
+	var agentList ledgerv1alpha1.LedgerAgentList
+	if err := r.List(ctx, &agentList, &client.ListOptions{
+		Namespace: ledger.Namespace,
+	}); err != nil {
+		return nil, fmt.Errorf("listing LedgerAgents: %w", err)
+	}
+
+	var agents []agentKeyInfo
+	for i := range agentList.Items {
+		agent := &agentList.Items[i]
+
+		selector, err := metav1.LabelSelectorAsSelector(&agent.Spec.Selector)
+		if err != nil {
+			logger.Error(err, "invalid label selector on namespace agent", "agent", agent.Name)
+			continue
+		}
+		if !selector.Matches(labels.Set(ledger.Labels)) {
+			continue
+		}
+
+		info, ok, err := r.readAgentKeyFromSecret(ctx, agent.Name, agent.Status.SecretRef, agent.Spec.Scopes, "nsagent")
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			agents = append(agents, info)
+		}
+	}
+	return agents, nil
+}
+
+// readAgentKeyFromSecret reads the public key from an agent's secret and returns
+// an agentKeyInfo. Returns (info, false, nil) if the secret is not yet ready.
+func (r *LedgerServiceReconciler) readAgentKeyFromSecret(
+	ctx context.Context,
+	agentName string,
+	secretRef ledgerv1alpha1.SecretReference,
+	scopes []string,
+	configMapPrefix string,
+) (agentKeyInfo, bool, error) {
+	logger := log.FromContext(ctx)
+
+	if secretRef.Name == "" {
+		logger.Info("agent secret not yet ready, skipping", "agent", agentName)
+		return agentKeyInfo{}, false, nil
+	}
+
+	secret := &corev1.Secret{}
+	secretKey := types.NamespacedName{
+		Namespace: secretRef.Namespace,
+		Name:      secretRef.Name,
+	}
+	if err := r.Get(ctx, secretKey, secret); err != nil {
+		if apierrors.IsNotFound(err) {
+			logger.Info("agent secret not found, skipping", "agent", agentName)
+			return agentKeyInfo{}, false, nil
+		}
+		return agentKeyInfo{}, false, fmt.Errorf("fetching secret for agent %q: %w", agentName, err)
+	}
+
+	pubKeyHex := string(secret.Data["pubkey.hex"])
+	keyID := string(secret.Data["key-id"])
+	if pubKeyHex == "" || keyID == "" {
+		logger.Info("agent secret missing pubkey.hex or key-id, skipping", "agent", agentName)
+		return agentKeyInfo{}, false, nil
+	}
+
+	return agentKeyInfo{
+		ConfigMapPrefix: configMapPrefix,
+		AgentName:       agentName,
+		KeyID:           keyID,
+		PublicKey:        pubKeyHex,
+		Scopes:          scopes,
+	}, true, nil
+}
+
 // ledgerClusterAgentToLedgerServices maps a LedgerClusterAgent change to all
 // LedgerServices matched by its selector, triggering their re-reconciliation.
 func (r *LedgerServiceReconciler) ledgerClusterAgentToLedgerServices(ctx context.Context, obj client.Object) []ctrl.Request {
@@ -181,17 +264,35 @@ func (r *LedgerServiceReconciler) ledgerClusterAgentToLedgerServices(ctx context
 	if !ok {
 		return nil
 	}
+	return r.ledgerServicesMatchingSelector(ctx, &agent.Spec.Selector, "")
+}
 
-	selector, err := metav1.LabelSelectorAsSelector(&agent.Spec.Selector)
+// ledgerAgentToLedgerServices maps a LedgerAgent change to LedgerServices
+// in the same namespace matched by its selector, triggering their re-reconciliation.
+func (r *LedgerServiceReconciler) ledgerAgentToLedgerServices(ctx context.Context, obj client.Object) []ctrl.Request {
+	agent, ok := obj.(*ledgerv1alpha1.LedgerAgent)
+	if !ok {
+		return nil
+	}
+	return r.ledgerServicesMatchingSelector(ctx, &agent.Spec.Selector, agent.Namespace)
+}
+
+// ledgerServicesMatchingSelector lists LedgerServices matching the given label selector.
+// If namespace is non-empty, the search is restricted to that namespace.
+func (r *LedgerServiceReconciler) ledgerServicesMatchingSelector(ctx context.Context, ls *metav1.LabelSelector, namespace string) []ctrl.Request {
+	selector, err := metav1.LabelSelectorAsSelector(ls)
 	if err != nil {
-		log.FromContext(ctx).Error(err, "invalid label selector on agent", "agent", agent.Name)
+		log.FromContext(ctx).Error(err, "invalid label selector on agent")
 		return nil
 	}
 
+	opts := &client.ListOptions{LabelSelector: selector}
+	if namespace != "" {
+		opts.Namespace = namespace
+	}
+
 	var ledgers ledgerv1alpha1.LedgerServiceList
-	if err := r.List(ctx, &ledgers, &client.ListOptions{
-		LabelSelector: selector,
-	}); err != nil {
+	if err := r.List(ctx, &ledgers, opts); err != nil {
 		log.FromContext(ctx).Error(err, "failed to list LedgerServices for agent mapping")
 		return nil
 	}
@@ -207,6 +308,5 @@ func (r *LedgerServiceReconciler) ledgerClusterAgentToLedgerServices(ctx context
 			})
 		}
 	}
-
 	return requests
 }
