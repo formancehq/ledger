@@ -22,6 +22,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 	bolt "go.etcd.io/bbolt"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -140,11 +141,14 @@ func (impl *BucketServiceServerImpl) signReceiptIfNeeded(log *commonpb.Log) {
 }
 
 func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsRequest, stream servicepb.BucketService_ListPeriodsServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeOpsRead); err != nil {
+	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListPeriods")
+	defer span.End()
+
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return err
 	}
 
-	cursor, err := impl.ctrl.ListPeriods(stream.Context())
+	cursor, err := impl.ctrl.ListPeriods(ctx)
 	if err != nil {
 		return fmt.Errorf("listing periods: %w", err)
 	}
@@ -210,7 +214,11 @@ func (impl *BucketServiceServerImpl) waitMinLogSequence(ctx context.Context, min
 }
 
 func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransactionsRequest, stream servicepb.BucketService_ListTransactionsServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
+	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListTransactions",
+		trace.WithAttributes(attribute.String("ledger", req.Ledger)))
+	defer span.End()
+
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
 		return err
 	}
 
@@ -218,14 +226,14 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		return fmt.Errorf("ledger name is required")
 	}
 
-	if err := impl.waitMinLogSequence(stream.Context(), req.MinLogSequence); err != nil {
+	if err := impl.waitMinLogSequence(ctx, req.MinLogSequence); err != nil {
 		return err
 	}
 
 	impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, hasFilter=%v, reverse=%v)",
 		req.Ledger, req.PageSize, req.AfterTxId, req.Filter != nil, req.Reverse)
 
-	profileCtx, profile := query.WithProfile(stream.Context())
+	profileCtx, profile := query.WithProfile(ctx)
 
 	cursor, err := impl.ctrl.ListTransactions(profileCtx, req.Ledger, req.PageSize, req.AfterTxId, req.Filter, req.Reverse)
 	if err != nil {
@@ -233,18 +241,21 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 	}
 
 	err = sendCursorToStream(cursor, stream, "transaction")
-	impl.emitProfile(stream.Context(), profile)
+	impl.emitProfile(ctx, profile)
 	return err
 }
 
 func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersRequest, stream servicepb.BucketService_ListLedgersServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
+	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListLedgers")
+	defer span.End()
+
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
 		return err
 	}
 
 	impl.logger.Debugf("ListLedgers request received")
 
-	cursor, err := impl.ctrl.ListLedgers(stream.Context())
+	cursor, err := impl.ctrl.ListLedgers(ctx)
 	if err != nil {
 		return fmt.Errorf("listing ledgers: %w", err)
 	}
@@ -283,7 +294,11 @@ func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servic
 }
 
 func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsRequest, stream servicepb.BucketService_ListAccountsServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
+	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListAccounts",
+		trace.WithAttributes(attribute.String("ledger", req.Ledger)))
+	defer span.End()
+
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
 		return err
 	}
 
@@ -291,14 +306,14 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		return fmt.Errorf("ledger name is required")
 	}
 
-	if err := impl.waitMinLogSequence(stream.Context(), req.MinLogSequence); err != nil {
+	if err := impl.waitMinLogSequence(ctx, req.MinLogSequence); err != nil {
 		return err
 	}
 
 	impl.logger.Debugf("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, hasFilter=%v, reverse=%v)",
 		req.Ledger, req.PageSize, req.AfterAddress, req.Filter != nil, req.Reverse)
 
-	profileCtx, profile := query.WithProfile(stream.Context())
+	profileCtx, profile := query.WithProfile(ctx)
 
 	cursor, err := impl.ctrl.ListAccounts(profileCtx, req.Ledger, req.PageSize, req.AfterAddress, req.Filter, req.Reverse)
 	if err != nil {
@@ -306,7 +321,7 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 	}
 
 	err = sendCursorToStream(cursor, stream, "account")
-	impl.emitProfile(stream.Context(), profile)
+	impl.emitProfile(ctx, profile)
 	return err
 }
 
@@ -423,15 +438,18 @@ func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *ser
 }
 
 func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEntriesRequest, stream servicepb.BucketService_ListAuditEntriesServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeAuditRead); err != nil {
+	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListAuditEntries")
+	defer span.End()
+
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAuditRead); err != nil {
 		return err
 	}
 
-	if err := impl.waitMinLogSequence(stream.Context(), req.MinLogSequence); err != nil {
+	if err := impl.waitMinLogSequence(ctx, req.MinLogSequence); err != nil {
 		return err
 	}
 
-	cursor, err := impl.ctrl.ListAuditEntries(stream.Context(), req.AfterSequence, req.FailuresOnly, req.PageSize) //nolint:protogetter
+	cursor, err := impl.ctrl.ListAuditEntries(ctx, req.AfterSequence, req.FailuresOnly, req.PageSize) //nolint:protogetter
 	if err != nil {
 		return fmt.Errorf("listing audit entries: %w", err)
 	}
@@ -448,11 +466,14 @@ func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.
 }
 
 func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeOpsRead); err != nil {
+	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListLogs")
+	defer span.End()
+
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return err
 	}
 
-	if err := impl.waitMinLogSequence(stream.Context(), req.MinLogSequence); err != nil {
+	if err := impl.waitMinLogSequence(ctx, req.MinLogSequence); err != nil {
 		return err
 	}
 
@@ -461,7 +482,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		afterSequence = *req.AfterSequence
 	}
 
-	cursor, err := impl.ctrl.ListLogs(stream.Context(), afterSequence, req.PageSize)
+	cursor, err := impl.ctrl.ListLogs(ctx, afterSequence, req.PageSize)
 	if err != nil {
 		return fmt.Errorf("listing logs: %w", err)
 	}
@@ -503,11 +524,14 @@ func (impl *BucketServiceServerImpl) GetPeriodSchedule(ctx context.Context, _ *s
 }
 
 func (impl *BucketServiceServerImpl) ListSigningKeys(_ *servicepb.ListSigningKeysRequest, stream servicepb.BucketService_ListSigningKeysServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeOpsRead); err != nil {
+	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListSigningKeys")
+	defer span.End()
+
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return err
 	}
 
-	cursor, err := impl.ctrl.ListSigningKeys(stream.Context())
+	cursor, err := impl.ctrl.ListSigningKeys(ctx)
 	if err != nil {
 		return fmt.Errorf("listing signing keys: %w", err)
 	}
@@ -636,7 +660,10 @@ func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *serv
 }
 
 func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscriptsRequest, stream servicepb.BucketService_ListNumscriptsServer) error {
-	scripts, err := impl.ctrl.ListNumscripts(stream.Context())
+	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListNumscripts")
+	defer span.End()
+
+	scripts, err := impl.ctrl.ListNumscripts(ctx)
 	if err != nil {
 		return fmt.Errorf("listing numscripts: %w", err)
 	}
