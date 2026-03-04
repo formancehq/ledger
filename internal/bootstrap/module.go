@@ -514,6 +514,11 @@ func Module() fx.Option {
 					servicePool,
 				)
 			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``)),
+			func(serviceServer *grpcadp.ServiceServer, n *node.Node, hc *clusterhealth.HealthChecker) *clusterhealth.GRPCHealthUpdater {
+				hs := health.NewServer()
+				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
+				return clusterhealth.NewGRPCHealthUpdater(n, hc, hs)
+			},
 		),
 		fx.Decorate(func(
 			params struct {
@@ -622,11 +627,6 @@ func Module() fx.Option {
 				healthpb.RegisterHealthServer(raftServer.GetServer(), hs)
 				hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 				return nil
-			},
-			func(serviceServer *grpcadp.ServiceServer, n *node.Node, hc *clusterhealth.HealthChecker) *clusterhealth.GRPCHealthUpdater {
-				hs := health.NewServer()
-				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
-				return clusterhealth.NewGRPCHealthUpdater(n, hc, hs)
 			},
 			func(serviceServer *grpcadp.ServiceServer, bucketServiceServer servicepb.BucketServiceServer) error {
 				grpcadp.RegisterBucketService(serviceServer.GetServer(), bucketServiceServer)
