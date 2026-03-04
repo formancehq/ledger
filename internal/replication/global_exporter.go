@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/go-libs/v4/bun/bunpaginate"
 	"github.com/formancehq/go-libs/v4/logging"
 	"github.com/formancehq/go-libs/v4/pointer"
+	"github.com/formancehq/go-libs/v4/query"
 
 	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/replication/drivers"
@@ -24,9 +25,10 @@ type GlobalExporterStateStore interface {
 }
 
 var (
-	DefaultGlobalExporterPollInterval    = 1 * time.Second
-	DefaultGlobalExporterPushRetryPeriod = 10 * time.Second
-	DefaultGlobalExporterLogsPageSize    = uint64(100)
+	DefaultGlobalExporterPollInterval           = 1 * time.Second
+	DefaultGlobalExporterPushRetryPeriod        = 10 * time.Second
+	DefaultGlobalExporterLogsPageSize           = uint64(100)
+	DefaultGlobalExporterLedgerPollInterval     = 10 * time.Second
 )
 
 type globalExporterProgressTracker struct {
@@ -53,10 +55,11 @@ func (t *globalExporterProgressTracker) UpdateLastLogID(ctx context.Context, id 
 }
 
 type GlobalExporterRunnerConfig struct {
-	PollInterval    time.Duration
-	PushRetryPeriod time.Duration
-	LogsPageSize    uint64
-	Reset           bool
+	PollInterval       time.Duration
+	PushRetryPeriod    time.Duration
+	LogsPageSize       uint64
+	LedgerPollInterval time.Duration
+	Reset              bool
 }
 
 type GlobalExporterRunner struct {
@@ -85,6 +88,9 @@ func NewGlobalExporterRunner(
 	}
 	if config.LogsPageSize == 0 {
 		config.LogsPageSize = DefaultGlobalExporterLogsPageSize
+	}
+	if config.LedgerPollInterval == 0 {
+		config.LedgerPollInterval = DefaultGlobalExporterLedgerPollInterval
 	}
 
 	var fetcherMu sync.Mutex
@@ -152,14 +158,17 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 		return
 	}
 
-	handlers := map[string]*PipelineHandler{}
-	var wg sync.WaitGroup
+	var (
+		handlers        []*PipelineHandler
+		wg              sync.WaitGroup
+		lastSeenLedgerID int
+	)
 
 	defer func() {
 		// Shut down all handlers on exit
-		for name, handler := range handlers {
+		for _, handler := range handlers {
 			if err := handler.Shutdown(ctx); err != nil {
-				r.logger.Errorf("Error shutting down handler for ledger %s: %v", name, err)
+				r.logger.Errorf("Error shutting down handler: %v", err)
 			}
 		}
 		wg.Wait()
@@ -180,14 +189,16 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 		case <-time.After(nextInterval):
 		}
 
-		nextInterval = r.config.PollInterval
+		nextInterval = r.config.LedgerPollInterval
 
-		// Collect all ledger names for this cycle.
-		var ledgerNames []string
+		// Discover new ledgers (only those with id > lastSeenLedgerID).
 		var nextQuery common.PaginatedQuery[systemstore.ListLedgersQueryPayload] = common.InitialPaginatedQuery[systemstore.ListLedgersQueryPayload]{
 			PageSize: 100,
 			Column:   "id",
-			Order:    pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
+			Options: common.ResourceQuery[systemstore.ListLedgersQueryPayload]{
+				Builder: query.Gt("id", lastSeenLedgerID),
+			},
+			Order: pointer.For(bunpaginate.Order(bunpaginate.OrderAsc)),
 		}
 		for {
 			cursor, err := r.store.Ledgers().Paginate(ctx, nextQuery)
@@ -195,9 +206,46 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 				r.logger.Errorf("Error listing ledgers: %v", err)
 				break
 			}
+
 			for _, l := range cursor.Data {
-				ledgerNames = append(ledgerNames, l.Name)
+				fetcher, err := r.getLogFetcher(ctx, l.Name)
+				if err != nil {
+					r.logger.Errorf("Error opening ledger %s: %v", l.Name, err)
+					continue
+				}
+
+				var lastLogID *uint64
+				if id, ok := states[l.Name]; ok {
+					lastLogID = &id
+				}
+
+				tracker := &globalExporterProgressTracker{
+					ledgerName: l.Name,
+					lastLogID:  lastLogID,
+					store:      r.store,
+					logger:     r.logger,
+				}
+
+				handler := NewPipelineHandler(
+					tracker,
+					fetcher,
+					facade,
+					r.logger,
+					pipelineOpts...,
+				)
+				handlers = append(handlers, handler)
+
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					handler.Run(ctx)
+				}()
+
+				if l.ID > lastSeenLedgerID {
+					lastSeenLedgerID = l.ID
+				}
 			}
+
 			if !cursor.HasMore {
 				break
 			}
@@ -206,46 +254,6 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 				r.logger.Errorf("Error paginating ledgers: %v", err)
 				break
 			}
-		}
-
-		// Spawn a PipelineHandler for each new ledger
-		for _, name := range ledgerNames {
-			if _, exists := handlers[name]; exists {
-				continue
-			}
-
-			fetcher, err := r.getLogFetcher(ctx, name)
-			if err != nil {
-				r.logger.Errorf("Error opening ledger %s: %v", name, err)
-				continue
-			}
-
-			var lastLogID *uint64
-			if id, ok := states[name]; ok {
-				lastLogID = &id
-			}
-
-			tracker := &globalExporterProgressTracker{
-				ledgerName: name,
-				lastLogID:  lastLogID,
-				store:      r.store,
-				logger:     r.logger,
-			}
-
-			handler := NewPipelineHandler(
-				tracker,
-				fetcher,
-				facade,
-				r.logger,
-				pipelineOpts...,
-			)
-			handlers[name] = handler
-
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				handler.Run(ctx)
-			}()
 		}
 	}
 }
