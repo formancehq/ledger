@@ -847,8 +847,15 @@ function CodeBlock({
   );
 }
 
-const INSTALL_SCRIPT = `# Download the latest ledgerctl release
-curl -sSfL https://github.com/formancehq/ledger/releases/latest/download/ledgerctl_$(uname -s)_$(uname -m).tar.gz | tar xz
+const RELEASES_URL = "https://github.com/formancehq/ledger/releases";
+
+const INSTALL_SCRIPT_GH = `# Install via GitHub CLI (recommended for private repos)
+gh release download --repo formancehq/ledger -p "ledgerctl_*_$(uname -s)_$(uname -m).tar.gz" -O - | tar xz
+sudo mv ledgerctl /usr/local/bin/`;
+
+const INSTALL_SCRIPT_CURL = `# Or via curl (requires a GitHub token for private repos)
+curl -sSfL -H "Authorization: token \${GITHUB_TOKEN}" \\
+  "https://github.com/formancehq/ledger/releases/latest/download/ledgerctl_$(uname -s)_$(uname -m).tar.gz" | tar xz
 sudo mv ledgerctl /usr/local/bin/`;
 
 function ConnectPanel({
@@ -895,11 +902,20 @@ function ConnectPanel({
         <CardHeader>
           <CardTitle className="text-base">1. Install ledgerctl</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Download the CLI for your platform from the latest GitHub release.
+            Download the CLI for your platform from the{" "}
+            <a
+              href={RELEASES_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline underline-offset-4 hover:text-primary/80"
+            >
+              GitHub releases page
+            </a>.
           </p>
-          <CodeBlock id="install" code={INSTALL_SCRIPT} copiedField={copiedField} onCopy={onCopy} />
+          <CodeBlock id="install-gh" code={INSTALL_SCRIPT_GH} copiedField={copiedField} onCopy={onCopy} />
+          <CodeBlock id="install-curl" code={INSTALL_SCRIPT_CURL} copiedField={copiedField} onCopy={onCopy} />
         </CardContent>
       </Card>
 
