@@ -123,16 +123,18 @@ func (c *SmartCompactor) maybeIncrementalCompact() {
 	fromSeq := c.lastCompactedSeq + 1
 	toSeq := currentSeq
 
-	c.compactSequenceRange("incremental", fromSeq, toSeq)
-	c.lastCompactedSeq = toSeq
+	if c.compactSequenceRange("incremental", fromSeq, toSeq) {
+		c.lastCompactedSeq = toSeq
+	}
 }
 
 // compactSequenceRange compacts the key range [prefix|fromSeq, prefix|toSeq+1)
 // for each sequence-keyed cold prefix (logs, audit). This is much lighter than
 // compacting the entire prefix since it only touches the new SSTables.
-func (c *SmartCompactor) compactSequenceRange(reason string, fromSeq, toSeq uint64) {
+// Returns true if the compaction was accepted (false if another is in progress).
+func (c *SmartCompactor) compactSequenceRange(reason string, fromSeq, toSeq uint64) bool {
 	if !c.compacting.CompareAndSwap(false, true) {
-		return
+		return false
 	}
 
 	c.compactWg.Add(1)
@@ -173,6 +175,8 @@ func (c *SmartCompactor) compactSequenceRange(reason string, fromSeq, toSeq uint
 			"duration": time.Since(start).String(),
 		}).Infof("Incremental compaction complete")
 	}()
+
+	return true
 }
 
 // sequenceKey builds a Pebble key: [prefix][sequence_uint64_BE].
