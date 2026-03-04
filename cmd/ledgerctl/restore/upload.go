@@ -74,13 +74,13 @@ func runUpload(cmd *cobra.Command, _ []string) error {
 		if n > 0 {
 			if _, err := hash.Write(buf[:n]); err != nil {
 				spinner.Fail("Failed to upload backup")
-				return fmt.Errorf("computing hash: %w", err)
+				return cmdutil.Displayed(fmt.Errorf("computing hash: %w", err))
 			}
 
 			if err := stream.Send(&restorepb.UploadBackupRequest{
 				Data: buf[:n],
 			}); err != nil {
-				spinner.Fail("Failed to upload backup")
+				_ = spinner.Stop()
 				return cmdutil.FormatGRPCError("sending upload chunk", err)
 			}
 			totalSent += uint64(n)
@@ -96,7 +96,7 @@ func runUpload(cmd *cobra.Command, _ []string) error {
 		}
 		if err != nil {
 			spinner.Fail("Failed to upload backup")
-			return fmt.Errorf("reading input file: %w", err)
+			return cmdutil.Displayed(fmt.Errorf("reading input file: %w", err))
 		}
 	}
 
@@ -107,13 +107,13 @@ func runUpload(cmd *cobra.Command, _ []string) error {
 		ContentSha256: contentHash,
 		ContentSize:   totalSent,
 	}); err != nil {
-		spinner.Fail("Failed to upload backup")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("sending EOF", err)
 	}
 
 	resp, err := stream.CloseAndRecv()
 	if err != nil {
-		spinner.Fail("Failed to upload backup")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("completing upload", err)
 	}
 

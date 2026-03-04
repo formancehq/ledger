@@ -49,7 +49,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		Ledger: ledgerName,
 	})
 	if err != nil {
-		spinner.Fail("Failed to get ledger")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to get ledger", err)
 	}
 

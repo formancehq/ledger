@@ -68,7 +68,7 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 
 	if address == "" {
 		pterm.Error.Println("Account address is required")
-		return fmt.Errorf("account address is required")
+		return cmdutil.Displayed(fmt.Errorf("account address is required"))
 	}
 
 	metadataFlags, _ := cmd.Flags().GetStringArray("metadata")
@@ -101,7 +101,7 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 		key, value, err := cmdutil.ParseKeyValue(m)
 		if err != nil {
 			pterm.Error.Printfln("Invalid metadata format: %s", m)
-			return fmt.Errorf("invalid metadata format %q: %w", m, err)
+			return cmdutil.Displayed(fmt.Errorf("invalid metadata format %q: %w", m, err))
 		}
 		metadata[key] = value
 	}
@@ -135,12 +135,12 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 
 	if err := cmdutil.SignRequests(cmd, req.Requests); err != nil {
 		spinner.Fail("Failed to sign request")
-		return err
+		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, req)
 	if err != nil {
-		spinner.Fail("Failed to set metadata")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to set metadata", err)
 	}
 

@@ -65,7 +65,7 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 		VariableThreshold: threshold,
 	})
 	if err != nil {
-		spinner.Fail("Failed to analyze accounts")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to analyze accounts", err)
 	}
 

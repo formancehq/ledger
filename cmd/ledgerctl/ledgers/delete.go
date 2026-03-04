@@ -97,30 +97,30 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
-		return err
+		return cmdutil.Displayed(err)
 	}
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
-		spinner.Fail("Failed to delete ledger")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to delete ledger", err)
 	}
 
 	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
 		spinner.Fail("Response signature verification failed")
-		return fmt.Errorf("response signature verification failed: %w", err)
+		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 
 	if len(resp.Logs) == 0 {
 		spinner.Fail("No response received")
-		return fmt.Errorf("no response received")
+		return cmdutil.Displayed(fmt.Errorf("no response received"))
 	}
 
 	log := resp.Logs[0]
 	deleteLedgerLog := log.Payload.GetDeleteLedger()
 	if deleteLedgerLog == nil {
 		spinner.Fail("Unexpected response type")
-		return fmt.Errorf("unexpected response type")
+		return cmdutil.Displayed(fmt.Errorf("unexpected response type"))
 	}
 
 	ledger := deleteLedgerLog.Info

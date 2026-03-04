@@ -250,6 +250,48 @@ func TestFormatGRPCError_PermissionDenied(t *testing.T) {
 	require.Contains(t, err.Error(), "missing required scope")
 }
 
+func TestDisplayed_NilReturnsNil(t *testing.T) {
+	t.Parallel()
+	require.Nil(t, Displayed(nil))
+}
+
+func TestDisplayed_WrapsError(t *testing.T) {
+	t.Parallel()
+
+	inner := errors.New("something failed")
+	err := Displayed(inner)
+	require.NotNil(t, err)
+	require.Equal(t, "something failed", err.Error())
+
+	var cliErr *CLIError
+	require.True(t, errors.As(err, &cliErr))
+	require.Equal(t, inner, cliErr.Unwrap())
+}
+
+func TestFormatGRPCError_ReturnsDisplayedError(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := status.Error(codes.Unavailable, "connection refused")
+	err := FormatGRPCError("create ledger", grpcErr)
+
+	var cliErr *CLIError
+	require.True(t, errors.As(err, &cliErr), "FormatGRPCError should return a Displayed error")
+	require.Contains(t, err.Error(), "connection refused")
+}
+
+func TestFormatGRPCError_BusinessError_ReturnsDisplayed(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := buildGRPCError(t, codes.FailedPrecondition, "index not found: address",
+		domain.ErrReasonIndexNotFound, map[string]string{"index": "address"})
+
+	err := FormatGRPCError("list accounts", grpcErr)
+
+	var cliErr *CLIError
+	require.True(t, errors.As(err, &cliErr), "FormatGRPCError should return a Displayed error for business errors")
+	require.Contains(t, err.Error(), "index not found")
+}
+
 // serverSideConvert simulates the server-side conversion (imported from the application package).
 // Since we can't import the internal package from cmd, we replicate the logic for round-trip testing.
 func serverSideConvert(bizErr *domain.BusinessError) *status.Status {

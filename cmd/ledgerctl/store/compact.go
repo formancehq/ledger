@@ -47,7 +47,7 @@ func runCompact(cmd *cobra.Command, _ []string) error {
 	resp, err := client.CompactStore(ctx, &clusterpb.CompactStoreRequest{})
 	if err != nil {
 		if spinner != nil {
-			spinner.Fail("Compaction failed")
+			_ = spinner.Stop()
 		}
 		return cmdutil.FormatGRPCError("compaction failed", err)
 	}

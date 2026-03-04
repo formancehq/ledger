@@ -83,12 +83,12 @@ func runRegisterKey(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
-		return err
+		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
-		spinner.Fail("Failed to register signing key")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to register signing key", err)
 	}
 

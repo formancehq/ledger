@@ -59,7 +59,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		txID, err = strconv.ParseUint(args[0], 10, 64)
 		if err != nil {
 			pterm.Error.Printfln("Invalid transaction ID: %v", err)
-			return fmt.Errorf("invalid transaction ID: %w", err)
+			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	} else {
 		input, err := pterm.DefaultInteractiveTextInput.
@@ -71,7 +71,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		txID, err = strconv.ParseUint(input, 10, 64)
 		if err != nil {
 			pterm.Error.Printfln("Invalid transaction ID: %v", err)
-			return fmt.Errorf("invalid transaction ID: %w", err)
+			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	}
 
@@ -85,7 +85,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		TransactionId: txID,
 	})
 	if err != nil {
-		spinner.Fail("Failed to get transaction")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to get transaction", err)
 	}
 

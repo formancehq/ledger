@@ -79,12 +79,12 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 		spinner, _ = pterm.DefaultSpinner.Start("Preparing backup...")
 	}
 
-	failProgress := func(msg string) {
+	stopProgress := func() {
 		if progressBar != nil {
 			_, _ = progressBar.Stop()
 		}
 		if spinner != nil {
-			spinner.Fail(msg)
+			_ = spinner.Stop()
 		}
 	}
 
@@ -94,7 +94,7 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 			break
 		}
 		if err != nil {
-			failProgress("Failed to download backup")
+			stopProgress()
 			return cmdutil.FormatGRPCError("receiving backup chunk", err)
 		}
 
@@ -114,12 +114,14 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 
 		if len(resp.Data) > 0 {
 			if _, err := out.Write(resp.Data); err != nil {
-				failProgress("Failed to download backup")
-				return fmt.Errorf("writing backup data: %w", err)
+				stopProgress()
+				pterm.Error.Printfln("writing backup data: %v", err)
+				return cmdutil.Displayed(fmt.Errorf("writing backup data: %w", err))
 			}
 			if _, err := hash.Write(resp.Data); err != nil {
-				failProgress("Failed to download backup")
-				return fmt.Errorf("computing hash: %w", err)
+				stopProgress()
+				pterm.Error.Printfln("computing hash: %v", err)
+				return cmdutil.Displayed(fmt.Errorf("computing hash: %w", err))
 			}
 			totalReceived += uint64(len(resp.Data))
 
@@ -170,7 +172,7 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 		if interactive {
 			pterm.Error.Printfln("SHA256 mismatch: expected %s, got %s", expectedHash, actualHash)
 		}
-		return fmt.Errorf("backup integrity check failed: SHA256 mismatch")
+		return cmdutil.Displayed(fmt.Errorf("backup integrity check failed: SHA256 mismatch"))
 	}
 
 	if interactive {

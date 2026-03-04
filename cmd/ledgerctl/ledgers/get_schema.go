@@ -56,7 +56,7 @@ func runGetSchema(cmd *cobra.Command, args []string) error {
 		Ledger: ledgerName,
 	})
 	if err != nil {
-		spinner.Fail("Failed to get schema status")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to get schema status", err)
 	}
 

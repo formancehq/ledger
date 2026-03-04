@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/application/check"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
@@ -73,13 +74,13 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	f, err := os.Open(inputPath)
 	if err != nil {
 		spinner.Fail("Failed to open input file")
-		return fmt.Errorf("opening input file: %w", err)
+		return cmdutil.Displayed(fmt.Errorf("opening input file: %w", err))
 	}
 
 	if err := tarutil.ExtractTar(f, stagingDir); err != nil {
 		_ = f.Close()
 		spinner.Fail("Failed to extract backup")
-		return fmt.Errorf("extracting tar: %w", err)
+		return cmdutil.Displayed(fmt.Errorf("extracting tar: %w", err))
 	}
 	_ = f.Close()
 

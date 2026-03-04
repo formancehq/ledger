@@ -31,6 +31,9 @@ Refactor:
 * Index tracking
 * Apply configuration schema
 * Stop lifecycle
+* bbolt fill percent
+* bbolt compact
+* configuration via command
 
 Later:
 * Events

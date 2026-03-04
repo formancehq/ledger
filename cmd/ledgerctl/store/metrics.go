@@ -41,7 +41,7 @@ func runMetrics(cmd *cobra.Command, _ []string) error {
 
 	resp, err := client.GetStoreMetrics(ctx, &servicepb.GetStoreMetricsRequest{})
 	if err != nil {
-		spinner.Fail("Failed to get store metrics")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to get store metrics", err)
 	}
 

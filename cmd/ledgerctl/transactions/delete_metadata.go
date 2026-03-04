@@ -57,7 +57,7 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 		txID, err = strconv.ParseUint(args[0], 10, 64)
 		if err != nil {
 			pterm.Error.Printfln("Invalid transaction ID: %v", err)
-			return fmt.Errorf("invalid transaction ID: %w", err)
+			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	} else {
 		input, err := pterm.DefaultInteractiveTextInput.
@@ -69,7 +69,7 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 		txID, err = strconv.ParseUint(input, 10, 64)
 		if err != nil {
 			pterm.Error.Printfln("Invalid transaction ID: %v", err)
-			return fmt.Errorf("invalid transaction ID: %w", err)
+			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	}
 
@@ -89,7 +89,7 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 
 	if key == "" {
 		pterm.Error.Println("Metadata key is required")
-		return fmt.Errorf("metadata key is required")
+		return cmdutil.Displayed(fmt.Errorf("metadata key is required"))
 	}
 
 	// Confirmation prompt
@@ -140,12 +140,12 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 
 	if err := cmdutil.SignRequests(cmd, req.Requests); err != nil {
 		spinner.Fail("Failed to sign request")
-		return err
+		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, req)
 	if err != nil {
-		spinner.Fail("Failed to delete metadata")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to delete metadata", err)
 	}
 

@@ -75,7 +75,7 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		txID, err = strconv.ParseUint(args[0], 10, 64)
 		if err != nil {
 			pterm.Error.Printfln("Invalid transaction ID: %v", err)
-			return fmt.Errorf("invalid transaction ID: %w", err)
+			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	} else {
 		input, err := pterm.DefaultInteractiveTextInput.
@@ -87,7 +87,7 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		txID, err = strconv.ParseUint(input, 10, 64)
 		if err != nil {
 			pterm.Error.Printfln("Invalid transaction ID: %v", err)
-			return fmt.Errorf("invalid transaction ID: %w", err)
+			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	}
 
@@ -104,7 +104,7 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		key, value, err := cmdutil.ParseKeyValue(m)
 		if err != nil {
 			pterm.Error.Printfln("Invalid metadata format: %s", m)
-			return fmt.Errorf("invalid metadata format %q: %w", m, err)
+			return cmdutil.Displayed(fmt.Errorf("invalid metadata format %q: %w", m, err))
 		}
 		metadata[key] = value
 	}
@@ -159,18 +159,18 @@ func runRevert(cmd *cobra.Command, args []string) error {
 
 	if err := cmdutil.SignRequests(cmd, req.Requests); err != nil {
 		spinner.Fail("Failed to sign request")
-		return err
+		return cmdutil.Displayed(err)
 	}
 
 	resp, err := client.Apply(ctx, req)
 	if err != nil {
-		spinner.Fail("Failed to revert transaction")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to revert transaction", err)
 	}
 
 	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
 		spinner.Fail("Response signature verification failed")
-		return fmt.Errorf("response signature verification failed: %w", err)
+		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 
 	spinner.Success("Reverted")

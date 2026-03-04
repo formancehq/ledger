@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
@@ -43,7 +44,7 @@ func runUpgrade(currentVersion, channel string, force, dryRun bool) error {
 	release, err := fetchRelease(channel)
 	if err != nil {
 		spinner.Fail("Failed to check for updates")
-		return fmt.Errorf("failed to fetch release info: %w", err)
+		return cmdutil.Displayed(fmt.Errorf("failed to fetch release info: %w", err))
 	}
 
 	latestVersion := releaseVersion(release)
@@ -80,7 +81,7 @@ func runUpgrade(currentVersion, channel string, force, dryRun bool) error {
 	extractedPath, err := downloadAndVerify(archiveAsset, checksumsAsset, spinner)
 	if err != nil {
 		spinner.Fail("Failed to download update")
-		return err
+		return cmdutil.Displayed(err)
 	}
 	defer func() { _ = os.Remove(extractedPath) }()
 
@@ -92,7 +93,7 @@ func runUpgrade(currentVersion, channel string, force, dryRun bool) error {
 	binaryPath, err := replaceBinary(extractedPath)
 	if err != nil {
 		spinner.Fail("Failed to install update")
-		return err
+		return cmdutil.Displayed(err)
 	}
 
 	spinner.Success(fmt.Sprintf("ledgerctl upgraded to %s", pterm.Cyan(latestVersion)))

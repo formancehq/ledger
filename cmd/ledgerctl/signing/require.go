@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -76,12 +75,12 @@ func runRequire(cmd *cobra.Command, args []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
-		return err
+		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
-		spinner.Fail(fmt.Sprintf("Failed to %s mandatory signatures", strings.ToLower(action)))
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to update signing config", err)
 	}
 

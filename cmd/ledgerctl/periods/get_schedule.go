@@ -40,7 +40,7 @@ func runGetSchedule(cmd *cobra.Command, _ []string) error {
 
 	resp, err := client.GetPeriodSchedule(ctx, &servicepb.GetPeriodScheduleRequest{})
 	if err != nil {
-		spinner.Fail("Failed to get period schedule")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to get period schedule", err)
 	}
 

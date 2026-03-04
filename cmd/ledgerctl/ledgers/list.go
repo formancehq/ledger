@@ -41,7 +41,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	ledgers, err := cmdutil.GetAllLedgersInfo(ctx, client)
 	if err != nil {
-		spinner.Fail("Failed to fetch ledgers")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to list ledgers", err)
 	}
 

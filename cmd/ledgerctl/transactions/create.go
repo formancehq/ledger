@@ -117,12 +117,12 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	// Validate mutual exclusivity
 	if scriptFile != "" && len(postingStrs) > 0 {
 		pterm.Error.Println("--script and --posting are mutually exclusive")
-		return fmt.Errorf("--script and --posting are mutually exclusive")
+		return cmdutil.Displayed(fmt.Errorf("--script and --posting are mutually exclusive"))
 	}
 
 	if scriptFile == "" && len(varStrs) > 0 {
 		pterm.Error.Println("--var can only be used with --script")
-		return fmt.Errorf("--var can only be used with --script")
+		return cmdutil.Displayed(fmt.Errorf("--var can only be used with --script"))
 	}
 
 	var (
@@ -135,7 +135,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		scriptContent, err := os.ReadFile(scriptFile)
 		if err != nil {
 			pterm.Error.Printfln("Failed to read script file %q", scriptFile)
-			return fmt.Errorf("failed to read script file %q: %w", scriptFile, err)
+			return cmdutil.Displayed(fmt.Errorf("failed to read script file %q: %w", scriptFile, err))
 		}
 
 		pterm.Info.Printfln("Using Numscript from %s", pterm.Cyan(scriptFile))
@@ -146,7 +146,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			parts := strings.SplitN(v, "=", 2)
 			if len(parts) != 2 {
 				pterm.Error.Printfln("Invalid variable format %q: expected name=value", v)
-				return fmt.Errorf("invalid variable format %q: expected name=value", v)
+				return cmdutil.Displayed(fmt.Errorf("invalid variable format %q: expected name=value", v))
 			}
 			vars[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 		}
@@ -160,7 +160,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			for _, e := range errs {
 				pterm.Error.Printfln("  - %s", e.Msg)
 			}
-			return fmt.Errorf("numscript parse error: %s", numscript.ParseErrorsToString(errs, parsed.GetSource()))
+			return cmdutil.Displayed(fmt.Errorf("numscript parse error: %s", numscript.ParseErrorsToString(errs, parsed.GetSource())))
 		}
 
 		// Get required variables and prompt for missing ones
@@ -208,7 +208,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			posting, err := parsePosting(ps)
 			if err != nil {
 				pterm.Error.Printfln("Invalid posting %q: %v", ps, err)
-				return fmt.Errorf("invalid posting %q: %w", ps, err)
+				return cmdutil.Displayed(fmt.Errorf("invalid posting %q: %w", ps, err))
 			}
 			postings = append(postings, posting)
 		}
@@ -237,7 +237,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			scriptContent, err := os.ReadFile(scriptPath)
 			if err != nil {
 				pterm.Error.Printfln("Failed to read script file %q", scriptPath)
-				return fmt.Errorf("failed to read script file %q: %w", scriptPath, err)
+				return cmdutil.Displayed(fmt.Errorf("failed to read script file %q: %w", scriptPath, err))
 			}
 
 			// Parse the script to get required variables
@@ -249,7 +249,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 				for _, e := range errs {
 					pterm.Error.Printfln("  - %s", e.Msg)
 				}
-				return fmt.Errorf("numscript parse error: %s", numscript.ParseErrorsToString(errs, parsed.GetSource()))
+				return cmdutil.Displayed(fmt.Errorf("numscript parse error: %s", numscript.ParseErrorsToString(errs, parsed.GetSource())))
 			}
 
 			// Get required variables and prompt for all of them
@@ -310,7 +310,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	// Validate that we have either postings or script
 	if len(postings) == 0 && script == nil {
 		pterm.Error.Println("Either postings or a script is required")
-		return fmt.Errorf("either postings or a script is required")
+		return cmdutil.Displayed(fmt.Errorf("either postings or a script is required"))
 	}
 
 	// Get reference (optional)
@@ -351,38 +351,38 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
-		return err
+		return cmdutil.Displayed(err)
 	}
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
-		spinner.Fail("Failed to create transaction")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to create transaction", err)
 	}
 
 	// Verify response signatures if a verification key is configured
 	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
 		spinner.Fail("Response signature verification failed")
-		return fmt.Errorf("response signature verification failed: %w", err)
+		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 
 	// Extract the created transaction from the response
 	if len(resp.Logs) == 0 {
 		spinner.Fail("No response received")
-		return fmt.Errorf("no response received")
+		return cmdutil.Displayed(fmt.Errorf("no response received"))
 	}
 
 	log := resp.Logs[0]
 	applyLog := log.Payload.GetApply()
 	if applyLog == nil {
 		spinner.Fail("Unexpected response type")
-		return fmt.Errorf("unexpected response type")
+		return cmdutil.Displayed(fmt.Errorf("unexpected response type"))
 	}
 
 	createdTx := applyLog.Log.Data.GetCreatedTransaction()
 	if createdTx == nil {
 		spinner.Fail("Unexpected log payload type")
-		return fmt.Errorf("unexpected log payload type")
+		return cmdutil.Displayed(fmt.Errorf("unexpected log payload type"))
 	}
 
 	tx := createdTx.Transaction
@@ -531,7 +531,7 @@ func promptVariable(name, varType string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		pterm.Error.Printfln("Variable $%s is required", name)
-		return "", fmt.Errorf("variable $%s is required", name)
+		return "", cmdutil.Displayed(fmt.Errorf("variable $%s is required", name))
 	}
 
 	return value, nil
@@ -550,7 +550,7 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 	}
 	if source == "" {
 		pterm.Error.Println("Source is required")
-		return nil, fmt.Errorf("source is required")
+		return nil, cmdutil.Displayed(fmt.Errorf("source is required"))
 	}
 
 	// Destination
@@ -562,7 +562,7 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 	}
 	if destination == "" {
 		pterm.Error.Println("Destination is required")
-		return nil, fmt.Errorf("destination is required")
+		return nil, cmdutil.Displayed(fmt.Errorf("destination is required"))
 	}
 
 	// Amount
@@ -575,7 +575,7 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 	amount, ok := new(big.Int).SetString(amountStr, 10)
 	if !ok || amount.Sign() <= 0 {
 		pterm.Error.Println("Invalid amount: must be a positive integer")
-		return nil, fmt.Errorf("invalid amount: must be a positive integer")
+		return nil, cmdutil.Displayed(fmt.Errorf("invalid amount: must be a positive integer"))
 	}
 
 	// Asset
@@ -587,7 +587,7 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 	}
 	if asset == "" {
 		pterm.Error.Println("Asset is required")
-		return nil, fmt.Errorf("asset is required")
+		return nil, cmdutil.Displayed(fmt.Errorf("asset is required"))
 	}
 
 	// Show summary

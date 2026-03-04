@@ -63,7 +63,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 		}
 		if err != nil {
 			if spinner != nil {
-				spinner.Fail("Failed to check store")
+				_ = spinner.Stop()
 			}
 			return cmdutil.FormatGRPCError("receiving check event", err)
 		}

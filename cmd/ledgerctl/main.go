@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -30,7 +31,18 @@ import (
 var version = "dev"
 
 func main() {
-	service.Execute(newRootCommand())
+	rootCmd := newRootCommand()
+	rootCmd.SilenceErrors = true
+	service.BindEnvToCommand(rootCmd)
+
+	if err := rootCmd.Execute(); err != nil {
+		var cliErr *cmdutil.CLIError
+		if !errors.As(err, &cliErr) {
+			// Error was not already displayed — print it now.
+			pterm.Error.Println(err.Error())
+		}
+		os.Exit(1)
+	}
 }
 
 func newRootCommand() *cobra.Command {

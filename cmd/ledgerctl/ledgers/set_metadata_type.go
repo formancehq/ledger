@@ -119,18 +119,18 @@ func runSetMetadataType(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
-		return err
+		return cmdutil.Displayed(err)
 	}
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
-		spinner.Fail("Failed to set metadata type")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to set metadata type", err)
 	}
 
 	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
 		spinner.Fail("Response signature verification failed")
-		return fmt.Errorf("response signature verification failed: %w", err)
+		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 
 	spinner.Success(fmt.Sprintf("Set %s.%s = %s on ledger %s",

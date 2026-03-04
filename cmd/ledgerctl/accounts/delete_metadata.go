@@ -62,7 +62,7 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 
 	if address == "" {
 		pterm.Error.Println("Account address is required")
-		return fmt.Errorf("account address is required")
+		return cmdutil.Displayed(fmt.Errorf("account address is required"))
 	}
 
 	var key string
@@ -79,7 +79,7 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 
 	if key == "" {
 		pterm.Error.Println("Metadata key is required")
-		return fmt.Errorf("metadata key is required")
+		return cmdutil.Displayed(fmt.Errorf("metadata key is required"))
 	}
 
 	yes, _ := cmd.Flags().GetBool("yes")
@@ -128,12 +128,12 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 
 	if err := cmdutil.SignRequests(cmd, req.Requests); err != nil {
 		spinner.Fail("Failed to sign request")
-		return err
+		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, req)
 	if err != nil {
-		spinner.Fail("Failed to delete metadata")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to delete metadata", err)
 	}
 

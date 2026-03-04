@@ -144,7 +144,7 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 		MinLogSequence: minLogSeq,
 	})
 	if err != nil {
-		spinner.Fail("Failed to list accounts")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to list accounts", err)
 	}
 
@@ -155,7 +155,7 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 			break
 		}
 		if err != nil {
-			spinner.Fail("Failed to receive account")
+			_ = spinner.Stop()
 			return cmdutil.FormatGRPCError("failed to receive account", err)
 		}
 		accounts = append(accounts, account)
@@ -205,7 +205,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 		})
 		if err != nil {
 			cancel()
-			spinner.Fail("Failed to list accounts")
+			_ = spinner.Stop()
 			return cmdutil.FormatGRPCError("failed to list accounts", err)
 		}
 
@@ -217,7 +217,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 			}
 			if err != nil {
 				cancel()
-				spinner.Fail("Failed to receive account")
+				_ = spinner.Stop()
 				return cmdutil.FormatGRPCError("failed to receive account", err)
 			}
 			accounts = append(accounts, account)

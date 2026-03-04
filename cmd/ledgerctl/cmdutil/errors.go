@@ -14,14 +14,31 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// FormatGRPCError returns a clean error for gRPC errors suitable for CLI display.
-// For business errors, it reconstructs the typed error and uses its message.
+// CLIError wraps an error that has already been displayed to the user.
+// The central error handler in main.go checks for this to avoid duplicate output.
+type CLIError struct{ Err error }
+
+func (e *CLIError) Error() string { return e.Err.Error() }
+func (e *CLIError) Unwrap() error { return e.Err }
+
+// Displayed wraps an error to mark it as already shown to the user.
+func Displayed(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &CLIError{Err: err}
+}
+
+// FormatGRPCError prints a clean error for gRPC errors and returns a Displayed error.
+// For business errors, it reconstructs the typed error and prints details.
 // For other gRPC errors, it uses a human-friendly message based on the status code.
 // For non-gRPC errors, it wraps the original error.
 func FormatGRPCError(context string, err error) error {
 	if bizErr := BusinessErrorFromGRPC(err); bizErr != nil {
+		msg := fmt.Sprintf("%s: %s", context, bizErr.Err.Error())
+		pterm.Error.Println(msg)
 		printErrorDetails(bizErr.Err)
-		return fmt.Errorf("%s: %s", context, bizErr.Err.Error())
+		return Displayed(fmt.Errorf("%s", msg))
 	}
 
 	// status.Convert always returns a status (wrapping non-gRPC errors as Unknown).
@@ -29,11 +46,15 @@ func FormatGRPCError(context string, err error) error {
 	st := status.Convert(err)
 	if st.Code() != codes.OK {
 		if msg := friendlyMessage(st); msg != "" {
-			return fmt.Errorf("%s: %s", context, msg)
+			formatted := fmt.Sprintf("%s: %s", context, msg)
+			pterm.Error.Println(formatted)
+			return Displayed(fmt.Errorf("%s", formatted))
 		}
 	}
 
-	return fmt.Errorf("%s: %w", context, err)
+	msg := fmt.Sprintf("%s: %s", context, err.Error())
+	pterm.Error.Println(msg)
+	return Displayed(fmt.Errorf("%s", msg))
 }
 
 // friendlyMessage returns a human-readable message for common gRPC status codes.

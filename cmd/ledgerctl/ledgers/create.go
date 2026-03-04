@@ -61,7 +61,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		name = result
 		if name == "" {
 			pterm.Error.Println("Ledger name is required")
-			return fmt.Errorf("ledger name is required")
+			return cmdutil.Displayed(fmt.Errorf("ledger name is required"))
 		}
 	}
 
@@ -107,30 +107,30 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
-		return err
+		return cmdutil.Displayed(err)
 	}
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
-		spinner.Fail("Failed to create ledger")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to create ledger", err)
 	}
 
 	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
 		spinner.Fail("Response signature verification failed")
-		return fmt.Errorf("response signature verification failed: %w", err)
+		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 
 	if len(resp.Logs) == 0 {
 		spinner.Fail("No response received")
-		return fmt.Errorf("no response received")
+		return cmdutil.Displayed(fmt.Errorf("no response received"))
 	}
 
 	log := resp.Logs[0]
 	createLedgerLog := log.Payload.GetCreateLedger()
 	if createLedgerLog == nil {
 		spinner.Fail("Unexpected response type")
-		return fmt.Errorf("unexpected response type")
+		return cmdutil.Displayed(fmt.Errorf("unexpected response type"))
 	}
 
 	ledger := createLedgerLog.Info

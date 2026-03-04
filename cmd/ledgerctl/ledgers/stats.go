@@ -50,7 +50,7 @@ func runStats(cmd *cobra.Command, _ []string) error {
 		Ledger: ledgerName,
 	})
 	if err != nil {
-		spinner.Fail("Failed to get ledger stats")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to get ledger stats", err)
 	}
 

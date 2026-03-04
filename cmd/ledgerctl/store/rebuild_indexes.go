@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -56,7 +57,7 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	pebbleStore, err := dal.OpenReadOnly(dataDir, logger)
 	if err != nil {
 		spinner.Fail("Failed to open Pebble store")
-		return fmt.Errorf("opening Pebble store: %w", err)
+		return cmdutil.Displayed(fmt.Errorf("opening Pebble store: %w", err))
 	}
 	defer func() { _ = pebbleStore.Close() }()
 
@@ -68,7 +69,7 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	rs, err := readstore.New(readIndexDir, noFreelistSync, 0, logger)
 	if err != nil {
 		spinner.Fail("Failed to open read index store")
-		return fmt.Errorf("opening read index store: %w", err)
+		return cmdutil.Displayed(fmt.Errorf("opening read index store: %w", err))
 	}
 	defer func() { _ = rs.Close() }()
 
@@ -82,7 +83,7 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	lastSeq, err := builder.RebuildAll()
 	if err != nil {
 		spinner.Fail("Rebuild failed")
-		return fmt.Errorf("rebuilding indexes: %w", err)
+		return cmdutil.Displayed(fmt.Errorf("rebuilding indexes: %w", err))
 	}
 
 	spinner.Success(fmt.Sprintf("Rebuild complete (last log sequence: %d)", lastSeq))
@@ -92,7 +93,7 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 		spinner, _ = pterm.DefaultSpinner.Start("Syncing freelist to disk...")
 		if err := rs.SyncFreelist(); err != nil {
 			spinner.Fail("Failed to sync freelist")
-			return fmt.Errorf("syncing freelist: %w", err)
+			return cmdutil.Displayed(fmt.Errorf("syncing freelist: %w", err))
 		}
 		spinner.Success("Freelist synced")
 	}

@@ -65,7 +65,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		address = result
 		if address == "" {
 			pterm.Error.Println("Account address is required")
-			return fmt.Errorf("account address is required")
+			return cmdutil.Displayed(fmt.Errorf("account address is required"))
 		}
 	}
 
@@ -79,7 +79,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		Address: address,
 	})
 	if err != nil {
-		spinner.Fail("Failed to get account")
+		_ = spinner.Stop()
 		return cmdutil.FormatGRPCError("failed to get account", err)
 	}
 
