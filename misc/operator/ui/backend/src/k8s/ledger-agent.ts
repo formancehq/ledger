@@ -66,10 +66,8 @@ export async function createLedgerAgent(
 
 function isNotFound(err: unknown): boolean {
   return (
-    typeof err === "object" &&
-    err !== null &&
-    "response" in err &&
-    typeof (err as { response?: { statusCode?: number } }).response?.statusCode === "number" &&
-    (err as { response: { statusCode: number } }).response.statusCode === 404
+    err instanceof Error &&
+    "statusCode" in err &&
+    (err as Error & { statusCode: number }).statusCode === 404
   );
 }
