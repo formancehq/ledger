@@ -37,6 +37,8 @@ Refactor:
 * reorganize storage keys
 
 Later:
+* Store
+** UUID detection
 * Events
 ** Sync S3 + parquet
 * Cold storage:
