@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -145,7 +146,7 @@ func (mc *MetadataConverter) dispatchLoop(stop <-chan struct{}) {
 // isFieldStillConverting checks whether a metadata field is still in CONVERTING
 // state by reading the ledger's metadata schema from the data store.
 func (mc *MetadataConverter) isFieldStillConverting(ledgerName string, targetType commonpb.TargetType, key string, expectedType commonpb.MetadataType) bool {
-	ledgerInfo, err := query.GetLedgerByName(mc.dataStore, ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(context.TODO(), mc.dataStore, ledgerName)
 	if err != nil {
 		return false
 	}
@@ -279,7 +280,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 	}
 
 	// Validate the ledger exists (off the hot path).
-	_, err := query.GetLedgerByName(mc.dataStore, req.LedgerName)
+	_, err := query.GetLedgerByName(context.TODO(), mc.dataStore, req.LedgerName)
 	if err != nil {
 		return fmt.Errorf("resolving ledger %q: %w", req.LedgerName, err)
 	}

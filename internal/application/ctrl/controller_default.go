@@ -85,7 +85,7 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName st
 		))
 	defer span.End()
 
-	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store,ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -234,7 +234,7 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 
 	profile := query.ProfileFromContext(ctx)
 
-	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store,ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -405,7 +405,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 
 	profile := query.ProfileFromContext(ctx)
 
-	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store,ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -558,7 +558,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 		))
 	defer span.End()
 
-	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store,ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -573,8 +573,8 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 }
 
 // GetLedgerStats returns aggregate statistics (account count, transaction count) for a ledger.
-func (ctrl *DefaultController) GetLedgerStats(_ context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
-	_, err := query.GetLedgerByName(ctrl.store, ledgerName)
+func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
+	_, err := query.GetLedgerByName(ctx, ctrl.store,ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -619,7 +619,7 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 		trace.WithAttributes(attribute.String("ledger", name)))
 	defer span.End()
 
-	ledgerInfo, err := query.GetLedgerByName(ctrl.store, name)
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store,name)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", name)
@@ -629,7 +629,7 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 
 	// Enrich mirror ledgers with sync progress computed from Pebble state
 	if ledgerInfo.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
-		progress, err := query.ReadMirrorSyncProgress(ctrl.store, name)
+		progress, err := query.ReadMirrorSyncProgress(ctx, ctrl.store, name)
 		if err != nil {
 			return nil, fmt.Errorf("reading mirror sync progress: %w", err)
 		}
@@ -640,8 +640,8 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 }
 
 // GetMetadataSchemaStatus returns the conversion status of all declared metadata fields.
-func (ctrl *DefaultController) GetMetadataSchemaStatus(_ context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
-	ledgerInfo, err := query.GetLedgerByName(ctrl.store, ledgerName)
+func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store,ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -698,11 +698,11 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 // AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns.
 // Uses two sequential Pebble log scans with streaming processing to avoid loading
 // all transactions into memory (O(unique addresses + unique signatures) instead of O(N)).
-func (ctrl *DefaultController) AnalyzeTransactions(_ context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
+func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error) {
 	handle := ctrl.store.NewReadHandle()
 	defer func() { _ = handle.Close() }()
 
-	if _, err := query.GetLedgerByName(handle, ledgerName); err != nil {
+	if _, err := query.GetLedgerByName(ctx, handle, ledgerName); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}

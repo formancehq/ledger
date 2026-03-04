@@ -1,16 +1,22 @@
 package query
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
+
+var queryTracer = otel.Tracer("query")
 
 // ReadLedgers returns a cursor over all registered ledgers from the given reader.
 func ReadLedgers(reader dal.PebbleReader) (dal.Cursor[*commonpb.LedgerInfo], error) {
@@ -30,7 +36,11 @@ func ReadLedgers(reader dal.PebbleReader) (dal.Cursor[*commonpb.LedgerInfo], err
 
 // GetLedgerByName retrieves a ledger by its name from the given reader.
 // Returns domain.ErrNotFound if the ledger does not exist or is soft-deleted.
-func GetLedgerByName(reader dal.PebbleReader, name string) (*commonpb.LedgerInfo, error) {
+func GetLedgerByName(ctx context.Context, reader dal.PebbleReader, name string) (*commonpb.LedgerInfo, error) {
+	_, span := queryTracer.Start(ctx, "query.get_ledger",
+		trace.WithAttributes(attribute.String("ledger", name)))
+	defer span.End()
+
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixLedgerInfo).PutString(name)
 

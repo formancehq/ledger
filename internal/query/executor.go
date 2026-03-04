@@ -1,6 +1,7 @@
 package query
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 
@@ -68,7 +69,7 @@ func Execute(
 	}
 
 	// Fetch ledger info for schema-based filter validation
-	ledgerInfo, err := GetLedgerByName(pebbleStore, req.Ledger)
+	ledgerInfo, err := GetLedgerByName(context.TODO(), pebbleStore, req.Ledger)
 	if err != nil {
 		return nil, fmt.Errorf("reading ledger info: %w", err)
 	}

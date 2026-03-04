@@ -1,12 +1,15 @@
 package query
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 
 	"github.com/cockroachdb/pebble"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -84,7 +87,11 @@ func ReadMirrorSourceHead(reader dal.PebbleReader, ledgerName string) (uint64, e
 
 // ReadMirrorSyncProgress reads the cursor, source head, and error from Pebble
 // and computes the sync progress for a mirror ledger.
-func ReadMirrorSyncProgress(reader dal.PebbleReader, ledgerName string) (*commonpb.MirrorSyncProgress, error) {
+func ReadMirrorSyncProgress(ctx context.Context, reader dal.PebbleReader, ledgerName string) (*commonpb.MirrorSyncProgress, error) {
+	_, span := queryTracer.Start(ctx, "query.read_mirror_sync_progress",
+		trace.WithAttributes(attribute.String("ledger", ledgerName)))
+	defer span.End()
+
 	cursor, err := ReadMirrorCursor(reader, ledgerName)
 	if err != nil {
 		return nil, err
@@ -109,6 +116,12 @@ func ReadMirrorSyncProgress(reader dal.PebbleReader, ledgerName string) (*common
 	if sourceHead > cursor {
 		remaining = sourceHead - cursor
 	}
+
+	span.SetAttributes(
+		attribute.Int64("mirror.cursor", int64(cursor)),
+		attribute.Int64("mirror.source_head", int64(sourceHead)),
+		attribute.Int64("mirror.remaining", int64(remaining)),
+	)
 
 	return &commonpb.MirrorSyncProgress{
 		State:          state,

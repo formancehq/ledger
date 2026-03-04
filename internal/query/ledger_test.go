@@ -1,6 +1,7 @@
 package query_test
 
 import (
+	"context"
 	"math/big"
 	"testing"
 
@@ -49,12 +50,12 @@ func TestGetLedgerByName(t *testing.T) {
 
 	registerLedger(t, s, "my-ledger")
 
-	ledger, err := query.GetLedgerByName(s, "my-ledger")
+	ledger, err := query.GetLedgerByName(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
 	require.NotNil(t, ledger)
 	require.Equal(t, "my-ledger", ledger.Name)
 
-	ledger, err = query.GetLedgerByName(s, "non-existing")
+	ledger, err = query.GetLedgerByName(context.Background(), s, "non-existing")
 	require.Error(t, err)
 	require.Nil(t, ledger)
 }

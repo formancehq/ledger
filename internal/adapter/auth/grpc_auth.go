@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/oidc"
 	jose "github.com/go-jose/go-jose/v4"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -16,6 +17,8 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
+
+var authTracer = otel.Tracer("auth")
 
 // AuthConfig holds the configuration for gRPC and HTTP authentication.
 type AuthConfig struct {
@@ -31,7 +34,11 @@ type AuthConfig struct {
 // If auth is disabled, returns the original context unchanged.
 // Returns the context enriched with claims and expanded scopes, or a gRPC status error.
 func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context.Context, error) {
+	ctx, span := authTracer.Start(ctx, "auth.authenticate")
+	defer span.End()
+
 	if !cfg.Enabled {
+		span.SetAttributes(attribute.Bool("auth.enabled", false))
 		return ctx, nil
 	}
 

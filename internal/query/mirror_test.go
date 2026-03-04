@@ -1,6 +1,7 @@
 package query_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
@@ -40,7 +41,7 @@ func TestReadMirrorSyncProgress_Syncing(t *testing.T) {
 	require.NoError(t, state.SetMirrorSourceHead(batch, "my-ledger", 100))
 	require.NoError(t, batch.Commit())
 
-	progress, err := query.ReadMirrorSyncProgress(s, "my-ledger")
+	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
 	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.State)
 	require.Equal(t, uint64(5), progress.Cursor)
@@ -60,7 +61,7 @@ func TestReadMirrorSyncProgress_Following(t *testing.T) {
 	require.NoError(t, state.SetMirrorSourceHead(batch, "my-ledger", 100))
 	require.NoError(t, batch.Commit())
 
-	progress, err := query.ReadMirrorSyncProgress(s, "my-ledger")
+	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
 	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING, progress.State)
 	require.Equal(t, uint64(100), progress.Cursor)
@@ -82,7 +83,7 @@ func TestReadMirrorSyncProgress_WithError(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	progress, err := query.ReadMirrorSyncProgress(s, "my-ledger")
+	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
 	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.State)
 	require.Equal(t, uint64(40), progress.RemainingLogs)
@@ -96,7 +97,7 @@ func TestReadMirrorSyncProgress_NoData(t *testing.T) {
 	s := newTestStore(t)
 
 	// No data written — should return SYNCING with zeros
-	progress, err := query.ReadMirrorSyncProgress(s, "my-ledger")
+	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
 	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.State)
 	require.Equal(t, uint64(0), progress.Cursor)
