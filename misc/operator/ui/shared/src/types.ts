@@ -475,3 +475,26 @@ export interface LedgerDefaultsListItem {
   ledgerDefaults: LedgerDefaults;
   referencedByCount: number;
 }
+
+// --- Connect / Key Bundle ---
+
+export interface KeyBundle {
+  signingKey: string;
+  keyId: string;
+  scopes: string[];
+  subject: string;
+}
+
+export interface ConnectInfo {
+  available: boolean;
+  reason?: string;
+  agentName?: string;
+  agentPhase?: string;
+  bundle?: KeyBundle;
+  endpoints?: {
+    grpc: string;
+    http: string;
+    /** true when endpoints come from an Ingress (externally reachable) */
+    external: boolean;
+  };
+}

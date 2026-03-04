@@ -8,6 +8,7 @@ import {
 } from "../k8s/ledger-service.js";
 import { getLedgerAgent, createLedgerAgent } from "../k8s/ledger-agent.js";
 import { listPods, listPvcs, listServices, listEvents } from "../k8s/resources.js";
+import { getAgentKeyBundle } from "../k8s/agent-bundle.js";
 import type { AuthEnv } from "../auth/middleware.js";
 import type { SessionData } from "../auth/session.js";
 
@@ -120,6 +121,100 @@ app.post("/namespaces/:ns/ledger-services/:name/restart", async (c) => {
   });
   return c.json(result);
 });
+
+// Connect info — key bundle + endpoints for the current user
+app.get("/namespaces/:ns/ledger-services/:name/connect", async (c) => {
+  const { ns, name } = c.req.param();
+  const session = c.get("session");
+  const svc = await getLedgerService(ns, name);
+  const endpoints = buildEndpoints(svc, ns);
+
+  // When auth is disabled, no agent exists — return with just endpoints
+  if (!session) {
+    return c.json({
+      available: false,
+      reason: "Authentication is not enabled — no agent was created.",
+      endpoints,
+    });
+  }
+
+  const ownerLabel = sanitizeK8sLabelValue(session.userId);
+  const agentName = sanitizeK8sName(`user-${ownerLabel}`);
+  if (!agentName) {
+    return c.json({ available: false, reason: "Cannot derive agent name from user ID.", endpoints });
+  }
+
+  const agent = await getLedgerAgent(ns, agentName);
+
+  if (!agent) {
+    return c.json({
+      available: false,
+      reason: "No LedgerAgent found for your user. Create a LedgerService first.",
+      endpoints,
+    });
+  }
+
+  if (agent.status?.phase !== "Ready" || !agent.status?.secretRef) {
+    return c.json({
+      available: false,
+      reason: `Agent "${agentName}" is not ready yet (phase: ${agent.status?.phase ?? "Pending"}).`,
+      agentName,
+      agentPhase: agent.status?.phase,
+      endpoints,
+    });
+  }
+
+  const bundle = await getAgentKeyBundle(
+    agent.status.secretRef.namespace,
+    agent.status.secretRef.name,
+    agent.spec.scopes,
+    agentName,
+  );
+
+  return c.json({
+    available: true,
+    agentName,
+    agentPhase: agent.status.phase,
+    bundle,
+    endpoints,
+  });
+});
+
+/**
+ * Build endpoint URLs for a LedgerService.
+ *
+ * Priority:
+ *  1. Ingress hosts (external access) — derived from spec.ingress / spec.ingressGrpc
+ *  2. In-cluster service DNS (fallback)
+ */
+function buildEndpoints(
+  svc: Awaited<ReturnType<typeof getLedgerService>>,
+  ns: string,
+): { grpc: string; http: string; external: boolean } {
+  const name = svc.metadata.name;
+
+  // Check for gRPC ingress
+  const grpcIngress = svc.spec.ingressGrpc;
+  const grpcHost = grpcIngress?.enabled ? grpcIngress.hosts?.[0]?.host : undefined;
+  const grpcTls = grpcIngress?.tls && grpcIngress.tls.length > 0;
+
+  // Check for HTTP ingress
+  const httpIngress = svc.spec.ingress;
+  const httpHost = httpIngress?.enabled ? httpIngress.hosts?.[0]?.host : undefined;
+  const httpTls = httpIngress?.tls && httpIngress.tls.length > 0;
+
+  const hasIngress = !!(grpcHost || httpHost);
+
+  return {
+    grpc: grpcHost
+      ? `${grpcHost}:443`
+      : `${name}.${ns}.svc.cluster.local:8888`,
+    http: httpHost
+      ? `${httpTls ? "https" : "http"}://${httpHost}`
+      : `http://${name}.${ns}.svc.cluster.local:9000`,
+    external: hasIngress,
+  };
+}
 
 /**
  * Sanitize a string for use as a Kubernetes label value.

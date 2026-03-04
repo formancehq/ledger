@@ -17,6 +17,10 @@ rules:
 - apiGroups: ["ledger.formance.com"]
   resources: ["ledgeragents"]
   verbs: ["get", "create"]
+# Secrets - read agent key bundles for the Connect panel
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
 # Pods - list
 - apiGroups: [""]
   resources: ["pods"]

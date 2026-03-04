@@ -8,6 +8,7 @@ import type {
   LedgerServiceDetail,
   LedgerDefaultsListItem,
   LedgerDefaultsDetail,
+  ConnectInfo,
 } from "shared";
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -150,6 +151,19 @@ export function useRestartLedgerService(namespace: string, name: string) {
         queryKey: ["ledger-service", namespace, name],
       });
     },
+  });
+}
+
+// --- Connect Info ---
+
+export function useConnectInfo(namespace: string, name: string) {
+  return useQuery({
+    queryKey: ["connect-info", namespace, name],
+    queryFn: () =>
+      fetchJson<ConnectInfo>(
+        `/api/namespaces/${namespace}/ledger-services/${name}/connect`
+      ),
+    enabled: !!namespace && !!name,
   });
 }
 
