@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -145,6 +146,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("checking DefaultWAL creation completion marker: %w", err)
 	}
+	var snap walpb.Snapshot
 	if err == nil {
 		s.logger.Infof("DefaultWAL creation completed, opening existing DefaultWAL")
 		data, err := os.ReadFile(s.stateFile)
@@ -152,7 +154,6 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			return nil, err
 		}
 
-		var snap walpb.Snapshot
 		if err == nil {
 			if err := unmarshalStateFile(data, &s.snapshot); err != nil {
 				return nil, err
@@ -205,7 +206,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			return nil, fmt.Errorf("closing DefaultWAL creation completion marker: %w", err)
 		}
 
-		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, walpb.Snapshot{})
+		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, snap)
 		if err != nil {
 			return nil, fmt.Errorf("opening newly created DefaultWAL: %w", err)
 		}
@@ -213,7 +214,40 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 
 	_, s.hardState, s.entries, err = s.wal.ReadAll()
 	if err != nil {
-		return nil, fmt.Errorf("reading DefaultWAL entries: %w", err)
+		if !errors.Is(err, io.ErrUnexpectedEOF) {
+			return nil, fmt.Errorf("reading DefaultWAL entries: %w", err)
+		}
+
+		// WAL has a partially written record from a crash (OOMKill, SIGKILL, power loss).
+		// The incomplete entries were never committed by Raft, so truncating is safe.
+		s.logger.Errorf("========================================")
+		s.logger.Errorf("WAL CORRUPTED: unexpected EOF detected")
+		s.logger.Errorf("Attempting automatic repair by truncating incomplete records...")
+		s.logger.Errorf("========================================")
+
+		if closeErr := s.wal.Close(); closeErr != nil {
+			s.logger.WithFields(map[string]any{"error": closeErr}).Errorf("Failed to close corrupted WAL before repair")
+		}
+
+		if !wal.Repair(zapLogger, s.etcdWalDir) {
+			return nil, fmt.Errorf("WAL repair failed after unexpected EOF — manual intervention required")
+		}
+
+		s.logger.Errorf("WAL repair succeeded — re-opening WAL")
+
+		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, snap)
+		if err != nil {
+			return nil, fmt.Errorf("opening repaired WAL: %w", err)
+		}
+
+		_, s.hardState, s.entries, err = s.wal.ReadAll()
+		if err != nil {
+			return nil, fmt.Errorf("reading repaired WAL entries: %w", err)
+		}
+
+		s.logger.Errorf("========================================")
+		s.logger.Errorf("WAL recovery complete — %d entries recovered", len(s.entries))
+		s.logger.Errorf("========================================")
 	}
 
 	s.logger.

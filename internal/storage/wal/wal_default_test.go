@@ -887,3 +887,92 @@ func TestWithPurgeInterval(t *testing.T) {
 	WithPurgeInterval(42 * time.Second)(w)
 	require.Equal(t, 42*time.Second, w.purgeInterval)
 }
+
+// --- WAL repair tests ---
+
+func TestWAL_RepairCorruptedEntry(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+	dir := t.TempDir()
+
+	// Step 1: Create a WAL and write data.
+	w, err := New(dir, logger, meter)
+	require.NoError(t, err)
+
+	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 5}, []raftpb.Entry{
+		{Index: 1, Term: 1, Data: []byte("entry-1")},
+		{Index: 2, Term: 1, Data: []byte("entry-2")},
+		{Index: 3, Term: 1, Data: []byte("entry-3")},
+		{Index: 4, Term: 1, Data: []byte("entry-4")},
+		{Index: 5, Term: 1, Data: []byte("entry-5")},
+	}))
+
+	cs := &raftpb.ConfState{Voters: []uint64{1}}
+	require.NoError(t, w.CreateSnapshot(3, cs, []byte("snapshot-data")))
+
+	require.NoError(t, w.Append(raftpb.HardState{Term: 1, Vote: 1, Commit: 8}, []raftpb.Entry{
+		{Index: 6, Term: 1, Data: []byte("entry-6")},
+		{Index: 7, Term: 1, Data: []byte("entry-7")},
+		{Index: 8, Term: 1, Data: []byte("entry-8")},
+	}))
+
+	require.NoError(t, w.Close())
+
+	// Step 2: Corrupt the last WAL segment by truncating mid-record.
+	etcdDir := filepath.Join(dir, "etcd")
+	dirEntries, err := os.ReadDir(etcdDir)
+	require.NoError(t, err)
+
+	var lastWALFile string
+	for _, e := range dirEntries {
+		if filepath.Ext(e.Name()) == ".wal" {
+			lastWALFile = filepath.Join(etcdDir, e.Name())
+		}
+	}
+	require.NotEmpty(t, lastWALFile, "should find at least one .wal file")
+
+	// etcd pre-allocates WAL files; find the end of actual data (last non-zero byte)
+	// and truncate within it to simulate a partial write from OOMKill.
+	fileData, err := os.ReadFile(lastWALFile)
+	require.NoError(t, err)
+
+	lastNonZero := len(fileData) - 1
+	for lastNonZero > 0 && fileData[lastNonZero] == 0 {
+		lastNonZero--
+	}
+	truncateAt := int64(lastNonZero - 5)
+	require.Greater(t, truncateAt, int64(0))
+	require.NoError(t, os.Truncate(lastWALFile, truncateAt))
+
+	// Step 3: Re-open — should auto-repair and succeed.
+	w2, err := New(dir, logger, meter)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w2.Close() })
+
+	// Step 4: Verify snapshot is preserved.
+	snap, err := w2.Snapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), snap.Metadata.Index)
+	require.Equal(t, []byte("snapshot-data"), snap.Data)
+
+	// Step 5: Verify some entries were recovered.
+	lastIdx, err := w2.LastIndex()
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, lastIdx, uint64(3), "should recover entries at least up to snapshot")
+
+	// Step 6: Verify .broken backup file was created by wal.Repair.
+	dirEntries, err = os.ReadDir(etcdDir)
+	require.NoError(t, err)
+
+	hasBroken := false
+	for _, e := range dirEntries {
+		if filepath.Ext(e.Name()) == ".broken" {
+			hasBroken = true
+			break
+		}
+	}
+	require.True(t, hasBroken, "repair should create a .broken backup file")
+}
