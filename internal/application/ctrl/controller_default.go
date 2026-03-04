@@ -675,24 +675,26 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledg
 }
 
 // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts.
-// Uses streaming iteration to avoid loading all accounts into memory.
+// Uses a direct Pebble key scan to extract account addresses, asset names, and
+// metadata key names without reading values or going through the bbolt read index.
 func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
-	// Reuse ListAccounts with pageSize=0 (no limit) to get all accounts
-	cursor, err := ctrl.ListAccounts(ctx, ledgerName, 0, "", nil, false)
+	if _, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+		}
+		return nil, fmt.Errorf("validating ledger for analysis: %w", err)
+	}
+
+	handle := ctrl.store.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
+	it, err := query.NewCompactAccountIterator(handle, ledgerName)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = cursor.Close() }()
+	defer func() { _ = it.Close() }()
 
-	next := func() (analysis.CompactAccount, error) {
-		acc, err := cursor.Next()
-		if err != nil {
-			return analysis.CompactAccount{}, err
-		}
-		return analysis.ExtractCompactAccount(acc), nil
-	}
-
-	return analysis.AnalyzeFromIterator(next, variableThreshold)
+	return analysis.AnalyzeFromIterator(it.Next, variableThreshold)
 }
 
 // AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns.
