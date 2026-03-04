@@ -105,10 +105,6 @@ func Module() fx.Option {
 					}
 				}
 
-				// Preload the attributes zone into the block cache so the first
-				// read-heavy query (e.g. "accounts analysis") hits warm cache.
-				store.WarmBlockCache()
-
 				return store, nil
 			},
 			func(store *dal.Store, logger logging.Logger, machine *state.Machine) *dal.SmartCompactor {
@@ -844,6 +840,21 @@ func Module() fx.Option {
 				lc.Append(httpserver.NewHook(handler,
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
 				))
+			},
+			// Warm the Pebble block cache in the background so that /livez and
+			// /readyz are reachable immediately on startup (avoids k8s probe
+			// timeouts on large databases where warmup takes tens of seconds).
+			func(lc fx.Lifecycle, store *dal.Store, logger logging.Logger) {
+				lc.Append(fx.Hook{
+					OnStart: func(ctx context.Context) error {
+						go func() {
+							logger.Infof("Starting background block cache warmup")
+							store.WarmBlockCache()
+							logger.Infof("Block cache warmup completed")
+						}()
+						return nil
+					},
+				})
 			},
 			func(lc fx.Lifecycle, collector *diskusage.Collector) {
 				lc.Append(worker.FxHook(collector))
