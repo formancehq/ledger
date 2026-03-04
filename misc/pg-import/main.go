@@ -6,24 +6,31 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	"crypto/tls"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
+	grpcinsecure "google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 func main() {
 	var (
 		pgDSN     = flag.String("dsn", "", "PostgreSQL DSN to the v2 instance (e.g. postgres://user:pass@host:5432/postgres)")
-		v3Server  = flag.String("server", "localhost:8888", "Ledger v3 gRPC server address")
-		batchSize = flag.Uint("batch-size", 0, "Mirror batch size (0 = server default)")
-		dryRun    = flag.Bool("dry-run", false, "Only list discovered ledgers, don't create mirrors")
-		timeout   = flag.Duration("timeout", 30*time.Second, "Timeout per gRPC call")
+		v3Server     = flag.String("server", "localhost:8888", "Ledger v3 gRPC server address")
+		batchSize    = flag.Uint("batch-size", 0, "Mirror batch size (0 = server default)")
+		dryRun       = flag.Bool("dry-run", false, "Only list discovered ledgers, don't create mirrors")
+		timeout      = flag.Duration("timeout", 30*time.Second, "Timeout per gRPC call")
+		insecureMode = flag.Bool("insecure", false, "Use plaintext gRPC (no TLS)")
+		authToken    = flag.String("token", "", "Bearer token for gRPC authentication")
 	)
 	flag.Parse()
 
@@ -63,9 +70,20 @@ func main() {
 	}
 
 	// Step 2: Connect to v3.
-	conn, err := grpc.NewClient(*v3Server,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	var creds credentials.TransportCredentials
+	if *insecureMode {
+		creds = grpcinsecure.NewCredentials()
+	} else {
+		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+	}
+	dialOpts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
+	if *authToken != "" {
+		dialOpts = append(dialOpts,
+			grpc.WithUnaryInterceptor(bearerInterceptor(*authToken)),
+			grpc.WithStreamInterceptor(bearerStreamInterceptor(*authToken)),
+		)
+	}
+	conn, err := grpc.NewClient(*v3Server, dialOpts...)
 	if err != nil {
 		log.Fatalf("failed to connect to v3 server: %v", err)
 	}
@@ -116,7 +134,7 @@ type v2Ledger struct {
 
 // discoverV2Ledgers scans all databases on the PG instance and returns all v2 ledgers found.
 func discoverV2Ledgers(ctx context.Context, dsn string) ([]v2Ledger, error) {
-	conn, err := pgx.Connect(ctx, dsn)
+	conn, err := pgx.Connect(ctx, sanitizeDSN(dsn))
 	if err != nil {
 		return nil, fmt.Errorf("connecting to instance: %w", err)
 	}
@@ -144,6 +162,9 @@ func discoverV2Ledgers(ctx context.Context, dsn string) ([]v2Ledger, error) {
 
 	var ledgers []v2Ledger
 	for _, db := range databases {
+		if !strings.Contains(db, "-") {
+			continue
+		}
 		dbDSN := replaceDSNDatabase(dsn, db)
 		found, err := discoverLedgersInDB(ctx, dbDSN, db)
 		if err != nil {
@@ -158,7 +179,7 @@ func discoverV2Ledgers(ctx context.Context, dsn string) ([]v2Ledger, error) {
 
 // discoverLedgersInDB connects to a single database and checks for _system.ledgers.
 func discoverLedgersInDB(ctx context.Context, dsn, database string) ([]v2Ledger, error) {
-	conn, err := pgx.Connect(ctx, dsn)
+	conn, err := pgx.Connect(ctx, sanitizeDSN(dsn))
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
 	}
@@ -175,6 +196,19 @@ func discoverLedgersInDB(ctx context.Context, dsn, database string) ([]v2Ledger,
 		return nil, fmt.Errorf("check _system.ledgers: %w", err)
 	}
 	if !exists {
+		return nil, nil
+	}
+
+	// Check whether the "name" column exists — older v2 versions don't have it.
+	var hasNameCol bool
+	_ = conn.QueryRow(ctx,
+		`SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = '_system' AND table_name = 'ledgers' AND column_name = 'name'
+		)`,
+	).Scan(&hasNameCol)
+
+	if !hasNameCol {
 		return nil, nil
 	}
 
@@ -265,6 +299,35 @@ func buildMirrorName(database, ledgerName string) string {
 	return database + "-" + ledgerName
 }
 
+// sanitizeDSN URL-encodes the user and password in a postgres:// DSN so that
+// special characters (e.g. ), #, () don't break url.Parse which pgx uses
+// internally. Keyword-format DSNs are returned unchanged.
+func sanitizeDSN(dsn string) string {
+	schemeEnd := strings.Index(dsn, "://")
+	if schemeEnd == -1 {
+		return dsn // keyword format, no encoding needed
+	}
+
+	rest := dsn[schemeEnd+3:]
+	atIdx := strings.LastIndex(rest, "@")
+	if atIdx == -1 {
+		return dsn // no userinfo
+	}
+
+	userinfo := rest[:atIdx]
+	colonIdx := strings.Index(userinfo, ":")
+	if colonIdx == -1 {
+		// User only, no password.
+		return dsn[:schemeEnd+3] + url.PathEscape(userinfo) + rest[atIdx:]
+	}
+
+	user := userinfo[:colonIdx]
+	pass := userinfo[colonIdx+1:]
+	encoded := url.PathEscape(user) + ":" + url.PathEscape(pass)
+
+	return dsn[:schemeEnd+3] + encoded + rest[atIdx:]
+}
+
 // replaceDSNDatabase returns a copy of the DSN pointing to a different database.
 func replaceDSNDatabase(dsn, database string) string {
 	schemeEnd := strings.Index(dsn, "://")
@@ -311,4 +374,20 @@ func replaceDSNDatabase(dsn, database string) string {
 	prefixLen += slashIdx
 
 	return dsn[:prefixLen] + "/" + database + query
+}
+
+// bearerInterceptor returns a unary interceptor that injects an Authorization header.
+func bearerInterceptor(token string) grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+}
+
+// bearerStreamInterceptor returns a stream interceptor that injects an Authorization header.
+func bearerStreamInterceptor(token string) grpc.StreamClientInterceptor {
+	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+		return streamer(ctx, desc, cc, method, opts...)
+	}
 }
