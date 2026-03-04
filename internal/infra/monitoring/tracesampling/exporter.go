@@ -36,15 +36,30 @@ func NewErrorAwareSamplingExporter(delegate sdktrace.SpanExporter, ratio float64
 }
 
 // ExportSpans exports the given spans after filtering.
+// It uses a two-pass approach: first it identifies trace IDs that contain at
+// least one error span, then it keeps ALL spans from those traces (so child
+// spans are not dropped by ratio sampling when the parent has an error).
 func (e *ErrorAwareSamplingExporter) ExportSpans(ctx context.Context, spans []sdktrace.ReadOnlySpan) error {
 	if len(spans) == 0 {
 		return nil
 	}
 
+	// Pass 1: collect trace IDs that have at least one error span.
+	errorTraceIDs := make(map[[16]byte]struct{})
+	for _, s := range spans {
+		if isErrorSpan(s) {
+			errorTraceIDs[s.SpanContext().TraceID()] = struct{}{}
+		}
+	}
+
+	// Pass 2: keep all spans from error traces + ratio-sampled non-error traces.
 	filtered := make([]sdktrace.ReadOnlySpan, 0, len(spans))
-	for _, span := range spans {
-		if e.shouldExport(span) {
-			filtered = append(filtered, span)
+	for _, s := range spans {
+		traceID := s.SpanContext().TraceID()
+		if _, ok := errorTraceIDs[traceID]; ok {
+			filtered = append(filtered, s)
+		} else if e.hashSample(traceID[:]) {
+			filtered = append(filtered, s)
 		}
 	}
 
@@ -55,15 +70,11 @@ func (e *ErrorAwareSamplingExporter) ExportSpans(ctx context.Context, spans []sd
 	return e.delegate.ExportSpans(ctx, filtered)
 }
 
-// shouldExport determines whether a span should be exported.
-// Error spans are always exported, successful spans are sampled based on ratio.
-func (e *ErrorAwareSamplingExporter) shouldExport(s sdktrace.ReadOnlySpan) bool {
-	// Always export error spans
+// isErrorSpan returns true if the span indicates an error.
+func isErrorSpan(s sdktrace.ReadOnlySpan) bool {
 	if s.Status().Code == codes.Error {
 		return true
 	}
-
-	// Check for any error-related attributes
 	for _, attr := range s.Attributes() {
 		if attr.Key == "error" && attr.Value.AsBool() {
 			return true
@@ -72,18 +83,7 @@ func (e *ErrorAwareSamplingExporter) shouldExport(s sdktrace.ReadOnlySpan) bool 
 			return true
 		}
 	}
-
-	// Apply ratio-based sampling for non-error spans
-	if e.ratio >= 1.0 {
-		return true
-	}
-	if e.ratio <= 0 {
-		return false
-	}
-
-	// Use trace ID for deterministic sampling
-	traceID := s.SpanContext().TraceID()
-	return e.hashSample(traceID[:])
+	return false
 }
 
 // hashSample uses FNV-1a hash for deterministic sampling based on trace ID.

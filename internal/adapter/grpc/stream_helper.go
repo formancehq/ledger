@@ -15,9 +15,8 @@ import (
 // closing the cursor when done. The cursor must yield *Res items
 // matching the stream's Send(*Res) signature.
 //
-// It records stream.items_sent on both the ctx span and parentSpan so the
-// count is visible even when child spans are lost due to batch export timing.
-func sendCursorToStream[Res any](ctx context.Context, parentSpan trace.Span, cursor dal.Cursor[*Res], stream ggrpc.ServerStreamingServer[Res], itemName string) error {
+// It records stream.items_sent on the current span.
+func sendCursorToStream[Res any](ctx context.Context, cursor dal.Cursor[*Res], stream ggrpc.ServerStreamingServer[Res], itemName string) error {
 	defer func() {
 		_ = cursor.Close()
 	}()
@@ -25,23 +24,17 @@ func sendCursorToStream[Res any](ctx context.Context, parentSpan trace.Span, cur
 	span := trace.SpanFromContext(ctx)
 	var count int64
 
-	recordCount := func() {
-		attr := attribute.Int64("stream.items_sent", count)
-		span.SetAttributes(attr)
-		parentSpan.SetAttributes(attr)
-	}
-
 	for {
 		item, err := cursor.Next()
 		if err != nil {
-			recordCount()
+			span.SetAttributes(attribute.Int64("stream.items_sent", count))
 			if err == io.EOF {
 				return nil
 			}
 			return fmt.Errorf("reading %s: %w", itemName, err)
 		}
 		if err := stream.Send(item); err != nil {
-			recordCount()
+			span.SetAttributes(attribute.Int64("stream.items_sent", count))
 			return fmt.Errorf("sending %s: %w", itemName, err)
 		}
 		count++

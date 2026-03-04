@@ -127,6 +127,38 @@ func TestErrorAwareSamplingExporter_DeterministicSampling(t *testing.T) {
 		"same trace ID should have deterministic sampling result")
 }
 
+func TestErrorAwareSamplingExporter_KeepsSiblingSpansOfErrors(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockExporter{}
+	exporter := NewErrorAwareSamplingExporter(mock, 0.0) // 0% ratio for success
+
+	traceID := oteltrace.TraceID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	// Create an error span and a sibling OK span with the same trace ID.
+	errorSpan := tracetest.SpanStub{
+		Status: trace.Status{Code: codes.Error, Description: "test error"},
+		SpanContext: oteltrace.NewSpanContext(oteltrace.SpanContextConfig{
+			TraceID: traceID,
+			SpanID:  oteltrace.SpanID{1, 0, 0, 0, 0, 0, 0, 0},
+		}),
+	}.Snapshot()
+
+	okSpan := tracetest.SpanStub{
+		Status: trace.Status{Code: codes.Ok},
+		SpanContext: oteltrace.NewSpanContext(oteltrace.SpanContextConfig{
+			TraceID: traceID,
+			SpanID:  oteltrace.SpanID{2, 0, 0, 0, 0, 0, 0, 0},
+		}),
+	}.Snapshot()
+
+	err := exporter.ExportSpans(context.Background(), []trace.ReadOnlySpan{errorSpan, okSpan})
+	require.NoError(t, err)
+
+	// Both spans should be exported because they share a trace ID with an error span
+	require.Len(t, mock.spans, 2, "sibling spans of error spans should be kept regardless of ratio")
+}
+
 func TestErrorAwareSamplingExporter_RatioClamps(t *testing.T) {
 	t.Parallel()
 
