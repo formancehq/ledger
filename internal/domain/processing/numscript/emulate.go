@@ -110,7 +110,8 @@ func DiscoverNumscriptDependencies(script string, vars map[string]string, ledger
 
 	// Run the script. The discovery store captures source accounts via GetBalances
 	// and we extract destinations from the resulting postings.
-	execResult, _ := parsed.RunWithFeatureFlags(context.Background(), variablesMap, store, FeatureFlags)
+	// Experimental features are declared directly in scripts via #![feature "..."].
+	execResult, _ := parsed.Run(context.Background(), variablesMap, store)
 
 	// Propagate determinism violations — these are not transient errors.
 	// We check the store directly because the numscript interpreter wraps store

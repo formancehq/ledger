@@ -14,7 +14,7 @@ require (
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/formancehq/go-libs/v3 v3.6.0
 	github.com/formancehq/ledger v0.0.0-20251204132242-3d438e4b28ef
-	github.com/formancehq/numscript v0.0.21
+	github.com/formancehq/numscript v0.0.24
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-jose/go-jose/v4 v4.1.3
 	github.com/golang-jwt/jwt/v5 v5.3.1

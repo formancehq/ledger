@@ -7,7 +7,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 )
 
 func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
@@ -29,7 +28,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	// Select the appropriate posting producer
 	var producer postingProducer
 	if order.Script != nil && order.Script.Plain != "" {
-		producer = &numscriptPostingProducer{cache: p.numscriptCache, featureFlags: numscript.FeatureFlags, ledger: ledger}
+		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledger: ledger}
 	} else {
 		producer = &stdPostingProducer{}
 	}

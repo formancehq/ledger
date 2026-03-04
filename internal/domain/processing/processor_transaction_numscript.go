@@ -15,9 +15,8 @@ import (
 )
 
 type numscriptPostingProducer struct {
-	cache        *numscript.NumscriptCache
-	featureFlags map[string]struct{}
-	ledger       string
+	cache  *numscript.NumscriptCache
+	ledger string
 }
 
 func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
@@ -45,8 +44,8 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 		force:  order.Force,
 	}
 
-	// Execute the script with all feature flags enabled
-	result, err := parsed.RunWithFeatureFlags(context.Background(), vars, storeAdapter, p.featureFlags)
+	// Execute the script (experimental features are declared directly in scripts)
+	result, err := parsed.Run(context.Background(), vars, storeAdapter)
 	if err != nil {
 		return nil, fmt.Errorf("numscript execution error: %w", err)
 	}
