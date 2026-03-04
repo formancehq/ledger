@@ -4,9 +4,10 @@ import (
 	"context"
 
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 )
 
 type Server struct {
@@ -28,11 +29,13 @@ type Backend interface {
 	ctrl.Controller
 	GetClusterState(context context.Context) (*clusterpb.ClusterState, error)
 	IsHealthy() bool
+	IsReady() bool
 }
 
 type DefaultBackend struct {
 	ctrl.Controller
-	Node *node.Node
+	Node          *node.Node
+	healthChecker health.Checker
 }
 
 func (b *DefaultBackend) GetClusterState(ctx context.Context) (*clusterpb.ClusterState, error) {
@@ -43,11 +46,19 @@ func (b *DefaultBackend) IsHealthy() bool {
 	return b.Node.IsHealthy()
 }
 
+// IsReady returns true when the node is part of a healthy cluster: the local
+// Raft state machine is healthy, a leader has been elected, and disk/clock
+// health checks pass.
+func (b *DefaultBackend) IsReady() bool {
+	return b.Node.IsHealthy() && b.Node.GetLeader() != 0 && b.healthChecker.IsHealthy()
+}
+
 var _ Backend = (*DefaultBackend)(nil)
 
-func NewDefaultBackend(node *node.Node, ctrl ctrl.Controller) *DefaultBackend {
+func NewDefaultBackend(node *node.Node, ctrl ctrl.Controller, healthChecker health.Checker) *DefaultBackend {
 	return &DefaultBackend{
-		Node:       node,
-		Controller: ctrl,
+		Node:          node,
+		Controller:    ctrl,
+		healthChecker: healthChecker,
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -223,6 +224,15 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 		container.ReadinessProbe = ledger.Spec.ReadinessProbe
 	}
 
+	// Default probes: if no liveness/readiness was configured (neither from CRD
+	// nor LedgerDefaults), use built-in defaults targeting /livez and /readyz.
+	if container.LivenessProbe == nil {
+		container.LivenessProbe = defaultLivenessProbe()
+	}
+	if container.ReadinessProbe == nil {
+		container.ReadinessProbe = defaultReadinessProbe()
+	}
+
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: serviceAccountName(ledger),
 		Containers:         []corev1.Container{container},
@@ -430,4 +440,36 @@ func raftPortFromBindAddr(bindAddr string) int32 {
 		}
 	}
 	return 7777
+}
+
+// defaultLivenessProbe returns a sensible liveness probe for k8s that targets
+// the /livez endpoint (always 200 when the process is alive).
+func defaultLivenessProbe() *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Path: "/livez",
+				Port: intstr.FromString("http"),
+			},
+		},
+		InitialDelaySeconds: 15,
+		PeriodSeconds:       10,
+		FailureThreshold:    3,
+	}
+}
+
+// defaultReadinessProbe returns a sensible readiness probe for k8s that targets
+// the /readyz endpoint (200 only when the node is fully ready).
+func defaultReadinessProbe() *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Path: "/readyz",
+				Port: intstr.FromString("http"),
+			},
+		},
+		InitialDelaySeconds: 5,
+		PeriodSeconds:       5,
+		FailureThreshold:    3,
+	}
 }

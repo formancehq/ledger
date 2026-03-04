@@ -68,6 +68,8 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 
 		r.With(contentTypeMiddleware).Group(func(r chi.Router) {
 			r.Get("/health", server.handleHealth)
+			r.Get("/livez", server.handleLivez)
+			r.Get("/readyz", server.handleReadyz)
 
 			// Ledgers read scope
 			r.With(requireLedgersRead).Group(func(r chi.Router) {

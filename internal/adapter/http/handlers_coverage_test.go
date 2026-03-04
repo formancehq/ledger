@@ -57,6 +57,32 @@ func TestNewHandler_V2Prefix(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestNewHandler_LivezEndpoint(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(logging.Testing(), &mockBackend{healthy: false, ready: false}, internalauth.AuthConfig{})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/livez", nil)
+
+	handler.ServeHTTP(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestNewHandler_ReadyzEndpoint(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(logging.Testing(), &mockBackend{ready: true}, internalauth.AuthConfig{})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+
+	handler.ServeHTTP(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestContentTypeMiddleware_SetsJSON(t *testing.T) {
 	t.Parallel()
 

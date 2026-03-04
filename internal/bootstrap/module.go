@@ -347,8 +347,8 @@ func Module() fx.Option {
 			func(cfg Config, logger logging.Logger, backend httpcompat.Backend, authCfg internalauth.AuthConfig) http.Handler {
 				return httpcompat.NewHandler(logger, backend, authCfg)
 			},
-			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
-				return httpcompat.NewDefaultBackend(node, ctrl)
+			func(node *node.Node, ctrl ctrl.Controller, hc *clusterhealth.HealthChecker) httpcompat.Backend {
+				return httpcompat.NewDefaultBackend(node, ctrl, hc)
 			},
 			func(
 				cfg Config,
@@ -623,11 +623,10 @@ func Module() fx.Option {
 				hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 				return nil
 			},
-			func(serviceServer *grpcadp.ServiceServer) error {
+			func(serviceServer *grpcadp.ServiceServer, n *node.Node, hc *clusterhealth.HealthChecker) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
-				hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
-				return nil
+				return clusterhealth.NewGRPCHealthUpdater(n, hc, hs)
 			},
 			func(serviceServer *grpcadp.ServiceServer, bucketServiceServer servicepb.BucketServiceServer) error {
 				grpcadp.RegisterBucketService(serviceServer.GetServer(), bucketServiceServer)
@@ -854,6 +853,9 @@ func Module() fx.Option {
 			},
 			func(lc fx.Lifecycle, hc *clusterhealth.HealthChecker) {
 				lc.Append(worker.FxHook(hc))
+			},
+			func(lc fx.Lifecycle, updater *clusterhealth.GRPCHealthUpdater) {
+				lc.Append(worker.FxHook(updater))
 			},
 			func(lc fx.Lifecycle, manager *events.Manager) {
 				lc.Append(worker.FxHook(manager))

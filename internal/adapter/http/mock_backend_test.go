@@ -13,6 +13,7 @@ import (
 // mockBackend implements Backend for testing.
 type mockBackend struct {
 	healthy bool
+	ready   bool
 
 	applyFn                    func(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
 	listLedgersFn              func(ctx context.Context) (dal.Cursor[*commonpb.LedgerInfo], error)
@@ -35,6 +36,7 @@ type mockBackend struct {
 }
 
 func (m *mockBackend) IsHealthy() bool { return m.healthy }
+func (m *mockBackend) IsReady() bool   { return m.ready }
 
 func (m *mockBackend) GetClusterState(ctx context.Context) (*clusterpb.ClusterState, error) {
 	if m.getClusterStateFn != nil {
