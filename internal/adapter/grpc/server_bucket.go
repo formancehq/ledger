@@ -143,10 +143,13 @@ func (impl *BucketServiceServerImpl) signReceiptIfNeeded(log *commonpb.Log) {
 func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsRequest, stream servicepb.BucketService_ListPeriodsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListPeriods")
 	defer span.End()
+	parentSpan := trace.SpanFromContext(stream.Context())
 
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return err
 	}
+
+	parentSpan.AddEvent("handler.query_start")
 
 	cursor, err := impl.ctrl.ListPeriods(ctx)
 	if err != nil {
@@ -157,7 +160,9 @@ func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsReque
 		cursor = dal.NewLimitedCursor(cursor, req.PageSize)
 	}
 
-	return sendCursorToStream(ctx, cursor, stream, "period")
+	parentSpan.AddEvent("handler.streaming_start")
+
+	return sendCursorToStream(ctx, parentSpan, cursor, stream, "period")
 }
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
@@ -248,7 +253,7 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 
 	parentSpan.AddEvent("handler.streaming_start")
 
-	err = sendCursorToStream(ctx, cursor, stream, "transaction")
+	err = sendCursorToStream(ctx, parentSpan, cursor, stream, "transaction")
 	impl.emitProfile(ctx, profile)
 	return err
 }
@@ -276,7 +281,7 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 
 	parentSpan.AddEvent("handler.streaming_start")
 
-	return sendCursorToStream(ctx, cursor, stream, "ledger")
+	return sendCursorToStream(ctx, parentSpan, cursor, stream, "ledger")
 }
 
 func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
@@ -338,7 +343,7 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 
 	parentSpan.AddEvent("handler.streaming_start")
 
-	err = sendCursorToStream(ctx, cursor, stream, "account")
+	err = sendCursorToStream(ctx, parentSpan, cursor, stream, "account")
 	impl.emitProfile(ctx, profile)
 	return err
 }
@@ -458,6 +463,7 @@ func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *ser
 func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEntriesRequest, stream servicepb.BucketService_ListAuditEntriesServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListAuditEntries")
 	defer span.End()
+	parentSpan := trace.SpanFromContext(stream.Context())
 
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAuditRead); err != nil {
 		return err
@@ -467,12 +473,16 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		return err
 	}
 
+	parentSpan.AddEvent("handler.query_start")
+
 	cursor, err := impl.ctrl.ListAuditEntries(ctx, req.AfterSequence, req.FailuresOnly, req.PageSize) //nolint:protogetter
 	if err != nil {
 		return fmt.Errorf("listing audit entries: %w", err)
 	}
 
-	return sendCursorToStream(ctx, cursor, stream, "audit entry")
+	parentSpan.AddEvent("handler.streaming_start")
+
+	return sendCursorToStream(ctx, parentSpan, cursor, stream, "audit entry")
 }
 
 func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.GetLogRequest) (*commonpb.Log, error) {
@@ -486,6 +496,7 @@ func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.
 func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListLogs")
 	defer span.End()
+	parentSpan := trace.SpanFromContext(stream.Context())
 
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return err
@@ -500,12 +511,16 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		afterSequence = *req.AfterSequence
 	}
 
+	parentSpan.AddEvent("handler.query_start")
+
 	cursor, err := impl.ctrl.ListLogs(ctx, afterSequence, req.PageSize)
 	if err != nil {
 		return fmt.Errorf("listing logs: %w", err)
 	}
 
-	return sendCursorToStream(ctx, cursor, stream, "log")
+	parentSpan.AddEvent("handler.streaming_start")
+
+	return sendCursorToStream(ctx, parentSpan, cursor, stream, "log")
 }
 
 func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *servicepb.GetEventsSinksRequest) (*servicepb.GetEventsSinksResponse, error) {
@@ -544,17 +559,22 @@ func (impl *BucketServiceServerImpl) GetPeriodSchedule(ctx context.Context, _ *s
 func (impl *BucketServiceServerImpl) ListSigningKeys(_ *servicepb.ListSigningKeysRequest, stream servicepb.BucketService_ListSigningKeysServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListSigningKeys")
 	defer span.End()
+	parentSpan := trace.SpanFromContext(stream.Context())
 
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return err
 	}
+
+	parentSpan.AddEvent("handler.query_start")
 
 	cursor, err := impl.ctrl.ListSigningKeys(ctx)
 	if err != nil {
 		return fmt.Errorf("listing signing keys: %w", err)
 	}
 
-	return sendCursorToStream(ctx, cursor, stream, "signing key")
+	parentSpan.AddEvent("handler.streaming_start")
+
+	return sendCursorToStream(ctx, parentSpan, cursor, stream, "signing key")
 }
 
 func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context, req *servicepb.GetMetadataSchemaStatusRequest) (*servicepb.GetMetadataSchemaStatusResponse, error) {
