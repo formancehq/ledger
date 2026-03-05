@@ -1,3 +1,5 @@
+//go:build nats
+
 package events_test
 
 import (

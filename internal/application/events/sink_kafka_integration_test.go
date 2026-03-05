@@ -1,3 +1,5 @@
+//go:build kafka
+
 package events_test
 
 import (

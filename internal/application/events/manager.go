@@ -1,7 +1,6 @@
 package events
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -190,41 +189,28 @@ func (m *Manager) teardown() {
 }
 
 // createSink creates a single Sink from a SinkConfig entry.
+// HTTP sinks are always available. Other sink types (Kafka, NATS, ClickHouse)
+// are only available when compiled with their respective build tags.
 func (m *Manager) createSink(sc *commonpb.SinkConfig) (Sink, error) {
 	format := Format(sc.Format)
 	if format == "" {
 		format = FormatJSON
 	}
 
-	switch s := sc.GetType().(type) {
-	case *commonpb.SinkConfig_Nats:
-		return NewNATSSink(NATSSinkConfig{
-			URL:    s.Nats.Url,
-			Topic:  s.Nats.Topic,
-			Format: format,
-		})
-	case *commonpb.SinkConfig_Clickhouse:
-		return NewClickHouseSink(context.Background(), ClickHouseSinkConfig{
-			DSN:   s.Clickhouse.Dsn,
-			Table: s.Clickhouse.Table,
-		})
-	case *commonpb.SinkConfig_Kafka:
-		return NewKafkaSink(KafkaSinkConfig{
-			Brokers:       s.Kafka.Brokers,
-			Topic:         s.Kafka.Topic,
-			TLS:           s.Kafka.Tls,
-			SASLMechanism: s.Kafka.SaslMechanism,
-			SASLUsername:  s.Kafka.SaslUsername,
-			SASLPassword:  s.Kafka.SaslPassword,
-			Format:        format,
-		})
-	case *commonpb.SinkConfig_Http:
+	// HTTP sink is always available (no heavy dependencies).
+	if s, ok := sc.GetType().(*commonpb.SinkConfig_Http); ok {
 		return NewHTTPSink(HTTPSinkConfig{
 			Endpoint: s.Http.Endpoint,
 			Secret:   s.Http.Secret,
 			Format:   format,
 		})
-	default:
-		return nil, fmt.Errorf("unsupported events sink type: %T", s)
 	}
+
+	// Look up optional sinks in the registry.
+	typeName := sinkTypeName(sc)
+	factory, ok := sinkFactories[typeName]
+	if !ok {
+		return nil, fmt.Errorf("unsupported events sink type: %s (not compiled in this build)", typeName)
+	}
+	return factory(sc, format)
 }

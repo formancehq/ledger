@@ -1,3 +1,5 @@
+//go:build s3
+
 package coldstorage
 
 import (
@@ -82,3 +84,13 @@ func (s *S3Storage) Exists(ctx context.Context, bucketID string, periodID uint64
 
 // Ensure S3Storage implements ColdStorage.
 var _ ColdStorage = (*S3Storage)(nil)
+
+// NewS3ColdStorage creates a ColdStorage backed by S3.
+// This is the public entry point used by bootstrap; it hides S3-specific types.
+func NewS3ColdStorage(bucket, region, endpoint string) (ColdStorage, error) {
+	client, err := NewS3Client(region, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	return NewS3Storage(client, bucket), nil
+}

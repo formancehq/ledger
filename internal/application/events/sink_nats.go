@@ -1,3 +1,5 @@
+//go:build nats
+
 package events
 
 import (
@@ -5,10 +7,22 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )
+
+func init() {
+	registerSinkFactory("nats", func(sc *commonpb.SinkConfig, format Format) (Sink, error) {
+		s := sc.GetType().(*commonpb.SinkConfig_Nats)
+		return NewNATSSink(NATSSinkConfig{
+			URL:    s.Nats.Url,
+			Topic:  s.Nats.Topic,
+			Format: format,
+		})
+	})
+}
 
 // NATSSinkConfig holds configuration for the NATS JetStream sink.
 type NATSSinkConfig struct {

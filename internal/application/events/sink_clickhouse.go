@@ -1,3 +1,5 @@
+//go:build clickhouse
+
 package events
 
 import (
@@ -5,10 +7,22 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
 )
+
+func init() {
+	registerSinkFactory("clickhouse", func(sc *commonpb.SinkConfig, _ Format) (Sink, error) {
+		s := sc.GetType().(*commonpb.SinkConfig_Clickhouse)
+		return NewClickHouseSink(context.Background(), ClickHouseSinkConfig{
+			DSN:   s.Clickhouse.Dsn,
+			Table: s.Clickhouse.Table,
+		})
+	})
+}
 
 const defaultClickHouseTable = "ledger_events"
 

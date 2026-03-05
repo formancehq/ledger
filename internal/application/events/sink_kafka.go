@@ -1,3 +1,5 @@
+//go:build kafka
+
 package events
 
 import (
@@ -7,9 +9,25 @@ import (
 	"strings"
 
 	"github.com/IBM/sarama"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
 	"github.com/xdg-go/scram"
 )
+
+func init() {
+	registerSinkFactory("kafka", func(sc *commonpb.SinkConfig, format Format) (Sink, error) {
+		s := sc.GetType().(*commonpb.SinkConfig_Kafka)
+		return NewKafkaSink(KafkaSinkConfig{
+			Brokers:       s.Kafka.Brokers,
+			Topic:         s.Kafka.Topic,
+			TLS:           s.Kafka.Tls,
+			SASLMechanism: s.Kafka.SaslMechanism,
+			SASLUsername:  s.Kafka.SaslUsername,
+			SASLPassword:  s.Kafka.SaslPassword,
+			Format:        format,
+		})
+	})
+}
 
 // KafkaSinkConfig holds configuration for the Kafka sink.
 type KafkaSinkConfig struct {

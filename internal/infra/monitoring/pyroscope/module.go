@@ -1,3 +1,5 @@
+//go:build pyroscope
+
 package pyroscope
 
 import (

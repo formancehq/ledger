@@ -10,7 +10,7 @@ lint:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> golangci-lint (.)"
-    golangci-lint run --fix --build-tags it,local --timeout 5m
+    golangci-lint run --fix --build-tags it,local,{{all_tags}} --timeout 5m
     for dir in {{go_submodules}}; do
         echo "==> golangci-lint ($dir)"
         (cd "$dir" && golangci-lint run --fix --timeout 5m)
@@ -24,9 +24,16 @@ tidy:
         (cd "$dir" && go mod tidy)
     done
 
-# Build the server application
+# All optional feature build tags
+all_tags := "kafka,nats,clickhouse,s3,pyroscope"
+
+# Build the server application (light: no optional deps)
 build:
     go build -o ./build/ledger-server .
+
+# Build the server with all optional features (Kafka, NATS, ClickHouse, S3, Pyroscope)
+build-full:
+    go build -tags "{{all_tags}}" -o ./build/ledger-server-full .
 
 # Build the client application
 build-client:
@@ -48,9 +55,13 @@ install-client:
     #todo: make optional or configurable or whatever
     ledgerctl completion zsh > ~/.oh-my-zsh/custom/completions/_ledgerctl
 
-# Run unit tests for the root module
+# Run unit tests for the root module (light build)
 test:
     go test ./... -timeout 20m
+
+# Run unit tests with all optional features
+test-full:
+    go test -tags "{{all_tags}}" ./... -timeout 20m
 
 # Run all tests across all modules (unit + integration + e2e)
 test-all: test test-submodules test-integration test-e2e
@@ -68,9 +79,13 @@ test-submodules:
 test-integration:
     cd misc/operator && go test -tags integration ./internal/controller/... -timeout 2m
 
-# Run end-to-end tests
+# Run end-to-end tests (light build)
 test-e2e:
     go test ./... -tags e2e -timeout 20m
+
+# Run end-to-end tests with all optional features
+test-e2e-full:
+    go test ./... -tags "e2e,{{all_tags}}" -timeout 20m
 
 # Release (official, triggered by tag)
 release:

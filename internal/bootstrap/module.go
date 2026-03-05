@@ -409,19 +409,16 @@ func Module() fx.Option {
 					if cfg.ColdStorageConfig.S3Bucket == "" {
 						return nil, fmt.Errorf("--cold-storage-s3-bucket is required when driver=s3")
 					}
-					s3Client, err := coldstorage.NewS3Client(
-						cfg.ColdStorageConfig.S3Region,
-						cfg.ColdStorageConfig.S3Endpoint,
-					)
-					if err != nil {
-						return nil, fmt.Errorf("creating S3 client: %w", err)
-					}
 					logger.WithFields(map[string]any{
 						"bucket":   cfg.ColdStorageConfig.S3Bucket,
 						"region":   cfg.ColdStorageConfig.S3Region,
 						"endpoint": cfg.ColdStorageConfig.S3Endpoint,
 					}).Infof("Using S3 cold storage")
-					return coldstorage.NewS3Storage(s3Client, cfg.ColdStorageConfig.S3Bucket), nil
+					return coldstorage.NewS3ColdStorage(
+						cfg.ColdStorageConfig.S3Bucket,
+						cfg.ColdStorageConfig.S3Region,
+						cfg.ColdStorageConfig.S3Endpoint,
+					)
 				case "filesystem", "":
 					basePath := cfg.ColdStorageConfig.BasePath
 					if basePath == "" {

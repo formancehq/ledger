@@ -1,3 +1,5 @@
+//go:build clickhouse
+
 package events
 
 import (
