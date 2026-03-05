@@ -1,0 +1,5 @@
+[codespell]
+skip = .git,.venv,uv.lock,helm-values*.yaml,*.yaml.age,new.yaml,*.ini.age,*.json.age,go.sum,*/go.sum
+check-filenames =
+check-hidden =
+ignore-words-list = NotIn,AKS,uE,isELF

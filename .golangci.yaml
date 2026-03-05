@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=https://golangci-lint.run/jsonschema/golangci.jsonschema.json
+---
+version: "2"
+
+formatters:
+  enable:
+  - gci
+  - gofmt
+  - goimports
+  settings:
+    gci:
+      sections:
+      - standard
+      - default
+      - prefix(github.com/formancehq/)
+      - localmodule
+      custom-order: true
+
+linters:
+  default: all
+  disable:
+  - gochecknoglobals
+  - gochecknoinits
+  - wsl
+  settings:
+    lll:
+      line-length: 180
+    gomoddirectives:
+      replace-local: true
+      replace-allow-list:
+      - github.com/expr-lang/expr
+    depguard:
+      rules:
+        main:
+          deny:
+          - pkg: "(text|html)/template$"
+            desc: Provokes big binaries because of reflection, use github.com/expr-lang/expr instead
+          - pkg: "github.com/pkg/errors"
+            desc: Should be replaced by standard lib errors package
+          allow:
+          - $gostd
+    revive:
+      rules:
+      - name: package-comments
+        disabled: true
+    exhaustruct:
+      exclude:
+      - '.+/cobra\.Command$'

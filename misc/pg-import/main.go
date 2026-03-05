@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"io"
@@ -11,20 +12,19 @@ import (
 	"strings"
 	"time"
 
-	"crypto/tls"
-
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	grpcinsecure "google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 func main() {
 	var (
-		pgDSN     = flag.String("dsn", "", "PostgreSQL DSN to the v2 instance (e.g. postgres://user:pass@host:5432/postgres)")
+		pgDSN        = flag.String("dsn", "", "PostgreSQL DSN to the v2 instance (e.g. postgres://user:pass@host:5432/postgres)")
 		v3Server     = flag.String("server", "localhost:8888", "Ledger v3 gRPC server address")
 		batchSize    = flag.Uint("batch-size", 0, "Mirror batch size (0 = server default)")
 		dryRun       = flag.Bool("dry-run", false, "Only list discovered ledgers, don't create mirrors")

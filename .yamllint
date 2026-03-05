@@ -1,0 +1,24 @@
+# vim: ft=yaml:
+# code: language=yaml
+---
+yaml-files:
+- ".yamllint"
+- "*.yaml.age"
+- "*.yaml"
+- "*.yml.age"
+- "*.yml"
+rules:
+  indentation:
+    spaces: 2
+    indent-sequences: false
+    ignore: |
+      **/helm-values.yaml
+  document-start:
+    present: true
+    ignore: |
+      **/helm-values.yaml
+ignore: |
+  **/helm-values.yaml
+  **/helm-values.yaml.age
+  **/templates/**/*.yaml
+  **/templates/**/*.yml

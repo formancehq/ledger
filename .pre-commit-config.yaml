@@ -1,0 +1,40 @@
+---
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+repos:
+- repo: local
+  hooks:
+  - id: golangci-lint-fmt
+    stages: [pre-commit]
+    name: golangci-lint-fmt
+    description: Fast linters runner for Go. Formats all files in the repo.
+    entry: golangci-lint fmt
+    types: [go]
+    language: system
+  - id: yamllint
+    stages: [pre-commit]
+    name: yamllint
+    entry: yamllint
+    language: system
+    files: \.((yaml|yml)(.age)?)$
+    require_serial: true
+  - id: trufflehog
+    stages: [pre-commit, pre-push]
+    name: trufflehog
+    description: Detect secrets in your data.
+    entry: bash -c "unset GIT_WORK_TREE; trufflehog --no-update git file://$PWD --since-commit HEAD --results=verified,unknown,unverified,filtered_unverified --exclude-paths .trufflehog-exclude-paths.txt --fail"
+    language: system
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # frozen: v6.0.0
+  hooks:
+  - id: end-of-file-fixer
+    stages: [pre-commit]
+  - id: trailing-whitespace
+    stages: [pre-commit]
+  - id: check-added-large-files
+    args: ["--maxkb=200"]
+    stages: [pre-commit, pre-push]
+- repo: https://github.com/codespell-project/codespell
+  rev: 63c8f8312b7559622c0d82815639671ae42132ac # frozen: v2.4.1
+  hooks:
+  - id: codespell
+    stages: [pre-commit, commit-msg]

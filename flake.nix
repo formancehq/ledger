@@ -44,18 +44,20 @@
           stablePackages = with pkgs; [
             ffmpeg
             ginkgo
-            grpcurl
             gomarkdoc
+            grpcurl
             jdk11
             jq
             just
+            k6
+            kubernetes-helm
             nodejs_22
             protobuf_27
+            python314
+            trufflehog
+            uv
             vhs
             yq-go
-            kubernetes-helm
-            python313Packages.matplotlib
-            k6
           ];
           unstablePackages = with pkgs-unstable; [
             go

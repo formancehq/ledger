@@ -1,0 +1,13 @@
+[project]
+name = "ledger-v3"
+version = "0.1.0"
+description = "Ledger v3"
+requires-python = ">=3.13"
+dependencies = [
+    "codespell>=2.4.1",
+    "git-pylint-commit-hook~=2.0",
+    "natsort~=8.0",
+    "natural~=0.0",
+    "pre-commit~=4.0",
+    "yamllint~=1.0",
+]

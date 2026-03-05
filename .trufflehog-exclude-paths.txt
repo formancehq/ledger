@@ -1,0 +1,2 @@
+# Exclude pg-import tool which contains a placeholder connection string
+misc/pg-import/main.go

@@ -61,3 +61,6 @@ worktrees
 /ledgerctl
 misc/operator/kubectl-ledger
 misc/devenv/devenv
+
+# Python
+.venv/
