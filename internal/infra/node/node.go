@@ -774,6 +774,19 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	node.tasks.add(newTask(node.processReadies))
 	node.tasks.run(ctx)
 
+	// Wait for the FSM to apply all initially committed entries before
+	// signaling ready. This ensures downstream consumers (index builder,
+	// event manager) see the complete Pebble state at startup.
+	initialCommit := status.Commit
+	if initialCommit > 0 {
+		if err := node.fsm.WaitForApplied(ctx, initialCommit); err != nil {
+			return fmt.Errorf("waiting for initial WAL replay: %w", err)
+		}
+		node.logger.WithFields(map[string]any{
+			"appliedUpTo": initialCommit,
+		}).Infof("Initial WAL replay complete")
+	}
+
 	close(ready)
 
 	select {

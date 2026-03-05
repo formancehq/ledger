@@ -51,7 +51,7 @@ type metadataIndexKey struct {
 // ledgerIndexConfig caches which indexes are enabled and ready for a ledger.
 type ledgerIndexConfig struct {
 	addressIndexed  map[commonpb.AddressRole]bool // true = indexed (READY or BUILDING)
-	metadataIndexed map[metadataIndexKey]bool      // true = indexed (READY or BUILDING)
+	metadataIndexed map[metadataIndexKey]bool     // true = indexed (READY or BUILDING)
 }
 
 // Builder tails the system log and populates the bbolt read store indexes.
@@ -1106,6 +1106,7 @@ func matchesBackfillIndex(a, b indexID) bool {
 // A single Pebble iterator is kept open per task across multiple bbolt batches,
 // avoiding the overhead of repeated NewIter/First calls during catch-up.
 // When a backfill catches up to globalCursor, it proposes IndexReady (leader only).
+// If the proposal fails (not leader or Raft error), the task is kept and retried.
 func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 	if len(b.backfillTasks) == 0 {
 		return
@@ -1123,11 +1124,16 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 
 		if task.cursor >= globalCursor {
 			// Backfill is caught up — propose IndexReady.
+			if !b.proposeIndexReady(task) {
+				// Proposal failed (not leader or Raft error) — keep the task
+				// and retry on the next tick.
+				continue
+			}
+
 			b.logger.WithFields(map[string]any{
 				"ledger": task.ledger,
 				"cursor": task.cursor,
-			}).Infof("Backfill complete, proposing IndexReady")
-			b.proposeIndexReady(task)
+			}).Infof("Backfill complete, IndexReady proposed")
 
 			// Delete persisted progress.
 			_ = b.readStore.Update(func(tx *bolt.Tx) error {
@@ -1284,9 +1290,10 @@ func isDataLog(log *commonpb.Log) bool {
 }
 
 // proposeIndexReady proposes an IndexReady order through Raft (leader only).
-func (b *Builder) proposeIndexReady(task *backfillTask) {
+// Returns true if the proposal was submitted successfully, false otherwise.
+func (b *Builder) proposeIndexReady(task *backfillTask) bool {
 	if b.proposer == nil || b.isLeader == nil || !b.isLeader() {
-		return
+		return false
 	}
 
 	order := &raftcmdpb.Order{
@@ -1320,6 +1327,7 @@ func (b *Builder) proposeIndexReady(task *backfillTask) {
 			"ledger": task.ledger,
 			"error":  err,
 		}).Errorf("Failed to propose IndexReady")
+		return false
 	}
+	return true
 }
-
