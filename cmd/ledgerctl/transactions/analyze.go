@@ -123,15 +123,15 @@ func renderTransactionAnalysisResult(resp *servicepb.AnalyzeTransactionsResponse
 	// Patterns table
 	pterm.DefaultSection.Println("Flow Patterns")
 	tableData := pterm.TableData{
-		{"SIGNATURE", "STRUCTURE", "COUNT", "ASSETS"},
+		{"#", "STRUCTURE", "COUNT", "ASSETS"},
 	}
-	for _, fp := range resp.FlowPatterns {
+	for i, fp := range resp.FlowPatterns {
 		var assets []string
 		for _, vs := range fp.VolumeStats {
 			assets = append(assets, vs.Asset)
 		}
 		tableData = append(tableData, []string{
-			fp.Signature,
+			fmt.Sprintf("%d", i+1),
 			postingStructureName(fp.Structure),
 			fmt.Sprintf("%d", fp.TransactionCount),
 			strings.Join(assets, ", "),
@@ -141,10 +141,15 @@ func renderTransactionAnalysisResult(resp *servicepb.AnalyzeTransactionsResponse
 	pterm.Println()
 
 	// Per-pattern details
-	for _, fp := range resp.FlowPatterns {
-		pterm.DefaultSection.Printfln("Pattern: %s", fp.Signature)
+	for i, fp := range resp.FlowPatterns {
+		pterm.DefaultSection.Printfln("Pattern #%d (%s, %d tx)", i+1, postingStructureName(fp.Structure), fp.TransactionCount)
+
+		for _, p := range fp.Postings {
+			pterm.Printfln("  %s -> %s [%s]", p.SourcePattern, p.DestinationPattern, p.Asset)
+		}
 
 		if fp.Temporal != nil {
+			pterm.Println()
 			pterm.Info.Printfln("  Period: %s - %s",
 				formatTimestamp(fp.Temporal.FirstSeen),
 				formatTimestamp(fp.Temporal.LastSeen))
@@ -152,6 +157,7 @@ func renderTransactionAnalysisResult(resp *servicepb.AnalyzeTransactionsResponse
 		}
 
 		if len(fp.VolumeStats) > 0 {
+			pterm.Println()
 			volTable := pterm.TableData{
 				{"ASSET", "TOTAL", "AVG", "MIN", "MAX", "COUNT"},
 			}
