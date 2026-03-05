@@ -122,6 +122,7 @@ func ExperimentalGlobalExporterInstrumentation(driverDeferred *deferred.Deferred
 			return fmt.Errorf("marshalling global exporter config: %w", err)
 		}
 		runConfiguration.AppendArgs("--"+cmd.WorkerGlobalExporterFlag, driver.Name()+":"+string(config))
+		runConfiguration.AppendArgs("--"+cmd.WorkerGlobalExporterLedgerPullIntervalFlag, "1s")
 		return nil
 	}
 }

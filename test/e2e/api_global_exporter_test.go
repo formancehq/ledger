@@ -122,7 +122,7 @@ var _ = Context("Global logs exporter tests", func() {
 							g.Expect(err).To(BeNil())
 							return messages
 						}).
-							WithTimeout(30 * time.Second).
+							WithTimeout(10 * time.Second).
 							WithPolling(100 * time.Millisecond).
 							Should(HaveLen(2))
 					})
@@ -203,7 +203,7 @@ var _ = Context("Global logs exporter tests", func() {
 						g.Expect(ledgers).To(HaveKey("ledger-a"))
 						g.Expect(ledgers).To(HaveKey("ledger-b"))
 					}).
-						WithTimeout(30 * time.Second).
+						WithTimeout(10 * time.Second).
 						WithPolling(100 * time.Millisecond).
 						Should(Succeed())
 				})
