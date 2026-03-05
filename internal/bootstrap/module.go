@@ -301,13 +301,13 @@ func Module() fx.Option {
 					meterProvider.Meter("storage"),
 				)
 			},
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, ss *state.SharedState, ib *indexbuilder.Builder, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig) clusterpb.ClusterServiceServer {
-				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, ss, ib, logger,
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig) clusterpb.ClusterServiceServer {
+				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, ss, ib, rs, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 					authCfg,
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``)),
 			fx.Annotate(func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
 				return clusterhealth.NewHealthChecker(
 					n, collector, servicePool,
@@ -877,7 +877,20 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, converter *state.MetadataConverter) {
 				lc.Append(worker.FxHook(converter))
 			},
-			// Start and stop the index builder.
+			// Register bbolt read index metrics and unregister on stop.
+		func(lc fx.Lifecycle, rs *readstore.Store, meterProvider metric.MeterProvider) error {
+			reg, err := rs.RegisterMetrics(meterProvider.Meter("readindex"))
+			if err != nil {
+				return fmt.Errorf("registering readindex metrics: %w", err)
+			}
+			lc.Append(fx.Hook{
+				OnStop: func(_ context.Context) error {
+					return reg.Unregister()
+				},
+			})
+			return nil
+		},
+		// Start and stop the index builder.
 			// The builder has its own dedicated Notifications signal to receive
 			// log-committed events from the FSM without competing with other consumers.
 			fx.Annotate(func(lc fx.Lifecycle, builder *indexbuilder.Builder, notifications *signal.Notifications, raftNode *node.Node) {

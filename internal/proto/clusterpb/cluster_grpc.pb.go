@@ -28,6 +28,7 @@ const (
 	ClusterService_PromoteLearner_FullMethodName     = "/cluster.ClusterService/PromoteLearner"
 	ClusterService_RemoveNode_FullMethodName         = "/cluster.ClusterService/RemoveNode"
 	ClusterService_CompactStore_FullMethodName       = "/cluster.ClusterService/CompactStore"
+	ClusterService_CompactReadIndex_FullMethodName   = "/cluster.ClusterService/CompactReadIndex"
 )
 
 // ClusterServiceClient is the client API for ClusterService service.
@@ -59,6 +60,9 @@ type ClusterServiceClient interface {
 	// CompactStore triggers a synchronous prefix-by-prefix compaction of the
 	// local Pebble store. Node-local operation (not forwarded to leader).
 	CompactStore(ctx context.Context, in *CompactStoreRequest, opts ...grpc.CallOption) (*CompactStoreResponse, error)
+	// CompactReadIndex triggers an online compaction of the local bbolt read index.
+	// Node-local operation (not forwarded to leader).
+	CompactReadIndex(ctx context.Context, in *CompactReadIndexRequest, opts ...grpc.CallOption) (*CompactReadIndexResponse, error)
 }
 
 type clusterServiceClient struct {
@@ -168,6 +172,16 @@ func (c *clusterServiceClient) CompactStore(ctx context.Context, in *CompactStor
 	return out, nil
 }
 
+func (c *clusterServiceClient) CompactReadIndex(ctx context.Context, in *CompactReadIndexRequest, opts ...grpc.CallOption) (*CompactReadIndexResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompactReadIndexResponse)
+	err := c.cc.Invoke(ctx, ClusterService_CompactReadIndex_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility.
@@ -197,6 +211,9 @@ type ClusterServiceServer interface {
 	// CompactStore triggers a synchronous prefix-by-prefix compaction of the
 	// local Pebble store. Node-local operation (not forwarded to leader).
 	CompactStore(context.Context, *CompactStoreRequest) (*CompactStoreResponse, error)
+	// CompactReadIndex triggers an online compaction of the local bbolt read index.
+	// Node-local operation (not forwarded to leader).
+	CompactReadIndex(context.Context, *CompactReadIndexRequest) (*CompactReadIndexResponse, error)
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -233,6 +250,9 @@ func (UnimplementedClusterServiceServer) RemoveNode(context.Context, *RemoveNode
 }
 func (UnimplementedClusterServiceServer) CompactStore(context.Context, *CompactStoreRequest) (*CompactStoreResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CompactStore not implemented")
+}
+func (UnimplementedClusterServiceServer) CompactReadIndex(context.Context, *CompactReadIndexRequest) (*CompactReadIndexResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CompactReadIndex not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 func (UnimplementedClusterServiceServer) testEmbeddedByValue()                        {}
@@ -410,6 +430,24 @@ func _ClusterService_CompactStore_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterService_CompactReadIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompactReadIndexRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).CompactReadIndex(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_CompactReadIndex_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).CompactReadIndex(ctx, req.(*CompactReadIndexRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -448,6 +486,10 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CompactStore",
 			Handler:    _ClusterService_CompactStore_Handler,
+		},
+		{
+			MethodName: "CompactReadIndex",
+			Handler:    _ClusterService_CompactReadIndex_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

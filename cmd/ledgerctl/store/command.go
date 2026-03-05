@@ -19,6 +19,7 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewBootstrapCommand())
 	cmd.AddCommand(NewRebuildIndexesCommand())
 	cmd.AddCommand(NewCompactCommand())
+	cmd.AddCommand(NewCompactReadIndexCommand())
 
 	return cmd
 }

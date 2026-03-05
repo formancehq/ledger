@@ -23,6 +23,10 @@ type Store struct {
 	logger logging.Logger
 	path   string
 
+	// Options used to open the database, needed to reopen after compaction.
+	noFreelistSync  bool
+	initialMmapSize int
+
 	// progressMu and progressCond allow callers to wait until the indexed
 	// sequence reaches a target value.  The index builder calls
 	// NotifyProgress after each WriteProgress to wake up waiters.
@@ -109,9 +113,11 @@ func New(dir string, noFreelistSync bool, initialMmapSize int, logger logging.Lo
 	}
 
 	s := &Store{
-		db:     db,
-		logger: logger.WithFields(map[string]any{"cmp": "read-store"}),
-		path:   dbPath,
+		db:              db,
+		logger:          logger.WithFields(map[string]any{"cmp": "read-store"}),
+		path:            dbPath,
+		noFreelistSync:  noFreelistSync,
+		initialMmapSize: initialMmapSize,
 	}
 	s.progressCond = sync.NewCond(&s.progressMu)
 	return s, nil

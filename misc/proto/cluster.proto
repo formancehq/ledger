@@ -41,6 +41,10 @@ service ClusterService {
   // CompactStore triggers a synchronous prefix-by-prefix compaction of the
   // local Pebble store. Node-local operation (not forwarded to leader).
   rpc CompactStore(CompactStoreRequest) returns (CompactStoreResponse);
+
+  // CompactReadIndex triggers an online compaction of the local bbolt read index.
+  // Node-local operation (not forwarded to leader).
+  rpc CompactReadIndex(CompactReadIndexRequest) returns (CompactReadIndexResponse);
 }
 
 message GetClusterStateRequest {
@@ -207,4 +211,16 @@ message CompactStoreRequest {}
 
 message CompactStoreResponse {
   int64 duration_ms = 1;  // Wall-clock duration of the compaction in milliseconds
+}
+
+// ============================================================================
+// Compact Read Index Messages
+// ============================================================================
+
+message CompactReadIndexRequest {}
+
+message CompactReadIndexResponse {
+  int64 duration_ms = 1;       // Wall-clock duration of the compaction in milliseconds
+  int64 size_before_bytes = 2; // Read index file size before compaction in bytes
+  int64 size_after_bytes = 3;  // Read index file size after compaction in bytes
 }

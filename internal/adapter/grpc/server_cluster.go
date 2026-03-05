@@ -15,8 +15,9 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 	ggrpc "google.golang.org/grpc"
 )
 
@@ -27,6 +28,7 @@ type ClusterServiceServerImpl struct {
 	servicePool      *transport.ConnectionPool
 	collector        *diskusage.Collector
 	store            *dal.Store
+	readStore        *readstore.Store
 	sharedState      *state.SharedState
 	indexBuilder     *indexbuilder.Builder
 	logger           logging.Logger
@@ -43,6 +45,7 @@ func NewClusterServiceServer(
 	store *dal.Store,
 	sharedState *state.SharedState,
 	indexBuilder *indexbuilder.Builder,
+	readStore *readstore.Store,
 	logger logging.Logger,
 	localRaftAddr string,
 	localServiceAddr string,
@@ -54,6 +57,7 @@ func NewClusterServiceServer(
 		servicePool:      servicePool,
 		collector:        collector,
 		store:            store,
+		readStore:        readStore,
 		sharedState:      sharedState,
 		indexBuilder:     indexBuilder,
 		logger:           logger.WithField("component", "cluster-server"),
@@ -510,6 +514,24 @@ func (impl *ClusterServiceServerImpl) CompactStore(ctx context.Context, _ *clust
 
 	return &clusterpb.CompactStoreResponse{
 		DurationMs: time.Since(start).Milliseconds(),
+	}, nil
+}
+
+func (impl *ClusterServiceServerImpl) CompactReadIndex(ctx context.Context, _ *clusterpb.CompactReadIndexRequest) (*clusterpb.CompactReadIndexResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
+		return nil, err
+	}
+
+	start := time.Now()
+	sizeBefore, sizeAfter, err := impl.readStore.Compact(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read index compaction failed: %w", err)
+	}
+
+	return &clusterpb.CompactReadIndexResponse{
+		DurationMs:      time.Since(start).Milliseconds(),
+		SizeBeforeBytes: sizeBefore,
+		SizeAfterBytes:  sizeAfter,
 	}, nil
 }
 
