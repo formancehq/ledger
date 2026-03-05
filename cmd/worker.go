@@ -180,9 +180,10 @@ func newWorkerModule(configuration WorkerConfiguration) (fx.Option, error) {
 		}
 		workerModules = append(workerModules, replication.NewFXGlobalExporterModule(driverName, driverConfig, replication.GlobalExporterRunnerConfig{
 			Reset:              configuration.GlobalExporterReset,
+			LedgerPullInterval: configuration.GlobalExporterLedgerPullInterval,
 			PullInterval:       configuration.PullInterval,
 			PushRetryPeriod:    configuration.PushRetryPeriod,
-			LedgerPullInterval: configuration.GlobalExporterLedgerPullInterval,
+			LogsPageSize:       configuration.LogsPageSize,
 		}))
 	}
 
