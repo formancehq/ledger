@@ -127,6 +127,7 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 	if r.config.Reset {
 		r.logger.Infof("Resetting global exporter state — all logs will be re-exported")
 		if err := r.store.DeleteAllGlobalExporterStates(ctx); err != nil {
+			// We make sure to panic here, we must never miss a reset failure.
 			panic("Failed to reset global exporter state")
 		}
 	}
@@ -185,6 +186,8 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 	for {
 		select {
 		case <-r.stopCh:
+			return
+		case <-ctx.Done():
 			return
 		case <-time.After(nextInterval):
 		}
