@@ -76,15 +76,24 @@ var _ = Context("Ledger application lifecycle tests", func() {
 		})
 		When("restarting the service", func() {
 			BeforeEach(func(specContext SpecContext) {
-				testServer, err := testServer.Wait(specContext)
+				srv, err := testServer.Wait(specContext)
 				Expect(err).To(BeNil())
 
 				// Use context.Background() for the restart so the new service context
-				// is not tied to ginkgo's spec context lifecycle. This is consistent
-				// with how DeferNew starts the service initially (with context.Background()),
-				// and prevents the spec context cancellation from racing with the
-				// DeferCleanup's 10-second stop timeout.
-				Expect(testServer.Restart(context.Background())).To(BeNil())
+				// is not tied to ginkgo's spec context lifecycle.
+				Expect(srv.Restart(context.Background())).To(BeNil())
+
+				// Explicitly stop the restarted service with a generous timeout.
+				// This DeferCleanup runs before DeferNew's 10-second cleanup (LIFO),
+				// so the service is already stopped when DeferNew's cleanup fires
+				// (no-op since cancel == nil). Under CI load the full fx shutdown
+				// chain (watermill router, nats subscriber, etc.) can exceed 10s.
+				DeferCleanup(func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+
+					Expect(srv.Stop(ctx)).To(Succeed())
+				})
 			})
 			It("should be ok", func() {})
 		})
