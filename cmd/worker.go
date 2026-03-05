@@ -36,8 +36,9 @@ const (
 
 	WorkerGRPCAddressFlag = "worker-grpc-address"
 
-	WorkerGlobalExporterFlag      = "worker-global-exporter"
-	WorkerGlobalExporterResetFlag = "worker-global-exporter-reset"
+	WorkerGlobalExporterFlag                   = "worker-global-exporter"
+	WorkerGlobalExporterResetFlag              = "worker-global-exporter-reset"
+	WorkerGlobalExporterLedgerPullIntervalFlag = "worker-global-exporter-ledger-pull-interval"
 )
 
 type WorkerGRPCConfig struct {
@@ -56,8 +57,9 @@ type WorkerConfiguration struct {
 	BucketCleanupRetentionPeriod time.Duration `mapstructure:"worker-bucket-cleanup-retention-period"`
 	BucketCleanupCRONSpec        cron.Schedule `mapstructure:"worker-bucket-cleanup-schedule"`
 
-	GlobalExporter      string `mapstructure:"worker-global-exporter"`
-	GlobalExporterReset bool   `mapstructure:"worker-global-exporter-reset"`
+	GlobalExporter                   string        `mapstructure:"worker-global-exporter"`
+	GlobalExporterReset              bool          `mapstructure:"worker-global-exporter-reset"`
+	GlobalExporterLedgerPullInterval time.Duration `mapstructure:"worker-global-exporter-ledger-pull-interval"`
 }
 
 func (cfg WorkerConfiguration) Validate() error {
@@ -90,6 +92,7 @@ func addWorkerFlags(cmd *cobra.Command) {
 	cmd.Flags().String(WorkerBucketCleanupScheduleFlag, "0 0 * * * *", "Schedule for bucket cleanup (cron format)")
 	cmd.Flags().String(WorkerGlobalExporterFlag, "", "Global logs exporter configuration (<driver>:<config>)")
 	cmd.Flags().Bool(WorkerGlobalExporterResetFlag, false, "Reset global logs exporter state and re-export all logs from the beginning")
+	cmd.Flags().Duration(WorkerGlobalExporterLedgerPullIntervalFlag, replication.DefaultGlobalExporterLedgerPullInterval, "How often the global exporter checks for new ledgers")
 }
 
 // NewWorkerCommand constructs the "worker" Cobra command which initializes and runs the worker service using loaded configuration and composed FX modules.
@@ -176,7 +179,10 @@ func newWorkerModule(configuration WorkerConfiguration) (fx.Option, error) {
 			return nil, fmt.Errorf("parsing global-logs-exporter: %w", err)
 		}
 		workerModules = append(workerModules, replication.NewFXGlobalExporterModule(driverName, driverConfig, replication.GlobalExporterRunnerConfig{
-			Reset: configuration.GlobalExporterReset,
+			Reset:              configuration.GlobalExporterReset,
+			PullInterval:       configuration.PullInterval,
+			PushRetryPeriod:    configuration.PushRetryPeriod,
+			LedgerPullInterval: configuration.GlobalExporterLedgerPullInterval,
 		}))
 	}
 

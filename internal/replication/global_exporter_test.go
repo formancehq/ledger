@@ -149,10 +149,10 @@ func TestNewGlobalExporterRunnerDefaults(t *testing.T) {
 		GlobalExporterRunnerConfig{},
 	)
 
-	require.Equal(t, DefaultGlobalExporterPollInterval, runner.config.PollInterval)
+	require.Equal(t, DefaultGlobalExporterPullInterval, runner.config.PullInterval)
 	require.Equal(t, DefaultGlobalExporterPushRetryPeriod, runner.config.PushRetryPeriod)
 	require.Equal(t, DefaultGlobalExporterLogsPageSize, runner.config.LogsPageSize)
-	require.Equal(t, DefaultGlobalExporterLedgerPollInterval, runner.config.LedgerPollInterval)
+	require.Equal(t, DefaultGlobalExporterLedgerPullInterval, runner.config.LedgerPullInterval)
 }
 
 func TestNewGlobalExporterRunnerCustomConfig(t *testing.T) {
@@ -165,17 +165,17 @@ func TestNewGlobalExporterRunnerCustomConfig(t *testing.T) {
 		nil,
 		logging.Testing(),
 		GlobalExporterRunnerConfig{
-			PollInterval:       5 * time.Second,
+			PullInterval:       5 * time.Second,
 			PushRetryPeriod:    30 * time.Second,
 			LogsPageSize:       50,
-			LedgerPollInterval: 20 * time.Second,
+			LedgerPullInterval: 20 * time.Second,
 		},
 	)
 
-	require.Equal(t, 5*time.Second, runner.config.PollInterval)
+	require.Equal(t, 5*time.Second, runner.config.PullInterval)
 	require.Equal(t, 30*time.Second, runner.config.PushRetryPeriod)
 	require.Equal(t, uint64(50), runner.config.LogsPageSize)
-	require.Equal(t, 20*time.Second, runner.config.LedgerPollInterval)
+	require.Equal(t, 20*time.Second, runner.config.LedgerPullInterval)
 }
 
 func TestNewGlobalExporterRunnerCachesLogFetcher(t *testing.T) {
@@ -269,10 +269,10 @@ func TestGlobalExporterRunnerNominal(t *testing.T) {
 		},
 		logging.Testing(),
 		GlobalExporterRunnerConfig{
-			PollInterval:       50 * time.Millisecond,
+			PullInterval:       50 * time.Millisecond,
 			PushRetryPeriod:    50 * time.Millisecond,
 			LogsPageSize:       100,
-			LedgerPollInterval: 50 * time.Millisecond,
+			LedgerPullInterval: 50 * time.Millisecond,
 		},
 	)
 
@@ -361,10 +361,10 @@ func TestGlobalExporterRunnerWithExistingState(t *testing.T) {
 		},
 		logging.Testing(),
 		GlobalExporterRunnerConfig{
-			PollInterval:       50 * time.Millisecond,
+			PullInterval:       50 * time.Millisecond,
 			PushRetryPeriod:    50 * time.Millisecond,
 			LogsPageSize:       100,
-			LedgerPollInterval: 50 * time.Millisecond,
+			LedgerPullInterval: 50 * time.Millisecond,
 		},
 	)
 
@@ -430,10 +430,10 @@ func TestGlobalExporterRunnerReset(t *testing.T) {
 		},
 		logging.Testing(),
 		GlobalExporterRunnerConfig{
-			PollInterval:       50 * time.Millisecond,
+			PullInterval:       50 * time.Millisecond,
 			PushRetryPeriod:    50 * time.Millisecond,
 			LogsPageSize:       100,
-			LedgerPollInterval: 50 * time.Millisecond,
+			LedgerPullInterval: 50 * time.Millisecond,
 			Reset:              true,
 		},
 	)
@@ -482,7 +482,7 @@ func TestGlobalExporterRunnerShutdownBeforeDriverReady(t *testing.T) {
 		},
 		logging.Testing(),
 		GlobalExporterRunnerConfig{
-			PollInterval:    50 * time.Millisecond,
+			PullInterval:    50 * time.Millisecond,
 			PushRetryPeriod: 50 * time.Millisecond,
 		},
 	)
@@ -507,7 +507,7 @@ func TestGlobalExporterRunnerShutdownTimeout(t *testing.T) {
 		nil,
 		logging.Testing(),
 		GlobalExporterRunnerConfig{
-			PollInterval: 50 * time.Millisecond,
+			PullInterval: 50 * time.Millisecond,
 		},
 	)
 
@@ -613,10 +613,10 @@ func TestGlobalExporterRunnerMultipleLedgers(t *testing.T) {
 		},
 		logging.Testing(),
 		GlobalExporterRunnerConfig{
-			PollInterval:       50 * time.Millisecond,
+			PullInterval:       50 * time.Millisecond,
 			PushRetryPeriod:    50 * time.Millisecond,
 			LogsPageSize:       100,
-			LedgerPollInterval: 50 * time.Millisecond,
+			LedgerPullInterval: 50 * time.Millisecond,
 		},
 	)
 
@@ -666,7 +666,7 @@ func TestGlobalExporterRunnerListStatesError(t *testing.T) {
 		nil,
 		logging.Testing(),
 		GlobalExporterRunnerConfig{
-			PollInterval:    50 * time.Millisecond,
+			PullInterval:    50 * time.Millisecond,
 			PushRetryPeriod: 50 * time.Millisecond,
 		},
 	)
@@ -778,10 +778,10 @@ func TestGlobalExporterRunnerFetcherFailureDoesNotSkipLedger(t *testing.T) {
 		openLedger,
 		logging.Testing(),
 		GlobalExporterRunnerConfig{
-			PollInterval:       50 * time.Millisecond,
+			PullInterval:       50 * time.Millisecond,
 			PushRetryPeriod:    50 * time.Millisecond,
 			LogsPageSize:       100,
-			LedgerPollInterval: 50 * time.Millisecond,
+			LedgerPullInterval: 50 * time.Millisecond,
 		},
 	)
 
@@ -834,7 +834,7 @@ func TestGlobalExporterRunnerShutdownIdempotent(t *testing.T) {
 		nil,
 		logging.Testing(),
 		GlobalExporterRunnerConfig{
-			PollInterval: 50 * time.Millisecond,
+			PullInterval: 50 * time.Millisecond,
 		},
 	)
 

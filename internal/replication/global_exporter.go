@@ -25,10 +25,10 @@ type GlobalExporterStateStore interface {
 }
 
 var (
-	DefaultGlobalExporterPollInterval       = 1 * time.Second
+	DefaultGlobalExporterPullInterval       = 1 * time.Second
 	DefaultGlobalExporterPushRetryPeriod    = 10 * time.Second
 	DefaultGlobalExporterLogsPageSize       = uint64(100)
-	DefaultGlobalExporterLedgerPollInterval = 10 * time.Second
+	DefaultGlobalExporterLedgerPullInterval = 10 * time.Second
 )
 
 type globalExporterProgressTracker struct {
@@ -55,10 +55,10 @@ func (t *globalExporterProgressTracker) UpdateLastLogID(ctx context.Context, id 
 }
 
 type GlobalExporterRunnerConfig struct {
-	PollInterval       time.Duration
+	PullInterval       time.Duration
 	PushRetryPeriod    time.Duration
 	LogsPageSize       uint64
-	LedgerPollInterval time.Duration
+	LedgerPullInterval time.Duration
 	Reset              bool
 }
 
@@ -80,8 +80,8 @@ func NewGlobalExporterRunner(
 	logger logging.Logger,
 	config GlobalExporterRunnerConfig,
 ) *GlobalExporterRunner {
-	if config.PollInterval == 0 {
-		config.PollInterval = DefaultGlobalExporterPollInterval
+	if config.PullInterval == 0 {
+		config.PullInterval = DefaultGlobalExporterPullInterval
 	}
 	if config.PushRetryPeriod == 0 {
 		config.PushRetryPeriod = DefaultGlobalExporterPushRetryPeriod
@@ -89,8 +89,8 @@ func NewGlobalExporterRunner(
 	if config.LogsPageSize == 0 {
 		config.LogsPageSize = DefaultGlobalExporterLogsPageSize
 	}
-	if config.LedgerPollInterval == 0 {
-		config.LedgerPollInterval = DefaultGlobalExporterLedgerPollInterval
+	if config.LedgerPullInterval == 0 {
+		config.LedgerPullInterval = DefaultGlobalExporterLedgerPullInterval
 	}
 
 	var fetcherMu sync.Mutex
@@ -175,7 +175,7 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 	}()
 
 	pipelineOpts := []PipelineOption{
-		WithPullPeriod(r.config.PollInterval),
+		WithPullPeriod(r.config.PullInterval),
 		WithPushRetryPeriod(r.config.PushRetryPeriod),
 		WithLogsPageSize(r.config.LogsPageSize),
 	}
@@ -189,7 +189,7 @@ func (r *GlobalExporterRunner) Run(ctx context.Context) {
 		case <-time.After(nextInterval):
 		}
 
-		nextInterval = r.config.LedgerPollInterval
+		nextInterval = r.config.LedgerPullInterval
 
 		// Discover new ledgers (only those with id > lastSeenLedgerID).
 		var nextQuery common.PaginatedQuery[systemstore.ListLedgersQueryPayload] = common.InitialPaginatedQuery[systemstore.ListLedgersQueryPayload]{
