@@ -27,7 +27,7 @@ var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "RParen", Pattern: `\)`},
 	{Name: "Dollar", Pattern: `\$`},
 	{Name: "String", Pattern: `"[^"]*"|'[^']*'`},
-	{Name: "Keyword", Pattern: `\b(and|or|not|metadata|address|source|destination|exists|true|false)\b`},
+	{Name: "Keyword", Pattern: `\b(and|or|not|metadata|address|source|destination|ledger|exists|true|false)\b`},
 	{Name: "Number", Pattern: `-?[0-9]+`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_:.\-/]*`},
 })
@@ -141,11 +141,15 @@ func (p *Primary) toProto() (*commonpb.QueryFilter, error) {
 type Condition struct {
 	Metadata *MetadataCond `parser:"  @@"`
 	Address  *AddressCond  `parser:"| @@"`
+	Ledger   *LedgerCond   `parser:"| @@"`
 }
 
 func (c *Condition) toProto() (*commonpb.QueryFilter, error) {
 	if c.Metadata != nil {
 		return c.Metadata.toProto()
+	}
+	if c.Ledger != nil {
+		return c.Ledger.toProto()
 	}
 	return c.Address.toProto()
 }
@@ -209,6 +213,26 @@ func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, 
 	default:
 		return nil, fmt.Errorf("missing operator")
 	}
+}
+
+// --- Ledger conditions ---
+
+type LedgerCond struct {
+	Exact *Value `parser:"'ledger' '==' @@"`
+}
+
+func (l *LedgerCond) toProto() (*commonpb.QueryFilter, error) {
+	cond := &commonpb.StringCondition{}
+	if l.Exact.Param != "" {
+		cond.Value = &commonpb.StringCondition_Param{Param: l.Exact.Param}
+	} else {
+		cond.Value = &commonpb.StringCondition_Hardcoded{Hardcoded: l.Exact.resolve()}
+	}
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Ledger{
+			Ledger: &commonpb.LedgerCondition{Cond: cond},
+		},
+	}, nil
 }
 
 // --- Address conditions ---

@@ -876,15 +876,6 @@ func (m *CreateIndexRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *CreateIndexRequest_AddressRole) CloneVT() isCreateIndexRequest_Index {
-	if m == nil {
-		return (*CreateIndexRequest_AddressRole)(nil)
-	}
-	r := new(CreateIndexRequest_AddressRole)
-	r.AddressRole = m.AddressRole
-	return r
-}
-
 func (m *CreateIndexRequest_Metadata) CloneVT() isCreateIndexRequest_Index {
 	if m == nil {
 		return (*CreateIndexRequest_Metadata)(nil)
@@ -900,6 +891,15 @@ func (m *CreateIndexRequest_Builtin) CloneVT() isCreateIndexRequest_Index {
 	}
 	r := new(CreateIndexRequest_Builtin)
 	r.Builtin = m.Builtin
+	return r
+}
+
+func (m *CreateIndexRequest_LogBuiltin) CloneVT() isCreateIndexRequest_Index {
+	if m == nil {
+		return (*CreateIndexRequest_LogBuiltin)(nil)
+	}
+	r := new(CreateIndexRequest_LogBuiltin)
+	r.LogBuiltin = m.LogBuiltin
 	return r
 }
 
@@ -925,15 +925,6 @@ func (m *DropIndexRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *DropIndexRequest_AddressRole) CloneVT() isDropIndexRequest_Index {
-	if m == nil {
-		return (*DropIndexRequest_AddressRole)(nil)
-	}
-	r := new(DropIndexRequest_AddressRole)
-	r.AddressRole = m.AddressRole
-	return r
-}
-
 func (m *DropIndexRequest_Metadata) CloneVT() isDropIndexRequest_Index {
 	if m == nil {
 		return (*DropIndexRequest_Metadata)(nil)
@@ -949,6 +940,15 @@ func (m *DropIndexRequest_Builtin) CloneVT() isDropIndexRequest_Index {
 	}
 	r := new(DropIndexRequest_Builtin)
 	r.Builtin = m.Builtin
+	return r
+}
+
+func (m *DropIndexRequest_LogBuiltin) CloneVT() isDropIndexRequest_Index {
+	if m == nil {
+		return (*DropIndexRequest_LogBuiltin)(nil)
+	}
+	r := new(DropIndexRequest_LogBuiltin)
+	r.LogBuiltin = m.LogBuiltin
 	return r
 }
 
@@ -1766,6 +1766,7 @@ func (m *ListLogsRequest) CloneVT() *ListLogsRequest {
 	r := new(ListLogsRequest)
 	r.PageSize = m.PageSize
 	r.MinLogSequence = m.MinLogSequence
+	r.Filter = m.Filter.CloneVT()
 	if rhs := m.AfterSequence; rhs != nil {
 		tmpVal := *rhs
 		r.AfterSequence = &tmpVal
@@ -2556,15 +2557,6 @@ func (m *IndexBackfillProgress) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *IndexBackfillProgress_AddressRole) CloneVT() isIndexBackfillProgress_Index {
-	if m == nil {
-		return (*IndexBackfillProgress_AddressRole)(nil)
-	}
-	r := new(IndexBackfillProgress_AddressRole)
-	r.AddressRole = m.AddressRole
-	return r
-}
-
 func (m *IndexBackfillProgress_Metadata) CloneVT() isIndexBackfillProgress_Index {
 	if m == nil {
 		return (*IndexBackfillProgress_Metadata)(nil)
@@ -2580,6 +2572,15 @@ func (m *IndexBackfillProgress_Builtin) CloneVT() isIndexBackfillProgress_Index 
 	}
 	r := new(IndexBackfillProgress_Builtin)
 	r.Builtin = m.Builtin
+	return r
+}
+
+func (m *IndexBackfillProgress_LogBuiltin) CloneVT() isIndexBackfillProgress_Index {
+	if m == nil {
+		return (*IndexBackfillProgress_LogBuiltin)(nil)
+	}
+	r := new(IndexBackfillProgress_LogBuiltin)
+	r.LogBuiltin = m.LogBuiltin
 	return r
 }
 
@@ -4092,23 +4093,6 @@ func (this *CreateIndexRequest) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *CreateIndexRequest_AddressRole) EqualVT(thatIface isCreateIndexRequest_Index) bool {
-	that, ok := thatIface.(*CreateIndexRequest_AddressRole)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.AddressRole != that.AddressRole {
-		return false
-	}
-	return true
-}
-
 func (this *CreateIndexRequest_Metadata) EqualVT(thatIface isCreateIndexRequest_Index) bool {
 	that, ok := thatIface.(*CreateIndexRequest_Metadata)
 	if !ok {
@@ -4151,6 +4135,23 @@ func (this *CreateIndexRequest_Builtin) EqualVT(thatIface isCreateIndexRequest_I
 	return true
 }
 
+func (this *CreateIndexRequest_LogBuiltin) EqualVT(thatIface isCreateIndexRequest_Index) bool {
+	that, ok := thatIface.(*CreateIndexRequest_LogBuiltin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.LogBuiltin != that.LogBuiltin {
+		return false
+	}
+	return true
+}
+
 func (this *DropIndexRequest) EqualVT(that *DropIndexRequest) bool {
 	if this == that {
 		return true
@@ -4182,23 +4183,6 @@ func (this *DropIndexRequest) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *DropIndexRequest_AddressRole) EqualVT(thatIface isDropIndexRequest_Index) bool {
-	that, ok := thatIface.(*DropIndexRequest_AddressRole)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.AddressRole != that.AddressRole {
-		return false
-	}
-	return true
-}
-
 func (this *DropIndexRequest_Metadata) EqualVT(thatIface isDropIndexRequest_Index) bool {
 	that, ok := thatIface.(*DropIndexRequest_Metadata)
 	if !ok {
@@ -4236,6 +4220,23 @@ func (this *DropIndexRequest_Builtin) EqualVT(thatIface isDropIndexRequest_Index
 		return false
 	}
 	if this.Builtin != that.Builtin {
+		return false
+	}
+	return true
+}
+
+func (this *DropIndexRequest_LogBuiltin) EqualVT(thatIface isDropIndexRequest_Index) bool {
+	that, ok := thatIface.(*DropIndexRequest_LogBuiltin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.LogBuiltin != that.LogBuiltin {
 		return false
 	}
 	return true
@@ -5470,6 +5471,9 @@ func (this *ListLogsRequest) EqualVT(that *ListLogsRequest) bool {
 	if this.MinLogSequence != that.MinLogSequence {
 		return false
 	}
+	if !this.Filter.EqualVT(that.Filter) {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -6650,23 +6654,6 @@ func (this *IndexBackfillProgress) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *IndexBackfillProgress_AddressRole) EqualVT(thatIface isIndexBackfillProgress_Index) bool {
-	that, ok := thatIface.(*IndexBackfillProgress_AddressRole)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.AddressRole != that.AddressRole {
-		return false
-	}
-	return true
-}
-
 func (this *IndexBackfillProgress_Metadata) EqualVT(thatIface isIndexBackfillProgress_Index) bool {
 	that, ok := thatIface.(*IndexBackfillProgress_Metadata)
 	if !ok {
@@ -6704,6 +6691,23 @@ func (this *IndexBackfillProgress_Builtin) EqualVT(thatIface isIndexBackfillProg
 		return false
 	}
 	if this.Builtin != that.Builtin {
+		return false
+	}
+	return true
+}
+
+func (this *IndexBackfillProgress_LogBuiltin) EqualVT(thatIface isIndexBackfillProgress_Index) bool {
+	that, ok := thatIface.(*IndexBackfillProgress_LogBuiltin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.LogBuiltin != that.LogBuiltin {
 		return false
 	}
 	return true
@@ -8856,18 +8860,6 @@ func (m *CreateIndexRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CreateIndexRequest_AddressRole) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *CreateIndexRequest_AddressRole) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AddressRole))
-	i--
-	dAtA[i] = 0x10
-	return len(dAtA) - i, nil
-}
 func (m *CreateIndexRequest_Metadata) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -8897,6 +8889,18 @@ func (m *CreateIndexRequest_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, e
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
 	i--
 	dAtA[i] = 0x20
+	return len(dAtA) - i, nil
+}
+func (m *CreateIndexRequest_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CreateIndexRequest_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
+	i--
+	dAtA[i] = 0x28
 	return len(dAtA) - i, nil
 }
 func (m *DropIndexRequest) MarshalVT() (dAtA []byte, err error) {
@@ -8948,18 +8952,6 @@ func (m *DropIndexRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *DropIndexRequest_AddressRole) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *DropIndexRequest_AddressRole) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AddressRole))
-	i--
-	dAtA[i] = 0x10
-	return len(dAtA) - i, nil
-}
 func (m *DropIndexRequest_Metadata) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -8989,6 +8981,18 @@ func (m *DropIndexRequest_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
 	i--
 	dAtA[i] = 0x20
+	return len(dAtA) - i, nil
+}
+func (m *DropIndexRequest_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DropIndexRequest_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
+	i--
+	dAtA[i] = 0x28
 	return len(dAtA) - i, nil
 }
 func (m *SaveNumscriptRequest) MarshalVT() (dAtA []byte, err error) {
@@ -11190,6 +11194,16 @@ func (m *ListLogsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Filter != nil {
+		size, err := m.Filter.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x22
+	}
 	if m.MinLogSequence != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinLogSequence))
 		i--
@@ -13059,18 +13073,6 @@ func (m *IndexBackfillProgress) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
-func (m *IndexBackfillProgress_AddressRole) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *IndexBackfillProgress_AddressRole) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AddressRole))
-	i--
-	dAtA[i] = 0x10
-	return len(dAtA) - i, nil
-}
 func (m *IndexBackfillProgress_Metadata) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -13100,6 +13102,18 @@ func (m *IndexBackfillProgress_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
 	i--
 	dAtA[i] = 0x28
+	return len(dAtA) - i, nil
+}
+func (m *IndexBackfillProgress_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IndexBackfillProgress_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
+	i--
+	dAtA[i] = 0x30
 	return len(dAtA) - i, nil
 }
 func (m *GetLedgerStatsRequest) MarshalVT() (dAtA []byte, err error) {
@@ -14157,15 +14171,6 @@ func (m *CreateIndexRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *CreateIndexRequest_AddressRole) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + protohelpers.SizeOfVarint(uint64(m.AddressRole))
-	return n
-}
 func (m *CreateIndexRequest_Metadata) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -14187,6 +14192,15 @@ func (m *CreateIndexRequest_Builtin) SizeVT() (n int) {
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
 	return n
 }
+func (m *CreateIndexRequest_LogBuiltin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
+	return n
+}
 func (m *DropIndexRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -14204,15 +14218,6 @@ func (m *DropIndexRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *DropIndexRequest_AddressRole) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + protohelpers.SizeOfVarint(uint64(m.AddressRole))
-	return n
-}
 func (m *DropIndexRequest_Metadata) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -14232,6 +14237,15 @@ func (m *DropIndexRequest_Builtin) SizeVT() (n int) {
 	var l int
 	_ = l
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
+	return n
+}
+func (m *DropIndexRequest_LogBuiltin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
 	return n
 }
 func (m *SaveNumscriptRequest) SizeVT() (n int) {
@@ -15130,6 +15144,10 @@ func (m *ListLogsRequest) SizeVT() (n int) {
 	if m.MinLogSequence != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinLogSequence))
 	}
+	if m.Filter != nil {
+		l = m.Filter.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -15884,15 +15902,6 @@ func (m *IndexBackfillProgress) SizeVT() (n int) {
 	return n
 }
 
-func (m *IndexBackfillProgress_AddressRole) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + protohelpers.SizeOfVarint(uint64(m.AddressRole))
-	return n
-}
 func (m *IndexBackfillProgress_Metadata) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -15912,6 +15921,15 @@ func (m *IndexBackfillProgress_Builtin) SizeVT() (n int) {
 	var l int
 	_ = l
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
+	return n
+}
+func (m *IndexBackfillProgress_LogBuiltin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
 	return n
 }
 func (m *GetLedgerStatsRequest) SizeVT() (n int) {
@@ -20270,26 +20288,6 @@ func (m *CreateIndexRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AddressRole", wireType)
-			}
-			var v commonpb.AddressRole
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= commonpb.AddressRole(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Index = &CreateIndexRequest_AddressRole{AddressRole: v}
 		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
@@ -20351,6 +20349,26 @@ func (m *CreateIndexRequest) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Index = &CreateIndexRequest_Builtin{Builtin: v}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			}
+			var v commonpb.LogBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.LogBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &CreateIndexRequest_LogBuiltin{LogBuiltin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -20434,26 +20452,6 @@ func (m *DropIndexRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AddressRole", wireType)
-			}
-			var v commonpb.AddressRole
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= commonpb.AddressRole(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Index = &DropIndexRequest_AddressRole{AddressRole: v}
 		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
@@ -20515,6 +20513,26 @@ func (m *DropIndexRequest) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Index = &DropIndexRequest_Builtin{Builtin: v}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			}
+			var v commonpb.LogBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.LogBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &DropIndexRequest_LogBuiltin{LogBuiltin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -25884,6 +25902,42 @@ func (m *ListLogsRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Filter", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Filter == nil {
+				m.Filter = &commonpb.QueryFilter{}
+			}
+			if err := m.Filter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -30257,26 +30311,6 @@ func (m *IndexBackfillProgress) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AddressRole", wireType)
-			}
-			var v commonpb.AddressRole
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= commonpb.AddressRole(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Index = &IndexBackfillProgress_AddressRole{AddressRole: v}
 		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
@@ -30357,6 +30391,26 @@ func (m *IndexBackfillProgress) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Index = &IndexBackfillProgress_Builtin{Builtin: v}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			}
+			var v commonpb.LogBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.LogBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &IndexBackfillProgress_LogBuiltin{LogBuiltin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -65,6 +65,11 @@ var (
 	// Key: [ledger\x00][timestamp_BE(8B)][txID_BE(8B)]
 	// Value: (empty)
 	BucketTransactionTimestamp = []byte("tstmp")
+
+	// BucketLedgerLogs maps (ledger, ledgerLogID) → globalSequence for per-ledger log listing.
+	// Key: [ledger\x00][ledgerLogID_BE(8B)]
+	// Value: [globalSequence_BE(8B)]
+	BucketLedgerLogs = []byte("llog")
 )
 
 // Namespace prefixes to distinguish accounts and transactions in shared buckets.
@@ -287,19 +292,19 @@ func EntityExistsNonNullPrefix(kb *KeyBuilder, ledger, ns, metaKey string) []byt
 
 // Backfill key kind bytes identify the index type in a bbolt backfill progress key.
 const (
-	BackfillKindAddress  = byte('a') // address role index: [ledger\x00]a[role_byte]
-	BackfillKindMetadata = byte('m') // metadata field index: [ledger\x00]m[target_byte][key]
-	BackfillKindBuiltin  = byte('b') // builtin transaction field index: [ledger\x00]b[builtin_byte]
+	BackfillKindMetadata   = byte('m') // metadata field index: [ledger\x00]m[target_byte][key]
+	BackfillKindBuiltin    = byte('b') // builtin transaction field index: [ledger\x00]b[builtin_byte]
+	BackfillKindLogBuiltin = byte('l') // builtin log field index: [ledger\x00]l[builtin_byte]
 )
 
 // ParseBackfillKey decodes a bbolt backfill key into its components.
 // Format:
 //
-//	Address:  [ledger\x00]a[role_byte]
-//	Metadata: [ledger\x00]m[target_byte][key]
-//	Builtin:  [ledger\x00]b[builtin_byte]
+//	Metadata:    [ledger\x00]m[target_byte][key]
+//	Builtin:     [ledger\x00]b[builtin_byte]
+//	LogBuiltin:  [ledger\x00]l[builtin_byte]
 //
-// Returns the ledger name, kind byte (BackfillKindAddress/Metadata/Builtin), remaining details, and ok.
+// Returns the ledger name, kind byte (BackfillKindMetadata/Builtin/LogBuiltin), remaining details, and ok.
 func ParseBackfillKey(key []byte) (ledger string, kind byte, details []byte, ok bool) {
 	// Find the null separator between ledger name and type indicator.
 	for i, b := range key {
@@ -362,6 +367,25 @@ func TransactionTimestampKey(kb *KeyBuilder, ledger string, timestamp, txID uint
 //
 //	[ledger\x00]
 func TransactionTimestampRangePrefix(kb *KeyBuilder, ledger string) []byte {
+	return kb.Reset().
+		PutLedger(ledger).
+		Snapshot()
+}
+
+// LedgerLogKey builds a full key in BucketLedgerLogs.
+//
+//	[ledger\x00][ledgerLogID_BE(8B)]
+func LedgerLogKey(kb *KeyBuilder, ledger string, logID uint64) []byte {
+	return kb.Reset().
+		PutLedger(ledger).
+		PutUint64(logID).
+		Build()
+}
+
+// LedgerLogPrefix returns the ledger prefix for range scans in BucketLedgerLogs.
+//
+//	[ledger\x00]
+func LedgerLogPrefix(kb *KeyBuilder, ledger string) []byte {
 	return kb.Reset().
 		PutLedger(ledger).
 		Snapshot()

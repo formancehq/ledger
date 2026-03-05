@@ -1038,15 +1038,6 @@ func (m *CreateIndexOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *CreateIndexOrder_AddressRole) CloneVT() isCreateIndexOrder_Index {
-	if m == nil {
-		return (*CreateIndexOrder_AddressRole)(nil)
-	}
-	r := new(CreateIndexOrder_AddressRole)
-	r.AddressRole = m.AddressRole
-	return r
-}
-
 func (m *CreateIndexOrder_Metadata) CloneVT() isCreateIndexOrder_Index {
 	if m == nil {
 		return (*CreateIndexOrder_Metadata)(nil)
@@ -1062,6 +1053,15 @@ func (m *CreateIndexOrder_Builtin) CloneVT() isCreateIndexOrder_Index {
 	}
 	r := new(CreateIndexOrder_Builtin)
 	r.Builtin = m.Builtin
+	return r
+}
+
+func (m *CreateIndexOrder_LogBuiltin) CloneVT() isCreateIndexOrder_Index {
+	if m == nil {
+		return (*CreateIndexOrder_LogBuiltin)(nil)
+	}
+	r := new(CreateIndexOrder_LogBuiltin)
+	r.LogBuiltin = m.LogBuiltin
 	return r
 }
 
@@ -1084,15 +1084,6 @@ func (m *DropIndexOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *DropIndexOrder_AddressRole) CloneVT() isDropIndexOrder_Index {
-	if m == nil {
-		return (*DropIndexOrder_AddressRole)(nil)
-	}
-	r := new(DropIndexOrder_AddressRole)
-	r.AddressRole = m.AddressRole
-	return r
-}
-
 func (m *DropIndexOrder_Metadata) CloneVT() isDropIndexOrder_Index {
 	if m == nil {
 		return (*DropIndexOrder_Metadata)(nil)
@@ -1108,6 +1099,15 @@ func (m *DropIndexOrder_Builtin) CloneVT() isDropIndexOrder_Index {
 	}
 	r := new(DropIndexOrder_Builtin)
 	r.Builtin = m.Builtin
+	return r
+}
+
+func (m *DropIndexOrder_LogBuiltin) CloneVT() isDropIndexOrder_Index {
+	if m == nil {
+		return (*DropIndexOrder_LogBuiltin)(nil)
+	}
+	r := new(DropIndexOrder_LogBuiltin)
+	r.LogBuiltin = m.LogBuiltin
 	return r
 }
 
@@ -1132,15 +1132,6 @@ func (m *IndexReadyOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *IndexReadyOrder_AddressRole) CloneVT() isIndexReadyOrder_Index {
-	if m == nil {
-		return (*IndexReadyOrder_AddressRole)(nil)
-	}
-	r := new(IndexReadyOrder_AddressRole)
-	r.AddressRole = m.AddressRole
-	return r
-}
-
 func (m *IndexReadyOrder_Metadata) CloneVT() isIndexReadyOrder_Index {
 	if m == nil {
 		return (*IndexReadyOrder_Metadata)(nil)
@@ -1156,6 +1147,15 @@ func (m *IndexReadyOrder_Builtin) CloneVT() isIndexReadyOrder_Index {
 	}
 	r := new(IndexReadyOrder_Builtin)
 	r.Builtin = m.Builtin
+	return r
+}
+
+func (m *IndexReadyOrder_LogBuiltin) CloneVT() isIndexReadyOrder_Index {
+	if m == nil {
+		return (*IndexReadyOrder_LogBuiltin)(nil)
+	}
+	r := new(IndexReadyOrder_LogBuiltin)
+	r.LogBuiltin = m.LogBuiltin
 	return r
 }
 
@@ -4079,23 +4079,6 @@ func (this *CreateIndexOrder) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *CreateIndexOrder_AddressRole) EqualVT(thatIface isCreateIndexOrder_Index) bool {
-	that, ok := thatIface.(*CreateIndexOrder_AddressRole)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.AddressRole != that.AddressRole {
-		return false
-	}
-	return true
-}
-
 func (this *CreateIndexOrder_Metadata) EqualVT(thatIface isCreateIndexOrder_Index) bool {
 	that, ok := thatIface.(*CreateIndexOrder_Metadata)
 	if !ok {
@@ -4138,6 +4121,23 @@ func (this *CreateIndexOrder_Builtin) EqualVT(thatIface isCreateIndexOrder_Index
 	return true
 }
 
+func (this *CreateIndexOrder_LogBuiltin) EqualVT(thatIface isCreateIndexOrder_Index) bool {
+	that, ok := thatIface.(*CreateIndexOrder_LogBuiltin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.LogBuiltin != that.LogBuiltin {
+		return false
+	}
+	return true
+}
+
 func (this *DropIndexOrder) EqualVT(that *DropIndexOrder) bool {
 	if this == that {
 		return true
@@ -4166,23 +4166,6 @@ func (this *DropIndexOrder) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *DropIndexOrder_AddressRole) EqualVT(thatIface isDropIndexOrder_Index) bool {
-	that, ok := thatIface.(*DropIndexOrder_AddressRole)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.AddressRole != that.AddressRole {
-		return false
-	}
-	return true
-}
-
 func (this *DropIndexOrder_Metadata) EqualVT(thatIface isDropIndexOrder_Index) bool {
 	that, ok := thatIface.(*DropIndexOrder_Metadata)
 	if !ok {
@@ -4225,6 +4208,23 @@ func (this *DropIndexOrder_Builtin) EqualVT(thatIface isDropIndexOrder_Index) bo
 	return true
 }
 
+func (this *DropIndexOrder_LogBuiltin) EqualVT(thatIface isDropIndexOrder_Index) bool {
+	that, ok := thatIface.(*DropIndexOrder_LogBuiltin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.LogBuiltin != that.LogBuiltin {
+		return false
+	}
+	return true
+}
+
 func (this *IndexReadyOrder) EqualVT(that *IndexReadyOrder) bool {
 	if this == that {
 		return true
@@ -4253,23 +4253,6 @@ func (this *IndexReadyOrder) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *IndexReadyOrder_AddressRole) EqualVT(thatIface isIndexReadyOrder_Index) bool {
-	that, ok := thatIface.(*IndexReadyOrder_AddressRole)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.AddressRole != that.AddressRole {
-		return false
-	}
-	return true
-}
-
 func (this *IndexReadyOrder_Metadata) EqualVT(thatIface isIndexReadyOrder_Index) bool {
 	that, ok := thatIface.(*IndexReadyOrder_Metadata)
 	if !ok {
@@ -4307,6 +4290,23 @@ func (this *IndexReadyOrder_Builtin) EqualVT(thatIface isIndexReadyOrder_Index) 
 		return false
 	}
 	if this.Builtin != that.Builtin {
+		return false
+	}
+	return true
+}
+
+func (this *IndexReadyOrder_LogBuiltin) EqualVT(thatIface isIndexReadyOrder_Index) bool {
+	that, ok := thatIface.(*IndexReadyOrder_LogBuiltin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.LogBuiltin != that.LogBuiltin {
 		return false
 	}
 	return true
@@ -8396,18 +8396,6 @@ func (m *CreateIndexOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CreateIndexOrder_AddressRole) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *CreateIndexOrder_AddressRole) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AddressRole))
-	i--
-	dAtA[i] = 0x8
-	return len(dAtA) - i, nil
-}
 func (m *CreateIndexOrder_Metadata) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -8437,6 +8425,18 @@ func (m *CreateIndexOrder_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
 	i--
 	dAtA[i] = 0x18
+	return len(dAtA) - i, nil
+}
+func (m *CreateIndexOrder_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CreateIndexOrder_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
+	i--
+	dAtA[i] = 0x20
 	return len(dAtA) - i, nil
 }
 func (m *DropIndexOrder) MarshalVT() (dAtA []byte, err error) {
@@ -8481,18 +8481,6 @@ func (m *DropIndexOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *DropIndexOrder_AddressRole) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *DropIndexOrder_AddressRole) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AddressRole))
-	i--
-	dAtA[i] = 0x8
-	return len(dAtA) - i, nil
-}
 func (m *DropIndexOrder_Metadata) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -8522,6 +8510,18 @@ func (m *DropIndexOrder_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
 	i--
 	dAtA[i] = 0x18
+	return len(dAtA) - i, nil
+}
+func (m *DropIndexOrder_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DropIndexOrder_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
+	i--
+	dAtA[i] = 0x20
 	return len(dAtA) - i, nil
 }
 func (m *IndexReadyOrder) MarshalVT() (dAtA []byte, err error) {
@@ -8566,18 +8566,6 @@ func (m *IndexReadyOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *IndexReadyOrder_AddressRole) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *IndexReadyOrder_AddressRole) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.AddressRole))
-	i--
-	dAtA[i] = 0x8
-	return len(dAtA) - i, nil
-}
 func (m *IndexReadyOrder_Metadata) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -8607,6 +8595,18 @@ func (m *IndexReadyOrder_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
 	i--
 	dAtA[i] = 0x18
+	return len(dAtA) - i, nil
+}
+func (m *IndexReadyOrder_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IndexReadyOrder_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
+	i--
+	dAtA[i] = 0x20
 	return len(dAtA) - i, nil
 }
 func (m *SetChartOfAccountsOrder) MarshalVT() (dAtA []byte, err error) {
@@ -12484,15 +12484,6 @@ func (m *CreateIndexOrder) SizeVT() (n int) {
 	return n
 }
 
-func (m *CreateIndexOrder_AddressRole) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + protohelpers.SizeOfVarint(uint64(m.AddressRole))
-	return n
-}
 func (m *CreateIndexOrder_Metadata) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -12514,6 +12505,15 @@ func (m *CreateIndexOrder_Builtin) SizeVT() (n int) {
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
 	return n
 }
+func (m *CreateIndexOrder_LogBuiltin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
+	return n
+}
 func (m *DropIndexOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -12527,15 +12527,6 @@ func (m *DropIndexOrder) SizeVT() (n int) {
 	return n
 }
 
-func (m *DropIndexOrder_AddressRole) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + protohelpers.SizeOfVarint(uint64(m.AddressRole))
-	return n
-}
 func (m *DropIndexOrder_Metadata) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -12557,6 +12548,15 @@ func (m *DropIndexOrder_Builtin) SizeVT() (n int) {
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
 	return n
 }
+func (m *DropIndexOrder_LogBuiltin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
+	return n
+}
 func (m *IndexReadyOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -12570,15 +12570,6 @@ func (m *IndexReadyOrder) SizeVT() (n int) {
 	return n
 }
 
-func (m *IndexReadyOrder_AddressRole) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + protohelpers.SizeOfVarint(uint64(m.AddressRole))
-	return n
-}
 func (m *IndexReadyOrder_Metadata) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -12598,6 +12589,15 @@ func (m *IndexReadyOrder_Builtin) SizeVT() (n int) {
 	var l int
 	_ = l
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
+	return n
+}
+func (m *IndexReadyOrder_LogBuiltin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
 	return n
 }
 func (m *SetChartOfAccountsOrder) SizeVT() (n int) {
@@ -19090,26 +19090,6 @@ func (m *CreateIndexOrder) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: CreateIndexOrder: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AddressRole", wireType)
-			}
-			var v commonpb.AddressRole
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= commonpb.AddressRole(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Index = &CreateIndexOrder_AddressRole{AddressRole: v}
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
@@ -19171,6 +19151,26 @@ func (m *CreateIndexOrder) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Index = &CreateIndexOrder_Builtin{Builtin: v}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			}
+			var v commonpb.LogBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.LogBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &CreateIndexOrder_LogBuiltin{LogBuiltin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -19222,26 +19222,6 @@ func (m *DropIndexOrder) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: DropIndexOrder: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AddressRole", wireType)
-			}
-			var v commonpb.AddressRole
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= commonpb.AddressRole(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Index = &DropIndexOrder_AddressRole{AddressRole: v}
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
@@ -19303,6 +19283,26 @@ func (m *DropIndexOrder) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Index = &DropIndexOrder_Builtin{Builtin: v}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			}
+			var v commonpb.LogBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.LogBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &DropIndexOrder_LogBuiltin{LogBuiltin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -19354,26 +19354,6 @@ func (m *IndexReadyOrder) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: IndexReadyOrder: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AddressRole", wireType)
-			}
-			var v commonpb.AddressRole
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= commonpb.AddressRole(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Index = &IndexReadyOrder_AddressRole{AddressRole: v}
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
@@ -19435,6 +19415,26 @@ func (m *IndexReadyOrder) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Index = &IndexReadyOrder_Builtin{Builtin: v}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			}
+			var v commonpb.LogBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.LogBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &IndexReadyOrder_LogBuiltin{LogBuiltin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

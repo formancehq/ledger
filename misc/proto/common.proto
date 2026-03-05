@@ -195,16 +195,6 @@ message SetMetadataFieldTypeCommand {
   MetadataType type = 3;
 }
 
-// AddressIndexConfig controls per-role account-transaction indexes on a ledger.
-message AddressIndexConfig {
-  bool address = 1;
-  bool source = 2;
-  bool destination = 3;
-  IndexBuildStatus address_status = 4;
-  IndexBuildStatus source_status = 5;
-  IndexBuildStatus destination_status = 6;
-}
-
 // MetadataIndexTarget identifies a metadata index by target type and key.
 message MetadataIndexTarget {
   TargetType target = 1;
@@ -213,9 +203,17 @@ message MetadataIndexTarget {
 
 // TransactionBuiltinIndex identifies a built-in transaction field that can be indexed.
 enum TransactionBuiltinIndex {
-  TX_BUILTIN_INDEX_REFERENCE = 0;   // requires bbolt "txref" index
-  TX_BUILTIN_INDEX_TIMESTAMP = 1;   // requires bbolt "tstmp" index
-  TX_BUILTIN_INDEX_ID = 2;          // range scan on existence bucket (no index)
+  TX_BUILTIN_INDEX_REFERENCE = 0;        // requires bbolt "txref" index
+  TX_BUILTIN_INDEX_TIMESTAMP = 1;        // requires bbolt "tstmp" index
+  TX_BUILTIN_INDEX_ID = 2;               // range scan on existence bucket (no index)
+  TX_BUILTIN_INDEX_ADDRESS = 3;          // account→transaction mapping (any role)
+  TX_BUILTIN_INDEX_SOURCE_ADDRESS = 4;   // source account→transaction mapping
+  TX_BUILTIN_INDEX_DEST_ADDRESS = 5;     // destination account→transaction mapping
+}
+
+// LogBuiltinIndex identifies a built-in log field that can be indexed.
+enum LogBuiltinIndex {
+  LOG_BUILTIN_INDEX_LEDGER = 0;     // per-ledger log index (bbolt "llog")
 }
 
 // BuiltinIndexConfig tracks the status of built-in transaction field indexes.
@@ -224,6 +222,18 @@ message BuiltinIndexConfig {
   IndexBuildStatus reference_status = 2;
   bool timestamp = 3;
   IndexBuildStatus timestamp_status = 4;
+  bool address = 5;
+  IndexBuildStatus address_status = 6;
+  bool source_address = 7;
+  IndexBuildStatus source_address_status = 8;
+  bool dest_address = 9;
+  IndexBuildStatus dest_address_status = 10;
+}
+
+// LogBuiltinIndexConfig tracks the status of built-in log field indexes.
+message LogBuiltinIndexConfig {
+  bool ledger = 1;
+  IndexBuildStatus ledger_status = 2;
 }
 
 // ============================================================================
@@ -493,28 +503,31 @@ message LedgerLogPayload {
 
 // CreateIndexLog records the creation of an index.
 message CreateIndexLog {
+  reserved 1;  // Was: AddressRole address_role (now uses builtin with TX_BUILTIN_INDEX_ADDRESS/SOURCE_ADDRESS/DEST_ADDRESS)
   oneof index {
-    AddressRole address_role = 1;
     MetadataIndexTarget metadata = 2;
     TransactionBuiltinIndex builtin = 3;
+    LogBuiltinIndex log_builtin = 4;
   }
 }
 
 // DropIndexLog records the removal of an index.
 message DropIndexLog {
+  reserved 1;  // Was: AddressRole address_role
   oneof index {
-    AddressRole address_role = 1;
     MetadataIndexTarget metadata = 2;
     TransactionBuiltinIndex builtin = 3;
+    LogBuiltinIndex log_builtin = 4;
   }
 }
 
 // IndexReadyLog records that an index has finished building.
 message IndexReadyLog {
+  reserved 1;  // Was: AddressRole address_role
   oneof index {
-    AddressRole address_role = 1;
     MetadataIndexTarget metadata = 2;
     TransactionBuiltinIndex builtin = 3;
+    LogBuiltinIndex log_builtin = 4;
   }
 }
 
@@ -678,10 +691,11 @@ message LedgerInfo {
   LedgerMode mode = 6;                      // Normal or mirror mode
   MirrorSourceConfig mirror_source = 7;     // Mirror source config (set when mode=MIRROR)
   MirrorSyncProgress mirror_sync_progress = 8;  // Populated at read time for MIRROR ledgers
-  AddressIndexConfig address_indexes = 9;   // Per-role account-transaction index config
+  reserved 9;                               // Was: AddressIndexConfig address_indexes
   ChartOfAccounts chart_of_accounts = 10;    // Account address validation tree (nil = no validation)
   ChartEnforcementMode enforcement_mode = 11; // How chart violations are handled
   BuiltinIndexConfig builtin_indexes = 12;  // Built-in transaction field index config
+  LogBuiltinIndexConfig log_builtin_indexes = 13;  // Built-in log field index config
 }
 
 // ============================================================================
@@ -799,12 +813,24 @@ message QueryFilter {
     NotFilter not = 5;
     ReferenceCondition reference = 6;
     BuiltinUintCondition builtin_uint = 7;
+    LedgerCondition ledger = 8;
+    LogIdCondition log_id = 9;
   }
 }
 
 // ReferenceCondition filters transactions by reference (exact match).
 message ReferenceCondition {
   StringCondition cond = 1;
+}
+
+// LedgerCondition filters logs by ledger name (exact match).
+message LedgerCondition {
+  StringCondition cond = 1;
+}
+
+// LogIdCondition filters logs by ledger-local log ID (uint64 range).
+message LogIdCondition {
+  UintCondition cond = 1;
 }
 
 // BuiltinUintCondition filters transactions by a built-in uint64 field (id or timestamp).

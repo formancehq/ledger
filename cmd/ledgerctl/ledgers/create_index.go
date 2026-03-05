@@ -25,13 +25,15 @@ Index types:
   metadata             Metadata field index (requires --target and --key)
   reference            Transaction reference index (exact-match filter)
   timestamp            Transaction timestamp index (range filter)
+  log-ledger           Per-ledger log index (enables filtered log listing)
 
 Examples:
   ledgerctl ledgers create-index --ledger my-ledger --type address
   ledgerctl ledgers create-index --ledger my-ledger --type source-address
   ledgerctl ledgers create-index --ledger my-ledger --type metadata --target account --key category
   ledgerctl ledgers create-index --ledger my-ledger --type reference
-  ledgerctl ledgers create-index --ledger my-ledger --type timestamp`,
+  ledgerctl ledgers create-index --ledger my-ledger --type timestamp
+  ledgerctl ledgers create-index --ledger my-ledger --type log-ledger`,
 		Args: cobra.NoArgs,
 		RunE: runCreateIndex,
 	}
@@ -61,7 +63,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 	indexType, _ := cmd.Flags().GetString("type")
 	if indexType == "" {
 		result, err := pterm.DefaultInteractiveSelect.
-			WithOptions([]string{"address", "source-address", "dest-address", "metadata", "reference", "timestamp"}).
+			WithOptions([]string{"address", "source-address", "dest-address", "metadata", "reference", "timestamp", "log-ledger"}).
 			WithDefaultText("Select index type").
 			Show()
 		if err != nil {
@@ -77,18 +79,18 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 	var indexDesc string
 	switch indexType {
 	case "address":
-		req.Index = &servicepb.CreateIndexRequest_AddressRole{
-			AddressRole: commonpb.AddressRole_ADDRESS_ROLE_ANY,
+		req.Index = &servicepb.CreateIndexRequest_Builtin{
+			Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
 		}
 		indexDesc = "address (any role)"
 	case "source-address":
-		req.Index = &servicepb.CreateIndexRequest_AddressRole{
-			AddressRole: commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
+		req.Index = &servicepb.CreateIndexRequest_Builtin{
+			Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
 		}
 		indexDesc = "source-address"
 	case "dest-address":
-		req.Index = &servicepb.CreateIndexRequest_AddressRole{
-			AddressRole: commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
+		req.Index = &servicepb.CreateIndexRequest_Builtin{
+			Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS,
 		}
 		indexDesc = "dest-address"
 	case "metadata":
@@ -113,8 +115,13 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 			Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
 		}
 		indexDesc = "timestamp"
+	case "log-ledger":
+		req.Index = &servicepb.CreateIndexRequest_LogBuiltin{
+			LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER,
+		}
+		indexDesc = "log-ledger"
 	default:
-		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, metadata, reference, or timestamp", indexType)
+		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, metadata, reference, timestamp, or log-ledger", indexType)
 	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)

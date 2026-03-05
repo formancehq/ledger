@@ -85,9 +85,10 @@ func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, 
 	}), nil
 }
 
-func (g *BucketGrpcClient) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32) (dal.Cursor[*commonpb.Log], error) {
+func (g *BucketGrpcClient) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error) {
 	req := &servicepb.ListLogsRequest{
 		PageSize: pageSize,
+		Filter:   filter,
 	}
 	if afterSequence > 0 {
 		req.AfterSequence = &afterSequence

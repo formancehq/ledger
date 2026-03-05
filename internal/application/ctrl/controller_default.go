@@ -253,11 +253,11 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
 		if reverse {
 			// Oldest-first (ascending txID): compiled iterator is naturally ascending
-			return ctrl.listTransactionsAscending(tx, ledgerInfo.Name, pageSize, afterTxID, filter, schemaFields, ledgerInfo.AddressIndexes, ledgerInfo.BuiltinIndexes, &entityIDs, profile)
+			return ctrl.listTransactionsAscending(tx, ledgerInfo.Name, pageSize, afterTxID, filter, schemaFields, ledgerInfo.BuiltinIndexes, &entityIDs, profile)
 		}
 		// Newest-first (descending txID) — default
 		if filter != nil {
-			return ctrl.listTransactionsDescFiltered(tx, ledgerInfo.Name, pageSize, afterTxID, filter, schemaFields, ledgerInfo.AddressIndexes, ledgerInfo.BuiltinIndexes, &entityIDs, profile)
+			return ctrl.listTransactionsDescFiltered(tx, ledgerInfo.Name, pageSize, afterTxID, filter, schemaFields, ledgerInfo.BuiltinIndexes, &entityIDs, profile)
 		}
 		return ctrl.listTransactionsDescUnfiltered(tx, ledgerInfo.Name, pageSize, afterTxID, &entityIDs, profile)
 	})
@@ -293,12 +293,12 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 // listTransactionsAscending returns transactions in oldest-first order.
 // The compiled iterator (filtered or not) is naturally ascending, so we
 // paginate forward directly.
-func (ctrl *DefaultController) listTransactionsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, addrCfg *commonpb.AddressIndexConfig, builtinCfg *commonpb.BuiltinIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
+func (ctrl *DefaultController) listTransactionsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, builtinCfg *commonpb.BuiltinIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
 	kb := readstore.NewKeyBuilder()
 	iter, err := query.Compile(
 		tx, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		ledgerName, nil, schema, addrCfg, builtinCfg, profile,
+		ledgerName, nil, schema, builtinCfg, profile,
 	)
 	if err != nil {
 		return fmt.Errorf("compiling transaction filter: %w", err)
@@ -343,12 +343,12 @@ func (ctrl *DefaultController) listTransactionsDescUnfiltered(tx *bolt.Tx, ledge
 
 // listTransactionsDescFiltered compiles a filter, collects matching IDs, reverses
 // them for newest-first ordering, and applies pagination.
-func (ctrl *DefaultController) listTransactionsDescFiltered(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, addrCfg *commonpb.AddressIndexConfig, builtinCfg *commonpb.BuiltinIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
+func (ctrl *DefaultController) listTransactionsDescFiltered(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, builtinCfg *commonpb.BuiltinIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
 	kb := readstore.NewKeyBuilder()
 	iter, err := query.Compile(
 		tx, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		ledgerName, nil, schema, addrCfg, builtinCfg, profile,
+		ledgerName, nil, schema, builtinCfg, profile,
 	)
 	if err != nil {
 		return fmt.Errorf("compiling transaction filter: %w", err)
@@ -423,9 +423,9 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	indexStart := time.Now()
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
 		if reverse {
-			return ctrl.listAccountsDescending(tx, ledgerInfo.Name, pageSize, afterAddress, filter, schemaFields, ledgerInfo.AddressIndexes, &addresses, profile)
+			return ctrl.listAccountsDescending(tx, ledgerInfo.Name, pageSize, afterAddress, filter, schemaFields, ledgerInfo.BuiltinIndexes, &addresses, profile)
 		}
-		return ctrl.listAccountsAscending(tx, ledgerInfo.Name, pageSize, afterAddress, filter, schemaFields, ledgerInfo.AddressIndexes, &addresses, profile)
+		return ctrl.listAccountsAscending(tx, ledgerInfo.Name, pageSize, afterAddress, filter, schemaFields, ledgerInfo.BuiltinIndexes, &addresses, profile)
 	})
 	if profile != nil {
 		profile.IndexDuration = time.Since(indexStart)
@@ -456,12 +456,12 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 }
 
 // listAccountsAscending returns accounts in alphabetical order (A→Z).
-func (ctrl *DefaultController) listAccountsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, addrCfg *commonpb.AddressIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
+func (ctrl *DefaultController) listAccountsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, builtinCfg *commonpb.BuiltinIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
 	kb := readstore.NewKeyBuilder()
 	iter, err := query.Compile(
 		tx, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		ledgerName, nil, schema, addrCfg, nil, profile,
+		ledgerName, nil, schema, builtinCfg, profile,
 	)
 	if err != nil {
 		return fmt.Errorf("compiling account filter: %w", err)
@@ -477,14 +477,14 @@ func (ctrl *DefaultController) listAccountsAscending(tx *bolt.Tx, ledgerName str
 }
 
 // listAccountsDescending returns accounts in reverse-alphabetical order (Z→A).
-func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, addrCfg *commonpb.AddressIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
+func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, builtinCfg *commonpb.BuiltinIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
 	if filter != nil {
 		// Filtered: collect all ascending, reverse, then paginate manually
 		kb := readstore.NewKeyBuilder()
 		iter, err := query.Compile(
 			tx, kb, filter,
 			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			ledgerName, nil, schema, addrCfg, nil, profile,
+			ledgerName, nil, schema, builtinCfg, profile,
 		)
 		if err != nil {
 			return fmt.Errorf("compiling account filter: %w", err)
@@ -806,21 +806,95 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 	return analysis.AnalyzeTransactionsFromIterators(wrappedPass1, pass2Fn, func() uint64 { return totalReverted }, variableThreshold, onProgress)
 }
 
-// ListLogs returns a cursor over system logs.
-func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32) (dal.Cursor[*commonpb.Log], error) {
+// ListLogs returns a cursor over logs. When filter contains a ledger condition, only logs for
+// that ledger are returned (ordered by ledger-local log ID, paginated by afterLogID). Otherwise
+// all logs are returned in global sequence order, paginated by afterSequence.
+func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error) {
 	handle := ctrl.store.NewReadHandle()
-	cursor, err := query.ReadLogsSince(ctx, handle, afterSequence)
+
+	if ledger := extractLedgerFilter(filter); ledger != "" {
+		afterLogID := extractLogIdMinExclusive(filter)
+		c, err := query.ReadLedgerLogsSince(ctx, handle, ctrl.readStore, ledger, afterLogID, pageSize)
+		if err != nil {
+			_ = handle.Close()
+			return nil, fmt.Errorf("listing ledger logs: %w", err)
+		}
+		return dal.NewClosingCursor(c, handle), nil
+	}
+
+	c, err := query.ReadLogsSince(ctx, handle, afterSequence)
 	if err != nil {
 		_ = handle.Close()
 		return nil, fmt.Errorf("listing logs: %w", err)
 	}
-
-	var result = dal.NewClosingCursor(cursor, handle)
+	cursor := dal.NewClosingCursor(c, handle)
 	if pageSize > 0 {
-		result = dal.NewLimitedCursor(result, pageSize)
+		cursor = dal.NewLimitedCursor(cursor, pageSize)
 	}
+	return cursor, nil
+}
 
-	return result, nil
+// extractLedgerFilter walks a QueryFilter tree and returns the ledger name if a
+// LedgerCondition with a hardcoded string value is found. Returns "" if absent.
+func extractLedgerFilter(f *commonpb.QueryFilter) string {
+	if f == nil {
+		return ""
+	}
+	switch v := f.Filter.(type) {
+	case *commonpb.QueryFilter_Ledger:
+		if v.Ledger != nil && v.Ledger.Cond != nil {
+			if h := v.Ledger.Cond.GetHardcoded(); h != "" {
+				return h
+			}
+		}
+	case *commonpb.QueryFilter_And:
+		for _, sub := range v.And.Filters {
+			if l := extractLedgerFilter(sub); l != "" {
+				return l
+			}
+		}
+	case *commonpb.QueryFilter_Or:
+		for _, sub := range v.Or.Filters {
+			if l := extractLedgerFilter(sub); l != "" {
+				return l
+			}
+		}
+	case *commonpb.QueryFilter_Not:
+		return extractLedgerFilter(v.Not.Filter)
+	}
+	return ""
+}
+
+// extractLogIdMinExclusive walks a QueryFilter tree and returns the min exclusive
+// log ID from a LogIdCondition. Returns 0 if absent. This is used for pagination
+// in per-ledger log listing (equivalent to "after log ID X").
+func extractLogIdMinExclusive(f *commonpb.QueryFilter) uint64 {
+	if f == nil {
+		return 0
+	}
+	switch v := f.Filter.(type) {
+	case *commonpb.QueryFilter_LogId:
+		if v.LogId != nil && v.LogId.Cond != nil {
+			if v.LogId.Cond.Min != nil && v.LogId.Cond.MinExclusive {
+				return *v.LogId.Cond.Min
+			}
+		}
+	case *commonpb.QueryFilter_And:
+		for _, sub := range v.And.Filters {
+			if id := extractLogIdMinExclusive(sub); id > 0 {
+				return id
+			}
+		}
+	case *commonpb.QueryFilter_Or:
+		for _, sub := range v.Or.Filters {
+			if id := extractLogIdMinExclusive(sub); id > 0 {
+				return id
+			}
+		}
+	case *commonpb.QueryFilter_Not:
+		return extractLogIdMinExclusive(v.Not.Filter)
+	}
+	return 0
 }
 
 // ListAuditEntries returns a cursor over audit entries, applying optional filters.

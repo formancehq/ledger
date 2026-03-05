@@ -41,7 +41,7 @@ service BucketService {
   rpc GetEventsSinks(GetEventsSinksRequest) returns (GetEventsSinksResponse);
   // ListPeriods streams all periods
   rpc ListPeriods(ListPeriodsRequest) returns (stream common.Period);
-  // ListLogs streams system logs
+  // ListLogs streams system logs; when ledger is set, streams only logs for that ledger
   rpc ListLogs(ListLogsRequest) returns (stream common.Log);
   // GetLog returns a single system log by sequence number
   rpc GetLog(GetLogRequest) returns (common.Log);
@@ -294,20 +294,22 @@ message SetAuditConfigRequest {
 // CreateIndexRequest requests the creation of an index on a ledger.
 message CreateIndexRequest {
   string ledger = 1;
+  reserved 2;  // Was: AddressRole address_role (now uses builtin with TX_BUILTIN_INDEX_ADDRESS/SOURCE_ADDRESS/DEST_ADDRESS)
   oneof index {
-    common.AddressRole address_role = 2;
     common.MetadataIndexTarget metadata = 3;
     common.TransactionBuiltinIndex builtin = 4;
+    common.LogBuiltinIndex log_builtin = 5;
   }
 }
 
 // DropIndexRequest requests the removal of an index from a ledger.
 message DropIndexRequest {
   string ledger = 1;
+  reserved 2;  // Was: AddressRole address_role
   oneof index {
-    common.AddressRole address_role = 2;
     common.MetadataIndexTarget metadata = 3;
     common.TransactionBuiltinIndex builtin = 4;
+    common.LogBuiltinIndex log_builtin = 5;
   }
 }
 
@@ -602,11 +604,15 @@ message GetAuditEntryRequest {
 // ============================================================================
 
 message ListLogsRequest {
+  // after_sequence is the global sequence to start after (exclusive). Used when no ledger filter is set.
   optional uint64 after_sequence = 1;
   uint32 page_size = 2;
   // min_log_sequence requires the store to have applied at least this log sequence before reading.
-  // If the store has not caught up, the server returns FailedPrecondition.
   uint64 min_log_sequence = 3;
+  // filter is an optional filter (e.g. ledger == "foo", log_id > 42). When a ledger filter
+  // is present, results are ordered by ledger-local log ID ascending. Use a log_id condition
+  // for pagination. When absent, all logs are returned ordered by global sequence ascending.
+  common.QueryFilter filter = 4;
 }
 
 message GetLogRequest {
@@ -837,10 +843,11 @@ message GetIndexStatusResponse {
 // IndexBackfillProgress reports per-index backfill cursor position.
 message IndexBackfillProgress {
   string ledger = 1;
+  reserved 2;  // Was: AddressRole address_role
   oneof index {
-    common.AddressRole address_role = 2;
     common.MetadataIndexTarget metadata = 3;
     common.TransactionBuiltinIndex builtin = 5;
+    common.LogBuiltinIndex log_builtin = 6;
   }
   uint64 cursor = 4;
 }

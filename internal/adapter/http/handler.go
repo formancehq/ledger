@@ -78,6 +78,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Get("/numscripts/{name}", server.handleGetNumscript)
 				r.Get("/{ledgerName}", server.handleGetLedger)
 				r.Get("/{ledgerName}/stats", server.handleGetLedgerStats)
+				r.Get("/{ledgerName}/logs", server.handleListLedgerLogs)
 			})
 
 			// Transactions read scope

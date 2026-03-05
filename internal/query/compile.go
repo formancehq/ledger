@@ -23,7 +23,6 @@ type compileCtx struct {
 	ledger     string
 	params     map[string]string
 	schema     map[string]*commonpb.MetadataFieldSchema
-	addrCfg    *commonpb.AddressIndexConfig
 	builtinCfg *commonpb.BuiltinIndexConfig
 	profile    *QueryProfile
 }
@@ -42,8 +41,8 @@ type metadataCtx struct {
 // The params map resolves parameterized conditions at execution time.
 // The schema map validates condition types against declared metadata field types;
 // a nil schema causes ErrIndexNotFound for any metadata field condition.
-// The addrCfg checks that required address indexes are available;
-// a nil addrCfg causes ErrIndexNotFound for any address filter on transactions.
+// The builtinCfg checks that required address/builtin indexes are available;
+// a nil builtinCfg causes ErrIndexNotFound for any address filter on transactions.
 // When profile is non-nil, each iterator is wrapped in a TrackedIterator and
 // profile.Root is set to the root of the iterator stats tree.
 func Compile(
@@ -54,7 +53,6 @@ func Compile(
 	ledger string,
 	params map[string]string,
 	schema map[string]*commonpb.MetadataFieldSchema,
-	addrCfg *commonpb.AddressIndexConfig,
 	builtinCfg *commonpb.BuiltinIndexConfig,
 	profile *QueryProfile,
 ) (readstore.EntityIterator, error) {
@@ -65,7 +63,6 @@ func Compile(
 		ledger:     ledger,
 		params:     params,
 		schema:     schema,
-		addrCfg:    addrCfg,
 		builtinCfg: builtinCfg,
 		profile:    profile,
 	}
@@ -588,7 +585,7 @@ func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.
 	// Address filtering on TRANSACTIONS target requires the account-tx index.
 	// For ACCOUNTS target, address matching uses the existence index (always on).
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
-		if err := checkAddressRoleIndexed(ctx.addrCfg, role); err != nil {
+		if err := checkAddressRoleIndexed(ctx.builtinCfg, role); err != nil {
 			return nil, err
 		}
 	}
@@ -1010,9 +1007,9 @@ func closeAll(iters []readstore.EntityIterator) {
 }
 
 // checkAddressRoleIndexed validates that the requested address role index
-// exists and is ready. Returns ErrIndexNotFound when addrCfg is nil (no
-// address indexes configured).
-func checkAddressRoleIndexed(addrCfg *commonpb.AddressIndexConfig, role commonpb.AddressRole) error {
+// exists and is ready via BuiltinIndexConfig. Returns ErrIndexNotFound when
+// builtinCfg is nil (no indexes configured).
+func checkAddressRoleIndexed(builtinCfg *commonpb.BuiltinIndexConfig, role commonpb.AddressRole) error {
 	var (
 		indexed bool
 		status  commonpb.IndexBuildStatus
@@ -1022,18 +1019,18 @@ func checkAddressRoleIndexed(addrCfg *commonpb.AddressIndexConfig, role commonpb
 	switch role {
 	case commonpb.AddressRole_ADDRESS_ROLE_ANY:
 		label = "address"
-		if addrCfg != nil {
-			indexed, status = addrCfg.Address, addrCfg.AddressStatus
+		if builtinCfg != nil {
+			indexed, status = builtinCfg.Address, builtinCfg.AddressStatus
 		}
 	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
 		label = "source"
-		if addrCfg != nil {
-			indexed, status = addrCfg.Source, addrCfg.SourceStatus
+		if builtinCfg != nil {
+			indexed, status = builtinCfg.SourceAddress, builtinCfg.SourceAddressStatus
 		}
 	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
 		label = "destination"
-		if addrCfg != nil {
-			indexed, status = addrCfg.Destination, addrCfg.DestinationStatus
+		if builtinCfg != nil {
+			indexed, status = builtinCfg.DestAddress, builtinCfg.DestAddressStatus
 		}
 	default:
 		return nil

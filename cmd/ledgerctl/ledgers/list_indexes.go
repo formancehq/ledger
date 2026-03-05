@@ -83,19 +83,27 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		{"TYPE", "TARGET", "KEY", "STATUS"},
 	}
 
-	// Address indexes
-	if ac := ledger.AddressIndexes; ac != nil {
-		if ac.Address {
+	// Builtin indexes (includes address indexes)
+	if bi := ledger.BuiltinIndexes; bi != nil {
+		if bi.Reference {
+			table = append(table, []string{"reference", "-", "-",
+				indexStatusWithProgress(bi.ReferenceStatus, progressMap, lastLogSeq, "b:0")})
+		}
+		if bi.Timestamp {
+			table = append(table, []string{"timestamp", "-", "-",
+				indexStatusWithProgress(bi.TimestampStatus, progressMap, lastLogSeq, "b:1")})
+		}
+		if bi.Address {
 			table = append(table, []string{"address", "-", "-",
-				indexStatusWithProgress(ac.AddressStatus, progressMap, lastLogSeq, "a:0")})
+				indexStatusWithProgress(bi.AddressStatus, progressMap, lastLogSeq, "b:3")})
 		}
-		if ac.Source {
+		if bi.SourceAddress {
 			table = append(table, []string{"source-address", "-", "-",
-				indexStatusWithProgress(ac.SourceStatus, progressMap, lastLogSeq, "a:1")})
+				indexStatusWithProgress(bi.SourceAddressStatus, progressMap, lastLogSeq, "b:4")})
 		}
-		if ac.Destination {
+		if bi.DestAddress {
 			table = append(table, []string{"dest-address", "-", "-",
-				indexStatusWithProgress(ac.DestinationStatus, progressMap, lastLogSeq, "a:2")})
+				indexStatusWithProgress(bi.DestAddressStatus, progressMap, lastLogSeq, "b:5")})
 		}
 	}
 
@@ -105,15 +113,11 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		addMetadataIndexRowsWithProgress(&table, "transaction", schema.TransactionFields, progressMap, lastLogSeq, commonpb.TargetType_TARGET_TYPE_TRANSACTION)
 	}
 
-	// Builtin indexes
-	if bi := ledger.BuiltinIndexes; bi != nil {
-		if bi.Reference {
-			table = append(table, []string{"reference", "-", "-",
-				indexStatusWithProgress(bi.ReferenceStatus, progressMap, lastLogSeq, "b:0")})
-		}
-		if bi.Timestamp {
-			table = append(table, []string{"timestamp", "-", "-",
-				indexStatusWithProgress(bi.TimestampStatus, progressMap, lastLogSeq, "b:1")})
+	// Log builtin indexes
+	if li := ledger.LogBuiltinIndexes; li != nil {
+		if li.Ledger {
+			table = append(table, []string{"log-ledger", "-", "-",
+				indexStatusWithProgress(li.LedgerStatus, progressMap, lastLogSeq, "l:0")})
 		}
 	}
 
@@ -131,14 +135,20 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 
 // hasBuildingIndexes returns true if any index on the ledger has BUILDING status.
 func hasBuildingIndexes(ledger *commonpb.LedgerInfo) bool {
-	if ac := ledger.AddressIndexes; ac != nil {
-		if ac.Address && ac.AddressStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+	if bi := ledger.BuiltinIndexes; bi != nil {
+		if bi.Reference && bi.ReferenceStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 			return true
 		}
-		if ac.Source && ac.SourceStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+		if bi.Timestamp && bi.TimestampStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 			return true
 		}
-		if ac.Destination && ac.DestinationStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+		if bi.Address && bi.AddressStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+			return true
+		}
+		if bi.SourceAddress && bi.SourceAddressStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+			return true
+		}
+		if bi.DestAddress && bi.DestAddressStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 			return true
 		}
 	}
@@ -154,11 +164,8 @@ func hasBuildingIndexes(ledger *commonpb.LedgerInfo) bool {
 			}
 		}
 	}
-	if bi := ledger.BuiltinIndexes; bi != nil {
-		if bi.Reference && bi.ReferenceStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-			return true
-		}
-		if bi.Timestamp && bi.TimestampStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+	if li := ledger.LogBuiltinIndexes; li != nil {
+		if li.Ledger && li.LedgerStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 			return true
 		}
 	}
@@ -166,7 +173,7 @@ func hasBuildingIndexes(ledger *commonpb.LedgerInfo) bool {
 }
 
 // buildProgressMap creates a lookup map from backfill progress entries.
-// Keys use the format "a:<role_int>" for address indexes or "m:<target_int>:<key>" for metadata.
+// Keys use the format "b:<builtin_int>" for builtin/address indexes or "m:<target_int>:<key>" for metadata.
 func buildProgressMap(ledgerName string, entries []*servicepb.IndexBackfillProgress) map[string]uint64 {
 	m := make(map[string]uint64, len(entries))
 	for _, e := range entries {
@@ -174,12 +181,12 @@ func buildProgressMap(ledgerName string, entries []*servicepb.IndexBackfillProgr
 			continue
 		}
 		switch idx := e.Index.(type) {
-		case *servicepb.IndexBackfillProgress_AddressRole:
-			m[fmt.Sprintf("a:%d", idx.AddressRole)] = e.Cursor
 		case *servicepb.IndexBackfillProgress_Metadata:
 			m[fmt.Sprintf("m:%d:%s", idx.Metadata.Target, idx.Metadata.Key)] = e.Cursor
 		case *servicepb.IndexBackfillProgress_Builtin:
 			m[fmt.Sprintf("b:%d", idx.Builtin)] = e.Cursor
+		case *servicepb.IndexBackfillProgress_LogBuiltin:
+			m[fmt.Sprintf("l:%d", idx.LogBuiltin)] = e.Cursor
 		}
 	}
 	return m

@@ -1358,12 +1358,12 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_CreateIndex:
 		createIndexOrder := &raftcmdpb.CreateIndexOrder{}
 		switch idx := reqType.CreateIndex.Index.(type) {
-		case *servicepb.CreateIndexRequest_AddressRole:
-			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_AddressRole{AddressRole: idx.AddressRole}
 		case *servicepb.CreateIndexRequest_Metadata:
 			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_Metadata{Metadata: idx.Metadata}
 		case *servicepb.CreateIndexRequest_Builtin:
 			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_Builtin{Builtin: idx.Builtin}
+		case *servicepb.CreateIndexRequest_LogBuiltin:
+			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_LogBuiltin{LogBuiltin: idx.LogBuiltin}
 		}
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
@@ -1374,12 +1374,12 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_DropIndex:
 		dropIndexOrder := &raftcmdpb.DropIndexOrder{}
 		switch idx := reqType.DropIndex.Index.(type) {
-		case *servicepb.DropIndexRequest_AddressRole:
-			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_AddressRole{AddressRole: idx.AddressRole}
 		case *servicepb.DropIndexRequest_Metadata:
 			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_Metadata{Metadata: idx.Metadata}
 		case *servicepb.DropIndexRequest_Builtin:
 			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_Builtin{Builtin: idx.Builtin}
+		case *servicepb.DropIndexRequest_LogBuiltin:
+			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_LogBuiltin{LogBuiltin: idx.LogBuiltin}
 		}
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{

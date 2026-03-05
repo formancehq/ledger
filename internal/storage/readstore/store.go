@@ -103,6 +103,7 @@ func New(dir string, noFreelistSync bool, initialMmapSize int, logger logging.Lo
 			BucketBackfill,
 			BucketTransactionReference,
 			BucketTransactionTimestamp,
+			BucketLedgerLogs,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(bucket); err != nil {
 				return fmt.Errorf("creating bucket %q: %w", string(bucket), err)
@@ -303,7 +304,7 @@ func (s *Store) ReadAllBackfillProgress(tx *bolt.Tx) (map[string]uint64, error) 
 // BackfillEntry is a decoded backfill progress entry returned by ListBackfillProgress.
 type BackfillEntry struct {
 	Ledger  string
-	Kind    byte   // BackfillKindAddress, BackfillKindMetadata, or BackfillKindBuiltin
+	Kind    byte   // BackfillKindMetadata, BackfillKindBuiltin, or BackfillKindLogBuiltin
 	Details []byte // kind-specific payload: role byte, [target_byte][key], or builtin byte
 	Cursor  uint64
 }

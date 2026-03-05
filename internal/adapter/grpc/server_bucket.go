@@ -378,12 +378,6 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 			Cursor: e.Cursor,
 		}
 		switch e.Kind {
-		case readstore.BackfillKindAddress:
-			if len(e.Details) >= 1 {
-				entry.Index = &servicepb.IndexBackfillProgress_AddressRole{
-					AddressRole: commonpb.AddressRole(e.Details[0]),
-				}
-			}
 		case readstore.BackfillKindMetadata:
 			if len(e.Details) >= 1 {
 				entry.Index = &servicepb.IndexBackfillProgress_Metadata{
@@ -397,6 +391,12 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 			if len(e.Details) >= 1 {
 				entry.Index = &servicepb.IndexBackfillProgress_Builtin{
 					Builtin: commonpb.TransactionBuiltinIndex(e.Details[0]),
+				}
+			}
+		case readstore.BackfillKindLogBuiltin:
+			if len(e.Details) >= 1 {
+				entry.Index = &servicepb.IndexBackfillProgress_LogBuiltin{
+					LogBuiltin: commonpb.LogBuiltinIndex(e.Details[0]),
 				}
 			}
 		}
@@ -476,7 +476,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		afterSequence = *req.AfterSequence
 	}
 
-	cursor, err := impl.ctrl.ListLogs(ctx, afterSequence, req.PageSize)
+	cursor, err := impl.ctrl.ListLogs(ctx, afterSequence, req.PageSize, req.Filter)
 	if err != nil {
 		return fmt.Errorf("listing logs: %w", err)
 	}

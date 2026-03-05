@@ -85,7 +85,7 @@ type BucketServiceClient interface {
 	GetEventsSinks(ctx context.Context, in *GetEventsSinksRequest, opts ...grpc.CallOption) (*GetEventsSinksResponse, error)
 	// ListPeriods streams all periods
 	ListPeriods(ctx context.Context, in *ListPeriodsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Period], error)
-	// ListLogs streams system logs
+	// ListLogs streams system logs; when ledger is set, streams only logs for that ledger
 	ListLogs(ctx context.Context, in *ListLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error)
 	// GetLog returns a single system log by sequence number
 	GetLog(ctx context.Context, in *GetLogRequest, opts ...grpc.CallOption) (*commonpb.Log, error)
@@ -560,7 +560,7 @@ type BucketServiceServer interface {
 	GetEventsSinks(context.Context, *GetEventsSinksRequest) (*GetEventsSinksResponse, error)
 	// ListPeriods streams all periods
 	ListPeriods(*ListPeriodsRequest, grpc.ServerStreamingServer[commonpb.Period]) error
-	// ListLogs streams system logs
+	// ListLogs streams system logs; when ledger is set, streams only logs for that ledger
 	ListLogs(*ListLogsRequest, grpc.ServerStreamingServer[commonpb.Log]) error
 	// GetLog returns a single system log by sequence number
 	GetLog(context.Context, *GetLogRequest) (*commonpb.Log, error)

@@ -19,17 +19,6 @@ func (p *RequestProcessor) processCreateIndex(
 	logPayload := &commonpb.CreateIndexLog{}
 
 	switch idx := order.Index.(type) {
-	case *raftcmdpb.CreateIndexOrder_AddressRole:
-		if info.AddressIndexes == nil {
-			info.AddressIndexes = &commonpb.AddressIndexConfig{}
-		}
-		// Idempotent: if already indexed+READY, no-op
-		if isAddressRoleIndexedAndReady(info.AddressIndexes, idx.AddressRole) {
-			return buildCreateIndexLogPayload(logPayload), nil
-		}
-		setAddressRoleIndexed(info.AddressIndexes, idx.AddressRole, true, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING)
-		logPayload.Index = &commonpb.CreateIndexLog_AddressRole{AddressRole: idx.AddressRole}
-
 	case *raftcmdpb.CreateIndexOrder_Metadata:
 		if info.MetadataSchema == nil {
 			info.MetadataSchema = &commonpb.MetadataSchema{}
@@ -66,6 +55,16 @@ func (p *RequestProcessor) processCreateIndex(
 		}
 		setBuiltinIndexed(info.BuiltinIndexes, idx.Builtin, true, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING)
 		logPayload.Index = &commonpb.CreateIndexLog_Builtin{Builtin: idx.Builtin}
+
+	case *raftcmdpb.CreateIndexOrder_LogBuiltin:
+		if info.LogBuiltinIndexes == nil {
+			info.LogBuiltinIndexes = &commonpb.LogBuiltinIndexConfig{}
+		}
+		if isLogBuiltinIndexedAndReady(info.LogBuiltinIndexes, idx.LogBuiltin) {
+			return buildCreateIndexLogPayload(logPayload), nil
+		}
+		setLogBuiltinIndexed(info.LogBuiltinIndexes, idx.LogBuiltin, true, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING)
+		logPayload.Index = &commonpb.CreateIndexLog_LogBuiltin{LogBuiltin: idx.LogBuiltin}
 	}
 
 	s.PutLedger(ledgerName, info)
@@ -86,12 +85,6 @@ func (p *RequestProcessor) processDropIndex(
 	logPayload := &commonpb.DropIndexLog{}
 
 	switch idx := order.Index.(type) {
-	case *raftcmdpb.DropIndexOrder_AddressRole:
-		if info.AddressIndexes != nil {
-			setAddressRoleIndexed(info.AddressIndexes, idx.AddressRole, false, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED)
-		}
-		logPayload.Index = &commonpb.DropIndexLog_AddressRole{AddressRole: idx.AddressRole}
-
 	case *raftcmdpb.DropIndexOrder_Metadata:
 		_, field := schemaFieldForTarget(info.MetadataSchema, idx.Metadata.Target, idx.Metadata.Key)
 		if field != nil {
@@ -105,6 +98,12 @@ func (p *RequestProcessor) processDropIndex(
 			setBuiltinIndexed(info.BuiltinIndexes, idx.Builtin, false, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED)
 		}
 		logPayload.Index = &commonpb.DropIndexLog_Builtin{Builtin: idx.Builtin}
+
+	case *raftcmdpb.DropIndexOrder_LogBuiltin:
+		if info.LogBuiltinIndexes != nil {
+			setLogBuiltinIndexed(info.LogBuiltinIndexes, idx.LogBuiltin, false, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED)
+		}
+		logPayload.Index = &commonpb.DropIndexLog_LogBuiltin{LogBuiltin: idx.LogBuiltin}
 	}
 
 	s.PutLedger(ledgerName, info)
@@ -129,12 +128,6 @@ func (p *RequestProcessor) processIndexReady(
 	logPayload := &commonpb.IndexReadyLog{}
 
 	switch idx := order.Index.(type) {
-	case *raftcmdpb.IndexReadyOrder_AddressRole:
-		if info.AddressIndexes != nil {
-			setAddressRoleStatus(info.AddressIndexes, idx.AddressRole, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY)
-		}
-		logPayload.Index = &commonpb.IndexReadyLog_AddressRole{AddressRole: idx.AddressRole}
-
 	case *raftcmdpb.IndexReadyOrder_Metadata:
 		_, field := schemaFieldForTarget(info.MetadataSchema, idx.Metadata.Target, idx.Metadata.Key)
 		if field != nil {
@@ -147,6 +140,12 @@ func (p *RequestProcessor) processIndexReady(
 			setBuiltinStatus(info.BuiltinIndexes, idx.Builtin, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY)
 		}
 		logPayload.Index = &commonpb.IndexReadyLog_Builtin{Builtin: idx.Builtin}
+
+	case *raftcmdpb.IndexReadyOrder_LogBuiltin:
+		if info.LogBuiltinIndexes != nil {
+			setLogBuiltinStatus(info.LogBuiltinIndexes, idx.LogBuiltin, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY)
+		}
+		logPayload.Index = &commonpb.IndexReadyLog_LogBuiltin{LogBuiltin: idx.LogBuiltin}
 	}
 
 	s.PutLedger(ledgerName, info)
@@ -166,46 +165,6 @@ func buildCreateIndexLogPayload(log *commonpb.CreateIndexLog) *commonpb.LedgerLo
 	}
 }
 
-func isAddressRoleIndexedAndReady(cfg *commonpb.AddressIndexConfig, role commonpb.AddressRole) bool {
-	if cfg == nil {
-		return false
-	}
-	switch role {
-	case commonpb.AddressRole_ADDRESS_ROLE_ANY:
-		return cfg.Address && cfg.AddressStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
-	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
-		return cfg.Source && cfg.SourceStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
-	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
-		return cfg.Destination && cfg.DestinationStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
-	}
-	return false
-}
-
-func setAddressRoleIndexed(cfg *commonpb.AddressIndexConfig, role commonpb.AddressRole, enabled bool, status commonpb.IndexBuildStatus) {
-	switch role {
-	case commonpb.AddressRole_ADDRESS_ROLE_ANY:
-		cfg.Address = enabled
-		cfg.AddressStatus = status
-	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
-		cfg.Source = enabled
-		cfg.SourceStatus = status
-	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
-		cfg.Destination = enabled
-		cfg.DestinationStatus = status
-	}
-}
-
-func setAddressRoleStatus(cfg *commonpb.AddressIndexConfig, role commonpb.AddressRole, status commonpb.IndexBuildStatus) {
-	switch role {
-	case commonpb.AddressRole_ADDRESS_ROLE_ANY:
-		cfg.AddressStatus = status
-	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
-		cfg.SourceStatus = status
-	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
-		cfg.DestinationStatus = status
-	}
-}
-
 func isBuiltinIndexedAndReady(cfg *commonpb.BuiltinIndexConfig, builtin commonpb.TransactionBuiltinIndex) bool {
 	if cfg == nil {
 		return false
@@ -215,6 +174,12 @@ func isBuiltinIndexedAndReady(cfg *commonpb.BuiltinIndexConfig, builtin commonpb
 		return cfg.Reference && cfg.ReferenceStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 		return cfg.Timestamp && cfg.TimestampStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
+		return cfg.Address && cfg.AddressStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
+		return cfg.SourceAddress && cfg.SourceAddressStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
+		return cfg.DestAddress && cfg.DestAddressStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
 	}
 	return false
 }
@@ -227,6 +192,15 @@ func setBuiltinIndexed(cfg *commonpb.BuiltinIndexConfig, builtin commonpb.Transa
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 		cfg.Timestamp = enabled
 		cfg.TimestampStatus = status
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
+		cfg.Address = enabled
+		cfg.AddressStatus = status
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
+		cfg.SourceAddress = enabled
+		cfg.SourceAddressStatus = status
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
+		cfg.DestAddress = enabled
+		cfg.DestAddressStatus = status
 	}
 }
 
@@ -236,5 +210,37 @@ func setBuiltinStatus(cfg *commonpb.BuiltinIndexConfig, builtin commonpb.Transac
 		cfg.ReferenceStatus = status
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 		cfg.TimestampStatus = status
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
+		cfg.AddressStatus = status
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
+		cfg.SourceAddressStatus = status
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
+		cfg.DestAddressStatus = status
+	}
+}
+
+func isLogBuiltinIndexedAndReady(cfg *commonpb.LogBuiltinIndexConfig, builtin commonpb.LogBuiltinIndex) bool {
+	if cfg == nil {
+		return false
+	}
+	switch builtin {
+	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER:
+		return cfg.Ledger && cfg.LedgerStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	}
+	return false
+}
+
+func setLogBuiltinIndexed(cfg *commonpb.LogBuiltinIndexConfig, builtin commonpb.LogBuiltinIndex, enabled bool, status commonpb.IndexBuildStatus) {
+	switch builtin {
+	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER:
+		cfg.Ledger = enabled
+		cfg.LedgerStatus = status
+	}
+}
+
+func setLogBuiltinStatus(cfg *commonpb.LogBuiltinIndexConfig, builtin commonpb.LogBuiltinIndex, status commonpb.IndexBuildStatus) {
+	switch builtin {
+	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER:
+		cfg.LedgerStatus = status
 	}
 }

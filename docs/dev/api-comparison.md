@@ -46,7 +46,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |
 | **Logs** |
-| List logs | ✅ | ✅ | gRPC stream |
+| List logs | ✅ | ✅ | gRPC stream, supports `--filter 'ledger == "foo"'` for per-ledger listing (opt-in index) |
 | **Import/Export** |
 | Import logs | ⚠️ | ✅ | Interface defined but not implemented |
 | Export logs | ⚠️ | ✅ | Interface defined but not implemented |
@@ -539,7 +539,7 @@ Read endpoints comparison with the original ledger:
 | `GET /{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
 | `GET /{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
 | `GET /{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
-| `GET /{ledgerName}/logs` | ✅ | ✅ | List logs (gRPC stream) |
+| `GET /{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs (requires builtin LOG index). Supports `?after=` for pagination |
 | `GET /{ledgerName}/aggregate/balances` | ❌ | ✅ | Balance aggregation |
 | `GET /{ledgerName}/stats` | ✅ | ✅ | Ledger statistics (account + transaction count) |
 | `GET /{ledgerName}` | ✅ | ✅ | Get ledger info |
@@ -620,7 +620,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListPeriods` | Stream all periods | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure) | ✅ |
 | `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
-| `ListLogs` | Stream system logs (optional ledger filter) | ✅ |
+| `ListLogs` | Stream system logs (supports `ledger` and `log_id` filters for per-ledger listing and pagination) | ✅ |
 | `ListSigningKeys` | Stream all registered signing keys | ✅ |
 | `Discovery` | Return server capabilities (response signing config) | ✅ |
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |

@@ -1628,13 +1628,15 @@ ledgerctl logs list [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
-| `--after` | `0` | Show logs after this sequence number |
+| `--after` | `0` | Show logs after this global sequence number |
 | `--page-size` | `10` | Number of logs per page (0 = unlimited) |
+| `--min-log-sequence` | `0` | Minimum log sequence the server must have applied before reading (0 = no constraint) |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
 - Streams system log entries from the server
 - Each entry shows: sequence number, log type, ledger name (if applicable), and details
+- The underlying gRPC `ListLogs` RPC supports a `QueryFilter` for per-ledger listing (e.g. `ledger == "foo"`) and log ID pagination (`log_id > 42`). The per-ledger log index must be enabled via `CreateIndex` (builtin `LOG` index)
 
 **Example:**
 

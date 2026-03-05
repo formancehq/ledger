@@ -72,22 +72,33 @@ func waitForBuiltinIndexReady(ctx context.Context, client servicepb.BucketServic
 			g.Expect(info.BuiltinIndexes.ReferenceStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
 		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 			g.Expect(info.BuiltinIndexes.TimestampStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
+			g.Expect(info.BuiltinIndexes.AddressStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
+			g.Expect(info.BuiltinIndexes.SourceAddressStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
+			g.Expect(info.BuiltinIndexes.DestAddressStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
 		}
 	}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 }
 
-// createIndexAction creates a request for creating an index on a ledger.
-func createAddressIndexAction(ledger string, role commonpb.AddressRole) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_CreateIndex{
-			CreateIndex: &servicepb.CreateIndexRequest{
-				Ledger: ledger,
-				Index: &servicepb.CreateIndexRequest_AddressRole{
-					AddressRole: role,
-				},
-			},
-		},
+// addressRoleToBuiltinIndex maps an AddressRole to its corresponding TransactionBuiltinIndex.
+func addressRoleToBuiltinIndex(role commonpb.AddressRole) commonpb.TransactionBuiltinIndex {
+	switch role {
+	case commonpb.AddressRole_ADDRESS_ROLE_ANY:
+		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS
+	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
+		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS
+	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
+		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS
+	default:
+		return commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS
 	}
+}
+
+// createAddressIndexAction creates a request for creating an address index on a ledger.
+func createAddressIndexAction(ledger string, role commonpb.AddressRole) *servicepb.Request {
+	return createBuiltinIndexAction(ledger, addressRoleToBuiltinIndex(role))
 }
 
 // createMetadataIndexAction creates a request for creating a metadata index.
@@ -109,16 +120,7 @@ func createMetadataIndexAction(ledger string, target commonpb.TargetType, key st
 
 // dropAddressIndexAction creates a request for dropping an address index.
 func dropAddressIndexAction(ledger string, role commonpb.AddressRole) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_DropIndex{
-			DropIndex: &servicepb.DropIndexRequest{
-				Ledger: ledger,
-				Index: &servicepb.DropIndexRequest_AddressRole{
-					AddressRole: role,
-				},
-			},
-		},
-	}
+	return dropBuiltinIndexAction(ledger, addressRoleToBuiltinIndex(role))
 }
 
 // dropMetadataIndexAction creates a request for dropping a metadata index.
@@ -158,19 +160,7 @@ func waitForMetadataIndexReady(ctx context.Context, client servicepb.BucketServi
 
 // waitForAddressIndexReady waits until an address index reaches READY status.
 func waitForAddressIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, role commonpb.AddressRole) {
-	Eventually(func(g Gomega) {
-		info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledger})
-		g.Expect(err).To(Succeed())
-		g.Expect(info.AddressIndexes).NotTo(BeNil())
-		switch role {
-		case commonpb.AddressRole_ADDRESS_ROLE_ANY:
-			g.Expect(info.AddressIndexes.AddressStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
-		case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
-			g.Expect(info.AddressIndexes.SourceStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
-		case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
-			g.Expect(info.AddressIndexes.DestinationStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
-		}
-	}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+	waitForBuiltinIndexReady(ctx, client, ledger, addressRoleToBuiltinIndex(role))
 }
 
 var _ = Describe("UserConfigurableIndexes", Ordered, func() {
@@ -344,8 +334,8 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Eventually(func(g Gomega) {
 				ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
-				g.Expect(ledger.AddressIndexes).NotTo(BeNil())
-				g.Expect(ledger.AddressIndexes.Address).To(BeTrue())
+				g.Expect(ledger.BuiltinIndexes).NotTo(BeNil())
+				g.Expect(ledger.BuiltinIndexes.Address).To(BeTrue())
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -361,9 +351,9 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Eventually(func(g Gomega) {
 				ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
-				g.Expect(ledger.AddressIndexes).NotTo(BeNil())
-				g.Expect(ledger.AddressIndexes.Source).To(BeTrue())
-				g.Expect(ledger.AddressIndexes.Destination).To(BeTrue())
+				g.Expect(ledger.BuiltinIndexes).NotTo(BeNil())
+				g.Expect(ledger.BuiltinIndexes.SourceAddress).To(BeTrue())
+				g.Expect(ledger.BuiltinIndexes.DestAddress).To(BeTrue())
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -378,11 +368,11 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Eventually(func(g Gomega) {
 				ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
-				g.Expect(ledger.AddressIndexes).NotTo(BeNil())
-				g.Expect(ledger.AddressIndexes.Address).To(BeFalse())
+				g.Expect(ledger.BuiltinIndexes).NotTo(BeNil())
+				g.Expect(ledger.BuiltinIndexes.Address).To(BeFalse())
 				// Source and destination should still be enabled
-				g.Expect(ledger.AddressIndexes.Source).To(BeTrue())
-				g.Expect(ledger.AddressIndexes.Destination).To(BeTrue())
+				g.Expect(ledger.BuiltinIndexes.SourceAddress).To(BeTrue())
+				g.Expect(ledger.BuiltinIndexes.DestAddress).To(BeTrue())
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})

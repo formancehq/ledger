@@ -168,6 +168,59 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /{ledgerName}/logs:
+    get:
+      summary: List logs for a ledger
+      description: |
+        Lists log entries for a specific ledger, ordered by ledger-local log ID ascending.
+        Requires the builtin `LOG` index to be enabled on the ledger via `CreateIndex`.
+        Supports cursor pagination via the `after` query parameter. Requires `ops:read` scope.
+      operationId: listLedgerLogs
+      tags:
+        - Logs
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            format: uint32
+            minimum: 0
+            default: 0
+          description: Maximum number of log entries to return (0 = no limit)
+        - name: after
+          in: query
+          schema:
+            type: integer
+            format: uint64
+            minimum: 0
+          description: Ledger-local log ID to start after (exclusive, for cursor pagination)
+      responses:
+        '200':
+          description: Logs retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: System log entry (protobuf JSON representation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /{ledgerName}/promote:
     post:
       summary: Promote a mirror ledger

@@ -2,6 +2,7 @@ package readstore
 
 import (
 	"bytes"
+	"encoding/binary"
 	"sort"
 
 	bolt "go.etcd.io/bbolt"
@@ -18,6 +19,7 @@ const (
 	batchBucketDatx         // BucketDestAccountTx
 	batchBucketTxref        // BucketTransactionReference
 	batchBucketTstmp        // BucketTransactionTimestamp
+	batchBucketLlog         // BucketLedgerLogs
 	numBatchBuckets
 )
 
@@ -32,6 +34,7 @@ var batchBucketNames = [numBatchBuckets][]byte{
 	BucketDestAccountTx,
 	BucketTransactionReference,
 	BucketTransactionTimestamp,
+	BucketLedgerLogs,
 }
 
 // writeOp represents a buffered write or delete operation.
@@ -269,6 +272,15 @@ func (wb *WriteBatch) WriteTransactionReferenceIndex(kb *KeyBuilder, ledger, ref
 func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *KeyBuilder, ledger string, timestamp, txID uint64) {
 	key := TransactionTimestampKey(kb, ledger, timestamp, txID)
 	wb.put(batchBucketTstmp, key, nil)
+}
+
+// WriteLedgerLogIndex inserts an entry in the per-ledger log index.
+// The value is the global sequence, encoded as big-endian uint64.
+func (wb *WriteBatch) WriteLedgerLogIndex(kb *KeyBuilder, ledger string, logID, globalSequence uint64) {
+	key := LedgerLogKey(kb, ledger, logID)
+	var val [8]byte
+	binary.BigEndian.PutUint64(val[:], globalSequence)
+	wb.put(batchBucketLlog, key, val[:])
 }
 
 // DeleteMetadataEntry removes both the forward index and reverse map entries

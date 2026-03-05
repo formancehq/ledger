@@ -220,28 +220,31 @@ message LedgerApplyOrder {
 
 // CreateIndexOrder requests the creation of a new index.
 message CreateIndexOrder {
+  reserved 1;  // Was: AddressRole address_role
   oneof index {
-    common.AddressRole address_role = 1;
     common.MetadataIndexTarget metadata = 2;
     common.TransactionBuiltinIndex builtin = 3;
+    common.LogBuiltinIndex log_builtin = 4;
   }
 }
 
 // DropIndexOrder requests the removal of an index.
 message DropIndexOrder {
+  reserved 1;  // Was: AddressRole address_role
   oneof index {
-    common.AddressRole address_role = 1;
     common.MetadataIndexTarget metadata = 2;
     common.TransactionBuiltinIndex builtin = 3;
+    common.LogBuiltinIndex log_builtin = 4;
   }
 }
 
 // IndexReadyOrder signals that an index has finished building.
 message IndexReadyOrder {
+  reserved 1;  // Was: AddressRole address_role
   oneof index {
-    common.AddressRole address_role = 1;
     common.MetadataIndexTarget metadata = 2;
     common.TransactionBuiltinIndex builtin = 3;
+    common.LogBuiltinIndex log_builtin = 4;
   }
 }
 

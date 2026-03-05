@@ -1,16 +1,21 @@
 package query
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
+	"io"
 
 	"github.com/cockroachdb/pebble"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	bolt "go.etcd.io/bbolt"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 )
 
 // ReadLastLog returns the full last log entry from the given reader. Returns nil if no logs exist.
@@ -89,6 +94,81 @@ func ReadLogBySequence(ctx context.Context, reader dal.PebbleReader, sequence ui
 	}
 
 	return log, nil
+}
+
+// ledgerLogCursor iterates over pre-fetched global sequences and fetches full
+// Log entries from Pebble on demand. It holds no long-lived resources.
+type ledgerLogCursor struct {
+	pebble dal.PebbleReader
+	seqs   []uint64
+	pos    int
+}
+
+func (c *ledgerLogCursor) Next() (*commonpb.Log, error) {
+	if c.pos >= len(c.seqs) {
+		return nil, io.EOF
+	}
+	seq := c.seqs[c.pos]
+	c.pos++
+	log, err := ReadLogBySequence(context.Background(), c.pebble, seq)
+	if err != nil {
+		return nil, err
+	}
+	if log == nil {
+		return nil, fmt.Errorf("log with sequence %d not found in Pebble", seq)
+	}
+	return log, nil
+}
+
+func (c *ledgerLogCursor) Close() error { return nil }
+
+// ReadLedgerLogsSince returns a cursor over log entries for a specific ledger,
+// ordered by ledger-local log ID (ascending). Pass afterLogID=0 to start from
+// the beginning. pageSize=0 means no limit.
+//
+// It reads the per-ledger index from bbolt (BucketLedgerLogs) to get global
+// sequences, then fetches the full Log from Pebble for each entry.
+func ReadLedgerLogsSince(
+	_ context.Context,
+	pebbleReader dal.PebbleReader,
+	readStore *readstore.Store,
+	ledger string,
+	afterLogID uint64,
+	pageSize uint32,
+) (dal.Cursor[*commonpb.Log], error) {
+	kb := readstore.NewKeyBuilder()
+	prefix := readstore.LedgerLogPrefix(kb, ledger)
+
+	var startKey []byte
+	if afterLogID > 0 {
+		startKey = readstore.LedgerLogKey(kb, ledger, afterLogID+1)
+	} else {
+		startKey = prefix
+	}
+
+	var seqs []uint64
+	err := readStore.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(readstore.BucketLedgerLogs)
+		if b == nil {
+			return nil
+		}
+		c := b.Cursor()
+		for k, v := c.Seek(startKey); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
+			if len(v) != 8 {
+				continue
+			}
+			seqs = append(seqs, binary.BigEndian.Uint64(v))
+			if pageSize > 0 && uint32(len(seqs)) >= pageSize {
+				break
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading ledger log index: %w", err)
+	}
+
+	return &ledgerLogCursor{pebble: pebbleReader, seqs: seqs}, nil
 }
 
 // ReadLogsSince returns a cursor over global log entries after the given sequence from the given reader.
