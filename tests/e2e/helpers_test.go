@@ -363,6 +363,42 @@ func listLedgers(ctx context.Context, client servicepb.BucketServiceClient) (map
 	return ledgers, nil
 }
 
+// analyzeAccounts calls the streaming AnalyzeAccounts RPC and returns the final result.
+// It consumes progress events and returns only the result event.
+func analyzeAccounts(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.AnalyzeAccountsRequest) (*servicepb.AnalyzeAccountsResponse, error) {
+	stream, err := client.AnalyzeAccounts(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		event, err := stream.Recv()
+		if err != nil {
+			return nil, err
+		}
+		if result := event.GetResult(); result != nil {
+			return result, nil
+		}
+	}
+}
+
+// analyzeTransactions calls the streaming AnalyzeTransactions RPC and returns the final result.
+// It consumes progress events and returns only the result event.
+func analyzeTransactions(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.AnalyzeTransactionsRequest) (*servicepb.AnalyzeTransactionsResponse, error) {
+	stream, err := client.AnalyzeTransactions(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		event, err := stream.Recv()
+		if err != nil {
+			return nil, err
+		}
+		if result := event.GetResult(); result != nil {
+			return result, nil
+		}
+	}
+}
+
 // multiNodeOptions holds configuration options for setupMultiNodeCluster.
 type multiNodeOptions struct {
 	withGateway      bool

@@ -41,7 +41,7 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 		})
 
 		It("Should return zero transactions and no patterns", func() {
-			resp, err := client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
+			resp, err := analyzeTransactions(ctx, client, &servicepb.AnalyzeTransactionsRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -75,7 +75,7 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		It("Should discover a single SIMPLE pattern", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
+				resp, err := analyzeTransactions(ctx, client, &servicepb.AnalyzeTransactionsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -112,7 +112,7 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		It("Should discover a MULTI_DESTINATION pattern", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
+				resp, err := analyzeTransactions(ctx, client, &servicepb.AnalyzeTransactionsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -159,7 +159,7 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		It("Should normalize variable user addresses in flow signatures", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
+				resp, err := analyzeTransactions(ctx, client, &servicepb.AnalyzeTransactionsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -204,7 +204,7 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		It("Should have coherent volume stats (total = sum of postings)", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
+				resp, err := analyzeTransactions(ctx, client, &servicepb.AnalyzeTransactionsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -220,7 +220,7 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 	Context("When analyzing a non-existent ledger", func() {
 		It("Should return a NotFound error", func() {
-			_, err := client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
+			_, err := analyzeTransactions(ctx, client, &servicepb.AnalyzeTransactionsRequest{
 				Ledger: "non-existent-tx-ledger",
 			})
 			Expect(err).To(HaveOccurred())
@@ -270,7 +270,7 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		It("Should discover multiple distinct flow patterns", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
+				resp, err := analyzeTransactions(ctx, client, &servicepb.AnalyzeTransactionsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())

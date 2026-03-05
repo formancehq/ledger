@@ -41,7 +41,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		})
 
 		It("Should return zero accounts and no patterns", func() {
-			resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+			resp, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -76,7 +76,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		It("Should return correct total accounts", func() {
 			// Index builder processes logs asynchronously; poll until indexes are up to date.
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -87,7 +87,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should discover patterns", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -97,7 +97,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should suggest a chart with fixed segments", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -139,7 +139,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should detect variable segments", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -156,7 +156,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should include patterns with variable segments", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -205,7 +205,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should treat children as fixed with default threshold", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 					Ledger:            ledgerName,
 					VariableThreshold: 0, // default = 10
 				})
@@ -223,7 +223,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should treat children as variable with low threshold", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 					Ledger:            ledgerName,
 					VariableThreshold: 3, // 5 children > 3 threshold → variable
 				})
@@ -240,7 +240,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 	Context("When analyzing a non-existent ledger", func() {
 		It("Should return a NotFound error", func() {
-			_, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+			_, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 				Ledger: "non-existent-ledger",
 			})
 			Expect(err).To(HaveOccurred())
@@ -283,7 +283,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should include metadata keys in patterns", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -301,7 +301,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should include multiple assets in patterns", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -363,7 +363,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should return the correct total accounts", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -374,7 +374,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should produce a chart with both fixed and variable segments", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -389,7 +389,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should detect variable user IDs under users segment", func() {
 			Eventually(func(g Gomega) {
-				resp, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(ctx, client, &servicepb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
