@@ -45,6 +45,10 @@ service ClusterService {
   // CompactReadIndex triggers an online compaction of the local bbolt read index.
   // Node-local operation (not forwarded to leader).
   rpc CompactReadIndex(CompactReadIndexRequest) returns (CompactReadIndexResponse);
+
+  // CreateCheckpoint creates a Pebble checkpoint of the current live database state.
+  // Node-local operation (not forwarded to leader).
+  rpc CreateCheckpoint(CreateCheckpointRequest) returns (CreateCheckpointResponse);
 }
 
 message GetClusterStateRequest {
@@ -223,4 +227,14 @@ message CompactReadIndexResponse {
   int64 duration_ms = 1;       // Wall-clock duration of the compaction in milliseconds
   int64 size_before_bytes = 2; // Read index file size before compaction in bytes
   int64 size_after_bytes = 3;  // Read index file size after compaction in bytes
+}
+
+// ============================================================================
+// Create Checkpoint Messages
+// ============================================================================
+
+message CreateCheckpointRequest {}
+
+message CreateCheckpointResponse {
+  uint64 checkpoint_id = 1;  // ID of the newly created checkpoint
 }

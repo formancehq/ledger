@@ -535,6 +535,21 @@ func (impl *ClusterServiceServerImpl) CompactReadIndex(ctx context.Context, _ *c
 	}, nil
 }
 
+func (impl *ClusterServiceServerImpl) CreateCheckpoint(ctx context.Context, _ *clusterpb.CreateCheckpointRequest) (*clusterpb.CreateCheckpointResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
+		return nil, err
+	}
+
+	checkpointID, err := impl.store.CreateSnapshot()
+	if err != nil {
+		return nil, fmt.Errorf("checkpoint creation failed: %w", err)
+	}
+
+	return &clusterpb.CreateCheckpointResponse{
+		CheckpointId: checkpointID,
+	}, nil
+}
+
 func RegisterClusterService(server *ggrpc.Server, clusterServiceServer clusterpb.ClusterServiceServer) {
 	clusterpb.RegisterClusterServiceServer(server, clusterServiceServer)
 }

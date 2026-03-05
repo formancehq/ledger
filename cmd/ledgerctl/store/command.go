@@ -20,6 +20,7 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewRebuildIndexesCommand())
 	cmd.AddCommand(NewCompactCommand())
 	cmd.AddCommand(NewCompactReadIndexCommand())
+	cmd.AddCommand(NewCheckpointCommand())
 
 	return cmd
 }

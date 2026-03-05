@@ -408,7 +408,12 @@ func (s *Store) Close() error {
 }
 
 // CreateSnapshot creates a new checkpoint of the database and returns the checkpoint ID.
+// It holds dbMu exclusively to serialize against concurrent calls from triggerSnapshot
+// (via FSM) and the CreateCheckpoint gRPC handler.
 func (s *Store) CreateSnapshot() (uint64, error) {
+	s.dbMu.Lock()
+	defer s.dbMu.Unlock()
+
 	s.logger.Infof("Creating snapshot")
 
 	newCheckpointID := s.currentCheckPoint + 1

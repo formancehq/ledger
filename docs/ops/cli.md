@@ -1292,6 +1292,41 @@ ledgerctl store compact --json
 ledgerctl s gc
 ```
 
+#### store checkpoint
+
+Create a Pebble checkpoint of the current live database state. Useful after `store compact` to persist the compacted state so it survives restarts (which restore from the latest checkpoint).
+
+**Aliases:** `cp`
+
+```bash
+ledgerctl store checkpoint [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Creates a new Pebble checkpoint from the current `live/` directory (node-local, not forwarded to leader)
+- Updates `CURRENT_CHECKPOINT` so the next restart uses this checkpoint
+- Returns the new checkpoint ID
+
+**Example:**
+
+```bash
+# Create a checkpoint after compaction
+ledgerctl store compact && ledgerctl store checkpoint
+
+# Output as JSON (for scripting)
+ledgerctl store checkpoint --json
+
+# Short form
+ledgerctl s cp
+```
+
 #### store backup
 
 Download a point-in-time backup of the Pebble store as a tar archive. The request is forwarded to the cluster leader to ensure the most up-to-date state.
