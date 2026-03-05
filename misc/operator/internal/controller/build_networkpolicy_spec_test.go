@@ -128,3 +128,101 @@ func TestBuildNetworkPolicySpec_DNSRule(t *testing.T) {
 	assert.Equal(t, int32(53), dns.Ports[1].Port.IntVal)
 	assert.Equal(t, &tcp, dns.Ports[1].Protocol)
 }
+
+func TestBuildNetworkPolicySpec_OTELDefaultPorts(t *testing.T) {
+	t.Parallel()
+
+	ls := newTestLedgerService("otel", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls.Spec.Config.Monitoring = &ledgerv1alpha1.MonitoringConfig{
+		Traces: &ledgerv1alpha1.TracesConfig{Enabled: boolPtr(true)},
+	}
+	spec := buildNetworkPolicySpec(ls)
+
+	// 4 egress rules: inter-node, DNS, external, OTEL.
+	require.Len(t, spec.Egress, 4)
+
+	otel := spec.Egress[3]
+	require.Len(t, otel.To, 1)
+	require.NotNil(t, otel.To[0].NamespaceSelector)
+	assert.Empty(t, otel.To[0].NamespaceSelector.MatchLabels)
+
+	// Default OTEL ports: 4317 (gRPC) and 4318 (HTTP).
+	tcp := corev1.ProtocolTCP
+	require.Len(t, otel.Ports, 2)
+	assert.Equal(t, int32(4317), otel.Ports[0].Port.IntVal)
+	assert.Equal(t, &tcp, otel.Ports[0].Protocol)
+	assert.Equal(t, int32(4318), otel.Ports[1].Port.IntVal)
+	assert.Equal(t, &tcp, otel.Ports[1].Protocol)
+}
+
+func TestBuildNetworkPolicySpec_OTELCustomPort(t *testing.T) {
+	t.Parallel()
+
+	ls := newTestLedgerService("otel-custom", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls.Spec.Config.Monitoring = &ledgerv1alpha1.MonitoringConfig{
+		Traces: &ledgerv1alpha1.TracesConfig{
+			Enabled: boolPtr(true),
+			Port:    "4320",
+		},
+	}
+	spec := buildNetworkPolicySpec(ls)
+
+	require.Len(t, spec.Egress, 4)
+
+	otel := spec.Egress[3]
+	tcp := corev1.ProtocolTCP
+	require.Len(t, otel.Ports, 1)
+	assert.Equal(t, int32(4320), otel.Ports[0].Port.IntVal)
+	assert.Equal(t, &tcp, otel.Ports[0].Protocol)
+}
+
+func TestBuildNetworkPolicySpec_NoOTELWithoutMonitoring(t *testing.T) {
+	t.Parallel()
+
+	ls := newTestLedgerService("no-otel", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	spec := buildNetworkPolicySpec(ls)
+
+	// Only the base 3 egress rules.
+	require.Len(t, spec.Egress, 3)
+}
+
+func TestBuildNetworkPolicySpec_OTELFromDefaults(t *testing.T) {
+	t.Parallel()
+
+	// Simulate monitoring coming from LedgerDefaults via merge.
+	defaults := &ledgerv1alpha1.LedgerDefaultsSpec{
+		NetworkPolicy: &ledgerv1alpha1.NetworkPolicySpec{Enabled: true},
+		Config: ledgerv1alpha1.LedgerDefaultsConfig{
+			Monitoring: &ledgerv1alpha1.MonitoringConfig{
+				Traces: &ledgerv1alpha1.TracesConfig{
+					Enabled: boolPtr(true),
+					Port:    "4317",
+				},
+				Metrics: &ledgerv1alpha1.MetricsConfig{
+					Enabled: boolPtr(true),
+					Port:    "4318",
+				},
+			},
+		},
+	}
+
+	ls := newTestLedgerService("from-defaults", nil)
+	applyDefaultsFromRef(&ls.Spec, defaults)
+
+	require.NotNil(t, ls.Spec.NetworkPolicy)
+	spec := buildNetworkPolicySpec(ls)
+
+	// 4 egress rules including OTEL.
+	require.Len(t, spec.Egress, 4)
+
+	otel := spec.Egress[3]
+	require.Len(t, otel.To, 1)
+	require.NotNil(t, otel.To[0].NamespaceSelector)
+
+	tcp := corev1.ProtocolTCP
+	require.Len(t, otel.Ports, 2)
+	assert.Equal(t, int32(4317), otel.Ports[0].Port.IntVal)
+	assert.Equal(t, &tcp, otel.Ports[0].Protocol)
+	assert.Equal(t, int32(4318), otel.Ports[1].Port.IntVal)
+	assert.Equal(t, &tcp, otel.Ports[1].Protocol)
+}

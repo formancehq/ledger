@@ -2,6 +2,9 @@ package controller
 
 import (
 	"context"
+	"maps"
+	"slices"
+	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -58,53 +61,156 @@ func buildNetworkPolicySpec(ledger *ledgerv1alpha1.LedgerService) networkingv1.N
 	tcp := corev1.ProtocolTCP
 	udp := corev1.ProtocolUDP
 
-	return networkingv1.NetworkPolicySpec{
-		PodSelector: metav1.LabelSelector{
-			MatchLabels: selectorLabels(ledger),
+	egress := []networkingv1.NetworkPolicyEgressRule{
+		{
+			// Inter-node communication (Raft, gRPC, HTTP).
+			To: []networkingv1.NetworkPolicyPeer{
+				{
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: selectorLabels(ledger),
+					},
+				},
+			},
+			Ports: []networkingv1.NetworkPolicyPort{
+				{Port: &raftPort, Protocol: &tcp},
+				{Port: &grpcPort, Protocol: &tcp},
+				{Port: &httpPort, Protocol: &tcp},
+			},
 		},
-		PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
-		Egress: []networkingv1.NetworkPolicyEgressRule{
-			{
-				// Inter-node communication (Raft, gRPC, HTTP).
-				To: []networkingv1.NetworkPolicyPeer{
-					{
-						PodSelector: &metav1.LabelSelector{
-							MatchLabels: selectorLabels(ledger),
-						},
+		{
+			// DNS resolution (kube-dns in any namespace).
+			To: []networkingv1.NetworkPolicyPeer{
+				{
+					NamespaceSelector: &metav1.LabelSelector{},
+					PodSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"k8s-app": "kube-dns"},
 					},
 				},
-				Ports: []networkingv1.NetworkPolicyPort{
-					{Port: &raftPort, Protocol: &tcp},
-					{Port: &grpcPort, Protocol: &tcp},
-					{Port: &httpPort, Protocol: &tcp},
-				},
 			},
-			{
-				// DNS resolution (kube-dns in any namespace).
-				To: []networkingv1.NetworkPolicyPeer{
-					{
-						NamespaceSelector: &metav1.LabelSelector{},
-						PodSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"k8s-app": "kube-dns"},
-						},
-					},
-				},
-				Ports: []networkingv1.NetworkPolicyPort{
-					{Port: &dnsPort, Protocol: &udp},
-					{Port: &dnsPort, Protocol: &tcp},
-				},
+			Ports: []networkingv1.NetworkPolicyPort{
+				{Port: &dnsPort, Protocol: &udp},
+				{Port: &dnsPort, Protocol: &tcp},
 			},
-			{
-				// External egress (non-RFC1918).
-				To: []networkingv1.NetworkPolicyPeer{
-					{
-						IPBlock: &networkingv1.IPBlock{
-							CIDR:   "0.0.0.0/0",
-							Except: except,
-						},
+		},
+		{
+			// External egress (non-RFC1918).
+			To: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR:   "0.0.0.0/0",
+						Except: except,
 					},
 				},
 			},
 		},
 	}
+
+	if rule := otelEgressRule(ledger); rule != nil {
+		egress = append(egress, *rule)
+	}
+
+	return networkingv1.NetworkPolicySpec{
+		PodSelector: metav1.LabelSelector{
+			MatchLabels: selectorLabels(ledger),
+		},
+		PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
+		Egress:      egress,
+	}
+}
+
+func otelEgressRule(ledger *ledgerv1alpha1.LedgerService) *networkingv1.NetworkPolicyEgressRule {
+	mon := ledger.Spec.Config.Monitoring
+	if mon == nil {
+		return nil
+	}
+
+	type exporter struct {
+		enabled *bool
+		port    string
+	}
+	exporters := []exporter{
+		{enabled: enabledFromTraces(mon.Traces), port: portFromTraces(mon.Traces)},
+		{enabled: enabledFromMetrics(mon.Metrics), port: portFromMetrics(mon.Metrics)},
+		{enabled: enabledFromLogs(mon.Logs), port: portFromLogs(mon.Logs)},
+	}
+
+	anyEnabled := false
+	ports := make(map[int32]struct{})
+	for _, e := range exporters {
+		if e.enabled == nil || !*e.enabled {
+			continue
+		}
+		anyEnabled = true
+		if p, err := strconv.ParseInt(e.port, 10, 32); err == nil && p > 0 {
+			ports[int32(p)] = struct{}{}
+		}
+	}
+
+	if !anyEnabled {
+		return nil
+	}
+
+	// Default OTEL ports when no custom port was configured.
+	if len(ports) == 0 {
+		ports[4317] = struct{}{}
+		ports[4318] = struct{}{}
+	}
+
+	sorted := slices.Sorted(maps.Keys(ports))
+
+	tcp := corev1.ProtocolTCP
+	var npPorts []networkingv1.NetworkPolicyPort
+	for _, p := range sorted {
+		v := intstr.FromInt32(p)
+		npPorts = append(npPorts, networkingv1.NetworkPolicyPort{Port: &v, Protocol: &tcp})
+	}
+
+	return &networkingv1.NetworkPolicyEgressRule{
+		To: []networkingv1.NetworkPolicyPeer{
+			{NamespaceSelector: &metav1.LabelSelector{}},
+		},
+		Ports: npPorts,
+	}
+}
+
+func enabledFromTraces(t *ledgerv1alpha1.TracesConfig) *bool {
+	if t == nil {
+		return nil
+	}
+	return t.Enabled
+}
+
+func enabledFromMetrics(m *ledgerv1alpha1.MetricsConfig) *bool {
+	if m == nil {
+		return nil
+	}
+	return m.Enabled
+}
+
+func enabledFromLogs(l *ledgerv1alpha1.LogsConfig) *bool {
+	if l == nil {
+		return nil
+	}
+	return l.Enabled
+}
+
+func portFromTraces(t *ledgerv1alpha1.TracesConfig) string {
+	if t == nil {
+		return ""
+	}
+	return t.Port
+}
+
+func portFromMetrics(m *ledgerv1alpha1.MetricsConfig) string {
+	if m == nil {
+		return ""
+	}
+	return m.Port
+}
+
+func portFromLogs(l *ledgerv1alpha1.LogsConfig) string {
+	if l == nil {
+		return ""
+	}
+	return l.Port
 }
