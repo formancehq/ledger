@@ -1,3 +1,4 @@
+#![feature("experimental-account-interpolation")]
 // Fund an escrow account for a transaction
 // Usage: ledgerctl transactions create --ledger my-ledger --script escrow_funding.num \
 //        --var "buyer=@users:alice" --var "order_id=order123" \

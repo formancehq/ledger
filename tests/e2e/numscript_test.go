@@ -498,6 +498,8 @@ send $amount (
 
 		It("Should create a transaction with dynamic account address", func() {
 			script := `
+#![feature("experimental-account-interpolation")]
+
 vars {
   account $buyer
   string $order_id
