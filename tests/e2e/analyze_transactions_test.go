@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"io"
 	"math/big"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -14,6 +15,28 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+// analyzeTransactions calls the streaming AnalyzeTransactions RPC and returns the final result.
+func analyzeTransactions(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.AnalyzeTransactionsRequest) (*servicepb.AnalyzeTransactionsResponse, error) {
+	stream, err := client.AnalyzeTransactions(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	var result *servicepb.AnalyzeTransactionsResponse
+	for {
+		event, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if r := event.GetResult(); r != nil {
+			result = r
+		}
+	}
+	return result, nil
+}
 
 var _ = Describe("AnalyzeTransactions", Ordered, func() {
 	var (

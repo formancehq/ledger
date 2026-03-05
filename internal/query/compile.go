@@ -2,6 +2,7 @@ package query
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"sort"
 	"strconv"
@@ -16,14 +17,15 @@ import (
 // compilation pipeline. All fields are set once at the entry point and
 // read (never mutated) by every sub-function.
 type compileCtx struct {
-	tx      *bolt.Tx
-	kb      *readstore.KeyBuilder
-	target  commonpb.QueryTarget
-	ledger  string
-	params  map[string]string
-	schema  map[string]*commonpb.MetadataFieldSchema
-	addrCfg *commonpb.AddressIndexConfig
-	profile *QueryProfile
+	tx         *bolt.Tx
+	kb         *readstore.KeyBuilder
+	target     commonpb.QueryTarget
+	ledger     string
+	params     map[string]string
+	schema     map[string]*commonpb.MetadataFieldSchema
+	addrCfg    *commonpb.AddressIndexConfig
+	builtinCfg *commonpb.BuiltinIndexConfig
+	profile    *QueryProfile
 }
 
 // metadataCtx holds the per-field context used only by type-specific
@@ -53,17 +55,19 @@ func Compile(
 	params map[string]string,
 	schema map[string]*commonpb.MetadataFieldSchema,
 	addrCfg *commonpb.AddressIndexConfig,
+	builtinCfg *commonpb.BuiltinIndexConfig,
 	profile *QueryProfile,
 ) (readstore.EntityIterator, error) {
 	ctx := &compileCtx{
-		tx:      tx,
-		kb:      kb,
-		target:  target,
-		ledger:  ledger,
-		params:  params,
-		schema:  schema,
-		addrCfg: addrCfg,
-		profile: profile,
+		tx:         tx,
+		kb:         kb,
+		target:     target,
+		ledger:     ledger,
+		params:     params,
+		schema:     schema,
+		addrCfg:    addrCfg,
+		builtinCfg: builtinCfg,
+		profile:    profile,
 	}
 	return compile(ctx, filter)
 }
@@ -85,6 +89,10 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 		return compileOr(ctx, f.Or)
 	case *commonpb.QueryFilter_Not:
 		return compileNot(ctx, f.Not)
+	case *commonpb.QueryFilter_Reference:
+		return compileReferenceCondition(ctx, f.Reference)
+	case *commonpb.QueryFilter_BuiltinUint:
+		return compileBuiltinUintCondition(ctx, f.BuiltinUint)
 	default:
 		return nil, fmt.Errorf("unknown filter type: %T", filter.Filter)
 	}
@@ -678,6 +686,200 @@ func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.Addres
 		Bucket:   addressRoleBucketLabel(role),
 		Children: []*IteratorStats{singleStats},
 	}), nil
+}
+
+// --- Builtin filters ---
+
+// compileReferenceCondition compiles a ReferenceCondition into a prefix scan on BucketTransactionReference.
+// Requires the reference builtin index to be READY.
+func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition) (readstore.EntityIterator, error) {
+	if rc.Cond == nil {
+		return nil, fmt.Errorf("reference condition has no value")
+	}
+	if err := checkBuiltinIndexed(ctx.builtinCfg, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE); err != nil {
+		return nil, err
+	}
+	value, err := resolveString(rc.Cond, ctx.params)
+	if err != nil {
+		return nil, err
+	}
+	b := ctx.tx.Bucket(readstore.BucketTransactionReference)
+	if b == nil {
+		return &SliceIterator{}, nil
+	}
+	prefix := readstore.TransactionReferencePrefix(ctx.kb, ctx.ledger, value)
+	iter := readstore.NewPrefixIterator(b.Cursor(), prefix, len(prefix), 8)
+	return trackIterator(iter, ctx.profile, &IteratorStats{
+		Label:  fmt.Sprintf("PrefixIterator(txref:%s:%s)", ctx.ledger, value),
+		Kind:   "Prefix",
+		Bucket: "txref",
+	}), nil
+}
+
+// compileBuiltinUintCondition dispatches to the appropriate builtin uint condition compiler.
+func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCondition) (readstore.EntityIterator, error) {
+	if cond.Cond == nil {
+		return nil, fmt.Errorf("builtin uint condition has no value")
+	}
+	switch cond.Field {
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
+		return compileTxIDCondition(ctx, cond.Cond)
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		return compileTimestampCondition(ctx, cond.Cond)
+	default:
+		return nil, fmt.Errorf("unsupported builtin uint field: %v", cond.Field)
+	}
+}
+
+// compileTxIDCondition filters transactions by ID using the existence bucket.
+// No index is required — the existence bucket is always present and sorted by txID.
+func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
+	bounds, err := resolveUintBounds(cond, ctx.params)
+	if err != nil {
+		return nil, err
+	}
+
+	b := ctx.tx.Bucket(readstore.BucketExistence)
+	if b == nil {
+		return &SliceIterator{}, nil
+	}
+
+	prefix := readstore.ExistencePrefix(ctx.kb, ctx.ledger, readstore.NamespaceTransaction)
+
+	// Equality optimization: single txID → check existence and return slice
+	if bounds.isEquality() {
+		txIDBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(txIDBytes, bounds.min)
+		key := readstore.ExistenceKey(ctx.kb, ctx.ledger, readstore.NamespaceTransaction, txIDBytes)
+		k, _ := b.Cursor().Seek(key)
+		if k == nil || !bytes.Equal(k, key) {
+			return &SliceIterator{}, nil
+		}
+		iter := &SliceIterator{entities: [][]byte{txIDBytes}}
+		return trackIterator(iter, ctx.profile, &IteratorStats{
+			Label:  fmt.Sprintf("SliceIterator(exist:%s:t:id=%d)", ctx.ledger, bounds.min),
+			Kind:   "Slice",
+			Bucket: "exist",
+		}), nil
+	}
+
+	// Range scan: build lower and upper bound keys
+	entityOffset := len(prefix) // entity starts right after the prefix
+	lower := make([]byte, 0, len(prefix)+8)
+	lower = append(lower, prefix...)
+	upper := make([]byte, 0, len(prefix)+8)
+	upper = append(upper, prefix...)
+
+	if bounds.hasMin {
+		minBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(minBytes, bounds.min)
+		lower = append(lower, minBytes...)
+	}
+	if bounds.hasMax {
+		maxBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(maxBytes, bounds.max)
+		upper = append(upper, maxBytes...)
+	} else {
+		// Use the next ledger prefix as upper bound (all 0xFF after prefix)
+		upper = append(upper, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+	}
+
+	// For ranges without lower bound, start from the prefix itself
+	if !bounds.hasMin {
+		lower = prefix
+	}
+
+	entityLen := 8
+	iter := materializeRange(b.Cursor(), lower, upper, entityOffset, entityLen, ctx.profile)
+	return trackIterator(iter, ctx.profile, &IteratorStats{
+		Label:  fmt.Sprintf("SliceIterator(exist:%s:t:id range)", ctx.ledger),
+		Kind:   "Range",
+		Bucket: "exist",
+	}), nil
+}
+
+// compileTimestampCondition filters transactions by timestamp using BucketTransactionTimestamp.
+// Requires the timestamp builtin index to be READY.
+func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
+	if err := checkBuiltinIndexed(ctx.builtinCfg, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP); err != nil {
+		return nil, err
+	}
+	bounds, err := resolveUintBounds(cond, ctx.params)
+	if err != nil {
+		return nil, err
+	}
+
+	b := ctx.tx.Bucket(readstore.BucketTransactionTimestamp)
+	if b == nil {
+		return &SliceIterator{}, nil
+	}
+
+	ledgerPrefix := readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledger)
+	// Key layout: [ledger\x00][timestamp_BE(8B)][txID_BE(8B)]
+	// entityOffset = len(ledger)+1+8 (ledger\x00 + timestamp 8B)
+	entityOffset := len(ledgerPrefix) + 8
+	entityLen := 8
+
+	lower := make([]byte, 0, len(ledgerPrefix)+8)
+	lower = append(lower, ledgerPrefix...)
+	upper := make([]byte, 0, len(ledgerPrefix)+8)
+	upper = append(upper, ledgerPrefix...)
+
+	if bounds.hasMin {
+		minBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(minBytes, bounds.min)
+		lower = append(lower, minBytes...)
+	}
+	if bounds.hasMax {
+		maxBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(maxBytes, bounds.max)
+		upper = append(upper, maxBytes...)
+	} else {
+		upper = append(upper, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+	}
+
+	if !bounds.hasMin {
+		lower = ledgerPrefix
+	}
+
+	iter := materializeRange(b.Cursor(), lower, upper, entityOffset, entityLen, ctx.profile)
+	return trackIterator(iter, ctx.profile, &IteratorStats{
+		Label:  fmt.Sprintf("SliceIterator(tstmp:%s timestamp range)", ctx.ledger),
+		Kind:   "Range",
+		Bucket: "tstmp",
+	}), nil
+}
+
+// checkBuiltinIndexed validates that the requested builtin index is enabled and READY.
+func checkBuiltinIndexed(cfg *commonpb.BuiltinIndexConfig, index commonpb.TransactionBuiltinIndex) error {
+	var (
+		enabled bool
+		status  commonpb.IndexBuildStatus
+		label   string
+	)
+
+	switch index {
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
+		label = "reference"
+		if cfg != nil {
+			enabled, status = cfg.Reference, cfg.ReferenceStatus
+		}
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		label = "timestamp"
+		if cfg != nil {
+			enabled, status = cfg.Timestamp, cfg.TimestampStatus
+		}
+	default:
+		return nil
+	}
+
+	if !enabled {
+		return &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
+	}
+	if status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+		return &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: label}}
+	}
+	return nil
 }
 
 // --- Helpers ---

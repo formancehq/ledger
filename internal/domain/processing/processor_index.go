@@ -56,6 +56,16 @@ func (p *RequestProcessor) processCreateIndex(
 		field.Indexed = true
 		field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
 		logPayload.Index = &commonpb.CreateIndexLog_Metadata{Metadata: idx.Metadata}
+
+	case *raftcmdpb.CreateIndexOrder_Builtin:
+		if info.BuiltinIndexes == nil {
+			info.BuiltinIndexes = &commonpb.BuiltinIndexConfig{}
+		}
+		if isBuiltinIndexedAndReady(info.BuiltinIndexes, idx.Builtin) {
+			return buildCreateIndexLogPayload(logPayload), nil
+		}
+		setBuiltinIndexed(info.BuiltinIndexes, idx.Builtin, true, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING)
+		logPayload.Index = &commonpb.CreateIndexLog_Builtin{Builtin: idx.Builtin}
 	}
 
 	s.PutLedger(ledgerName, info)
@@ -89,6 +99,12 @@ func (p *RequestProcessor) processDropIndex(
 			field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED
 		}
 		logPayload.Index = &commonpb.DropIndexLog_Metadata{Metadata: idx.Metadata}
+
+	case *raftcmdpb.DropIndexOrder_Builtin:
+		if info.BuiltinIndexes != nil {
+			setBuiltinIndexed(info.BuiltinIndexes, idx.Builtin, false, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED)
+		}
+		logPayload.Index = &commonpb.DropIndexLog_Builtin{Builtin: idx.Builtin}
 	}
 
 	s.PutLedger(ledgerName, info)
@@ -125,6 +141,12 @@ func (p *RequestProcessor) processIndexReady(
 			field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
 		}
 		logPayload.Index = &commonpb.IndexReadyLog_Metadata{Metadata: idx.Metadata}
+
+	case *raftcmdpb.IndexReadyOrder_Builtin:
+		if info.BuiltinIndexes != nil {
+			setBuiltinStatus(info.BuiltinIndexes, idx.Builtin, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY)
+		}
+		logPayload.Index = &commonpb.IndexReadyLog_Builtin{Builtin: idx.Builtin}
 	}
 
 	s.PutLedger(ledgerName, info)
@@ -181,5 +203,38 @@ func setAddressRoleStatus(cfg *commonpb.AddressIndexConfig, role commonpb.Addres
 		cfg.SourceStatus = status
 	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
 		cfg.DestinationStatus = status
+	}
+}
+
+func isBuiltinIndexedAndReady(cfg *commonpb.BuiltinIndexConfig, builtin commonpb.TransactionBuiltinIndex) bool {
+	if cfg == nil {
+		return false
+	}
+	switch builtin {
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
+		return cfg.Reference && cfg.ReferenceStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		return cfg.Timestamp && cfg.TimestampStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	}
+	return false
+}
+
+func setBuiltinIndexed(cfg *commonpb.BuiltinIndexConfig, builtin commonpb.TransactionBuiltinIndex, enabled bool, status commonpb.IndexBuildStatus) {
+	switch builtin {
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
+		cfg.Reference = enabled
+		cfg.ReferenceStatus = status
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		cfg.Timestamp = enabled
+		cfg.TimestampStatus = status
+	}
+}
+
+func setBuiltinStatus(cfg *commonpb.BuiltinIndexConfig, builtin commonpb.TransactionBuiltinIndex, status commonpb.IndexBuildStatus) {
+	switch builtin {
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
+		cfg.ReferenceStatus = status
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		cfg.TimestampStatus = status
 	}
 }

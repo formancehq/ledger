@@ -20,7 +20,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
-	bolt "go.etcd.io/bbolt"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -368,43 +367,40 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 	}
 
 	// Read per-index backfill progress from bbolt.
-	var progress []*servicepb.IndexBackfillProgress
-	if err := impl.readStore.View(func(tx *bolt.Tx) error {
-		all, readErr := impl.readStore.ReadAllBackfillProgress(tx)
-		if readErr != nil {
-			return readErr
-		}
-		for key, cursor := range all {
-			ledger, kind, details, ok := readstore.ParseBackfillKey([]byte(key))
-			if !ok {
-				continue
-			}
-			entry := &servicepb.IndexBackfillProgress{
-				Ledger: ledger,
-				Cursor: cursor,
-			}
-			switch kind {
-			case 'a':
-				if len(details) >= 1 {
-					entry.Index = &servicepb.IndexBackfillProgress_AddressRole{
-						AddressRole: commonpb.AddressRole(details[0]),
-					}
-				}
-			case 'm':
-				if len(details) >= 1 {
-					entry.Index = &servicepb.IndexBackfillProgress_Metadata{
-						Metadata: &commonpb.MetadataIndexTarget{
-							Target: commonpb.TargetType(details[0]),
-							Key:    string(details[1:]),
-						},
-					}
-				}
-			}
-			progress = append(progress, entry)
-		}
-		return nil
-	}); err != nil {
+	backfillEntries, err := impl.readStore.ListBackfillProgress()
+	if err != nil {
 		return nil, fmt.Errorf("reading backfill progress: %w", err)
+	}
+	progress := make([]*servicepb.IndexBackfillProgress, 0, len(backfillEntries))
+	for _, e := range backfillEntries {
+		entry := &servicepb.IndexBackfillProgress{
+			Ledger: e.Ledger,
+			Cursor: e.Cursor,
+		}
+		switch e.Kind {
+		case readstore.BackfillKindAddress:
+			if len(e.Details) >= 1 {
+				entry.Index = &servicepb.IndexBackfillProgress_AddressRole{
+					AddressRole: commonpb.AddressRole(e.Details[0]),
+				}
+			}
+		case readstore.BackfillKindMetadata:
+			if len(e.Details) >= 1 {
+				entry.Index = &servicepb.IndexBackfillProgress_Metadata{
+					Metadata: &commonpb.MetadataIndexTarget{
+						Target: commonpb.TargetType(e.Details[0]),
+						Key:    string(e.Details[1:]),
+					},
+				}
+			}
+		case readstore.BackfillKindBuiltin:
+			if len(e.Details) >= 1 {
+				entry.Index = &servicepb.IndexBackfillProgress_Builtin{
+					Builtin: commonpb.TransactionBuiltinIndex(e.Details[0]),
+				}
+			}
+		}
+		progress = append(progress, entry)
 	}
 
 	return &servicepb.GetIndexStatusResponse{

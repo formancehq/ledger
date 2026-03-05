@@ -1056,6 +1056,15 @@ func (m *CreateIndexOrder_Metadata) CloneVT() isCreateIndexOrder_Index {
 	return r
 }
 
+func (m *CreateIndexOrder_Builtin) CloneVT() isCreateIndexOrder_Index {
+	if m == nil {
+		return (*CreateIndexOrder_Builtin)(nil)
+	}
+	r := new(CreateIndexOrder_Builtin)
+	r.Builtin = m.Builtin
+	return r
+}
+
 func (m *DropIndexOrder) CloneVT() *DropIndexOrder {
 	if m == nil {
 		return (*DropIndexOrder)(nil)
@@ -1090,6 +1099,15 @@ func (m *DropIndexOrder_Metadata) CloneVT() isDropIndexOrder_Index {
 	}
 	r := new(DropIndexOrder_Metadata)
 	r.Metadata = m.Metadata.CloneVT()
+	return r
+}
+
+func (m *DropIndexOrder_Builtin) CloneVT() isDropIndexOrder_Index {
+	if m == nil {
+		return (*DropIndexOrder_Builtin)(nil)
+	}
+	r := new(DropIndexOrder_Builtin)
+	r.Builtin = m.Builtin
 	return r
 }
 
@@ -1129,6 +1147,15 @@ func (m *IndexReadyOrder_Metadata) CloneVT() isIndexReadyOrder_Index {
 	}
 	r := new(IndexReadyOrder_Metadata)
 	r.Metadata = m.Metadata.CloneVT()
+	return r
+}
+
+func (m *IndexReadyOrder_Builtin) CloneVT() isIndexReadyOrder_Index {
+	if m == nil {
+		return (*IndexReadyOrder_Builtin)(nil)
+	}
+	r := new(IndexReadyOrder_Builtin)
+	r.Builtin = m.Builtin
 	return r
 }
 
@@ -4094,6 +4121,23 @@ func (this *CreateIndexOrder_Metadata) EqualVT(thatIface isCreateIndexOrder_Inde
 	return true
 }
 
+func (this *CreateIndexOrder_Builtin) EqualVT(thatIface isCreateIndexOrder_Index) bool {
+	that, ok := thatIface.(*CreateIndexOrder_Builtin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Builtin != that.Builtin {
+		return false
+	}
+	return true
+}
+
 func (this *DropIndexOrder) EqualVT(that *DropIndexOrder) bool {
 	if this == that {
 		return true
@@ -4164,6 +4208,23 @@ func (this *DropIndexOrder_Metadata) EqualVT(thatIface isDropIndexOrder_Index) b
 	return true
 }
 
+func (this *DropIndexOrder_Builtin) EqualVT(thatIface isDropIndexOrder_Index) bool {
+	that, ok := thatIface.(*DropIndexOrder_Builtin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Builtin != that.Builtin {
+		return false
+	}
+	return true
+}
+
 func (this *IndexReadyOrder) EqualVT(that *IndexReadyOrder) bool {
 	if this == that {
 		return true
@@ -4230,6 +4291,23 @@ func (this *IndexReadyOrder_Metadata) EqualVT(thatIface isIndexReadyOrder_Index)
 		if !p.EqualVT(q) {
 			return false
 		}
+	}
+	return true
+}
+
+func (this *IndexReadyOrder_Builtin) EqualVT(thatIface isIndexReadyOrder_Index) bool {
+	that, ok := thatIface.(*IndexReadyOrder_Builtin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Builtin != that.Builtin {
+		return false
 	}
 	return true
 }
@@ -8349,6 +8427,18 @@ func (m *CreateIndexOrder_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	}
 	return len(dAtA) - i, nil
 }
+func (m *CreateIndexOrder_Builtin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CreateIndexOrder_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
+	i--
+	dAtA[i] = 0x18
+	return len(dAtA) - i, nil
+}
 func (m *DropIndexOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -8422,6 +8512,18 @@ func (m *DropIndexOrder_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	}
 	return len(dAtA) - i, nil
 }
+func (m *DropIndexOrder_Builtin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DropIndexOrder_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
+	i--
+	dAtA[i] = 0x18
+	return len(dAtA) - i, nil
+}
 func (m *IndexReadyOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -8493,6 +8595,18 @@ func (m *IndexReadyOrder_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i--
 		dAtA[i] = 0x12
 	}
+	return len(dAtA) - i, nil
+}
+func (m *IndexReadyOrder_Builtin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IndexReadyOrder_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
+	i--
+	dAtA[i] = 0x18
 	return len(dAtA) - i, nil
 }
 func (m *SetChartOfAccountsOrder) MarshalVT() (dAtA []byte, err error) {
@@ -12391,6 +12505,15 @@ func (m *CreateIndexOrder_Metadata) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *CreateIndexOrder_Builtin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
+	return n
+}
 func (m *DropIndexOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -12425,6 +12548,15 @@ func (m *DropIndexOrder_Metadata) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *DropIndexOrder_Builtin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
+	return n
+}
 func (m *IndexReadyOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -12457,6 +12589,15 @@ func (m *IndexReadyOrder_Metadata) SizeVT() (n int) {
 		l = m.Metadata.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	return n
+}
+func (m *IndexReadyOrder_Builtin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
 	return n
 }
 func (m *SetChartOfAccountsOrder) SizeVT() (n int) {
@@ -19010,6 +19151,26 @@ func (m *CreateIndexOrder) UnmarshalVT(dAtA []byte) error {
 				m.Index = &CreateIndexOrder_Metadata{Metadata: v}
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+			}
+			var v commonpb.TransactionBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.TransactionBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &CreateIndexOrder_Builtin{Builtin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -19122,6 +19283,26 @@ func (m *DropIndexOrder) UnmarshalVT(dAtA []byte) error {
 				m.Index = &DropIndexOrder_Metadata{Metadata: v}
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+			}
+			var v commonpb.TransactionBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.TransactionBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &DropIndexOrder_Builtin{Builtin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -19234,6 +19415,26 @@ func (m *IndexReadyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Index = &IndexReadyOrder_Metadata{Metadata: v}
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+			}
+			var v commonpb.TransactionBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.TransactionBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &IndexReadyOrder_Builtin{Builtin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

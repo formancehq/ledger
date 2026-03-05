@@ -1362,6 +1362,8 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_AddressRole{AddressRole: idx.AddressRole}
 		case *servicepb.CreateIndexRequest_Metadata:
 			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_Metadata{Metadata: idx.Metadata}
+		case *servicepb.CreateIndexRequest_Builtin:
+			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_Builtin{Builtin: idx.Builtin}
 		}
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
@@ -1376,6 +1378,8 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_AddressRole{AddressRole: idx.AddressRole}
 		case *servicepb.DropIndexRequest_Metadata:
 			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_Metadata{Metadata: idx.Metadata}
+		case *servicepb.DropIndexRequest_Builtin:
+			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_Builtin{Builtin: idx.Builtin}
 		}
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{

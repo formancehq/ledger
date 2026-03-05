@@ -211,6 +211,21 @@ message MetadataIndexTarget {
   string key = 2;
 }
 
+// TransactionBuiltinIndex identifies a built-in transaction field that can be indexed.
+enum TransactionBuiltinIndex {
+  TX_BUILTIN_INDEX_REFERENCE = 0;   // requires bbolt "txref" index
+  TX_BUILTIN_INDEX_TIMESTAMP = 1;   // requires bbolt "tstmp" index
+  TX_BUILTIN_INDEX_ID = 2;          // range scan on existence bucket (no index)
+}
+
+// BuiltinIndexConfig tracks the status of built-in transaction field indexes.
+message BuiltinIndexConfig {
+  bool reference = 1;
+  IndexBuildStatus reference_status = 2;
+  bool timestamp = 3;
+  IndexBuildStatus timestamp_status = 4;
+}
+
 // ============================================================================
 // Idempotency
 // ============================================================================
@@ -481,6 +496,7 @@ message CreateIndexLog {
   oneof index {
     AddressRole address_role = 1;
     MetadataIndexTarget metadata = 2;
+    TransactionBuiltinIndex builtin = 3;
   }
 }
 
@@ -489,6 +505,7 @@ message DropIndexLog {
   oneof index {
     AddressRole address_role = 1;
     MetadataIndexTarget metadata = 2;
+    TransactionBuiltinIndex builtin = 3;
   }
 }
 
@@ -497,6 +514,7 @@ message IndexReadyLog {
   oneof index {
     AddressRole address_role = 1;
     MetadataIndexTarget metadata = 2;
+    TransactionBuiltinIndex builtin = 3;
   }
 }
 
@@ -663,6 +681,7 @@ message LedgerInfo {
   AddressIndexConfig address_indexes = 9;   // Per-role account-transaction index config
   ChartOfAccounts chart_of_accounts = 10;    // Account address validation tree (nil = no validation)
   ChartEnforcementMode enforcement_mode = 11; // How chart violations are handled
+  BuiltinIndexConfig builtin_indexes = 12;  // Built-in transaction field index config
 }
 
 // ============================================================================
@@ -778,7 +797,20 @@ message QueryFilter {
     AndFilter and = 3;
     OrFilter or = 4;
     NotFilter not = 5;
+    ReferenceCondition reference = 6;
+    BuiltinUintCondition builtin_uint = 7;
   }
+}
+
+// ReferenceCondition filters transactions by reference (exact match).
+message ReferenceCondition {
+  StringCondition cond = 1;
+}
+
+// BuiltinUintCondition filters transactions by a built-in uint64 field (id or timestamp).
+message BuiltinUintCondition {
+  TransactionBuiltinIndex field = 1;
+  UintCondition cond = 2;
 }
 
 message AndFilter {

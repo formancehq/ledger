@@ -101,6 +101,8 @@ func New(dir string, noFreelistSync bool, initialMmapSize int, logger logging.Lo
 			BucketDestAccountTx,
 			BucketProgress,
 			BucketBackfill,
+			BucketTransactionReference,
+			BucketTransactionTimestamp,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(bucket); err != nil {
 				return fmt.Errorf("creating bucket %q: %w", string(bucket), err)
@@ -296,6 +298,40 @@ func (s *Store) ReadAllBackfillProgress(tx *bolt.Tx) (map[string]uint64, error) 
 		result[string(k)] = binary.BigEndian.Uint64(v)
 	}
 	return result, nil
+}
+
+// BackfillEntry is a decoded backfill progress entry returned by ListBackfillProgress.
+type BackfillEntry struct {
+	Ledger  string
+	Kind    byte   // BackfillKindAddress, BackfillKindMetadata, or BackfillKindBuiltin
+	Details []byte // kind-specific payload: role byte, [target_byte][key], or builtin byte
+	Cursor  uint64
+}
+
+// ListBackfillProgress reads and decodes all backfill progress entries from bbolt.
+// Entries with unrecognised key formats are silently skipped.
+func (s *Store) ListBackfillProgress() ([]BackfillEntry, error) {
+	var entries []BackfillEntry
+	err := s.db.View(func(tx *bolt.Tx) error {
+		all, err := s.ReadAllBackfillProgress(tx)
+		if err != nil {
+			return err
+		}
+		for key, cursor := range all {
+			ledger, kind, details, ok := ParseBackfillKey([]byte(key))
+			if !ok {
+				continue
+			}
+			entries = append(entries, BackfillEntry{
+				Ledger:  ledger,
+				Kind:    kind,
+				Details: details,
+				Cursor:  cursor,
+			})
+		}
+		return nil
+	})
+	return entries, err
 }
 
 // WaitForSequence blocks until LastIndexedSequence >= minSeq or the context

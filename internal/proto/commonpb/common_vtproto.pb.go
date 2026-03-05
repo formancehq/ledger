@@ -568,6 +568,26 @@ func (m *MetadataIndexTarget) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
+func (m *BuiltinIndexConfig) CloneVT() *BuiltinIndexConfig {
+	if m == nil {
+		return (*BuiltinIndexConfig)(nil)
+	}
+	r := new(BuiltinIndexConfig)
+	r.Reference = m.Reference
+	r.ReferenceStatus = m.ReferenceStatus
+	r.Timestamp = m.Timestamp
+	r.TimestampStatus = m.TimestampStatus
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *BuiltinIndexConfig) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (m *Idempotency) CloneVT() *Idempotency {
 	if m == nil {
 		return (*Idempotency)(nil)
@@ -1599,6 +1619,15 @@ func (m *CreateIndexLog_Metadata) CloneVT() isCreateIndexLog_Index {
 	return r
 }
 
+func (m *CreateIndexLog_Builtin) CloneVT() isCreateIndexLog_Index {
+	if m == nil {
+		return (*CreateIndexLog_Builtin)(nil)
+	}
+	r := new(CreateIndexLog_Builtin)
+	r.Builtin = m.Builtin
+	return r
+}
+
 func (m *DropIndexLog) CloneVT() *DropIndexLog {
 	if m == nil {
 		return (*DropIndexLog)(nil)
@@ -1636,6 +1665,15 @@ func (m *DropIndexLog_Metadata) CloneVT() isDropIndexLog_Index {
 	return r
 }
 
+func (m *DropIndexLog_Builtin) CloneVT() isDropIndexLog_Index {
+	if m == nil {
+		return (*DropIndexLog_Builtin)(nil)
+	}
+	r := new(DropIndexLog_Builtin)
+	r.Builtin = m.Builtin
+	return r
+}
+
 func (m *IndexReadyLog) CloneVT() *IndexReadyLog {
 	if m == nil {
 		return (*IndexReadyLog)(nil)
@@ -1670,6 +1708,15 @@ func (m *IndexReadyLog_Metadata) CloneVT() isIndexReadyLog_Index {
 	}
 	r := new(IndexReadyLog_Metadata)
 	r.Metadata = m.Metadata.CloneVT()
+	return r
+}
+
+func (m *IndexReadyLog_Builtin) CloneVT() isIndexReadyLog_Index {
+	if m == nil {
+		return (*IndexReadyLog_Builtin)(nil)
+	}
+	r := new(IndexReadyLog_Builtin)
+	r.Builtin = m.Builtin
 	return r
 }
 
@@ -2121,6 +2168,7 @@ func (m *LedgerInfo) CloneVT() *LedgerInfo {
 	r.AddressIndexes = m.AddressIndexes.CloneVT()
 	r.ChartOfAccounts = m.ChartOfAccounts.CloneVT()
 	r.EnforcementMode = m.EnforcementMode
+	r.BuiltinIndexes = m.BuiltinIndexes.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2543,6 +2591,59 @@ func (m *QueryFilter_Not) CloneVT() isQueryFilter_Filter {
 	r := new(QueryFilter_Not)
 	r.Not = m.Not.CloneVT()
 	return r
+}
+
+func (m *QueryFilter_Reference) CloneVT() isQueryFilter_Filter {
+	if m == nil {
+		return (*QueryFilter_Reference)(nil)
+	}
+	r := new(QueryFilter_Reference)
+	r.Reference = m.Reference.CloneVT()
+	return r
+}
+
+func (m *QueryFilter_BuiltinUint) CloneVT() isQueryFilter_Filter {
+	if m == nil {
+		return (*QueryFilter_BuiltinUint)(nil)
+	}
+	r := new(QueryFilter_BuiltinUint)
+	r.BuiltinUint = m.BuiltinUint.CloneVT()
+	return r
+}
+
+func (m *ReferenceCondition) CloneVT() *ReferenceCondition {
+	if m == nil {
+		return (*ReferenceCondition)(nil)
+	}
+	r := new(ReferenceCondition)
+	r.Cond = m.Cond.CloneVT()
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *ReferenceCondition) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *BuiltinUintCondition) CloneVT() *BuiltinUintCondition {
+	if m == nil {
+		return (*BuiltinUintCondition)(nil)
+	}
+	r := new(BuiltinUintCondition)
+	r.Field = m.Field
+	r.Cond = m.Cond.CloneVT()
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *BuiltinUintCondition) CloneMessageVT() proto.Message {
+	return m.CloneVT()
 }
 
 func (m *AndFilter) CloneVT() *AndFilter {
@@ -3843,6 +3944,34 @@ func (this *MetadataIndexTarget) EqualVT(that *MetadataIndexTarget) bool {
 
 func (this *MetadataIndexTarget) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*MetadataIndexTarget)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *BuiltinIndexConfig) EqualVT(that *BuiltinIndexConfig) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Reference != that.Reference {
+		return false
+	}
+	if this.ReferenceStatus != that.ReferenceStatus {
+		return false
+	}
+	if this.Timestamp != that.Timestamp {
+		return false
+	}
+	if this.TimestampStatus != that.TimestampStatus {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *BuiltinIndexConfig) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*BuiltinIndexConfig)
 	if !ok {
 		return false
 	}
@@ -5697,6 +5826,23 @@ func (this *CreateIndexLog_Metadata) EqualVT(thatIface isCreateIndexLog_Index) b
 	return true
 }
 
+func (this *CreateIndexLog_Builtin) EqualVT(thatIface isCreateIndexLog_Index) bool {
+	that, ok := thatIface.(*CreateIndexLog_Builtin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Builtin != that.Builtin {
+		return false
+	}
+	return true
+}
+
 func (this *DropIndexLog) EqualVT(that *DropIndexLog) bool {
 	if this == that {
 		return true
@@ -5767,6 +5913,23 @@ func (this *DropIndexLog_Metadata) EqualVT(thatIface isDropIndexLog_Index) bool 
 	return true
 }
 
+func (this *DropIndexLog_Builtin) EqualVT(thatIface isDropIndexLog_Index) bool {
+	that, ok := thatIface.(*DropIndexLog_Builtin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Builtin != that.Builtin {
+		return false
+	}
+	return true
+}
+
 func (this *IndexReadyLog) EqualVT(that *IndexReadyLog) bool {
 	if this == that {
 		return true
@@ -5833,6 +5996,23 @@ func (this *IndexReadyLog_Metadata) EqualVT(thatIface isIndexReadyLog_Index) boo
 		if !p.EqualVT(q) {
 			return false
 		}
+	}
+	return true
+}
+
+func (this *IndexReadyLog_Builtin) EqualVT(thatIface isIndexReadyLog_Index) bool {
+	that, ok := thatIface.(*IndexReadyLog_Builtin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Builtin != that.Builtin {
+		return false
 	}
 	return true
 }
@@ -6480,6 +6660,9 @@ func (this *LedgerInfo) EqualVT(that *LedgerInfo) bool {
 		return false
 	}
 	if this.EnforcementMode != that.EnforcementMode {
+		return false
+	}
+	if !this.BuiltinIndexes.EqualVT(that.BuiltinIndexes) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -7150,6 +7333,97 @@ func (this *QueryFilter_Not) EqualVT(thatIface isQueryFilter_Filter) bool {
 	return true
 }
 
+func (this *QueryFilter_Reference) EqualVT(thatIface isQueryFilter_Filter) bool {
+	that, ok := thatIface.(*QueryFilter_Reference)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Reference, that.Reference; p != q {
+		if p == nil {
+			p = &ReferenceCondition{}
+		}
+		if q == nil {
+			q = &ReferenceCondition{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *QueryFilter_BuiltinUint) EqualVT(thatIface isQueryFilter_Filter) bool {
+	that, ok := thatIface.(*QueryFilter_BuiltinUint)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.BuiltinUint, that.BuiltinUint; p != q {
+		if p == nil {
+			p = &BuiltinUintCondition{}
+		}
+		if q == nil {
+			q = &BuiltinUintCondition{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *ReferenceCondition) EqualVT(that *ReferenceCondition) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if !this.Cond.EqualVT(that.Cond) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *ReferenceCondition) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ReferenceCondition)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *BuiltinUintCondition) EqualVT(that *BuiltinUintCondition) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Field != that.Field {
+		return false
+	}
+	if !this.Cond.EqualVT(that.Cond) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *BuiltinUintCondition) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*BuiltinUintCondition)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *AndFilter) EqualVT(that *AndFilter) bool {
 	if this == that {
 		return true
@@ -9304,6 +9578,69 @@ func (m *MetadataIndexTarget) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	if m.Target != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Target))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *BuiltinIndexConfig) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *BuiltinIndexConfig) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *BuiltinIndexConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.TimestampStatus != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TimestampStatus))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.Timestamp {
+		i--
+		if m.Timestamp {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.ReferenceStatus != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ReferenceStatus))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Reference {
+		i--
+		if m.Reference {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
 		i--
 		dAtA[i] = 0x8
 	}
@@ -11814,6 +12151,18 @@ func (m *CreateIndexLog_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	}
 	return len(dAtA) - i, nil
 }
+func (m *CreateIndexLog_Builtin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CreateIndexLog_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
+	i--
+	dAtA[i] = 0x18
+	return len(dAtA) - i, nil
+}
 func (m *DropIndexLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -11887,6 +12236,18 @@ func (m *DropIndexLog_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	}
 	return len(dAtA) - i, nil
 }
+func (m *DropIndexLog_Builtin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DropIndexLog_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
+	i--
+	dAtA[i] = 0x18
+	return len(dAtA) - i, nil
+}
 func (m *IndexReadyLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -11958,6 +12319,18 @@ func (m *IndexReadyLog_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i--
 		dAtA[i] = 0x12
 	}
+	return len(dAtA) - i, nil
+}
+func (m *IndexReadyLog_Builtin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IndexReadyLog_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
+	i--
+	dAtA[i] = 0x18
 	return len(dAtA) - i, nil
 }
 func (m *FillGapLog) MarshalVT() (dAtA []byte, err error) {
@@ -13122,6 +13495,16 @@ func (m *LedgerInfo) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.BuiltinIndexes != nil {
+		size, err := m.BuiltinIndexes.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x62
+	}
 	if m.EnforcementMode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.EnforcementMode))
 		i--
@@ -14197,6 +14580,135 @@ func (m *QueryFilter_Not) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *QueryFilter_Reference) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *QueryFilter_Reference) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Reference != nil {
+		size, err := m.Reference.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
+	return len(dAtA) - i, nil
+}
+func (m *QueryFilter_BuiltinUint) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *QueryFilter_BuiltinUint) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.BuiltinUint != nil {
+		size, err := m.BuiltinUint.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *ReferenceCondition) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ReferenceCondition) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ReferenceCondition) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Cond != nil {
+		size, err := m.Cond.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *BuiltinUintCondition) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *BuiltinUintCondition) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *BuiltinUintCondition) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Cond != nil {
+		size, err := m.Cond.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Field != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Field))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *AndFilter) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -15848,6 +16360,28 @@ func (m *MetadataIndexTarget) SizeVT() (n int) {
 	return n
 }
 
+func (m *BuiltinIndexConfig) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Reference {
+		n += 2
+	}
+	if m.ReferenceStatus != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ReferenceStatus))
+	}
+	if m.Timestamp {
+		n += 2
+	}
+	if m.TimestampStatus != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.TimestampStatus))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *Idempotency) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -16966,6 +17500,15 @@ func (m *CreateIndexLog_Metadata) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *CreateIndexLog_Builtin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
+	return n
+}
 func (m *DropIndexLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -17000,6 +17543,15 @@ func (m *DropIndexLog_Metadata) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *DropIndexLog_Builtin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
+	return n
+}
 func (m *IndexReadyLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -17032,6 +17584,15 @@ func (m *IndexReadyLog_Metadata) SizeVT() (n int) {
 		l = m.Metadata.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	return n
+}
+func (m *IndexReadyLog_Builtin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
 	return n
 }
 func (m *FillGapLog) SizeVT() (n int) {
@@ -17520,6 +18081,10 @@ func (m *LedgerInfo) SizeVT() (n int) {
 	if m.EnforcementMode != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.EnforcementMode))
 	}
+	if m.BuiltinIndexes != nil {
+		l = m.BuiltinIndexes.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -17926,6 +18491,61 @@ func (m *QueryFilter_Not) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *QueryFilter_Reference) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Reference != nil {
+		l = m.Reference.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *QueryFilter_BuiltinUint) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.BuiltinUint != nil {
+		l = m.BuiltinUint.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *ReferenceCondition) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Cond != nil {
+		l = m.Cond.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *BuiltinUintCondition) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Field != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Field))
+	}
+	if m.Cond != nil {
+		l = m.Cond.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *AndFilter) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -22022,6 +22642,135 @@ func (m *MetadataIndexTarget) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Key = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *BuiltinIndexConfig) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: BuiltinIndexConfig: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: BuiltinIndexConfig: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Reference", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Reference = bool(v != 0)
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ReferenceStatus", wireType)
+			}
+			m.ReferenceStatus = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ReferenceStatus |= IndexBuildStatus(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Timestamp", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Timestamp = bool(v != 0)
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TimestampStatus", wireType)
+			}
+			m.TimestampStatus = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TimestampStatus |= IndexBuildStatus(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -27592,6 +28341,26 @@ func (m *CreateIndexLog) UnmarshalVT(dAtA []byte) error {
 				m.Index = &CreateIndexLog_Metadata{Metadata: v}
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+			}
+			var v TransactionBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= TransactionBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &CreateIndexLog_Builtin{Builtin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -27704,6 +28473,26 @@ func (m *DropIndexLog) UnmarshalVT(dAtA []byte) error {
 				m.Index = &DropIndexLog_Metadata{Metadata: v}
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+			}
+			var v TransactionBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= TransactionBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &DropIndexLog_Builtin{Builtin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -27816,6 +28605,26 @@ func (m *IndexReadyLog) UnmarshalVT(dAtA []byte) error {
 				m.Index = &IndexReadyLog_Metadata{Metadata: v}
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+			}
+			var v TransactionBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= TransactionBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &IndexReadyLog_Builtin{Builtin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -30960,6 +31769,42 @@ func (m *LedgerInfo) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 12:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BuiltinIndexes", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.BuiltinIndexes == nil {
+				m.BuiltinIndexes = &BuiltinIndexConfig{}
+			}
+			if err := m.BuiltinIndexes.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -33196,6 +34041,281 @@ func (m *QueryFilter) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 				m.Filter = &QueryFilter_Not{Not: v}
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Reference", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Filter.(*QueryFilter_Reference); ok {
+				if err := oneof.Reference.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &ReferenceCondition{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Filter = &QueryFilter_Reference{Reference: v}
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BuiltinUint", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Filter.(*QueryFilter_BuiltinUint); ok {
+				if err := oneof.BuiltinUint.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &BuiltinUintCondition{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Filter = &QueryFilter_BuiltinUint{BuiltinUint: v}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ReferenceCondition) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ReferenceCondition: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ReferenceCondition: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cond", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Cond == nil {
+				m.Cond = &StringCondition{}
+			}
+			if err := m.Cond.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *BuiltinUintCondition) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: BuiltinUintCondition: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: BuiltinUintCondition: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Field", wireType)
+			}
+			m.Field = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Field |= TransactionBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cond", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Cond == nil {
+				m.Cond = &UintCondition{}
+			}
+			if err := m.Cond.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
 			}
 			iNdEx = postIndex
 		default:

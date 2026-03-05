@@ -105,6 +105,18 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		addMetadataIndexRowsWithProgress(&table, "transaction", schema.TransactionFields, progressMap, lastLogSeq, commonpb.TargetType_TARGET_TYPE_TRANSACTION)
 	}
 
+	// Builtin indexes
+	if bi := ledger.BuiltinIndexes; bi != nil {
+		if bi.Reference {
+			table = append(table, []string{"reference", "-", "-",
+				indexStatusWithProgress(bi.ReferenceStatus, progressMap, lastLogSeq, "b:0")})
+		}
+		if bi.Timestamp {
+			table = append(table, []string{"timestamp", "-", "-",
+				indexStatusWithProgress(bi.TimestampStatus, progressMap, lastLogSeq, "b:1")})
+		}
+	}
+
 	if len(table) == 1 {
 		pterm.Println("No indexes configured.")
 		pterm.Println(pterm.Gray("Hint: Create an index using:"))
@@ -142,6 +154,14 @@ func hasBuildingIndexes(ledger *commonpb.LedgerInfo) bool {
 			}
 		}
 	}
+	if bi := ledger.BuiltinIndexes; bi != nil {
+		if bi.Reference && bi.ReferenceStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+			return true
+		}
+		if bi.Timestamp && bi.TimestampStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+			return true
+		}
+	}
 	return false
 }
 
@@ -158,6 +178,8 @@ func buildProgressMap(ledgerName string, entries []*servicepb.IndexBackfillProgr
 			m[fmt.Sprintf("a:%d", idx.AddressRole)] = e.Cursor
 		case *servicepb.IndexBackfillProgress_Metadata:
 			m[fmt.Sprintf("m:%d:%s", idx.Metadata.Target, idx.Metadata.Key)] = e.Cursor
+		case *servicepb.IndexBackfillProgress_Builtin:
+			m[fmt.Sprintf("b:%d", idx.Builtin)] = e.Cursor
 		}
 	}
 	return m

@@ -297,6 +297,7 @@ message CreateIndexRequest {
   oneof index {
     common.AddressRole address_role = 2;
     common.MetadataIndexTarget metadata = 3;
+    common.TransactionBuiltinIndex builtin = 4;
   }
 }
 
@@ -306,6 +307,7 @@ message DropIndexRequest {
   oneof index {
     common.AddressRole address_role = 2;
     common.MetadataIndexTarget metadata = 3;
+    common.TransactionBuiltinIndex builtin = 4;
   }
 }
 
@@ -838,6 +840,7 @@ message IndexBackfillProgress {
   oneof index {
     common.AddressRole address_role = 2;
     common.MetadataIndexTarget metadata = 3;
+    common.TransactionBuiltinIndex builtin = 5;
   }
   uint64 cursor = 4;
 }

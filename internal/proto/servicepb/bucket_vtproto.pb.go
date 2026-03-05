@@ -894,6 +894,15 @@ func (m *CreateIndexRequest_Metadata) CloneVT() isCreateIndexRequest_Index {
 	return r
 }
 
+func (m *CreateIndexRequest_Builtin) CloneVT() isCreateIndexRequest_Index {
+	if m == nil {
+		return (*CreateIndexRequest_Builtin)(nil)
+	}
+	r := new(CreateIndexRequest_Builtin)
+	r.Builtin = m.Builtin
+	return r
+}
+
 func (m *DropIndexRequest) CloneVT() *DropIndexRequest {
 	if m == nil {
 		return (*DropIndexRequest)(nil)
@@ -931,6 +940,15 @@ func (m *DropIndexRequest_Metadata) CloneVT() isDropIndexRequest_Index {
 	}
 	r := new(DropIndexRequest_Metadata)
 	r.Metadata = m.Metadata.CloneVT()
+	return r
+}
+
+func (m *DropIndexRequest_Builtin) CloneVT() isDropIndexRequest_Index {
+	if m == nil {
+		return (*DropIndexRequest_Builtin)(nil)
+	}
+	r := new(DropIndexRequest_Builtin)
+	r.Builtin = m.Builtin
 	return r
 }
 
@@ -2556,6 +2574,15 @@ func (m *IndexBackfillProgress_Metadata) CloneVT() isIndexBackfillProgress_Index
 	return r
 }
 
+func (m *IndexBackfillProgress_Builtin) CloneVT() isIndexBackfillProgress_Index {
+	if m == nil {
+		return (*IndexBackfillProgress_Builtin)(nil)
+	}
+	r := new(IndexBackfillProgress_Builtin)
+	r.Builtin = m.Builtin
+	return r
+}
+
 func (m *GetLedgerStatsRequest) CloneVT() *GetLedgerStatsRequest {
 	if m == nil {
 		return (*GetLedgerStatsRequest)(nil)
@@ -4107,6 +4134,23 @@ func (this *CreateIndexRequest_Metadata) EqualVT(thatIface isCreateIndexRequest_
 	return true
 }
 
+func (this *CreateIndexRequest_Builtin) EqualVT(thatIface isCreateIndexRequest_Index) bool {
+	that, ok := thatIface.(*CreateIndexRequest_Builtin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Builtin != that.Builtin {
+		return false
+	}
+	return true
+}
+
 func (this *DropIndexRequest) EqualVT(that *DropIndexRequest) bool {
 	if this == that {
 		return true
@@ -4176,6 +4220,23 @@ func (this *DropIndexRequest_Metadata) EqualVT(thatIface isDropIndexRequest_Inde
 		if !p.EqualVT(q) {
 			return false
 		}
+	}
+	return true
+}
+
+func (this *DropIndexRequest_Builtin) EqualVT(thatIface isDropIndexRequest_Index) bool {
+	that, ok := thatIface.(*DropIndexRequest_Builtin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Builtin != that.Builtin {
+		return false
 	}
 	return true
 }
@@ -6631,6 +6692,23 @@ func (this *IndexBackfillProgress_Metadata) EqualVT(thatIface isIndexBackfillPro
 	return true
 }
 
+func (this *IndexBackfillProgress_Builtin) EqualVT(thatIface isIndexBackfillProgress_Index) bool {
+	that, ok := thatIface.(*IndexBackfillProgress_Builtin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Builtin != that.Builtin {
+		return false
+	}
+	return true
+}
+
 func (this *GetLedgerStatsRequest) EqualVT(that *GetLedgerStatsRequest) bool {
 	if this == that {
 		return true
@@ -8809,6 +8887,18 @@ func (m *CreateIndexRequest_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	}
 	return len(dAtA) - i, nil
 }
+func (m *CreateIndexRequest_Builtin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CreateIndexRequest_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
+	i--
+	dAtA[i] = 0x20
+	return len(dAtA) - i, nil
+}
 func (m *DropIndexRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -8887,6 +8977,18 @@ func (m *DropIndexRequest_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i--
 		dAtA[i] = 0x1a
 	}
+	return len(dAtA) - i, nil
+}
+func (m *DropIndexRequest_Builtin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DropIndexRequest_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
+	i--
+	dAtA[i] = 0x20
 	return len(dAtA) - i, nil
 }
 func (m *SaveNumscriptRequest) MarshalVT() (dAtA []byte, err error) {
@@ -12988,6 +13090,18 @@ func (m *IndexBackfillProgress_Metadata) MarshalToSizedBufferVT(dAtA []byte) (in
 	}
 	return len(dAtA) - i, nil
 }
+func (m *IndexBackfillProgress_Builtin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IndexBackfillProgress_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
+	i--
+	dAtA[i] = 0x28
+	return len(dAtA) - i, nil
+}
 func (m *GetLedgerStatsRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -14064,6 +14178,15 @@ func (m *CreateIndexRequest_Metadata) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *CreateIndexRequest_Builtin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
+	return n
+}
 func (m *DropIndexRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -14100,6 +14223,15 @@ func (m *DropIndexRequest_Metadata) SizeVT() (n int) {
 		l = m.Metadata.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	return n
+}
+func (m *DropIndexRequest_Builtin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
 	return n
 }
 func (m *SaveNumscriptRequest) SizeVT() (n int) {
@@ -15771,6 +15903,15 @@ func (m *IndexBackfillProgress_Metadata) SizeVT() (n int) {
 		l = m.Metadata.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	return n
+}
+func (m *IndexBackfillProgress_Builtin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
 	return n
 }
 func (m *GetLedgerStatsRequest) SizeVT() (n int) {
@@ -20190,6 +20331,26 @@ func (m *CreateIndexRequest) UnmarshalVT(dAtA []byte) error {
 				m.Index = &CreateIndexRequest_Metadata{Metadata: v}
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+			}
+			var v commonpb.TransactionBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.TransactionBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &CreateIndexRequest_Builtin{Builtin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -20334,6 +20495,26 @@ func (m *DropIndexRequest) UnmarshalVT(dAtA []byte) error {
 				m.Index = &DropIndexRequest_Metadata{Metadata: v}
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+			}
+			var v commonpb.TransactionBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.TransactionBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &DropIndexRequest_Builtin{Builtin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -30156,6 +30337,26 @@ func (m *IndexBackfillProgress) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+			}
+			var v commonpb.TransactionBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.TransactionBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &IndexBackfillProgress_Builtin{Builtin: v}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

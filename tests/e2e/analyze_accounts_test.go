@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"io"
 	"math/big"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -14,6 +15,29 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+// analyzeAccounts calls the streaming AnalyzeAccounts RPC and returns the final result.
+// Progress events are discarded; only the terminal Result event is returned.
+func analyzeAccounts(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.AnalyzeAccountsRequest) (*servicepb.AnalyzeAccountsResponse, error) {
+	stream, err := client.AnalyzeAccounts(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	var result *servicepb.AnalyzeAccountsResponse
+	for {
+		event, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if r := event.GetResult(); r != nil {
+			result = r
+		}
+	}
+	return result, nil
+}
 
 var _ = Describe("AnalyzeAccounts", Ordered, func() {
 	var (

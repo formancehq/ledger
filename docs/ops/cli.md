@@ -426,7 +426,7 @@ ledgerctl ledgers create-index [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata` |
+| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
 | `--timeout` | `10s` | Request timeout |
@@ -439,6 +439,10 @@ ledgerctl ledgers create-index [flags]
 | `source-address` | Source account-to-transaction mapping |
 | `dest-address` | Destination account-to-transaction mapping |
 | `metadata` | Metadata field index (requires `--target` and `--key`) |
+| `reference` | Transaction reference exact-match index |
+| `timestamp` | Transaction timestamp range-scan index |
+
+> **Note:** Filtering by transaction ID (`id`) does not require any index — it is always available via a direct range scan.
 
 **Behavior:**
 - The index starts building in the background immediately
@@ -456,6 +460,12 @@ ledgerctl ledgers create-index --ledger my-ledger --type source-address
 
 # Create metadata index
 ledgerctl ledgers create-index --ledger my-ledger --type metadata --target account --key category
+
+# Create reference index (enables filtering transactions by reference)
+ledgerctl ledgers create-index --ledger my-ledger --type reference
+
+# Create timestamp index (enables filtering transactions by time range)
+ledgerctl ledgers create-index --ledger my-ledger --type timestamp
 
 # Interactive mode
 ledgerctl ledgers create-index
@@ -476,7 +486,7 @@ ledgerctl ledgers drop-index [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata` |
+| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
 | `--timeout` | `10s` | Request timeout |
@@ -493,6 +503,9 @@ ledgerctl ledgers drop-index --ledger my-ledger --type address
 
 # Drop metadata index
 ledgerctl ledgers drop-index --ledger my-ledger --type metadata --target account --key category
+
+# Drop reference index
+ledgerctl ledgers drop-index --ledger my-ledger --type reference
 ```
 
 #### ledgers list-indexes
@@ -528,8 +541,10 @@ ledgerctl ledgers list-indexes --ledger my-ledger
 ```
 TYPE             TARGET       KEY        STATUS
 address          -            -          READY
-source-address   -            -          BUILDING
+source-address   -            -          BUILDING (42%)
 metadata         account      category   READY
+reference        -            -          READY
+timestamp        -            -          BUILDING (starting...)
 ```
 
 ---

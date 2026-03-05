@@ -9,13 +9,15 @@ import (
 
 // Bucket indexes for WriteBatch. Each index corresponds to one bbolt bucket.
 const (
-	batchBucketMidx = iota // BucketMetadataIndex
-	batchBucketExist       // BucketExistence
-	batchBucketEidx        // BucketEntityExists
-	batchBucketRmap        // BucketReverseMap
-	batchBucketAtxm        // BucketAccountTx
-	batchBucketSatx        // BucketSourceAccountTx
-	batchBucketDatx        // BucketDestAccountTx
+	batchBucketMidx  = iota // BucketMetadataIndex
+	batchBucketExist        // BucketExistence
+	batchBucketEidx         // BucketEntityExists
+	batchBucketRmap         // BucketReverseMap
+	batchBucketAtxm         // BucketAccountTx
+	batchBucketSatx         // BucketSourceAccountTx
+	batchBucketDatx         // BucketDestAccountTx
+	batchBucketTxref        // BucketTransactionReference
+	batchBucketTstmp        // BucketTransactionTimestamp
 	numBatchBuckets
 )
 
@@ -28,6 +30,8 @@ var batchBucketNames = [numBatchBuckets][]byte{
 	BucketAccountTx,
 	BucketSourceAccountTx,
 	BucketDestAccountTx,
+	BucketTransactionReference,
+	BucketTransactionTimestamp,
 }
 
 // writeOp represents a buffered write or delete operation.
@@ -253,6 +257,18 @@ func (wb *WriteBatch) UpdateMetadataIndex(
 
 	// Step 4: Update reverse map.
 	wb.putReverseMap(reverseKey, newEncodedValue)
+}
+
+// WriteTransactionReferenceIndex inserts an entry in the transaction reference index.
+func (wb *WriteBatch) WriteTransactionReferenceIndex(kb *KeyBuilder, ledger, reference string, txID uint64) {
+	key := TransactionReferenceKey(kb, ledger, reference, txID)
+	wb.put(batchBucketTxref, key, nil)
+}
+
+// WriteTransactionTimestampIndex inserts an entry in the transaction timestamp index.
+func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *KeyBuilder, ledger string, timestamp, txID uint64) {
+	key := TransactionTimestampKey(kb, ledger, timestamp, txID)
+	wb.put(batchBucketTstmp, key, nil)
 }
 
 // DeleteMetadataEntry removes both the forward index and reverse map entries

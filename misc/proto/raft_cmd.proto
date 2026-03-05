@@ -223,6 +223,7 @@ message CreateIndexOrder {
   oneof index {
     common.AddressRole address_role = 1;
     common.MetadataIndexTarget metadata = 2;
+    common.TransactionBuiltinIndex builtin = 3;
   }
 }
 
@@ -231,6 +232,7 @@ message DropIndexOrder {
   oneof index {
     common.AddressRole address_role = 1;
     common.MetadataIndexTarget metadata = 2;
+    common.TransactionBuiltinIndex builtin = 3;
   }
 }
 
@@ -239,6 +241,7 @@ message IndexReadyOrder {
   oneof index {
     common.AddressRole address_role = 1;
     common.MetadataIndexTarget metadata = 2;
+    common.TransactionBuiltinIndex builtin = 3;
   }
 }
 

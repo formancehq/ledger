@@ -97,6 +97,54 @@ func notFilter(f *commonpb.QueryFilter) *commonpb.QueryFilter {
 	}
 }
 
+// referenceFilter creates a QueryFilter for filtering transactions by reference (exact match).
+// Requires the reference builtin index to be READY on the ledger.
+func referenceFilter(reference string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Reference{
+			Reference: &commonpb.ReferenceCondition{
+				Cond: &commonpb.StringCondition{
+					Value: &commonpb.StringCondition_Hardcoded{Hardcoded: reference},
+				},
+			},
+		},
+	}
+}
+
+// timestampRangeFilter creates a QueryFilter for filtering transactions by timestamp range (inclusive).
+// Requires the timestamp builtin index to be READY on the ledger.
+func timestampRangeFilter(minTs, maxTs uint64) *commonpb.QueryFilter {
+	cond := &commonpb.UintCondition{Min: &minTs, Max: &maxTs}
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &commonpb.BuiltinUintCondition{
+				Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+				Cond:  cond,
+			},
+		},
+	}
+}
+
+// txIDRangeFilter creates a QueryFilter for filtering transactions by ID range (inclusive).
+// Does not require any index.
+func txIDRangeFilter(minID, maxID uint64) *commonpb.QueryFilter {
+	cond := &commonpb.UintCondition{Min: &minID, Max: &maxID}
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &commonpb.BuiltinUintCondition{
+				Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+				Cond:  cond,
+			},
+		},
+	}
+}
+
+// txIDExactFilter creates a QueryFilter matching a single transaction ID.
+// Does not require any index.
+func txIDExactFilter(id uint64) *commonpb.QueryFilter {
+	return txIDRangeFilter(id, id)
+}
+
 var _ = Describe("PreparedQueries", Ordered, func() {
 	var (
 		ctx    context.Context

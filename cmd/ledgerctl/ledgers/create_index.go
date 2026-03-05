@@ -23,11 +23,15 @@ Index types:
   source-address       Source account→transaction mapping
   dest-address         Destination account→transaction mapping
   metadata             Metadata field index (requires --target and --key)
+  reference            Transaction reference index (exact-match filter)
+  timestamp            Transaction timestamp index (range filter)
 
 Examples:
   ledgerctl ledgers create-index --ledger my-ledger --type address
   ledgerctl ledgers create-index --ledger my-ledger --type source-address
-  ledgerctl ledgers create-index --ledger my-ledger --type metadata --target account --key category`,
+  ledgerctl ledgers create-index --ledger my-ledger --type metadata --target account --key category
+  ledgerctl ledgers create-index --ledger my-ledger --type reference
+  ledgerctl ledgers create-index --ledger my-ledger --type timestamp`,
 		Args: cobra.NoArgs,
 		RunE: runCreateIndex,
 	}
@@ -57,7 +61,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 	indexType, _ := cmd.Flags().GetString("type")
 	if indexType == "" {
 		result, err := pterm.DefaultInteractiveSelect.
-			WithOptions([]string{"address", "source-address", "dest-address", "metadata"}).
+			WithOptions([]string{"address", "source-address", "dest-address", "metadata", "reference", "timestamp"}).
 			WithDefaultText("Select index type").
 			Show()
 		if err != nil {
@@ -99,8 +103,18 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 			},
 		}
 		indexDesc = fmt.Sprintf("metadata %s.%s", cmdutil.TargetTypeString(target), key)
+	case "reference":
+		req.Index = &servicepb.CreateIndexRequest_Builtin{
+			Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+		}
+		indexDesc = "reference"
+	case "timestamp":
+		req.Index = &servicepb.CreateIndexRequest_Builtin{
+			Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+		}
+		indexDesc = "timestamp"
 	default:
-		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, or metadata", indexType)
+		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, metadata, reference, or timestamp", indexType)
 	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)

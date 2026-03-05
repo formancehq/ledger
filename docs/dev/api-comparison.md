@@ -15,7 +15,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |
-| List transactions | ✅ | ✅ | gRPC stream with pagination; supports `source`/`destination` address filtering |
+| List transactions | ✅ | ✅ | gRPC stream with pagination; supports `source`/`destination` address filtering, `reference`, `startTime`/`endTime`, and `id` via prepared queries |
 | **Metadata** |
 | Save account metadata | ✅ | ✅ | |
 | Delete account metadata | ✅ | ✅ | |
@@ -92,9 +92,9 @@ This document compares the POC's API with the original Formance ledger API and d
 | Execute prepared query (list) | ✅ | ❌ | Returns matching entities with cursor pagination; validates filters against metadata schema |
 | Execute prepared query (aggregate) | ✅ | ❌ | Returns aggregated volumes per asset; validates filters against metadata schema |
 | **User-Configurable Indexes** |
-| Create index | ✅ | ❌ | Opt-in address or metadata indexes per ledger |
+| Create index | ✅ | ❌ | Opt-in address, metadata, reference, or timestamp indexes per ledger |
 | Drop index | ✅ | ❌ | Remove an index from a ledger |
-| List indexes | ✅ | ❌ | View all indexes with build status (via GetLedger) |
+| List indexes | ✅ | ❌ | View all indexes with build status and backfill progress (via GetLedger) |
 | **Volumes (responses)** |
 | postCommitVolumes | ✅ | ✅ | Opt-in via `expandVolumes` in request body |
 | preCommitVolumes | ❌ | ✅ | Intentionally removed |
@@ -329,6 +329,51 @@ When retrieving a numscript via `GET /numscripts/{name}`, the `version` query pa
 - `content` (string): Numscript source code
 - `version` (string): Semver version (e.g. `"1.0.0"`)
 - `createdAt` (string, date-time): Timestamp
+
+### 10. Prepared Queries and User-Configurable Indexes
+
+Prepared queries are reusable, named filter queries stored per-ledger. They can be executed in two modes: `LIST` (returns matching entity IDs with cursor pagination) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for matched accounts).
+
+**Endpoints:**
+- `POST /{ledgerName}/prepared-queries` — Create
+- `PUT /{ledgerName}/prepared-queries/{name}` — Update filter
+- `DELETE /{ledgerName}/prepared-queries/{name}` — Delete
+- `GET /{ledgerName}/prepared-queries` — List
+- `POST /{ledgerName}/prepared-queries/{name}/execute` — Execute
+
+**Supported filter types (`QueryFilter`):**
+
+| Filter | Target | Requires index |
+|--------|--------|----------------|
+| `FieldCondition` — metadata string equality | accounts, transactions | yes (metadata index) |
+| `AddressMatch` — prefix or exact address match | accounts | no |
+| `AndFilter` / `OrFilter` / `NotFilter` | — | depends on sub-filters |
+| `ReferenceCondition` — transaction reference exact match | transactions | yes (`reference` builtin index) |
+| `BuiltinUintCondition` with `TIMESTAMP` — time range | transactions | yes (`timestamp` builtin index) |
+| `BuiltinUintCondition` with `ID` — transaction ID range or equality | transactions | no (direct range scan) |
+
+**User-configurable indexes** control which filters are available. Each index has a lifecycle: BUILDING (backfill in progress) → READY (queries enabled).
+
+| Index type | CLI flag | Enables |
+|------------|----------|---------|
+| `address` | `--type address` | `AddressMatch` on transaction queries |
+| `source-address` | `--type source-address` | source-only address matching |
+| `dest-address` | `--type dest-address` | destination-only address matching |
+| `metadata` | `--type metadata --target … --key …` | `FieldCondition` on the specified field |
+| `reference` | `--type reference` | `ReferenceCondition` |
+| `timestamp` | `--type timestamp` | `BuiltinUintCondition(TIMESTAMP)` |
+
+> Filtering by transaction ID (`BuiltinUintCondition(ID)`) is always available with no index required.
+
+**CLI commands:**
+```bash
+# Create and use a reference index
+ledgerctl ledgers create-index --ledger my-ledger --type reference
+ledgerctl ledgers list-indexes --ledger my-ledger
+
+# Create a prepared query that filters by reference
+# (done via gRPC / HTTP — no direct CLI for query creation)
+```
 
 ---
 

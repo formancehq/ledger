@@ -49,11 +49,22 @@ var (
 	BucketProgress = []byte("prog")
 
 	// BucketBackfill stores per-index backfill progress cursors.
-	// Key: [ledger\x00][a|m][details]
-	//   Address: [ledger\x00]a[role_byte]
+	// Key: [ledger\x00][a|m|b][details]
+	//   Address:  [ledger\x00]a[role_byte]
 	//   Metadata: [ledger\x00]m[target_byte][key]
+	//   Builtin:  [ledger\x00]b[builtin_byte]
 	// Value: uint64 big-endian (cursor position)
 	BucketBackfill = []byte("bfil")
+
+	// BucketTransactionReference maps (ledger, reference) → txID for exact-match lookups.
+	// Key: [ledger\x00][reference\x00][txID_BE(8B)]
+	// Value: (empty)
+	BucketTransactionReference = []byte("txref")
+
+	// BucketTransactionTimestamp maps (ledger, timestamp, txID) for range scans by timestamp.
+	// Key: [ledger\x00][timestamp_BE(8B)][txID_BE(8B)]
+	// Value: (empty)
+	BucketTransactionTimestamp = []byte("tstmp")
 )
 
 // Namespace prefixes to distinguish accounts and transactions in shared buckets.
@@ -274,13 +285,21 @@ func EntityExistsNonNullPrefix(kb *KeyBuilder, ledger, ns, metaKey string) []byt
 		Snapshot()
 }
 
+// Backfill key kind bytes identify the index type in a bbolt backfill progress key.
+const (
+	BackfillKindAddress  = byte('a') // address role index: [ledger\x00]a[role_byte]
+	BackfillKindMetadata = byte('m') // metadata field index: [ledger\x00]m[target_byte][key]
+	BackfillKindBuiltin  = byte('b') // builtin transaction field index: [ledger\x00]b[builtin_byte]
+)
+
 // ParseBackfillKey decodes a bbolt backfill key into its components.
 // Format:
 //
 //	Address:  [ledger\x00]a[role_byte]
 //	Metadata: [ledger\x00]m[target_byte][key]
+//	Builtin:  [ledger\x00]b[builtin_byte]
 //
-// Returns the ledger name, kind byte ('a' or 'm'), remaining details, and ok.
+// Returns the ledger name, kind byte (BackfillKindAddress/Metadata/Builtin), remaining details, and ok.
 func ParseBackfillKey(key []byte) (ledger string, kind byte, details []byte, ok bool) {
 	// Find the null separator between ledger name and type indicator.
 	for i, b := range key {
@@ -304,5 +323,46 @@ func EntityExistsNullPrefix(kb *KeyBuilder, ledger, ns, metaKey string) []byte {
 		PutNamespace(ns).
 		PutStringNull(metaKey).
 		PutByte(EntityExistsNull).
+		Snapshot()
+}
+
+// TransactionReferenceKey builds a full key in BucketTransactionReference.
+//
+//	[ledger\x00][reference\x00][txID_BE(8B)]
+func TransactionReferenceKey(kb *KeyBuilder, ledger, reference string, txID uint64) []byte {
+	return kb.Reset().
+		PutLedger(ledger).
+		PutStringNull(reference).
+		PutUint64(txID).
+		Build()
+}
+
+// TransactionReferencePrefix returns the prefix for scanning all txIDs with a given reference.
+//
+//	[ledger\x00][reference\x00]
+func TransactionReferencePrefix(kb *KeyBuilder, ledger, reference string) []byte {
+	return kb.Reset().
+		PutLedger(ledger).
+		PutStringNull(reference).
+		Snapshot()
+}
+
+// TransactionTimestampKey builds a full key in BucketTransactionTimestamp.
+//
+//	[ledger\x00][timestamp_BE(8B)][txID_BE(8B)]
+func TransactionTimestampKey(kb *KeyBuilder, ledger string, timestamp, txID uint64) []byte {
+	return kb.Reset().
+		PutLedger(ledger).
+		PutUint64(timestamp).
+		PutUint64(txID).
+		Build()
+}
+
+// TransactionTimestampRangePrefix returns the ledger prefix for range scans in BucketTransactionTimestamp.
+//
+//	[ledger\x00]
+func TransactionTimestampRangePrefix(kb *KeyBuilder, ledger string) []byte {
+	return kb.Reset().
+		PutLedger(ledger).
 		Snapshot()
 }

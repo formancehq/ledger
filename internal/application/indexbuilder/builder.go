@@ -28,10 +28,11 @@ type Proposer interface {
 	ProposeOrders(orders ...*raftcmdpb.Order) error
 }
 
-// indexID identifies a specific index (address role or metadata field).
+// indexID identifies a specific index (address role, metadata field, or builtin).
 type indexID struct {
-	addressRole *commonpb.AddressRole         // set for address indexes
-	metadata    *commonpb.MetadataIndexTarget // set for metadata indexes
+	addressRole *commonpb.AddressRole             // set for address indexes
+	metadata    *commonpb.MetadataIndexTarget     // set for metadata indexes
+	builtin     *commonpb.TransactionBuiltinIndex // set for builtin indexes
 }
 
 // backfillTask tracks the progress of backfilling a single index.
@@ -50,8 +51,9 @@ type metadataIndexKey struct {
 
 // ledgerIndexConfig caches which indexes are enabled and ready for a ledger.
 type ledgerIndexConfig struct {
-	addressIndexed  map[commonpb.AddressRole]bool // true = indexed (READY or BUILDING)
-	metadataIndexed map[metadataIndexKey]bool     // true = indexed (READY or BUILDING)
+	addressIndexed  map[commonpb.AddressRole]bool                  // true = indexed (READY or BUILDING)
+	metadataIndexed map[metadataIndexKey]bool                      // true = indexed (READY or BUILDING)
+	builtinIndexed  map[commonpb.TransactionBuiltinIndex]bool      // true = indexed (READY or BUILDING)
 }
 
 // Builder tails the system log and populates the bbolt read store indexes.
@@ -172,6 +174,7 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 	cfg := &ledgerIndexConfig{
 		addressIndexed:  make(map[commonpb.AddressRole]bool),
 		metadataIndexed: make(map[metadataIndexKey]bool),
+		builtinIndexed:  make(map[commonpb.TransactionBuiltinIndex]bool),
 	}
 
 	// Address indexes — include both READY and BUILDING.
@@ -199,6 +202,26 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 	if info.MetadataSchema != nil {
 		b.loadMetadataIndexes(cfg, info.Name, commonpb.TargetType_TARGET_TYPE_ACCOUNT, info.MetadataSchema.AccountFields)
 		b.loadMetadataIndexes(cfg, info.Name, commonpb.TargetType_TARGET_TYPE_TRANSACTION, info.MetadataSchema.TransactionFields)
+	}
+
+	// Builtin indexes — include both READY and BUILDING.
+	if bi := info.BuiltinIndexes; bi != nil {
+		for _, entry := range []struct {
+			index   commonpb.TransactionBuiltinIndex
+			enabled bool
+			status  commonpb.IndexBuildStatus
+		}{
+			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE, bi.Reference, bi.ReferenceStatus},
+			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, bi.Timestamp, bi.TimestampStatus},
+		} {
+			if !entry.enabled {
+				continue
+			}
+			cfg.builtinIndexed[entry.index] = true
+			if entry.status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+				b.addBackfillTaskForBuiltin(info.Name, entry.index)
+			}
+		}
 	}
 
 	b.indexConfig[info.Name] = cfg
@@ -239,6 +262,15 @@ func (b *Builder) isMetadataIndexed(ledger string, target commonpb.TargetType, k
 		return false
 	}
 	return cfg.metadataIndexed[metadataIndexKey{Target: target, Key: key}]
+}
+
+// isBuiltinIndexed checks if a specific builtin index is enabled.
+func (b *Builder) isBuiltinIndexed(ledger string, index commonpb.TransactionBuiltinIndex) bool {
+	cfg, ok := b.indexConfig[ledger]
+	if !ok {
+		return false
+	}
+	return cfg.builtinIndexed[index]
 }
 
 // SetNotifications sets the dedicated Notifications signal for the builder.
@@ -620,6 +652,14 @@ func (b *Builder) indexCreatedTransaction(
 		}
 	}
 
+	// Builtin indexes
+	if b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE) && txn.Reference != "" {
+		wb.WriteTransactionReferenceIndex(kb, ledger, txn.Reference, txn.Id)
+	}
+	if b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && txn.Timestamp != nil {
+		wb.WriteTransactionTimestampIndex(kb, ledger, txn.Timestamp.Data, txn.Id)
+	}
+
 	return nil
 }
 
@@ -687,6 +727,11 @@ func (b *Builder) indexRevertedTransaction(
 				encodedValue, txIDBytes,
 			)
 		}
+	}
+
+	// Builtin indexes (no reference on revert transactions)
+	if b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && revertTxn.Timestamp != nil {
+		wb.WriteTransactionTimestampIndex(kb, ledger, revertTxn.Timestamp.Data, revertTxn.Id)
 	}
 
 	return nil
@@ -942,6 +987,9 @@ func (b *Builder) handleCreateIndexLog(ledger string, log *commonpb.CreateIndexL
 			Key:    idx.Metadata.Key,
 		}] = true
 		b.addBackfillTaskForMetadata(ledger, idx.Metadata.Target, idx.Metadata.Key)
+	case *commonpb.CreateIndexLog_Builtin:
+		cfg.builtinIndexed[idx.Builtin] = true
+		b.addBackfillTaskForBuiltin(ledger, idx.Builtin)
 	}
 }
 
@@ -960,6 +1008,9 @@ func (b *Builder) handleDropIndexLog(ledger string, log *commonpb.DropIndexLog) 
 			Key:    idx.Metadata.Key,
 		})
 		b.removeBackfillTask(indexID{metadata: idx.Metadata})
+	case *commonpb.DropIndexLog_Builtin:
+		delete(cfg.builtinIndexed, idx.Builtin)
+		b.removeBackfillTask(indexID{builtin: &idx.Builtin})
 	}
 }
 
@@ -978,6 +1029,9 @@ func (b *Builder) handleIndexReadyLog(ledger string, log *commonpb.IndexReadyLog
 			Key:    idx.Metadata.Key,
 		}] = true
 		b.removeBackfillTask(indexID{metadata: idx.Metadata})
+	case *commonpb.IndexReadyLog_Builtin:
+		cfg.builtinIndexed[idx.Builtin] = true
+		b.removeBackfillTask(indexID{builtin: &idx.Builtin})
 	}
 }
 
@@ -988,6 +1042,7 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 		cfg = &ledgerIndexConfig{
 			addressIndexed:  make(map[commonpb.AddressRole]bool),
 			metadataIndexed: make(map[metadataIndexKey]bool),
+			builtinIndexed:  make(map[commonpb.TransactionBuiltinIndex]bool),
 		}
 		b.indexConfig[ledger] = cfg
 	}
@@ -1018,20 +1073,27 @@ func extractEntityIDFromReverseMap(key, nsPrefix []byte, ns string) []byte {
 // backfillBBKey builds the bbolt key for persisting backfill progress.
 // Format:
 //
-//	Address: [ledger\x00]a[role_byte]
+//	Address:  [ledger\x00]a[role_byte]
 //	Metadata: [ledger\x00]m[target_byte][key]
+//	Builtin:  [ledger\x00]b[builtin_byte]
 func backfillBBKey(ledger string, id indexID) []byte {
 	if id.addressRole != nil {
 		key := make([]byte, 0, len(ledger)+3)
 		key = append(key, ledger...)
-		key = append(key, 0x00, 'a', byte(*id.addressRole))
+		key = append(key, 0x00, readstore.BackfillKindAddress, byte(*id.addressRole))
 		return key
 	}
 	if id.metadata != nil {
 		key := make([]byte, 0, len(ledger)+3+len(id.metadata.Key))
 		key = append(key, ledger...)
-		key = append(key, 0x00, 'm', byte(id.metadata.Target))
+		key = append(key, 0x00, readstore.BackfillKindMetadata, byte(id.metadata.Target))
 		key = append(key, id.metadata.Key...)
+		return key
+	}
+	if id.builtin != nil {
+		key := make([]byte, 0, len(ledger)+3)
+		key = append(key, ledger...)
+		key = append(key, 0x00, readstore.BackfillKindBuiltin, byte(*id.builtin))
 		return key
 	}
 	return nil
@@ -1051,6 +1113,24 @@ func (b *Builder) addBackfillTaskForAddress(ledger string, role commonpb.Address
 		index:  id,
 		cursor: 0,
 		bbKey:  backfillBBKey(ledger, id),
+	}
+	b.backfillTasks = append(b.backfillTasks, task)
+}
+
+// addBackfillTaskForBuiltin creates a backfill task for a builtin index.
+func (b *Builder) addBackfillTaskForBuiltin(ledger string, index commonpb.TransactionBuiltinIndex) {
+	id := indexID{builtin: &index}
+	bbKey := backfillBBKey(ledger, id)
+	for _, t := range b.backfillTasks {
+		if string(t.bbKey) == string(bbKey) {
+			return
+		}
+	}
+	task := &backfillTask{
+		ledger: ledger,
+		index:  id,
+		cursor: 0,
+		bbKey:  bbKey,
 	}
 	b.backfillTasks = append(b.backfillTasks, task)
 }
@@ -1098,6 +1178,9 @@ func matchesBackfillIndex(a, b indexID) bool {
 	}
 	if a.metadata != nil && b.metadata != nil {
 		return a.metadata.Target == b.metadata.Target && a.metadata.Key == b.metadata.Key
+	}
+	if a.builtin != nil && b.builtin != nil {
+		return *a.builtin == *b.builtin
 	}
 	return false
 }
@@ -1251,6 +1334,7 @@ func (b *Builder) buildBackfillConfig(task *backfillTask) map[string]*ledgerInde
 	cfg := &ledgerIndexConfig{
 		addressIndexed:  make(map[commonpb.AddressRole]bool),
 		metadataIndexed: make(map[metadataIndexKey]bool),
+		builtinIndexed:  make(map[commonpb.TransactionBuiltinIndex]bool),
 	}
 	if task.index.addressRole != nil {
 		cfg.addressIndexed[*task.index.addressRole] = true
@@ -1260,6 +1344,9 @@ func (b *Builder) buildBackfillConfig(task *backfillTask) map[string]*ledgerInde
 			Target: task.index.metadata.Target,
 			Key:    task.index.metadata.Key,
 		}] = true
+	}
+	if task.index.builtin != nil {
+		cfg.builtinIndexed[*task.index.builtin] = true
 	}
 	return map[string]*ledgerIndexConfig{task.ledger: cfg}
 }
@@ -1317,6 +1404,14 @@ func (b *Builder) proposeIndexReady(task *backfillTask) bool {
 			IndexReady: &raftcmdpb.IndexReadyOrder{
 				Index: &raftcmdpb.IndexReadyOrder_Metadata{
 					Metadata: task.index.metadata,
+				},
+			},
+		}
+	} else if task.index.builtin != nil {
+		order.GetApply().Data = &raftcmdpb.LedgerApplyOrder_IndexReady{
+			IndexReady: &raftcmdpb.IndexReadyOrder{
+				Index: &raftcmdpb.IndexReadyOrder_Builtin{
+					Builtin: *task.index.builtin,
 				},
 			},
 		}
