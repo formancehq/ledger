@@ -74,6 +74,20 @@ Key rules:
 - **Demos**: `misc/demo/` - VHS tape files for CLI demos
 - **Numscript examples**: `misc/numscript/examples/`
 
+## Build Tags (Optional Features)
+
+The default build (`go build .`) produces a **light binary** (~60 MB) without heavy optional dependencies. To include optional features, use positive build tags:
+
+| Tag | Feature | Heavy dependencies |
+|-----|---------|-------------------|
+| `kafka` | Kafka event sink | `IBM/sarama` |
+| `nats` | NATS JetStream event sink | `nats-io/nats.go`, `nats-io/nats-server` |
+| `clickhouse` | ClickHouse event sink | `ClickHouse/clickhouse-go` |
+| `s3` | S3 cold storage | `aws-sdk-go-v2` |
+| `pyroscope` | Pyroscope continuous profiling | `grafana/pyroscope-go` |
+
+Build with all features: `just build-full` or `go build -tags "kafka,nats,clickhouse,s3,pyroscope" .`
+
 ## Testing Conventions
 
 See [docs/dev/testing.md](docs/dev/testing.md) for full testing guidelines.
@@ -84,6 +98,21 @@ Key rules:
 - **Use gRPC client** (`servicepb.LedgerServiceClient`) in integration tests
 - **Use helper functions** from `tests/e2e/helpers.go`
 - **E2E tests** use the `e2e` build tag: `go test -tags e2e ./tests/e2e/... -timeout=600s`
+
+### Running all tests (with all optional features)
+
+```bash
+# Unit tests with all features
+just test-full
+# or: go test -tags "kafka,nats,clickhouse,s3,pyroscope" ./... -timeout 20m
+
+# E2E tests with all features
+just test-e2e-full
+# or: go test -tags "e2e,kafka,nats,clickhouse,s3,pyroscope" ./tests/e2e/... -timeout 20m
+
+# E2E tests for a specific feature (e.g., ClickHouse sink)
+go test -tags "e2e,clickhouse" ./tests/e2e/... -timeout 20m
+```
 
 ## Configuration Safety Checks
 
