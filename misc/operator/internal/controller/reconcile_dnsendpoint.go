@@ -38,6 +38,7 @@ func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledg
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
 		obj.SetLabels(commonLabels(ledger))
+		obj.SetAnnotations(ledger.Spec.DNSEndpoint.Annotations)
 
 		endpoints := make([]interface{}, 0, len(ledger.Spec.DNSEndpoint.Endpoints))
 		for _, ep := range ledger.Spec.DNSEndpoint.Endpoints {

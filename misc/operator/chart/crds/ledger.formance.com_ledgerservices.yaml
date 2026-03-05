@@ -1443,6 +1443,11 @@ spec:
               dnsEndpoint:
                 description: DNSEndpoint configuration for ExternalDNS.
                 properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: Annotations to add to the DNSEndpoint resource.
+                    type: object
                   enabled:
                     description: Enabled enables the DNSEndpoint resource.
                     type: boolean

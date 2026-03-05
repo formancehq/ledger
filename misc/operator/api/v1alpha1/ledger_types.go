@@ -991,6 +991,10 @@ type DNSEndpointSpec struct {
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`
 
+	// Annotations to add to the DNSEndpoint resource.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+
 	// Endpoints is the list of DNS endpoint entries.
 	// +optional
 	Endpoints []DNSEndpointEntry `json:"endpoints,omitempty"`
