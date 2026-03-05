@@ -134,8 +134,9 @@ message CreateLedgerRequest {
   repeated common.SetMetadataFieldTypeCommand initial_schema = 2;
   common.LedgerMode mode = 3;
   common.MirrorSourceConfig mirror_source = 4;
-  common.ChartOfAccounts chart_of_accounts = 5;
-  common.ChartEnforcementMode enforcement_mode = 6;
+  common.ChartOfAccounts chart_of_accounts = 5;      // DEPRECATED
+  common.ChartEnforcementMode enforcement_mode = 6;   // DEPRECATED
+  map<string, common.AccountType> account_types = 7;  // Initial account types
 }
 
 message DeleteLedgerRequest {
@@ -190,8 +191,13 @@ message Request {
     DropIndexRequest drop_index = 26;
     SaveNumscriptRequest save_numscript = 27;
     DeleteNumscriptRequest delete_numscript = 28;
-    SetChartOfAccountsLedgerRequest set_chart_of_accounts = 29;
-    SetChartEnforcementModeLedgerRequest set_chart_enforcement_mode = 30;
+    SetChartOfAccountsLedgerRequest set_chart_of_accounts = 29;       // DEPRECATED
+    SetChartEnforcementModeLedgerRequest set_chart_enforcement_mode = 30; // DEPRECATED
+    AddAccountTypeLedgerRequest add_account_type = 31;
+    UpdateAccountTypeLedgerRequest update_account_type = 32;
+    RemoveAccountTypeLedgerRequest remove_account_type = 33;
+    MigrateAccountTypeLedgerRequest migrate_account_type = 34;
+    CancelMigrationLedgerRequest cancel_migration = 35;
   }
   signature.RequestSignature signature = 5;
 }
@@ -403,8 +409,11 @@ message LedgerApplyRequest {
     common.SaveMetadataCommand add_metadata = 3;
     RevertTransactionPayload revert_transaction = 4;
     common.DeleteMetadataCommand delete_metadata = 5;
-    SetChartOfAccountsRequest set_chart_of_accounts = 6;
-    SetChartEnforcementModeRequest set_chart_enforcement_mode = 7;
+    SetChartOfAccountsRequest set_chart_of_accounts = 6;       // DEPRECATED
+    SetChartEnforcementModeRequest set_chart_enforcement_mode = 7; // DEPRECATED
+    AddAccountTypeRequest add_account_type = 8;
+    UpdateAccountTypeRequest update_account_type = 9;
+    RemoveAccountTypeRequest remove_account_type = 10;
   }
 }
 
@@ -424,6 +433,55 @@ message SetChartOfAccountsLedgerRequest {
 message SetChartEnforcementModeLedgerRequest {
   string ledger = 1;
   common.ChartEnforcementMode enforcement_mode = 2;
+}
+
+// AddAccountTypeRequest adds an account type within a LedgerApplyRequest.
+message AddAccountTypeRequest {
+  common.AccountType account_type = 1;
+}
+
+// UpdateAccountTypeRequest updates an account type within a LedgerApplyRequest.
+message UpdateAccountTypeRequest {
+  string name = 1;
+  common.ChartEnforcementMode enforcement_mode = 2;
+}
+
+// RemoveAccountTypeRequest removes an account type within a LedgerApplyRequest.
+message RemoveAccountTypeRequest {
+  string name = 1;
+}
+
+// AddAccountTypeLedgerRequest adds an account type (top-level request).
+message AddAccountTypeLedgerRequest {
+  string ledger = 1;
+  common.AccountType account_type = 2;
+}
+
+// UpdateAccountTypeLedgerRequest updates an account type (top-level request).
+message UpdateAccountTypeLedgerRequest {
+  string ledger = 1;
+  string name = 2;
+  common.ChartEnforcementMode enforcement_mode = 3;
+}
+
+// RemoveAccountTypeLedgerRequest removes an account type (top-level request).
+message RemoveAccountTypeLedgerRequest {
+  string ledger = 1;
+  string name = 2;
+}
+
+// MigrateAccountTypeLedgerRequest triggers a migration (top-level request).
+message MigrateAccountTypeLedgerRequest {
+  string ledger = 1;
+  string source_type = 2;
+  string target_type = 3;
+  bool dry_run = 4;
+}
+
+// CancelMigrationLedgerRequest cancels an in-progress migration (top-level request).
+message CancelMigrationLedgerRequest {
+  string ledger = 1;
+  string source_type = 2;
 }
 
 // ============================================================================

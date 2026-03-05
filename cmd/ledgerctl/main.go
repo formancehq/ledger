@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/go-libs/v3/service"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/accounts"
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/audit"
 	authcmd "github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/auth"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cluster"
@@ -113,6 +114,7 @@ func newRootCommand() *cobra.Command {
 	// Add subcommands.
 	rootCmd.AddCommand(ledgers.NewCommand())
 	rootCmd.AddCommand(accounts.NewCommand())
+	rootCmd.AddCommand(accounttypes.NewCommand())
 	rootCmd.AddCommand(transactions.NewCommand())
 	rootCmd.AddCommand(store.NewCommand())
 	rootCmd.AddCommand(cluster.NewCommand())

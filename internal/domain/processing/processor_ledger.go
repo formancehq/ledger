@@ -2,6 +2,7 @@ package processing
 
 import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
@@ -12,12 +13,13 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 		return nil, &domain.ErrLedgerAlreadyExists{Name: order.GetName()}
 	}
 
-	// Validate chart at creation time if provided
-	if order.GetChartOfAccounts() != nil {
-		err := validateChart(order.GetChartOfAccounts())
-		if err != nil {
-			return nil, &domain.ErrInvalidChart{Details: err.Error()}
+	// Validate initial account types if provided
+	for name, at := range order.GetAccountTypes() {
+		if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
+			return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 		}
+		at.Name = name
+		at.Status = commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE
 	}
 
 	info := &commonpb.LedgerInfo{
@@ -28,6 +30,7 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 		MirrorSource:    order.GetMirrorSource(),
 		ChartOfAccounts: order.GetChartOfAccounts(),
 		EnforcementMode: order.GetEnforcementMode(),
+		AccountTypes:    order.GetAccountTypes(),
 	}
 	s.PutLedger(order.GetName(), info)
 	s.PutBoundaries(order.GetName(), &raftcmdpb.LedgerBoundaries{

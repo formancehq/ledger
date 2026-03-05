@@ -52,8 +52,13 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		invalidCronExpression         *domain.ErrInvalidCronExpression
 		indexNotFound                 *domain.ErrIndexNotFound
 		indexBuilding                 *domain.ErrIndexBuilding
-		accountNotInChart             *domain.ErrAccountNotInChart
-		invalidChart                  *domain.ErrInvalidChart
+		accountNotMatchingType        *domain.ErrAccountNotMatchingType
+		accountTypeNotFound           *domain.ErrAccountTypeNotFound
+		accountTypeAlreadyExists      *domain.ErrAccountTypeAlreadyExists
+		invalidPattern                *domain.ErrInvalidPattern
+		accountTypeHasAccounts        *domain.ErrAccountTypeHasAccounts
+		migrationAlreadyActive        *domain.ErrMigrationAlreadyActive
+		migrationVariableMismatch     *domain.ErrMigrationVariableMismatch
 	)
 
 	switch {
@@ -242,15 +247,40 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		reason = domain.ErrReasonIndexBuilding
 		metadata = map[string]string{"index": indexBuilding.Index}
 
-	case errors.As(inner, &accountNotInChart):
+	case errors.As(inner, &accountNotMatchingType):
 		code = codes.FailedPrecondition
-		reason = domain.ErrReasonAccountNotInChart
-		metadata = map[string]string{"address": accountNotInChart.Address}
+		reason = domain.ErrReasonAccountNotMatchingType
+		metadata = map[string]string{"address": accountNotMatchingType.Address}
 
-	case errors.As(inner, &invalidChart):
+	case errors.As(inner, &accountTypeNotFound):
+		code = codes.NotFound
+		reason = domain.ErrReasonAccountTypeNotFound
+		metadata = map[string]string{"name": accountTypeNotFound.Name}
+
+	case errors.As(inner, &accountTypeAlreadyExists):
+		code = codes.AlreadyExists
+		reason = domain.ErrReasonAccountTypeAlreadyExists
+		metadata = map[string]string{"name": accountTypeAlreadyExists.Name}
+
+	case errors.As(inner, &invalidPattern):
 		code = codes.InvalidArgument
-		reason = domain.ErrReasonInvalidChart
-		metadata = map[string]string{"details": invalidChart.Details}
+		reason = domain.ErrReasonInvalidPattern
+		metadata = map[string]string{"pattern": invalidPattern.Pattern, "details": invalidPattern.Details}
+
+	case errors.As(inner, &accountTypeHasAccounts):
+		code = codes.FailedPrecondition
+		reason = domain.ErrReasonAccountTypeHasAccounts
+		metadata = map[string]string{"name": accountTypeHasAccounts.Name}
+
+	case errors.As(inner, &migrationAlreadyActive):
+		code = codes.FailedPrecondition
+		reason = domain.ErrReasonMigrationAlreadyActive
+		metadata = map[string]string{"activeType": migrationAlreadyActive.ActiveType}
+
+	case errors.As(inner, &migrationVariableMismatch):
+		code = codes.InvalidArgument
+		reason = domain.ErrReasonMigrationVariableMismatch
+		metadata = map[string]string{"details": migrationVariableMismatch.Details}
 
 	default:
 		// Unknown business error — fall back to Internal

@@ -1,19 +1,10 @@
 package http
 
 import (
-	"errors"
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
-
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
-// chartOfAccountsJSON is the camelCase JSON DTO for chart of accounts response.
-type chartOfAccountsJSON struct {
-	ChartOfAccounts *chartJSON `json:"chartOfAccounts,omitempty"`
-	EnforcementMode string     `json:"enforcementMode"`
-}
+// Chart of Accounts JSON DTOs — still used by the analyze and create-ledger handlers.
 
 type chartJSON struct {
 	Roots map[string]*chartSegmentJSON `json:"roots,omitempty"`
@@ -92,44 +83,53 @@ func toVariableJSON(v *commonpb.ChartVariable) *chartVariableJSON {
 	return result
 }
 
-func enforcementModeToString(mode commonpb.ChartEnforcementMode) string {
-	switch mode {
-	case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT:
-		return "AUDIT"
-	default:
-		return "STRICT"
+func fromChartJSON(c *chartJSON) *commonpb.ChartOfAccounts {
+	if c == nil {
+		return nil
 	}
+	roots := make(map[string]*commonpb.ChartSegment, len(c.Roots))
+	for name, segment := range c.Roots {
+		roots[name] = fromSegmentJSON(segment)
+	}
+	return &commonpb.ChartOfAccounts{Roots: roots}
 }
 
-func parseEnforcementMode(s string) (commonpb.ChartEnforcementMode, error) {
-	switch s {
-	case "STRICT", "strict":
-		return commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, nil
-	case "AUDIT", "audit":
-		return commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, nil
-	default:
-		return 0, errors.New("invalid enforcement mode: must be STRICT or AUDIT")
+func fromSegmentJSON(s *chartSegmentJSON) *commonpb.ChartSegment {
+	if s == nil {
+		return nil
 	}
+	result := &commonpb.ChartSegment{
+		Account: s.Account,
+	}
+	if len(s.Children) > 0 {
+		result.Children = make(map[string]*commonpb.ChartSegment, len(s.Children))
+		for name, child := range s.Children {
+			result.Children[name] = fromSegmentJSON(child)
+		}
+	}
+	if s.Variable != nil {
+		result.Variable = fromVariableJSON(s.Variable)
+	}
+	return result
 }
 
-// handleGetChartOfAccounts handles GET /{ledgerName}/chart-of-accounts.
-func (s *Server) handleGetChartOfAccounts(w http.ResponseWriter, r *http.Request) {
-	ledgerName := chi.URLParam(r, "ledgerName")
-	if ledgerName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
-
-		return
+func fromVariableJSON(v *chartVariableJSON) *commonpb.ChartVariable {
+	if v == nil {
+		return nil
 	}
-
-	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
-	if err != nil {
-		handleError(w, r, err)
-
-		return
+	result := &commonpb.ChartVariable{
+		Name:    v.Name,
+		Pattern: v.Pattern,
+		Account: v.Account,
 	}
-
-	writeOK(w, &chartOfAccountsJSON{
-		ChartOfAccounts: toChartJSON(ledgerInfo.GetChartOfAccounts()),
-		EnforcementMode: enforcementModeToString(ledgerInfo.GetEnforcementMode()),
-	})
+	if len(v.Children) > 0 {
+		result.Children = make(map[string]*commonpb.ChartSegment, len(v.Children))
+		for name, child := range v.Children {
+			result.Children[name] = fromSegmentJSON(child)
+		}
+	}
+	if v.Variable != nil {
+		result.Variable = fromVariableJSON(v.Variable)
+	}
+	return result
 }

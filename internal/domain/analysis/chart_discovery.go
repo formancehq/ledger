@@ -595,3 +595,53 @@ func cloneSegments(segs []*servicepb.PatternSegment) []*servicepb.PatternSegment
 
 	return c
 }
+
+// SuggestAccountTypes converts discovered patterns from an analysis result into
+// a slice of AccountType suggestions. Each pattern becomes an account type with
+// an auto-generated name derived from its fixed segments.
+func SuggestAccountTypes(resp *servicepb.AnalyzeAccountsResponse) []*commonpb.AccountType {
+	if resp == nil || len(resp.Patterns) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]int) // track name collisions
+	types := make([]*commonpb.AccountType, 0, len(resp.Patterns))
+
+	for _, p := range resp.Patterns {
+		name := deriveTypeName(p)
+
+		// Handle name collisions by appending a suffix.
+		if count, ok := seen[name]; ok {
+			seen[name] = count + 1
+			name = fmt.Sprintf("%s-%d", name, count+1)
+		} else {
+			seen[name] = 1
+		}
+
+		types = append(types, &commonpb.AccountType{
+			Name:            name,
+			Pattern:         p.Pattern,
+			Status:          commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
+			EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
+		})
+	}
+
+	return types
+}
+
+// deriveTypeName generates a human-readable name from pattern segments.
+// Fixed segments are joined with hyphens; variable segments are omitted.
+// Example: "users:{id}:checking" → "users-checking"
+func deriveTypeName(p *servicepb.AccountPattern) string {
+	parts := strings.Split(p.Pattern, ":")
+	var fixed []string
+	for _, part := range parts {
+		if len(part) > 0 && part[0] != '{' {
+			fixed = append(fixed, part)
+		}
+	}
+	if len(fixed) == 0 {
+		return "default"
+	}
+	return strings.Join(fixed, "-")
+}

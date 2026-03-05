@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/analysis"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
@@ -157,6 +158,26 @@ func renderAnalysisResult(resp *servicepb.AnalyzeAccountsResponse) {
 		}
 
 		_ = pterm.DefaultTree.WithRoot(tree).Render()
+	}
+
+	// Suggested account types
+	suggestedTypes := analysis.SuggestAccountTypes(resp)
+	if len(suggestedTypes) > 0 {
+		pterm.DefaultSection.Println("Suggested Account Types")
+		typeTable := pterm.TableData{
+			{"NAME", "PATTERN", "ENFORCEMENT"},
+		}
+		for _, at := range suggestedTypes {
+			typeTable = append(typeTable, []string{
+				at.Name,
+				at.Pattern,
+				"STRICT",
+			})
+		}
+		_ = pterm.DefaultTable.WithHasHeader().WithData(typeTable).Render()
+		pterm.Println()
+		pterm.Println(pterm.Gray("To add these types, use:"))
+		pterm.FgCyan.Println("  ledgerctl account-types add <name> <pattern> --ledger <ledger>")
 	}
 }
 

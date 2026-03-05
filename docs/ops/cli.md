@@ -1198,6 +1198,106 @@ ledgerctl transactions analyze --ledger my-ledger --json
 
 ---
 
+### account-types
+
+Manage account types (pattern-based account validation).
+
+**Aliases:** `at`, `types`
+
+#### account-types add
+
+Add a new account type to a ledger.
+
+```bash
+ledgerctl account-types add <name> <pattern> --ledger <ledger> [--enforcement-mode STRICT|AUDIT]
+```
+
+**Arguments:**
+- `name` — Unique name for the account type (e.g., `user-checking`)
+- `pattern` — Address pattern with optional variables (e.g., `users:{id}:checking`)
+
+**Flags:**
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ledger` | *(required)* | Target ledger name |
+| `--enforcement-mode` | `STRICT` | `STRICT` (reject invalid) or `AUDIT` (warn only) |
+
+**Pattern syntax:**
+- Fixed segments: `users`, `bank`, `checking`
+- Variable segments: `{id}`, `{name}`
+- Regex-constrained: `{iban:^[A-Z]{2}[0-9]{14}$}`
+
+**Example:**
+```bash
+ledgerctl at add user-checking "users:{id}:checking" --ledger my-ledger
+ledgerctl at add bank-main "banks:{iban:^[A-Z]{2}[0-9]{14}$}:main" --ledger my-ledger --enforcement-mode AUDIT
+```
+
+#### account-types list
+
+List all account types for a ledger.
+
+```bash
+ledgerctl account-types list [--ledger <ledger>]
+```
+
+If `--ledger` is not provided and only one ledger exists, it will be used automatically.
+
+**Example:**
+```bash
+ledgerctl at ls --ledger my-ledger
+```
+
+#### account-types get
+
+Get details of a specific account type.
+
+```bash
+ledgerctl account-types get <name> [--ledger <ledger>]
+```
+
+Shows name, pattern, status, enforcement mode, and migration progress (if applicable).
+
+#### account-types update
+
+Update an account type's enforcement mode.
+
+```bash
+ledgerctl account-types update <name> --ledger <ledger> --enforcement-mode STRICT|AUDIT
+```
+
+#### account-types remove
+
+Remove an account type from a ledger.
+
+```bash
+ledgerctl account-types remove <name> --ledger <ledger>
+```
+
+**Aliases:** `rm`, `delete`
+
+#### account-types migrate
+
+Start migrating accounts from one type to another.
+
+```bash
+ledgerctl account-types migrate <source-type> <target-type> --ledger <ledger> [--dry-run]
+```
+
+The source type transitions to MIGRATING status and a background worker rewrites account keys. Use `--dry-run` to preview without applying changes.
+
+#### account-types cancel-migration
+
+Cancel an in-progress migration.
+
+```bash
+ledgerctl account-types cancel-migration <source-type> --ledger <ledger>
+```
+
+The source type reverts from MIGRATING to ACTIVE status.
+
+---
+
 ### store
 
 ![Operations Demo](../../misc/demo/demo_operations.gif)

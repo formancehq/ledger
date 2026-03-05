@@ -35,10 +35,12 @@ This document compares the POC's API with the original Formance ledger API and d
 | Delete ledger | ✅ | ✅ | |
 | Get ledger | ✅ | ✅ | |
 | List ledgers | ✅ | ✅ | |
-| **Chart of Accounts** |
-| Set chart of accounts | ✅ | ❌ | Per-ledger declarative tree validation |
-| Get chart of accounts | ✅ | ❌ | Returns chart + enforcement mode |
-| Set enforcement mode | ✅ | ❌ | STRICT (reject) or AUDIT (warnings in response) |
+| **Account Types** |
+| Add account type | ✅ | ❌ | Pattern-based account validation with per-type enforcement |
+| List account types | ✅ | ❌ | List all types for a ledger |
+| Get account type | ✅ | ❌ | Get details of a specific type |
+| Update account type | ✅ | ❌ | Change enforcement mode |
+| Remove account type | ✅ | ❌ | Remove a type from a ledger |
 | **Accounts (Read)** |
 | Get account | ✅ | ✅ | Includes volumes per asset |
 | List accounts | ✅ | ✅ | Supports rich boolean filter (metadata equality/range/existence, address) with schema validation and cursor pagination |
@@ -180,21 +182,23 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - `GET /{ledgerName}` - Get ledger info (read)
 - `GET /` - List all ledgers (read)
 
-### 5b. Chart of Accounts
+### 5b. Account Types
 
 **Endpoints:**
-- `GET /{ledgerName}/chart-of-accounts` - Get chart of accounts and enforcement mode
-- `PUT /{ledgerName}/chart-of-accounts` - Set chart of accounts
-- `PUT /{ledgerName}/chart-of-accounts/enforcement-mode` - Set enforcement mode (STRICT or AUDIT)
+- `GET /{ledgerName}/account-types` - List all account types for a ledger
+- `GET /{ledgerName}/account-types/{typeName}` - Get details of a specific account type
+- `POST /{ledgerName}/account-types` - Add a new account type
+- `PATCH /{ledgerName}/account-types/{typeName}` - Update an account type's enforcement mode
+- `DELETE /{ledgerName}/account-types/{typeName}` - Remove an account type
 
 **Features:**
-- ✅ Per-ledger declarative tree structure for account address validation
-- ✅ Fixed segments (exact match) and variable segments (with optional regex pattern)
-- ✅ STRICT mode: rejects transactions with invalid account addresses
-- ✅ AUDIT mode: returns warnings (ChartViolation) in log payload for invalid addresses but allows transactions
-- ✅ Chart can be set at ledger creation time or updated later
+- ✅ Pattern-based account address validation (e.g., `users:{id}:checking`)
+- ✅ Variable segments with optional regex constraints (e.g., `{iban:^[A-Z]{2}[0-9]{14}$}`)
+- ✅ Per-type enforcement mode: STRICT (reject) or AUDIT (warnings)
+- ✅ Longest-match / highest-specificity resolution when multiple types match
+- ✅ Account type lifecycle: ACTIVE → MIGRATING → DEPRECATED
 - ✅ `world` account always passes validation
-- ✅ Chart self-validation (segment name format, variable names, regex patterns, at least one account node)
+- ✅ Account types can be set at ledger creation time or added later
 
 ### 6. Transaction Read
 
@@ -560,9 +564,11 @@ Read endpoints comparison with the original ledger:
 | `GET /numscripts/{name}?version=` | ✅ | ❌ | Get numscript (semver version, empty = latest) |
 | `PUT /numscripts/{name}` | ✅ | ❌ | Save numscript (semver versioned) |
 | `DELETE /numscripts/{name}` | ✅ | ❌ | Delete numscript |
-| `GET /{ledgerName}/chart-of-accounts` | ✅ | ❌ | Get chart of accounts |
-| `PUT /{ledgerName}/chart-of-accounts` | ✅ | ❌ | Set chart of accounts |
-| `PUT /{ledgerName}/chart-of-accounts/enforcement-mode` | ✅ | ❌ | Set enforcement mode |
+| `GET /{ledgerName}/account-types` | ✅ | ❌ | List account types |
+| `GET /{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Get account type |
+| `POST /{ledgerName}/account-types` | ✅ | ❌ | Add account type |
+| `PATCH /{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Update account type |
+| `DELETE /{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type |
 
 ---
 
@@ -686,8 +692,13 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Ledger not in mirror mode | `FAILED_PRECONDITION` | `LEDGER_NOT_IN_MIRROR_MODE` | `name` |
 | Prepared query already exists | `ALREADY_EXISTS` | `PREPARED_QUERY_ALREADY_EXISTS` | `name` |
 | Prepared query not found | `NOT_FOUND` | `PREPARED_QUERY_NOT_FOUND` | `name` |
-| Account not in chart | `FAILED_PRECONDITION` | `ACCOUNT_NOT_IN_CHART` | `address` |
-| Invalid chart | `INVALID_ARGUMENT` | `INVALID_CHART` | `details` |
+| Account not matching type | `FAILED_PRECONDITION` | `ACCOUNT_NOT_MATCHING_TYPE` | `address` |
+| Account type not found | `NOT_FOUND` | `ACCOUNT_TYPE_NOT_FOUND` | `name` |
+| Account type already exists | `ALREADY_EXISTS` | `ACCOUNT_TYPE_ALREADY_EXISTS` | `name` |
+| Invalid pattern | `INVALID_ARGUMENT` | `INVALID_PATTERN` | `pattern`, `details` |
+| Account type has accounts | `FAILED_PRECONDITION` | `ACCOUNT_TYPE_HAS_ACCOUNTS` | `name` |
+| Migration already active | `FAILED_PRECONDITION` | `MIGRATION_ALREADY_ACTIVE` | `name` |
+| Migration variable mismatch | `INVALID_ARGUMENT` | `MIGRATION_VARIABLE_MISMATCH` | `details` |
 
 **Client-side usage (Go):**
 ```go

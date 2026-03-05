@@ -64,15 +64,15 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 		schema = ledgerInfo.GetMetadataSchema()
 	}
 
-	// Validate postings against chart of accounts
+	// Validate postings against account types.
 	var warnings []*commonpb.ChartViolation
 
-	if info != nil && info.GetChartOfAccounts() != nil {
-		var chartErr error
+	if info != nil && len(info.GetAccountTypes()) > 0 {
+		var typeErr error
 
-		warnings, chartErr = validatePostingsInChart(result.Postings, info.GetChartOfAccounts(), info.GetEnforcementMode())
-		if chartErr != nil {
-			return nil, chartErr
+		warnings, typeErr = validatePostingsAgainstAccountTypes(result.Postings, info.GetAccountTypes())
+		if typeErr != nil {
+			return nil, typeErr
 		}
 	}
 

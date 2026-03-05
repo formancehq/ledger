@@ -20,15 +20,17 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 		info = ledgerInfo
 	}
 
-	// Validate account address against chart of accounts.
+	// Validate account address against account types.
 	var warnings []*commonpb.ChartViolation
 
-	if acct, isAcct := order.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct && info != nil && info.GetChartOfAccounts() != nil {
-		var chartErr error
+	if acct, isAcct := order.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct && info != nil {
+		if len(info.GetAccountTypes()) > 0 {
+			var typeErr error
 
-		warnings, chartErr = validateAccountInChartForAudit(acct.Account.GetAddr(), info.GetChartOfAccounts(), info.GetEnforcementMode())
-		if chartErr != nil {
-			return nil, chartErr
+			warnings, typeErr = validateAccountAgainstAccountTypes(acct.Account.GetAddr(), info.GetAccountTypes())
+			if typeErr != nil {
+				return nil, typeErr
+			}
 		}
 	}
 

@@ -11,8 +11,12 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
-// handleSetChartEnforcementMode handles PUT /{ledgerName}/chart-of-accounts/enforcement-mode.
-func (s *Server) handleSetChartEnforcementMode(w http.ResponseWriter, r *http.Request) {
+type updateAccountTypeRequest struct {
+	EnforcementMode string `json:"enforcementMode"`
+}
+
+// handleUpdateAccountType handles PATCH /{ledgerName}/account-types/{typeName}
+func (s *Server) handleUpdateAccountType(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
@@ -20,16 +24,20 @@ func (s *Server) handleSetChartEnforcementMode(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	var body struct {
-		Mode string `json:"mode"`
+	typeName := chi.URLParam(r, "typeName")
+	if typeName == "" {
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("type name is required"))
+		return
 	}
+
+	var body updateAccountTypeRequest
 	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
 
 		return
 	}
 
-	mode, err := parseEnforcementMode(body.Mode)
+	mode, err := parseEnforcementMode(body.EnforcementMode)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 
@@ -37,9 +45,10 @@ func (s *Server) handleSetChartEnforcementMode(w http.ResponseWriter, r *http.Re
 	}
 
 	_, err = s.backend.Apply(r.Context(), &servicepb.Request{
-		Type: &servicepb.Request_SetChartEnforcementMode{
-			SetChartEnforcementMode: &servicepb.SetChartEnforcementModeLedgerRequest{
+		Type: &servicepb.Request_UpdateAccountType{
+			UpdateAccountType: &servicepb.UpdateAccountTypeLedgerRequest{
 				Ledger:          ledgerName,
+				Name:            typeName,
 				EnforcementMode: mode,
 			},
 		},
