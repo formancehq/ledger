@@ -88,25 +88,28 @@ func NewKeyStore[K Key, T any](seeds Seeds, m kv.KV[U128, Entry[T]]) *KeyStore[K
 }
 
 // Put inserts or overwrites the entry for canonical key.
+// baseIndex is the Raft index at which this value is being written to Pebble.
 // If an entry already exists under the same U128 but with a different tag,
 // ErrCollisionDetected is returned and the store is left unchanged.
-func (s *KeyStore[K, T]) Put(canonical []byte, value T) (oldValue kv.Optional[T], idWithTag IDWithTag, err error) {
+// Returns the old value (if any), the old entry's BaseIndex, and the new ID+tag.
+func (s *KeyStore[K, T]) Put(canonical []byte, value T, baseIndex uint64) (oldValue kv.Optional[T], oldBaseIndex uint64, idWithTag IDWithTag, err error) {
 	id, tag := s.hasher.MakeKey(canonical)
 
 	if existing, ok := s.M.Get(id); ok {
 		if existing.Tag != tag {
-			return kv.None[T](), IDWithTag{}, newErrCollisionDetected(canonical, existing.Tag, tag)
+			return kv.None[T](), 0, IDWithTag{}, newErrCollisionDetected(canonical, existing.Tag, tag)
 		}
 		// same key (as far as we can tell) -> overwrite data
-		s.M.Put(id, Entry[T]{Tag: tag, Data: value})
-		return kv.Some(existing.Data), IDWithTag{
+		oldBI := existing.BaseIndex
+		s.M.Put(id, Entry[T]{Tag: tag, Data: value, BaseIndex: baseIndex})
+		return kv.Some(existing.Data), oldBI, IDWithTag{
 			ID:  id,
 			Tag: tag,
 		}, nil
 	}
 
-	s.M.Put(id, Entry[T]{Tag: tag, Data: value})
-	return kv.None[T](), IDWithTag{
+	s.M.Put(id, Entry[T]{Tag: tag, Data: value, BaseIndex: baseIndex})
+	return kv.None[T](), 0, IDWithTag{
 		ID:  id,
 		Tag: tag,
 	}, nil
@@ -147,8 +150,9 @@ func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, err error) {
 }
 
 type Entry[T any] struct {
-	Tag  uint64
-	Data T
+	Tag       uint64
+	Data      T
+	BaseIndex uint64 // Raft index at which this value was last written to Pebble (0 = unknown, e.g. cold preload)
 }
 
 type DerivedKeyStore[K Key, T any] struct {
@@ -194,11 +198,11 @@ func (s *DerivedKeyStore[K, T]) Delete(canonical K) {
 	s.deletions[canonical] = struct{}{}
 }
 
-func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
+func (s *DerivedKeyStore[K, T]) Merge(index uint64) ([]Update[K, T], []Deletion[K], error) {
 	touched := make([]Update[K, T], 0, len(s.values))
 	for k, v := range s.values {
 		canonical := k.Bytes()
-		overwrite, idWithTag, err := s.KeyStore.Put(canonical, v)
+		overwrite, oldBaseIndex, idWithTag, err := s.KeyStore.Put(canonical, v, index)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -208,6 +212,7 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 			Tag:          idWithTag.Tag,
 			CanonicalKey: canonical,
 			Old:          overwrite,
+			OldBaseIndex: oldBaseIndex,
 			New:          v,
 		})
 	}
@@ -243,6 +248,7 @@ type Update[K Key, T any] struct {
 	Tag          uint64
 	CanonicalKey []byte
 	Old          kv.Optional[T]
+	OldBaseIndex uint64 // Raft index of the previous Pebble entry (0 = unknown or first write)
 	New          T
 }
 

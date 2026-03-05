@@ -15,8 +15,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// mergeSimple writes each update to a SimpleAttribute using Set + DeleteOldest.
-// This is the common pattern for all non-accumulating attribute types.
+// mergeSimple writes each update to a SimpleAttribute using Set + selective delete.
+// For new keys (no previous value), no delete is needed.
+// For updates with a known previous raft index, a point delete avoids range tombstones.
+// Falls back to DeleteOldest (range delete) only when the previous index is unknown
+// (e.g. first update after a cold preload from Pebble).
 func mergeSimple[K attributes.Key, V proto.Message](
 	attr *attributes.SimpleAttribute[V],
 	batch *dal.Batch,
@@ -27,8 +30,19 @@ func mergeSimple[K attributes.Key, V proto.Message](
 		if err := attr.Set(batch, index, update.CanonicalKey, update.New); err != nil {
 			return err
 		}
-		if err := attr.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
-			return err
+		switch {
+		case !update.Old.IsDefined():
+			// First write — nothing to delete.
+		case update.OldBaseIndex > 0:
+			// Known previous index — point delete (no range tombstone).
+			if err := attr.DeleteAt(batch, update.OldBaseIndex, update.CanonicalKey); err != nil {
+				return err
+			}
+		default:
+			// Unknown previous index (cold preload) — fallback to range delete.
+			if err := attr.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -93,7 +107,7 @@ type purgeRange struct {
 
 func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	// Process Ledger updates
-	ledgerUpdates, _, err := b.Derived.Ledgers.Merge()
+	ledgerUpdates, _, err := b.Derived.Ledgers.Merge(index)
 	if err != nil {
 		return fmt.Errorf("failed to merge ledgers: %w", err)
 	}
@@ -107,7 +121,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	}
 
 	// Process Boundary updates
-	boundaryUpdates, _, err := b.Derived.Boundaries.Merge()
+	boundaryUpdates, _, err := b.Derived.Boundaries.Merge(index)
 	if err != nil {
 		return fmt.Errorf("failed to merge boundaries: %w", err)
 	}
@@ -116,7 +130,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	}
 
 	// Process Volume updates and track dirty volume keys inline
-	volumeUpdates, _, err := b.Derived.Volumes.Merge()
+	volumeUpdates, _, err := b.Derived.Volumes.Merge(index)
 	if err != nil {
 		return fmt.Errorf("failed to merge volumes: %w", err)
 	}
@@ -147,7 +161,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		return err
 	}
 
-	accountMetadataUpdates, accountMetadataDeletions, err := b.Derived.AccountMetadata.Merge()
+	accountMetadataUpdates, accountMetadataDeletions, err := b.Derived.AccountMetadata.Merge(index)
 	if err != nil {
 		return fmt.Errorf("failed to merge account metadata: %w", err)
 	}
@@ -167,7 +181,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	}
 
 	// Process IdempotencyKeys updates
-	idempotencyUpdates, _, err := b.Derived.IdempotencyKeys.Merge()
+	idempotencyUpdates, _, err := b.Derived.IdempotencyKeys.Merge(index)
 	if err != nil {
 		return fmt.Errorf("failed to merge idempotency keys: %w", err)
 	}
@@ -176,7 +190,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	}
 
 	// Process References updates
-	referenceUpdates, _, err := b.Derived.References.Merge()
+	referenceUpdates, _, err := b.Derived.References.Merge(index)
 	if err != nil {
 		return fmt.Errorf("failed to merge references: %w", err)
 	}
@@ -249,14 +263,14 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 
 	// Merge NumscriptVersions and NumscriptEntries overlays into the underlying KeyStores
 	// (no Pebble attribute writes — the actual Pebble writes are handled by pendingNumscriptWrites / pendingNumscriptDeletes below).
-	if _, _, err := b.Derived.NumscriptVersions.Merge(); err != nil {
+	if _, _, err := b.Derived.NumscriptVersions.Merge(index); err != nil {
 		return fmt.Errorf("failed to merge numscript versions: %w", err)
 	}
-	if _, _, err := b.Derived.NumscriptEntries.Merge(); err != nil {
+	if _, _, err := b.Derived.NumscriptEntries.Merge(index); err != nil {
 		return fmt.Errorf("failed to merge numscript entries: %w", err)
 	}
 
-	sinkUpdates, sinkDeletions, err := b.Derived.SinkConfigs.Merge()
+	sinkUpdates, sinkDeletions, err := b.Derived.SinkConfigs.Merge(index)
 	if err != nil {
 		return fmt.Errorf("failed to merge sink configs: %w", err)
 	}

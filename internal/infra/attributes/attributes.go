@@ -212,6 +212,21 @@ func (a *core[V]) Delete(batch *dal.Batch, canonicalKey []byte) error {
 	return batch.DeleteRange(a.keyBuf[:pLen], a.keyBuf[:upperLen], pebble.NoSync)
 }
 
+// DeleteAt deletes the base entry at a specific raft index for the given canonical key.
+// This performs a point delete (no range tombstone), which is more efficient than DeleteOldest
+// when the exact previous index is known.
+// Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
+func (a *core[V]) DeleteAt(batch *dal.Batch, index uint64, canonicalKey []byte) error {
+	pLen := prefixLen(canonicalKey)
+	keyLen := pLen + 9 // +8 for raft index + 1 for entryType(0=base)
+	a.ensureKeyBuf(keyLen)
+	a.putPrefix(a.keyBuf, canonicalKey)
+	binary.BigEndian.PutUint64(a.keyBuf[pLen:], index)
+	a.keyBuf[keyLen-1] = 0 // base entry type
+
+	return batch.DeleteKey(a.keyBuf[:keyLen])
+}
+
 // DeleteOldest deletes all entries (bases and diffs) with raft index strictly less than the given index.
 // This is used to clean up old data after consolidating into a new base.
 // The canonical key is used directly as the Pebble key for better data locality.
