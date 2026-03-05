@@ -19,42 +19,36 @@ func (p *RequestProcessor) processCreateIndex(
 	logPayload := &commonpb.CreateIndexLog{}
 
 	switch idx := order.Index.(type) {
-	case *raftcmdpb.CreateIndexOrder_Metadata:
-		if info.MetadataSchema == nil {
-			info.MetadataSchema = &commonpb.MetadataSchema{}
-		}
-		fields, field := schemaFieldForTarget(info.MetadataSchema, idx.Metadata.Target, idx.Metadata.Key)
-		if field != nil && field.Indexed && field.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
-			return buildCreateIndexLogPayload(logPayload), nil
-		}
-		if field == nil {
-			field = &commonpb.MetadataFieldSchema{
-				Type: commonpb.MetadataType_METADATA_TYPE_STRING,
+	case *raftcmdpb.CreateIndexOrder_Transaction:
+		switch kind := idx.Transaction.Kind.(type) {
+		case *commonpb.TransactionIndex_Builtin:
+			if info.BuiltinIndexes == nil {
+				info.BuiltinIndexes = &commonpb.BuiltinIndexConfig{}
 			}
-			if fields == nil {
-				fields = make(map[string]*commonpb.MetadataFieldSchema)
-				switch idx.Metadata.Target {
-				case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-					info.MetadataSchema.AccountFields = fields
-				case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-					info.MetadataSchema.TransactionFields = fields
-				}
+			if isBuiltinIndexedAndReady(info.BuiltinIndexes, kind.Builtin) {
+				return buildCreateIndexLogPayload(logPayload), nil
 			}
-			fields[idx.Metadata.Key] = field
-		}
-		field.Indexed = true
-		field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
-		logPayload.Index = &commonpb.CreateIndexLog_Metadata{Metadata: idx.Metadata}
+			setBuiltinIndexed(info.BuiltinIndexes, kind.Builtin, true, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING)
 
-	case *raftcmdpb.CreateIndexOrder_Builtin:
-		if info.BuiltinIndexes == nil {
-			info.BuiltinIndexes = &commonpb.BuiltinIndexConfig{}
+		case *commonpb.TransactionIndex_MetadataKey:
+			if alreadyReady := processCreateMetadataIndex(info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, kind.MetadataKey); alreadyReady {
+				return buildCreateIndexLogPayload(logPayload), nil
+			}
 		}
-		if isBuiltinIndexedAndReady(info.BuiltinIndexes, idx.Builtin) {
-			return buildCreateIndexLogPayload(logPayload), nil
+		logPayload.Index = &commonpb.CreateIndexLog_Transaction{Transaction: idx.Transaction}
+
+	case *raftcmdpb.CreateIndexOrder_Account:
+		switch kind := idx.Account.Kind.(type) {
+		case *commonpb.AccountIndex_Builtin:
+			// No account builtins yet; ignore.
+			_ = kind
+
+		case *commonpb.AccountIndex_MetadataKey:
+			if alreadyReady := processCreateMetadataIndex(info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, kind.MetadataKey); alreadyReady {
+				return buildCreateIndexLogPayload(logPayload), nil
+			}
 		}
-		setBuiltinIndexed(info.BuiltinIndexes, idx.Builtin, true, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING)
-		logPayload.Index = &commonpb.CreateIndexLog_Builtin{Builtin: idx.Builtin}
+		logPayload.Index = &commonpb.CreateIndexLog_Account{Account: idx.Account}
 
 	case *raftcmdpb.CreateIndexOrder_LogBuiltin:
 		if info.LogBuiltinIndexes == nil {
@@ -85,19 +79,28 @@ func (p *RequestProcessor) processDropIndex(
 	logPayload := &commonpb.DropIndexLog{}
 
 	switch idx := order.Index.(type) {
-	case *raftcmdpb.DropIndexOrder_Metadata:
-		_, field := schemaFieldForTarget(info.MetadataSchema, idx.Metadata.Target, idx.Metadata.Key)
-		if field != nil {
-			field.Indexed = false
-			field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED
-		}
-		logPayload.Index = &commonpb.DropIndexLog_Metadata{Metadata: idx.Metadata}
+	case *raftcmdpb.DropIndexOrder_Transaction:
+		switch kind := idx.Transaction.Kind.(type) {
+		case *commonpb.TransactionIndex_Builtin:
+			if info.BuiltinIndexes != nil {
+				setBuiltinIndexed(info.BuiltinIndexes, kind.Builtin, false, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED)
+			}
 
-	case *raftcmdpb.DropIndexOrder_Builtin:
-		if info.BuiltinIndexes != nil {
-			setBuiltinIndexed(info.BuiltinIndexes, idx.Builtin, false, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED)
+		case *commonpb.TransactionIndex_MetadataKey:
+			processDropMetadataIndex(info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, kind.MetadataKey)
 		}
-		logPayload.Index = &commonpb.DropIndexLog_Builtin{Builtin: idx.Builtin}
+		logPayload.Index = &commonpb.DropIndexLog_Transaction{Transaction: idx.Transaction}
+
+	case *raftcmdpb.DropIndexOrder_Account:
+		switch kind := idx.Account.Kind.(type) {
+		case *commonpb.AccountIndex_Builtin:
+			// No account builtins yet; ignore.
+			_ = kind
+
+		case *commonpb.AccountIndex_MetadataKey:
+			processDropMetadataIndex(info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, kind.MetadataKey)
+		}
+		logPayload.Index = &commonpb.DropIndexLog_Account{Account: idx.Account}
 
 	case *raftcmdpb.DropIndexOrder_LogBuiltin:
 		if info.LogBuiltinIndexes != nil {
@@ -128,18 +131,28 @@ func (p *RequestProcessor) processIndexReady(
 	logPayload := &commonpb.IndexReadyLog{}
 
 	switch idx := order.Index.(type) {
-	case *raftcmdpb.IndexReadyOrder_Metadata:
-		_, field := schemaFieldForTarget(info.MetadataSchema, idx.Metadata.Target, idx.Metadata.Key)
-		if field != nil {
-			field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
-		}
-		logPayload.Index = &commonpb.IndexReadyLog_Metadata{Metadata: idx.Metadata}
+	case *raftcmdpb.IndexReadyOrder_Transaction:
+		switch kind := idx.Transaction.Kind.(type) {
+		case *commonpb.TransactionIndex_Builtin:
+			if info.BuiltinIndexes != nil {
+				setBuiltinStatus(info.BuiltinIndexes, kind.Builtin, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY)
+			}
 
-	case *raftcmdpb.IndexReadyOrder_Builtin:
-		if info.BuiltinIndexes != nil {
-			setBuiltinStatus(info.BuiltinIndexes, idx.Builtin, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY)
+		case *commonpb.TransactionIndex_MetadataKey:
+			processIndexReadyMetadata(info, commonpb.TargetType_TARGET_TYPE_TRANSACTION, kind.MetadataKey)
 		}
-		logPayload.Index = &commonpb.IndexReadyLog_Builtin{Builtin: idx.Builtin}
+		logPayload.Index = &commonpb.IndexReadyLog_Transaction{Transaction: idx.Transaction}
+
+	case *raftcmdpb.IndexReadyOrder_Account:
+		switch kind := idx.Account.Kind.(type) {
+		case *commonpb.AccountIndex_Builtin:
+			// No account builtins yet; ignore.
+			_ = kind
+
+		case *commonpb.AccountIndex_MetadataKey:
+			processIndexReadyMetadata(info, commonpb.TargetType_TARGET_TYPE_ACCOUNT, kind.MetadataKey)
+		}
+		logPayload.Index = &commonpb.IndexReadyLog_Account{Account: idx.Account}
 
 	case *raftcmdpb.IndexReadyOrder_LogBuiltin:
 		if info.LogBuiltinIndexes != nil {
@@ -155,6 +168,56 @@ func (p *RequestProcessor) processIndexReady(
 			IndexReady: logPayload,
 		},
 	}, nil
+}
+
+// processCreateMetadataIndex handles the metadata index creation logic shared
+// by both transaction and account index types. It returns true if the index is
+// already built and ready (i.e. no log entry is needed).
+func processCreateMetadataIndex(info *commonpb.LedgerInfo, target commonpb.TargetType, key string) bool {
+	if info.MetadataSchema == nil {
+		info.MetadataSchema = &commonpb.MetadataSchema{}
+	}
+	fields, field := schemaFieldForTarget(info.MetadataSchema, target, key)
+	if field != nil && field.Indexed && field.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
+		return true
+	}
+	if field == nil {
+		field = &commonpb.MetadataFieldSchema{
+			Type: commonpb.MetadataType_METADATA_TYPE_STRING,
+		}
+		if fields == nil {
+			fields = make(map[string]*commonpb.MetadataFieldSchema)
+			switch target {
+			case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+				info.MetadataSchema.AccountFields = fields
+			case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+				info.MetadataSchema.TransactionFields = fields
+			}
+		}
+		fields[key] = field
+	}
+	field.Indexed = true
+	field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
+	return false
+}
+
+// processDropMetadataIndex handles the metadata index removal logic shared
+// by both transaction and account index types.
+func processDropMetadataIndex(info *commonpb.LedgerInfo, target commonpb.TargetType, key string) {
+	_, field := schemaFieldForTarget(info.MetadataSchema, target, key)
+	if field != nil {
+		field.Indexed = false
+		field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED
+	}
+}
+
+// processIndexReadyMetadata handles the metadata index ready notification logic
+// shared by both transaction and account index types.
+func processIndexReadyMetadata(info *commonpb.LedgerInfo, target commonpb.TargetType, key string) {
+	_, field := schemaFieldForTarget(info.MetadataSchema, target, key)
+	if field != nil {
+		field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	}
 }
 
 func buildCreateIndexLogPayload(log *commonpb.CreateIndexLog) *commonpb.LedgerLogPayload {

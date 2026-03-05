@@ -378,20 +378,41 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 			Cursor: e.Cursor,
 		}
 		switch e.Kind {
-		case readstore.BackfillKindMetadata:
+		case readstore.BackfillKindTxBuiltin:
 			if len(e.Details) >= 1 {
-				entry.Index = &servicepb.IndexBackfillProgress_Metadata{
-					Metadata: &commonpb.MetadataIndexTarget{
-						Target: commonpb.TargetType(e.Details[0]),
-						Key:    string(e.Details[1:]),
+				entry.Index = &servicepb.IndexBackfillProgress_Transaction{
+					Transaction: &commonpb.TransactionIndex{
+						Kind: &commonpb.TransactionIndex_Builtin{
+							Builtin: commonpb.TransactionBuiltinIndex(e.Details[0]),
+						},
 					},
 				}
 			}
-		case readstore.BackfillKindBuiltin:
+		case readstore.BackfillKindTxMetadata:
+			entry.Index = &servicepb.IndexBackfillProgress_Transaction{
+				Transaction: &commonpb.TransactionIndex{
+					Kind: &commonpb.TransactionIndex_MetadataKey{
+						MetadataKey: string(e.Details),
+					},
+				},
+			}
+		case readstore.BackfillKindAcctBuiltin:
 			if len(e.Details) >= 1 {
-				entry.Index = &servicepb.IndexBackfillProgress_Builtin{
-					Builtin: commonpb.TransactionBuiltinIndex(e.Details[0]),
+				entry.Index = &servicepb.IndexBackfillProgress_Account{
+					Account: &commonpb.AccountIndex{
+						Kind: &commonpb.AccountIndex_Builtin{
+							Builtin: commonpb.AccountBuiltinIndex(e.Details[0]),
+						},
+					},
 				}
+			}
+		case readstore.BackfillKindAcctMetadata:
+			entry.Index = &servicepb.IndexBackfillProgress_Account{
+				Account: &commonpb.AccountIndex{
+					Kind: &commonpb.AccountIndex_MetadataKey{
+						MetadataKey: string(e.Details),
+					},
+				},
 			}
 		case readstore.BackfillKindLogBuiltin:
 			if len(e.Details) >= 1 {

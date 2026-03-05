@@ -21,8 +21,10 @@ func createBuiltinIndexAction(ledger string, index commonpb.TransactionBuiltinIn
 		Type: &servicepb.Request_CreateIndex{
 			CreateIndex: &servicepb.CreateIndexRequest{
 				Ledger: ledger,
-				Index: &servicepb.CreateIndexRequest_Builtin{
-					Builtin: index,
+				Index: &servicepb.CreateIndexRequest_Transaction{
+					Transaction: &commonpb.TransactionIndex{
+						Kind: &commonpb.TransactionIndex_Builtin{Builtin: index},
+					},
 				},
 			},
 		},
@@ -35,8 +37,10 @@ func dropBuiltinIndexAction(ledger string, index commonpb.TransactionBuiltinInde
 		Type: &servicepb.Request_DropIndex{
 			DropIndex: &servicepb.DropIndexRequest{
 				Ledger: ledger,
-				Index: &servicepb.DropIndexRequest_Builtin{
-					Builtin: index,
+				Index: &servicepb.DropIndexRequest_Transaction{
+					Transaction: &commonpb.TransactionIndex{
+						Kind: &commonpb.TransactionIndex_Builtin{Builtin: index},
+					},
 				},
 			},
 		},
@@ -103,18 +107,35 @@ func createAddressIndexAction(ledger string, role commonpb.AddressRole) *service
 
 // createMetadataIndexAction creates a request for creating a metadata index.
 func createMetadataIndexAction(ledger string, target commonpb.TargetType, key string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_CreateIndex{
-			CreateIndex: &servicepb.CreateIndexRequest{
-				Ledger: ledger,
-				Index: &servicepb.CreateIndexRequest_Metadata{
-					Metadata: &commonpb.MetadataIndexTarget{
-						Target: target,
-						Key:    key,
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		return &servicepb.Request{
+			Type: &servicepb.Request_CreateIndex{
+				CreateIndex: &servicepb.CreateIndexRequest{
+					Ledger: ledger,
+					Index: &servicepb.CreateIndexRequest_Account{
+						Account: &commonpb.AccountIndex{
+							Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: key},
+						},
 					},
 				},
 			},
-		},
+		}
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		return &servicepb.Request{
+			Type: &servicepb.Request_CreateIndex{
+				CreateIndex: &servicepb.CreateIndexRequest{
+					Ledger: ledger,
+					Index: &servicepb.CreateIndexRequest_Transaction{
+						Transaction: &commonpb.TransactionIndex{
+							Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: key},
+						},
+					},
+				},
+			},
+		}
+	default:
+		panic("unsupported target type for metadata index")
 	}
 }
 
@@ -125,18 +146,35 @@ func dropAddressIndexAction(ledger string, role commonpb.AddressRole) *servicepb
 
 // dropMetadataIndexAction creates a request for dropping a metadata index.
 func dropMetadataIndexAction(ledger string, target commonpb.TargetType, key string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_DropIndex{
-			DropIndex: &servicepb.DropIndexRequest{
-				Ledger: ledger,
-				Index: &servicepb.DropIndexRequest_Metadata{
-					Metadata: &commonpb.MetadataIndexTarget{
-						Target: target,
-						Key:    key,
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		return &servicepb.Request{
+			Type: &servicepb.Request_DropIndex{
+				DropIndex: &servicepb.DropIndexRequest{
+					Ledger: ledger,
+					Index: &servicepb.DropIndexRequest_Account{
+						Account: &commonpb.AccountIndex{
+							Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: key},
+						},
 					},
 				},
 			},
-		},
+		}
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		return &servicepb.Request{
+			Type: &servicepb.Request_DropIndex{
+				DropIndex: &servicepb.DropIndexRequest{
+					Ledger: ledger,
+					Index: &servicepb.DropIndexRequest_Transaction{
+						Transaction: &commonpb.TransactionIndex{
+							Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: key},
+						},
+					},
+				},
+			},
+		}
+	default:
+		panic("unsupported target type for metadata index")
 	}
 }
 

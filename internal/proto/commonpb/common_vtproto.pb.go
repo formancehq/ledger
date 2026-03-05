@@ -528,13 +528,16 @@ func (m *SetMetadataFieldTypeCommand) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *MetadataIndexTarget) CloneVT() *MetadataIndexTarget {
+func (m *TransactionIndex) CloneVT() *TransactionIndex {
 	if m == nil {
-		return (*MetadataIndexTarget)(nil)
+		return (*TransactionIndex)(nil)
 	}
-	r := new(MetadataIndexTarget)
-	r.Target = m.Target
-	r.Key = m.Key
+	r := new(TransactionIndex)
+	if m.Kind != nil {
+		r.Kind = m.Kind.(interface {
+			CloneVT() isTransactionIndex_Kind
+		}).CloneVT()
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -542,8 +545,63 @@ func (m *MetadataIndexTarget) CloneVT() *MetadataIndexTarget {
 	return r
 }
 
-func (m *MetadataIndexTarget) CloneMessageVT() proto.Message {
+func (m *TransactionIndex) CloneMessageVT() proto.Message {
 	return m.CloneVT()
+}
+
+func (m *TransactionIndex_Builtin) CloneVT() isTransactionIndex_Kind {
+	if m == nil {
+		return (*TransactionIndex_Builtin)(nil)
+	}
+	r := new(TransactionIndex_Builtin)
+	r.Builtin = m.Builtin
+	return r
+}
+
+func (m *TransactionIndex_MetadataKey) CloneVT() isTransactionIndex_Kind {
+	if m == nil {
+		return (*TransactionIndex_MetadataKey)(nil)
+	}
+	r := new(TransactionIndex_MetadataKey)
+	r.MetadataKey = m.MetadataKey
+	return r
+}
+
+func (m *AccountIndex) CloneVT() *AccountIndex {
+	if m == nil {
+		return (*AccountIndex)(nil)
+	}
+	r := new(AccountIndex)
+	if m.Kind != nil {
+		r.Kind = m.Kind.(interface{ CloneVT() isAccountIndex_Kind }).CloneVT()
+	}
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *AccountIndex) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *AccountIndex_Builtin) CloneVT() isAccountIndex_Kind {
+	if m == nil {
+		return (*AccountIndex_Builtin)(nil)
+	}
+	r := new(AccountIndex_Builtin)
+	r.Builtin = m.Builtin
+	return r
+}
+
+func (m *AccountIndex_MetadataKey) CloneVT() isAccountIndex_Kind {
+	if m == nil {
+		return (*AccountIndex_MetadataKey)(nil)
+	}
+	r := new(AccountIndex_MetadataKey)
+	r.MetadataKey = m.MetadataKey
+	return r
 }
 
 func (m *BuiltinIndexConfig) CloneVT() *BuiltinIndexConfig {
@@ -1603,30 +1661,30 @@ func (m *CreateIndexLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *CreateIndexLog_Metadata) CloneVT() isCreateIndexLog_Index {
-	if m == nil {
-		return (*CreateIndexLog_Metadata)(nil)
-	}
-	r := new(CreateIndexLog_Metadata)
-	r.Metadata = m.Metadata.CloneVT()
-	return r
-}
-
-func (m *CreateIndexLog_Builtin) CloneVT() isCreateIndexLog_Index {
-	if m == nil {
-		return (*CreateIndexLog_Builtin)(nil)
-	}
-	r := new(CreateIndexLog_Builtin)
-	r.Builtin = m.Builtin
-	return r
-}
-
 func (m *CreateIndexLog_LogBuiltin) CloneVT() isCreateIndexLog_Index {
 	if m == nil {
 		return (*CreateIndexLog_LogBuiltin)(nil)
 	}
 	r := new(CreateIndexLog_LogBuiltin)
 	r.LogBuiltin = m.LogBuiltin
+	return r
+}
+
+func (m *CreateIndexLog_Transaction) CloneVT() isCreateIndexLog_Index {
+	if m == nil {
+		return (*CreateIndexLog_Transaction)(nil)
+	}
+	r := new(CreateIndexLog_Transaction)
+	r.Transaction = m.Transaction.CloneVT()
+	return r
+}
+
+func (m *CreateIndexLog_Account) CloneVT() isCreateIndexLog_Index {
+	if m == nil {
+		return (*CreateIndexLog_Account)(nil)
+	}
+	r := new(CreateIndexLog_Account)
+	r.Account = m.Account.CloneVT()
 	return r
 }
 
@@ -1649,30 +1707,30 @@ func (m *DropIndexLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *DropIndexLog_Metadata) CloneVT() isDropIndexLog_Index {
-	if m == nil {
-		return (*DropIndexLog_Metadata)(nil)
-	}
-	r := new(DropIndexLog_Metadata)
-	r.Metadata = m.Metadata.CloneVT()
-	return r
-}
-
-func (m *DropIndexLog_Builtin) CloneVT() isDropIndexLog_Index {
-	if m == nil {
-		return (*DropIndexLog_Builtin)(nil)
-	}
-	r := new(DropIndexLog_Builtin)
-	r.Builtin = m.Builtin
-	return r
-}
-
 func (m *DropIndexLog_LogBuiltin) CloneVT() isDropIndexLog_Index {
 	if m == nil {
 		return (*DropIndexLog_LogBuiltin)(nil)
 	}
 	r := new(DropIndexLog_LogBuiltin)
 	r.LogBuiltin = m.LogBuiltin
+	return r
+}
+
+func (m *DropIndexLog_Transaction) CloneVT() isDropIndexLog_Index {
+	if m == nil {
+		return (*DropIndexLog_Transaction)(nil)
+	}
+	r := new(DropIndexLog_Transaction)
+	r.Transaction = m.Transaction.CloneVT()
+	return r
+}
+
+func (m *DropIndexLog_Account) CloneVT() isDropIndexLog_Index {
+	if m == nil {
+		return (*DropIndexLog_Account)(nil)
+	}
+	r := new(DropIndexLog_Account)
+	r.Account = m.Account.CloneVT()
 	return r
 }
 
@@ -1695,30 +1753,30 @@ func (m *IndexReadyLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *IndexReadyLog_Metadata) CloneVT() isIndexReadyLog_Index {
-	if m == nil {
-		return (*IndexReadyLog_Metadata)(nil)
-	}
-	r := new(IndexReadyLog_Metadata)
-	r.Metadata = m.Metadata.CloneVT()
-	return r
-}
-
-func (m *IndexReadyLog_Builtin) CloneVT() isIndexReadyLog_Index {
-	if m == nil {
-		return (*IndexReadyLog_Builtin)(nil)
-	}
-	r := new(IndexReadyLog_Builtin)
-	r.Builtin = m.Builtin
-	return r
-}
-
 func (m *IndexReadyLog_LogBuiltin) CloneVT() isIndexReadyLog_Index {
 	if m == nil {
 		return (*IndexReadyLog_LogBuiltin)(nil)
 	}
 	r := new(IndexReadyLog_LogBuiltin)
 	r.LogBuiltin = m.LogBuiltin
+	return r
+}
+
+func (m *IndexReadyLog_Transaction) CloneVT() isIndexReadyLog_Index {
+	if m == nil {
+		return (*IndexReadyLog_Transaction)(nil)
+	}
+	r := new(IndexReadyLog_Transaction)
+	r.Transaction = m.Transaction.CloneVT()
+	return r
+}
+
+func (m *IndexReadyLog_Account) CloneVT() isIndexReadyLog_Index {
+	if m == nil {
+		return (*IndexReadyLog_Account)(nil)
+	}
+	r := new(IndexReadyLog_Account)
+	r.Account = m.Account.CloneVT()
 	return r
 }
 
@@ -3947,28 +4005,130 @@ func (this *SetMetadataFieldTypeCommand) EqualMessageVT(thatMsg proto.Message) b
 	}
 	return this.EqualVT(that)
 }
-func (this *MetadataIndexTarget) EqualVT(that *MetadataIndexTarget) bool {
+func (this *TransactionIndex) EqualVT(that *TransactionIndex) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if this.Target != that.Target {
+	if this.Kind == nil && that.Kind != nil {
 		return false
-	}
-	if this.Key != that.Key {
-		return false
+	} else if this.Kind != nil {
+		if that.Kind == nil {
+			return false
+		}
+		if !this.Kind.(interface {
+			EqualVT(isTransactionIndex_Kind) bool
+		}).EqualVT(that.Kind) {
+			return false
+		}
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *MetadataIndexTarget) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*MetadataIndexTarget)
+func (this *TransactionIndex) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*TransactionIndex)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
+func (this *TransactionIndex_Builtin) EqualVT(thatIface isTransactionIndex_Kind) bool {
+	that, ok := thatIface.(*TransactionIndex_Builtin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Builtin != that.Builtin {
+		return false
+	}
+	return true
+}
+
+func (this *TransactionIndex_MetadataKey) EqualVT(thatIface isTransactionIndex_Kind) bool {
+	that, ok := thatIface.(*TransactionIndex_MetadataKey)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.MetadataKey != that.MetadataKey {
+		return false
+	}
+	return true
+}
+
+func (this *AccountIndex) EqualVT(that *AccountIndex) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Kind == nil && that.Kind != nil {
+		return false
+	} else if this.Kind != nil {
+		if that.Kind == nil {
+			return false
+		}
+		if !this.Kind.(interface {
+			EqualVT(isAccountIndex_Kind) bool
+		}).EqualVT(that.Kind) {
+			return false
+		}
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *AccountIndex) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*AccountIndex)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *AccountIndex_Builtin) EqualVT(thatIface isAccountIndex_Kind) bool {
+	that, ok := thatIface.(*AccountIndex_Builtin)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.Builtin != that.Builtin {
+		return false
+	}
+	return true
+}
+
+func (this *AccountIndex_MetadataKey) EqualVT(thatIface isAccountIndex_Kind) bool {
+	that, ok := thatIface.(*AccountIndex_MetadataKey)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.MetadataKey != that.MetadataKey {
+		return false
+	}
+	return true
+}
+
 func (this *BuiltinIndexConfig) EqualVT(that *BuiltinIndexConfig) bool {
 	if this == that {
 		return true
@@ -5844,48 +6004,6 @@ func (this *CreateIndexLog) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *CreateIndexLog_Metadata) EqualVT(thatIface isCreateIndexLog_Index) bool {
-	that, ok := thatIface.(*CreateIndexLog_Metadata)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.Metadata, that.Metadata; p != q {
-		if p == nil {
-			p = &MetadataIndexTarget{}
-		}
-		if q == nil {
-			q = &MetadataIndexTarget{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *CreateIndexLog_Builtin) EqualVT(thatIface isCreateIndexLog_Index) bool {
-	that, ok := thatIface.(*CreateIndexLog_Builtin)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.Builtin != that.Builtin {
-		return false
-	}
-	return true
-}
-
 func (this *CreateIndexLog_LogBuiltin) EqualVT(thatIface isCreateIndexLog_Index) bool {
 	that, ok := thatIface.(*CreateIndexLog_LogBuiltin)
 	if !ok {
@@ -5899,6 +6017,56 @@ func (this *CreateIndexLog_LogBuiltin) EqualVT(thatIface isCreateIndexLog_Index)
 	}
 	if this.LogBuiltin != that.LogBuiltin {
 		return false
+	}
+	return true
+}
+
+func (this *CreateIndexLog_Transaction) EqualVT(thatIface isCreateIndexLog_Index) bool {
+	that, ok := thatIface.(*CreateIndexLog_Transaction)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Transaction, that.Transaction; p != q {
+		if p == nil {
+			p = &TransactionIndex{}
+		}
+		if q == nil {
+			q = &TransactionIndex{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *CreateIndexLog_Account) EqualVT(thatIface isCreateIndexLog_Index) bool {
+	that, ok := thatIface.(*CreateIndexLog_Account)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Account, that.Account; p != q {
+		if p == nil {
+			p = &AccountIndex{}
+		}
+		if q == nil {
+			q = &AccountIndex{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
 	}
 	return true
 }
@@ -5931,48 +6099,6 @@ func (this *DropIndexLog) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *DropIndexLog_Metadata) EqualVT(thatIface isDropIndexLog_Index) bool {
-	that, ok := thatIface.(*DropIndexLog_Metadata)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.Metadata, that.Metadata; p != q {
-		if p == nil {
-			p = &MetadataIndexTarget{}
-		}
-		if q == nil {
-			q = &MetadataIndexTarget{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *DropIndexLog_Builtin) EqualVT(thatIface isDropIndexLog_Index) bool {
-	that, ok := thatIface.(*DropIndexLog_Builtin)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.Builtin != that.Builtin {
-		return false
-	}
-	return true
-}
-
 func (this *DropIndexLog_LogBuiltin) EqualVT(thatIface isDropIndexLog_Index) bool {
 	that, ok := thatIface.(*DropIndexLog_LogBuiltin)
 	if !ok {
@@ -5986,6 +6112,56 @@ func (this *DropIndexLog_LogBuiltin) EqualVT(thatIface isDropIndexLog_Index) boo
 	}
 	if this.LogBuiltin != that.LogBuiltin {
 		return false
+	}
+	return true
+}
+
+func (this *DropIndexLog_Transaction) EqualVT(thatIface isDropIndexLog_Index) bool {
+	that, ok := thatIface.(*DropIndexLog_Transaction)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Transaction, that.Transaction; p != q {
+		if p == nil {
+			p = &TransactionIndex{}
+		}
+		if q == nil {
+			q = &TransactionIndex{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *DropIndexLog_Account) EqualVT(thatIface isDropIndexLog_Index) bool {
+	that, ok := thatIface.(*DropIndexLog_Account)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Account, that.Account; p != q {
+		if p == nil {
+			p = &AccountIndex{}
+		}
+		if q == nil {
+			q = &AccountIndex{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
 	}
 	return true
 }
@@ -6018,48 +6194,6 @@ func (this *IndexReadyLog) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *IndexReadyLog_Metadata) EqualVT(thatIface isIndexReadyLog_Index) bool {
-	that, ok := thatIface.(*IndexReadyLog_Metadata)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.Metadata, that.Metadata; p != q {
-		if p == nil {
-			p = &MetadataIndexTarget{}
-		}
-		if q == nil {
-			q = &MetadataIndexTarget{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *IndexReadyLog_Builtin) EqualVT(thatIface isIndexReadyLog_Index) bool {
-	that, ok := thatIface.(*IndexReadyLog_Builtin)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.Builtin != that.Builtin {
-		return false
-	}
-	return true
-}
-
 func (this *IndexReadyLog_LogBuiltin) EqualVT(thatIface isIndexReadyLog_Index) bool {
 	that, ok := thatIface.(*IndexReadyLog_LogBuiltin)
 	if !ok {
@@ -6073,6 +6207,56 @@ func (this *IndexReadyLog_LogBuiltin) EqualVT(thatIface isIndexReadyLog_Index) b
 	}
 	if this.LogBuiltin != that.LogBuiltin {
 		return false
+	}
+	return true
+}
+
+func (this *IndexReadyLog_Transaction) EqualVT(thatIface isIndexReadyLog_Index) bool {
+	that, ok := thatIface.(*IndexReadyLog_Transaction)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Transaction, that.Transaction; p != q {
+		if p == nil {
+			p = &TransactionIndex{}
+		}
+		if q == nil {
+			q = &TransactionIndex{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *IndexReadyLog_Account) EqualVT(thatIface isIndexReadyLog_Index) bool {
+	that, ok := thatIface.(*IndexReadyLog_Account)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Account, that.Account; p != q {
+		if p == nil {
+			p = &AccountIndex{}
+		}
+		if q == nil {
+			q = &AccountIndex{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
 	}
 	return true
 }
@@ -9609,7 +9793,7 @@ func (m *SetMetadataFieldTypeCommand) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	return len(dAtA) - i, nil
 }
 
-func (m *MetadataIndexTarget) MarshalVT() (dAtA []byte, err error) {
+func (m *TransactionIndex) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -9622,12 +9806,12 @@ func (m *MetadataIndexTarget) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *MetadataIndexTarget) MarshalToVT(dAtA []byte) (int, error) {
+func (m *TransactionIndex) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *MetadataIndexTarget) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *TransactionIndex) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -9639,21 +9823,112 @@ func (m *MetadataIndexTarget) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Key) > 0 {
-		i -= len(m.Key)
-		copy(dAtA[i:], m.Key)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Key)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.Target != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Target))
-		i--
-		dAtA[i] = 0x8
+	if vtmsg, ok := m.Kind.(interface {
+		MarshalToSizedBufferVT([]byte) (int, error)
+	}); ok {
+		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
 	}
 	return len(dAtA) - i, nil
 }
 
+func (m *TransactionIndex_Builtin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *TransactionIndex_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
+	i--
+	dAtA[i] = 0x8
+	return len(dAtA) - i, nil
+}
+func (m *TransactionIndex_MetadataKey) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *TransactionIndex_MetadataKey) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= len(m.MetadataKey)
+	copy(dAtA[i:], m.MetadataKey)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.MetadataKey)))
+	i--
+	dAtA[i] = 0x12
+	return len(dAtA) - i, nil
+}
+func (m *AccountIndex) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AccountIndex) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AccountIndex) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if vtmsg, ok := m.Kind.(interface {
+		MarshalToSizedBufferVT([]byte) (int, error)
+	}); ok {
+		size, err := vtmsg.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *AccountIndex_Builtin) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AccountIndex_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
+	i--
+	dAtA[i] = 0x8
+	return len(dAtA) - i, nil
+}
+func (m *AccountIndex_MetadataKey) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AccountIndex_MetadataKey) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= len(m.MetadataKey)
+	copy(dAtA[i:], m.MetadataKey)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.MetadataKey)))
+	i--
+	dAtA[i] = 0x12
+	return len(dAtA) - i, nil
+}
 func (m *BuiltinIndexConfig) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -12283,37 +12558,6 @@ func (m *CreateIndexLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CreateIndexLog_Metadata) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *CreateIndexLog_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.Metadata != nil {
-		size, err := m.Metadata.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x12
-	}
-	return len(dAtA) - i, nil
-}
-func (m *CreateIndexLog_Builtin) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *CreateIndexLog_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
-	i--
-	dAtA[i] = 0x18
-	return len(dAtA) - i, nil
-}
 func (m *CreateIndexLog_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -12324,6 +12568,44 @@ func (m *CreateIndexLog_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
 	i--
 	dAtA[i] = 0x20
+	return len(dAtA) - i, nil
+}
+func (m *CreateIndexLog_Transaction) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CreateIndexLog_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Transaction != nil {
+		size, err := m.Transaction.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *CreateIndexLog_Account) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CreateIndexLog_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Account != nil {
+		size, err := m.Account.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
 	return len(dAtA) - i, nil
 }
 func (m *DropIndexLog) MarshalVT() (dAtA []byte, err error) {
@@ -12368,37 +12650,6 @@ func (m *DropIndexLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *DropIndexLog_Metadata) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *DropIndexLog_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.Metadata != nil {
-		size, err := m.Metadata.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x12
-	}
-	return len(dAtA) - i, nil
-}
-func (m *DropIndexLog_Builtin) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *DropIndexLog_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
-	i--
-	dAtA[i] = 0x18
-	return len(dAtA) - i, nil
-}
 func (m *DropIndexLog_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -12409,6 +12660,44 @@ func (m *DropIndexLog_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
 	i--
 	dAtA[i] = 0x20
+	return len(dAtA) - i, nil
+}
+func (m *DropIndexLog_Transaction) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DropIndexLog_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Transaction != nil {
+		size, err := m.Transaction.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *DropIndexLog_Account) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DropIndexLog_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Account != nil {
+		size, err := m.Account.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
 	return len(dAtA) - i, nil
 }
 func (m *IndexReadyLog) MarshalVT() (dAtA []byte, err error) {
@@ -12453,37 +12742,6 @@ func (m *IndexReadyLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *IndexReadyLog_Metadata) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *IndexReadyLog_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.Metadata != nil {
-		size, err := m.Metadata.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x12
-	}
-	return len(dAtA) - i, nil
-}
-func (m *IndexReadyLog_Builtin) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *IndexReadyLog_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
-	i--
-	dAtA[i] = 0x18
-	return len(dAtA) - i, nil
-}
 func (m *IndexReadyLog_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -12494,6 +12752,44 @@ func (m *IndexReadyLog_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, err
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
 	i--
 	dAtA[i] = 0x20
+	return len(dAtA) - i, nil
+}
+func (m *IndexReadyLog_Transaction) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IndexReadyLog_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Transaction != nil {
+		size, err := m.Transaction.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *IndexReadyLog_Account) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IndexReadyLog_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Account != nil {
+		size, err := m.Account.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
 	return len(dAtA) - i, nil
 }
 func (m *FillGapLog) MarshalVT() (dAtA []byte, err error) {
@@ -16602,23 +16898,70 @@ func (m *SetMetadataFieldTypeCommand) SizeVT() (n int) {
 	return n
 }
 
-func (m *MetadataIndexTarget) SizeVT() (n int) {
+func (m *TransactionIndex) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.Target != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Target))
-	}
-	l = len(m.Key)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if vtmsg, ok := m.Kind.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
 	}
 	n += len(m.unknownFields)
 	return n
 }
 
+func (m *TransactionIndex_Builtin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
+	return n
+}
+func (m *TransactionIndex_MetadataKey) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.MetadataKey)
+	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	return n
+}
+func (m *AccountIndex) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if vtmsg, ok := m.Kind.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *AccountIndex_Builtin) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
+	return n
+}
+func (m *AccountIndex_MetadataKey) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.MetadataKey)
+	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	return n
+}
 func (m *BuiltinIndexConfig) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -17772,27 +18115,6 @@ func (m *CreateIndexLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *CreateIndexLog_Metadata) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Metadata != nil {
-		l = m.Metadata.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *CreateIndexLog_Builtin) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
-	return n
-}
 func (m *CreateIndexLog_LogBuiltin) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -17800,6 +18122,30 @@ func (m *CreateIndexLog_LogBuiltin) SizeVT() (n int) {
 	var l int
 	_ = l
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
+	return n
+}
+func (m *CreateIndexLog_Transaction) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Transaction != nil {
+		l = m.Transaction.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *CreateIndexLog_Account) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Account != nil {
+		l = m.Account.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	return n
 }
 func (m *DropIndexLog) SizeVT() (n int) {
@@ -17815,27 +18161,6 @@ func (m *DropIndexLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *DropIndexLog_Metadata) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Metadata != nil {
-		l = m.Metadata.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *DropIndexLog_Builtin) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
-	return n
-}
 func (m *DropIndexLog_LogBuiltin) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -17843,6 +18168,30 @@ func (m *DropIndexLog_LogBuiltin) SizeVT() (n int) {
 	var l int
 	_ = l
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
+	return n
+}
+func (m *DropIndexLog_Transaction) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Transaction != nil {
+		l = m.Transaction.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *DropIndexLog_Account) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Account != nil {
+		l = m.Account.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	return n
 }
 func (m *IndexReadyLog) SizeVT() (n int) {
@@ -17858,27 +18207,6 @@ func (m *IndexReadyLog) SizeVT() (n int) {
 	return n
 }
 
-func (m *IndexReadyLog_Metadata) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Metadata != nil {
-		l = m.Metadata.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *IndexReadyLog_Builtin) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
-	return n
-}
 func (m *IndexReadyLog_LogBuiltin) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -17886,6 +18214,30 @@ func (m *IndexReadyLog_LogBuiltin) SizeVT() (n int) {
 	var l int
 	_ = l
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
+	return n
+}
+func (m *IndexReadyLog_Transaction) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Transaction != nil {
+		l = m.Transaction.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *IndexReadyLog_Account) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Account != nil {
+		l = m.Account.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	return n
 }
 func (m *FillGapLog) SizeVT() (n int) {
@@ -22739,7 +23091,7 @@ func (m *SetMetadataFieldTypeCommand) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *MetadataIndexTarget) UnmarshalVT(dAtA []byte) error {
+func (m *TransactionIndex) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -22762,17 +23114,17 @@ func (m *MetadataIndexTarget) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: MetadataIndexTarget: wiretype end group for non-group")
+			return fmt.Errorf("proto: TransactionIndex: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MetadataIndexTarget: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: TransactionIndex: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Target", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
 			}
-			m.Target = 0
+			var v TransactionBuiltinIndex
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -22782,14 +23134,15 @@ func (m *MetadataIndexTarget) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Target |= TargetType(b&0x7F) << shift
+				v |= TransactionBuiltinIndex(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			m.Kind = &TransactionIndex_Builtin{Builtin: v}
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataKey", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -22817,7 +23170,110 @@ func (m *MetadataIndexTarget) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Key = string(dAtA[iNdEx:postIndex])
+			m.Kind = &TransactionIndex_MetadataKey{MetadataKey: string(dAtA[iNdEx:postIndex])}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AccountIndex) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AccountIndex: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AccountIndex: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+			}
+			var v AccountBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= AccountBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Kind = &AccountIndex_Builtin{Builtin: v}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataKey", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Kind = &AccountIndex_MetadataKey{MetadataKey: string(dAtA[iNdEx:postIndex])}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -28664,9 +29120,29 @@ func (m *CreateIndexLog) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: CreateIndexLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 2:
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			}
+			var v LogBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= LogBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &CreateIndexLog_LogBuiltin{LogBuiltin: v}
+		case 5:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Transaction", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -28693,23 +29169,23 @@ func (m *CreateIndexLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Index.(*CreateIndexLog_Metadata); ok {
-				if err := oneof.Metadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Index.(*CreateIndexLog_Transaction); ok {
+				if err := oneof.Transaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &MetadataIndexTarget{}
+				v := &TransactionIndex{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Index = &CreateIndexLog_Metadata{Metadata: v}
+				m.Index = &CreateIndexLog_Transaction{Transaction: v}
 			}
 			iNdEx = postIndex
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
 			}
-			var v TransactionBuiltinIndex
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -28719,32 +29195,33 @@ func (m *CreateIndexLog) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= TransactionBuiltinIndex(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.Index = &CreateIndexLog_Builtin{Builtin: v}
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			var v LogBuiltinIndex
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= LogBuiltinIndex(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			m.Index = &CreateIndexLog_LogBuiltin{LogBuiltin: v}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Index.(*CreateIndexLog_Account); ok {
+				if err := oneof.Account.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &AccountIndex{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Index = &CreateIndexLog_Account{Account: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -28796,9 +29273,29 @@ func (m *DropIndexLog) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: DropIndexLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 2:
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			}
+			var v LogBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= LogBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &DropIndexLog_LogBuiltin{LogBuiltin: v}
+		case 5:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Transaction", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -28825,23 +29322,23 @@ func (m *DropIndexLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Index.(*DropIndexLog_Metadata); ok {
-				if err := oneof.Metadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Index.(*DropIndexLog_Transaction); ok {
+				if err := oneof.Transaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &MetadataIndexTarget{}
+				v := &TransactionIndex{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Index = &DropIndexLog_Metadata{Metadata: v}
+				m.Index = &DropIndexLog_Transaction{Transaction: v}
 			}
 			iNdEx = postIndex
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
 			}
-			var v TransactionBuiltinIndex
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -28851,32 +29348,33 @@ func (m *DropIndexLog) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= TransactionBuiltinIndex(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.Index = &DropIndexLog_Builtin{Builtin: v}
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			var v LogBuiltinIndex
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= LogBuiltinIndex(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			m.Index = &DropIndexLog_LogBuiltin{LogBuiltin: v}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Index.(*DropIndexLog_Account); ok {
+				if err := oneof.Account.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &AccountIndex{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Index = &DropIndexLog_Account{Account: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -28928,9 +29426,29 @@ func (m *IndexReadyLog) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: IndexReadyLog: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 2:
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			}
+			var v LogBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= LogBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &IndexReadyLog_LogBuiltin{LogBuiltin: v}
+		case 5:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Transaction", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -28957,23 +29475,23 @@ func (m *IndexReadyLog) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Index.(*IndexReadyLog_Metadata); ok {
-				if err := oneof.Metadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Index.(*IndexReadyLog_Transaction); ok {
+				if err := oneof.Transaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &MetadataIndexTarget{}
+				v := &TransactionIndex{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Index = &IndexReadyLog_Metadata{Metadata: v}
+				m.Index = &IndexReadyLog_Transaction{Transaction: v}
 			}
 			iNdEx = postIndex
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
 			}
-			var v TransactionBuiltinIndex
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -28983,32 +29501,33 @@ func (m *IndexReadyLog) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= TransactionBuiltinIndex(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.Index = &IndexReadyLog_Builtin{Builtin: v}
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			var v LogBuiltinIndex
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= LogBuiltinIndex(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			m.Index = &IndexReadyLog_LogBuiltin{LogBuiltin: v}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Index.(*IndexReadyLog_Account); ok {
+				if err := oneof.Account.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &AccountIndex{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Index = &IndexReadyLog_Account{Account: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -195,12 +195,6 @@ message SetMetadataFieldTypeCommand {
   MetadataType type = 3;
 }
 
-// MetadataIndexTarget identifies a metadata index by target type and key.
-message MetadataIndexTarget {
-  TargetType target = 1;
-  string key = 2;
-}
-
 // TransactionBuiltinIndex identifies a built-in transaction field that can be indexed.
 enum TransactionBuiltinIndex {
   TX_BUILTIN_INDEX_REFERENCE = 0;        // requires bbolt "txref" index
@@ -209,6 +203,27 @@ enum TransactionBuiltinIndex {
   TX_BUILTIN_INDEX_ADDRESS = 3;          // account→transaction mapping (any role)
   TX_BUILTIN_INDEX_SOURCE_ADDRESS = 4;   // source account→transaction mapping
   TX_BUILTIN_INDEX_DEST_ADDRESS = 5;     // destination account→transaction mapping
+}
+
+// AccountBuiltinIndex identifies a built-in account field that can be indexed.
+enum AccountBuiltinIndex {
+  ACCT_BUILTIN_INDEX_UNSPECIFIED = 0;
+}
+
+// TransactionIndex groups all transaction-level indexes (builtins + metadata keys).
+message TransactionIndex {
+  oneof kind {
+    TransactionBuiltinIndex builtin = 1;
+    string metadata_key = 2;
+  }
+}
+
+// AccountIndex groups all account-level indexes (builtins + metadata keys).
+message AccountIndex {
+  oneof kind {
+    AccountBuiltinIndex builtin = 1;
+    string metadata_key = 2;
+  }
 }
 
 // LogBuiltinIndex identifies a built-in log field that can be indexed.
@@ -503,31 +518,31 @@ message LedgerLogPayload {
 
 // CreateIndexLog records the creation of an index.
 message CreateIndexLog {
-  reserved 1;  // Was: AddressRole address_role (now uses builtin with TX_BUILTIN_INDEX_ADDRESS/SOURCE_ADDRESS/DEST_ADDRESS)
+  reserved 1, 2, 3;  // Was: address_role, metadata, builtin
   oneof index {
-    MetadataIndexTarget metadata = 2;
-    TransactionBuiltinIndex builtin = 3;
     LogBuiltinIndex log_builtin = 4;
+    TransactionIndex transaction = 5;
+    AccountIndex account = 6;
   }
 }
 
 // DropIndexLog records the removal of an index.
 message DropIndexLog {
-  reserved 1;  // Was: AddressRole address_role
+  reserved 1, 2, 3;  // Was: address_role, metadata, builtin
   oneof index {
-    MetadataIndexTarget metadata = 2;
-    TransactionBuiltinIndex builtin = 3;
     LogBuiltinIndex log_builtin = 4;
+    TransactionIndex transaction = 5;
+    AccountIndex account = 6;
   }
 }
 
 // IndexReadyLog records that an index has finished building.
 message IndexReadyLog {
-  reserved 1;  // Was: AddressRole address_role
+  reserved 1, 2, 3;  // Was: address_role, metadata, builtin
   oneof index {
-    MetadataIndexTarget metadata = 2;
-    TransactionBuiltinIndex builtin = 3;
     LogBuiltinIndex log_builtin = 4;
+    TransactionIndex transaction = 5;
+    AccountIndex account = 6;
   }
 }
 

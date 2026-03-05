@@ -876,30 +876,30 @@ func (m *CreateIndexRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *CreateIndexRequest_Metadata) CloneVT() isCreateIndexRequest_Index {
-	if m == nil {
-		return (*CreateIndexRequest_Metadata)(nil)
-	}
-	r := new(CreateIndexRequest_Metadata)
-	r.Metadata = m.Metadata.CloneVT()
-	return r
-}
-
-func (m *CreateIndexRequest_Builtin) CloneVT() isCreateIndexRequest_Index {
-	if m == nil {
-		return (*CreateIndexRequest_Builtin)(nil)
-	}
-	r := new(CreateIndexRequest_Builtin)
-	r.Builtin = m.Builtin
-	return r
-}
-
 func (m *CreateIndexRequest_LogBuiltin) CloneVT() isCreateIndexRequest_Index {
 	if m == nil {
 		return (*CreateIndexRequest_LogBuiltin)(nil)
 	}
 	r := new(CreateIndexRequest_LogBuiltin)
 	r.LogBuiltin = m.LogBuiltin
+	return r
+}
+
+func (m *CreateIndexRequest_Transaction) CloneVT() isCreateIndexRequest_Index {
+	if m == nil {
+		return (*CreateIndexRequest_Transaction)(nil)
+	}
+	r := new(CreateIndexRequest_Transaction)
+	r.Transaction = m.Transaction.CloneVT()
+	return r
+}
+
+func (m *CreateIndexRequest_Account) CloneVT() isCreateIndexRequest_Index {
+	if m == nil {
+		return (*CreateIndexRequest_Account)(nil)
+	}
+	r := new(CreateIndexRequest_Account)
+	r.Account = m.Account.CloneVT()
 	return r
 }
 
@@ -925,30 +925,30 @@ func (m *DropIndexRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *DropIndexRequest_Metadata) CloneVT() isDropIndexRequest_Index {
-	if m == nil {
-		return (*DropIndexRequest_Metadata)(nil)
-	}
-	r := new(DropIndexRequest_Metadata)
-	r.Metadata = m.Metadata.CloneVT()
-	return r
-}
-
-func (m *DropIndexRequest_Builtin) CloneVT() isDropIndexRequest_Index {
-	if m == nil {
-		return (*DropIndexRequest_Builtin)(nil)
-	}
-	r := new(DropIndexRequest_Builtin)
-	r.Builtin = m.Builtin
-	return r
-}
-
 func (m *DropIndexRequest_LogBuiltin) CloneVT() isDropIndexRequest_Index {
 	if m == nil {
 		return (*DropIndexRequest_LogBuiltin)(nil)
 	}
 	r := new(DropIndexRequest_LogBuiltin)
 	r.LogBuiltin = m.LogBuiltin
+	return r
+}
+
+func (m *DropIndexRequest_Transaction) CloneVT() isDropIndexRequest_Index {
+	if m == nil {
+		return (*DropIndexRequest_Transaction)(nil)
+	}
+	r := new(DropIndexRequest_Transaction)
+	r.Transaction = m.Transaction.CloneVT()
+	return r
+}
+
+func (m *DropIndexRequest_Account) CloneVT() isDropIndexRequest_Index {
+	if m == nil {
+		return (*DropIndexRequest_Account)(nil)
+	}
+	r := new(DropIndexRequest_Account)
+	r.Account = m.Account.CloneVT()
 	return r
 }
 
@@ -2557,30 +2557,30 @@ func (m *IndexBackfillProgress) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *IndexBackfillProgress_Metadata) CloneVT() isIndexBackfillProgress_Index {
-	if m == nil {
-		return (*IndexBackfillProgress_Metadata)(nil)
-	}
-	r := new(IndexBackfillProgress_Metadata)
-	r.Metadata = m.Metadata.CloneVT()
-	return r
-}
-
-func (m *IndexBackfillProgress_Builtin) CloneVT() isIndexBackfillProgress_Index {
-	if m == nil {
-		return (*IndexBackfillProgress_Builtin)(nil)
-	}
-	r := new(IndexBackfillProgress_Builtin)
-	r.Builtin = m.Builtin
-	return r
-}
-
 func (m *IndexBackfillProgress_LogBuiltin) CloneVT() isIndexBackfillProgress_Index {
 	if m == nil {
 		return (*IndexBackfillProgress_LogBuiltin)(nil)
 	}
 	r := new(IndexBackfillProgress_LogBuiltin)
 	r.LogBuiltin = m.LogBuiltin
+	return r
+}
+
+func (m *IndexBackfillProgress_Transaction) CloneVT() isIndexBackfillProgress_Index {
+	if m == nil {
+		return (*IndexBackfillProgress_Transaction)(nil)
+	}
+	r := new(IndexBackfillProgress_Transaction)
+	r.Transaction = m.Transaction.CloneVT()
+	return r
+}
+
+func (m *IndexBackfillProgress_Account) CloneVT() isIndexBackfillProgress_Index {
+	if m == nil {
+		return (*IndexBackfillProgress_Account)(nil)
+	}
+	r := new(IndexBackfillProgress_Account)
+	r.Account = m.Account.CloneVT()
 	return r
 }
 
@@ -4093,48 +4093,6 @@ func (this *CreateIndexRequest) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *CreateIndexRequest_Metadata) EqualVT(thatIface isCreateIndexRequest_Index) bool {
-	that, ok := thatIface.(*CreateIndexRequest_Metadata)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.Metadata, that.Metadata; p != q {
-		if p == nil {
-			p = &commonpb.MetadataIndexTarget{}
-		}
-		if q == nil {
-			q = &commonpb.MetadataIndexTarget{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *CreateIndexRequest_Builtin) EqualVT(thatIface isCreateIndexRequest_Index) bool {
-	that, ok := thatIface.(*CreateIndexRequest_Builtin)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.Builtin != that.Builtin {
-		return false
-	}
-	return true
-}
-
 func (this *CreateIndexRequest_LogBuiltin) EqualVT(thatIface isCreateIndexRequest_Index) bool {
 	that, ok := thatIface.(*CreateIndexRequest_LogBuiltin)
 	if !ok {
@@ -4148,6 +4106,56 @@ func (this *CreateIndexRequest_LogBuiltin) EqualVT(thatIface isCreateIndexReques
 	}
 	if this.LogBuiltin != that.LogBuiltin {
 		return false
+	}
+	return true
+}
+
+func (this *CreateIndexRequest_Transaction) EqualVT(thatIface isCreateIndexRequest_Index) bool {
+	that, ok := thatIface.(*CreateIndexRequest_Transaction)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Transaction, that.Transaction; p != q {
+		if p == nil {
+			p = &commonpb.TransactionIndex{}
+		}
+		if q == nil {
+			q = &commonpb.TransactionIndex{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *CreateIndexRequest_Account) EqualVT(thatIface isCreateIndexRequest_Index) bool {
+	that, ok := thatIface.(*CreateIndexRequest_Account)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Account, that.Account; p != q {
+		if p == nil {
+			p = &commonpb.AccountIndex{}
+		}
+		if q == nil {
+			q = &commonpb.AccountIndex{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
 	}
 	return true
 }
@@ -4183,48 +4191,6 @@ func (this *DropIndexRequest) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *DropIndexRequest_Metadata) EqualVT(thatIface isDropIndexRequest_Index) bool {
-	that, ok := thatIface.(*DropIndexRequest_Metadata)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.Metadata, that.Metadata; p != q {
-		if p == nil {
-			p = &commonpb.MetadataIndexTarget{}
-		}
-		if q == nil {
-			q = &commonpb.MetadataIndexTarget{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *DropIndexRequest_Builtin) EqualVT(thatIface isDropIndexRequest_Index) bool {
-	that, ok := thatIface.(*DropIndexRequest_Builtin)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.Builtin != that.Builtin {
-		return false
-	}
-	return true
-}
-
 func (this *DropIndexRequest_LogBuiltin) EqualVT(thatIface isDropIndexRequest_Index) bool {
 	that, ok := thatIface.(*DropIndexRequest_LogBuiltin)
 	if !ok {
@@ -4238,6 +4204,56 @@ func (this *DropIndexRequest_LogBuiltin) EqualVT(thatIface isDropIndexRequest_In
 	}
 	if this.LogBuiltin != that.LogBuiltin {
 		return false
+	}
+	return true
+}
+
+func (this *DropIndexRequest_Transaction) EqualVT(thatIface isDropIndexRequest_Index) bool {
+	that, ok := thatIface.(*DropIndexRequest_Transaction)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Transaction, that.Transaction; p != q {
+		if p == nil {
+			p = &commonpb.TransactionIndex{}
+		}
+		if q == nil {
+			q = &commonpb.TransactionIndex{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *DropIndexRequest_Account) EqualVT(thatIface isDropIndexRequest_Index) bool {
+	that, ok := thatIface.(*DropIndexRequest_Account)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Account, that.Account; p != q {
+		if p == nil {
+			p = &commonpb.AccountIndex{}
+		}
+		if q == nil {
+			q = &commonpb.AccountIndex{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
 	}
 	return true
 }
@@ -6654,48 +6670,6 @@ func (this *IndexBackfillProgress) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *IndexBackfillProgress_Metadata) EqualVT(thatIface isIndexBackfillProgress_Index) bool {
-	that, ok := thatIface.(*IndexBackfillProgress_Metadata)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.Metadata, that.Metadata; p != q {
-		if p == nil {
-			p = &commonpb.MetadataIndexTarget{}
-		}
-		if q == nil {
-			q = &commonpb.MetadataIndexTarget{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *IndexBackfillProgress_Builtin) EqualVT(thatIface isIndexBackfillProgress_Index) bool {
-	that, ok := thatIface.(*IndexBackfillProgress_Builtin)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if this.Builtin != that.Builtin {
-		return false
-	}
-	return true
-}
-
 func (this *IndexBackfillProgress_LogBuiltin) EqualVT(thatIface isIndexBackfillProgress_Index) bool {
 	that, ok := thatIface.(*IndexBackfillProgress_LogBuiltin)
 	if !ok {
@@ -6709,6 +6683,56 @@ func (this *IndexBackfillProgress_LogBuiltin) EqualVT(thatIface isIndexBackfillP
 	}
 	if this.LogBuiltin != that.LogBuiltin {
 		return false
+	}
+	return true
+}
+
+func (this *IndexBackfillProgress_Transaction) EqualVT(thatIface isIndexBackfillProgress_Index) bool {
+	that, ok := thatIface.(*IndexBackfillProgress_Transaction)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Transaction, that.Transaction; p != q {
+		if p == nil {
+			p = &commonpb.TransactionIndex{}
+		}
+		if q == nil {
+			q = &commonpb.TransactionIndex{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *IndexBackfillProgress_Account) EqualVT(thatIface isIndexBackfillProgress_Index) bool {
+	that, ok := thatIface.(*IndexBackfillProgress_Account)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.Account, that.Account; p != q {
+		if p == nil {
+			p = &commonpb.AccountIndex{}
+		}
+		if q == nil {
+			q = &commonpb.AccountIndex{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
 	}
 	return true
 }
@@ -8860,37 +8884,6 @@ func (m *CreateIndexRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CreateIndexRequest_Metadata) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *CreateIndexRequest_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.Metadata != nil {
-		size, err := m.Metadata.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *CreateIndexRequest_Builtin) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *CreateIndexRequest_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
-	i--
-	dAtA[i] = 0x20
-	return len(dAtA) - i, nil
-}
 func (m *CreateIndexRequest_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -8901,6 +8894,44 @@ func (m *CreateIndexRequest_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
 	i--
 	dAtA[i] = 0x28
+	return len(dAtA) - i, nil
+}
+func (m *CreateIndexRequest_Transaction) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CreateIndexRequest_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Transaction != nil {
+		size, err := m.Transaction.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
+	return len(dAtA) - i, nil
+}
+func (m *CreateIndexRequest_Account) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CreateIndexRequest_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Account != nil {
+		size, err := m.Account.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3a
+	}
 	return len(dAtA) - i, nil
 }
 func (m *DropIndexRequest) MarshalVT() (dAtA []byte, err error) {
@@ -8952,37 +8983,6 @@ func (m *DropIndexRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *DropIndexRequest_Metadata) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *DropIndexRequest_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.Metadata != nil {
-		size, err := m.Metadata.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *DropIndexRequest_Builtin) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *DropIndexRequest_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
-	i--
-	dAtA[i] = 0x20
-	return len(dAtA) - i, nil
-}
 func (m *DropIndexRequest_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -8993,6 +8993,44 @@ func (m *DropIndexRequest_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
 	i--
 	dAtA[i] = 0x28
+	return len(dAtA) - i, nil
+}
+func (m *DropIndexRequest_Transaction) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DropIndexRequest_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Transaction != nil {
+		size, err := m.Transaction.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x32
+	}
+	return len(dAtA) - i, nil
+}
+func (m *DropIndexRequest_Account) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DropIndexRequest_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Account != nil {
+		size, err := m.Account.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3a
+	}
 	return len(dAtA) - i, nil
 }
 func (m *SaveNumscriptRequest) MarshalVT() (dAtA []byte, err error) {
@@ -13073,37 +13111,6 @@ func (m *IndexBackfillProgress) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
-func (m *IndexBackfillProgress_Metadata) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *IndexBackfillProgress_Metadata) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.Metadata != nil {
-		size, err := m.Metadata.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *IndexBackfillProgress_Builtin) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *IndexBackfillProgress_Builtin) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Builtin))
-	i--
-	dAtA[i] = 0x28
-	return len(dAtA) - i, nil
-}
 func (m *IndexBackfillProgress_LogBuiltin) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -13114,6 +13121,44 @@ func (m *IndexBackfillProgress_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
 	i--
 	dAtA[i] = 0x30
+	return len(dAtA) - i, nil
+}
+func (m *IndexBackfillProgress_Transaction) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IndexBackfillProgress_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Transaction != nil {
+		size, err := m.Transaction.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x3a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *IndexBackfillProgress_Account) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *IndexBackfillProgress_Account) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Account != nil {
+		size, err := m.Account.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x42
+	}
 	return len(dAtA) - i, nil
 }
 func (m *GetLedgerStatsRequest) MarshalVT() (dAtA []byte, err error) {
@@ -14171,27 +14216,6 @@ func (m *CreateIndexRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *CreateIndexRequest_Metadata) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Metadata != nil {
-		l = m.Metadata.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *CreateIndexRequest_Builtin) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
-	return n
-}
 func (m *CreateIndexRequest_LogBuiltin) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -14199,6 +14223,30 @@ func (m *CreateIndexRequest_LogBuiltin) SizeVT() (n int) {
 	var l int
 	_ = l
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
+	return n
+}
+func (m *CreateIndexRequest_Transaction) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Transaction != nil {
+		l = m.Transaction.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *CreateIndexRequest_Account) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Account != nil {
+		l = m.Account.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	return n
 }
 func (m *DropIndexRequest) SizeVT() (n int) {
@@ -14218,27 +14266,6 @@ func (m *DropIndexRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *DropIndexRequest_Metadata) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Metadata != nil {
-		l = m.Metadata.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *DropIndexRequest_Builtin) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
-	return n
-}
 func (m *DropIndexRequest_LogBuiltin) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -14246,6 +14273,30 @@ func (m *DropIndexRequest_LogBuiltin) SizeVT() (n int) {
 	var l int
 	_ = l
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
+	return n
+}
+func (m *DropIndexRequest_Transaction) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Transaction != nil {
+		l = m.Transaction.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *DropIndexRequest_Account) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Account != nil {
+		l = m.Account.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	return n
 }
 func (m *SaveNumscriptRequest) SizeVT() (n int) {
@@ -15892,37 +15943,16 @@ func (m *IndexBackfillProgress) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if vtmsg, ok := m.Index.(interface{ SizeVT() int }); ok {
-		n += vtmsg.SizeVT()
-	}
 	if m.Cursor != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Cursor))
+	}
+	if vtmsg, ok := m.Index.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
 	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *IndexBackfillProgress_Metadata) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Metadata != nil {
-		l = m.Metadata.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *IndexBackfillProgress_Builtin) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + protohelpers.SizeOfVarint(uint64(m.Builtin))
-	return n
-}
 func (m *IndexBackfillProgress_LogBuiltin) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -15930,6 +15960,30 @@ func (m *IndexBackfillProgress_LogBuiltin) SizeVT() (n int) {
 	var l int
 	_ = l
 	n += 1 + protohelpers.SizeOfVarint(uint64(m.LogBuiltin))
+	return n
+}
+func (m *IndexBackfillProgress_Transaction) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Transaction != nil {
+		l = m.Transaction.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *IndexBackfillProgress_Account) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Account != nil {
+		l = m.Account.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	return n
 }
 func (m *GetLedgerStatsRequest) SizeVT() (n int) {
@@ -20288,9 +20342,29 @@ func (m *CreateIndexRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 3:
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			}
+			var v commonpb.LogBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.LogBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &CreateIndexRequest_LogBuiltin{LogBuiltin: v}
+		case 6:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Transaction", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -20317,23 +20391,23 @@ func (m *CreateIndexRequest) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Index.(*CreateIndexRequest_Metadata); ok {
-				if err := oneof.Metadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Index.(*CreateIndexRequest_Transaction); ok {
+				if err := oneof.Transaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &commonpb.MetadataIndexTarget{}
+				v := &commonpb.TransactionIndex{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Index = &CreateIndexRequest_Metadata{Metadata: v}
+				m.Index = &CreateIndexRequest_Transaction{Transaction: v}
 			}
 			iNdEx = postIndex
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
 			}
-			var v commonpb.TransactionBuiltinIndex
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -20343,32 +20417,33 @@ func (m *CreateIndexRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= commonpb.TransactionBuiltinIndex(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.Index = &CreateIndexRequest_Builtin{Builtin: v}
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			var v commonpb.LogBuiltinIndex
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= commonpb.LogBuiltinIndex(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			m.Index = &CreateIndexRequest_LogBuiltin{LogBuiltin: v}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Index.(*CreateIndexRequest_Account); ok {
+				if err := oneof.Account.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &commonpb.AccountIndex{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Index = &CreateIndexRequest_Account{Account: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -20452,9 +20527,29 @@ func (m *DropIndexRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 3:
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			}
+			var v commonpb.LogBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.LogBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &DropIndexRequest_LogBuiltin{LogBuiltin: v}
+		case 6:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Transaction", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -20481,23 +20576,23 @@ func (m *DropIndexRequest) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Index.(*DropIndexRequest_Metadata); ok {
-				if err := oneof.Metadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Index.(*DropIndexRequest_Transaction); ok {
+				if err := oneof.Transaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &commonpb.MetadataIndexTarget{}
+				v := &commonpb.TransactionIndex{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Index = &DropIndexRequest_Metadata{Metadata: v}
+				m.Index = &DropIndexRequest_Transaction{Transaction: v}
 			}
 			iNdEx = postIndex
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
 			}
-			var v commonpb.TransactionBuiltinIndex
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -20507,32 +20602,33 @@ func (m *DropIndexRequest) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= commonpb.TransactionBuiltinIndex(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.Index = &DropIndexRequest_Builtin{Builtin: v}
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			var v commonpb.LogBuiltinIndex
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= commonpb.LogBuiltinIndex(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			m.Index = &DropIndexRequest_LogBuiltin{LogBuiltin: v}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Index.(*DropIndexRequest_Account); ok {
+				if err := oneof.Account.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &commonpb.AccountIndex{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Index = &DropIndexRequest_Account{Account: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -30311,9 +30407,48 @@ func (m *IndexBackfillProgress) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 3:
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cursor", wireType)
+			}
+			m.Cursor = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Cursor |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			}
+			var v commonpb.LogBuiltinIndex
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= commonpb.LogBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Index = &IndexBackfillProgress_LogBuiltin{LogBuiltin: v}
+		case 7:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Transaction", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -30340,23 +30475,23 @@ func (m *IndexBackfillProgress) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Index.(*IndexBackfillProgress_Metadata); ok {
-				if err := oneof.Metadata.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Index.(*IndexBackfillProgress_Transaction); ok {
+				if err := oneof.Transaction.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &commonpb.MetadataIndexTarget{}
+				v := &commonpb.TransactionIndex{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Index = &IndexBackfillProgress_Metadata{Metadata: v}
+				m.Index = &IndexBackfillProgress_Transaction{Transaction: v}
 			}
 			iNdEx = postIndex
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Cursor", wireType)
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
 			}
-			m.Cursor = 0
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -30366,51 +30501,33 @@ func (m *IndexBackfillProgress) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Cursor |= uint64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Builtin", wireType)
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			var v commonpb.TransactionBuiltinIndex
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= commonpb.TransactionBuiltinIndex(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
 			}
-			m.Index = &IndexBackfillProgress_Builtin{Builtin: v}
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
 			}
-			var v commonpb.LogBuiltinIndex
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
+			if oneof, ok := m.Index.(*IndexBackfillProgress_Account); ok {
+				if err := oneof.Account.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
 				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
+			} else {
+				v := &commonpb.AccountIndex{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
 				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= commonpb.LogBuiltinIndex(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+				m.Index = &IndexBackfillProgress_Account{Account: v}
 			}
-			m.Index = &IndexBackfillProgress_LogBuiltin{LogBuiltin: v}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

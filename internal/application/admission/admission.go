@@ -1358,10 +1358,10 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_CreateIndex:
 		createIndexOrder := &raftcmdpb.CreateIndexOrder{}
 		switch idx := reqType.CreateIndex.Index.(type) {
-		case *servicepb.CreateIndexRequest_Metadata:
-			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_Metadata{Metadata: idx.Metadata}
-		case *servicepb.CreateIndexRequest_Builtin:
-			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_Builtin{Builtin: idx.Builtin}
+		case *servicepb.CreateIndexRequest_Transaction:
+			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_Transaction{Transaction: idx.Transaction}
+		case *servicepb.CreateIndexRequest_Account:
+			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_Account{Account: idx.Account}
 		case *servicepb.CreateIndexRequest_LogBuiltin:
 			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_LogBuiltin{LogBuiltin: idx.LogBuiltin}
 		}
@@ -1374,10 +1374,10 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_DropIndex:
 		dropIndexOrder := &raftcmdpb.DropIndexOrder{}
 		switch idx := reqType.DropIndex.Index.(type) {
-		case *servicepb.DropIndexRequest_Metadata:
-			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_Metadata{Metadata: idx.Metadata}
-		case *servicepb.DropIndexRequest_Builtin:
-			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_Builtin{Builtin: idx.Builtin}
+		case *servicepb.DropIndexRequest_Transaction:
+			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_Transaction{Transaction: idx.Transaction}
+		case *servicepb.DropIndexRequest_Account:
+			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_Account{Account: idx.Account}
 		case *servicepb.DropIndexRequest_LogBuiltin:
 			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_LogBuiltin{LogBuiltin: idx.LogBuiltin}
 		}

@@ -304,8 +304,8 @@ func (s *Store) ReadAllBackfillProgress(tx *bolt.Tx) (map[string]uint64, error) 
 // BackfillEntry is a decoded backfill progress entry returned by ListBackfillProgress.
 type BackfillEntry struct {
 	Ledger  string
-	Kind    byte   // BackfillKindMetadata, BackfillKindBuiltin, or BackfillKindLogBuiltin
-	Details []byte // kind-specific payload: role byte, [target_byte][key], or builtin byte
+	Kind    byte   // BackfillKindTxBuiltin, BackfillKindTxMetadata, BackfillKindAcctBuiltin, BackfillKindAcctMetadata, or BackfillKindLogBuiltin
+	Details []byte // kind-specific payload: builtin byte, or metadata key string
 	Cursor  uint64
 }
 

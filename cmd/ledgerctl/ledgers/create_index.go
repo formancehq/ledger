@@ -79,18 +79,30 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 	var indexDesc string
 	switch indexType {
 	case "address":
-		req.Index = &servicepb.CreateIndexRequest_Builtin{
-			Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
+		req.Index = &servicepb.CreateIndexRequest_Transaction{
+			Transaction: &commonpb.TransactionIndex{
+				Kind: &commonpb.TransactionIndex_Builtin{
+					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
+				},
+			},
 		}
 		indexDesc = "address (any role)"
 	case "source-address":
-		req.Index = &servicepb.CreateIndexRequest_Builtin{
-			Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
+		req.Index = &servicepb.CreateIndexRequest_Transaction{
+			Transaction: &commonpb.TransactionIndex{
+				Kind: &commonpb.TransactionIndex_Builtin{
+					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
+				},
+			},
 		}
 		indexDesc = "source-address"
 	case "dest-address":
-		req.Index = &servicepb.CreateIndexRequest_Builtin{
-			Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS,
+		req.Index = &servicepb.CreateIndexRequest_Transaction{
+			Transaction: &commonpb.TransactionIndex{
+				Kind: &commonpb.TransactionIndex_Builtin{
+					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS,
+				},
+			},
 		}
 		indexDesc = "dest-address"
 	case "metadata":
@@ -98,21 +110,37 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
-		req.Index = &servicepb.CreateIndexRequest_Metadata{
-			Metadata: &commonpb.MetadataIndexTarget{
-				Target: target,
-				Key:    key,
-			},
+		switch target {
+		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+			req.Index = &servicepb.CreateIndexRequest_Transaction{
+				Transaction: &commonpb.TransactionIndex{
+					Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: key},
+				},
+			}
+		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+			req.Index = &servicepb.CreateIndexRequest_Account{
+				Account: &commonpb.AccountIndex{
+					Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: key},
+				},
+			}
 		}
 		indexDesc = fmt.Sprintf("metadata %s.%s", cmdutil.TargetTypeString(target), key)
 	case "reference":
-		req.Index = &servicepb.CreateIndexRequest_Builtin{
-			Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+		req.Index = &servicepb.CreateIndexRequest_Transaction{
+			Transaction: &commonpb.TransactionIndex{
+				Kind: &commonpb.TransactionIndex_Builtin{
+					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+				},
+			},
 		}
 		indexDesc = "reference"
 	case "timestamp":
-		req.Index = &servicepb.CreateIndexRequest_Builtin{
-			Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+		req.Index = &servicepb.CreateIndexRequest_Transaction{
+			Transaction: &commonpb.TransactionIndex{
+				Kind: &commonpb.TransactionIndex_Builtin{
+					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+				},
+			},
 		}
 		indexDesc = "timestamp"
 	case "log-ledger":

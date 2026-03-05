@@ -28,11 +28,11 @@ type Proposer interface {
 	ProposeOrders(orders ...*raftcmdpb.Order) error
 }
 
-// indexID identifies a specific index (metadata field, builtin, or log builtin).
+// indexID identifies a specific index (transaction, account, or log builtin).
 type indexID struct {
-	metadata   *commonpb.MetadataIndexTarget     // set for metadata indexes
-	builtin    *commonpb.TransactionBuiltinIndex // set for builtin indexes (including address indexes)
-	logBuiltin *commonpb.LogBuiltinIndex         // set for log builtin indexes
+	transaction *commonpb.TransactionIndex // set for transaction indexes (builtin or metadata)
+	account     *commonpb.AccountIndex     // set for account indexes (builtin or metadata)
+	logBuiltin  *commonpb.LogBuiltinIndex  // set for log builtin indexes
 }
 
 // backfillTask tracks the progress of backfilling a single index.
@@ -43,17 +43,13 @@ type backfillTask struct {
 	bbKey  []byte // precomputed bbolt key for progress persistence
 }
 
-// metadataIndexKey identifies a metadata index by target type and key name.
-type metadataIndexKey struct {
-	Target commonpb.TargetType
-	Key    string
-}
-
 // ledgerIndexConfig caches which indexes are enabled and ready for a ledger.
 type ledgerIndexConfig struct {
-	metadataIndexed   map[metadataIndexKey]bool                 // true = indexed (READY or BUILDING)
-	builtinIndexed    map[commonpb.TransactionBuiltinIndex]bool // true = indexed (READY or BUILDING)
-	logBuiltinIndexed map[commonpb.LogBuiltinIndex]bool         // true = indexed (READY or BUILDING)
+	txMetadataIndexed   map[string]bool                           // transaction metadata key → indexed
+	txBuiltinIndexed    map[commonpb.TransactionBuiltinIndex]bool // transaction builtin → indexed
+	acctMetadataIndexed map[string]bool                           // account metadata key → indexed
+	acctBuiltinIndexed  map[commonpb.AccountBuiltinIndex]bool     // account builtin → indexed
+	logBuiltinIndexed   map[commonpb.LogBuiltinIndex]bool         // log builtin → indexed
 }
 
 // Builder tails the system log and populates the bbolt read store indexes.
@@ -171,11 +167,7 @@ func (b *Builder) initIndexConfig() {
 // Both READY and BUILDING indexes are included so that normal processing writes
 // to new indexes immediately (covering logs after CreateIndex).
 func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
-	cfg := &ledgerIndexConfig{
-		metadataIndexed:   make(map[metadataIndexKey]bool),
-		builtinIndexed:    make(map[commonpb.TransactionBuiltinIndex]bool),
-		logBuiltinIndexed: make(map[commonpb.LogBuiltinIndex]bool),
-	}
+	cfg := newLedgerIndexConfig()
 
 	// Metadata indexes — include both READY and BUILDING.
 	if info.MetadataSchema != nil {
@@ -199,9 +191,9 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 			if !entry.enabled {
 				continue
 			}
-			cfg.builtinIndexed[entry.index] = true
+			cfg.txBuiltinIndexed[entry.index] = true
 			if entry.status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-				b.addBackfillTaskForBuiltin(info.Name, entry.index)
+				b.addBackfillTaskForTxBuiltin(info.Name, entry.index)
 			}
 		}
 	}
@@ -239,10 +231,17 @@ func (b *Builder) loadMetadataIndexes(
 		if !field.Indexed {
 			continue
 		}
-		mk := metadataIndexKey{Target: target, Key: key}
-		cfg.metadataIndexed[mk] = true
-		if field.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-			b.addBackfillTaskForMetadata(ledger, target, key)
+		switch target {
+		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+			cfg.acctMetadataIndexed[key] = true
+			if field.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+				b.addBackfillTaskForAcctMetadata(ledger, key)
+			}
+		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+			cfg.txMetadataIndexed[key] = true
+			if field.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+				b.addBackfillTaskForTxMetadata(ledger, key)
+			}
 		}
 	}
 }
@@ -253,7 +252,14 @@ func (b *Builder) isMetadataIndexed(ledger string, target commonpb.TargetType, k
 	if !ok {
 		return false
 	}
-	return cfg.metadataIndexed[metadataIndexKey{Target: target, Key: key}]
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		return cfg.acctMetadataIndexed[key]
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		return cfg.txMetadataIndexed[key]
+	default:
+		return false
+	}
 }
 
 // isBuiltinIndexed checks if a specific builtin index is enabled.
@@ -262,7 +268,7 @@ func (b *Builder) isBuiltinIndexed(ledger string, index commonpb.TransactionBuil
 	if !ok {
 		return false
 	}
-	return cfg.builtinIndexed[index]
+	return cfg.txBuiltinIndexed[index]
 }
 
 // isLogBuiltinIndexed checks if a specific log builtin index is enabled.
@@ -984,15 +990,24 @@ func extractMetadataKeyFromReverseMap(key, nsPrefix []byte, ns string) string {
 func (b *Builder) handleCreateIndexLog(ledger string, log *commonpb.CreateIndexLog) {
 	cfg := b.getOrCreateLedgerConfig(ledger)
 	switch idx := log.Index.(type) {
-	case *commonpb.CreateIndexLog_Metadata:
-		cfg.metadataIndexed[metadataIndexKey{
-			Target: idx.Metadata.Target,
-			Key:    idx.Metadata.Key,
-		}] = true
-		b.addBackfillTaskForMetadata(ledger, idx.Metadata.Target, idx.Metadata.Key)
-	case *commonpb.CreateIndexLog_Builtin:
-		cfg.builtinIndexed[idx.Builtin] = true
-		b.addBackfillTaskForBuiltin(ledger, idx.Builtin)
+	case *commonpb.CreateIndexLog_Transaction:
+		switch txIdx := idx.Transaction.Kind.(type) {
+		case *commonpb.TransactionIndex_Builtin:
+			cfg.txBuiltinIndexed[txIdx.Builtin] = true
+			b.addBackfillTaskForTxBuiltin(ledger, txIdx.Builtin)
+		case *commonpb.TransactionIndex_MetadataKey:
+			cfg.txMetadataIndexed[txIdx.MetadataKey] = true
+			b.addBackfillTaskForTxMetadata(ledger, txIdx.MetadataKey)
+		}
+	case *commonpb.CreateIndexLog_Account:
+		switch acctIdx := idx.Account.Kind.(type) {
+		case *commonpb.AccountIndex_Builtin:
+			cfg.acctBuiltinIndexed[acctIdx.Builtin] = true
+			// No backfill function for account builtins yet — add when needed.
+		case *commonpb.AccountIndex_MetadataKey:
+			cfg.acctMetadataIndexed[acctIdx.MetadataKey] = true
+			b.addBackfillTaskForAcctMetadata(ledger, acctIdx.MetadataKey)
+		}
 	case *commonpb.CreateIndexLog_LogBuiltin:
 		cfg.logBuiltinIndexed[idx.LogBuiltin] = true
 		b.addBackfillTaskForLogBuiltin(ledger, idx.LogBuiltin)
@@ -1004,15 +1019,24 @@ func (b *Builder) handleCreateIndexLog(ledger string, log *commonpb.CreateIndexL
 func (b *Builder) handleDropIndexLog(ledger string, log *commonpb.DropIndexLog) {
 	cfg := b.getOrCreateLedgerConfig(ledger)
 	switch idx := log.Index.(type) {
-	case *commonpb.DropIndexLog_Metadata:
-		delete(cfg.metadataIndexed, metadataIndexKey{
-			Target: idx.Metadata.Target,
-			Key:    idx.Metadata.Key,
-		})
-		b.removeBackfillTask(indexID{metadata: idx.Metadata})
-	case *commonpb.DropIndexLog_Builtin:
-		delete(cfg.builtinIndexed, idx.Builtin)
-		b.removeBackfillTask(indexID{builtin: &idx.Builtin})
+	case *commonpb.DropIndexLog_Transaction:
+		switch txIdx := idx.Transaction.Kind.(type) {
+		case *commonpb.TransactionIndex_Builtin:
+			delete(cfg.txBuiltinIndexed, txIdx.Builtin)
+			b.removeBackfillTask(indexID{transaction: idx.Transaction})
+		case *commonpb.TransactionIndex_MetadataKey:
+			delete(cfg.txMetadataIndexed, txIdx.MetadataKey)
+			b.removeBackfillTask(indexID{transaction: idx.Transaction})
+		}
+	case *commonpb.DropIndexLog_Account:
+		switch acctIdx := idx.Account.Kind.(type) {
+		case *commonpb.AccountIndex_Builtin:
+			delete(cfg.acctBuiltinIndexed, acctIdx.Builtin)
+			b.removeBackfillTask(indexID{account: idx.Account})
+		case *commonpb.AccountIndex_MetadataKey:
+			delete(cfg.acctMetadataIndexed, acctIdx.MetadataKey)
+			b.removeBackfillTask(indexID{account: idx.Account})
+		}
 	case *commonpb.DropIndexLog_LogBuiltin:
 		delete(cfg.logBuiltinIndexed, idx.LogBuiltin)
 		b.removeBackfillTask(indexID{logBuiltin: &idx.LogBuiltin})
@@ -1024,18 +1048,36 @@ func (b *Builder) handleDropIndexLog(ledger string, log *commonpb.DropIndexLog) 
 func (b *Builder) handleIndexReadyLog(ledger string, log *commonpb.IndexReadyLog) {
 	cfg := b.getOrCreateLedgerConfig(ledger)
 	switch idx := log.Index.(type) {
-	case *commonpb.IndexReadyLog_Metadata:
-		cfg.metadataIndexed[metadataIndexKey{
-			Target: idx.Metadata.Target,
-			Key:    idx.Metadata.Key,
-		}] = true
-		b.removeBackfillTask(indexID{metadata: idx.Metadata})
-	case *commonpb.IndexReadyLog_Builtin:
-		cfg.builtinIndexed[idx.Builtin] = true
-		b.removeBackfillTask(indexID{builtin: &idx.Builtin})
+	case *commonpb.IndexReadyLog_Transaction:
+		switch txIdx := idx.Transaction.Kind.(type) {
+		case *commonpb.TransactionIndex_Builtin:
+			cfg.txBuiltinIndexed[txIdx.Builtin] = true
+		case *commonpb.TransactionIndex_MetadataKey:
+			cfg.txMetadataIndexed[txIdx.MetadataKey] = true
+		}
+		b.removeBackfillTask(indexID{transaction: idx.Transaction})
+	case *commonpb.IndexReadyLog_Account:
+		switch acctIdx := idx.Account.Kind.(type) {
+		case *commonpb.AccountIndex_Builtin:
+			cfg.acctBuiltinIndexed[acctIdx.Builtin] = true
+		case *commonpb.AccountIndex_MetadataKey:
+			cfg.acctMetadataIndexed[acctIdx.MetadataKey] = true
+		}
+		b.removeBackfillTask(indexID{account: idx.Account})
 	case *commonpb.IndexReadyLog_LogBuiltin:
 		cfg.logBuiltinIndexed[idx.LogBuiltin] = true
 		b.removeBackfillTask(indexID{logBuiltin: &idx.LogBuiltin})
+	}
+}
+
+// newLedgerIndexConfig creates a new ledgerIndexConfig with all maps initialized.
+func newLedgerIndexConfig() *ledgerIndexConfig {
+	return &ledgerIndexConfig{
+		txMetadataIndexed:   make(map[string]bool),
+		txBuiltinIndexed:    make(map[commonpb.TransactionBuiltinIndex]bool),
+		acctMetadataIndexed: make(map[string]bool),
+		acctBuiltinIndexed:  make(map[commonpb.AccountBuiltinIndex]bool),
+		logBuiltinIndexed:   make(map[commonpb.LogBuiltinIndex]bool),
 	}
 }
 
@@ -1043,11 +1085,7 @@ func (b *Builder) handleIndexReadyLog(ledger string, log *commonpb.IndexReadyLog
 func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 	cfg, ok := b.indexConfig[ledger]
 	if !ok {
-		cfg = &ledgerIndexConfig{
-			metadataIndexed:   make(map[metadataIndexKey]bool),
-			builtinIndexed:    make(map[commonpb.TransactionBuiltinIndex]bool),
-			logBuiltinIndexed: make(map[commonpb.LogBuiltinIndex]bool),
-		}
+		cfg = newLedgerIndexConfig()
 		b.indexConfig[ledger] = cfg
 	}
 	return cfg
@@ -1077,22 +1115,41 @@ func extractEntityIDFromReverseMap(key, nsPrefix []byte, ns string) []byte {
 // backfillBBKey builds the bbolt key for persisting backfill progress.
 // Format:
 //
-//	Metadata:    [ledger\x00]m[target_byte][key]
-//	Builtin:     [ledger\x00]b[builtin_byte]
-//	LogBuiltin:  [ledger\x00]l[builtin_byte]
+//	TxBuiltin:    [ledger\x00]b[builtin_byte]
+//	TxMetadata:   [ledger\x00]T[key]
+//	AcctBuiltin:  [ledger\x00]A[builtin_byte]
+//	AcctMetadata: [ledger\x00]a[key]
+//	LogBuiltin:   [ledger\x00]l[builtin_byte]
 func backfillBBKey(ledger string, id indexID) []byte {
-	if id.metadata != nil {
-		key := make([]byte, 0, len(ledger)+3+len(id.metadata.Key))
-		key = append(key, ledger...)
-		key = append(key, 0x00, readstore.BackfillKindMetadata, byte(id.metadata.Target))
-		key = append(key, id.metadata.Key...)
-		return key
+	if id.transaction != nil {
+		switch txIdx := id.transaction.Kind.(type) {
+		case *commonpb.TransactionIndex_Builtin:
+			key := make([]byte, 0, len(ledger)+3)
+			key = append(key, ledger...)
+			key = append(key, 0x00, readstore.BackfillKindTxBuiltin, byte(txIdx.Builtin))
+			return key
+		case *commonpb.TransactionIndex_MetadataKey:
+			key := make([]byte, 0, len(ledger)+2+len(txIdx.MetadataKey))
+			key = append(key, ledger...)
+			key = append(key, 0x00, readstore.BackfillKindTxMetadata)
+			key = append(key, txIdx.MetadataKey...)
+			return key
+		}
 	}
-	if id.builtin != nil {
-		key := make([]byte, 0, len(ledger)+3)
-		key = append(key, ledger...)
-		key = append(key, 0x00, readstore.BackfillKindBuiltin, byte(*id.builtin))
-		return key
+	if id.account != nil {
+		switch acctIdx := id.account.Kind.(type) {
+		case *commonpb.AccountIndex_Builtin:
+			key := make([]byte, 0, len(ledger)+3)
+			key = append(key, ledger...)
+			key = append(key, 0x00, readstore.BackfillKindAcctBuiltin, byte(acctIdx.Builtin))
+			return key
+		case *commonpb.AccountIndex_MetadataKey:
+			key := make([]byte, 0, len(ledger)+2+len(acctIdx.MetadataKey))
+			key = append(key, ledger...)
+			key = append(key, 0x00, readstore.BackfillKindAcctMetadata)
+			key = append(key, acctIdx.MetadataKey...)
+			return key
+		}
 	}
 	if id.logBuiltin != nil {
 		key := make([]byte, 0, len(ledger)+3)
@@ -1103,59 +1160,47 @@ func backfillBBKey(ledger string, id indexID) []byte {
 	return nil
 }
 
-// addBackfillTaskForBuiltin creates a backfill task for a builtin index.
-func (b *Builder) addBackfillTaskForBuiltin(ledger string, index commonpb.TransactionBuiltinIndex) {
-	id := indexID{builtin: &index}
+// addBackfillTask is a helper that creates a backfill task for the given indexID,
+// avoiding duplicates by checking the precomputed bbolt key.
+func (b *Builder) addBackfillTask(ledger string, id indexID) {
 	bbKey := backfillBBKey(ledger, id)
 	for _, t := range b.backfillTasks {
 		if string(t.bbKey) == string(bbKey) {
 			return
 		}
 	}
-	task := &backfillTask{
+	b.backfillTasks = append(b.backfillTasks, &backfillTask{
 		ledger: ledger,
 		index:  id,
 		cursor: 0,
 		bbKey:  bbKey,
-	}
-	b.backfillTasks = append(b.backfillTasks, task)
+	})
+}
+
+// addBackfillTaskForTxBuiltin creates a backfill task for a transaction builtin index.
+func (b *Builder) addBackfillTaskForTxBuiltin(ledger string, index commonpb.TransactionBuiltinIndex) {
+	b.addBackfillTask(ledger, indexID{transaction: &commonpb.TransactionIndex{
+		Kind: &commonpb.TransactionIndex_Builtin{Builtin: index},
+	}})
+}
+
+// addBackfillTaskForTxMetadata creates a backfill task for a transaction metadata index.
+func (b *Builder) addBackfillTaskForTxMetadata(ledger string, key string) {
+	b.addBackfillTask(ledger, indexID{transaction: &commonpb.TransactionIndex{
+		Kind: &commonpb.TransactionIndex_MetadataKey{MetadataKey: key},
+	}})
+}
+
+// addBackfillTaskForAcctMetadata creates a backfill task for an account metadata index.
+func (b *Builder) addBackfillTaskForAcctMetadata(ledger string, key string) {
+	b.addBackfillTask(ledger, indexID{account: &commonpb.AccountIndex{
+		Kind: &commonpb.AccountIndex_MetadataKey{MetadataKey: key},
+	}})
 }
 
 // addBackfillTaskForLogBuiltin creates a backfill task for a log builtin index.
 func (b *Builder) addBackfillTaskForLogBuiltin(ledger string, index commonpb.LogBuiltinIndex) {
-	id := indexID{logBuiltin: &index}
-	bbKey := backfillBBKey(ledger, id)
-	for _, t := range b.backfillTasks {
-		if string(t.bbKey) == string(bbKey) {
-			return
-		}
-	}
-	task := &backfillTask{
-		ledger: ledger,
-		index:  id,
-		cursor: 0,
-		bbKey:  bbKey,
-	}
-	b.backfillTasks = append(b.backfillTasks, task)
-}
-
-// addBackfillTaskForMetadata creates a backfill task for a metadata index.
-func (b *Builder) addBackfillTaskForMetadata(ledger string, target commonpb.TargetType, key string) {
-	id := indexID{metadata: &commonpb.MetadataIndexTarget{Target: target, Key: key}}
-	bbKey := backfillBBKey(ledger, id)
-	// Avoid duplicates.
-	for _, t := range b.backfillTasks {
-		if string(t.bbKey) == string(bbKey) {
-			return
-		}
-	}
-	task := &backfillTask{
-		ledger: ledger,
-		index:  id,
-		cursor: 0,
-		bbKey:  bbKey,
-	}
-	b.backfillTasks = append(b.backfillTasks, task)
+	b.addBackfillTask(ledger, indexID{logBuiltin: &index})
 }
 
 // removeBackfillTask removes a backfill task by index ID and deletes its
@@ -1177,14 +1222,44 @@ func (b *Builder) removeBackfillTask(id indexID) {
 
 // matchesBackfillIndex checks if two indexIDs represent the same index.
 func matchesBackfillIndex(a, b indexID) bool {
-	if a.metadata != nil && b.metadata != nil {
-		return a.metadata.Target == b.metadata.Target && a.metadata.Key == b.metadata.Key
+	if a.transaction != nil && b.transaction != nil {
+		return matchesTransactionIndex(a.transaction, b.transaction)
 	}
-	if a.builtin != nil && b.builtin != nil {
-		return *a.builtin == *b.builtin
+	if a.account != nil && b.account != nil {
+		return matchesAccountIndex(a.account, b.account)
 	}
 	if a.logBuiltin != nil && b.logBuiltin != nil {
 		return *a.logBuiltin == *b.logBuiltin
+	}
+	return false
+}
+
+// matchesTransactionIndex checks if two TransactionIndex values represent the same index.
+func matchesTransactionIndex(a, b *commonpb.TransactionIndex) bool {
+	switch ak := a.Kind.(type) {
+	case *commonpb.TransactionIndex_Builtin:
+		if bk, ok := b.Kind.(*commonpb.TransactionIndex_Builtin); ok {
+			return ak.Builtin == bk.Builtin
+		}
+	case *commonpb.TransactionIndex_MetadataKey:
+		if bk, ok := b.Kind.(*commonpb.TransactionIndex_MetadataKey); ok {
+			return ak.MetadataKey == bk.MetadataKey
+		}
+	}
+	return false
+}
+
+// matchesAccountIndex checks if two AccountIndex values represent the same index.
+func matchesAccountIndex(a, b *commonpb.AccountIndex) bool {
+	switch ak := a.Kind.(type) {
+	case *commonpb.AccountIndex_Builtin:
+		if bk, ok := b.Kind.(*commonpb.AccountIndex_Builtin); ok {
+			return ak.Builtin == bk.Builtin
+		}
+	case *commonpb.AccountIndex_MetadataKey:
+		if bk, ok := b.Kind.(*commonpb.AccountIndex_MetadataKey); ok {
+			return ak.MetadataKey == bk.MetadataKey
+		}
 	}
 	return false
 }
@@ -1335,19 +1410,22 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) erro
 // buildBackfillConfig creates a temporary indexConfig map containing only the
 // backfilling index's ledger config with only that index enabled.
 func (b *Builder) buildBackfillConfig(task *backfillTask) map[string]*ledgerIndexConfig {
-	cfg := &ledgerIndexConfig{
-		metadataIndexed:   make(map[metadataIndexKey]bool),
-		builtinIndexed:    make(map[commonpb.TransactionBuiltinIndex]bool),
-		logBuiltinIndexed: make(map[commonpb.LogBuiltinIndex]bool),
+	cfg := newLedgerIndexConfig()
+	if task.index.transaction != nil {
+		switch txIdx := task.index.transaction.Kind.(type) {
+		case *commonpb.TransactionIndex_Builtin:
+			cfg.txBuiltinIndexed[txIdx.Builtin] = true
+		case *commonpb.TransactionIndex_MetadataKey:
+			cfg.txMetadataIndexed[txIdx.MetadataKey] = true
+		}
 	}
-	if task.index.metadata != nil {
-		cfg.metadataIndexed[metadataIndexKey{
-			Target: task.index.metadata.Target,
-			Key:    task.index.metadata.Key,
-		}] = true
-	}
-	if task.index.builtin != nil {
-		cfg.builtinIndexed[*task.index.builtin] = true
+	if task.index.account != nil {
+		switch acctIdx := task.index.account.Kind.(type) {
+		case *commonpb.AccountIndex_Builtin:
+			cfg.acctBuiltinIndexed[acctIdx.Builtin] = true
+		case *commonpb.AccountIndex_MetadataKey:
+			cfg.acctMetadataIndexed[acctIdx.MetadataKey] = true
+		}
 	}
 	if task.index.logBuiltin != nil {
 		cfg.logBuiltinIndexed[*task.index.logBuiltin] = true
@@ -1395,19 +1473,19 @@ func (b *Builder) proposeIndexReady(task *backfillTask) bool {
 		},
 	}
 
-	if task.index.metadata != nil {
+	if task.index.transaction != nil {
 		order.GetApply().Data = &raftcmdpb.LedgerApplyOrder_IndexReady{
 			IndexReady: &raftcmdpb.IndexReadyOrder{
-				Index: &raftcmdpb.IndexReadyOrder_Metadata{
-					Metadata: task.index.metadata,
+				Index: &raftcmdpb.IndexReadyOrder_Transaction{
+					Transaction: task.index.transaction,
 				},
 			},
 		}
-	} else if task.index.builtin != nil {
+	} else if task.index.account != nil {
 		order.GetApply().Data = &raftcmdpb.LedgerApplyOrder_IndexReady{
 			IndexReady: &raftcmdpb.IndexReadyOrder{
-				Index: &raftcmdpb.IndexReadyOrder_Builtin{
-					Builtin: *task.index.builtin,
+				Index: &raftcmdpb.IndexReadyOrder_Account{
+					Account: task.index.account,
 				},
 			},
 		}

@@ -70,6 +70,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		t.Parallel()
 
 		script := `
+#![feature("experimental-account-interpolation")]
 			vars {
 				string $order_id
 				monetary $amount

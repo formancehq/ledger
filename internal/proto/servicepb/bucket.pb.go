@@ -2235,9 +2235,9 @@ type CreateIndexRequest struct {
 	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	// Types that are valid to be assigned to Index:
 	//
-	//	*CreateIndexRequest_Metadata
-	//	*CreateIndexRequest_Builtin
 	//	*CreateIndexRequest_LogBuiltin
+	//	*CreateIndexRequest_Transaction
+	//	*CreateIndexRequest_Account
 	Index         isCreateIndexRequest_Index `protobuf_oneof:"index"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2287,24 +2287,6 @@ func (x *CreateIndexRequest) GetIndex() isCreateIndexRequest_Index {
 	return nil
 }
 
-func (x *CreateIndexRequest) GetMetadata() *commonpb.MetadataIndexTarget {
-	if x != nil {
-		if x, ok := x.Index.(*CreateIndexRequest_Metadata); ok {
-			return x.Metadata
-		}
-	}
-	return nil
-}
-
-func (x *CreateIndexRequest) GetBuiltin() commonpb.TransactionBuiltinIndex {
-	if x != nil {
-		if x, ok := x.Index.(*CreateIndexRequest_Builtin); ok {
-			return x.Builtin
-		}
-	}
-	return commonpb.TransactionBuiltinIndex(0)
-}
-
 func (x *CreateIndexRequest) GetLogBuiltin() commonpb.LogBuiltinIndex {
 	if x != nil {
 		if x, ok := x.Index.(*CreateIndexRequest_LogBuiltin); ok {
@@ -2314,27 +2296,45 @@ func (x *CreateIndexRequest) GetLogBuiltin() commonpb.LogBuiltinIndex {
 	return commonpb.LogBuiltinIndex(0)
 }
 
+func (x *CreateIndexRequest) GetTransaction() *commonpb.TransactionIndex {
+	if x != nil {
+		if x, ok := x.Index.(*CreateIndexRequest_Transaction); ok {
+			return x.Transaction
+		}
+	}
+	return nil
+}
+
+func (x *CreateIndexRequest) GetAccount() *commonpb.AccountIndex {
+	if x != nil {
+		if x, ok := x.Index.(*CreateIndexRequest_Account); ok {
+			return x.Account
+		}
+	}
+	return nil
+}
+
 type isCreateIndexRequest_Index interface {
 	isCreateIndexRequest_Index()
-}
-
-type CreateIndexRequest_Metadata struct {
-	Metadata *commonpb.MetadataIndexTarget `protobuf:"bytes,3,opt,name=metadata,proto3,oneof"`
-}
-
-type CreateIndexRequest_Builtin struct {
-	Builtin commonpb.TransactionBuiltinIndex `protobuf:"varint,4,opt,name=builtin,proto3,enum=common.TransactionBuiltinIndex,oneof"`
 }
 
 type CreateIndexRequest_LogBuiltin struct {
 	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,5,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
 }
 
-func (*CreateIndexRequest_Metadata) isCreateIndexRequest_Index() {}
+type CreateIndexRequest_Transaction struct {
+	Transaction *commonpb.TransactionIndex `protobuf:"bytes,6,opt,name=transaction,proto3,oneof"`
+}
 
-func (*CreateIndexRequest_Builtin) isCreateIndexRequest_Index() {}
+type CreateIndexRequest_Account struct {
+	Account *commonpb.AccountIndex `protobuf:"bytes,7,opt,name=account,proto3,oneof"`
+}
 
 func (*CreateIndexRequest_LogBuiltin) isCreateIndexRequest_Index() {}
+
+func (*CreateIndexRequest_Transaction) isCreateIndexRequest_Index() {}
+
+func (*CreateIndexRequest_Account) isCreateIndexRequest_Index() {}
 
 // DropIndexRequest requests the removal of an index from a ledger.
 type DropIndexRequest struct {
@@ -2342,9 +2342,9 @@ type DropIndexRequest struct {
 	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	// Types that are valid to be assigned to Index:
 	//
-	//	*DropIndexRequest_Metadata
-	//	*DropIndexRequest_Builtin
 	//	*DropIndexRequest_LogBuiltin
+	//	*DropIndexRequest_Transaction
+	//	*DropIndexRequest_Account
 	Index         isDropIndexRequest_Index `protobuf_oneof:"index"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2394,24 +2394,6 @@ func (x *DropIndexRequest) GetIndex() isDropIndexRequest_Index {
 	return nil
 }
 
-func (x *DropIndexRequest) GetMetadata() *commonpb.MetadataIndexTarget {
-	if x != nil {
-		if x, ok := x.Index.(*DropIndexRequest_Metadata); ok {
-			return x.Metadata
-		}
-	}
-	return nil
-}
-
-func (x *DropIndexRequest) GetBuiltin() commonpb.TransactionBuiltinIndex {
-	if x != nil {
-		if x, ok := x.Index.(*DropIndexRequest_Builtin); ok {
-			return x.Builtin
-		}
-	}
-	return commonpb.TransactionBuiltinIndex(0)
-}
-
 func (x *DropIndexRequest) GetLogBuiltin() commonpb.LogBuiltinIndex {
 	if x != nil {
 		if x, ok := x.Index.(*DropIndexRequest_LogBuiltin); ok {
@@ -2421,27 +2403,45 @@ func (x *DropIndexRequest) GetLogBuiltin() commonpb.LogBuiltinIndex {
 	return commonpb.LogBuiltinIndex(0)
 }
 
+func (x *DropIndexRequest) GetTransaction() *commonpb.TransactionIndex {
+	if x != nil {
+		if x, ok := x.Index.(*DropIndexRequest_Transaction); ok {
+			return x.Transaction
+		}
+	}
+	return nil
+}
+
+func (x *DropIndexRequest) GetAccount() *commonpb.AccountIndex {
+	if x != nil {
+		if x, ok := x.Index.(*DropIndexRequest_Account); ok {
+			return x.Account
+		}
+	}
+	return nil
+}
+
 type isDropIndexRequest_Index interface {
 	isDropIndexRequest_Index()
-}
-
-type DropIndexRequest_Metadata struct {
-	Metadata *commonpb.MetadataIndexTarget `protobuf:"bytes,3,opt,name=metadata,proto3,oneof"`
-}
-
-type DropIndexRequest_Builtin struct {
-	Builtin commonpb.TransactionBuiltinIndex `protobuf:"varint,4,opt,name=builtin,proto3,enum=common.TransactionBuiltinIndex,oneof"`
 }
 
 type DropIndexRequest_LogBuiltin struct {
 	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,5,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
 }
 
-func (*DropIndexRequest_Metadata) isDropIndexRequest_Index() {}
+type DropIndexRequest_Transaction struct {
+	Transaction *commonpb.TransactionIndex `protobuf:"bytes,6,opt,name=transaction,proto3,oneof"`
+}
 
-func (*DropIndexRequest_Builtin) isDropIndexRequest_Index() {}
+type DropIndexRequest_Account struct {
+	Account *commonpb.AccountIndex `protobuf:"bytes,7,opt,name=account,proto3,oneof"`
+}
 
 func (*DropIndexRequest_LogBuiltin) isDropIndexRequest_Index() {}
+
+func (*DropIndexRequest_Transaction) isDropIndexRequest_Index() {}
+
+func (*DropIndexRequest_Account) isDropIndexRequest_Index() {}
 
 // SaveNumscriptRequest saves a numscript to the library.
 // version must be a valid semver string (e.g. "1.0.0") or "latest" to overwrite the most recent version.
@@ -6865,9 +6865,9 @@ type IndexBackfillProgress struct {
 	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	// Types that are valid to be assigned to Index:
 	//
-	//	*IndexBackfillProgress_Metadata
-	//	*IndexBackfillProgress_Builtin
 	//	*IndexBackfillProgress_LogBuiltin
+	//	*IndexBackfillProgress_Transaction
+	//	*IndexBackfillProgress_Account
 	Index         isIndexBackfillProgress_Index `protobuf_oneof:"index"`
 	Cursor        uint64                        `protobuf:"varint,4,opt,name=cursor,proto3" json:"cursor,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -6918,24 +6918,6 @@ func (x *IndexBackfillProgress) GetIndex() isIndexBackfillProgress_Index {
 	return nil
 }
 
-func (x *IndexBackfillProgress) GetMetadata() *commonpb.MetadataIndexTarget {
-	if x != nil {
-		if x, ok := x.Index.(*IndexBackfillProgress_Metadata); ok {
-			return x.Metadata
-		}
-	}
-	return nil
-}
-
-func (x *IndexBackfillProgress) GetBuiltin() commonpb.TransactionBuiltinIndex {
-	if x != nil {
-		if x, ok := x.Index.(*IndexBackfillProgress_Builtin); ok {
-			return x.Builtin
-		}
-	}
-	return commonpb.TransactionBuiltinIndex(0)
-}
-
 func (x *IndexBackfillProgress) GetLogBuiltin() commonpb.LogBuiltinIndex {
 	if x != nil {
 		if x, ok := x.Index.(*IndexBackfillProgress_LogBuiltin); ok {
@@ -6943,6 +6925,24 @@ func (x *IndexBackfillProgress) GetLogBuiltin() commonpb.LogBuiltinIndex {
 		}
 	}
 	return commonpb.LogBuiltinIndex(0)
+}
+
+func (x *IndexBackfillProgress) GetTransaction() *commonpb.TransactionIndex {
+	if x != nil {
+		if x, ok := x.Index.(*IndexBackfillProgress_Transaction); ok {
+			return x.Transaction
+		}
+	}
+	return nil
+}
+
+func (x *IndexBackfillProgress) GetAccount() *commonpb.AccountIndex {
+	if x != nil {
+		if x, ok := x.Index.(*IndexBackfillProgress_Account); ok {
+			return x.Account
+		}
+	}
+	return nil
 }
 
 func (x *IndexBackfillProgress) GetCursor() uint64 {
@@ -6956,23 +6956,23 @@ type isIndexBackfillProgress_Index interface {
 	isIndexBackfillProgress_Index()
 }
 
-type IndexBackfillProgress_Metadata struct {
-	Metadata *commonpb.MetadataIndexTarget `protobuf:"bytes,3,opt,name=metadata,proto3,oneof"`
-}
-
-type IndexBackfillProgress_Builtin struct {
-	Builtin commonpb.TransactionBuiltinIndex `protobuf:"varint,5,opt,name=builtin,proto3,enum=common.TransactionBuiltinIndex,oneof"`
-}
-
 type IndexBackfillProgress_LogBuiltin struct {
 	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,6,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
 }
 
-func (*IndexBackfillProgress_Metadata) isIndexBackfillProgress_Index() {}
+type IndexBackfillProgress_Transaction struct {
+	Transaction *commonpb.TransactionIndex `protobuf:"bytes,7,opt,name=transaction,proto3,oneof"`
+}
 
-func (*IndexBackfillProgress_Builtin) isIndexBackfillProgress_Index() {}
+type IndexBackfillProgress_Account struct {
+	Account *commonpb.AccountIndex `protobuf:"bytes,8,opt,name=account,proto3,oneof"`
+}
 
 func (*IndexBackfillProgress_LogBuiltin) isIndexBackfillProgress_Index() {}
+
+func (*IndexBackfillProgress_Transaction) isIndexBackfillProgress_Index() {}
+
+func (*IndexBackfillProgress_Account) isIndexBackfillProgress_Index() {}
 
 type GetLedgerStatsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -7321,21 +7321,21 @@ const file_bucket_proto_rawDesc = "" +
 	"targetType\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\tR\x03key\"1\n" +
 	"\x15SetAuditConfigRequest\x12\x18\n" +
-	"\aenabled\x18\x01 \x01(\bR\aenabled\"\xef\x01\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\"\xf3\x01\n" +
 	"\x12CreateIndexRequest\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x129\n" +
-	"\bmetadata\x18\x03 \x01(\v2\x1b.common.MetadataIndexTargetH\x00R\bmetadata\x12;\n" +
-	"\abuiltin\x18\x04 \x01(\x0e2\x1f.common.TransactionBuiltinIndexH\x00R\abuiltin\x12:\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12:\n" +
 	"\vlog_builtin\x18\x05 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
-	"logBuiltinB\a\n" +
-	"\x05indexJ\x04\b\x02\x10\x03\"\xed\x01\n" +
+	"logBuiltin\x12<\n" +
+	"\vtransaction\x18\x06 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
+	"\aaccount\x18\a \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
+	"\x05indexJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05\"\xf1\x01\n" +
 	"\x10DropIndexRequest\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x129\n" +
-	"\bmetadata\x18\x03 \x01(\v2\x1b.common.MetadataIndexTargetH\x00R\bmetadata\x12;\n" +
-	"\abuiltin\x18\x04 \x01(\x0e2\x1f.common.TransactionBuiltinIndexH\x00R\abuiltin\x12:\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12:\n" +
 	"\vlog_builtin\x18\x05 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
-	"logBuiltinB\a\n" +
-	"\x05indexJ\x04\b\x02\x10\x03\"^\n" +
+	"logBuiltin\x12<\n" +
+	"\vtransaction\x18\x06 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
+	"\aaccount\x18\a \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
+	"\x05indexJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05\"^\n" +
 	"\x14SaveNumscriptRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x18\n" +
@@ -7668,15 +7668,15 @@ const file_bucket_proto_rawDesc = "" +
 	"\x11last_log_sequence\x18\x02 \x01(\x04R\x0flastLogSequence\x12\x10\n" +
 	"\x03lag\x18\x03 \x01(\x04R\x03lag\x12&\n" +
 	"\x0findex_file_size\x18\x04 \x01(\x04R\rindexFileSize\x12J\n" +
-	"\x11backfill_progress\x18\x05 \x03(\v2\x1d.ledger.IndexBackfillProgressR\x10backfillProgress\"\x8a\x02\n" +
+	"\x11backfill_progress\x18\x05 \x03(\v2\x1d.ledger.IndexBackfillProgressR\x10backfillProgress\"\x8e\x02\n" +
 	"\x15IndexBackfillProgress\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x129\n" +
-	"\bmetadata\x18\x03 \x01(\v2\x1b.common.MetadataIndexTargetH\x00R\bmetadata\x12;\n" +
-	"\abuiltin\x18\x05 \x01(\x0e2\x1f.common.TransactionBuiltinIndexH\x00R\abuiltin\x12:\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12:\n" +
 	"\vlog_builtin\x18\x06 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
-	"logBuiltin\x12\x16\n" +
+	"logBuiltin\x12<\n" +
+	"\vtransaction\x18\a \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
+	"\aaccount\x18\b \x01(\v2\x14.common.AccountIndexH\x00R\aaccount\x12\x16\n" +
 	"\x06cursor\x18\x04 \x01(\x04R\x06cursorB\a\n" +
-	"\x05indexJ\x04\b\x02\x10\x03\"/\n" +
+	"\x05indexJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x05\x10\x06\"/\n" +
 	"\x15GetLedgerStatsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\xde\x02\n" +
 	"\fQueryProfile\x12*\n" +
@@ -7888,9 +7888,9 @@ var file_bucket_proto_goTypes = []any{
 	(*commonpb.SinkConfig)(nil),                  // 123: common.SinkConfig
 	(commonpb.TargetType)(0),                     // 124: common.TargetType
 	(commonpb.MetadataType)(0),                   // 125: common.MetadataType
-	(*commonpb.MetadataIndexTarget)(nil),         // 126: common.MetadataIndexTarget
-	(commonpb.TransactionBuiltinIndex)(0),        // 127: common.TransactionBuiltinIndex
-	(commonpb.LogBuiltinIndex)(0),                // 128: common.LogBuiltinIndex
+	(commonpb.LogBuiltinIndex)(0),                // 126: common.LogBuiltinIndex
+	(*commonpb.TransactionIndex)(nil),            // 127: common.TransactionIndex
+	(*commonpb.AccountIndex)(nil),                // 128: common.AccountIndex
 	(*commonpb.Posting)(nil),                     // 129: common.Posting
 	(*commonpb.Script)(nil),                      // 130: common.Script
 	(*commonpb.Timestamp)(nil),                   // 131: common.Timestamp
@@ -7955,12 +7955,12 @@ var file_bucket_proto_depIdxs = []int32{
 	124, // 40: ledger.SetMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
 	125, // 41: ledger.SetMetadataFieldTypeRequest.type:type_name -> common.MetadataType
 	124, // 42: ledger.RemoveMetadataFieldTypeRequest.target_type:type_name -> common.TargetType
-	126, // 43: ledger.CreateIndexRequest.metadata:type_name -> common.MetadataIndexTarget
-	127, // 44: ledger.CreateIndexRequest.builtin:type_name -> common.TransactionBuiltinIndex
-	128, // 45: ledger.CreateIndexRequest.log_builtin:type_name -> common.LogBuiltinIndex
-	126, // 46: ledger.DropIndexRequest.metadata:type_name -> common.MetadataIndexTarget
-	127, // 47: ledger.DropIndexRequest.builtin:type_name -> common.TransactionBuiltinIndex
-	128, // 48: ledger.DropIndexRequest.log_builtin:type_name -> common.LogBuiltinIndex
+	126, // 43: ledger.CreateIndexRequest.log_builtin:type_name -> common.LogBuiltinIndex
+	127, // 44: ledger.CreateIndexRequest.transaction:type_name -> common.TransactionIndex
+	128, // 45: ledger.CreateIndexRequest.account:type_name -> common.AccountIndex
+	126, // 46: ledger.DropIndexRequest.log_builtin:type_name -> common.LogBuiltinIndex
+	127, // 47: ledger.DropIndexRequest.transaction:type_name -> common.TransactionIndex
+	128, // 48: ledger.DropIndexRequest.account:type_name -> common.AccountIndex
 	109, // 49: ledger.ScriptReference.vars:type_name -> ledger.ScriptReference.VarsEntry
 	45,  // 50: ledger.DiscoveryResponse.response_signing:type_name -> ledger.ResponseSigningInfo
 	129, // 51: ledger.CreateTransactionPayload.postings:type_name -> common.Posting
@@ -8025,9 +8025,9 @@ var file_bucket_proto_depIdxs = []int32{
 	139, // 110: ledger.ExecutePreparedQueryResponse.cursor:type_name -> common.PreparedQueryCursor
 	140, // 111: ledger.ExecutePreparedQueryResponse.aggregate:type_name -> common.AggregateResult
 	105, // 112: ledger.GetIndexStatusResponse.backfill_progress:type_name -> ledger.IndexBackfillProgress
-	126, // 113: ledger.IndexBackfillProgress.metadata:type_name -> common.MetadataIndexTarget
-	127, // 114: ledger.IndexBackfillProgress.builtin:type_name -> common.TransactionBuiltinIndex
-	128, // 115: ledger.IndexBackfillProgress.log_builtin:type_name -> common.LogBuiltinIndex
+	126, // 113: ledger.IndexBackfillProgress.log_builtin:type_name -> common.LogBuiltinIndex
+	127, // 114: ledger.IndexBackfillProgress.transaction:type_name -> common.TransactionIndex
+	128, // 115: ledger.IndexBackfillProgress.account:type_name -> common.AccountIndex
 	108, // 116: ledger.QueryProfile.root_iterator:type_name -> ledger.IteratorProfile
 	108, // 117: ledger.IteratorProfile.children:type_name -> ledger.IteratorProfile
 	132, // 118: ledger.CreateTransactionPayload.AccountMetadataEntry.value:type_name -> common.MetadataSet
@@ -8136,14 +8136,14 @@ func file_bucket_proto_init() {
 		(*Request_SetChartEnforcementMode)(nil),
 	}
 	file_bucket_proto_msgTypes[31].OneofWrappers = []any{
-		(*CreateIndexRequest_Metadata)(nil),
-		(*CreateIndexRequest_Builtin)(nil),
 		(*CreateIndexRequest_LogBuiltin)(nil),
+		(*CreateIndexRequest_Transaction)(nil),
+		(*CreateIndexRequest_Account)(nil),
 	}
 	file_bucket_proto_msgTypes[32].OneofWrappers = []any{
-		(*DropIndexRequest_Metadata)(nil),
-		(*DropIndexRequest_Builtin)(nil),
 		(*DropIndexRequest_LogBuiltin)(nil),
+		(*DropIndexRequest_Transaction)(nil),
+		(*DropIndexRequest_Account)(nil),
 	}
 	file_bucket_proto_msgTypes[45].OneofWrappers = []any{
 		(*LedgerApplyRequest_CreateTransaction)(nil),
@@ -8172,9 +8172,9 @@ func file_bucket_proto_init() {
 		(*ExecutePreparedQueryResponse_Aggregate)(nil),
 	}
 	file_bucket_proto_msgTypes[102].OneofWrappers = []any{
-		(*IndexBackfillProgress_Metadata)(nil),
-		(*IndexBackfillProgress_Builtin)(nil),
 		(*IndexBackfillProgress_LogBuiltin)(nil),
+		(*IndexBackfillProgress_Transaction)(nil),
+		(*IndexBackfillProgress_Account)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

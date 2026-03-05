@@ -294,22 +294,22 @@ message SetAuditConfigRequest {
 // CreateIndexRequest requests the creation of an index on a ledger.
 message CreateIndexRequest {
   string ledger = 1;
-  reserved 2;  // Was: AddressRole address_role (now uses builtin with TX_BUILTIN_INDEX_ADDRESS/SOURCE_ADDRESS/DEST_ADDRESS)
+  reserved 2, 3, 4;  // Was: address_role, metadata, builtin
   oneof index {
-    common.MetadataIndexTarget metadata = 3;
-    common.TransactionBuiltinIndex builtin = 4;
     common.LogBuiltinIndex log_builtin = 5;
+    common.TransactionIndex transaction = 6;
+    common.AccountIndex account = 7;
   }
 }
 
 // DropIndexRequest requests the removal of an index from a ledger.
 message DropIndexRequest {
   string ledger = 1;
-  reserved 2;  // Was: AddressRole address_role
+  reserved 2, 3, 4;  // Was: address_role, metadata, builtin
   oneof index {
-    common.MetadataIndexTarget metadata = 3;
-    common.TransactionBuiltinIndex builtin = 4;
     common.LogBuiltinIndex log_builtin = 5;
+    common.TransactionIndex transaction = 6;
+    common.AccountIndex account = 7;
   }
 }
 
@@ -843,11 +843,11 @@ message GetIndexStatusResponse {
 // IndexBackfillProgress reports per-index backfill cursor position.
 message IndexBackfillProgress {
   string ledger = 1;
-  reserved 2;  // Was: AddressRole address_role
+  reserved 2, 3, 5;  // Was: address_role, metadata, builtin
   oneof index {
-    common.MetadataIndexTarget metadata = 3;
-    common.TransactionBuiltinIndex builtin = 5;
     common.LogBuiltinIndex log_builtin = 6;
+    common.TransactionIndex transaction = 7;
+    common.AccountIndex account = 8;
   }
   uint64 cursor = 4;
 }

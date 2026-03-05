@@ -173,7 +173,9 @@ func hasBuildingIndexes(ledger *commonpb.LedgerInfo) bool {
 }
 
 // buildProgressMap creates a lookup map from backfill progress entries.
-// Keys use the format "b:<builtin_int>" for builtin/address indexes or "m:<target_int>:<key>" for metadata.
+// Keys use the format "b:<builtin_int>" for transaction builtin indexes,
+// "tm:<key>" for transaction metadata, "am:<key>" for account metadata,
+// or "l:<builtin_int>" for log builtin indexes.
 func buildProgressMap(ledgerName string, entries []*servicepb.IndexBackfillProgress) map[string]uint64 {
 	m := make(map[string]uint64, len(entries))
 	for _, e := range entries {
@@ -181,10 +183,20 @@ func buildProgressMap(ledgerName string, entries []*servicepb.IndexBackfillProgr
 			continue
 		}
 		switch idx := e.Index.(type) {
-		case *servicepb.IndexBackfillProgress_Metadata:
-			m[fmt.Sprintf("m:%d:%s", idx.Metadata.Target, idx.Metadata.Key)] = e.Cursor
-		case *servicepb.IndexBackfillProgress_Builtin:
-			m[fmt.Sprintf("b:%d", idx.Builtin)] = e.Cursor
+		case *servicepb.IndexBackfillProgress_Transaction:
+			switch txIdx := idx.Transaction.Kind.(type) {
+			case *commonpb.TransactionIndex_Builtin:
+				m[fmt.Sprintf("b:%d", txIdx.Builtin)] = e.Cursor
+			case *commonpb.TransactionIndex_MetadataKey:
+				m[fmt.Sprintf("tm:%s", txIdx.MetadataKey)] = e.Cursor
+			}
+		case *servicepb.IndexBackfillProgress_Account:
+			switch acctIdx := idx.Account.Kind.(type) {
+			case *commonpb.AccountIndex_Builtin:
+				m[fmt.Sprintf("ab:%d", acctIdx.Builtin)] = e.Cursor
+			case *commonpb.AccountIndex_MetadataKey:
+				m[fmt.Sprintf("am:%s", acctIdx.MetadataKey)] = e.Cursor
+			}
 		case *servicepb.IndexBackfillProgress_LogBuiltin:
 			m[fmt.Sprintf("l:%d", idx.LogBuiltin)] = e.Cursor
 		}
@@ -220,8 +232,16 @@ func addMetadataIndexRowsWithProgress(table *pterm.TableData, targetName string,
 	}
 	sort.Strings(keys)
 
+	var progressPrefix string
+	switch targetType {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		progressPrefix = "am:"
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		progressPrefix = "tm:"
+	}
+
 	for _, key := range keys {
-		progressKey := fmt.Sprintf("m:%d:%s", targetType, key)
+		progressKey := progressPrefix + key
 		*table = append(*table, []string{
 			"metadata",
 			targetName,

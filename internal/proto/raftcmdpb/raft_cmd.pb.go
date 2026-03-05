@@ -2369,9 +2369,9 @@ type CreateIndexOrder struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Index:
 	//
-	//	*CreateIndexOrder_Metadata
-	//	*CreateIndexOrder_Builtin
 	//	*CreateIndexOrder_LogBuiltin
+	//	*CreateIndexOrder_Transaction
+	//	*CreateIndexOrder_Account
 	Index         isCreateIndexOrder_Index `protobuf_oneof:"index"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2414,24 +2414,6 @@ func (x *CreateIndexOrder) GetIndex() isCreateIndexOrder_Index {
 	return nil
 }
 
-func (x *CreateIndexOrder) GetMetadata() *commonpb.MetadataIndexTarget {
-	if x != nil {
-		if x, ok := x.Index.(*CreateIndexOrder_Metadata); ok {
-			return x.Metadata
-		}
-	}
-	return nil
-}
-
-func (x *CreateIndexOrder) GetBuiltin() commonpb.TransactionBuiltinIndex {
-	if x != nil {
-		if x, ok := x.Index.(*CreateIndexOrder_Builtin); ok {
-			return x.Builtin
-		}
-	}
-	return commonpb.TransactionBuiltinIndex(0)
-}
-
 func (x *CreateIndexOrder) GetLogBuiltin() commonpb.LogBuiltinIndex {
 	if x != nil {
 		if x, ok := x.Index.(*CreateIndexOrder_LogBuiltin); ok {
@@ -2441,36 +2423,54 @@ func (x *CreateIndexOrder) GetLogBuiltin() commonpb.LogBuiltinIndex {
 	return commonpb.LogBuiltinIndex(0)
 }
 
+func (x *CreateIndexOrder) GetTransaction() *commonpb.TransactionIndex {
+	if x != nil {
+		if x, ok := x.Index.(*CreateIndexOrder_Transaction); ok {
+			return x.Transaction
+		}
+	}
+	return nil
+}
+
+func (x *CreateIndexOrder) GetAccount() *commonpb.AccountIndex {
+	if x != nil {
+		if x, ok := x.Index.(*CreateIndexOrder_Account); ok {
+			return x.Account
+		}
+	}
+	return nil
+}
+
 type isCreateIndexOrder_Index interface {
 	isCreateIndexOrder_Index()
-}
-
-type CreateIndexOrder_Metadata struct {
-	Metadata *commonpb.MetadataIndexTarget `protobuf:"bytes,2,opt,name=metadata,proto3,oneof"`
-}
-
-type CreateIndexOrder_Builtin struct {
-	Builtin commonpb.TransactionBuiltinIndex `protobuf:"varint,3,opt,name=builtin,proto3,enum=common.TransactionBuiltinIndex,oneof"`
 }
 
 type CreateIndexOrder_LogBuiltin struct {
 	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,4,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
 }
 
-func (*CreateIndexOrder_Metadata) isCreateIndexOrder_Index() {}
+type CreateIndexOrder_Transaction struct {
+	Transaction *commonpb.TransactionIndex `protobuf:"bytes,5,opt,name=transaction,proto3,oneof"`
+}
 
-func (*CreateIndexOrder_Builtin) isCreateIndexOrder_Index() {}
+type CreateIndexOrder_Account struct {
+	Account *commonpb.AccountIndex `protobuf:"bytes,6,opt,name=account,proto3,oneof"`
+}
 
 func (*CreateIndexOrder_LogBuiltin) isCreateIndexOrder_Index() {}
+
+func (*CreateIndexOrder_Transaction) isCreateIndexOrder_Index() {}
+
+func (*CreateIndexOrder_Account) isCreateIndexOrder_Index() {}
 
 // DropIndexOrder requests the removal of an index.
 type DropIndexOrder struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Index:
 	//
-	//	*DropIndexOrder_Metadata
-	//	*DropIndexOrder_Builtin
 	//	*DropIndexOrder_LogBuiltin
+	//	*DropIndexOrder_Transaction
+	//	*DropIndexOrder_Account
 	Index         isDropIndexOrder_Index `protobuf_oneof:"index"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2513,24 +2513,6 @@ func (x *DropIndexOrder) GetIndex() isDropIndexOrder_Index {
 	return nil
 }
 
-func (x *DropIndexOrder) GetMetadata() *commonpb.MetadataIndexTarget {
-	if x != nil {
-		if x, ok := x.Index.(*DropIndexOrder_Metadata); ok {
-			return x.Metadata
-		}
-	}
-	return nil
-}
-
-func (x *DropIndexOrder) GetBuiltin() commonpb.TransactionBuiltinIndex {
-	if x != nil {
-		if x, ok := x.Index.(*DropIndexOrder_Builtin); ok {
-			return x.Builtin
-		}
-	}
-	return commonpb.TransactionBuiltinIndex(0)
-}
-
 func (x *DropIndexOrder) GetLogBuiltin() commonpb.LogBuiltinIndex {
 	if x != nil {
 		if x, ok := x.Index.(*DropIndexOrder_LogBuiltin); ok {
@@ -2540,36 +2522,54 @@ func (x *DropIndexOrder) GetLogBuiltin() commonpb.LogBuiltinIndex {
 	return commonpb.LogBuiltinIndex(0)
 }
 
+func (x *DropIndexOrder) GetTransaction() *commonpb.TransactionIndex {
+	if x != nil {
+		if x, ok := x.Index.(*DropIndexOrder_Transaction); ok {
+			return x.Transaction
+		}
+	}
+	return nil
+}
+
+func (x *DropIndexOrder) GetAccount() *commonpb.AccountIndex {
+	if x != nil {
+		if x, ok := x.Index.(*DropIndexOrder_Account); ok {
+			return x.Account
+		}
+	}
+	return nil
+}
+
 type isDropIndexOrder_Index interface {
 	isDropIndexOrder_Index()
-}
-
-type DropIndexOrder_Metadata struct {
-	Metadata *commonpb.MetadataIndexTarget `protobuf:"bytes,2,opt,name=metadata,proto3,oneof"`
-}
-
-type DropIndexOrder_Builtin struct {
-	Builtin commonpb.TransactionBuiltinIndex `protobuf:"varint,3,opt,name=builtin,proto3,enum=common.TransactionBuiltinIndex,oneof"`
 }
 
 type DropIndexOrder_LogBuiltin struct {
 	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,4,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
 }
 
-func (*DropIndexOrder_Metadata) isDropIndexOrder_Index() {}
+type DropIndexOrder_Transaction struct {
+	Transaction *commonpb.TransactionIndex `protobuf:"bytes,5,opt,name=transaction,proto3,oneof"`
+}
 
-func (*DropIndexOrder_Builtin) isDropIndexOrder_Index() {}
+type DropIndexOrder_Account struct {
+	Account *commonpb.AccountIndex `protobuf:"bytes,6,opt,name=account,proto3,oneof"`
+}
 
 func (*DropIndexOrder_LogBuiltin) isDropIndexOrder_Index() {}
+
+func (*DropIndexOrder_Transaction) isDropIndexOrder_Index() {}
+
+func (*DropIndexOrder_Account) isDropIndexOrder_Index() {}
 
 // IndexReadyOrder signals that an index has finished building.
 type IndexReadyOrder struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Index:
 	//
-	//	*IndexReadyOrder_Metadata
-	//	*IndexReadyOrder_Builtin
 	//	*IndexReadyOrder_LogBuiltin
+	//	*IndexReadyOrder_Transaction
+	//	*IndexReadyOrder_Account
 	Index         isIndexReadyOrder_Index `protobuf_oneof:"index"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2612,24 +2612,6 @@ func (x *IndexReadyOrder) GetIndex() isIndexReadyOrder_Index {
 	return nil
 }
 
-func (x *IndexReadyOrder) GetMetadata() *commonpb.MetadataIndexTarget {
-	if x != nil {
-		if x, ok := x.Index.(*IndexReadyOrder_Metadata); ok {
-			return x.Metadata
-		}
-	}
-	return nil
-}
-
-func (x *IndexReadyOrder) GetBuiltin() commonpb.TransactionBuiltinIndex {
-	if x != nil {
-		if x, ok := x.Index.(*IndexReadyOrder_Builtin); ok {
-			return x.Builtin
-		}
-	}
-	return commonpb.TransactionBuiltinIndex(0)
-}
-
 func (x *IndexReadyOrder) GetLogBuiltin() commonpb.LogBuiltinIndex {
 	if x != nil {
 		if x, ok := x.Index.(*IndexReadyOrder_LogBuiltin); ok {
@@ -2639,27 +2621,45 @@ func (x *IndexReadyOrder) GetLogBuiltin() commonpb.LogBuiltinIndex {
 	return commonpb.LogBuiltinIndex(0)
 }
 
+func (x *IndexReadyOrder) GetTransaction() *commonpb.TransactionIndex {
+	if x != nil {
+		if x, ok := x.Index.(*IndexReadyOrder_Transaction); ok {
+			return x.Transaction
+		}
+	}
+	return nil
+}
+
+func (x *IndexReadyOrder) GetAccount() *commonpb.AccountIndex {
+	if x != nil {
+		if x, ok := x.Index.(*IndexReadyOrder_Account); ok {
+			return x.Account
+		}
+	}
+	return nil
+}
+
 type isIndexReadyOrder_Index interface {
 	isIndexReadyOrder_Index()
-}
-
-type IndexReadyOrder_Metadata struct {
-	Metadata *commonpb.MetadataIndexTarget `protobuf:"bytes,2,opt,name=metadata,proto3,oneof"`
-}
-
-type IndexReadyOrder_Builtin struct {
-	Builtin commonpb.TransactionBuiltinIndex `protobuf:"varint,3,opt,name=builtin,proto3,enum=common.TransactionBuiltinIndex,oneof"`
 }
 
 type IndexReadyOrder_LogBuiltin struct {
 	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,4,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
 }
 
-func (*IndexReadyOrder_Metadata) isIndexReadyOrder_Index() {}
+type IndexReadyOrder_Transaction struct {
+	Transaction *commonpb.TransactionIndex `protobuf:"bytes,5,opt,name=transaction,proto3,oneof"`
+}
 
-func (*IndexReadyOrder_Builtin) isIndexReadyOrder_Index() {}
+type IndexReadyOrder_Account struct {
+	Account *commonpb.AccountIndex `protobuf:"bytes,6,opt,name=account,proto3,oneof"`
+}
 
 func (*IndexReadyOrder_LogBuiltin) isIndexReadyOrder_Index() {}
+
+func (*IndexReadyOrder_Transaction) isIndexReadyOrder_Index() {}
+
+func (*IndexReadyOrder_Account) isIndexReadyOrder_Index() {}
 
 type SetChartOfAccountsOrder struct {
 	state           protoimpl.MessageState    `protogen:"open.v1"`
@@ -5615,25 +5615,25 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"indexReady\x12R\n" +
 	"\x15set_chart_of_accounts\x18\r \x01(\v2\x1d.raft.SetChartOfAccountsOrderH\x00R\x12setChartOfAccounts\x12a\n" +
 	"\x1aset_chart_enforcement_mode\x18\x0e \x01(\v2\".raft.SetChartEnforcementModeOrderH\x00R\x17setChartEnforcementModeB\x06\n" +
-	"\x04data\"\xd5\x01\n" +
-	"\x10CreateIndexOrder\x129\n" +
-	"\bmetadata\x18\x02 \x01(\v2\x1b.common.MetadataIndexTargetH\x00R\bmetadata\x12;\n" +
-	"\abuiltin\x18\x03 \x01(\x0e2\x1f.common.TransactionBuiltinIndexH\x00R\abuiltin\x12:\n" +
+	"\x04data\"\xd9\x01\n" +
+	"\x10CreateIndexOrder\x12:\n" +
 	"\vlog_builtin\x18\x04 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
-	"logBuiltinB\a\n" +
-	"\x05indexJ\x04\b\x01\x10\x02\"\xd3\x01\n" +
-	"\x0eDropIndexOrder\x129\n" +
-	"\bmetadata\x18\x02 \x01(\v2\x1b.common.MetadataIndexTargetH\x00R\bmetadata\x12;\n" +
-	"\abuiltin\x18\x03 \x01(\x0e2\x1f.common.TransactionBuiltinIndexH\x00R\abuiltin\x12:\n" +
+	"logBuiltin\x12<\n" +
+	"\vtransaction\x18\x05 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
+	"\aaccount\x18\x06 \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
+	"\x05indexJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04\"\xd7\x01\n" +
+	"\x0eDropIndexOrder\x12:\n" +
 	"\vlog_builtin\x18\x04 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
-	"logBuiltinB\a\n" +
-	"\x05indexJ\x04\b\x01\x10\x02\"\xd4\x01\n" +
-	"\x0fIndexReadyOrder\x129\n" +
-	"\bmetadata\x18\x02 \x01(\v2\x1b.common.MetadataIndexTargetH\x00R\bmetadata\x12;\n" +
-	"\abuiltin\x18\x03 \x01(\x0e2\x1f.common.TransactionBuiltinIndexH\x00R\abuiltin\x12:\n" +
+	"logBuiltin\x12<\n" +
+	"\vtransaction\x18\x05 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
+	"\aaccount\x18\x06 \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
+	"\x05indexJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04\"\xd8\x01\n" +
+	"\x0fIndexReadyOrder\x12:\n" +
 	"\vlog_builtin\x18\x04 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
-	"logBuiltinB\a\n" +
-	"\x05indexJ\x04\b\x01\x10\x02\"^\n" +
+	"logBuiltin\x12<\n" +
+	"\vtransaction\x18\x05 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
+	"\aaccount\x18\x06 \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
+	"\x05indexJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04\"^\n" +
 	"\x17SetChartOfAccountsOrder\x12C\n" +
 	"\x11chart_of_accounts\x18\x01 \x01(\v2\x17.common.ChartOfAccountsR\x0fchartOfAccounts\"g\n" +
 	"\x1cSetChartEnforcementModeOrder\x12G\n" +
@@ -5975,9 +5975,9 @@ var file_raft_cmd_proto_goTypes = []any{
 	(*commonpb.MetadataSet)(nil),                 // 94: common.MetadataSet
 	(*commonpb.Timestamp)(nil),                   // 95: common.Timestamp
 	(*commonpb.Target)(nil),                      // 96: common.Target
-	(*commonpb.MetadataIndexTarget)(nil),         // 97: common.MetadataIndexTarget
-	(commonpb.TransactionBuiltinIndex)(0),        // 98: common.TransactionBuiltinIndex
-	(commonpb.LogBuiltinIndex)(0),                // 99: common.LogBuiltinIndex
+	(commonpb.LogBuiltinIndex)(0),                // 97: common.LogBuiltinIndex
+	(*commonpb.TransactionIndex)(nil),            // 98: common.TransactionIndex
+	(*commonpb.AccountIndex)(nil),                // 99: common.AccountIndex
 	(commonpb.TargetType)(0),                     // 100: common.TargetType
 	(commonpb.MetadataType)(0),                   // 101: common.MetadataType
 	(*commonpb.MetadataValue)(nil),               // 102: common.MetadataValue
@@ -6054,15 +6054,15 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	34,  // 61: raft.LedgerApplyOrder.index_ready:type_name -> raft.IndexReadyOrder
 	35,  // 62: raft.LedgerApplyOrder.set_chart_of_accounts:type_name -> raft.SetChartOfAccountsOrder
 	36,  // 63: raft.LedgerApplyOrder.set_chart_enforcement_mode:type_name -> raft.SetChartEnforcementModeOrder
-	97,  // 64: raft.CreateIndexOrder.metadata:type_name -> common.MetadataIndexTarget
-	98,  // 65: raft.CreateIndexOrder.builtin:type_name -> common.TransactionBuiltinIndex
-	99,  // 66: raft.CreateIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
-	97,  // 67: raft.DropIndexOrder.metadata:type_name -> common.MetadataIndexTarget
-	98,  // 68: raft.DropIndexOrder.builtin:type_name -> common.TransactionBuiltinIndex
-	99,  // 69: raft.DropIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
-	97,  // 70: raft.IndexReadyOrder.metadata:type_name -> common.MetadataIndexTarget
-	98,  // 71: raft.IndexReadyOrder.builtin:type_name -> common.TransactionBuiltinIndex
-	99,  // 72: raft.IndexReadyOrder.log_builtin:type_name -> common.LogBuiltinIndex
+	97,  // 64: raft.CreateIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
+	98,  // 65: raft.CreateIndexOrder.transaction:type_name -> common.TransactionIndex
+	99,  // 66: raft.CreateIndexOrder.account:type_name -> common.AccountIndex
+	97,  // 67: raft.DropIndexOrder.log_builtin:type_name -> common.LogBuiltinIndex
+	98,  // 68: raft.DropIndexOrder.transaction:type_name -> common.TransactionIndex
+	99,  // 69: raft.DropIndexOrder.account:type_name -> common.AccountIndex
+	97,  // 70: raft.IndexReadyOrder.log_builtin:type_name -> common.LogBuiltinIndex
+	98,  // 71: raft.IndexReadyOrder.transaction:type_name -> common.TransactionIndex
+	99,  // 72: raft.IndexReadyOrder.account:type_name -> common.AccountIndex
 	91,  // 73: raft.SetChartOfAccountsOrder.chart_of_accounts:type_name -> common.ChartOfAccounts
 	92,  // 74: raft.SetChartEnforcementModeOrder.enforcement_mode:type_name -> common.ChartEnforcementMode
 	100, // 75: raft.ConvertMetadataBatchOrder.target_type:type_name -> common.TargetType
@@ -6217,19 +6217,19 @@ func file_raft_cmd_proto_init() {
 		(*LedgerApplyOrder_SetChartEnforcementMode)(nil),
 	}
 	file_raft_cmd_proto_msgTypes[32].OneofWrappers = []any{
-		(*CreateIndexOrder_Metadata)(nil),
-		(*CreateIndexOrder_Builtin)(nil),
 		(*CreateIndexOrder_LogBuiltin)(nil),
+		(*CreateIndexOrder_Transaction)(nil),
+		(*CreateIndexOrder_Account)(nil),
 	}
 	file_raft_cmd_proto_msgTypes[33].OneofWrappers = []any{
-		(*DropIndexOrder_Metadata)(nil),
-		(*DropIndexOrder_Builtin)(nil),
 		(*DropIndexOrder_LogBuiltin)(nil),
+		(*DropIndexOrder_Transaction)(nil),
+		(*DropIndexOrder_Account)(nil),
 	}
 	file_raft_cmd_proto_msgTypes[34].OneofWrappers = []any{
-		(*IndexReadyOrder_Metadata)(nil),
-		(*IndexReadyOrder_Builtin)(nil),
 		(*IndexReadyOrder_LogBuiltin)(nil),
+		(*IndexReadyOrder_Transaction)(nil),
+		(*IndexReadyOrder_Account)(nil),
 	}
 	file_raft_cmd_proto_msgTypes[49].OneofWrappers = []any{
 		(*CreatedLogOrReference_CreatedLog)(nil),
