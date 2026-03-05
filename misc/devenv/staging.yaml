@@ -46,7 +46,7 @@ spec:
     pebble:
       memTableSize: 268435456              # 256 MB (4× current 64 MB)
       memTableStopWritesThreshold: 4       # up to 1 GB buffered before stall
-      l0CompactionThreshold: 64            # keep current — high threshold
+      l0CompactionThreshold: 4            # keep current — high threshold
       l0StopWritesThreshold: 256           # keep current — very permissive
       lBaseMaxBytes: 4294967296            # 4 GB (2× current)
       cacheSize: 4294967296                # 4 GB block cache (was 512 MB)

@@ -561,6 +561,18 @@ func addressRoleBucket(role commonpb.AddressRole) []byte {
 	}
 }
 
+// addressRoleBucketLabel returns the display label for the given address role bucket.
+func addressRoleBucketLabel(role commonpb.AddressRole) string {
+	switch role {
+	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
+		return "satx"
+	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
+		return "datx"
+	default:
+		return "atxm"
+	}
+}
+
 // compileAddressMatch compiles an address filter.
 func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.EntityIterator, error) {
 	role := am.Role
@@ -624,7 +636,7 @@ func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role commonpb.Addr
 	return trackIterator(addrTxIter, ctx.profile, &IteratorStats{
 		Label:    fmt.Sprintf("AddressTxIterator(%s)", ctx.ledger),
 		Kind:     "AddressTx",
-		Bucket:   "atx",
+		Bucket:   addressRoleBucketLabel(role),
 		Children: []*IteratorStats{accountStats},
 	}), nil
 }
@@ -663,7 +675,7 @@ func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.Addres
 	return trackIterator(addrTxIter, ctx.profile, &IteratorStats{
 		Label:    fmt.Sprintf("AddressTxIterator(%s)", ctx.ledger),
 		Kind:     "AddressTx",
-		Bucket:   "atx",
+		Bucket:   addressRoleBucketLabel(role),
 		Children: []*IteratorStats{singleStats},
 	}), nil
 }
