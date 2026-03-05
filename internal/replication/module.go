@@ -97,10 +97,25 @@ func NewFXGlobalExporterModule(driverName string,
 	runnerConfig GlobalExporterRunnerConfig) fx.Option {
 	return fx.Options(
 		fx.Provide(func(registry *drivers.Registry, logger logging.Logger, store *systemstore.DefaultStore, storageDriver *storagedriver.Driver) (*GlobalExporterRunner, error) {
-			d, err := registry.CreateFromConfig(driverName, driverConfig)
+			rawDriver, err := registry.CreateFromConfig(driverName, driverConfig)
 			if err != nil {
 				return nil, fmt.Errorf("creating global log exporter driver %q: %w", driverName, err)
 			}
+
+			// Apply the same batching wrapper used by per-ledger pipelines.
+			type batchingHolder struct {
+				Batching drivers.Batching `json:"batching"`
+			}
+			var bh batchingHolder
+			if err := json.Unmarshal(driverConfig, &bh); err != nil {
+				return nil, fmt.Errorf("extracting batching config for global exporter: %w", err)
+			}
+			bh.Batching.SetDefaults()
+			if err := bh.Batching.Validate(); err != nil {
+				return nil, fmt.Errorf("validating batching config for global exporter: %w", err)
+			}
+			d := drivers.NewBatcher(rawDriver, bh.Batching, logger)
+
 			return NewGlobalExporterRunner(
 				store,
 				d,
