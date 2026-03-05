@@ -1440,6 +1440,58 @@ spec:
                   whose values are used as defaults for this LedgerService. LedgerService-level values
                   take precedence over defaults.
                 type: string
+              dnsEndpoint:
+                description: DNSEndpoint configuration for ExternalDNS.
+                properties:
+                  enabled:
+                    description: Enabled enables the DNSEndpoint resource.
+                    type: boolean
+                  endpoints:
+                    description: Endpoints is the list of DNS endpoint entries.
+                    items:
+                      description: DNSEndpointEntry defines a single DNS endpoint.
+                      properties:
+                        dnsName:
+                          description: DNSName is the hostname for the DNS record.
+                          type: string
+                        providerSpecific:
+                          description: ProviderSpecific holds provider-specific properties.
+                          items:
+                            description: ProviderSpecificProperty defines a provider-specific
+                              key-value pair.
+                            properties:
+                              name:
+                                description: Name is the property name.
+                                type: string
+                              value:
+                                description: Value is the property value.
+                                type: string
+                            required:
+                            - name
+                            - value
+                            type: object
+                          type: array
+                        recordTTL:
+                          description: RecordTTL is the TTL in seconds for the DNS
+                            record.
+                          format: int64
+                          type: integer
+                        recordType:
+                          description: RecordType is the DNS record type (e.g., CNAME,
+                            A). Defaults to CNAME.
+                          type: string
+                        targets:
+                          description: Targets is the list of target hostnames or
+                            IPs.
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - dnsName
+                      - targets
+                      type: object
+                    type: array
+                type: object
               headlessService:
                 description: HeadlessService configuration for Raft peer discovery.
                 properties:

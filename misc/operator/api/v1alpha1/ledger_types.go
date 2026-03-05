@@ -125,6 +125,10 @@ type LedgerServiceSpec struct {
 	// NetworkPolicy configuration for egress restrictions.
 	// +optional
 	NetworkPolicy *NetworkPolicySpec `json:"networkPolicy,omitempty"`
+
+	// DNSEndpoint configuration for ExternalDNS.
+	// +optional
+	DNSEndpoint *DNSEndpointSpec `json:"dnsEndpoint,omitempty"`
 }
 
 // ImageSpec defines container image configuration.
@@ -979,6 +983,47 @@ type ServiceMonitorSpec struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Schemaless
 	MetricRelabelings []runtime.RawExtension `json:"metricRelabelings,omitempty"`
+}
+
+// DNSEndpointSpec defines ExternalDNS DNSEndpoint configuration.
+type DNSEndpointSpec struct {
+	// Enabled enables the DNSEndpoint resource.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Endpoints is the list of DNS endpoint entries.
+	// +optional
+	Endpoints []DNSEndpointEntry `json:"endpoints,omitempty"`
+}
+
+// DNSEndpointEntry defines a single DNS endpoint.
+type DNSEndpointEntry struct {
+	// DNSName is the hostname for the DNS record.
+	DNSName string `json:"dnsName"`
+
+	// RecordType is the DNS record type (e.g., CNAME, A). Defaults to CNAME.
+	// +optional
+	RecordType string `json:"recordType,omitempty"`
+
+	// Targets is the list of target hostnames or IPs.
+	Targets []string `json:"targets"`
+
+	// RecordTTL is the TTL in seconds for the DNS record.
+	// +optional
+	RecordTTL *int64 `json:"recordTTL,omitempty"`
+
+	// ProviderSpecific holds provider-specific properties.
+	// +optional
+	ProviderSpecific []ProviderSpecificProperty `json:"providerSpecific,omitempty"`
+}
+
+// ProviderSpecificProperty defines a provider-specific key-value pair.
+type ProviderSpecificProperty struct {
+	// Name is the property name.
+	Name string `json:"name"`
+
+	// Value is the property value.
+	Value string `json:"value"`
 }
 
 // LedgerServiceStatus defines the observed state of LedgerService.
