@@ -1650,25 +1650,20 @@ func (node *Node) proposeConfChangeAndWait(ctx context.Context, nodeID uint64, p
 		return false, err
 	}
 
-	done := make(chan struct{})
+	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
-	go func() {
-		_, _ = future.Wait()
+	_, err = future.WaitContext(timeoutCtx)
+	if err != nil {
+		// Timeout (deadline exceeded) means the proposal was likely dropped — not an error.
+		if timeoutCtx.Err() != nil && ctx.Err() == nil {
+			return false, nil
+		}
 
-		close(done)
-	}()
-
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-	select {
-	case <-done:
-		return true, nil
-	case <-timer.C:
-		return false, nil
-	case <-ctx.Done():
-		return false, ctx.Err()
+		return false, err
 	}
+
+	return true, nil
 }
 
 // retryConfChange acquires confChangeMu and retries a ConfChange proposal until

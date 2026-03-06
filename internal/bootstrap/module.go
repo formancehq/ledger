@@ -596,17 +596,23 @@ func Module() fx.Option {
 						interval = 5 * time.Minute
 					}
 
-					var cancel context.CancelFunc
+					var (
+						cancel context.CancelFunc
+						wait   func()
+					)
 
 					lc.Append(fx.Hook{
 						OnStart: func(ctx context.Context) error {
 							ctx, cancel = context.WithCancel(context.WithoutCancel(ctx))
-							go rs.RunPeriodicFreelistSync(ctx, interval)
+							wait = otlplogs.GoWait(func() {
+								rs.RunPeriodicFreelistSync(ctx, interval)
+							}, logger)
 
 							return nil
 						},
 						OnStop: func(_ context.Context) error {
 							cancel()
+							wait()
 
 							return nil
 						},
@@ -632,18 +638,23 @@ func Module() fx.Option {
 				t *node.DefaultTransport,
 				logger logging.Logger,
 			) {
-				lc.Append(fx.Hook{
-					OnStop: func(ctx context.Context) error {
-						logger.Infof("Stopping raft transport")
+				var wait func()
 
-						return t.Stop(ctx)
-					},
+				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
-						otlplogs.Go(func() {
+						wait = otlplogs.GoWait(func() {
 							t.Start(context.WithoutCancel(ctx))
 						}, logger)
 
 						return nil
+					},
+					OnStop: func(ctx context.Context) error {
+						logger.Infof("Stopping raft transport")
+
+						err := t.Stop(ctx)
+						wait()
+
+						return err
 					},
 				})
 			},
@@ -691,6 +702,8 @@ func Module() fx.Option {
 				// This ensures that after a snapshot cycle, all nodes know this node's address.
 				n.SetPeerAddress(cfg.NodeID, cfg.AdvertiseAddr, fullCfg.ServiceAdvertiseAddr())
 
+				var waitRaft func()
+
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						logger.Infof("Starting Raft gRPC server")
@@ -698,7 +711,7 @@ func Module() fx.Option {
 						listening := make(chan struct{})
 
 						reflection.Register(raftServer.GetServer())
-						otlplogs.Go(func() {
+						waitRaft = otlplogs.GoWait(func() {
 							err := raftServer.Start(listening)
 							if err != nil {
 								panic(err)
@@ -750,7 +763,10 @@ func Module() fx.Option {
 					OnStop: func(ctx context.Context) error {
 						logger.Infof("Stopping Raft gRPC server")
 
-						return raftServer.Stop()
+						err := raftServer.Stop()
+						waitRaft()
+
+						return err
 					},
 				})
 			}, fx.ParamTags(``, ``, ``, ``, `name:"service"`, ``, ``, ``)),
@@ -760,13 +776,15 @@ func Module() fx.Option {
 				serviceServer *grpcadp.ServiceServer,
 				logger logging.Logger,
 			) {
+				var waitService func()
+
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						logger.Infof("Starting Service gRPC server")
 
 						listening := make(chan struct{})
 
-						otlplogs.Go(func() {
+						waitService = otlplogs.GoWait(func() {
 							err := serviceServer.Start(listening)
 							if err != nil {
 								panic(err)
@@ -786,7 +804,10 @@ func Module() fx.Option {
 					OnStop: func(ctx context.Context) error {
 						logger.Infof("Stopping Service gRPC server")
 
-						return serviceServer.Stop()
+						err := serviceServer.Stop()
+						waitService()
+
+						return err
 					},
 				})
 			},
@@ -811,11 +832,13 @@ func Module() fx.Option {
 				}))
 			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
 			func(lc fx.Lifecycle, node *node.Node, logger logging.Logger) (*node.Node, error) {
+				var waitNode func()
+
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						ready := make(chan struct{})
 
-						otlplogs.Go(func() {
+						waitNode = otlplogs.GoWait(func() {
 							err := node.Run(context.WithoutCancel(ctx), ready)
 							if err != nil {
 								panic(err)
@@ -839,6 +862,7 @@ func Module() fx.Option {
 							return fmt.Errorf("shutting down raft cluster: %w", err)
 						}
 
+						waitNode()
 						logger.Infof("Raft cluster stopped successfully")
 
 						return nil

@@ -190,23 +190,12 @@ func sequenceKey(prefix byte, seq uint64) []byte {
 }
 
 // Stop signals the background goroutine to stop, then waits for any in-flight
-// compaction goroutine to finish before returning. A 10-second deadline prevents
-// a long-running db.Compact from blocking shutdown indefinitely.
+// compaction goroutine to finish before returning. Compaction goroutines check
+// stopCh between prefix iterations, so they abort quickly; the maximum wait is
+// a single db.Compact call on one prefix range.
 func (c *SmartCompactor) Stop() {
 	c.w.Stop()
-
-	done := make(chan struct{})
-
-	go func() {
-		c.compactWg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		c.logger.Infof("In-flight compaction did not finish within 10s, proceeding with shutdown")
-	}
+	c.compactWg.Wait()
 }
 
 // CompactAll runs a synchronous prefix-by-prefix compaction of the entire

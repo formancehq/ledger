@@ -165,3 +165,19 @@ func Go(f func(), logger logging.Logger) {
 		f()
 	}()
 }
+
+// GoWait launches f in a goroutine with panic recovery and returns a function
+// that blocks until the goroutine has exited. Use this instead of Go when the
+// caller must guarantee the goroutine is fully done (e.g. in OnStop hooks).
+func GoWait(f func(), logger logging.Logger) func() {
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		defer RecoverAndLogPanics(logger)
+
+		f()
+	}()
+
+	return func() { <-done }
+}
