@@ -5,9 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 )
 
 func TestPeriodSchedulerStartStop(t *testing.T) {
@@ -33,6 +35,7 @@ func TestPeriodSchedulerEmptySchedule(t *testing.T) {
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
+
 	var called atomic.Int32
 
 	ps := NewPeriodScheduler(
@@ -55,6 +58,7 @@ func TestPeriodSchedulerInvalidCron(t *testing.T) {
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
+
 	var called atomic.Int32
 
 	ps := NewPeriodScheduler(
@@ -78,6 +82,7 @@ func TestPeriodSchedulerScheduleChanged(t *testing.T) {
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	sig := signal.New()
+
 	var schedule atomic.Value
 	schedule.Store("")
 
@@ -112,6 +117,7 @@ func TestPeriodSchedulerNonLeaderDoesNotPropose(t *testing.T) {
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
+
 	var called atomic.Int32
 
 	// Use a cron that fires every second

@@ -7,10 +7,11 @@ import (
 	"io"
 	"os"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 )
 
 const uploadChunkSize = 64 * 1024 // 64KB
@@ -38,6 +39,7 @@ func runUpload(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -48,6 +50,7 @@ func runUpload(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("opening input file: %w", err)
 	}
+
 	defer func() { _ = f.Close() }()
 
 	// Get file size for progress
@@ -55,6 +58,7 @@ func runUpload(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("getting file info: %w", err)
 	}
+
 	totalSize := uint64(stat.Size())
 
 	stream, err := client.UploadBackup(ctx)
@@ -74,15 +78,19 @@ func runUpload(cmd *cobra.Command, _ []string) error {
 		if n > 0 {
 			if _, err := hash.Write(buf[:n]); err != nil {
 				spinner.Fail("Failed to upload backup")
+
 				return cmdutil.Displayed(fmt.Errorf("computing hash: %w", err))
 			}
 
-			if err := stream.Send(&restorepb.UploadBackupRequest{
+			err := stream.Send(&restorepb.UploadBackupRequest{
 				Data: buf[:n],
-			}); err != nil {
+			})
+			if err != nil {
 				_ = spinner.Stop()
+
 				return cmdutil.FormatGRPCError("sending upload chunk", err)
 			}
+
 			totalSent += uint64(n)
 
 			if totalSize > 0 {
@@ -91,11 +99,14 @@ func runUpload(cmd *cobra.Command, _ []string) error {
 					cmdutil.FormatBytes(totalSent), cmdutil.FormatBytes(totalSize), pct))
 			}
 		}
+
 		if err == io.EOF {
 			break
 		}
+
 		if err != nil {
 			spinner.Fail("Failed to upload backup")
+
 			return cmdutil.Displayed(fmt.Errorf("reading input file: %w", err))
 		}
 	}
@@ -108,19 +119,21 @@ func runUpload(cmd *cobra.Command, _ []string) error {
 		ContentSize:   totalSent,
 	}); err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("sending EOF", err)
 	}
 
 	resp, err := stream.CloseAndRecv()
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("completing upload", err)
 	}
 
 	_ = spinner.Stop()
 
 	pterm.Success.Printfln("Backup uploaded successfully (%s, SHA256: %s)",
-		cmdutil.FormatBytes(resp.BytesReceived), resp.Sha256[:12]+"...")
+		cmdutil.FormatBytes(resp.GetBytesReceived()), resp.GetSha256()[:12]+"...")
 
 	return nil
 }

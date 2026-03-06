@@ -2,16 +2,19 @@ package transactions
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewAnalyzeCommand creates the transactions analyze command.
@@ -44,9 +47,11 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -66,31 +71,37 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 	})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to analyze transactions", err)
 	}
 
 	var resp *servicepb.AnalyzeTransactionsResponse
+
 	for {
 		event, err := stream.Recv()
 		if err != nil {
 			_ = spinner.Stop()
-			if err == io.EOF {
-				return fmt.Errorf("stream ended without result")
+
+			if errors.Is(err, io.EOF) {
+				return errors.New("stream ended without result")
 			}
+
 			return cmdutil.FormatGRPCError("failed to analyze transactions", err)
 		}
-		switch t := event.Type.(type) {
+
+		switch t := event.GetType().(type) {
 		case *servicepb.AnalyzeTransactionsEvent_Progress:
 			p := t.Progress
-			if p.Total > 0 {
-				pct := p.Processed * 100 / p.Total
-				spinner.UpdateText(fmt.Sprintf("Analyzing transactions... %d/%d logs (%d%%)", p.Processed, p.Total, pct))
+			if p.GetTotal() > 0 {
+				pct := p.GetProcessed() * 100 / p.GetTotal()
+				spinner.UpdateText(fmt.Sprintf("Analyzing transactions... %d/%d logs (%d%%)", p.GetProcessed(), p.GetTotal(), pct))
 			} else {
-				spinner.UpdateText(fmt.Sprintf("Analyzing transactions... %d logs scanned", p.Processed))
+				spinner.UpdateText(fmt.Sprintf("Analyzing transactions... %d logs scanned", p.GetProcessed()))
 			}
 		case *servicepb.AnalyzeTransactionsEvent_Result:
 			resp = t.Result
 		}
+
 		if resp != nil {
 			break
 		}
@@ -101,82 +112,92 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(resp)
 	}
 
 	renderTransactionAnalysisResult(resp)
+
 	return nil
 }
 
 func renderTransactionAnalysisResult(resp *servicepb.AnalyzeTransactionsResponse) {
 	// Summary
 	pterm.DefaultHeader.WithFullWidth().Println("Transaction Flow Analysis")
-	pterm.Info.Printfln("Total transactions: %d", resp.TotalTransactions)
-	pterm.Info.Printfln("Total reverted: %d", resp.TotalReverted)
-	pterm.Info.Printfln("Flow patterns discovered: %d", len(resp.FlowPatterns))
+	pterm.Info.Printfln("Total transactions: %d", resp.GetTotalTransactions())
+	pterm.Info.Printfln("Total reverted: %d", resp.GetTotalReverted())
+	pterm.Info.Printfln("Flow patterns discovered: %d", len(resp.GetFlowPatterns()))
 	pterm.Println()
 
-	if len(resp.FlowPatterns) == 0 {
+	if len(resp.GetFlowPatterns()) == 0 {
 		return
 	}
 
 	// Patterns table
 	pterm.DefaultSection.Println("Flow Patterns")
+
 	tableData := pterm.TableData{
 		{"#", "STRUCTURE", "COUNT", "ASSETS"},
 	}
-	for i, fp := range resp.FlowPatterns {
+
+	for i, fp := range resp.GetFlowPatterns() {
 		var assets []string
-		for _, vs := range fp.VolumeStats {
-			assets = append(assets, vs.Asset)
+		for _, vs := range fp.GetVolumeStats() {
+			assets = append(assets, vs.GetAsset())
 		}
+
 		tableData = append(tableData, []string{
-			fmt.Sprintf("%d", i+1),
-			postingStructureName(fp.Structure),
-			fmt.Sprintf("%d", fp.TransactionCount),
+			strconv.Itoa(i + 1),
+			postingStructureName(fp.GetStructure()),
+			strconv.FormatUint(fp.GetTransactionCount(), 10),
 			strings.Join(assets, ", "),
 		})
 	}
+
 	_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+
 	pterm.Println()
 
 	// Per-pattern details
-	for i, fp := range resp.FlowPatterns {
-		pterm.DefaultSection.Printfln("Pattern #%d (%s, %d tx)", i+1, postingStructureName(fp.Structure), fp.TransactionCount)
+	for i, fp := range resp.GetFlowPatterns() {
+		pterm.DefaultSection.Printfln("Pattern #%d (%s, %d tx)", i+1, postingStructureName(fp.GetStructure()), fp.GetTransactionCount())
 
-		for _, p := range fp.Postings {
-			pterm.Printfln("  %s -> %s [%s]", p.SourcePattern, p.DestinationPattern, p.Asset)
+		for _, p := range fp.GetPostings() {
+			pterm.Printfln("  %s -> %s [%s]", p.GetSourcePattern(), p.GetDestinationPattern(), p.GetAsset())
 		}
 
-		if fp.Temporal != nil {
+		if fp.GetTemporal() != nil {
 			pterm.Println()
 			pterm.Info.Printfln("  Period: %s - %s",
-				formatTimestamp(fp.Temporal.FirstSeen),
-				formatTimestamp(fp.Temporal.LastSeen))
-			pterm.Info.Printfln("  Rate: %.1f tx/day", fp.Temporal.TransactionsPerDay)
+				formatTimestamp(fp.GetTemporal().GetFirstSeen()),
+				formatTimestamp(fp.GetTemporal().GetLastSeen()))
+			pterm.Info.Printfln("  Rate: %.1f tx/day", fp.GetTemporal().GetTransactionsPerDay())
 		}
 
-		if len(fp.VolumeStats) > 0 {
+		if len(fp.GetVolumeStats()) > 0 {
 			pterm.Println()
+
 			volTable := pterm.TableData{
 				{"ASSET", "TOTAL", "AVG", "MIN", "MAX", "COUNT"},
 			}
-			for _, vs := range fp.VolumeStats {
+			for _, vs := range fp.GetVolumeStats() {
 				volTable = append(volTable, []string{
-					vs.Asset,
-					vs.TotalVolume,
-					vs.AverageVolume,
-					vs.MinVolume,
-					vs.MaxVolume,
-					fmt.Sprintf("%d", vs.TransactionCount),
+					vs.GetAsset(),
+					vs.GetTotalVolume(),
+					vs.GetAverageVolume(),
+					vs.GetMinVolume(),
+					vs.GetMaxVolume(),
+					strconv.FormatUint(vs.GetTransactionCount(), 10),
 				})
 			}
+
 			_ = pterm.DefaultTable.WithHasHeader().WithData(volTable).Render()
 		}
 
-		if len(fp.MetadataKeys) > 0 {
-			pterm.Info.Printfln("  Metadata keys: %s", strings.Join(fp.MetadataKeys, ", "))
+		if len(fp.GetMetadataKeys()) > 0 {
+			pterm.Info.Printfln("  Metadata keys: %s", strings.Join(fp.GetMetadataKeys(), ", "))
 		}
+
 		pterm.Println()
 	}
 }
@@ -200,5 +221,6 @@ func formatTimestamp(ts *commonpb.Timestamp) string {
 	if ts == nil {
 		return "N/A"
 	}
+
 	return ts.AsTime().Format("2006-01-02 15:04:05 UTC")
 }

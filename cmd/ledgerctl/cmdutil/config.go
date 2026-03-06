@@ -30,6 +30,7 @@ func ConfigDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("determining config directory: %w", err)
 	}
+
 	return filepath.Join(base, "ledgerctl"), nil
 }
 
@@ -39,6 +40,7 @@ func ConfigPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return filepath.Join(dir, "config.json"), nil
 }
 
@@ -54,6 +56,7 @@ func LoadConfig() (Config, error) {
 	if errors.Is(err, fs.ErrNotExist) {
 		return Config{}, nil
 	}
+
 	if err != nil {
 		return Config{}, fmt.Errorf("reading config: %w", err)
 	}
@@ -62,6 +65,7 @@ func LoadConfig() (Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parsing config: %w", err)
 	}
+
 	return cfg, nil
 }
 
@@ -81,11 +85,13 @@ func SaveConfig(cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
+
 	data = append(data, '\n')
 
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
+
 	return nil
 }
 
@@ -97,13 +103,16 @@ func GetActiveProfile(cfg Config, overrideName string) (string, *Profile) {
 	if name == "" {
 		name = cfg.ActiveProfile
 	}
+
 	if name == "" || cfg.Profiles == nil {
 		return "", nil
 	}
+
 	p, ok := cfg.Profiles[name]
 	if !ok {
 		return name, nil
 	}
+
 	return name, &p
 }
 
@@ -113,6 +122,7 @@ func ProfileFlagValue(p *Profile, flagName string) string {
 	if p == nil {
 		return ""
 	}
+
 	switch flagName {
 	case "server":
 		return p.Server
@@ -120,6 +130,7 @@ func ProfileFlagValue(p *Profile, flagName string) string {
 		if p.Insecure {
 			return strconv.FormatBool(p.Insecure)
 		}
+
 		return ""
 	case "tls-ca-cert":
 		return p.TLSCaCert
@@ -131,5 +142,6 @@ func ProfileFlagValue(p *Profile, flagName string) string {
 // HasStoredToken checks whether the OS keychain contains a token for the given server address.
 func HasStoredToken(kr Keyring, server string) bool {
 	_, err := kr.Get(server)
+
 	return err == nil
 }

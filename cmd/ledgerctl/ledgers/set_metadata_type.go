@@ -1,12 +1,14 @@
 package ledgers
 
 import (
+	"errors"
 	"fmt"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewSetMetadataTypeCommand creates the ledgers set-metadata-type command.
@@ -42,9 +44,11 @@ func runSetMetadataType(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -59,6 +63,7 @@ func runSetMetadataType(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
+
 		targetStr = result
 	}
 
@@ -75,9 +80,10 @@ func runSetMetadataType(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
+
 		key = result
 		if key == "" {
-			return fmt.Errorf("metadata key is required")
+			return errors.New("metadata key is required")
 		}
 	}
 
@@ -90,6 +96,7 @@ func runSetMetadataType(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
+
 		typeStr = result
 	}
 
@@ -119,17 +126,20 @@ func runSetMetadataType(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to set metadata type", err)
 	}
 
-	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
 		spinner.Fail("Response signature verification failed")
+
 		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 

@@ -1,10 +1,11 @@
 package processing
 
 import (
+	"github.com/robfig/cron/v3"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/robfig/cron/v3"
 )
 
 // CronParser accepts both the standard 5-field format (minute-level) and the
@@ -15,19 +16,19 @@ var CronParser = cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | 
 // processSetPeriodSchedule handles the SetPeriodSchedule order.
 // It validates the cron expression and stores it in the FSM state.
 func (p *RequestProcessor) processSetPeriodSchedule(order *raftcmdpb.SetPeriodScheduleOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	if _, err := CronParser.Parse(order.Cron); err != nil {
+	if _, err := CronParser.Parse(order.GetCron()); err != nil {
 		return nil, &domain.ErrInvalidCronExpression{
-			Expression: order.Cron,
+			Expression: order.GetCron(),
 			Details:    err.Error(),
 		}
 	}
 
-	s.SetPeriodSchedule(order.Cron)
+	s.SetPeriodSchedule(order.GetCron())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_SetPeriodSchedule{
 			SetPeriodSchedule: &commonpb.SetPeriodScheduleLog{
-				Cron: order.Cron,
+				Cron: order.GetCron(),
 			},
 		},
 	}, nil

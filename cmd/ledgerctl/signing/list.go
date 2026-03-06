@@ -3,15 +3,17 @@ package signing
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewListKeysCommand creates the signing list-keys command.
@@ -34,6 +36,7 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -45,14 +48,17 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 	}
 
 	var keys []*commonpb.SigningKey
+
 	for {
 		key, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			return fmt.Errorf("receiving signing key: %w", err)
 		}
+
 		keys = append(keys, key)
 	}
 
@@ -60,11 +66,13 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(keys)
 	}
 
 	if len(keys) == 0 {
 		pterm.Info.Println("No signing keys registered.")
+
 		return nil
 	}
 
@@ -74,13 +82,13 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 
 	for _, k := range keys {
 		parent := "(root)"
-		if k.ParentKeyId != "" {
-			parent = k.ParentKeyId
+		if k.GetParentKeyId() != "" {
+			parent = k.GetParentKeyId()
 		}
 
 		tableData = append(tableData, []string{
-			k.KeyId,
-			hex.EncodeToString(k.PublicKey),
+			k.GetKeyId(),
+			hex.EncodeToString(k.GetPublicKey()),
 			parent,
 		})
 	}

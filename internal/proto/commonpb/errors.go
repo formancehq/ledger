@@ -19,6 +19,7 @@ func (e *NotFoundError) Error() string {
 
 func (e *NotFoundError) Is(err error) bool {
 	_, ok := err.(*NotFoundError)
+
 	return ok
 }
 

@@ -6,15 +6,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 func TestWorkerRunStop(t *testing.T) {
 	t.Parallel()
 
 	w := New()
+
 	var ran atomic.Bool
+
 	w.Run(func(stop <-chan struct{}) {
 		ran.Store(true)
 		<-stop
@@ -29,6 +32,7 @@ func TestWorkerStopBlocksUntilDone(t *testing.T) {
 
 	w := New()
 	released := make(chan struct{})
+
 	w.Run(func(stop <-chan struct{}) {
 		<-stop
 		// Simulate cleanup delay
@@ -36,6 +40,7 @@ func TestWorkerStopBlocksUntilDone(t *testing.T) {
 	})
 
 	done := make(chan struct{})
+
 	go func() {
 		w.Stop()
 		close(done)
@@ -63,10 +68,12 @@ func TestRetryWithBackoffSuccess(t *testing.T) {
 	logger := logging.FromContext(logging.TestingContext())
 
 	var calls atomic.Int32
+
 	stop := make(chan struct{})
 
 	RetryWithBackoff(stop, logger, func() error {
 		calls.Add(1)
+
 		return nil
 	})
 
@@ -79,6 +86,7 @@ func TestRetryWithBackoffRetries(t *testing.T) {
 	logger := logging.FromContext(logging.TestingContext())
 
 	var calls atomic.Int32
+
 	stop := make(chan struct{})
 
 	RetryWithBackoff(stop, logger, func() error {
@@ -86,6 +94,7 @@ func TestRetryWithBackoffRetries(t *testing.T) {
 		if n < 3 {
 			return errors.New("transient error")
 		}
+
 		return nil
 	})
 
@@ -98,6 +107,7 @@ func TestRetryWithBackoffErrNotLeader(t *testing.T) {
 	logger := logging.FromContext(logging.TestingContext())
 
 	var calls atomic.Int32
+
 	stop := make(chan struct{})
 
 	RetryWithBackoff(stop, logger, func() error {
@@ -105,6 +115,7 @@ func TestRetryWithBackoffErrNotLeader(t *testing.T) {
 		if n < 3 {
 			return ErrNotLeader
 		}
+
 		return nil
 	})
 
@@ -117,12 +128,15 @@ func TestRetryWithBackoffStop(t *testing.T) {
 	logger := logging.FromContext(logging.TestingContext())
 
 	stop := make(chan struct{})
+
 	var calls atomic.Int32
 
 	done := make(chan struct{})
+
 	go func() {
 		RetryWithBackoff(stop, logger, func() error {
 			calls.Add(1)
+
 			return errors.New("permanent error")
 		})
 		close(done)
@@ -147,13 +161,17 @@ func TestDrainChannel(t *testing.T) {
 
 	ch := make(chan int, 3)
 	ch <- 1
+
 	ch <- 2
+
 	ch <- 3
 
 	var sum atomic.Int32
+
 	stop := make(chan struct{})
 
 	done := make(chan struct{})
+
 	go func() {
 		DrainChannel(stop, ch, func(v int) {
 			sum.Add(int32(v))
@@ -178,9 +196,11 @@ func TestRunTicker(t *testing.T) {
 	t.Parallel()
 
 	var calls atomic.Int32
+
 	stop := make(chan struct{})
 
 	done := make(chan struct{})
+
 	go func() {
 		RunTicker(stop, 10*time.Millisecond, func() {
 			calls.Add(1)

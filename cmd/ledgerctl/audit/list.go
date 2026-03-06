@@ -2,20 +2,22 @@ package audit
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // NewListCommand creates the audit list command.
@@ -43,6 +45,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -70,25 +73,32 @@ func runList(cmd *cobra.Command, _ []string) error {
 		if isAuditDisabledError(err) {
 			pterm.Warning.Println("Audit log is disabled on this server.")
 			pterm.Println(pterm.Gray("Run `ledgerctl audit enable` to activate audit logging."))
+
 			return nil
 		}
+
 		return cmdutil.FormatGRPCError("failed to list audit entries", err)
 	}
 
 	var entries []*auditpb.AuditEntry
+
 	for {
 		entry, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			if isAuditDisabledError(err) {
 				pterm.Warning.Println("Audit log is disabled on this server.")
 				pterm.Println(pterm.Gray("Run `ledgerctl audit enable` to activate audit logging."))
+
 				return nil
 			}
+
 			return cmdutil.FormatGRPCError("receiving audit entry", err)
 		}
+
 		entries = append(entries, entry)
 		if pageSize > 0 && uint32(len(entries)) >= pageSize {
 			break
@@ -98,11 +108,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(entries)
 	}
 
 	if len(entries) == 0 {
 		pterm.Info.Println("No audit entries found.")
+
 		return nil
 	}
 
@@ -119,31 +131,31 @@ func runList(cmd *cobra.Command, _ []string) error {
 // printAuditEntry prints a single audit entry in a human-readable format.
 func printAuditEntry(entry *auditpb.AuditEntry) {
 	ts := "-"
-	if entry.Timestamp != nil {
-		ts = entry.Timestamp.AsTime().Format(time.RFC3339)
+	if entry.GetTimestamp() != nil {
+		ts = entry.GetTimestamp().AsTime().Format(time.RFC3339)
 	}
 
 	// Status indicator
 	var statusIcon, statusText string
 	if entry.GetSuccess() != nil {
 		statusIcon = pterm.Green("OK")
-		statusText = formatLogSequences(entry.GetSuccess().LogSequences)
+		statusText = formatLogSequences(entry.GetSuccess().GetLogSequences())
 	} else if entry.GetFailure() != nil {
 		f := entry.GetFailure()
 		statusIcon = pterm.Red("FAIL")
-		statusText = fmt.Sprintf("[%s] %s", f.ErrorType, f.Message)
+		statusText = fmt.Sprintf("[%s] %s", f.GetErrorType(), f.GetMessage())
 	}
 
 	pterm.Printf("  #%-6d %s  proposal=%-4d %s  %s\n",
-		entry.Sequence,
+		entry.GetSequence(),
 		pterm.Gray(ts),
-		entry.ProposalId,
+		entry.GetProposalId(),
 		statusIcon,
 		pterm.Gray(statusText),
 	)
 
 	// Group consecutive identical orders for compact display
-	printGroupedOrders(entry.Orders)
+	printGroupedOrders(entry.GetOrders())
 }
 
 // formatLogSequences formats log sequences compactly.
@@ -153,9 +165,11 @@ func formatLogSequences(seqs []uint64) string {
 	if n == 0 {
 		return "logs=[]"
 	}
+
 	if n <= 5 {
 		return fmt.Sprintf("logs=%v", seqs)
 	}
+
 	return fmt.Sprintf("logs=%d (%d..%d)", n, seqs[0], seqs[n-1])
 }
 
@@ -174,12 +188,13 @@ func printGroupedOrders(orders []*raftcmdpb.Order) {
 	}
 
 	var groups []orderGroup
+
 	for _, order := range orders {
 		orderType, orderDetail := describeOrder(order)
 
 		keyStr := pterm.Gray("unsigned")
-		if sig := order.GetSignature(); sig != nil && sig.KeyId != "" {
-			keyStr = pterm.Yellow(sig.KeyId)
+		if sig := order.GetSignature(); sig != nil && sig.GetKeyId() != "" {
+			keyStr = pterm.Yellow(sig.GetKeyId())
 		}
 
 		// Merge with previous group if same type+detail+key
@@ -187,9 +202,11 @@ func printGroupedOrders(orders []*raftcmdpb.Order) {
 			last := &groups[len(groups)-1]
 			if last.orderType == orderType && last.orderDetail == orderDetail && last.keyStr == keyStr {
 				last.count++
+
 				continue
 			}
 		}
+
 		groups = append(groups, orderGroup{orderType, orderDetail, keyStr, 1})
 	}
 
@@ -218,41 +235,42 @@ func describeOrder(order *raftcmdpb.Order) (string, string) {
 	case order.GetApply() != nil:
 		apply := order.GetApply()
 		subType, subDetail := describeApplyOrder(apply)
-		return subType, fmt.Sprintf("ledger=%s %s", apply.Ledger, subDetail)
+
+		return subType, fmt.Sprintf("ledger=%s %s", apply.GetLedger(), subDetail)
 	case order.GetCreateLedger() != nil:
-		return "CreateLedger", fmt.Sprintf("name=%s", order.GetCreateLedger().Name)
+		return "CreateLedger", "name=" + order.GetCreateLedger().GetName()
 	case order.GetDeleteLedger() != nil:
-		return "DeleteLedger", fmt.Sprintf("name=%s", order.GetDeleteLedger().Name)
+		return "DeleteLedger", "name=" + order.GetDeleteLedger().GetName()
 	case order.GetRegisterSigningKey() != nil:
-		return "RegisterSigningKey", fmt.Sprintf("keyId=%s", order.GetRegisterSigningKey().KeyId)
+		return "RegisterSigningKey", "keyId=" + order.GetRegisterSigningKey().GetKeyId()
 	case order.GetRevokeSigningKey() != nil:
-		return "RevokeSigningKey", fmt.Sprintf("keyId=%s", order.GetRevokeSigningKey().KeyId)
+		return "RevokeSigningKey", "keyId=" + order.GetRevokeSigningKey().GetKeyId()
 	case order.GetSetSigningConfig() != nil:
-		return "SetSigningConfig", fmt.Sprintf("requireSignatures=%v", order.GetSetSigningConfig().RequireSignatures)
+		return "SetSigningConfig", fmt.Sprintf("requireSignatures=%v", order.GetSetSigningConfig().GetRequireSignatures())
 	case order.GetAddEventsSink() != nil:
 		return "AddEventsSink", ""
 	case order.GetRemoveEventsSink() != nil:
-		return "RemoveEventsSink", fmt.Sprintf("name=%s", order.GetRemoveEventsSink().Name)
+		return "RemoveEventsSink", "name=" + order.GetRemoveEventsSink().GetName()
 	case order.GetClosePeriod() != nil:
 		return "ClosePeriod", ""
 	case order.GetSealPeriod() != nil:
-		return "SealPeriod", fmt.Sprintf("periodId=%d", order.GetSealPeriod().PeriodId)
+		return "SealPeriod", fmt.Sprintf("periodId=%d", order.GetSealPeriod().GetPeriodId())
 	case order.GetArchivePeriod() != nil:
-		return "ArchivePeriod", fmt.Sprintf("periodId=%d", order.GetArchivePeriod().PeriodId)
+		return "ArchivePeriod", fmt.Sprintf("periodId=%d", order.GetArchivePeriod().GetPeriodId())
 	case order.GetConfirmArchivePeriod() != nil:
-		return "ConfirmArchivePeriod", fmt.Sprintf("periodId=%d", order.GetConfirmArchivePeriod().PeriodId)
+		return "ConfirmArchivePeriod", fmt.Sprintf("periodId=%d", order.GetConfirmArchivePeriod().GetPeriodId())
 	case order.GetSetMaintenanceMode() != nil:
-		return "SetMaintenanceMode", fmt.Sprintf("enabled=%v", order.GetSetMaintenanceMode().Enabled)
+		return "SetMaintenanceMode", fmt.Sprintf("enabled=%v", order.GetSetMaintenanceMode().GetEnabled())
 	case order.GetSetAuditConfig() != nil:
-		return "SetAuditConfig", fmt.Sprintf("enabled=%v", order.GetSetAuditConfig().Enabled)
+		return "SetAuditConfig", fmt.Sprintf("enabled=%v", order.GetSetAuditConfig().GetEnabled())
 	case order.GetSetPeriodSchedule() != nil:
-		return "SetPeriodSchedule", fmt.Sprintf("cron=%s", order.GetSetPeriodSchedule().Cron)
+		return "SetPeriodSchedule", "cron=" + order.GetSetPeriodSchedule().GetCron()
 	case order.GetDeletePeriodSchedule() != nil:
 		return "DeletePeriodSchedule", ""
 	case order.GetMirrorIngest() != nil:
-		return "MirrorIngest", fmt.Sprintf("ledger=%s", order.GetMirrorIngest().Ledger)
+		return "MirrorIngest", "ledger=" + order.GetMirrorIngest().GetLedger()
 	case order.GetPromoteLedger() != nil:
-		return "PromoteLedger", fmt.Sprintf("ledger=%s", order.GetPromoteLedger().Ledger)
+		return "PromoteLedger", "ledger=" + order.GetPromoteLedger().GetLedger()
 	default:
 		return "Unknown", ""
 	}
@@ -263,9 +281,10 @@ func describeApplyOrder(apply *raftcmdpb.LedgerApplyOrder) (string, string) {
 	switch {
 	case apply.GetCreateTransaction() != nil:
 		tx := apply.GetCreateTransaction()
-		if tx.Reference != "" {
-			return "CreateTransaction", fmt.Sprintf("ref=%s", tx.Reference)
+		if tx.GetReference() != "" {
+			return "CreateTransaction", "ref=" + tx.GetReference()
 		}
+
 		return "CreateTransaction", ""
 	case apply.GetAddMetadata() != nil:
 		return "AddMetadata", ""
@@ -275,16 +294,20 @@ func describeApplyOrder(apply *raftcmdpb.LedgerApplyOrder) (string, string) {
 		return "DeleteMetadata", ""
 	case apply.GetSetMetadataFieldType() != nil:
 		o := apply.GetSetMetadataFieldType()
-		return "SetMetadataFieldType", fmt.Sprintf("target=%s key=%s type=%s", o.TargetType, o.Key, o.Type)
+
+		return "SetMetadataFieldType", fmt.Sprintf("target=%s key=%s type=%s", o.GetTargetType(), o.GetKey(), o.GetType())
 	case apply.GetRemoveMetadataFieldType() != nil:
 		o := apply.GetRemoveMetadataFieldType()
-		return "RemoveMetadataFieldType", fmt.Sprintf("target=%s key=%s", o.TargetType, o.Key)
+
+		return "RemoveMetadataFieldType", fmt.Sprintf("target=%s key=%s", o.GetTargetType(), o.GetKey())
 	case apply.GetConvertMetadataBatch() != nil:
 		o := apply.GetConvertMetadataBatch()
-		return "ConvertMetadataBatch", fmt.Sprintf("target=%s key=%s %d/%d", o.TargetType, o.Key, o.ConvertedKeysSoFar, o.TotalKeys)
+
+		return "ConvertMetadataBatch", fmt.Sprintf("target=%s key=%s %d/%d", o.GetTargetType(), o.GetKey(), o.GetConvertedKeysSoFar(), o.GetTotalKeys())
 	case apply.GetConversionComplete() != nil:
 		o := apply.GetConversionComplete()
-		return "ConversionComplete", fmt.Sprintf("target=%s key=%s type=%s", o.TargetType, o.Key, o.ExpectedType)
+
+		return "ConversionComplete", fmt.Sprintf("target=%s key=%s type=%s", o.GetTargetType(), o.GetKey(), o.GetExpectedType())
 	default:
 		return "Apply", ""
 	}
@@ -296,14 +319,17 @@ func isAuditDisabledError(err error) bool {
 	if !ok {
 		return false
 	}
+
 	for _, detail := range st.Details() {
 		info, ok := detail.(*errdetails.ErrorInfo)
 		if !ok {
 			continue
 		}
-		if info.Reason == domain.ErrReasonAuditDisabled && info.Domain == "ledger" {
+
+		if info.GetReason() == domain.ErrReasonAuditDisabled && info.GetDomain() == "ledger" {
 			return true
 		}
 	}
+
 	return false
 }

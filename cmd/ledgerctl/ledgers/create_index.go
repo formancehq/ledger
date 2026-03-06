@@ -1,13 +1,15 @@
 package ledgers
 
 import (
+	"errors"
 	"fmt"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewCreateIndexCommand creates the ledgers create-index command.
@@ -52,9 +54,11 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -69,6 +73,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
+
 		indexType = result
 	}
 
@@ -77,6 +82,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 	}
 
 	var indexDesc string
+
 	switch indexType {
 	case "address":
 		req.Index = &servicepb.CreateIndexRequest_Transaction{
@@ -110,6 +116,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
+
 		switch target {
 		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
 			req.Index = &servicepb.CreateIndexRequest_Transaction{
@@ -124,6 +131,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 				},
 			}
 		}
+
 		indexDesc = fmt.Sprintf("metadata %s.%s", cmdutil.TargetTypeString(target), key)
 	case "reference":
 		req.Index = &servicepb.CreateIndexRequest_Transaction{
@@ -167,17 +175,20 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to create index", err)
 	}
 
-	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
 		spinner.Fail("Response signature verification failed")
+
 		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 
@@ -197,6 +208,7 @@ func resolveMetadataIndexFlags(cmd *cobra.Command) (commonpb.TargetType, string,
 		if err != nil {
 			return 0, "", fmt.Errorf("failed to read input: %w", err)
 		}
+
 		targetStr = result
 	}
 
@@ -213,9 +225,10 @@ func resolveMetadataIndexFlags(cmd *cobra.Command) (commonpb.TargetType, string,
 		if err != nil {
 			return 0, "", fmt.Errorf("failed to read input: %w", err)
 		}
+
 		key = result
 		if key == "" {
-			return 0, "", fmt.Errorf("metadata key is required")
+			return 0, "", errors.New("metadata key is required")
 		}
 	}
 

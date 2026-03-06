@@ -18,6 +18,7 @@ type Map[K comparable, V any] map[K]V
 
 func (d Map[K, V]) Get(i K) (V, bool) {
 	v, ok := d[i]
+
 	return v, ok
 }
 
@@ -61,9 +62,13 @@ func (s *SyncMap[K, V]) Get(k K) (V, bool) {
 	v, ok := s.m.Load(k)
 	if !ok {
 		var zero V
+
 		return zero, false
 	}
-	return v.(V), true
+
+	val, _ := v.(V)
+
+	return val, true
 }
 
 func (s *SyncMap[K, V]) Put(k K, v V) {

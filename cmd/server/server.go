@@ -2,12 +2,21 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"time"
+
+	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel/log/global"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
+	"go.uber.org/fx"
+	"google.golang.org/grpc"
+	"gopkg.in/yaml.v3"
 
 	"github.com/formancehq/go-libs/v3/auth"
 	"github.com/formancehq/go-libs/v3/logging"
@@ -15,18 +24,13 @@ import (
 	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
 	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
 	"github.com/formancehq/go-libs/v3/service"
+
 	"github.com/formancehq/ledger-v3-poc/internal/bootstrap"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/pyroscope"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/tracesampling"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/spf13/cobra"
-	"go.opentelemetry.io/otel/log/global"
-	sdklog "go.opentelemetry.io/otel/sdk/log"
-	"go.uber.org/fx"
-	"google.golang.org/grpc"
-	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -188,6 +192,7 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
+
 	fmt.Println(string(data))
 
 	if err := cfg.Validate(); err != nil {
@@ -199,7 +204,9 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	if serviceName == "" {
 		// Set default service name based on node ID
 		defaultServiceName := fmt.Sprintf("ledger-v3-poc-node-%d", cfg.RaftConfig.NodeID)
-		if err := cmd.Flags().Set(otlp.OtelServiceNameFlag, defaultServiceName); err != nil {
+
+		err := cmd.Flags().Set(otlp.OtelServiceNameFlag, defaultServiceName)
+		if err != nil {
 			return fmt.Errorf("setting default service name: %w", err)
 		}
 	}
@@ -232,7 +239,8 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		if pyroscopeCfg.Tags == nil {
 			pyroscopeCfg.Tags = make(map[string]string)
 		}
-		pyroscopeCfg.Tags["node_id"] = fmt.Sprintf("%d", cfg.RaftConfig.NodeID)
+
+		pyroscopeCfg.Tags["node_id"] = strconv.FormatUint(cfg.RaftConfig.NodeID, 10)
 	}
 
 	// Configure trace sampling
@@ -279,10 +287,13 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	defer func() {
 		switch loggerProvider := global.GetLoggerProvider().(type) {
 		case *sdklog.LoggerProvider:
-			if err := loggerProvider.ForceFlush(context.Background()); err != nil {
+			err := loggerProvider.ForceFlush(context.Background())
+			if err != nil {
 				logger.Errorf("Failed to flush logs: %v", err)
 			}
-			if err := loggerProvider.Shutdown(context.Background()); err != nil {
+
+			err = loggerProvider.Shutdown(context.Background())
+			if err != nil {
 				logger.Errorf("Failed to shutdown logs: %v", err)
 			}
 		default:
@@ -302,6 +313,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 		if val, _ := cmd.Flags().GetString(flagName); val != "" {
 			return val
 		}
+
 		return defaultValue
 	}
 
@@ -310,6 +322,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 		if val, _ := cmd.Flags().GetUint64(flagName); val != 0 {
 			return val
 		}
+
 		return defaultValue
 	}
 
@@ -318,6 +331,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 		if val, _ := cmd.Flags().GetInt(flagName); val != 0 {
 			return val
 		}
+
 		return defaultValue
 	}
 
@@ -325,8 +339,10 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	getBool := func(flagName string, defaultValue bool) bool {
 		if cmd.Flags().Changed(flagName) {
 			val, _ := cmd.Flags().GetBool(flagName)
+
 			return val
 		}
+
 		return defaultValue
 	}
 
@@ -335,6 +351,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 		if val, _ := cmd.Flags().GetIntSlice(flagName); len(val) > 0 {
 			return val
 		}
+
 		return []int{}
 	}
 
@@ -343,6 +360,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 		if val, _ := cmd.Flags().GetDuration(flagName); val != 0 {
 			return val
 		}
+
 		return defaultValue
 	}
 
@@ -430,9 +448,11 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	tlsCert := getString("tls-cert-file", "")
 	tlsKey := getString("tls-key-file", "")
 	tlsCA := getString("tls-ca-cert-file", "")
+
 	if (tlsCert == "") != (tlsKey == "") {
-		return nil, fmt.Errorf("--tls-cert-file and --tls-key-file must be provided together")
+		return nil, errors.New("--tls-cert-file and --tls-key-file must be provided together")
 	}
+
 	cfg.TLSConfig = bootstrap.TLSConfig{
 		Enabled:  tlsCert != "" && tlsKey != "",
 		CertFile: tlsCert,
@@ -480,28 +500,33 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 
 	// Join mode: discover peers from an existing cluster member
 	joinAddr := getString("join", "")
+
 	if cfg.Restore {
 		if cfg.RaftConfig.Bootstrap {
-			return nil, fmt.Errorf("--restore and --bootstrap are mutually exclusive")
+			return nil, errors.New("--restore and --bootstrap are mutually exclusive")
 		}
+
 		if joinAddr != "" {
-			return nil, fmt.Errorf("--restore and --join are mutually exclusive")
+			return nil, errors.New("--restore and --join are mutually exclusive")
 		}
 	}
 
 	if joinAddr != "" {
 		if cfg.RaftConfig.Bootstrap {
-			return nil, fmt.Errorf("--join and --bootstrap are mutually exclusive")
+			return nil, errors.New("--join and --bootstrap are mutually exclusive")
 		}
 
 		fmt.Printf("Join mode: discovering peers from cluster via %s\n", joinAddr)
+
 		peers, err := discoverPeersFromClusterWithRetry(joinAddr, cfg.TLSConfig)
 		if err != nil {
 			return nil, fmt.Errorf("discovering peers from cluster: %w", err)
 		}
+
 		for _, p := range peers {
 			fmt.Printf("  Discovered peer: id=%d raft=%s service=%s\n", p.ID, p.Address, p.ServiceAddress)
 		}
+
 		cfg.RaftConfig.Peers = peers
 	}
 
@@ -522,6 +547,7 @@ func discoverPeersFromClusterWithRetry(serviceAddr string, tlsCfg bootstrap.TLSC
 		if err == nil {
 			return peers, nil
 		}
+
 		lastErr = err
 
 		select {
@@ -529,7 +555,7 @@ func discoverPeersFromClusterWithRetry(serviceAddr string, tlsCfg bootstrap.TLSC
 			return nil, fmt.Errorf("timed out after 60s discovering peers from %s: %w", serviceAddr, lastErr)
 		case <-time.After(delay):
 			if delay < 5*time.Second {
-				delay = delay * 2
+				delay *= 2
 			}
 		}
 	}
@@ -549,9 +575,11 @@ func discoverPeersFromCluster(serviceAddr string, tlsCfg bootstrap.TLSConfig) ([
 	if err != nil {
 		return nil, fmt.Errorf("connecting to cluster member %s: %w", serviceAddr, err)
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	client := clusterpb.NewClusterServiceClient(conn)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -561,14 +589,16 @@ func discoverPeersFromCluster(serviceAddr string, tlsCfg bootstrap.TLSConfig) ([
 	}
 
 	var peers []node.Peer
-	for _, nodeInfo := range state.Nodes {
-		if nodeInfo.RaftAddress == "" || nodeInfo.ServiceAddress == "" {
+
+	for _, nodeInfo := range state.GetNodes() {
+		if nodeInfo.GetRaftAddress() == "" || nodeInfo.GetServiceAddress() == "" {
 			continue
 		}
+
 		peers = append(peers, node.Peer{
-			ID:             uint64(nodeInfo.Id),
-			Address:        nodeInfo.RaftAddress,
-			ServiceAddress: nodeInfo.ServiceAddress,
+			ID:             uint64(nodeInfo.GetId()),
+			Address:        nodeInfo.GetRaftAddress(),
+			ServiceAddress: nodeInfo.GetServiceAddress(),
 		})
 	}
 
@@ -581,20 +611,20 @@ func discoverPeersFromCluster(serviceAddr string, tlsCfg bootstrap.TLSConfig) ([
 
 const (
 	// Fixed memory estimates for components not directly configurable.
-	goRuntimeEstimate  int64 = 200 << 20 // 200 MiB — GC, stacks, goroutines
+	goRuntimeEstimate int64 = 200 << 20 // 200 MiB — GC, stacks, goroutines
 
 	// FSM cache heuristics: each raft entry touches ~30 unique cache keys
 	// across 9 AttributeCache instances, averaging ~300 bytes per entry.
 	// Total = 2 generations * RotationThreshold * keysPerEntry * bytesPerKey.
-	fsmCacheKeysPerEntry  int64 = 30
-	fsmCacheBytesPerKey   int64 = 300
-	fsmCacheGenerations   int64 = 2
+	fsmCacheKeysPerEntry int64 = 30
+	fsmCacheBytesPerKey  int64 = 300
+	fsmCacheGenerations  int64 = 2
 )
 
 func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit int64) {
 	mib := func(b int64) int64 { return b / (1 << 20) }
 
-	pebbleCache := int64(cfg.PebbleConfig.CacheSize)
+	pebbleCache := cfg.PebbleConfig.CacheSize
 	memtables := int64(cfg.PebbleConfig.MemTableSize) * int64(cfg.PebbleConfig.MemTableStopWritesThreshold)
 
 	bboltMmapEstimate := int64(cfg.ReadIndexConfig.InitialMmapSize)
@@ -606,16 +636,19 @@ func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit in
 	if transportBuf == 0 {
 		transportBuf = 10 * 1024 * 1024 // default 10 MiB
 	}
+
 	peerCount := int64(len(cfg.RaftConfig.Peers))
 	if peerCount == 0 {
 		peerCount = 1
 	}
+
 	transportTotal := transportBuf * peerCount
 
 	rotationThreshold := int64(cfg.RaftConfig.RotationThreshold)
 	if rotationThreshold == 0 {
 		rotationThreshold = 1000
 	}
+
 	fsmCache := fsmCacheGenerations * rotationThreshold * fsmCacheKeysPerEntry * fsmCacheBytesPerKey
 
 	total := pebbleCache + memtables + bboltMmapEstimate + transportTotal + fsmCache + goRuntimeEstimate
@@ -643,6 +676,7 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 		if val, _ := cmd.Flags().GetUint64(flagName); val != 0 {
 			return val
 		}
+
 		return defaultValue
 	}
 
@@ -651,6 +685,7 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 		if val, _ := cmd.Flags().GetInt64(flagName); val != 0 {
 			return val
 		}
+
 		return defaultValue
 	}
 
@@ -659,6 +694,7 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 		if val, _ := cmd.Flags().GetInt(flagName); val != 0 {
 			return val
 		}
+
 		return defaultValue
 	}
 
@@ -667,6 +703,7 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 		if val, _ := cmd.Flags().GetDuration(flagName); val != 0 {
 			return val
 		}
+
 		return defaultValue
 	}
 

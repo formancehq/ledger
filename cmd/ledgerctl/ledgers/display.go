@@ -1,12 +1,14 @@
 package ledgers
 
 import (
+	"errors"
 	"fmt"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // ledgerModeString returns a user-friendly string for a LedgerMode.
@@ -35,22 +37,23 @@ func renderMirrorSource(src *commonpb.MirrorSourceConfig) {
 	pterm.Println("Mirror Source:")
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
-	pterm.Printf("  Ledger:  %s\n", src.LedgerName)
+	pterm.Printf("  Ledger:  %s\n", src.GetLedgerName())
 
-	switch s := src.Type.(type) {
+	switch s := src.GetType().(type) {
 	case *commonpb.MirrorSourceConfig_Http:
 		pterm.Printf("  Type:    HTTP\n")
-		pterm.Printf("  URL:     %s\n", s.Http.BaseUrl)
-		if cc := s.Http.Oauth2ClientCredentials; cc != nil {
-			pterm.Printf("  OAuth2:  client_id=%s endpoint=%s\n", cc.ClientId, cc.TokenEndpoint)
+		pterm.Printf("  URL:     %s\n", s.Http.GetBaseUrl())
+
+		if cc := s.Http.GetOauth2ClientCredentials(); cc != nil {
+			pterm.Printf("  OAuth2:  client_id=%s endpoint=%s\n", cc.GetClientId(), cc.GetTokenEndpoint())
 		}
 	case *commonpb.MirrorSourceConfig_Postgres:
 		pterm.Printf("  Type:    PostgreSQL\n")
-		pterm.Printf("  DSN:     %s\n", cmdutil.ObfuscateDSN(s.Postgres.Dsn))
+		pterm.Printf("  DSN:     %s\n", cmdutil.ObfuscateDSN(s.Postgres.GetDsn()))
 	}
 
-	if src.BatchSize > 0 {
-		pterm.Printf("  Batch:   %d\n", src.BatchSize)
+	if src.GetBatchSize() > 0 {
+		pterm.Printf("  Batch:   %d\n", src.GetBatchSize())
 	}
 }
 
@@ -60,26 +63,28 @@ func renderMirrorSyncProgress(progress *commonpb.MirrorSyncProgress) {
 	pterm.Println("Sync Progress:")
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
-	pterm.Printf("  State:     %s\n", syncStateString(progress.State))
-	pterm.Printf("  Cursor:    %d\n", progress.Cursor)
+	pterm.Printf("  State:     %s\n", syncStateString(progress.GetState()))
+	pterm.Printf("  Cursor:    %d\n", progress.GetCursor())
 
-	if progress.SourceLogCount > 0 {
-		pterm.Printf("  Total:     %d\n", progress.SourceLogCount)
-		pterm.Printf("  Remaining: %d\n", progress.RemainingLogs)
+	if progress.GetSourceLogCount() > 0 {
+		pterm.Printf("  Total:     %d\n", progress.GetSourceLogCount())
+		pterm.Printf("  Remaining: %d\n", progress.GetRemainingLogs())
 
-		if progress.SourceLogCount > 0 {
-			pct := float64(progress.Cursor) / float64(progress.SourceLogCount) * 100
+		if progress.GetSourceLogCount() > 0 {
+			pct := float64(progress.GetCursor()) / float64(progress.GetSourceLogCount()) * 100
 			if pct > 100 {
 				pct = 100
 			}
+
 			pterm.Printf("  Progress:  %.1f%%\n", pct)
 		}
 	}
 
-	if progress.Error != nil {
-		pterm.Printf("  Error:     %s\n", pterm.Red(progress.Error.Message))
-		if progress.Error.OccurredAt != nil {
-			pterm.Printf("  Error At:  %s\n", progress.Error.OccurredAt.AsTime().Format("2006-01-02T15:04:05Z07:00"))
+	if progress.GetError() != nil {
+		pterm.Printf("  Error:     %s\n", pterm.Red(progress.GetError().GetMessage()))
+
+		if progress.GetError().GetOccurredAt() != nil {
+			pterm.Printf("  Error At:  %s\n", progress.GetError().GetOccurredAt().AsTime().Format("2006-01-02T15:04:05Z07:00"))
 		}
 	}
 }
@@ -107,8 +112,9 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 	switch modeStr {
 	case "normal", "":
 		if hasMirrorFlags {
-			return 0, nil, fmt.Errorf("mirror flags provided but --mode is set to 'normal'; use --mode=mirror")
+			return 0, nil, errors.New("mirror flags provided but --mode is set to 'normal'; use --mode=mirror")
 		}
+
 		return commonpb.LedgerMode_LEDGER_MODE_NORMAL, nil, nil
 	case "mirror":
 		// Continue to build mirror source config
@@ -117,10 +123,12 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 	}
 
 	sourceType, _ := cmd.Flags().GetString("mirror-source-type")
+
 	sourceLedgerName, _ := cmd.Flags().GetString("mirror-ledger-name")
 	if sourceLedgerName == "" {
 		sourceLedgerName = ledgerName
 	}
+
 	batchSize, _ := cmd.Flags().GetUint32("mirror-batch-size")
 
 	cfg := &commonpb.MirrorSourceConfig{
@@ -132,12 +140,14 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 	case "http", "":
 		baseURL, _ := cmd.Flags().GetString("mirror-base-url")
 		if baseURL == "" {
-			return 0, nil, fmt.Errorf("--mirror-base-url is required for http mirror source")
+			return 0, nil, errors.New("--mirror-base-url is required for http mirror source")
 		}
+
 		httpCfg := &commonpb.HttpMirrorSourceConfig{
 			BaseUrl: baseURL,
 		}
 		oauth2ClientID, _ := cmd.Flags().GetString("mirror-oauth2-client-id")
+
 		oauth2TokenEndpoint, _ := cmd.Flags().GetString("mirror-oauth2-token-endpoint")
 		if oauth2ClientID != "" || oauth2TokenEndpoint != "" {
 			oauth2ClientSecret, _ := cmd.Flags().GetString("mirror-oauth2-client-secret")
@@ -149,14 +159,16 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 				Scopes:        oauth2Scopes,
 			}
 		}
+
 		cfg.Type = &commonpb.MirrorSourceConfig_Http{
 			Http: httpCfg,
 		}
 	case "postgres":
 		dsn, _ := cmd.Flags().GetString("mirror-dsn")
 		if dsn == "" {
-			return 0, nil, fmt.Errorf("--mirror-dsn is required for postgres mirror source")
+			return 0, nil, errors.New("--mirror-dsn is required for postgres mirror source")
 		}
+
 		cfg.Type = &commonpb.MirrorSourceConfig_Postgres{
 			Postgres: &commonpb.PostgresMirrorSourceConfig{
 				Dsn: dsn,

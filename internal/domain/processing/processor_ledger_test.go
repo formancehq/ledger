@@ -3,11 +3,12 @@ package processing
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestProcessCreateLedger(t *testing.T) {
@@ -27,14 +28,14 @@ func TestProcessCreateLedger(t *testing.T) {
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(name string, info *commonpb.LedgerInfo) {
-			require.Equal(t, "test-ledger", info.Name)
-			require.Equal(t, now, info.CreatedAt)
+			require.Equal(t, "test-ledger", info.GetName())
+			require.Equal(t, now, info.GetCreatedAt())
 		},
 	)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any()).Do(
 		func(ledger string, boundaries *raftcmdpb.LedgerBoundaries) {
-			require.Equal(t, uint64(1), boundaries.NextTransactionId)
-			require.Equal(t, uint64(1), boundaries.NextLogId)
+			require.Equal(t, uint64(1), boundaries.GetNextTransactionId())
+			require.Equal(t, uint64(1), boundaries.GetNextLogId())
 		},
 	)
 
@@ -52,7 +53,7 @@ func TestProcessCreateLedger(t *testing.T) {
 
 	createLedgerLog := result.GetCreateLedger()
 	require.NotNil(t, createLedgerLog)
-	require.Equal(t, "test-ledger", createLedgerLog.Info.Name)
+	require.Equal(t, "test-ledger", createLedgerLog.GetInfo().GetName())
 }
 
 func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
@@ -113,8 +114,8 @@ func TestProcessDeleteLedger(t *testing.T) {
 
 	deleteLedgerLog := result.GetDeleteLedger()
 	require.NotNil(t, deleteLedgerLog)
-	require.Equal(t, "test-ledger", deleteLedgerLog.Info.Name)
-	require.Equal(t, now, deleteLedgerLog.Info.DeletedAt)
+	require.Equal(t, "test-ledger", deleteLedgerLog.GetInfo().GetName())
+	require.Equal(t, now, deleteLedgerLog.GetInfo().GetDeletedAt())
 }
 
 func TestProcessDeleteLedger_NotFound(t *testing.T) {

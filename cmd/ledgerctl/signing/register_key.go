@@ -4,14 +4,16 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // NewRegisterKeyCommand creates the signing register-key command.
@@ -51,7 +53,7 @@ Examples:
 func runRegisterKey(cmd *cobra.Command, _ []string) error {
 	keyID, _ := cmd.Flags().GetString("key-id")
 	if keyID == "" {
-		return fmt.Errorf("--key-id is required")
+		return errors.New("--key-id is required")
 	}
 
 	pubKey, err := loadPublicKey(cmd)
@@ -63,6 +65,7 @@ func runRegisterKey(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -83,12 +86,14 @@ func runRegisterKey(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to register signing key", err)
 	}
 
@@ -98,6 +103,7 @@ func runRegisterKey(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(map[string]any{"keyId": keyID, "publicKey": hex.EncodeToString(pubKey)})
 	}
 
@@ -114,7 +120,7 @@ func loadPublicKey(cmd *cobra.Command) (ed25519.PublicKey, error) {
 	filePath, _ := cmd.Flags().GetString("public-key-file")
 
 	if hexKey == "" && filePath == "" {
-		return nil, fmt.Errorf("either --public-key or --public-key-file is required")
+		return nil, errors.New("either --public-key or --public-key-file is required")
 	}
 
 	if hexKey != "" {
@@ -122,9 +128,11 @@ func loadPublicKey(cmd *cobra.Command) (ed25519.PublicKey, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid hex public key: %w", err)
 		}
+
 		if len(decoded) != ed25519.PublicKeySize {
 			return nil, fmt.Errorf("public key must be %d bytes, got %d", ed25519.PublicKeySize, len(decoded))
 		}
+
 		return ed25519.PublicKey(decoded), nil
 	}
 

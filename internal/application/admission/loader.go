@@ -3,12 +3,12 @@ package admission
 import (
 	"sync"
 
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 )
 
-// loadedEntry stores a loaded attribute value with its boundary
+// loadedEntry stores a loaded attribute value with its boundary.
 type loadedEntry[T any] struct {
 	boundary uint64
 	value    T
@@ -20,7 +20,7 @@ type loadedEntry[T any] struct {
 //
 // Uses RWMutex for optimization:
 // - RLock for reading cached values (fast path, allows concurrent reads)
-// - Lock for modifications (adding to loading/loaded, deleting)
+// - Lock for modifications (adding to loading/loaded, deleting).
 type AttributeLoader[T any] struct {
 	mu sync.RWMutex
 	// loading tracks keys currently being loaded (value is a channel closed when done)
@@ -29,7 +29,7 @@ type AttributeLoader[T any] struct {
 	loaded map[attributes.U128]*loadedEntry[T]
 }
 
-// LoadResult represents the result of loading an attribute
+// LoadResult represents the result of loading an attribute.
 type LoadResult[T any] struct {
 	Value    T
 	FromLoad bool // true if we actually loaded from store, false if from loader cache
@@ -49,8 +49,10 @@ func NewAttributeLoader[T any]() *AttributeLoader[T] {
 func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, loadFn func() (T, error)) (*LoadResult[T], error) {
 	// Fast path: check if already loaded using read lock
 	al.mu.RLock()
+
 	if cached, ok := al.loaded[key]; ok && cached.boundary >= boundary {
 		al.mu.RUnlock()
+
 		return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
 	}
 	// Check if someone is already loading this key
@@ -62,10 +64,13 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 		<-waitCh
 		// Re-check with read lock
 		al.mu.RLock()
+
 		if cached, ok := al.loaded[key]; ok && cached.boundary >= boundary {
 			al.mu.RUnlock()
+
 			return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
 		}
+
 		al.mu.RUnlock()
 		// Load failed or boundary mismatch - fall through to try loading ourselves
 	}
@@ -76,6 +81,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 	// Double-check after acquiring write lock (another goroutine might have loaded it)
 	if cached, ok := al.loaded[key]; ok && cached.boundary >= boundary {
 		al.mu.Unlock()
+
 		return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
 	}
 
@@ -84,6 +90,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 		al.mu.Unlock()
 		// Wait and retry from the beginning
 		<-waitCh
+
 		return al.LoadOrWait(key, boundary, loadFn)
 	}
 
@@ -98,16 +105,20 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 	// Update state with write lock
 	al.mu.Lock()
 	delete(al.loading, key)
+
 	if err == nil {
 		al.loaded[key] = &loadedEntry[T]{boundary: boundary, value: value}
 	}
+
 	close(waitCh)
 	al.mu.Unlock()
 
 	if err != nil {
 		var zero T
+
 		return &LoadResult[T]{Value: zero, FromLoad: false}, err
 	}
+
 	return &LoadResult[T]{Value: value, FromLoad: true}, nil
 }
 
@@ -116,6 +127,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 func (al *AttributeLoader[T]) MarkApplied(key attributes.U128) {
 	al.mu.Lock()
 	defer al.mu.Unlock()
+
 	delete(al.loaded, key)
 }
 
@@ -172,27 +184,35 @@ func (t *LoadedKeysTracker) MarkApplied(loaders *Loaders) {
 	for _, key := range t.Volumes {
 		loaders.Volumes.MarkApplied(key)
 	}
+
 	for _, key := range t.IdempotencyKeys {
 		loaders.IdempotencyKeys.MarkApplied(key)
 	}
+
 	for _, key := range t.References {
 		loaders.References.MarkApplied(key)
 	}
+
 	for _, key := range t.Ledgers {
 		loaders.Ledgers.MarkApplied(key)
 	}
+
 	for _, key := range t.Boundaries {
 		loaders.Boundaries.MarkApplied(key)
 	}
+
 	for _, key := range t.SinkConfigs {
 		loaders.SinkConfigs.MarkApplied(key)
 	}
+
 	for _, key := range t.AccountMetadata {
 		loaders.AccountMetadata.MarkApplied(key)
 	}
+
 	for _, key := range t.NumscriptVersions {
 		loaders.NumscriptVersions.MarkApplied(key)
 	}
+
 	for _, key := range t.NumscriptEntries {
 		loaders.NumscriptEntries.MarkApplied(key)
 	}

@@ -17,6 +17,7 @@ func NewTrackedIterator(inner readstore.EntityIterator, stats *IteratorStats) *T
 
 func (t *TrackedIterator) Next() bool {
 	t.stats.NextCalls++
+
 	return t.inner.Next()
 }
 
@@ -26,6 +27,7 @@ func (t *TrackedIterator) Current() []byte {
 
 func (t *TrackedIterator) SeekGE(target []byte) bool {
 	t.stats.SeekCalls++
+
 	return t.inner.SeekGE(target)
 }
 

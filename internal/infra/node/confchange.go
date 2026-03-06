@@ -20,6 +20,7 @@ func MarshalConfChangeContext(ctx ConfChangeContext) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshaling ConfChangeContext: %w", err)
 	}
+
 	return data, nil
 }
 
@@ -27,8 +28,11 @@ func MarshalConfChangeContext(ctx ConfChangeContext) ([]byte, error) {
 // that were stored in ConfChange.Context.
 func UnmarshalConfChangeContext(data []byte) (ConfChangeContext, error) {
 	var ctx ConfChangeContext
-	if err := json.Unmarshal(data, &ctx); err != nil {
+
+	err := json.Unmarshal(data, &ctx)
+	if err != nil {
 		return ConfChangeContext{}, fmt.Errorf("unmarshaling ConfChangeContext: %w", err)
 	}
+
 	return ctx, nil
 }

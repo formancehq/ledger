@@ -2,6 +2,7 @@ package kv
 
 import (
 	"hash/fnv"
+	"maps"
 	"sync"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 func stringHash(s string) uint64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(s))
+
 	return h.Sum64()
 }
 
@@ -92,10 +94,8 @@ func TestShardedMap_Iter(t *testing.T) {
 	sm.Put("b", 2)
 	sm.Put("c", 3)
 
-	collected := map[string]int{}
-	for k, v := range sm.Iter() {
-		collected[k] = v
-	}
+	collected := maps.Collect(sm.Iter())
+
 	require.Equal(t, map[string]int{"a": 1, "b": 2, "c": 3}, collected)
 }
 
@@ -107,6 +107,7 @@ func TestShardedMap_ShardDistribution(t *testing.T) {
 	for i := range 128 {
 		sm.Put(i, true)
 	}
+
 	require.Equal(t, uint64(128), sm.Size())
 }
 
@@ -114,17 +115,23 @@ func TestShardedMap_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
 	sm := NewShardedMap[int, int](intHash)
-	const goroutines = 50
-	const opsPerGoroutine = 200
+
+	const (
+		goroutines      = 50
+		opsPerGoroutine = 200
+	)
 
 	var wg sync.WaitGroup
 	for i := range goroutines {
 		wg.Add(1)
+
 		go func(base int) {
 			defer wg.Done()
+
 			for j := range opsPerGoroutine {
 				key := base*opsPerGoroutine + j
 				sm.Put(key, key)
+
 				v, ok := sm.Get(key)
 				if ok && v != key {
 					t.Errorf("expected %d, got %d", key, v)
@@ -132,6 +139,7 @@ func TestShardedMap_ConcurrentAccess(t *testing.T) {
 			}
 		}(i)
 	}
+
 	wg.Wait()
 
 	require.Equal(t, uint64(goroutines*opsPerGoroutine), sm.Size())
@@ -141,6 +149,7 @@ func TestShardedMap_ConcurrentReadWrite(t *testing.T) {
 	t.Parallel()
 
 	sm := NewShardedMap[int, int](intHash)
+
 	const n = 1000
 
 	// Pre-populate
@@ -152,24 +161,20 @@ func TestShardedMap_ConcurrentReadWrite(t *testing.T) {
 
 	// Concurrent readers
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for i := range n {
 				sm.Get(i)
 			}
-		}()
+		})
 	}
 
 	// Concurrent writers
 	for range 5 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for i := range n {
 				sm.Put(i, i*2)
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

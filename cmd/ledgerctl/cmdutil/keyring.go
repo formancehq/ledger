@@ -27,6 +27,7 @@ func GetKeyring(cmd *cobra.Command) Keyring {
 	if kr, ok := cmd.Context().Value(contextKeyKeyring{}).(Keyring); ok {
 		return kr
 	}
+
 	return &osKeyring{}
 }
 
@@ -44,9 +45,11 @@ func (k *osKeyring) Get(server string) (string, error) {
 	if errors.Is(err, keyring.ErrNotFound) {
 		return "", ErrTokenNotFound
 	}
+
 	if err != nil {
 		return "", err
 	}
+
 	return token, nil
 }
 
@@ -59,5 +62,6 @@ func (k *osKeyring) Delete(server string) error {
 	if errors.Is(err, keyring.ErrNotFound) {
 		return ErrTokenNotFound
 	}
+
 	return err
 }

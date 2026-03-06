@@ -3,8 +3,9 @@ package events
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func TestCreateSink_HTTP(t *testing.T) {
@@ -94,4 +95,3 @@ func TestCreateSink_UnsupportedType(t *testing.T) {
 	require.Nil(t, sink)
 	require.Contains(t, err.Error(), "unsupported events sink type")
 }
-

@@ -20,9 +20,9 @@ type AddressTxIterator struct {
 	kb          *KeyBuilder
 	ledger      string
 	bucket      []byte         // which account→tx bucket to scan
-	addrIter  EntityIterator // iterates over matching account addresses
-	current   []byte         // current txID (8 bytes)
-	exhausted bool
+	addrIter    EntityIterator // iterates over matching account addresses
+	current     []byte         // current txID (8 bytes)
+	exhausted   bool
 	pendingTxns [][]byte // merge-union buffer for deduplication
 	txSeen      map[uint64]struct{}
 }
@@ -56,17 +56,21 @@ func (it *AddressTxIterator) Next() bool {
 	if len(it.pendingTxns) > 0 {
 		it.current = it.pendingTxns[0]
 		it.pendingTxns = it.pendingTxns[1:]
+
 		return true
 	}
 
 	// Materialize all txIDs for remaining accounts and merge-union
-	if err := it.materialize(); err != nil || len(it.pendingTxns) == 0 {
+	err := it.materialize()
+	if err != nil || len(it.pendingTxns) == 0 {
 		it.exhausted = true
+
 		return false
 	}
 
 	it.current = it.pendingTxns[0]
 	it.pendingTxns = it.pendingTxns[1:]
+
 	return true
 }
 
@@ -81,8 +85,10 @@ func (it *AddressTxIterator) SeekGE(target []byte) bool {
 
 	// Re-materialize with filter
 	if len(it.pendingTxns) == 0 {
-		if err := it.materialize(); err != nil || len(it.pendingTxns) == 0 {
+		err := it.materialize()
+		if err != nil || len(it.pendingTxns) == 0 {
 			it.exhausted = true
+
 			return false
 		}
 	}
@@ -93,16 +99,19 @@ func (it *AddressTxIterator) SeekGE(target []byte) bool {
 		if bytes.Compare(it.pendingTxns[idx], target) >= 0 {
 			break
 		}
+
 		idx++
 	}
 
 	if idx >= len(it.pendingTxns) {
 		it.exhausted = true
+
 		return false
 	}
 
 	it.current = it.pendingTxns[idx]
 	it.pendingTxns = it.pendingTxns[idx+1:]
+
 	return true
 }
 
@@ -129,12 +138,14 @@ func (it *AddressTxIterator) materialize() error {
 			if len(k) < len(prefix)+8 {
 				continue
 			}
+
 			txIDBytes := k[len(k)-8:]
 			txID := binary.BigEndian.Uint64(txIDBytes)
 
 			if _, seen := it.txSeen[txID]; seen {
 				continue
 			}
+
 			it.txSeen[txID] = struct{}{}
 
 			txCopy := make([]byte, 8)
@@ -163,5 +174,6 @@ func insertSorted(slice [][]byte, val []byte) [][]byte {
 	slice = append(slice, nil)
 	copy(slice[lo+1:], slice[lo:])
 	slice[lo] = val
+
 	return slice
 }

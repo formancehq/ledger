@@ -9,73 +9,74 @@ import (
 func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 	order := &raftcmdpb.Order{}
 
-	switch reqType := req.Type.(type) {
+	switch reqType := req.GetType().(type) {
 	case *servicepb.Request_CreateLedger:
 		order.Type = &raftcmdpb.Order_CreateLedger{
 			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name:            reqType.CreateLedger.Name,
-				ChartOfAccounts: reqType.CreateLedger.ChartOfAccounts,
-				EnforcementMode: reqType.CreateLedger.EnforcementMode,
+				Name:            reqType.CreateLedger.GetName(),
+				ChartOfAccounts: reqType.CreateLedger.GetChartOfAccounts(),
+				EnforcementMode: reqType.CreateLedger.GetEnforcementMode(),
 			},
 		}
 	case *servicepb.Request_DeleteLedger:
 		order.Type = &raftcmdpb.Order_DeleteLedger{
 			DeleteLedger: &raftcmdpb.DeleteLedgerOrder{
-				Name: reqType.DeleteLedger.Name,
+				Name: reqType.DeleteLedger.GetName(),
 			},
 		}
 	case *servicepb.Request_Apply:
 		applyOrder := &raftcmdpb.LedgerApplyOrder{
-			Ledger: reqType.Apply.Ledger,
+			Ledger: reqType.Apply.GetLedger(),
 		}
-		switch data := reqType.Apply.Data.(type) {
+		switch data := reqType.Apply.GetData().(type) {
 		case *servicepb.LedgerApplyRequest_CreateTransaction:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 				CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-					Postings:  data.CreateTransaction.Postings,
-					Script:    data.CreateTransaction.Script,
-					Timestamp: data.CreateTransaction.Timestamp,
-					Reference: data.CreateTransaction.Reference,
-					Metadata:  data.CreateTransaction.Metadata,
-					Force:     data.CreateTransaction.Force,
+					Postings:  data.CreateTransaction.GetPostings(),
+					Script:    data.CreateTransaction.GetScript(),
+					Timestamp: data.CreateTransaction.GetTimestamp(),
+					Reference: data.CreateTransaction.GetReference(),
+					Metadata:  data.CreateTransaction.GetMetadata(),
+					Force:     data.CreateTransaction.GetForce(),
 				},
 			}
 		case *servicepb.LedgerApplyRequest_AddMetadata:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_AddMetadata{
 				AddMetadata: &raftcmdpb.SaveMetadataOrder{
-					Target:   data.AddMetadata.Target,
-					Metadata: data.AddMetadata.Metadata,
+					Target:   data.AddMetadata.GetTarget(),
+					Metadata: data.AddMetadata.GetMetadata(),
 				},
 			}
 		case *servicepb.LedgerApplyRequest_DeleteMetadata:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 				DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-					Target: data.DeleteMetadata.Target,
-					Key:    data.DeleteMetadata.Key,
+					Target: data.DeleteMetadata.GetTarget(),
+					Key:    data.DeleteMetadata.GetKey(),
 				},
 			}
 		case *servicepb.LedgerApplyRequest_RevertTransaction:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 				RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-					TransactionId:   data.RevertTransaction.TransactionId,
-					Force:           data.RevertTransaction.Force,
-					AtEffectiveDate: data.RevertTransaction.AtEffectiveDate,
-					Metadata:        data.RevertTransaction.Metadata,
+					TransactionId:   data.RevertTransaction.GetTransactionId(),
+					Force:           data.RevertTransaction.GetForce(),
+					AtEffectiveDate: data.RevertTransaction.GetAtEffectiveDate(),
+					Metadata:        data.RevertTransaction.GetMetadata(),
 				},
 			}
 		case *servicepb.LedgerApplyRequest_SetChartOfAccounts:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_SetChartOfAccounts{
 				SetChartOfAccounts: &raftcmdpb.SetChartOfAccountsOrder{
-					ChartOfAccounts: data.SetChartOfAccounts.ChartOfAccounts,
+					ChartOfAccounts: data.SetChartOfAccounts.GetChartOfAccounts(),
 				},
 			}
 		case *servicepb.LedgerApplyRequest_SetChartEnforcementMode:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_SetChartEnforcementMode{
 				SetChartEnforcementMode: &raftcmdpb.SetChartEnforcementModeOrder{
-					EnforcementMode: data.SetChartEnforcementMode.EnforcementMode,
+					EnforcementMode: data.SetChartEnforcementMode.GetEnforcementMode(),
 				},
 			}
 		}
+
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: applyOrder,
 		}

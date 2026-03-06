@@ -17,6 +17,7 @@ type WriteStallState struct {
 func NewWriteStallState() *WriteStallState {
 	ch := make(chan struct{})
 	close(ch)
+
 	return &WriteStallState{ch: ch}
 }
 
@@ -25,6 +26,7 @@ func NewWriteStallState() *WriteStallState {
 func (s *WriteStallState) OnStallBegin() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if !s.stalled {
 		s.stalled = true
 		s.ch = make(chan struct{})
@@ -35,6 +37,7 @@ func (s *WriteStallState) OnStallBegin() {
 func (s *WriteStallState) OnStallEnd() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if s.stalled {
 		s.stalled = false
 		close(s.ch)
@@ -46,6 +49,7 @@ func (s *WriteStallState) OnStallEnd() {
 func (s *WriteStallState) WaitCh() <-chan struct{} {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.ch
 }
 
@@ -53,5 +57,6 @@ func (s *WriteStallState) WaitCh() <-chan struct{} {
 func (s *WriteStallState) IsStalled() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.stalled
 }

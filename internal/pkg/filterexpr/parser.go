@@ -1,11 +1,13 @@
 package filterexpr
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
@@ -42,11 +44,11 @@ var filterParser = participle.MustBuild[OrExpr](
 // Grammar:
 //
 //	expression     := or_expr
-//	or_expr        := and_expr ("or" and_expr)*
+//	:= and_expr ("or" and_expr)*
 //	and_expr       := unary_expr ("and" unary_expr)*
 //	unary_expr     := "not" unary_expr | primary
-//	primary        := "(" expression ")" | condition
-//	condition      := metadata_cond | address_cond | source_cond | destination_cond
+//	:= "(" expression ")" | condition
+//	:= metadata_cond | address_cond | source_cond | destination_cond
 //	metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "exists")
 //	address_cond   := ("address" | "source" | "destination") ("==" VALUE | "^=" VALUE)
 //	value          := "$" Ident | "true" | "false" | String | Number | Ident
@@ -55,6 +57,7 @@ func Parse(input string) (*commonpb.QueryFilter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %w", err)
 	}
+
 	return ast.toProto()
 }
 
@@ -68,14 +71,17 @@ func (e *OrExpr) toProto() (*commonpb.QueryFilter, error) {
 	if len(e.Operands) == 1 {
 		return e.Operands[0].toProto()
 	}
+
 	filters := make([]*commonpb.QueryFilter, len(e.Operands))
 	for i, op := range e.Operands {
 		f, err := op.toProto()
 		if err != nil {
 			return nil, err
 		}
+
 		filters[i] = f
 	}
+
 	return &commonpb.QueryFilter{
 		Filter: &commonpb.QueryFilter_Or{
 			Or: &commonpb.OrFilter{Filters: filters},
@@ -91,14 +97,17 @@ func (e *AndExpr) toProto() (*commonpb.QueryFilter, error) {
 	if len(e.Operands) == 1 {
 		return e.Operands[0].toProto()
 	}
+
 	filters := make([]*commonpb.QueryFilter, len(e.Operands))
 	for i, op := range e.Operands {
 		f, err := op.toProto()
 		if err != nil {
 			return nil, err
 		}
+
 		filters[i] = f
 	}
+
 	return &commonpb.QueryFilter{
 		Filter: &commonpb.QueryFilter_And{
 			And: &commonpb.AndFilter{Filters: filters},
@@ -117,12 +126,14 @@ func (e *UnaryExpr) toProto() (*commonpb.QueryFilter, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		return &commonpb.QueryFilter{
 			Filter: &commonpb.QueryFilter_Not{
 				Not: &commonpb.NotFilter{Filter: inner},
 			},
 		}, nil
 	}
+
 	return e.Primary.toProto()
 }
 
@@ -135,6 +146,7 @@ func (p *Primary) toProto() (*commonpb.QueryFilter, error) {
 	if p.Group != nil {
 		return p.Group.toProto()
 	}
+
 	return p.Condition.toProto()
 }
 
@@ -148,18 +160,20 @@ func (c *Condition) toProto() (*commonpb.QueryFilter, error) {
 	if c.Metadata != nil {
 		return c.Metadata.toProto()
 	}
+
 	if c.Ledger != nil {
 		return c.Ledger.toProto()
 	}
+
 	return c.Address.toProto()
 }
 
 // --- Metadata conditions ---
 
 type MetadataCond struct {
-	Key     string       `parser:"'metadata' '[' @(Ident | Keyword | String | Number) ']'"`
-	Exists  bool         `parser:"( @'exists'"`
-	Compare *MetadataOp  `parser:"| @@ )"`
+	Key     string      `parser:"'metadata' '[' @(Ident | Keyword | String | Number) ']'"`
+	Exists  bool        `parser:"( @'exists'"`
+	Compare *MetadataOp `parser:"| @@ )"`
 }
 
 func (m *MetadataCond) toProto() (*commonpb.QueryFilter, error) {
@@ -176,6 +190,7 @@ func (m *MetadataCond) toProto() (*commonpb.QueryFilter, error) {
 			},
 		}, nil
 	}
+
 	return m.Compare.toProto(field)
 }
 
@@ -197,6 +212,7 @@ func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, 
 		if err != nil {
 			return nil, err
 		}
+
 		return &commonpb.QueryFilter{
 			Filter: &commonpb.QueryFilter_Not{
 				Not: &commonpb.NotFilter{Filter: inner},
@@ -211,7 +227,7 @@ func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, 
 	case op.Lte != nil:
 		return metadataRangeToProto(field, op.Lte, "<=")
 	default:
-		return nil, fmt.Errorf("missing operator")
+		return nil, errors.New("missing operator")
 	}
 }
 
@@ -228,6 +244,7 @@ func (l *LedgerCond) toProto() (*commonpb.QueryFilter, error) {
 	} else {
 		cond.Value = &commonpb.StringCondition_Hardcoded{Hardcoded: l.Exact.resolve()}
 	}
+
 	return &commonpb.QueryFilter{
 		Filter: &commonpb.QueryFilter_Ledger{
 			Ledger: &commonpb.LedgerCondition{Cond: cond},
@@ -245,6 +262,7 @@ type AddressCond struct {
 
 func (a *AddressCond) toProto() (*commonpb.QueryFilter, error) {
 	role := commonpb.AddressRole_ADDRESS_ROLE_ANY
+
 	switch a.Keyword {
 	case "source":
 		role = commonpb.AddressRole_ADDRESS_ROLE_SOURCE
@@ -253,6 +271,7 @@ func (a *AddressCond) toProto() (*commonpb.QueryFilter, error) {
 	}
 
 	am := &commonpb.AddressMatch{Role: role}
+
 	if a.Exact != nil {
 		if a.Exact.Param != "" {
 			am.Match = &commonpb.AddressMatch_ParamExact{ParamExact: a.Exact.Param}
@@ -266,6 +285,7 @@ func (a *AddressCond) toProto() (*commonpb.QueryFilter, error) {
 			am.Match = &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: a.Prefix.resolve()}
 		}
 	}
+
 	return &commonpb.QueryFilter{
 		Filter: &commonpb.QueryFilter_Address{Address: am},
 	}, nil
@@ -274,23 +294,26 @@ func (a *AddressCond) toProto() (*commonpb.QueryFilter, error) {
 // --- Value ---
 
 type Value struct {
-	Param  string `parser:"  '$' @Ident"`
-	Str    string `parser:"| @String"`
-	Num    string `parser:"| @Number"`
-	Bool   string `parser:"| @('true' | 'false')"`
-	Bare   string `parser:"| @Ident"`
+	Param string `parser:"  '$' @Ident"`
+	Str   string `parser:"| @String"`
+	Num   string `parser:"| @Number"`
+	Bool  string `parser:"| @('true' | 'false')"`
+	Bare  string `parser:"| @Ident"`
 }
 
 func (v *Value) resolve() string {
 	if v.Str != "" {
 		return unquote(v.Str)
 	}
+
 	if v.Num != "" {
 		return v.Num
 	}
+
 	if v.Bool != "" {
 		return v.Bool
 	}
+
 	return v.Bare
 }
 
@@ -306,6 +329,7 @@ func metadataEqualityToProto(field *commonpb.FieldRef, val *Value) (*commonpb.Qu
 				Value: &commonpb.StringCondition_Param{Param: val.Param},
 			},
 		}
+
 		return &commonpb.QueryFilter{
 			Filter: &commonpb.QueryFilter_Field{Field: fc},
 		}, nil
@@ -351,6 +375,7 @@ func metadataEqualityToProto(field *commonpb.FieldRef, val *Value) (*commonpb.Qu
 func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*commonpb.QueryFilter, error) {
 	if val.Param != "" {
 		ic := &commonpb.IntCondition{}
+
 		switch op {
 		case ">":
 			ic.ParamMin = val.Param
@@ -363,6 +388,7 @@ func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*com
 		case "<=":
 			ic.ParamMax = val.Param
 		}
+
 		return &commonpb.QueryFilter{
 			Filter: &commonpb.QueryFilter_Field{
 				Field: &commonpb.FieldCondition{
@@ -374,12 +400,14 @@ func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*com
 	}
 
 	raw := val.resolve()
+
 	intVal, intErr := strconv.ParseInt(raw, 10, 64)
 	if intErr != nil {
 		return nil, fmt.Errorf("range operators only support integer values, got %q", raw)
 	}
 
 	ic := &commonpb.IntCondition{}
+
 	switch op {
 	case ">":
 		ic.Min = &intVal
@@ -407,5 +435,6 @@ func unquote(s string) string {
 	if len(s) >= 2 && ((s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'')) {
 		return s[1 : len(s)-1]
 	}
+
 	return s
 }

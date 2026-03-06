@@ -4,14 +4,15 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel/metric/noop"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
-	"go.opentelemetry.io/otel/metric/noop"
 )
 
 // NewRebuildIndexesCommand creates the store rebuild-indexes command.
@@ -57,8 +58,10 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	pebbleStore, err := dal.OpenReadOnly(dataDir, logger)
 	if err != nil {
 		spinner.Fail("Failed to open Pebble store")
+
 		return cmdutil.Displayed(fmt.Errorf("opening Pebble store: %w", err))
 	}
+
 	defer func() { _ = pebbleStore.Close() }()
 
 	spinner.Success("Pebble store opened")
@@ -69,11 +72,13 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	rs, err := readstore.New(readIndexDir, noFreelistSync, 0, logger)
 	if err != nil {
 		spinner.Fail("Failed to open read index store")
+
 		return cmdutil.Displayed(fmt.Errorf("opening read index store: %w", err))
 	}
+
 	defer func() { _ = rs.Close() }()
 
-	spinner.Success(fmt.Sprintf("Read index store opened at %s", rs.Path()))
+	spinner.Success("Read index store opened at " + rs.Path())
 
 	// Rebuild.
 	spinner, _ = pterm.DefaultSpinner.Start("Rebuilding indexes from system logs...")
@@ -83,6 +88,7 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	lastSeq, err := builder.RebuildAll()
 	if err != nil {
 		spinner.Fail("Rebuild failed")
+
 		return cmdutil.Displayed(fmt.Errorf("rebuilding indexes: %w", err))
 	}
 
@@ -91,13 +97,16 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	// Sync freelist to disk so the next Open() is fast.
 	if noFreelistSync {
 		spinner, _ = pterm.DefaultSpinner.Start("Syncing freelist to disk...")
-		if err := rs.SyncFreelist(); err != nil {
+
+		err := rs.SyncFreelist()
+		if err != nil {
 			spinner.Fail("Failed to sync freelist")
+
 			return cmdutil.Displayed(fmt.Errorf("syncing freelist: %w", err))
 		}
+
 		spinner.Success("Freelist synced")
 	}
 
 	return nil
 }
-

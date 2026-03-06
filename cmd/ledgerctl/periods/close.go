@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // NewCloseCommand creates the periods close command.
@@ -30,6 +31,7 @@ func runClose(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -52,14 +54,15 @@ func runClose(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(resp)
 	}
 
-	if len(resp.Logs) > 0 {
-		log := resp.Logs[0]
-		if closePeriodLog := log.Payload.GetClosePeriod(); closePeriodLog != nil {
-			pterm.Success.Printfln("Period %d closed successfully", closePeriodLog.ClosedPeriod.Id)
-			pterm.Info.Printfln("New period %d opened", closePeriodLog.NewPeriod.Id)
+	if len(resp.GetLogs()) > 0 {
+		log := resp.GetLogs()[0]
+		if closePeriodLog := log.GetPayload().GetClosePeriod(); closePeriodLog != nil {
+			pterm.Success.Printfln("Period %d closed successfully", closePeriodLog.GetClosedPeriod().GetId())
+			pterm.Info.Printfln("New period %d opened", closePeriodLog.GetNewPeriod().GetId())
 			pterm.Info.Println("Background sealing process will compute the sealing hash")
 		} else {
 			pterm.Success.Println("Period closed successfully")

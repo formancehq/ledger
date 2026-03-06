@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // analyzeTransactionsResponseJSON is the camelCase JSON DTO for AnalyzeTransactionsResponse.
@@ -17,13 +18,13 @@ type analyzeTransactionsResponseJSON struct {
 }
 
 type flowPatternJSON struct {
-	Signature        string                  `json:"signature"`
-	Structure        string                  `json:"structure"`
-	TransactionCount uint64                  `json:"transactionCount"`
+	Signature        string                   `json:"signature"`
+	Structure        string                   `json:"structure"`
+	TransactionCount uint64                   `json:"transactionCount"`
 	Postings         []*normalizedPostingJSON `json:"postings"`
-	Temporal         *temporalStatsJSON      `json:"temporal,omitempty"`
-	VolumeStats      []*assetVolumeStatsJSON `json:"volumeStats"`
-	MetadataKeys     []string                `json:"metadataKeys"`
+	Temporal         *temporalStatsJSON       `json:"temporal,omitempty"`
+	VolumeStats      []*assetVolumeStatsJSON  `json:"volumeStats"`
+	MetadataKeys     []string                 `json:"metadataKeys"`
 }
 
 type normalizedPostingJSON struct {
@@ -70,12 +71,12 @@ func postingStructureToString(s servicepb.PostingStructure) string {
 
 func toAnalyzeTransactionsJSON(resp *servicepb.AnalyzeTransactionsResponse) *analyzeTransactionsResponseJSON {
 	result := &analyzeTransactionsResponseJSON{
-		TotalTransactions: resp.TotalTransactions,
-		TotalReverted:     resp.TotalReverted,
-		FlowPatterns:      make([]*flowPatternJSON, 0, len(resp.FlowPatterns)),
+		TotalTransactions: resp.GetTotalTransactions(),
+		TotalReverted:     resp.GetTotalReverted(),
+		FlowPatterns:      make([]*flowPatternJSON, 0, len(resp.GetFlowPatterns())),
 	}
 
-	for _, fp := range resp.FlowPatterns {
+	for _, fp := range resp.GetFlowPatterns() {
 		result.FlowPatterns = append(result.FlowPatterns, toFlowPatternJSON(fp))
 	}
 
@@ -84,75 +85,82 @@ func toAnalyzeTransactionsJSON(resp *servicepb.AnalyzeTransactionsResponse) *ana
 
 func toFlowPatternJSON(fp *servicepb.FlowPattern) *flowPatternJSON {
 	result := &flowPatternJSON{
-		Signature:        fp.Signature,
-		Structure:        postingStructureToString(fp.Structure),
-		TransactionCount: fp.TransactionCount,
-		MetadataKeys:     fp.MetadataKeys,
+		Signature:        fp.GetSignature(),
+		Structure:        postingStructureToString(fp.GetStructure()),
+		TransactionCount: fp.GetTransactionCount(),
+		MetadataKeys:     fp.GetMetadataKeys(),
 	}
 
-	result.Postings = make([]*normalizedPostingJSON, 0, len(fp.Postings))
-	for _, p := range fp.Postings {
+	result.Postings = make([]*normalizedPostingJSON, 0, len(fp.GetPostings()))
+	for _, p := range fp.GetPostings() {
 		result.Postings = append(result.Postings, &normalizedPostingJSON{
-			SourcePattern:      p.SourcePattern,
-			DestinationPattern: p.DestinationPattern,
-			Asset:              p.Asset,
+			SourcePattern:      p.GetSourcePattern(),
+			DestinationPattern: p.GetDestinationPattern(),
+			Asset:              p.GetAsset(),
 		})
 	}
 
-	if fp.Temporal != nil {
+	if fp.GetTemporal() != nil {
 		result.Temporal = &temporalStatsJSON{
-			TransactionsPerDay: fp.Temporal.TransactionsPerDay,
+			TransactionsPerDay: fp.GetTemporal().GetTransactionsPerDay(),
 		}
-		if fp.Temporal.FirstSeen != nil {
-			result.Temporal.FirstSeen = fp.Temporal.FirstSeen.AsTime().Format("2006-01-02T15:04:05Z07:00")
+		if fp.GetTemporal().GetFirstSeen() != nil {
+			result.Temporal.FirstSeen = fp.GetTemporal().GetFirstSeen().AsTime().Format("2006-01-02T15:04:05Z07:00")
 		}
-		if fp.Temporal.LastSeen != nil {
-			result.Temporal.LastSeen = fp.Temporal.LastSeen.AsTime().Format("2006-01-02T15:04:05Z07:00")
+
+		if fp.GetTemporal().GetLastSeen() != nil {
+			result.Temporal.LastSeen = fp.GetTemporal().GetLastSeen().AsTime().Format("2006-01-02T15:04:05Z07:00")
 		}
-		for _, h := range fp.Temporal.PeakHours {
+
+		for _, h := range fp.GetTemporal().GetPeakHours() {
 			result.Temporal.PeakHours = append(result.Temporal.PeakHours, &hourBucketJSON{
-				Hour:  h.Hour,
-				Count: h.Count,
+				Hour:  h.GetHour(),
+				Count: h.GetCount(),
 			})
 		}
 	}
 
-	result.VolumeStats = make([]*assetVolumeStatsJSON, 0, len(fp.VolumeStats))
-	for _, vs := range fp.VolumeStats {
+	result.VolumeStats = make([]*assetVolumeStatsJSON, 0, len(fp.GetVolumeStats()))
+	for _, vs := range fp.GetVolumeStats() {
 		result.VolumeStats = append(result.VolumeStats, &assetVolumeStatsJSON{
-			Asset:            vs.Asset,
-			TotalVolume:      vs.TotalVolume,
-			AverageVolume:    vs.AverageVolume,
-			MinVolume:        vs.MinVolume,
-			MaxVolume:        vs.MaxVolume,
-			TransactionCount: vs.TransactionCount,
+			Asset:            vs.GetAsset(),
+			TotalVolume:      vs.GetTotalVolume(),
+			AverageVolume:    vs.GetAverageVolume(),
+			MinVolume:        vs.GetMinVolume(),
+			MaxVolume:        vs.GetMaxVolume(),
+			TransactionCount: vs.GetTransactionCount(),
 		})
 	}
 
 	return result
 }
 
-// handleAnalyzeTransactions handles GET /{ledgerName}/analyze-transactions
+// handleAnalyzeTransactions handles GET /{ledgerName}/analyze-transactions.
 func (s *Server) handleAnalyzeTransactions(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
+
 		return
 	}
 
 	var variableThreshold uint32
+
 	if v := r.URL.Query().Get("variableThreshold"); v != "" {
 		parsed, err := strconv.ParseUint(v, 10, 32)
 		if err != nil {
 			writeBadRequest(w, "INVALID_REQUEST", errors.New("variableThreshold must be a positive integer"))
+
 			return
 		}
+
 		variableThreshold = uint32(parsed)
 	}
 
 	resp, err := s.backend.AnalyzeTransactions(r.Context(), ledgerName, variableThreshold, nil)
 	if err != nil {
 		handleError(w, r, err)
+
 		return
 	}
 

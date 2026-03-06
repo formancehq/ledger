@@ -17,6 +17,7 @@ import (
 func ReadPeriods(ctx context.Context, reader dal.PebbleReader) (dal.Cursor[*commonpb.Period], error) {
 	_, span := queryTracer.Start(ctx, "query.list_periods")
 	defer span.End()
+
 	lowerBound := []byte{dal.KeyPrefixPeriods}
 	upperBound := []byte{dal.KeyPrefixPeriods, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 
@@ -41,17 +42,21 @@ func ReadAllPeriods(ctx context.Context, reader dal.PebbleReader) ([]*commonpb.P
 	if err != nil {
 		return nil, err
 	}
+
 	defer func() { _ = cursor.Close() }()
 
 	var periods []*commonpb.Period
+
 	for {
 		p, err := cursor.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			return nil, err
 		}
+
 		periods = append(periods, p)
 	}
 
@@ -66,8 +71,10 @@ func ReadNextPeriodID(reader dal.PebbleReader) (uint64, error) {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 1, nil
 		}
+
 		return 0, fmt.Errorf("getting next period ID: %w", err)
 	}
+
 	defer func() {
 		_ = closer.Close()
 	}()
@@ -83,8 +90,10 @@ func ReadPeriodSchedule(reader dal.PebbleReader) (string, error) {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return "", nil
 		}
+
 		return "", fmt.Errorf("loading period schedule: %w", err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	return string(value), nil

@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/oidc"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/oidc"
 )
 
 func TestWithClaimsAndClaimsFromContext(t *testing.T) {
@@ -43,5 +44,5 @@ func TestSubjectFromContext(t *testing.T) {
 func TestSubjectFromContextEmpty(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "", SubjectFromContext(context.Background()))
+	require.Empty(t, SubjectFromContext(context.Background()))
 }

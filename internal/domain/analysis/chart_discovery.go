@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -28,18 +29,20 @@ func isUUID(s string) bool {
 	if len(s) != 36 {
 		return false
 	}
-	for i := 0; i < 36; i++ {
+
+	for i := range 36 {
 		if i == 8 || i == 13 || i == 18 || i == 23 {
 			if s[i] != '-' {
 				return false
 			}
 		} else {
 			c := s[i]
-			if !((c >= 'a' && c <= 'f') || (c >= '0' && c <= '9')) {
+			if (c < 'a' || c > 'f') && (c < '0' || c > '9') {
 				return false
 			}
 		}
 	}
+
 	return true
 }
 
@@ -48,11 +51,13 @@ func isNumeric(s string) bool {
 	if len(s) == 0 {
 		return false
 	}
-	for i := 0; i < len(s); i++ {
+
+	for i := range len(s) {
 		if s[i] < '0' || s[i] > '9' {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -61,12 +66,14 @@ func isAlphanumeric(s string) bool {
 	if len(s) == 0 {
 		return false
 	}
-	for i := 0; i < len(s); i++ {
+
+	for i := range len(s) {
 		c := s[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' && c != '-' {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -98,15 +105,19 @@ func Analyze(accounts []CompactAccount, variableThreshold uint32) *servicepb.Ana
 		if i >= len(accounts) {
 			return CompactAccount{}, io.EOF
 		}
+
 		acc := accounts[i]
 		i++
+
 		return acc, nil
 	}
+
 	resp, err := AnalyzeFromIterator(next, variableThreshold, nil)
 	if err != nil {
 		// Slice iterator never returns a non-EOF error.
 		panic(fmt.Sprintf("unexpected error from slice iterator: %v", err))
 	}
+
 	return resp
 }
 
@@ -120,13 +131,15 @@ func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold 
 	}
 
 	root := newTrieNode()
+
 	var totalAccounts uint64
 
 	for {
 		acc, err := next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			return nil, fmt.Errorf("reading account for analysis: %w", err)
 		}
@@ -135,7 +148,9 @@ func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold 
 		if onProgress != nil && totalAccounts%progressReportInterval == 0 {
 			onProgress(totalAccounts, 0)
 		}
+
 		segments := strings.Split(acc.Address, ":")
+
 		node := root
 		for _, seg := range segments {
 			child, ok := node.children[seg]
@@ -143,8 +158,10 @@ func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold 
 				child = newTrieNode()
 				node.children[seg] = child
 			}
+
 			node = child
 		}
+
 		node.terminating++
 		node.assets = mergeDistinct(node.assets, acc.Assets)
 		node.metadataKeys = mergeDistinct(node.metadataKeys, acc.MetadataKeys)
@@ -200,6 +217,7 @@ func classifyChildren(node *trieNode, threshold uint32) (map[string]*commonpb.Ch
 		if infos[i].count != infos[j].count {
 			return infos[i].count > infos[j].count
 		}
+
 		return infos[i].key < infos[j].key
 	})
 
@@ -245,6 +263,7 @@ func classifyChildren(node *trieNode, threshold uint32) (map[string]*commonpb.Ch
 
 	// Build merged variable node: merge all variable children's sub-trees
 	mergedVariableNode := newTrieNode()
+
 	variableKeys := make([]string, 0, len(variableInfos))
 	for _, info := range variableInfos {
 		variableKeys = append(variableKeys, info.key)
@@ -280,6 +299,7 @@ func buildFixedMap(infos []childInfo, threshold uint32) map[string]*commonpb.Cha
 			Variable: variable,
 		}
 	}
+
 	return m
 }
 
@@ -287,6 +307,7 @@ func buildFixedMap(infos []childInfo, threshold uint32) map[string]*commonpb.Cha
 func mergeTrieNodes(dst, src *trieNode) {
 	dst.terminating += src.terminating
 	dst.assets = mergeDistinct(dst.assets, src.assets)
+
 	dst.metadataKeys = mergeDistinct(dst.metadataKeys, src.metadataKeys)
 	for key, srcChild := range src.children {
 		if dstChild, ok := dst.children[key]; ok {
@@ -333,11 +354,13 @@ func extractPatterns(node *trieNode, pathParts []string, pathSegments []*service
 				append(pathSegments, seg),
 				threshold, out)
 		}
+
 		return
 	}
 
 	// Variable node: merge all children
 	allKeys := sortedKeys(node.children)
+
 	examples := allKeys
 	if len(examples) > maxExamples {
 		examples = examples[:maxExamples]
@@ -379,9 +402,11 @@ func inferPattern(values []string) string {
 		if !isUUID(v) {
 			allUUID = false
 		}
+
 		if !isNumeric(v) {
 			allNumeric = false
 		}
+
 		if !allUUID && !allNumeric {
 			break
 		}
@@ -390,17 +415,21 @@ func inferPattern(values []string) string {
 	if allUUID {
 		return uuidPattern
 	}
+
 	if allNumeric {
 		return numericPattern
 	}
 
 	allAlphanum := true
+
 	for _, v := range values {
 		if !isAlphanumeric(v) {
 			allAlphanum = false
+
 			break
 		}
 	}
+
 	if allAlphanum {
 		return alphanumPattern
 	}
@@ -416,13 +445,16 @@ func inferVariableName(values []string) string {
 
 	allUUID := true
 	allNumeric := true
+
 	for _, v := range values {
 		if !isUUID(v) {
 			allUUID = false
 		}
+
 		if !isNumeric(v) {
 			allNumeric = false
 		}
+
 		if !allUUID && !allNumeric {
 			break
 		}
@@ -431,9 +463,11 @@ func inferVariableName(values []string) string {
 	if allUUID {
 		return "id"
 	}
+
 	if allNumeric {
 		return "number"
 	}
+
 	return "value"
 }
 
@@ -447,6 +481,7 @@ func isLikelyFixedName(key string) bool {
 	if isUUID(key) {
 		return false
 	}
+
 	if isNumeric(key) && len(key) > 3 {
 		return false
 	}
@@ -456,6 +491,7 @@ func isLikelyFixedName(key string) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -465,32 +501,39 @@ func countAccounts(node *trieNode) int {
 	for _, child := range node.children {
 		total += countAccounts(child)
 	}
+
 	return total
 }
 
 // collectAssets extracts distinct asset names from an account's volumes.
 func collectAssets(acc *commonpb.Account) []string {
-	if len(acc.Volumes) == 0 {
+	if len(acc.GetVolumes()) == 0 {
 		return nil
 	}
-	assets := make([]string, 0, len(acc.Volumes))
-	for asset := range acc.Volumes {
+
+	assets := make([]string, 0, len(acc.GetVolumes()))
+	for asset := range acc.GetVolumes() {
 		assets = append(assets, asset)
 	}
+
 	sort.Strings(assets)
+
 	return assets
 }
 
 // collectMetadataKeys extracts metadata keys from an account.
 func collectMetadataKeys(acc *commonpb.Account) []string {
-	if acc.Metadata == nil || len(acc.Metadata.Metadata) == 0 {
+	if acc.GetMetadata() == nil || len(acc.GetMetadata().GetMetadata()) == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(acc.Metadata.Metadata))
-	for _, m := range acc.Metadata.Metadata {
-		keys = append(keys, m.Key)
+
+	keys := make([]string, 0, len(acc.GetMetadata().GetMetadata()))
+	for _, m := range acc.GetMetadata().GetMetadata() {
+		keys = append(keys, m.GetKey())
 	}
+
 	sort.Strings(keys)
+
 	return keys
 }
 
@@ -499,18 +542,23 @@ func mergeDistinct(a, b []string) []string {
 	if len(b) == 0 {
 		return a
 	}
+
 	set := make(map[string]struct{}, len(a)+len(b))
 	for _, v := range a {
 		set[v] = struct{}{}
 	}
+
 	for _, v := range b {
 		set[v] = struct{}{}
 	}
+
 	result := make([]string, 0, len(set))
 	for v := range set {
 		result = append(result, v)
 	}
+
 	sort.Strings(result)
+
 	return result
 }
 
@@ -519,7 +567,9 @@ func sortedKeys(m map[string]*trieNode) []string {
 	for k := range m {
 		keys = append(keys, k)
 	}
+
 	sort.Strings(keys)
+
 	return keys
 }
 
@@ -527,9 +577,11 @@ func sortedCopy(s []string) []string {
 	if s == nil {
 		return nil
 	}
+
 	c := make([]string, len(s))
 	copy(c, s)
 	sort.Strings(c)
+
 	return c
 }
 
@@ -537,7 +589,9 @@ func cloneSegments(segs []*servicepb.PatternSegment) []*servicepb.PatternSegment
 	if segs == nil {
 		return nil
 	}
+
 	c := make([]*servicepb.PatternSegment, len(segs))
 	copy(c, segs)
+
 	return c
 }

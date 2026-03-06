@@ -3,12 +3,13 @@ package processing
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestProcessAddMetadata_Account(t *testing.T) {
@@ -64,9 +65,9 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
-	require.Equal(t, "test-ledger", applyLog.LedgerName)
+	require.Equal(t, "test-ledger", applyLog.GetLedgerName())
 
-	savedMetadata := applyLog.Log.Data.GetSavedMetadata()
+	savedMetadata := applyLog.GetLog().GetData().GetSavedMetadata()
 	require.NotNil(t, savedMetadata)
 }
 
@@ -90,11 +91,11 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 5}, gomock.Any()).Do(
 		func(key domain.TransactionKey, update *commonpb.TransactionUpdate) {
-			require.Equal(t, uint64(42), update.ByLog) // Global sequence ID
-			require.Len(t, update.Updates, 1)
-			addMeta := update.Updates[0].GetTransactionModificationAddMetadata()
+			require.Equal(t, uint64(42), update.GetByLog()) // Global sequence ID
+			require.Len(t, update.GetUpdates(), 1)
+			addMeta := update.GetUpdates()[0].GetTransactionModificationAddMetadata()
 			require.NotNil(t, addMeta)
-			require.Equal(t, "category", addMeta.Metadata.Key)
+			require.Equal(t, "category", addMeta.GetMetadata().GetKey())
 		},
 	)
 
@@ -175,9 +176,9 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	deletedMetadata := applyLog.Log.Data.GetDeletedMetadata()
+	deletedMetadata := applyLog.GetLog().GetData().GetDeletedMetadata()
 	require.NotNil(t, deletedMetadata)
-	require.Equal(t, "status", deletedMetadata.Key)
+	require.Equal(t, "status", deletedMetadata.GetKey())
 }
 
 func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {

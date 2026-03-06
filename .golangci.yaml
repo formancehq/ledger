@@ -17,11 +17,70 @@ formatters:
       custom-order: true
 
 linters:
-  default: all
-  disable:
-  - gochecknoglobals
-  - gochecknoinits
-  - wsl
+  default: none
+  enable:
+  - arangolint
+  - asasalint
+  - asciicheck
+  - bidichk
+  - bodyclose
+  - canonicalheader
+  - copyloopvar
+  - decorder
+  - dupword
+  - durationcheck
+  - embeddedstructfieldcheck
+  - errcheck
+  - errchkjson
+  - errorlint
+  - exptostd
+  - fatcontext
+  - ginkgolinter
+  - gocheckcompilerdirectives
+  - gochecksumtype
+  - gocritic
+  - godot
+  - goheader
+  - gomoddirectives
+  - gomodguard
+  - goprintffuncname
+  - gosmopolitan
+  - govet
+  - grouper
+  - iface
+  - importas
+  - ineffassign
+  - intrange
+  - iotamixing
+  - loggercheck
+  - mirror
+  - misspell
+  - modernize
+  - nakedret
+  - nilnesserr
+  - nlreturn
+  - nolintlint
+  - nosprintfhostport
+  - perfsprint
+  - predeclared
+  - promlinter
+  - protogetter
+  - reassign
+  - revive
+  - rowserrcheck
+  - sloglint
+  - sqlclosecheck
+  - staticcheck
+  - tagalign
+  - testableexamples
+  - unconvert
+  - unqueryvet
+  - unused
+  - usestdlibvars
+  - usetesting
+  - wastedassign
+  - whitespace
+  - zerologlint
   settings:
     lll:
       line-length: 180
@@ -29,16 +88,6 @@ linters:
       replace-local: true
       replace-allow-list:
       - github.com/expr-lang/expr
-    depguard:
-      rules:
-        main:
-          deny:
-          - pkg: "(text|html)/template$"
-            desc: Provokes big binaries because of reflection, use github.com/expr-lang/expr instead
-          - pkg: "github.com/pkg/errors"
-            desc: Should be replaced by standard lib errors package
-          allow:
-          - $gostd
     revive:
       rules:
       - name: package-comments

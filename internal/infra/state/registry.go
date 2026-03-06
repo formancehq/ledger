@@ -2,10 +2,10 @@ package state
 
 import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 // StateRegistry groups the KeyStores, Cache, Attributes, and ReversionBitsets
@@ -13,14 +13,14 @@ import (
 // single struct reduces Machine's field count and gives a clear boundary around
 // the "what data lives in memory" concern.
 type StateRegistry struct {
-	Cache           *cache.Cache
-	Attrs           *attributes.Attributes
-	Volumes         *attributes.KeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata *attributes.KeyStore[domain.MetadataKey, *commonpb.MetadataValue]
-	IdempotencyKeys *attributes.KeyStore[domain.IdempotencyKey, *commonpb.IdempotencyKeyValue]
-	References      *attributes.KeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
-	Ledgers         *attributes.KeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
-	Boundaries      *attributes.KeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
+	Cache             *cache.Cache
+	Attrs             *attributes.Attributes
+	Volumes           *attributes.KeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
+	AccountMetadata   *attributes.KeyStore[domain.MetadataKey, *commonpb.MetadataValue]
+	IdempotencyKeys   *attributes.KeyStore[domain.IdempotencyKey, *commonpb.IdempotencyKeyValue]
+	References        *attributes.KeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	Ledgers           *attributes.KeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
+	Boundaries        *attributes.KeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
 	SinkConfigs       *attributes.KeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
 	NumscriptVersions *attributes.KeyStore[domain.NumscriptVersionKey, string]
 	NumscriptEntries  *attributes.KeyStore[domain.NumscriptEntryKey, bool]
@@ -83,6 +83,7 @@ func (r *StateRegistry) GetReverted(key domain.TransactionKey) bool {
 	if !ok {
 		return false
 	}
+
 	return bs.IsReverted(key.ID)
 }
 
@@ -93,6 +94,7 @@ func (r *StateRegistry) SetReverted(key domain.TransactionKey) {
 		bs = domain.NewReversionBitset(key.ID)
 		r.Reversions[key.Ledger] = bs
 	}
+
 	bs.SetReverted(key.ID)
 }
 

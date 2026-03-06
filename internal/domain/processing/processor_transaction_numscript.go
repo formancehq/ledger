@@ -4,14 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 
+	"github.com/holiman/uint256"
+
+	numscriptlib "github.com/formancehq/numscript"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
-	numscriptlib "github.com/formancehq/numscript"
-	"github.com/holiman/uint256"
 )
 
 type numscriptPostingProducer struct {
@@ -20,28 +23,26 @@ type numscriptPostingProducer struct {
 }
 
 func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
-	if order.Script == nil || order.Script.Plain == "" {
+	if order.GetScript() == nil || order.GetScript().GetPlain() == "" {
 		return nil, numscript.ErrScriptRequired
 	}
 
 	// Parse the script (uses cache to avoid re-parsing)
-	parsed, err := p.cache.GetOrParse(order.Script.Plain)
+	parsed, err := p.cache.GetOrParse(order.GetScript().GetPlain())
 	if err != nil {
 		return nil, err
 	}
 
 	// Build variables map from script vars
 	vars := make(numscriptlib.VariablesMap)
-	for k, v := range order.Script.Vars {
-		vars[k] = v
-	}
+	maps.Copy(vars, order.GetScript().GetVars())
 
 	// Create the store adapter
 	// When Force is true, the adapter returns unlimited balances to bypass balance checks
 	storeAdapter := &numscriptStoreAdapter{
 		store:  s,
 		ledger: ledger,
-		force:  order.Force,
+		force:  order.GetForce(),
 	}
 
 	// Execute the script (experimental features are declared directly in scripts)
@@ -52,17 +53,21 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 
 	// Convert numscript postings to commonpb postings and update buffer
 	postings := make([]*commonpb.Posting, len(result.Postings))
+
 	var (
 		scratch    uint256.Int // reused across all postings
 		u256Amount uint256.Int
 	)
+
 	for i, posting := range result.Postings {
 		if posting.Amount.Sign() < 0 {
 			return nil, fmt.Errorf("numscript execution error: posting %d has negative amount %s", i, posting.Amount)
 		}
+
 		if overflow := u256Amount.SetFromBig(posting.Amount); overflow {
 			return nil, fmt.Errorf("numscript execution error: posting %d amount %s exceeds 256 bits", i, posting.Amount)
 		}
+
 		postings[i] = &commonpb.Posting{
 			Source:      posting.Source,
 			Destination: posting.Destination,
@@ -78,14 +83,17 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 			},
 			Asset: posting.Asset,
 		}
+
 		sourceVol, err := s.GetVolume(sourceKey)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return nil, err
 		}
+
 		if sourceVol == nil {
 			sourceVol = &raftcmdpb.VolumePair{}
 		}
-		addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, &u256Amount, postings[i].Amount, &scratch)
+
+		addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, &u256Amount, postings[i].GetAmount(), &scratch)
 		s.PutVolume(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
@@ -96,14 +104,17 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 			},
 			Asset: posting.Asset,
 		}
+
 		destVol, err := s.GetVolume(destKey)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return nil, err
 		}
+
 		if destVol == nil {
 			destVol = &raftcmdpb.VolumePair{}
 		}
-		addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, &u256Amount, postings[i].Amount, &scratch)
+
+		addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, &u256Amount, postings[i].GetAmount(), &scratch)
 		s.PutVolume(destKey, destVol)
 	}
 
@@ -125,6 +136,7 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 					Key: key,
 				}, mv)
 			}
+
 			accountsMeta[account] = mdList
 		}
 	}
@@ -148,7 +160,7 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 	}, nil
 }
 
-// numscriptStoreAdapter adapts the Store interface to the numscript.Store interface
+// numscriptStoreAdapter adapts the Store interface to the numscript.Store interface.
 type numscriptStoreAdapter struct {
 	store  InMemoryStore
 	ledger string
@@ -169,6 +181,7 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptli
 			// This bypasses all balance checks in Numscript execution
 			if s.force {
 				accountBalance[asset] = new(big.Int).Set(numscript.MaxForceBalance)
+
 				continue
 			}
 
@@ -186,22 +199,23 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptli
 			}
 
 			// Volumes must be preloaded by the admission layer.
-			if vol == nil || (vol.InputKnown == nil && vol.InputDiff == nil) {
+			if vol == nil || (vol.GetInputKnown() == nil && vol.GetInputDiff() == nil) {
 				return nil, &numscript.ErrBalanceNotPreloaded{Account: account, Asset: asset}
 			}
 
 			// Calculate balance: Input - Output using uint256, then convert to *big.Int at boundary
-			if vol.InputKnown != nil {
-				vol.InputKnown.IntoUint256(&inputVal)
+			if vol.GetInputKnown() != nil {
+				vol.GetInputKnown().IntoUint256(&inputVal)
 			} else {
-				vol.InputDiff.IntoUint256(&inputVal)
+				vol.GetInputDiff().IntoUint256(&inputVal)
 			}
 
 			outputVal.Clear()
-			if vol.OutputKnown != nil {
-				vol.OutputKnown.IntoUint256(&outputVal)
-			} else if vol.OutputDiff != nil {
-				vol.OutputDiff.IntoUint256(&outputVal)
+
+			if vol.GetOutputKnown() != nil {
+				vol.GetOutputKnown().IntoUint256(&outputVal)
+			} else if vol.GetOutputDiff() != nil {
+				vol.GetOutputDiff().IntoUint256(&outputVal)
 			}
 
 			// balance escapes into the map, so it must be heap-allocated
@@ -234,20 +248,22 @@ func (s *numscriptStoreAdapter) GetAccountsMetadata(_ context.Context, query num
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return nil, err
 			}
+
 			if value != nil {
 				// Opportunistically convert to declared schema type and write back.
 				// The schema is looked up lazily from the Store to avoid impacting
 				// tests that don't set up the GetLedger expectation.
 				if s.ledger != "" {
-					if info, ok := s.store.GetLedger(s.ledger); ok && info.MetadataSchema != nil {
-						if fields := info.MetadataSchema.AccountFields; fields != nil {
-							if fieldSchema, schemaOK := fields[key]; schemaOK && !commonpb.TypeMatches(value, fieldSchema.Type) {
-								value = commonpb.ConvertMetadataValue(value, fieldSchema.Type)
+					if info, ok := s.store.GetLedger(s.ledger); ok && info.GetMetadataSchema() != nil {
+						if fields := info.GetMetadataSchema().GetAccountFields(); fields != nil {
+							if fieldSchema, schemaOK := fields[key]; schemaOK && !commonpb.TypeMatches(value, fieldSchema.GetType()) {
+								value = commonpb.ConvertMetadataValue(value, fieldSchema.GetType())
 								s.store.PutAccountMetadata(metaKey, value)
 							}
 						}
 					}
 				}
+
 				str := commonpb.MetadataValueToString(value)
 				if str != "" {
 					accountMeta[key] = str

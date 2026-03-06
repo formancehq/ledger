@@ -8,7 +8,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
@@ -26,11 +33,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/noop"
-	"go.opentelemetry.io/otel/trace"
 )
 
 var tracer = otel.Tracer("admission")
@@ -40,6 +42,7 @@ var tracer = otel.Tracer("admission")
 var marshalBufPool = sync.Pool{
 	New: func() any {
 		b := make([]byte, 0, 4096)
+
 		return &b
 	},
 }
@@ -250,6 +253,7 @@ func NewAdmission(
 	a.preloadKeysNeededCounter = preloadKeysNeededCounter
 	a.preloadCacheHitsCounter = preloadCacheHitsCounter
 	a.nextIndex.Store(proposer.InitialIndex())
+
 	return a
 }
 
@@ -259,7 +263,7 @@ func NewAdmission(
 // 2. For operations at nextIndex N, a volume V is guaranteed in cache if N > R(V)
 // 3. When not guaranteed, load base value from store at boundary B(nextIndex)
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
-// 5. Propose command with Preload containing base values
+// 5. Propose command with Preload containing base values.
 func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 	if !a.healthChecker.IsHealthy() {
 		return nil, health.ErrUnhealthy
@@ -273,7 +277,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// Verify signatures and resolve signed payloads
 	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
 	requests, err := a.verifyAndResolveSignatures(requests)
+
 	sigSpan.End()
+
 	if err != nil {
 		return nil, err
 	}
@@ -317,12 +323,14 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// Preload ledgers (for CreateLedger/DeleteLedger orders)
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Ledgers)),
 		metric.WithAttributes(attribute.String("type", "ledgers")))
+
 	for ledgerKey := range needs.Ledgers {
 		canonicalKey := ledgerKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
 		if !a.cache.Ledgers.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
+
 			result, err := a.loaders.Ledgers.LoadOrWait(id, boundary, func() (*commonpb.LedgerInfo, error) {
 				return a.attrs.Ledger.ComputeValue(a.store, boundary, canonicalKey)
 			})
@@ -332,6 +340,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 			if result.FromLoad {
 				loadedKeys.Ledgers = append(loadedKeys.Ledgers, id)
+
 				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
 					metric.WithAttributes(attribute.String("type", "ledgers")))
 				a.preloadCounter.Add(ctx, 1,
@@ -370,12 +379,14 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// Preload boundaries (for Apply orders)
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Boundaries)),
 		metric.WithAttributes(attribute.String("type", "boundaries")))
+
 	for boundaryKey := range needs.Boundaries {
 		canonicalKey := boundaryKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
 		if !a.cache.Boundaries.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
+
 			result, err := a.loaders.Boundaries.LoadOrWait(id, boundary, func() (*raftcmdpb.LedgerBoundaries, error) {
 				return a.attrs.Boundary.ComputeValue(a.store, boundary, canonicalKey)
 			})
@@ -385,6 +396,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 			if result.FromLoad {
 				loadedKeys.Boundaries = append(loadedKeys.Boundaries, id)
+
 				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
 					metric.WithAttributes(attribute.String("type", "boundaries")))
 				a.preloadCounter.Add(ctx, 1,
@@ -422,12 +434,14 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Volumes)),
 		metric.WithAttributes(attribute.String("type", "volumes")))
+
 	for volumeKey := range needs.Volumes {
 		canonicalKey := volumeKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
 		if !a.cache.Volumes.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
+
 			result, err := a.loaders.Volumes.LoadOrWait(id, boundary, func() (*raftcmdpb.VolumePair, error) {
 				return a.attrs.Volume.ComputeValue(a.store, boundary, canonicalKey)
 			})
@@ -437,6 +451,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 			if result.FromLoad {
 				loadedKeys.Volumes = append(loadedKeys.Volumes, id)
+
 				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
 					metric.WithAttributes(attribute.String("type", "volumes")))
 				a.preloadCounter.Add(ctx, 1,
@@ -451,8 +466,8 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 			// Extract input/output for the preload message
 			var preloadInput, preloadOutput *commonpb.Uint256
 			if result.Value != nil {
-				preloadInput = result.Value.InputKnown
-				preloadOutput = result.Value.OutputKnown
+				preloadInput = result.Value.GetInputKnown()
+				preloadOutput = result.Value.GetOutputKnown()
 			}
 
 			a.logger.WithFields(map[string]any{
@@ -481,6 +496,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// Only preload if the key is actually found (has a value), to reduce command size
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.IdempotencyKeys)),
 		metric.WithAttributes(attribute.String("type", "idempotency_keys")))
+
 	for ikKey := range needs.IdempotencyKeys {
 		canonicalKey := ikKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
@@ -488,6 +504,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		// Check IdempotencyKeys cache
 		if !a.cache.IdempotencyKeys.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
+
 			result, err := a.loaders.IdempotencyKeys.LoadOrWait(id, boundary, func() (*commonpb.IdempotencyKeyValue, error) {
 				return a.attrs.IdempotencyKeys.ComputeValue(a.store, boundary, canonicalKey)
 			})
@@ -497,6 +514,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 			if result.FromLoad {
 				loadedKeys.IdempotencyKeys = append(loadedKeys.IdempotencyKeys, id)
+
 				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
 					metric.WithAttributes(attribute.String("type", "idempotency_keys")))
 				a.preloadCounter.Add(ctx, 1,
@@ -515,7 +533,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 					"boundary":    boundary,
 					"nextIndex":   nextIndex,
 					"key":         ikKey.Key,
-					"logSequence": result.Value.LogSequence,
+					"logSequence": result.Value.GetLogSequence(),
 					"fromLoad":    result.FromLoad,
 				}).Debug("Preloading idempotency key from store")
 
@@ -523,8 +541,8 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 					Type: &raftcmdpb.Preload_IdempotencyKey{
 						IdempotencyKey: &raftcmdpb.PreloadIdempotencyKey{
 							Id:          attrID,
-							LogSequence: result.Value.LogSequence,
-							Hash:        result.Value.Hash,
+							LogSequence: result.Value.GetLogSequence(),
+							Hash:        result.Value.GetHash(),
 						},
 					},
 				})
@@ -539,12 +557,14 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// Only preload if the reference exists (has a value), to reduce command size
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.References)),
 		metric.WithAttributes(attribute.String("type", "references")))
+
 	for refKey := range needs.References {
 		canonicalKey := refKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
 		if !a.cache.References.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
+
 			result, err := a.loaders.References.LoadOrWait(id, boundary, func() (*commonpb.TransactionReferenceValue, error) {
 				return a.attrs.References.ComputeValue(a.store, boundary, canonicalKey)
 			})
@@ -554,6 +574,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 			if result.FromLoad {
 				loadedKeys.References = append(loadedKeys.References, id)
+
 				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
 					metric.WithAttributes(attribute.String("type", "references")))
 				a.preloadCounter.Add(ctx, 1,
@@ -572,7 +593,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 					"boundary":      boundary,
 					"nextIndex":     nextIndex,
 					"reference":     refKey.Reference,
-					"transactionId": result.Value.TransactionId,
+					"transactionId": result.Value.GetTransactionId(),
 					"fromLoad":      result.FromLoad,
 				}).Debug("Preloading transaction reference from store")
 
@@ -580,7 +601,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 					Type: &raftcmdpb.Preload_TransactionReference{
 						TransactionReference: &raftcmdpb.PreloadTransactionReference{
 							Id:            attrID,
-							TransactionId: result.Value.TransactionId,
+							TransactionId: result.Value.GetTransactionId(),
 						},
 					},
 				})
@@ -594,12 +615,14 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// Phase 4: Preload sink configs for AddEventsSink/RemoveEventsSink
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.SinkConfigs)),
 		metric.WithAttributes(attribute.String("type", "sink_configs")))
+
 	for sinkKey := range needs.SinkConfigs {
 		canonicalKey := sinkKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
 		if !a.cache.SinkConfigs.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
+
 			result, err := a.loaders.SinkConfigs.LoadOrWait(id, boundary, func() (*commonpb.SinkConfig, error) {
 				return query.ReadSinkConfig(a.store, sinkKey.Name)
 			})
@@ -609,6 +632,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 			if result.FromLoad {
 				loadedKeys.SinkConfigs = append(loadedKeys.SinkConfigs, id)
+
 				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
 					metric.WithAttributes(attribute.String("type", "sink_configs")))
 				a.preloadCounter.Add(ctx, 1,
@@ -648,12 +672,14 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// Phase 5: Preload numscript versions for SaveNumscript/DeleteNumscript
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.NumscriptVersions)),
 		metric.WithAttributes(attribute.String("type", "numscript_versions")))
+
 	for nsKey := range needs.NumscriptVersions {
 		canonicalKey := nsKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
 		if !a.cache.NumscriptVersions.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
+
 			result, err := a.loaders.NumscriptVersions.LoadOrWait(id, boundary, func() (string, error) {
 				return query.ReadNumscriptLatestVersion(ctx, a.store, nsKey.Name)
 			})
@@ -663,6 +689,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 			if result.FromLoad {
 				loadedKeys.NumscriptVersions = append(loadedKeys.NumscriptVersions, id)
+
 				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
 					metric.WithAttributes(attribute.String("type", "numscript_versions")))
 				a.preloadCounter.Add(ctx, 1,
@@ -701,17 +728,20 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// Phase 6: Preload numscript entries for semver immutability checks
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.NumscriptEntries)),
 		metric.WithAttributes(attribute.String("type", "numscript_entries")))
+
 	for entryKey := range needs.NumscriptEntries {
 		canonicalKey := entryKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
 		if !a.cache.NumscriptEntries.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
+
 			result, err := a.loaders.NumscriptEntries.LoadOrWait(id, boundary, func() (bool, error) {
 				info, err := query.ReadNumscript(ctx, a.store, entryKey.Name, entryKey.Version)
 				if err != nil {
 					return false, err
 				}
+
 				return info != nil, nil
 			})
 			if err != nil {
@@ -720,6 +750,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 			if result.FromLoad {
 				loadedKeys.NumscriptEntries = append(loadedKeys.NumscriptEntries, id)
+
 				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
 					metric.WithAttributes(attribute.String("type", "numscript_entries")))
 				a.preloadCounter.Add(ctx, 1,
@@ -759,12 +790,14 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// Phase 7: Preload account metadata for Numscript meta() calls
 	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Metadata)),
 		metric.WithAttributes(attribute.String("type", "account_metadata")))
+
 	for metadataKey := range needs.Metadata {
 		canonicalKey := metadataKey.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
 		if !a.cache.AccountMetadata.IsGuaranteedInCache(nextIndex, id) {
 			preloadStart := time.Now()
+
 			result, err := a.loaders.AccountMetadata.LoadOrWait(id, boundary, func() (*commonpb.MetadataValue, error) {
 				return a.attrs.Metadata.ComputeValue(a.store, boundary, canonicalKey)
 			})
@@ -774,6 +807,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 			if result.FromLoad {
 				loadedKeys.AccountMetadata = append(loadedKeys.AccountMetadata, id)
+
 				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
 					metric.WithAttributes(attribute.String("type", "account_metadata")))
 				a.preloadCounter.Add(ctx, 1,
@@ -815,6 +849,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	// Step 5: Propose command - reacquire lock to serialize proposals
 	start := time.Now()
+
 	defer func() {
 		a.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
 	}()
@@ -824,19 +859,24 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	ctx, marshalSpan := tracer.Start(ctx, "admission.marshal")
 	bufp := marshalBufPool.Get().(*[]byte)
 	size := cmd.SizeVT()
+
 	buf := *bufp
 	if cap(buf) < size {
 		buf = make([]byte, size)
 	} else {
 		buf = buf[:size]
 	}
+
 	n, err := cmd.MarshalToVT(buf)
 	if err != nil {
 		marshalSpan.End()
+
 		*bufp = buf
 		marshalBufPool.Put(bufp)
+
 		return nil, fmt.Errorf("marshaling command: %w", err)
 	}
+
 	cmdData := buf[:n]
 
 	// Record command size for monitoring memory usage
@@ -844,15 +884,17 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	proposalData := make([]byte, len(cmdData))
 	copy(proposalData, cmdData)
+
 	*bufp = buf // preserve grown capacity for future calls
 	marshalBufPool.Put(bufp)
 	marshalSpan.SetAttributes(attribute.Int("command.size_bytes", len(proposalData)))
 	marshalSpan.End()
 
-	proposal := node.NewProposal(cmd.Id, proposalData)
+	proposal := node.NewProposal(cmd.GetId(), proposalData)
 
 	ctx, proposeSpan := tracer.Start(ctx, "admission.propose")
 	proposeStart := time.Now()
+
 	fsmFuture, err := a.proposer.Propose(proposal)
 	if err != nil {
 		proposeSpan.End()
@@ -862,8 +904,10 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 			"channel": "raft.node.propose",
 		}).Errorf("Proposal failed: %v", err)
 		a.proposeQueueFullCounter.Add(context.Background(), 1)
+
 		return nil, err
 	}
+
 	a.nextIndex.Add(1)
 	a.proposeQueueLoadHistogram.Record(context.Background(), int64(a.proposeQueueInflight.Add(1)))
 
@@ -872,8 +916,10 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		// Clean up loaded keys on error
 		loadedKeys.MarkApplied(a.loaders)
 		a.proposeQueueInflight.Add(-1)
+
 		return nil, err
 	}
+
 	a.proposeDurationHistogram.Record(ctx, time.Since(proposeStart).Microseconds())
 	proposeSpan.End()
 
@@ -881,6 +927,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	ctx, fsmSpan := tracer.Start(ctx, "admission.fsm_wait")
 	fsmWaitStart := time.Now()
 	result, err := fsmFuture.Wait()
+
 	a.fsmFutureWaitHistogram.Record(ctx, time.Since(fsmWaitStart).Microseconds())
 	fsmSpan.End()
 
@@ -903,6 +950,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 			if fetchErr != nil {
 				return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, fetchErr)
 			}
+
 			logs[i] = log
 		}
 	}
@@ -921,26 +969,26 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 func (a *Admission) verifyAndResolveSignatures(requests []*servicepb.Request) ([]*servicepb.Request, error) {
 	result := make([]*servicepb.Request, len(requests))
 	for i, req := range requests {
-		if req.Signature != nil {
+		if req.GetSignature() != nil {
 			// Look up public key
-			pubKey := a.keyStore.GetPublicKey(req.Signature.KeyId)
+			pubKey := a.keyStore.GetPublicKey(req.GetSignature().GetKeyId())
 			if pubKey == nil {
-				return nil, fmt.Errorf("%w: %s", signing.ErrUnknownKeyID, req.Signature.KeyId)
+				return nil, fmt.Errorf("%w: %s", signing.ErrUnknownKeyID, req.GetSignature().GetKeyId())
 			}
 
 			// Verify the signature on signed_payload
-			if err := signing.Verify(req.Signature, pubKey); err != nil {
+			if err := signing.Verify(req.GetSignature(), pubKey); err != nil {
 				return nil, err
 			}
 
 			// Deserialize signed_payload to get the trusted Request
-			trusted, err := signing.ExtractRequest(req.Signature)
+			trusted, err := signing.ExtractRequest(req.GetSignature())
 			if err != nil {
 				return nil, fmt.Errorf("extracting signed request: %w", err)
 			}
 
 			// Attach the original signature to the trusted request for propagation
-			trusted.Signature = req.Signature
+			trusted.Signature = req.GetSignature()
 			result[i] = trusted
 		} else {
 			// No signature — apply bootstrap rules
@@ -948,6 +996,7 @@ func (a *Admission) verifyAndResolveSignatures(requests []*servicepb.Request) ([
 				// Bootstrap: allow unsigned RegisterSigningKey when no keys exist
 				if isRegisterSigningKeyRequest(req) && !a.keyStore.HasKeys() {
 					result[i] = req
+
 					continue
 				}
 				// Keys exist — signing management requires a signature
@@ -957,28 +1006,32 @@ func (a *Admission) verifyAndResolveSignatures(requests []*servicepb.Request) ([
 			if a.sharedState.RequireSignatures() {
 				return nil, signing.ErrMissingSignature
 			}
+
 			result[i] = req
 		}
 	}
+
 	return result, nil
 }
 
 // isSigningManagementRequest returns true if the request is a signing key
 // management operation (register, revoke, or config change).
 func isSigningManagementRequest(req *servicepb.Request) bool {
-	switch req.Type.(type) {
+	switch req.GetType().(type) {
 	case *servicepb.Request_RegisterSigningKey,
 		*servicepb.Request_RevokeSigningKey,
 		*servicepb.Request_SetSigningConfig:
 		return true
 	}
+
 	return false
 }
 
 // isRegisterSigningKeyRequest returns true if the request is specifically
 // a RegisterSigningKey request.
 func isRegisterSigningKeyRequest(req *servicepb.Request) bool {
-	_, ok := req.Type.(*servicepb.Request_RegisterSigningKey)
+	_, ok := req.GetType().(*servicepb.Request_RegisterSigningKey)
+
 	return ok
 }
 
@@ -988,15 +1041,16 @@ const maxIdempotencyKeyLength = 256
 var ErrIdempotencyKeyTooLong = errors.New("idempotency key exceeds maximum length of 256 characters")
 
 // ErrMaintenanceMode is returned when maintenance mode is active and the request is not a maintenance mode toggle.
-var ErrMaintenanceMode = fmt.Errorf("cluster is in maintenance mode: write operations are blocked")
+var ErrMaintenanceMode = errors.New("cluster is in maintenance mode: write operations are blocked")
 
 // allRequestsAreMaintenanceMode returns true if every request in the batch is a SetMaintenanceMode request.
 func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {
 	for _, req := range requests {
-		if _, ok := req.Type.(*servicepb.Request_SetMaintenanceMode); !ok {
+		if _, ok := req.GetType().(*servicepb.Request_SetMaintenanceMode); !ok {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -1054,57 +1108,57 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 
 	for _, order := range orders {
 		// Idempotency keys apply to all order types.
-		if order.Idempotency != nil && order.Idempotency.Key != "" {
-			p.IdempotencyKeys[domain.IdempotencyKey{Key: order.Idempotency.Key}] = struct{}{}
+		if order.GetIdempotency() != nil && order.GetIdempotency().GetKey() != "" {
+			p.IdempotencyKeys[domain.IdempotencyKey{Key: order.GetIdempotency().GetKey()}] = struct{}{}
 		}
 
-		switch orderType := order.Type.(type) {
+		switch orderType := order.GetType().(type) {
 		case *raftcmdpb.Order_CreateLedger:
-			p.Ledgers[domain.LedgerKey{Name: orderType.CreateLedger.Name}] = struct{}{}
+			p.Ledgers[domain.LedgerKey{Name: orderType.CreateLedger.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_DeleteLedger:
-			p.Ledgers[domain.LedgerKey{Name: orderType.DeleteLedger.Name}] = struct{}{}
+			p.Ledgers[domain.LedgerKey{Name: orderType.DeleteLedger.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_AddEventsSink:
-			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.AddEventsSink.Config.Name}] = struct{}{}
+			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.AddEventsSink.GetConfig().GetName()}] = struct{}{}
 		case *raftcmdpb.Order_RemoveEventsSink:
-			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.RemoveEventsSink.Name}] = struct{}{}
+			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.RemoveEventsSink.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_MirrorIngest:
-			p.Ledgers[domain.LedgerKey{Name: orderType.MirrorIngest.Ledger}] = struct{}{}
-			p.Boundaries[domain.LedgerKey{Name: orderType.MirrorIngest.Ledger}] = struct{}{}
+			p.Ledgers[domain.LedgerKey{Name: orderType.MirrorIngest.GetLedger()}] = struct{}{}
+			p.Boundaries[domain.LedgerKey{Name: orderType.MirrorIngest.GetLedger()}] = struct{}{}
 		case *raftcmdpb.Order_PromoteLedger:
-			p.Ledgers[domain.LedgerKey{Name: orderType.PromoteLedger.Ledger}] = struct{}{}
+			p.Ledgers[domain.LedgerKey{Name: orderType.PromoteLedger.GetLedger()}] = struct{}{}
 		case *raftcmdpb.Order_SaveNumscript:
-			p.NumscriptVersions[domain.NumscriptVersionKey{Name: orderType.SaveNumscript.Name}] = struct{}{}
+			p.NumscriptVersions[domain.NumscriptVersionKey{Name: orderType.SaveNumscript.GetName()}] = struct{}{}
 			// For semver saves, preload the specific version entry for immutability check
-			version := orderType.SaveNumscript.Version
+			version := orderType.SaveNumscript.GetVersion()
 			if version != "" && version != "latest" {
-				p.NumscriptEntries[domain.NumscriptEntryKey{Name: orderType.SaveNumscript.Name, Version: version}] = struct{}{}
+				p.NumscriptEntries[domain.NumscriptEntryKey{Name: orderType.SaveNumscript.GetName(), Version: version}] = struct{}{}
 			}
 		case *raftcmdpb.Order_DeleteNumscript:
-			p.NumscriptVersions[domain.NumscriptVersionKey{Name: orderType.DeleteNumscript.Name}] = struct{}{}
+			p.NumscriptVersions[domain.NumscriptVersionKey{Name: orderType.DeleteNumscript.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_Apply:
-			p.Boundaries[domain.LedgerKey{Name: orderType.Apply.Ledger}] = struct{}{}
+			p.Boundaries[domain.LedgerKey{Name: orderType.Apply.GetLedger()}] = struct{}{}
 
-			ledgerName := orderType.Apply.Ledger
+			ledgerName := orderType.Apply.GetLedger()
 
-			switch applyData := orderType.Apply.Data.(type) {
+			switch applyData := orderType.Apply.GetData().(type) {
 			case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
 				// References (extracted regardless of Force or Numscript)
-				if applyData.CreateTransaction.Reference != "" {
+				if applyData.CreateTransaction.GetReference() != "" {
 					p.References[domain.TransactionReferenceKey{
 						Ledger:    ledgerName,
-						Reference: applyData.CreateTransaction.Reference,
+						Reference: applyData.CreateTransaction.GetReference(),
 					}] = struct{}{}
 				}
 
 				// Numscript emulation: discover required accounts and metadata by running with infinite balances.
 				// This is needed because Numscript transactions have no explicit postings at admission
 				// time -- the accounts are determined dynamically by the script at runtime.
-				if applyData.CreateTransaction.Script != nil &&
-					applyData.CreateTransaction.Script.Plain != "" &&
-					len(applyData.CreateTransaction.Postings) == 0 {
+				if applyData.CreateTransaction.GetScript() != nil &&
+					applyData.CreateTransaction.GetScript().GetPlain() != "" &&
+					len(applyData.CreateTransaction.GetPostings()) == 0 {
 					discovered, err := numscript.DiscoverNumscriptDependencies(
-						applyData.CreateTransaction.Script.Plain,
-						applyData.CreateTransaction.Script.Vars,
+						applyData.CreateTransaction.GetScript().GetPlain(),
+						applyData.CreateTransaction.GetScript().GetVars(),
 						ledgerName,
 					)
 					if err != nil {
@@ -1112,76 +1166,79 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 							"error": err.Error(),
 						}).Info("Numscript emulation failed during dependency discovery, skipping preload")
 					}
+
 					if discovered != nil {
-						expandVolumes := applyData.CreateTransaction.ExpandVolumes
-						if !applyData.CreateTransaction.Force || expandVolumes {
+						expandVolumes := applyData.CreateTransaction.GetExpandVolumes()
+						if !applyData.CreateTransaction.GetForce() || expandVolumes {
 							for key := range discovered.SourceVolumes {
 								p.Volumes[key] = struct{}{}
 							}
 						}
+
 						if expandVolumes {
 							for key := range discovered.DestinationVolumes {
 								p.Volumes[key] = struct{}{}
 							}
 						}
+
 						for key := range discovered.Metadata {
 							p.Metadata[key] = struct{}{}
 						}
 					}
+
 					continue
 				}
 
-				expandVolumes := applyData.CreateTransaction.ExpandVolumes
+				expandVolumes := applyData.CreateTransaction.GetExpandVolumes()
 				// Skip volume preloading for force transactions without expandVolumes
-				if applyData.CreateTransaction.Force && !expandVolumes {
+				if applyData.CreateTransaction.GetForce() && !expandVolumes {
 					continue
 				}
 
-				for _, posting := range applyData.CreateTransaction.Postings {
+				for _, posting := range applyData.CreateTransaction.GetPostings() {
 					// Source account needs balance check (or volume expansion)
 					p.Volumes[domain.VolumeKey{
-						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Source},
-						Asset:      posting.Asset,
+						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetSource()},
+						Asset:      posting.GetAsset(),
 					}] = struct{}{}
 					if expandVolumes {
 						// Destination account needed for post-commit volumes
 						p.Volumes[domain.VolumeKey{
-							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Destination},
-							Asset:      posting.Asset,
+							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetDestination()},
+							Asset:      posting.GetAsset(),
 						}] = struct{}{}
 					}
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 				// Reversion status is checked via in-memory bitset (no preload needed).
-
-				expandVolumes := applyData.RevertTransaction.ExpandVolumes
+				expandVolumes := applyData.RevertTransaction.GetExpandVolumes()
 				// Skip volume preloading for force reverts without expandVolumes
-				if applyData.RevertTransaction.Force && !expandVolumes {
+				if applyData.RevertTransaction.GetForce() && !expandVolumes {
 					continue
 				}
 
 				// For reverts, postings are reversed: original destination becomes source (needs balance check)
-				for _, posting := range applyData.RevertTransaction.OriginalPostings {
+				for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
 					p.Volumes[domain.VolumeKey{
-						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Destination},
-						Asset:      posting.Asset,
+						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetDestination()},
+						Asset:      posting.GetAsset(),
 					}] = struct{}{}
 					if expandVolumes {
 						// Original source becomes destination in revert (needed for post-commit volumes)
 						p.Volumes[domain.VolumeKey{
-							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.Source},
-							Asset:      posting.Asset,
+							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetSource()},
+							Asset:      posting.GetAsset(),
 						}] = struct{}{}
 					}
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
 				// Preload the metadata key so processDeleteMetadata can check existence
-				if target, ok := applyData.DeleteMetadata.Target.Target.(*commonpb.Target_Account); ok {
+				if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 					p.Metadata[domain.MetadataKey{
-						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.Addr},
-						Key:        applyData.DeleteMetadata.Key,
+						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.GetAddr()},
+						Key:        applyData.DeleteMetadata.GetKey(),
 					}] = struct{}{}
 				}
 			}
@@ -1191,26 +1248,26 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 	return p
 }
 
-// requestToOrder converts a servicepb.Request to a raftcmdpb.Order
+// requestToOrder converts a servicepb.Request to a raftcmdpb.Order.
 func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, error) {
 	order := &raftcmdpb.Order{}
 
-	switch reqType := req.Type.(type) {
+	switch reqType := req.GetType().(type) {
 	case *servicepb.Request_CreateLedger:
 		order.Type = &raftcmdpb.Order_CreateLedger{
 			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name:            reqType.CreateLedger.Name,
-				InitialSchema:   reqType.CreateLedger.InitialSchema,
-				Mode:            reqType.CreateLedger.Mode,
-				MirrorSource:    reqType.CreateLedger.MirrorSource,
-				ChartOfAccounts: reqType.CreateLedger.ChartOfAccounts,
-				EnforcementMode: reqType.CreateLedger.EnforcementMode,
+				Name:            reqType.CreateLedger.GetName(),
+				InitialSchema:   reqType.CreateLedger.GetInitialSchema(),
+				Mode:            reqType.CreateLedger.GetMode(),
+				MirrorSource:    reqType.CreateLedger.GetMirrorSource(),
+				ChartOfAccounts: reqType.CreateLedger.GetChartOfAccounts(),
+				EnforcementMode: reqType.CreateLedger.GetEnforcementMode(),
 			},
 		}
 	case *servicepb.Request_DeleteLedger:
 		order.Type = &raftcmdpb.Order_DeleteLedger{
 			DeleteLedger: &raftcmdpb.DeleteLedgerOrder{
-				Name: reqType.DeleteLedger.Name,
+				Name: reqType.DeleteLedger.GetName(),
 			},
 		}
 	case *servicepb.Request_Apply:
@@ -1218,44 +1275,46 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 		if err != nil {
 			return nil, err
 		}
+
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: applyOrder,
 		}
 	case *servicepb.Request_RegisterSigningKey:
 		var parentKeyID string
-		if req.Signature != nil {
-			parentKeyID = req.Signature.KeyId
+		if req.GetSignature() != nil {
+			parentKeyID = req.GetSignature().GetKeyId()
 		}
+
 		order.Type = &raftcmdpb.Order_RegisterSigningKey{
 			RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{
-				KeyId:       reqType.RegisterSigningKey.KeyId,
-				PublicKey:   reqType.RegisterSigningKey.PublicKey,
+				KeyId:       reqType.RegisterSigningKey.GetKeyId(),
+				PublicKey:   reqType.RegisterSigningKey.GetPublicKey(),
 				ParentKeyId: parentKeyID,
 			},
 		}
 	case *servicepb.Request_RevokeSigningKey:
 		order.Type = &raftcmdpb.Order_RevokeSigningKey{
 			RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{
-				KeyId:   reqType.RevokeSigningKey.KeyId,
-				Cascade: reqType.RevokeSigningKey.Cascade,
+				KeyId:   reqType.RevokeSigningKey.GetKeyId(),
+				Cascade: reqType.RevokeSigningKey.GetCascade(),
 			},
 		}
 	case *servicepb.Request_SetSigningConfig:
 		order.Type = &raftcmdpb.Order_SetSigningConfig{
 			SetSigningConfig: &raftcmdpb.SetSigningConfigOrder{
-				RequireSignatures: reqType.SetSigningConfig.RequireSignatures,
+				RequireSignatures: reqType.SetSigningConfig.GetRequireSignatures(),
 			},
 		}
 	case *servicepb.Request_AddEventsSink:
 		order.Type = &raftcmdpb.Order_AddEventsSink{
 			AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-				Config: reqType.AddEventsSink.Config,
+				Config: reqType.AddEventsSink.GetConfig(),
 			},
 		}
 	case *servicepb.Request_RemoveEventsSink:
 		order.Type = &raftcmdpb.Order_RemoveEventsSink{
 			RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
-				Name: reqType.RemoveEventsSink.Name,
+				Name: reqType.RemoveEventsSink.GetName(),
 			},
 		}
 	case *servicepb.Request_ClosePeriod:
@@ -1265,38 +1324,38 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_SealPeriod:
 		order.Type = &raftcmdpb.Order_SealPeriod{
 			SealPeriod: &raftcmdpb.SealPeriodOrder{
-				PeriodId:    reqType.SealPeriod.PeriodId,
-				SealingHash: reqType.SealPeriod.SealingHash,
+				PeriodId:    reqType.SealPeriod.GetPeriodId(),
+				SealingHash: reqType.SealPeriod.GetSealingHash(),
 			},
 		}
 	case *servicepb.Request_ArchivePeriod:
 		order.Type = &raftcmdpb.Order_ArchivePeriod{
 			ArchivePeriod: &raftcmdpb.ArchivePeriodOrder{
-				PeriodId: reqType.ArchivePeriod.PeriodId,
+				PeriodId: reqType.ArchivePeriod.GetPeriodId(),
 			},
 		}
 	case *servicepb.Request_ConfirmArchivePeriod:
 		order.Type = &raftcmdpb.Order_ConfirmArchivePeriod{
 			ConfirmArchivePeriod: &raftcmdpb.ConfirmArchivePeriodOrder{
-				PeriodId: reqType.ConfirmArchivePeriod.PeriodId,
+				PeriodId: reqType.ConfirmArchivePeriod.GetPeriodId(),
 			},
 		}
 	case *servicepb.Request_SetMaintenanceMode:
 		order.Type = &raftcmdpb.Order_SetMaintenanceMode{
 			SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{
-				Enabled: reqType.SetMaintenanceMode.Enabled,
+				Enabled: reqType.SetMaintenanceMode.GetEnabled(),
 			},
 		}
 	case *servicepb.Request_SetAuditConfig:
 		order.Type = &raftcmdpb.Order_SetAuditConfig{
 			SetAuditConfig: &raftcmdpb.SetAuditConfigOrder{
-				Enabled: reqType.SetAuditConfig.Enabled,
+				Enabled: reqType.SetAuditConfig.GetEnabled(),
 			},
 		}
 	case *servicepb.Request_SetPeriodSchedule:
 		order.Type = &raftcmdpb.Order_SetPeriodSchedule{
 			SetPeriodSchedule: &raftcmdpb.SetPeriodScheduleOrder{
-				Cron: reqType.SetPeriodSchedule.Cron,
+				Cron: reqType.SetPeriodSchedule.GetCron(),
 			},
 		}
 	case *servicepb.Request_DeletePeriodSchedule:
@@ -1306,39 +1365,39 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_PromoteLedger:
 		order.Type = &raftcmdpb.Order_PromoteLedger{
 			PromoteLedger: &raftcmdpb.PromoteLedgerOrder{
-				Ledger: reqType.PromoteLedger.Ledger,
+				Ledger: reqType.PromoteLedger.GetLedger(),
 			},
 		}
 	case *servicepb.Request_CreatePreparedQuery:
 		order.Type = &raftcmdpb.Order_CreatePreparedQuery{
 			CreatePreparedQuery: &raftcmdpb.CreatePreparedQueryOrder{
-				Query: reqType.CreatePreparedQuery.Query,
+				Query: reqType.CreatePreparedQuery.GetQuery(),
 			},
 		}
 	case *servicepb.Request_UpdatePreparedQuery:
 		order.Type = &raftcmdpb.Order_UpdatePreparedQuery{
 			UpdatePreparedQuery: &raftcmdpb.UpdatePreparedQueryOrder{
-				Ledger: reqType.UpdatePreparedQuery.Ledger,
-				Name:   reqType.UpdatePreparedQuery.Name,
-				Filter: reqType.UpdatePreparedQuery.Filter,
+				Ledger: reqType.UpdatePreparedQuery.GetLedger(),
+				Name:   reqType.UpdatePreparedQuery.GetName(),
+				Filter: reqType.UpdatePreparedQuery.GetFilter(),
 			},
 		}
 	case *servicepb.Request_DeletePreparedQuery:
 		order.Type = &raftcmdpb.Order_DeletePreparedQuery{
 			DeletePreparedQuery: &raftcmdpb.DeletePreparedQueryOrder{
-				Ledger: reqType.DeletePreparedQuery.Ledger,
-				Name:   reqType.DeletePreparedQuery.Name,
+				Ledger: reqType.DeletePreparedQuery.GetLedger(),
+				Name:   reqType.DeletePreparedQuery.GetName(),
 			},
 		}
 	case *servicepb.Request_SetMetadataFieldType:
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.SetMetadataFieldType.Ledger,
+				Ledger: reqType.SetMetadataFieldType.GetLedger(),
 				Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
 					SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
-						TargetType: reqType.SetMetadataFieldType.TargetType,
-						Key:        reqType.SetMetadataFieldType.Key,
-						Type:       reqType.SetMetadataFieldType.Type,
+						TargetType: reqType.SetMetadataFieldType.GetTargetType(),
+						Key:        reqType.SetMetadataFieldType.GetKey(),
+						Type:       reqType.SetMetadataFieldType.GetType(),
 					},
 				},
 			},
@@ -1346,18 +1405,19 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_RemoveMetadataFieldType:
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.RemoveMetadataFieldType.Ledger,
+				Ledger: reqType.RemoveMetadataFieldType.GetLedger(),
 				Data: &raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType{
 					RemoveMetadataFieldType: &raftcmdpb.RemoveMetadataFieldTypeOrder{
-						TargetType: reqType.RemoveMetadataFieldType.TargetType,
-						Key:        reqType.RemoveMetadataFieldType.Key,
+						TargetType: reqType.RemoveMetadataFieldType.GetTargetType(),
+						Key:        reqType.RemoveMetadataFieldType.GetKey(),
 					},
 				},
 			},
 		}
 	case *servicepb.Request_CreateIndex:
 		createIndexOrder := &raftcmdpb.CreateIndexOrder{}
-		switch idx := reqType.CreateIndex.Index.(type) {
+
+		switch idx := reqType.CreateIndex.GetIndex().(type) {
 		case *servicepb.CreateIndexRequest_Transaction:
 			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_Transaction{Transaction: idx.Transaction}
 		case *servicepb.CreateIndexRequest_Account:
@@ -1365,15 +1425,17 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 		case *servicepb.CreateIndexRequest_LogBuiltin:
 			createIndexOrder.Index = &raftcmdpb.CreateIndexOrder_LogBuiltin{LogBuiltin: idx.LogBuiltin}
 		}
+
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.CreateIndex.Ledger,
+				Ledger: reqType.CreateIndex.GetLedger(),
 				Data:   &raftcmdpb.LedgerApplyOrder_CreateIndex{CreateIndex: createIndexOrder},
 			},
 		}
 	case *servicepb.Request_DropIndex:
 		dropIndexOrder := &raftcmdpb.DropIndexOrder{}
-		switch idx := reqType.DropIndex.Index.(type) {
+
+		switch idx := reqType.DropIndex.GetIndex().(type) {
 		case *servicepb.DropIndexRequest_Transaction:
 			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_Transaction{Transaction: idx.Transaction}
 		case *servicepb.DropIndexRequest_Account:
@@ -1381,33 +1443,34 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 		case *servicepb.DropIndexRequest_LogBuiltin:
 			dropIndexOrder.Index = &raftcmdpb.DropIndexOrder_LogBuiltin{LogBuiltin: idx.LogBuiltin}
 		}
+
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.DropIndex.Ledger,
+				Ledger: reqType.DropIndex.GetLedger(),
 				Data:   &raftcmdpb.LedgerApplyOrder_DropIndex{DropIndex: dropIndexOrder},
 			},
 		}
 	case *servicepb.Request_SaveNumscript:
 		order.Type = &raftcmdpb.Order_SaveNumscript{
 			SaveNumscript: &raftcmdpb.SaveNumscriptOrder{
-				Name:    reqType.SaveNumscript.Name,
-				Content: reqType.SaveNumscript.Content,
-				Version: reqType.SaveNumscript.Version,
+				Name:    reqType.SaveNumscript.GetName(),
+				Content: reqType.SaveNumscript.GetContent(),
+				Version: reqType.SaveNumscript.GetVersion(),
 			},
 		}
 	case *servicepb.Request_DeleteNumscript:
 		order.Type = &raftcmdpb.Order_DeleteNumscript{
 			DeleteNumscript: &raftcmdpb.DeleteNumscriptOrder{
-				Name: reqType.DeleteNumscript.Name,
+				Name: reqType.DeleteNumscript.GetName(),
 			},
 		}
 	case *servicepb.Request_SetChartOfAccounts:
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.SetChartOfAccounts.Ledger,
+				Ledger: reqType.SetChartOfAccounts.GetLedger(),
 				Data: &raftcmdpb.LedgerApplyOrder_SetChartOfAccounts{
 					SetChartOfAccounts: &raftcmdpb.SetChartOfAccountsOrder{
-						ChartOfAccounts: reqType.SetChartOfAccounts.ChartOfAccounts,
+						ChartOfAccounts: reqType.SetChartOfAccounts.GetChartOfAccounts(),
 					},
 				},
 			},
@@ -1415,145 +1478,155 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_SetChartEnforcementMode:
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.SetChartEnforcementMode.Ledger,
+				Ledger: reqType.SetChartEnforcementMode.GetLedger(),
 				Data: &raftcmdpb.LedgerApplyOrder_SetChartEnforcementMode{
 					SetChartEnforcementMode: &raftcmdpb.SetChartEnforcementModeOrder{
-						EnforcementMode: reqType.SetChartEnforcementMode.EnforcementMode,
+						EnforcementMode: reqType.SetChartEnforcementMode.GetEnforcementMode(),
 					},
 				},
 			},
 		}
 	default:
-		return nil, fmt.Errorf("unsupported request type: %T", req.Type)
+		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
 	}
 
 	// Set idempotency key if provided (hash will be computed in processor from payload)
-	if req.IdempotencyKey != "" {
-		if len(req.IdempotencyKey) > maxIdempotencyKeyLength {
+	if req.GetIdempotencyKey() != "" {
+		if len(req.GetIdempotencyKey()) > maxIdempotencyKeyLength {
 			return nil, &domain.BusinessError{Err: ErrIdempotencyKeyTooLong}
 		}
+
 		order.Idempotency = &commonpb.Idempotency{
-			Key: req.IdempotencyKey,
+			Key: req.GetIdempotencyKey(),
 		}
 	}
 
 	// Propagate signature for audit trail
-	order.Signature = req.Signature
+	order.Signature = req.GetSignature()
 
 	return order, nil
 }
 
-// convertApplyRequest converts a servicepb.LedgerApplyRequest to raftcmdpb.LedgerApplyOrder
+// convertApplyRequest converts a servicepb.LedgerApplyRequest to raftcmdpb.LedgerApplyOrder.
 func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*raftcmdpb.LedgerApplyOrder, error) {
 	order := &raftcmdpb.LedgerApplyOrder{
-		Ledger: apply.Ledger,
+		Ledger: apply.GetLedger(),
 	}
 
-	switch data := apply.Data.(type) {
+	switch data := apply.GetData().(type) {
 	case *servicepb.LedgerApplyRequest_CreateTransaction:
 		ct := data.CreateTransaction
-		script := ct.Script
+		script := ct.GetScript()
 
 		// Resolve ScriptReference: read numscript from Pebble and use it as the script
-		if ct.ScriptReference != nil {
-			if script != nil && script.Plain != "" {
+		if ct.GetScriptReference() != nil {
+			if script != nil && script.GetPlain() != "" {
 				return nil, &domain.BusinessError{
 					Err: domain.ErrScriptAndReferenceConflict,
 				}
 			}
-			info, err := query.ReadNumscript(context.Background(), a.store, ct.ScriptReference.Name, ct.ScriptReference.Version)
+
+			info, err := query.ReadNumscript(context.Background(), a.store, ct.GetScriptReference().GetName(), ct.GetScriptReference().GetVersion())
 			if err != nil {
-				return nil, fmt.Errorf("reading numscript %q: %w", ct.ScriptReference.Name, err)
+				return nil, fmt.Errorf("reading numscript %q: %w", ct.GetScriptReference().GetName(), err)
 			}
+
 			if info == nil {
 				return nil, &domain.BusinessError{
-					Err: &domain.ErrNumscriptNotFound{Name: ct.ScriptReference.Name},
+					Err: &domain.ErrNumscriptNotFound{Name: ct.GetScriptReference().GetName()},
 				}
 			}
+
 			script = &commonpb.Script{
-				Plain: info.Content,
-				Vars:  ct.ScriptReference.Vars,
+				Plain: info.GetContent(),
+				Vars:  ct.GetScriptReference().GetVars(),
 			}
 		}
 
 		order.Data = &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 			CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-				Postings:      ct.Postings,
+				Postings:      ct.GetPostings(),
 				Script:        script,
-				Timestamp:     ct.Timestamp,
-				Reference:     ct.Reference,
-				Metadata:      ct.Metadata,
-				Force:         ct.Force,
-				ExpandVolumes: ct.ExpandVolumes,
+				Timestamp:     ct.GetTimestamp(),
+				Reference:     ct.GetReference(),
+				Metadata:      ct.GetMetadata(),
+				Force:         ct.GetForce(),
+				ExpandVolumes: ct.GetExpandVolumes(),
 			},
 		}
 	case *servicepb.LedgerApplyRequest_AddMetadata:
 		order.Data = &raftcmdpb.LedgerApplyOrder_AddMetadata{
 			AddMetadata: &raftcmdpb.SaveMetadataOrder{
-				Target:   data.AddMetadata.Target,
-				Metadata: data.AddMetadata.Metadata,
+				Target:   data.AddMetadata.GetTarget(),
+				Metadata: data.AddMetadata.GetMetadata(),
 			},
 		}
 	case *servicepb.LedgerApplyRequest_DeleteMetadata:
 		order.Data = &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 			DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-				Target: data.DeleteMetadata.Target,
-				Key:    data.DeleteMetadata.Key,
+				Target: data.DeleteMetadata.GetTarget(),
+				Key:    data.DeleteMetadata.GetKey(),
 			},
 		}
 	case *servicepb.LedgerApplyRequest_SetChartOfAccounts:
 		order.Data = &raftcmdpb.LedgerApplyOrder_SetChartOfAccounts{
 			SetChartOfAccounts: &raftcmdpb.SetChartOfAccountsOrder{
-				ChartOfAccounts: data.SetChartOfAccounts.ChartOfAccounts,
+				ChartOfAccounts: data.SetChartOfAccounts.GetChartOfAccounts(),
 			},
 		}
 	case *servicepb.LedgerApplyRequest_SetChartEnforcementMode:
 		order.Data = &raftcmdpb.LedgerApplyOrder_SetChartEnforcementMode{
 			SetChartEnforcementMode: &raftcmdpb.SetChartEnforcementModeOrder{
-				EnforcementMode: data.SetChartEnforcementMode.EnforcementMode,
+				EnforcementMode: data.SetChartEnforcementMode.GetEnforcementMode(),
 			},
 		}
 	case *servicepb.LedgerApplyRequest_RevertTransaction:
 		var originalPostings []*commonpb.Posting
-		if data.RevertTransaction.Receipt != "" && a.receiptSigner != nil {
+
+		if data.RevertTransaction.GetReceipt() != "" && a.receiptSigner != nil {
 			// Verify receipt and extract postings
-			claims, err := a.receiptSigner.Verify(data.RevertTransaction.Receipt)
+			claims, err := a.receiptSigner.Verify(data.RevertTransaction.GetReceipt())
 			if err != nil {
 				return nil, fmt.Errorf("invalid receipt: %w", err)
 			}
-			if claims.Ledger != apply.Ledger {
-				return nil, fmt.Errorf("receipt ledger %q does not match request ledger %q", claims.Ledger, apply.Ledger)
+
+			if claims.Ledger != apply.GetLedger() {
+				return nil, fmt.Errorf("receipt ledger %q does not match request ledger %q", claims.Ledger, apply.GetLedger())
 			}
-			if claims.TxID != data.RevertTransaction.TransactionId {
-				return nil, fmt.Errorf("receipt txID %d does not match request txID %d", claims.TxID, data.RevertTransaction.TransactionId)
+
+			if claims.TxID != data.RevertTransaction.GetTransactionId() {
+				return nil, fmt.Errorf("receipt txID %d does not match request txID %d", claims.TxID, data.RevertTransaction.GetTransactionId())
 			}
+
 			originalPostings = receipt.ClaimsToPostings(claims.Postings)
 		} else {
 			// Fall back to reading from Pebble
 			var err error
-			originalPostings, err = a.getTransactionPostings(apply.Ledger, data.RevertTransaction.TransactionId)
+
+			originalPostings, err = a.getTransactionPostings(apply.GetLedger(), data.RevertTransaction.GetTransactionId())
 			if err != nil {
 				return nil, fmt.Errorf("getting original transaction postings: %w", err)
 			}
 		}
+
 		order.Data = &raftcmdpb.LedgerApplyOrder_RevertTransaction{
 			RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-				TransactionId:    data.RevertTransaction.TransactionId,
-				Force:            data.RevertTransaction.Force,
-				AtEffectiveDate:  data.RevertTransaction.AtEffectiveDate,
-				Metadata:         data.RevertTransaction.Metadata,
+				TransactionId:    data.RevertTransaction.GetTransactionId(),
+				Force:            data.RevertTransaction.GetForce(),
+				AtEffectiveDate:  data.RevertTransaction.GetAtEffectiveDate(),
+				Metadata:         data.RevertTransaction.GetMetadata(),
 				OriginalPostings: originalPostings,
-				ExpandVolumes:    data.RevertTransaction.ExpandVolumes,
+				ExpandVolumes:    data.RevertTransaction.GetExpandVolumes(),
 			},
 		}
 	default:
-		return nil, fmt.Errorf("unsupported apply data type: %T", apply.Data)
+		return nil, fmt.Errorf("unsupported apply data type: %T", apply.GetData())
 	}
 
 	return order, nil
 }
 
-// requestsToOrders converts a slice of servicepb.Request to raftcmdpb.Order
+// requestsToOrders converts a slice of servicepb.Request to raftcmdpb.Order.
 func (a *Admission) requestsToOrders(reqs []*servicepb.Request) ([]*raftcmdpb.Order, error) {
 	orders := make([]*raftcmdpb.Order, len(reqs))
 	for i, req := range reqs {
@@ -1561,8 +1634,10 @@ func (a *Admission) requestsToOrders(reqs []*servicepb.Request) ([]*raftcmdpb.Or
 		if err != nil {
 			return nil, fmt.Errorf("converting request %d: %w", i, err)
 		}
+
 		orders[i] = order
 	}
+
 	return orders, nil
 }
 
@@ -1574,21 +1649,23 @@ func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, &domain.BusinessError{Err: &domain.ErrTransactionNotFound{TransactionID: transactionID}}
 		}
+
 		return nil, fmt.Errorf("finding transaction creation log: %w", err)
 	}
 
-	applyLog, ok := log.Payload.Type.(*commonpb.LogPayload_Apply)
-	if !ok || applyLog.Apply == nil || applyLog.Apply.Log == nil {
-		return nil, fmt.Errorf("log does not contain an apply log")
+	applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+	if !ok || applyLog.Apply == nil || applyLog.Apply.GetLog() == nil {
+		return nil, errors.New("log does not contain an apply log")
 	}
 
-	switch payload := applyLog.Apply.Log.Data.Payload.(type) {
+	switch payload := applyLog.Apply.GetLog().GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
-			return nil, fmt.Errorf("invalid log payload: missing transaction")
+		if payload.CreatedTransaction == nil || payload.CreatedTransaction.GetTransaction() == nil {
+			return nil, errors.New("invalid log payload: missing transaction")
 		}
-		return payload.CreatedTransaction.Transaction.Postings, nil
+
+		return payload.CreatedTransaction.GetTransaction().GetPostings(), nil
 	default:
-		return nil, fmt.Errorf("log does not contain a created transaction")
+		return nil, errors.New("log does not contain a created transaction")
 	}
 }

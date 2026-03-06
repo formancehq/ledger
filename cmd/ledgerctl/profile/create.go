@@ -3,9 +3,10 @@ package profile
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 )
 
 // NewCreateCommand returns the "profile create" command.
@@ -58,6 +59,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	if cfg.Profiles == nil {
 		cfg.Profiles = make(map[string]cmdutil.Profile)
 	}
+
 	cfg.Profiles[name] = p
 
 	// Auto-activate if first profile or --use was given.
@@ -70,6 +72,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	pterm.Success.Printfln("Profile %s created (server: %s)", pterm.Bold.Sprint(name), server)
+
 	if cfg.ActiveProfile == name {
 		pterm.Info.Printfln("Active profile: %s", pterm.Bold.Sprint(name))
 	}

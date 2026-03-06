@@ -34,7 +34,7 @@ type CompactTransaction struct {
 // ExtractCompactAccount extracts the minimal fields from a proto Account.
 func ExtractCompactAccount(acc *commonpb.Account) CompactAccount {
 	return CompactAccount{
-		Address:      acc.Address,
+		Address:      acc.GetAddress(),
 		Assets:       collectAssets(acc),
 		MetadataKeys: collectMetadataKeys(acc),
 	}
@@ -42,22 +42,22 @@ func ExtractCompactAccount(acc *commonpb.Account) CompactAccount {
 
 // ExtractCompactTransaction extracts the minimal fields from a proto Transaction.
 func ExtractCompactTransaction(tx *commonpb.Transaction) CompactTransaction {
-	postings := make([]CompactPosting, len(tx.Postings))
-	for i, p := range tx.Postings {
+	postings := make([]CompactPosting, len(tx.GetPostings()))
+	for i, p := range tx.GetPostings() {
 		postings[i] = CompactPosting{
-			Source:      p.Source,
-			Destination: p.Destination,
-			Asset:       p.Asset,
-			Amount:      p.Amount.ToBigInt(),
+			Source:      p.GetSource(),
+			Destination: p.GetDestination(),
+			Asset:       p.GetAsset(),
+			Amount:      p.GetAmount().ToBigInt(),
 		}
 	}
 
 	var (
-		ts          uint64
+		ts           uint64
 		hasTimestamp bool
 	)
-	if tx.Timestamp != nil {
-		ts = tx.Timestamp.Data
+	if tx.GetTimestamp() != nil {
+		ts = tx.GetTimestamp().GetData()
 		hasTimestamp = true
 	}
 
@@ -65,13 +65,14 @@ func ExtractCompactTransaction(tx *commonpb.Transaction) CompactTransaction {
 		Postings:     postings,
 		Timestamp:    ts,
 		HasTimestamp: hasTimestamp,
-		Reverted:     tx.Reverted,
+		Reverted:     tx.GetReverted(),
 	}
 
-	if tx.Metadata != nil {
-		for _, m := range tx.Metadata.Metadata {
-			ct.MetadataKeys = append(ct.MetadataKeys, m.Key)
+	if tx.GetMetadata() != nil {
+		for _, m := range tx.GetMetadata().GetMetadata() {
+			ct.MetadataKeys = append(ct.MetadataKeys, m.GetKey())
 		}
+
 		sort.Strings(ct.MetadataKeys)
 	}
 

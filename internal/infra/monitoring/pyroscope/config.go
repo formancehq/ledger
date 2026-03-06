@@ -102,6 +102,7 @@ func (c *Config) SetupRuntimeProfiling() {
 	if c.MutexProfileFraction > 0 {
 		runtime.SetMutexProfileFraction(c.MutexProfileFraction)
 	}
+
 	if c.BlockProfileRate > 0 {
 		runtime.SetBlockProfileRate(c.BlockProfileRate)
 	}

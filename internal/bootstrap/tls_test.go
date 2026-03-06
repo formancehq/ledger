@@ -3,9 +3,10 @@ package bootstrap
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 )
 
 func TestServerCredentials_Disabled(t *testing.T) {
@@ -148,5 +149,6 @@ func generateTestCerts(t *testing.T) *testserver.TestCerts {
 	t.Helper()
 	certs, err := testserver.GenerateTestCerts(t.TempDir())
 	require.NoError(t, err)
+
 	return certs
 }

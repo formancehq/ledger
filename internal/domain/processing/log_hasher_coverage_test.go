@@ -4,9 +4,10 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/blake3"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 // TestGoldenHashRevertedTransaction covers hashRevertedTransaction and hashTarget.

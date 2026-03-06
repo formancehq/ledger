@@ -3,13 +3,14 @@ package transactions
 import (
 	"sort"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/pterm/pterm"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 // renderPostCommitVolumes displays a PostCommitVolumes table in the CLI output.
 func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes) error {
-	if len(pcv.VolumesByAccount) == 0 {
+	if len(pcv.GetVolumesByAccount()) == 0 {
 		return nil
 	}
 
@@ -21,29 +22,31 @@ func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes) error {
 	}
 
 	// Sort accounts for stable output
-	accounts := make([]string, 0, len(pcv.VolumesByAccount))
-	for account := range pcv.VolumesByAccount {
+	accounts := make([]string, 0, len(pcv.GetVolumesByAccount()))
+	for account := range pcv.GetVolumesByAccount() {
 		accounts = append(accounts, account)
 	}
+
 	sort.Strings(accounts)
 
 	for _, account := range accounts {
-		vba := pcv.VolumesByAccount[account]
+		vba := pcv.GetVolumesByAccount()[account]
 
 		// Sort assets for stable output
-		assets := make([]string, 0, len(vba.Volumes))
-		for asset := range vba.Volumes {
+		assets := make([]string, 0, len(vba.GetVolumes()))
+		for asset := range vba.GetVolumes() {
 			assets = append(assets, asset)
 		}
+
 		sort.Strings(assets)
 
 		for _, asset := range assets {
-			v := vba.Volumes[asset]
+			v := vba.GetVolumes()[asset]
 			table = append(table, []string{
 				account,
 				asset,
-				v.Input,
-				v.Output,
+				v.GetInput(),
+				v.GetOutput(),
 			})
 		}
 	}

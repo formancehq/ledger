@@ -7,19 +7,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	libtime "github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger-v3-poc/internal/application/events"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/application/events"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 )
 
 // recordingSink captures published events for test assertions.
@@ -31,7 +33,9 @@ type recordingSink struct {
 func (s *recordingSink) Publish(_ context.Context, evts []*eventspb.Event) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.events = append(s.events, evts...)
+
 	return nil
 }
 
@@ -40,8 +44,10 @@ func (s *recordingSink) Close() error { return nil }
 func (s *recordingSink) getEvents() []*eventspb.Event {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	out := make([]*eventspb.Event, len(s.events))
 	copy(out, s.events)
+
 	return out
 }
 
@@ -54,56 +60,71 @@ type directProposer struct {
 
 func (p *directProposer) Propose(proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 	cmd := &raftcmdpb.Proposal{}
-	if err := cmd.UnmarshalVT(proposal.Data()); err != nil {
+
+	err := cmd.UnmarshalVT(proposal.Data())
+	if err != nil {
 		f := futures.New[state.ApplyResult]()
 		f.Resolve(state.ApplyResult{}, err)
+
 		return f, nil
 	}
 
 	// Simulate FSM: apply per-sink updates
-	for _, update := range cmd.EventsSinkUpdates {
+	for _, update := range cmd.GetEventsSinkUpdates() {
 		batch := p.store.NewBatch()
-		if update.Cursor > 0 {
-			if err := state.SetSinkCursor(batch, update.SinkName, update.Cursor); err != nil {
+		if update.GetCursor() > 0 {
+			err := state.SetSinkCursor(batch, update.GetSinkName(), update.GetCursor())
+			if err != nil {
 				_ = batch.Cancel()
 				f := futures.New[state.ApplyResult]()
 				f.Resolve(state.ApplyResult{}, err)
+
 				return f, nil
 			}
 		}
-		if update.ClearError {
-			if err := state.ClearSinkStatus(batch, update.SinkName); err != nil {
+
+		if update.GetClearError() {
+			err := state.ClearSinkStatus(batch, update.GetSinkName())
+			if err != nil {
 				_ = batch.Cancel()
 				f := futures.New[state.ApplyResult]()
 				f.Resolve(state.ApplyResult{}, err)
+
 				return f, nil
 			}
-		} else if update.Error != nil {
-			if err := state.SetSinkStatus(batch, &commonpb.SinkStatus{
-				SinkName: update.SinkName,
-				Cursor:   update.Cursor,
-				Error:    update.Error,
-			}); err != nil {
+		} else if update.GetError() != nil {
+			err := state.SetSinkStatus(batch, &commonpb.SinkStatus{
+				SinkName: update.GetSinkName(),
+				Cursor:   update.GetCursor(),
+				Error:    update.GetError(),
+			})
+			if err != nil {
 				_ = batch.Cancel()
 				f := futures.New[state.ApplyResult]()
 				f.Resolve(state.ApplyResult{}, err)
+
 				return f, nil
 			}
 		}
-		if err := batch.Commit(); err != nil {
+
+		err := batch.Commit()
+		if err != nil {
 			f := futures.New[state.ApplyResult]()
 			f.Resolve(state.ApplyResult{}, err)
+
 			return f, nil
 		}
 	}
 
 	f := futures.New[state.ApplyResult]()
 	f.Resolve(state.ApplyResult{}, nil)
+
 	return f, nil
 }
 
 func newTestStore(t *testing.T) *dal.Store {
 	t.Helper()
+
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
@@ -111,11 +132,13 @@ func newTestStore(t *testing.T) *dal.Store {
 	s, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
+
 	return s
 }
 
 func appendTestLogs(t *testing.T, s *dal.Store, logs ...*commonpb.Log) {
 	t.Helper()
+
 	batch := s.NewBatch()
 	require.NoError(t, state.AppendLogs(batch, logs...))
 	require.NoError(t, state.SetAppliedIndex(batch, 1))
@@ -124,6 +147,7 @@ func appendTestLogs(t *testing.T, s *dal.Store, logs ...*commonpb.Log) {
 
 func registerLedger(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
+
 	batch := s.NewBatch()
 	require.NoError(t, state.SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:      name,
@@ -142,6 +166,7 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 
 	// Write logs before starting emitter (simulates catch-up on leader restart)
 	registerLedger(t, store, "orders")
+
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -197,12 +222,12 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 
 	published := sink.getEvents()
 	require.Len(t, published, 2)
-	require.Equal(t, commonpb.EventType_CREATED_LEDGER, published[0].Type)
-	require.Equal(t, "orders", published[0].Ledger)
-	require.Equal(t, uint64(1), published[0].LogSequence)
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[1].Type)
-	require.Equal(t, "orders", published[1].Ledger)
-	require.Equal(t, uint64(2), published[1].LogSequence)
+	require.Equal(t, commonpb.EventType_CREATED_LEDGER, published[0].GetType())
+	require.Equal(t, "orders", published[0].GetLedger())
+	require.Equal(t, uint64(1), published[0].GetLogSequence())
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[1].GetType())
+	require.Equal(t, "orders", published[1].GetLedger())
+	require.Equal(t, uint64(2), published[1].GetLogSequence())
 
 	// Verify cursor was advanced
 	cursor, err := query.ReadSinkCursor(store, "test-sink")
@@ -224,6 +249,7 @@ func TestEmitterIntegration_NotificationDrivenProcessing(t *testing.T) {
 	cfg.BatchSize = 10
 	cfg.BatchDelay = 1 * time.Second // long delay so we test notification-driven path
 	emitter := events.NewEmitter(store, sink, "test-sink", proposer, logger, cfg)
+
 	emitter.Start()
 	defer emitter.Stop()
 
@@ -267,8 +293,8 @@ func TestEmitterIntegration_NotificationDrivenProcessing(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process after notification")
 
 	published := sink.getEvents()
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].Type)
-	require.Equal(t, "payments", published[0].Ledger)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].GetType())
+	require.Equal(t, "payments", published[0].GetLedger())
 }
 
 func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
@@ -280,6 +306,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "orders")
+
 	now := libtime.Now()
 
 	// Append 3 logs
@@ -390,8 +417,8 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 
 	published := sink2.getEvents()
 	require.Len(t, published, 1)
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].Type)
-	require.Equal(t, uint64(4), published[0].LogSequence)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].GetType())
+	require.Equal(t, uint64(4), published[0].GetLogSequence())
 
 	// Final cursor should be at 4
 	cursor, err = query.ReadSinkCursor(store, "test-sink")
@@ -408,6 +435,7 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "test")
+
 	now := libtime.Now()
 
 	// Write logs covering all 6 event types
@@ -547,9 +575,9 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 	}
 
 	for i, expected := range expectedTypes {
-		require.Equal(t, expected, published[i].Type, "event %d should be %s", i, expected)
-		require.Equal(t, uint64(i+1), published[i].LogSequence)
-		require.NotNil(t, published[i].Log, "event %d should carry the full Log", i)
+		require.Equal(t, expected, published[i].GetType(), "event %d should be %s", i, expected)
+		require.Equal(t, uint64(i+1), published[i].GetLogSequence())
+		require.NotNil(t, published[i].GetLog(), "event %d should carry the full Log", i)
 	}
 }
 
@@ -562,6 +590,7 @@ func TestEmitterIntegration_Batching(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "test")
+
 	now := libtime.Now()
 
 	// Write 10 logs
@@ -587,6 +616,7 @@ func TestEmitterIntegration_Batching(t *testing.T) {
 			},
 		})
 	}
+
 	appendTestLogs(t, store, logs...)
 
 	// Use small batch size to verify batching works
@@ -606,7 +636,7 @@ func TestEmitterIntegration_Batching(t *testing.T) {
 
 	// Verify ordering is preserved
 	for i, evt := range published {
-		require.Equal(t, uint64(i+1), evt.LogSequence)
+		require.Equal(t, uint64(i+1), evt.GetLogSequence())
 	}
 
 	// Cursor should be at 10
@@ -624,6 +654,7 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "test")
+
 	now := libtime.Now()
 
 	// Write logs covering 3 event types
@@ -695,6 +726,7 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		cursor, err := query.ReadSinkCursor(store, "filter-sink")
+
 		return err == nil && cursor >= 3
 	}, 5*time.Second, 10*time.Millisecond, "emitter should advance cursor past all logs")
 
@@ -703,8 +735,8 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 	// Only COMMITTED_TRANSACTION should be published; CREATED_LEDGER and SAVED_METADATA are filtered out
 	published := sink.getEvents()
 	require.Len(t, published, 1)
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].Type)
-	require.Equal(t, uint64(2), published[0].LogSequence)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, published[0].GetType())
+	require.Equal(t, uint64(2), published[0].GetLogSequence())
 }
 
 func TestEmitterIntegration_StartStopIdempotent(t *testing.T) {

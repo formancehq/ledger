@@ -4,12 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	numscriptlib "github.com/formancehq/numscript"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	numscriptlib "github.com/formancehq/numscript"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 func TestGetBalances_ForceMode(t *testing.T) {
@@ -21,9 +23,9 @@ func TestGetBalances_ForceMode(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
+		store:  mockStore,
 		ledger: "test-ledger",
-		force:    true,
+		force:  true,
 	}
 
 	query := numscriptlib.BalanceQuery{
@@ -37,7 +39,7 @@ func TestGetBalances_ForceMode(t *testing.T) {
 	// In force mode, all balances should be MaxForceBalance
 	require.NotNil(t, balances["bank"]["USD"])
 	require.NotNil(t, balances["bank"]["EUR"])
-	require.True(t, balances["bank"]["USD"].Sign() > 0)
+	require.Positive(t, balances["bank"]["USD"].Sign())
 }
 
 func TestGetBalances_PreloadedVolumes(t *testing.T) {
@@ -49,9 +51,9 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
+		store:  mockStore,
 		ledger: "test-ledger",
-		force:    false,
+		force:  false,
 	}
 
 	volumeKey := domain.VolumeKey{
@@ -84,9 +86,9 @@ func TestGetBalances_DiffOnlyVolume(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
+		store:  mockStore,
 		ledger: "test-ledger",
-		force:    false,
+		force:  false,
 	}
 
 	volumeKey := domain.VolumeKey{
@@ -119,9 +121,9 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
+		store:  mockStore,
 		ledger: "test-ledger",
-		force:    false,
+		force:  false,
 	}
 
 	volumeKey := domain.VolumeKey{
@@ -150,9 +152,9 @@ func TestGetBalances_VolumeNotFound(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
+		store:  mockStore,
 		ledger: "test-ledger",
-		force:    false,
+		force:  false,
 	}
 
 	volumeKey := domain.VolumeKey{
@@ -181,9 +183,9 @@ func TestGetAccountsMetadata_Basic(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
+		store:  mockStore,
 		ledger: "test-ledger",
-		force:    false,
+		force:  false,
 	}
 
 	metaKey := domain.MetadataKey{
@@ -213,9 +215,9 @@ func TestGetAccountsMetadata_NotFound(t *testing.T) {
 	mockStore := NewMockInMemoryStore(ctrl)
 
 	adapter := &numscriptStoreAdapter{
-		store:    mockStore,
+		store:  mockStore,
 		ledger: "test-ledger",
-		force:    false,
+		force:  false,
 	}
 
 	metaKey := domain.MetadataKey{
@@ -258,7 +260,7 @@ func TestGetAccountsMetadata_WithSchemaConversion(t *testing.T) {
 	// Return a string value that should be converted to int64 per schema
 	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(commonpb.NewStringValue("25"), nil)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(&commonpb.LedgerInfo{
-		Name:           "test-ledger",
+		Name: "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {

@@ -2,15 +2,17 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // NewCheckCommand creates the store check command.
@@ -34,6 +36,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -47,9 +50,9 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 	}
 
 	var (
-		spinner    *pterm.SpinnerPrinter
-		errorCount int
-		errors     []*servicepb.CheckStoreError
+		spinner     *pterm.SpinnerPrinter
+		errorCount  int
+		checkErrors []*servicepb.CheckStoreError
 	)
 
 	if !jsonOutput {
@@ -58,27 +61,30 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 
 	for {
 		event, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			if spinner != nil {
 				_ = spinner.Stop()
 			}
+
 			return cmdutil.FormatGRPCError("receiving check event", err)
 		}
 
-		switch t := event.Type.(type) {
+		switch t := event.GetType().(type) {
 		case *servicepb.CheckStoreEvent_Progress:
-			if spinner != nil && t.Progress.TotalLogs > 0 {
-				pct := float64(t.Progress.LogsChecked) / float64(t.Progress.TotalLogs) * 100
+			if spinner != nil && t.Progress.GetTotalLogs() > 0 {
+				pct := float64(t.Progress.GetLogsChecked()) / float64(t.Progress.GetTotalLogs()) * 100
 				spinner.UpdateText(fmt.Sprintf("Checking store integrity... %d/%d logs (%.0f%%)",
-					t.Progress.LogsChecked, t.Progress.TotalLogs, pct))
+					t.Progress.GetLogsChecked(), t.Progress.GetTotalLogs(), pct))
 			}
 
 		case *servicepb.CheckStoreEvent_Error:
 			errorCount++
-			errors = append(errors, t.Error)
+
+			checkErrors = append(checkErrors, t.Error)
 			if !jsonOutput {
 				printCheckError(t.Error)
 			}
@@ -97,14 +103,16 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 		}{
 			Valid:      errorCount == 0,
 			ErrorCount: errorCount,
-			Errors:     errors,
+			Errors:     checkErrors,
 		}
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(result)
 	}
 
 	pterm.Println()
+
 	if errorCount == 0 {
 		pterm.Success.Println("Store is valid - no integrity errors found")
 	} else {
@@ -116,24 +124,28 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 
 func printCheckError(e *servicepb.CheckStoreError) {
 	prefix := pterm.Red("ERROR")
-	errorTypeName := strings.TrimPrefix(e.ErrorType.String(), "CHECK_STORE_ERROR_TYPE_")
+	errorTypeName := strings.TrimPrefix(e.GetErrorType().String(), "CHECK_STORE_ERROR_TYPE_")
 	details := fmt.Sprintf("[%s]", errorTypeName)
 
-	if e.LogSequence > 0 {
-		details += fmt.Sprintf(" log=%d", e.LogSequence)
-	}
-	if e.Ledger != "" {
-		details += fmt.Sprintf(" ledger=%s", e.Ledger)
-	}
-	if e.Account != "" {
-		details += fmt.Sprintf(" account=%s", e.Account)
-	}
-	if e.Asset != "" {
-		details += fmt.Sprintf(" asset=%s", e.Asset)
-	}
-	if e.TransactionId > 0 {
-		details += fmt.Sprintf(" tx=%d", e.TransactionId)
+	if e.GetLogSequence() > 0 {
+		details += fmt.Sprintf(" log=%d", e.GetLogSequence())
 	}
 
-	pterm.Printf("  %s %s: %s\n", prefix, pterm.Gray(details), e.Message)
+	if e.GetLedger() != "" {
+		details += " ledger=" + e.GetLedger()
+	}
+
+	if e.GetAccount() != "" {
+		details += " account=" + e.GetAccount()
+	}
+
+	if e.GetAsset() != "" {
+		details += " asset=" + e.GetAsset()
+	}
+
+	if e.GetTransactionId() > 0 {
+		details += fmt.Sprintf(" tx=%d", e.GetTransactionId())
+	}
+
+	pterm.Printf("  %s %s: %s\n", prefix, pterm.Gray(details), e.GetMessage())
 }

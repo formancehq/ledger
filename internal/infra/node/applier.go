@@ -8,17 +8,18 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.etcd.io/etcd/raft/v3"
+	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/pointer"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
-	"go.etcd.io/etcd/raft/v3"
-	"go.etcd.io/etcd/raft/v3/raftpb"
-	"go.opentelemetry.io/otel/metric"
 )
 
 // applyWork represents a unit of work for the Applier goroutine.
@@ -52,15 +53,15 @@ type Applier struct {
 	snapshotWrapper  func([]byte) ([]byte, error)
 
 	// Metrics
-	applyEntriesHistogram          metric.Int64Histogram
-	applyEntriesBatchSizeCounter   metric.Int64Counter
-	applyEntriesBatchSizeHistogram metric.Int64Histogram
-	createSnapshotHistogram        metric.Float64Histogram
-	snapshotTriggeredCounter       metric.Int64Counter
-	unspoolDurationHistogram       metric.Float64Histogram
-	gatingWaitDurationHistogram    metric.Int64Histogram
-	readiesDuringGatingHistogram   metric.Int64Histogram
-	maintenanceSnapshotHistogram   metric.Float64Histogram
+	applyEntriesHistogram           metric.Int64Histogram
+	applyEntriesBatchSizeCounter    metric.Int64Counter
+	applyEntriesBatchSizeHistogram  metric.Int64Histogram
+	createSnapshotHistogram         metric.Float64Histogram
+	snapshotTriggeredCounter        metric.Int64Counter
+	unspoolDurationHistogram        metric.Float64Histogram
+	gatingWaitDurationHistogram     metric.Int64Histogram
+	readiesDuringGatingHistogram    metric.Int64Histogram
+	maintenanceSnapshotHistogram    metric.Float64Histogram
 	maintenanceReplaySpoolHistogram metric.Float64Histogram
 }
 
@@ -106,22 +107,29 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 		case work := <-a.ch:
 			if work.barrier != nil {
 				close(work.barrier)
+
 				continue
 			}
+
 			if a.gatingTerminated != nil && gatingStart.IsZero() {
 				gatingStart = time.Now()
 			}
+
 			if !gatingStart.IsZero() {
 				readiesDuringGating++
 			}
+
 			switch a.status.Load() {
 			case statusNormal:
-				if err := a.applyEntriesToFSM(ctx, work.confState, work.entries...); err != nil {
+				err := a.applyEntriesToFSM(ctx, work.confState, work.entries...)
+				if err != nil {
 					return err
 				}
 			default:
 				a.logger.Debugf("Spool committed entries")
-				if err := a.spool.AppendCommittedEntries(ctx, work.entries...); err != nil {
+
+				err := a.spool.AppendCommittedEntries(ctx, work.entries...)
+				if err != nil {
 					return fmt.Errorf("spooling committed entries: %w", err)
 				}
 			}
@@ -131,9 +139,12 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			readiesDuringGating = 0
 			gatingStart = time.Time{}
 			unspoolStart := time.Now()
-			if err := a.unspoolAndResume(ctx); err != nil {
+
+			err := a.unspoolAndResume(ctx)
+			if err != nil {
 				return err
 			}
+
 			a.unspoolDurationHistogram.Record(context.Background(), float64(time.Since(unspoolStart).Microseconds()))
 			a.gatingTerminated = nil
 		case <-stop:
@@ -166,8 +177,10 @@ func (a *Applier) SyncSnapshot(ctx context.Context, leader uint64) {
 			}).Errorf("Failed to get snapshot fetcher, marking node as out of sync")
 			a.syncProgress.Store(nil)
 			a.status.Store(statusOutOfSync)
+
 			return 0, nil
 		}
+
 		if _, err := a.fsm.SynchronizeWithLeader(ctx, snapshotFetcher, progress); err != nil {
 			a.logger.WithFields(map[string]any{
 				"leader": leader,
@@ -175,9 +188,12 @@ func (a *Applier) SyncSnapshot(ctx context.Context, leader uint64) {
 			}).Errorf("Failed to synchronize with leader, marking node as out of sync")
 			a.syncProgress.Store(nil)
 			a.status.Store(statusOutOfSync)
+
 			return 0, nil
 		}
+
 		a.syncProgress.Store(nil)
+
 		return 0, nil
 	}, nil)
 }
@@ -205,10 +221,12 @@ func (a *Applier) GetSyncProgress() *state.SyncProgress {
 
 func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ...raftpb.Entry) (*state.ApplyEntriesResult, error) {
 	start := time.Now()
+
 	result, err := a.fsm.ApplyEntries(ctx, entries...)
 	if err != nil {
 		return nil, fmt.Errorf("applying entries to Machine: %w", err)
 	}
+
 	a.applyEntriesHistogram.Record(ctx, time.Since(start).Microseconds())
 	a.applyEntriesBatchSizeCounter.Add(ctx, int64(len(result.Results)))
 	a.applyEntriesBatchSizeHistogram.Record(ctx, int64(len(result.Results)))
@@ -220,11 +238,13 @@ func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, entries ..
 	if result.CheckpointRequired && resolveCount > 0 {
 		resolveCount--
 	}
+
 	for _, r := range result.Results[:resolveCount] {
 		future, exists := a.futures.Load(r.ProposalID)
 		if !exists {
 			continue
 		}
+
 		future.Resolve(r, r.Error)
 		a.futures.Delete(r.ProposalID)
 	}
@@ -284,7 +304,8 @@ func (a *Applier) handleCheckpointRequired(
 ) error {
 	// Spool remaining entries -- they'll be replayed after the maintenance task
 	if len(applyResult.RemainingEntries) > 0 {
-		if err := a.spool.AppendCommittedEntries(ctx, applyResult.RemainingEntries...); err != nil {
+		err := a.spool.AppendCommittedEntries(ctx, applyResult.RemainingEntries...)
+		if err != nil {
 			return fmt.Errorf("spooling remaining entries: %w", err)
 		}
 	}
@@ -301,12 +322,16 @@ func (a *Applier) handleCheckpointRequired(
 
 	// Resolve the deferred future for the checkpoint-triggering proposal.
 	// The last result in applyResult.Results is the entry that set CheckpointRequired.
-	var deferredResult *state.ApplyResult
-	var deferredFuture *futures.Future[state.ApplyResult]
+	var (
+		deferredResult *state.ApplyResult
+		deferredFuture *futures.Future[state.ApplyResult]
+	)
+
 	if len(applyResult.Results) > 0 {
 		deferredResult = &applyResult.Results[len(applyResult.Results)-1]
 		if f, ok := a.futures.Load(deferredResult.ProposalID); ok {
 			deferredFuture = f
+
 			a.futures.Delete(deferredResult.ProposalID)
 		}
 	}
@@ -317,6 +342,7 @@ func (a *Applier) handleCheckpointRequired(
 			if deferredFuture != nil {
 				deferredFuture.Resolve(state.ApplyResult{}, err)
 			}
+
 			return 0, fmt.Errorf("creating checkpoint: %w", err)
 		}
 
@@ -355,11 +381,13 @@ func slicesEqual(a, b []uint64) bool {
 	if len(a) != len(b) {
 		return false
 	}
+
 	for i := range a {
 		if a[i] != b[i] {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -377,6 +405,7 @@ func (a *Applier) triggerSnapshot(ctx context.Context, confState *raftpb.ConfSta
 		}).Infof("Creating new snapshot")
 
 		startTime := time.Now()
+
 		snapshotData, err := a.fsm.CreateSnapshot(ctx)
 		if err != nil {
 			return 0, err
@@ -393,6 +422,7 @@ func (a *Applier) triggerSnapshot(ctx context.Context, confState *raftpb.ConfSta
 		if err := a.wal.CreateSnapshot(lastEntryIndex, confState, snapshotData); err != nil {
 			return 0, err
 		}
+
 		a.createSnapshotHistogram.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 
 		return lastEntryIndex, nil
@@ -401,7 +431,8 @@ func (a *Applier) triggerSnapshot(ctx context.Context, confState *raftpb.ConfSta
 		// mutex during the spooling window, which would block wal.Append
 		// and stall the Ready pipeline.
 		if lastEntryIndex > a.compactionMargin {
-			if err := a.wal.Compact(lastEntryIndex - a.compactionMargin); err != nil && !errors.Is(err, raft.ErrCompacted) {
+			err := a.wal.Compact(lastEntryIndex - a.compactionMargin)
+			if err != nil && !errors.Is(err, raft.ErrCompacted) {
 				a.logger.WithFields(map[string]any{
 					"error": err,
 				}).Errorf("Failed to compact WAL")
@@ -421,20 +452,25 @@ func (a *Applier) runMaintenanceTask(
 	a.taskExecutor.interrupt()
 	a.taskExecutor.run(ctx, func(ctx context.Context) error {
 		var closeOnce sync.Once
+
 		closeGating := func() { closeOnce.Do(func() { close(gatingTerminated) }) }
 		defer closeGating()
 
 		snapshotStart := time.Now()
+
 		frozenAtIndex, err := task(ctx)
 		if err != nil {
 			return err
 		}
+
 		a.maintenanceSnapshotHistogram.Record(context.Background(), float64(time.Since(snapshotStart).Microseconds()))
 
 		replayStart := time.Now()
+
 		if err := a.replaySpool(ctx, frozenAtIndex); err != nil {
 			return err
 		}
+
 		a.maintenanceReplaySpoolHistogram.Record(context.Background(), float64(time.Since(replayStart).Microseconds()))
 
 		// End gating before post-gating work (e.g. WAL compaction).
@@ -468,6 +504,7 @@ func (a *Applier) unspoolAndResume(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("getting last applied index: %w", err)
 	}
+
 	if err := a.spool.Prune(lastAppliedIndex); err != nil {
 		return fmt.Errorf("pruning spool: %w", err)
 	}
@@ -491,7 +528,9 @@ func (a *Applier) replaySpool(ctx context.Context, fromIndex uint64) error {
 	batchSize := a.replayBatchSize
 	batch := make([]raftpb.Entry, 0, batchSize)
 	logFields := map[string]any{}
+
 	var lastEntry *raftpb.Entry
+
 	if err := a.spool.ReplayUntil(ctx, *until, fromIndex, func(entry raftpb.Entry) error {
 		batch = append(batch, entry)
 		if len(batch) >= batchSize {
@@ -499,39 +538,48 @@ func (a *Applier) replaySpool(ctx context.Context, fromIndex uint64) error {
 			if err != nil {
 				return err
 			}
+
 			count += len(batch)
 			batch = batch[:0]
 			lastEntry = &entry
 
 			// Handle checkpoint during replay (ClosePeriod)
 			if result.CheckpointRequired {
-				if err := a.handleCheckpointDuringReplay(ctx, result); err != nil {
+				err := a.handleCheckpointDuringReplay(ctx, result)
+				if err != nil {
 					return err
 				}
 			}
 		}
+
 		return nil
 	}); err != nil {
 		return fmt.Errorf("replaying spool: %w", err)
 	}
+
 	if len(batch) > 0 {
 		count += len(batch)
+
 		result, err := a.applyEntriesAndResolveCommands(ctx, batch...)
 		if err != nil {
 			return err
 		}
-		lastEntry = pointer.For(batch[len(batch)-1])
+
+		lastEntry = new(batch[len(batch)-1])
 
 		// Handle checkpoint during replay (ClosePeriod or CreateCheckpoint)
 		if result.CheckpointRequired {
-			if err := a.handleCheckpointDuringReplay(ctx, result); err != nil {
+			err := a.handleCheckpointDuringReplay(ctx, result)
+			if err != nil {
 				return err
 			}
 		}
 	}
+
 	if lastEntry != nil {
 		logFields["last_entry_index"] = lastEntry.Index
 	}
+
 	logFields["count"] = count
 	a.logger.
 		WithFields(logFields).

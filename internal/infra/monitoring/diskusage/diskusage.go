@@ -10,28 +10,35 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 )
 
 // DirSize computes the total size in bytes of all files under the given directory.
 func DirSize(path string) (int64, error) {
 	var size int64
+
 	err := filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
+
 		if d.IsDir() {
 			return nil
 		}
+
 		info, err := d.Info()
 		if err != nil {
 			return err
 		}
+
 		size += info.Size()
+
 		return nil
 	})
+
 	return size, err
 }
 
@@ -39,23 +46,30 @@ func DirSize(path string) (int64, error) {
 // excluding any files whose path starts with the given prefix.
 func dirSizeExcluding(path, excludePrefix string) (int64, error) {
 	var size int64
+
 	err := filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
+
 		if d.IsDir() {
 			return nil
 		}
+
 		if strings.HasPrefix(p, excludePrefix) {
 			return nil
 		}
+
 		info, err := d.Info()
 		if err != nil {
 			return err
 		}
+
 		size += info.Size()
+
 		return nil
 	})
+
 	return size, err
 }
 
@@ -125,6 +139,7 @@ func (c *Collector) Start() {
 // and unregisters OTEL metrics.
 func (c *Collector) Stop() {
 	c.w.Stop()
+
 	if c.metricsRegistration != nil {
 		_ = c.metricsRegistration.Unregister()
 	}
@@ -135,27 +150,35 @@ func (c *Collector) collect() {
 	if size, err := DirSize(c.spoolDir); err == nil {
 		c.spoolBytes.Store(size)
 	}
+
 	if size, err := dirSizeExcluding(c.walDir, c.spoolDir); err == nil {
 		c.walBytes.Store(size)
 	}
+
 	if size, err := DirSize(c.readIndexDir); err == nil {
 		c.readIndexBytes.Store(size)
 	}
+
 	if rss, err := mmapRSSBytes(c.readIndexPath); err == nil {
 		c.readIndexMmapRSS.Store(rss)
 	}
+
 	if size, err := dirSizeExcluding(c.dataDir, c.readIndexDir); err == nil {
 		c.dataBytes.Store(size)
 	}
+
 	if size, err := DirSize(c.walDir); err == nil {
 		c.walVolumeBytes.Store(size)
 	}
+
 	if size, err := DirSize(c.dataDir); err == nil {
 		c.dataVolumeBytes.Store(size)
 	}
+
 	if total, err := filesystemTotalBytes(c.walDir); err == nil {
 		c.walVolumeTotalBytes.Store(total)
 	}
+
 	if total, err := filesystemTotalBytes(c.dataDir); err == nil {
 		c.dataVolumeTotalBytes.Store(total)
 	}
@@ -164,9 +187,12 @@ func (c *Collector) collect() {
 // filesystemTotalBytes returns the total capacity of the filesystem containing path.
 func filesystemTotalBytes(path string) (int64, error) {
 	var stat syscall.Statfs_t
-	if err := syscall.Statfs(path, &stat); err != nil {
+
+	err := syscall.Statfs(path, &stat)
+	if err != nil {
 		return 0, err
 	}
+
 	return int64(stat.Blocks) * int64(stat.Bsize), nil
 }
 

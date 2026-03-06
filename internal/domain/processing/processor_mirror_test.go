@@ -3,11 +3,12 @@ package processing
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestMirrorIngest_FillGap(t *testing.T) {
@@ -55,15 +56,15 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
-	require.Equal(t, "mirror-ledger", applyLog.LedgerName)
-	require.Equal(t, uint64(1), applyLog.Log.Id)
+	require.Equal(t, "mirror-ledger", applyLog.GetLedgerName())
+	require.Equal(t, uint64(1), applyLog.GetLog().GetId())
 
-	fillGap := applyLog.Log.Data.GetFillGap()
+	fillGap := applyLog.GetLog().GetData().GetFillGap()
 	require.NotNil(t, fillGap)
-	require.Equal(t, uint64(5), fillGap.OriginalId)
+	require.Equal(t, uint64(5), fillGap.GetOriginalId())
 
 	// NextTransactionId should have advanced by 2 (two skipped IDs)
-	require.Equal(t, uint64(3), boundaries.NextTransactionId)
+	require.Equal(t, uint64(3), boundaries.GetNextTransactionId())
 }
 
 func TestMirrorIngest_CreatedTransaction(t *testing.T) {
@@ -144,13 +145,13 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Equal(t, uint64(42), createdTx.Transaction.Id)
-	require.Equal(t, "tx-ref-v2", createdTx.Transaction.Reference)
+	require.Equal(t, uint64(42), createdTx.GetTransaction().GetId())
+	require.Equal(t, "tx-ref-v2", createdTx.GetTransaction().GetReference())
 
 	// NextTransactionId should be past 42
-	require.Equal(t, uint64(43), boundaries.NextTransactionId)
+	require.Equal(t, uint64(43), boundaries.GetNextTransactionId())
 }
 
 func TestMirrorIngest_NotMirrorMode(t *testing.T) {
@@ -252,8 +253,8 @@ func TestPromoteLedger_Success(t *testing.T) {
 	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true)
 	mockStore.EXPECT().PutLedger("mirror-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
-			require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, info.Mode)
-			require.Nil(t, info.MirrorSource)
+			require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, info.GetMode())
+			require.Nil(t, info.GetMirrorSource())
 		},
 	)
 
@@ -271,8 +272,8 @@ func TestPromoteLedger_Success(t *testing.T) {
 
 	promoteLog := result.GetPromoteLedger()
 	require.NotNil(t, promoteLog)
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, promoteLog.Info.Mode)
-	require.Nil(t, promoteLog.Info.MirrorSource)
+	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, promoteLog.GetInfo().GetMode())
+	require.Nil(t, promoteLog.GetInfo().GetMirrorSource())
 }
 
 func TestPromoteLedger_NotMirrorMode(t *testing.T) {

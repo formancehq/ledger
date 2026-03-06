@@ -1,12 +1,13 @@
 package attributes
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/holiman/uint256"
 	"go.uber.org/fx"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // Attributes holds all attribute types used in the ledger.
@@ -41,23 +42,27 @@ func NewVolumeAttribute() *AccumulatingAttribute[*raftcmdpb.VolumePair] {
 			var inputResult, outputResult, tmp uint256.Int
 
 			if base != nil {
-				if base.InputKnown != nil {
-					base.InputKnown.IntoUint256(&inputResult)
+				if base.GetInputKnown() != nil {
+					base.GetInputKnown().IntoUint256(&inputResult)
 				}
-				if base.OutputKnown != nil {
-					base.OutputKnown.IntoUint256(&outputResult)
+
+				if base.GetOutputKnown() != nil {
+					base.GetOutputKnown().IntoUint256(&outputResult)
 				}
 			}
+
 			if lastDiff != nil {
-				if lastDiff.InputKnown != nil {
-					lastDiff.InputKnown.IntoUint256(&tmp)
+				if lastDiff.GetInputKnown() != nil {
+					lastDiff.GetInputKnown().IntoUint256(&tmp)
 					inputResult.Add(&inputResult, &tmp)
 				}
-				if lastDiff.OutputKnown != nil {
-					lastDiff.OutputKnown.IntoUint256(&tmp)
+
+				if lastDiff.GetOutputKnown() != nil {
+					lastDiff.GetOutputKnown().IntoUint256(&tmp)
 					outputResult.Add(&outputResult, &tmp)
 				}
 			}
+
 			return &raftcmdpb.VolumePair{
 				InputKnown:  commonpb.NewUint256(&inputResult),
 				OutputKnown: commonpb.NewUint256(&outputResult),

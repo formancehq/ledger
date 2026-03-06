@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/stretchr/testify/require"
 )
 
 func TestTranslateBatch_NewTransaction(t *testing.T) {
@@ -38,16 +39,16 @@ func TestTranslateBatch_NewTransaction(t *testing.T) {
 
 	ingest := orders[0].GetMirrorIngest()
 	require.NotNil(t, ingest)
-	require.Equal(t, "default", ingest.Ledger)
+	require.Equal(t, "default", ingest.GetLedger())
 
-	ct := ingest.Entry.GetCreatedTransaction()
+	ct := ingest.GetEntry().GetCreatedTransaction()
 	require.NotNil(t, ct)
-	require.Equal(t, uint64(0), ct.TransactionId)
-	require.Equal(t, "tx-ref-001", ct.Reference)
-	require.Len(t, ct.Postings, 1)
-	require.Equal(t, "world", ct.Postings[0].Source)
-	require.Equal(t, "users:001", ct.Postings[0].Destination)
-	require.Equal(t, "USD/2", ct.Postings[0].Asset)
+	require.Equal(t, uint64(0), ct.GetTransactionId())
+	require.Equal(t, "tx-ref-001", ct.GetReference())
+	require.Len(t, ct.GetPostings(), 1)
+	require.Equal(t, "world", ct.GetPostings()[0].GetSource())
+	require.Equal(t, "users:001", ct.GetPostings()[0].GetDestination())
+	require.Equal(t, "USD/2", ct.GetPostings()[0].GetAsset())
 }
 
 func TestTranslateBatch_SetMetadata_Account(t *testing.T) {
@@ -67,14 +68,14 @@ func TestTranslateBatch_SetMetadata_Account(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
-	sm := orders[0].GetMirrorIngest().Entry.GetSavedMetadata()
+	sm := orders[0].GetMirrorIngest().GetEntry().GetSavedMetadata()
 	require.NotNil(t, sm)
 
-	account := sm.Target.GetAccount()
+	account := sm.GetTarget().GetAccount()
 	require.NotNil(t, account)
-	require.Equal(t, "users:001", account.Addr)
-	require.Len(t, sm.Metadata.Metadata, 1)
-	require.Equal(t, "role", sm.Metadata.Metadata[0].Key)
+	require.Equal(t, "users:001", account.GetAddr())
+	require.Len(t, sm.GetMetadata().GetMetadata(), 1)
+	require.Equal(t, "role", sm.GetMetadata().GetMetadata()[0].GetKey())
 }
 
 func TestTranslateBatch_SetMetadata_Transaction(t *testing.T) {
@@ -94,12 +95,12 @@ func TestTranslateBatch_SetMetadata_Transaction(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
-	sm := orders[0].GetMirrorIngest().Entry.GetSavedMetadata()
+	sm := orders[0].GetMirrorIngest().GetEntry().GetSavedMetadata()
 	require.NotNil(t, sm)
 
-	tx := sm.Target.GetTransaction()
+	tx := sm.GetTarget().GetTransaction()
 	require.NotNil(t, tx)
-	require.Equal(t, uint64(42), tx.Id)
+	require.Equal(t, uint64(42), tx.GetId())
 }
 
 func TestTranslateBatch_RevertedTransaction(t *testing.T) {
@@ -128,11 +129,11 @@ func TestTranslateBatch_RevertedTransaction(t *testing.T) {
 	require.Len(t, orders, 1)
 	require.Equal(t, uint64(6), nextTxID)
 
-	rt := orders[0].GetMirrorIngest().Entry.GetRevertedTransaction()
+	rt := orders[0].GetMirrorIngest().GetEntry().GetRevertedTransaction()
 	require.NotNil(t, rt)
-	require.Equal(t, uint64(1), rt.RevertedTransactionId)
-	require.Equal(t, uint64(5), rt.NewTransactionId)
-	require.Len(t, rt.ReversePostings, 1)
+	require.Equal(t, uint64(1), rt.GetRevertedTransactionId())
+	require.Equal(t, uint64(5), rt.GetNewTransactionId())
+	require.Len(t, rt.GetReversePostings(), 1)
 }
 
 func TestTranslateBatch_DeleteMetadata(t *testing.T) {
@@ -152,10 +153,10 @@ func TestTranslateBatch_DeleteMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
-	dm := orders[0].GetMirrorIngest().Entry.GetDeletedMetadata()
+	dm := orders[0].GetMirrorIngest().GetEntry().GetDeletedMetadata()
 	require.NotNil(t, dm)
-	require.Equal(t, "role", dm.Key)
-	require.Equal(t, "users:001", dm.Target.GetAccount().Addr)
+	require.Equal(t, "role", dm.GetKey())
+	require.Equal(t, "users:001", dm.GetTarget().GetAccount().GetAddr())
 }
 
 func TestTranslateBatch_UnknownLogType_FillGap(t *testing.T) {
@@ -171,7 +172,7 @@ func TestTranslateBatch_UnknownLogType_FillGap(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
-	gap := orders[0].GetMirrorIngest().Entry.GetFillGap()
+	gap := orders[0].GetMirrorIngest().GetEntry().GetFillGap()
 	require.NotNil(t, gap)
 }
 
@@ -196,13 +197,13 @@ func TestTranslateBatch_LogIDGapDetection(t *testing.T) {
 	require.Equal(t, uint64(4), nextLogID)
 
 	// First two should be fill gaps
-	require.NotNil(t, orders[0].GetMirrorIngest().Entry.GetFillGap())
-	require.Equal(t, uint64(1), orders[0].GetMirrorIngest().Entry.V2LogId)
-	require.NotNil(t, orders[1].GetMirrorIngest().Entry.GetFillGap())
-	require.Equal(t, uint64(2), orders[1].GetMirrorIngest().Entry.V2LogId)
+	require.NotNil(t, orders[0].GetMirrorIngest().GetEntry().GetFillGap())
+	require.Equal(t, uint64(1), orders[0].GetMirrorIngest().GetEntry().GetV2LogId())
+	require.NotNil(t, orders[1].GetMirrorIngest().GetEntry().GetFillGap())
+	require.Equal(t, uint64(2), orders[1].GetMirrorIngest().GetEntry().GetV2LogId())
 
 	// Third should be the actual metadata
-	require.NotNil(t, orders[2].GetMirrorIngest().Entry.GetSavedMetadata())
+	require.NotNil(t, orders[2].GetMirrorIngest().GetEntry().GetSavedMetadata())
 }
 
 func TestTranslateBatch_EmptyInput(t *testing.T) {
@@ -246,8 +247,8 @@ func TestTranslateBatch_MultipleLogs(t *testing.T) {
 	require.Equal(t, uint64(3), nextLogID)
 	require.Equal(t, uint64(1), nextTxID)
 
-	require.NotNil(t, orders[0].GetMirrorIngest().Entry.GetCreatedTransaction())
-	require.NotNil(t, orders[1].GetMirrorIngest().Entry.GetSavedMetadata())
+	require.NotNil(t, orders[0].GetMirrorIngest().GetEntry().GetCreatedTransaction())
+	require.NotNil(t, orders[1].GetMirrorIngest().GetEntry().GetSavedMetadata())
 }
 
 func TestTranslateBatch_AccountMetadata(t *testing.T) {
@@ -271,9 +272,9 @@ func TestTranslateBatch_AccountMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
-	ct := orders[0].GetMirrorIngest().Entry.GetCreatedTransaction()
+	ct := orders[0].GetMirrorIngest().GetEntry().GetCreatedTransaction()
 	require.NotNil(t, ct)
-	require.Contains(t, ct.AccountMetadata, "a")
+	require.Contains(t, ct.GetAccountMetadata(), "a")
 }
 
 func TestTranslatePostings_LargeAmount(t *testing.T) {
@@ -289,7 +290,7 @@ func TestTranslatePostings_LargeAmount(t *testing.T) {
 	result, err := translatePostings(postings)
 	require.NoError(t, err)
 	require.Len(t, result, 1)
-	require.NotNil(t, result[0].Amount)
+	require.NotNil(t, result[0].GetAmount())
 }
 
 func TestTranslatePostings_NegativeAmount(t *testing.T) {
@@ -327,7 +328,7 @@ func TestTranslateTarget_TransactionString(t *testing.T) {
 	// v2 sometimes encodes transaction IDs as strings
 	target, err := translateTarget("TRANSACTION", json.RawMessage(`"42"`))
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), target.GetTransaction().Id)
+	require.Equal(t, uint64(42), target.GetTransaction().GetId())
 }
 
 func TestTranslateTarget_TransactionUint(t *testing.T) {
@@ -335,7 +336,7 @@ func TestTranslateTarget_TransactionUint(t *testing.T) {
 
 	target, err := translateTarget("TRANSACTION", json.RawMessage(`42`))
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), target.GetTransaction().Id)
+	require.Equal(t, uint64(42), target.GetTransaction().GetId())
 }
 
 func TestTranslateTarget_Account(t *testing.T) {
@@ -343,7 +344,7 @@ func TestTranslateTarget_Account(t *testing.T) {
 
 	target, err := translateTarget("ACCOUNT", json.RawMessage(`"users:001"`))
 	require.NoError(t, err)
-	require.Equal(t, "users:001", target.GetAccount().Addr)
+	require.Equal(t, "users:001", target.GetAccount().GetAddr())
 }
 
 func TestTranslateTarget_UnknownType(t *testing.T) {
@@ -441,8 +442,8 @@ func TestMakeMirrorOrder(t *testing.T) {
 	}
 
 	order := makeMirrorOrder("test-ledger", entry)
-	require.Equal(t, "test-ledger", order.GetMirrorIngest().Ledger)
-	require.Equal(t, uint64(42), order.GetMirrorIngest().Entry.V2LogId)
+	require.Equal(t, "test-ledger", order.GetMirrorIngest().GetLedger())
+	require.Equal(t, uint64(42), order.GetMirrorIngest().GetEntry().GetV2LogId())
 }
 
 func TestParseUint256_Zero(t *testing.T) {
@@ -463,17 +464,20 @@ func TestParseUint256_MaxUint64(t *testing.T) {
 
 func mustMarshal(t *testing.T, v any) json.RawMessage {
 	t.Helper()
+
 	data, err := json.Marshal(v)
 	require.NoError(t, err)
+
 	return data
 }
 
 func BenchmarkTranslateBatch(b *testing.B) {
 	// Build a realistic batch of 100 NEW_TRANSACTION logs with 2 postings each.
 	const batchSize = 100
+
 	v2Logs := make([]V2Log, batchSize)
 	for i := range v2Logs {
-		data, _ := json.Marshal(V2NewTransactionData{
+		data, err := json.Marshal(V2NewTransactionData{
 			Transaction: V2Transaction{
 				ID: uint64(i),
 				Postings: []V2Posting{
@@ -484,6 +488,9 @@ func BenchmarkTranslateBatch(b *testing.B) {
 				Metadata:  map[string]any{"ref": "order-12345", "type": "payment"},
 			},
 		})
+		if err != nil {
+			b.Fatalf("json.Marshal: %v", err)
+		}
 		v2Logs[i] = V2Log{
 			ID:   uint64(i + 1),
 			Type: "NEW_TRANSACTION",
@@ -493,19 +500,23 @@ func BenchmarkTranslateBatch(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
+
 	for range b.N {
 		orders, _, _, err := TranslateBatch("default", v2Logs, 1, 0)
 		if err != nil {
 			b.Fatal(err)
 		}
+
 		_ = orders
 	}
 }
 
 func BenchmarkParseUint256(b *testing.B) {
 	amounts := []string{"0", "100", "999999", "18446744073709551615", "999999999999999999999"}
+
 	b.ResetTimer()
 	b.ReportAllocs()
+
 	for range b.N {
 		for _, s := range amounts {
 			_, err := parseUint256(s)

@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/cockroachdb/pebble"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -29,25 +30,32 @@ func assembleAccount(
 		volumes := make(map[string]*commonpb.VolumesWithBalance, len(volEntries))
 		for _, entry := range volEntries {
 			var vk domain.VolumeKey
-			if err := vk.Unmarshal(entry.CanonicalKey); err != nil {
+
+			err := vk.Unmarshal(entry.CanonicalKey)
+			if err != nil {
 				continue
 			}
+
 			input := big.NewInt(0)
 			output := big.NewInt(0)
+
 			if entry.Value != nil {
-				if entry.Value.InputKnown != nil {
-					input = entry.Value.InputKnown.ToBigInt()
+				if entry.Value.GetInputKnown() != nil {
+					input = entry.Value.GetInputKnown().ToBigInt()
 				}
-				if entry.Value.OutputKnown != nil {
-					output = entry.Value.OutputKnown.ToBigInt()
+
+				if entry.Value.GetOutputKnown() != nil {
+					output = entry.Value.GetOutputKnown().ToBigInt()
 				}
 			}
+
 			volumes[vk.Asset] = &commonpb.VolumesWithBalance{
 				Input:   input.String(),
 				Output:  output.String(),
 				Balance: new(big.Int).Sub(input, output).String(),
 			}
 		}
+
 		account.Volumes = volumes
 	}
 
@@ -55,13 +63,16 @@ func assembleAccount(
 		mdList := make([]*commonpb.Metadata, 0, len(metaEntries))
 		for _, entry := range metaEntries {
 			var mk domain.MetadataKey
-			if err := mk.Unmarshal(entry.CanonicalKey); err == nil && entry.Value != nil {
+
+			err := mk.Unmarshal(entry.CanonicalKey)
+			if err == nil && entry.Value != nil {
 				mdList = append(mdList, &commonpb.Metadata{
 					Key:   mk.Key,
 					Value: entry.Value,
 				})
 			}
 		}
+
 		if len(mdList) > 0 {
 			account.Metadata = &commonpb.MetadataSet{Metadata: mdList}
 			// Lazy read-path conversion: enforce schema types on stored values.
@@ -76,16 +87,18 @@ func assembleAccount(
 
 // enforceAccountSchema converts metadata values to match declared account field types.
 func enforceAccountSchema(schema *commonpb.MetadataSchema, metadata []*commonpb.Metadata) {
-	if len(schema.AccountFields) == 0 {
+	if len(schema.GetAccountFields()) == 0 {
 		return
 	}
+
 	for _, m := range metadata {
-		fieldSchema, ok := schema.AccountFields[m.Key]
-		if !ok || m.Value == nil {
+		fieldSchema, ok := schema.GetAccountFields()[m.GetKey()]
+		if !ok || m.GetValue() == nil {
 			continue
 		}
-		if !commonpb.TypeMatches(m.Value, fieldSchema.Type) {
-			m.Value = commonpb.ConvertMetadataValue(m.Value, fieldSchema.Type)
+
+		if !commonpb.TypeMatches(m.GetValue(), fieldSchema.GetType()) {
+			m.Value = commonpb.ConvertMetadataValue(m.GetValue(), fieldSchema.GetType())
 		}
 	}
 }
@@ -126,6 +139,7 @@ func scanAccount(
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for account scan: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	volAcc := attrs.Volume.NewAccumulator()
@@ -133,6 +147,7 @@ func scanAccount(
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
+
 		valueBytes, err := iter.ValueAndErr()
 		if err != nil {
 			return nil, fmt.Errorf("reading value: %w", err)

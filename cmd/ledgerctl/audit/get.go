@@ -6,10 +6,11 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // NewGetCommand creates the audit get command.
@@ -33,6 +34,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -52,14 +54,17 @@ func runGet(cmd *cobra.Command, args []string) error {
 		if isAuditDisabledError(err) {
 			pterm.Warning.Println("Audit log is disabled on this server.")
 			pterm.Println(pterm.Gray("Run `ledgerctl audit enable` to activate audit logging."))
+
 			return nil
 		}
+
 		return cmdutil.FormatGRPCError("failed to get audit entry", err)
 	}
 
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(entry)
 	}
 

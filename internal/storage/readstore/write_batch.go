@@ -75,6 +75,7 @@ func NewWriteBatch() *WriteBatch {
 	for i := range wb.ops {
 		wb.ops[i] = make(map[string]writeOp, 256)
 	}
+
 	return wb
 }
 
@@ -89,6 +90,7 @@ func (wb *WriteBatch) Reset() {
 	for i := range wb.ops {
 		clear(wb.ops[i])
 	}
+
 	clear(wb.rmapOverlay)
 	clear(wb.rmapDeleted)
 	wb.tx = nil
@@ -108,7 +110,7 @@ func (wb *WriteBatch) del(bucketIdx int, key []byte) {
 // against bbolt. Operations on the same key are deduplicated (last writer wins).
 // After flushing, the batch is reset.
 func (wb *WriteBatch) Flush() error {
-	for i := 0; i < numBatchBuckets; i++ {
+	for i := range numBatchBuckets {
 		ops := wb.ops[i]
 		if len(ops) == 0 {
 			continue
@@ -121,6 +123,7 @@ func (wb *WriteBatch) Flush() error {
 		for _, op := range ops {
 			sorted = append(sorted, op)
 		}
+
 		sort.Slice(sorted, func(a, b int) bool {
 			return bytes.Compare(sorted[a].key, sorted[b].key) < 0
 		})
@@ -128,11 +131,13 @@ func (wb *WriteBatch) Flush() error {
 		// Execute in key order for maximum B+ tree locality.
 		for _, op := range sorted {
 			if op.delete {
-				if err := bucket.Delete(op.key); err != nil {
+				err := bucket.Delete(op.key)
+				if err != nil {
 					return err
 				}
 			} else {
-				if err := bucket.Put(op.key, op.value); err != nil {
+				err := bucket.Put(op.key, op.value)
+				if err != nil {
 					return err
 				}
 			}
@@ -140,6 +145,7 @@ func (wb *WriteBatch) Flush() error {
 	}
 
 	wb.Reset()
+
 	return nil
 }
 
@@ -278,6 +284,7 @@ func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *KeyBuilder, ledger stri
 // The value is the global sequence, encoded as big-endian uint64.
 func (wb *WriteBatch) WriteLedgerLogIndex(kb *KeyBuilder, ledger string, logID, globalSequence uint64) {
 	key := LedgerLogKey(kb, ledger, logID)
+
 	var val [8]byte
 	binary.BigEndian.PutUint64(val[:], globalSequence)
 	wb.put(batchBucketLlog, key, val[:])

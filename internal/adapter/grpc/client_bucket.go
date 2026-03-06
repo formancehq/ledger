@@ -2,29 +2,30 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
+	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// BucketGrpcClient implements Controller by forwarding requests via gRPC to the leader
+// BucketGrpcClient implements Controller by forwarding requests via gRPC to the leader.
 type BucketGrpcClient struct {
 	client servicepb.BucketServiceClient
 }
 
-// NewLedgerGrpcClient creates a new gRPC-based ledger implementation
+// NewLedgerGrpcClient creates a new gRPC-based ledger implementation.
 func NewLedgerGrpcClient(client servicepb.BucketServiceClient) *BucketGrpcClient {
 	return &BucketGrpcClient{
 		client: client,
 	}
 }
 
-// Apply forwards the requests via gRPC to the leader
+// Apply forwards the requests via gRPC to the leader.
 func (g *BucketGrpcClient) Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 	resp, err := g.client.Apply(ctx, &servicepb.ApplyRequest{
 		Requests: requests,
@@ -32,7 +33,8 @@ func (g *BucketGrpcClient) Apply(ctx context.Context, requests ...*servicepb.Req
 	if err != nil {
 		return nil, fmt.Errorf("gRPC call failed: %w", err)
 	}
-	return resp.Logs, nil
+
+	return resp.GetLogs(), nil
 }
 
 func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
@@ -43,7 +45,8 @@ func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string
 	if err != nil {
 		return nil, err
 	}
-	return resp.Transaction, nil
+
+	return resp.GetTransaction(), nil
 }
 
 func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
@@ -65,7 +68,7 @@ func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName stri
 
 func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
 	// GetAccount reads from local store via RoutedController, this method should not be called
-	return nil, fmt.Errorf("GetAccount is not available via gRPC client - use local reads")
+	return nil, errors.New("GetAccount is not available via gRPC client - use local reads")
 }
 
 func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
@@ -93,6 +96,7 @@ func (g *BucketGrpcClient) ListLogs(ctx context.Context, afterSequence uint64, p
 	if afterSequence > 0 {
 		req.AfterSequence = &afterSequence
 	}
+
 	stream, err := g.client.ListLogs(ctx, req)
 	if err != nil {
 		return nil, err
@@ -126,6 +130,7 @@ func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, afterSequence *
 		FailuresOnly:  failuresOnly,
 		PageSize:      pageSize,
 	}
+
 	stream, err := g.client.ListAuditEntries(ctx, req)
 	if err != nil {
 		return nil, err
@@ -188,15 +193,17 @@ func (g *BucketGrpcClient) AnalyzeAccounts(ctx context.Context, ledgerName strin
 	for {
 		event, err := stream.Recv()
 		if err != nil {
-			if err == io.EOF {
-				return nil, fmt.Errorf("AnalyzeAccounts stream ended without result")
+			if errors.Is(err, io.EOF) {
+				return nil, errors.New("AnalyzeAccounts stream ended without result")
 			}
+
 			return nil, fmt.Errorf("receiving AnalyzeAccounts event: %w", err)
 		}
-		switch t := event.Type.(type) {
+
+		switch t := event.GetType().(type) {
 		case *servicepb.AnalyzeAccountsEvent_Progress:
 			if onProgress != nil {
-				onProgress(t.Progress.Processed, t.Progress.Total)
+				onProgress(t.Progress.GetProcessed(), t.Progress.GetTotal())
 			}
 		case *servicepb.AnalyzeAccountsEvent_Result:
 			return t.Result, nil
@@ -216,15 +223,17 @@ func (g *BucketGrpcClient) AnalyzeTransactions(ctx context.Context, ledgerName s
 	for {
 		event, err := stream.Recv()
 		if err != nil {
-			if err == io.EOF {
-				return nil, fmt.Errorf("AnalyzeTransactions stream ended without result")
+			if errors.Is(err, io.EOF) {
+				return nil, errors.New("AnalyzeTransactions stream ended without result")
 			}
+
 			return nil, fmt.Errorf("receiving AnalyzeTransactions event: %w", err)
 		}
-		switch t := event.Type.(type) {
+
+		switch t := event.GetType().(type) {
 		case *servicepb.AnalyzeTransactionsEvent_Progress:
 			if onProgress != nil {
-				onProgress(t.Progress.Processed, t.Progress.Total)
+				onProgress(t.Progress.GetProcessed(), t.Progress.GetTotal())
 			}
 		case *servicepb.AnalyzeTransactionsEvent_Result:
 			return t.Result, nil
@@ -239,7 +248,8 @@ func (g *BucketGrpcClient) ListPreparedQueries(ctx context.Context, ledger strin
 	if err != nil {
 		return nil, err
 	}
-	return resp.Queries, nil
+
+	return resp.GetQueries(), nil
 }
 
 func (g *BucketGrpcClient) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
@@ -266,16 +276,20 @@ func (g *BucketGrpcClient) ListNumscripts(ctx context.Context) ([]*commonpb.Nums
 	}
 
 	var scripts []*commonpb.NumscriptInfo
+
 	for {
 		info, err := stream.Recv()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			return nil, fmt.Errorf("receiving numscript: %w", err)
 		}
+
 		scripts = append(scripts, info)
 	}
+
 	return scripts, nil
 }
 

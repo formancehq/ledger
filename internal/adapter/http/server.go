@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
@@ -16,7 +17,7 @@ type Server struct {
 	bulkMaxSize int
 }
 
-// NewServer creates a new server instance (used by handlers)
+// NewServer creates a new server instance (used by handlers).
 func NewServer(logger logging.Logger, backend Backend, bulkMaxSize int) *Server {
 	return &Server{
 		logger:      logger,
@@ -35,6 +36,7 @@ type Backend interface {
 
 type DefaultBackend struct {
 	ctrl.Controller
+
 	Node          *node.Node
 	healthChecker health.Checker
 }
@@ -61,12 +63,15 @@ func (b *DefaultBackend) NotReadyReasons() []string {
 	if !b.Node.IsHealthy() {
 		reasons = append(reasons, "raft state machine is not healthy")
 	}
+
 	if b.Node.GetLeader() == 0 {
 		reasons = append(reasons, "no leader elected")
 	}
+
 	if !b.healthChecker.IsHealthy() {
 		reasons = append(reasons, "cluster health check failing (disk usage or clock skew)")
 	}
+
 	return reasons
 }
 

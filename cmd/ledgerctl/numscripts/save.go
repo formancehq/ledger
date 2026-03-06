@@ -1,13 +1,15 @@
 package numscripts
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // NewSaveCommand creates the numscripts save command.
@@ -39,15 +41,18 @@ func runSave(cmd *cobra.Command, args []string) error {
 
 	// Read content from file or stdin
 	var content []byte
+
 	filePath, _ := cmd.Flags().GetString("file")
 	if filePath != "" {
 		var err error
+
 		content, err = os.ReadFile(filePath)
 		if err != nil {
 			return fmt.Errorf("reading file %q: %w", filePath, err)
 		}
 	} else {
 		var err error
+
 		content, err = os.ReadFile("/dev/stdin")
 		if err != nil {
 			return fmt.Errorf("reading stdin: %w", err)
@@ -55,13 +60,14 @@ func runSave(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(content) == 0 {
-		return fmt.Errorf("numscript content is empty")
+		return errors.New("numscript content is empty")
 	}
 
 	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -85,25 +91,29 @@ func runSave(cmd *cobra.Command, args []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to save numscript", err)
 	}
 
-	if len(resp.Logs) > 0 {
-		if saved := resp.Logs[0].Payload.GetSavedNumscript(); saved != nil {
+	if len(resp.GetLogs()) > 0 {
+		if saved := resp.GetLogs()[0].GetPayload().GetSavedNumscript(); saved != nil {
 			spinner.Success("Saved")
 			pterm.Println()
-			pterm.Printf("Name:    %s\n", pterm.Cyan(saved.Info.Name))
-			pterm.Printf("Version: %s\n", saved.Info.Version)
+			pterm.Printf("Name:    %s\n", pterm.Cyan(saved.GetInfo().GetName()))
+			pterm.Printf("Version: %s\n", saved.GetInfo().GetVersion())
+
 			return nil
 		}
 	}
 
 	spinner.Success("Saved")
+
 	return nil
 }

@@ -1,8 +1,9 @@
 package attributes
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // SimpleAttribute is an attribute type for simple key-value storage.

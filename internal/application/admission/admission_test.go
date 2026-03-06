@@ -6,24 +6,26 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 )
 
 const testLedgerName = "test-ledger"
 
-// createTestStore creates a test store with a registered ledger
+// createTestStore creates a test store with a registered ledger.
 func createTestStore(t *testing.T) *dal.Store {
 	t.Helper()
 	tmpDir := t.TempDir()
@@ -48,7 +50,7 @@ func createTestStore(t *testing.T) *dal.Store {
 	return s
 }
 
-// createTransactionLog creates a log with a CreatedTransaction payload
+// createTransactionLog creates a log with a CreatedTransaction payload.
 func createTransactionLog(sequence uint64, ledgerName string, logID uint64, txID uint64, postings []*commonpb.Posting) *commonpb.Log {
 	return &commonpb.Log{
 		Sequence: sequence,
@@ -79,9 +81,10 @@ func createTransactionLog(sequence uint64, ledgerName string, logID uint64, txID
 	}
 }
 
-// createTestAdmission creates an Admission instance for testing
+// createTestAdmission creates an Admission instance for testing.
 func createTestAdmission(t *testing.T, store *dal.Store) *Admission {
 	t.Helper()
+
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
@@ -112,6 +115,7 @@ func createTestAdmission(t *testing.T, store *dal.Store) *Admission {
 		preloadCounter:            preloadCounter,
 	}
 	a.nextIndex.Store(1)
+
 	return a
 }
 
@@ -164,12 +168,12 @@ func TestGetTransactionPostings(t *testing.T) {
 		postings, err := admission.getTransactionPostings(testLedgerName, 1)
 		require.NoError(t, err)
 		require.Len(t, postings, 2)
-		require.Equal(t, expectedPostings[0].Source, postings[0].Source)
-		require.Equal(t, expectedPostings[0].Destination, postings[0].Destination)
-		require.Equal(t, expectedPostings[0].Asset, postings[0].Asset)
-		require.Equal(t, expectedPostings[1].Source, postings[1].Source)
-		require.Equal(t, expectedPostings[1].Destination, postings[1].Destination)
-		require.Equal(t, expectedPostings[1].Asset, postings[1].Asset)
+		require.Equal(t, expectedPostings[0].GetSource(), postings[0].GetSource())
+		require.Equal(t, expectedPostings[0].GetDestination(), postings[0].GetDestination())
+		require.Equal(t, expectedPostings[0].GetAsset(), postings[0].GetAsset())
+		require.Equal(t, expectedPostings[1].GetSource(), postings[1].GetSource())
+		require.Equal(t, expectedPostings[1].GetDestination(), postings[1].GetDestination())
+		require.Equal(t, expectedPostings[1].GetAsset(), postings[1].GetAsset())
 	})
 
 	t.Run("returns error for non-existent transaction", func(t *testing.T) {
@@ -324,6 +328,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 
 		_, hasAlice := volumes[aliceKey]
 		_, hasBob := volumes[bobKey]
+
 		require.True(t, hasAlice)
 		require.True(t, hasBob)
 	})
@@ -382,15 +387,15 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		require.NotNil(t, order)
 
 		// Verify the order contains the original postings
-		revertOrder := order.Data.(*raftcmdpb.LedgerApplyOrder_RevertTransaction).RevertTransaction
+		revertOrder := order.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction).RevertTransaction
 		require.NotNil(t, revertOrder)
-		require.Equal(t, uint64(1), revertOrder.TransactionId)
-		require.False(t, revertOrder.Force)
-		require.True(t, revertOrder.AtEffectiveDate)
-		require.Len(t, revertOrder.OriginalPostings, 1)
-		require.Equal(t, "world", revertOrder.OriginalPostings[0].Source)
-		require.Equal(t, "user:alice", revertOrder.OriginalPostings[0].Destination)
-		require.Equal(t, "USD", revertOrder.OriginalPostings[0].Asset)
+		require.Equal(t, uint64(1), revertOrder.GetTransactionId())
+		require.False(t, revertOrder.GetForce())
+		require.True(t, revertOrder.GetAtEffectiveDate())
+		require.Len(t, revertOrder.GetOriginalPostings(), 1)
+		require.Equal(t, "world", revertOrder.GetOriginalPostings()[0].GetSource())
+		require.Equal(t, "user:alice", revertOrder.GetOriginalPostings()[0].GetDestination())
+		require.Equal(t, "USD", revertOrder.GetOriginalPostings()[0].GetAsset())
 	})
 
 	t.Run("returns error when transaction to revert does not exist", func(t *testing.T) {
@@ -447,7 +452,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		volumes := admission.extractPreloadNeeds(orders).Volumes
 
 		// Should have 0 volume keys with force=true - processor stores deltas only
-		require.Len(t, volumes, 0, "force=true should skip volume extraction")
+		require.Empty(t, volumes, "force=true should skip volume extraction")
 	})
 
 	t.Run("extracts volumes when force is false for create transaction", func(t *testing.T) {
@@ -597,7 +602,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		volumes := admission.extractPreloadNeeds(orders).Volumes
 
 		// force=true on revert without expandVolumes should extract 0 volumes
-		require.Len(t, volumes, 0, "revert with force=true should skip volume extraction")
+		require.Empty(t, volumes, "revert with force=true should skip volume extraction")
 	})
 }
 
@@ -630,8 +635,8 @@ func TestConvertApplyRequest_CreateTransaction_Force(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, order)
 
-		createOrder := order.Data.(*raftcmdpb.LedgerApplyOrder_CreateTransaction).CreateTransaction
-		require.True(t, createOrder.Force, "force flag should be propagated to order")
+		createOrder := order.GetData().(*raftcmdpb.LedgerApplyOrder_CreateTransaction).CreateTransaction
+		require.True(t, createOrder.GetForce(), "force flag should be propagated to order")
 	})
 }
 
@@ -690,19 +695,19 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		order, err := admission.requestToOrder(request)
 		require.NoError(t, err)
 		require.NotNil(t, order)
-		require.NotNil(t, order.Idempotency)
-		require.Equal(t, "revert-tx-42", order.Idempotency.Key)
+		require.NotNil(t, order.GetIdempotency())
+		require.Equal(t, "revert-tx-42", order.GetIdempotency().GetKey())
 
-		applyOrder := order.Type.(*raftcmdpb.Order_Apply).Apply
-		require.Equal(t, testLedgerName, applyOrder.Ledger)
+		applyOrder := order.GetType().(*raftcmdpb.Order_Apply).Apply
+		require.Equal(t, testLedgerName, applyOrder.GetLedger())
 
-		revertOrder := applyOrder.Data.(*raftcmdpb.LedgerApplyOrder_RevertTransaction).RevertTransaction
-		require.Equal(t, uint64(42), revertOrder.TransactionId)
-		require.True(t, revertOrder.Force)
-		require.Len(t, revertOrder.OriginalPostings, 1)
-		require.Equal(t, "bank", revertOrder.OriginalPostings[0].Source)
-		require.Equal(t, "user:charlie", revertOrder.OriginalPostings[0].Destination)
-		require.Equal(t, "EUR", revertOrder.OriginalPostings[0].Asset)
+		revertOrder := applyOrder.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction).RevertTransaction
+		require.Equal(t, uint64(42), revertOrder.GetTransactionId())
+		require.True(t, revertOrder.GetForce())
+		require.Len(t, revertOrder.GetOriginalPostings(), 1)
+		require.Equal(t, "bank", revertOrder.GetOriginalPostings()[0].GetSource())
+		require.Equal(t, "user:charlie", revertOrder.GetOriginalPostings()[0].GetDestination())
+		require.Equal(t, "EUR", revertOrder.GetOriginalPostings()[0].GetAsset())
 	})
 }
 
@@ -753,6 +758,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 
 		_, hasAlice := volumes[aliceKey]
 		_, hasBob := volumes[bobKey]
+
 		require.True(t, hasAlice, "should discover source account from numscript")
 		require.False(t, hasBob, "should NOT preload destination account from numscript")
 	})
@@ -857,8 +863,8 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 		order, err := adm.requestToOrder(req)
 		require.NoError(t, err)
 		require.NotNil(t, order)
-		require.NotNil(t, order.Idempotency)
-		require.Equal(t, "valid-key-123", order.Idempotency.Key)
+		require.NotNil(t, order.GetIdempotency())
+		require.Equal(t, "valid-key-123", order.GetIdempotency().GetKey())
 	})
 
 	t.Run("accepts idempotency key at exactly max length", func(t *testing.T) {
@@ -881,8 +887,8 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 		order, err := adm.requestToOrder(req)
 		require.NoError(t, err)
 		require.NotNil(t, order)
-		require.NotNil(t, order.Idempotency)
-		require.Equal(t, key, order.Idempotency.Key)
+		require.NotNil(t, order.GetIdempotency())
+		require.Equal(t, key, order.GetIdempotency().GetKey())
 	})
 
 	t.Run("rejects idempotency key exceeding max length", func(t *testing.T) {
@@ -923,15 +929,17 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 		order, err := adm.requestToOrder(req)
 		require.NoError(t, err)
 		require.NotNil(t, order)
-		require.Nil(t, order.Idempotency)
+		require.Nil(t, order.GetIdempotency())
 	})
 }
 
 // generateTestKeyPair generates an Ed25519 key pair for testing.
 func generateTestKeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	t.Helper()
+
 	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
+
 	return pubKey, privKey
 }
 
@@ -959,7 +967,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 		result, err := adm.verifyAndResolveSignatures(requests)
 		require.NoError(t, err)
 		require.Len(t, result, 1)
-		require.Nil(t, result[0].Signature, "bootstrap request should have no signature")
+		require.Nil(t, result[0].GetSignature(), "bootstrap request should have no signature")
 	})
 
 	t.Run("unsigned RegisterSigningKey rejected when keys exist", func(t *testing.T) {
@@ -1056,7 +1064,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 		result, err := adm.verifyAndResolveSignatures([]*servicepb.Request{req})
 		require.NoError(t, err)
 		require.Len(t, result, 1)
-		require.NotNil(t, result[0].Signature, "signature should be preserved for propagation")
+		require.NotNil(t, result[0].GetSignature(), "signature should be preserved for propagation")
 	})
 
 	t.Run("unsigned regular request allowed when requireSignatures is false", func(t *testing.T) {
@@ -1123,7 +1131,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 		result, err := adm.verifyAndResolveSignatures([]*servicepb.Request{req})
 		require.NoError(t, err)
 		require.Len(t, result, 1)
-		require.NotNil(t, result[0].Signature)
+		require.NotNil(t, result[0].GetSignature())
 	})
 
 	t.Run("unknown key ID rejected", func(t *testing.T) {
@@ -1155,6 +1163,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 
 		pubKey, _ := generateTestKeyPair(t)
 		_, otherPrivKey := generateTestKeyPair(t)
+
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
 
 		req := &servicepb.Request{

@@ -28,6 +28,7 @@ func TestUint256ProtoRoundTrip(t *testing.T) {
 
 			// NewUint256 -> IntoUint256 round-trip
 			proto := NewUint256(tt.value)
+
 			var dst uint256.Int
 			proto.IntoUint256(&dst)
 			require.True(t, tt.value.Eq(&dst), "expected %s, got %s", tt.value.Dec(), dst.Dec())
@@ -35,6 +36,7 @@ func TestUint256ProtoRoundTrip(t *testing.T) {
 			// SetFromUint256 round-trip
 			proto2 := &Uint256{}
 			proto2.SetFromUint256(tt.value)
+
 			var dst2 uint256.Int
 			proto2.IntoUint256(&dst2)
 			require.True(t, tt.value.Eq(&dst2), "SetFrom: expected %s, got %s", tt.value.Dec(), dst2.Dec())
@@ -108,12 +110,13 @@ func TestUint256_JSON(t *testing.T) {
 			require.Equal(t, tt.json, string(data))
 
 			var proto2 Uint256
+
 			err = proto2.UnmarshalJSON(data)
 			require.NoError(t, err)
-			require.Equal(t, proto.V0, proto2.V0)
-			require.Equal(t, proto.V1, proto2.V1)
-			require.Equal(t, proto.V2, proto2.V2)
-			require.Equal(t, proto.V3, proto2.V3)
+			require.Equal(t, proto.GetV0(), proto2.GetV0())
+			require.Equal(t, proto.GetV1(), proto2.GetV1())
+			require.Equal(t, proto.GetV2(), proto2.GetV2())
+			require.Equal(t, proto.GetV3(), proto2.GetV3())
 		})
 	}
 }

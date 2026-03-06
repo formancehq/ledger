@@ -2,13 +2,16 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewMetricsCommand creates the store metrics command.
@@ -32,6 +35,7 @@ func runMetrics(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -42,13 +46,15 @@ func runMetrics(cmd *cobra.Command, _ []string) error {
 	resp, err := client.GetStoreMetrics(ctx, &servicepb.GetStoreMetricsRequest{})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to get store metrics", err)
 	}
 
-	if !resp.Available {
+	if !resp.GetAvailable() {
 		spinner.Warning("Store metrics not available")
 		pterm.Warning.Println("Storage type may not be Pebble")
-		return fmt.Errorf("store metrics not available (storage type may not be Pebble)")
+
+		return errors.New("store metrics not available (storage type may not be Pebble)")
 	}
 
 	_ = spinner.Stop()
@@ -57,177 +63,201 @@ func runMetrics(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
-		return encoder.Encode(resp.Metrics)
+
+		return encoder.Encode(resp.GetMetrics())
 	}
 
 	pterm.Println()
-	printFormattedMetrics(resp.Metrics)
+	printFormattedMetrics(resp.GetMetrics())
+
 	return nil
 }
 
 func printFormattedMetrics(m *servicepb.PebbleMetrics) {
 	// General
 	pterm.DefaultSection.Println("General")
-	pterm.Printf("Disk Space Usage: %s\n\n", cmdutil.FormatBytes(m.DiskSpaceUsage))
+	pterm.Printf("Disk Space Usage: %s\n\n", cmdutil.FormatBytes(m.GetDiskSpaceUsage()))
 
 	// Block Cache
-	if m.BlockCache != nil {
+	if m.GetBlockCache() != nil {
 		pterm.DefaultSection.Println("Block Cache")
+
 		tableData := pterm.TableData{
 			{"METRIC", "VALUE"},
-			{"Size", cmdutil.FormatBytes(uint64(m.BlockCache.Size))},
-			{"Count", fmt.Sprintf("%d", m.BlockCache.Count)},
-			{"Hits", fmt.Sprintf("%d", m.BlockCache.Hits)},
-			{"Misses", fmt.Sprintf("%d", m.BlockCache.Misses)},
+			{"Size", cmdutil.FormatBytes(uint64(m.GetBlockCache().GetSize()))},
+			{"Count", strconv.FormatInt(m.GetBlockCache().GetCount(), 10)},
+			{"Hits", strconv.FormatInt(m.GetBlockCache().GetHits(), 10)},
+			{"Misses", strconv.FormatInt(m.GetBlockCache().GetMisses(), 10)},
 		}
-		if m.BlockCache.Hits+m.BlockCache.Misses > 0 {
-			hitRate := float64(m.BlockCache.Hits) / float64(m.BlockCache.Hits+m.BlockCache.Misses) * 100
+		if m.GetBlockCache().GetHits()+m.GetBlockCache().GetMisses() > 0 {
+			hitRate := float64(m.GetBlockCache().GetHits()) / float64(m.GetBlockCache().GetHits()+m.GetBlockCache().GetMisses()) * 100
 			tableData = append(tableData, []string{"Hit Rate", fmt.Sprintf("%.2f%%", hitRate)})
 		}
+
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+
 		pterm.Println()
 	}
 
 	// Table Cache
-	if m.TableCache != nil {
+	if m.GetTableCache() != nil {
 		pterm.DefaultSection.Println("Table Cache")
+
 		tableData := pterm.TableData{
 			{"METRIC", "VALUE"},
-			{"Size", fmt.Sprintf("%d", m.TableCache.Size)},
-			{"Count", fmt.Sprintf("%d", m.TableCache.Count)},
-			{"Hits", fmt.Sprintf("%d", m.TableCache.Hits)},
-			{"Misses", fmt.Sprintf("%d", m.TableCache.Misses)},
+			{"Size", strconv.FormatInt(m.GetTableCache().GetSize(), 10)},
+			{"Count", strconv.FormatInt(m.GetTableCache().GetCount(), 10)},
+			{"Hits", strconv.FormatInt(m.GetTableCache().GetHits(), 10)},
+			{"Misses", strconv.FormatInt(m.GetTableCache().GetMisses(), 10)},
 		}
-		if m.TableCache.Hits+m.TableCache.Misses > 0 {
-			hitRate := float64(m.TableCache.Hits) / float64(m.TableCache.Hits+m.TableCache.Misses) * 100
+		if m.GetTableCache().GetHits()+m.GetTableCache().GetMisses() > 0 {
+			hitRate := float64(m.GetTableCache().GetHits()) / float64(m.GetTableCache().GetHits()+m.GetTableCache().GetMisses()) * 100
 			tableData = append(tableData, []string{"Hit Rate", fmt.Sprintf("%.2f%%", hitRate)})
 		}
+
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+
 		pterm.Println()
 	}
 
 	// MemTable
-	if m.MemTable != nil {
+	if m.GetMemTable() != nil {
 		pterm.DefaultSection.Println("MemTable")
+
 		tableData := pterm.TableData{
 			{"METRIC", "VALUE"},
-			{"Size", cmdutil.FormatBytes(m.MemTable.Size)},
-			{"Count", fmt.Sprintf("%d", m.MemTable.Count)},
-			{"Zombie Size", cmdutil.FormatBytes(m.MemTable.ZombieSize)},
-			{"Zombie Count", fmt.Sprintf("%d", m.MemTable.ZombieCount)},
+			{"Size", cmdutil.FormatBytes(m.GetMemTable().GetSize())},
+			{"Count", strconv.FormatInt(m.GetMemTable().GetCount(), 10)},
+			{"Zombie Size", cmdutil.FormatBytes(m.GetMemTable().GetZombieSize())},
+			{"Zombie Count", strconv.FormatInt(m.GetMemTable().GetZombieCount(), 10)},
 		}
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+
 		pterm.Println()
 	}
 
 	// WAL
-	if m.Wal != nil {
+	if m.GetWal() != nil {
 		pterm.DefaultSection.Println("Write-Ahead Log (WAL)")
+
 		tableData := pterm.TableData{
 			{"METRIC", "VALUE"},
-			{"Files", fmt.Sprintf("%d", m.Wal.Files)},
-			{"Obsolete Files", fmt.Sprintf("%d", m.Wal.ObsoleteFiles)},
-			{"Size", cmdutil.FormatBytes(m.Wal.Size)},
-			{"Bytes In", cmdutil.FormatBytes(m.Wal.BytesIn)},
-			{"Bytes Written", cmdutil.FormatBytes(m.Wal.BytesWritten)},
+			{"Files", strconv.FormatInt(m.GetWal().GetFiles(), 10)},
+			{"Obsolete Files", strconv.FormatInt(m.GetWal().GetObsoleteFiles(), 10)},
+			{"Size", cmdutil.FormatBytes(m.GetWal().GetSize())},
+			{"Bytes In", cmdutil.FormatBytes(m.GetWal().GetBytesIn())},
+			{"Bytes Written", cmdutil.FormatBytes(m.GetWal().GetBytesWritten())},
 		}
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+
 		pterm.Println()
 	}
 
 	// Compaction
-	if m.Compact != nil {
+	if m.GetCompact() != nil {
 		pterm.DefaultSection.Println("Compaction")
+
 		tableData := pterm.TableData{
 			{"METRIC", "VALUE"},
-			{"Total Count", fmt.Sprintf("%d", m.Compact.Count)},
-			{"Default", fmt.Sprintf("%d", m.Compact.DefaultCount)},
-			{"Del-Only", fmt.Sprintf("%d", m.Compact.DeleteOnlyCount)},
-			{"Elision-Only", fmt.Sprintf("%d", m.Compact.ElisionOnlyCount)},
-			{"Move", fmt.Sprintf("%d", m.Compact.MoveCount)},
-			{"Read", fmt.Sprintf("%d", m.Compact.ReadCount)},
-			{"Rewrite", fmt.Sprintf("%d", m.Compact.RewriteCount)},
-			{"Multi-Level", fmt.Sprintf("%d", m.Compact.MultiLevelCount)},
-			{"Estimated Debt", cmdutil.FormatBytes(m.Compact.EstimatedDebt)},
-			{"In Progress Bytes", cmdutil.FormatBytes(uint64(m.Compact.InProgressBytes))},
-			{"Num In Progress", fmt.Sprintf("%d", m.Compact.NumInProgress)},
-			{"Marked Files", fmt.Sprintf("%d", m.Compact.MarkedFiles)},
+			{"Total Count", strconv.FormatInt(m.GetCompact().GetCount(), 10)},
+			{"Default", strconv.FormatInt(m.GetCompact().GetDefaultCount(), 10)},
+			{"Del-Only", strconv.FormatInt(m.GetCompact().GetDeleteOnlyCount(), 10)},
+			{"Elision-Only", strconv.FormatInt(m.GetCompact().GetElisionOnlyCount(), 10)},
+			{"Move", strconv.FormatInt(m.GetCompact().GetMoveCount(), 10)},
+			{"Read", strconv.FormatInt(m.GetCompact().GetReadCount(), 10)},
+			{"Rewrite", strconv.FormatInt(m.GetCompact().GetRewriteCount(), 10)},
+			{"Multi-Level", strconv.FormatInt(m.GetCompact().GetMultiLevelCount(), 10)},
+			{"Estimated Debt", cmdutil.FormatBytes(m.GetCompact().GetEstimatedDebt())},
+			{"In Progress Bytes", cmdutil.FormatBytes(uint64(m.GetCompact().GetInProgressBytes()))},
+			{"Num In Progress", strconv.FormatInt(m.GetCompact().GetNumInProgress(), 10)},
+			{"Marked Files", strconv.Itoa(int(m.GetCompact().GetMarkedFiles()))},
 		}
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+
 		pterm.Println()
 	}
 
 	// Flush
-	if m.Flush != nil {
+	if m.GetFlush() != nil {
 		pterm.DefaultSection.Println("Flush")
+
 		tableData := pterm.TableData{
 			{"METRIC", "VALUE"},
-			{"Count", fmt.Sprintf("%d", m.Flush.Count)},
-			{"In Progress", fmt.Sprintf("%d", m.Flush.NumInProgress)},
-			{"As Ingest Count", fmt.Sprintf("%d", m.Flush.AsIngestCount)},
-			{"As Ingest Tables", fmt.Sprintf("%d", m.Flush.AsIngestTableCount)},
-			{"As Ingest Bytes", cmdutil.FormatBytes(m.Flush.AsIngestBytes)},
+			{"Count", strconv.FormatInt(m.GetFlush().GetCount(), 10)},
+			{"In Progress", strconv.FormatInt(m.GetFlush().GetNumInProgress(), 10)},
+			{"As Ingest Count", strconv.FormatUint(m.GetFlush().GetAsIngestCount(), 10)},
+			{"As Ingest Tables", strconv.FormatUint(m.GetFlush().GetAsIngestTableCount(), 10)},
+			{"As Ingest Bytes", cmdutil.FormatBytes(m.GetFlush().GetAsIngestBytes())},
 		}
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+
 		pterm.Println()
 	}
 
 	// Snapshots
-	if m.Snapshots != nil {
+	if m.GetSnapshots() != nil {
 		pterm.DefaultSection.Println("Snapshots")
+
 		tableData := pterm.TableData{
 			{"METRIC", "VALUE"},
-			{"Count", fmt.Sprintf("%d", m.Snapshots.Count)},
-			{"Earliest Seq Num", fmt.Sprintf("%d", m.Snapshots.EarliestSeqNum)},
-			{"Pinned Keys", fmt.Sprintf("%d", m.Snapshots.PinnedKeys)},
-			{"Pinned Size", cmdutil.FormatBytes(m.Snapshots.PinnedSize)},
+			{"Count", strconv.Itoa(int(m.GetSnapshots().GetCount()))},
+			{"Earliest Seq Num", strconv.FormatUint(m.GetSnapshots().GetEarliestSeqNum(), 10)},
+			{"Pinned Keys", strconv.FormatUint(m.GetSnapshots().GetPinnedKeys(), 10)},
+			{"Pinned Size", cmdutil.FormatBytes(m.GetSnapshots().GetPinnedSize())},
 		}
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+
 		pterm.Println()
 	}
 
 	// Tables
-	if m.Table != nil {
+	if m.GetTable() != nil {
 		pterm.DefaultSection.Println("Tables (SST)")
+
 		tableData := pterm.TableData{
 			{"METRIC", "VALUE"},
-			{"Zombie Size", cmdutil.FormatBytes(m.Table.ZombieSize)},
-			{"Zombie Count", fmt.Sprintf("%d", m.Table.ZombieCount)},
-			{"Backing Table Count", fmt.Sprintf("%d", m.Table.BackingTableCount)},
-			{"Backing Table Size", cmdutil.FormatBytes(m.Table.BackingTableSize)},
+			{"Zombie Size", cmdutil.FormatBytes(m.GetTable().GetZombieSize())},
+			{"Zombie Count", strconv.FormatInt(m.GetTable().GetZombieCount(), 10)},
+			{"Backing Table Count", strconv.FormatUint(m.GetTable().GetBackingTableCount(), 10)},
+			{"Backing Table Size", cmdutil.FormatBytes(m.GetTable().GetBackingTableSize())},
 		}
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+
 		pterm.Println()
 	}
 
 	// Keys
-	if m.Keys != nil {
+	if m.GetKeys() != nil {
 		pterm.DefaultSection.Println("Keys")
+
 		tableData := pterm.TableData{
 			{"METRIC", "VALUE"},
-			{"Range Key Sets", fmt.Sprintf("%d", m.Keys.RangeKeySetsCount)},
-			{"Tombstones", fmt.Sprintf("%d", m.Keys.TombstoneCount)},
+			{"Range Key Sets", strconv.FormatUint(m.GetKeys().GetRangeKeySetsCount(), 10)},
+			{"Tombstones", strconv.FormatUint(m.GetKeys().GetTombstoneCount(), 10)},
 		}
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+
 		pterm.Println()
 	}
 
 	// Levels
-	if len(m.Levels) > 0 {
+	if len(m.GetLevels()) > 0 {
 		pterm.DefaultSection.Println("Levels")
+
 		tableData := pterm.TableData{
 			{"LEVEL", "FILES", "SIZE", "SCORE", "BYTES IN", "BYTES COMPACTED"},
 		}
-		for _, level := range m.Levels {
+		for _, level := range m.GetLevels() {
 			tableData = append(tableData, []string{
-				fmt.Sprintf("L%d", level.Level),
-				fmt.Sprintf("%d", level.NumFiles),
-				cmdutil.FormatBytes(uint64(level.Size)),
-				fmt.Sprintf("%.2f", level.Score),
-				cmdutil.FormatBytes(level.BytesIn),
-				cmdutil.FormatBytes(level.BytesCompacted),
+				fmt.Sprintf("L%d", level.GetLevel()),
+				strconv.FormatInt(level.GetNumFiles(), 10),
+				cmdutil.FormatBytes(uint64(level.GetSize())),
+				fmt.Sprintf("%.2f", level.GetScore()),
+				cmdutil.FormatBytes(level.GetBytesIn()),
+				cmdutil.FormatBytes(level.GetBytesCompacted()),
 			})
 		}
+
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 	}
 }

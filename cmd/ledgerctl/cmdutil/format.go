@@ -37,10 +37,12 @@ func WrapText(text string, maxWidth int, separator string) []string {
 	}
 
 	var lines []string
+
 	remaining := text
 
 	for len(remaining) > maxWidth {
 		cutPoint := -1
+
 		if separator != "" {
 			lastSep := strings.LastIndex(remaining[:maxWidth], separator)
 			if lastSep > 0 {
@@ -80,12 +82,13 @@ func ObfuscateDSN(dsn string) string {
 	}
 
 	creds := rest[:lastAt]
-	colonIdx := strings.Index(creds, ":")
-	if colonIdx == -1 {
+
+	before, _, ok := strings.Cut(creds, ":")
+	if !ok {
 		return dsn
 	}
 
-	user := creds[:colonIdx]
+	user := before
 	hostPart := rest[lastAt:]
 
 	return dsn[:schemeEnd+3] + user + ":****" + hostPart

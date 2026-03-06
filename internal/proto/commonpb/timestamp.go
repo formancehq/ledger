@@ -5,6 +5,7 @@ import (
 	libtime "time"
 
 	"github.com/formancehq/go-libs/v3/time"
+
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 )
 
@@ -15,12 +16,13 @@ func NewTimestamp(time time.Time) *Timestamp {
 }
 
 func (x *Timestamp) AsTime() time.Time {
-	return time.New(libtime.UnixMicro(int64(x.Data)))
+	return time.New(libtime.UnixMicro(int64(x.GetData())))
 }
 
 func (x *Timestamp) MarshalJSON() ([]byte, error) {
 	v := x.AsTime().Format(time.RFC3339Nano)
-	return []byte(fmt.Sprintf("\"%s\"", v)), nil
+
+	return fmt.Appendf(nil, "\"%s\"", v), nil
 }
 
 func (x *Timestamp) UnmarshalJSON(data []byte) error {
@@ -33,6 +35,8 @@ func (x *Timestamp) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
+
 	x.Data = uint64(t.UnixMicro())
+
 	return nil
 }

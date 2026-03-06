@@ -3,15 +3,17 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 )
 
 // NewBackupCommand creates the store backup command.
@@ -35,13 +37,14 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 
 	// Refuse to write binary to terminal
 	if outputPath == "" && term.IsTerminal(int(os.Stdout.Fd())) {
-		return fmt.Errorf("refusing to write binary data to terminal; use --output/-o to specify a file")
+		return errors.New("refusing to write binary data to terminal; use --output/-o to specify a file")
 	}
 
 	client, conn, err := cmdutil.GetClusterClient(cmd)
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -59,6 +62,7 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("creating output file: %w", err)
 		}
+
 		defer func() { _ = out.Close() }()
 	} else {
 		out = os.Stdout
@@ -83,6 +87,7 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 		if progressBar != nil {
 			_, _ = progressBar.Stop()
 		}
+
 		if spinner != nil {
 			_ = spinner.Stop()
 		}
@@ -90,43 +95,51 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 
 	for {
 		resp, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			stopProgress()
+
 			return cmdutil.FormatGRPCError("receiving backup chunk", err)
 		}
 
 		// Status-only messages update the spinner during preparation phases
-		if resp.StatusMessage != "" && len(resp.Data) == 0 && !resp.Eof {
+		if resp.GetStatusMessage() != "" && len(resp.GetData()) == 0 && !resp.GetEof() {
 			if spinner != nil {
-				spinner.UpdateText(resp.StatusMessage)
+				spinner.UpdateText(resp.GetStatusMessage())
 			}
+
 			continue
 		}
 
-		if resp.Eof {
-			expectedHash = resp.ContentSha256
-			expectedSize = resp.ContentSize
+		if resp.GetEof() {
+			expectedHash = resp.GetContentSha256()
+			expectedSize = resp.GetContentSize()
+
 			break
 		}
 
-		if len(resp.Data) > 0 {
-			if _, err := out.Write(resp.Data); err != nil {
+		if len(resp.GetData()) > 0 {
+			if _, err := out.Write(resp.GetData()); err != nil {
 				stopProgress()
 				pterm.Error.Printfln("writing backup data: %v", err)
+
 				return cmdutil.Displayed(fmt.Errorf("writing backup data: %w", err))
 			}
-			if _, err := hash.Write(resp.Data); err != nil {
+
+			if _, err := hash.Write(resp.GetData()); err != nil {
 				stopProgress()
 				pterm.Error.Printfln("computing hash: %v", err)
+
 				return cmdutil.Displayed(fmt.Errorf("computing hash: %w", err))
 			}
-			totalReceived += uint64(len(resp.Data))
 
-			if resp.EstimatedTotalSize > 0 {
-				estimatedSize = resp.EstimatedTotalSize
+			totalReceived += uint64(len(resp.GetData()))
+
+			if resp.GetEstimatedTotalSize() > 0 {
+				estimatedSize = resp.GetEstimatedTotalSize()
 			}
 
 			if !interactive {
@@ -134,11 +147,13 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 			}
 
 			// Switch from spinner to progress bar once we know the estimated size
-			if progressBar == nil && estimatedSize > 0 {
+			switch {
+			case progressBar == nil && estimatedSize > 0:
 				if spinner != nil {
 					_ = spinner.Stop()
 					spinner = nil
 				}
+
 				progressBar, _ = pterm.DefaultProgressbar.
 					WithTotal(int(estimatedSize)).
 					WithShowCount(false).
@@ -148,13 +163,12 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 						cmdutil.FormatBytes(totalReceived), cmdutil.FormatBytes(estimatedSize))).
 					Start()
 				progressBar.Add(int(totalReceived))
-			} else if progressBar != nil {
-				progressBar.Add(len(resp.Data))
+			case progressBar != nil:
+				progressBar.Add(len(resp.GetData()))
 				progressBar.UpdateTitle(fmt.Sprintf("Downloading backup... %s / %s",
 					cmdutil.FormatBytes(totalReceived), cmdutil.FormatBytes(estimatedSize)))
-			} else if spinner != nil {
-				spinner.UpdateText(fmt.Sprintf("Downloading backup... %s",
-					cmdutil.FormatBytes(totalReceived)))
+			case spinner != nil:
+				spinner.UpdateText("Downloading backup... " + cmdutil.FormatBytes(totalReceived))
 			}
 		}
 	}
@@ -162,6 +176,7 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 	if progressBar != nil {
 		_, _ = progressBar.Stop()
 	}
+
 	if spinner != nil {
 		_ = spinner.Stop()
 	}
@@ -172,7 +187,8 @@ func runBackup(cmd *cobra.Command, _ []string) error {
 		if interactive {
 			pterm.Error.Printfln("SHA256 mismatch: expected %s, got %s", expectedHash, actualHash)
 		}
-		return cmdutil.Displayed(fmt.Errorf("backup integrity check failed: SHA256 mismatch"))
+
+		return cmdutil.Displayed(errors.New("backup integrity check failed: SHA256 mismatch"))
 	}
 
 	if interactive {

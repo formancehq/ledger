@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 )
 
 // NewStatusCommand returns the "auth status" command.
@@ -36,21 +37,25 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	if token == "" {
 		rows = append(rows, []string{"Status", pterm.Yellow("not authenticated")})
 		data := append([][]string{{"Field", "Value"}}, rows...)
+
 		return pterm.DefaultTable.WithHasHeader().WithData(data).Render()
 	}
 
 	parser := jwt.NewParser()
 	claims := jwt.MapClaims{}
+
 	jwtToken, _, err := parser.ParseUnverified(token, claims)
 	if err != nil {
 		rows = append(rows, []string{"Status", pterm.Red("invalid token: " + err.Error())})
 		data := append([][]string{{"Field", "Value"}}, rows...)
+
 		return pterm.DefaultTable.WithHasHeader().WithData(data).Render()
 	}
 
 	if sub, _ := claims.GetSubject(); sub != "" {
 		rows = append(rows, []string{"Subject", sub})
 	}
+
 	if iss, _ := claims.GetIssuer(); iss != "" {
 		rows = append(rows, []string{"Issuer", iss})
 	}
@@ -70,15 +75,18 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 
 	if exp, _ := claims.GetExpirationTime(); exp != nil {
 		remaining := time.Until(exp.Time)
+
 		var status string
 		if remaining <= 0 {
 			status = fmt.Sprintf("%s (%s)", exp.Format(time.RFC3339), pterm.Red("EXPIRED"))
 		} else {
 			status = fmt.Sprintf("%s (%s, %s remaining)", exp.Format(time.RFC3339), pterm.Green("valid"), remaining.Truncate(time.Second))
 		}
+
 		rows = append(rows, []string{"Expires", status})
 	}
 
 	data := append([][]string{{"Field", "Value"}}, rows...)
+
 	return pterm.DefaultTable.WithHasHeader().WithData(data).Render()
 }

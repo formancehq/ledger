@@ -25,6 +25,7 @@ func (t *task) run(ctx context.Context) {
 				t.error <- newPanickedError(e, debug.Stack())
 			}
 		}()
+
 		t.error <- t.fn(ctx, t.stopChannel)
 	}()
 }
@@ -55,7 +56,9 @@ func (pool *taskSet) run(ctx context.Context) {
 	for _, t := range pool.tasks {
 		t.run(ctx)
 	}
+
 	pool.errChannel = make(chan error, len(pool.tasks))
+
 	go func() {
 		defer close(pool.terminated)
 
@@ -76,6 +79,7 @@ func (pool *taskSet) run(ctx context.Context) {
 			}
 
 			pool.errChannel <- err
+
 			pool.tasks = append(pool.tasks[:chosen], pool.tasks[chosen+1:]...)
 
 			if len(pool.tasks) == 0 {
@@ -93,7 +97,9 @@ func (pool *taskSet) stop() error {
 	for _, t := range pool.tasks {
 		t.interrupt()
 	}
+
 	<-pool.terminated
+
 	return nil
 }
 

@@ -67,12 +67,15 @@ func TestHTTPAuthMiddleware_ValidToken_ClaimsInContext(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
+
 	var capturedSubject string
+
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims := ClaimsFromContext(r.Context())
 		if claims != nil {
 			capturedSubject = claims.GetSubject()
 		}
+
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -96,9 +99,12 @@ func TestHTTPAuthMiddleware_ExpandsScopesInContext(t *testing.T) {
 	t.Parallel()
 
 	privKey, keySet := testKeyPair(t)
+
 	var capturedScopes map[Scope]struct{}
+
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedScopes = ExpandedScopesFromContext(r.Context())
+
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -313,12 +319,15 @@ func TestHTTPAuthMiddleware_EdDSA_ValidToken(t *testing.T) {
 	t.Parallel()
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
+
 	var capturedSubject string
+
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims := ClaimsFromContext(r.Context())
 		if claims != nil {
 			capturedSubject = claims.GetSubject()
 		}
+
 		w.WriteHeader(http.StatusOK)
 	})
 

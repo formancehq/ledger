@@ -2,6 +2,7 @@ package commonpb
 
 import (
 	"database/sql/driver"
+	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 )
@@ -12,8 +13,14 @@ func (lt LogType) Value() (driver.Value, error) {
 	return lt.String(), nil
 }
 
-func (lt *LogType) Scan(src interface{}) error {
-	*lt = LogTypeFromString(src.(string))
+func (lt *LogType) Scan(src any) error {
+	s, ok := src.(string)
+	if !ok {
+		return fmt.Errorf("LogType.Scan: expected string, got %T", src)
+	}
+
+	*lt = LogTypeFromString(s)
+
 	return nil
 }
 
@@ -23,7 +30,9 @@ func (lt LogType) MarshalJSON() ([]byte, error) {
 
 func (lt *LogType) UnmarshalJSON(data []byte) error {
 	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
+
+	err := json.Unmarshal(data, &s)
+	if err != nil {
 		return err
 	}
 
@@ -78,12 +87,13 @@ func LogTypeFromString(logType string) LogType {
 	panic("invalid log type")
 }
 
-// GetLogType extracts the log type from a LedgerLogPayload
+// GetLogType extracts the log type from a LedgerLogPayload.
 func GetLogType(payload *LedgerLogPayload) LogType {
 	if payload == nil {
 		return 0
 	}
-	switch payload.Payload.(type) {
+
+	switch payload.GetPayload().(type) {
 	case *LedgerLogPayload_CreatedTransaction:
 		return NewTransactionLogType
 	case *LedgerLogPayload_RevertedTransaction:
@@ -105,10 +115,11 @@ func GetLogType(payload *LedgerLogPayload) LogType {
 	}
 }
 
-// GetLogTypeFromLog extracts the log type from a LedgerLog
+// GetLogTypeFromLog extracts the log type from a LedgerLog.
 func GetLogTypeFromLog(log *LedgerLog) LogType {
-	if log == nil || log.Data == nil {
+	if log == nil || log.GetData() == nil {
 		return 0
 	}
-	return GetLogType(log.Data)
+
+	return GetLogType(log.GetData())
 }

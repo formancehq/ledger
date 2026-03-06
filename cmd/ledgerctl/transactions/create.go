@@ -2,20 +2,24 @@ package transactions
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
+	"github.com/formancehq/numscript"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/numscript"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // suggestFilePaths provides file path suggestions for autocompletion.
@@ -41,6 +45,7 @@ func suggestFilePaths(toComplete string) []string {
 	}
 
 	var suggestions []string
+
 	for _, entry := range entries {
 		name := entry.Name()
 		// Skip hidden files unless explicitly searching for them
@@ -54,6 +59,7 @@ func suggestFilePaths(toComplete string) []string {
 			if entry.IsDir() {
 				fullPath += string(filepath.Separator)
 			}
+
 			suggestions = append(suggestions, fullPath)
 		}
 	}
@@ -100,10 +106,12 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	// Get ledger name (from flag or interactive selection)
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -117,12 +125,14 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	// Validate mutual exclusivity
 	if scriptFile != "" && len(postingStrs) > 0 {
 		pterm.Error.Println("--script and --posting are mutually exclusive")
-		return cmdutil.Displayed(fmt.Errorf("--script and --posting are mutually exclusive"))
+
+		return cmdutil.Displayed(errors.New("--script and --posting are mutually exclusive"))
 	}
 
 	if scriptFile == "" && len(varStrs) > 0 {
 		pterm.Error.Println("--var can only be used with --script")
-		return cmdutil.Displayed(fmt.Errorf("--var can only be used with --script"))
+
+		return cmdutil.Displayed(errors.New("--var can only be used with --script"))
 	}
 
 	var (
@@ -130,11 +140,13 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		script   *commonpb.Script
 	)
 
-	if scriptFile != "" {
+	switch {
+	case scriptFile != "":
 		// Read Numscript file
 		scriptContent, err := os.ReadFile(scriptFile)
 		if err != nil {
 			pterm.Error.Printfln("Failed to read script file %q", scriptFile)
+
 			return cmdutil.Displayed(fmt.Errorf("failed to read script file %q: %w", scriptFile, err))
 		}
 
@@ -142,12 +154,15 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 		// Parse variables from flags
 		vars := make(map[string]string)
+
 		for _, v := range varStrs {
 			parts := strings.SplitN(v, "=", 2)
 			if len(parts) != 2 {
 				pterm.Error.Printfln("Invalid variable format %q: expected name=value", v)
+
 				return cmdutil.Displayed(fmt.Errorf("invalid variable format %q: expected name=value", v))
 			}
+
 			vars[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 		}
 
@@ -157,9 +172,11 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		// Check for parsing errors
 		if errs := parsed.GetParsingErrors(); len(errs) > 0 {
 			pterm.Error.Println("Script parsing errors:")
+
 			for _, e := range errs {
 				pterm.Error.Printfln("  - %s", e.Msg)
 			}
+
 			return cmdutil.Displayed(fmt.Errorf("numscript parse error: %s", numscript.ParseErrorsToString(errs, parsed.GetSource())))
 		}
 
@@ -171,10 +188,12 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			for name := range neededVars {
 				varNames = append(varNames, name)
 			}
+
 			sort.Strings(varNames)
 
 			// Check for missing variables and prompt for them
 			missingVars := make([]string, 0)
+
 			for _, name := range varNames {
 				if _, exists := vars[name]; !exists {
 					missingVars = append(missingVars, name)
@@ -189,10 +208,12 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 				for _, name := range missingVars {
 					varType := neededVars[name]
+
 					value, err := promptVariable(name, varType)
 					if err != nil {
 						return err
 					}
+
 					vars[name] = value
 				}
 			}
@@ -202,19 +223,22 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			Plain: string(scriptContent),
 			Vars:  vars,
 		}
-	} else if len(postingStrs) > 0 {
+	case len(postingStrs) > 0:
 		// Parse postings from flags
 		for _, ps := range postingStrs {
 			posting, err := parsePosting(ps)
 			if err != nil {
 				pterm.Error.Printfln("Invalid posting %q: %v", ps, err)
+
 				return cmdutil.Displayed(fmt.Errorf("invalid posting %q: %w", ps, err))
 			}
+
 			postings = append(postings, posting)
 		}
-	} else {
+	default:
 		// Interactive mode: ask user to choose between Numscript and simple postings
 		options := []string{"Simple postings", "Numscript file"}
+
 		selectedOption, err := pterm.DefaultInteractiveSelect.
 			WithDefaultText("How do you want to create this transaction?").
 			WithOptions(options).
@@ -226,6 +250,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		if selectedOption == "Numscript file" {
 			// Prompt for script file path with autocompletion
 			var scriptPath string
+
 			prompt := &survey.Input{
 				Message: "Path to Numscript file:",
 				Suggest: suggestFilePaths,
@@ -237,6 +262,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			scriptContent, err := os.ReadFile(scriptPath)
 			if err != nil {
 				pterm.Error.Printfln("Failed to read script file %q", scriptPath)
+
 				return cmdutil.Displayed(fmt.Errorf("failed to read script file %q: %w", scriptPath, err))
 			}
 
@@ -246,20 +272,24 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			// Check for parsing errors
 			if errs := parsed.GetParsingErrors(); len(errs) > 0 {
 				pterm.Error.Println("Script parsing errors:")
+
 				for _, e := range errs {
 					pterm.Error.Printfln("  - %s", e.Msg)
 				}
+
 				return cmdutil.Displayed(fmt.Errorf("numscript parse error: %s", numscript.ParseErrorsToString(errs, parsed.GetSource())))
 			}
 
 			// Get required variables and prompt for all of them
 			vars := make(map[string]string)
+
 			neededVars := parsed.GetNeededVariables()
 			if len(neededVars) > 0 {
 				varNames := make([]string, 0, len(neededVars))
 				for name := range neededVars {
 					varNames = append(varNames, name)
 				}
+
 				sort.Strings(varNames)
 
 				pterm.Println()
@@ -267,10 +297,12 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 				for _, name := range varNames {
 					varType := neededVars[name]
+
 					value, err := promptVariable(name, varType)
 					if err != nil {
 						return err
 					}
+
 					vars[name] = value
 				}
 			}
@@ -290,6 +322,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 				if err != nil {
 					return err
 				}
+
 				postings = append(postings, posting)
 
 				addAnother, err := pterm.DefaultInteractiveConfirm.
@@ -299,9 +332,11 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 				if err != nil {
 					return fmt.Errorf("failed to read input: %w", err)
 				}
+
 				if !addAnother {
 					break
 				}
+
 				pterm.Println()
 			}
 		}
@@ -310,7 +345,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	// Validate that we have either postings or script
 	if len(postings) == 0 && script == nil {
 		pterm.Error.Println("Either postings or a script is required")
-		return cmdutil.Displayed(fmt.Errorf("either postings or a script is required"))
+
+		return cmdutil.Displayed(errors.New("either postings or a script is required"))
 	}
 
 	// Get reference (optional)
@@ -351,41 +387,48 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to create transaction", err)
 	}
 
 	// Verify response signatures if a verification key is configured
-	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
 		spinner.Fail("Response signature verification failed")
+
 		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 
 	// Extract the created transaction from the response
-	if len(resp.Logs) == 0 {
+	if len(resp.GetLogs()) == 0 {
 		spinner.Fail("No response received")
-		return cmdutil.Displayed(fmt.Errorf("no response received"))
+
+		return cmdutil.Displayed(errors.New("no response received"))
 	}
 
-	log := resp.Logs[0]
-	applyLog := log.Payload.GetApply()
+	log := resp.GetLogs()[0]
+
+	applyLog := log.GetPayload().GetApply()
 	if applyLog == nil {
 		spinner.Fail("Unexpected response type")
-		return cmdutil.Displayed(fmt.Errorf("unexpected response type"))
+
+		return cmdutil.Displayed(errors.New("unexpected response type"))
 	}
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	if createdTx == nil {
 		spinner.Fail("Unexpected log payload type")
-		return cmdutil.Displayed(fmt.Errorf("unexpected log payload type"))
+
+		return cmdutil.Displayed(errors.New("unexpected log payload type"))
 	}
 
-	tx := createdTx.Transaction
+	tx := createdTx.GetTransaction()
 
 	spinner.Success("Created")
 
@@ -393,25 +436,27 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(createdTx)
 	}
 
 	pterm.Println()
 
 	// Display transaction header
-	pterm.Printf("Transaction: %s\n", pterm.Cyan(fmt.Sprintf("#%d", tx.Id)))
+	pterm.Printf("Transaction: %s\n", pterm.Cyan(fmt.Sprintf("#%d", tx.GetId())))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
 	// Display basic info
-	if tx.Reference != "" {
-		pterm.Printf("Reference:   %s\n", tx.Reference)
+	if tx.GetReference() != "" {
+		pterm.Printf("Reference:   %s\n", tx.GetReference())
 	}
-	if tx.Timestamp != nil {
-		pterm.Printf("Timestamp:   %s\n", pterm.Gray(tx.Timestamp.AsTime().Format("2006-01-02T15:04:05Z07:00")))
+
+	if tx.GetTimestamp() != nil {
+		pterm.Printf("Timestamp:   %s\n", pterm.Gray(tx.GetTimestamp().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
 
 	// Display postings
-	if len(tx.Postings) > 0 {
+	if len(tx.GetPostings()) > 0 {
 		pterm.Println()
 		pterm.Println("Postings:")
 
@@ -419,44 +464,48 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 			{"#", "SOURCE", "", "DESTINATION", "AMOUNT", "ASSET"},
 		}
 
-		for i, posting := range tx.Postings {
+		for i, posting := range tx.GetPostings() {
 			postingsTable = append(postingsTable, []string{
-				fmt.Sprintf("%d", i+1),
-				posting.Source,
+				strconv.Itoa(i + 1),
+				posting.GetSource(),
 				"→",
-				posting.Destination,
-				posting.Amount.Dec(),
-				posting.Asset,
+				posting.GetDestination(),
+				posting.GetAmount().Dec(),
+				posting.GetAsset(),
 			})
 		}
 
-		if err := pterm.DefaultTable.WithHasHeader().WithData(postingsTable).Render(); err != nil {
+		err := pterm.DefaultTable.WithHasHeader().WithData(postingsTable).Render()
+		if err != nil {
 			return err
 		}
 	}
 
 	// Display metadata
-	if tx.Metadata != nil && len(tx.Metadata.Metadata) > 0 {
+	if tx.GetMetadata() != nil && len(tx.GetMetadata().GetMetadata()) > 0 {
 		pterm.Println()
 		pterm.Println("Metadata:")
 
 		metadataTable := pterm.TableData{
 			{"KEY", "VALUE"},
 		}
-		for _, md := range tx.Metadata.Metadata {
+		for _, md := range tx.GetMetadata().GetMetadata() {
 			metadataTable = append(metadataTable, []string{
-				md.Key,
-				commonpb.MetadataValueToString(md.Value),
+				md.GetKey(),
+				commonpb.MetadataValueToString(md.GetValue()),
 			})
 		}
-		if err := pterm.DefaultTable.WithHasHeader().WithData(metadataTable).Render(); err != nil {
+
+		err := pterm.DefaultTable.WithHasHeader().WithData(metadataTable).Render()
+		if err != nil {
 			return err
 		}
 	}
 
 	// Display post-commit volumes
-	if createdTx.PostCommitVolumes != nil {
-		if err := renderPostCommitVolumes(createdTx.PostCommitVolumes); err != nil {
+	if createdTx.GetPostCommitVolumes() != nil {
+		err := renderPostCommitVolumes(createdTx.GetPostCommitVolumes())
+		if err != nil {
 			return err
 		}
 	}
@@ -464,11 +513,11 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// parsePosting parses a posting from string format "source,destination,amount,asset"
+// parsePosting parses a posting from string format "source,destination,amount,asset".
 func parsePosting(s string) (*commonpb.Posting, error) {
 	parts := strings.Split(s, ",")
 	if len(parts) != 4 {
-		return nil, fmt.Errorf("expected format: source,destination,amount,asset")
+		return nil, errors.New("expected format: source,destination,amount,asset")
 	}
 
 	source := strings.TrimSpace(parts[0])
@@ -477,7 +526,7 @@ func parsePosting(s string) (*commonpb.Posting, error) {
 	asset := strings.TrimSpace(parts[3])
 
 	if source == "" || destination == "" || amountStr == "" || asset == "" {
-		return nil, fmt.Errorf("all fields are required")
+		return nil, errors.New("all fields are required")
 	}
 
 	amount, ok := new(big.Int).SetString(amountStr, 10)
@@ -531,13 +580,14 @@ func promptVariable(name, varType string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		pterm.Error.Printfln("Variable $%s is required", name)
+
 		return "", cmdutil.Displayed(fmt.Errorf("variable $%s is required", name))
 	}
 
 	return value, nil
 }
 
-// promptPosting prompts the user to enter a posting interactively using pterm
+// promptPosting prompts the user to enter a posting interactively using pterm.
 func promptPosting(index int) (*commonpb.Posting, error) {
 	pterm.FgLightCyan.Printfln("Posting #%d", index)
 
@@ -548,9 +598,11 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read source: %w", err)
 	}
+
 	if source == "" {
 		pterm.Error.Println("Source is required")
-		return nil, cmdutil.Displayed(fmt.Errorf("source is required"))
+
+		return nil, cmdutil.Displayed(errors.New("source is required"))
 	}
 
 	// Destination
@@ -560,9 +612,11 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read destination: %w", err)
 	}
+
 	if destination == "" {
 		pterm.Error.Println("Destination is required")
-		return nil, cmdutil.Displayed(fmt.Errorf("destination is required"))
+
+		return nil, cmdutil.Displayed(errors.New("destination is required"))
 	}
 
 	// Amount
@@ -572,10 +626,12 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read amount: %w", err)
 	}
+
 	amount, ok := new(big.Int).SetString(amountStr, 10)
 	if !ok || amount.Sign() <= 0 {
 		pterm.Error.Println("Invalid amount: must be a positive integer")
-		return nil, cmdutil.Displayed(fmt.Errorf("invalid amount: must be a positive integer"))
+
+		return nil, cmdutil.Displayed(errors.New("invalid amount: must be a positive integer"))
 	}
 
 	// Asset
@@ -585,9 +641,11 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read asset: %w", err)
 	}
+
 	if asset == "" {
 		pterm.Error.Println("Asset is required")
-		return nil, cmdutil.Displayed(fmt.Errorf("asset is required"))
+
+		return nil, cmdutil.Displayed(errors.New("asset is required"))
 	}
 
 	// Show summary

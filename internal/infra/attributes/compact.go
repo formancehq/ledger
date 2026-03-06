@@ -22,6 +22,7 @@ type compactor interface {
 // at targetIndex into the batch.
 type typedCompactor[V proto.Message] struct {
 	accumulatorBase[V]
+
 	batch       *dal.Batch
 	targetIndex uint64
 }
@@ -39,9 +40,11 @@ func (c *typedCompactor[V]) Feed(pebbleKey, pebbleValue []byte) error {
 	if err != nil {
 		return err
 	}
+
 	if prev != nil {
 		return c.writeCompacted(prev)
 	}
+
 	return nil
 }
 
@@ -54,6 +57,7 @@ func (c *typedCompactor[V]) Flush() error {
 	if entry != nil {
 		return c.writeCompacted(entry)
 	}
+
 	return nil
 }
 
@@ -80,6 +84,7 @@ func CompactAllForBackup(s *dal.Store) error {
 		pebble.NoSync,
 	); err != nil {
 		_ = batch.Cancel()
+
 		return fmt.Errorf("deleting attribute range: %w", err)
 	}
 
@@ -104,6 +109,7 @@ func CompactAllForBackup(s *dal.Store) error {
 	})
 	if err != nil {
 		_ = batch.Cancel()
+
 		return fmt.Errorf("creating iterator for attributes: %w", err)
 	}
 
@@ -116,6 +122,7 @@ func CompactAllForBackup(s *dal.Store) error {
 		}
 
 		attrType := iterKey[len(iterKey)-SuffixLen]
+
 		handler, ok := dispatch[attrType]
 		if !ok {
 			continue
@@ -125,12 +132,14 @@ func CompactAllForBackup(s *dal.Store) error {
 		if err != nil {
 			_ = iter.Close()
 			_ = batch.Cancel()
+
 			return fmt.Errorf("reading value: %w", err)
 		}
 
 		if err := handler.Feed(iterKey, valueBytes); err != nil {
 			_ = iter.Close()
 			_ = batch.Cancel()
+
 			return fmt.Errorf("feeding compactor (type=%c): %w", attrType, err)
 		}
 	}
@@ -138,14 +147,18 @@ func CompactAllForBackup(s *dal.Store) error {
 	if err := iter.Error(); err != nil {
 		_ = iter.Close()
 		_ = batch.Cancel()
+
 		return fmt.Errorf("iterating attributes: %w", err)
 	}
+
 	_ = iter.Close()
 
 	// Flush all compactors to write the last pending entry for each type
 	for attrType, handler := range dispatch {
-		if err := handler.Flush(); err != nil {
+		err := handler.Flush()
+		if err != nil {
 			_ = batch.Cancel()
+
 			return fmt.Errorf("flushing compactor (type=%c): %w", attrType, err)
 		}
 	}
@@ -153,12 +166,14 @@ func CompactAllForBackup(s *dal.Store) error {
 	// Reset lastAppliedIndex to 0 so the restored cluster starts fresh
 	if err := batch.SetBytes([]byte{dal.KeyPrefixLastAppliedIndex}, make([]byte, 8)); err != nil {
 		_ = batch.Cancel()
+
 		return fmt.Errorf("resetting applied index: %w", err)
 	}
 
 	// Remove persisted config (nodeId, clusterId) so the backup is portable to any cluster
 	if err := batch.DeleteKey([]byte{dal.KeyPrefixPersistedConfig}); err != nil {
 		_ = batch.Cancel()
+
 		return fmt.Errorf("deleting persisted config: %w", err)
 	}
 

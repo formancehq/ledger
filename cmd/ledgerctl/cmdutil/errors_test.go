@@ -4,12 +4,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 )
 
 // buildGRPCError creates a gRPC status error with an ErrorInfo detail, simulating what the server sends.
@@ -23,6 +24,7 @@ func buildGRPCError(t *testing.T, code codes.Code, message, reason string, metad
 		Metadata: metadata,
 	})
 	require.NoError(t, err)
+
 	return detailed.Err()
 }
 
@@ -36,7 +38,7 @@ func TestBusinessErrorFromGRPC_LedgerAlreadyExists(t *testing.T) {
 	require.NotNil(t, bizErr)
 
 	var ledgerErr *domain.ErrLedgerAlreadyExists
-	require.True(t, errors.As(bizErr, &ledgerErr))
+	require.ErrorAs(t, bizErr, &ledgerErr)
 	require.Equal(t, "foo", ledgerErr.Name)
 }
 
@@ -50,7 +52,7 @@ func TestBusinessErrorFromGRPC_LedgerNotFound(t *testing.T) {
 	require.NotNil(t, bizErr)
 
 	var ledgerErr *domain.ErrLedgerNotFound
-	require.True(t, errors.As(bizErr, &ledgerErr))
+	require.ErrorAs(t, bizErr, &ledgerErr)
 	require.Equal(t, "bar", ledgerErr.Name)
 }
 
@@ -64,7 +66,7 @@ func TestBusinessErrorFromGRPC_IdempotencyKeyConflict(t *testing.T) {
 	require.NotNil(t, bizErr)
 
 	var ikErr *domain.ErrIdempotencyKeyConflict
-	require.True(t, errors.As(bizErr, &ikErr))
+	require.ErrorAs(t, bizErr, &ikErr)
 	require.Equal(t, "ik-123", ikErr.Key)
 }
 
@@ -81,7 +83,7 @@ func TestBusinessErrorFromGRPC_TransactionReferenceConflict(t *testing.T) {
 	require.NotNil(t, bizErr)
 
 	var refErr *domain.ErrTransactionReferenceConflict
-	require.True(t, errors.As(bizErr, &refErr))
+	require.ErrorAs(t, bizErr, &refErr)
 	require.Equal(t, "test", refErr.Ledger)
 	require.Equal(t, "ref-001", refErr.Reference)
 }
@@ -96,7 +98,7 @@ func TestBusinessErrorFromGRPC_TransactionNotFound(t *testing.T) {
 	require.NotNil(t, bizErr)
 
 	var txErr *domain.ErrTransactionNotFound
-	require.True(t, errors.As(bizErr, &txErr))
+	require.ErrorAs(t, bizErr, &txErr)
 	require.Equal(t, uint64(999), txErr.TransactionID)
 }
 
@@ -110,7 +112,7 @@ func TestBusinessErrorFromGRPC_TransactionAlreadyReverted(t *testing.T) {
 	require.NotNil(t, bizErr)
 
 	var txErr *domain.ErrTransactionAlreadyReverted
-	require.True(t, errors.As(bizErr, &txErr))
+	require.ErrorAs(t, bizErr, &txErr)
 	require.Equal(t, uint64(42), txErr.TransactionID)
 }
 
@@ -129,7 +131,7 @@ func TestBusinessErrorFromGRPC_InsufficientFunds(t *testing.T) {
 	require.NotNil(t, bizErr)
 
 	var fundsErr *domain.ErrInsufficientFunds
-	require.True(t, errors.As(bizErr, &fundsErr))
+	require.ErrorAs(t, bizErr, &fundsErr)
 	require.Equal(t, "user:001", fundsErr.Account)
 	require.Equal(t, "USD", fundsErr.Asset)
 	require.Equal(t, "1000", fundsErr.Amount)
@@ -146,7 +148,7 @@ func TestBusinessErrorFromGRPC_NumscriptParseError(t *testing.T) {
 	require.NotNil(t, bizErr)
 
 	var parseErr *numscript.ErrNumscriptParse
-	require.True(t, errors.As(bizErr, &parseErr))
+	require.ErrorAs(t, bizErr, &parseErr)
 	require.Equal(t, "unexpected token", parseErr.Details)
 }
 
@@ -252,7 +254,7 @@ func TestFormatGRPCError_PermissionDenied(t *testing.T) {
 
 func TestDisplayed_NilReturnsNil(t *testing.T) {
 	t.Parallel()
-	require.Nil(t, Displayed(nil))
+	require.NoError(t, Displayed(nil))
 }
 
 func TestDisplayed_WrapsError(t *testing.T) {
@@ -260,11 +262,11 @@ func TestDisplayed_WrapsError(t *testing.T) {
 
 	inner := errors.New("something failed")
 	err := Displayed(inner)
-	require.NotNil(t, err)
+	require.Error(t, err)
 	require.Equal(t, "something failed", err.Error())
 
 	var cliErr *CLIError
-	require.True(t, errors.As(err, &cliErr))
+	require.ErrorAs(t, err, &cliErr)
 	require.Equal(t, inner, cliErr.Unwrap())
 }
 
@@ -275,7 +277,7 @@ func TestFormatGRPCError_ReturnsDisplayedError(t *testing.T) {
 	err := FormatGRPCError("create ledger", grpcErr)
 
 	var cliErr *CLIError
-	require.True(t, errors.As(err, &cliErr), "FormatGRPCError should return a Displayed error")
+	require.ErrorAs(t, err, &cliErr, "FormatGRPCError should return a Displayed error")
 	require.Contains(t, err.Error(), "connection refused")
 }
 
@@ -288,7 +290,7 @@ func TestFormatGRPCError_BusinessError_ReturnsDisplayed(t *testing.T) {
 	err := FormatGRPCError("list accounts", grpcErr)
 
 	var cliErr *CLIError
-	require.True(t, errors.As(err, &cliErr), "FormatGRPCError should return a Displayed error for business errors")
+	require.ErrorAs(t, err, &cliErr, "FormatGRPCError should return a Displayed error for business errors")
 	require.Contains(t, err.Error(), "index not found")
 }
 
@@ -302,48 +304,66 @@ func serverSideConvert(bizErr *domain.BusinessError) *status.Status {
 	)
 
 	inner := bizErr.Err
-	switch e := inner.(type) {
-	case *domain.ErrLedgerAlreadyExists:
-		code, reason = codes.AlreadyExists, domain.ErrReasonLedgerAlreadyExists
-		metadata = map[string]string{"name": e.Name}
-	case *domain.ErrLedgerNotFound:
-		code, reason = codes.NotFound, domain.ErrReasonLedgerNotFound
-		metadata = map[string]string{"name": e.Name}
-	case *domain.ErrIdempotencyKeyConflict:
-		code, reason = codes.AlreadyExists, domain.ErrReasonIdempotencyKeyConflict
-		metadata = map[string]string{"key": e.Key}
-	case *domain.ErrTransactionReferenceConflict:
-		code, reason = codes.AlreadyExists, domain.ErrReasonTransactionReferenceConflict
-		metadata = map[string]string{"ledger": e.Ledger, "reference": e.Reference}
-	case *domain.ErrTransactionNotFound:
-		code, reason = codes.NotFound, domain.ErrReasonTransactionNotFound
-		metadata = map[string]string{"transactionId": "100"}
-	case *domain.ErrTransactionAlreadyReverted:
-		code, reason = codes.FailedPrecondition, domain.ErrReasonTransactionAlreadyReverted
-		metadata = map[string]string{"transactionId": "100"}
-	case *domain.ErrInsufficientFunds:
-		code, reason = codes.FailedPrecondition, domain.ErrReasonInsufficientFunds
-		metadata = map[string]string{"account": e.Account, "asset": e.Asset, "amount": e.Amount, "balance": e.Balance}
-	case *domain.ErrBalanceNotFound:
-		code, reason = codes.FailedPrecondition, domain.ErrReasonBalanceNotFound
-		metadata = map[string]string{"account": e.Account, "asset": e.Asset}
-	case *numscript.ErrBalanceNotPreloaded:
-		code, reason = codes.FailedPrecondition, domain.ErrReasonBalanceNotPreloaded
-		metadata = map[string]string{"account": e.Account, "asset": e.Asset}
-	case *numscript.ErrNumscriptParse:
-		code, reason = codes.InvalidArgument, domain.ErrReasonNumscriptParseError
-		metadata = map[string]string{"details": e.Details}
-	case *domain.ErrIndexNotFound:
-		code, reason = codes.FailedPrecondition, domain.ErrReasonIndexNotFound
-		metadata = map[string]string{"index": e.Index}
-	case *domain.ErrIndexBuilding:
-		code, reason = codes.FailedPrecondition, domain.ErrReasonIndexBuilding
-		metadata = map[string]string{"index": e.Index}
-	default:
-		return status.New(codes.Internal, inner.Error())
+	{
+		var (
+			e   *domain.ErrLedgerAlreadyExists
+			e1  *domain.ErrLedgerNotFound
+			e2  *domain.ErrIdempotencyKeyConflict
+			e3  *domain.ErrTransactionReferenceConflict
+			e4  *domain.ErrTransactionNotFound
+			e5  *domain.ErrTransactionAlreadyReverted
+			e6  *domain.ErrInsufficientFunds
+			e7  *domain.ErrBalanceNotFound
+			e8  *numscript.ErrBalanceNotPreloaded
+			e9  *numscript.ErrNumscriptParse
+			e10 *domain.ErrIndexNotFound
+			e11 *domain.ErrIndexBuilding
+		)
+
+		switch {
+		case errors.As(inner, &e):
+			code, reason = codes.AlreadyExists, domain.ErrReasonLedgerAlreadyExists
+			metadata = map[string]string{"name": e.Name}
+		case errors.As(inner, &e1):
+			code, reason = codes.NotFound, domain.ErrReasonLedgerNotFound
+			metadata = map[string]string{"name": e1.Name}
+		case errors.As(inner, &e2):
+			code, reason = codes.AlreadyExists, domain.ErrReasonIdempotencyKeyConflict
+			metadata = map[string]string{"key": e2.Key}
+		case errors.As(inner, &e3):
+			code, reason = codes.AlreadyExists, domain.ErrReasonTransactionReferenceConflict
+			metadata = map[string]string{"ledger": e3.Ledger, "reference": e3.Reference}
+		case errors.As(inner, &e4):
+			code, reason = codes.NotFound, domain.ErrReasonTransactionNotFound
+			metadata = map[string]string{"transactionId": "100"}
+		case errors.As(inner, &e5):
+			code, reason = codes.FailedPrecondition, domain.ErrReasonTransactionAlreadyReverted
+			metadata = map[string]string{"transactionId": "100"}
+		case errors.As(inner, &e6):
+			code, reason = codes.FailedPrecondition, domain.ErrReasonInsufficientFunds
+			metadata = map[string]string{"account": e6.Account, "asset": e6.Asset, "amount": e6.Amount, "balance": e6.Balance}
+		case errors.As(inner, &e7):
+			code, reason = codes.FailedPrecondition, domain.ErrReasonBalanceNotFound
+			metadata = map[string]string{"account": e7.Account, "asset": e7.Asset}
+		case errors.As(inner, &e8):
+			code, reason = codes.FailedPrecondition, domain.ErrReasonBalanceNotPreloaded
+			metadata = map[string]string{"account": e8.Account, "asset": e8.Asset}
+		case errors.As(inner, &e9):
+			code, reason = codes.InvalidArgument, domain.ErrReasonNumscriptParseError
+			metadata = map[string]string{"details": e9.Details}
+		case errors.As(inner, &e10):
+			code, reason = codes.FailedPrecondition, domain.ErrReasonIndexNotFound
+			metadata = map[string]string{"index": e10.Index}
+		case errors.As(inner, &e11):
+			code, reason = codes.FailedPrecondition, domain.ErrReasonIndexBuilding
+			metadata = map[string]string{"index": e11.Index}
+		default:
+			return status.New(codes.Internal, inner.Error())
+		}
 	}
 
 	st := status.New(code, inner.Error())
+
 	detailed, err := st.WithDetails(&errdetails.ErrorInfo{
 		Reason:   reason,
 		Domain:   "ledger",
@@ -352,5 +372,6 @@ func serverSideConvert(bizErr *domain.BusinessError) *status.Status {
 	if err != nil {
 		return st
 	}
+
 	return detailed
 }

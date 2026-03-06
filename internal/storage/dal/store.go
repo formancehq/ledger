@@ -14,9 +14,10 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/go-libs/v3/logging"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 // ErrStoreClosed is returned when a store operation is attempted after the
@@ -31,10 +32,10 @@ const (
 )
 
 // Store is a Pebble implementation of dal.Store
-// It stores balances and account metadata
+// It stores balances and account metadata.
 type Store struct {
-	dbMu sync.RWMutex  // protects DB lifecycle (RestoreCheckpoint, Close)
-	db   *pebble.DB
+	dbMu              sync.RWMutex // protects DB lifecycle (RestoreCheckpoint, Close)
+	db                *pebble.DB
 	opts              *pebble.Options
 	logger            logging.Logger
 	dataDir           string
@@ -59,8 +60,10 @@ func (s *Store) WriteStallWaitCh() <-chan struct{} {
 	if s.stallState == nil {
 		ch := make(chan struct{})
 		close(ch)
+
 		return ch
 	}
+
 	return s.stallState.WaitCh()
 }
 
@@ -70,6 +73,7 @@ func (s *Store) IsWriteStalled() bool {
 	if s.stallState == nil {
 		return false
 	}
+
 	return s.stallState.IsStalled()
 }
 
@@ -92,10 +96,10 @@ var (
 	// Composite-keyed cold prefix: [prefix][name]\x00[txID][byLog] -- requires filtered iteration.
 	KeyPrefixTransactionUpdate byte = 0x03 // [KeyPrefixTransactionUpdate][name]\x00[txID(8)][byLog(8)] -> TransactionUpdate
 
-	// Attributes zone [0xF1, 0xF2) -- seal hash domain
+	// Attributes zone [0xF1, 0xF2) -- seal hash domain.
 	KeyPrefixAttributes byte = 0xF1
 
-	// System zone [0xF2, 0xFF]
+	// System zone [0xF2, 0xFF].
 	KeyPrefixLastAppliedIndex     byte = 0xF2 // [KeyPrefixLastAppliedIndex] -> uint64
 	KeyPrefixLastAppliedTimestamp byte = 0xF3 // [KeyPrefixLastAppliedTimestamp] -> uint64 (HLC microseconds)
 	KeyPrefixIdempotency          byte = 0xF4 // [KeyPrefixIdempotency][key] -> sequence
@@ -126,14 +130,13 @@ var (
 	AttributePrefixBoundary       = byte('B')
 )
 
-// NewStore creates a new Store instance
+// NewStore creates a new Store instance.
 func NewStore(
 	dataDir string,
 	logger logging.Logger,
 	meter metric.Meter,
 	cfg Config,
 ) (*Store, error) {
-
 	stallState := NewWriteStallState()
 
 	opts := &pebble.Options{
@@ -173,9 +176,11 @@ func NewStore(
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("reading current checkpoint: %w", err)
 	}
+
 	liveDir := filepath.Join(dataDir, liveDir)
 	if errors.Is(err, os.ErrNotExist) {
 		logger.Infof("No checkpoint found, creating new database in %s", liveDir)
+
 		if err := os.RemoveAll(liveDir); err != nil {
 			return nil, fmt.Errorf("removing old database: %w", err)
 		}
@@ -218,51 +223,61 @@ func NewStore(
 			oldPath := checkpointPath + ".old"
 			if _, oldStatErr := os.Stat(oldPath); oldStatErr == nil {
 				logger.Infof("Recovering checkpoint from .old (crash during post-compaction rename)")
-				if renameErr := os.Rename(oldPath, checkpointPath); renameErr != nil {
+
+				renameErr := os.Rename(oldPath, checkpointPath)
+				if renameErr != nil {
 					return nil, fmt.Errorf("recovering checkpoint from .old: %w", renameErr)
 				}
 			}
 		}
+
 		_ = os.RemoveAll(checkpointPath + ".old")
 
 		removeStart := time.Now()
-		if err := os.RemoveAll(liveDir); err != nil {
+
+		err := os.RemoveAll(liveDir)
+		if err != nil {
 			return nil, fmt.Errorf("removing old database: %w", err)
 		}
+
 		logger.WithFields(map[string]any{
 			"duration": time.Since(removeStart).String(),
 		}).Infof("Removed old live directory")
 
 		linkStart := time.Now()
-		if err := HardLink(checkpointPath, liveDir); err != nil {
+
+		err = HardLink(checkpointPath, liveDir)
+		if err != nil {
 			return nil, fmt.Errorf("hard linking checkpoint: %w", err)
 		}
+
 		logger.WithFields(map[string]any{
 			"duration": time.Since(linkStart).String(),
 		}).Infof("Hard-linked checkpoint to live directory")
 
 		openStart := time.Now()
+
 		db, err = pebble.Open(liveDir, opts)
 		if err != nil {
 			return nil, fmt.Errorf("opening pebble database: %w", err)
 		}
+
 		m := db.Metrics()
 		logger.WithFields(map[string]any{
-			"duration":              time.Since(openStart).String(),
-			"l0FileCount":           m.Levels[0].NumFiles,
-			"l0Size":                m.Levels[0].Size,
-			"l1FileCount":           m.Levels[1].NumFiles,
-			"l1Size":                m.Levels[1].Size,
-			"memTableCount":         m.MemTable.Count,
-			"memTableSize":          m.MemTable.Size,
-			"compactionCount":       m.Compact.Count,
-			"compactionDebt":        m.Compact.InProgressBytes,
-			"compactionEstDebt":     m.Compact.EstimatedDebt,
-			"walFilesCount":         m.WAL.Files,
-			"walSize":               m.WAL.Size,
-			"totalLevelsSize":       m.DiskSpaceUsage(),
+			"duration":          time.Since(openStart).String(),
+			"l0FileCount":       m.Levels[0].NumFiles,
+			"l0Size":            m.Levels[0].Size,
+			"l1FileCount":       m.Levels[1].NumFiles,
+			"l1Size":            m.Levels[1].Size,
+			"memTableCount":     m.MemTable.Count,
+			"memTableSize":      m.MemTable.Size,
+			"compactionCount":   m.Compact.Count,
+			"compactionDebt":    m.Compact.InProgressBytes,
+			"compactionEstDebt": m.Compact.EstimatedDebt,
+			"walFilesCount":     m.WAL.Files,
+			"walSize":           m.WAL.Size,
+			"totalLevelsSize":   m.DiskSpaceUsage(),
 		}).Infof("Pebble database opened — LSM state")
-
 	}
 
 	var currentCheckpoint uint64
@@ -314,23 +329,28 @@ func (s *Store) Flush() error {
 // startup reads hit warm cache.
 func (s *Store) WarmSystemKeys() {
 	s.logger.Infof("Starting system key warmup...")
+
 	start := time.Now()
 	db := s.getDB()
 
 	ranges := [][2]byte{
-		{0xE0, KeyPrefixAttributes},          // 0xE0..0xF0 (numscripts, mirror, audit, period schedule, etc.)
-		{KeyPrefixAttributes + 1, 0xFF},      // 0xF2..0xFE (applied index, ledger info, periods, signing, etc.)
+		{0xE0, KeyPrefixAttributes},     // 0xE0..0xF0 (numscripts, mirror, audit, period schedule, etc.)
+		{KeyPrefixAttributes + 1, 0xFF}, // 0xF2..0xFE (applied index, ledger info, periods, signing, etc.)
 	}
 
 	var totalKeys int64
+
 	for _, r := range ranges {
 		rangeStart := time.Now()
+
 		keys, err := s.warmRange(db, r[0], r[1])
 		if err != nil {
 			s.logger.WithFields(map[string]any{"error": err}).
 				Errorf("System key warmup failed")
+
 			return
 		}
+
 		totalKeys += keys
 		s.logger.WithFields(map[string]any{
 			"range":    fmt.Sprintf("[0x%02X, 0x%02X)", r[0], r[1]),
@@ -356,6 +376,7 @@ func (s *Store) WarmBlockCache() {
 	if err != nil {
 		s.logger.WithFields(map[string]any{"error": err}).
 			Errorf("Block cache warmup failed")
+
 		return
 	}
 
@@ -377,18 +398,23 @@ func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("creating warmup iterator [0x%02X, 0x%02X): %w", lower, upper, err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	var keys int64
+
 	for iter.First(); iter.Valid(); iter.Next() {
 		if _, err := iter.ValueAndErr(); err != nil {
 			return keys, fmt.Errorf("warmup value read error at key %d: %w", keys, err)
 		}
+
 		keys++
 	}
+
 	if err := iter.Error(); err != nil {
 		return keys, fmt.Errorf("warmup iterator error: %w", err)
 	}
+
 	return keys, nil
 }
 
@@ -400,10 +426,13 @@ func (s *Store) Close() error {
 	db := s.db
 	if db != nil {
 		s.db = nil
-		if err := db.Close(); err != nil {
+
+		err := db.Close()
+		if err != nil {
 			return fmt.Errorf("closing store: %w", err)
 		}
 	}
+
 	return nil
 }
 
@@ -417,7 +446,8 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 	s.logger.Infof("Creating snapshot")
 
 	newCheckpointID := s.currentCheckPoint + 1
-	checkpointDir := filepath.Join(s.dataDir, "checkpoints", fmt.Sprintf("%d", newCheckpointID))
+
+	checkpointDir := filepath.Join(s.dataDir, "checkpoints", strconv.FormatUint(newCheckpointID, 10))
 	if err := os.RemoveAll(checkpointDir); err != nil {
 		return 0, fmt.Errorf("removing checkpoint directory: %w", err)
 	}
@@ -430,6 +460,7 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("creating checkpoint file: %w", err)
 	}
+
 	defer func() {
 		_ = f.Close()
 	}()
@@ -482,8 +513,10 @@ func (s *Store) cleanupOldCheckpoints() error {
 
 	// Delete checkpoints from oldestCheckpoint up to (but not including) oldestToKeep
 	for i := s.oldestCheckpoint; i < oldestToKeep; i++ {
-		checkpointPath := filepath.Join(s.dataDir, checkpointsDir, fmt.Sprintf("%d", i))
-		if err := os.RemoveAll(checkpointPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		checkpointPath := filepath.Join(s.dataDir, checkpointsDir, strconv.FormatUint(i, 10))
+
+		err := os.RemoveAll(checkpointPath)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("removing old checkpoint %d: %w", i, err)
 		}
 	}
@@ -497,13 +530,15 @@ func (s *Store) cleanupOldCheckpoints() error {
 // GetCheckpointPath returns the filesystem path for a given checkpoint ID.
 // Returns an error if the checkpoint does not exist.
 func (s *Store) GetCheckpointPath(checkpointID uint64) (string, error) {
-	path := filepath.Join(s.dataDir, checkpointsDir, fmt.Sprintf("%d", checkpointID))
+	path := filepath.Join(s.dataDir, checkpointsDir, strconv.FormatUint(checkpointID, 10))
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return "", fmt.Errorf("checkpoint %d not found", checkpointID)
 		}
+
 		return "", fmt.Errorf("checking checkpoint %d: %w", checkpointID, err)
 	}
+
 	return path, nil
 }
 
@@ -519,15 +554,18 @@ func (s *Store) GetCurrentCheckpointID() uint64 {
 func (s *Store) CreateTemporaryCheckpoint(name string) (string, error) {
 	path := filepath.Join(s.dataDir, temporaryCheckpointsDir, name)
 
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	err := os.MkdirAll(filepath.Dir(path), 0755)
+	if err != nil {
 		return "", fmt.Errorf("creating temporary checkpoint directory: %w", err)
 	}
 
-	if err := os.RemoveAll(path); err != nil {
+	err = os.RemoveAll(path)
+	if err != nil {
 		return "", fmt.Errorf("removing existing temporary checkpoint: %w", err)
 	}
 
-	if err := s.getDB().Checkpoint(path, pebble.WithFlushedWAL()); err != nil {
+	err = s.getDB().Checkpoint(path, pebble.WithFlushedWAL())
+	if err != nil {
 		return "", fmt.Errorf("creating temporary checkpoint %q: %w", name, err)
 	}
 
@@ -537,9 +575,12 @@ func (s *Store) CreateTemporaryCheckpoint(name string) (string, error) {
 // RemoveTemporaryCheckpoint removes a temporary checkpoint created by CreateTemporaryCheckpoint.
 func (s *Store) RemoveTemporaryCheckpoint(name string) error {
 	path := filepath.Join(s.dataDir, temporaryCheckpointsDir, name)
-	if err := os.RemoveAll(path); err != nil {
+
+	err := os.RemoveAll(path)
+	if err != nil {
 		return fmt.Errorf("removing temporary checkpoint %q: %w", name, err)
 	}
+
 	return nil
 }
 
@@ -549,6 +590,7 @@ func (s *Store) TemporaryCheckpointPath(name string) (string, bool) {
 	if _, err := os.Stat(path); err != nil {
 		return "", false
 	}
+
 	return path, true
 }
 
@@ -557,7 +599,9 @@ func (s *Store) TemporaryCheckpointPath(name string) (string, bool) {
 // any leftovers are from a previous crash and can be safely deleted.
 func (s *Store) cleanupTemporaryCheckpoints() {
 	path := filepath.Join(s.dataDir, temporaryCheckpointsDir)
-	if err := os.RemoveAll(path); err != nil {
+
+	err := os.RemoveAll(path)
+	if err != nil {
 		s.logger.WithFields(map[string]any{
 			"error": err,
 		}).Errorf("Failed to clean up temporary checkpoints")
@@ -567,15 +611,17 @@ func (s *Store) cleanupTemporaryCheckpoints() {
 // PrepareCheckpointRestore prepares a directory for restoring a checkpoint from a remote peer.
 // It returns the path to the directory where the checkpoint should be extracted.
 func (s *Store) PrepareCheckpointRestore(checkpointID uint64) (string, error) {
-	checkpointDir := filepath.Join(s.dataDir, checkpointsDir, fmt.Sprintf("%d", checkpointID))
+	checkpointDir := filepath.Join(s.dataDir, checkpointsDir, strconv.FormatUint(checkpointID, 10))
 
 	// Remove any existing directory at this path
-	if err := os.RemoveAll(checkpointDir); err != nil {
+	err := os.RemoveAll(checkpointDir)
+	if err != nil {
 		return "", fmt.Errorf("removing existing checkpoint directory: %w", err)
 	}
 
 	// Create the directory
-	if err := os.MkdirAll(checkpointDir, 0755); err != nil {
+	err = os.MkdirAll(checkpointDir, 0755)
+	if err != nil {
 		return "", fmt.Errorf("creating checkpoint directory: %w", err)
 	}
 
@@ -590,7 +636,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	s.dbMu.Lock()
 	defer s.dbMu.Unlock()
 
-	checkpointDir := filepath.Join(s.dataDir, checkpointsDir, fmt.Sprintf("%d", checkpointID))
+	checkpointDir := filepath.Join(s.dataDir, checkpointsDir, strconv.FormatUint(checkpointID, 10))
 
 	// Verify the checkpoint exists
 	if _, err := os.Stat(checkpointDir); err != nil {
@@ -637,16 +683,23 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// After writing, flush and recreate the checkpoint so the config survives
 	// the next startup (NewStore re-links live from the checkpoint directory).
 	if preservedConfig != nil {
-		if err := newDB.Set([]byte{KeyPrefixPersistedConfig}, preservedConfig, pebble.Sync); err != nil {
+		err := newDB.Set([]byte{KeyPrefixPersistedConfig}, preservedConfig, pebble.Sync)
+		if err != nil {
 			return fmt.Errorf("re-writing persisted config after checkpoint restore: %w", err)
 		}
-		if err := newDB.Flush(); err != nil {
+
+		err = newDB.Flush()
+		if err != nil {
 			return fmt.Errorf("flushing persisted config after checkpoint restore: %w", err)
 		}
-		if err := os.RemoveAll(checkpointDir); err != nil {
+
+		err = os.RemoveAll(checkpointDir)
+		if err != nil {
 			return fmt.Errorf("removing old checkpoint dir for re-checkpoint: %w", err)
 		}
-		if err := newDB.Checkpoint(checkpointDir); err != nil {
+
+		err = newDB.Checkpoint(checkpointDir)
+		if err != nil {
 			return fmt.Errorf("re-creating checkpoint with preserved config: %w", err)
 		}
 	}
@@ -656,6 +709,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	if err != nil {
 		return fmt.Errorf("creating checkpoint file: %w", err)
 	}
+
 	defer func() {
 		_ = f.Close()
 	}()
@@ -700,7 +754,8 @@ func (s *Store) IterateColdKVPairs(startSeq, closeSeq uint64, fn func(key, value
 		kb.PutByte(prefix).PutUInt64(closeSeq + 1)
 		upperBound := kb.Build()
 
-		if err := iterateRawRange(db, lowerBound, upperBound, fn); err != nil {
+		err := iterateRawRange(db, lowerBound, upperBound, fn)
+		if err != nil {
 			return fmt.Errorf("iterating prefix 0x%02x: %w", prefix, err)
 		}
 	}
@@ -717,6 +772,7 @@ func iterateRawRange(db *pebble.DB, lowerBound, upperBound []byte, fn func(key, 
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	for iter.First(); iter.Valid(); iter.Next() {
@@ -724,10 +780,12 @@ func iterateRawRange(db *pebble.DB, lowerBound, upperBound []byte, fn func(key, 
 		if err != nil {
 			return fmt.Errorf("reading value: %w", err)
 		}
+
 		if err := fn(iter.Key(), value); err != nil {
 			return err
 		}
 	}
+
 	return iter.Error()
 }
 
@@ -752,12 +810,12 @@ func WithReuse() ProtoCursorOption {
 
 // ProtoCursor implements Cursor[T] for Pebble where T is a proto.Message pointer.
 type ProtoCursor[T proto.Message] struct {
-	iter     *pebble.Iterator
-	started  bool
-	elemTyp  reflect.Type
-	reuse    bool
-	hasItem  bool
-	item     T // reused when reuse=true
+	iter    *pebble.Iterator
+	started bool
+	elemTyp reflect.Type
+	reuse   bool
+	hasItem bool
+	item    T // reused when reuse=true
 }
 
 func NewProtoCursor[T proto.Message](iter *pebble.Iterator, opts ...ProtoCursorOption) *ProtoCursor[T] {
@@ -765,7 +823,9 @@ func NewProtoCursor[T proto.Message](iter *pebble.Iterator, opts ...ProtoCursorO
 	for _, o := range opts {
 		o(&cfg)
 	}
+
 	var zero T
+
 	return &ProtoCursor[T]{
 		iter:    iter,
 		elemTyp: reflect.TypeOf(zero).Elem(),
@@ -775,21 +835,24 @@ func NewProtoCursor[T proto.Message](iter *pebble.Iterator, opts ...ProtoCursorO
 
 func (c *ProtoCursor[T]) Next() (T, error) {
 	var zero T
+
 	if !c.started {
 		c.started = true
 		if !c.iter.First() {
-			if err := c.iter.Error(); err != nil {
+			err := c.iter.Error()
+			if err != nil {
 				return zero, err
 			}
+
 			return zero, io.EOF
 		}
-	} else {
-		if !c.iter.Next() {
-			if err := c.iter.Error(); err != nil {
-				return zero, err
-			}
-			return zero, io.EOF
+	} else if !c.iter.Next() {
+		err := c.iter.Error()
+		if err != nil {
+			return zero, err
 		}
+
+		return zero, io.EOF
 	}
 
 	value, err := c.iter.ValueAndErr()
@@ -817,6 +880,7 @@ func (c *ProtoCursor[T]) Next() (T, error) {
 	} else if err := proto.Unmarshal(value, item); err != nil {
 		return zero, fmt.Errorf("unmarshaling: %w", err)
 	}
+
 	return item, nil
 }
 
@@ -824,6 +888,7 @@ func (c *ProtoCursor[T]) Close() error {
 	if c.iter != nil {
 		return c.iter.Close()
 	}
+
 	return nil
 }
 
@@ -835,6 +900,7 @@ func (s *Store) NewIter(p *pebble.IterOptions) (*pebble.Iterator, error) {
 	if db == nil {
 		return nil, ErrStoreClosed
 	}
+
 	return db.NewIter(p)
 }
 
@@ -846,9 +912,11 @@ func HardLink(srcDir, dstDir string) error {
 	if err != nil {
 		return fmt.Errorf("stat srcDir: %w", err)
 	}
+
 	if !srcInfo.IsDir() {
 		return fmt.Errorf("srcDir is not a directory: %s", srcDir)
 	}
+
 	if _, err := os.Stat(dstDir); err == nil {
 		return fmt.Errorf("dstDir already exists: %s", dstDir)
 	}
@@ -865,6 +933,7 @@ func HardLink(srcDir, dstDir string) error {
 	if err := os.MkdirAll(tmpDir, srcInfo.Mode().Perm()); err != nil {
 		return fmt.Errorf("mkdir tmpDir: %w", err)
 	}
+
 	if err := fsyncDir(tmpDir); err != nil {
 		return err
 	}
@@ -873,15 +942,18 @@ func HardLink(srcDir, dstDir string) error {
 		if walkErr != nil {
 			return walkErr
 		}
+
 		rel, err := filepath.Rel(srcDir, path)
 		if err != nil {
 			return err
 		}
+
 		if rel == "." {
 			return nil
 		}
 
 		dstPath := filepath.Join(tmpDir, rel)
+
 		info, err := d.Info()
 		if err != nil {
 			return err
@@ -889,17 +961,23 @@ func HardLink(srcDir, dstDir string) error {
 
 		switch {
 		case info.IsDir():
-			if err := os.MkdirAll(dstPath, info.Mode().Perm()); err != nil {
+			err := os.MkdirAll(dstPath, info.Mode().Perm())
+			if err != nil {
 				return fmt.Errorf("mkdir %s: %w", dstPath, err)
 			}
+
 			_ = os.Chmod(dstPath, info.Mode().Perm())
+
 			return fsyncDir(dstPath)
 
 		case info.Mode().Type() == 0: // regular file
-			if err := os.Link(path, dstPath); err != nil {
+			err := os.Link(path, dstPath)
+			if err != nil {
 				return fmt.Errorf("hardlink %s -> %s: %w", path, dstPath, err)
 			}
+
 			_ = os.Chmod(dstPath, info.Mode().Perm())
+
 			return nil
 
 		case (info.Mode() & os.ModeSymlink) != 0:
@@ -907,9 +985,11 @@ func HardLink(srcDir, dstDir string) error {
 			if err != nil {
 				return fmt.Errorf("readlink %s: %w", path, err)
 			}
+
 			if err := os.Symlink(target, dstPath); err != nil {
 				return fmt.Errorf("symlink %s -> %s: %w", dstPath, target, err)
 			}
+
 			return nil
 
 		default:
@@ -923,6 +1003,7 @@ func HardLink(srcDir, dstDir string) error {
 	if err := fsyncDir(tmpDir); err != nil {
 		return err
 	}
+
 	if err := fsyncDir(parent); err != nil {
 		return err
 	}
@@ -939,16 +1020,20 @@ func fsyncDir(dir string) error {
 	if runtime.GOOS == "windows" {
 		return nil
 	}
+
 	f, err := os.Open(dir)
 	if err != nil {
 		return fmt.Errorf("open dir for fsync %s: %w", dir, err)
 	}
+
 	defer func() {
 		_ = f.Close()
 	}()
+
 	if err := f.Sync(); err != nil {
 		return fmt.Errorf("fsync dir %s: %w", dir, err)
 	}
+
 	return nil
 }
 

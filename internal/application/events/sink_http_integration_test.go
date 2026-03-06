@@ -12,14 +12,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	libtime "github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
-	"github.com/formancehq/ledger-v3-poc/internal/application/events"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	libtime "github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger-v3-poc/internal/application/events"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 )
 
 // webhookReceiver collects HTTP requests for test assertions.
@@ -40,6 +42,7 @@ type receivedWebhook struct {
 func (r *webhookReceiver) handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		body, _ := io.ReadAll(req.Body)
+
 		r.mu.Lock()
 		r.requests = append(r.requests, receivedWebhook{
 			Body:        body,
@@ -57,8 +60,10 @@ func (r *webhookReceiver) handler() http.HandlerFunc {
 func (r *webhookReceiver) getRequests() []receivedWebhook {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	out := make([]receivedWebhook, len(r.requests))
 	copy(out, r.requests)
+
 	return out
 }
 
@@ -66,6 +71,7 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 	t.Parallel()
 
 	receiver := &webhookReceiver{}
+
 	server := httptest.NewServer(receiver.handler())
 	defer server.Close()
 
@@ -74,6 +80,7 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "orders")
+
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -113,6 +120,7 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 		Format:   events.FormatJSON,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = sink.Close() }()
 
 	cfg := events.DefaultEmitterConfig()
@@ -121,7 +129,8 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := query.ReadSinkCursor(store,"http-sink")
+		cursor, err := query.ReadSinkCursor(store, "http-sink")
+
 		return err == nil && cursor >= 2
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process all logs")
 
@@ -133,9 +142,9 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 	// Verify CREATED_LEDGER event
 	var evt1 eventspb.Event
 	require.NoError(t, protojson.Unmarshal(reqs[0].Body, &evt1))
-	require.Equal(t, commonpb.EventType_CREATED_LEDGER, evt1.Type)
-	require.Equal(t, "orders", evt1.Ledger)
-	require.Equal(t, uint64(1), evt1.LogSequence)
+	require.Equal(t, commonpb.EventType_CREATED_LEDGER, evt1.GetType())
+	require.Equal(t, "orders", evt1.GetLedger())
+	require.Equal(t, uint64(1), evt1.GetLogSequence())
 	require.Equal(t, "application/json", reqs[0].ContentType)
 	require.Equal(t, "created_ledger", reqs[0].EventType)
 	require.Equal(t, "orders", reqs[0].Ledger)
@@ -144,9 +153,9 @@ func TestHTTPSinkIntegration_PublishAndReceive(t *testing.T) {
 	// Verify COMMITTED_TRANSACTION event
 	var evt2 eventspb.Event
 	require.NoError(t, protojson.Unmarshal(reqs[1].Body, &evt2))
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt2.Type)
-	require.Equal(t, "orders", evt2.Ledger)
-	require.Equal(t, uint64(2), evt2.LogSequence)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt2.GetType())
+	require.Equal(t, "orders", evt2.GetLedger())
+	require.Equal(t, uint64(2), evt2.GetLogSequence())
 	require.Equal(t, "committed_transaction", reqs[1].EventType)
 	require.Equal(t, "2", reqs[1].LogSequence)
 }
@@ -155,7 +164,9 @@ func TestHTTPSinkIntegration_HMACSignature(t *testing.T) {
 	t.Parallel()
 
 	const secret = "test-webhook-secret"
+
 	receiver := &webhookReceiver{}
+
 	server := httptest.NewServer(receiver.handler())
 	defer server.Close()
 
@@ -164,6 +175,7 @@ func TestHTTPSinkIntegration_HMACSignature(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "payments")
+
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -194,6 +206,7 @@ func TestHTTPSinkIntegration_HMACSignature(t *testing.T) {
 		Format:   events.FormatJSON,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = sink.Close() }()
 
 	cfg := events.DefaultEmitterConfig()
@@ -202,7 +215,8 @@ func TestHTTPSinkIntegration_HMACSignature(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := query.ReadSinkCursor(store,"http-hmac-sink")
+		cursor, err := query.ReadSinkCursor(store, "http-hmac-sink")
+
 		return err == nil && cursor >= 1
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process log")
 
@@ -221,6 +235,7 @@ func TestHTTPSinkIntegration_ProtobufFormat(t *testing.T) {
 	t.Parallel()
 
 	receiver := &webhookReceiver{}
+
 	server := httptest.NewServer(receiver.handler())
 	defer server.Close()
 
@@ -229,6 +244,7 @@ func TestHTTPSinkIntegration_ProtobufFormat(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "payments")
+
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -258,6 +274,7 @@ func TestHTTPSinkIntegration_ProtobufFormat(t *testing.T) {
 		Format:   events.FormatProto,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = sink.Close() }()
 
 	cfg := events.DefaultEmitterConfig()
@@ -266,7 +283,8 @@ func TestHTTPSinkIntegration_ProtobufFormat(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := query.ReadSinkCursor(store,"http-proto-sink")
+		cursor, err := query.ReadSinkCursor(store, "http-proto-sink")
+
 		return err == nil && cursor >= 1
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process log")
 
@@ -279,10 +297,10 @@ func TestHTTPSinkIntegration_ProtobufFormat(t *testing.T) {
 	// Deserialize protobuf
 	var evt eventspb.Event
 	require.NoError(t, evt.UnmarshalVT(reqs[0].Body))
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt.Type)
-	require.Equal(t, "payments", evt.Ledger)
-	require.Equal(t, uint64(1), evt.LogSequence)
-	require.NotNil(t, evt.Log, "event should carry the full Log")
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt.GetType())
+	require.Equal(t, "payments", evt.GetLedger())
+	require.Equal(t, uint64(1), evt.GetLogSequence())
+	require.NotNil(t, evt.GetLog(), "event should carry the full Log")
 }
 
 func TestHTTPSinkIntegration_ServerError(t *testing.T) {
@@ -299,6 +317,7 @@ func TestHTTPSinkIntegration_ServerError(t *testing.T) {
 		Format:   events.FormatJSON,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = sink.Close() }()
 
 	// Publish directly (not through emitter) to verify error propagation
@@ -317,11 +336,14 @@ func verifyHMAC(body []byte, secret, signature string) bool {
 	if len(signature) < 8 || signature[:7] != "sha256=" {
 		return false
 	}
+
 	expectedSig, err := hex.DecodeString(signature[7:])
 	if err != nil {
 		return false
 	}
+
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
+
 	return hmac.Equal(mac.Sum(nil), expectedSig)
 }

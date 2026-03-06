@@ -6,8 +6,10 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,7 +36,7 @@ type HTTPSink struct {
 // NewHTTPSink creates a new HTTP webhook sink.
 func NewHTTPSink(cfg HTTPSinkConfig) (*HTTPSink, error) {
 	if cfg.Endpoint == "" {
-		return nil, fmt.Errorf("HTTP sink endpoint is required")
+		return nil, errors.New("HTTP sink endpoint is required")
 	}
 
 	return &HTTPSink{
@@ -51,18 +53,20 @@ func (s *HTTPSink) Publish(ctx context.Context, events []*eventspb.Event) error 
 	for _, event := range events {
 		data, err := SerializeEvent(event, s.format)
 		if err != nil {
-			return fmt.Errorf("serializing event seq=%d: %w", event.LogSequence, err)
+			return fmt.Errorf("serializing event seq=%d: %w", event.GetLogSequence(), err)
 		}
 
 		if err := s.post(ctx, event, data); err != nil {
-			return fmt.Errorf("posting event seq=%d: %w", event.LogSequence, err)
+			return fmt.Errorf("posting event seq=%d: %w", event.GetLogSequence(), err)
 		}
 	}
+
 	return nil
 }
 
 func (s *HTTPSink) Close() error {
 	s.client.CloseIdleConnections()
+
 	return nil
 }
 
@@ -76,10 +80,11 @@ func (s *HTTPSink) post(ctx context.Context, event *eventspb.Event, body []byte)
 	if s.format == FormatProto {
 		contentType = "application/protobuf"
 	}
+
 	req.Header.Set("Content-Type", contentType)
-	req.Header.Set("X-Event-Type", strings.ToLower(event.Type.String()))
-	req.Header.Set("X-Ledger", event.Ledger)
-	req.Header.Set("X-Log-Sequence", fmt.Sprintf("%d", event.LogSequence))
+	req.Header.Set("X-Event-Type", strings.ToLower(event.GetType().String()))
+	req.Header.Set("X-Ledger", event.GetLedger())
+	req.Header.Set("X-Log-Sequence", strconv.FormatUint(event.GetLogSequence(), 10))
 
 	if s.secret != "" {
 		mac := hmac.New(sha256.New, []byte(s.secret))
@@ -91,10 +96,12 @@ func (s *HTTPSink) post(ctx context.Context, event *eventspb.Event, body []byte)
 	if err != nil {
 		return fmt.Errorf("sending request: %w", err)
 	}
+
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
 	}
+
 	return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 }

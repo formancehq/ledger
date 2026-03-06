@@ -2,16 +2,18 @@ package logs
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"time"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewListCommand creates the logs list command.
@@ -38,6 +40,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -64,14 +67,17 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	var entries []*commonpb.Log
+
 	for {
 		log, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			return cmdutil.FormatGRPCError("receiving log", err)
 		}
+
 		entries = append(entries, log)
 		if pageSize > 0 && uint32(len(entries)) >= pageSize {
 			break
@@ -81,11 +87,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(entries)
 	}
 
 	if len(entries) == 0 {
 		pterm.Info.Println("No logs found.")
+
 		return nil
 	}
 
@@ -105,11 +113,11 @@ func printLog(log *commonpb.Log) {
 
 	ledgerStr := ""
 	if ledgerName != "" {
-		ledgerStr = fmt.Sprintf(" ledger=%s", pterm.Cyan(ledgerName))
+		ledgerStr = " ledger=" + pterm.Cyan(ledgerName)
 	}
 
 	pterm.Printf("  #%-6d %s%s  %s\n",
-		log.Sequence,
+		log.GetSequence(),
 		pterm.Green(typeDesc),
 		ledgerStr,
 		pterm.Gray(formatLogDetails(log)),
@@ -118,28 +126,32 @@ func printLog(log *commonpb.Log) {
 
 // describeLogPayload returns a human-readable type and ledger name from a log payload.
 func describeLogPayload(log *commonpb.Log) (string, string) {
-	if log.Payload == nil {
+	if log.GetPayload() == nil {
 		return "UNKNOWN", ""
 	}
-	switch t := log.Payload.Type.(type) {
+
+	switch t := log.GetPayload().GetType().(type) {
 	case *commonpb.LogPayload_CreateLedger:
 		name := ""
-		if t.CreateLedger != nil && t.CreateLedger.Info != nil {
-			name = t.CreateLedger.Info.Name
+		if t.CreateLedger != nil && t.CreateLedger.GetInfo() != nil {
+			name = t.CreateLedger.GetInfo().GetName()
 		}
+
 		return "CREATE_LEDGER", name
 	case *commonpb.LogPayload_DeleteLedger:
 		name := ""
-		if t.DeleteLedger != nil && t.DeleteLedger.Info != nil {
-			name = t.DeleteLedger.Info.Name
+		if t.DeleteLedger != nil && t.DeleteLedger.GetInfo() != nil {
+			name = t.DeleteLedger.GetInfo().GetName()
 		}
+
 		return "DELETE_LEDGER", name
 	case *commonpb.LogPayload_Apply:
-		if t.Apply == nil || t.Apply.Log == nil {
+		if t.Apply == nil || t.Apply.GetLog() == nil {
 			return "APPLY", ""
 		}
-		ledgerName := t.Apply.LedgerName
-		switch t.Apply.Log.Data.Payload.(type) {
+
+		ledgerName := t.Apply.GetLedgerName()
+		switch t.Apply.GetLog().GetData().GetPayload().(type) {
 		case *commonpb.LedgerLogPayload_CreatedTransaction:
 			return "CREATE_TX", ledgerName
 		case *commonpb.LedgerLogPayload_RevertedTransaction:
@@ -186,9 +198,10 @@ func describeLogPayload(log *commonpb.Log) (string, string) {
 	case *commonpb.LogPayload_SetAuditConfig:
 		return "SET_AUDIT_CFG", ""
 	case *commonpb.LogPayload_PromoteLedger:
-		if t.PromoteLedger != nil && t.PromoteLedger.Info != nil {
-			return "PROMOTE_LEDGER", t.PromoteLedger.Info.Name
+		if t.PromoteLedger != nil && t.PromoteLedger.GetInfo() != nil {
+			return "PROMOTE_LEDGER", t.PromoteLedger.GetInfo().GetName()
 		}
+
 		return "PROMOTE_LEDGER", ""
 	default:
 		return "UNKNOWN", ""
@@ -197,46 +210,52 @@ func describeLogPayload(log *commonpb.Log) (string, string) {
 
 // formatLogDetails returns additional details for a log entry.
 func formatLogDetails(log *commonpb.Log) string {
-	if log.Payload == nil {
+	if log.GetPayload() == nil {
 		return ""
 	}
-	switch t := log.Payload.Type.(type) {
+
+	switch t := log.GetPayload().GetType().(type) {
 	case *commonpb.LogPayload_Apply:
-		if t.Apply == nil || t.Apply.Log == nil {
+		if t.Apply == nil || t.Apply.GetLog() == nil {
 			return ""
 		}
-		ledgerLog := t.Apply.Log
+
+		ledgerLog := t.Apply.GetLog()
+
 		ts := ""
-		if ledgerLog.Date != nil {
-			ts = ledgerLog.Date.AsTime().Format(time.RFC3339)
+		if ledgerLog.GetDate() != nil {
+			ts = ledgerLog.GetDate().AsTime().Format(time.RFC3339)
 		}
-		switch p := ledgerLog.Data.Payload.(type) {
+
+		switch p := ledgerLog.GetData().GetPayload().(type) {
 		case *commonpb.LedgerLogPayload_CreatedTransaction:
-			if p.CreatedTransaction != nil && p.CreatedTransaction.Transaction != nil {
-				return fmt.Sprintf("tx=%d %s", p.CreatedTransaction.Transaction.Id, ts)
+			if p.CreatedTransaction != nil && p.CreatedTransaction.GetTransaction() != nil {
+				return fmt.Sprintf("tx=%d %s", p.CreatedTransaction.GetTransaction().GetId(), ts)
 			}
 		case *commonpb.LedgerLogPayload_RevertedTransaction:
 			if p.RevertedTransaction != nil {
-				return fmt.Sprintf("reverted_tx=%d %s", p.RevertedTransaction.RevertedTransactionId, ts)
+				return fmt.Sprintf("reverted_tx=%d %s", p.RevertedTransaction.GetRevertedTransactionId(), ts)
 			}
 		}
+
 		return ts
 	case *commonpb.LogPayload_CreateLedger:
-		if t.CreateLedger != nil && t.CreateLedger.Info != nil && t.CreateLedger.Info.CreatedAt != nil {
-			return t.CreateLedger.Info.CreatedAt.AsTime().Format(time.RFC3339)
+		if t.CreateLedger != nil && t.CreateLedger.GetInfo() != nil && t.CreateLedger.GetInfo().GetCreatedAt() != nil {
+			return t.CreateLedger.GetInfo().GetCreatedAt().AsTime().Format(time.RFC3339)
 		}
 	case *commonpb.LogPayload_SetMaintenanceMode:
 		if t.SetMaintenanceMode != nil {
-			return fmt.Sprintf("enabled=%v", t.SetMaintenanceMode.Enabled)
+			return fmt.Sprintf("enabled=%v", t.SetMaintenanceMode.GetEnabled())
 		}
 	case *commonpb.LogPayload_SetPeriodSchedule:
 		if t.SetPeriodSchedule != nil {
-			return fmt.Sprintf("cron=%s", t.SetPeriodSchedule.Cron)
+			return "cron=" + t.SetPeriodSchedule.GetCron()
 		}
 	case *commonpb.LogPayload_SetAuditConfig:
 		if t.SetAuditConfig != nil {
-			return fmt.Sprintf("enabled=%v", t.SetAuditConfig.Enabled)
+			return fmt.Sprintf("enabled=%v", t.SetAuditConfig.GetEnabled())
 		}
 	}
+
 	return ""
 }

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
@@ -53,6 +54,7 @@ func (ps *PeriodScheduler) Stop() {
 // loop is the main scheduler loop.
 func (ps *PeriodScheduler) loop(stop <-chan struct{}) {
 	var timer *time.Timer
+
 	defer func() {
 		if timer != nil {
 			timer.Stop()
@@ -67,6 +69,7 @@ func (ps *PeriodScheduler) loop(stop <-chan struct{}) {
 		cronExpr := ps.getPeriodSchedule()
 		if cronExpr == "" {
 			timer = nil
+
 			return nil
 		}
 
@@ -76,15 +79,15 @@ func (ps *PeriodScheduler) loop(stop <-chan struct{}) {
 				"cron":  cronExpr,
 				"error": err,
 			}).Errorf("Invalid period schedule cron expression, disabling scheduler")
+
 			timer = nil
+
 			return nil
 		}
 
 		nextFire := schedule.Next(time.Now())
-		delay := time.Until(nextFire)
-		if delay < 0 {
-			delay = 0
-		}
+
+		delay := max(time.Until(nextFire), 0)
 
 		ps.logger.WithFields(map[string]any{
 			"cron":     cronExpr,
@@ -92,6 +95,7 @@ func (ps *PeriodScheduler) loop(stop <-chan struct{}) {
 		}).Infof("Period scheduler armed")
 
 		timer = time.NewTimer(delay)
+
 		return timer.C
 	}
 
@@ -108,6 +112,7 @@ func (ps *PeriodScheduler) loop(stop <-chan struct{}) {
 				ps.logger.Infof("Period scheduler firing: proposing ClosePeriod")
 				ps.proposeFn()
 			}
+
 			timerCh = resetTimer()
 		}
 	}

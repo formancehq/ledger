@@ -4,11 +4,12 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestHLCTimestamp(t *testing.T) {
@@ -22,7 +23,7 @@ func TestHLCTimestamp(t *testing.T) {
 
 		result := machine.hlcTimestamp(&commonpb.Timestamp{Data: 2000})
 
-		require.Equal(t, uint64(2000), result.Data)
+		require.Equal(t, uint64(2000), result.GetData())
 		require.Equal(t, uint64(2000), machine.lastAppliedTimestamp)
 	})
 
@@ -34,7 +35,7 @@ func TestHLCTimestamp(t *testing.T) {
 
 		result := machine.hlcTimestamp(&commonpb.Timestamp{Data: 3000})
 
-		require.Equal(t, uint64(5001), result.Data)
+		require.Equal(t, uint64(5001), result.GetData())
 		require.Equal(t, uint64(5001), machine.lastAppliedTimestamp)
 	})
 
@@ -46,7 +47,7 @@ func TestHLCTimestamp(t *testing.T) {
 
 		result := machine.hlcTimestamp(&commonpb.Timestamp{Data: 5000})
 
-		require.Equal(t, uint64(5001), result.Data)
+		require.Equal(t, uint64(5001), result.GetData())
 		require.Equal(t, uint64(5001), machine.lastAppliedTimestamp)
 	})
 
@@ -58,11 +59,12 @@ func TestHLCTimestamp(t *testing.T) {
 
 		// Simulate a sequence of proposals with varying dates
 		proposalDates := []uint64{100, 200, 150, 150, 300, 250, 250, 250}
+
 		var timestamps []uint64
 
 		for _, date := range proposalDates {
 			result := machine.hlcTimestamp(&commonpb.Timestamp{Data: date})
-			timestamps = append(timestamps, result.Data)
+			timestamps = append(timestamps, result.GetData())
 		}
 
 		// Verify strict monotonicity: each timestamp > previous
@@ -199,7 +201,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		snapshot := &raftcmdpb.MemorySnapshot{}
 		err = proto.Unmarshal(snapshotData, snapshot)
 		require.NoError(t, err)
-		require.Equal(t, uint64(9999999), snapshot.LastAppliedTimestamp)
+		require.Equal(t, uint64(9999999), snapshot.GetLastAppliedTimestamp())
 	})
 
 	t.Run("monotonicity across multiple entries", func(t *testing.T) {
@@ -240,6 +242,7 @@ func TestHLCTimestampIntegration(t *testing.T) {
 			)
 			require.NoError(t, err)
 			require.NoError(t, result.Results[0].Error)
+
 			timestamps = append(timestamps, machine.lastAppliedTimestamp)
 		}
 

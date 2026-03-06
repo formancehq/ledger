@@ -5,16 +5,19 @@ import (
 	"crypto/rand"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb"
 )
 
 func generateTestKeypair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	t.Helper()
+
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
+
 	return pub, priv
 }
 
@@ -34,22 +37,22 @@ func TestSignAndVerifyRoundTrip(t *testing.T) {
 
 	err := Sign(req, "key-1", priv)
 	require.NoError(t, err)
-	require.NotNil(t, req.Signature)
-	require.Equal(t, "key-1", req.Signature.KeyId)
-	require.Len(t, req.Signature.Signature, ed25519.SignatureSize)
-	require.NotEmpty(t, req.Signature.SignedPayload)
+	require.NotNil(t, req.GetSignature())
+	require.Equal(t, "key-1", req.GetSignature().GetKeyId())
+	require.Len(t, req.GetSignature().GetSignature(), ed25519.SignatureSize)
+	require.NotEmpty(t, req.GetSignature().GetSignedPayload())
 
 	// Verify succeeds with correct key
-	err = Verify(req.Signature, pub)
+	err = Verify(req.GetSignature(), pub)
 	require.NoError(t, err)
 
 	// Extract request
-	extracted, err := ExtractRequest(req.Signature)
+	extracted, err := ExtractRequest(req.GetSignature())
 	require.NoError(t, err)
-	require.Equal(t, "test-key", extracted.IdempotencyKey)
-	require.Equal(t, "my-ledger", extracted.GetCreateLedger().Name)
+	require.Equal(t, "test-key", extracted.GetIdempotencyKey())
+	require.Equal(t, "my-ledger", extracted.GetCreateLedger().GetName())
 	// Extracted request should have no signature
-	require.Nil(t, extracted.Signature)
+	require.Nil(t, extracted.GetSignature())
 }
 
 func TestVerifyWrongKey(t *testing.T) {
@@ -67,7 +70,7 @@ func TestVerifyWrongKey(t *testing.T) {
 	err := Sign(req, "key-1", priv)
 	require.NoError(t, err)
 
-	err = Verify(req.Signature, otherPub)
+	err = Verify(req.GetSignature(), otherPub)
 	require.ErrorIs(t, err, ErrInvalidSignature)
 }
 
@@ -88,7 +91,7 @@ func TestVerifyModifiedPayload(t *testing.T) {
 	// Tamper with signed_payload
 	req.Signature.SignedPayload[0] ^= 0xFF
 
-	err = Verify(req.Signature, pub)
+	err = Verify(req.GetSignature(), pub)
 	require.ErrorIs(t, err, ErrInvalidSignature)
 }
 
@@ -109,7 +112,7 @@ func TestVerifyModifiedSignature(t *testing.T) {
 	// Tamper with signature
 	req.Signature.Signature[0] ^= 0xFF
 
-	err = Verify(req.Signature, pub)
+	err = Verify(req.GetSignature(), pub)
 	require.ErrorIs(t, err, ErrInvalidSignature)
 }
 
@@ -144,8 +147,8 @@ func TestSignPayload(t *testing.T) {
 	payload := []byte("hello world")
 
 	sig := SignPayload(payload, "my-key", priv)
-	require.Equal(t, "my-key", sig.KeyId)
-	require.Equal(t, payload, sig.SignedPayload)
+	require.Equal(t, "my-key", sig.GetKeyId())
+	require.Equal(t, payload, sig.GetSignedPayload())
 
 	err := Verify(sig, pub)
 	require.NoError(t, err)
@@ -166,10 +169,10 @@ func TestExtractRequestPreservesContent(t *testing.T) {
 	err := Sign(original, "key-1", priv)
 	require.NoError(t, err)
 
-	extracted, err := ExtractRequest(original.Signature)
+	extracted, err := ExtractRequest(original.GetSignature())
 	require.NoError(t, err)
-	require.Equal(t, "idem-123", extracted.IdempotencyKey)
-	require.Equal(t, "old-ledger", extracted.GetDeleteLedger().Name)
+	require.Equal(t, "idem-123", extracted.GetIdempotencyKey())
+	require.Equal(t, "old-ledger", extracted.GetDeleteLedger().GetName())
 }
 
 func TestVerifyInvalidSignatureLength(t *testing.T) {
@@ -234,13 +237,13 @@ func TestSignDoesNotMutateOriginalFields(t *testing.T) {
 	require.NoError(t, err)
 
 	// Original request fields should be unchanged
-	require.Equal(t, "key-abc", req.IdempotencyKey)
-	require.Equal(t, "test", req.GetCreateLedger().Name)
+	require.Equal(t, "key-abc", req.GetIdempotencyKey())
+	require.Equal(t, "test", req.GetCreateLedger().GetName())
 
 	// The signed_payload should encode the request without signature
 	inner := &servicepb.Request{}
-	err = proto.Unmarshal(req.Signature.SignedPayload, inner)
+	err = proto.Unmarshal(req.GetSignature().GetSignedPayload(), inner)
 	require.NoError(t, err)
-	require.Nil(t, inner.Signature)
-	require.Equal(t, "key-abc", inner.IdempotencyKey)
+	require.Nil(t, inner.GetSignature())
+	require.Equal(t, "key-abc", inner.GetIdempotencyKey())
 }

@@ -64,6 +64,7 @@ func (s *Interceptor) AppendCommittedEntries(ctx context.Context, entries ...raf
 	if interceptor != nil {
 		return interceptor(ctx, s.delegate, entries)
 	}
+
 	return s.delegate.AppendCommittedEntries(ctx, entries...)
 }
 
@@ -76,6 +77,7 @@ func (s *Interceptor) End() (*Position, error) {
 	if interceptor != nil {
 		return interceptor(s.delegate)
 	}
+
 	return s.delegate.End()
 }
 
@@ -93,6 +95,7 @@ func (s *Interceptor) ReplayUntil(
 	if interceptor != nil {
 		return interceptor(ctx, s.delegate, end, lastApplied, applyFn)
 	}
+
 	return s.delegate.ReplayUntil(ctx, end, lastApplied, applyFn)
 }
 
@@ -105,6 +108,7 @@ func (s *Interceptor) Prune(lastApplied uint64) error {
 	if interceptor != nil {
 		return interceptor(s.delegate, lastApplied)
 	}
+
 	return s.delegate.Prune(lastApplied)
 }
 
@@ -117,6 +121,7 @@ func (s *Interceptor) Close() error {
 	if interceptor != nil {
 		return interceptor(s.delegate)
 	}
+
 	return s.delegate.Close()
 }
 

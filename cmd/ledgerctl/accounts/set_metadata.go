@@ -2,14 +2,16 @@ package accounts
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewSetMetadataCommand creates the accounts set-metadata command.
@@ -46,9 +48,11 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -68,7 +72,8 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 
 	if address == "" {
 		pterm.Error.Println("Account address is required")
-		return cmdutil.Displayed(fmt.Errorf("account address is required"))
+
+		return cmdutil.Displayed(errors.New("account address is required"))
 	}
 
 	metadataFlags, _ := cmd.Flags().GetStringArray("metadata")
@@ -84,25 +89,31 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return fmt.Errorf("failed to read input: %w", err)
 			}
+
 			if input == "" {
 				break
 			}
+
 			metadataFlags = append(metadataFlags, input)
 		}
 	}
 
 	if len(metadataFlags) == 0 {
 		pterm.Warning.Println("No metadata provided")
+
 		return nil
 	}
 
 	metadata := make(map[string]string)
+
 	for _, m := range metadataFlags {
 		key, value, err := cmdutil.ParseKeyValue(m)
 		if err != nil {
 			pterm.Error.Printfln("Invalid metadata format: %s", m)
+
 			return cmdutil.Displayed(fmt.Errorf("invalid metadata format %q: %w", m, err))
 		}
+
 		metadata[key] = value
 	}
 
@@ -133,14 +144,16 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 		},
 	}
 
-	if err := cmdutil.SignRequests(cmd, req.Requests); err != nil {
+	if err := cmdutil.SignRequests(cmd, req.GetRequests()); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, req)
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to set metadata", err)
 	}
 
@@ -154,6 +167,7 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 		}
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(result)
 	}
 

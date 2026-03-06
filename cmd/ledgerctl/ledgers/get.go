@@ -7,11 +7,12 @@ import (
 	"sort"
 	"time"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewGetCommand creates the ledgers get command.
@@ -38,6 +39,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -50,6 +52,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to get ledger", err)
 	}
 
@@ -59,40 +62,43 @@ func runGet(cmd *cobra.Command, args []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(ledger)
 	}
 
 	pterm.Println()
 
-	pterm.Printf("Ledger: %s\n", pterm.Cyan(ledger.Name))
+	pterm.Printf("Ledger: %s\n", pterm.Cyan(ledger.GetName()))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
-	pterm.Printf("Name:       %s\n", ledger.Name)
+	pterm.Printf("Name:       %s\n", ledger.GetName())
+
 	createdAt := "-"
-	if ledger.CreatedAt != nil {
-		createdAt = ledger.CreatedAt.AsTime().Format(time.RFC3339)
+	if ledger.GetCreatedAt() != nil {
+		createdAt = ledger.GetCreatedAt().AsTime().Format(time.RFC3339)
 	}
+
 	pterm.Printf("Created At: %s\n", createdAt)
-	pterm.Printf("Mode:       %s\n", ledgerModeString(ledger.Mode))
+	pterm.Printf("Mode:       %s\n", ledgerModeString(ledger.GetMode()))
 
-	if ledger.MirrorSource != nil {
-		renderMirrorSource(ledger.MirrorSource)
+	if ledger.GetMirrorSource() != nil {
+		renderMirrorSource(ledger.GetMirrorSource())
 	}
 
-	if ledger.MirrorSyncProgress != nil {
-		renderMirrorSyncProgress(ledger.MirrorSyncProgress)
+	if ledger.GetMirrorSyncProgress() != nil {
+		renderMirrorSyncProgress(ledger.GetMirrorSyncProgress())
 	}
 
-	if ledger.MetadataSchema != nil {
-		renderLedgerSchema(ledger.MetadataSchema)
+	if ledger.GetMetadataSchema() != nil {
+		renderLedgerSchema(ledger.GetMetadataSchema())
 	}
 
 	return nil
 }
 
 func renderLedgerSchema(schema *commonpb.MetadataSchema) {
-	hasAccount := len(schema.AccountFields) > 0
-	hasTransaction := len(schema.TransactionFields) > 0
+	hasAccount := len(schema.GetAccountFields()) > 0
+	hasTransaction := len(schema.GetTransactionFields()) > 0
 
 	if !hasAccount && !hasTransaction {
 		return
@@ -104,12 +110,12 @@ func renderLedgerSchema(schema *commonpb.MetadataSchema) {
 
 	if hasAccount {
 		pterm.Println("  Account Fields:")
-		renderFieldSchemaTable(schema.AccountFields)
+		renderFieldSchemaTable(schema.GetAccountFields())
 	}
 
 	if hasTransaction {
 		pterm.Println("  Transaction Fields:")
-		renderFieldSchemaTable(schema.TransactionFields)
+		renderFieldSchemaTable(schema.GetTransactionFields())
 	}
 }
 
@@ -122,12 +128,13 @@ func renderFieldSchemaTable(fields map[string]*commonpb.MetadataFieldSchema) {
 	for k := range fields {
 		keys = append(keys, k)
 	}
+
 	sort.Strings(keys)
 
 	for _, key := range keys {
 		table = append(table, []string{
 			"  " + key,
-			cmdutil.MetadataTypeString(fields[key].Type),
+			cmdutil.MetadataTypeString(fields[key].GetType()),
 		})
 	}
 

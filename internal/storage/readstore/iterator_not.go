@@ -57,10 +57,12 @@ func (it *NotIterator) Next() bool {
 		}
 
 		it.current = uv
+
 		return true
 	}
 
 	it.exhausted = true
+
 	return false
 }
 
@@ -90,6 +92,7 @@ func (it *NotIterator) SeekGE(target []byte) bool {
 
 	if !it.universe.SeekGE(target) {
 		it.exhausted = true
+
 		return false
 	}
 
@@ -108,12 +111,15 @@ func (it *NotIterator) SeekGE(target []byte) bool {
 		if !it.childDone && bytes.Equal(it.childVal, uv) {
 			if !it.universe.Next() {
 				it.exhausted = true
+
 				return false
 			}
+
 			continue
 		}
 
 		it.current = uv
+
 		return true
 	}
 }

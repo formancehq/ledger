@@ -1,7 +1,6 @@
 package commonpb
 
 import (
-	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -66,12 +65,14 @@ func unsignedRange(t MetadataType) (uint64, bool) {
 // IsSignedType returns true for INT8, INT16, INT32, INT64.
 func IsSignedType(t MetadataType) bool {
 	_, _, ok := signedRange(t)
+
 	return ok
 }
 
 // IsUnsignedType returns true for UINT8, UINT16, UINT32, UINT64.
 func IsUnsignedType(t MetadataType) bool {
 	_, ok := unsignedRange(t)
+
 	return ok
 }
 
@@ -81,7 +82,8 @@ func MetadataValueToString(v *MetadataValue) string {
 	if v == nil {
 		return ""
 	}
-	switch t := v.Type.(type) {
+
+	switch t := v.GetType().(type) {
 	case *MetadataValue_StringValue:
 		return t.StringValue
 	case *MetadataValue_IntValue:
@@ -92,8 +94,9 @@ func MetadataValueToString(v *MetadataValue) string {
 		return strconv.FormatBool(t.BoolValue)
 	case *MetadataValue_NullValue:
 		if t.NullValue != nil {
-			return t.NullValue.Original
+			return t.NullValue.GetOriginal()
 		}
+
 		return ""
 	default:
 		return ""
@@ -107,24 +110,29 @@ func TypeMatches(v *MetadataValue, target MetadataType) bool {
 	if v == nil {
 		return false
 	}
+
 	switch target {
 	case MetadataType_METADATA_TYPE_STRING:
-		_, ok := v.Type.(*MetadataValue_StringValue)
+		_, ok := v.GetType().(*MetadataValue_StringValue)
+
 		return ok
 	case MetadataType_METADATA_TYPE_BOOL:
-		_, ok := v.Type.(*MetadataValue_BoolValue)
+		_, ok := v.GetType().(*MetadataValue_BoolValue)
+
 		return ok
 	}
 
 	// Signed integer types: stored as int_value, range-checked.
 	if lo, hi, ok := signedRange(target); ok {
-		iv, isInt := v.Type.(*MetadataValue_IntValue)
+		iv, isInt := v.GetType().(*MetadataValue_IntValue)
+
 		return isInt && iv.IntValue >= lo && iv.IntValue <= hi
 	}
 
 	// Unsigned integer types: stored as uint_value, range-checked.
 	if hi, ok := unsignedRange(target); ok {
-		uv, isUint := v.Type.(*MetadataValue_UintValue)
+		uv, isUint := v.GetType().(*MetadataValue_UintValue)
+
 		return isUint && uv.UintValue <= hi
 	}
 
@@ -138,10 +146,12 @@ func ConvertMetadataValue(v *MetadataValue, target MetadataType) *MetadataValue 
 	if v == nil {
 		return NewNullValue("")
 	}
+
 	if TypeMatches(v, target) {
 		return v
 	}
-	switch t := v.Type.(type) {
+
+	switch t := v.GetType().(type) {
 	case *MetadataValue_StringValue:
 		return convertFromString(t.StringValue, target)
 	case *MetadataValue_IntValue:
@@ -175,18 +185,22 @@ func convertFromString(s string, target MetadataType) *MetadataValue {
 
 	case IsSignedType(target):
 		lo, hi, _ := signedRange(target)
+
 		n, err := strconv.ParseInt(s, 10, 64)
 		if err != nil || n < lo || n > hi {
 			return NewNullValue(s)
 		}
+
 		return NewIntValue(n)
 
 	case IsUnsignedType(target):
 		hi, _ := unsignedRange(target)
+
 		n, err := strconv.ParseUint(s, 10, 64)
 		if err != nil || n > hi {
 			return NewNullValue(s)
 		}
+
 		return NewUintValue(n)
 
 	default:
@@ -196,6 +210,7 @@ func convertFromString(s string, target MetadataType) *MetadataValue {
 
 func convertFromInt64(n int64, target MetadataType) *MetadataValue {
 	s := strconv.FormatInt(n, 10)
+
 	switch {
 	case target == MetadataType_METADATA_TYPE_STRING:
 		return NewStringValue(s)
@@ -208,6 +223,7 @@ func convertFromInt64(n int64, target MetadataType) *MetadataValue {
 		if n < lo || n > hi {
 			return NewNullValue(s)
 		}
+
 		return NewIntValue(n)
 
 	case IsUnsignedType(target):
@@ -215,6 +231,7 @@ func convertFromInt64(n int64, target MetadataType) *MetadataValue {
 		if n < 0 || uint64(n) > hi {
 			return NewNullValue(s)
 		}
+
 		return NewUintValue(uint64(n))
 
 	default:
@@ -224,6 +241,7 @@ func convertFromInt64(n int64, target MetadataType) *MetadataValue {
 
 func convertFromUint64(n uint64, target MetadataType) *MetadataValue {
 	s := strconv.FormatUint(n, 10)
+
 	switch {
 	case target == MetadataType_METADATA_TYPE_STRING:
 		return NewStringValue(s)
@@ -236,6 +254,7 @@ func convertFromUint64(n uint64, target MetadataType) *MetadataValue {
 		if n > uint64(hi) {
 			return NewNullValue(s)
 		}
+
 		return NewIntValue(int64(n))
 
 	case IsUnsignedType(target):
@@ -243,6 +262,7 @@ func convertFromUint64(n uint64, target MetadataType) *MetadataValue {
 		if n > hi {
 			return NewNullValue(s)
 		}
+
 		return NewUintValue(n)
 
 	default:
@@ -253,7 +273,7 @@ func convertFromUint64(n uint64, target MetadataType) *MetadataValue {
 func convertFromBool(b bool, target MetadataType) *MetadataValue {
 	switch {
 	case target == MetadataType_METADATA_TYPE_STRING:
-		return NewStringValue(fmt.Sprintf("%t", b))
+		return NewStringValue(strconv.FormatBool(b))
 
 	case target == MetadataType_METADATA_TYPE_BOOL:
 		return NewBoolValue(b)
@@ -262,16 +282,18 @@ func convertFromBool(b bool, target MetadataType) *MetadataValue {
 		if b {
 			return NewIntValue(1)
 		}
+
 		return NewIntValue(0)
 
 	case IsUnsignedType(target):
 		if b {
 			return NewUintValue(1)
 		}
+
 		return NewUintValue(0)
 
 	default:
-		return NewNullValue(fmt.Sprintf("%t", b))
+		return NewNullValue(strconv.FormatBool(b))
 	}
 }
 
@@ -279,7 +301,8 @@ func convertFromNull(nv *NullValue, target MetadataType) *MetadataValue {
 	if nv == nil {
 		return NewNullValue("")
 	}
-	original := nv.Original
+
+	original := nv.GetOriginal()
 
 	switch {
 	case target == MetadataType_METADATA_TYPE_STRING:
@@ -298,18 +321,22 @@ func convertFromNull(nv *NullValue, target MetadataType) *MetadataValue {
 
 	case IsSignedType(target):
 		lo, hi, _ := signedRange(target)
+
 		n, err := strconv.ParseInt(original, 10, 64)
 		if err != nil || n < lo || n > hi {
 			return NewNullValue(original)
 		}
+
 		return NewIntValue(n)
 
 	case IsUnsignedType(target):
 		hi, _ := unsignedRange(target)
+
 		n, err := strconv.ParseUint(original, 10, 64)
 		if err != nil || n > hi {
 			return NewNullValue(original)
 		}
+
 		return NewUintValue(n)
 
 	default:

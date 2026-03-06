@@ -32,12 +32,15 @@ func (c *PoolConfig) SetDefaults() {
 	if c.BackoffBaseDelay == 0 {
 		c.BackoffBaseDelay = 100 * time.Millisecond
 	}
+
 	if c.BackoffMaxDelay == 0 {
 		c.BackoffMaxDelay = time.Second
 	}
+
 	if c.BackoffMultiplier == 0 {
 		c.BackoffMultiplier = 1.6
 	}
+
 	if c.BackoffJitter == 0 {
 		c.BackoffJitter = 0.2
 	}
@@ -71,11 +74,12 @@ func dialOptions(creds credentials.TransportCredentials, cfg PoolConfig) []grpc.
 			grpc.UseCompressor(gzip.Name),
 		))
 	}
+
 	return opts
 }
 
 // ConnectionPool manages raw gRPC connections for peers
-// This pool can be reused for different services that need gRPC connections
+// This pool can be reused for different services that need gRPC connections.
 type ConnectionPool struct {
 	mu          sync.Mutex
 	peers       map[uint64]string // peer ID -> address
@@ -84,9 +88,10 @@ type ConnectionPool struct {
 	config      PoolConfig
 }
 
-// NewConnectionPool creates a new gRPC connection pool
+// NewConnectionPool creates a new gRPC connection pool.
 func NewConnectionPool(creds credentials.TransportCredentials, cfg PoolConfig) *ConnectionPool {
 	cfg.SetDefaults()
+
 	return &ConnectionPool{
 		peers:       make(map[uint64]string),
 		connections: make(map[uint64]*grpc.ClientConn),
@@ -139,12 +144,13 @@ func (p *ConnectionPool) RestartConnection(id uint64) error {
 	}
 
 	var err error
+
 	p.connections[id], err = p.connect(p.peers[id])
 
 	return err
 }
 
-// GetConnection returns the raw gRPC connection for a specific peer, if it exists
+// GetConnection returns the raw gRPC connection for a specific peer, if it exists.
 func (p *ConnectionPool) GetConnection(peerID uint64) *grpc.ClientConn {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -169,6 +175,7 @@ func (p *ConnectionPool) PeerIDs() []uint64 {
 	for id := range p.peers {
 		ids = append(ids, id)
 	}
+
 	return ids
 }
 
@@ -183,22 +190,25 @@ func (p *ConnectionPool) RemovePeer(id uint64) error {
 	}
 
 	err := conn.Close()
+
 	delete(p.connections, id)
 	delete(p.peers, id)
 
 	return err
 }
 
-// Close closes all gRPC connections
+// Close closes all gRPC connections.
 func (p *ConnectionPool) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	for _, conn := range p.connections {
-		if err := conn.Close(); err != nil {
+		err := conn.Close()
+		if err != nil {
 			return err
 		}
 	}
+
 	p.connections = make(map[uint64]*grpc.ClientConn)
 	p.peers = make(map[uint64]string)
 

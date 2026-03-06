@@ -6,10 +6,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 )
 
 // NewFinalizeCommand creates the restore finalize command.
@@ -34,6 +35,7 @@ func runFinalize(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -54,6 +56,7 @@ func runFinalize(cmd *cobra.Command, _ []string) error {
 		pterm.Print("Continue? [y/N] ")
 
 		reader := bufio.NewReader(os.Stdin)
+
 		answer, err := reader.ReadString('\n')
 		if err != nil {
 			return fmt.Errorf("reading confirmation: %w", err)
@@ -61,6 +64,7 @@ func runFinalize(cmd *cobra.Command, _ []string) error {
 
 		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y") {
 			pterm.Info.Println("Restore cancelled")
+
 			return nil
 		}
 	}
@@ -71,7 +75,7 @@ func runFinalize(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to finalize restore", err)
 	}
 
-	pterm.Success.Println(finalizeResp.Message)
+	pterm.Success.Println(finalizeResp.GetMessage())
 
 	return nil
 }

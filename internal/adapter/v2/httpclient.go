@@ -17,5 +17,6 @@ func NewOAuth2ClientCredentialsClient(clientID, clientSecret, tokenEndpoint stri
 		TokenURL:     tokenEndpoint,
 		Scopes:       scopes,
 	}
+
 	return cfg.Client(context.Background())
 }

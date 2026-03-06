@@ -20,6 +20,7 @@ func NewSharedState() *SharedState {
 func (s *SharedState) MaintenanceMode() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	return s.maintenanceMode
 }
 
@@ -27,6 +28,7 @@ func (s *SharedState) MaintenanceMode() bool {
 func (s *SharedState) SetMaintenanceMode(enabled bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.maintenanceMode = enabled
 }
 
@@ -34,6 +36,7 @@ func (s *SharedState) SetMaintenanceMode(enabled bool) {
 func (s *SharedState) RequireSignatures() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	return s.requireSignatures
 }
 
@@ -41,6 +44,7 @@ func (s *SharedState) RequireSignatures() bool {
 func (s *SharedState) SetRequireSignatures(require bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.requireSignatures = require
 }
 
@@ -48,6 +52,7 @@ func (s *SharedState) SetRequireSignatures(require bool) {
 func (s *SharedState) AuditEnabled() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	return s.auditEnabled
 }
 
@@ -55,6 +60,7 @@ func (s *SharedState) AuditEnabled() bool {
 func (s *SharedState) SetAuditEnabled(enabled bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.auditEnabled = enabled
 }
 
@@ -62,6 +68,7 @@ func (s *SharedState) SetAuditEnabled(enabled bool) {
 func (s *SharedState) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.maintenanceMode = false
 	s.requireSignatures = false
 	s.auditEnabled = false

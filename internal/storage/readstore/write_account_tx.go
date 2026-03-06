@@ -6,6 +6,7 @@ import bolt "go.etcd.io/bbolt"
 func WriteAccountTxMapping(tx *bolt.Tx, kb *KeyBuilder, ledger, account string, txID uint64) error {
 	b := tx.Bucket(BucketAccountTx)
 	key := AccountTxKey(kb, ledger, account, txID)
+
 	return b.Put(key, nil)
 }
 
@@ -13,6 +14,7 @@ func WriteAccountTxMapping(tx *bolt.Tx, kb *KeyBuilder, ledger, account string, 
 func WriteSourceAccountTxMapping(tx *bolt.Tx, kb *KeyBuilder, ledger, account string, txID uint64) error {
 	b := tx.Bucket(BucketSourceAccountTx)
 	key := AccountTxKey(kb, ledger, account, txID)
+
 	return b.Put(key, nil)
 }
 
@@ -20,5 +22,6 @@ func WriteSourceAccountTxMapping(tx *bolt.Tx, kb *KeyBuilder, ledger, account st
 func WriteDestAccountTxMapping(tx *bolt.Tx, kb *KeyBuilder, ledger, account string, txID uint64) error {
 	b := tx.Bucket(BucketDestAccountTx)
 	key := AccountTxKey(kb, ledger, account, txID)
+
 	return b.Put(key, nil)
 }

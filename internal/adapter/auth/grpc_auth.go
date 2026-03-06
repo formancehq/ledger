@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/oidc"
 	jose "github.com/go-jose/go-jose/v4"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -16,6 +14,9 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/oidc"
 )
 
 var authTracer = otel.Tracer("auth")
@@ -39,12 +40,14 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 
 	if !cfg.Enabled {
 		span.SetAttributes(attribute.Bool("auth.enabled", false))
+
 		return ctx, nil
 	}
 
 	token, err := bearerTokenFromContext(ctx)
 	if err != nil {
 		logAuthFailure(ctx, "", "missing_token", err)
+
 		return ctx, status.Error(codes.Unauthenticated, err.Error())
 	}
 
@@ -53,6 +56,7 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 	claims, err := validateToken(ctx, token, cfg)
 	if err != nil {
 		logAuthFailure(ctx, keyID, "invalid_token", err)
+
 		return ctx, status.Errorf(codes.Unauthenticated, "invalid token: %v", err)
 	}
 
@@ -63,6 +67,7 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 
 	if !HasScope(effective, scopes...) {
 		logAuthFailure(ctx, keyID, "missing_scope", fmt.Errorf("required: %v, have: %v", scopes, claims.Scopes))
+
 		return ctx, status.Errorf(codes.PermissionDenied,
 			"missing required scope (required: %v)", scopes)
 	}
@@ -111,6 +116,7 @@ func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.Acc
 		string(jose.RS256), string(jose.ES256), string(jose.PS256),
 		string(jose.EdDSA),
 	}
+
 	sigAlg, err := oidc.CheckSignature(ctx, decrypted, payload, supportedAlgs, cfg.KeySet)
 	if err != nil {
 		return nil, err
@@ -121,13 +127,16 @@ func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.Acc
 		// Enforce key-level scope restrictions if configured.
 		if cfg.Ed25519AllowedScopes != nil {
 			keyID := extractKeyID(decrypted)
-			if err := enforceAllowedScopes(claims.Scopes, keyID, cfg.Ed25519AllowedScopes); err != nil {
+
+			err := enforceAllowedScopes(claims.Scopes, keyID, cfg.Ed25519AllowedScopes)
+			if err != nil {
 				return nil, err
 			}
 		}
 	} else {
 		// OIDC token: verify issuer as before.
-		if err := oidc.CheckIssuer(claims, cfg.Issuer); err != nil {
+		err := oidc.CheckIssuer(claims, cfg.Issuer)
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -145,6 +154,7 @@ func extractKeyID(token string) string {
 	if err != nil || len(jws.Signatures) == 0 {
 		return ""
 	}
+
 	return jws.Signatures[0].Header.KeyID
 }
 
@@ -171,6 +181,7 @@ func logAuthFailure(ctx context.Context, keyID, reason string, err error) {
 
 	// Record on the OTEL span so auth failures are always exported (error-aware sampling).
 	span := trace.SpanFromContext(ctx)
+
 	attrs := []attribute.KeyValue{
 		attribute.String("auth.failure.reason", reason),
 		attribute.String("auth.failure.error", err.Error()),
@@ -178,9 +189,11 @@ func logAuthFailure(ctx context.Context, keyID, reason string, err error) {
 	if keyID != "" {
 		attrs = append(attrs, attribute.String("auth.key_id", keyID))
 	}
+
 	if remoteAddr != "" {
 		attrs = append(attrs, attribute.String("auth.remote_addr", remoteAddr))
 	}
+
 	span.SetAttributes(attrs...)
 	span.RecordError(err)
 	span.SetStatus(otelcodes.Error, "auth failure: "+reason)

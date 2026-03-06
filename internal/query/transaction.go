@@ -40,6 +40,7 @@ func ReadTransactionUpdates(ctx context.Context, reader dal.PebbleReader, ledger
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for transaction updates: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	var updates []*commonpb.TransactionUpdate
@@ -70,17 +71,21 @@ func FindTransactionCreationLog(ctx context.Context, reader dal.PebbleReader, le
 	}
 
 	var sequence uint64
+
 	for _, update := range updates {
-		for _, ut := range update.Updates {
+		for _, ut := range update.GetUpdates() {
 			if ut.GetTransactionInit() != nil {
-				sequence = update.ByLog
+				sequence = update.GetByLog()
+
 				break
 			}
 		}
+
 		if sequence != 0 {
 			break
 		}
 	}
+
 	if sequence == 0 {
 		return nil, domain.ErrNotFound
 	}
@@ -89,6 +94,7 @@ func FindTransactionCreationLog(ctx context.Context, reader dal.PebbleReader, le
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
 	}
+
 	if log == nil {
 		return nil, domain.ErrNotFound
 	}

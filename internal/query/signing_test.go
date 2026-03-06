@@ -3,9 +3,10 @@ package query_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/stretchr/testify/require"
 )
 
 func TestReadSigningKeys(t *testing.T) {
@@ -25,6 +26,7 @@ func TestReadSigningKeys(t *testing.T) {
 	t.Run("save and load signing keys", func(t *testing.T) {
 		pubKey1 := make([]byte, 32)
 		pubKey2 := make([]byte, 32)
+
 		for i := range pubKey1 {
 			pubKey1[i] = byte(i)
 			pubKey2[i] = byte(i + 100)
@@ -52,6 +54,7 @@ func TestReadSigningKeys(t *testing.T) {
 		require.Len(t, keys, 1)
 		_, hasKey1 := keys["key-1"]
 		require.False(t, hasKey1)
+
 		_, hasKey2 := keys["key-2"]
 		require.True(t, hasKey2)
 	})

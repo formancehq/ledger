@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -16,6 +17,7 @@ import (
 // with discovered flow patterns, temporal stats, volume stats, and metadata keys.
 func AnalyzeTransactions(txns []CompactTransaction, variableThreshold uint32) *servicepb.AnalyzeTransactionsResponse {
 	var totalReverted uint64
+
 	for i := range txns {
 		if txns[i].Reverted {
 			totalReverted++
@@ -24,22 +26,27 @@ func AnalyzeTransactions(txns []CompactTransaction, variableThreshold uint32) *s
 
 	makeIter := func() func() (CompactTransaction, error) {
 		i := 0
+
 		return func() (CompactTransaction, error) {
 			if i >= len(txns) {
 				return CompactTransaction{}, io.EOF
 			}
+
 			ct := txns[i]
 			i++
+
 			return ct, nil
 		}
 	}
 
 	count := totalReverted
+
 	resp, err := AnalyzeTransactionsFromIterators(makeIter(), makeIter(), func() uint64 { return count }, variableThreshold, nil)
 	if err != nil {
 		// Slice iterators never return a non-EOF error.
 		panic(fmt.Sprintf("unexpected error from slice iterator: %v", err))
 	}
+
 	return resp
 }
 
@@ -79,9 +86,11 @@ func (g *txGroupAccum) addTransaction(ct CompactTransaction) {
 		if !g.hasSeen || ts < g.firstSeen {
 			g.firstSeen = ts
 		}
+
 		if !g.hasSeen || ts > g.lastSeen {
 			g.lastSeen = ts
 		}
+
 		g.hasSeen = true
 		hour := time.UnixMicro(int64(ts)).UTC().Hour()
 		g.hours[hour]++
@@ -90,6 +99,7 @@ func (g *txGroupAccum) addTransaction(ct CompactTransaction) {
 	// Volumes
 	for j := range ct.Postings {
 		p := &ct.Postings[j]
+
 		acc, ok := g.volumes[p.Asset]
 		if !ok {
 			acc = &assetAccum{
@@ -99,11 +109,14 @@ func (g *txGroupAccum) addTransaction(ct CompactTransaction) {
 			}
 			g.volumes[p.Asset] = acc
 		}
+
 		acc.total.Add(acc.total, p.Amount)
+
 		acc.count++
 		if p.Amount.Cmp(acc.min) < 0 {
 			acc.min.Set(p.Amount)
 		}
+
 		if p.Amount.Cmp(acc.max) > 0 {
 			acc.max.Set(p.Amount)
 		}
@@ -134,13 +147,16 @@ func (g *txGroupAccum) toFlowPattern() *servicepb.FlowPattern {
 
 			first := time.UnixMicro(int64(g.firstSeen))
 			last := time.UnixMicro(int64(g.lastSeen))
+
 			daySpan := last.Sub(first).Hours() / 24
 			if daySpan < 1 {
 				daySpan = 1
 			}
+
 			stats.TransactionsPerDay = float64(g.count) / daySpan
 		}
-		for h := 0; h < 24; h++ {
+
+		for h := range 24 {
 			if g.hours[h] > 0 {
 				stats.PeakHours = append(stats.PeakHours, &servicepb.HourBucket{
 					Hour:  uint32(h),
@@ -148,16 +164,19 @@ func (g *txGroupAccum) toFlowPattern() *servicepb.FlowPattern {
 				})
 			}
 		}
+
 		pattern.Temporal = stats
 	}
 
 	// Volume stats
 	var volumeStats []*servicepb.AssetVolumeStats
+
 	for asset, acc := range g.volumes {
 		avg := new(big.Int)
 		if acc.count > 0 {
 			avg.Div(acc.total, big.NewInt(int64(acc.count)))
 		}
+
 		volumeStats = append(volumeStats, &servicepb.AssetVolumeStats{
 			Asset:            asset,
 			TotalVolume:      acc.total.String(),
@@ -167,8 +186,9 @@ func (g *txGroupAccum) toFlowPattern() *servicepb.FlowPattern {
 			TransactionCount: acc.count,
 		})
 	}
+
 	sort.Slice(volumeStats, func(i, j int) bool {
-		return volumeStats[i].Asset < volumeStats[j].Asset
+		return volumeStats[i].GetAsset() < volumeStats[j].GetAsset()
 	})
 	pattern.VolumeStats = volumeStats
 
@@ -197,21 +217,29 @@ func AnalyzeTransactionsFromIterators(
 
 	// Pass 1: Build address trie + count totals
 	root := newTrieNode()
-	var totalTransactions uint64
-	var pass1Processed uint64
+
+	var (
+		totalTransactions uint64
+		pass1Processed    uint64
+	)
+
 	for {
 		ct, err := pass1()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			return nil, fmt.Errorf("pass 1 (trie building): %w", err)
 		}
+
 		totalTransactions++
+
 		pass1Processed++
 		if onProgress != nil && pass1Processed%progressReportInterval == 0 {
 			onProgress(pass1Processed, 0)
 		}
+
 		for j := range ct.Postings {
 			insertAddress(root, ct.Postings[j].Source)
 			insertAddress(root, ct.Postings[j].Destination)
@@ -232,12 +260,15 @@ func AnalyzeTransactionsFromIterators(
 	// Pass 2: Normalize + aggregate incrementally
 	addrCache := make(map[string]string)
 	groups := make(map[string]*txGroupAccum)
+
 	var pass2Processed uint64
+
 	for {
 		ct, err := pass2()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			return nil, fmt.Errorf("pass 2 (aggregation): %w", err)
 		}
@@ -260,6 +291,7 @@ func AnalyzeTransactionsFromIterators(
 			}
 			groups[sig] = g
 		}
+
 		g.addTransaction(ct)
 	}
 
@@ -269,11 +301,12 @@ func AnalyzeTransactionsFromIterators(
 	}
 
 	// Sort patterns by transaction count descending, then signature for determinism
-	sort.Slice(resp.FlowPatterns, func(i, j int) bool {
-		if resp.FlowPatterns[i].TransactionCount != resp.FlowPatterns[j].TransactionCount {
-			return resp.FlowPatterns[i].TransactionCount > resp.FlowPatterns[j].TransactionCount
+	sort.Slice(resp.GetFlowPatterns(), func(i, j int) bool {
+		if resp.GetFlowPatterns()[i].GetTransactionCount() != resp.GetFlowPatterns()[j].GetTransactionCount() {
+			return resp.GetFlowPatterns()[i].GetTransactionCount() > resp.GetFlowPatterns()[j].GetTransactionCount()
 		}
-		return resp.FlowPatterns[i].Signature < resp.FlowPatterns[j].Signature
+
+		return resp.GetFlowPatterns()[i].GetSignature() < resp.GetFlowPatterns()[j].GetSignature()
 	})
 
 	return resp, nil
@@ -282,6 +315,7 @@ func AnalyzeTransactionsFromIterators(
 // insertAddress inserts an address into the trie (split by ":").
 func insertAddress(root *trieNode, address string) {
 	segments := strings.Split(address, ":")
+
 	node := root
 	for _, seg := range segments {
 		child, ok := node.children[seg]
@@ -289,8 +323,10 @@ func insertAddress(root *trieNode, address string) {
 			child = newTrieNode()
 			node.children[seg] = child
 		}
+
 		node = child
 	}
+
 	node.terminating++
 }
 
@@ -299,28 +335,35 @@ func insertAddress(root *trieNode, address string) {
 func normalizeAddress(address string, root *trieNode) string {
 	var b strings.Builder
 	b.Grow(len(address) + 16)
+
 	node := root
 	first := true
 	start := 0
+
 	for i := 0; i <= len(address); i++ {
 		if i == len(address) || address[i] == ':' {
 			if !first {
 				b.WriteByte(':')
 			}
+
 			first = false
 			seg := address[start:i]
+
 			if node != nil && node.varPlaceholder != "" {
 				b.WriteString(node.varPlaceholder)
 				node = node.mergedChild
 			} else {
 				b.WriteString(seg)
+
 				if node != nil {
 					node = node.children[seg]
 				}
 			}
+
 			start = i + 1
 		}
 	}
+
 	return b.String()
 }
 
@@ -330,8 +373,10 @@ func cachedNormalizeAddress(address string, root *trieNode, cache map[string]str
 	if cached, ok := cache[address]; ok {
 		return cached
 	}
+
 	result := normalizeAddress(address, root)
 	cache[address] = result
+
 	return result
 }
 
@@ -345,6 +390,7 @@ func normalizePostings(postings []CompactPosting, root *trieNode, addrCache map[
 			Asset:              postings[i].Asset,
 		}
 	}
+
 	return normalized
 }
 
@@ -353,13 +399,17 @@ func computeFlowSignature(postings []*servicepb.NormalizedPosting) string {
 	if len(postings) == 1 {
 		// Fast path: single posting, no sorting needed.
 		p := postings[0]
-		return p.SourcePattern + "->" + p.DestinationPattern + "[" + p.Asset + "]"
+
+		return p.GetSourcePattern() + "->" + p.GetDestinationPattern() + "[" + p.GetAsset() + "]"
 	}
+
 	parts := make([]string, len(postings))
 	for i, p := range postings {
-		parts[i] = p.SourcePattern + "->" + p.DestinationPattern + "[" + p.Asset + "]"
+		parts[i] = p.GetSourcePattern() + "->" + p.GetDestinationPattern() + "[" + p.GetAsset() + "]"
 	}
+
 	sort.Strings(parts)
+
 	return strings.Join(parts, ";")
 }
 
@@ -372,11 +422,14 @@ func precomputeNormalization(node *trieNode, threshold uint32) {
 		for k := range node.children {
 			keys = append(keys, k)
 		}
+
 		node.varPlaceholder = "{" + inferVariableName(keys) + "}"
+
 		node.mergedChild = newTrieNode()
 		for _, child := range node.children {
 			mergeTrieNodesStructure(node.mergedChild, child)
 		}
+
 		precomputeNormalization(node.mergedChild, threshold)
 	} else {
 		for _, child := range node.children {
@@ -395,6 +448,7 @@ func mergeTrieNodesStructure(dst, src *trieNode) {
 			dstChild = newTrieNode()
 			dst.children[key] = dstChild
 		}
+
 		mergeTrieNodesStructure(dstChild, srcChild)
 	}
 }
@@ -407,9 +461,10 @@ func classifyPostingStructure(postings []*servicepb.NormalizedPosting) servicepb
 
 	sources := make(map[string]struct{})
 	destinations := make(map[string]struct{})
+
 	for _, p := range postings {
-		sources[p.SourcePattern] = struct{}{}
-		destinations[p.DestinationPattern] = struct{}{}
+		sources[p.GetSourcePattern()] = struct{}{}
+		destinations[p.GetDestinationPattern()] = struct{}{}
 	}
 
 	singleSource := len(sources) == 1
@@ -424,4 +479,3 @@ func classifyPostingStructure(postings []*servicepb.NormalizedPosting) servicepb
 		return servicepb.PostingStructure_POSTING_STRUCTURE_COMPLEX
 	}
 }
-

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 )
 
@@ -19,6 +20,7 @@ type AccountKey struct {
 
 type VolumeKey struct {
 	AccountKey
+
 	Asset string
 }
 
@@ -34,6 +36,7 @@ func (bk VolumeKey) Bytes() []byte {
 	ret[n] = 0x00
 	n++
 	copy(ret[n:], bk.Asset)
+
 	return ret
 }
 
@@ -43,9 +46,11 @@ func (bk *VolumeKey) Unmarshal(d []byte) error {
 	if len(parts) != 3 {
 		return fmt.Errorf("invalid balance key bytes: expected 3 parts, got %d", len(parts))
 	}
+
 	bk.Ledger = string(parts[0])
 	bk.Account = string(parts[1])
 	bk.Asset = string(parts[2])
+
 	return nil
 }
 
@@ -53,6 +58,7 @@ var _ CanonicalBytes = (*VolumeKey)(nil)
 
 type MetadataKey struct {
 	AccountKey
+
 	Key string
 }
 
@@ -68,6 +74,7 @@ func (mk MetadataKey) Bytes() []byte {
 	ret[n] = 0x01
 	n++
 	copy(ret[n:], mk.Key)
+
 	return ret
 }
 
@@ -76,25 +83,30 @@ func (mk *MetadataKey) Unmarshal(d []byte) error {
 	// First split on \x00 to separate ledger from the rest
 	parts := splitNullBytes(d, 2)
 	if len(parts) != 2 {
-		return fmt.Errorf("invalid metadata key bytes: expected ledger separator")
+		return errors.New("invalid metadata key bytes: expected ledger separator")
 	}
+
 	mk.Ledger = string(parts[0])
 
 	// Rest is account + \x01 + key
 	rest := parts[1]
 	separator := -1
+
 	for i, b := range rest {
 		if b == 0x01 {
 			separator = i
+
 			break
 		}
 	}
+
 	if separator == -1 {
-		return fmt.Errorf("invalid metadata key bytes: missing account/key separator")
+		return errors.New("invalid metadata key bytes: missing account/key separator")
 	}
 
 	mk.Account = string(rest[:separator])
 	mk.Key = string(rest[separator+1:])
+
 	return nil
 }
 
@@ -106,13 +118,14 @@ type TransactionKey struct {
 }
 
 // Bytes returns a canonical byte representation of the transaction key.
-// Format: [ledger]\x00[txID (8 bytes)]
+// Format: [ledger]\x00[txID (8 bytes)].
 func (tk TransactionKey) Bytes() []byte {
 	ret := make([]byte, len(tk.Ledger)+1+8)
 	n := copy(ret, tk.Ledger)
 	ret[n] = 0x00
 	n++
 	binary.BigEndian.PutUint64(ret[n:], tk.ID)
+
 	return ret
 }
 
@@ -120,17 +133,22 @@ func (tk TransactionKey) Bytes() []byte {
 func (tk *TransactionKey) Unmarshal(d []byte) error {
 	// Find the \x00 separator between ledger name and txID
 	sep := -1
+
 	for i, b := range d {
 		if b == 0x00 {
 			sep = i
+
 			break
 		}
 	}
+
 	if sep == -1 || len(d) < sep+1+8 {
-		return fmt.Errorf("invalid transaction key bytes: expected [ledger]\\x00[txID(8)]")
+		return errors.New("invalid transaction key bytes: expected [ledger]\\x00[txID(8)]")
 	}
+
 	tk.Ledger = string(d[:sep])
 	tk.ID = binary.BigEndian.Uint64(d[sep+1 : sep+1+8])
+
 	return nil
 }
 
@@ -148,6 +166,7 @@ func (ik IdempotencyKey) Bytes() []byte {
 // Unmarshal parses canonical bytes into the IdempotencyKey.
 func (ik *IdempotencyKey) Unmarshal(data []byte) error {
 	ik.Key = string(data)
+
 	return nil
 }
 
@@ -160,13 +179,14 @@ type TransactionReferenceKey struct {
 }
 
 // Bytes returns a canonical byte representation of the transaction reference key.
-// Format: [ledger]\x00[reference]
+// Format: [ledger]\x00[reference].
 func (trk TransactionReferenceKey) Bytes() []byte {
 	ret := make([]byte, len(trk.Ledger)+1+len(trk.Reference))
 	n := copy(ret, trk.Ledger)
 	ret[n] = 0x00
 	n++
 	copy(ret[n:], trk.Reference)
+
 	return ret
 }
 
@@ -176,8 +196,10 @@ func (trk *TransactionReferenceKey) Unmarshal(d []byte) error {
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid transaction reference key bytes: expected 2 parts, got %d", len(parts))
 	}
+
 	trk.Ledger = string(parts[0])
 	trk.Reference = string(parts[1])
+
 	return nil
 }
 
@@ -195,6 +217,7 @@ func (lk LedgerKey) Bytes() []byte {
 // Unmarshal parses canonical bytes into the LedgerKey.
 func (lk *LedgerKey) Unmarshal(data []byte) error {
 	lk.Name = string(data)
+
 	return nil
 }
 
@@ -235,6 +258,7 @@ func (k NumscriptEntryKey) Bytes() []byte {
 	n := copy(ret, k.Name)
 	ret[n] = 0x00
 	copy(ret[n+1:], k.Version)
+
 	return ret
 }
 
@@ -248,13 +272,17 @@ const (
 // splitNullBytes splits data by null bytes into at most n parts.
 func splitNullBytes(data []byte, n int) [][]byte {
 	var parts [][]byte
+
 	start := 0
+
 	for i, b := range data {
 		if b == 0x00 && len(parts) < n-1 {
 			parts = append(parts, data[start:i])
 			start = i + 1
 		}
 	}
+
 	parts = append(parts, data[start:])
+
 	return parts
 }

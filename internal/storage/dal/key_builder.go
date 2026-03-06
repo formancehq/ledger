@@ -17,18 +17,22 @@ func (kb *KeyBuilder) Reset() {
 func (kb *KeyBuilder) PutUInt64(v uint64) *KeyBuilder {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], v)
+
 	if _, err := kb.buf.Write(buf[:]); err != nil {
 		kb.err = err
 	}
+
 	return kb
 }
 
 func (kb *KeyBuilder) PutUInt32(v uint32) *KeyBuilder {
 	var buf [4]byte
 	binary.BigEndian.PutUint32(buf[:], v)
+
 	if _, err := kb.buf.Write(buf[:]); err != nil {
 		kb.err = err
 	}
+
 	return kb
 }
 
@@ -36,13 +40,16 @@ func (kb *KeyBuilder) PutString(value string) *KeyBuilder {
 	if _, err := kb.buf.WriteString(value); err != nil {
 		kb.err = err
 	}
+
 	return kb
 }
 
 func (kb *KeyBuilder) PutByte(value byte) *KeyBuilder {
-	if err := kb.buf.WriteByte(value); err != nil {
+	err := kb.buf.WriteByte(value)
+	if err != nil {
 		kb.err = err
 	}
+
 	return kb
 }
 
@@ -50,6 +57,7 @@ func (kb *KeyBuilder) PutBytes(value []byte) *KeyBuilder {
 	if _, err := kb.buf.Write(value); err != nil {
 		kb.err = err
 	}
+
 	return kb
 }
 
@@ -63,6 +71,7 @@ func (kb *KeyBuilder) Build() []byte {
 		panic(kb.err)
 	}
 	defer kb.Reset()
+
 	return bytes.Clone(kb.buf.Bytes())
 }
 

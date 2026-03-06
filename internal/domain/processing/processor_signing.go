@@ -6,13 +6,14 @@ import (
 )
 
 func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSigningKeyOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	s.AddSigningKey(order.KeyId, order.PublicKey, order.ParentKeyId)
+	s.AddSigningKey(order.GetKeyId(), order.GetPublicKey(), order.GetParentKeyId())
+
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_RegisterSigningKey{
 			RegisterSigningKey: &commonpb.RegisterSigningKeyLog{
-				KeyId:       order.KeyId,
-				PublicKey:   order.PublicKey,
-				ParentKeyId: order.ParentKeyId,
+				KeyId:       order.GetKeyId(),
+				PublicKey:   order.GetPublicKey(),
+				ParentKeyId: order.GetParentKeyId(),
 			},
 		},
 	}, nil
@@ -20,9 +21,10 @@ func (p *RequestProcessor) processRegisterSigningKey(order *raftcmdpb.RegisterSi
 
 func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	var cascaded []string
-	if order.Cascade {
+
+	if order.GetCascade() {
 		// BFS to find all descendants for cascade revocation
-		queue := []string{order.KeyId}
+		queue := []string{order.GetKeyId()}
 		for len(queue) > 0 {
 			current := queue[0]
 			queue = queue[1:]
@@ -33,7 +35,8 @@ func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSignin
 	}
 
 	// Remove the target key and all descendants (if cascade)
-	s.RemoveSigningKey(order.KeyId)
+	s.RemoveSigningKey(order.GetKeyId())
+
 	for _, id := range cascaded {
 		s.RemoveSigningKey(id)
 	}
@@ -41,7 +44,7 @@ func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSignin
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_RevokeSigningKey{
 			RevokeSigningKey: &commonpb.RevokeSigningKeyLog{
-				KeyId:          order.KeyId,
+				KeyId:          order.GetKeyId(),
 				CascadedKeyIds: cascaded,
 			},
 		},
@@ -49,11 +52,12 @@ func (p *RequestProcessor) processRevokeSigningKey(order *raftcmdpb.RevokeSignin
 }
 
 func (p *RequestProcessor) processSetSigningConfig(order *raftcmdpb.SetSigningConfigOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	s.SetRequireSignatures(order.RequireSignatures)
+	s.SetRequireSignatures(order.GetRequireSignatures())
+
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_SetSigningConfig{
 			SetSigningConfig: &commonpb.SetSigningConfigLog{
-				RequireSignatures: order.RequireSignatures,
+				RequireSignatures: order.GetRequireSignatures(),
 			},
 		},
 	}, nil

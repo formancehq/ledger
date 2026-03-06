@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/formancehq/go-libs/v3/logging"
 	"go.uber.org/zap"
+
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 // ZapLogger adapts a *zap.SugaredLogger to the logging.Logger interface.
@@ -24,16 +25,17 @@ func NewZapLogger(sugar *zap.SugaredLogger) *ZapLogger {
 
 func (z *ZapLogger) Debugf(format string, args ...any) { z.sugar.Debugf(format, args...) }
 func (z *ZapLogger) Infof(format string, args ...any)  { z.sugar.Infof(format, args...) }
-func (z *ZapLogger) Errorf(format string, args ...any)  { z.sugar.Errorf(format, args...) }
-func (z *ZapLogger) Debug(args ...any)                  { z.sugar.Debug(args...) }
-func (z *ZapLogger) Info(args ...any)                   { z.sugar.Info(args...) }
-func (z *ZapLogger) Error(args ...any)                  { z.sugar.Error(args...) }
+func (z *ZapLogger) Errorf(format string, args ...any) { z.sugar.Errorf(format, args...) }
+func (z *ZapLogger) Debug(args ...any)                 { z.sugar.Debug(args...) }
+func (z *ZapLogger) Info(args ...any)                  { z.sugar.Info(args...) }
+func (z *ZapLogger) Error(args ...any)                 { z.sugar.Error(args...) }
 
 func (z *ZapLogger) WithFields(fields map[string]any) logging.Logger {
 	kvs := make([]any, 0, len(fields)*2)
 	for k, v := range fields {
 		kvs = append(kvs, k, v)
 	}
+
 	return &ZapLogger{sugar: z.sugar.With(kvs...)}
 }
 
@@ -49,15 +51,19 @@ func (z *ZapLogger) WithContext(_ context.Context) logging.Logger {
 // Writer returns an io.Writer that logs each line at Info level.
 func (z *ZapLogger) Writer() io.Writer {
 	pr, pw := io.Pipe()
+
 	go func() {
 		scanner := bufio.NewScanner(pr)
 		for scanner.Scan() {
 			z.sugar.Info(scanner.Text())
 		}
-		if err := scanner.Err(); err != nil {
+
+		err := scanner.Err()
+		if err != nil {
 			z.sugar.Errorf("log writer scanner error: %v", err)
 		}
 	}()
+
 	return pw
 }
 

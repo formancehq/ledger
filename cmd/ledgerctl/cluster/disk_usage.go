@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 )
 
 // NewDiskUsageCommand creates the cluster disk-usage command.
@@ -31,6 +32,7 @@ func runDiskUsage(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -47,11 +49,14 @@ func runDiskUsage(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to marshal response: %w", err)
 		}
+
 		fmt.Println(string(data))
+
 		return nil
 	}
 
 	displayDiskUsage(usage)
+
 	return nil
 }
 
@@ -60,21 +65,23 @@ func displayDiskUsage(usage *clusterpb.DiskUsage) {
 
 	componentData := [][]string{
 		{"COMPONENT", "SIZE"},
-		{"Spool", cmdutil.FormatBytes(uint64(usage.SpoolBytes))},
-		{"WAL", cmdutil.FormatBytes(uint64(usage.WalBytes))},
-		{"Data", cmdutil.FormatBytes(uint64(usage.DataBytes))},
-		{"Read Index", cmdutil.FormatBytes(uint64(usage.ReadIndexBytes))},
+		{"Spool", cmdutil.FormatBytes(uint64(usage.GetSpoolBytes()))},
+		{"WAL", cmdutil.FormatBytes(uint64(usage.GetWalBytes()))},
+		{"Data", cmdutil.FormatBytes(uint64(usage.GetDataBytes()))},
+		{"Read Index", cmdutil.FormatBytes(uint64(usage.GetReadIndexBytes()))},
 	}
 	_ = pterm.DefaultTable.WithHasHeader(true).WithData(componentData).Render()
+
 	pterm.Println()
 
 	pterm.DefaultSection.Println("Volumes")
 
 	volumeData := [][]string{
 		{"VOLUME", "USED", "TOTAL"},
-		{"WAL", cmdutil.FormatBytes(uint64(usage.WalVolumeBytes)), cmdutil.FormatBytes(uint64(usage.WalVolumeTotalBytes))},
-		{"Data", cmdutil.FormatBytes(uint64(usage.DataVolumeBytes)), cmdutil.FormatBytes(uint64(usage.DataVolumeTotalBytes))},
+		{"WAL", cmdutil.FormatBytes(uint64(usage.GetWalVolumeBytes())), cmdutil.FormatBytes(uint64(usage.GetWalVolumeTotalBytes()))},
+		{"Data", cmdutil.FormatBytes(uint64(usage.GetDataVolumeBytes())), cmdutil.FormatBytes(uint64(usage.GetDataVolumeTotalBytes()))},
 	}
 	_ = pterm.DefaultTable.WithHasHeader(true).WithData(volumeData).Render()
+
 	pterm.Println()
 }

@@ -6,10 +6,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func TestHandleError(t *testing.T) {

@@ -7,74 +7,79 @@ import (
 )
 
 func (p *RequestProcessor) processCreatePreparedQuery(order *raftcmdpb.CreatePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	existing, err := s.GetPreparedQuery(order.Query.Ledger, order.Query.Name)
+	existing, err := s.GetPreparedQuery(order.GetQuery().GetLedger(), order.GetQuery().GetName())
 	if err != nil {
 		return nil, err
 	}
+
 	if existing != nil {
 		return nil, &domain.ErrPreparedQueryAlreadyExists{
-			Ledger: order.Query.Ledger,
-			Name:   order.Query.Name,
+			Ledger: order.GetQuery().GetLedger(),
+			Name:   order.GetQuery().GetName(),
 		}
 	}
 
-	s.PutPreparedQuery(order.Query)
+	s.PutPreparedQuery(order.GetQuery())
+
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_CreatedPreparedQuery{
 			CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{
-				Query: order.Query,
+				Query: order.GetQuery(),
 			},
 		},
 	}, nil
 }
 
 func (p *RequestProcessor) processUpdatePreparedQuery(order *raftcmdpb.UpdatePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	existing, err := s.GetPreparedQuery(order.Ledger, order.Name)
+	existing, err := s.GetPreparedQuery(order.GetLedger(), order.GetName())
 	if err != nil {
 		return nil, err
 	}
+
 	if existing == nil {
 		return nil, &domain.ErrPreparedQueryNotFound{
-			Ledger: order.Ledger,
-			Name:   order.Name,
+			Ledger: order.GetLedger(),
+			Name:   order.GetName(),
 		}
 	}
 
-	previousFilter := existing.Filter
+	previousFilter := existing.GetFilter()
 	updated := existing.CloneVT()
-	updated.Filter = order.Filter
+	updated.Filter = order.GetFilter()
 	s.PutPreparedQuery(updated)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_UpdatedPreparedQuery{
 			UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{
-				Ledger:         order.Ledger,
-				Name:           order.Name,
+				Ledger:         order.GetLedger(),
+				Name:           order.GetName(),
 				PreviousFilter: previousFilter,
-				NewFilter:      order.Filter,
+				NewFilter:      order.GetFilter(),
 			},
 		},
 	}, nil
 }
 
 func (p *RequestProcessor) processDeletePreparedQuery(order *raftcmdpb.DeletePreparedQueryOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	existing, err := s.GetPreparedQuery(order.Ledger, order.Name)
+	existing, err := s.GetPreparedQuery(order.GetLedger(), order.GetName())
 	if err != nil {
 		return nil, err
 	}
+
 	if existing == nil {
 		return nil, &domain.ErrPreparedQueryNotFound{
-			Ledger: order.Ledger,
-			Name:   order.Name,
+			Ledger: order.GetLedger(),
+			Name:   order.GetName(),
 		}
 	}
 
-	s.DeletePreparedQuery(order.Ledger, order.Name)
+	s.DeletePreparedQuery(order.GetLedger(), order.GetName())
+
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedPreparedQuery{
 			DeletedPreparedQuery: &commonpb.DeletedPreparedQueryLog{
-				Ledger: order.Ledger,
-				Name:   order.Name,
+				Ledger: order.GetLedger(),
+				Name:   order.GetName(),
 			},
 		},
 	}, nil

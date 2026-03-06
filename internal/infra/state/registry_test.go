@@ -3,20 +3,24 @@ package state
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func newTestRegistry(t *testing.T) *StateRegistry {
 	t.Helper()
+
 	meter := noop.NewMeterProvider().Meter("test")
 	c, err := cache.New(1000, meter)
 	require.NoError(t, err)
+
 	attrs := attributes.New()
+
 	return NewStateRegistry(c, attrs)
 }
 
@@ -50,7 +54,7 @@ func TestStateRegistryKeyStoresPutAndGet(t *testing.T) {
 	gotLedger, _, err := reg.Ledgers.Get(ledgerKey.Bytes())
 	require.NoError(t, err)
 	require.NotNil(t, gotLedger)
-	require.Equal(t, "my-ledger", gotLedger.Name)
+	require.Equal(t, "my-ledger", gotLedger.GetName())
 }
 
 func TestNewDerivedRegistryFieldsNotNil(t *testing.T) {
@@ -82,7 +86,7 @@ func TestDerivedRegistryReadsFromParent(t *testing.T) {
 	got, err := derived.Ledgers.Get(ledgerKey)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	require.Equal(t, "ledger-a", got.Name)
+	require.Equal(t, "ledger-a", got.GetName())
 }
 
 func TestDerivedRegistryBuffersWrites(t *testing.T) {
@@ -98,7 +102,7 @@ func TestDerivedRegistryBuffersWrites(t *testing.T) {
 	got, err := derived.Ledgers.Get(ledgerKey)
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	require.Equal(t, "new-ledger", got.Name)
+	require.Equal(t, "new-ledger", got.GetName())
 
 	// Parent does NOT see the write (not merged yet)
 	parentGot, _, err := reg.Ledgers.Get(ledgerKey.Bytes())
@@ -120,7 +124,7 @@ func TestDerivedRegistryMerge(t *testing.T) {
 	updates, _, err := derived.Ledgers.Merge(10)
 	require.NoError(t, err)
 	require.Len(t, updates, 1)
-	require.Equal(t, "merge-test", updates[0].New.Name)
+	require.Equal(t, "merge-test", updates[0].New.GetName())
 
 	// After applying the merge update, parent should have the value
 	// (Merge returns the updates; the caller applies them to the parent via KeyStore)

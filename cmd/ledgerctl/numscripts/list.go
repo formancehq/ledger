@@ -1,12 +1,14 @@
 package numscripts
 
 import (
+	"errors"
 	"io"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewListCommand creates the numscripts list command.
@@ -33,6 +35,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -48,23 +51,25 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	count := 0
+
 	for {
 		info, err := stream.Recv()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			return cmdutil.FormatGRPCError("failed to receive numscript", err)
 		}
 
 		createdAt := ""
-		if info.CreatedAt != nil {
-			createdAt = info.CreatedAt.AsTime().Format("2006-01-02T15:04:05Z07:00")
+		if info.GetCreatedAt() != nil {
+			createdAt = info.GetCreatedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")
 		}
 
 		tableData = append(tableData, []string{
-			info.Name,
-			info.Version,
+			info.GetName(),
+			info.GetVersion(),
 			createdAt,
 		})
 		count++
@@ -74,6 +79,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		pterm.Info.Println("No numscripts in library.")
 		pterm.Println(pterm.Gray("Hint: Save a numscript using:"))
 		pterm.FgCyan.Println("  ledgerctl numscripts save <name> --file <path>")
+
 		return nil
 	}
 

@@ -1,10 +1,12 @@
 package state
 
 import (
+	"slices"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 )
 
 // DerivedRegistry wraps DerivedKeyStores — one per attribute type — plus a
@@ -12,12 +14,12 @@ import (
 // writes go to the derived stores and are merged back into the parent
 // StateRegistry on commit.
 type DerivedRegistry struct {
-	Volumes         *attributes.DerivedKeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
-	AccountMetadata *attributes.DerivedKeyStore[domain.MetadataKey, *commonpb.MetadataValue]
-	IdempotencyKeys *attributes.DerivedKeyStore[domain.IdempotencyKey, *commonpb.IdempotencyKeyValue]
-	References      *attributes.DerivedKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
-	Ledgers         *attributes.DerivedKeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
-	Boundaries      *attributes.DerivedKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
+	Volumes           *attributes.DerivedKeyStore[domain.VolumeKey, *raftcmdpb.VolumePair]
+	AccountMetadata   *attributes.DerivedKeyStore[domain.MetadataKey, *commonpb.MetadataValue]
+	IdempotencyKeys   *attributes.DerivedKeyStore[domain.IdempotencyKey, *commonpb.IdempotencyKeyValue]
+	References        *attributes.DerivedKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue]
+	Ledgers           *attributes.DerivedKeyStore[domain.LedgerKey, *commonpb.LedgerInfo]
+	Boundaries        *attributes.DerivedKeyStore[domain.LedgerKey, *raftcmdpb.LedgerBoundaries]
 	SinkConfigs       *attributes.DerivedKeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
 	NumscriptVersions *attributes.DerivedKeyStore[domain.NumscriptVersionKey, string]
 	NumscriptEntries  *attributes.DerivedKeyStore[domain.NumscriptEntryKey, bool]
@@ -50,16 +52,15 @@ func NewDerivedRegistry(reg *StateRegistry) *DerivedRegistry {
 // GetReverted checks pending reversions first, then the parent bitset.
 func (d *DerivedRegistry) GetReverted(key domain.TransactionKey) bool {
 	// Check pending reversions in this proposal
-	for _, k := range d.PendingReversions {
-		if k == key {
-			return true
-		}
+	if slices.Contains(d.PendingReversions, key) {
+		return true
 	}
 	// Check the authoritative bitset
 	bs, ok := d.parentReversions[key.Ledger]
 	if !ok {
 		return false
 	}
+
 	return bs.IsReverted(key.ID)
 }
 

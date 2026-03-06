@@ -44,6 +44,7 @@ func (r RawValue) MarshalJSON() ([]byte, error) {
 	if r == nil {
 		return []byte("null"), nil
 	}
+
 	return r, nil
 }
 
@@ -52,7 +53,9 @@ func (r *RawValue) UnmarshalJSON(data []byte) error {
 	if r == nil {
 		return nil
 	}
+
 	*r = append((*r)[:0], data...)
+
 	return nil
 }
 

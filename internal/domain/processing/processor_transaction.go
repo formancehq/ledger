@@ -11,23 +11,25 @@ import (
 
 func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.CreateTransactionOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	// Check transaction reference uniqueness if reference is provided
-	if order.Reference != "" {
-		refKey := domain.TransactionReferenceKey{Ledger: ledger, Reference: order.Reference}
+	if order.GetReference() != "" {
+		refKey := domain.TransactionReferenceKey{Ledger: ledger, Reference: order.GetReference()}
+
 		existingRef, err := s.GetTransactionReference(refKey)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return nil, fmt.Errorf("checking transaction reference: %w", err)
 		}
+
 		if existingRef != nil {
 			return nil, &domain.ErrTransactionReferenceConflict{
 				Ledger:    ledger,
-				Reference: order.Reference,
+				Reference: order.GetReference(),
 			}
 		}
 	}
 
 	// Select the appropriate posting producer
 	var producer postingProducer
-	if order.Script != nil && order.Script.Plain != "" {
+	if order.GetScript() != nil && order.GetScript().GetPlain() != "" {
 		producer = &numscriptPostingProducer{cache: p.numscriptCache, ledger: ledger}
 	} else {
 		producer = &stdPostingProducer{}
@@ -39,7 +41,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 		return nil, err
 	}
 
-	nextTransactionID := boundaries.NextTransactionId
+	nextTransactionID := boundaries.GetNextTransactionId()
 	boundaries.NextTransactionId = nextTransactionID + 1
 
 	// Store the transaction init update for later indexing
@@ -59,14 +61,16 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	)
 	if ledgerInfo, ok := s.GetLedger(ledger); ok {
 		info = ledgerInfo
-		schema = ledgerInfo.MetadataSchema
+		schema = ledgerInfo.GetMetadataSchema()
 	}
 
 	// Validate postings against chart of accounts
 	var warnings []*commonpb.ChartViolation
-	if info != nil && info.ChartOfAccounts != nil {
+
+	if info != nil && info.GetChartOfAccounts() != nil {
 		var chartErr error
-		warnings, chartErr = validatePostingsInChart(result.Postings, info.ChartOfAccounts, info.EnforcementMode)
+
+		warnings, chartErr = validatePostingsInChart(result.Postings, info.GetChartOfAccounts(), info.GetEnforcementMode())
 		if chartErr != nil {
 			return nil, chartErr
 		}
@@ -74,30 +78,34 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 
 	// Merge metadata: order metadata takes precedence over script metadata.
 	// Uses typed []*Metadata directly to avoid map[string]string roundtrip.
-	finalMetadata := order.Metadata
+	finalMetadata := order.GetMetadata()
+
 	if len(result.TransactionMetadata) > 0 {
 		// Build a set of existing order keys for precedence check
 		orderKeys := make(map[string]struct{})
+
 		if finalMetadata != nil {
-			for _, md := range finalMetadata.Metadata {
-				orderKeys[md.Key] = struct{}{}
+			for _, md := range finalMetadata.GetMetadata() {
+				orderKeys[md.GetKey()] = struct{}{}
 			}
 		}
 		// Append script metadata (order metadata takes precedence if key exists)
 		merged := make([]*commonpb.Metadata, 0, len(orderKeys)+len(result.TransactionMetadata))
 		if finalMetadata != nil {
-			merged = append(merged, finalMetadata.Metadata...)
+			merged = append(merged, finalMetadata.GetMetadata()...)
 		}
+
 		for _, md := range result.TransactionMetadata {
-			if _, exists := orderKeys[md.Key]; !exists {
+			if _, exists := orderKeys[md.GetKey()]; !exists {
 				merged = append(merged, md)
 			}
 		}
+
 		finalMetadata = &commonpb.MetadataSet{Metadata: merged}
 	}
 
 	if finalMetadata != nil {
-		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, finalMetadata.Metadata)
+		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, finalMetadata.GetMetadata())
 	}
 
 	// Convert account metadata to protobuf format (already typed from produceResult).
@@ -111,45 +119,46 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 
 	// Enforce schema on account metadata from script/order.
 	for account, ms := range accountMetadata {
-		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, ms.Metadata)
+		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, ms.GetMetadata())
 		// Update buffer with schema-enforced values (numscript wrote string values)
-		for _, md := range ms.Metadata {
+		for _, md := range ms.GetMetadata() {
 			s.PutAccountMetadata(domain.MetadataKey{
 				AccountKey: domain.AccountKey{Ledger: ledger, Account: account},
-				Key:        md.Key,
-			}, md.Value)
+				Key:        md.GetKey(),
+			}, md.GetValue())
 		}
 	}
+
 	if order.AccountMetadata != nil {
-		for _, ms := range order.AccountMetadata {
-			enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, ms.Metadata)
+		for _, ms := range order.GetAccountMetadata() {
+			enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, ms.GetMetadata())
 		}
 	}
 
 	// Store transaction reference if provided
-	if order.Reference != "" {
+	if order.GetReference() != "" {
 		s.PutTransactionReference(
-			domain.TransactionReferenceKey{Ledger: ledger, Reference: order.Reference},
+			domain.TransactionReferenceKey{Ledger: ledger, Reference: order.GetReference()},
 			&commonpb.TransactionReferenceValue{TransactionId: nextTransactionID},
 		)
 	}
 
 	// Use the user-provided timestamp, or fall back to the command date
-	timestamp := order.Timestamp
+	timestamp := order.GetTimestamp()
 	if timestamp == nil {
 		timestamp = s.GetDate()
 	}
 
 	// Compute post-commit volumes if requested
 	var postCommitVolumes *commonpb.PostCommitVolumes
-	if order.ExpandVolumes {
+	if order.GetExpandVolumes() {
 		postCommitVolumes = buildPostCommitVolumes(s, ledger, result.Postings)
 	}
 
 	// Get the current open period ID for the receipt
 	var periodID uint64
 	if p, ok := s.GetCurrentOpenPeriod(); ok {
-		periodID = p.Id
+		periodID = p.GetId()
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -159,7 +168,7 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 					Postings:   result.Postings,
 					Metadata:   finalMetadata,
 					Timestamp:  timestamp,
-					Reference:  order.Reference,
+					Reference:  order.GetReference(),
 					Id:         nextTransactionID,
 					InsertedAt: s.GetDate(),
 					UpdatedAt:  s.GetDate(),
@@ -189,15 +198,16 @@ type postingProducer interface {
 type stdPostingProducer struct{}
 
 func (p *stdPostingProducer) produce(s InMemoryStore, ledger string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
-	for _, posting := range order.Postings {
+	for _, posting := range order.GetPostings() {
 		// Skip balance check when Force is true
-		if err := applyPosting(s, ledger, posting, order.Force); err != nil {
+		err := applyPosting(s, ledger, posting, order.GetForce())
+		if err != nil {
 			return nil, err
 		}
 	}
 
 	return &produceResult{
-		Postings:            order.Postings,
+		Postings:            order.GetPostings(),
 		TransactionMetadata: nil, // No script metadata for standard postings
 	}, nil
 }

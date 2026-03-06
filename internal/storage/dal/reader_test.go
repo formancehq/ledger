@@ -46,6 +46,7 @@ func TestReadHandle_NewIter(t *testing.T) {
 
 	// Create read handle and iterate
 	rh := s.NewReadHandle()
+
 	defer func() { _ = rh.Close() }()
 
 	iter, err := rh.NewIter(&pebble.IterOptions{
@@ -53,12 +54,14 @@ func TestReadHandle_NewIter(t *testing.T) {
 		UpperBound: []byte("rh-\xff"),
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = iter.Close() }()
 
 	var keys []string
 	for iter.First(); iter.Valid(); iter.Next() {
 		keys = append(keys, string(iter.Key()))
 	}
+
 	require.NoError(t, iter.Error())
 	require.Equal(t, []string{"rh-a", "rh-b"}, keys)
 }
@@ -75,6 +78,7 @@ func TestReadHandle_PointInTimeSnapshot(t *testing.T) {
 
 	// Create read handle (point-in-time snapshot)
 	rh := s.NewReadHandle()
+
 	defer func() { _ = rh.Close() }()
 
 	// Write more data AFTER the read handle was created
@@ -117,6 +121,7 @@ type errCloser struct {
 
 func (c *errCloser) Close() error {
 	c.closed = true
+
 	return nil
 }
 

@@ -6,11 +6,12 @@ import (
 )
 
 func (p *RequestProcessor) processSetMaintenanceMode(order *raftcmdpb.SetMaintenanceModeOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	s.SetMaintenanceMode(order.Enabled)
+	s.SetMaintenanceMode(order.GetEnabled())
+
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_SetMaintenanceMode{
 			SetMaintenanceMode: &commonpb.SetMaintenanceModeLog{
-				Enabled: order.Enabled,
+				Enabled: order.GetEnabled(),
 			},
 		},
 	}, nil

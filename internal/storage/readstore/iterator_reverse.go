@@ -38,10 +38,12 @@ func (it *ReversePrefixIterator) Next() bool {
 	}
 
 	var k []byte
+
 	if !it.started {
 		it.started = true
 		// Seek to the end of the prefix range, then step back
 		upper := IncrementBytes(it.prefix)
+
 		k, _ = it.cursor.Seek(upper)
 		if k == nil {
 			// Past the end of the bucket — go to last key
@@ -58,12 +60,15 @@ func (it *ReversePrefixIterator) Next() bool {
 		entity := it.extractEntity(k)
 		if entity != nil {
 			it.current = entity
+
 			return true
 		}
+
 		k, _ = it.cursor.Prev()
 	}
 
 	it.exhausted = true
+
 	return false
 }
 
@@ -95,6 +100,7 @@ func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
 		entity := it.extractEntity(k)
 		if entity != nil && compareEntities(entity, target) <= 0 && HasPrefix(k, it.prefix) {
 			it.current = entity
+
 			return true
 		}
 		// Key is > target, step back
@@ -105,12 +111,15 @@ func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
 		entity := it.extractEntity(k)
 		if entity != nil && compareEntities(entity, target) <= 0 {
 			it.current = entity
+
 			return true
 		}
+
 		k, _ = it.cursor.Prev()
 	}
 
 	it.exhausted = true
+
 	return false
 }
 
@@ -120,13 +129,16 @@ func (it *ReversePrefixIterator) extractEntity(key []byte) []byte {
 	if len(key) <= it.entityOffset {
 		return nil
 	}
+
 	suffix := key[it.entityOffset:]
 	if it.entityLen > 0 {
 		if len(suffix) < it.entityLen {
 			return nil
 		}
+
 		return suffix[:it.entityLen]
 	}
+
 	return suffix
 }
 
@@ -135,6 +147,7 @@ func (it *ReversePrefixIterator) extractEntity(key []byte) []byte {
 func IncrementBytes(b []byte) []byte {
 	result := make([]byte, len(b))
 	copy(result, b)
+
 	for i := len(result) - 1; i >= 0; i-- {
 		result[i]++
 		if result[i] != 0 {

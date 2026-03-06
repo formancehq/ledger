@@ -18,10 +18,12 @@ func FxHook(w Lifecycle) fx.Hook {
 	return fx.Hook{
 		OnStart: func(_ context.Context) error {
 			w.Start()
+
 			return nil
 		},
 		OnStop: func(_ context.Context) error {
 			w.Stop()
+
 			return nil
 		},
 	}

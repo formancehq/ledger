@@ -3,12 +3,13 @@ package processing
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestProcessAddMetadata_NilTarget(t *testing.T) {
@@ -59,7 +60,7 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name:           "test-ledger",
+		Name: "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -239,11 +240,11 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50))
 	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 3}, gomock.Any()).Do(
 		func(_ domain.TransactionKey, update *commonpb.TransactionUpdate) {
-			require.Equal(t, uint64(50), update.ByLog)
-			require.Len(t, update.Updates, 1)
-			delMeta := update.Updates[0].GetTransactionModificationDeleteMetadata()
+			require.Equal(t, uint64(50), update.GetByLog())
+			require.Len(t, update.GetUpdates(), 1)
+			delMeta := update.GetUpdates()[0].GetTransactionModificationDeleteMetadata()
 			require.NotNil(t, delMeta)
-			require.Equal(t, "category", delMeta.Key)
+			require.Equal(t, "category", delMeta.GetKey())
 		},
 	)
 	mockStore.EXPECT().GetDate().Return(now)
@@ -274,9 +275,9 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	deletedMeta := applyLog.Log.Data.GetDeletedMetadata()
+	deletedMeta := applyLog.GetLog().GetData().GetDeletedMetadata()
 	require.NotNil(t, deletedMeta)
-	require.Equal(t, "category", deletedMeta.Key)
+	require.Equal(t, "category", deletedMeta.GetKey())
 }
 
 func TestProcessDeleteMetadata_TransactionNotFound(t *testing.T) {

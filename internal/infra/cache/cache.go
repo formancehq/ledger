@@ -8,13 +8,14 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/kv"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/kv"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 // u128Hash extracts the low 64 bits of a U128 for shard selection.
@@ -54,6 +55,7 @@ func (a *AttributeCache[T]) Get(k attributes.U128) (attributes.Entry[T], bool) {
 	if v, ok := a.gen0.Load().Get(k); ok {
 		return v, true
 	}
+
 	return a.gen1.Load().Get(k)
 }
 
@@ -76,6 +78,7 @@ func (a *AttributeCache[T]) Iter() iter.Seq2[attributes.U128, attributes.Entry[T
 				return
 			}
 		}
+
 		for k, v := range a.gen1.Load().Iter() {
 			if !yield(k, v) {
 				return
@@ -128,11 +131,13 @@ func (a *AttributeCache[T]) IsGuaranteedInCache(at uint64, k attributes.U128) bo
 	case 0:
 		// Same generation - no rotation will occur, data will still be there
 		_, ok := a.Get(k)
+
 		return ok
 	case 1:
 		// Next generation - one rotation will occur
 		// Data must be in Gen0 now to survive (Gen0 becomes Gen1 after rotation)
 		_, ok := a.gen0.Load().Get(k)
+
 		return ok
 	default:
 		// 2+ generations ahead - too many rotations, data will be lost
@@ -147,6 +152,7 @@ func newAttributeCache[T any](cache *Cache, cacheType string) *AttributeCache[T]
 	}
 	ac.gen0.Store(newShardedMap[T]())
 	ac.gen1.Store(newShardedMap[T]())
+
 	return ac
 }
 
@@ -230,6 +236,7 @@ func (c *Cache) CheckRotationNeeded(index uint64) (rotated bool, oldGen1BaseInde
 		// This must match BoundaryIndex(nextIndex, K) used by admission when building preloads.
 		boundary := genEndIndex(g-1, c.GenerationThreshold)
 		c.rotateLocked(boundary, g)
+
 		return true, oldGen1BaseIndex
 	}
 
@@ -284,6 +291,7 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 				metric.WithAttributes(attribute.String("type", "numscript_versions")))
 			o.ObserveInt64(sizeGauge, int64(c.NumscriptEntries.Size()),
 				metric.WithAttributes(attribute.String("type", "numscript_entries")))
+
 			return nil
 		},
 		sizeGauge,
@@ -295,6 +303,7 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 	c.rotations = rotations
 	c.generationGauge = generation
 	c.sizeRegistration = registration
+
 	return nil
 }
 
@@ -303,6 +312,7 @@ func (c *Cache) recordRotation() {
 	if c.rotations == nil {
 		return
 	}
+
 	c.rotations.Add(context.Background(), 1)
 }
 
@@ -311,6 +321,7 @@ func (c *Cache) recordGeneration(gen int64) {
 	if c.generationGauge == nil {
 		return
 	}
+
 	c.generationGauge.Record(context.Background(), gen)
 }
 
@@ -330,6 +341,7 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	if generationThreshold == 0 {
 		return nil, errors.New("generation threshold must be greater than zero")
 	}
+
 	if m == nil {
 		m = noop.Meter{}
 	}
@@ -348,7 +360,8 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret.NumscriptVersions = newAttributeCache[string](ret, "numscript_versions")
 	ret.NumscriptEntries = newAttributeCache[bool](ret, "numscript_entries")
 
-	if err := ret.initMetrics(m); err != nil {
+	err := ret.initMetrics(m)
+	if err != nil {
 		return nil, fmt.Errorf("initializing cache metrics: %w", err)
 	}
 

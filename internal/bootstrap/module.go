@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -9,39 +10,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/httpserver"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/oidc"
-	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
-	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
-	httpcompat "github.com/formancehq/ledger-v3-poc/internal/adapter/http"
-	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
-	clusterhealth "github.com/formancehq/ledger-v3-poc/internal/infra/health"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
-	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
-	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
-	"github.com/formancehq/ledger-v3-poc/internal/application/events"
-	"github.com/formancehq/ledger-v3-poc/internal/application/mirror"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
-	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -50,6 +18,41 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
+
+	"github.com/formancehq/go-libs/v3/httpserver"
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/oidc"
+	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
+
+	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
+	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
+	httpcompat "github.com/formancehq/ledger-v3-poc/internal/adapter/http"
+	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
+	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
+	"github.com/formancehq/ledger-v3-poc/internal/application/events"
+	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"
+	"github.com/formancehq/ledger-v3-poc/internal/application/mirror"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
+	clusterhealth "github.com/formancehq/ledger-v3-poc/internal/infra/health"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
 )
 
 // walFreshStart indicates whether the WAL was empty before the node was created.
@@ -60,6 +63,7 @@ type walFreshStart bool
 // expose the WAL-fresh-start indicator through the fx dependency graph.
 type nodeProvideResult struct {
 	fx.Out
+
 	Node       *node.Node
 	FreshStart walFreshStart
 }
@@ -100,11 +104,16 @@ func Module() fx.Option {
 
 				if !cfg.Restore {
 					logger.Infof("Validating persisted configuration...")
+
 					configStart := time.Now()
-					if err := ValidateOrPersistConfig(store, cfg, logger, cfg.UnsafeSkipConfigValidation); err != nil {
+
+					err := ValidateOrPersistConfig(store, cfg, logger, cfg.UnsafeSkipConfigValidation)
+					if err != nil {
 						_ = store.Close()
+
 						return nil, fmt.Errorf("configuration safety check failed: %w", err)
 					}
+
 					logger.WithFields(map[string]any{
 						"duration": time.Since(configStart).String(),
 					}).Infof("Configuration validation done")
@@ -125,9 +134,7 @@ func Module() fx.Option {
 					Dir: filepath.Join(cfg.RaftConfig.WalDir, "spool"),
 				})
 			},
-			func(transport *node.DefaultTransport) state.SnapshotFetcherProvider {
-				return ctrl.GRPCSnapshotFetcherProvider(transport)
-			},
+			ctrl.GRPCSnapshotFetcherProvider,
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor)
 			func(n *node.Node) events.Proposer {
 				return n
@@ -149,6 +156,7 @@ func Module() fx.Option {
 				indexNotifications *signal.Notifications,
 			) (*state.Machine, error) {
 				machineStart := time.Now()
+
 				m, err := state.NewMachine(
 					logger,
 					store,
@@ -166,14 +174,17 @@ func Module() fx.Option {
 				if err != nil {
 					return nil, err
 				}
+
 				logger.WithFields(map[string]any{
 					"duration": time.Since(machineStart).String(),
 				}).Infof("FSM Machine created")
+
 				return m, nil
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, `name:"events"`, `name:"mirror"`, `name:"index"`)),
 			func(
 				params struct {
 					fx.In
+
 					NodeConfig              node.NodeConfig
 					Logger                  logging.Logger
 					Transport               *node.DefaultTransport
@@ -190,13 +201,14 @@ func Module() fx.Option {
 				if err != nil {
 					return nodeProvideResult{}, fmt.Errorf("reading WAL snapshot: %w", err)
 				}
+
 				freshStart := walFreshStart(len(snapshot.Metadata.ConfState.Voters) == 0)
 				params.Logger.WithFields(map[string]any{
-					"freshStart":     freshStart,
-					"walVoters":      snapshot.Metadata.ConfState.Voters,
-					"walLearners":    snapshot.Metadata.ConfState.Learners,
-					"snapshotIndex":  snapshot.Metadata.Index,
-					"snapshotTerm":   snapshot.Metadata.Term,
+					"freshStart":    freshStart,
+					"walVoters":     snapshot.Metadata.ConfState.Voters,
+					"walLearners":   snapshot.Metadata.ConfState.Learners,
+					"snapshotIndex": snapshot.Metadata.Index,
+					"snapshotTerm":  snapshot.Metadata.Term,
 				}).Infof("WAL fresh start detection")
 
 				n, err := node.NewNode(
@@ -213,32 +225,39 @@ func Module() fx.Option {
 				if err != nil {
 					return nodeProvideResult{}, err
 				}
+
 				return nodeProvideResult{Node: n, FreshStart: freshStart}, nil
 			},
 			func(cfg Config) *receipt.Signer {
 				if cfg.ReceiptSigningKey == "" {
 					return nil
 				}
+
 				return receipt.NewSigner([]byte(cfg.ReceiptSigningKey))
 			},
 			func(cfg Config, logger logging.Logger) *signing.ResponseSigner {
 				if cfg.ResponseSigningKeyFile == "" {
 					return nil
 				}
+
 				seed, err := signing.LoadSeedFromFile(cfg.ResponseSigningKeyFile)
 				if err != nil {
 					logger.Errorf("Failed to load response signing key: %v", err)
+
 					return nil
 				}
+
 				signer := signing.NewResponseSigner(seed)
 				logger.WithFields(map[string]any{
 					"key_id": signer.KeyID(),
 				}).Infof("Response signing enabled")
+
 				return signer
 			},
 			func(cfg Config) node.NodeConfig {
 				cfg.RaftConfig.DataDir = cfg.DataDir
 				cfg.RaftConfig.SetDefaults()
+
 				return cfg.RaftConfig
 			},
 			func(cfg Config) node.TransportConfig {
@@ -256,6 +275,7 @@ func Module() fx.Option {
 				if err != nil {
 					return nil, fmt.Errorf("invalid bind address format: %w", err)
 				}
+
 				port, err := strconv.Atoi(raftPort)
 				if err != nil {
 					return nil, fmt.Errorf("invalid port in bind address: %w", err)
@@ -278,20 +298,17 @@ func Module() fx.Option {
 				return grpcadp.NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsOpt), nil
 			},
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
-			fx.Annotate(func(cfg Config, logger logging.Logger, keySet oidc.KeySet) (internalauth.AuthConfig, error) {
-				return buildAuthConfig(cfg, logger, keySet)
-			}, fx.ParamTags(``, ``, `optional:"true"`)),
+			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
 			func(cfg Config, logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig) servicepb.BucketServiceServer {
 				return grpcadp.NewBucketServiceServer(logger, ctrl, s, rs, attrs, ss, signer, respSigner, authCfg, cfg.QueryProfileThreshold)
 			},
-			func(logger logging.Logger, s *dal.Store) snapshotpb.SnapshotServiceServer {
-				return grpcadp.NewSnapshotServiceServer(logger, s)
-			},
+			grpcadp.NewSnapshotServiceServer,
 			func(cfg Config, meterProvider metric.MeterProvider) *diskusage.Collector {
 				readIndexDir := cfg.ReadIndexConfig.Dir
 				if readIndexDir == "" {
 					readIndexDir = filepath.Join(cfg.DataDir, "read-indexes")
 				}
+
 				return diskusage.NewCollector(
 					cfg.RaftConfig.WalDir,
 					cfg.DataDir,
@@ -318,9 +335,7 @@ func Module() fx.Option {
 					cfg.HealthConfig.ClockSkewThreshold,
 				)
 			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``)),
-			func() *keystore.KeyStore {
-				return keystore.NewKeyStore()
-			},
+			keystore.NewKeyStore,
 			state.NewSharedState,
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"events"`)),
 			fx.Annotate(events.NewManager, fx.ParamTags(``, ``, ``, `name:"events"`)),
@@ -339,6 +354,7 @@ func Module() fx.Option {
 				if dir == "" {
 					dir = filepath.Join(cfg.DataDir, "read-indexes")
 				}
+
 				return readstore.New(dir, cfg.ReadIndexConfig.NoFreelistSync, cfg.ReadIndexConfig.InitialMmapSize, logger)
 			},
 			// Index builder — tails the Raft log to populate the read index
@@ -369,9 +385,11 @@ func Module() fx.Option {
 				if cfg.AdmissionMetrics {
 					opts = append(opts, admission.WithMetrics())
 				}
+
 				if receiptSigner != nil {
 					opts = append(opts, admission.WithReceiptSigner(receiptSigner))
 				}
+
 				return admission.NewAdmission(
 					cache,
 					store,
@@ -407,13 +425,15 @@ func Module() fx.Option {
 				switch cfg.ColdStorageConfig.Driver {
 				case "s3":
 					if cfg.ColdStorageConfig.S3Bucket == "" {
-						return nil, fmt.Errorf("--cold-storage-s3-bucket is required when driver=s3")
+						return nil, errors.New("--cold-storage-s3-bucket is required when driver=s3")
 					}
+
 					logger.WithFields(map[string]any{
 						"bucket":   cfg.ColdStorageConfig.S3Bucket,
 						"region":   cfg.ColdStorageConfig.S3Region,
 						"endpoint": cfg.ColdStorageConfig.S3Endpoint,
 					}).Infof("Using S3 cold storage")
+
 					return coldstorage.NewS3ColdStorage(
 						cfg.ColdStorageConfig.S3Bucket,
 						cfg.ColdStorageConfig.S3Region,
@@ -424,6 +444,7 @@ func Module() fx.Option {
 					if basePath == "" {
 						basePath = filepath.Join(cfg.DataDir, "cold-storage")
 					}
+
 					return coldstorage.NewFilesystemStorage(basePath), nil
 				default:
 					return nil, fmt.Errorf("unknown cold storage driver: %s", cfg.ColdStorageConfig.Driver)
@@ -442,6 +463,7 @@ func Module() fx.Option {
 				if bucketID == "" {
 					bucketID = cfg.ClusterID
 				}
+
 				return state.NewArchiver(
 					logger,
 					store,
@@ -516,12 +538,14 @@ func Module() fx.Option {
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node, hc *clusterhealth.HealthChecker) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
+
 				return clusterhealth.NewGRPCHealthUpdater(n, hc, hs)
 			},
 		),
 		fx.Decorate(func(
 			params struct {
 				fx.In
+
 				Handler       http.Handler
 				MeterProvider *sdkmetric.MeterProvider      `optional:"true"`
 				Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
@@ -532,11 +556,14 @@ func Module() fx.Option {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == "/metrics" {
 						otlpmetrics.NewInMemoryExporterHandler(params.MeterProvider, params.Exporter)(w, r)
+
 						return
 					}
+
 					params.Handler.ServeHTTP(w, r)
 				})
 			}
+
 			return params.Handler
 		}),
 		fx.Invoke(
@@ -560,38 +587,45 @@ func Module() fx.Option {
 					},
 				})
 				// When NoFreelistSync is enabled, periodically sync the freelist
-			// to disk so that a crash doesn't require a full page scan on
-			// the next Open() (which can take tens of minutes on large DBs).
-			// Also sync once at shutdown for the common graceful-stop case.
-			if cfg.ReadIndexConfig.NoFreelistSync {
-				interval := cfg.ReadIndexConfig.FreelistSyncInterval
-				if interval == 0 {
-					interval = 5 * time.Minute
+				// to disk so that a crash doesn't require a full page scan on
+				// the next Open() (which can take tens of minutes on large DBs).
+				// Also sync once at shutdown for the common graceful-stop case.
+				if cfg.ReadIndexConfig.NoFreelistSync {
+					interval := cfg.ReadIndexConfig.FreelistSyncInterval
+					if interval == 0 {
+						interval = 5 * time.Minute
+					}
+
+					var cancel context.CancelFunc
+
+					lc.Append(fx.Hook{
+						OnStart: func(ctx context.Context) error {
+							ctx, cancel = context.WithCancel(context.WithoutCancel(ctx))
+							go rs.RunPeriodicFreelistSync(ctx, interval)
+
+							return nil
+						},
+						OnStop: func(_ context.Context) error {
+							cancel()
+
+							return nil
+						},
+					})
 				}
-				var cancel context.CancelFunc
+
 				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						ctx, cancel = context.WithCancel(context.WithoutCancel(ctx))
-						go rs.RunPeriodicFreelistSync(ctx, interval)
-						return nil
-					},
 					OnStop: func(_ context.Context) error {
-						cancel()
-						return nil
+						if cfg.ReadIndexConfig.NoFreelistSync {
+							err := rs.SyncFreelist()
+							if err != nil {
+								logger.Errorf("Failed to sync read index freelist: %v", err)
+								// Non-fatal: the index will just rebuild the freelist on next open.
+							}
+						}
+
+						return rs.Close()
 					},
 				})
-			}
-			lc.Append(fx.Hook{
-				OnStop: func(_ context.Context) error {
-					if cfg.ReadIndexConfig.NoFreelistSync {
-						if err := rs.SyncFreelist(); err != nil {
-							logger.Errorf("Failed to sync read index freelist: %v", err)
-							// Non-fatal: the index will just rebuild the freelist on next open.
-						}
-					}
-					return rs.Close()
-				},
-			})
 			},
 			func(
 				lc fx.Lifecycle,
@@ -601,12 +635,14 @@ func Module() fx.Option {
 				lc.Append(fx.Hook{
 					OnStop: func(ctx context.Context) error {
 						logger.Infof("Stopping raft transport")
+
 						return t.Stop(ctx)
 					},
 					OnStart: func(ctx context.Context) error {
 						otlplogs.Go(func() {
 							t.Start(context.WithoutCancel(ctx))
 						}, logger)
+
 						return nil
 					},
 				})
@@ -614,10 +650,12 @@ func Module() fx.Option {
 			// Register Raft transport and Snapshot services on RaftServer (internal)
 			func(raftServer *grpcadp.RaftServer, transport *node.DefaultTransport) error {
 				node.RegisterRaftTransportService(raftServer.GetServer(), transport)
+
 				return nil
 			},
 			func(raftServer *grpcadp.RaftServer, snapshotServiceServer snapshotpb.SnapshotServiceServer) error {
 				grpcadp.RegisterSnapshotService(raftServer.GetServer(), snapshotServiceServer)
+
 				return nil
 			},
 			// Register business services on ServiceServer (external)
@@ -625,14 +663,17 @@ func Module() fx.Option {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(raftServer.GetServer(), hs)
 				hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+
 				return nil
 			},
 			func(serviceServer *grpcadp.ServiceServer, bucketServiceServer servicepb.BucketServiceServer) error {
 				grpcadp.RegisterBucketService(serviceServer.GetServer(), bucketServiceServer)
+
 				return nil
 			},
 			func(serviceServer *grpcadp.ServiceServer, clusterServiceServer clusterpb.ClusterServiceServer) error {
 				grpcadp.RegisterClusterService(serviceServer.GetServer(), clusterServiceServer)
+
 				return nil
 			},
 			// Start Raft server (internal) - must start before adding peers
@@ -653,10 +694,13 @@ func Module() fx.Option {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						logger.Infof("Starting Raft gRPC server")
+
 						listening := make(chan struct{})
+
 						reflection.Register(raftServer.GetServer())
 						otlplogs.Go(func() {
-							if err := raftServer.Start(listening); err != nil {
+							err := raftServer.Start(listening)
+							if err != nil {
 								panic(err)
 							}
 						}, logger)
@@ -674,7 +718,9 @@ func Module() fx.Option {
 							logger := logger.WithFields(map[string]any{"peer": peerEntry})
 							logger.Infof("Adding peer to transport and service pool")
 							defaultTransport.AddPeer(peerEntry.ID, peerEntry.Address)
-							if err := servicePool.AddPeer(peerEntry.ID, peerEntry.ServiceAddress); err != nil {
+
+							err := servicePool.AddPeer(peerEntry.ID, peerEntry.ServiceAddress)
+							if err != nil {
 								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool")
 							}
 						}
@@ -684,6 +730,7 @@ func Module() fx.Option {
 							if nodeID == cfg.NodeID {
 								continue // skip self
 							}
+
 							logger := logger.WithFields(map[string]any{
 								"peer_id":      nodeID,
 								"raft_addr":    addr.RaftAddress,
@@ -691,7 +738,9 @@ func Module() fx.Option {
 							})
 							logger.Infof("Restoring recovered peer")
 							defaultTransport.AddPeer(nodeID, addr.RaftAddress)
-							if err := servicePool.AddPeer(nodeID, addr.ServiceAddress); err != nil {
+
+							err := servicePool.AddPeer(nodeID, addr.ServiceAddress)
+							if err != nil {
 								logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add recovered peer to service pool")
 							}
 						}
@@ -700,6 +749,7 @@ func Module() fx.Option {
 					},
 					OnStop: func(ctx context.Context) error {
 						logger.Infof("Stopping Raft gRPC server")
+
 						return raftServer.Stop()
 					},
 				})
@@ -713,9 +763,12 @@ func Module() fx.Option {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						logger.Infof("Starting Service gRPC server")
+
 						listening := make(chan struct{})
+
 						otlplogs.Go(func() {
-							if err := serviceServer.Start(listening); err != nil {
+							err := serviceServer.Start(listening)
+							if err != nil {
 								panic(err)
 							}
 						}, logger)
@@ -727,10 +780,12 @@ func Module() fx.Option {
 						}
 
 						logger.Infof("Service gRPC server started successfully")
+
 						return nil
 					},
 					OnStop: func(ctx context.Context) error {
 						logger.Infof("Stopping Service gRPC server")
+
 						return serviceServer.Stop()
 					},
 				})
@@ -759,25 +814,33 @@ func Module() fx.Option {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						ready := make(chan struct{})
+
 						otlplogs.Go(func() {
-							if err := node.Run(context.WithoutCancel(ctx), ready); err != nil {
+							err := node.Run(context.WithoutCancel(ctx), ready)
+							if err != nil {
 								panic(err)
 							}
 						}, logger)
+
 						select {
 						case <-ctx.Done():
 							return ctx.Err()
 						case <-ready:
 							logger.Infof("Raft cluster started successfully")
+
 							return nil
 						}
 					},
 					OnStop: func(ctx context.Context) error {
 						logger.Infof("Shutting down raft cluster")
-						if err := node.Stop(ctx); err != nil {
+
+						err := node.Stop(ctx)
+						if err != nil {
 							return fmt.Errorf("shutting down raft cluster: %w", err)
 						}
+
 						logger.Infof("Raft cluster stopped successfully")
+
 						return nil
 					},
 				})
@@ -796,6 +859,7 @@ func Module() fx.Option {
 				if cfg.RaftConfig.Bootstrap || len(cfg.RaftConfig.Peers) == 0 {
 					return
 				}
+
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						// Only register as learner on the very first start;
@@ -805,6 +869,7 @@ func Module() fx.Option {
 								"nodeID": cfg.RaftConfig.NodeID,
 							}).Infof("WARNING: Learner registration SKIPPED — WAL already contains ConfState voters (not a fresh start). " +
 								"If this node was never successfully added to the cluster, delete its WAL directory and retry")
+
 							return nil
 						}
 
@@ -823,6 +888,7 @@ func Module() fx.Option {
 						}
 
 						client := clusterpb.NewClusterServiceClient(conn)
+
 						_, err := client.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 							NodeId:         cfg.RaftConfig.NodeID,
 							RaftAddress:    cfg.RaftConfig.AdvertiseAddr,
@@ -835,6 +901,7 @@ func Module() fx.Option {
 						logger.WithFields(map[string]any{
 							"peer": peer.ID,
 						}).Infof("Successfully registered as learner on the cluster")
+
 						return nil
 					},
 				})
@@ -875,19 +942,21 @@ func Module() fx.Option {
 				lc.Append(worker.FxHook(converter))
 			},
 			// Register bbolt read index metrics and unregister on stop.
-		func(lc fx.Lifecycle, rs *readstore.Store, meterProvider metric.MeterProvider) error {
-			reg, err := rs.RegisterMetrics(meterProvider.Meter("readindex"))
-			if err != nil {
-				return fmt.Errorf("registering readindex metrics: %w", err)
-			}
-			lc.Append(fx.Hook{
-				OnStop: func(_ context.Context) error {
-					return reg.Unregister()
-				},
-			})
-			return nil
-		},
-		// Start and stop the index builder.
+			func(lc fx.Lifecycle, rs *readstore.Store, meterProvider metric.MeterProvider) error {
+				reg, err := rs.RegisterMetrics(meterProvider.Meter("readindex"))
+				if err != nil {
+					return fmt.Errorf("registering readindex metrics: %w", err)
+				}
+
+				lc.Append(fx.Hook{
+					OnStop: func(_ context.Context) error {
+						return reg.Unregister()
+					},
+				})
+
+				return nil
+			},
+			// Start and stop the index builder.
 			// The builder has its own dedicated Notifications signal to receive
 			// log-committed events from the FSM without competing with other consumers.
 			fx.Annotate(func(lc fx.Lifecycle, builder *indexbuilder.Builder, notifications *signal.Notifications, raftNode *node.Node) {
@@ -914,17 +983,21 @@ func handleConfChangeEvent(
 		if len(e.Context) == 0 {
 			return
 		}
+
 		ccCtx, err := node.UnmarshalConfChangeContext(e.Context)
 		if err != nil {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to unmarshal ConfChange context")
+
 			return
 		}
+
 		logger.WithFields(map[string]any{
 			"node_id":         e.NodeID,
 			"raft_address":    ccCtx.RaftAddress,
 			"service_address": ccCtx.ServiceAddress,
 		}).Infof("Adding peer from ConfChange")
 		defaultTransport.AddPeer(e.NodeID, ccCtx.RaftAddress)
+
 		if err := servicePool.AddPeer(e.NodeID, ccCtx.ServiceAddress); err != nil {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add peer to service pool from ConfChange")
 		}
@@ -933,7 +1006,9 @@ func handleConfChangeEvent(
 			"node_id": e.NodeID,
 		}).Infof("Removing peer from ConfChange")
 		defaultTransport.RemovePeer(context.Background(), e.NodeID)
-		if err := servicePool.RemovePeer(e.NodeID); err != nil {
+
+		err := servicePool.RemovePeer(e.NodeID)
+		if err != nil {
 			logger.WithFields(map[string]any{"error": err}).Errorf("Failed to remove peer from service pool")
 		}
 	}
@@ -971,6 +1046,7 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 	if err != nil {
 		return authCfg, err
 	}
+
 	authCfg.ScopeMapping = scopeMapping
 
 	return authCfg, nil
@@ -983,10 +1059,12 @@ func loadScopeMapping(cfg Config, logger logging.Logger) (internalauth.ScopeMapp
 		if err != nil {
 			return nil, fmt.Errorf("loading scope mapping file: %w", err)
 		}
+
 		logger.WithFields(map[string]any{
 			"file":       cfg.AuthConfig.ScopeMappingFile,
 			"keys_count": len(mapping),
 		}).Infof("Custom scope mapping loaded from file")
+
 		return mapping, nil
 	}
 
@@ -995,9 +1073,11 @@ func loadScopeMapping(cfg Config, logger logging.Logger) (internalauth.ScopeMapp
 		if err != nil {
 			return nil, fmt.Errorf("parsing AUTH_SCOPE_MAPPING env var: %w", err)
 		}
+
 		logger.WithFields(map[string]any{
 			"keys_count": len(mapping),
 		}).Infof("Custom scope mapping loaded from env var")
+
 		return mapping, nil
 	}
 
@@ -1016,6 +1096,7 @@ func handleLeadershipChangeEvent(
 	} else {
 		logger.Infof("Lost leadership — tearing down event emitter and mirror workers")
 	}
+
 	eventsManager.OnLeadershipChange(e.IsLeader)
 	mirrorManager.OnLeadershipChange(e.IsLeader)
 }

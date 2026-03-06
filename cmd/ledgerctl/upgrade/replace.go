@@ -28,10 +28,12 @@ func replaceBinary(srcPath string) (string, error) {
 
 	// Create temp file in the same directory to ensure same filesystem for atomic rename.
 	dir := filepath.Dir(currentPath)
+
 	tmpFile, err := os.CreateTemp(dir, ".ledgerctl-upgrade-*")
 	if err != nil {
 		return "", fmt.Errorf("creating temp file for replacement: %w (you may need elevated permissions)", err)
 	}
+
 	tmpPath := tmpFile.Name()
 	_ = tmpFile.Close()
 
@@ -39,30 +41,36 @@ func replaceBinary(srcPath string) (string, error) {
 	src, err := os.Open(srcPath)
 	if err != nil {
 		_ = os.Remove(tmpPath)
+
 		return "", fmt.Errorf("opening new binary: %w", err)
 	}
+
 	defer func() { _ = src.Close() }()
 
 	dst, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_TRUNC, info.Mode())
 	if err != nil {
 		_ = os.Remove(tmpPath)
+
 		return "", fmt.Errorf("opening temp file: %w", err)
 	}
 
 	if _, err := dst.ReadFrom(src); err != nil {
 		_ = dst.Close()
 		_ = os.Remove(tmpPath)
+
 		return "", fmt.Errorf("writing new binary: %w", err)
 	}
 
 	if err := dst.Close(); err != nil {
 		_ = os.Remove(tmpPath)
+
 		return "", fmt.Errorf("closing temp file: %w", err)
 	}
 
 	// Atomic rename.
 	if err := os.Rename(tmpPath, currentPath); err != nil {
 		_ = os.Remove(tmpPath)
+
 		return "", fmt.Errorf("replacing binary: %w (you may need elevated permissions)", err)
 	}
 

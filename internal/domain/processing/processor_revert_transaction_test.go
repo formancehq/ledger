@@ -3,11 +3,12 @@ package processing
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 func TestProcessRevertTransaction_Success(t *testing.T) {
@@ -94,16 +95,16 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	revertedTx := applyLog.Log.Data.GetRevertedTransaction()
+	revertedTx := applyLog.GetLog().GetData().GetRevertedTransaction()
 	require.NotNil(t, revertedTx)
-	require.Equal(t, uint64(3), revertedTx.RevertedTransactionId)
-	require.Equal(t, uint64(5), revertedTx.RevertTransaction.Id)
-	require.Len(t, revertedTx.RevertTransaction.Postings, 1)
+	require.Equal(t, uint64(3), revertedTx.GetRevertedTransactionId())
+	require.Equal(t, uint64(5), revertedTx.GetRevertTransaction().GetId())
+	require.Len(t, revertedTx.GetRevertTransaction().GetPostings(), 1)
 
 	// Verify posting is reversed
-	posting := revertedTx.RevertTransaction.Postings[0]
-	require.Equal(t, "users:123", posting.Source)
-	require.Equal(t, "bank", posting.Destination)
+	posting := revertedTx.GetRevertTransaction().GetPostings()[0]
+	require.Equal(t, "users:123", posting.GetSource())
+	require.Equal(t, "bank", posting.GetDestination())
 }
 
 func TestProcessRevertTransaction_NotFound(t *testing.T) {

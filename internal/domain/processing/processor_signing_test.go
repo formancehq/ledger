@@ -3,9 +3,10 @@ package processing
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 func TestProcessRegisterSigningKey(t *testing.T) {
@@ -36,9 +37,9 @@ func TestProcessRegisterSigningKey(t *testing.T) {
 
 	regLog := result.GetRegisterSigningKey()
 	require.NotNil(t, regLog)
-	require.Equal(t, "key-001", regLog.KeyId)
-	require.Equal(t, []byte{0xAB, 0xCD}, regLog.PublicKey)
-	require.Equal(t, "parent-key", regLog.ParentKeyId)
+	require.Equal(t, "key-001", regLog.GetKeyId())
+	require.Equal(t, []byte{0xAB, 0xCD}, regLog.GetPublicKey())
+	require.Equal(t, "parent-key", regLog.GetParentKeyId())
 }
 
 func TestProcessRevokeSigningKey_NoCascade(t *testing.T) {
@@ -68,8 +69,8 @@ func TestProcessRevokeSigningKey_NoCascade(t *testing.T) {
 
 	revokeLog := result.GetRevokeSigningKey()
 	require.NotNil(t, revokeLog)
-	require.Equal(t, "key-001", revokeLog.KeyId)
-	require.Empty(t, revokeLog.CascadedKeyIds)
+	require.Equal(t, "key-001", revokeLog.GetKeyId())
+	require.Empty(t, revokeLog.GetCascadedKeyIds())
 }
 
 func TestProcessRevokeSigningKey_WithCascade(t *testing.T) {
@@ -110,8 +111,8 @@ func TestProcessRevokeSigningKey_WithCascade(t *testing.T) {
 
 	revokeLog := result.GetRevokeSigningKey()
 	require.NotNil(t, revokeLog)
-	require.Equal(t, "key-001", revokeLog.KeyId)
-	require.ElementsMatch(t, []string{"child-a", "child-b", "grandchild-c"}, revokeLog.CascadedKeyIds)
+	require.Equal(t, "key-001", revokeLog.GetKeyId())
+	require.ElementsMatch(t, []string{"child-a", "child-b", "grandchild-c"}, revokeLog.GetCascadedKeyIds())
 }
 
 func TestProcessSetSigningConfig(t *testing.T) {
@@ -140,5 +141,5 @@ func TestProcessSetSigningConfig(t *testing.T) {
 
 	configLog := result.GetSetSigningConfig()
 	require.NotNil(t, configLog)
-	require.True(t, configLog.RequireSignatures)
+	require.True(t, configLog.GetRequireSignatures())
 }

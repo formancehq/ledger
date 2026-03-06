@@ -2,24 +2,26 @@ package state
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
-	"google.golang.org/protobuf/proto"
 )
 
 // newTestMachineWithAudit creates a Machine with configurable audit enablement.
@@ -56,23 +58,30 @@ func newTestMachineWithAudit(t *testing.T, auditEnabled bool) (*Machine, *dal.St
 // Pass afterSequence=0 to return all entries.
 func listAuditEntries(t *testing.T, store *dal.Store, afterSequence uint64) []*auditpb.AuditEntry {
 	t.Helper()
+
 	var filter *uint64
 	if afterSequence > 0 {
 		filter = &afterSequence
 	}
+
 	cursor, err := query.ReadAuditEntries(context.Background(), store, filter)
 	require.NoError(t, err)
+
 	defer func() { _ = cursor.Close() }()
 
 	var entries []*auditpb.AuditEntry
+
 	for {
 		entry, err := cursor.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		require.NoError(t, err)
+
 		entries = append(entries, entry)
 	}
+
 	return entries
 }
 
@@ -110,20 +119,20 @@ func TestAuditLogOnSuccess(t *testing.T) {
 
 	// First entry: create ledger (success) — sequences start at 1
 	first := entries[0]
-	require.Equal(t, uint64(1), first.Sequence)
-	require.Equal(t, uint64(1), first.ProposalId)
+	require.Equal(t, uint64(1), first.GetSequence())
+	require.Equal(t, uint64(1), first.GetProposalId())
 	require.NotNil(t, first.GetSuccess(), "create ledger should be success")
-	require.NotEmpty(t, first.GetSuccess().LogSequences)
-	require.NotEmpty(t, first.Orders)
+	require.NotEmpty(t, first.GetSuccess().GetLogSequences())
+	require.NotEmpty(t, first.GetOrders())
 
 	// Second entry: create transaction (success)
 	second := entries[1]
-	require.Equal(t, uint64(2), second.Sequence)
-	require.Equal(t, uint64(2), second.ProposalId)
+	require.Equal(t, uint64(2), second.GetSequence())
+	require.Equal(t, uint64(2), second.GetProposalId())
 	require.NotNil(t, second.GetSuccess(), "transaction should be success")
-	require.NotEmpty(t, second.GetSuccess().LogSequences)
-	require.NotEmpty(t, second.Orders)
-	require.NotNil(t, second.Timestamp)
+	require.NotEmpty(t, second.GetSuccess().GetLogSequences())
+	require.NotEmpty(t, second.GetOrders())
+	require.NotNil(t, second.GetTimestamp())
 }
 
 func TestAuditLogOnFailure(t *testing.T) {
@@ -159,14 +168,14 @@ func TestAuditLogOnFailure(t *testing.T) {
 
 	// Second entry: failed transaction — sequences start at 1
 	failEntry := entries[1]
-	require.Equal(t, uint64(2), failEntry.Sequence)
-	require.Equal(t, uint64(2), failEntry.ProposalId)
+	require.Equal(t, uint64(2), failEntry.GetSequence())
+	require.Equal(t, uint64(2), failEntry.GetProposalId())
 	require.NotNil(t, failEntry.GetFailure(), "should be failure")
 	// The error is BALANCE_NOT_FOUND because the account doesn't exist yet (no balance preloaded)
-	require.Equal(t, domain.ErrReasonBalanceNotFound, failEntry.GetFailure().ErrorType)
-	require.NotEmpty(t, failEntry.GetFailure().Message)
-	require.Contains(t, failEntry.GetFailure().Context, "account")
-	require.Contains(t, failEntry.GetFailure().Context, "asset")
+	require.Equal(t, domain.ErrReasonBalanceNotFound, failEntry.GetFailure().GetErrorType())
+	require.NotEmpty(t, failEntry.GetFailure().GetMessage())
+	require.Contains(t, failEntry.GetFailure().GetContext(), "account")
+	require.Contains(t, failEntry.GetFailure().GetContext(), "asset")
 }
 
 func TestAuditLogSequenceMonotonic(t *testing.T) {
@@ -199,8 +208,9 @@ func TestAuditLogSequenceMonotonic(t *testing.T) {
 	// Verify sequences are monotonically increasing (starting at 1)
 	entries := listAuditEntries(t, dataStore, 0)
 	require.Len(t, entries, 5)
+
 	for i, entry := range entries {
-		require.Equal(t, uint64(i+1), entry.Sequence, "sequence should be %d", i+1)
+		require.Equal(t, uint64(i+1), entry.GetSequence(), "sequence should be %d", i+1)
 	}
 }
 
@@ -238,8 +248,8 @@ func TestAuditLogAfterSequenceFilter(t *testing.T) {
 	// After sequence 2: should return entries with sequence 3 and 4
 	after2 := listAuditEntries(t, dataStore, 2)
 	require.Len(t, after2, 2)
-	require.Equal(t, uint64(3), after2[0].Sequence)
-	require.Equal(t, uint64(4), after2[1].Sequence)
+	require.Equal(t, uint64(3), after2[0].GetSequence())
+	require.Equal(t, uint64(4), after2[1].GetSequence())
 
 	// After sequence 4: should return nothing
 	after4 := listAuditEntries(t, dataStore, 4)
@@ -309,7 +319,7 @@ func TestAuditLogInSnapshot(t *testing.T) {
 
 	var snapshot raftcmdpb.MemorySnapshot
 	require.NoError(t, proto.Unmarshal(snapshotBytes, &snapshot))
-	require.Equal(t, uint64(3), snapshot.NextAuditSequenceId,
+	require.Equal(t, uint64(3), snapshot.GetNextAuditSequenceId(),
 		"snapshot should capture next audit sequence ID (2 entries written starting at 1, next = 3)")
 }
 
@@ -318,108 +328,121 @@ func TestBuildAuditFailure(t *testing.T) {
 
 	t.Run("InsufficientFunds", func(t *testing.T) {
 		t.Parallel()
+
 		err := &domain.ErrInsufficientFunds{
 			Account: "user:alice",
 			Asset:   "USD",
 		}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonInsufficientFunds, failure.ErrorType)
-		require.Equal(t, "user:alice", failure.Context["account"])
-		require.Equal(t, "USD", failure.Context["asset"])
+		require.Equal(t, domain.ErrReasonInsufficientFunds, failure.GetErrorType())
+		require.Equal(t, "user:alice", failure.GetContext()["account"])
+		require.Equal(t, "USD", failure.GetContext()["asset"])
 	})
 
 	t.Run("LedgerNotFound", func(t *testing.T) {
 		t.Parallel()
+
 		err := &domain.ErrLedgerNotFound{Name: "missing-ledger"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonLedgerNotFound, failure.ErrorType)
-		require.Equal(t, "missing-ledger", failure.Context["name"])
+		require.Equal(t, domain.ErrReasonLedgerNotFound, failure.GetErrorType())
+		require.Equal(t, "missing-ledger", failure.GetContext()["name"])
 	})
 
 	t.Run("LedgerAlreadyExists", func(t *testing.T) {
 		t.Parallel()
+
 		err := &domain.ErrLedgerAlreadyExists{Name: "existing-ledger"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonLedgerAlreadyExists, failure.ErrorType)
-		require.Equal(t, "existing-ledger", failure.Context["name"])
+		require.Equal(t, domain.ErrReasonLedgerAlreadyExists, failure.GetErrorType())
+		require.Equal(t, "existing-ledger", failure.GetContext()["name"])
 	})
 
 	t.Run("TransactionNotFound", func(t *testing.T) {
 		t.Parallel()
+
 		err := &domain.ErrTransactionNotFound{TransactionID: 42}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonTransactionNotFound, failure.ErrorType)
-		require.Equal(t, "42", failure.Context["transactionId"])
+		require.Equal(t, domain.ErrReasonTransactionNotFound, failure.GetErrorType())
+		require.Equal(t, "42", failure.GetContext()["transactionId"])
 	})
 
 	t.Run("Validation", func(t *testing.T) {
 		t.Parallel()
+
 		err := numscript.ErrScriptRequired
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonValidation, failure.ErrorType)
+		require.Equal(t, domain.ErrReasonValidation, failure.GetErrorType())
 	})
 
 	t.Run("LedgerInMirrorMode", func(t *testing.T) {
 		t.Parallel()
+
 		err := &domain.ErrLedgerInMirrorMode{Name: "mirror-ledger"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonLedgerInMirrorMode, failure.ErrorType)
-		require.Equal(t, "mirror-ledger", failure.Context["name"])
+		require.Equal(t, domain.ErrReasonLedgerInMirrorMode, failure.GetErrorType())
+		require.Equal(t, "mirror-ledger", failure.GetContext()["name"])
 	})
 
 	t.Run("LedgerNotInMirrorMode", func(t *testing.T) {
 		t.Parallel()
+
 		err := &domain.ErrLedgerNotInMirrorMode{Name: "normal-ledger"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonLedgerNotInMirrorMode, failure.ErrorType)
-		require.Equal(t, "normal-ledger", failure.Context["name"])
+		require.Equal(t, domain.ErrReasonLedgerNotInMirrorMode, failure.GetErrorType())
+		require.Equal(t, "normal-ledger", failure.GetContext()["name"])
 	})
 
 	t.Run("MaintenanceMode", func(t *testing.T) {
 		t.Parallel()
+
 		err := domain.ErrMaintenanceMode
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonMaintenanceMode, failure.ErrorType)
+		require.Equal(t, domain.ErrReasonMaintenanceMode, failure.GetErrorType())
 	})
 
 	t.Run("InvalidCronExpression", func(t *testing.T) {
 		t.Parallel()
+
 		err := &domain.ErrInvalidCronExpression{Expression: "bad", Details: "parse error"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonInvalidCronExpression, failure.ErrorType)
-		require.Equal(t, "bad", failure.Context["expression"])
-		require.Equal(t, "parse error", failure.Context["details"])
+		require.Equal(t, domain.ErrReasonInvalidCronExpression, failure.GetErrorType())
+		require.Equal(t, "bad", failure.GetContext()["expression"])
+		require.Equal(t, "parse error", failure.GetContext()["details"])
 	})
 
 	t.Run("SinkAlreadyExists", func(t *testing.T) {
 		t.Parallel()
+
 		err := &domain.ErrSinkAlreadyExists{Name: "my-sink"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonSinkAlreadyExists, failure.ErrorType)
-		require.Equal(t, "my-sink", failure.Context["name"])
+		require.Equal(t, domain.ErrReasonSinkAlreadyExists, failure.GetErrorType())
+		require.Equal(t, "my-sink", failure.GetContext()["name"])
 	})
 
 	t.Run("SinkNotFound", func(t *testing.T) {
 		t.Parallel()
+
 		err := &domain.ErrSinkNotFound{Name: "missing-sink"}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonSinkNotFound, failure.ErrorType)
-		require.Equal(t, "missing-sink", failure.Context["name"])
+		require.Equal(t, domain.ErrReasonSinkNotFound, failure.GetErrorType())
+		require.Equal(t, "missing-sink", failure.GetContext()["name"])
 	})
 
 	t.Run("PeriodNotClosed", func(t *testing.T) {
 		t.Parallel()
+
 		err := &domain.ErrPeriodNotClosed{PeriodID: 3}
 		failure := buildAuditFailure(err)
-		require.Equal(t, domain.ErrReasonPeriodNotClosed, failure.ErrorType)
-		require.Equal(t, "3", failure.Context["periodId"])
+		require.Equal(t, domain.ErrReasonPeriodNotClosed, failure.GetErrorType())
+		require.Equal(t, "3", failure.GetContext()["periodId"])
 	})
 
 	t.Run("Unknown", func(t *testing.T) {
 		t.Parallel()
-		err := fmt.Errorf("some unknown error")
+
+		err := errors.New("some unknown error")
 		failure := buildAuditFailure(err)
-		require.Equal(t, "UNKNOWN", failure.ErrorType)
+		require.Equal(t, "UNKNOWN", failure.GetErrorType())
 	})
 }
 

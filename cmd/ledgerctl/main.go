@@ -6,10 +6,15 @@ import (
 	"os"
 	"strings"
 
+	"github.com/pterm/pterm"
+	"github.com/pterm/pterm/putils"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/go-libs/v3/service"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/accounts"
-	authcmd "github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/auth"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/audit"
+	authcmd "github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/auth"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cluster"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/events"
@@ -22,9 +27,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/store"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/transactions"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/upgrade"
-	"github.com/pterm/pterm"
-	"github.com/pterm/pterm/putils"
-	"github.com/spf13/cobra"
 )
 
 // Version information (set at build time).
@@ -35,12 +37,14 @@ func main() {
 	rootCmd.SilenceErrors = true
 	service.BindEnvToCommand(rootCmd)
 
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	if err != nil {
 		var cliErr *cmdutil.CLIError
 		if !errors.As(err, &cliErr) {
 			// Error was not already displayed — print it now.
 			pterm.Error.Println(err.Error())
 		}
+
 		os.Exit(1)
 	}
 }
@@ -61,6 +65,7 @@ func newRootCommand() *cobra.Command {
 			// Resolve profile name: --profile flag > LEDGERCTL_PROFILE env > config activeProfile.
 			profileName, _ := cmd.Flags().GetString("profile")
 			profileExplicit := cmd.Flags().Changed("profile")
+
 			if profileName == "" {
 				if v, ok := os.LookupEnv("LEDGERCTL_PROFILE"); ok && v != "" {
 					profileName = strings.TrimSpace(v)
@@ -132,10 +137,13 @@ func resolveFlag(cmd *cobra.Command, flagName, envVar, profileValue string) {
 	if cmd.Flags().Changed(flagName) {
 		return
 	}
+
 	if v, ok := os.LookupEnv(envVar); ok && v != "" {
 		_ = cmd.Flags().Set(flagName, strings.TrimSpace(v))
+
 		return
 	}
+
 	if profileValue != "" {
 		_ = cmd.Flags().Set(flagName, profileValue)
 	}

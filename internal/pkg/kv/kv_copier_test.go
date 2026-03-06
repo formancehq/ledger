@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -208,9 +209,7 @@ func TestCopier_SizeAndIter(t *testing.T) {
 
 	require.Equal(t, uint64(2), c.Size())
 
-	collected := map[string]int{}
-	for k, v := range c.Iter() {
-		collected[k] = v
-	}
+	collected := maps.Collect(c.Iter())
+
 	require.Equal(t, map[string]int{"a": 1, "b": 2}, collected)
 }

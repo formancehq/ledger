@@ -4,22 +4,23 @@ package events_test
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	libtime "github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
-	"github.com/formancehq/ledger-v3-poc/internal/application/events"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	libtime "github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger-v3-poc/internal/application/events"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 )
 
 // startTestNATSServer starts an embedded NATS server with JetStream enabled.
@@ -53,6 +54,7 @@ func startTestNATSServer(t *testing.T) *server.Server {
 // createTestStream creates a JetStream stream that captures all subjects under the given topic prefix.
 func createTestStream(t *testing.T, js jetstream.JetStream, streamName, topicPrefix string) {
 	t.Helper()
+
 	ctx := context.Background()
 	_, err := js.CreateStream(ctx, jetstream.StreamConfig{
 		Name:     streamName,
@@ -81,10 +83,12 @@ func consumeEvents(t *testing.T, cons jetstream.Consumer, expectedCount int, tim
 		if err != nil {
 			break
 		}
+
 		msgs = append(msgs, msg)
 	}
 
 	require.Len(t, msgs, expectedCount, "expected %d events from NATS", expectedCount)
+
 	return msgs
 }
 
@@ -96,6 +100,7 @@ func TestNATSSinkIntegration_PublishAndConsume(t *testing.T) {
 	// Connect a consumer to verify events arrive
 	conn, err := nats.Connect(ns.ClientURL())
 	require.NoError(t, err)
+
 	defer conn.Close()
 
 	js, err := jetstream.New(conn)
@@ -117,6 +122,7 @@ func TestNATSSinkIntegration_PublishAndConsume(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "orders")
+
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -157,6 +163,7 @@ func TestNATSSinkIntegration_PublishAndConsume(t *testing.T) {
 		Format: events.FormatJSON,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = sink.Close() }()
 
 	cfg := events.DefaultEmitterConfig()
@@ -166,7 +173,8 @@ func TestNATSSinkIntegration_PublishAndConsume(t *testing.T) {
 
 	// Wait for cursor to advance
 	require.Eventually(t, func() bool {
-		cursor, err := query.ReadSinkCursor(store,"nats-sink")
+		cursor, err := query.ReadSinkCursor(store, "nats-sink")
+
 		return err == nil && cursor >= 2
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process all logs")
 
@@ -178,20 +186,20 @@ func TestNATSSinkIntegration_PublishAndConsume(t *testing.T) {
 	// Verify CREATED_LEDGER event (JSON)
 	var evt1 eventspb.Event
 	require.NoError(t, protojson.Unmarshal(msgs[0].Data(), &evt1))
-	require.Equal(t, commonpb.EventType_CREATED_LEDGER, evt1.Type)
-	require.Equal(t, "orders", evt1.Ledger)
-	require.Equal(t, uint64(1), evt1.LogSequence)
+	require.Equal(t, commonpb.EventType_CREATED_LEDGER, evt1.GetType())
+	require.Equal(t, "orders", evt1.GetLedger())
+	require.Equal(t, uint64(1), evt1.GetLogSequence())
 
 	// Verify COMMITTED_TRANSACTION event (JSON)
 	var evt2 eventspb.Event
 	require.NoError(t, protojson.Unmarshal(msgs[1].Data(), &evt2))
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt2.Type)
-	require.Equal(t, "orders", evt2.Ledger)
-	require.Equal(t, uint64(2), evt2.LogSequence)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt2.GetType())
+	require.Equal(t, "orders", evt2.GetLedger())
+	require.Equal(t, uint64(2), evt2.GetLogSequence())
 
 	// Verify NATS subject routing
-	require.Equal(t, fmt.Sprintf("%s.orders.created_ledger", topic), msgs[0].Subject())
-	require.Equal(t, fmt.Sprintf("%s.orders.committed_transaction", topic), msgs[1].Subject())
+	require.Equal(t, topic+".orders.created_ledger", msgs[0].Subject())
+	require.Equal(t, topic+".orders.committed_transaction", msgs[1].Subject())
 }
 
 func TestNATSSinkIntegration_ProtobufFormat(t *testing.T) {
@@ -201,6 +209,7 @@ func TestNATSSinkIntegration_ProtobufFormat(t *testing.T) {
 
 	conn, err := nats.Connect(ns.ClientURL())
 	require.NoError(t, err)
+
 	defer conn.Close()
 
 	js, err := jetstream.New(conn)
@@ -221,6 +230,7 @@ func TestNATSSinkIntegration_ProtobufFormat(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "payments")
+
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -251,6 +261,7 @@ func TestNATSSinkIntegration_ProtobufFormat(t *testing.T) {
 		Format: events.FormatProto,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = sink.Close() }()
 
 	cfg := events.DefaultEmitterConfig()
@@ -259,7 +270,8 @@ func TestNATSSinkIntegration_ProtobufFormat(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := query.ReadSinkCursor(store,"proto-sink")
+		cursor, err := query.ReadSinkCursor(store, "proto-sink")
+
 		return err == nil && cursor >= 1
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process log")
 
@@ -270,10 +282,10 @@ func TestNATSSinkIntegration_ProtobufFormat(t *testing.T) {
 	// Deserialize protobuf and verify
 	var evt eventspb.Event
 	require.NoError(t, evt.UnmarshalVT(msgs[0].Data()))
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt.Type)
-	require.Equal(t, "payments", evt.Ledger)
-	require.Equal(t, uint64(1), evt.LogSequence)
-	require.NotNil(t, evt.Log, "event should carry the full Log")
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt.GetType())
+	require.Equal(t, "payments", evt.GetLedger())
+	require.Equal(t, uint64(1), evt.GetLogSequence())
+	require.NotNil(t, evt.GetLog(), "event should carry the full Log")
 }
 
 func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
@@ -283,6 +295,7 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 
 	conn, err := nats.Connect(ns.ClientURL())
 	require.NoError(t, err)
+
 	defer conn.Close()
 
 	js, err := jetstream.New(conn)
@@ -312,6 +325,7 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 
 	registerLedger(t, store, "orders")
 	registerLedger(t, store, "payments")
+
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -385,6 +399,7 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 		Format: events.FormatJSON,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = sink.Close() }()
 
 	cfg := events.DefaultEmitterConfig()
@@ -393,7 +408,8 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := query.ReadSinkCursor(store,"routing-sink")
+		cursor, err := query.ReadSinkCursor(store, "routing-sink")
+
 		return err == nil && cursor >= 4
 	}, 5*time.Second, 10*time.Millisecond, "emitter should process all 4 logs")
 
@@ -406,10 +422,10 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 	require.NoError(t, protojson.Unmarshal(ordersMsgs[0].Data(), &ordEvt1))
 	require.NoError(t, protojson.Unmarshal(ordersMsgs[1].Data(), &ordEvt2))
 
-	require.Equal(t, commonpb.EventType_CREATED_LEDGER, ordEvt1.Type)
-	require.Equal(t, "orders", ordEvt1.Ledger)
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, ordEvt2.Type)
-	require.Equal(t, "orders", ordEvt2.Ledger)
+	require.Equal(t, commonpb.EventType_CREATED_LEDGER, ordEvt1.GetType())
+	require.Equal(t, "orders", ordEvt1.GetLedger())
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, ordEvt2.GetType())
+	require.Equal(t, "orders", ordEvt2.GetLedger())
 
 	// Verify "payments" consumer gets exactly 2 events
 	paymentsMsgs := consumeEvents(t, paymentsConsumer, 2, 5*time.Second)
@@ -418,8 +434,8 @@ func TestNATSSinkIntegration_SubjectRouting(t *testing.T) {
 	require.NoError(t, protojson.Unmarshal(paymentsMsgs[0].Data(), &payEvt1))
 	require.NoError(t, protojson.Unmarshal(paymentsMsgs[1].Data(), &payEvt2))
 
-	require.Equal(t, commonpb.EventType_CREATED_LEDGER, payEvt1.Type)
-	require.Equal(t, "payments", payEvt1.Ledger)
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, payEvt2.Type)
-	require.Equal(t, "payments", payEvt2.Ledger)
+	require.Equal(t, commonpb.EventType_CREATED_LEDGER, payEvt1.GetType())
+	require.Equal(t, "payments", payEvt1.GetLedger())
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, payEvt2.GetType())
+	require.Equal(t, "payments", payEvt2.GetLedger())
 }

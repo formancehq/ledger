@@ -14,7 +14,7 @@ type ErrNumscriptParse struct {
 }
 
 func (e *ErrNumscriptParse) Error() string {
-	return fmt.Sprintf("numscript parse error: %s", e.Details)
+	return "numscript parse error: " + e.Details
 }
 
 // ErrNonDeterministicScript is returned when a Numscript script calls

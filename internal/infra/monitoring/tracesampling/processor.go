@@ -13,7 +13,7 @@ import (
 //
 // This processor wraps another SpanProcessor and filters spans on export:
 // - Spans with status code ERROR are always exported
-// - Spans without errors are sampled based on the configured ratio
+// - Spans without errors are sampled based on the configured ratio.
 type ErrorAwareSamplingProcessor struct {
 	delegate sdktrace.SpanProcessor
 	ratio    float64
@@ -26,9 +26,11 @@ func NewErrorAwareSamplingProcessor(delegate sdktrace.SpanProcessor, ratio float
 	if ratio < 0 {
 		ratio = 0
 	}
+
 	if ratio > 1 {
 		ratio = 1
 	}
+
 	return &ErrorAwareSamplingProcessor{
 		delegate: delegate,
 		ratio:    ratio,
@@ -47,6 +49,7 @@ func (p *ErrorAwareSamplingProcessor) OnEnd(s sdktrace.ReadOnlySpan) {
 	if !p.shouldExport(s) {
 		return
 	}
+
 	p.delegate.OnEnd(s)
 }
 
@@ -63,6 +66,7 @@ func (p *ErrorAwareSamplingProcessor) shouldExport(s sdktrace.ReadOnlySpan) bool
 		if attr.Key == "error" && attr.Value.AsBool() {
 			return true
 		}
+
 		if attr.Key == "exception.type" || attr.Key == "exception.message" {
 			return true
 		}
@@ -72,12 +76,14 @@ func (p *ErrorAwareSamplingProcessor) shouldExport(s sdktrace.ReadOnlySpan) bool
 	if p.ratio >= 1.0 {
 		return true
 	}
+
 	if p.ratio <= 0 {
 		return false
 	}
 
 	// Use trace ID for deterministic sampling
 	traceID := s.SpanContext().TraceID()
+
 	return p.hashSample(traceID[:])
 }
 
@@ -90,6 +96,7 @@ func (p *ErrorAwareSamplingProcessor) hashSample(data []byte) bool {
 
 	// Convert ratio to threshold
 	threshold := uint64(p.ratio * float64(^uint64(0)))
+
 	return hash < threshold
 }
 

@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/cockroachdb/pebble"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain/analysis"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -31,7 +32,7 @@ type CompactAccountIterator struct {
 
 // NewCompactAccountIterator creates an iterator that yields CompactAccount
 // values by scanning the Pebble attributes zone for the given ledger.
-// Scan range: [0xF1][ledger\x00] → [0xF1][ledger\x01]
+// Scan range: [0xF1][ledger\x00] → [0xF1][ledger\x01].
 func NewCompactAccountIterator(reader dal.PebbleReader, ledger string) (*CompactAccountIterator, error) {
 	// Lower bound: [0xF1][ledger]\x00
 	lowerBound := make([]byte, 1+len(ledger)+1)
@@ -69,9 +70,12 @@ func (it *CompactAccountIterator) Next() (analysis.CompactAccount, error) {
 		it.started = true
 		if !it.iter.First() {
 			it.done = true
-			if err := it.iter.Error(); err != nil {
+
+			err := it.iter.Error()
+			if err != nil {
 				return analysis.CompactAccount{}, err
 			}
+
 			return analysis.CompactAccount{}, io.EOF
 		}
 	}
@@ -82,12 +86,15 @@ func (it *CompactAccountIterator) Next() (analysis.CompactAccount, error) {
 		// Skip malformed keys.
 		if len(key) <= 1+attributes.SuffixLen {
 			it.iter.Next()
+
 			continue
 		}
 
 		// Filter by attr type — only Volume and Metadata.
 		attrType := key[len(key)-attributes.SuffixLen]
+
 		var sepByte byte
+
 		switch attrType {
 		case dal.AttributePrefixVolume:
 			sepByte = 0x00
@@ -95,15 +102,18 @@ func (it *CompactAccountIterator) Next() (analysis.CompactAccount, error) {
 			sepByte = 0x01
 		default:
 			it.iter.Next()
+
 			continue
 		}
 
 		// Extract canonical key and parse account/name.
 		canonical := key[1 : len(key)-attributes.SuffixLen]
 		rest := canonical[it.ledgerLen:]
+
 		sep := bytes.IndexByte(rest, sepByte)
 		if sep < 0 {
 			it.iter.Next()
+
 			continue
 		}
 
@@ -115,6 +125,7 @@ func (it *CompactAccountIterator) Next() (analysis.CompactAccount, error) {
 			it.startAccount(accountBytes)
 			it.addEntry(canonical, rest[sep+1:], attrType)
 			it.iter.Next()
+
 			return acc, nil
 		}
 
@@ -128,12 +139,16 @@ func (it *CompactAccountIterator) Next() (analysis.CompactAccount, error) {
 
 	// Iterator exhausted.
 	it.done = true
-	if err := it.iter.Error(); err != nil {
+
+	err := it.iter.Error()
+	if err != nil {
 		return analysis.CompactAccount{}, err
 	}
+
 	if it.currentAddr != nil {
 		acc := it.yieldCurrent()
 		it.currentAddr = nil
+
 		return acc, nil
 	}
 
@@ -157,9 +172,11 @@ func (it *CompactAccountIterator) addEntry(canonical []byte, nameBytes []byte, a
 	if bytes.Equal(canonical, it.lastCanonical) {
 		return
 	}
+
 	it.lastCanonical = append(it.lastCanonical[:0], canonical...)
 
 	name := string(nameBytes)
+
 	switch attrType {
 	case dal.AttributePrefixVolume:
 		it.assets = append(it.assets, name)
@@ -176,9 +193,11 @@ func (it *CompactAccountIterator) yieldCurrent() analysis.CompactAccount {
 		acc.Assets = make([]string, len(it.assets))
 		copy(acc.Assets, it.assets)
 	}
+
 	if len(it.metadataKeys) > 0 {
 		acc.MetadataKeys = make([]string, len(it.metadataKeys))
 		copy(acc.MetadataKeys, it.metadataKeys)
 	}
+
 	return acc
 }

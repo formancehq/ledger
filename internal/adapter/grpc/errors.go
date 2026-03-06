@@ -2,14 +2,15 @@ package grpc
 
 import (
 	"errors"
-	"fmt"
+	"strconv"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 )
 
 const errorDomain = "ledger"
@@ -93,14 +94,14 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		code = codes.NotFound
 		reason = domain.ErrReasonTransactionNotFound
 		metadata = map[string]string{
-			"transactionId": fmt.Sprintf("%d", transactionNotFound.TransactionID),
+			"transactionId": strconv.FormatUint(transactionNotFound.TransactionID, 10),
 		}
 
 	case errors.As(inner, &transactionAlreadyReverted):
 		code = codes.FailedPrecondition
 		reason = domain.ErrReasonTransactionAlreadyReverted
 		metadata = map[string]string{
-			"transactionId": fmt.Sprintf("%d", transactionAlreadyReverted.TransactionID),
+			"transactionId": strconv.FormatUint(transactionAlreadyReverted.TransactionID, 10),
 		}
 
 	case errors.As(inner, &insufficientFunds):
@@ -192,14 +193,14 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		code = codes.NotFound
 		reason = domain.ErrReasonPeriodNotFound
 		metadata = map[string]string{
-			"periodId": fmt.Sprintf("%d", periodNotFound.PeriodID),
+			"periodId": strconv.FormatUint(periodNotFound.PeriodID, 10),
 		}
 
 	case errors.As(inner, &periodNotClosing):
 		code = codes.FailedPrecondition
 		reason = domain.ErrReasonPeriodNotClosing
 		metadata = map[string]string{
-			"periodId": fmt.Sprintf("%d", periodNotClosing.PeriodID),
+			"periodId": strconv.FormatUint(periodNotClosing.PeriodID, 10),
 		}
 
 	case errors.As(inner, &invalidReceipt):
@@ -257,6 +258,7 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 	}
 
 	st := status.New(code, inner.Error())
+
 	detailed, err := st.WithDetails(&errdetails.ErrorInfo{
 		Reason:   reason,
 		Domain:   errorDomain,

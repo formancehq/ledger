@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // NewArchiveCommand creates the periods archive command.
@@ -31,6 +32,7 @@ func runArchive(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -51,10 +53,10 @@ func runArchive(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("archiving period: %w", err)
 	}
 
-	if len(resp.Logs) > 0 {
-		log := resp.Logs[0]
-		if archiveLog := log.Payload.GetArchivePeriod(); archiveLog != nil {
-			pterm.Success.Printfln("Period %d archival initiated", archiveLog.Period.Id)
+	if len(resp.GetLogs()) > 0 {
+		log := resp.GetLogs()[0]
+		if archiveLog := log.GetPayload().GetArchivePeriod(); archiveLog != nil {
+			pterm.Success.Printfln("Period %d archival initiated", archiveLog.GetPeriod().GetId())
 			pterm.Info.Println("Background archiver will export data to cold storage and confirm")
 		} else {
 			pterm.Success.Println("Period archival initiated")

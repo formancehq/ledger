@@ -1,9 +1,10 @@
 package server
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/tracesampling"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
+
+	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/tracesampling"
 )
 
 const (

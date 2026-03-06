@@ -3,6 +3,7 @@ package testserver
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/testing/testservice"
@@ -12,14 +13,16 @@ import (
 
 func WithHTTPPort(port int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--http-port", fmt.Sprintf("%d", port))
+		cfg.AppendArgs("--http-port", strconv.Itoa(port))
+
 		return nil
 	}
 }
 
 func WithGRPCPort(port int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--grpc-port", fmt.Sprintf("%d", port))
+		cfg.AppendArgs("--grpc-port", strconv.Itoa(port))
+
 		return nil
 	}
 }
@@ -27,6 +30,7 @@ func WithGRPCPort(port int) testservice.InstrumentationFunc {
 func WithRaftPort(port int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--bind-addr", fmt.Sprintf(":%d", port))
+
 		return nil
 	}
 }
@@ -34,6 +38,7 @@ func WithRaftPort(port int) testservice.InstrumentationFunc {
 func WithWalDir(dir string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--wal-dir", dir)
+
 		return nil
 	}
 }
@@ -41,13 +46,15 @@ func WithWalDir(dir string) testservice.InstrumentationFunc {
 func WithDataDir(dir string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--data-dir", dir)
+
 		return nil
 	}
 }
 
 func WithNodeID(nodeID int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--node-id", fmt.Sprintf("%d", nodeID))
+		cfg.AppendArgs("--node-id", strconv.Itoa(nodeID))
+
 		return nil
 	}
 }
@@ -55,6 +62,7 @@ func WithNodeID(nodeID int) testservice.InstrumentationFunc {
 func WithAdvertiseAddr(addr string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--advertise-addr", addr)
+
 		return nil
 	}
 }
@@ -62,48 +70,55 @@ func WithAdvertiseAddr(addr string) testservice.InstrumentationFunc {
 func WithBootstrap() testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--bootstrap")
+
 		return nil
 	}
 }
 
 func WithAutoPromoteThreshold(threshold uint64) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--learner-promotion-threshold", fmt.Sprintf("%d", threshold))
+		cfg.AppendArgs("--learner-promotion-threshold", strconv.FormatUint(threshold, 10))
+
 		return nil
 	}
 }
 
 func WithSnapshotThreshold(threshold int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--snapshot-threshold", fmt.Sprintf("%d", threshold))
+		cfg.AppendArgs("--snapshot-threshold", strconv.Itoa(threshold))
+
 		return nil
 	}
 }
 
 func WithRaftElectionTick(tick int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--raft-election-tick", fmt.Sprintf("%d", tick))
+		cfg.AppendArgs("--raft-election-tick", strconv.Itoa(tick))
+
 		return nil
 	}
 }
 
 func WithRaftHeartbeatTick(tick int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--raft-heartbeat-tick", fmt.Sprintf("%d", tick))
+		cfg.AppendArgs("--raft-heartbeat-tick", strconv.Itoa(tick))
+
 		return nil
 	}
 }
 
 func WithRaftMaxSizePerMsg(size uint64) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--raft-max-size-per-msg", fmt.Sprintf("%d", size))
+		cfg.AppendArgs("--raft-max-size-per-msg", strconv.FormatUint(size, 10))
+
 		return nil
 	}
 }
 
 func WithRaftMaxInflightMsgs(count int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--raft-max-inflight-msgs", fmt.Sprintf("%d", count))
+		cfg.AppendArgs("--raft-max-inflight-msgs", strconv.Itoa(count))
+
 		return nil
 	}
 }
@@ -111,20 +126,23 @@ func WithRaftMaxInflightMsgs(count int) testservice.InstrumentationFunc {
 func WithRaftTickInterval(interval time.Duration) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--raft-tick-interval", interval.String())
+
 		return nil
 	}
 }
 
 func WithRaftCompactionMargin(margin uint64) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--raft-compaction-margin", fmt.Sprintf("%d", margin))
+		cfg.AppendArgs("--raft-compaction-margin", strconv.FormatUint(margin, 10))
+
 		return nil
 	}
 }
 
 func WithRaftProposeQueueCapacity(capacity int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--raft-propose-queue-capacity", fmt.Sprintf("%d", capacity))
+		cfg.AppendArgs("--raft-propose-queue-capacity", strconv.Itoa(capacity))
+
 		return nil
 	}
 }
@@ -132,8 +150,9 @@ func WithRaftProposeQueueCapacity(capacity int) testservice.InstrumentationFunc 
 func WithRaftTransportReceptionQueues(capacities ...int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		for _, cap := range capacities {
-			cfg.AppendArgs("--raft-transport-reception-queues", fmt.Sprintf("%d", cap))
+			cfg.AppendArgs("--raft-transport-reception-queues", strconv.Itoa(cap))
 		}
+
 		return nil
 	}
 }
@@ -141,8 +160,9 @@ func WithRaftTransportReceptionQueues(capacities ...int) testservice.Instrumenta
 func WithRaftTransportSendQueues(capacities ...int) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		for _, cap := range capacities {
-			cfg.AppendArgs("--raft-transport-send-queues", fmt.Sprintf("%d", cap))
+			cfg.AppendArgs("--raft-transport-send-queues", strconv.Itoa(cap))
 		}
+
 		return nil
 	}
 }
@@ -150,6 +170,7 @@ func WithRaftTransportSendQueues(capacities ...int) testservice.InstrumentationF
 func WithClusterID(id string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--cluster-id", id)
+
 		return nil
 	}
 }
@@ -159,15 +180,15 @@ func WithDebug(v bool) testservice.InstrumentationFunc {
 		if v {
 			cfg.AppendArgs("--debug")
 		}
+
 		return nil
 	}
 }
 
-
-
 func WithReceiptSigningKey(key string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--receipt-signing-key", key)
+
 		return nil
 	}
 }
@@ -175,6 +196,7 @@ func WithReceiptSigningKey(key string) testservice.InstrumentationFunc {
 func WithJoin(serviceAddr string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--join", serviceAddr)
+
 		return nil
 	}
 }
@@ -182,6 +204,7 @@ func WithJoin(serviceAddr string) testservice.InstrumentationFunc {
 func WithTLSCertFile(path string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--tls-cert-file", path)
+
 		return nil
 	}
 }
@@ -189,6 +212,7 @@ func WithTLSCertFile(path string) testservice.InstrumentationFunc {
 func WithTLSKeyFile(path string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--tls-key-file", path)
+
 		return nil
 	}
 }
@@ -196,6 +220,7 @@ func WithTLSKeyFile(path string) testservice.InstrumentationFunc {
 func WithTLSCACertFile(path string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--tls-ca-cert-file", path)
+
 		return nil
 	}
 }
@@ -203,6 +228,7 @@ func WithTLSCACertFile(path string) testservice.InstrumentationFunc {
 func WithRestore() testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--restore")
+
 		return nil
 	}
 }
@@ -210,6 +236,7 @@ func WithRestore() testservice.InstrumentationFunc {
 func WithResponseSigningKey(path string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--response-signing-key", path)
+
 		return nil
 	}
 }
@@ -217,6 +244,7 @@ func WithResponseSigningKey(path string) testservice.InstrumentationFunc {
 func WithAuthEnabled() testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--auth-enabled")
+
 		return nil
 	}
 }
@@ -224,6 +252,7 @@ func WithAuthEnabled() testservice.InstrumentationFunc {
 func WithAuthIssuer(issuer string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--auth-issuer", issuer)
+
 		return nil
 	}
 }
@@ -231,6 +260,7 @@ func WithAuthIssuer(issuer string) testservice.InstrumentationFunc {
 func WithAuthService(service string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--auth-service", service)
+
 		return nil
 	}
 }
@@ -238,7 +268,7 @@ func WithAuthService(service string) testservice.InstrumentationFunc {
 func WithAuthEd25519Keys(path string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--auth-ed25519-keys", path)
+
 		return nil
 	}
 }
-

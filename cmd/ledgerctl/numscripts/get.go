@@ -1,10 +1,11 @@
 package numscripts
 
 import (
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // NewGetCommand creates the numscripts get command.
@@ -37,6 +38,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -50,14 +52,16 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return cmdutil.FormatGRPCError("failed to get numscript", err)
 	}
 
-	pterm.Printf("Name:       %s\n", pterm.Cyan(info.Name))
-	pterm.Printf("Version:    %s\n", info.Version)
-	if info.CreatedAt != nil {
-		pterm.Printf("Created at: %s\n", pterm.Gray(info.CreatedAt.AsTime().Format("2006-01-02T15:04:05Z07:00")))
+	pterm.Printf("Name:       %s\n", pterm.Cyan(info.GetName()))
+	pterm.Printf("Version:    %s\n", info.GetVersion())
+
+	if info.GetCreatedAt() != nil {
+		pterm.Printf("Created at: %s\n", pterm.Gray(info.GetCreatedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
+
 	pterm.Println()
 	pterm.DefaultSection.Println("Content")
-	pterm.Println(info.Content)
+	pterm.Println(info.GetContent())
 
 	return nil
 }

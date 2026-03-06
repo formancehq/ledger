@@ -20,6 +20,7 @@ func New() Worker {
 func (w *Worker) Run(fn func(stop <-chan struct{})) {
 	go func() {
 		defer close(w.doneCh)
+
 		fn(w.stopCh)
 	}()
 }

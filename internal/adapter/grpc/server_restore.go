@@ -5,23 +5,26 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/application/check"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/tarutil"
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger-v3-poc/internal/application/check"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/tarutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 const (
@@ -63,17 +66,22 @@ func (s *RestoreServiceServerImpl) UploadBackup(stream ggrpc.ClientStreamingServ
 	s.mu.Lock()
 	if s.uploaded {
 		s.mu.Unlock()
+
 		return status.Error(codes.FailedPrecondition, "backup already uploaded; finalize or restart to upload again")
 	}
+
 	if s.uploading {
 		s.mu.Unlock()
+
 		return status.Error(codes.FailedPrecondition, "another upload is already in progress")
 	}
+
 	s.uploading = true
 	s.mu.Unlock()
 
 	// Reset uploading flag on failure (on success, uploaded is set instead)
 	success := false
+
 	defer func() {
 		if !success {
 			s.mu.Lock()
@@ -85,10 +93,13 @@ func (s *RestoreServiceServerImpl) UploadBackup(stream ggrpc.ClientStreamingServ
 	stagingDir := s.stagingDir()
 
 	// Clean and create staging directory
-	if err := os.RemoveAll(stagingDir); err != nil {
+	err := os.RemoveAll(stagingDir)
+	if err != nil {
 		return fmt.Errorf("cleaning staging directory: %w", err)
 	}
-	if err := os.MkdirAll(stagingDir, 0755); err != nil {
+
+	err = os.MkdirAll(stagingDir, 0755)
+	if err != nil {
 		return fmt.Errorf("creating staging directory: %w", err)
 	}
 
@@ -98,6 +109,7 @@ func (s *RestoreServiceServerImpl) UploadBackup(stream ggrpc.ClientStreamingServ
 
 	go func() {
 		defer func() { _ = pr.Close() }()
+
 		extractErrCh <- tarutil.ExtractTar(pr, stagingDir)
 	}()
 
@@ -109,37 +121,44 @@ func (s *RestoreServiceServerImpl) UploadBackup(stream ggrpc.ClientStreamingServ
 
 	for {
 		req, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			_ = pw.CloseWithError(err)
+
 			return fmt.Errorf("receiving upload chunk: %w", err)
 		}
 
-		if req.Eof {
-			expectedHash = req.ContentSha256
+		if req.GetEof() {
+			expectedHash = req.GetContentSha256()
+
 			break
 		}
 
-		if len(req.Data) > 0 {
-			if _, err := pw.Write(req.Data); err != nil {
+		if len(req.GetData()) > 0 {
+			if _, err := pw.Write(req.GetData()); err != nil {
 				return fmt.Errorf("writing to tar pipe: %w", err)
 			}
-			if _, err := hash.Write(req.Data); err != nil {
+
+			if _, err := hash.Write(req.GetData()); err != nil {
 				return fmt.Errorf("computing hash: %w", err)
 			}
-			totalReceived += uint64(len(req.Data))
+
+			totalReceived += uint64(len(req.GetData()))
 		}
 	}
 
 	// Close write end to signal EOF to tar reader
-	if err := pw.Close(); err != nil {
+	err = pw.Close()
+	if err != nil {
 		return fmt.Errorf("closing pipe: %w", err)
 	}
 
 	// Wait for extraction to complete
-	if err := <-extractErrCh; err != nil {
+	err = <-extractErrCh
+	if err != nil {
 		return fmt.Errorf("extracting tar: %w", err)
 	}
 
@@ -149,6 +168,7 @@ func (s *RestoreServiceServerImpl) UploadBackup(stream ggrpc.ClientStreamingServ
 	if expectedHash != "" && actualHash != expectedHash {
 		// Clean up staging on hash mismatch
 		_ = os.RemoveAll(stagingDir)
+
 		return status.Errorf(codes.DataLoss, "SHA256 mismatch: expected %s, got %s", expectedHash, actualHash)
 	}
 
@@ -186,6 +206,7 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 	if err != nil {
 		return fmt.Errorf("opening staging store: %w", err)
 	}
+
 	defer func() { _ = store.Close() }()
 
 	attrs := attributes.New()
@@ -195,23 +216,24 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 		// Convert CheckStoreEvent to ValidateRestoreEvent
 		var restoreEvent restorepb.ValidateRestoreEvent
 
-		switch t := event.Type.(type) {
+		switch t := event.GetType().(type) {
 		case *servicepb.CheckStoreEvent_Progress:
 			restoreEvent.Type = &restorepb.ValidateRestoreEvent_Progress{
 				Progress: &restorepb.ValidateRestoreProgress{
-					LogsChecked: t.Progress.LogsChecked,
-					TotalLogs:   t.Progress.TotalLogs,
+					LogsChecked: t.Progress.GetLogsChecked(),
+					TotalLogs:   t.Progress.GetTotalLogs(),
 				},
 			}
 		case *servicepb.CheckStoreEvent_Error:
 			restoreEvent.Type = &restorepb.ValidateRestoreEvent_Error{
 				Error: &restorepb.ValidateRestoreError{
-					Message: t.Error.Message,
+					Message: t.Error.GetMessage(),
 				},
 			}
 		}
 
-		if err := stream.Send(&restoreEvent); err != nil {
+		err := stream.Send(&restoreEvent)
+		if err != nil {
 			s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to send validate event")
 		}
 	})
@@ -233,6 +255,7 @@ func (s *RestoreServiceServerImpl) PreviewRestore(ctx context.Context, _ *restor
 	if err != nil {
 		return nil, fmt.Errorf("opening staging store: %w", err)
 	}
+
 	defer func() { _ = store.Close() }()
 
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(store)
@@ -254,18 +277,22 @@ func (s *RestoreServiceServerImpl) PreviewRestore(ctx context.Context, _ *restor
 	if err != nil {
 		return nil, fmt.Errorf("listing ledgers: %w", err)
 	}
+
 	defer func() { _ = cursor.Close() }()
 
 	var ledgerNames []string
+
 	for {
 		ledger, err := cursor.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			return nil, fmt.Errorf("iterating ledgers: %w", err)
 		}
-		ledgerNames = append(ledgerNames, ledger.Name)
+
+		ledgerNames = append(ledgerNames, ledger.GetName())
 	}
 
 	return &restorepb.PreviewRestoreResponse{
@@ -298,12 +325,14 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(store)
 	if err != nil {
 		_ = store.Close()
+
 		return nil, fmt.Errorf("getting last applied index: %w", err)
 	}
 
 	lastAppliedTimestamp, err := query.ReadLastAppliedTimestamp(store)
 	if err != nil {
 		_ = store.Close()
+
 		return nil, fmt.Errorf("getting last applied timestamp: %w", err)
 	}
 
@@ -316,6 +345,7 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 		LastAppliedIndex:     lastAppliedIndex,
 		LastAppliedTimestamp: lastAppliedTimestamp,
 	}
+
 	markerData, err := json.Marshal(marker)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling restored marker: %w", err)

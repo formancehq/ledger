@@ -24,6 +24,7 @@ func TestGenerateTestCerts(t *testing.T) {
 	// Verify CA cert is parseable
 	caPEM, err := os.ReadFile(certs.CACertFile)
 	require.NoError(t, err)
+
 	caPool := x509.NewCertPool()
 	require.True(t, caPool.AppendCertsFromPEM(caPEM), "CA cert should be valid PEM")
 

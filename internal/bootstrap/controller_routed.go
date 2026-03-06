@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
@@ -12,15 +16,13 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 var routerTracer = otel.Tracer("router")
 
 type RoutedController struct {
 	*node.Node
+
 	servicePool     *transport.ConnectionPool
 	localController ctrl.Controller
 }
@@ -31,6 +33,7 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 	if b.IsLeader() {
 		return b.localController, nil
 	}
+
 	if b.GetLeader() == 0 {
 		return nil, commonpb.ErrNoLeader
 	}
@@ -61,21 +64,27 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, error
 	switch consistency {
 	case grpcadp.ConsistencyStale:
 		span.SetAttributes(attribute.String("route", "local_stale"))
+
 		return b.localController, nil
 	case grpcadp.ConsistencyLeader:
 		span.SetAttributes(attribute.String("route", "leader"))
+
 		return b.getLeaderCtrl()
 	}
 
 	err := b.ReadIndexAndWait(ctx)
 	if err == nil {
 		span.SetAttributes(attribute.String("route", "local_linearizable"))
+
 		return b.localController, nil
 	}
+
 	if errors.Is(err, node.ErrNodeSyncing) || errors.Is(err, node.ErrNotLeader) {
 		span.SetAttributes(attribute.String("route", "leader_fallback"))
+
 		return b.getLeaderCtrl()
 	}
+
 	return nil, err
 }
 
@@ -90,6 +99,7 @@ func (b *RoutedController) Apply(ctx context.Context, requests ...*servicepb.Req
 	if err != nil {
 		return nil, err
 	}
+
 	return leaderCtrl.Apply(ctx, requests...)
 }
 
@@ -101,6 +111,7 @@ func (b *RoutedController) ListPeriods(ctx context.Context) (dal.Cursor[*commonp
 	if err != nil {
 		return nil, err
 	}
+
 	return leaderCtrl.ListPeriods(ctx)
 }
 
@@ -111,6 +122,7 @@ func (b *RoutedController) GetLedgerByName(ctx context.Context, name string) (*c
 	if err != nil {
 		return nil, err
 	}
+
 	return c.GetLedgerByName(ctx, name)
 }
 
@@ -119,6 +131,7 @@ func (b *RoutedController) ListLedgers(ctx context.Context) (dal.Cursor[*commonp
 	if err != nil {
 		return nil, err
 	}
+
 	return c.ListLedgers(ctx)
 }
 
@@ -127,6 +140,7 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 	if err != nil {
 		return nil, err
 	}
+
 	return c.GetTransaction(ctx, ledgerName, transactionID)
 }
 
@@ -135,6 +149,7 @@ func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName stri
 	if err != nil {
 		return nil, err
 	}
+
 	return c.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
 }
 
@@ -143,6 +158,7 @@ func (b *RoutedController) ListLogs(ctx context.Context, afterSequence uint64, p
 	if err != nil {
 		return nil, err
 	}
+
 	return c.ListLogs(ctx, afterSequence, pageSize, filter)
 }
 
@@ -151,6 +167,7 @@ func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*common
 	if err != nil {
 		return nil, err
 	}
+
 	return c.GetLog(ctx, sequence)
 }
 
@@ -159,6 +176,7 @@ func (b *RoutedController) ListAuditEntries(ctx context.Context, afterSequence *
 	if err != nil {
 		return nil, err
 	}
+
 	return c.ListAuditEntries(ctx, afterSequence, failuresOnly, pageSize)
 }
 
@@ -167,6 +185,7 @@ func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (
 	if err != nil {
 		return nil, err
 	}
+
 	return c.GetAuditEntry(ctx, sequence)
 }
 
@@ -175,6 +194,7 @@ func (b *RoutedController) GetAccount(ctx context.Context, ledgerName string, ad
 	if err != nil {
 		return nil, err
 	}
+
 	return c.GetAccount(ctx, ledgerName, address)
 }
 
@@ -183,6 +203,7 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 	if err != nil {
 		return nil, err
 	}
+
 	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 }
 
@@ -191,6 +212,7 @@ func (b *RoutedController) ListSigningKeys(ctx context.Context) (dal.Cursor[*com
 	if err != nil {
 		return nil, err
 	}
+
 	return c.ListSigningKeys(ctx)
 }
 
@@ -199,6 +221,7 @@ func (b *RoutedController) GetMetadataSchemaStatus(ctx context.Context, ledgerNa
 	if err != nil {
 		return nil, err
 	}
+
 	return c.GetMetadataSchemaStatus(ctx, ledgerName)
 }
 
@@ -207,6 +230,7 @@ func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName strin
 	if err != nil {
 		return nil, err
 	}
+
 	return c.AnalyzeAccounts(ctx, ledgerName, variableThreshold, onProgress)
 }
 
@@ -215,6 +239,7 @@ func (b *RoutedController) AnalyzeTransactions(ctx context.Context, ledgerName s
 	if err != nil {
 		return nil, err
 	}
+
 	return c.AnalyzeTransactions(ctx, ledgerName, variableThreshold, onProgress)
 }
 
@@ -233,6 +258,7 @@ func (b *RoutedController) GetLedgerStats(ctx context.Context, ledgerName string
 	if err != nil {
 		return nil, err
 	}
+
 	return c.GetLedgerStats(ctx, ledgerName)
 }
 

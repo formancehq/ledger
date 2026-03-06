@@ -30,7 +30,9 @@ func (it *OrIterator) Next() bool {
 		for i := range it.children {
 			it.valid[i] = it.children[i].Next()
 		}
+
 		it.started = true
+
 		return it.findMin()
 	}
 
@@ -56,6 +58,7 @@ func (it *OrIterator) SeekGE(target []byte) bool {
 	for i := range it.children {
 		it.valid[i] = it.children[i].SeekGE(target)
 	}
+
 	it.started = true
 
 	return it.findMin()
@@ -70,12 +73,14 @@ func (it *OrIterator) Close() {
 // findMin finds the minimum current value among all valid children.
 func (it *OrIterator) findMin() bool {
 	var minVal []byte
+
 	found := false
 
 	for i := range it.children {
 		if !it.valid[i] {
 			continue
 		}
+
 		cur := it.children[i].Current()
 		if !found || bytes.Compare(cur, minVal) < 0 {
 			minVal = cur
@@ -85,9 +90,11 @@ func (it *OrIterator) findMin() bool {
 
 	if !found {
 		it.exhausted = true
+
 		return false
 	}
 
 	it.current = minVal
+
 	return true
 }

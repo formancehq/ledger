@@ -3,11 +3,12 @@ package ledgers
 import (
 	"fmt"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewDropIndexCommand creates the ledgers drop-index command.
@@ -46,9 +47,11 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -63,6 +66,7 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
+
 		indexType = result
 	}
 
@@ -71,6 +75,7 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 	}
 
 	var indexDesc string
+
 	switch indexType {
 	case "address":
 		req.Index = &servicepb.DropIndexRequest_Transaction{
@@ -104,6 +109,7 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
+
 		switch target {
 		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
 			req.Index = &servicepb.DropIndexRequest_Transaction{
@@ -118,6 +124,7 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 				},
 			}
 		}
+
 		indexDesc = fmt.Sprintf("metadata %s.%s", cmdutil.TargetTypeString(target), key)
 	case "reference":
 		req.Index = &servicepb.DropIndexRequest_Transaction{
@@ -161,17 +168,20 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to drop index", err)
 	}
 
-	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
 		spinner.Fail("Response signature verification failed")
+
 		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 

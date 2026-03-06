@@ -9,21 +9,23 @@ import (
 	"strings"
 
 	"github.com/IBM/sarama"
+	"github.com/xdg-go/scram"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
-	"github.com/xdg-go/scram"
 )
 
 func init() {
 	registerSinkFactory("kafka", func(sc *commonpb.SinkConfig, format Format) (Sink, error) {
 		s := sc.GetType().(*commonpb.SinkConfig_Kafka)
+
 		return NewKafkaSink(KafkaSinkConfig{
-			Brokers:       s.Kafka.Brokers,
-			Topic:         s.Kafka.Topic,
-			TLS:           s.Kafka.Tls,
-			SASLMechanism: s.Kafka.SaslMechanism,
-			SASLUsername:  s.Kafka.SaslUsername,
-			SASLPassword:  s.Kafka.SaslPassword,
+			Brokers:       s.Kafka.GetBrokers(),
+			Topic:         s.Kafka.GetTopic(),
+			TLS:           s.Kafka.GetTls(),
+			SASLMechanism: s.Kafka.GetSaslMechanism(),
+			SASLUsername:  s.Kafka.GetSaslUsername(),
+			SASLPassword:  s.Kafka.GetSaslPassword(),
 			Format:        format,
 		})
 	})
@@ -35,7 +37,7 @@ type KafkaSinkConfig struct {
 	Topic         string
 	TLS           bool
 	SASLMechanism string
-	SASLUsername   string
+	SASLUsername  string
 	SASLPassword  string
 	Format        Format
 }
@@ -80,13 +82,13 @@ func (s *KafkaSink) Publish(_ context.Context, events []*eventspb.Event) error {
 	for _, event := range events {
 		data, err := SerializeEvent(event, s.format)
 		if err != nil {
-			return fmt.Errorf("serializing event seq=%d: %w", event.LogSequence, err)
+			return fmt.Errorf("serializing event seq=%d: %w", event.GetLogSequence(), err)
 		}
 
-		eventType := strings.ToLower(event.Type.String())
+		eventType := strings.ToLower(event.GetType().String())
 		msgs = append(msgs, &sarama.ProducerMessage{
 			Topic: s.topic,
-			Key:   sarama.StringEncoder(event.Ledger),
+			Key:   sarama.StringEncoder(event.GetLedger()),
 			Value: sarama.ByteEncoder(data),
 			Headers: []sarama.RecordHeader{
 				{Key: []byte("event_type"), Value: []byte(eventType)},
@@ -142,7 +144,9 @@ func (s *scramClient) Begin(userName, password, authzID string) error {
 	if err != nil {
 		return fmt.Errorf("creating SCRAM client: %w", err)
 	}
+
 	s.conv = client.NewConversation()
+
 	return nil
 }
 

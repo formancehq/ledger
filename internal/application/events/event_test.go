@@ -3,9 +3,10 @@ package events
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
-	"github.com/stretchr/testify/require"
 )
 
 func TestLogToEvent(t *testing.T) {
@@ -175,10 +176,10 @@ func TestLogToEvent(t *testing.T) {
 
 			event := LogToEvent(tc.log)
 
-			require.Equal(t, tc.expectedType, event.Type)
-			require.Equal(t, tc.expectedName, event.Ledger)
-			require.Equal(t, tc.log.Sequence, event.LogSequence)
-			require.Equal(t, tc.log, event.Log)
+			require.Equal(t, tc.expectedType, event.GetType())
+			require.Equal(t, tc.expectedName, event.GetLedger())
+			require.Equal(t, tc.log.GetSequence(), event.GetLogSequence())
+			require.Equal(t, tc.log, event.GetLog())
 		})
 	}
 }
@@ -217,9 +218,9 @@ func TestSerializeEvent_Proto(t *testing.T) {
 	// Verify we can unmarshal back
 	decoded := &eventspb.Event{}
 	require.NoError(t, decoded.UnmarshalVT(data))
-	require.Equal(t, event.Type, decoded.Type)
-	require.Equal(t, event.Ledger, decoded.Ledger)
-	require.Equal(t, event.LogSequence, decoded.LogSequence)
+	require.Equal(t, event.GetType(), decoded.GetType())
+	require.Equal(t, event.GetLedger(), decoded.GetLedger())
+	require.Equal(t, event.GetLogSequence(), decoded.GetLogSequence())
 }
 
 func TestSerializeEvent_UnsupportedFormat(t *testing.T) {

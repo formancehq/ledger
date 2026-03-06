@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewListIndexesCommand creates the ledgers list-indexes command.
@@ -36,9 +37,11 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -54,13 +57,17 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to get ledger", err)
 	}
 
 	// Check if any index is in BUILDING state before fetching progress.
 	hasBuilding := hasBuildingIndexes(ledger)
-	var progressMap map[string]uint64
-	var lastLogSeq uint64
+
+	var (
+		progressMap map[string]uint64
+		lastLogSeq  uint64
+	)
 
 	if hasBuilding {
 		idxStatus, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{})
@@ -68,8 +75,8 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 			spinner.Fail(fmt.Sprintf("Failed to fetch index status: %v", err))
 			// Continue without progress info — indexes will show as BUILDING without percentage.
 		} else {
-			lastLogSeq = idxStatus.LastLogSequence
-			progressMap = buildProgressMap(ledgerName, idxStatus.BackfillProgress)
+			lastLogSeq = idxStatus.GetLastLogSequence()
+			progressMap = buildProgressMap(ledgerName, idxStatus.GetBackfillProgress())
 		}
 	}
 
@@ -84,40 +91,44 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Builtin indexes (includes address indexes)
-	if bi := ledger.BuiltinIndexes; bi != nil {
-		if bi.Reference {
+	if bi := ledger.GetBuiltinIndexes(); bi != nil {
+		if bi.GetReference() {
 			table = append(table, []string{"reference", "-", "-",
-				indexStatusWithProgress(bi.ReferenceStatus, progressMap, lastLogSeq, "b:0")})
+				indexStatusWithProgress(bi.GetReferenceStatus(), progressMap, lastLogSeq, "b:0")})
 		}
-		if bi.Timestamp {
+
+		if bi.GetTimestamp() {
 			table = append(table, []string{"timestamp", "-", "-",
-				indexStatusWithProgress(bi.TimestampStatus, progressMap, lastLogSeq, "b:1")})
+				indexStatusWithProgress(bi.GetTimestampStatus(), progressMap, lastLogSeq, "b:1")})
 		}
-		if bi.Address {
+
+		if bi.GetAddress() {
 			table = append(table, []string{"address", "-", "-",
-				indexStatusWithProgress(bi.AddressStatus, progressMap, lastLogSeq, "b:3")})
+				indexStatusWithProgress(bi.GetAddressStatus(), progressMap, lastLogSeq, "b:3")})
 		}
-		if bi.SourceAddress {
+
+		if bi.GetSourceAddress() {
 			table = append(table, []string{"source-address", "-", "-",
-				indexStatusWithProgress(bi.SourceAddressStatus, progressMap, lastLogSeq, "b:4")})
+				indexStatusWithProgress(bi.GetSourceAddressStatus(), progressMap, lastLogSeq, "b:4")})
 		}
-		if bi.DestAddress {
+
+		if bi.GetDestAddress() {
 			table = append(table, []string{"dest-address", "-", "-",
-				indexStatusWithProgress(bi.DestAddressStatus, progressMap, lastLogSeq, "b:5")})
+				indexStatusWithProgress(bi.GetDestAddressStatus(), progressMap, lastLogSeq, "b:5")})
 		}
 	}
 
 	// Metadata indexes
-	if schema := ledger.MetadataSchema; schema != nil {
-		addMetadataIndexRowsWithProgress(&table, "account", schema.AccountFields, progressMap, lastLogSeq, commonpb.TargetType_TARGET_TYPE_ACCOUNT)
-		addMetadataIndexRowsWithProgress(&table, "transaction", schema.TransactionFields, progressMap, lastLogSeq, commonpb.TargetType_TARGET_TYPE_TRANSACTION)
+	if schema := ledger.GetMetadataSchema(); schema != nil {
+		addMetadataIndexRowsWithProgress(&table, "account", schema.GetAccountFields(), progressMap, lastLogSeq, commonpb.TargetType_TARGET_TYPE_ACCOUNT)
+		addMetadataIndexRowsWithProgress(&table, "transaction", schema.GetTransactionFields(), progressMap, lastLogSeq, commonpb.TargetType_TARGET_TYPE_TRANSACTION)
 	}
 
 	// Log builtin indexes
-	if li := ledger.LogBuiltinIndexes; li != nil {
-		if li.Ledger {
+	if li := ledger.GetLogBuiltinIndexes(); li != nil {
+		if li.GetLedger() {
 			table = append(table, []string{"log-ledger", "-", "-",
-				indexStatusWithProgress(li.LedgerStatus, progressMap, lastLogSeq, "l:0")})
+				indexStatusWithProgress(li.GetLedgerStatus(), progressMap, lastLogSeq, "l:0")})
 		}
 	}
 
@@ -125,6 +136,7 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		pterm.Println("No indexes configured.")
 		pterm.Println(pterm.Gray("Hint: Create an index using:"))
 		pterm.FgCyan.Println("  ledgerctl ledgers create-index --ledger " + ledgerName + " --type address")
+
 		return nil
 	}
 
@@ -135,40 +147,48 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 
 // hasBuildingIndexes returns true if any index on the ledger has BUILDING status.
 func hasBuildingIndexes(ledger *commonpb.LedgerInfo) bool {
-	if bi := ledger.BuiltinIndexes; bi != nil {
-		if bi.Reference && bi.ReferenceStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+	if bi := ledger.GetBuiltinIndexes(); bi != nil {
+		if bi.GetReference() && bi.GetReferenceStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 			return true
 		}
-		if bi.Timestamp && bi.TimestampStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+
+		if bi.GetTimestamp() && bi.GetTimestampStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 			return true
 		}
-		if bi.Address && bi.AddressStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+
+		if bi.GetAddress() && bi.GetAddressStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 			return true
 		}
-		if bi.SourceAddress && bi.SourceAddressStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+
+		if bi.GetSourceAddress() && bi.GetSourceAddressStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 			return true
 		}
-		if bi.DestAddress && bi.DestAddressStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+
+		if bi.GetDestAddress() && bi.GetDestAddressStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 			return true
 		}
 	}
-	if schema := ledger.MetadataSchema; schema != nil {
-		for _, f := range schema.AccountFields {
-			if f.Indexed && f.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+
+	if schema := ledger.GetMetadataSchema(); schema != nil {
+		for _, f := range schema.GetAccountFields() {
+			if f.GetIndexed() && f.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 				return true
 			}
 		}
-		for _, f := range schema.TransactionFields {
-			if f.Indexed && f.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+
+		for _, f := range schema.GetTransactionFields() {
+			if f.GetIndexed() && f.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 				return true
 			}
 		}
 	}
-	if li := ledger.LogBuiltinIndexes; li != nil {
-		if li.Ledger && li.LedgerStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+
+	if li := ledger.GetLogBuiltinIndexes(); li != nil {
+		if li.GetLedger() && li.GetLedgerStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -179,28 +199,30 @@ func hasBuildingIndexes(ledger *commonpb.LedgerInfo) bool {
 func buildProgressMap(ledgerName string, entries []*servicepb.IndexBackfillProgress) map[string]uint64 {
 	m := make(map[string]uint64, len(entries))
 	for _, e := range entries {
-		if e.Ledger != ledgerName {
+		if e.GetLedger() != ledgerName {
 			continue
 		}
-		switch idx := e.Index.(type) {
+
+		switch idx := e.GetIndex().(type) {
 		case *servicepb.IndexBackfillProgress_Transaction:
-			switch txIdx := idx.Transaction.Kind.(type) {
+			switch txIdx := idx.Transaction.GetKind().(type) {
 			case *commonpb.TransactionIndex_Builtin:
-				m[fmt.Sprintf("b:%d", txIdx.Builtin)] = e.Cursor
+				m[fmt.Sprintf("b:%d", txIdx.Builtin)] = e.GetCursor()
 			case *commonpb.TransactionIndex_MetadataKey:
-				m[fmt.Sprintf("tm:%s", txIdx.MetadataKey)] = e.Cursor
+				m["tm:"+txIdx.MetadataKey] = e.GetCursor()
 			}
 		case *servicepb.IndexBackfillProgress_Account:
-			switch acctIdx := idx.Account.Kind.(type) {
+			switch acctIdx := idx.Account.GetKind().(type) {
 			case *commonpb.AccountIndex_Builtin:
-				m[fmt.Sprintf("ab:%d", acctIdx.Builtin)] = e.Cursor
+				m[fmt.Sprintf("ab:%d", acctIdx.Builtin)] = e.GetCursor()
 			case *commonpb.AccountIndex_MetadataKey:
-				m[fmt.Sprintf("am:%s", acctIdx.MetadataKey)] = e.Cursor
+				m["am:"+acctIdx.MetadataKey] = e.GetCursor()
 			}
 		case *servicepb.IndexBackfillProgress_LogBuiltin:
-			m[fmt.Sprintf("l:%d", idx.LogBuiltin)] = e.Cursor
+			m[fmt.Sprintf("l:%d", idx.LogBuiltin)] = e.GetCursor()
 		}
 	}
+
 	return m
 }
 
@@ -209,16 +231,20 @@ func indexStatusWithProgress(status commonpb.IndexBuildStatus, progressMap map[s
 	if status != commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 		return indexBuildStatusString(status)
 	}
+
 	if progressMap == nil || lastLogSeq == 0 {
 		return indexBuildStatusString(status)
 	}
+
 	cursor, ok := progressMap[key]
 	if !ok {
 		// Backfill task exists but hasn't written its first batch yet
 		// (initial log catch-up is still running).
 		return pterm.Yellow("BUILDING (starting...)")
 	}
+
 	pct := cursor * 100 / lastLogSeq
+
 	return pterm.Yellow(fmt.Sprintf("BUILDING (%d%%)", pct))
 }
 
@@ -226,13 +252,15 @@ func indexStatusWithProgress(status commonpb.IndexBuildStatus, progressMap map[s
 func addMetadataIndexRowsWithProgress(table *pterm.TableData, targetName string, fields map[string]*commonpb.MetadataFieldSchema, progressMap map[string]uint64, lastLogSeq uint64, targetType commonpb.TargetType) {
 	keys := make([]string, 0, len(fields))
 	for k, f := range fields {
-		if f.Indexed {
+		if f.GetIndexed() {
 			keys = append(keys, k)
 		}
 	}
+
 	sort.Strings(keys)
 
 	var progressPrefix string
+
 	switch targetType {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 		progressPrefix = "am:"
@@ -246,7 +274,7 @@ func addMetadataIndexRowsWithProgress(table *pterm.TableData, targetName string,
 			"metadata",
 			targetName,
 			key,
-			indexStatusWithProgress(fields[key].IndexBuildStatus, progressMap, lastLogSeq, progressKey),
+			indexStatusWithProgress(fields[key].GetIndexBuildStatus(), progressMap, lastLogSeq, progressKey),
 		})
 	}
 }

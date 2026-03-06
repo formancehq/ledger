@@ -58,7 +58,7 @@ func TestNumscriptCache_GetOrParse_Hit(t *testing.T) {
 	require.NoError(t, err2)
 
 	// Both should return equivalent results
-	require.Equal(t, len(result1.GetParsingErrors()), len(result2.GetParsingErrors()))
+	require.Len(t, result2.GetParsingErrors(), len(result1.GetParsingErrors()))
 }
 
 func TestNumscriptCache_GetOrParse_Eviction(t *testing.T) {

@@ -3,9 +3,10 @@ package attributes
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/kv"
-	"github.com/stretchr/testify/require"
 )
 
 // testKey is a Key implementation for testing.
@@ -24,6 +25,7 @@ func TestKeyStorePut(t *testing.T) {
 
 	t.Run("new key returns no old value", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 
 		oldVal, _, idWithTag, err := store.Put([]byte("account:alice"), "balance-1000", 1)
@@ -35,6 +37,7 @@ func TestKeyStorePut(t *testing.T) {
 
 	t.Run("overwrite returns old value and old base index", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 
 		_, _, _, err := store.Put([]byte("account:alice"), "old-value", 5)
@@ -49,6 +52,7 @@ func TestKeyStorePut(t *testing.T) {
 
 	t.Run("different keys produce different IDs", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 
 		_, _, id1, err := store.Put([]byte("account:alice"), "val-a", 1)
@@ -65,6 +69,7 @@ func TestKeyStoreGet(t *testing.T) {
 
 	t.Run("existing key", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 
 		_, _, _, err := store.Put([]byte("my-key"), "my-value", 1)
@@ -78,6 +83,7 @@ func TestKeyStoreGet(t *testing.T) {
 
 	t.Run("non-existent key returns ErrNotFound", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 
 		_, _, err := store.Get([]byte("missing-key"))
@@ -86,6 +92,7 @@ func TestKeyStoreGet(t *testing.T) {
 
 	t.Run("overwritten value returns latest", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 
 		_, _, _, err := store.Put([]byte("key"), "first", 1)
@@ -104,6 +111,7 @@ func TestKeyStoreDelete(t *testing.T) {
 
 	t.Run("existing key", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 
 		_, _, _, err := store.Put([]byte("to-delete"), "some-value", 1)
@@ -120,6 +128,7 @@ func TestKeyStoreDelete(t *testing.T) {
 
 	t.Run("non-existent key returns ErrNotFound", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 
 		_, err := store.Delete([]byte("never-existed"))
@@ -148,6 +157,7 @@ func TestKeyHasherMakeKey(t *testing.T) {
 
 	t.Run("deterministic", func(t *testing.T) {
 		t.Parallel()
+
 		id1, tag1 := kh.MakeKey([]byte("test"))
 		id2, tag2 := kh.MakeKey([]byte("test"))
 		require.Equal(t, id1, id2)
@@ -156,6 +166,7 @@ func TestKeyHasherMakeKey(t *testing.T) {
 
 	t.Run("different inputs", func(t *testing.T) {
 		t.Parallel()
+
 		id1, tag1 := kh.MakeKey([]byte("alpha"))
 		id2, tag2 := kh.MakeKey([]byte("beta"))
 		require.NotEqual(t, id1, id2)
@@ -168,6 +179,7 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 
 	t.Run("put and get local value", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 		derived := NewDerivedKeyStore[testKey, string](store, nil)
 
@@ -179,6 +191,7 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 
 	t.Run("get falls back to underlying store", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 		_, _, _, err := store.Put([]byte("key2"), "from-store", 1)
 		require.NoError(t, err)
@@ -191,6 +204,7 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 
 	t.Run("get returns zero for deleted key", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 		_, _, _, err := store.Put([]byte("key3"), "exists", 1)
 		require.NoError(t, err)
@@ -200,11 +214,12 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 
 		val, err := derived.Get(testKey{name: "key3"})
 		require.NoError(t, err)
-		require.Equal(t, "", val)
+		require.Empty(t, val)
 	})
 
 	t.Run("put after delete restores the value", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 		derived := NewDerivedKeyStore[testKey, string](store, nil)
 
@@ -213,7 +228,7 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 
 		val, err := derived.Get(testKey{name: "k"})
 		require.NoError(t, err)
-		require.Equal(t, "", val)
+		require.Empty(t, val)
 
 		derived.Put(testKey{name: "k"}, "restored")
 		val, err = derived.Get(testKey{name: "k"})
@@ -223,6 +238,7 @@ func TestDerivedKeyStorePutGetDelete(t *testing.T) {
 
 	t.Run("local value shadows underlying store", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 		_, _, _, err := store.Put([]byte("shadow-key"), "original", 1)
 		require.NoError(t, err)
@@ -249,6 +265,7 @@ func TestDerivedKeyStoreCloneFn(t *testing.T) {
 
 	cloneFn := func(v *mutableValue) *mutableValue {
 		c := *v
+
 		return &c
 	}
 	derived := NewDerivedKeyStore[testKey, *mutableValue](store, cloneFn)
@@ -270,6 +287,7 @@ func TestDerivedKeyStoreMerge(t *testing.T) {
 
 	t.Run("merge puts into underlying store", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 		derived := NewDerivedKeyStore[testKey, string](store, nil)
 
@@ -293,6 +311,7 @@ func TestDerivedKeyStoreMerge(t *testing.T) {
 
 	t.Run("merge with overwrite reports old value and old base index", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 		_, _, _, err := store.Put([]byte("existing"), "old", 5)
 		require.NoError(t, err)
@@ -311,6 +330,7 @@ func TestDerivedKeyStoreMerge(t *testing.T) {
 
 	t.Run("merge deletions", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 		_, _, _, err := store.Put([]byte("to-remove"), "value", 1)
 		require.NoError(t, err)
@@ -331,6 +351,7 @@ func TestDerivedKeyStoreMerge(t *testing.T) {
 
 	t.Run("merge deletion of non-existent key is not an error", func(t *testing.T) {
 		t.Parallel()
+
 		store := newTestKeyStore()
 		derived := NewDerivedKeyStore[testKey, string](store, nil)
 

@@ -7,16 +7,16 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/formancehq/go-libs/v3/httpserver"
-	"github.com/formancehq/go-libs/v3/logging"
-	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
 	"go.uber.org/fx"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/formancehq/go-libs/v3/httpserver"
+	"github.com/formancehq/go-libs/v3/logging"
+
+	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
 )
-
-
 
 // RestoreModule returns a minimal fx module for restore mode.
 // It only starts a gRPC server with the RestoreService and a health endpoint.
@@ -29,6 +29,7 @@ func RestoreModule() fx.Option {
 				if err != nil {
 					return nil, fmt.Errorf("loading TLS credentials for restore server: %w", err)
 				}
+
 				return grpcadp.NewServiceServer(cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsOpt), nil
 			},
 			func(cfg Config, logger logging.Logger) *grpcadp.RestoreServiceServerImpl {
@@ -42,6 +43,7 @@ func RestoreModule() fx.Option {
 				if _, err := os.Stat(cpPath); err == nil {
 					return fmt.Errorf("restore mode requires a fresh data directory; %s already exists", cpPath)
 				}
+
 				return nil
 			},
 			// Register health service on ServiceServer
@@ -63,9 +65,12 @@ func RestoreModule() fx.Option {
 				lc.Append(fx.Hook{
 					OnStart: func(ctx context.Context) error {
 						logger.Infof("Starting restore-mode gRPC server")
+
 						listening := make(chan struct{})
+
 						otlplogs.Go(func() {
-							if err := serviceServer.Start(listening); err != nil {
+							err := serviceServer.Start(listening)
+							if err != nil {
 								panic(err)
 							}
 						}, logger)
@@ -77,10 +82,12 @@ func RestoreModule() fx.Option {
 						}
 
 						logger.Infof("Restore-mode gRPC server started successfully")
+
 						return nil
 					},
 					OnStop: func(_ context.Context) error {
 						logger.Infof("Stopping restore-mode gRPC server")
+
 						return serviceServer.Stop()
 					},
 				})

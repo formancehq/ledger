@@ -3,16 +3,19 @@ package auth
 import (
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/oidc"
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/go-libs/v3/oidc"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 )
 
 // tokenParams holds the parameters for signing a JWT token.
@@ -94,17 +97,17 @@ func signToken(p tokenParams) (string, error) {
 func tokenParamsFromFlags(cmd *cobra.Command) (tokenParams, error) {
 	signingKeyPath, _ := cmd.Flags().GetString("signing-key")
 	if signingKeyPath == "" {
-		return tokenParams{}, fmt.Errorf("required flag \"signing-key\" not set")
+		return tokenParams{}, errors.New("required flag \"signing-key\" not set")
 	}
 
 	keyID, _ := cmd.Flags().GetString("key-id")
 	if keyID == "" {
-		return tokenParams{}, fmt.Errorf("required flag \"key-id\" not set")
+		return tokenParams{}, errors.New("required flag \"key-id\" not set")
 	}
 
 	subject, _ := cmd.Flags().GetString("subject")
 	if subject == "" {
-		return tokenParams{}, fmt.Errorf("required flag \"subject\" not set")
+		return tokenParams{}, errors.New("required flag \"subject\" not set")
 	}
 
 	scopes, _ := cmd.Flags().GetStringSlice("scopes")
@@ -138,7 +141,9 @@ func runGenerateToken(cmd *cobra.Command, _ []string) error {
 	storeInKeychain, _ := cmd.Flags().GetBool("store")
 	if storeInKeychain {
 		server, _ := cmd.Flags().GetString("server")
-		if err := cmdutil.GetKeyring(cmd).Set(server, token); err != nil {
+
+		err := cmdutil.GetKeyring(cmd).Set(server, token)
+		if err != nil {
 			return fmt.Errorf("storing token in keychain: %w", err)
 		}
 		// Print confirmation to stderr to keep stdout clean for piping.
@@ -146,5 +151,6 @@ func runGenerateToken(cmd *cobra.Command, _ []string) error {
 	}
 
 	fmt.Print(token)
+
 	return nil
 }

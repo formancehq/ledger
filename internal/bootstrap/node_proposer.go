@@ -3,9 +3,9 @@ package bootstrap
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 // NodeProposer adapts *node.Node to the state.Proposer interface by serializing
@@ -30,7 +30,7 @@ func (p *NodeProposer) ProposeOrders(orders ...*raftcmdpb.Order) error {
 		return fmt.Errorf("marshaling proposal: %w", err)
 	}
 
-	proposal := node.NewProposal(cmd.Id, data)
+	proposal := node.NewProposal(cmd.GetId(), data)
 
 	_, err = p.node.Propose(proposal)
 	if err != nil {

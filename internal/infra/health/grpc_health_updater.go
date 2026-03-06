@@ -3,10 +3,11 @@ package health
 import (
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 )
 
 const grpcHealthUpdateInterval = 5 * time.Second
@@ -16,11 +17,11 @@ const grpcHealthUpdateInterval = 5 * time.Second
 // (used by k8s gRPC probes or grpc-health-probe) reflect actual readiness
 // rather than always reporting SERVING.
 type GRPCHealthUpdater struct {
-	node          *node.Node
-	checker       Checker
-	healthServer  *health.Server
-	interval      time.Duration
-	w             worker.Worker
+	node         *node.Node
+	checker      Checker
+	healthServer *health.Server
+	interval     time.Duration
+	w            worker.Worker
 }
 
 // NewGRPCHealthUpdater creates a new updater that will poll readiness at the
@@ -55,5 +56,6 @@ func (u *GRPCHealthUpdater) update() {
 	if ready {
 		status = healthpb.HealthCheckResponse_SERVING
 	}
+
 	u.healthServer.SetServingStatus("", status)
 }

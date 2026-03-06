@@ -2,21 +2,23 @@ package events
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
 	libtime "github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -70,6 +72,7 @@ func NewEmitter(store *dal.Store, sink Sink, sinkName string, proposer Proposer,
 	if config.BatchSize <= 0 {
 		config.BatchSize = 64
 	}
+
 	if config.BatchDelay <= 0 {
 		config.BatchDelay = 10 * time.Millisecond
 	}
@@ -105,6 +108,7 @@ func (e *Emitter) Start() {
 	if e.running {
 		return
 	}
+
 	e.running = true
 	e.stopCh = make(chan struct{})
 	e.stopped = make(chan struct{})
@@ -122,6 +126,7 @@ func (e *Emitter) Stop() {
 	if !e.running {
 		return
 	}
+
 	e.running = false
 	close(e.stopCh)
 	<-e.stopped
@@ -133,8 +138,10 @@ func (e *Emitter) run() {
 	cursor, err := query.ReadSinkCursor(e.store, e.sinkName)
 	if err != nil {
 		e.logger.Errorf("Failed to read sink cursor: %v", err)
+
 		return
 	}
+
 	e.logger.WithFields(map[string]any{"cursor": cursor}).Infof("Event emitter started")
 
 	// Initial catch-up: process any logs since the cursor
@@ -152,6 +159,7 @@ func (e *Emitter) run() {
 		select {
 		case <-e.stopCh:
 			e.logger.Infof("Event emitter stopped")
+
 			return
 		case <-e.notify.C():
 			if cursor, err = e.processLogs(cursor); err != nil {
@@ -172,6 +180,7 @@ func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
 	if err != nil {
 		return cursor, err
 	}
+
 	defer func() { _ = logsCursor.Close() }()
 
 	batch := make([]*eventspb.Event, 0, e.config.BatchSize)
@@ -180,32 +189,38 @@ func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
 	for {
 		log, err := logsCursor.Next()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			return cursor, err
 		}
 
 		event := LogToEvent(log)
 		// Skip internal logs (e.g. AddedEventsSink) that don't produce domain events.
-		if event.Type == commonpb.EventType_EVENT_TYPE_UNSPECIFIED {
-			cursor = log.Sequence
+		if event.GetType() == commonpb.EventType_EVENT_TYPE_UNSPECIFIED {
+			cursor = log.GetSequence()
+
 			continue
 		}
 		// Apply per-sink event type filter (empty = all events).
 		if len(e.config.EventTypes) > 0 {
-			if _, ok := e.config.EventTypes[event.Type]; !ok {
-				cursor = log.Sequence
+			if _, ok := e.config.EventTypes[event.GetType()]; !ok {
+				cursor = log.GetSequence()
+
 				continue
 			}
 		}
+
 		batch = append(batch, event)
 
 		if len(batch) >= e.config.BatchSize {
-			if err := e.publishBatch(batch); err != nil {
+			err := e.publishBatch(batch)
+			if err != nil {
 				return cursor, err
 			}
-			cursor = batch[len(batch)-1].LogSequence
+
+			cursor = batch[len(batch)-1].GetLogSequence()
 			lastPersistedCursor = cursor
 			batch = batch[:0]
 		}
@@ -213,10 +228,12 @@ func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
 
 	// Flush remaining events
 	if len(batch) > 0 {
-		if err := e.publishBatch(batch); err != nil {
+		err := e.publishBatch(batch)
+		if err != nil {
 			return cursor, err
 		}
-		lastPersistedCursor = batch[len(batch)-1].LogSequence
+
+		lastPersistedCursor = batch[len(batch)-1].GetLogSequence()
 		if cursor < lastPersistedCursor {
 			cursor = lastPersistedCursor
 		}
@@ -226,10 +243,11 @@ func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
 	// skipped logs after the last published event), persist the cursor so we
 	// don't re-process these logs on restart.
 	if cursor > lastPersistedCursor {
-		if err := e.proposeSinkUpdate(&raftcmdpb.EventsSinkUpdate{
+		err := e.proposeSinkUpdate(&raftcmdpb.EventsSinkUpdate{
 			SinkName: e.sinkName,
 			Cursor:   cursor,
-		}); err != nil {
+		})
+		if err != nil {
 			return cursor, err
 		}
 	}
@@ -240,19 +258,23 @@ func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
 func (e *Emitter) publishBatch(batch []*eventspb.Event) error {
 	ctx := context.Background()
 
-	if err := e.sink.Publish(ctx, batch); err != nil {
+	err := e.sink.Publish(ctx, batch)
+	if err != nil {
 		// Report the error via Raft (best-effort)
 		e.reportError(err)
+
 		return err
 	}
 
 	// Advance cursor via Raft and clear any previous error
-	lastSeq := batch[len(batch)-1].LogSequence
-	if err := e.proposeSinkUpdate(&raftcmdpb.EventsSinkUpdate{
+	lastSeq := batch[len(batch)-1].GetLogSequence()
+
+	err = e.proposeSinkUpdate(&raftcmdpb.EventsSinkUpdate{
 		SinkName:   e.sinkName,
 		Cursor:     lastSeq,
 		ClearError: true,
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 
@@ -268,6 +290,7 @@ func (e *Emitter) publishBatch(batch []*eventspb.Event) error {
 // If the proposal itself fails, it is logged but does not propagate.
 func (e *Emitter) reportError(publishErr error) {
 	now := commonpb.NewTimestamp(libtime.Now())
+
 	update := &raftcmdpb.EventsSinkUpdate{
 		SinkName: e.sinkName,
 		Error: &commonpb.SinkError{
@@ -275,7 +298,9 @@ func (e *Emitter) reportError(publishErr error) {
 			OccurredAt: now,
 		},
 	}
-	if err := e.proposeSinkUpdate(update); err != nil {
+
+	err := e.proposeSinkUpdate(update)
+	if err != nil {
 		e.logger.Errorf("Failed to report sink error via Raft: %v", err)
 	}
 }
@@ -294,6 +319,7 @@ func (e *Emitter) proposeSinkUpdate(update *raftcmdpb.EventsSinkUpdate) error {
 	} else {
 		e.marshalBuf = e.marshalBuf[:size]
 	}
+
 	n, err := e.proposal.MarshalToVT(e.marshalBuf)
 	if err != nil {
 		return err
@@ -306,5 +332,6 @@ func (e *Emitter) proposeSinkUpdate(update *raftcmdpb.EventsSinkUpdate) error {
 
 	// Wait for the update to be applied by the FSM
 	_, err = future.Wait()
+
 	return err
 }

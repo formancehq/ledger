@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/stretchr/testify/require"
 )
 
 func TestReadMirrorSourceHead(t *testing.T) {
@@ -43,11 +44,11 @@ func TestReadMirrorSyncProgress_Syncing(t *testing.T) {
 
 	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
-	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.State)
-	require.Equal(t, uint64(5), progress.Cursor)
-	require.Equal(t, uint64(100), progress.SourceLogCount)
-	require.Equal(t, uint64(95), progress.RemainingLogs)
-	require.Nil(t, progress.Error)
+	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
+	require.Equal(t, uint64(5), progress.GetCursor())
+	require.Equal(t, uint64(100), progress.GetSourceLogCount())
+	require.Equal(t, uint64(95), progress.GetRemainingLogs())
+	require.Nil(t, progress.GetError())
 }
 
 func TestReadMirrorSyncProgress_Following(t *testing.T) {
@@ -63,10 +64,10 @@ func TestReadMirrorSyncProgress_Following(t *testing.T) {
 
 	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
-	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING, progress.State)
-	require.Equal(t, uint64(100), progress.Cursor)
-	require.Equal(t, uint64(100), progress.SourceLogCount)
-	require.Equal(t, uint64(0), progress.RemainingLogs)
+	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING, progress.GetState())
+	require.Equal(t, uint64(100), progress.GetCursor())
+	require.Equal(t, uint64(100), progress.GetSourceLogCount())
+	require.Equal(t, uint64(0), progress.GetRemainingLogs())
 }
 
 func TestReadMirrorSyncProgress_WithError(t *testing.T) {
@@ -85,10 +86,10 @@ func TestReadMirrorSyncProgress_WithError(t *testing.T) {
 
 	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
-	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.State)
-	require.Equal(t, uint64(40), progress.RemainingLogs)
-	require.NotNil(t, progress.Error)
-	require.Equal(t, "connection refused", progress.Error.Message)
+	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
+	require.Equal(t, uint64(40), progress.GetRemainingLogs())
+	require.NotNil(t, progress.GetError())
+	require.Equal(t, "connection refused", progress.GetError().GetMessage())
 }
 
 func TestReadMirrorSyncProgress_NoData(t *testing.T) {
@@ -99,8 +100,8 @@ func TestReadMirrorSyncProgress_NoData(t *testing.T) {
 	// No data written — should return SYNCING with zeros
 	progress, err := query.ReadMirrorSyncProgress(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
-	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.State)
-	require.Equal(t, uint64(0), progress.Cursor)
-	require.Equal(t, uint64(0), progress.SourceLogCount)
-	require.Equal(t, uint64(0), progress.RemainingLogs)
+	require.Equal(t, commonpb.MirrorSyncState_MIRROR_SYNC_STATE_SYNCING, progress.GetState())
+	require.Equal(t, uint64(0), progress.GetCursor())
+	require.Equal(t, uint64(0), progress.GetSourceLogCount())
+	require.Equal(t, uint64(0), progress.GetRemainingLogs())
 }

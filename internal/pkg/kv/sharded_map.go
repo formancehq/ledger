@@ -35,6 +35,7 @@ func NewShardedMap[K comparable, V any](hashFn func(K) uint64) *ShardedMap[K, V]
 	for i := range sm.shards {
 		sm.shards[i].m = make(map[K]V)
 	}
+
 	return sm
 }
 
@@ -47,6 +48,7 @@ func (s *ShardedMap[K, V]) Get(k K) (V, bool) {
 	sh.mu.RLock()
 	v, ok := sh.m[k]
 	sh.mu.RUnlock()
+
 	return v, ok
 }
 
@@ -56,6 +58,7 @@ func (s *ShardedMap[K, V]) Put(k K, v V) {
 	_, exists := sh.m[k]
 	sh.m[k] = v
 	sh.mu.Unlock()
+
 	if !exists {
 		s.size.Add(1)
 	}
@@ -64,11 +67,13 @@ func (s *ShardedMap[K, V]) Put(k K, v V) {
 func (s *ShardedMap[K, V]) Del(k K) {
 	sh := s.shard(k)
 	sh.mu.Lock()
+
 	_, exists := sh.m[k]
 	if exists {
 		delete(sh.m, k)
 	}
 	sh.mu.Unlock()
+
 	if exists {
 		s.size.Add(-1)
 	}
@@ -86,12 +91,15 @@ func (s *ShardedMap[K, V]) Iter() iter.Seq2[K, V] {
 		for i := range s.shards {
 			sh := &s.shards[i]
 			sh.mu.RLock()
+
 			for k, v := range sh.m {
 				if !yield(k, v) {
 					sh.mu.RUnlock()
+
 					return
 				}
 			}
+
 			sh.mu.RUnlock()
 		}
 	}

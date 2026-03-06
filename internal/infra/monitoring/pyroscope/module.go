@@ -6,9 +6,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/grafana/pyroscope-go"
 	"go.uber.org/fx"
+
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 // Module returns an fx.Option that provides Pyroscope profiling.
@@ -45,6 +46,7 @@ func startProfiler(lc fx.Lifecycle, cfg Config, logger logging.Logger) error {
 			}).Infof("Starting Pyroscope profiler")
 
 			var err error
+
 			profiler, err = pyroscope.Start(pyroscopeCfg)
 			if err != nil {
 				return fmt.Errorf("starting pyroscope profiler: %w", err)
@@ -55,10 +57,13 @@ func startProfiler(lc fx.Lifecycle, cfg Config, logger logging.Logger) error {
 		OnStop: func(ctx context.Context) error {
 			if profiler != nil {
 				logger.Infof("Stopping Pyroscope profiler")
-				if err := profiler.Stop(); err != nil {
+
+				err := profiler.Stop()
+				if err != nil {
 					logger.WithField("error", err).Infof("Error stopping Pyroscope profiler")
 				}
 			}
+
 			return nil
 		},
 	})
@@ -71,14 +76,14 @@ type pyroscopeLogger struct {
 	logger logging.Logger
 }
 
-func (l *pyroscopeLogger) Infof(format string, args ...interface{}) {
+func (l *pyroscopeLogger) Infof(format string, args ...any) {
 	l.logger.Infof(format, args...)
 }
 
-func (l *pyroscopeLogger) Debugf(format string, args ...interface{}) {
+func (l *pyroscopeLogger) Debugf(format string, args ...any) {
 	l.logger.Debugf(format, args...)
 }
 
-func (l *pyroscopeLogger) Errorf(format string, args ...interface{}) {
+func (l *pyroscopeLogger) Errorf(format string, args ...any) {
 	l.logger.Errorf(format, args...)
 }

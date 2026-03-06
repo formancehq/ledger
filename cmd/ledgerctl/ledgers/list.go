@@ -6,9 +6,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 )
 
 // NewListCommand creates the ledgers list command.
@@ -32,6 +33,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -42,6 +44,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ledgers, err := cmdutil.GetAllLedgersInfo(ctx, client)
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to list ledgers", err)
 	}
 
@@ -51,6 +54,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(ledgers)
 	}
 
@@ -58,11 +62,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 	for name := range ledgers {
 		names = append(names, name)
 	}
+
 	sort.Strings(names)
 
 	if len(names) == 0 {
 		pterm.Info.Println("No ledgers found.")
 		pterm.Println(pterm.Gray("Create one with: ledgerctl ledgers create --name <name>"))
+
 		return nil
 	}
 
@@ -72,16 +78,19 @@ func runList(cmd *cobra.Command, _ []string) error {
 
 	for _, name := range names {
 		ledger := ledgers[name]
+
 		createdAt := "-"
-		if ledger.CreatedAt != nil {
-			createdAt = ledger.CreatedAt.AsTime().Format(time.RFC3339)
+		if ledger.GetCreatedAt() != nil {
+			createdAt = ledger.GetCreatedAt().AsTime().Format(time.RFC3339)
 		}
+
 		tableData = append(tableData, []string{
-			ledger.Name,
+			ledger.GetName(),
 			createdAt,
 		})
 	}
 
 	pterm.Println()
+
 	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }

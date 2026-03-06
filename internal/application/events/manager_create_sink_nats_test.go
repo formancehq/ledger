@@ -5,8 +5,9 @@ package events
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func TestCreateSink_NATS_FailsWithoutServer(t *testing.T) {

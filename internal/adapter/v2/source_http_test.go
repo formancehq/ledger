@@ -34,6 +34,7 @@ func TestHTTPSource_FetchLogs_Success(t *testing.T) {
 	defer srv.Close()
 
 	source := NewHTTPSource(srv.URL, "default", nil)
+
 	defer func() { _ = source.Close() }()
 
 	result, hasMore, err := source.FetchLogs(context.Background(), 0, 10)

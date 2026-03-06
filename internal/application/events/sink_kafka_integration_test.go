@@ -8,14 +8,16 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	"github.com/formancehq/go-libs/v3/logging"
-	libtime "github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
-	"github.com/formancehq/ledger-v3-poc/internal/application/events"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	libtime "github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger-v3-poc/internal/application/events"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 )
 
 // consumeKafkaMessages reads up to expectedCount messages from a Kafka topic within a timeout.
@@ -34,13 +36,16 @@ func consumeKafkaMessages(t *testing.T, brokers []string, topic string, expected
 	t.Cleanup(func() { _ = pc.Close() })
 
 	var msgs []*sarama.ConsumerMessage
+
 	deadline := time.After(timeout)
+
 	for len(msgs) < expectedCount {
 		select {
 		case msg := <-pc.Messages():
 			msgs = append(msgs, msg)
 		case <-deadline:
 			require.Len(t, msgs, expectedCount, "expected %d Kafka messages within %v", expectedCount, timeout)
+
 			return msgs
 		}
 	}
@@ -59,6 +64,7 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "orders")
+
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -99,6 +105,7 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 		Format:  events.FormatJSON,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = sink.Close() }()
 
 	cfg := events.DefaultEmitterConfig()
@@ -107,7 +114,8 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := query.ReadSinkCursor(store,"kafka-sink")
+		cursor, err := query.ReadSinkCursor(store, "kafka-sink")
+
 		return err == nil && cursor >= 2
 	}, 10*time.Second, 10*time.Millisecond, "emitter should process all logs")
 
@@ -119,16 +127,16 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 	// Verify CREATED_LEDGER event (JSON)
 	var evt1 eventspb.Event
 	require.NoError(t, protojson.Unmarshal(msgs[0].Value, &evt1))
-	require.Equal(t, commonpb.EventType_CREATED_LEDGER, evt1.Type)
-	require.Equal(t, "orders", evt1.Ledger)
-	require.Equal(t, uint64(1), evt1.LogSequence)
+	require.Equal(t, commonpb.EventType_CREATED_LEDGER, evt1.GetType())
+	require.Equal(t, "orders", evt1.GetLedger())
+	require.Equal(t, uint64(1), evt1.GetLogSequence())
 
 	// Verify COMMITTED_TRANSACTION event (JSON)
 	var evt2 eventspb.Event
 	require.NoError(t, protojson.Unmarshal(msgs[1].Value, &evt2))
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt2.Type)
-	require.Equal(t, "orders", evt2.Ledger)
-	require.Equal(t, uint64(2), evt2.LogSequence)
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt2.GetType())
+	require.Equal(t, "orders", evt2.GetLedger())
+	require.Equal(t, uint64(2), evt2.GetLogSequence())
 
 	// Verify event_type header
 	require.Equal(t, "created_ledger", headerValue(msgs[0].Headers, "event_type"))
@@ -146,6 +154,7 @@ func TestKafkaSinkIntegration_MessageKeyIsLedger(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "payments")
+
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -176,6 +185,7 @@ func TestKafkaSinkIntegration_MessageKeyIsLedger(t *testing.T) {
 		Format:  events.FormatJSON,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = sink.Close() }()
 
 	cfg := events.DefaultEmitterConfig()
@@ -184,7 +194,8 @@ func TestKafkaSinkIntegration_MessageKeyIsLedger(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := query.ReadSinkCursor(store,"kafka-key-sink")
+		cursor, err := query.ReadSinkCursor(store, "kafka-key-sink")
+
 		return err == nil && cursor >= 1
 	}, 10*time.Second, 10*time.Millisecond, "emitter should process log")
 
@@ -207,6 +218,7 @@ func TestKafkaSinkIntegration_ProtobufFormat(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "payments")
+
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -237,6 +249,7 @@ func TestKafkaSinkIntegration_ProtobufFormat(t *testing.T) {
 		Format:  events.FormatProto,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = sink.Close() }()
 
 	cfg := events.DefaultEmitterConfig()
@@ -245,7 +258,8 @@ func TestKafkaSinkIntegration_ProtobufFormat(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := query.ReadSinkCursor(store,"kafka-proto-sink")
+		cursor, err := query.ReadSinkCursor(store, "kafka-proto-sink")
+
 		return err == nil && cursor >= 1
 	}, 10*time.Second, 10*time.Millisecond, "emitter should process log")
 
@@ -256,10 +270,10 @@ func TestKafkaSinkIntegration_ProtobufFormat(t *testing.T) {
 	// Deserialize protobuf and verify
 	var evt eventspb.Event
 	require.NoError(t, evt.UnmarshalVT(msgs[0].Value))
-	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt.Type)
-	require.Equal(t, "payments", evt.Ledger)
-	require.Equal(t, uint64(1), evt.LogSequence)
-	require.NotNil(t, evt.Log, "event should carry the full Log")
+	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt.GetType())
+	require.Equal(t, "payments", evt.GetLedger())
+	require.Equal(t, uint64(1), evt.GetLogSequence())
+	require.NotNil(t, evt.GetLog(), "event should carry the full Log")
 }
 
 // headerValue extracts a header value from Kafka record headers by key.
@@ -269,5 +283,6 @@ func headerValue(headers []*sarama.RecordHeader, key string) string {
 			return string(h.Value)
 		}
 	}
+
 	return ""
 }

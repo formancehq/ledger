@@ -30,12 +30,14 @@ func NewPostgresSource(ctx context.Context, dsn, ledgerName string) (*PostgresSo
 
 	// Look up the bucket (schema) for this ledger from _system.ledgers.
 	var bucket string
+
 	err = pool.QueryRow(ctx,
 		`SELECT bucket FROM _system.ledgers WHERE name = $1`,
 		ledgerName,
 	).Scan(&bucket)
 	if err != nil {
 		pool.Close()
+
 		return nil, fmt.Errorf("looking up bucket for ledger %q: %w", ledgerName, err)
 	}
 
@@ -63,15 +65,22 @@ func (s *PostgresSource) FetchLogs(ctx context.Context, afterID uint64, pageSize
 	defer rows.Close()
 
 	var logs []V2Log
+
 	for rows.Next() {
-		var l V2Log
-		var data []byte
-		if err := rows.Scan(&l.ID, &l.Type, &l.Date, &data, &l.Hash); err != nil {
+		var (
+			l    V2Log
+			data []byte
+		)
+
+		err := rows.Scan(&l.ID, &l.Type, &l.Date, &data, &l.Hash)
+		if err != nil {
 			return nil, false, fmt.Errorf("scanning log row: %w", err)
 		}
+
 		l.Data = json.RawMessage(data)
 		logs = append(logs, l)
 	}
+
 	if err := rows.Err(); err != nil {
 		return nil, false, fmt.Errorf("iterating log rows: %w", err)
 	}
@@ -93,7 +102,9 @@ func (s *PostgresSource) GetLatestLogID(ctx context.Context) (uint64, error) {
 	)
 
 	var maxID uint64
-	if err := s.pool.QueryRow(ctx, query, s.ledgerName).Scan(&maxID); err != nil {
+
+	err := s.pool.QueryRow(ctx, query, s.ledgerName).Scan(&maxID)
+	if err != nil {
 		return 0, fmt.Errorf("querying latest log ID: %w", err)
 	}
 
@@ -103,6 +114,7 @@ func (s *PostgresSource) GetLatestLogID(ctx context.Context) (uint64, error) {
 // Close closes the underlying connection pool.
 func (s *PostgresSource) Close() error {
 	s.pool.Close()
+
 	return nil
 }
 
@@ -132,6 +144,7 @@ func encodeDSNPassword(dsn string) string {
 
 	password := creds[colonIdx+1:]
 	encoded := url.PathEscape(password)
+
 	encoded = strings.ReplaceAll(encoded, "@", "%40")
 	if encoded == password {
 		return dsn

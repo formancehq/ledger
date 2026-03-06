@@ -4,15 +4,16 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func TestBusinessErrorToGRPCStatus_LedgerAlreadyExists(t *testing.T) {
@@ -25,9 +26,9 @@ func TestBusinessErrorToGRPCStatus_LedgerAlreadyExists(t *testing.T) {
 	require.Contains(t, st.Message(), "my-ledger")
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonLedgerAlreadyExists, info.Reason)
-	require.Equal(t, errorDomain, info.Domain)
-	require.Equal(t, "my-ledger", info.Metadata["name"])
+	require.Equal(t, domain.ErrReasonLedgerAlreadyExists, info.GetReason())
+	require.Equal(t, errorDomain, info.GetDomain())
+	require.Equal(t, "my-ledger", info.GetMetadata()["name"])
 }
 
 func TestBusinessErrorToGRPCStatus_LedgerNotFound(t *testing.T) {
@@ -39,8 +40,8 @@ func TestBusinessErrorToGRPCStatus_LedgerNotFound(t *testing.T) {
 	require.Equal(t, codes.NotFound, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonLedgerNotFound, info.Reason)
-	require.Equal(t, "missing-ledger", info.Metadata["name"])
+	require.Equal(t, domain.ErrReasonLedgerNotFound, info.GetReason())
+	require.Equal(t, "missing-ledger", info.GetMetadata()["name"])
 }
 
 func TestBusinessErrorToGRPCStatus_IdempotencyKeyConflict(t *testing.T) {
@@ -52,8 +53,8 @@ func TestBusinessErrorToGRPCStatus_IdempotencyKeyConflict(t *testing.T) {
 	require.Equal(t, codes.AlreadyExists, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonIdempotencyKeyConflict, info.Reason)
-	require.Equal(t, "ik-123", info.Metadata["key"])
+	require.Equal(t, domain.ErrReasonIdempotencyKeyConflict, info.GetReason())
+	require.Equal(t, "ik-123", info.GetMetadata()["key"])
 }
 
 func TestBusinessErrorToGRPCStatus_TransactionReferenceConflict(t *testing.T) {
@@ -68,9 +69,9 @@ func TestBusinessErrorToGRPCStatus_TransactionReferenceConflict(t *testing.T) {
 	require.Equal(t, codes.AlreadyExists, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonTransactionReferenceConflict, info.Reason)
-	require.Equal(t, "test", info.Metadata["ledger"])
-	require.Equal(t, "ref-001", info.Metadata["reference"])
+	require.Equal(t, domain.ErrReasonTransactionReferenceConflict, info.GetReason())
+	require.Equal(t, "test", info.GetMetadata()["ledger"])
+	require.Equal(t, "ref-001", info.GetMetadata()["reference"])
 }
 
 func TestBusinessErrorToGRPCStatus_TransactionNotFound(t *testing.T) {
@@ -82,8 +83,8 @@ func TestBusinessErrorToGRPCStatus_TransactionNotFound(t *testing.T) {
 	require.Equal(t, codes.NotFound, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonTransactionNotFound, info.Reason)
-	require.Equal(t, "999", info.Metadata["transactionId"])
+	require.Equal(t, domain.ErrReasonTransactionNotFound, info.GetReason())
+	require.Equal(t, "999", info.GetMetadata()["transactionId"])
 }
 
 func TestBusinessErrorToGRPCStatus_TransactionAlreadyReverted(t *testing.T) {
@@ -95,8 +96,8 @@ func TestBusinessErrorToGRPCStatus_TransactionAlreadyReverted(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonTransactionAlreadyReverted, info.Reason)
-	require.Equal(t, "42", info.Metadata["transactionId"])
+	require.Equal(t, domain.ErrReasonTransactionAlreadyReverted, info.GetReason())
+	require.Equal(t, "42", info.GetMetadata()["transactionId"])
 }
 
 func TestBusinessErrorToGRPCStatus_InsufficientFunds(t *testing.T) {
@@ -113,11 +114,11 @@ func TestBusinessErrorToGRPCStatus_InsufficientFunds(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonInsufficientFunds, info.Reason)
-	require.Equal(t, "user:001", info.Metadata["account"])
-	require.Equal(t, "USD", info.Metadata["asset"])
-	require.Equal(t, "1000", info.Metadata["amount"])
-	require.Equal(t, "500", info.Metadata["balance"])
+	require.Equal(t, domain.ErrReasonInsufficientFunds, info.GetReason())
+	require.Equal(t, "user:001", info.GetMetadata()["account"])
+	require.Equal(t, "USD", info.GetMetadata()["asset"])
+	require.Equal(t, "1000", info.GetMetadata()["amount"])
+	require.Equal(t, "500", info.GetMetadata()["balance"])
 }
 
 func TestBusinessErrorToGRPCStatus_BalanceNotFound(t *testing.T) {
@@ -132,9 +133,9 @@ func TestBusinessErrorToGRPCStatus_BalanceNotFound(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonBalanceNotFound, info.Reason)
-	require.Equal(t, "user:002", info.Metadata["account"])
-	require.Equal(t, "EUR", info.Metadata["asset"])
+	require.Equal(t, domain.ErrReasonBalanceNotFound, info.GetReason())
+	require.Equal(t, "user:002", info.GetMetadata()["account"])
+	require.Equal(t, "EUR", info.GetMetadata()["asset"])
 }
 
 func TestBusinessErrorToGRPCStatus_BalanceNotPreloaded(t *testing.T) {
@@ -149,9 +150,9 @@ func TestBusinessErrorToGRPCStatus_BalanceNotPreloaded(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonBalanceNotPreloaded, info.Reason)
-	require.Equal(t, "user:003", info.Metadata["account"])
-	require.Equal(t, "BTC", info.Metadata["asset"])
+	require.Equal(t, domain.ErrReasonBalanceNotPreloaded, info.GetReason())
+	require.Equal(t, "user:003", info.GetMetadata()["account"])
+	require.Equal(t, "BTC", info.GetMetadata()["asset"])
 }
 
 func TestBusinessErrorToGRPCStatus_NumscriptParseError(t *testing.T) {
@@ -163,8 +164,8 @@ func TestBusinessErrorToGRPCStatus_NumscriptParseError(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonNumscriptParseError, info.Reason)
-	require.Equal(t, "unexpected token at line 3", info.Metadata["details"])
+	require.Equal(t, domain.ErrReasonNumscriptParseError, info.GetReason())
+	require.Equal(t, "unexpected token at line 3", info.GetMetadata()["details"])
 }
 
 func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
@@ -189,8 +190,8 @@ func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
 			require.Equal(t, codes.InvalidArgument, st.Code())
 
 			info := extractErrorInfo(t, st)
-			require.Equal(t, domain.ErrReasonValidation, info.Reason)
-			require.Equal(t, errorDomain, info.Domain)
+			require.Equal(t, domain.ErrReasonValidation, info.GetReason())
+			require.Equal(t, errorDomain, info.GetDomain())
 		})
 	}
 }
@@ -204,8 +205,8 @@ func TestBusinessErrorToGRPCStatus_SinkAlreadyExists(t *testing.T) {
 	require.Equal(t, codes.AlreadyExists, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonSinkAlreadyExists, info.Reason)
-	require.Equal(t, "my-sink", info.Metadata["name"])
+	require.Equal(t, domain.ErrReasonSinkAlreadyExists, info.GetReason())
+	require.Equal(t, "my-sink", info.GetMetadata()["name"])
 }
 
 func TestBusinessErrorToGRPCStatus_SinkNotFound(t *testing.T) {
@@ -217,8 +218,8 @@ func TestBusinessErrorToGRPCStatus_SinkNotFound(t *testing.T) {
 	require.Equal(t, codes.NotFound, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonSinkNotFound, info.Reason)
-	require.Equal(t, "missing-sink", info.Metadata["name"])
+	require.Equal(t, domain.ErrReasonSinkNotFound, info.GetReason())
+	require.Equal(t, "missing-sink", info.GetMetadata()["name"])
 }
 
 func TestBusinessErrorToGRPCStatus_MetadataNotFound(t *testing.T) {
@@ -230,9 +231,9 @@ func TestBusinessErrorToGRPCStatus_MetadataNotFound(t *testing.T) {
 	require.Equal(t, codes.NotFound, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonMetadataNotFound, info.Reason)
-	require.Equal(t, "account:foo", info.Metadata["target"])
-	require.Equal(t, "role", info.Metadata["key"])
+	require.Equal(t, domain.ErrReasonMetadataNotFound, info.GetReason())
+	require.Equal(t, "account:foo", info.GetMetadata()["target"])
+	require.Equal(t, "role", info.GetMetadata()["key"])
 }
 
 func TestBusinessErrorToGRPCStatus_NoPeriodOpen(t *testing.T) {
@@ -244,7 +245,7 @@ func TestBusinessErrorToGRPCStatus_NoPeriodOpen(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonNoPeriodOpen, info.Reason)
+	require.Equal(t, domain.ErrReasonNoPeriodOpen, info.GetReason())
 }
 
 func TestBusinessErrorToGRPCStatus_PeriodAlreadyClosing(t *testing.T) {
@@ -256,7 +257,7 @@ func TestBusinessErrorToGRPCStatus_PeriodAlreadyClosing(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonPeriodAlreadyClosing, info.Reason)
+	require.Equal(t, domain.ErrReasonPeriodAlreadyClosing, info.GetReason())
 }
 
 func TestBusinessErrorToGRPCStatus_PeriodNotFound(t *testing.T) {
@@ -268,8 +269,8 @@ func TestBusinessErrorToGRPCStatus_PeriodNotFound(t *testing.T) {
 	require.Equal(t, codes.NotFound, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonPeriodNotFound, info.Reason)
-	require.Equal(t, "7", info.Metadata["periodId"])
+	require.Equal(t, domain.ErrReasonPeriodNotFound, info.GetReason())
+	require.Equal(t, "7", info.GetMetadata()["periodId"])
 }
 
 func TestBusinessErrorToGRPCStatus_PeriodNotClosing(t *testing.T) {
@@ -281,8 +282,8 @@ func TestBusinessErrorToGRPCStatus_PeriodNotClosing(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonPeriodNotClosing, info.Reason)
-	require.Equal(t, "3", info.Metadata["periodId"])
+	require.Equal(t, domain.ErrReasonPeriodNotClosing, info.GetReason())
+	require.Equal(t, "3", info.GetMetadata()["periodId"])
 }
 
 func TestBusinessErrorToGRPCStatus_InvalidReceipt(t *testing.T) {
@@ -294,8 +295,8 @@ func TestBusinessErrorToGRPCStatus_InvalidReceipt(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonInvalidReceipt, info.Reason)
-	require.Equal(t, "bad signature", info.Metadata["reason"])
+	require.Equal(t, domain.ErrReasonInvalidReceipt, info.GetReason())
+	require.Equal(t, "bad signature", info.GetMetadata()["reason"])
 }
 
 func TestBusinessErrorToGRPCStatus_MaintenanceMode(t *testing.T) {
@@ -307,7 +308,7 @@ func TestBusinessErrorToGRPCStatus_MaintenanceMode(t *testing.T) {
 	require.Equal(t, codes.Unavailable, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonMaintenanceMode, info.Reason)
+	require.Equal(t, domain.ErrReasonMaintenanceMode, info.GetReason())
 }
 
 func TestBusinessErrorToGRPCStatus_InvalidCronExpression(t *testing.T) {
@@ -322,9 +323,9 @@ func TestBusinessErrorToGRPCStatus_InvalidCronExpression(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonInvalidCronExpression, info.Reason)
-	require.Equal(t, "* * * *", info.Metadata["expression"])
-	require.Equal(t, "expected 5 fields", info.Metadata["details"])
+	require.Equal(t, domain.ErrReasonInvalidCronExpression, info.GetReason())
+	require.Equal(t, "* * * *", info.GetMetadata()["expression"])
+	require.Equal(t, "expected 5 fields", info.GetMetadata()["details"])
 }
 
 func TestBusinessErrorToGRPCStatus_AccountNotInChart(t *testing.T) {
@@ -336,9 +337,9 @@ func TestBusinessErrorToGRPCStatus_AccountNotInChart(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonAccountNotInChart, info.Reason)
-	require.Equal(t, errorDomain, info.Domain)
-	require.Equal(t, "invalid:addr:here", info.Metadata["address"])
+	require.Equal(t, domain.ErrReasonAccountNotInChart, info.GetReason())
+	require.Equal(t, errorDomain, info.GetDomain())
+	require.Equal(t, "invalid:addr:here", info.GetMetadata()["address"])
 }
 
 func TestBusinessErrorToGRPCStatus_InvalidChart(t *testing.T) {
@@ -350,9 +351,9 @@ func TestBusinessErrorToGRPCStatus_InvalidChart(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonInvalidChart, info.Reason)
-	require.Equal(t, errorDomain, info.Domain)
-	require.Equal(t, "missing root segment", info.Metadata["details"])
+	require.Equal(t, domain.ErrReasonInvalidChart, info.GetReason())
+	require.Equal(t, errorDomain, info.GetDomain())
+	require.Equal(t, "missing root segment", info.GetMetadata()["details"])
 }
 
 func TestBusinessErrorToGRPCStatus_UnknownError(t *testing.T) {
@@ -491,5 +492,6 @@ func extractErrorInfo(t *testing.T, st *status.Status) *errdetails.ErrorInfo {
 	}
 
 	t.Fatal("no ErrorInfo found in status details")
+
 	return nil
 }

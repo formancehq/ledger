@@ -2,15 +2,17 @@ package accounts
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewGetCommand creates the accounts get command.
@@ -44,9 +46,11 @@ func runGet(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -62,10 +66,12 @@ func runGet(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
+
 		address = result
 		if address == "" {
 			pterm.Error.Println("Account address is required")
-			return cmdutil.Displayed(fmt.Errorf("account address is required"))
+
+			return cmdutil.Displayed(errors.New("account address is required"))
 		}
 	}
 
@@ -80,6 +86,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to get account", err)
 	}
 
@@ -89,60 +96,71 @@ func runGet(cmd *cobra.Command, args []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(account)
 	}
 
 	pterm.Println()
 
-	pterm.Printf("Account: %s\n", pterm.Cyan(account.Address))
+	pterm.Printf("Account: %s\n", pterm.Cyan(account.GetAddress()))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
-	if account.Metadata != nil && len(account.Metadata.Metadata) > 0 {
+	if account.GetMetadata() != nil && len(account.GetMetadata().GetMetadata()) > 0 {
 		pterm.Println("Metadata:")
+
 		metadataTable := pterm.TableData{
 			{"KEY", "VALUE"},
 		}
-		for _, md := range account.Metadata.Metadata {
+		for _, md := range account.GetMetadata().GetMetadata() {
 			metadataTable = append(metadataTable, []string{
-				md.Key,
-				commonpb.MetadataValueToString(md.Value),
+				md.GetKey(),
+				commonpb.MetadataValueToString(md.GetValue()),
 			})
 		}
-		if err := pterm.DefaultTable.WithHasHeader().WithData(metadataTable).Render(); err != nil {
+
+		err := pterm.DefaultTable.WithHasHeader().WithData(metadataTable).Render()
+		if err != nil {
 			return err
 		}
+
 		pterm.Println()
 	}
 
 	pterm.Println("Volumes:")
-	if len(account.Volumes) > 0 {
+
+	if len(account.GetVolumes()) > 0 {
 		volumesTable := pterm.TableData{
 			{"ASSET", "INPUT", "OUTPUT", "BALANCE"},
 		}
 
-		assets := make([]string, 0, len(account.Volumes))
-		for asset := range account.Volumes {
+		assets := make([]string, 0, len(account.GetVolumes()))
+		for asset := range account.GetVolumes() {
 			assets = append(assets, asset)
 		}
+
 		sort.Strings(assets)
 
 		for _, asset := range assets {
-			vol := account.Volumes[asset]
-			balance := vol.Balance
+			vol := account.GetVolumes()[asset]
+			balance := vol.GetBalance()
+
 			balanceColor := pterm.Green
 			if balance != "" && balance[0] == '-' {
 				balanceColor = pterm.Red
 			}
+
 			volumesTable = append(volumesTable, []string{
 				asset,
-				vol.Input,
-				vol.Output,
+				vol.GetInput(),
+				vol.GetOutput(),
 				balanceColor(balance),
 			})
 		}
+
 		return pterm.DefaultTable.WithHasHeader().WithData(volumesTable).Render()
 	}
 
 	pterm.Println(pterm.Gray("(no volumes)"))
+
 	return nil
 }

@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 )
 
 // NewGenerateKeyCommand returns the "auth generate-key" command.

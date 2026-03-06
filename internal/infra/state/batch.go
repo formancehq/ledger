@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -18,21 +18,24 @@ func AppendLogs(b *dal.Batch, logs ...*commonpb.Log) error {
 	for _, log := range logs {
 		b.KeyBuilder.
 			PutByte(dal.KeyPrefixLog).
-			PutUInt64(log.Sequence)
+			PutUInt64(log.GetSequence())
 
-		if err := b.SetProto(b.KeyBuilder.Build(), log); err != nil {
+		err := b.SetProto(b.KeyBuilder.Build(), log)
+		if err != nil {
 			return fmt.Errorf("inserting system log: %w", err)
 		}
 
 		// Create idempotency index if present
-		if log.Idempotency != nil && log.Idempotency.Key != "" {
+		if log.GetIdempotency() != nil && log.GetIdempotency().GetKey() != "" {
 			seqValue := make([]byte, 8)
-			binary.BigEndian.PutUint64(seqValue, log.Sequence)
+			binary.BigEndian.PutUint64(seqValue, log.GetSequence())
 
 			b.KeyBuilder.
 				PutByte(dal.KeyPrefixIdempotency).
-				PutString(log.Idempotency.Key)
-			if err := b.SetBytes(b.KeyBuilder.Build(), seqValue); err != nil {
+				PutString(log.GetIdempotency().GetKey())
+
+			err := b.SetBytes(b.KeyBuilder.Build(), seqValue)
+			if err != nil {
 				return fmt.Errorf("inserting idempotency index: %w", err)
 			}
 		}
@@ -45,9 +48,10 @@ func AppendLogs(b *dal.Batch, logs ...*commonpb.Log) error {
 func SaveLedger(b *dal.Batch, info *commonpb.LedgerInfo) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixLedgerInfo).
-		PutString(info.Name)
+		PutString(info.GetName())
 
-	if err := b.SetProto(b.KeyBuilder.Build(), info); err != nil {
+	err := b.SetProto(b.KeyBuilder.Build(), info)
+	if err != nil {
 		return fmt.Errorf("inserting ledger info: %w", err)
 	}
 
@@ -55,15 +59,16 @@ func SaveLedger(b *dal.Batch, info *commonpb.LedgerInfo) error {
 }
 
 // StoreTransactionUpdate stores a transaction update (init, revert, add/delete metadata).
-// Key: [KeyPrefixTransactionUpdate][name]\x00[transactionID(8)][byLog(8)] -> TransactionUpdate
+// Key: [KeyPrefixTransactionUpdate][name]\x00[transactionID(8)][byLog(8)] -> TransactionUpdate.
 func StoreTransactionUpdate(b *dal.Batch, key domain.TransactionKey, update *commonpb.TransactionUpdate) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixTransactionUpdate).
 		PutLedgerName(key.Ledger).
 		PutUInt64(key.ID).
-		PutUInt64(update.ByLog)
+		PutUInt64(update.GetByLog())
 
-	if err := b.SetProto(b.KeyBuilder.Build(), update); err != nil {
+	err := b.SetProto(b.KeyBuilder.Build(), update)
+	if err != nil {
 		return fmt.Errorf("storing transaction update: %w", err)
 	}
 
@@ -75,9 +80,10 @@ func AppendAuditEntries(b *dal.Batch, entries ...*auditpb.AuditEntry) error {
 	for _, entry := range entries {
 		b.KeyBuilder.
 			PutByte(dal.KeyPrefixAudit).
-			PutUInt64(entry.Sequence)
+			PutUInt64(entry.GetSequence())
 
-		if err := b.SetProto(b.KeyBuilder.Build(), entry); err != nil {
+		err := b.SetProto(b.KeyBuilder.Build(), entry)
+		if err != nil {
 			return fmt.Errorf("inserting audit entry: %w", err)
 		}
 	}
@@ -100,9 +106,11 @@ func SaveSigningKey(b *dal.Batch, keyID string, publicKey []byte, parentKeyID st
 		copy(value[len(publicKey):], parentKeyID)
 	}
 
-	if err := b.SetBytes(b.KeyBuilder.Build(), value); err != nil {
+	err := b.SetBytes(b.KeyBuilder.Build(), value)
+	if err != nil {
 		return fmt.Errorf("saving signing key: %w", err)
 	}
+
 	return nil
 }
 
@@ -112,9 +120,11 @@ func DeleteSigningKey(b *dal.Batch, keyID string) error {
 		PutByte(dal.KeyPrefixSigningKey).
 		PutString(keyID)
 
-	if err := b.DeleteKey(b.KeyBuilder.Build()); err != nil {
+	err := b.DeleteKey(b.KeyBuilder.Build())
+	if err != nil {
 		return fmt.Errorf("deleting signing key: %w", err)
 	}
+
 	return nil
 }
 
@@ -133,9 +143,11 @@ func SaveSigningConfig(b *dal.Batch, requireSignatures bool) error {
 		value[0] = 0x01
 	}
 
-	if err := b.SetBytes([]byte{dal.KeyPrefixSigningConfig}, value); err != nil {
+	err := b.SetBytes([]byte{dal.KeyPrefixSigningConfig}, value)
+	if err != nil {
 		return fmt.Errorf("saving signing config: %w", err)
 	}
+
 	return nil
 }
 
@@ -146,9 +158,11 @@ func SaveMaintenanceMode(b *dal.Batch, enabled bool) error {
 		value[0] = 0x01
 	}
 
-	if err := b.SetBytes([]byte{dal.KeyPrefixMaintenanceMode}, value); err != nil {
+	err := b.SetBytes([]byte{dal.KeyPrefixMaintenanceMode}, value)
+	if err != nil {
 		return fmt.Errorf("saving maintenance mode: %w", err)
 	}
+
 	return nil
 }
 
@@ -159,36 +173,44 @@ func SaveAuditConfig(b *dal.Batch, enabled bool) error {
 		value[0] = 0x01
 	}
 
-	if err := b.SetBytes([]byte{dal.KeyPrefixAuditConfig}, value); err != nil {
+	err := b.SetBytes([]byte{dal.KeyPrefixAuditConfig}, value)
+	if err != nil {
 		return fmt.Errorf("saving audit config: %w", err)
 	}
+
 	return nil
 }
 
 // SavePeriodSchedule stores the period schedule cron expression in the batch.
 func SavePeriodSchedule(b *dal.Batch, cron string) error {
-	if err := b.SetBytes([]byte{dal.KeyPrefixPeriodSchedule}, []byte(cron)); err != nil {
+	err := b.SetBytes([]byte{dal.KeyPrefixPeriodSchedule}, []byte(cron))
+	if err != nil {
 		return fmt.Errorf("saving period schedule: %w", err)
 	}
+
 	return nil
 }
 
 // BatchDeletePeriodSchedule removes the period schedule from the batch.
 func BatchDeletePeriodSchedule(b *dal.Batch) error {
-	if err := b.DeleteKey([]byte{dal.KeyPrefixPeriodSchedule}); err != nil {
+	err := b.DeleteKey([]byte{dal.KeyPrefixPeriodSchedule})
+	if err != nil {
 		return fmt.Errorf("deleting period schedule: %w", err)
 	}
+
 	return nil
 }
 
 // SaveSinkConfig stores a per-sink configuration in the batch.
 func SaveSinkConfig(b *dal.Batch, config *commonpb.SinkConfig) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixEventsConfig).
-		PutString(config.Name)
+		PutString(config.GetName())
 
-	if err := b.SetProto(b.KeyBuilder.Build(), config); err != nil {
+	err := b.SetProto(b.KeyBuilder.Build(), config)
+	if err != nil {
 		return fmt.Errorf("saving sink config: %w", err)
 	}
+
 	return nil
 }
 
@@ -197,21 +219,25 @@ func DeleteSinkConfig(b *dal.Batch, name string) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixEventsConfig).
 		PutString(name)
 
-	if err := b.DeleteKey(b.KeyBuilder.Build()); err != nil {
+	err := b.DeleteKey(b.KeyBuilder.Build())
+	if err != nil {
 		return fmt.Errorf("deleting sink config: %w", err)
 	}
+
 	return nil
 }
 
 // SavePreparedQuery stores a prepared query in the batch.
 func SavePreparedQuery(b *dal.Batch, pq *commonpb.PreparedQuery) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixPreparedQuery).
-		PutLedgerName(pq.Ledger).
-		PutString(pq.Name)
+		PutLedgerName(pq.GetLedger()).
+		PutString(pq.GetName())
 
-	if err := b.SetProto(b.KeyBuilder.Build(), pq); err != nil {
+	err := b.SetProto(b.KeyBuilder.Build(), pq)
+	if err != nil {
 		return fmt.Errorf("saving prepared query: %w", err)
 	}
+
 	return nil
 }
 
@@ -221,9 +247,11 @@ func DeletePreparedQuery(b *dal.Batch, ledger, name string) error {
 		PutLedgerName(ledger).
 		PutString(name)
 
-	if err := b.DeleteKey(b.KeyBuilder.Build()); err != nil {
+	err := b.DeleteKey(b.KeyBuilder.Build())
+	if err != nil {
 		return fmt.Errorf("deleting prepared query: %w", err)
 	}
+
 	return nil
 }
 
@@ -234,20 +262,25 @@ func SetSinkCursor(b *dal.Batch, sinkName string, sequence uint64) error {
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], sequence)
-	if err := b.SetBytes(b.KeyBuilder.Build(), buf[:]); err != nil {
+
+	err := b.SetBytes(b.KeyBuilder.Build(), buf[:])
+	if err != nil {
 		return fmt.Errorf("setting sink cursor: %w", err)
 	}
+
 	return nil
 }
 
 // SetSinkStatus writes a per-sink status to the batch (Raft-replicated).
 func SetSinkStatus(b *dal.Batch, status *commonpb.SinkStatus) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixSinkStatus).
-		PutString(status.SinkName)
+		PutString(status.GetSinkName())
 
-	if err := b.SetProto(b.KeyBuilder.Build(), status); err != nil {
+	err := b.SetProto(b.KeyBuilder.Build(), status)
+	if err != nil {
 		return fmt.Errorf("setting sink status: %w", err)
 	}
+
 	return nil
 }
 
@@ -256,9 +289,11 @@ func ClearSinkStatus(b *dal.Batch, sinkName string) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixSinkStatus).
 		PutString(sinkName)
 
-	if err := b.DeleteKey(b.KeyBuilder.Build()); err != nil {
+	err := b.DeleteKey(b.KeyBuilder.Build())
+	if err != nil {
 		return fmt.Errorf("clearing sink status: %w", err)
 	}
+
 	return nil
 }
 
@@ -266,11 +301,13 @@ func ClearSinkStatus(b *dal.Batch, sinkName string) error {
 func StorePeriod(b *dal.Batch, period *commonpb.Period) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixPeriods).
-		PutUInt64(period.Id)
+		PutUInt64(period.GetId())
 
-	if err := b.SetProto(b.KeyBuilder.Build(), period); err != nil {
+	err := b.SetProto(b.KeyBuilder.Build(), period)
+	if err != nil {
 		return fmt.Errorf("storing period: %w", err)
 	}
+
 	return nil
 }
 
@@ -278,9 +315,12 @@ func StorePeriod(b *dal.Batch, period *commonpb.Period) error {
 func StoreNextPeriodID(b *dal.Batch, id uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, id)
-	if err := b.SetBytes([]byte{dal.KeyPrefixNextPeriodID}, value); err != nil {
+
+	err := b.SetBytes([]byte{dal.KeyPrefixNextPeriodID}, value)
+	if err != nil {
 		return fmt.Errorf("storing next period ID: %w", err)
 	}
+
 	return nil
 }
 
@@ -291,9 +331,12 @@ func SetMirrorSourceHead(b *dal.Batch, ledgerName string, count uint64) error {
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], count)
-	if err := b.SetBytes(b.KeyBuilder.Build(), buf[:]); err != nil {
+
+	err := b.SetBytes(b.KeyBuilder.Build(), buf[:])
+	if err != nil {
 		return fmt.Errorf("setting mirror source head: %w", err)
 	}
+
 	return nil
 }
 
@@ -304,9 +347,12 @@ func SetMirrorCursor(b *dal.Batch, ledgerName string, cursor uint64) error {
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], cursor)
-	if err := b.SetBytes(b.KeyBuilder.Build(), buf[:]); err != nil {
+
+	err := b.SetBytes(b.KeyBuilder.Build(), buf[:])
+	if err != nil {
 		return fmt.Errorf("setting mirror cursor: %w", err)
 	}
+
 	return nil
 }
 
@@ -315,9 +361,11 @@ func SetMirrorStatus(b *dal.Batch, ledgerName string, syncErr *commonpb.MirrorSy
 	b.KeyBuilder.PutByte(dal.KeyPrefixMirrorStatus).
 		PutString(ledgerName)
 
-	if err := b.SetProto(b.KeyBuilder.Build(), syncErr); err != nil {
+	err := b.SetProto(b.KeyBuilder.Build(), syncErr)
+	if err != nil {
 		return fmt.Errorf("setting mirror status: %w", err)
 	}
+
 	return nil
 }
 
@@ -326,9 +374,11 @@ func ClearMirrorStatus(b *dal.Batch, ledgerName string) error {
 	b.KeyBuilder.PutByte(dal.KeyPrefixMirrorStatus).
 		PutString(ledgerName)
 
-	if err := b.DeleteKey(b.KeyBuilder.Build()); err != nil {
+	err := b.DeleteKey(b.KeyBuilder.Build())
+	if err != nil {
 		return fmt.Errorf("clearing mirror status: %w", err)
 	}
+
 	return nil
 }
 
@@ -336,6 +386,7 @@ func ClearMirrorStatus(b *dal.Batch, ledgerName string) error {
 func SetAppliedIndex(b *dal.Batch, index uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, index)
+
 	return b.SetBytes([]byte{dal.KeyPrefixLastAppliedIndex}, value)
 }
 
@@ -343,6 +394,7 @@ func SetAppliedIndex(b *dal.Batch, index uint64) error {
 func SetLastAppliedTimestamp(b *dal.Batch, timestamp uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, timestamp)
+
 	return b.SetBytes([]byte{dal.KeyPrefixLastAppliedTimestamp}, value)
 }
 
@@ -357,6 +409,7 @@ func PurgeTransactionUpdates(b *dal.Batch, startSeq, closeSeq uint64) error {
 	if err != nil {
 		return fmt.Errorf("creating iterator for transaction update purge: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	for iter.First(); iter.Valid(); iter.Next() {
@@ -365,11 +418,14 @@ func PurgeTransactionUpdates(b *dal.Batch, startSeq, closeSeq uint64) error {
 		if len(key) < 18 {
 			continue
 		}
+
 		byLog := binary.BigEndian.Uint64(key[len(key)-8:])
 		if byLog < startSeq || byLog > closeSeq {
 			continue
 		}
-		if err := b.DeleteKey(key); err != nil {
+
+		err := b.DeleteKey(key)
+		if err != nil {
 			return fmt.Errorf("deleting transaction update: %w", err)
 		}
 	}
@@ -383,16 +439,17 @@ func PurgeTransactionUpdates(b *dal.Batch, startSeq, closeSeq uint64) error {
 func SaveNumscript(b *dal.Batch, info *commonpb.NumscriptInfo) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixNumscript).
-		PutString(info.Name).
+		PutString(info.GetName()).
 		PutByte(0x00)
 
-	if info.Version == "latest" {
+	if info.GetVersion() == "latest" {
 		b.KeyBuilder.PutByte(domain.NumscriptVersionTagLatest)
 	} else {
-		sv, err := semver.Parse(info.Version)
+		sv, err := semver.Parse(info.GetVersion())
 		if err != nil {
-			return fmt.Errorf("saving numscript %q: %w", info.Name, err)
+			return fmt.Errorf("saving numscript %q: %w", info.GetName(), err)
 		}
+
 		b.KeyBuilder.
 			PutByte(domain.NumscriptVersionTagSemver).
 			PutUInt32(sv.Major).
@@ -400,17 +457,21 @@ func SaveNumscript(b *dal.Batch, info *commonpb.NumscriptInfo) error {
 			PutUInt32(sv.Patch)
 	}
 
-	if err := b.SetProto(b.KeyBuilder.Build(), info); err != nil {
-		return fmt.Errorf("saving numscript %q v%s: %w", info.Name, info.Version, err)
+	err := b.SetProto(b.KeyBuilder.Build(), info)
+	if err != nil {
+		return fmt.Errorf("saving numscript %q v%s: %w", info.GetName(), info.GetVersion(), err)
 	}
 
 	// Update latest version pointer: [prefix][name] -> version string bytes
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixNumscriptLatest).
-		PutString(info.Name)
-	if err := b.SetBytes(b.KeyBuilder.Build(), []byte(info.Version)); err != nil {
-		return fmt.Errorf("saving numscript latest version for %q: %w", info.Name, err)
+		PutString(info.GetName())
+
+	err = b.SetBytes(b.KeyBuilder.Build(), []byte(info.GetVersion()))
+	if err != nil {
+		return fmt.Errorf("saving numscript latest version for %q: %w", info.GetName(), err)
 	}
+
 	return nil
 }
 
@@ -420,8 +481,11 @@ func ClearNumscriptLatestVersion(b *dal.Batch, name string) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixNumscriptLatest).
 		PutString(name)
-	if err := b.SetBytes(b.KeyBuilder.Build(), nil); err != nil {
+
+	err := b.SetBytes(b.KeyBuilder.Build(), nil)
+	if err != nil {
 		return fmt.Errorf("clearing numscript latest version for %q: %w", name, err)
 	}
+
 	return nil
 }

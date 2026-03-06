@@ -33,6 +33,7 @@ func (s *StoreInterceptor) NewBatch() *Batch {
 	if interceptor != nil {
 		return interceptor(s.delegate)
 	}
+
 	return s.delegate.NewBatch()
 }
 
@@ -40,9 +41,11 @@ func (s *StoreInterceptor) CreateSnapshot() (uint64, error) {
 	s.mu.RLock()
 	interceptor := s.OnCreateSnapshot
 	s.mu.RUnlock()
+
 	if interceptor != nil {
 		return interceptor(s.delegate)
 	}
+
 	return s.delegate.CreateSnapshot()
 }
 
@@ -50,9 +53,11 @@ func (s *StoreInterceptor) Close() error {
 	s.mu.RLock()
 	interceptor := s.OnClose
 	s.mu.RUnlock()
+
 	if interceptor != nil {
 		return interceptor(s.delegate)
 	}
+
 	return s.delegate.Close()
 }
 

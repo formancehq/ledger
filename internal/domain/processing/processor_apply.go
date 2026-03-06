@@ -1,7 +1,7 @@
 package processing
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -9,18 +9,18 @@ import (
 )
 
 func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	boundaries, ok := s.GetBoundaries(apply.Ledger)
+	boundaries, ok := s.GetBoundaries(apply.GetLedger())
 	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: apply.Ledger}
+		return nil, &domain.ErrLedgerNotFound{Name: apply.GetLedger()}
 	}
 
 	// Block data-modifying writes on mirror-mode ledgers.
 	// Schema operations (set/remove metadata field type and their conversion
 	// lifecycle) are allowed because they only affect local configuration,
 	// not replicated data.
-	if ledgerInfo, infoOk := s.GetLedger(apply.Ledger); infoOk && ledgerInfo.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+	if ledgerInfo, infoOk := s.GetLedger(apply.GetLedger()); infoOk && ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
 		if !isMirrorSafeApply(apply) {
-			return nil, &domain.ErrLedgerInMirrorMode{Name: apply.Ledger}
+			return nil, &domain.ErrLedgerInMirrorMode{Name: apply.GetLedger()}
 		}
 	}
 
@@ -28,49 +28,51 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 		logPayload *commonpb.LedgerLogPayload
 		err        error
 	)
-	switch applyData := apply.Data.(type) {
+
+	switch applyData := apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
-		logPayload, err = p.processAddMetadata(apply.Ledger, boundaries, applyData.AddMetadata, s)
+		logPayload, err = p.processAddMetadata(apply.GetLedger(), boundaries, applyData.AddMetadata, s)
 	case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
-		logPayload, err = p.processDeleteMetadata(apply.Ledger, boundaries, applyData.DeleteMetadata, s)
+		logPayload, err = p.processDeleteMetadata(apply.GetLedger(), boundaries, applyData.DeleteMetadata, s)
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-		logPayload, err = p.processCreateTransaction(apply.Ledger, boundaries, applyData.CreateTransaction, s)
+		logPayload, err = p.processCreateTransaction(apply.GetLedger(), boundaries, applyData.CreateTransaction, s)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-		logPayload, err = p.processRevertTransaction(apply.Ledger, boundaries, applyData.RevertTransaction, s)
+		logPayload, err = p.processRevertTransaction(apply.GetLedger(), boundaries, applyData.RevertTransaction, s)
 	case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType:
-		logPayload, err = p.processSetMetadataFieldType(apply.Ledger, applyData.SetMetadataFieldType, s)
+		logPayload, err = p.processSetMetadataFieldType(apply.GetLedger(), applyData.SetMetadataFieldType, s)
 	case *raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType:
-		logPayload, err = p.processRemoveMetadataFieldType(apply.Ledger, applyData.RemoveMetadataFieldType, s)
+		logPayload, err = p.processRemoveMetadataFieldType(apply.GetLedger(), applyData.RemoveMetadataFieldType, s)
 	case *raftcmdpb.LedgerApplyOrder_ConvertMetadataBatch:
-		logPayload, err = p.processConvertMetadataBatch(apply.Ledger, applyData.ConvertMetadataBatch, s)
+		logPayload, err = p.processConvertMetadataBatch(apply.GetLedger(), applyData.ConvertMetadataBatch, s)
 	case *raftcmdpb.LedgerApplyOrder_ConversionComplete:
-		logPayload, err = p.processMetadataConversionComplete(apply.Ledger, applyData.ConversionComplete, s)
+		logPayload, err = p.processMetadataConversionComplete(apply.GetLedger(), applyData.ConversionComplete, s)
 	case *raftcmdpb.LedgerApplyOrder_CreateIndex:
-		logPayload, err = p.processCreateIndex(apply.Ledger, applyData.CreateIndex, s)
+		logPayload, err = p.processCreateIndex(apply.GetLedger(), applyData.CreateIndex, s)
 	case *raftcmdpb.LedgerApplyOrder_DropIndex:
-		logPayload, err = p.processDropIndex(apply.Ledger, applyData.DropIndex, s)
+		logPayload, err = p.processDropIndex(apply.GetLedger(), applyData.DropIndex, s)
 	case *raftcmdpb.LedgerApplyOrder_IndexReady:
-		logPayload, err = p.processIndexReady(apply.Ledger, applyData.IndexReady, s)
+		logPayload, err = p.processIndexReady(apply.GetLedger(), applyData.IndexReady, s)
 	case *raftcmdpb.LedgerApplyOrder_SetChartOfAccounts:
-		logPayload, err = p.processSetChartOfAccounts(apply.Ledger, applyData.SetChartOfAccounts, s)
+		logPayload, err = p.processSetChartOfAccounts(apply.GetLedger(), applyData.SetChartOfAccounts, s)
 	case *raftcmdpb.LedgerApplyOrder_SetChartEnforcementMode:
-		logPayload, err = p.processSetChartEnforcementMode(apply.Ledger, applyData.SetChartEnforcementMode, s)
+		logPayload, err = p.processSetChartEnforcementMode(apply.GetLedger(), applyData.SetChartEnforcementMode, s)
 	default:
-		return nil, fmt.Errorf("invalid apply type")
+		return nil, errors.New("invalid apply type")
 	}
+
 	if err != nil {
 		return nil, err
 	}
 
-	nextLogID := boundaries.NextLogId
+	nextLogID := boundaries.GetNextLogId()
 	boundaries.NextLogId = nextLogID + 1
 
-	s.PutBoundaries(apply.Ledger, boundaries)
+	s.PutBoundaries(apply.GetLedger(), boundaries)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_Apply{
 			Apply: &commonpb.ApplyLedgerLog{
-				LedgerName: apply.Ledger,
+				LedgerName: apply.GetLedger(),
 				Log: &commonpb.LedgerLog{
 					Data: logPayload,
 					Date: s.GetDate(),
@@ -86,7 +88,7 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 // their associated conversion lifecycle) only affect local configuration and
 // do not cause drift with the mirror source.
 func isMirrorSafeApply(apply *raftcmdpb.LedgerApplyOrder) bool {
-	switch apply.Data.(type) {
+	switch apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType,
 		*raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType,
 		*raftcmdpb.LedgerApplyOrder_ConvertMetadataBatch,

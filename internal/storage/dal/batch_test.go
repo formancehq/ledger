@@ -4,9 +4,10 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -236,6 +237,7 @@ func TestBatch_NewIter(t *testing.T) {
 
 	// Create an iterator from a new batch
 	batch2 := s.NewBatch()
+
 	defer func() { _ = batch2.Cancel() }()
 
 	iter, err := batch2.NewIter(&pebble.IterOptions{
@@ -243,6 +245,7 @@ func TestBatch_NewIter(t *testing.T) {
 		UpperBound: []byte("iter-\xff"),
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = iter.Close() }()
 
 	require.True(t, iter.First())

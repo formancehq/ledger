@@ -7,13 +7,14 @@ import (
 	"net/http/pprof"
 	stdtime "time"
 
-	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
-
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 )
 
 // NewHandler creates a new HTTP handler (router) for the ledger service.
@@ -152,7 +153,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 }
 
 // contentTypeMiddleware sets Content-Type header for JSON responses
-// For 204 No Content responses, no Content-Type header is set
+// For 204 No Content responses, no Content-Type header is set.
 func contentTypeMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Wrap the response writer to intercept WriteHeader calls
@@ -161,9 +162,10 @@ func contentTypeMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// contentTypeResponseWriter wraps http.ResponseWriter to set Content-Type automatically
+// contentTypeResponseWriter wraps http.ResponseWriter to set Content-Type automatically.
 type contentTypeResponseWriter struct {
 	http.ResponseWriter
+
 	statusCode     int
 	wroteHeader    bool
 	contentTypeSet bool
@@ -189,6 +191,7 @@ func (rw *contentTypeResponseWriter) Write(b []byte) (int, error) {
 	if !rw.wroteHeader {
 		rw.WriteHeader(http.StatusOK)
 	}
+
 	return rw.ResponseWriter.Write(b)
 }
 
@@ -198,6 +201,7 @@ func (rw *contentTypeResponseWriter) Header() http.Header {
 	if header.Get("Content-Type") != "" {
 		rw.contentTypeSet = true
 	}
+
 	return header
 }
 
@@ -211,6 +215,7 @@ func (c chiLogFormatter) NewLogEntry(r *http.Request) middleware.LogEntry {
 		fields["trace_id"] = span.SpanContext().TraceID()
 		fields["span_id"] = span.SpanContext().SpanID()
 	}
+
 	return chiLogEntry{
 		logger: c.logger.WithFields(fields),
 		ctx:    r.Context(),
@@ -224,7 +229,7 @@ type chiLogEntry struct {
 	ctx    context.Context
 }
 
-func (c chiLogEntry) Write(status, bytes int, _ http.Header, elapsed stdtime.Duration, extra interface{}) {
+func (c chiLogEntry) Write(status, bytes int, _ http.Header, elapsed stdtime.Duration, extra any) {
 	fields := map[string]any{
 		"status":  status,
 		"bytes":   bytes,
@@ -233,14 +238,15 @@ func (c chiLogEntry) Write(status, bytes int, _ http.Header, elapsed stdtime.Dur
 	if extra != nil {
 		fields["extra"] = extra
 	}
+
 	c.logger.WithFields(fields).Debugf("HTTP request completed")
 }
 
-func (c chiLogEntry) Panic(v interface{}, stack []byte) {
+func (c chiLogEntry) Panic(v any, stack []byte) {
 	c.logger.Errorf("Panicked: %v", v)
+
 	_, _ = c.logger.Writer().Write(stack)
 	if span := trace.SpanFromContext(c.ctx); span.SpanContext().IsValid() {
 		span.RecordError(fmt.Errorf("%s", v), trace.WithStackTrace(true))
 	}
 }
-

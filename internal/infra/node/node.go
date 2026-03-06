@@ -4,12 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"go.etcd.io/etcd/raft/v3"
+	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.etcd.io/etcd/raft/v3/tracker"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
@@ -18,10 +26,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
-	"go.etcd.io/etcd/raft/v3"
-	"go.etcd.io/etcd/raft/v3/raftpb"
-	"go.etcd.io/etcd/raft/v3/tracker"
-	"go.opentelemetry.io/otel/metric"
 )
 
 const (
@@ -33,32 +37,32 @@ const (
 
 var (
 	// ErrProposalQueueFull is returned when the proposal queue is full.
-	ErrProposalQueueFull = fmt.Errorf("propose channel full")
+	ErrProposalQueueFull = errors.New("propose channel full")
 
 	// ErrNotLeader is returned when a leadership transfer is attempted on a non-leader node.
-	ErrNotLeader = fmt.Errorf("this node is not the leader")
+	ErrNotLeader = errors.New("this node is not the leader")
 
 	// ErrUnknownTransferee is returned when the transferee is not a known cluster member.
-	ErrUnknownTransferee = fmt.Errorf("transferee is not a known cluster member")
+	ErrUnknownTransferee = errors.New("transferee is not a known cluster member")
 
 	// ErrTransferLeaderTimeout is returned when leadership transfer does not complete in time.
-	ErrTransferLeaderTimeout = fmt.Errorf("leadership transfer timed out")
+	ErrTransferLeaderTimeout = errors.New("leadership transfer timed out")
 
 	// ErrNodeAlreadyInCluster is returned when trying to add a node that already exists.
-	ErrNodeAlreadyInCluster = fmt.Errorf("node already in cluster")
+	ErrNodeAlreadyInCluster = errors.New("node already in cluster")
 
 	// ErrLearnerNotEligible is returned when trying to transfer leadership to a learner.
-	ErrLearnerNotEligible = fmt.Errorf("learner nodes are not eligible for leadership")
+	ErrLearnerNotEligible = errors.New("learner nodes are not eligible for leadership")
 
 	// ErrCannotRemoveSelf is returned when trying to remove the leader node itself.
-	ErrCannotRemoveSelf = fmt.Errorf("cannot remove the leader node; transfer leadership first")
+	ErrCannotRemoveSelf = errors.New("cannot remove the leader node; transfer leadership first")
 
 	// ErrNodeNotInCluster is returned when trying to remove a node that is not a cluster member.
-	ErrNodeNotInCluster = fmt.Errorf("node is not a member of the cluster")
+	ErrNodeNotInCluster = errors.New("node is not a member of the cluster")
 
 	// ErrNodeSyncing is returned by ReadIndexAndWait when the node is still catching up
 	// (restoring a snapshot or replaying spool). Callers should forward the read to the leader.
-	ErrNodeSyncing = fmt.Errorf("node is syncing")
+	ErrNodeSyncing = errors.New("node is syncing")
 )
 
 // clusterCommand represents an operation that must execute in the orchestrate loop
@@ -89,7 +93,7 @@ func (node *Node) execClusterCommand(ctx context.Context, fn func() error) error
 	}
 }
 
-// Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft
+// Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft.
 type Node struct {
 	rawNode          *raft.RawNode
 	logger           logging.Logger
@@ -136,7 +140,7 @@ type Node struct {
 	readIndexDurationHistogram        metric.Int64Histogram
 }
 
-// NewNode creates a new wrapper around a RawNode
+// NewNode creates a new wrapper around a RawNode.
 func NewNode(
 	cfg NodeConfig,
 	transport Transport,
@@ -148,7 +152,6 @@ func NewNode(
 	snapshotFetcherProvider state.SnapshotFetcherProvider,
 	fsm *state.Machine,
 ) (*Node, error) {
-
 	cfg.SetDefaults()
 
 	snapshot, err := wal.Snapshot()
@@ -160,6 +163,7 @@ func NewNode(
 		initialConfState raftpb.ConfState
 		recoveredPeers   map[uint64]ConfChangeContext
 	)
+
 	if len(snapshot.Metadata.ConfState.Voters) == 0 {
 		logger.Infof("Fresh start: WAL has no ConfState voters, creating initial snapshot")
 
@@ -189,6 +193,7 @@ func NewNode(
 			}
 			// Wrap with empty NodeSnapshot (no peer addresses on restore bootstrap)
 			ns := &raftcmdpb.NodeSnapshot{FsmSnapshot: fsmData}
+
 			data, err := ns.MarshalVT()
 			if err != nil {
 				return nil, fmt.Errorf("wrapping restore snapshot: %w", err)
@@ -212,30 +217,34 @@ func NewNode(
 				learners []uint64
 			)
 
-			if cfg.Bootstrap {
+			switch {
+			case cfg.Bootstrap:
 				// Bootstrap mode: this node + any known peers start as voters.
 				voters = make([]uint64, 0, len(cfg.Peers)+1)
+
 				voters = append(voters, cfg.NodeID)
 				for _, peerEntry := range cfg.Peers {
 					voters = append(voters, peerEntry.ID)
 				}
+
 				logger.WithFields(map[string]any{
 					"voters": voters,
 				}).Infof("Bootstrap mode: initializing as voter cluster")
-			} else if len(cfg.Peers) > 0 {
+			case len(cfg.Peers) > 0:
 				// Join mode: existing peers are voters, self joins as learner.
 				// The leader will add us via ConfChange after we start.
 				voters = make([]uint64, 0, len(cfg.Peers))
 				for _, peerEntry := range cfg.Peers {
 					voters = append(voters, peerEntry.ID)
 				}
+
 				learners = []uint64{cfg.NodeID}
 				logger.WithFields(map[string]any{
 					"voters":   voters,
 					"learners": learners,
 				}).Infof("Join mode: initializing as learner, peers are voters")
-			} else {
-				return nil, fmt.Errorf("first start requires --bootstrap or --join")
+			default:
+				return nil, errors.New("first start requires --bootstrap or --join")
 			}
 
 			fsmData, err := fsm.CreateSnapshot(context.Background())
@@ -244,6 +253,7 @@ func NewNode(
 			}
 			// Wrap with empty NodeSnapshot (no peer addresses on initial bootstrap)
 			ns := &raftcmdpb.NodeSnapshot{FsmSnapshot: fsmData}
+
 			data, err := ns.MarshalVT()
 			if err != nil {
 				return nil, fmt.Errorf("wrapping initial snapshot: %w", err)
@@ -267,6 +277,7 @@ func NewNode(
 			"bootstrap":     cfg.Bootstrap,
 			"peerCount":     len(cfg.Peers),
 		}).Infof("Restart detected: WAL already has ConfState (not a fresh start)")
+
 		if snapshot.Metadata.Index > 0 {
 			logger.WithFields(map[string]any{
 				"index":        snapshot.Metadata.Index,
@@ -275,10 +286,12 @@ func NewNode(
 
 			// Unwrap NodeSnapshot to get FSM data and peer addresses
 			unwrapStart := time.Now()
+
 			result, err := unwrapSnapshot(snapshot.Data)
 			if err != nil {
 				return nil, fmt.Errorf("unwrapping snapshot: %w", err)
 			}
+
 			logger.WithFields(map[string]any{
 				"duration":    time.Since(unwrapStart).String(),
 				"fsmDataSize": len(result.fsmData),
@@ -288,9 +301,11 @@ func NewNode(
 			fsmSnapshot := snapshot
 			fsmSnapshot.Data = result.fsmData
 			installStart := time.Now()
+
 			if err := fsm.InstallSnapshot(context.Background(), fsmSnapshot); err != nil {
 				panic(err)
 			}
+
 			logger.WithFields(map[string]any{
 				"duration": time.Since(installStart).String(),
 			}).Infof("Installed FSM snapshot (memory state restored)")
@@ -298,9 +313,9 @@ func NewNode(
 			// Seed recovered peers from snapshot peer addresses
 			recoveredPeers = make(map[uint64]ConfChangeContext, len(result.peerAddresses))
 			for _, addr := range result.peerAddresses {
-				recoveredPeers[addr.NodeId] = ConfChangeContext{
-					RaftAddress:    addr.RaftAddress,
-					ServiceAddress: addr.ServiceAddress,
+				recoveredPeers[addr.GetNodeId()] = ConfChangeContext{
+					RaftAddress:    addr.GetRaftAddress(),
+					ServiceAddress: addr.GetServiceAddress(),
 				}
 			}
 
@@ -310,6 +325,7 @@ func NewNode(
 		}
 
 		logger.Infof("Finished restoring Machine from storage")
+
 		_, initialConfState, err = wal.InitialState()
 		if err != nil {
 			return nil, err
@@ -331,8 +347,10 @@ func NewNode(
 		if recoveredPeers == nil {
 			recoveredPeers = make(map[uint64]ConfChangeContext)
 		}
+
 		walScanStart := time.Now()
 		firstIdx, firstErr := wal.FirstIndex()
+
 		lastIdx, lastErr := wal.LastIndex()
 		if firstErr == nil && lastErr == nil && firstIdx <= lastIdx {
 			logger.WithFields(map[string]any{
@@ -342,18 +360,20 @@ func NewNode(
 			}).Infof("Scanning WAL entries for peer addresses")
 
 			const maxChunkBytes = 8 * 1024 * 1024 // 8MB per chunk
+
 			lo := firstIdx
 			for lo <= lastIdx {
 				entries, err := wal.Entries(lo, lastIdx+1, maxChunkBytes)
 				if err != nil || len(entries) == 0 {
 					break
 				}
-				for nodeID, addr := range ExtractPeerAddressesFromEntries(entries) {
-					recoveredPeers[nodeID] = addr
-				}
+
+				maps.Copy(recoveredPeers, ExtractPeerAddressesFromEntries(entries))
+
 				lo = entries[len(entries)-1].Index + 1
 			}
 		}
+
 		logger.WithFields(map[string]any{
 			"duration":  time.Since(walScanStart).String(),
 			"peerCount": len(recoveredPeers),
@@ -598,12 +618,15 @@ func NewNode(
 		// Pebble state is exactly at the ClosePeriod boundary right now (spool replay hasn't run).
 		if period := fsm.ClosingPeriod(); period != nil {
 			if _, exists := store.TemporaryCheckpointPath("seal"); !exists {
-				logger.Infof("Recovering: creating seal checkpoint for closing period %d", period.Id)
+				logger.Infof("Recovering: creating seal checkpoint for closing period %d", period.GetId())
+
 				checkpointPath, err := store.CreateTemporaryCheckpoint("seal")
 				if err != nil {
 					return nil, fmt.Errorf("creating recovery seal checkpoint: %w", err)
 				}
+
 				req := state.SealRequestFromPeriod(period)
+
 				req.CheckpointPath = checkpointPath
 				select {
 				case fsm.SealRequestCh() <- *req:
@@ -618,12 +641,15 @@ func NewNode(
 		}
 
 		replayStart := time.Now()
+
 		logger.WithFields(map[string]any{
 			"fromIndex": storeLastAppliedIndex,
 		}).Infof("Starting spool replay")
+
 		if err := applier.replaySpool(context.Background(), storeLastAppliedIndex); err != nil {
 			return nil, fmt.Errorf("replaying spool: %w", err)
 		}
+
 		logger.WithFields(map[string]any{
 			"duration": time.Since(replayStart).String(),
 		}).Infof("Spool replay complete")
@@ -633,9 +659,11 @@ func NewNode(
 		// before the Raft node starts. Without this, the leader would try to
 		// replicate tens of thousands of entries to lagging followers, causing OOM.
 		compactStart := time.Now()
+
 		if err := node.maybeCompactAtStartup(context.Background()); err != nil {
 			return nil, fmt.Errorf("early compaction: %w", err)
 		}
+
 		if time.Since(compactStart) > 100*time.Millisecond {
 			logger.WithFields(map[string]any{
 				"duration": time.Since(compactStart).String(),
@@ -684,10 +712,12 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 	}).Infof("WAL has excess entries, compacting before Raft start")
 
 	snapshotStart := time.Now()
+
 	fsmData, err := node.fsm.CreateSnapshot(ctx)
 	if err != nil {
 		return fmt.Errorf("creating snapshot: %w", err)
 	}
+
 	node.logger.WithFields(map[string]any{
 		"duration":    time.Since(snapshotStart).String(),
 		"fsmDataSize": len(fsmData),
@@ -699,9 +729,11 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 	}
 
 	walSnapshotStart := time.Now()
+
 	if err := node.wal.CreateSnapshot(appliedIndex, node.confState, snapshotData); err != nil {
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
+
 	node.logger.WithFields(map[string]any{
 		"duration":     time.Since(walSnapshotStart).String(),
 		"snapshotSize": len(snapshotData),
@@ -711,7 +743,9 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 	if appliedIndex > node.applier.compactionMargin {
 		compactIdx := appliedIndex - node.applier.compactionMargin
 		compactStart := time.Now()
-		if err := node.wal.Compact(compactIdx); err != nil && !errors.Is(err, raft.ErrCompacted) {
+
+		err := node.wal.Compact(compactIdx)
+		if err != nil && !errors.Is(err, raft.ErrCompacted) {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Early compaction failed")
 		} else {
 			node.logger.WithFields(map[string]any{
@@ -724,11 +758,11 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 	node.logger.WithFields(map[string]any{
 		"totalDuration": time.Since(snapshotStart).String(),
 	}).Infof("Early compaction completed")
+
 	return nil
 }
 
 func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
-
 	raftConfig := &raft.Config{
 		ID:                        node.config.NodeID,
 		ElectionTick:              node.config.ElectionTick,
@@ -751,6 +785,7 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	}).Infof("Starting raft node")
 
 	var err error
+
 	node.rawNode, err = raft.NewRawNode(raftConfig)
 	if err != nil {
 		return fmt.Errorf("creating raw rawNode: %w", err)
@@ -779,9 +814,11 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	// event manager) see the complete Pebble state at startup.
 	initialCommit := status.Commit
 	if initialCommit > 0 {
-		if err := node.fsm.WaitForApplied(ctx, initialCommit); err != nil {
+		err := node.fsm.WaitForApplied(ctx, initialCommit)
+		if err != nil {
 			return fmt.Errorf("waiting for initial WAL replay: %w", err)
 		}
+
 		node.logger.WithFields(map[string]any{
 			"appliedUpTo": initialCommit,
 		}).Infof("Initial WAL replay complete")
@@ -791,15 +828,20 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 
 	select {
 	case ch := <-node.stopChannel:
-		if err := node.tasks.stop(); err != nil {
+		err := node.tasks.stop()
+		if err != nil {
 			node.logger.Errorf("Error stopping task pool: %v", err)
 		}
+
 		close(ch)
+
 		return nil
 	case err := <-node.tasks.err():
-		if stopErr := node.tasks.stop(); stopErr != nil {
+		stopErr := node.tasks.stop()
+		if stopErr != nil {
 			node.logger.Errorf("Error stopping remaining tasks after failure: %v", stopErr)
 		}
+
 		return fmt.Errorf("task pool error: %w", err)
 	}
 }
@@ -807,16 +849,21 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error {
 	for {
 		waitStart := time.Now()
+
 		select {
 		case rd := <-node.readies:
 			node.readyWaitDurationHistogram.Record(context.Background(), time.Since(waitStart).Microseconds())
+
 			now := time.Now()
 			err := node.processReady(ctx, stop, rd)
 			node.processEntryHistogram.Record(context.Background(), time.Since(now).Microseconds())
+
 			if err != nil {
 				return err
 			}
+
 			terminatedStart := time.Now()
+
 			select {
 			case node.readyTerminated <- rd:
 				node.readyTerminatedWaitHistogram.Record(context.Background(), time.Since(terminatedStart).Microseconds())
@@ -830,7 +877,6 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 }
 
 func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.Ready) error {
-
 	node.logger.Debugf("Processing ready")
 
 	node.committedEntriesPerReadyHistogram.Record(context.Background(), int64(len(rd.CommittedEntries)))
@@ -856,6 +902,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		if actualNodeLastSoftState != nil {
 			previousLead = actualNodeLastSoftState.Lead
 		}
+
 		if previousLead != ss.Lead {
 			node.failAllPendingReads(ErrNotLeader)
 		}
@@ -870,6 +917,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			// leadership loss
 			if wasLeader && !isLeader {
 				logger.Infof("Leadership lost")
+
 				if node.observer != nil {
 					node.observer.Emit(LeadershipChangeEvent{IsLeader: false})
 				}
@@ -877,13 +925,16 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			// acquire leadership
 			if !wasLeader && isLeader {
 				logger.Infof("Leadership gained")
+
 				if node.observer != nil {
 					node.observer.Emit(LeadershipChangeEvent{IsLeader: true})
 				}
+
 				node.applier.Drain(stop)
 				node.fsm.OnLeadershipAcquired()
 			}
 		}
+
 		node.leadMonitorHistogram.Record(ctx, int64(ss.Lead))
 
 		node.lastSoftState.Store(ss)
@@ -895,22 +946,28 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		if !ok {
 			continue
 		}
+
 		req, loaded := node.pendingReads.Load(reqID)
 		if !loaded {
 			continue
 		}
+
 		node.pendingReads.Delete(reqID)
 		req.future.Resolve(rs.Index, nil)
 	}
 
 	now := time.Now()
-	if err := node.wal.Append(rd.HardState, rd.Entries); err != nil {
+
+	err := node.wal.Append(rd.HardState, rd.Entries)
+	if err != nil {
 		return fmt.Errorf("appending entries to storage: %w", err)
 	}
+
 	node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
 
 	if !raft.IsEmptySnap(rd.Snapshot) {
 		snapshotStart := time.Now()
+
 		node.logger.WithFields(map[string]any{
 			"index":        rd.Snapshot.Metadata.Index,
 			"snapshotSize": len(rd.Snapshot.Data),
@@ -924,6 +981,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 
 		// Unwrap NodeSnapshot to get FSM data and peer addresses
 		unwrapStart := time.Now()
+
 		result, err := unwrapSnapshot(rd.Snapshot.Data)
 		if err != nil {
 			return fmt.Errorf("unwrapping snapshot: %w", err)
@@ -968,6 +1026,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}).Infof("Unwrapped leader snapshot")
 
 		fsmSnapshot := rd.Snapshot
+
 		fsmSnapshot.Data = result.fsmData
 		if err := node.fsm.InstallSnapshot(ctx, fsmSnapshot); err != nil {
 			return fmt.Errorf("installing snapshot: %w", err)
@@ -976,9 +1035,9 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		// Restore peer addresses into node
 		node.peerAddresses = make(map[uint64]ConfChangeContext, len(result.peerAddresses))
 		for _, addr := range result.peerAddresses {
-			node.peerAddresses[addr.NodeId] = ConfChangeContext{
-				RaftAddress:    addr.RaftAddress,
-				ServiceAddress: addr.ServiceAddress,
+			node.peerAddresses[addr.GetNodeId()] = ConfChangeContext{
+				RaftAddress:    addr.GetRaftAddress(),
+				ServiceAddress: addr.GetServiceAddress(),
 			}
 		}
 
@@ -1005,24 +1064,31 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	// callers waiting on ConfChange commit (AddLearner, PromoteLearner, etc.)
 	// don't resume before the WAL is consistent.
 	var pendingFutures []*futures.Future[struct{}]
+
 	for _, entry := range rd.CommittedEntries {
 		var cc raftpb.ConfChangeV2
+
 		switch entry.Type {
 		case raftpb.EntryConfChange:
 			var ccV1 raftpb.ConfChange
-			if err := ccV1.Unmarshal(entry.Data); err != nil {
+
+			err := ccV1.Unmarshal(entry.Data)
+			if err != nil {
 				return fmt.Errorf("unmarshaling ConfChange: %w", err)
 			}
+
 			cc = ccV1.AsV2()
 			// V1->V2 conversion does not copy Context; propagate it manually.
 			cc.Context = ccV1.Context
 		case raftpb.EntryConfChangeV2:
-			if err := cc.Unmarshal(entry.Data); err != nil {
+			err := cc.Unmarshal(entry.Data)
+			if err != nil {
 				return fmt.Errorf("unmarshaling ConfChangeV2: %w", err)
 			}
 		default:
 			continue
 		}
+
 		node.logger.
 			WithFields(map[string]any{"transition": cc.Transition.String()}).
 			Infof("Applying configuration change")
@@ -1066,7 +1132,8 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	if node.confState != nil {
 		snap, _ := node.wal.Snapshot()
 		if !confStatesEqual(node.confState, &snap.Metadata.ConfState) {
-			if err := node.wal.UpdateSnapshotConfState(node.confState); err != nil {
+			err := node.wal.UpdateSnapshotConfState(node.confState)
+			if err != nil {
 				return fmt.Errorf("updating snapshot confstate: %w", err)
 			}
 		}
@@ -1086,11 +1153,11 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 }
 
 func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
-
 	tickInterval := node.config.TickInterval
 	if tickInterval == 0 {
 		tickInterval = 100 * time.Millisecond
 	}
+
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
 
@@ -1098,6 +1165,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 	if processingTickInterval == 0 {
 		processingTickInterval = tickInterval / 10
 	}
+
 	processingTick := time.NewTicker(processingTickInterval)
 	defer processingTick.Stop()
 
@@ -1108,16 +1176,22 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 		for _, msg := range msgs {
 			if msg.Type == raftpb.MsgTimeoutNow && node.isSyncing() {
 				node.logger.Infof("Rejecting MsgTimeoutNow while syncing")
+
 				continue
 			}
-			if err := node.rawNode.Step(msg); err != nil {
+
+			err := node.rawNode.Step(msg)
+			if err != nil {
 				if errors.Is(err, raft.ErrStepPeerNotFound) {
 					node.logger.Debugf("Ignoring message from unknown peer %d (type=%s)", msg.From, msg.Type)
+
 					continue
 				}
+
 				return err
 			}
 		}
+
 		return nil
 	}
 
@@ -1128,7 +1202,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 	maybeCreateReady := func() {
 		if node.readyTerminated == nil && node.rawNode.HasReady() {
 			node.readyTerminated = make(chan raft.Ready, 1)
+
 			processingTick.Stop()
+
 			node.readies <- node.rawNode.Ready()
 		}
 	}
@@ -1140,26 +1216,33 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 			status := node.applier.Status()
 			if status != statusSyncing && status != statusOutOfSync {
 				node.rawNode.Tick()
+
 				if node.config.AutoPromoteThreshold > 0 {
 					node.checkAndPromoteLearners()
 				}
 			}
 		case msgs := <-node.transport.RecvHighPriority():
-			if err := stepMessages(msgs); err != nil {
+			err := stepMessages(msgs)
+			if err != nil {
 				return err
 			}
+
 			maybeCreateReady()
 		default:
 			select {
 			case msgs := <-node.transport.RecvHighPriority():
-				if err := stepMessages(msgs); err != nil {
+				err := stepMessages(msgs)
+				if err != nil {
 					return err
 				}
+
 				maybeCreateReady()
 			case msgs := <-node.transport.RecvMediumPriority():
-				if err := stepMessages(msgs); err != nil {
+				err := stepMessages(msgs)
+				if err != nil {
 					return err
 				}
+
 				maybeCreateReady()
 			case p := <-node.proposeCh:
 				p.Resolve(nil, node.rawNode.Propose(p.data))
@@ -1169,10 +1252,12 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 				select {
 				case rd := <-node.readyTerminated:
 					node.rawNode.Advance(rd)
+
 					if node.rawNode.HasReady() {
 						node.readies <- node.rawNode.Ready()
 					} else {
 						processingTick.Reset(tickInterval / 10)
+
 						node.readyTerminated = nil
 					}
 				case <-processingTick.C:
@@ -1181,28 +1266,37 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					}
 
 					node.readyTerminated = make(chan raft.Ready, 1)
+
 					processingTick.Stop()
+
 					node.readies <- node.rawNode.Ready()
 				case <-stop:
 					node.logger.Infof("Stopping readyLoop as context was cancelled")
 					node.applier.taskExecutor.interrupt()
+
 					return nil
 				case nodeID := <-node.transport.Unreachable():
 					node.rawNode.ReportUnreachable(nodeID)
 				case msgs := <-node.transport.RecvHighPriority():
-					if err := stepMessages(msgs); err != nil {
+					err := stepMessages(msgs)
+					if err != nil {
 						return err
 					}
+
 					maybeCreateReady()
 				case msgs := <-node.transport.RecvMediumPriority():
-					if err := stepMessages(msgs); err != nil {
+					err := stepMessages(msgs)
+					if err != nil {
 						return err
 					}
+
 					maybeCreateReady()
 				case msgs := <-node.transport.RecvLowPriority():
-					if err := stepMessages(msgs); err != nil {
+					err := stepMessages(msgs)
+					if err != nil {
 						return err
 					}
+
 					maybeCreateReady()
 				case p := <-node.proposeCh:
 					p.Resolve(nil, node.rawNode.Propose(p.data))
@@ -1235,6 +1329,7 @@ func (node *Node) handleTransferLeader(transferee uint64) error {
 	}
 
 	node.rawNode.TransferLeader(transferee)
+
 	return nil
 }
 
@@ -1253,17 +1348,15 @@ func (node *Node) TransferLeader(ctx context.Context, transferee uint64) error {
 		return nil
 	}
 
-	if err := node.execClusterCommand(ctx, func() error {
+	err := node.execClusterCommand(ctx, func() error {
 		return node.handleTransferLeader(transferee)
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 
 	// Poll lastSoftState to confirm the leader has changed
-	timeout := time.Duration(2*node.config.ElectionTick) * node.config.TickInterval
-	if timeout < 2*time.Second {
-		timeout = 2 * time.Second
-	}
+	timeout := max(time.Duration(2*node.config.ElectionTick)*node.config.TickInterval, 2*time.Second)
 
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
@@ -1299,6 +1392,7 @@ func (node *Node) Propose(proposal *Proposal) (*futures.Future[state.ApplyResult
 		return fsmFuture, nil
 	default:
 		node.applier.futures.Delete(proposal.commandID)
+
 		return nil, ErrProposalQueueFull
 	}
 }
@@ -1308,6 +1402,7 @@ func (node *Node) InitialIndex() uint64 {
 	if err != nil {
 		panic(err)
 	}
+
 	return ret + 1
 }
 
@@ -1316,6 +1411,7 @@ func (node *Node) IsLeader() bool {
 	if lastSoftState == nil {
 		return false
 	}
+
 	return lastSoftState.RaftState == raft.StateLeader
 }
 
@@ -1323,6 +1419,7 @@ func (node *Node) IsLeader() bool {
 // and is not yet ready to serve as leader.
 func (node *Node) isSyncing() bool {
 	s := node.applier.Status()
+
 	return s == statusSyncing || s == statusSnapshotting || s == statusOutOfSync
 }
 
@@ -1331,15 +1428,16 @@ func (node *Node) GetLeader() uint64 {
 	if lastSoftState == nil {
 		return 0
 	}
+
 	return lastSoftState.Lead
 }
 
-// GetNodeID returns the ID of this node
+// GetNodeID returns the ID of this node.
 func (node *Node) GetNodeID() uint64 {
 	return node.config.NodeID
 }
 
-// GetClusterState returns the current state of the Raft cluster
+// GetClusterState returns the current state of the Raft cluster.
 func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState, error) {
 	status := node.rawNode.Status()
 
@@ -1350,6 +1448,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 
 	// Build progress information map and nodes list only if this node is the leader
 	var nodes []*clusterpb.NodeInfo
+
 	progress := make(map[uint64]*clusterpb.ProgressInfo)
 
 	if status.RaftState == raft.StateLeader {
@@ -1357,6 +1456,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 		for id, prog := range status.Progress {
 			// Convert StateType to string
 			stateStr := "Unknown"
+
 			switch prog.State {
 			case tracker.StateProbe:
 				stateStr = "Probe"
@@ -1444,7 +1544,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 	return clusterState, nil
 }
 
-// IsHealthy returns true if the rawNode is connected to the cluster (leader or follower)
+// IsHealthy returns true if the rawNode is connected to the cluster (leader or follower).
 func (node *Node) IsHealthy() bool {
 	status := node.rawNode.Status()
 	// Node is healthy if it's a leader or follower
@@ -1455,12 +1555,15 @@ func (node *Node) IsHealthy() bool {
 // Must be dispatched via execClusterCommand because rawNode is not thread-safe.
 func (node *Node) pickBestTransferee(ctx context.Context) (uint64, error) {
 	var best uint64
+
 	err := node.execClusterCommand(ctx, func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
 		}
+
 		var bestMatch uint64
+
 		for id, prog := range status.Progress {
 			if id == node.config.NodeID {
 				continue
@@ -1469,13 +1572,16 @@ func (node *Node) pickBestTransferee(ctx context.Context) (uint64, error) {
 			if prog.IsLearner {
 				continue
 			}
+
 			if prog.Match > bestMatch {
 				bestMatch = prog.Match
 				best = id
 			}
 		}
+
 		return nil
 	})
+
 	return best, err
 }
 
@@ -1486,6 +1592,7 @@ func (node *Node) tryTransferLeadershipBeforeShutdown(ctx context.Context) {
 	transferee, err := node.pickBestTransferee(ctx)
 	if err != nil || transferee == 0 {
 		node.logger.Infof("No eligible transferee, skipping pre-shutdown leadership transfer")
+
 		return
 	}
 
@@ -1495,6 +1602,7 @@ func (node *Node) tryTransferLeadershipBeforeShutdown(ctx context.Context) {
 	if err := node.TransferLeader(ctx, transferee); err != nil {
 		node.logger.WithFields(map[string]any{"error": err}).
 			Errorf("Pre-shutdown leadership transfer failed, proceeding with normal shutdown")
+
 		return
 	}
 
@@ -1533,16 +1641,20 @@ func (node *Node) SetObserver(obs *Observer) {
 // The proposeFn is dispatched via execClusterCommand (rawNode is not thread-safe).
 func (node *Node) proposeConfChangeAndWait(ctx context.Context, nodeID uint64, proposeFn func() error, timeout time.Duration) (bool, error) {
 	future := futures.New[struct{}]()
+
 	node.pendingConfChanges.Store(nodeID, future)
 	defer node.pendingConfChanges.Delete(nodeID)
 
-	if err := node.execClusterCommand(ctx, proposeFn); err != nil {
+	err := node.execClusterCommand(ctx, proposeFn)
+	if err != nil {
 		return false, err
 	}
 
 	done := make(chan struct{})
+
 	go func() {
 		_, _ = future.Wait()
+
 		close(done)
 	}()
 
@@ -1566,19 +1678,18 @@ func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name strin
 	node.confChangeMu.Lock()
 	defer node.confChangeMu.Unlock()
 
-	retryInterval := node.config.TickInterval * time.Duration(node.config.HeartbeatTick) * 3
-	if retryInterval < 500*time.Millisecond {
-		retryInterval = 500 * time.Millisecond
-	}
+	retryInterval := max(node.config.TickInterval*time.Duration(node.config.HeartbeatTick)*3, 500*time.Millisecond)
 
 	for {
 		committed, err := node.proposeConfChangeAndWait(ctx, nodeID, proposeFn, retryInterval)
 		if err != nil {
 			return err
 		}
+
 		if committed {
 			return nil
 		}
+
 		node.logger.WithFields(map[string]any{
 			"nodeID": nodeID,
 		}).Infof("%s: retrying (previous proposal likely dropped due to pending ConfChange)", name)
@@ -1631,6 +1742,7 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 		if !ok {
 			return fmt.Errorf("node %d is not a known cluster member", nodeID)
 		}
+
 		if !prog.IsLearner {
 			return fmt.Errorf("node %d is already a voter", nodeID)
 		}
@@ -1712,7 +1824,8 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 
 		// Persist the updated ConfState in the WAL snapshot so that restarts
 		// see the correct voter set.
-		if err := node.wal.UpdateSnapshotConfState(node.confState); err != nil {
+		err := node.wal.UpdateSnapshotConfState(node.confState)
+		if err != nil {
 			return fmt.Errorf("persisting confstate after force-remove: %w", err)
 		}
 
@@ -1759,11 +1872,14 @@ func (node *Node) checkAndPromoteLearners() {
 		if !prog.IsLearner {
 			// Node was promoted (or removed), clean up tracking.
 			delete(node.lastAutoPromote, id)
+
 			continue
 		}
+
 		if !prog.RecentActive || prog.Match == 0 {
 			continue
 		}
+
 		if prog.Match+node.config.AutoPromoteThreshold >= status.Commit {
 			if lastAttempt, ok := node.lastAutoPromote[id]; ok {
 				if now.Sub(lastAttempt) < autoPromoteRetryInterval {
@@ -1787,7 +1903,9 @@ func (node *Node) checkAndPromoteLearners() {
 					},
 				},
 			}
-			if err := node.rawNode.ProposeConfChange(cc); err != nil {
+
+			err := node.rawNode.ProposeConfChange(cc)
+			if err != nil {
 				node.logger.WithFields(map[string]any{
 					"node_id": id,
 					"error":   err,
@@ -1803,17 +1921,11 @@ func (node *Node) checkAndPromoteLearners() {
 // confStateContainsNode returns true if nodeID appears in the ConfState's
 // Voters or Learners list.
 func confStateContainsNode(cs raftpb.ConfState, nodeID uint64) bool {
-	for _, id := range cs.Voters {
-		if id == nodeID {
-			return true
-		}
+	if slices.Contains(cs.Voters, nodeID) {
+		return true
 	}
-	for _, id := range cs.Learners {
-		if id == nodeID {
-			return true
-		}
-	}
-	return false
+
+	return slices.Contains(cs.Learners, nodeID)
 }
 
 // ExtractPeerAddressesFromEntries scans committed entries for ConfChange entries
@@ -1821,18 +1933,24 @@ func confStateContainsNode(cs raftpb.ConfState, nodeID uint64) bool {
 // the address is stored (latest wins); for RemoveNode the entry is deleted.
 func ExtractPeerAddressesFromEntries(entries []raftpb.Entry) map[uint64]ConfChangeContext {
 	peers := make(map[uint64]ConfChangeContext)
+
 	for _, entry := range entries {
 		var cc raftpb.ConfChangeV2
+
 		switch entry.Type {
 		case raftpb.EntryConfChange:
 			var ccV1 raftpb.ConfChange
-			if err := ccV1.Unmarshal(entry.Data); err != nil {
+
+			err := ccV1.Unmarshal(entry.Data)
+			if err != nil {
 				continue
 			}
+
 			cc = ccV1.AsV2()
 			cc.Context = ccV1.Context
 		case raftpb.EntryConfChangeV2:
-			if err := cc.Unmarshal(entry.Data); err != nil {
+			err := cc.Unmarshal(entry.Data)
+			if err != nil {
 				continue
 			}
 		default:
@@ -1845,16 +1963,19 @@ func ExtractPeerAddressesFromEntries(entries []raftpb.Entry) map[uint64]ConfChan
 				if len(cc.Context) == 0 {
 					continue
 				}
+
 				ccCtx, err := UnmarshalConfChangeContext(cc.Context)
 				if err != nil {
 					continue
 				}
+
 				peers[change.NodeID] = ccCtx
 			case raftpb.ConfChangeRemoveNode:
 				delete(peers, change.NodeID)
 			}
 		}
 	}
+
 	return peers
 }
 
@@ -1899,12 +2020,12 @@ type MemorySnapshotFetcher interface {
 func (node *Node) fetchRemoteSnapshot(index, term uint64) ([]byte, error) {
 	fetcher, ok := node.transport.(MemorySnapshotFetcher)
 	if !ok {
-		return nil, fmt.Errorf("transport does not support remote snapshot fetching")
+		return nil, errors.New("transport does not support remote snapshot fetching")
 	}
 
 	ss := node.lastSoftState.Load()
 	if ss == nil || ss.Lead == 0 {
-		return nil, fmt.Errorf("no leader known for snapshot fetch")
+		return nil, errors.New("no leader known for snapshot fetch")
 	}
 
 	return fetcher.FetchRemoteMemorySnapshot(ss.Lead, index, term)
@@ -1921,10 +2042,12 @@ func (node *Node) wrapSnapshot(fsmData []byte) ([]byte, error) {
 			ServiceAddress: addr.ServiceAddress,
 		})
 	}
+
 	ns := &raftcmdpb.NodeSnapshot{
 		FsmSnapshot:   fsmData,
 		PeerAddresses: peerAddrs,
 	}
+
 	return ns.MarshalVT()
 }
 
@@ -1941,19 +2064,23 @@ type snapshotUnwrapResult struct {
 // snapshot via FetchMemorySnapshot RPC.
 func unwrapSnapshot(data []byte) (*snapshotUnwrapResult, error) {
 	ns := &raftcmdpb.NodeSnapshot{}
-	if err := ns.UnmarshalVT(data); err != nil {
+
+	err := ns.UnmarshalVT(data)
+	if err != nil {
 		return nil, err
 	}
+
 	return &snapshotUnwrapResult{
-		fsmData:       ns.FsmSnapshot,
-		peerAddresses: ns.PeerAddresses,
-		isReference:   ns.IsReference,
-		sizeHint:      ns.SizeHint,
+		fsmData:       ns.GetFsmSnapshot(),
+		peerAddresses: ns.GetPeerAddresses(),
+		isReference:   ns.GetIsReference(),
+		sizeHint:      ns.GetSizeHint(),
 	}, nil
 }
 
 type Proposal struct {
 	*futures.Future[any]
+
 	commandID uint64
 	data      []byte
 }

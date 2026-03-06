@@ -3,14 +3,16 @@ package query
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 
+	bolt "go.etcd.io/bbolt"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
-	bolt "go.etcd.io/bbolt"
 )
 
 // compileCtx holds the immutable context threaded through the recursive
@@ -66,6 +68,7 @@ func Compile(
 		builtinCfg: builtinCfg,
 		profile:    profile,
 	}
+
 	return compile(ctx, filter)
 }
 
@@ -75,7 +78,7 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 		return compileUniverse(ctx)
 	}
 
-	switch f := filter.Filter.(type) {
+	switch f := filter.GetFilter().(type) {
 	case *commonpb.QueryFilter_Field:
 		return compileFieldCondition(ctx, f.Field)
 	case *commonpb.QueryFilter_Address:
@@ -91,7 +94,7 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 	case *commonpb.QueryFilter_BuiltinUint:
 		return compileBuiltinUintCondition(ctx, f.BuiltinUint)
 	default:
-		return nil, fmt.Errorf("unknown filter type: %T", filter.Filter)
+		return nil, fmt.Errorf("unknown filter type: %T", filter.GetFilter())
 	}
 }
 
@@ -101,9 +104,11 @@ func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 	if b == nil {
 		return &SliceIterator{}, nil
 	}
+
 	ns, entityLen := targetNamespaceAndLen(ctx.target)
 	prefix := readstore.ExistencePrefix(ctx.kb, ctx.ledger, ns)
 	iter := readstore.NewPrefixIterator(b.Cursor(), prefix, len(prefix), entityLen)
+
 	return trackIterator(iter, ctx.profile, &IteratorStats{
 		Label:  fmt.Sprintf("PrefixIterator(exist:%s:%s:)", ctx.ledger, ns),
 		Kind:   "Prefix",
@@ -113,26 +118,35 @@ func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 
 // compileAnd compiles an AND filter into a merge-intersect iterator.
 func compileAnd(ctx *compileCtx, and *commonpb.AndFilter) (readstore.EntityIterator, error) {
-	children := make([]readstore.EntityIterator, 0, len(and.Filters))
+	children := make([]readstore.EntityIterator, 0, len(and.GetFilters()))
+
 	var childStats []*IteratorStats
-	for _, f := range and.Filters {
+
+	for _, f := range and.GetFilters() {
 		child, err := compile(ctx, f)
 		if err != nil {
 			closeAll(children)
+
 			return nil, err
 		}
+
 		if ctx.profile != nil {
 			childStats = append(childStats, ctx.profile.Root)
 		}
+
 		children = append(children, child)
 	}
+
 	if len(children) == 0 {
 		return &SliceIterator{}, nil
 	}
+
 	if len(children) == 1 {
 		return children[0], nil
 	}
+
 	andIter := readstore.NewAndIterator(children...)
+
 	return trackIterator(andIter, ctx.profile, &IteratorStats{
 		Label:    "AndIterator",
 		Kind:     "And",
@@ -142,26 +156,35 @@ func compileAnd(ctx *compileCtx, and *commonpb.AndFilter) (readstore.EntityItera
 
 // compileOr compiles an OR filter into a merge-union iterator.
 func compileOr(ctx *compileCtx, or *commonpb.OrFilter) (readstore.EntityIterator, error) {
-	children := make([]readstore.EntityIterator, 0, len(or.Filters))
+	children := make([]readstore.EntityIterator, 0, len(or.GetFilters()))
+
 	var childStats []*IteratorStats
-	for _, f := range or.Filters {
+
+	for _, f := range or.GetFilters() {
 		child, err := compile(ctx, f)
 		if err != nil {
 			closeAll(children)
+
 			return nil, err
 		}
+
 		if ctx.profile != nil {
 			childStats = append(childStats, ctx.profile.Root)
 		}
+
 		children = append(children, child)
 	}
+
 	if len(children) == 0 {
 		return &SliceIterator{}, nil
 	}
+
 	if len(children) == 1 {
 		return children[0], nil
 	}
+
 	orIter := readstore.NewOrIterator(children...)
+
 	return trackIterator(orIter, ctx.profile, &IteratorStats{
 		Label:    "OrIterator",
 		Kind:     "Or",
@@ -175,20 +198,26 @@ func compileNot(ctx *compileCtx, not *commonpb.NotFilter) (readstore.EntityItera
 	if err != nil {
 		return nil, err
 	}
+
 	var universeStats *IteratorStats
 	if ctx.profile != nil {
 		universeStats = ctx.profile.Root
 	}
-	child, err := compile(ctx, not.Filter)
+
+	child, err := compile(ctx, not.GetFilter())
 	if err != nil {
 		universe.Close()
+
 		return nil, err
 	}
+
 	var childStats *IteratorStats
 	if ctx.profile != nil {
 		childStats = ctx.profile.Root
 	}
+
 	notIter := readstore.NewNotIterator(universe, child)
+
 	return trackIterator(notIter, ctx.profile, &IteratorStats{
 		Label:    "NotIterator",
 		Kind:     "Not",
@@ -198,26 +227,30 @@ func compileNot(ctx *compileCtx, not *commonpb.NotFilter) (readstore.EntityItera
 
 // compileFieldCondition compiles a FieldCondition (metadata filter) into a leaf iterator.
 func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readstore.EntityIterator, error) {
-	if fc.Field == nil {
-		return nil, fmt.Errorf("field condition has no field reference")
+	if fc.GetField() == nil {
+		return nil, errors.New("field condition has no field reference")
 	}
 
 	ns, entityLen := targetNamespaceAndLen(ctx.target)
-	metaKey := fc.Field.GetMetadata()
+	metaKey := fc.GetField().GetMetadata()
 
 	// Validate index availability and condition type against declared schema type.
 	targetName := targetHumanName(ctx.target)
 	if ctx.schema == nil {
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
 	}
+
 	fieldSchema, ok := ctx.schema[metaKey]
-	if !ok || !fieldSchema.Indexed {
+	if !ok || !fieldSchema.GetIndexed() {
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
 	}
-	if fieldSchema.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+
+	if fieldSchema.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
 	}
+
 	var err error
+
 	fc, err = validateAndCoerceCondition(fc, fieldSchema)
 	if err != nil {
 		return nil, err
@@ -236,7 +269,7 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 		metaKey:   metaKey,
 	}
 
-	switch cond := fc.Condition.(type) {
+	switch cond := fc.GetCondition().(type) {
 	case *commonpb.FieldCondition_StringCond:
 		return compileStringCondition(ctx, mc, cond.StringCond)
 	case *commonpb.FieldCondition_IntCond:
@@ -248,7 +281,7 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 	case *commonpb.FieldCondition_ExistsCond:
 		return compileExistsCondition(ctx, mc, cond.ExistsCond)
 	default:
-		return nil, fmt.Errorf("unknown condition type: %T", fc.Condition)
+		return nil, fmt.Errorf("unknown condition type: %T", fc.GetCondition())
 	}
 }
 
@@ -259,8 +292,10 @@ func compileStringCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Str
 	if err != nil {
 		return nil, err
 	}
+
 	fullPrefix := readstore.EncodeString(append([]byte{}, mc.prefix...), value)
 	iter := readstore.NewPrefixIterator(mc.cursor, fullPrefix, len(fullPrefix), mc.entityLen)
+
 	return trackIterator(iter, ctx.profile, &IteratorStats{
 		Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=string)", ctx.ledger, mc.namespace, mc.metaKey),
 		Kind:   "Prefix",
@@ -291,40 +326,46 @@ func (b resolvedIntBounds) isEquality() bool {
 func resolveIntBounds(cond *commonpb.IntCondition, params map[string]string) (resolvedIntBounds, error) {
 	var b resolvedIntBounds
 
-	if cond.ParamMin != "" {
-		v, err := resolveParamInt64(params, cond.ParamMin)
+	if cond.GetParamMin() != "" {
+		v, err := resolveParamInt64(params, cond.GetParamMin())
 		if err != nil {
 			return b, err
 		}
-		if cond.MinExclusive {
+
+		if cond.GetMinExclusive() {
 			v++
 		}
+
 		b.min = v
 		b.hasMin = true
 	} else if cond.Min != nil {
-		v := *cond.Min
-		if cond.MinExclusive {
+		v := cond.GetMin()
+		if cond.GetMinExclusive() {
 			v++
 		}
+
 		b.min = v
 		b.hasMin = true
 	}
 
-	if cond.ParamMax != "" {
-		v, err := resolveParamInt64(params, cond.ParamMax)
+	if cond.GetParamMax() != "" {
+		v, err := resolveParamInt64(params, cond.GetParamMax())
 		if err != nil {
 			return b, err
 		}
-		if !cond.MaxExclusive {
+
+		if !cond.GetMaxExclusive() {
 			v++
 		}
+
 		b.max = v
 		b.hasMax = true
 	} else if cond.Max != nil {
-		v := *cond.Max
-		if !cond.MaxExclusive {
+		v := cond.GetMax()
+		if !cond.GetMaxExclusive() {
 			v++
 		}
+
 		b.max = v
 		b.hasMax = true
 	}
@@ -347,6 +388,7 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 	if bounds.isEquality() {
 		fullPrefix := readstore.EncodeInt64(append([]byte{}, mc.prefix...), bounds.min)
 		iter := readstore.NewPrefixIterator(mc.cursor, fullPrefix, len(fullPrefix), mc.entityLen)
+
 		return trackIterator(iter, ctx.profile, &IteratorStats{
 			Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=int)", ctx.ledger, mc.namespace, mc.metaKey),
 			Kind:   "Prefix",
@@ -365,6 +407,7 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 	} else {
 		lower = append(lower, readstore.TypeTagInt)
 	}
+
 	if bounds.hasMax {
 		upper = readstore.EncodeInt64(upper, bounds.max)
 	} else {
@@ -373,6 +416,7 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 
 	entityOffset := len(mc.prefix) + 1 + 8 // prefix + typeTag(1) + int64(8)
 	iter := materializeRange(mc.cursor, lower, upper, entityOffset, mc.entityLen, ctx.profile)
+
 	return trackIterator(iter, ctx.profile, &IteratorStats{
 		Label:  fmt.Sprintf("SliceIterator(midx:%s:%s:%s=int range)", ctx.ledger, mc.namespace, mc.metaKey),
 		Kind:   "Range",
@@ -399,40 +443,46 @@ func (b resolvedUintBounds) isEquality() bool {
 func resolveUintBounds(cond *commonpb.UintCondition, params map[string]string) (resolvedUintBounds, error) {
 	var b resolvedUintBounds
 
-	if cond.ParamMin != "" {
-		v, err := resolveParamUint64(params, cond.ParamMin)
+	if cond.GetParamMin() != "" {
+		v, err := resolveParamUint64(params, cond.GetParamMin())
 		if err != nil {
 			return b, err
 		}
-		if cond.MinExclusive {
+
+		if cond.GetMinExclusive() {
 			v++
 		}
+
 		b.min = v
 		b.hasMin = true
 	} else if cond.Min != nil {
-		v := *cond.Min
-		if cond.MinExclusive {
+		v := cond.GetMin()
+		if cond.GetMinExclusive() {
 			v++
 		}
+
 		b.min = v
 		b.hasMin = true
 	}
 
-	if cond.ParamMax != "" {
-		v, err := resolveParamUint64(params, cond.ParamMax)
+	if cond.GetParamMax() != "" {
+		v, err := resolveParamUint64(params, cond.GetParamMax())
 		if err != nil {
 			return b, err
 		}
-		if !cond.MaxExclusive {
+
+		if !cond.GetMaxExclusive() {
 			v++
 		}
+
 		b.max = v
 		b.hasMax = true
 	} else if cond.Max != nil {
-		v := *cond.Max
-		if !cond.MaxExclusive {
+		v := cond.GetMax()
+		if !cond.GetMaxExclusive() {
 			v++
 		}
+
 		b.max = v
 		b.hasMax = true
 	}
@@ -453,6 +503,7 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 	if bounds.isEquality() {
 		fullPrefix := readstore.EncodeUint64(append([]byte{}, mc.prefix...), bounds.min)
 		iter := readstore.NewPrefixIterator(mc.cursor, fullPrefix, len(fullPrefix), mc.entityLen)
+
 		return trackIterator(iter, ctx.profile, &IteratorStats{
 			Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=uint)", ctx.ledger, mc.namespace, mc.metaKey),
 			Kind:   "Prefix",
@@ -471,6 +522,7 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 	} else {
 		lower = append(lower, readstore.TypeTagUint)
 	}
+
 	if bounds.hasMax {
 		upper = readstore.EncodeUint64(upper, bounds.max)
 	} else {
@@ -479,6 +531,7 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 
 	entityOffset := len(mc.prefix) + 1 + 8
 	iter := materializeRange(mc.cursor, lower, upper, entityOffset, mc.entityLen, ctx.profile)
+
 	return trackIterator(iter, ctx.profile, &IteratorStats{
 		Label:  fmt.Sprintf("SliceIterator(midx:%s:%s:%s=uint range)", ctx.ledger, mc.namespace, mc.metaKey),
 		Kind:   "Range",
@@ -492,8 +545,10 @@ func compileBoolCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.BoolC
 	if err != nil {
 		return nil, err
 	}
+
 	fullPrefix := readstore.EncodeBool(append([]byte{}, mc.prefix...), value)
 	iter := readstore.NewPrefixIterator(mc.cursor, fullPrefix, len(fullPrefix), mc.entityLen)
+
 	return trackIterator(iter, ctx.profile, &IteratorStats{
 		Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=bool)", ctx.ledger, mc.namespace, mc.metaKey),
 		Kind:   "Prefix",
@@ -510,9 +565,10 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 	}
 
 	nonNullPrefix := readstore.EntityExistsNonNullPrefix(ctx.kb, ctx.ledger, mc.namespace, mc.metaKey)
-	if !cond.IncludeNull {
+	if !cond.GetIncludeNull() {
 		// Only non-null entries
 		iter := readstore.NewPrefixIterator(b.Cursor(), nonNullPrefix, len(nonNullPrefix), mc.entityLen)
+
 		return trackIterator(iter, ctx.profile, &IteratorStats{
 			Label:  fmt.Sprintf("PrefixIterator(eidx:%s:%s:%s non-null)", ctx.ledger, mc.namespace, mc.metaKey),
 			Kind:   "Prefix",
@@ -530,6 +586,7 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 		Kind:   "Prefix",
 		Bucket: "eidx",
 	})
+
 	var nonNullStats *IteratorStats
 	if ctx.profile != nil {
 		nonNullStats = ctx.profile.Root
@@ -540,12 +597,14 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 		Kind:   "Prefix",
 		Bucket: "eidx",
 	})
+
 	var nullStats *IteratorStats
 	if ctx.profile != nil {
 		nullStats = ctx.profile.Root
 	}
 
 	orIter := readstore.NewOrIterator(nonNullTracked, nullTracked)
+
 	return trackIterator(orIter, ctx.profile, &IteratorStats{
 		Label:    fmt.Sprintf("OrIterator(eidx:%s:%s:%s exists)", ctx.ledger, mc.namespace, mc.metaKey),
 		Kind:     "Or",
@@ -580,17 +639,18 @@ func addressRoleBucketLabel(role commonpb.AddressRole) string {
 
 // compileAddressMatch compiles an address filter.
 func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.EntityIterator, error) {
-	role := am.Role
+	role := am.GetRole()
 
 	// Address filtering on TRANSACTIONS target requires the account-tx index.
 	// For ACCOUNTS target, address matching uses the existence index (always on).
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
-		if err := checkAddressRoleIndexed(ctx.builtinCfg, role); err != nil {
+		err := checkAddressRoleIndexed(ctx.builtinCfg, role)
+		if err != nil {
 			return nil, err
 		}
 	}
 
-	switch m := am.Match.(type) {
+	switch m := am.GetMatch().(type) {
 	case *commonpb.AddressMatch_HardcodedPrefix:
 		return compileAddressPrefix(ctx, m.HardcodedPrefix, role)
 	case *commonpb.AddressMatch_HardcodedExact:
@@ -600,15 +660,17 @@ func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.
 		if !ok {
 			return nil, fmt.Errorf("parameter %q not provided", m.ParamPrefix)
 		}
+
 		return compileAddressPrefix(ctx, value, role)
 	case *commonpb.AddressMatch_ParamExact:
 		value, ok := ctx.params[m.ParamExact]
 		if !ok {
 			return nil, fmt.Errorf("parameter %q not provided", m.ParamExact)
 		}
+
 		return compileAddressExact(ctx, value, role)
 	default:
-		return nil, fmt.Errorf("unknown address match type: %T", am.Match)
+		return nil, fmt.Errorf("unknown address match type: %T", am.GetMatch())
 	}
 }
 
@@ -637,7 +699,9 @@ func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role commonpb.Addr
 	if ctx.profile != nil {
 		accountStats = ctx.profile.Root
 	}
+
 	addrTxIter := readstore.NewAddressTxIterator(ctx.tx, ctx.kb, ctx.ledger, trackedAccount, addressRoleBucket(role))
+
 	return trackIterator(addrTxIter, ctx.profile, &IteratorStats{
 		Label:    fmt.Sprintf("AddressTxIterator(%s)", ctx.ledger),
 		Kind:     "AddressTx",
@@ -654,6 +718,7 @@ func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.Addres
 
 	// Check if the exact address exists
 	key := readstore.ExistenceKey(ctx.kb, ctx.ledger, readstore.NamespaceAccount, []byte(exactAddr))
+
 	k, _ := b.Cursor().Seek(key)
 	if k == nil || !bytes.Equal(k, key) {
 		return &SliceIterator{}, nil
@@ -661,6 +726,7 @@ func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.Addres
 
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
 		iter := &SliceIterator{entities: [][]byte{[]byte(exactAddr)}}
+
 		return trackIterator(iter, ctx.profile, &IteratorStats{
 			Label: fmt.Sprintf("SliceIterator(exact:%s)", exactAddr),
 			Kind:  "Slice",
@@ -672,11 +738,14 @@ func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.Addres
 		Label: fmt.Sprintf("SliceIterator(exact:%s)", exactAddr),
 		Kind:  "Slice",
 	})
+
 	var singleStats *IteratorStats
 	if ctx.profile != nil {
 		singleStats = ctx.profile.Root
 	}
+
 	addrTxIter := readstore.NewAddressTxIterator(ctx.tx, ctx.kb, ctx.ledger, trackedSingle, addressRoleBucket(role))
+
 	return trackIterator(addrTxIter, ctx.profile, &IteratorStats{
 		Label:    fmt.Sprintf("AddressTxIterator(%s)", ctx.ledger),
 		Kind:     "AddressTx",
@@ -690,22 +759,27 @@ func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.Addres
 // compileReferenceCondition compiles a ReferenceCondition into a prefix scan on BucketTransactionReference.
 // Requires the reference builtin index to be READY.
 func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition) (readstore.EntityIterator, error) {
-	if rc.Cond == nil {
-		return nil, fmt.Errorf("reference condition has no value")
+	if rc.GetCond() == nil {
+		return nil, errors.New("reference condition has no value")
 	}
+
 	if err := checkBuiltinIndexed(ctx.builtinCfg, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE); err != nil {
 		return nil, err
 	}
-	value, err := resolveString(rc.Cond, ctx.params)
+
+	value, err := resolveString(rc.GetCond(), ctx.params)
 	if err != nil {
 		return nil, err
 	}
+
 	b := ctx.tx.Bucket(readstore.BucketTransactionReference)
 	if b == nil {
 		return &SliceIterator{}, nil
 	}
+
 	prefix := readstore.TransactionReferencePrefix(ctx.kb, ctx.ledger, value)
 	iter := readstore.NewPrefixIterator(b.Cursor(), prefix, len(prefix), 8)
+
 	return trackIterator(iter, ctx.profile, &IteratorStats{
 		Label:  fmt.Sprintf("PrefixIterator(txref:%s:%s)", ctx.ledger, value),
 		Kind:   "Prefix",
@@ -715,16 +789,17 @@ func compileReferenceCondition(ctx *compileCtx, rc *commonpb.ReferenceCondition)
 
 // compileBuiltinUintCondition dispatches to the appropriate builtin uint condition compiler.
 func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCondition) (readstore.EntityIterator, error) {
-	if cond.Cond == nil {
-		return nil, fmt.Errorf("builtin uint condition has no value")
+	if cond.GetCond() == nil {
+		return nil, errors.New("builtin uint condition has no value")
 	}
-	switch cond.Field {
+
+	switch cond.GetField() {
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
-		return compileTxIDCondition(ctx, cond.Cond)
+		return compileTxIDCondition(ctx, cond.GetCond())
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
-		return compileTimestampCondition(ctx, cond.Cond)
+		return compileTimestampCondition(ctx, cond.GetCond())
 	default:
-		return nil, fmt.Errorf("unsupported builtin uint field: %v", cond.Field)
+		return nil, fmt.Errorf("unsupported builtin uint field: %v", cond.GetField())
 	}
 }
 
@@ -748,11 +823,14 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 		txIDBytes := make([]byte, 8)
 		binary.BigEndian.PutUint64(txIDBytes, bounds.min)
 		key := readstore.ExistenceKey(ctx.kb, ctx.ledger, readstore.NamespaceTransaction, txIDBytes)
+
 		k, _ := b.Cursor().Seek(key)
 		if k == nil || !bytes.Equal(k, key) {
 			return &SliceIterator{}, nil
 		}
+
 		iter := &SliceIterator{entities: [][]byte{txIDBytes}}
+
 		return trackIterator(iter, ctx.profile, &IteratorStats{
 			Label:  fmt.Sprintf("SliceIterator(exist:%s:t:id=%d)", ctx.ledger, bounds.min),
 			Kind:   "Slice",
@@ -772,6 +850,7 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 		binary.BigEndian.PutUint64(minBytes, bounds.min)
 		lower = append(lower, minBytes...)
 	}
+
 	if bounds.hasMax {
 		maxBytes := make([]byte, 8)
 		binary.BigEndian.PutUint64(maxBytes, bounds.max)
@@ -788,6 +867,7 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 
 	entityLen := 8
 	iter := materializeRange(b.Cursor(), lower, upper, entityOffset, entityLen, ctx.profile)
+
 	return trackIterator(iter, ctx.profile, &IteratorStats{
 		Label:  fmt.Sprintf("SliceIterator(exist:%s:t:id range)", ctx.ledger),
 		Kind:   "Range",
@@ -801,6 +881,7 @@ func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (r
 	if err := checkBuiltinIndexed(ctx.builtinCfg, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP); err != nil {
 		return nil, err
 	}
+
 	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {
 		return nil, err
@@ -827,6 +908,7 @@ func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (r
 		binary.BigEndian.PutUint64(minBytes, bounds.min)
 		lower = append(lower, minBytes...)
 	}
+
 	if bounds.hasMax {
 		maxBytes := make([]byte, 8)
 		binary.BigEndian.PutUint64(maxBytes, bounds.max)
@@ -840,6 +922,7 @@ func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (r
 	}
 
 	iter := materializeRange(b.Cursor(), lower, upper, entityOffset, entityLen, ctx.profile)
+
 	return trackIterator(iter, ctx.profile, &IteratorStats{
 		Label:  fmt.Sprintf("SliceIterator(tstmp:%s timestamp range)", ctx.ledger),
 		Kind:   "Range",
@@ -858,13 +941,15 @@ func checkBuiltinIndexed(cfg *commonpb.BuiltinIndexConfig, index commonpb.Transa
 	switch index {
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
 		label = "reference"
+
 		if cfg != nil {
-			enabled, status = cfg.Reference, cfg.ReferenceStatus
+			enabled, status = cfg.GetReference(), cfg.GetReferenceStatus()
 		}
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 		label = "timestamp"
+
 		if cfg != nil {
-			enabled, status = cfg.Timestamp, cfg.TimestampStatus
+			enabled, status = cfg.GetTimestamp(), cfg.GetTimestampStatus()
 		}
 	default:
 		return nil
@@ -873,9 +958,11 @@ func checkBuiltinIndexed(cfg *commonpb.BuiltinIndexConfig, index commonpb.Transa
 	if !enabled {
 		return &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
 	}
+
 	if status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 		return &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: label}}
 	}
+
 	return nil
 }
 
@@ -887,7 +974,9 @@ func trackIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *
 	if profile == nil {
 		return iter
 	}
+
 	profile.Root = stats
+
 	return NewTrackedIterator(iter, stats)
 }
 
@@ -896,6 +985,7 @@ func targetHumanName(target commonpb.QueryTarget) string {
 	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
 		return "transactions"
 	}
+
 	return "accounts"
 }
 
@@ -904,11 +994,12 @@ func targetNamespaceAndLen(target commonpb.QueryTarget) (string, int) {
 	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
 		return readstore.NamespaceTransaction, 8
 	}
+
 	return readstore.NamespaceAccount, 0
 }
 
 func resolveString(cond *commonpb.StringCondition, params map[string]string) (string, error) {
-	switch v := cond.Value.(type) {
+	switch v := cond.GetValue().(type) {
 	case *commonpb.StringCondition_Hardcoded:
 		return v.Hardcoded, nil
 	case *commonpb.StringCondition_Param:
@@ -916,14 +1007,15 @@ func resolveString(cond *commonpb.StringCondition, params map[string]string) (st
 		if !ok {
 			return "", fmt.Errorf("parameter %q not provided", v.Param)
 		}
+
 		return val, nil
 	default:
-		return "", fmt.Errorf("string condition has no value")
+		return "", errors.New("string condition has no value")
 	}
 }
 
 func resolveBool(cond *commonpb.BoolCondition, params map[string]string) (bool, error) {
-	switch v := cond.Value.(type) {
+	switch v := cond.GetValue().(type) {
 	case *commonpb.BoolCondition_Hardcoded:
 		return v.Hardcoded, nil
 	case *commonpb.BoolCondition_Param:
@@ -931,13 +1023,15 @@ func resolveBool(cond *commonpb.BoolCondition, params map[string]string) (bool, 
 		if !ok {
 			return false, fmt.Errorf("parameter %q not provided", v.Param)
 		}
+
 		b, err := strconv.ParseBool(val)
 		if err != nil {
 			return false, fmt.Errorf("parameter %q is not a valid boolean: %w", v.Param, err)
 		}
+
 		return b, nil
 	default:
-		return false, fmt.Errorf("bool condition has no value")
+		return false, errors.New("bool condition has no value")
 	}
 }
 
@@ -946,6 +1040,7 @@ func resolveParamInt64(params map[string]string, name string) (int64, error) {
 	if !ok {
 		return 0, fmt.Errorf("parameter %q not provided", name)
 	}
+
 	return strconv.ParseInt(val, 10, 64)
 }
 
@@ -954,6 +1049,7 @@ func resolveParamUint64(params map[string]string, name string) (uint64, error) {
 	if !ok {
 		return 0, fmt.Errorf("parameter %q not provided", name)
 	}
+
 	return strconv.ParseUint(val, 10, 64)
 }
 
@@ -963,7 +1059,9 @@ func materializeRange(cursor *bolt.Cursor, lower, upper []byte, entityOffset, en
 	if profile != nil {
 		profile.MaterializedRanges++
 	}
+
 	var entities [][]byte
+
 	for k, _ := cursor.Seek(lower); k != nil && bytes.Compare(k, upper) < 0; k, _ = cursor.Next() {
 		entity := extractEntityAtOffset(k, entityOffset, entityLen)
 		if entity != nil {
@@ -972,10 +1070,13 @@ func materializeRange(cursor *bolt.Cursor, lower, upper []byte, entityOffset, en
 			entities = append(entities, cp)
 		}
 	}
+
 	if profile != nil {
 		profile.MaterializedItems += len(entities)
 	}
+
 	sortEntities(entities)
+
 	return &SliceIterator{entities: entities}
 }
 
@@ -984,13 +1085,16 @@ func extractEntityAtOffset(key []byte, entityOffset, entityLen int) []byte {
 	if len(key) <= entityOffset {
 		return nil
 	}
+
 	suffix := key[entityOffset:]
 	if entityLen > 0 {
 		if len(suffix) < entityLen {
 			return nil
 		}
+
 		return suffix[:entityLen]
 	}
+
 	return suffix
 }
 
@@ -1019,18 +1123,21 @@ func checkAddressRoleIndexed(builtinCfg *commonpb.BuiltinIndexConfig, role commo
 	switch role {
 	case commonpb.AddressRole_ADDRESS_ROLE_ANY:
 		label = "address"
+
 		if builtinCfg != nil {
-			indexed, status = builtinCfg.Address, builtinCfg.AddressStatus
+			indexed, status = builtinCfg.GetAddress(), builtinCfg.GetAddressStatus()
 		}
 	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
 		label = "source"
+
 		if builtinCfg != nil {
-			indexed, status = builtinCfg.SourceAddress, builtinCfg.SourceAddressStatus
+			indexed, status = builtinCfg.GetSourceAddress(), builtinCfg.GetSourceAddressStatus()
 		}
 	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
 		label = "destination"
+
 		if builtinCfg != nil {
-			indexed, status = builtinCfg.DestAddress, builtinCfg.DestAddressStatus
+			indexed, status = builtinCfg.GetDestAddress(), builtinCfg.GetDestAddressStatus()
 		}
 	default:
 		return nil
@@ -1039,9 +1146,11 @@ func checkAddressRoleIndexed(builtinCfg *commonpb.BuiltinIndexConfig, role commo
 	if !indexed {
 		return &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
 	}
+
 	if status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 		return &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: label}}
 	}
+
 	return nil
 }
 
@@ -1051,20 +1160,22 @@ func SchemaFieldsForTarget(schema *commonpb.MetadataSchema, target commonpb.Quer
 	if schema == nil {
 		return nil
 	}
+
 	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
-		return schema.TransactionFields
+		return schema.GetTransactionFields()
 	}
-	return schema.AccountFields
+
+	return schema.GetAccountFields()
 }
 
 // validateAndCoerceCondition validates a field condition against the declared schema type.
 // It returns the (possibly coerced) condition or an error for incompatible types.
 // ExistsCondition is always valid regardless of schema type.
 func validateAndCoerceCondition(fc *commonpb.FieldCondition, fieldSchema *commonpb.MetadataFieldSchema) (*commonpb.FieldCondition, error) {
-	fieldName := fc.Field.GetMetadata()
-	schemaType := fieldSchema.Type
+	fieldName := fc.GetField().GetMetadata()
+	schemaType := fieldSchema.GetType()
 
-	switch fc.Condition.(type) {
+	switch fc.GetCondition().(type) {
 	case *commonpb.FieldCondition_ExistsCond:
 		return fc, nil
 
@@ -1072,27 +1183,32 @@ func validateAndCoerceCondition(fc *commonpb.FieldCondition, fieldSchema *common
 		if commonpb.IsSignedType(schemaType) {
 			return fc, nil
 		}
+
 		if commonpb.IsUnsignedType(schemaType) {
 			return coerceIntToUint(fc)
 		}
+
 		return nil, fmt.Errorf("field %q is declared as %s, cannot use integer condition", fieldName, schemaType)
 
 	case *commonpb.FieldCondition_UintCond:
 		if commonpb.IsUnsignedType(schemaType) {
 			return fc, nil
 		}
+
 		return nil, fmt.Errorf("field %q is declared as %s, cannot use unsigned integer condition", fieldName, schemaType)
 
 	case *commonpb.FieldCondition_StringCond:
 		if schemaType == commonpb.MetadataType_METADATA_TYPE_STRING {
 			return fc, nil
 		}
+
 		return nil, fmt.Errorf("field %q is declared as %s, cannot use string condition", fieldName, schemaType)
 
 	case *commonpb.FieldCondition_BoolCond:
 		if schemaType == commonpb.MetadataType_METADATA_TYPE_BOOL {
 			return fc, nil
 		}
+
 		return nil, fmt.Errorf("field %q is declared as %s, cannot use bool condition", fieldName, schemaType)
 
 	default:
@@ -1103,35 +1219,38 @@ func validateAndCoerceCondition(fc *commonpb.FieldCondition, fieldSchema *common
 // coerceIntToUint converts an IntCondition to a UintCondition for unsigned schema fields.
 // Returns an error if any bound is negative.
 func coerceIntToUint(fc *commonpb.FieldCondition) (*commonpb.FieldCondition, error) {
-	fieldName := fc.Field.GetMetadata()
+	fieldName := fc.GetField().GetMetadata()
 	intCond := fc.GetIntCond()
 
 	uintCond := &commonpb.UintCondition{
-		MinExclusive: intCond.MinExclusive,
-		MaxExclusive: intCond.MaxExclusive,
-		ParamMin:     intCond.ParamMin,
-		ParamMax:     intCond.ParamMax,
+		MinExclusive: intCond.GetMinExclusive(),
+		MaxExclusive: intCond.GetMaxExclusive(),
+		ParamMin:     intCond.GetParamMin(),
+		ParamMax:     intCond.GetParamMax(),
 	}
 
 	if intCond.Min != nil {
-		v := *intCond.Min
+		v := intCond.GetMin()
 		if v < 0 {
 			return nil, fmt.Errorf("field %q is unsigned, cannot use negative min bound %d", fieldName, v)
 		}
+
 		uv := uint64(v)
 		uintCond.Min = &uv
 	}
+
 	if intCond.Max != nil {
-		v := *intCond.Max
+		v := intCond.GetMax()
 		if v < 0 {
 			return nil, fmt.Errorf("field %q is unsigned, cannot use negative max bound %d", fieldName, v)
 		}
+
 		uv := uint64(v)
 		uintCond.Max = &uv
 	}
 
 	return &commonpb.FieldCondition{
-		Field:     fc.Field,
+		Field:     fc.GetField(),
 		Condition: &commonpb.FieldCondition_UintCond{UintCond: uintCond},
 	}, nil
 }
@@ -1153,7 +1272,9 @@ func (it *SliceIterator) Next() bool {
 	if idx >= len(it.entities) {
 		return false
 	}
+
 	it.current = it.entities[idx]
+
 	return true
 }
 
@@ -1167,10 +1288,13 @@ func (it *SliceIterator) SeekGE(target []byte) bool {
 	})
 	if idx >= len(it.entities) {
 		it.pos = len(it.entities) + 1
+
 		return false
 	}
+
 	it.pos = idx + 1 // +1 because Next() increments before reading
 	it.current = it.entities[idx]
+
 	return true
 }
 

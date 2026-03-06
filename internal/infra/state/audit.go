@@ -2,12 +2,12 @@ package state
 
 import (
 	"errors"
-	"fmt"
+	"strconv"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 )
 
 // buildAuditFailure extracts the error type and context from a processing error
@@ -71,11 +71,11 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 
 	case errors.As(err, &transactionNotFound):
 		failure.ErrorType = domain.ErrReasonTransactionNotFound
-		failure.Context["transactionId"] = fmt.Sprintf("%d", transactionNotFound.TransactionID)
+		failure.Context["transactionId"] = strconv.FormatUint(transactionNotFound.TransactionID, 10)
 
 	case errors.As(err, &transactionAlreadyReverted):
 		failure.ErrorType = domain.ErrReasonTransactionAlreadyReverted
-		failure.Context["transactionId"] = fmt.Sprintf("%d", transactionAlreadyReverted.TransactionID)
+		failure.Context["transactionId"] = strconv.FormatUint(transactionAlreadyReverted.TransactionID, 10)
 
 	case errors.As(err, &insufficientFunds):
 		failure.ErrorType = domain.ErrReasonInsufficientFunds
@@ -123,19 +123,19 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 
 	case errors.As(err, &periodNotFound):
 		failure.ErrorType = domain.ErrReasonPeriodNotFound
-		failure.Context["periodId"] = fmt.Sprintf("%d", periodNotFound.PeriodID)
+		failure.Context["periodId"] = strconv.FormatUint(periodNotFound.PeriodID, 10)
 
 	case errors.As(err, &periodNotClosing):
 		failure.ErrorType = domain.ErrReasonPeriodNotClosing
-		failure.Context["periodId"] = fmt.Sprintf("%d", periodNotClosing.PeriodID)
+		failure.Context["periodId"] = strconv.FormatUint(periodNotClosing.PeriodID, 10)
 
 	case errors.As(err, &periodNotClosed):
 		failure.ErrorType = domain.ErrReasonPeriodNotClosed
-		failure.Context["periodId"] = fmt.Sprintf("%d", periodNotClosed.PeriodID)
+		failure.Context["periodId"] = strconv.FormatUint(periodNotClosed.PeriodID, 10)
 
 	case errors.As(err, &periodNotArchiving):
 		failure.ErrorType = domain.ErrReasonPeriodNotArchiving
-		failure.Context["periodId"] = fmt.Sprintf("%d", periodNotArchiving.PeriodID)
+		failure.Context["periodId"] = strconv.FormatUint(periodNotArchiving.PeriodID, 10)
 
 	case errors.As(err, &invalidReceipt):
 		failure.ErrorType = domain.ErrReasonInvalidReceipt
@@ -168,10 +168,11 @@ func extractLogSequencesFromLogsOrRefs(logsOrRefs []*raftcmdpb.CreatedLogOrRefer
 	sequences := make([]uint64, len(logsOrRefs))
 	for i, logOrRef := range logsOrRefs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
-			sequences[i] = created.Sequence
+			sequences[i] = created.GetSequence()
 		} else {
 			sequences[i] = logOrRef.GetReferenceSequence()
 		}
 	}
+
 	return sequences
 }

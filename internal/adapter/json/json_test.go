@@ -28,6 +28,7 @@ func TestUnmarshal(t *testing.T) {
 	t.Parallel()
 
 	var out map[string]string
+
 	err := Unmarshal([]byte(`{"key":"value"}`), &out)
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"key": "value"}, out)
@@ -37,6 +38,7 @@ func TestUnmarshal_InvalidJSON(t *testing.T) {
 	t.Parallel()
 
 	var out map[string]string
+
 	err := Unmarshal([]byte(`{invalid`), &out)
 	require.Error(t, err)
 }
@@ -45,6 +47,7 @@ func TestMarshalWrite(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
+
 	err := MarshalWrite(&buf, map[string]int{"count": 42})
 	require.NoError(t, err)
 	require.JSONEq(t, `{"count":42}`, strings.TrimSpace(buf.String()))
@@ -54,7 +57,9 @@ func TestUnmarshalRead(t *testing.T) {
 	t.Parallel()
 
 	r := strings.NewReader(`{"name":"test"}`)
+
 	var out map[string]string
+
 	err := UnmarshalRead(r, &out)
 	require.NoError(t, err)
 	require.Equal(t, "test", out["name"])
@@ -64,7 +69,9 @@ func TestUnmarshalRead_InvalidJSON(t *testing.T) {
 	t.Parallel()
 
 	r := strings.NewReader(`not json`)
+
 	var out map[string]string
+
 	err := UnmarshalRead(r, &out)
 	require.Error(t, err)
 }
@@ -93,6 +100,7 @@ func TestRawValue_MarshalJSON_Nil(t *testing.T) {
 	t.Parallel()
 
 	var rv RawValue
+
 	data, err := rv.MarshalJSON()
 	require.NoError(t, err)
 	require.Equal(t, "null", string(data))
@@ -104,13 +112,14 @@ func TestRawValue_UnmarshalJSON(t *testing.T) {
 	rv := RawValue{}
 	err := rv.UnmarshalJSON([]byte(`{"key":"val"}`))
 	require.NoError(t, err)
-	require.Equal(t, `{"key":"val"}`, string(rv))
+	require.JSONEq(t, `{"key":"val"}`, string(rv))
 }
 
 func TestRawValue_UnmarshalJSON_NilReceiver(t *testing.T) {
 	t.Parallel()
 
 	var rv *RawValue
+
 	err := rv.UnmarshalJSON([]byte(`{"key":"val"}`))
 	require.NoError(t, err)
 }
@@ -134,7 +143,8 @@ func TestRawValue_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	var decoded wrapper
+
 	err = Unmarshal(data, &decoded)
 	require.NoError(t, err)
-	require.Equal(t, `{"inner":"value"}`, string(decoded.Data))
+	require.JSONEq(t, `{"inner":"value"}`, string(decoded.Data))
 }

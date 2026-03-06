@@ -95,6 +95,7 @@ func GenerateTestCerts(dir string) (*TestCerts, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshaling server key: %w", err)
 	}
+
 	serverKeyFile := filepath.Join(dir, "server-key.pem")
 	if err := writePEM(serverKeyFile, "EC PRIVATE KEY", serverKeyDER); err != nil {
 		return nil, fmt.Errorf("writing server key: %w", err)
@@ -112,6 +113,7 @@ func writePEM(path, blockType string, data []byte) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = f.Close() }()
 
 	return pem.Encode(f, &pem.Block{

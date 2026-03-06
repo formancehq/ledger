@@ -19,15 +19,19 @@ func buildPostCommitVolumes(s InMemoryStore, ledger string, postings []*commonpb
 		account string
 		asset   string
 	}
+
 	seen := make(map[accountAsset]struct{})
+
 	var pairs []accountAsset
+
 	for _, p := range postings {
-		srcKey := accountAsset{account: p.Source, asset: p.Asset}
+		srcKey := accountAsset{account: p.GetSource(), asset: p.GetAsset()}
 		if _, ok := seen[srcKey]; !ok {
 			seen[srcKey] = struct{}{}
 			pairs = append(pairs, srcKey)
 		}
-		dstKey := accountAsset{account: p.Destination, asset: p.Asset}
+
+		dstKey := accountAsset{account: p.GetDestination(), asset: p.GetAsset()}
 		if _, ok := seen[dstKey]; !ok {
 			seen[dstKey] = struct{}{}
 			pairs = append(pairs, dstKey)
@@ -35,6 +39,7 @@ func buildPostCommitVolumes(s InMemoryStore, ledger string, postings []*commonpb
 	}
 
 	volumesByAccount := make(map[string]*commonpb.VolumesByAssets, len(pairs))
+
 	var scratch uint256.Int
 
 	for _, pair := range pairs {
@@ -48,24 +53,27 @@ func buildPostCommitVolumes(s InMemoryStore, ledger string, postings []*commonpb
 
 		// Resolve Input: Known takes priority, then Diff, then zero
 		var inputStr, outputStr string
+
 		if vol != nil {
-			if vol.InputKnown != nil {
-				vol.InputKnown.IntoUint256(&scratch)
+			switch {
+			case vol.GetInputKnown() != nil:
+				vol.GetInputKnown().IntoUint256(&scratch)
 				inputStr = scratch.Dec()
-			} else if vol.InputDiff != nil {
-				vol.InputDiff.IntoUint256(&scratch)
+			case vol.GetInputDiff() != nil:
+				vol.GetInputDiff().IntoUint256(&scratch)
 				inputStr = scratch.Dec()
-			} else {
+			default:
 				inputStr = "0"
 			}
 
-			if vol.OutputKnown != nil {
-				vol.OutputKnown.IntoUint256(&scratch)
+			switch {
+			case vol.GetOutputKnown() != nil:
+				vol.GetOutputKnown().IntoUint256(&scratch)
 				outputStr = scratch.Dec()
-			} else if vol.OutputDiff != nil {
-				vol.OutputDiff.IntoUint256(&scratch)
+			case vol.GetOutputDiff() != nil:
+				vol.GetOutputDiff().IntoUint256(&scratch)
 				outputStr = scratch.Dec()
-			} else {
+			default:
 				outputStr = "0"
 			}
 		} else {
@@ -80,6 +88,7 @@ func buildPostCommitVolumes(s InMemoryStore, ledger string, postings []*commonpb
 			}
 			volumesByAccount[pair.account] = byAssets
 		}
+
 		byAssets.Volumes[pair.asset] = &commonpb.Volumes{
 			Input:  inputStr,
 			Output: outputStr,

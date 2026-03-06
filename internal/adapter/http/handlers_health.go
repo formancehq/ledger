@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// HealthData represents the response for health check
+// HealthData represents the response for health check.
 type HealthData struct {
 	Status string `json:"status"`
 }
@@ -15,6 +15,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if !s.backend.IsHealthy() {
 		s.logger.Infof("Health check failed: raft state machine is not healthy")
 		writeErrorResponse(w, http.StatusServiceUnavailable, "UNHEALTHY", errors.New("node is not connected to the cluster"))
+
 		return
 	}
 
@@ -34,6 +35,7 @@ func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
 	if reasons := s.backend.NotReadyReasons(); len(reasons) > 0 {
 		s.logger.Infof("Readiness check failed: %s", strings.Join(reasons, "; "))
 		writeErrorResponse(w, http.StatusServiceUnavailable, "NOT_READY", errors.New("node is not ready to serve traffic"))
+
 		return
 	}
 

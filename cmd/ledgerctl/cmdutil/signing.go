@@ -4,10 +4,11 @@ import (
 	"crypto/ed25519"
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/spf13/cobra"
 )
 
 // LoadSigningKey loads the signing key and key ID from command flags.
@@ -54,18 +55,22 @@ func VerifyResponseSignatures(cmd *cobra.Command, logs []*commonpb.Log) error {
 	if err != nil {
 		return err
 	}
+
 	if pubKey == nil {
 		return nil
 	}
 
 	for _, log := range logs {
-		if log.ResponseSignature == nil {
-			return fmt.Errorf("log %d: missing response signature (server may not have response signing enabled)", log.Sequence)
+		if log.GetResponseSignature() == nil {
+			return fmt.Errorf("log %d: missing response signature (server may not have response signing enabled)", log.GetSequence())
 		}
-		if err := signing.VerifyResponseSignature(log.ResponseSignature, pubKey); err != nil {
-			return fmt.Errorf("log %d: %w", log.Sequence, err)
+
+		err := signing.VerifyResponseSignature(log.GetResponseSignature(), pubKey)
+		if err != nil {
+			return fmt.Errorf("log %d: %w", log.GetSequence(), err)
 		}
 	}
+
 	return nil
 }
 
@@ -76,14 +81,17 @@ func SignRequests(cmd *cobra.Command, requests []*servicepb.Request) error {
 	if err != nil {
 		return err
 	}
+
 	if privKey == nil {
 		return nil
 	}
 
 	for _, req := range requests {
-		if err := signing.Sign(req, keyID, privKey); err != nil {
+		err := signing.Sign(req, keyID, privKey)
+		if err != nil {
 			return fmt.Errorf("failed to sign request: %w", err)
 		}
 	}
+
 	return nil
 }

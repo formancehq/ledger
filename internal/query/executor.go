@@ -3,7 +3,12 @@ package query
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
+
+	bolt "go.etcd.io/bbolt"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
@@ -12,9 +17,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
-	bolt "go.etcd.io/bbolt"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 const defaultPageSize = 100
@@ -42,84 +44,93 @@ func Execute(
 ) (*servicepb.ExecutePreparedQueryResponse, error) {
 	ctx, span := queryTracer.Start(ctx, "query.execute_prepared",
 		trace.WithAttributes(
-			attribute.String("ledger", req.Ledger),
-			attribute.String("query", req.QueryName),
+			attribute.String("ledger", req.GetLedger()),
+			attribute.String("query", req.GetQueryName()),
 		))
 	defer span.End()
 
 	// Read the prepared query from Pebble
-	pq, err := ReadPreparedQuery(ctx, pebbleStore, req.Ledger, req.QueryName)
+	pq, err := ReadPreparedQuery(ctx, pebbleStore, req.GetLedger(), req.GetQueryName())
 	if err != nil {
 		return nil, fmt.Errorf("reading prepared query: %w", err)
 	}
+
 	if pq == nil {
 		return nil, &domain.BusinessError{
-			Err: &domain.ErrPreparedQueryNotFound{Ledger: req.Ledger, Name: req.QueryName},
+			Err: &domain.ErrPreparedQueryNotFound{Ledger: req.GetLedger(), Name: req.GetQueryName()},
 		}
 	}
 
 	// Validate mode compatibility
-	if req.Mode == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES &&
-		pq.Target != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		return nil, fmt.Errorf("AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries")
+	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES &&
+		pq.GetTarget() != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+		return nil, errors.New("AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries")
 	}
 
 	// Check min_log_sequence freshness
-	if req.MinLogSequence > 0 {
+	if req.GetMinLogSequence() > 0 {
 		lastIndexed, err := rs.LastIndexedSequence()
 		if err != nil {
 			return nil, fmt.Errorf("reading index progress: %w", err)
 		}
-		if lastIndexed < req.MinLogSequence {
+
+		if lastIndexed < req.GetMinLogSequence() {
 			return nil, &ErrReadIndexNotCaughtUp{
-				Requested: req.MinLogSequence,
+				Requested: req.GetMinLogSequence(),
 				Current:   lastIndexed,
 			}
 		}
 	}
 
 	// Fetch ledger info for schema-based filter validation
-	ledgerInfo, err := GetLedgerByName(ctx, pebbleStore, req.Ledger)
+	ledgerInfo, err := GetLedgerByName(ctx, pebbleStore, req.GetLedger())
 	if err != nil {
 		return nil, fmt.Errorf("reading ledger info: %w", err)
 	}
-	schema := SchemaFieldsForTarget(ledgerInfo.MetadataSchema, pq.Target)
+
+	schema := SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), pq.GetTarget())
 
 	// Execute within a bbolt read-only transaction (MVCC snapshot)
 	var resp *servicepb.ExecutePreparedQueryResponse
+
 	err = rs.View(func(tx *bolt.Tx) error {
 		kb := readstore.NewKeyBuilder()
 
 		// Compile filter into iterator tree
-		iter, compileErr := Compile(tx, kb, pq.Filter, pq.Target, req.Ledger, req.Parameters, schema, ledgerInfo.BuiltinIndexes, profile)
+		iter, compileErr := Compile(tx, kb, pq.GetFilter(), pq.GetTarget(), req.GetLedger(), req.GetParameters(), schema, ledgerInfo.GetBuiltinIndexes(), profile)
 		if compileErr != nil {
 			return fmt.Errorf("compiling filter: %w", compileErr)
 		}
 		defer iter.Close()
 
-		switch req.Mode {
+		switch req.GetMode() {
 		case commonpb.QueryMode_QUERY_MODE_LIST:
 			var listErr error
-			resp, listErr = executeList(iter, pq.Target, req, profile)
+
+			resp, listErr = executeList(iter, pq.GetTarget(), req, profile)
+
 			return listErr
 
 		case commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
 			handle := pebbleStore.NewReadHandle()
+
 			defer func() { _ = handle.Close() }()
 
-			aggResult, aggErr := aggregateVolumes(handle, volumeAttr, req.Ledger, iter)
+			aggResult, aggErr := aggregateVolumes(handle, volumeAttr, req.GetLedger(), iter)
 			if aggErr != nil {
 				return aggErr
 			}
+
 			resp = &servicepb.ExecutePreparedQueryResponse{
 				Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
 					Aggregate: aggResult,
 				},
 			}
+
 			return nil
 
 		default:
-			return fmt.Errorf("unknown query mode: %v", req.Mode)
+			return fmt.Errorf("unknown query mode: %v", req.GetMode())
 		}
 	})
 
@@ -133,16 +144,18 @@ func executeList(
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 ) (*servicepb.ExecutePreparedQueryResponse, error) {
-	pageSize := req.PageSize
+	pageSize := req.GetPageSize()
 	if pageSize == 0 {
 		pageSize = defaultPageSize
 	}
 
 	// Decode cursor to get the after-entity for pagination
 	var afterEntity []byte
-	if req.Cursor != "" {
+
+	if req.GetCursor() != "" {
 		var err error
-		afterEntity, err = decodeCursor(req.Cursor)
+
+		afterEntity, err = decodeCursor(req.GetCursor())
 		if err != nil {
 			return nil, fmt.Errorf("invalid cursor: %w", err)
 		}
@@ -152,6 +165,7 @@ func executeList(
 	if profile != nil {
 		profile.ItemsCollected = len(entities)
 	}
+
 	if len(entities) == 0 {
 		return emptyListResponse(pageSize), nil
 	}
@@ -168,20 +182,23 @@ func executeList(
 		for i, e := range entities {
 			accounts[i] = string(e)
 		}
+
 		cursor.AccountData = accounts
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		txIDs := make([]uint64, len(entities))
 		for i, e := range entities {
 			txIDs[i] = binary.BigEndian.Uint64(e)
 		}
+
 		cursor.TransactionData = txIDs
 	}
 
 	if hasMore {
 		cursor.Next = encodeCursor(entities[len(entities)-1])
 	}
-	if req.Cursor != "" {
-		cursor.Previous = req.Cursor
+
+	if req.GetCursor() != "" {
+		cursor.Previous = req.GetCursor()
 	}
 
 	return &servicepb.ExecutePreparedQueryResponse{

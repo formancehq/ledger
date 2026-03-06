@@ -34,9 +34,11 @@ func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, error
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for signing keys: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	keys := make(map[string]SigningKeyEntry)
+
 	for iter.First(); iter.Valid(); iter.Next() {
 		// Key format: [KeyPrefixSigningKey(1)][keyID(variable)]
 		key := iter.Key()
@@ -68,10 +70,12 @@ func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, error
 func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (dal.Cursor[*commonpb.SigningKey], error) {
 	_, span := queryTracer.Start(ctx, "query.list_signing_keys")
 	defer span.End()
+
 	keys, err := ReadSigningKeys(reader)
 	if err != nil {
 		return nil, err
 	}
+
 	items := make([]*commonpb.SigningKey, 0, len(keys))
 	for keyID, entry := range keys {
 		items = append(items, &commonpb.SigningKey{
@@ -80,6 +84,7 @@ func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (dal.Cu
 			ParentKeyId: entry.ParentKeyID,
 		})
 	}
+
 	return dal.NewSliceCursor(items), nil
 }
 
@@ -91,12 +96,15 @@ func ReadSigningConfig(reader dal.PebbleReader) (bool, error) {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return false, nil
 		}
+
 		return false, fmt.Errorf("loading signing config: %w", err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	if len(value) == 0 {
 		return false, nil
 	}
+
 	return value[0] == 0x01, nil
 }

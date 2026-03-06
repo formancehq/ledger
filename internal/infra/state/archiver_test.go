@@ -8,12 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	libtime "github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	libtime "github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // mockColdStorage is a test-only in-memory implementation of coldstorage.ColdStorage.
@@ -29,15 +31,19 @@ func newMockColdStorage() *mockColdStorage {
 func (m *mockColdStorage) Archive(_ context.Context, bucketID string, periodID uint64, _ io.Reader) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	key := archiveKey(bucketID, periodID)
 	m.archives[key] = true
+
 	return nil
 }
 
 func (m *mockColdStorage) Exists(_ context.Context, bucketID string, periodID uint64) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	key := archiveKey(bucketID, periodID)
+
 	return m.archives[key], nil
 }
 
@@ -82,6 +88,7 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 
 	cs := newMockColdStorage()
 	archiveReqCh := make(chan ArchiveRequest, 1)
+
 	var proposedPeriodID atomic.Uint64
 
 	a := NewArchiver(
@@ -126,6 +133,7 @@ func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
 	require.NoError(t, cs.Archive(context.Background(), "test-bucket", 5, nil))
 
 	archiveReqCh := make(chan ArchiveRequest, 1)
+
 	var proposedPeriodID atomic.Uint64
 
 	a := NewArchiver(
@@ -165,6 +173,7 @@ func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
 	require.NoError(t, cs.Archive(context.Background(), "test-bucket", 7, nil))
 
 	archiveReqCh := make(chan ArchiveRequest, 1)
+
 	var proposedPeriodID atomic.Uint64
 
 	a := NewArchiver(
@@ -204,8 +213,12 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 
 	cs := newMockColdStorage()
 	archiveReqCh := make(chan ArchiveRequest, 1)
-	var proposedPeriodID atomic.Uint64
-	var isLeader atomic.Bool
+
+	var (
+		proposedPeriodID atomic.Uint64
+		isLeader         atomic.Bool
+	)
+
 	isLeader.Store(false)
 
 	a := NewArchiver(
@@ -214,7 +227,7 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 		cs,
 		archiveReqCh,
 		func(periodID uint64) { proposedPeriodID.Store(periodID) },
-		func() bool { return isLeader.Load() },
+		isLeader.Load,
 		"test-bucket",
 	)
 	a.Start()

@@ -9,7 +9,7 @@ import (
 	"github.com/zeebo/blake3"
 )
 
-// Realistic 5-segment account addresses
+// Realistic 5-segment account addresses.
 var benchInputs = [][]byte{
 	[]byte("platform:region-eu:merchant-42:wallets:main"),
 	[]byte("banking:customers:usr-8a3f9b2c:savings:EUR"),
@@ -25,6 +25,7 @@ var benchInputs = [][]byte{
 
 func BenchmarkXXH3_MakeKey(b *testing.B) {
 	kh := NewKeyHasher(DefaultSeeds)
+
 	for _, input := range benchInputs {
 		b.Run(fmt.Sprintf("len=%d", len(input)), func(b *testing.B) {
 			for b.Loop() {
@@ -47,14 +48,17 @@ type blake3KeyedHasher struct {
 func newBLAKE3KeyedHasher(masterKey [32]byte) *blake3KeyedHasher {
 	idKey := blake3.Sum256(append([]byte("attrid:v1:id128:"), masterKey[:]...))
 	tagKey := blake3.Sum256(append([]byte("attrid:v1:tag64:"), masterKey[:]...))
+
 	idHasher, err := blake3.NewKeyed(idKey[:])
 	if err != nil {
 		panic(err)
 	}
+
 	tagHasher, err := blake3.NewKeyed(tagKey[:])
 	if err != nil {
 		panic(err)
 	}
+
 	return &blake3KeyedHasher{
 		idHasher:  idHasher,
 		tagHasher: tagHasher,
@@ -89,6 +93,7 @@ var blake3MasterKey = [32]byte{
 
 func BenchmarkBLAKE3_Keyed_MakeKey(b *testing.B) {
 	h := newBLAKE3KeyedHasher(blake3MasterKey)
+
 	for _, input := range benchInputs {
 		b.Run(fmt.Sprintf("len=%d", len(input)), func(b *testing.B) {
 			for b.Loop() {
@@ -117,11 +122,13 @@ func (h *blake3Unkeyed) makeKey(data []byte) (U128, uint64) {
 	lo := binary.LittleEndian.Uint64(sum[0:8])
 	hi := binary.LittleEndian.Uint64(sum[8:16])
 	tag := binary.LittleEndian.Uint64(sum[16:24])
+
 	return NewU128(hi, lo), tag
 }
 
 func BenchmarkBLAKE3_Unkeyed_MakeKey(b *testing.B) {
 	h := &blake3Unkeyed{hasher: blake3.New()}
+
 	for _, input := range benchInputs {
 		b.Run(fmt.Sprintf("len=%d", len(input)), func(b *testing.B) {
 			for b.Loop() {

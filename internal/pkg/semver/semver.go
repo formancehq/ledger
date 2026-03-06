@@ -24,15 +24,19 @@ func Parse(s string) (Version, error) {
 	if len(parts) != 3 {
 		return Version{}, fmt.Errorf("invalid semver %q: expected major.minor.patch", s)
 	}
+
 	var v Version
+
 	for i, part := range parts {
 		if part == "" {
 			return Version{}, fmt.Errorf("invalid semver %q: empty component", s)
 		}
+
 		n, err := strconv.ParseUint(part, 10, 32)
 		if err != nil {
 			return Version{}, fmt.Errorf("invalid semver %q: %w", s, err)
 		}
+
 		switch i {
 		case 0:
 			v.Major = uint32(n)
@@ -42,6 +46,7 @@ func Parse(s string) (Version, error) {
 			v.Patch = uint32(n)
 		}
 	}
+
 	return v, nil
 }
 
@@ -52,15 +57,18 @@ func ParsePartial(s string) (major, minor, patch uint32, depth int, err error) {
 	if len(parts) < 1 || len(parts) > 3 {
 		return 0, 0, 0, 0, fmt.Errorf("invalid partial semver %q: expected 1-3 parts", s)
 	}
+
 	depth = len(parts)
 	for i, part := range parts {
 		if part == "" {
 			return 0, 0, 0, 0, fmt.Errorf("invalid partial semver %q: empty component", s)
 		}
+
 		n, parseErr := strconv.ParseUint(part, 10, 32)
 		if parseErr != nil {
 			return 0, 0, 0, 0, fmt.Errorf("invalid partial semver %q: %w", s, parseErr)
 		}
+
 		switch i {
 		case 0:
 			major = uint32(n)
@@ -70,5 +78,6 @@ func ParsePartial(s string) (major, minor, patch uint32, depth int, err error) {
 			patch = uint32(n)
 		}
 	}
+
 	return major, minor, patch, depth, nil
 }

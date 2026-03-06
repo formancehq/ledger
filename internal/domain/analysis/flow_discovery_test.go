@@ -5,9 +5,10 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 func makeCompactTransaction(ts uint64, postings []CompactPosting) CompactTransaction {
@@ -32,9 +33,9 @@ func TestAnalyzeTransactions_Empty(t *testing.T) {
 
 	resp := AnalyzeTransactions(nil, 0)
 	require.NotNil(t, resp)
-	assert.Equal(t, uint64(0), resp.TotalTransactions)
-	assert.Equal(t, uint64(0), resp.TotalReverted)
-	assert.Empty(t, resp.FlowPatterns)
+	assert.Equal(t, uint64(0), resp.GetTotalTransactions())
+	assert.Equal(t, uint64(0), resp.GetTotalReverted())
+	assert.Empty(t, resp.GetFlowPatterns())
 }
 
 func TestAnalyzeTransactions_SingleSimple(t *testing.T) {
@@ -48,17 +49,17 @@ func TestAnalyzeTransactions_SingleSimple(t *testing.T) {
 
 	resp := AnalyzeTransactions(txns, 0)
 	require.NotNil(t, resp)
-	assert.Equal(t, uint64(1), resp.TotalTransactions)
-	assert.Equal(t, uint64(0), resp.TotalReverted)
-	require.Len(t, resp.FlowPatterns, 1)
+	assert.Equal(t, uint64(1), resp.GetTotalTransactions())
+	assert.Equal(t, uint64(0), resp.GetTotalReverted())
+	require.Len(t, resp.GetFlowPatterns(), 1)
 
-	pattern := resp.FlowPatterns[0]
-	assert.Equal(t, servicepb.PostingStructure_POSTING_STRUCTURE_SIMPLE, pattern.Structure)
-	assert.Equal(t, uint64(1), pattern.TransactionCount)
-	require.Len(t, pattern.Postings, 1)
-	assert.Equal(t, "world", pattern.Postings[0].SourcePattern)
-	assert.Equal(t, "bank:main", pattern.Postings[0].DestinationPattern)
-	assert.Equal(t, "USD", pattern.Postings[0].Asset)
+	pattern := resp.GetFlowPatterns()[0]
+	assert.Equal(t, servicepb.PostingStructure_POSTING_STRUCTURE_SIMPLE, pattern.GetStructure())
+	assert.Equal(t, uint64(1), pattern.GetTransactionCount())
+	require.Len(t, pattern.GetPostings(), 1)
+	assert.Equal(t, "world", pattern.GetPostings()[0].GetSourcePattern())
+	assert.Equal(t, "bank:main", pattern.GetPostings()[0].GetDestinationPattern())
+	assert.Equal(t, "USD", pattern.GetPostings()[0].GetAsset())
 }
 
 func TestAnalyzeTransactions_MultiDestination(t *testing.T) {
@@ -72,8 +73,8 @@ func TestAnalyzeTransactions_MultiDestination(t *testing.T) {
 	}
 
 	resp := AnalyzeTransactions(txns, 0)
-	require.Len(t, resp.FlowPatterns, 1)
-	assert.Equal(t, servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION, resp.FlowPatterns[0].Structure)
+	require.Len(t, resp.GetFlowPatterns(), 1)
+	assert.Equal(t, servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION, resp.GetFlowPatterns()[0].GetStructure())
 }
 
 func TestAnalyzeTransactions_MultiSource(t *testing.T) {
@@ -87,8 +88,8 @@ func TestAnalyzeTransactions_MultiSource(t *testing.T) {
 	}
 
 	resp := AnalyzeTransactions(txns, 0)
-	require.Len(t, resp.FlowPatterns, 1)
-	assert.Equal(t, servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE, resp.FlowPatterns[0].Structure)
+	require.Len(t, resp.GetFlowPatterns(), 1)
+	assert.Equal(t, servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE, resp.GetFlowPatterns()[0].GetStructure())
 }
 
 func TestAnalyzeTransactions_NormalizationUUID(t *testing.T) {
@@ -96,7 +97,8 @@ func TestAnalyzeTransactions_NormalizationUUID(t *testing.T) {
 
 	// Create 12 transactions with different UUID user addresses (>10 = default threshold)
 	var txns []CompactTransaction
-	for i := 0; i < 12; i++ {
+
+	for i := range 12 {
 		uuid := fmt.Sprintf("a0b1c2d3-e4f5-6789-abcd-0000000000%02x", i)
 		txns = append(txns, makeCompactTransaction(uint64(1000000+i*1000000),
 			[]CompactPosting{
@@ -106,19 +108,19 @@ func TestAnalyzeTransactions_NormalizationUUID(t *testing.T) {
 	}
 
 	resp := AnalyzeTransactions(txns, 0)
-	require.Len(t, resp.FlowPatterns, 1)
+	require.Len(t, resp.GetFlowPatterns(), 1)
 
-	pattern := resp.FlowPatterns[0]
-	require.Len(t, pattern.Postings, 1)
-	assert.Equal(t, "users:{id}:main", pattern.Postings[0].SourcePattern)
-	assert.Equal(t, "bank:fees", pattern.Postings[0].DestinationPattern)
+	pattern := resp.GetFlowPatterns()[0]
+	require.Len(t, pattern.GetPostings(), 1)
+	assert.Equal(t, "users:{id}:main", pattern.GetPostings()[0].GetSourcePattern())
+	assert.Equal(t, "bank:fees", pattern.GetPostings()[0].GetDestinationPattern())
 }
 
 func TestAnalyzeTransactions_NormalizationNumeric(t *testing.T) {
 	t.Parallel()
 
 	var txns []CompactTransaction
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		txns = append(txns, makeCompactTransaction(uint64(1000000+i*1000000),
 			[]CompactPosting{
 				makeCompactPosting(fmt.Sprintf("orders:%d", 1000+i), "bank:revenue", "EUR", 50),
@@ -127,11 +129,11 @@ func TestAnalyzeTransactions_NormalizationNumeric(t *testing.T) {
 	}
 
 	resp := AnalyzeTransactions(txns, 0)
-	require.Len(t, resp.FlowPatterns, 1)
+	require.Len(t, resp.GetFlowPatterns(), 1)
 
-	pattern := resp.FlowPatterns[0]
-	require.Len(t, pattern.Postings, 1)
-	assert.Equal(t, "orders:{number}", pattern.Postings[0].SourcePattern)
+	pattern := resp.GetFlowPatterns()[0]
+	require.Len(t, pattern.GetPostings(), 1)
+	assert.Equal(t, "orders:{number}", pattern.GetPostings()[0].GetSourcePattern())
 }
 
 func TestAnalyzeTransactions_TemporalStats(t *testing.T) {
@@ -149,13 +151,13 @@ func TestAnalyzeTransactions_TemporalStats(t *testing.T) {
 	}
 
 	resp := AnalyzeTransactions(txns, 0)
-	require.Len(t, resp.FlowPatterns, 1)
+	require.Len(t, resp.GetFlowPatterns(), 1)
 
-	temporal := resp.FlowPatterns[0].Temporal
+	temporal := resp.GetFlowPatterns()[0].GetTemporal()
 	require.NotNil(t, temporal)
-	assert.Equal(t, dayMicro*0, temporal.FirstSeen.Data)
-	assert.Equal(t, dayMicro*2, temporal.LastSeen.Data)
-	assert.InDelta(t, 1.0, temporal.TransactionsPerDay, 0.1)
+	assert.Equal(t, dayMicro*0, temporal.GetFirstSeen().GetData())
+	assert.Equal(t, dayMicro*2, temporal.GetLastSeen().GetData())
+	assert.InDelta(t, 1.0, temporal.GetTransactionsPerDay(), 0.1)
 }
 
 func TestAnalyzeTransactions_VolumeStats(t *testing.T) {
@@ -171,16 +173,16 @@ func TestAnalyzeTransactions_VolumeStats(t *testing.T) {
 	}
 
 	resp := AnalyzeTransactions(txns, 0)
-	require.Len(t, resp.FlowPatterns, 1)
+	require.Len(t, resp.GetFlowPatterns(), 1)
 
-	volumeStats := resp.FlowPatterns[0].VolumeStats
+	volumeStats := resp.GetFlowPatterns()[0].GetVolumeStats()
 	require.Len(t, volumeStats, 1)
-	assert.Equal(t, "USD", volumeStats[0].Asset)
-	assert.Equal(t, "400", volumeStats[0].TotalVolume)
-	assert.Equal(t, "200", volumeStats[0].AverageVolume)
-	assert.Equal(t, "100", volumeStats[0].MinVolume)
-	assert.Equal(t, "300", volumeStats[0].MaxVolume)
-	assert.Equal(t, uint64(2), volumeStats[0].TransactionCount)
+	assert.Equal(t, "USD", volumeStats[0].GetAsset())
+	assert.Equal(t, "400", volumeStats[0].GetTotalVolume())
+	assert.Equal(t, "200", volumeStats[0].GetAverageVolume())
+	assert.Equal(t, "100", volumeStats[0].GetMinVolume())
+	assert.Equal(t, "300", volumeStats[0].GetMaxVolume())
+	assert.Equal(t, uint64(2), volumeStats[0].GetTransactionCount())
 }
 
 func TestAnalyzeTransactions_RevertedCounted(t *testing.T) {
@@ -201,8 +203,8 @@ func TestAnalyzeTransactions_RevertedCounted(t *testing.T) {
 	}
 
 	resp := AnalyzeTransactions(txns, 0)
-	assert.Equal(t, uint64(2), resp.TotalTransactions)
-	assert.Equal(t, uint64(1), resp.TotalReverted)
+	assert.Equal(t, uint64(2), resp.GetTotalTransactions())
+	assert.Equal(t, uint64(1), resp.GetTotalReverted())
 }
 
 func TestAnalyzeTransactions_MetadataKeys(t *testing.T) {
@@ -228,8 +230,8 @@ func TestAnalyzeTransactions_MetadataKeys(t *testing.T) {
 	}
 
 	resp := AnalyzeTransactions(txns, 0)
-	require.Len(t, resp.FlowPatterns, 1)
-	assert.Equal(t, []string{"category", "region", "source"}, resp.FlowPatterns[0].MetadataKeys)
+	require.Len(t, resp.GetFlowPatterns(), 1)
+	assert.Equal(t, []string{"category", "region", "source"}, resp.GetFlowPatterns()[0].GetMetadataKeys())
 }
 
 func TestAnalyzeTransactions_GroupedBySignature(t *testing.T) {
@@ -248,10 +250,10 @@ func TestAnalyzeTransactions_GroupedBySignature(t *testing.T) {
 	}
 
 	resp := AnalyzeTransactions(txns, 0)
-	assert.Equal(t, uint64(3), resp.TotalTransactions)
-	require.Len(t, resp.FlowPatterns, 2)
+	assert.Equal(t, uint64(3), resp.GetTotalTransactions())
+	require.Len(t, resp.GetFlowPatterns(), 2)
 
 	// First pattern should have 2 transactions (highest count)
-	assert.Equal(t, uint64(2), resp.FlowPatterns[0].TransactionCount)
-	assert.Equal(t, uint64(1), resp.FlowPatterns[1].TransactionCount)
+	assert.Equal(t, uint64(2), resp.GetFlowPatterns()[0].GetTransactionCount())
+	assert.Equal(t, uint64(1), resp.GetFlowPatterns()[1].GetTransactionCount())
 }

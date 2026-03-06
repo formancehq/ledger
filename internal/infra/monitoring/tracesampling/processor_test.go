@@ -32,11 +32,13 @@ func (m *mockProcessor) OnEnd(s trace.ReadOnlySpan) {
 
 func (m *mockProcessor) Shutdown(ctx context.Context) error {
 	m.shutdownCalls++
+
 	return m.shutdownErr
 }
 
 func (m *mockProcessor) ForceFlush(ctx context.Context) error {
 	m.flushCalls++
+
 	return m.forceFlushErr
 }
 
@@ -218,5 +220,5 @@ func TestProcessor_DeterministicSampling(t *testing.T) {
 	p1.OnEnd(span)
 	p2.OnEnd(span)
 
-	require.Equal(t, len(mock1.onEndSpans), len(mock2.onEndSpans))
+	require.Len(t, mock2.onEndSpans, len(mock1.onEndSpans))
 }

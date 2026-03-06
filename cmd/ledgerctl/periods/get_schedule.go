@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // NewGetScheduleCommand creates the periods get-schedule command.
@@ -31,6 +32,7 @@ func runGetSchedule(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -41,6 +43,7 @@ func runGetSchedule(cmd *cobra.Command, _ []string) error {
 	resp, err := client.GetPeriodSchedule(ctx, &servicepb.GetPeriodScheduleRequest{})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to get period schedule", err)
 	}
 
@@ -50,13 +53,14 @@ func runGetSchedule(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(resp)
 	}
 
-	if resp.Cron == "" {
+	if resp.GetCron() == "" {
 		pterm.Success.Println("No period schedule configured (automatic rotation disabled)")
 	} else {
-		pterm.Success.Println("Period schedule: " + resp.Cron)
+		pterm.Success.Println("Period schedule: " + resp.GetCron())
 	}
 
 	return nil

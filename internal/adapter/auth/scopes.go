@@ -5,20 +5,20 @@ type Scope string
 
 // Granular scopes — 14 total, grouped by resource category.
 var (
-	ScopeLedgersRead      Scope = "ledgers:read"
-	ScopeLedgersWrite     Scope = "ledgers:write"
-	ScopeTransactionsRead Scope = "transactions:read"
+	ScopeLedgersRead       Scope = "ledgers:read"
+	ScopeLedgersWrite      Scope = "ledgers:write"
+	ScopeTransactionsRead  Scope = "transactions:read"
 	ScopeTransactionsWrite Scope = "transactions:write"
-	ScopeAccountsRead     Scope = "accounts:read"
-	ScopeMetadataWrite    Scope = "metadata:write"
-	ScopeAuditRead        Scope = "audit:read"
-	ScopeAuditWrite       Scope = "audit:write"
-	ScopeOpsRead          Scope = "ops:read"
-	ScopeOpsWrite         Scope = "ops:write"
-	ScopeQueriesRead      Scope = "queries:read"
-	ScopeQueriesWrite     Scope = "queries:write"
-	ScopeClusterRead      Scope = "cluster:read"
-	ScopeClusterWrite     Scope = "cluster:write"
+	ScopeAccountsRead      Scope = "accounts:read"
+	ScopeMetadataWrite     Scope = "metadata:write"
+	ScopeAuditRead         Scope = "audit:read"
+	ScopeAuditWrite        Scope = "audit:write"
+	ScopeOpsRead           Scope = "ops:read"
+	ScopeOpsWrite          Scope = "ops:write"
+	ScopeQueriesRead       Scope = "queries:read"
+	ScopeQueriesWrite      Scope = "queries:write"
+	ScopeClusterRead       Scope = "cluster:read"
+	ScopeClusterWrite      Scope = "cluster:write"
 )
 
 // AllGranularScopes is the complete set of valid granular scopes for validation.
@@ -49,6 +49,7 @@ func DefaultMapping(service string) ScopeMapping {
 	if service == "" {
 		service = "ledger"
 	}
+
 	return ScopeMapping{
 		service + ":read": {
 			ScopeLedgersRead,
@@ -78,6 +79,7 @@ func DefaultMapping(service string) ScopeMapping {
 // granular scopes pass through directly (identity pass-through).
 func (m ScopeMapping) ExpandScopes(tokenScopes []string) map[Scope]struct{} {
 	result := make(map[Scope]struct{})
+
 	for _, ts := range tokenScopes {
 		// Try mapping expansion first
 		if granularScopes, ok := m[ts]; ok {
@@ -90,6 +92,7 @@ func (m ScopeMapping) ExpandScopes(tokenScopes []string) map[Scope]struct{} {
 			result[Scope(ts)] = struct{}{}
 		}
 	}
+
 	return result
 }
 
@@ -100,5 +103,6 @@ func HasScope(effective map[Scope]struct{}, required ...Scope) bool {
 			return false
 		}
 	}
+
 	return true
 }

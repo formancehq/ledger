@@ -18,53 +18,57 @@ func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, ski
 	sourceKey := domain.VolumeKey{
 		AccountKey: domain.AccountKey{
 			Ledger:  ledger,
-			Account: posting.Source,
+			Account: posting.GetSource(),
 		},
-		Asset: posting.Asset,
+		Asset: posting.GetAsset(),
 	}
 
 	// Decode posting amount into stack variable to avoid heap allocation
 	var amount uint256.Int
-	posting.Amount.IntoUint256(&amount)
+	posting.GetAmount().IntoUint256(&amount)
 
 	// Get current volume pair for source
 	sourceVol, err := s.GetVolume(sourceKey)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return err
 	}
+
 	if sourceVol == nil {
 		sourceVol = &raftcmdpb.VolumePair{}
 	}
 
 	// Balance check (skip for "world" account and when skipBalanceCheck is true)
-	if !skipBalanceCheck && posting.Source != "world" {
+	if !skipBalanceCheck && posting.GetSource() != "world" {
 		// Compute effective input value. When a preload set InputKnown, it already
 		// includes any prior InputDiff (see putInCacheVolumePair merge). When only
 		// InputDiff is present (force TX volumes still in cache without preload),
 		// the diff IS the total accumulated input.
 		var inputValue uint256.Int
-		if sourceVol.InputKnown != nil {
-			sourceVol.InputKnown.IntoUint256(&inputValue)
-		} else if sourceVol.InputDiff != nil {
-			sourceVol.InputDiff.IntoUint256(&inputValue)
-		} else {
-			return &domain.ErrBalanceNotFound{Account: posting.Source, Asset: posting.Asset}
+		switch {
+		case sourceVol.GetInputKnown() != nil:
+			sourceVol.GetInputKnown().IntoUint256(&inputValue)
+		case sourceVol.GetInputDiff() != nil:
+			sourceVol.GetInputDiff().IntoUint256(&inputValue)
+		default:
+			return &domain.ErrBalanceNotFound{Account: posting.GetSource(), Asset: posting.GetAsset()}
 		}
 
 		// Compute effective output value with the same logic.
 		var outputValue, outputPlusAmount uint256.Int
-		if sourceVol.OutputKnown != nil {
-			sourceVol.OutputKnown.IntoUint256(&outputValue)
-		} else if sourceVol.OutputDiff != nil {
-			sourceVol.OutputDiff.IntoUint256(&outputValue)
+		if sourceVol.GetOutputKnown() != nil {
+			sourceVol.GetOutputKnown().IntoUint256(&outputValue)
+		} else if sourceVol.GetOutputDiff() != nil {
+			sourceVol.GetOutputDiff().IntoUint256(&outputValue)
 		}
+
 		sum, overflow := outputPlusAmount.AddOverflow(&outputValue, &amount)
 		if overflow || inputValue.Lt(sum) {
 			// Only compute signed balance for the error message
 			balanceBig := new(big.Int).Sub(inputValue.ToBig(), outputValue.ToBig())
+
 			return &domain.ErrInsufficientFunds{
-				Account: posting.Source,
-				Asset:   posting.Asset,
+				Account: posting.GetSource(),
+				Asset:   posting.GetAsset(),
 				Amount:  amount.Dec(),
 				Balance: balanceBig.String(),
 			}
@@ -75,26 +79,28 @@ func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, ski
 	var scratch uint256.Int
 
 	// Increase Output for source (money going out)
-	addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, &amount, posting.Amount, &scratch)
+	addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, &amount, posting.GetAmount(), &scratch)
 	s.PutVolume(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
 	destKey := domain.VolumeKey{
 		AccountKey: domain.AccountKey{
 			Ledger:  ledger,
-			Account: posting.Destination,
+			Account: posting.GetDestination(),
 		},
-		Asset: posting.Asset,
+		Asset: posting.GetAsset(),
 	}
 
 	destVol, err := s.GetVolume(destKey)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return err
 	}
+
 	if destVol == nil {
 		destVol = &raftcmdpb.VolumePair{}
 	}
-	addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, &amount, posting.Amount, &scratch)
+
+	addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, &amount, posting.GetAmount(), &scratch)
 	s.PutVolume(destKey, destVol)
 
 	return nil

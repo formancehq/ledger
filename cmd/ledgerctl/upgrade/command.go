@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 )
 
 // NewCommand creates the upgrade command.
@@ -35,6 +36,7 @@ func runUpgrade(currentVersion, channel string, force, dryRun bool) error {
 	// Warn if version is "dev" (built without ldflags).
 	if currentVersion == "dev" && !force {
 		pterm.Warning.Println("Cannot determine current version (dev build). Use --force to upgrade anyway.")
+
 		return nil
 	}
 
@@ -44,6 +46,7 @@ func runUpgrade(currentVersion, channel string, force, dryRun bool) error {
 	release, err := fetchRelease(channel)
 	if err != nil {
 		spinner.Fail("Failed to check for updates")
+
 		return cmdutil.Displayed(fmt.Errorf("failed to fetch release info: %w", err))
 	}
 
@@ -55,11 +58,13 @@ func runUpgrade(currentVersion, channel string, force, dryRun bool) error {
 
 	if isUpToDate(currentVersion, release) && !force {
 		pterm.Success.Println("Already up to date!")
+
 		return nil
 	}
 
 	if dryRun {
 		pterm.Info.Println("Update available (dry-run mode, not installing)")
+
 		return nil
 	}
 
@@ -81,8 +86,10 @@ func runUpgrade(currentVersion, channel string, force, dryRun bool) error {
 	extractedPath, err := downloadAndVerify(archiveAsset, checksumsAsset, spinner)
 	if err != nil {
 		spinner.Fail("Failed to download update")
+
 		return cmdutil.Displayed(err)
 	}
+
 	defer func() { _ = os.Remove(extractedPath) }()
 
 	spinner.Success("Download complete, checksum verified")
@@ -93,10 +100,11 @@ func runUpgrade(currentVersion, channel string, force, dryRun bool) error {
 	binaryPath, err := replaceBinary(extractedPath)
 	if err != nil {
 		spinner.Fail("Failed to install update")
+
 		return cmdutil.Displayed(err)
 	}
 
-	spinner.Success(fmt.Sprintf("ledgerctl upgraded to %s", pterm.Cyan(latestVersion)))
+	spinner.Success("ledgerctl upgraded to " + pterm.Cyan(latestVersion))
 	pterm.Info.Printfln("Binary: %s", pterm.Cyan(binaryPath))
 
 	return nil

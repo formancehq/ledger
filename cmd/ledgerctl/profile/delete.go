@@ -3,9 +3,10 @@ package profile
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 )
 
 // NewDeleteCommand returns the "profile delete" command.
@@ -35,15 +36,18 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	if cfg.Profiles == nil {
 		return fmt.Errorf("profile %q not found", name)
 	}
+
 	if _, ok := cfg.Profiles[name]; !ok {
 		return fmt.Errorf("profile %q not found", name)
 	}
 
 	if !skipConfirm {
 		pterm.Warning.Printfln("Delete profile %q?", name)
+
 		result, _ := pterm.DefaultInteractiveConfirm.Show()
 		if !result {
 			pterm.Info.Println("Cancelled.")
+
 			return nil
 		}
 	}
@@ -60,6 +64,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	pterm.Success.Printfln("Profile %s deleted", pterm.Bold.Sprint(name))
+
 	if cfg.ActiveProfile == "" && len(cfg.Profiles) > 0 {
 		pterm.Info.Println("No active profile. Use: ledgerctl profile use <name>")
 	}

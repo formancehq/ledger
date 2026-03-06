@@ -4,8 +4,9 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func TestSignAndVerify(t *testing.T) {
@@ -128,15 +129,15 @@ func TestClaimsToPostings(t *testing.T) {
 	postings := ClaimsToPostings(postingClaims)
 	require.Len(t, postings, 2)
 
-	require.Equal(t, "world", postings[0].Source)
-	require.Equal(t, "user:bob", postings[0].Destination)
-	require.Equal(t, big.NewInt(5000), postings[0].Amount.ToBigInt())
-	require.Equal(t, "EUR", postings[0].Asset)
+	require.Equal(t, "world", postings[0].GetSource())
+	require.Equal(t, "user:bob", postings[0].GetDestination())
+	require.Equal(t, big.NewInt(5000), postings[0].GetAmount().ToBigInt())
+	require.Equal(t, "EUR", postings[0].GetAsset())
 
-	require.Equal(t, "user:bob", postings[1].Source)
-	require.Equal(t, "user:carol", postings[1].Destination)
-	require.Equal(t, big.NewInt(1000), postings[1].Amount.ToBigInt())
-	require.Equal(t, "EUR", postings[1].Asset)
+	require.Equal(t, "user:bob", postings[1].GetSource())
+	require.Equal(t, "user:carol", postings[1].GetDestination())
+	require.Equal(t, big.NewInt(1000), postings[1].GetAmount().ToBigInt())
+	require.Equal(t, "EUR", postings[1].GetAsset())
 }
 
 func TestSignWithNilTimestamp(t *testing.T) {

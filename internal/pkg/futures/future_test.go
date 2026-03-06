@@ -37,16 +37,16 @@ func TestFuture_WaitBlocksUntilResolve(t *testing.T) {
 	t.Parallel()
 
 	f := New[int]()
+
 	var (
 		wg  sync.WaitGroup
 		got int
 		err error
 	)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+
+	wg.Go(func() {
 		got, err = f.Wait()
-	}()
+	})
 
 	f.Resolve(42, nil)
 	wg.Wait()
@@ -59,16 +59,20 @@ func TestFuture_MultipleWaiters(t *testing.T) {
 	t.Parallel()
 
 	f := New[string]()
+
 	const n = 10
 
 	var wg sync.WaitGroup
+
 	results := make([]string, n)
 	errs := make([]error, n)
 
 	for i := range n {
 		wg.Add(1)
+
 		go func(idx int) {
 			defer wg.Done()
+
 			results[idx], errs[idx] = f.Wait()
 		}(i)
 	}
@@ -102,15 +106,15 @@ func TestFuture_ZeroValue(t *testing.T) {
 
 	val, err := f.Wait()
 	require.NoError(t, err)
-	require.Equal(t, "", val)
+	require.Empty(t, val)
 }
 
 func TestFuture_WaitContext_ResolveBeforeCancel(t *testing.T) {
 	t.Parallel()
 
 	f := New[int]()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+
+	ctx := t.Context()
 
 	f.Resolve(42, nil)
 
@@ -137,6 +141,7 @@ func TestFuture_WaitContext_CancelDuringWait(t *testing.T) {
 	t.Parallel()
 
 	f := New[int]()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
@@ -156,11 +161,10 @@ func TestFuture_WaitContext_ResolveDuringWait(t *testing.T) {
 		got string
 		err error
 	)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+
+	wg.Go(func() {
 		got, err = f.WaitContext(ctx)
-	}()
+	})
 
 	time.Sleep(10 * time.Millisecond)
 	f.Resolve("hello", nil)

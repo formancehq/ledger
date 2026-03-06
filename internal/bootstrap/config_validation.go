@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -26,6 +27,7 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 	if persisted == nil {
 		// First boot: persist current config
 		logger.Infof("First boot detected, persisting configuration for future safety checks")
+
 		return persistConfig(store, current)
 	}
 
@@ -70,12 +72,18 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 // persistConfig writes the given configuration to Pebble.
 func persistConfig(store *dal.Store, cfg *PersistedConfig) error {
 	batch := store.NewBatch()
-	if err := SavePersistedConfig(batch, cfg); err != nil {
+
+	err := SavePersistedConfig(batch, cfg)
+	if err != nil {
 		_ = batch.Cancel()
+
 		return fmt.Errorf("saving persisted config: %w", err)
 	}
-	if err := batch.Commit(); err != nil {
+
+	err = batch.Commit()
+	if err != nil {
 		return fmt.Errorf("committing persisted config: %w", err)
 	}
+
 	return nil
 }

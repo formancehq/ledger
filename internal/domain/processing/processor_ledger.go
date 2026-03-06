@@ -7,29 +7,30 @@ import (
 )
 
 func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	_, ok := s.GetLedger(order.Name)
+	_, ok := s.GetLedger(order.GetName())
 	if ok {
-		return nil, &domain.ErrLedgerAlreadyExists{Name: order.Name}
+		return nil, &domain.ErrLedgerAlreadyExists{Name: order.GetName()}
 	}
 
 	// Validate chart at creation time if provided
-	if order.ChartOfAccounts != nil {
-		if err := validateChart(order.ChartOfAccounts); err != nil {
+	if order.GetChartOfAccounts() != nil {
+		err := validateChart(order.GetChartOfAccounts())
+		if err != nil {
 			return nil, &domain.ErrInvalidChart{Details: err.Error()}
 		}
 	}
 
 	info := &commonpb.LedgerInfo{
-		Name:            order.Name,
+		Name:            order.GetName(),
 		CreatedAt:       s.GetDate(),
-		MetadataSchema:  populateInitialSchema(order.InitialSchema),
-		Mode:            order.Mode,
-		MirrorSource:    order.MirrorSource,
-		ChartOfAccounts: order.ChartOfAccounts,
-		EnforcementMode: order.EnforcementMode,
+		MetadataSchema:  populateInitialSchema(order.GetInitialSchema()),
+		Mode:            order.GetMode(),
+		MirrorSource:    order.GetMirrorSource(),
+		ChartOfAccounts: order.GetChartOfAccounts(),
+		EnforcementMode: order.GetEnforcementMode(),
 	}
-	s.PutLedger(order.Name, info)
-	s.PutBoundaries(order.Name, &raftcmdpb.LedgerBoundaries{
+	s.PutLedger(order.GetName(), info)
+	s.PutBoundaries(order.GetName(), &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 1,
 		NextLogId:         1,
 	})
@@ -44,13 +45,14 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 }
 
 func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	l, ok := s.GetLedger(order.Name)
+	l, ok := s.GetLedger(order.GetName())
 	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: order.Name}
+		return nil, &domain.ErrLedgerNotFound{Name: order.GetName()}
 	}
+
 	l.DeletedAt = s.GetDate()
 
-	s.PutLedger(order.Name, l)
+	s.PutLedger(order.GetName(), l)
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeleteLedger{

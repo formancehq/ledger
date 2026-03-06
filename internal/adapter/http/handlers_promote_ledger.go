@@ -4,8 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // handlePromoteLedger handles POST /{ledgerName}/promote to promote a mirror ledger to normal mode.
@@ -13,6 +14,7 @@ func (s *Server) handlePromoteLedger(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
+
 		return
 	}
 
@@ -26,8 +28,9 @@ func (s *Server) handlePromoteLedger(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		handleError(w, r, err)
+
 		return
 	}
 
-	writeCreated(w, logs[0].Payload.GetPromoteLedger().GetInfo())
+	writeCreated(w, logs[0].GetPayload().GetPromoteLedger().GetInfo())
 }

@@ -23,6 +23,7 @@ func NewHTTPSource(baseURL, ledgerName string, httpClient *http.Client) *HTTPSou
 	if httpClient == nil {
 		httpClient = &http.Client{}
 	}
+
 	return &HTTPSource{
 		baseURL:    baseURL,
 		ledgerName: ledgerName,
@@ -53,6 +54,7 @@ func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		_ = resp.Body.Close()
+
 		return nil, fmt.Errorf("v2 API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -65,6 +67,7 @@ func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (
 func (s *HTTPSource) FetchLogs(ctx context.Context, afterID uint64, pageSize int) ([]V2Log, bool, error) {
 	q := url.Values{}
 	q.Set("pageSize", strconv.Itoa(pageSize))
+
 	if afterID > 0 {
 		q.Set("after", strconv.FormatUint(afterID, 10))
 	}
@@ -73,6 +76,7 @@ func (s *HTTPSource) FetchLogs(ctx context.Context, afterID uint64, pageSize int
 	if err != nil {
 		return nil, false, err
 	}
+
 	defer func() { _ = resp.Body.Close() }()
 
 	var page V2LogPage
@@ -93,6 +97,7 @@ func (s *HTTPSource) GetLatestLogID(ctx context.Context) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	defer func() { _ = resp.Body.Close() }()
 
 	var page V2LogPage
@@ -110,5 +115,6 @@ func (s *HTTPSource) GetLatestLogID(ctx context.Context) (uint64, error) {
 // Close closes idle connections in the underlying HTTP transport.
 func (s *HTTPSource) Close() error {
 	s.httpClient.CloseIdleConnections()
+
 	return nil
 }

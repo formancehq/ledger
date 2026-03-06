@@ -2,27 +2,31 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
 
+	ggrpc "google.golang.org/grpc"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
-	ggrpc "google.golang.org/grpc"
 )
 
 type ClusterServiceServerImpl struct {
 	clusterpb.UnimplementedClusterServiceServer
+
 	node             *node.Node
 	raftTransport    *node.DefaultTransport
 	servicePool      *transport.ConnectionPool
@@ -74,9 +78,10 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 
 	// Determine target node
 	var targetNodeID uint64
+
 	localNodeID := impl.node.GetNodeID()
 
-	if req.NodeId == 0 {
+	if req.GetNodeId() == 0 {
 		// No node ID specified, route to leader
 		if impl.node.IsLeader() {
 			// This node is the leader, handle locally
@@ -89,11 +94,12 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 			impl.logger.WithFields(map[string]any{
 				"localNodeID": localNodeID,
 			}).Infof("GetClusterState: no leader known, returning ErrNoLeader")
+
 			return nil, commonpb.ErrNoLeader
 		}
 	} else {
 		// Specific node ID requested
-		targetNodeID = uint64(req.NodeId)
+		targetNodeID = uint64(req.GetNodeId())
 
 		// If requesting this node, handle locally
 		if targetNodeID == localNodeID {
@@ -109,6 +115,7 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 			"targetNodeID": targetNodeID,
 			"knownPeers":   impl.servicePool.PeerIDs(),
 		}).Infof("GetClusterState: no connection to target node, returning ErrNoLeader")
+
 		return nil, commonpb.ErrNoLeader
 	}
 
@@ -118,6 +125,7 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 	}).Infof("GetClusterState: forwarding to target node")
 
 	client := clusterpb.NewClusterServiceClient(grpcConn)
+
 	return client.GetClusterState(ctx, req)
 }
 
@@ -140,13 +148,14 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 
 	// Populate peer addresses, sync progress, and index progress from each node
 	localNodeID := impl.node.GetNodeID()
-	for _, nodeInfo := range clusterState.Nodes {
-		nodeID := uint64(nodeInfo.Id)
+
+	for _, nodeInfo := range clusterState.GetNodes() {
+		nodeID := uint64(nodeInfo.GetId())
 		if nodeID == localNodeID {
 			nodeInfo.RaftAddress = impl.localRaftAddr
 			nodeInfo.ServiceAddress = impl.localServiceAddr
 			// Local sync progress is already in clusterState.SyncProgress
-			nodeInfo.SyncProgress = clusterState.SyncProgress
+			nodeInfo.SyncProgress = clusterState.GetSyncProgress()
 			nodeInfo.IndexProgress = localIndexProgress
 		} else {
 			nodeInfo.RaftAddress = impl.raftTransport.GetPeerAddress(nodeID)
@@ -154,8 +163,8 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 			// Query the peer for its sync progress and index progress
 			peerState := impl.fetchPeerState(ctx, nodeID)
 			if peerState != nil {
-				nodeInfo.SyncProgress = peerState.SyncProgress
-				nodeInfo.IndexProgress = peerState.IndexProgress
+				nodeInfo.SyncProgress = peerState.GetSyncProgress()
+				nodeInfo.IndexProgress = peerState.GetIndexProgress()
 			}
 		}
 	}
@@ -176,6 +185,7 @@ func (impl *ClusterServiceServerImpl) fetchPeerState(ctx context.Context, nodeID
 	defer cancel()
 
 	client := clusterpb.NewClusterServiceClient(conn)
+
 	peerState, err := client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
 		NodeId: uint32(nodeID),
 	})
@@ -191,11 +201,11 @@ func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, re
 		return nil, err
 	}
 
-	if req.Transferee == 0 {
-		return nil, fmt.Errorf("transferee node ID must be non-zero")
+	if req.GetTransferee() == 0 {
+		return nil, errors.New("transferee node ID must be non-zero")
 	}
 
-	transferee := uint64(req.Transferee)
+	transferee := uint64(req.GetTransferee())
 
 	// If this node is not the leader, forward to the leader
 	if !impl.node.IsLeader() {
@@ -210,15 +220,17 @@ func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, re
 		}
 
 		client := clusterpb.NewClusterServiceClient(grpcConn)
+
 		return client.TransferLeadership(ctx, req)
 	}
 
-	if err := impl.node.TransferLeader(ctx, transferee); err != nil {
+	err := impl.node.TransferLeader(ctx, transferee)
+	if err != nil {
 		return nil, fmt.Errorf("leadership transfer failed: %w", err)
 	}
 
 	return &clusterpb.TransferLeadershipResponse{
-		NewLeader: req.Transferee,
+		NewLeader: req.GetTransferee(),
 	}, nil
 }
 
@@ -275,6 +287,7 @@ func (impl *ClusterServiceServerImpl) Backup(req *clusterpb.BackupRequest, strea
 	}).Infof("Forwarding backup request to leader")
 
 	client := clusterpb.NewClusterServiceClient(grpcConn)
+
 	backupStream, err := client.Backup(stream.Context(), req)
 	if err != nil {
 		return fmt.Errorf("forwarding backup to leader: %w", err)
@@ -283,12 +296,14 @@ func (impl *ClusterServiceServerImpl) Backup(req *clusterpb.BackupRequest, strea
 	// Relay chunks from leader to caller
 	for {
 		resp, err := backupStream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("receiving backup chunk from leader: %w", err)
 		}
+
 		if err := stream.Send(resp); err != nil {
 			return fmt.Errorf("sending backup chunk to client: %w", err)
 		}
@@ -308,8 +323,10 @@ func (impl *ClusterServiceServerImpl) backupLocal(stream ggrpc.ServerStreamingSe
 	if err != nil {
 		return fmt.Errorf("creating backup checkpoint: %w", err)
 	}
+
 	defer func() {
-		if err := impl.store.RemoveTemporaryCheckpoint("checkpoint"); err != nil {
+		err := impl.store.RemoveTemporaryCheckpoint("checkpoint")
+		if err != nil {
 			impl.logger.WithFields(map[string]any{
 				"error": err,
 			}).Errorf("Failed to remove backup checkpoint")
@@ -332,6 +349,7 @@ func (impl *ClusterServiceServerImpl) backupLocal(stream ggrpc.ServerStreamingSe
 
 	if err := attributes.CompactAllForBackup(compactStore); err != nil {
 		_ = compactStore.Close()
+
 		return fmt.Errorf("compacting backup attributes: %w", err)
 	}
 
@@ -358,20 +376,22 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 		return nil, err
 	}
 
-	if req.NodeId == 0 {
-		return nil, fmt.Errorf("node_id must be non-zero")
+	if req.GetNodeId() == 0 {
+		return nil, errors.New("node_id must be non-zero")
 	}
-	if req.RaftAddress == "" {
-		return nil, fmt.Errorf("raft_address is required")
+
+	if req.GetRaftAddress() == "" {
+		return nil, errors.New("raft_address is required")
 	}
-	if req.ServiceAddress == "" {
-		return nil, fmt.Errorf("service_address is required")
+
+	if req.GetServiceAddress() == "" {
+		return nil, errors.New("service_address is required")
 	}
 
 	impl.logger.WithFields(map[string]any{
-		"requestedNodeID":      req.NodeId,
-		"requestedRaftAddress": req.RaftAddress,
-		"requestedServiceAddr": req.ServiceAddress,
+		"requestedNodeID":      req.GetNodeId(),
+		"requestedRaftAddress": req.GetRaftAddress(),
+		"requestedServiceAddr": req.GetServiceAddress(),
 		"isLeader":             impl.node.IsLeader(),
 		"localNodeID":          impl.node.GetNodeID(),
 	}).Infof("AddLearner: received request")
@@ -381,6 +401,7 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 		leaderID := impl.node.GetLeader()
 		if leaderID == 0 {
 			impl.logger.Infof("AddLearner: not leader and no leader known, returning ErrNoLeader")
+
 			return nil, commonpb.ErrNoLeader
 		}
 
@@ -389,6 +410,7 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 			impl.logger.WithFields(map[string]any{
 				"leaderID": leaderID,
 			}).Infof("AddLearner: no connection to leader, returning ErrNoLeader")
+
 			return nil, commonpb.ErrNoLeader
 		}
 
@@ -397,28 +419,32 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 		}).Infof("AddLearner: forwarding to leader")
 
 		client := clusterpb.NewClusterServiceClient(grpcConn)
+
 		return client.AddLearner(ctx, req)
 	}
 
 	// On the leader: add peer to transport and service pool so we can reach it
 	impl.logger.WithFields(map[string]any{
-		"learnerNodeID":   req.NodeId,
-		"raftAddress":     req.RaftAddress,
-		"serviceAddress":  req.ServiceAddress,
+		"learnerNodeID":  req.GetNodeId(),
+		"raftAddress":    req.GetRaftAddress(),
+		"serviceAddress": req.GetServiceAddress(),
 	}).Infof("AddLearner: processing on leader — adding peer to transport and proposing ConfChange")
 
-	impl.raftTransport.AddPeer(req.NodeId, req.RaftAddress)
-	if err := impl.servicePool.AddPeer(req.NodeId, req.ServiceAddress); err != nil {
+	impl.raftTransport.AddPeer(req.GetNodeId(), req.GetRaftAddress())
+
+	err := impl.servicePool.AddPeer(req.GetNodeId(), req.GetServiceAddress())
+	if err != nil {
 		impl.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to add learner to service pool")
 	}
 
 	// Propose the ConfChange
-	if err := impl.node.AddLearner(ctx, req.NodeId, req.RaftAddress, req.ServiceAddress); err != nil {
+	err = impl.node.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress())
+	if err != nil {
 		return nil, fmt.Errorf("adding learner: %w", err)
 	}
 
 	impl.logger.WithFields(map[string]any{
-		"learnerNodeID": req.NodeId,
+		"learnerNodeID": req.GetNodeId(),
 	}).Infof("AddLearner: successfully proposed ConfChange for learner")
 
 	return &clusterpb.AddLearnerResponse{}, nil
@@ -429,8 +455,8 @@ func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *c
 		return nil, err
 	}
 
-	if req.NodeId == 0 {
-		return nil, fmt.Errorf("node_id must be non-zero")
+	if req.GetNodeId() == 0 {
+		return nil, errors.New("node_id must be non-zero")
 	}
 
 	// Forward to leader if not leader
@@ -446,10 +472,12 @@ func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *c
 		}
 
 		client := clusterpb.NewClusterServiceClient(grpcConn)
+
 		return client.PromoteLearner(ctx, req)
 	}
 
-	if err := impl.node.PromoteLearner(ctx, req.NodeId); err != nil {
+	err := impl.node.PromoteLearner(ctx, req.GetNodeId())
+	if err != nil {
 		return nil, fmt.Errorf("promoting learner: %w", err)
 	}
 
@@ -461,18 +489,19 @@ func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clust
 		return nil, err
 	}
 
-	if req.NodeId == 0 {
-		return nil, fmt.Errorf("node_id must be non-zero")
+	if req.GetNodeId() == 0 {
+		return nil, errors.New("node_id must be non-zero")
 	}
 
 	// Force-remove bypasses consensus and must run on the leader directly.
 	// Do NOT forward: the operator already exec's into the leader pod.
-	if req.Force {
+	if req.GetForce() {
 		if !impl.node.IsLeader() {
-			return nil, fmt.Errorf("force-remove must be executed on the leader node")
+			return nil, errors.New("force-remove must be executed on the leader node")
 		}
 
-		if err := impl.node.ForceRemoveNode(ctx, req.NodeId); err != nil {
+		err := impl.node.ForceRemoveNode(ctx, req.GetNodeId())
+		if err != nil {
 			return nil, fmt.Errorf("force-removing node: %w", err)
 		}
 
@@ -492,10 +521,12 @@ func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clust
 		}
 
 		client := clusterpb.NewClusterServiceClient(grpcConn)
+
 		return client.RemoveNode(ctx, req)
 	}
 
-	if err := impl.node.RemoveNode(ctx, req.NodeId); err != nil {
+	err := impl.node.RemoveNode(ctx, req.GetNodeId())
+	if err != nil {
 		return nil, fmt.Errorf("removing node: %w", err)
 	}
 
@@ -508,7 +539,9 @@ func (impl *ClusterServiceServerImpl) CompactStore(ctx context.Context, _ *clust
 	}
 
 	start := time.Now()
-	if err := impl.store.CompactAll(); err != nil {
+
+	err := impl.store.CompactAll()
+	if err != nil {
 		return nil, fmt.Errorf("compaction failed: %w", err)
 	}
 
@@ -523,6 +556,7 @@ func (impl *ClusterServiceServerImpl) CompactReadIndex(ctx context.Context, _ *c
 	}
 
 	start := time.Now()
+
 	sizeBefore, sizeAfter, err := impl.readStore.Compact(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read index compaction failed: %w", err)

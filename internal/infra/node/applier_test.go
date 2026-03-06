@@ -7,7 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.opentelemetry.io/otel/metric/noop"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
@@ -17,9 +22,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
-	"github.com/stretchr/testify/require"
-	"go.etcd.io/etcd/raft/v3/raftpb"
-	"go.opentelemetry.io/otel/metric/noop"
 )
 
 // testApplierSetup holds all the infrastructure needed to test the Applier in isolation.
@@ -151,7 +153,7 @@ func makeCreateLedgerEntry(t *testing.T, index uint64, name string) (raftpb.Entr
 		Index: index,
 		Type:  raftpb.EntryNormal,
 		Data:  data,
-	}, cmd.Id
+	}, cmd.GetId()
 }
 
 func TestApplierRunAppliesEntries(t *testing.T) {
@@ -162,6 +164,7 @@ func TestApplierRunAppliesEntries(t *testing.T) {
 
 	// Start the Run goroutine.
 	runDone := make(chan error, 1)
+
 	go func() {
 		runDone <- setup.applier.Run(ctx, setup.stop)
 	}()
@@ -183,6 +186,7 @@ func TestApplierRunAppliesEntries(t *testing.T) {
 
 	// Stop and verify Run returns nil.
 	close(setup.stop)
+
 	select {
 	case err := <-runDone:
 		require.NoError(t, err)
@@ -202,6 +206,7 @@ func TestApplierRunSpoolsWhenNotNormal(t *testing.T) {
 
 	// Start the Run goroutine.
 	runDone := make(chan error, 1)
+
 	go func() {
 		runDone <- setup.applier.Run(ctx, setup.stop)
 	}()
@@ -224,10 +229,11 @@ func TestApplierRunSpoolsWhenNotNormal(t *testing.T) {
 	// Verify spool has data (End position advanced).
 	pos, err := setup.spool.End()
 	require.NoError(t, err)
-	require.True(t, pos.Offset > 0, "spool should have data (offset=%d)", pos.Offset)
+	require.Positive(t, pos.Offset, "spool should have data (offset=%d)", pos.Offset)
 
 	// Stop.
 	close(setup.stop)
+
 	select {
 	case err := <-runDone:
 		require.NoError(t, err)
@@ -245,6 +251,7 @@ func TestApplierDrainAbortsOnStop(t *testing.T) {
 	close(setup.stop)
 
 	drainDone := make(chan struct{})
+
 	go func() {
 		setup.applier.Drain(setup.stop)
 		close(drainDone)
@@ -272,6 +279,7 @@ func TestApplierSubmitAbortsOnStop(t *testing.T) {
 
 	// Submit should return immediately via stop.
 	submitDone := make(chan struct{})
+
 	go func() {
 		entry2, _ := makeCreateLedgerEntry(t, 2, "blocked")
 		setup.applier.Submit([]raftpb.Entry{entry2}, nil, setup.stop)
@@ -293,12 +301,14 @@ func TestApplierRunExitsOnStop(t *testing.T) {
 	setup := newTestApplierSetup(t, 0)
 
 	runDone := make(chan error, 1)
+
 	go func() {
 		runDone <- setup.applier.Run(ctx, setup.stop)
 	}()
 
 	// Close stop and verify Run returns nil.
 	close(setup.stop)
+
 	select {
 	case err := <-runDone:
 		require.NoError(t, err)
@@ -320,6 +330,7 @@ func TestApplierFutureResolution(t *testing.T) {
 
 	// Start the Run goroutine.
 	runDone := make(chan error, 1)
+
 	go func() {
 		runDone <- setup.applier.Run(ctx, setup.stop)
 	}()
@@ -330,12 +341,15 @@ func TestApplierFutureResolution(t *testing.T) {
 	// Wait for the future to resolve.
 	resultCh := make(chan state.ApplyResult, 1)
 	errCh := make(chan error, 1)
+
 	go func() {
 		result, err := future.Wait()
 		if err != nil {
 			errCh <- err
+
 			return
 		}
+
 		resultCh <- result
 	}()
 
@@ -350,6 +364,7 @@ func TestApplierFutureResolution(t *testing.T) {
 
 	// Stop.
 	close(setup.stop)
+
 	select {
 	case err := <-runDone:
 		require.NoError(t, err)
@@ -367,6 +382,7 @@ func TestApplierSnapshotGatingCycle(t *testing.T) {
 
 	// Start the Run goroutine.
 	runDone := make(chan error, 1)
+
 	go func() {
 		runDone <- setup.applier.Run(ctx, setup.stop)
 	}()
@@ -386,6 +402,7 @@ func TestApplierSnapshotGatingCycle(t *testing.T) {
 				return false
 			}
 		}
+
 		return true
 	}, 10*time.Second, 100*time.Millisecond, "all 8 ledgers should exist after snapshot gating cycle")
 
@@ -396,6 +413,7 @@ func TestApplierSnapshotGatingCycle(t *testing.T) {
 
 	// Stop.
 	close(setup.stop)
+
 	select {
 	case err := <-runDone:
 		require.NoError(t, err)

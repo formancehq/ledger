@@ -50,12 +50,15 @@ func (it *PrefixIterator) Next() bool {
 		entity := it.extractEntity(k)
 		if entity != nil {
 			it.current = entity
+
 			return true
 		}
+
 		k, _ = it.cursor.Next()
 	}
 
 	it.exhausted = true
+
 	return false
 }
 
@@ -81,12 +84,15 @@ func (it *PrefixIterator) SeekGE(target []byte) bool {
 		entity := it.extractEntity(k)
 		if entity != nil && compareEntities(entity, target) >= 0 {
 			it.current = entity
+
 			return true
 		}
+
 		k, _ = it.cursor.Next()
 	}
 
 	it.exhausted = true
+
 	return false
 }
 
@@ -96,13 +102,16 @@ func (it *PrefixIterator) extractEntity(key []byte) []byte {
 	if len(key) <= it.entityOffset {
 		return nil
 	}
+
 	suffix := key[it.entityOffset:]
 	if it.entityLen > 0 {
 		if len(suffix) < it.entityLen {
 			return nil
 		}
+
 		return suffix[:it.entityLen]
 	}
+
 	return suffix
 }
 
@@ -152,15 +161,19 @@ func (it *RangeIterator) Next() bool {
 		if it.upper != nil && compareEntities(k, it.upper) >= 0 {
 			break
 		}
+
 		entity := it.extractEntity(k)
 		if entity != nil {
 			it.current = entity
+
 			return true
 		}
+
 		k, _ = it.cursor.Next()
 	}
 
 	it.exhausted = true
+
 	return false
 }
 
@@ -184,15 +197,19 @@ func (it *RangeIterator) SeekGE(target []byte) bool {
 		if it.upper != nil && compareEntities(k, it.upper) >= 0 {
 			break
 		}
+
 		entity := it.extractEntity(k)
 		if entity != nil && compareEntities(entity, target) >= 0 {
 			it.current = entity
+
 			return true
 		}
+
 		k, _ = it.cursor.Next()
 	}
 
 	it.exhausted = true
+
 	return false
 }
 
@@ -202,12 +219,15 @@ func (it *RangeIterator) extractEntity(key []byte) []byte {
 	if len(key) <= it.entityOffset {
 		return nil
 	}
+
 	suffix := key[it.entityOffset:]
 	if it.entityLen > 0 {
 		if len(suffix) < it.entityLen {
 			return nil
 		}
+
 		return suffix[:it.entityLen]
 	}
+
 	return suffix
 }

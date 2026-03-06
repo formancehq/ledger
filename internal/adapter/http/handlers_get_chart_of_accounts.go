@@ -4,8 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 // chartOfAccountsJSON is the camelCase JSON DTO for chart of accounts response.
@@ -19,15 +20,15 @@ type chartJSON struct {
 }
 
 type chartSegmentJSON struct {
-	Account  bool                        `json:"account,omitempty"`
+	Account  bool                         `json:"account,omitempty"`
 	Children map[string]*chartSegmentJSON `json:"children,omitempty"`
 	Variable *chartVariableJSON           `json:"variable,omitempty"`
 }
 
 type chartVariableJSON struct {
-	Name     string                      `json:"name"`
-	Pattern  string                      `json:"pattern,omitempty"`
-	Account  bool                        `json:"account,omitempty"`
+	Name     string                       `json:"name"`
+	Pattern  string                       `json:"pattern,omitempty"`
+	Account  bool                         `json:"account,omitempty"`
 	Children map[string]*chartSegmentJSON `json:"children,omitempty"`
 	Variable *chartVariableJSON           `json:"variable,omitempty"`
 }
@@ -36,10 +37,12 @@ func toChartJSON(chart *commonpb.ChartOfAccounts) *chartJSON {
 	if chart == nil {
 		return nil
 	}
-	roots := make(map[string]*chartSegmentJSON, len(chart.Roots))
-	for name, segment := range chart.Roots {
+
+	roots := make(map[string]*chartSegmentJSON, len(chart.GetRoots()))
+	for name, segment := range chart.GetRoots() {
 		roots[name] = toSegmentJSON(segment)
 	}
+
 	return &chartJSON{Roots: roots}
 }
 
@@ -47,18 +50,21 @@ func toSegmentJSON(segment *commonpb.ChartSegment) *chartSegmentJSON {
 	if segment == nil {
 		return nil
 	}
+
 	result := &chartSegmentJSON{
-		Account: segment.Account,
+		Account: segment.GetAccount(),
 	}
-	if len(segment.Children) > 0 {
-		result.Children = make(map[string]*chartSegmentJSON, len(segment.Children))
-		for name, child := range segment.Children {
+	if len(segment.GetChildren()) > 0 {
+		result.Children = make(map[string]*chartSegmentJSON, len(segment.GetChildren()))
+		for name, child := range segment.GetChildren() {
 			result.Children[name] = toSegmentJSON(child)
 		}
 	}
-	if segment.Variable != nil {
-		result.Variable = toVariableJSON(segment.Variable)
+
+	if segment.GetVariable() != nil {
+		result.Variable = toVariableJSON(segment.GetVariable())
 	}
+
 	return result
 }
 
@@ -66,20 +72,23 @@ func toVariableJSON(v *commonpb.ChartVariable) *chartVariableJSON {
 	if v == nil {
 		return nil
 	}
+
 	result := &chartVariableJSON{
-		Name:    v.Name,
-		Pattern: v.Pattern,
-		Account: v.Account,
+		Name:    v.GetName(),
+		Pattern: v.GetPattern(),
+		Account: v.GetAccount(),
 	}
-	if len(v.Children) > 0 {
-		result.Children = make(map[string]*chartSegmentJSON, len(v.Children))
-		for name, child := range v.Children {
+	if len(v.GetChildren()) > 0 {
+		result.Children = make(map[string]*chartSegmentJSON, len(v.GetChildren()))
+		for name, child := range v.GetChildren() {
 			result.Children[name] = toSegmentJSON(child)
 		}
 	}
-	if v.Variable != nil {
-		result.Variable = toVariableJSON(v.Variable)
+
+	if v.GetVariable() != nil {
+		result.Variable = toVariableJSON(v.GetVariable())
 	}
+
 	return result
 }
 
@@ -103,22 +112,24 @@ func parseEnforcementMode(s string) (commonpb.ChartEnforcementMode, error) {
 	}
 }
 
-// handleGetChartOfAccounts handles GET /{ledgerName}/chart-of-accounts
+// handleGetChartOfAccounts handles GET /{ledgerName}/chart-of-accounts.
 func (s *Server) handleGetChartOfAccounts(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
+
 		return
 	}
 
 	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
 	if err != nil {
 		handleError(w, r, err)
+
 		return
 	}
 
 	writeOK(w, &chartOfAccountsJSON{
-		ChartOfAccounts: toChartJSON(ledgerInfo.ChartOfAccounts),
-		EnforcementMode: enforcementModeToString(ledgerInfo.EnforcementMode),
+		ChartOfAccounts: toChartJSON(ledgerInfo.GetChartOfAccounts()),
+		EnforcementMode: enforcementModeToString(ledgerInfo.GetEnforcementMode()),
 	})
 }

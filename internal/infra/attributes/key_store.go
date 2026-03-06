@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/kv"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/zeebo/blake3"
 	"github.com/zeebo/xxh3"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/kv"
 )
 
 type ErrCollisionDetected struct {
@@ -48,6 +49,7 @@ var DefaultSeeds = DeriveSeeds([32]byte{
 func DeriveSeeds(masterKey [32]byte) Seeds {
 	idHash := blake3.Sum256(append([]byte("attrid:v1:id128:"), masterKey[:]...))
 	tagHash := blake3.Sum256(append([]byte("attrid:v1:tag64:"), masterKey[:]...))
+
 	return Seeds{
 		IDSeed:  binary.LittleEndian.Uint64(idHash[:8]),
 		TagSeed: binary.LittleEndian.Uint64(tagHash[:8]),
@@ -70,6 +72,7 @@ func NewKeyHasher(seeds Seeds) *KeyHasher {
 func (kh *KeyHasher) MakeKey(canonical []byte) (U128, uint64) {
 	u := xxh3.Hash128Seed(canonical, kh.seeds.IDSeed)
 	tag := xxh3.HashSeed(canonical, kh.seeds.TagSeed)
+
 	return NewU128(u.Hi, u.Lo), tag
 }
 
@@ -102,6 +105,7 @@ func (s *KeyStore[K, T]) Put(canonical []byte, value T, baseIndex uint64) (oldVa
 		// same key (as far as we can tell) -> overwrite data
 		oldBI := existing.BaseIndex
 		s.M.Put(id, Entry[T]{Tag: tag, Data: value, BaseIndex: baseIndex})
+
 		return kv.Some(existing.Data), oldBI, IDWithTag{
 			ID:  id,
 			Tag: tag,
@@ -109,6 +113,7 @@ func (s *KeyStore[K, T]) Put(canonical []byte, value T, baseIndex uint64) (oldVa
 	}
 
 	s.M.Put(id, Entry[T]{Tag: tag, Data: value, BaseIndex: baseIndex})
+
 	return kv.None[T](), 0, IDWithTag{
 		ID:  id,
 		Tag: tag,
@@ -123,12 +128,16 @@ func (s *KeyStore[K, T]) Get(canonical []byte) (value T, id U128, err error) {
 	entry, ok := s.M.Get(id)
 	if !ok {
 		var zero T
+
 		return zero, id, domain.ErrNotFound
 	}
+
 	if entry.Tag != tag {
 		var zero T
+
 		return zero, id, newErrCollisionDetected(canonical, entry.Tag, tag)
 	}
+
 	return entry.Data, id, nil
 }
 
@@ -141,9 +150,11 @@ func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, err error) {
 	if !ok {
 		return id, domain.ErrNotFound
 	}
+
 	if entry.Tag != tag {
 		return id, newErrCollisionDetected(canonical, entry.Tag, tag)
 	}
+
 	s.M.Del(id)
 
 	return id, nil
@@ -157,6 +168,7 @@ type Entry[T any] struct {
 
 type DerivedKeyStore[K Key, T any] struct {
 	*KeyStore[K, T]
+
 	values    map[K]T
 	deletions map[K]struct{}
 	cloneFn   func(T) T
@@ -171,6 +183,7 @@ func (s *DerivedKeyStore[K, T]) Get(canonical K) (value T, err error) {
 	// Check if deleted in this batch
 	if _, ok := s.deletions[canonical]; ok {
 		var zero T
+
 		return zero, nil
 	}
 
@@ -202,10 +215,12 @@ func (s *DerivedKeyStore[K, T]) Merge(index uint64) ([]Update[K, T], []Deletion[
 	touched := make([]Update[K, T], 0, len(s.values))
 	for k, v := range s.values {
 		canonical := k.Bytes()
+
 		overwrite, oldBaseIndex, idWithTag, err := s.KeyStore.Put(canonical, v, index)
 		if err != nil {
 			return nil, nil, err
 		}
+
 		touched = append(touched, Update[K, T]{
 			Key:          k,
 			ID:           idWithTag.ID,
@@ -220,10 +235,12 @@ func (s *DerivedKeyStore[K, T]) Merge(index uint64) ([]Update[K, T], []Deletion[
 	deletions := make([]Deletion[K], 0, len(s.deletions))
 	for k := range s.deletions {
 		canonical := k.Bytes()
+
 		_, err := s.KeyStore.Delete(canonical)
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return nil, nil, err
 		}
+
 		deletions = append(deletions, Deletion[K]{
 			Key:          k,
 			CanonicalKey: canonical,

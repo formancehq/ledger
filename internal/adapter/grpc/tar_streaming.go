@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -30,24 +31,31 @@ type TarStreamChunk struct {
 // the archive ends with two 512-byte zero blocks.
 func estimateTarSize(dirPath string) (uint64, error) {
 	var total uint64
+
 	err := filepath.Walk(dirPath, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+
 		total += 512 // tar header
+
 		if !info.IsDir() {
 			size := uint64(info.Size())
+
 			total += size
 			if rem := size % 512; rem != 0 {
 				total += 512 - rem // padding to 512-byte boundary
 			}
 		}
+
 		return nil
 	})
 	if err != nil {
 		return 0, err
 	}
+
 	total += 1024 // end-of-archive marker (two zero blocks)
+
 	return total, nil
 }
 
@@ -76,6 +84,7 @@ func StreamDirAsTar(dirPath string, offset uint64, sendChunk func(TarStreamChunk
 		}()
 
 		tw := tar.NewWriter(io.MultiWriter(pw, hash))
+
 		defer func() {
 			_ = tw.Close()
 		}()
@@ -96,6 +105,7 @@ func StreamDirAsTar(dirPath string, offset uint64, sendChunk func(TarStreamChunk
 			if err != nil {
 				return err
 			}
+
 			header.Name = relPath
 
 			if err := tw.WriteHeader(header); err != nil {
@@ -108,6 +118,7 @@ func StreamDirAsTar(dirPath string, offset uint64, sendChunk func(TarStreamChunk
 				if err != nil {
 					return err
 				}
+
 				defer func() {
 					_ = f.Close()
 				}()
@@ -139,8 +150,10 @@ func StreamDirAsTar(dirPath string, offset uint64, sendChunk func(TarStreamChunk
 				skip := offset - currentOffset
 				if skip >= uint64(n) {
 					currentOffset += uint64(n)
+
 					continue
 				}
+
 				buf = buf[skip:]
 				n -= int(skip)
 				currentOffset = offset
@@ -154,9 +167,11 @@ func StreamDirAsTar(dirPath string, offset uint64, sendChunk func(TarStreamChunk
 			if !headerSent {
 				chunk.EstimatedTotalSize = estimatedSize
 			}
+
 			headerSent = true
 
-			if err := sendChunk(chunk); err != nil {
+			err := sendChunk(chunk)
+			if err != nil {
 				return err
 			}
 
@@ -164,9 +179,10 @@ func StreamDirAsTar(dirPath string, offset uint64, sendChunk func(TarStreamChunk
 			totalSize += uint64(n)
 		}
 
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			return err
 		}

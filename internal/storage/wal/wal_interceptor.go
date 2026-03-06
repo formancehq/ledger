@@ -50,6 +50,7 @@ func (w *Interceptor) InitialState() (raftpb.HardState, raftpb.ConfState, error)
 	if interceptor != nil {
 		return interceptor(w.delegate)
 	}
+
 	return w.delegate.InitialState()
 }
 
@@ -62,6 +63,7 @@ func (w *Interceptor) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 	if interceptor != nil {
 		return interceptor(w.delegate, lo, hi, maxSize)
 	}
+
 	return w.delegate.Entries(lo, hi, maxSize)
 }
 
@@ -74,6 +76,7 @@ func (w *Interceptor) Term(i uint64) (uint64, error) {
 	if interceptor != nil {
 		return interceptor(w.delegate, i)
 	}
+
 	return w.delegate.Term(i)
 }
 
@@ -86,6 +89,7 @@ func (w *Interceptor) LastIndex() (uint64, error) {
 	if interceptor != nil {
 		return interceptor(w.delegate)
 	}
+
 	return w.delegate.LastIndex()
 }
 
@@ -98,6 +102,7 @@ func (w *Interceptor) FirstIndex() (uint64, error) {
 	if interceptor != nil {
 		return interceptor(w.delegate)
 	}
+
 	return w.delegate.FirstIndex()
 }
 
@@ -110,6 +115,7 @@ func (w *Interceptor) Snapshot() (raftpb.Snapshot, error) {
 	if interceptor != nil {
 		return interceptor(w.delegate)
 	}
+
 	return w.delegate.Snapshot()
 }
 
@@ -122,6 +128,7 @@ func (w *Interceptor) CreateSnapshot(i uint64, r *raftpb.ConfState, data []byte)
 	if interceptor != nil {
 		return interceptor(w.delegate, i, r, data)
 	}
+
 	return w.delegate.CreateSnapshot(i, r, data)
 }
 
@@ -134,6 +141,7 @@ func (w *Interceptor) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 	if interceptor != nil {
 		return interceptor(w.delegate, cs)
 	}
+
 	return w.delegate.UpdateSnapshotConfState(cs)
 }
 
@@ -146,6 +154,7 @@ func (w *Interceptor) Compact(u uint64) error {
 	if interceptor != nil {
 		return interceptor(w.delegate, u)
 	}
+
 	return w.delegate.Compact(u)
 }
 
@@ -158,6 +167,7 @@ func (w *Interceptor) Append(state raftpb.HardState, entries []raftpb.Entry) err
 	if interceptor != nil {
 		return interceptor(w.delegate, state, entries)
 	}
+
 	return w.delegate.Append(state, entries)
 }
 
@@ -170,6 +180,7 @@ func (w *Interceptor) ApplySnapshot(snapshot raftpb.Snapshot) error {
 	if interceptor != nil {
 		return interceptor(w.delegate, snapshot)
 	}
+
 	return w.delegate.ApplySnapshot(snapshot)
 }
 
@@ -182,6 +193,7 @@ func (w *Interceptor) Close() error {
 	if interceptor != nil {
 		return interceptor(w.delegate)
 	}
+
 	return w.delegate.Close()
 }
 

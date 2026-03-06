@@ -24,8 +24,10 @@ func ReadSinkCursor(reader dal.PebbleReader, sinkName string) (uint64, error) {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
 		}
+
 		return 0, fmt.Errorf("reading sink cursor: %w", err)
 	}
+
 	defer func() {
 		_ = closer.Close()
 	}()
@@ -49,9 +51,11 @@ func ReadAllSinkStatuses(reader dal.PebbleReader) ([]*commonpb.SinkStatus, error
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for sink statuses: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	var statuses []*commonpb.SinkStatus
+
 	for iter.First(); iter.Valid(); iter.Next() {
 		value, err := iter.ValueAndErr()
 		if err != nil {
@@ -62,6 +66,7 @@ func ReadAllSinkStatuses(reader dal.PebbleReader) ([]*commonpb.SinkStatus, error
 		if err := proto.Unmarshal(value, status); err != nil {
 			return nil, fmt.Errorf("unmarshaling sink status: %w", err)
 		}
+
 		statuses = append(statuses, status)
 	}
 
@@ -80,14 +85,17 @@ func ReadSinkConfig(reader dal.PebbleReader, name string) (*commonpb.SinkConfig,
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("loading sink config %q: %w", name, err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	cfg := &commonpb.SinkConfig{}
 	if err := proto.Unmarshal(value, cfg); err != nil {
 		return nil, fmt.Errorf("unmarshaling sink config %q: %w", name, err)
 	}
+
 	return cfg, nil
 }
 
@@ -103,9 +111,11 @@ func ReadAllSinkConfigs(reader dal.PebbleReader) ([]*commonpb.SinkConfig, error)
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for sink configs: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	var configs []*commonpb.SinkConfig
+
 	for iter.First(); iter.Valid(); iter.Next() {
 		value, err := iter.ValueAndErr()
 		if err != nil {
@@ -116,6 +126,7 @@ func ReadAllSinkConfigs(reader dal.PebbleReader) ([]*commonpb.SinkConfig, error)
 		if err := proto.Unmarshal(value, cfg); err != nil {
 			return nil, fmt.Errorf("unmarshaling sink config: %w", err)
 		}
+
 		configs = append(configs, cfg)
 	}
 

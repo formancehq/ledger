@@ -17,12 +17,14 @@ var traceID = generateTraceID()
 func generateTraceID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
+
 	return hex.EncodeToString(b)
 }
 
 func generateSpanID() string {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b)
+
 	return hex.EncodeToString(b)
 }
 
@@ -41,6 +43,7 @@ func TracingUnaryInterceptor() grpc.UnaryClientInterceptor {
 		opts ...grpc.CallOption,
 	) error {
 		ctx = metadata.AppendToOutgoingContext(ctx, "traceparent", traceparent())
+
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
 }
@@ -56,6 +59,7 @@ func TracingStreamInterceptor() grpc.StreamClientInterceptor {
 		opts ...grpc.CallOption,
 	) (grpc.ClientStream, error) {
 		ctx = metadata.AppendToOutgoingContext(ctx, "traceparent", traceparent())
+
 		return streamer(ctx, desc, cc, method, opts...)
 	}
 }

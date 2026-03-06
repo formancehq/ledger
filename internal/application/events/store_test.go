@@ -3,17 +3,20 @@ package events_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	libtime "github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/require"
 )
 
 // setSinkCursorViaBatch writes a per-sink events cursor via a batch (as the FSM does).
 func setSinkCursorViaBatch(t *testing.T, s *dal.Store, sinkName string, sequence uint64) {
 	t.Helper()
+
 	batch := s.NewBatch()
 	require.NoError(t, state.SetSinkCursor(batch, sinkName, sequence))
 	require.NoError(t, batch.Commit())
@@ -115,9 +118,9 @@ func TestSinkStatus(t *testing.T) {
 		statuses, err := query.ReadAllSinkStatuses(s)
 		require.NoError(t, err)
 		require.Len(t, statuses, 1)
-		require.Equal(t, "nats-1", statuses[0].SinkName)
-		require.Equal(t, uint64(42), statuses[0].Cursor)
-		require.Equal(t, "connection refused", statuses[0].Error.Message)
+		require.Equal(t, "nats-1", statuses[0].GetSinkName())
+		require.Equal(t, uint64(42), statuses[0].GetCursor())
+		require.Equal(t, "connection refused", statuses[0].GetError().GetMessage())
 	})
 
 	t.Run("ClearStatus", func(t *testing.T) {
@@ -197,14 +200,14 @@ func TestSinkConfig(t *testing.T) {
 		cfg, err := query.ReadSinkConfig(s, "primary-nats")
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
-		require.Equal(t, "primary-nats", cfg.Name)
-		require.Equal(t, "json", cfg.Format)
-		require.Equal(t, int32(32), cfg.BatchSize)
-		require.Equal(t, int64(50), cfg.BatchDelayMs)
+		require.Equal(t, "primary-nats", cfg.GetName())
+		require.Equal(t, "json", cfg.GetFormat())
+		require.Equal(t, int32(32), cfg.GetBatchSize())
+		require.Equal(t, int64(50), cfg.GetBatchDelayMs())
 		natsCfg := cfg.GetNats()
 		require.NotNil(t, natsCfg)
-		require.Equal(t, "nats://localhost:4222", natsCfg.Url)
-		require.Equal(t, "ledger.events", natsCfg.Topic)
+		require.Equal(t, "nats://localhost:4222", natsCfg.GetUrl())
+		require.Equal(t, "ledger.events", natsCfg.GetTopic())
 	})
 
 	t.Run("LoadAllSinkConfigs", func(t *testing.T) {
@@ -263,7 +266,7 @@ func TestSinkConfig(t *testing.T) {
 		configs, err := query.ReadAllSinkConfigs(s)
 		require.NoError(t, err)
 		require.Len(t, configs, 1)
-		require.Equal(t, "sink-b", configs[0].Name)
+		require.Equal(t, "sink-b", configs[0].GetName())
 
 		// Verify the deleted one returns nil
 		cfg, err := query.ReadSinkConfig(s, "sink-a")
@@ -300,8 +303,8 @@ func TestSinkConfig(t *testing.T) {
 		cfg, err := query.ReadSinkConfig(s, "my-sink")
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
-		require.Equal(t, "protobuf", cfg.Format)
-		require.Equal(t, "nats://new:4222", cfg.GetNats().Url)
+		require.Equal(t, "protobuf", cfg.GetFormat())
+		require.Equal(t, "nats://new:4222", cfg.GetNats().GetUrl())
 
 		// Should still be only one config
 		configs, err := query.ReadAllSinkConfigs(s)

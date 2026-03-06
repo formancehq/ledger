@@ -3,9 +3,10 @@ package profile
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 )
 
 // NewUseCommand returns the "profile use" command.
@@ -29,6 +30,7 @@ func runUse(_ *cobra.Command, args []string) error {
 	if cfg.Profiles == nil {
 		return fmt.Errorf("profile %q not found (no profiles configured)", name)
 	}
+
 	if _, ok := cfg.Profiles[name]; !ok {
 		return fmt.Errorf("profile %q not found", name)
 	}
@@ -40,5 +42,6 @@ func runUse(_ *cobra.Command, args []string) error {
 	}
 
 	pterm.Success.Printfln("Active profile: %s (server: %s)", pterm.Bold.Sprint(name), cfg.Profiles[name].Server)
+
 	return nil
 }

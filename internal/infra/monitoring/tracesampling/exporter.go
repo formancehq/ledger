@@ -35,8 +35,8 @@ type ErrorAwareSamplingExporter struct {
 	pendingWindow time.Duration
 
 	mu          sync.Mutex
-	errorTraces map[[16]byte]time.Time      // trace ID → when error was first seen
-	pending     map[[16]byte]*pendingTrace   // non-error, non-sampled spans awaiting decision
+	errorTraces map[[16]byte]time.Time     // trace ID → when error was first seen
+	pending     map[[16]byte]*pendingTrace // non-error, non-sampled spans awaiting decision
 }
 
 type pendingTrace struct {
@@ -52,9 +52,11 @@ func NewErrorAwareSamplingExporter(delegate sdktrace.SpanExporter, ratio float64
 	if ratio < 0 {
 		ratio = 0
 	}
+
 	if ratio > 1 {
 		ratio = 1
 	}
+
 	return &ErrorAwareSamplingExporter{
 		delegate:      delegate,
 		ratio:         ratio,
@@ -93,9 +95,11 @@ func (e *ErrorAwareSamplingExporter) ExportSpans(ctx context.Context, spans []sd
 
 	// Phase 2: flush previously buffered spans from now-known error traces.
 	var toExport []sdktrace.ReadOnlySpan
+
 	for id, pt := range e.pending {
 		if _, ok := e.errorTraces[id]; ok {
 			toExport = append(toExport, pt.spans...)
+
 			delete(e.pending, id)
 		}
 	}
@@ -114,6 +118,7 @@ func (e *ErrorAwareSamplingExporter) ExportSpans(ctx context.Context, spans []sd
 				pt = &pendingTrace{firstSeen: now}
 				e.pending[traceID] = pt
 			}
+
 			pt.spans = append(pt.spans, s)
 		}
 	}
@@ -123,6 +128,7 @@ func (e *ErrorAwareSamplingExporter) ExportSpans(ctx context.Context, spans []sd
 	if len(toExport) == 0 {
 		return nil
 	}
+
 	return e.delegate.ExportSpans(ctx, toExport)
 }
 
@@ -134,6 +140,7 @@ func (e *ErrorAwareSamplingExporter) cleanupLocked(now time.Time) {
 			delete(e.errorTraces, id)
 		}
 	}
+
 	for id, pt := range e.pending {
 		if now.Sub(pt.firstSeen) > e.pendingWindow {
 			delete(e.pending, id)
@@ -146,14 +153,17 @@ func isErrorSpan(s sdktrace.ReadOnlySpan) bool {
 	if s.Status().Code == codes.Error {
 		return true
 	}
+
 	for _, attr := range s.Attributes() {
 		if attr.Key == "error" && attr.Value.AsBool() {
 			return true
 		}
+
 		if attr.Key == "exception.type" || attr.Key == "exception.message" {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -166,6 +176,7 @@ func (e *ErrorAwareSamplingExporter) hashSample(data []byte) bool {
 
 	// Convert ratio to threshold
 	threshold := uint64(e.ratio * float64(^uint64(0)))
+
 	return hash < threshold
 }
 
@@ -173,12 +184,15 @@ func (e *ErrorAwareSamplingExporter) hashSample(data []byte) bool {
 // shuts down the delegate exporter.
 func (e *ErrorAwareSamplingExporter) Shutdown(ctx context.Context) error {
 	e.mu.Lock()
+
 	var remaining []sdktrace.ReadOnlySpan
+
 	for id, pt := range e.pending {
 		if _, ok := e.errorTraces[id]; ok {
 			remaining = append(remaining, pt.spans...)
 		}
 	}
+
 	e.pending = nil
 	e.errorTraces = nil
 	e.mu.Unlock()
@@ -186,6 +200,7 @@ func (e *ErrorAwareSamplingExporter) Shutdown(ctx context.Context) error {
 	if len(remaining) > 0 {
 		_ = e.delegate.ExportSpans(ctx, remaining)
 	}
+
 	return e.delegate.Shutdown(ctx)
 }
 

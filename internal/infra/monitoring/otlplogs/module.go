@@ -7,8 +7,6 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/otlp"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
@@ -17,6 +15,9 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v3/otlp"
 )
 
 const (
@@ -39,31 +40,35 @@ type OTLPConfig struct {
 }
 
 func Logger(cfg ModuleConfig) (logging.Logger, error) {
-
 	var (
 		exporter sdklog.Exporter
 	)
+
 	switch cfg.Exporter {
 	case OTLPExporter:
 		mode := otlp.ModeGRPC
+
 		if cfg.OTLPConfig != nil {
 			if cfg.OTLPConfig.Mode != "" {
 				mode = cfg.OTLPConfig.Mode
 			}
 		}
-		switch mode {
-		case otlp.ModeGRPC:
+
+		if mode == otlp.ModeGRPC {
 			options := make([]otlploggrpc.Option, 0)
+
 			if cfg.OTLPConfig != nil {
 				if cfg.OTLPConfig.Endpoint != "" {
 					options = append(options, otlploggrpc.WithEndpoint(cfg.OTLPConfig.Endpoint))
 				}
+
 				if cfg.OTLPConfig.Insecure {
 					options = append(options, otlploggrpc.WithInsecure())
 				}
 			}
 
 			var err error
+
 			exporter, err = otlploggrpc.New(context.Background(), options...)
 			if err != nil {
 				return nil, err
@@ -77,6 +82,7 @@ func Logger(cfg ModuleConfig) (logging.Logger, error) {
 	attributes := make([]attribute.KeyValue, 0)
 	attributes = append(attributes, attribute.String("service.name", "ledger-exp"))
 	attributes = append(attributes, attribute.String("service.version", "0.1.0"))
+
 	resource, err := resource.Merge(defaultResource, resource.NewSchemaless(attributes...))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resource: %w", err)
@@ -98,6 +104,7 @@ func Logger(cfg ModuleConfig) (logging.Logger, error) {
 	}
 
 	var encoder zapcore.Encoder
+
 	if cfg.FormatJSON {
 		encoderCfg := zap.NewProductionEncoderConfig()
 		encoderCfg.EncodeTime = zapcore.TimeEncoderOfLayout(time.RFC3339Nano)
@@ -126,6 +133,7 @@ func Logger(cfg ModuleConfig) (logging.Logger, error) {
 func RecoverAndLogPanics(logger logging.Logger) {
 	if e := recover(); e != nil {
 		logger.Errorf("Panicked: %v", e)
+
 		_, err := logger.Writer().Write(debug.Stack())
 		if err != nil {
 			logger.Errorf("Failed to write stack trace: %v", err)
@@ -133,10 +141,13 @@ func RecoverAndLogPanics(logger logging.Logger) {
 
 		switch loggerProvider := global.GetLoggerProvider().(type) {
 		case *sdklog.LoggerProvider:
-			if err := loggerProvider.ForceFlush(context.Background()); err != nil {
+			err := loggerProvider.ForceFlush(context.Background())
+			if err != nil {
 				logger.Errorf("Failed to flush logs: %v", err)
 			}
-			if err := loggerProvider.Shutdown(context.Background()); err != nil {
+
+			err = loggerProvider.Shutdown(context.Background())
+			if err != nil {
 				logger.Errorf("Failed to shutdown logs: %v", err)
 			}
 		default:
@@ -150,6 +161,7 @@ func RecoverAndLogPanics(logger logging.Logger) {
 func Go(f func(), logger logging.Logger) {
 	go func() {
 		defer RecoverAndLogPanics(logger)
+
 		f()
 	}()
 }

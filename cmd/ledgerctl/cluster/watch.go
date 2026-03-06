@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 )
 
 // NewWatchCommand creates the cluster watch command.
@@ -36,12 +37,14 @@ func runWatch(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
 	area, _ := pterm.DefaultArea.WithRemoveWhenDone(true).Start()
+
 	defer func() { _ = area.Stop() }()
 
 	ticker := time.NewTicker(interval)

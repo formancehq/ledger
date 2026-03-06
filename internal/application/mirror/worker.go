@@ -6,9 +6,13 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	libtime "github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/adapter/v2"
+
+	v2 "github.com/formancehq/ledger-v3-poc/internal/adapter/v2"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
@@ -20,8 +24,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 )
 
 const (
@@ -37,6 +39,7 @@ const (
 var marshalBufPool = sync.Pool{
 	New: func() any {
 		b := make([]byte, 0, 4096)
+
 		return &b
 	},
 }
@@ -67,8 +70,8 @@ type Worker struct {
 
 	notify       signal.Signal
 	w            worker.Worker
-	backoff      time.Duration       // current backoff duration (0 = no backoff)
-	cursor       uint64              // last known cursor, avoids Pebble read per batch
+	backoff      time.Duration // current backoff duration (0 = no backoff)
+	cursor       uint64        // last known cursor, avoids Pebble read per batch
 	cursorLoaded bool
 	prefetchCh   chan prefetchResult // pending prefetch from previous batch
 
@@ -101,6 +104,7 @@ func NewWorker(
 	if batchSize <= 0 {
 		batchSize = defaultBatchSize
 	}
+
 	meter := meterProvider.Meter("mirror")
 
 	durationBuckets := metric.WithExplicitBucketBoundaries(
@@ -203,8 +207,10 @@ func (w *Worker) refreshSourceHead() {
 	count, err := w.source.GetLatestLogID(ctx)
 	if err != nil {
 		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Failed to query source head")
+
 		return
 	}
+
 	w.sourceLogCount = count
 }
 
@@ -219,11 +225,13 @@ func (w *Worker) processLogs(stop <-chan struct{}) {
 		// Pause while Pebble is in a write stall to let compaction catch up.
 		if w.store.IsWriteStalled() {
 			w.logger.Infof("Pausing mirror ingestion: Pebble write stall in progress")
+
 			select {
 			case <-stop:
 				return
 			case <-w.store.WriteStallWaitCh():
 			}
+
 			w.logger.Infof("Resuming mirror ingestion: write stall cleared")
 		}
 
@@ -236,19 +244,19 @@ func (w *Worker) processLogs(stop <-chan struct{}) {
 			if w.backoff == 0 {
 				w.backoff = initialBackoff
 			} else {
-				w.backoff = time.Duration(float64(w.backoff) * backoffMultiplier)
-				if w.backoff > maxBackoff {
-					w.backoff = maxBackoff
-				}
+				w.backoff = min(time.Duration(float64(w.backoff)*backoffMultiplier), maxBackoff)
 			}
+
 			select {
 			case <-stop:
 			case <-time.After(w.backoff):
 			}
+
 			return
 		}
 		// Reset backoff on success
 		w.backoff = 0
+
 		if !hasMore {
 			return
 		}
@@ -266,6 +274,7 @@ func (w *Worker) processBatch() (bool, error) {
 		if err != nil {
 			return false, err
 		}
+
 		w.cursor = cursor
 		w.cursorLoaded = true
 	}
@@ -281,8 +290,10 @@ func (w *Worker) processBatch() (bool, error) {
 		hasMore  bool
 		fetchDur time.Duration
 	)
+
 	if w.prefetchCh != nil {
 		pf := <-w.prefetchCh
+
 		w.prefetchCh = nil
 		if pf.err == nil && pf.cursor == w.cursor {
 			v2Logs = pf.logs
@@ -290,18 +301,23 @@ func (w *Worker) processBatch() (bool, error) {
 			fetchDur = pf.duration
 		}
 	}
+
 	if v2Logs == nil {
 		fetchStart := time.Now()
+
 		fetchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 
 		var err error
+
 		v2Logs, hasMore, err = w.source.FetchLogs(fetchCtx, w.cursor, w.batchSize)
 		if err != nil {
 			return false, err
 		}
+
 		fetchDur = time.Since(fetchStart)
 	}
+
 	w.fetchDuration.Record(ctx, fetchDur.Microseconds(), attrs)
 
 	if len(v2Logs) == 0 {
@@ -316,10 +332,12 @@ func (w *Worker) processBatch() (bool, error) {
 
 	// Translate v2 logs to v3 orders
 	translateStart := time.Now()
+
 	orders, _, _, err := v2.TranslateBatch(w.ledgerName, v2Logs, expectedNextLogID, expectedNextTxID)
 	if err != nil {
 		return false, err
 	}
+
 	w.translateDuration.Record(ctx, time.Since(translateStart).Microseconds(), attrs)
 
 	if len(orders) == 0 {
@@ -330,6 +348,7 @@ func (w *Worker) processBatch() (bool, error) {
 	cmd := commands.NewCommand(orders...)
 
 	preloadStart := time.Now()
+
 	w.buildPreloads(cmd)
 	w.preloadDuration.Record(ctx, time.Since(preloadStart).Microseconds(), attrs)
 
@@ -345,31 +364,40 @@ func (w *Worker) processBatch() (bool, error) {
 
 	// Marshal into a pooled buffer to avoid repeated growth allocations.
 	// Copy to exact-size slice since Raft retains a reference to proposal data.
-	bufp := marshalBufPool.Get().(*[]byte)
+	bufp, ok := marshalBufPool.Get().(*[]byte)
+	if !ok {
+		panic("marshalBufPool: unexpected type from sync.Pool")
+	}
 	size := cmd.SizeVT()
+
 	buf := *bufp
 	if cap(buf) < size {
 		buf = make([]byte, size)
 	} else {
 		buf = buf[:size]
 	}
+
 	n, err := cmd.MarshalToVT(buf)
 	if err != nil {
 		*bufp = buf
 		marshalBufPool.Put(bufp)
+
 		return false, err
 	}
+
 	cmdData := buf[:n]
 
 	w.commandSize.Record(ctx, int64(len(cmdData)), attrs)
 
 	proposalData := make([]byte, len(cmdData))
 	copy(proposalData, cmdData)
+
 	*bufp = buf
 	marshalBufPool.Put(bufp)
 
 	proposeStart := time.Now()
-	proposal := node.NewProposal(cmd.Id, proposalData)
+	proposal := node.NewProposal(cmd.GetId(), proposalData)
+
 	fsmFuture, err := w.proposer.Propose(proposal)
 	if err != nil {
 		return false, err
@@ -382,10 +410,13 @@ func (w *Worker) processBatch() (bool, error) {
 	if hasMore {
 		nextPrefetchCh = make(chan prefetchResult, 1)
 		nextCursor := lastV2LogID
+
 		go func() {
 			start := time.Now()
+
 			fCtx, fCancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer fCancel()
+
 			logs, more, fetchErr := w.source.FetchLogs(fCtx, nextCursor, w.batchSize)
 			nextPrefetchCh <- prefetchResult{
 				logs:     logs,
@@ -400,24 +431,30 @@ func (w *Worker) processBatch() (bool, error) {
 	// Wait for Raft acceptance (proposal enqueued by leader).
 	if _, err := proposal.Wait(); err != nil {
 		w.drainPrefetch(nextPrefetchCh)
+
 		return false, err
 	}
+
 	w.proposeDuration.Record(ctx, time.Since(proposeStart).Microseconds(), attrs)
 
 	// Wait for FSM application and check for business errors.
 	// Without this, the cursor would advance past entries that failed to process.
 	fsmWaitStart := time.Now()
 	result, fsmErr := fsmFuture.Wait()
+
 	w.fsmWaitDuration.Record(ctx, time.Since(fsmWaitStart).Microseconds(), attrs)
 
 	if fsmErr != nil {
 		w.drainPrefetch(nextPrefetchCh)
 		w.batchTotal.Add(ctx, 1, attrs, metric.WithAttributes(attribute.String("status", "error")))
+
 		return false, fmt.Errorf("FSM apply: %w", fsmErr)
 	}
+
 	if result.Error != nil {
 		w.drainPrefetch(nextPrefetchCh)
 		w.batchTotal.Add(ctx, 1, attrs, metric.WithAttributes(attribute.String("status", "error")))
+
 		return false, fmt.Errorf("FSM apply: %w", result.Error)
 	}
 
@@ -456,11 +493,14 @@ func (w *Worker) reportError(message string) {
 	n, _ := update.MarshalToVT(buf)
 
 	proposal := node.NewProposal(0, buf[:n])
+
 	_, err := w.proposer.Propose(proposal)
 	if err != nil {
 		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Failed to report mirror error")
+
 		return
 	}
+
 	_, _ = proposal.Wait()
 }
 
@@ -481,6 +521,7 @@ func (w *Worker) buildPreloads(cmd *raftcmdpb.Proposal) {
 	if _, ok := w.cache.Ledgers.Get(id); !ok {
 		w.preloadCacheMiss.Add(context.Background(), 1,
 			metric.WithAttributes(w.ledgerAttr, attribute.String("type", "ledger")))
+
 		info, err := w.attrs.Ledger.ComputeValue(w.store, ^uint64(0), canonicalKey)
 		if err == nil && info != nil {
 			cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
@@ -498,6 +539,7 @@ func (w *Worker) buildPreloads(cmd *raftcmdpb.Proposal) {
 	if _, ok := w.cache.Boundaries.Get(id); !ok {
 		w.preloadCacheMiss.Add(context.Background(), 1,
 			metric.WithAttributes(w.ledgerAttr, attribute.String("type", "boundary")))
+
 		boundaries, err := w.attrs.Boundary.ComputeValue(w.store, ^uint64(0), canonicalKey)
 		if err == nil && boundaries != nil {
 			cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{

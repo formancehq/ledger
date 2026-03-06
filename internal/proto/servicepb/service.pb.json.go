@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
-// MarshalJSON implements json.Marshaler for CreateTransactionPayload
+// MarshalJSON implements json.Marshaler for CreateTransactionPayload.
 func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
@@ -17,16 +17,16 @@ func (x *CreateTransactionPayload) MarshalJSON() ([]byte, error) {
 		Postings        []*commonpb.Posting       `json:"postings,omitempty"`
 		Script          *commonpb.Script          `json:"script,omitempty"`
 	}{
-		AccountMetadata: commonpb.AccountMetadataToAnyMap(x.AccountMetadata),
-		Metadata:        commonpb.MetadataSetToAnyMap(x.Metadata),
-		Timestamp:       x.Timestamp,
-		Reference:       x.Reference,
-		Postings:        x.Postings,
-		Script:          x.Script,
+		AccountMetadata: commonpb.AccountMetadataToAnyMap(x.GetAccountMetadata()),
+		Metadata:        commonpb.MetadataSetToAnyMap(x.GetMetadata()),
+		Timestamp:       x.GetTimestamp(),
+		Reference:       x.GetReference(),
+		Postings:        x.GetPostings(),
+		Script:          x.GetScript(),
 	})
 }
 
-// MarshalJSON implements json.Marshaler for RevertTransactionPayload
+// MarshalJSON implements json.Marshaler for RevertTransactionPayload.
 func (x *RevertTransactionPayload) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		TransactionId   uint64         `json:"transactionId,omitempty"`
@@ -34,14 +34,14 @@ func (x *RevertTransactionPayload) MarshalJSON() ([]byte, error) {
 		AtEffectiveDate bool           `json:"atEffectiveDate,omitempty"`
 		Metadata        map[string]any `json:"metadata,omitempty"`
 	}{
-		TransactionId:   x.TransactionId,
-		Force:           x.Force,
-		AtEffectiveDate: x.AtEffectiveDate,
-		Metadata:        commonpb.MetadataSetToAnyMap(x.Metadata),
+		TransactionId:   x.GetTransactionId(),
+		Force:           x.GetForce(),
+		AtEffectiveDate: x.GetAtEffectiveDate(),
+		Metadata:        commonpb.MetadataSetToAnyMap(x.GetMetadata()),
 	})
 }
 
-// Ledger action type constants
+// Ledger action type constants.
 const (
 	LedgerActionTypeCreateTransaction = "CREATE_TRANSACTION"
 	LedgerActionTypeAddMetadata       = "ADD_METADATA"
@@ -49,13 +49,13 @@ const (
 	LedgerActionTypeDeleteMetadata    = "DELETE_METADATA"
 )
 
-// BulkElement represents a bulk element with idempotency key
+// BulkElement represents a bulk element with idempotency key.
 type BulkElement struct {
 	Action         *LedgerApplyRequest
 	IdempotencyKey string
 }
 
-// UnmarshalJSON implements json.Unmarshaler for BulkElement
+// UnmarshalJSON implements json.Unmarshaler for BulkElement.
 func (x *BulkElement) UnmarshalJSON(data []byte) error {
 	// First pass: parse action and idempotency key
 	type rawElement struct {
@@ -63,8 +63,11 @@ func (x *BulkElement) UnmarshalJSON(data []byte) error {
 		IdempotencyKey string        `json:"ik"`
 		Data           json.RawValue `json:"data"`
 	}
+
 	var raw rawElement
-	if err := json.Unmarshal(data, &raw); err != nil {
+
+	err := json.Unmarshal(data, &raw)
+	if err != nil {
 		return fmt.Errorf("error parsing element: %w", err)
 	}
 
@@ -75,9 +78,12 @@ func (x *BulkElement) UnmarshalJSON(data []byte) error {
 	switch raw.Action {
 	case LedgerActionTypeCreateTransaction:
 		req := &CreateTransactionPayload{}
-		if err := json.Unmarshal(raw.Data, req); err != nil {
+
+		err := json.Unmarshal(raw.Data, req)
+		if err != nil {
 			return fmt.Errorf("error parsing create transaction data: %w", err)
 		}
+
 		x.Action.Data = &LedgerApplyRequest_CreateTransaction{CreateTransaction: req}
 
 	case LedgerActionTypeAddMetadata:
@@ -85,6 +91,7 @@ func (x *BulkElement) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("error parsing add metadata data: %w", err)
 		}
+
 		x.Action.Data = &LedgerApplyRequest_AddMetadata{AddMetadata: req}
 
 	case LedgerActionTypeRevertTransaction:
@@ -92,6 +99,7 @@ func (x *BulkElement) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("error parsing revert transaction data: %w", err)
 		}
+
 		x.Action.Data = &LedgerApplyRequest_RevertTransaction{RevertTransaction: req}
 
 	case LedgerActionTypeDeleteMetadata:
@@ -99,6 +107,7 @@ func (x *BulkElement) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("error parsing delete metadata data: %w", err)
 		}
+
 		x.Action.Data = &LedgerApplyRequest_DeleteMetadata{DeleteMetadata: req}
 
 	default:
@@ -108,15 +117,18 @@ func (x *BulkElement) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// UnmarshalJSON implements json.Unmarshaler for LedgerApplyRequest
+// UnmarshalJSON implements json.Unmarshaler for LedgerApplyRequest.
 func (x *LedgerApplyRequest) UnmarshalJSON(data []byte) error {
 	// First pass: parse action
 	type rawElement struct {
 		Action string        `json:"action"`
 		Data   json.RawValue `json:"data"`
 	}
+
 	var raw rawElement
-	if err := json.Unmarshal(data, &raw); err != nil {
+
+	err := json.Unmarshal(data, &raw)
+	if err != nil {
 		return fmt.Errorf("error parsing element: %w", err)
 	}
 
@@ -124,9 +136,12 @@ func (x *LedgerApplyRequest) UnmarshalJSON(data []byte) error {
 	switch raw.Action {
 	case LedgerActionTypeCreateTransaction:
 		req := &CreateTransactionPayload{}
-		if err := json.Unmarshal(raw.Data, req); err != nil {
+
+		err := json.Unmarshal(raw.Data, req)
+		if err != nil {
 			return fmt.Errorf("error parsing create transaction data: %w", err)
 		}
+
 		x.Data = &LedgerApplyRequest_CreateTransaction{CreateTransaction: req}
 
 	case LedgerActionTypeAddMetadata:
@@ -134,6 +149,7 @@ func (x *LedgerApplyRequest) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("error parsing add metadata data: %w", err)
 		}
+
 		x.Data = &LedgerApplyRequest_AddMetadata{AddMetadata: req}
 
 	case LedgerActionTypeRevertTransaction:
@@ -141,6 +157,7 @@ func (x *LedgerApplyRequest) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("error parsing revert transaction data: %w", err)
 		}
+
 		x.Data = &LedgerApplyRequest_RevertTransaction{RevertTransaction: req}
 
 	case LedgerActionTypeDeleteMetadata:
@@ -148,6 +165,7 @@ func (x *LedgerApplyRequest) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("error parsing delete metadata data: %w", err)
 		}
+
 		x.Data = &LedgerApplyRequest_DeleteMetadata{DeleteMetadata: req}
 
 	default:
@@ -157,9 +175,9 @@ func (x *LedgerApplyRequest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// GetLedgerApplyActionType returns the action type string based on the oneof data
+// GetLedgerApplyActionType returns the action type string based on the oneof data.
 func GetLedgerApplyActionType(action *LedgerApplyRequest) string {
-	switch action.Data.(type) {
+	switch action.GetData().(type) {
 	case *LedgerApplyRequest_CreateTransaction:
 		return LedgerActionTypeCreateTransaction
 	case *LedgerApplyRequest_AddMetadata:
@@ -173,13 +191,14 @@ func GetLedgerApplyActionType(action *LedgerApplyRequest) string {
 	}
 }
 
-// unmarshalSaveMetadataCommand unmarshals JSON into SaveMetadataCommand
+// unmarshalSaveMetadataCommand unmarshals JSON into SaveMetadataCommand.
 func unmarshalSaveMetadataCommand(data json.RawValue) (*commonpb.SaveMetadataCommand, error) {
 	type rawReq struct {
 		TargetType string         `json:"targetType"`
 		TargetID   json.RawValue  `json:"targetId"`
 		Metadata   map[string]any `json:"metadata"`
 	}
+
 	var raw rawReq
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -196,7 +215,7 @@ func unmarshalSaveMetadataCommand(data json.RawValue) (*commonpb.SaveMetadataCom
 	}, nil
 }
 
-// unmarshalRevertTransactionPayload unmarshals JSON into RevertTransactionPayload
+// unmarshalRevertTransactionPayload unmarshals JSON into RevertTransactionPayload.
 func unmarshalRevertTransactionPayload(data json.RawValue) (*RevertTransactionPayload, error) {
 	type rawReq struct {
 		ID              uint64         `json:"id"`
@@ -204,6 +223,7 @@ func unmarshalRevertTransactionPayload(data json.RawValue) (*RevertTransactionPa
 		AtEffectiveDate bool           `json:"atEffectiveDate"`
 		Metadata        map[string]any `json:"metadata"`
 	}
+
 	var raw rawReq
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -222,15 +242,18 @@ func unmarshalRevertTransactionPayload(data json.RawValue) (*RevertTransactionPa
 	}, nil
 }
 
-// unmarshalDeleteMetadataCommand unmarshals JSON into DeleteMetadataCommand
+// unmarshalDeleteMetadataCommand unmarshals JSON into DeleteMetadataCommand.
 func unmarshalDeleteMetadataCommand(data json.RawValue) (*commonpb.DeleteMetadataCommand, error) {
 	type rawReq struct {
 		TargetType string        `json:"targetType"`
 		TargetID   json.RawValue `json:"targetId"`
 		Key        string        `json:"key"`
 	}
+
 	var raw rawReq
-	if err := json.Unmarshal(data, &raw); err != nil {
+
+	err := json.Unmarshal(data, &raw)
+	if err != nil {
 		return nil, err
 	}
 

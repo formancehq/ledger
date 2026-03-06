@@ -11,7 +11,7 @@ import (
 // The module uses fx.Decorate to wrap the SpanExporter provided by otlptraces
 // with error-aware filtering that:
 // - Always exports spans with errors
-// - Applies ratio-based sampling to successful spans
+// - Applies ratio-based sampling to successful spans.
 func Module(cfg Config) fx.Option {
 	if !cfg.Enabled {
 		return fx.Options()
@@ -31,5 +31,6 @@ func WrapExporter(exporter sdktrace.SpanExporter, cfg Config) sdktrace.SpanExpor
 	if !cfg.Enabled {
 		return exporter
 	}
+
 	return NewErrorAwareSamplingExporter(exporter, cfg.SuccessRatio)
 }

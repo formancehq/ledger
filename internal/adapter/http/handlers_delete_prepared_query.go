@@ -4,16 +4,19 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
-// handleDeletePreparedQuery handles DELETE /{ledgerName}/prepared-queries/{name}
+// handleDeletePreparedQuery handles DELETE /{ledgerName}/prepared-queries/{name}.
 func (s *Server) handleDeletePreparedQuery(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
+
 	queryName := chi.URLParam(r, "queryName")
 	if ledgerName == "" || queryName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name and query name are required"))
+
 		return
 	}
 
@@ -27,6 +30,7 @@ func (s *Server) handleDeletePreparedQuery(w http.ResponseWriter, r *http.Reques
 	})
 	if err != nil {
 		handleError(w, r, err)
+
 		return
 	}
 

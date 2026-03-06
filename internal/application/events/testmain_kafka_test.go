@@ -17,6 +17,7 @@ func init() {
 	registerTestSetup(
 		func(ctx context.Context) error {
 			var err error
+
 			kafkaContainer, err = kafka.Run(ctx, "confluentinc/confluent-local:7.6.1")
 			if err != nil {
 				return fmt.Errorf("failed to start Kafka container: %w", err)
@@ -25,6 +26,7 @@ func init() {
 			sharedKafkaBrokers, err = kafkaContainer.Brokers(ctx)
 			if err != nil {
 				_ = kafkaContainer.Terminate(ctx)
+
 				return fmt.Errorf("failed to get Kafka brokers: %w", err)
 			}
 

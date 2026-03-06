@@ -17,6 +17,7 @@ func ExtractTar(r io.Reader, targetDir string) error {
 		if err == io.EOF {
 			break
 		}
+
 		if err != nil {
 			return fmt.Errorf("reading tar header: %w", err)
 		}
@@ -25,7 +26,8 @@ func ExtractTar(r io.Reader, targetDir string) error {
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(targetPath, os.FileMode(header.Mode)); err != nil {
+			err := os.MkdirAll(targetPath, os.FileMode(header.Mode))
+			if err != nil {
 				return fmt.Errorf("creating directory %s: %w", targetPath, err)
 			}
 		case tar.TypeReg:
@@ -40,6 +42,7 @@ func ExtractTar(r io.Reader, targetDir string) error {
 
 			if _, err := io.Copy(f, tr); err != nil {
 				_ = f.Close()
+
 				return fmt.Errorf("writing file %s: %w", targetPath, err)
 			}
 

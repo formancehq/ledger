@@ -10,12 +10,14 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/tarutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/tarutil"
-	"github.com/stretchr/testify/require"
 )
 
 // readLastAppliedIndex reads the last applied Raft index directly from PebbleReader.
@@ -26,13 +28,16 @@ func readLastAppliedIndex(reader dal.PebbleReader) (uint64, error) {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
 		}
+
 		return 0, err
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	if len(get) == 0 {
 		return 0, nil
 	}
+
 	return binary.BigEndian.Uint64(get[:8]), nil
 }
 
@@ -41,6 +46,7 @@ func readLastAppliedIndex(reader dal.PebbleReader) (uint64, error) {
 func setAppliedIndex(b *dal.Batch, index uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, index)
+
 	return b.SetBytes([]byte{dal.KeyPrefixLastAppliedIndex}, value)
 }
 
@@ -77,7 +83,7 @@ func TestCompactToBase(t *testing.T) {
 	val, err = ledgerAttr.ComputeValue(s, 0, canonicalKey)
 	require.NoError(t, err)
 	require.NotNil(t, val, "compacted entry should be visible at index 0")
-	require.Equal(t, "test-ledger", val.Name)
+	require.Equal(t, "test-ledger", val.GetName())
 }
 
 func TestCompactSurvivesCloseReopen(t *testing.T) {
@@ -92,6 +98,7 @@ func TestCompactSurvivesCloseReopen(t *testing.T) {
 	func() {
 		s, err := dal.OpenDirect(tmpDir, logger)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, s.Close()) }()
 
 		ledgerAttr := NewLedgerAttribute()
@@ -117,6 +124,7 @@ func TestCompactSurvivesCloseReopen(t *testing.T) {
 	func() {
 		s, err := dal.OpenDirect(tmpDir, logger)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, s.Close()) }()
 
 		ledgerAttr := NewLedgerAttribute()
@@ -124,14 +132,14 @@ func TestCompactSurvivesCloseReopen(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("After reopen, ledger ComputeValue(store, 0, key) = %v", val)
 		require.NotNil(t, val, "compacted ledger should be visible after reopen")
-		require.Equal(t, "test-ledger", val.Name)
+		require.Equal(t, "test-ledger", val.GetName())
 
 		boundaryAttr := NewBoundaryAttribute()
 		bval, err := boundaryAttr.ComputeValue(s, 0, canonicalKey)
 		require.NoError(t, err)
 		t.Logf("After reopen, boundary ComputeValue(store, 0, key) = %v", bval)
 		require.NotNil(t, bval, "compacted boundary should be visible after reopen")
-		require.Equal(t, uint64(1), bval.NextTransactionId)
+		require.Equal(t, uint64(1), bval.GetNextTransactionId())
 
 		lastIdx, err := readLastAppliedIndex(s)
 		require.NoError(t, err)
@@ -189,6 +197,7 @@ func TestCompactSurvivesCheckpointAndRestore(t *testing.T) {
 	func() {
 		s, err := dal.OpenDirect(tmpDir, logger)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, s.Close()) }()
 
 		err = CompactAllForBackup(s)
@@ -206,6 +215,7 @@ func TestCompactSurvivesCheckpointAndRestore(t *testing.T) {
 	func() {
 		s, err := dal.OpenDirect(tmpDir, logger)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, s.Close()) }()
 
 		ledgerAttr := NewLedgerAttribute()
@@ -224,35 +234,44 @@ func TestCompactSurvivesCheckpointAndRestore(t *testing.T) {
 // createTarFromDir creates a tar archive of dirPath and writes it to the given writer.
 func createTarFromDir(t *testing.T, dirPath string, w io.Writer) {
 	t.Helper()
+
 	tw := tar.NewWriter(w)
+
 	defer func() { require.NoError(t, tw.Close()) }()
 
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+
 		relPath, err := filepath.Rel(dirPath, path)
 		if err != nil {
 			return err
 		}
+
 		header, err := tar.FileInfoHeader(info, "")
 		if err != nil {
 			return err
 		}
+
 		header.Name = relPath
 		if err := tw.WriteHeader(header); err != nil {
 			return err
 		}
+
 		if !info.IsDir() {
 			f, err := os.Open(path)
 			if err != nil {
 				return err
 			}
+
 			defer func() { _ = f.Close() }()
+
 			if _, err := io.Copy(tw, f); err != nil {
 				return err
 			}
 		}
+
 		return nil
 	})
 	require.NoError(t, err)
@@ -272,6 +291,7 @@ func TestCompactSurvivesTarCycle(t *testing.T) {
 	func() {
 		s, err := dal.OpenDirect(dbDir, logger)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, s.Close()) }()
 
 		ledgerAttr := NewLedgerAttribute()
@@ -303,10 +323,13 @@ func TestCompactSurvivesTarCycle(t *testing.T) {
 
 	// Phase 2: Tar the database directory
 	tarFile := filepath.Join(tmpDir, "backup.tar")
+
 	func() {
 		f, err := os.Create(tarFile)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, f.Close()) }()
+
 		createTarFromDir(t, dbDir, f)
 	}()
 
@@ -316,7 +339,9 @@ func TestCompactSurvivesTarCycle(t *testing.T) {
 	func() {
 		f, err := os.Open(tarFile)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, f.Close()) }()
+
 		require.NoError(t, tarutil.ExtractTar(f, extractDir))
 	}()
 
@@ -324,6 +349,7 @@ func TestCompactSurvivesTarCycle(t *testing.T) {
 	func() {
 		s, err := dal.OpenDirect(extractDir, logger)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, s.Close()) }()
 
 		ledgerAttr := NewLedgerAttribute()
@@ -331,14 +357,14 @@ func TestCompactSurvivesTarCycle(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("After tar cycle: ledger = %v", val)
 		require.NotNil(t, val, "compacted ledger should survive tar cycle")
-		require.Equal(t, "test-ledger", val.Name)
+		require.Equal(t, "test-ledger", val.GetName())
 
 		boundaryAttr := NewBoundaryAttribute()
 		bval, err := boundaryAttr.ComputeValue(s, 0, canonicalKey)
 		require.NoError(t, err)
 		t.Logf("After tar cycle: boundary = %v", bval)
 		require.NotNil(t, bval, "compacted boundary should survive tar cycle")
-		require.Equal(t, uint64(1), bval.NextTransactionId)
+		require.Equal(t, uint64(1), bval.GetNextTransactionId())
 
 		lastIdx, err := readLastAppliedIndex(s)
 		require.NoError(t, err)
@@ -360,6 +386,7 @@ func TestCompactSurvivesTarCycleAndHardLink(t *testing.T) {
 	func() {
 		s, err := dal.OpenDirect(dbDir, logger)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, s.Close()) }()
 
 		batch := s.NewBatch()
@@ -385,10 +412,13 @@ func TestCompactSurvivesTarCycleAndHardLink(t *testing.T) {
 
 	// Phase 2: Tar → extract
 	tarFile := filepath.Join(tmpDir, "backup.tar")
+
 	func() {
 		f, err := os.Create(tarFile)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, f.Close()) }()
+
 		createTarFromDir(t, dbDir, f)
 	}()
 
@@ -397,7 +427,9 @@ func TestCompactSurvivesTarCycleAndHardLink(t *testing.T) {
 	func() {
 		f, err := os.Open(tarFile)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, f.Close()) }()
+
 		require.NoError(t, tarutil.ExtractTar(f, stagingDir))
 	}()
 
@@ -414,6 +446,7 @@ func TestCompactSurvivesTarCycleAndHardLink(t *testing.T) {
 	func() {
 		s, err := dal.OpenDirect(liveDir, logger)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, s.Close()) }()
 
 		ledgerAttr := NewLedgerAttribute()
@@ -421,14 +454,14 @@ func TestCompactSurvivesTarCycleAndHardLink(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("After tar + double hardlink: ledger = %v", val)
 		require.NotNil(t, val, "compacted ledger should survive tar + double hardlink")
-		require.Equal(t, "test-ledger", val.Name)
+		require.Equal(t, "test-ledger", val.GetName())
 
 		boundaryAttr := NewBoundaryAttribute()
 		bval, err := boundaryAttr.ComputeValue(s, 0, canonicalKey)
 		require.NoError(t, err)
 		t.Logf("After tar + double hardlink: boundary = %v", bval)
 		require.NotNil(t, bval, "compacted boundary should survive tar + double hardlink")
-		require.Equal(t, uint64(1), bval.NextTransactionId)
+		require.Equal(t, uint64(1), bval.GetNextTransactionId())
 
 		lastIdx, err := readLastAppliedIndex(s)
 		require.NoError(t, err)
@@ -442,7 +475,7 @@ func TestCompactSurvivesTarCycleAndHardLink(t *testing.T) {
 // 3. Open the checkpoint, compact to index 0, close
 // 4. Tar the checkpoint directory
 // 5. Extract tar to a new directory
-// 6. Open and verify
+// 6. Open and verify.
 func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 	t.Parallel()
 
@@ -452,6 +485,7 @@ func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 
 	dbDir := filepath.Join(tmpDir, "db")
 	require.NoError(t, os.MkdirAll(dbDir, 0755))
+
 	checkpointDir := filepath.Join(tmpDir, "checkpoint")
 
 	// Phase 1: Write data to a live Pebble DB and create checkpoint
@@ -501,10 +535,13 @@ func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 
 	// Phase 3: Tar the checkpoint
 	tarFile := filepath.Join(tmpDir, "backup.tar")
+
 	func() {
 		f, err := os.Create(tarFile)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, f.Close()) }()
+
 		createTarFromDir(t, checkpointDir, f)
 	}()
 
@@ -514,7 +551,9 @@ func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 	func() {
 		f, err := os.Open(tarFile)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, f.Close()) }()
+
 		require.NoError(t, tarutil.ExtractTar(f, stagingDir))
 	}()
 
@@ -530,6 +569,7 @@ func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 	func() {
 		s, err := dal.OpenDirect(liveDir, logger)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, s.Close()) }()
 
 		ledgerAttr := NewLedgerAttribute()
@@ -537,14 +577,14 @@ func TestCompactSurvivesPebbleCheckpointTarCycle(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("After full pipeline: ledger = %v", val)
 		require.NotNil(t, val, "compacted ledger should survive full backup→restore pipeline")
-		require.Equal(t, "test-ledger", val.Name)
+		require.Equal(t, "test-ledger", val.GetName())
 
 		boundaryAttr := NewBoundaryAttribute()
 		bval, err := boundaryAttr.ComputeValue(s, 0, canonicalKey)
 		require.NoError(t, err)
 		t.Logf("After full pipeline: boundary = %v", bval)
 		require.NotNil(t, bval, "compacted boundary should survive full backup→restore pipeline")
-		require.Equal(t, uint64(1), bval.NextTransactionId)
+		require.Equal(t, uint64(1), bval.GetNextTransactionId())
 
 		lastIdx, err := readLastAppliedIndex(s)
 		require.NoError(t, err)
@@ -569,6 +609,7 @@ func TestCompactFlushedBoundaries(t *testing.T) {
 	func() {
 		s, err := dal.OpenDirect(dbDir, logger)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, s.Close()) }()
 
 		batch := s.NewBatch()
@@ -595,6 +636,7 @@ func TestCompactFlushedBoundaries(t *testing.T) {
 	func() {
 		s, err := dal.OpenDirect(dbDir, logger)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, s.Close()) }()
 
 		err = CompactAllForBackup(s)
@@ -605,21 +647,22 @@ func TestCompactFlushedBoundaries(t *testing.T) {
 	func() {
 		s, err := dal.OpenDirect(dbDir, logger)
 		require.NoError(t, err)
+
 		defer func() { require.NoError(t, s.Close()) }()
 
 		ledgerAttr := NewLedgerAttribute()
 		val, err := ledgerAttr.ComputeValue(s, 0, canonicalKey)
 		require.NoError(t, err)
 		require.NotNil(t, val, "compacted ledger should be visible at index 0")
-		require.Equal(t, "test-ledger", val.Name)
+		require.Equal(t, "test-ledger", val.GetName())
 
 		boundaryAttr := NewBoundaryAttribute()
 		bval, err := boundaryAttr.ComputeValue(s, 0, canonicalKey)
 		require.NoError(t, err)
 		require.NotNil(t, bval, "compacted boundary should be visible at index 0")
 		require.NotNil(t, bval)
-		require.Equal(t, uint64(5), bval.NextTransactionId)
-		require.Equal(t, uint64(3), bval.NextLogId)
+		require.Equal(t, uint64(5), bval.GetNextTransactionId())
+		require.Equal(t, uint64(3), bval.GetNextLogId())
 
 		lastIdx, err := readLastAppliedIndex(s)
 		require.NoError(t, err)

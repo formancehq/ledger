@@ -16,35 +16,37 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	if info.MetadataSchema == nil {
+	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
 
 	field := &commonpb.MetadataFieldSchema{
-		Type:   order.Type,
+		Type:   order.GetType(),
 		Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING,
 	}
 
 	// Preserve indexed flag from any existing field schema. If the field
 	// is currently indexed, set status to BUILDING because index entries
 	// have a mix of old and new encodings during type conversion.
-	_, existing := schemaFieldForTarget(info.MetadataSchema, order.TargetType, order.Key)
-	if existing != nil && existing.Indexed {
+	_, existing := schemaFieldForTarget(info.GetMetadataSchema(), order.GetTargetType(), order.GetKey())
+	if existing != nil && existing.GetIndexed() {
 		field.Indexed = true
 		field.IndexBuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
 	}
 
-	switch order.TargetType {
+	switch order.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 		if info.MetadataSchema.AccountFields == nil {
 			info.MetadataSchema.AccountFields = make(map[string]*commonpb.MetadataFieldSchema)
 		}
-		info.MetadataSchema.AccountFields[order.Key] = field
+
+		info.MetadataSchema.AccountFields[order.GetKey()] = field
 	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
 		if info.MetadataSchema.TransactionFields == nil {
 			info.MetadataSchema.TransactionFields = make(map[string]*commonpb.MetadataFieldSchema)
 		}
-		info.MetadataSchema.TransactionFields[order.Key] = field
+
+		info.MetadataSchema.TransactionFields[order.GetKey()] = field
 	}
 
 	s.PutLedger(ledgerName, info)
@@ -52,14 +54,14 @@ func (p *RequestProcessor) processSetMetadataFieldType(
 	// Both account and transaction metadata need the conversion lifecycle.
 	// Account metadata triggers background scan+convert; transaction metadata
 	// completes immediately (read-time enforcement handles existing data).
-	s.AddMetadataConvertRequest(ledgerName, order.TargetType, order.Key, order.Type)
+	s.AddMetadataConvertRequest(ledgerName, order.GetTargetType(), order.GetKey(), order.GetType())
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
 			SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
-				TargetType: order.TargetType,
-				Key:        order.Key,
-				Type:       order.Type,
+				TargetType: order.GetTargetType(),
+				Key:        order.GetKey(),
+				Type:       order.GetType(),
 			},
 		},
 	}, nil
@@ -75,18 +77,18 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	if info.MetadataSchema == nil {
+	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
 
 	// Delete the field from the schema immediately. Existing stored typed
 	// values (e.g., int_value) remain in Pebble; without a schema declaration,
 	// reads return them as-is (no conversion enforced).
-	switch order.TargetType {
+	switch order.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		delete(info.MetadataSchema.AccountFields, order.Key)
+		delete(info.GetMetadataSchema().GetAccountFields(), order.GetKey())
 	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		delete(info.MetadataSchema.TransactionFields, order.Key)
+		delete(info.GetMetadataSchema().GetTransactionFields(), order.GetKey())
 	}
 
 	s.PutLedger(ledgerName, info)
@@ -94,8 +96,8 @@ func (p *RequestProcessor) processRemoveMetadataFieldType(
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{
 			RemovedMetadataFieldType: &commonpb.RemovedMetadataFieldTypeLog{
-				TargetType: order.TargetType,
-				Key:        order.Key,
+				TargetType: order.GetTargetType(),
+				Key:        order.GetKey(),
 			},
 		},
 	}, nil
@@ -110,11 +112,12 @@ func enforceSchema(schema *commonpb.MetadataSchema, targetType commonpb.TargetTy
 	}
 
 	var fields map[string]*commonpb.MetadataFieldSchema
+
 	switch targetType {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		fields = schema.AccountFields
+		fields = schema.GetAccountFields()
 	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		fields = schema.TransactionFields
+		fields = schema.GetTransactionFields()
 	}
 
 	if len(fields) == 0 {
@@ -122,12 +125,13 @@ func enforceSchema(schema *commonpb.MetadataSchema, targetType commonpb.TargetTy
 	}
 
 	for _, m := range metadata {
-		fieldSchema, ok := fields[m.Key]
-		if !ok || m.Value == nil {
+		fieldSchema, ok := fields[m.GetKey()]
+		if !ok || m.GetValue() == nil {
 			continue
 		}
-		if !commonpb.TypeMatches(m.Value, fieldSchema.Type) {
-			m.Value = commonpb.ConvertMetadataValue(m.Value, fieldSchema.Type)
+
+		if !commonpb.TypeMatches(m.GetValue(), fieldSchema.GetType()) {
+			m.Value = commonpb.ConvertMetadataValue(m.GetValue(), fieldSchema.GetType())
 		}
 	}
 }
@@ -141,24 +145,28 @@ func populateInitialSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *co
 	}
 
 	schema := &commonpb.MetadataSchema{}
+
 	for _, cmd := range commands {
 		field := &commonpb.MetadataFieldSchema{
-			Type:   cmd.Type,
+			Type:   cmd.GetType(),
 			Status: commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE,
 		}
-		switch cmd.TargetType {
+		switch cmd.GetTargetType() {
 		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 			if schema.AccountFields == nil {
 				schema.AccountFields = make(map[string]*commonpb.MetadataFieldSchema)
 			}
-			schema.AccountFields[cmd.Key] = field
+
+			schema.AccountFields[cmd.GetKey()] = field
 		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
 			if schema.TransactionFields == nil {
 				schema.TransactionFields = make(map[string]*commonpb.MetadataFieldSchema)
 			}
-			schema.TransactionFields[cmd.Key] = field
+
+			schema.TransactionFields[cmd.GetKey()] = field
 		}
 	}
+
 	return schema
 }
 
@@ -169,19 +177,24 @@ func schemaFieldForTarget(schema *commonpb.MetadataSchema, targetType commonpb.T
 	if schema == nil {
 		return nil, nil
 	}
+
 	var fields map[string]*commonpb.MetadataFieldSchema
+
 	switch targetType {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		fields = schema.AccountFields
+		fields = schema.GetAccountFields()
 	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		fields = schema.TransactionFields
+		fields = schema.GetTransactionFields()
 	}
+
 	if fields == nil {
 		return nil, nil
 	}
+
 	fs, ok := fields[key]
 	if !ok {
 		return fields, nil
 	}
+
 	return fields, fs
 }

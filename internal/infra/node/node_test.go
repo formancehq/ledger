@@ -12,7 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
@@ -22,36 +28,36 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
-	"github.com/stretchr/testify/require"
-	"go.etcd.io/etcd/raft/v3/raftpb"
-	"go.opentelemetry.io/otel/metric/noop"
-	"google.golang.org/protobuf/proto"
 )
 
-// listLedgerContains checks if a ledger with the given name exists in the store
+// listLedgerContains checks if a ledger with the given name exists in the store.
 func listLedgerContains(s *dal.Store, name string) bool {
 	cursor, err := query.ReadLedgers(context.Background(), s)
 	if err != nil {
 		return false
 	}
+
 	defer func() { _ = cursor.Close() }()
 
 	for {
 		ledger, err := cursor.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			return false
 		}
-		if ledger.Name == name {
+
+		if ledger.GetName() == name {
 			return true
 		}
 	}
+
 	return false
 }
 
-// ClusterNode represents a single node in the test cluster
+// ClusterNode represents a single node in the test cluster.
 type ClusterNode struct {
 	ID        uint64
 	Node      *Node
@@ -74,7 +80,7 @@ type ClusterNode struct {
 	SpoolDir string
 }
 
-// Cluster represents a test cluster of Raft nodes
+// Cluster represents a test cluster of Raft nodes.
 type Cluster struct {
 	t                       *testing.T
 	nodes                   []*ClusterNode
@@ -101,12 +107,14 @@ type ClusterSnapshotFetcherProvider struct {
 func (p *ClusterSnapshotFetcherProvider) SetFetchSnapshotInterceptor(fn SnapshotFetcherInterceptorFunc) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	p.interceptor = fn
 }
 
 func (p *ClusterSnapshotFetcherProvider) getInterceptor() SnapshotFetcherInterceptorFunc {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
+
 	return p.interceptor
 }
 
@@ -115,6 +123,7 @@ func (p *ClusterSnapshotFetcherProvider) GetForPeer(id uint64) (state.SnapshotFe
 	if node == nil {
 		return nil, fmt.Errorf("peer %d not found in cluster", id)
 	}
+
 	return &clusterSnapshotFetcher{store: node.Store, provider: p}, nil
 }
 
@@ -127,7 +136,8 @@ type clusterSnapshotFetcher struct {
 func (f *clusterSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID uint64, targetDir string, _ *state.SyncProgress) (uint64, string, error) {
 	// Call interceptor if set
 	if interceptor := f.provider.getInterceptor(); interceptor != nil {
-		if err := interceptor(ctx, snapshotID, targetDir); err != nil {
+		err := interceptor(ctx, snapshotID, targetDir)
+		if err != nil {
 			return 0, "", err
 		}
 	}
@@ -140,6 +150,7 @@ func (f *clusterSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID u
 
 	// Copy files from source to target
 	var totalSize uint64
+
 	err = filepath.Walk(srcPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -161,6 +172,7 @@ func (f *clusterSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID u
 		if err != nil {
 			return err
 		}
+
 		defer func() {
 			_ = src.Close()
 		}()
@@ -169,6 +181,7 @@ func (f *clusterSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID u
 		if err != nil {
 			return err
 		}
+
 		defer func() {
 			_ = dst.Close()
 		}()
@@ -177,6 +190,7 @@ func (f *clusterSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID u
 		if err != nil {
 			return err
 		}
+
 		totalSize += uint64(n)
 
 		return nil
@@ -188,20 +202,20 @@ func (f *clusterSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID u
 	return totalSize, "", nil
 }
 
-// ClusterConfig holds configuration for creating a test cluster
+// ClusterConfig holds configuration for creating a test cluster.
 type ClusterConfig struct {
 	// SnapshotThreshold is the number of entries before creating a snapshot
 	SnapshotThreshold uint64
 }
 
-// DefaultClusterConfig returns default cluster configuration
+// DefaultClusterConfig returns default cluster configuration.
 func DefaultClusterConfig() ClusterConfig {
 	return ClusterConfig{
 		SnapshotThreshold: 1000,
 	}
 }
 
-// NewCluster creates a new test cluster with the specified number of nodes
+// NewCluster creates a new test cluster with the specified number of nodes.
 func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 	t.Helper()
 
@@ -274,6 +288,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 
 		// Build peer list excluding self
 		peers := make([]Peer, 0, numNodes-1)
+
 		for _, peer := range allPeers {
 			if peer.ID != nodeID {
 				peers = append(peers, peer)
@@ -297,6 +312,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 		auditBatch := pebbleStore.NewBatch()
 		require.NoError(t, state.SaveAuditConfig(auditBatch, true))
 		require.NoError(t, auditBatch.Commit())
+
 		fsm, err := state.NewMachine(
 			logger.WithFields(map[string]any{"node": nodeID}),
 			pebbleStore, meter, nodeCache, nodeAttrs,
@@ -342,7 +358,7 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 	return cluster
 }
 
-// Start starts all nodes in the cluster
+// Start starts all nodes in the cluster.
 func (c *Cluster) Start(ctx context.Context) []chan error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -361,6 +377,7 @@ func (c *Cluster) Start(ctx context.Context) []chan error {
 					}
 				}
 			}()
+
 			errCh <- node.Run(ctx, make(chan struct{}))
 		}(clusterNode.Node, errorChannels[i])
 	}
@@ -368,7 +385,7 @@ func (c *Cluster) Start(ctx context.Context) []chan error {
 	return errorChannels
 }
 
-// Stop stops all nodes and cleans up resources
+// Stop stops all nodes and cleans up resources.
 func (c *Cluster) Stop() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -380,22 +397,26 @@ func (c *Cluster) Stop() {
 		if clusterNode.Node != nil {
 			_ = clusterNode.Node.Stop(ctx)
 		}
+
 		if clusterNode.Store != nil {
 			_ = clusterNode.Store.Close()
 		}
+
 		if clusterNode.Spool != nil {
 			_ = clusterNode.Spool.Close()
 		}
+
 		if clusterNode.WAL != nil {
 			_ = clusterNode.WAL.Close()
 		}
+
 		if clusterNode.Transport != nil {
 			clusterNode.Transport.Close()
 		}
 	}
 }
 
-// GetNode returns the cluster node at the given index (0-based)
+// GetNode returns the cluster node at the given index (0-based).
 func (c *Cluster) GetNode(index int) *ClusterNode {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -403,10 +424,11 @@ func (c *Cluster) GetNode(index int) *ClusterNode {
 	if index < 0 || index >= len(c.nodes) {
 		return nil
 	}
+
 	return c.nodes[index]
 }
 
-// GetNodeByID returns the cluster node with the given ID
+// GetNodeByID returns the cluster node with the given ID.
 func (c *Cluster) GetNodeByID(id uint64) *ClusterNode {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -416,6 +438,7 @@ func (c *Cluster) GetNodeByID(id uint64) *ClusterNode {
 			return node
 		}
 	}
+
 	return nil
 }
 
@@ -424,7 +447,7 @@ func (c *Cluster) GetSnapshotFetcherProvider() *ClusterSnapshotFetcherProvider {
 	return c.snapshotFetcherProvider
 }
 
-// WaitForLeader waits for a leader to be elected and returns its ID
+// WaitForLeader waits for a leader to be elected and returns its ID.
 func (c *Cluster) WaitForLeader(timeout time.Duration) (uint64, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -433,12 +456,14 @@ func (c *Cluster) WaitForLeader(timeout time.Duration) (uint64, error) {
 				return clusterNode.ID, nil
 			}
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
+
 	return 0, fmt.Errorf("no leader elected within %v", timeout)
 }
 
-// GetLeader returns the current leader node, or nil if no leader
+// GetLeader returns the current leader node, or nil if no leader.
 func (c *Cluster) GetLeader() *ClusterNode {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -448,29 +473,34 @@ func (c *Cluster) GetLeader() *ClusterNode {
 			return clusterNode
 		}
 	}
+
 	return nil
 }
 
-// Size returns the number of nodes in the cluster
+// Size returns the number of nodes in the cluster.
 func (c *Cluster) Size() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+
 	return len(c.nodes)
 }
 
-// DisconnectNode disconnects a node from all other nodes
+// DisconnectNode disconnects a node from all other nodes.
 func (c *Cluster) DisconnectNode(nodeID uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// Find the node directly (don't call GetNodeByID to avoid deadlock)
 	var node *ClusterNode
+
 	for _, n := range c.nodes {
 		if n.ID == nodeID {
 			node = n
+
 			break
 		}
 	}
+
 	if node == nil {
 		return
 	}
@@ -482,19 +512,22 @@ func (c *Cluster) DisconnectNode(nodeID uint64) {
 	}
 }
 
-// ReconnectNode reconnects a node to all other nodes
+// ReconnectNode reconnects a node to all other nodes.
 func (c *Cluster) ReconnectNode(nodeID uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// Find the node directly (don't call GetNodeByID to avoid deadlock)
 	var node *ClusterNode
+
 	for _, n := range c.nodes {
 		if n.ID == nodeID {
 			node = n
+
 			break
 		}
 	}
+
 	if node == nil {
 		return
 	}
@@ -513,15 +546,20 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	defer c.mu.Unlock()
 
 	// Find the node
-	var nodeIndex = -1
-	var clusterNode *ClusterNode
+	var (
+		nodeIndex   = -1
+		clusterNode *ClusterNode
+	)
+
 	for i, n := range c.nodes {
 		if n.ID == nodeID {
 			nodeIndex = i
 			clusterNode = n
+
 			break
 		}
 	}
+
 	if clusterNode == nil {
 		return nil, fmt.Errorf("node %d not found", nodeID)
 	}
@@ -530,6 +568,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	if clusterNode.Node != nil {
 		stopCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
 		_ = clusterNode.Node.Stop(stopCtx)
+
 		cancel()
 	}
 
@@ -537,9 +576,11 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	if clusterNode.Store != nil {
 		_ = clusterNode.Store.Close()
 	}
+
 	if clusterNode.Spool != nil {
 		_ = clusterNode.Spool.Close()
 	}
+
 	if clusterNode.WAL != nil {
 		_ = clusterNode.WAL.Close()
 	}
@@ -585,6 +626,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 		Peers:             peers,
 	}
 	nodeConfig.SetDefaults()
+
 	nodeCache, err := cache.New(nodeConfig.RotationThreshold, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating cache: %w", err)
@@ -596,9 +638,11 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	if err := state.SaveAuditConfig(auditBatch, true); err != nil {
 		return nil, fmt.Errorf("saving audit config: %w", err)
 	}
+
 	if err := auditBatch.Commit(); err != nil {
 		return nil, fmt.Errorf("committing audit config: %w", err)
 	}
+
 	fsm, err := state.NewMachine(
 		c.logger.WithFields(map[string]any{"node": nodeID}),
 		newStore, noop.Meter{}, nodeCache, nodeAttrs,
@@ -642,6 +686,7 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 
 	// Start the node and return error channel
 	errCh := make(chan error, 1)
+
 	go func() {
 		errCh <- node.Run(ctx, make(chan struct{}))
 	}()
@@ -649,18 +694,20 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 	return errCh, nil
 }
 
-// generateProposalID generates a random proposal ID for tests
+// generateProposalID generates a random proposal ID for tests.
 func generateProposalID() uint64 {
 	var buf [8]byte
+
 	_, _ = rand.Read(buf[:])
+
 	return uint64(buf[0]) | uint64(buf[1])<<8 | uint64(buf[2])<<16 | uint64(buf[3])<<24 |
 		uint64(buf[4])<<32 | uint64(buf[5])<<40 | uint64(buf[6])<<48 | uint64(buf[7])<<56
 }
 
-// proposeAndWait proposes a command to the node and waits for the result
+// proposeAndWait proposes a command to the node and waits for the result.
 func proposeAndWait(node *Node, proposal *raftcmdpb.Proposal) ([]*commonpb.Log, error) {
-	if len(proposal.Orders) == 0 {
-		return nil, fmt.Errorf("proposal has no orders")
+	if len(proposal.GetOrders()) == 0 {
+		return nil, errors.New("proposal has no orders")
 	}
 
 	cmdData, err := proto.Marshal(proposal)
@@ -668,7 +715,8 @@ func proposeAndWait(node *Node, proposal *raftcmdpb.Proposal) ([]*commonpb.Log, 
 		return nil, fmt.Errorf("marshaling proposal: %w", err)
 	}
 
-	p := NewProposal(proposal.Id, cmdData)
+	p := NewProposal(proposal.GetId(), cmdData)
+
 	fsmFuture, err := node.Propose(p)
 	if err != nil {
 		return nil, fmt.Errorf("proposing command: %w", err)
@@ -684,25 +732,27 @@ func proposeAndWait(node *Node, proposal *raftcmdpb.Proposal) ([]*commonpb.Log, 
 	}
 
 	if len(result.Logs) == 0 {
-		return nil, fmt.Errorf("fsm returned empty logs")
+		return nil, errors.New("fsm returned empty logs")
 	}
 
 	// Extract created logs (test helper doesn't use idempotent references)
 	var logs []*commonpb.Log
+
 	for _, logOrRef := range result.Logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			logs = append(logs, created)
 		}
 	}
+
 	return logs, nil
 }
 
-// nowTimestamp returns the current time as a commonpb.Timestamp
+// nowTimestamp returns the current time as a commonpb.Timestamp.
 func nowTimestamp() *commonpb.Timestamp {
 	return &commonpb.Timestamp{Data: uint64(time.Now().UnixNano())}
 }
 
-// createLedger is a test helper that creates a ledger via direct proposal to the node
+// createLedger is a test helper that creates a ledger via direct proposal to the node.
 func createLedger(ctx context.Context, node *Node, name string) (*commonpb.LedgerInfo, error) {
 	proposal := &raftcmdpb.Proposal{
 		Id:   generateProposalID(),
@@ -721,7 +771,7 @@ func createLedger(ctx context.Context, node *Node, name string) (*commonpb.Ledge
 		return nil, err
 	}
 
-	return logs[0].Payload.GetCreateLedger().GetInfo(), nil
+	return logs[0].GetPayload().GetCreateLedger().GetInfo(), nil
 }
 
 func TestClusterBasic(t *testing.T) {
@@ -751,8 +801,8 @@ func TestClusterBasic(t *testing.T) {
 		ledgerName := fmt.Sprintf("test-ledger-%d", i)
 		ledgerInfo, err := createLedger(ctx, leader.Node, ledgerName)
 		require.NoError(t, err)
-		require.Equal(t, ledgerName, ledgerInfo.Name)
-		t.Logf("Created ledger: %s", ledgerInfo.Name)
+		require.Equal(t, ledgerName, ledgerInfo.GetName())
+		t.Logf("Created ledger: %s", ledgerInfo.GetName())
 	}
 
 	// Verify all ledgers are replicated to all nodes
@@ -763,6 +813,7 @@ func TestClusterBasic(t *testing.T) {
 					return false
 				}
 			}
+
 			return true
 		}, 5*time.Second, 100*time.Millisecond, "all ledgers should be replicated to node %d", node.ID)
 	}
@@ -793,6 +844,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 
 	// Track CreateSnapshot calls to fail on the second one
 	var errUnexpected = errors.New("unexpected error")
+
 	clusterNode.WALInterceptor.SetCreateSnapshotInterceptor(func(delegate wal.WAL, i uint64, r *raftpb.ConfState, data []byte) error {
 		return errUnexpected
 	})
@@ -818,6 +870,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 
 	// Restart the node (simulates crash recovery)
 	t.Log("Restarting the node after simulated crash")
+
 	_, err = cluster.RestartNode(ctx, clusterNode.ID, config)
 	require.NoError(t, err)
 
@@ -835,6 +888,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 				return false
 			}
 		}
+
 		return true
 	}, 2*time.Second, 100*time.Millisecond)
 }
@@ -862,19 +916,22 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 
 	// Find a follower to disconnect
 	var follower *ClusterNode
+
 	for _, node := range []*ClusterNode{cluster.GetNode(0), cluster.GetNode(1), cluster.GetNode(2)} {
 		if node.ID != leaderID {
 			follower = node
+
 			break
 		}
 	}
+
 	require.NotNil(t, follower, "should have a follower")
 	t.Logf("Selected follower to disconnect: node %d", follower.ID)
 
 	// Create a ledger before disconnecting the follower
 	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
 	require.NoError(t, err)
-	t.Logf("Created ledger: %s", ledgerInfo.Name)
+	t.Logf("Created ledger: %s", ledgerInfo.GetName())
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
@@ -887,12 +944,15 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 
 	// Track when the follower receives a snapshot via ApplySnapshot
 	snapshotReceived := make(chan struct{}, 1)
+
 	follower.WALInterceptor.SetApplySnapshotInterceptor(func(delegate wal.WAL, snapshot raftpb.Snapshot) error {
 		t.Logf("Follower %d received snapshot at index %d", follower.ID, snapshot.Metadata.Index)
+
 		select {
 		case snapshotReceived <- struct{}{}:
 		default:
 		}
+
 		return delegate.ApplySnapshot(snapshot)
 	})
 
@@ -902,9 +962,11 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 	// it will be too far behind and need to receive a snapshot.
 	numLedgers := 20
 	t.Logf("Creating %d ledgers while follower is disconnected", numLedgers)
+
 	for i := range numLedgers {
 		_, err := createLedger(ctx, leader.Node, fmt.Sprintf("ledger-%d", i))
 		require.NoError(t, err)
+
 		if (i+1)%5 == 0 {
 			t.Logf("Created %d ledgers", i+1)
 		}
@@ -915,6 +977,7 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 		require.True(t, listLedgerContains(leader.Store, fmt.Sprintf("ledger-%d", i)),
 			"leader should have ledger-%d", i)
 	}
+
 	t.Logf("Leader verified: has all %d ledgers", numLedgers)
 
 	// Reconnect the follower
@@ -936,6 +999,7 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 		defer func() {
 			if r := recover(); r != nil {
 				t.Logf("Follower store access panicked (likely during restore): %v", r)
+
 				result = false
 			}
 		}()
@@ -946,7 +1010,9 @@ func TestFollowerResyncViaSnapshot(t *testing.T) {
 				return false
 			}
 		}
+
 		t.Logf("Follower synced: has all %d ledgers", numLedgers)
+
 		return true
 	}, 10*time.Second, 100*time.Millisecond)
 
@@ -975,6 +1041,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 
 	// Find a follower to disconnect
 	var follower *ClusterNode
+
 	for _, node := range []*ClusterNode{
 		cluster.GetNode(0),
 		cluster.GetNode(1),
@@ -982,16 +1049,18 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	} {
 		if node.ID != leaderID {
 			follower = node
+
 			break
 		}
 	}
+
 	require.NotNil(t, follower, "should have a follower")
 	t.Logf("Selected follower: node %d", follower.ID)
 
 	// Create a ledger before disconnecting the follower
 	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
 	require.NoError(t, err)
-	t.Logf("Created ledger: %s", ledgerInfo.Name)
+	t.Logf("Created ledger: %s", ledgerInfo.GetName())
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
@@ -1005,9 +1074,11 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	// Create ledgers to trigger snapshot while follower is disconnected
 	numInitialLedgers := 20
 	t.Logf("Creating %d ledgers while follower is disconnected", numInitialLedgers)
+
 	for i := range numInitialLedgers {
 		_, err := createLedger(ctx, leader.Node, fmt.Sprintf("ledger-%d", i))
 		require.NoError(t, err)
+
 		if (i+1)%5 == 0 {
 			t.Logf("Created %d ledgers", i+1)
 		}
@@ -1029,6 +1100,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 		if hasSnapshot {
 			t.Logf("Leader snapshot at index %d", snapshot.Metadata.Index)
 		}
+
 		return hasSnapshot
 	}, 10*time.Second, 100*time.Millisecond, "leader should have created a snapshot")
 
@@ -1049,17 +1121,21 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 		t.Logf("FetchSnapshot called (snapshotID=%d, targetDir=%s) - BLOCKING", snapshotID, targetDir)
 		<-syncBlocked
 		t.Logf("FetchSnapshot UNBLOCKED")
+
 		return nil // Return nil to proceed with the actual fetch
 	})
 
 	// Track when the follower receives a snapshot
 	snapshotReceived := make(chan struct{}, 1)
+
 	follower.WALInterceptor.SetApplySnapshotInterceptor(func(delegate wal.WAL, snapshot raftpb.Snapshot) error {
 		t.Logf("Follower %d received snapshot at index %d", follower.ID, snapshot.Metadata.Index)
+
 		select {
 		case snapshotReceived <- struct{}{}:
 		default:
 		}
+
 		return delegate.ApplySnapshot(snapshot)
 	})
 
@@ -1087,6 +1163,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 	// These should be spooled on the follower since it's still syncing
 	numSpooledLedgers := 10
 	t.Logf("Creating %d more ledgers while follower sync is blocked (should be spooled)", numSpooledLedgers)
+
 	for i := range numSpooledLedgers {
 		_, err := createLedger(ctx, leader.Node, fmt.Sprintf("spooled-ledger-%d", i))
 		require.NoError(t, err)
@@ -1125,7 +1202,9 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 				return false
 			}
 		}
+
 		t.Logf("Follower fully synced: has all %d ledgers", totalLedgers)
+
 		return true
 	}, 15*time.Second, 200*time.Millisecond)
 
@@ -1134,6 +1213,7 @@ func TestFollowerSpoolDuringSyncFromLeader(t *testing.T) {
 		require.True(t, listLedgerContains(leader.Store, fmt.Sprintf("ledger-%d", i)),
 			"leader should have ledger-%d", i)
 	}
+
 	for i := range numSpooledLedgers {
 		require.True(t, listLedgerContains(leader.Store, fmt.Sprintf("spooled-ledger-%d", i)),
 			"leader should have spooled-ledger-%d", i)
@@ -1164,22 +1244,27 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	require.NotNil(t, leader)
 
 	// Find a follower to test
-	var follower *ClusterNode
-	var followerIndex int
+	var (
+		follower      *ClusterNode
+		followerIndex int
+	)
+
 	for i, node := range []*ClusterNode{cluster.GetNode(0), cluster.GetNode(1), cluster.GetNode(2)} {
 		if node.ID != leaderID {
 			follower = node
 			followerIndex = i
+
 			break
 		}
 	}
+
 	require.NotNil(t, follower, "should have a follower")
 	t.Logf("Selected follower: node %d (index %d)", follower.ID, followerIndex)
 
 	// Create a ledger before disconnecting the follower
 	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
 	require.NoError(t, err)
-	t.Logf("Created ledger: %s", ledgerInfo.Name)
+	t.Logf("Created ledger: %s", ledgerInfo.GetName())
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
@@ -1193,9 +1278,11 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 	// Create ledgers to trigger snapshot while follower is disconnected
 	numLedgers := 20
 	t.Logf("Creating %d ledgers while follower is disconnected", numLedgers)
+
 	for i := range numLedgers {
 		_, err := createLedger(ctx, leader.Node, fmt.Sprintf("ledger-%d", i))
 		require.NoError(t, err)
+
 		if (i+1)%5 == 0 {
 			t.Logf("Created %d ledgers", i+1)
 		}
@@ -1215,13 +1302,16 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 		if hasCompleteSnapshot {
 			t.Logf("Leader snapshot at index %d (includes all %d ledgers)", snapshot.Metadata.Index, numLedgers)
 		}
+
 		return hasCompleteSnapshot
 	}, 5*time.Second, 50*time.Millisecond, "leader should have created a complete snapshot")
 
 	// Track when the follower receives a snapshot
 	snapshotAppliedToWAL := make(chan struct{}, 1)
+
 	follower.WALInterceptor.SetApplySnapshotInterceptor(func(delegate wal.WAL, snapshot raftpb.Snapshot) error {
 		t.Logf("Follower %d: ApplySnapshot to wal at index %d", follower.ID, snapshot.Metadata.Index)
+
 		err := delegate.ApplySnapshot(snapshot)
 		if err == nil {
 			select {
@@ -1229,16 +1319,19 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 			default:
 			}
 		}
+
 		return err
 	})
 
 	// Set up interceptor to make checkpoint restore fail (FetchSnapshot returns error)
 	var errSyncFailed = errors.New("simulated checkpoint restore failure")
+
 	snapshotFetcherProvider := cluster.GetSnapshotFetcherProvider()
 	require.NotNil(t, snapshotFetcherProvider, "snapshot fetcher provider should be available")
 
 	snapshotFetcherProvider.SetFetchSnapshotInterceptor(func(ctx context.Context, snapshotID uint64, targetDir string) error {
 		t.Logf("FetchSnapshot called (snapshotID=%d) - returning error to simulate failure", snapshotID)
+
 		return errSyncFailed
 	})
 
@@ -1301,7 +1394,9 @@ func TestNodeRecoveryAfterFSMSyncFailure(t *testing.T) {
 				return false
 			}
 		}
+
 		t.Logf("Follower synced after restart: has all %d ledgers", numLedgers)
+
 		return true
 	}, 10*time.Second, 50*time.Millisecond)
 
@@ -1344,6 +1439,7 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 
 	// Find a follower to restart
 	var follower *ClusterNode
+
 	for _, node := range []*ClusterNode{
 		cluster.GetNode(0),
 		cluster.GetNode(1),
@@ -1351,16 +1447,18 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 	} {
 		if node.ID != leaderID {
 			follower = node
+
 			break
 		}
 	}
+
 	require.NotNil(t, follower, "should have a follower")
 	t.Logf("Selected follower to restart: node %d", follower.ID)
 
 	// Create a ledger to verify cluster is working
 	ledgerInfo, err := createLedger(ctx, leader.Node, "test-ledger")
 	require.NoError(t, err)
-	t.Logf("Created ledger: %s", ledgerInfo.Name)
+	t.Logf("Created ledger: %s", ledgerInfo.GetName())
 
 	// Wait for the ledger creation to replicate to the follower
 	require.Eventually(t, func() bool {
@@ -1385,8 +1483,10 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 		currentLeader := cluster.GetLeader()
 		if currentLeader == nil {
 			t.Logf("No leader currently")
+
 			return false
 		}
+
 		return currentLeader.ID == leaderID
 	}, 5*time.Second, 100*time.Millisecond, "leader should remain the same after follower restart")
 
@@ -1405,8 +1505,10 @@ func TestFollowerRestartLeaderStability(t *testing.T) {
 	require.Eventually(t, func() bool {
 		if listLedgerContains(follower.Store, "another-ledger") {
 			t.Logf("Follower synced: has another-ledger")
+
 			return true
 		}
+
 		return false
 	}, 5*time.Second, 100*time.Millisecond, "ledger should be replicated to restarted follower")
 
@@ -1439,6 +1541,7 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 	// Threshold is 10, so we apply 8 ledgers
 	numInitialLedgers := 8
 	t.Logf("Creating %d initial ledgers (not triggering snapshot yet)", numInitialLedgers)
+
 	for i := range numInitialLedgers {
 		_, err := createLedger(ctx, node.Node, fmt.Sprintf("ledger-%d", i))
 		require.NoError(t, err)
@@ -1448,18 +1551,22 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 	for i := range numInitialLedgers {
 		require.True(t, listLedgerContains(node.Store, fmt.Sprintf("ledger-%d", i)), "ledger-%d should exist", i)
 	}
+
 	t.Logf("Initial %d ledgers verified", numInitialLedgers)
 
 	// Set up interceptor to make DefaultWAL.CreateSnapshot fail
 	var errSnapshotFailed = errors.New("simulated wal snapshot failure")
+
 	node.WALInterceptor.SetCreateSnapshotInterceptor(func(delegate wal.WAL, i uint64, r *raftpb.ConfState, data []byte) error {
 		t.Logf("DefaultWAL.CreateSnapshot called at index %d - returning error", i)
+
 		return errSnapshotFailed
 	})
 
 	// Now apply more ledgers to trigger snapshot (need 2 more to reach threshold of 10)
 	numTriggerLedgers := 2
 	t.Logf("Creating %d more ledgers to trigger snapshot", numTriggerLedgers)
+
 	for i := range numTriggerLedgers {
 		go func(idx int) {
 			_, _ = createLedger(ctx, node.Node, fmt.Sprintf("trigger-ledger-%d", idx))
@@ -1501,6 +1608,7 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 		for i := range numInitialLedgers {
 			if !listLedgerContains(node.Store, fmt.Sprintf("ledger-%d", i)) {
 				t.Logf("ledger-%d not found yet", i)
+
 				return false
 			}
 		}
@@ -1508,10 +1616,13 @@ func TestLocalSnapshotWALFailureRecovery(t *testing.T) {
 		for i := range numTriggerLedgers {
 			if !listLedgerContains(node.Store, fmt.Sprintf("trigger-ledger-%d", i)) {
 				t.Logf("trigger-ledger-%d not found yet", i)
+
 				return false
 			}
 		}
+
 		t.Logf("State verified after restart: %d ledgers exist", totalLedgers)
+
 		return true
 	}, 5*time.Second, 200*time.Millisecond)
 
@@ -1547,9 +1658,11 @@ func TestForceRemoveNode_DisconnectedNode(t *testing.T) {
 
 	// Pick a follower to disconnect and force-remove
 	followerID := uint64(1)
+
 	for _, n := range cluster.nodes {
 		if n.ID != leaderID {
 			followerID = n.ID
+
 			break
 		}
 	}
@@ -1563,6 +1676,7 @@ func TestForceRemoveNode_DisconnectedNode(t *testing.T) {
 
 	// Verify ConfState has 2 voters
 	require.Len(t, leader.Node.confState.Voters, 2)
+
 	for _, v := range leader.Node.confState.Voters {
 		require.NotEqual(t, followerID, v, "removed node should not be in voters")
 	}
@@ -1591,11 +1705,13 @@ func TestForceRemoveNode_QuorumLoss(t *testing.T) {
 
 	// Identify the two followers
 	var followers []uint64
+
 	for _, n := range cluster.nodes {
 		if n.ID != leaderID {
 			followers = append(followers, n.ID)
 		}
 	}
+
 	require.Len(t, followers, 2)
 
 	// Disconnect both followers (quorum lost: leader alone can't commit)
@@ -1637,12 +1753,15 @@ func TestForceRemoveNode_Validations(t *testing.T) {
 
 	// Find a follower
 	var followerNode *ClusterNode
+
 	for _, n := range cluster.nodes {
 		if n.ID != leaderID {
 			followerNode = n
+
 			break
 		}
 	}
+
 	require.NotNil(t, followerNode)
 
 	// ErrNotLeader: calling ForceRemoveNode on a follower
@@ -1677,9 +1796,11 @@ func TestForceRemoveNode_PersistsConfState(t *testing.T) {
 
 	// Pick a follower to force-remove
 	var followerID uint64
+
 	for _, n := range cluster.nodes {
 		if n.ID != leaderID {
 			followerID = n.ID
+
 			break
 		}
 	}
@@ -1700,9 +1821,11 @@ func TestForceRemoveNode_PersistsConfState(t *testing.T) {
 	for _, v := range snap.Metadata.ConfState.Voters {
 		require.NotEqual(t, followerID, v, "removed node should not be in WAL snapshot voters")
 	}
+
 	for _, l := range snap.Metadata.ConfState.Learners {
 		require.NotEqual(t, followerID, l, "removed node should not be in WAL snapshot learners")
 	}
+
 	require.Len(t, snap.Metadata.ConfState.Voters, 2)
 
 	t.Log("Test passed: ForceRemoveNode confstate persists in WAL snapshot")

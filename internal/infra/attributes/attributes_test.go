@@ -3,12 +3,14 @@ package attributes
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 )
 
 func createTestStore(t *testing.T) *dal.Store {
@@ -33,6 +35,7 @@ func TestSetBaseAndComputeValue(t *testing.T) {
 
 	// Create a batch
 	batch := store.NewBatch()
+
 	defer func() {
 		_ = batch.Cancel()
 	}()
@@ -57,8 +60,8 @@ func TestSetBaseAndComputeValue(t *testing.T) {
 
 	// Verify the result
 	require.NotNil(t, result)
-	require.Equal(t, int64(1000), result.InputKnown.ToBigInt().Int64())
-	require.Equal(t, int64(0), result.OutputKnown.ToBigInt().Int64())
+	require.Equal(t, int64(1000), result.GetInputKnown().ToBigInt().Int64())
+	require.Equal(t, int64(0), result.GetOutputKnown().ToBigInt().Int64())
 }
 
 func TestComputeValueWithCumulativeDiffs(t *testing.T) {
@@ -68,6 +71,7 @@ func TestComputeValueWithCumulativeDiffs(t *testing.T) {
 	attrs := New()
 
 	batch := store.NewBatch()
+
 	defer func() {
 		_ = batch.Cancel()
 	}()
@@ -99,7 +103,7 @@ func TestComputeValueWithCumulativeDiffs(t *testing.T) {
 	result, err := attrs.Volume.ComputeValue(store, 100, testKey)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, int64(1500), result.InputKnown.ToBigInt().Int64())
+	require.Equal(t, int64(1500), result.GetInputKnown().ToBigInt().Int64())
 }
 
 func TestDeleteRemovesAllEntries(t *testing.T) {
@@ -209,6 +213,7 @@ func TestScanEntriesBaseAndDiffs(t *testing.T) {
 	testKey := []byte("test-ledger\x00scan-account\x00USD")
 
 	batch := store.NewBatch()
+
 	defer func() { _ = batch.Cancel() }()
 
 	// Set base at index 5: input = 1000
@@ -231,7 +236,7 @@ func TestScanEntriesBaseAndDiffs(t *testing.T) {
 	require.NotNil(t, scan)
 	require.True(t, scan.HasBase)
 	require.Equal(t, uint64(5), scan.LatestBaseIndex)
-	require.Equal(t, int64(1000), scan.LatestBase.InputKnown.ToBigInt().Int64())
+	require.Equal(t, int64(1000), scan.LatestBase.GetInputKnown().ToBigInt().Int64())
 	require.True(t, scan.HasDiff)
 	require.Equal(t, uint64(20), scan.LatestDiffIndex)
 	require.Equal(t, 4, scan.TotalEntries)
@@ -246,6 +251,7 @@ func TestScanEntriesDiffsOnly(t *testing.T) {
 	testKey := []byte("test-ledger\x00scan-diff-only\x00USD")
 
 	batch := store.NewBatch()
+
 	defer func() { _ = batch.Cancel() }()
 
 	// Only diffs, no base (like @world)
@@ -291,6 +297,7 @@ func TestSetBaseWithZeroValue(t *testing.T) {
 
 	// Create a batch
 	batch := store.NewBatch()
+
 	defer func() {
 		_ = batch.Cancel()
 	}()
@@ -315,5 +322,5 @@ func TestSetBaseWithZeroValue(t *testing.T) {
 
 	// Verify the result
 	require.NotNil(t, result)
-	require.Equal(t, int64(0), result.InputKnown.ToBigInt().Int64())
+	require.Equal(t, int64(0), result.GetInputKnown().ToBigInt().Int64())
 }

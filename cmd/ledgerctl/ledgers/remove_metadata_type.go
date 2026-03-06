@@ -1,12 +1,14 @@
 package ledgers
 
 import (
+	"errors"
 	"fmt"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewRemoveMetadataTypeCommand creates the ledgers remove-metadata-type command.
@@ -41,9 +43,11 @@ func runRemoveMetadataType(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -58,6 +62,7 @@ func runRemoveMetadataType(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
+
 		targetStr = result
 	}
 
@@ -74,9 +79,10 @@ func runRemoveMetadataType(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
+
 		key = result
 		if key == "" {
-			return fmt.Errorf("metadata key is required")
+			return errors.New("metadata key is required")
 		}
 	}
 
@@ -84,6 +90,7 @@ func runRemoveMetadataType(cmd *cobra.Command, _ []string) error {
 	if !yes {
 		pterm.Warning.Printfln("You are about to remove type declaration for %s.%s on ledger %s",
 			cmdutil.TargetTypeString(targetType), key, ledgerName)
+
 		confirmed, err := pterm.DefaultInteractiveConfirm.
 			WithDefaultText(fmt.Sprintf("Remove type for '%s.%s'?", cmdutil.TargetTypeString(targetType), key)).
 			WithDefaultValue(false).
@@ -91,8 +98,10 @@ func runRemoveMetadataType(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
+
 		if !confirmed {
 			pterm.Info.Println("Removal cancelled.")
+
 			return nil
 		}
 	}
@@ -117,17 +126,20 @@ func runRemoveMetadataType(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to remove metadata type", err)
 	}
 
-	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
 		spinner.Fail("Response signature verification failed")
+
 		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 

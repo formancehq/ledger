@@ -49,17 +49,18 @@ func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s I
 // It transitions a CLOSING period to CLOSED and sets the sealing hash.
 func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
 	closingPeriod, ok := s.GetClosingPeriod()
-	if !ok || closingPeriod.Id != order.PeriodId {
-		return nil, &domain.ErrPeriodNotFound{PeriodID: order.PeriodId}
+	if !ok || closingPeriod.GetId() != order.GetPeriodId() {
+		return nil, &domain.ErrPeriodNotFound{PeriodID: order.GetPeriodId()}
 	}
 
-	if closingPeriod.Status != commonpb.PeriodStatus_PERIOD_CLOSING {
-		return nil, &domain.ErrPeriodNotClosing{PeriodID: order.PeriodId}
+	if closingPeriod.GetStatus() != commonpb.PeriodStatus_PERIOD_CLOSING {
+		return nil, &domain.ErrPeriodNotClosing{PeriodID: order.GetPeriodId()}
 	}
 
 	// Transition to CLOSED and persist via ClearClosingPeriod
 	closingPeriod.Status = commonpb.PeriodStatus_PERIOD_CLOSED
-	closingPeriod.SealingHash = order.SealingHash
+	closingPeriod.SealingHash = order.GetSealingHash()
+
 	s.ClearClosingPeriod()
 
 	return &commonpb.LogPayload{
@@ -75,13 +76,13 @@ func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s
 // It transitions the period from CLOSED → ARCHIVING and returns an ArchivePeriodLog
 // to signal the background Archiver (leader-only dispatch happens in Node).
 func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	period, ok := s.GetPeriodByID(order.PeriodId)
+	period, ok := s.GetPeriodByID(order.GetPeriodId())
 	if !ok {
-		return nil, &domain.ErrPeriodNotFound{PeriodID: order.PeriodId}
+		return nil, &domain.ErrPeriodNotFound{PeriodID: order.GetPeriodId()}
 	}
 
-	if period.Status != commonpb.PeriodStatus_PERIOD_CLOSED {
-		return nil, &domain.ErrPeriodNotClosed{PeriodID: order.PeriodId}
+	if period.GetStatus() != commonpb.PeriodStatus_PERIOD_CLOSED {
+		return nil, &domain.ErrPeriodNotClosed{PeriodID: order.GetPeriodId()}
 	}
 
 	// Transition to ARCHIVING deterministically on all nodes
@@ -89,7 +90,7 @@ func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOr
 	s.UpdatePeriod(period)
 
 	// Signal the Machine to send an archive request after batch commit
-	s.SetPendingArchive(period.Id, period.StartSequence, period.CloseSequence)
+	s.SetPendingArchive(period.GetId(), period.GetStartSequence(), period.GetCloseSequence())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_ArchivePeriod{
@@ -103,20 +104,20 @@ func (p *RequestProcessor) processArchivePeriod(order *raftcmdpb.ArchivePeriodOr
 // processConfirmArchivePeriod handles the ConfirmArchivePeriod order.
 // It transitions an ARCHIVING period to ARCHIVED and signals a purge of logs and audit entries.
 func (p *RequestProcessor) processConfirmArchivePeriod(order *raftcmdpb.ConfirmArchivePeriodOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	period, ok := s.GetPeriodByID(order.PeriodId)
+	period, ok := s.GetPeriodByID(order.GetPeriodId())
 	if !ok {
-		return nil, &domain.ErrPeriodNotFound{PeriodID: order.PeriodId}
+		return nil, &domain.ErrPeriodNotFound{PeriodID: order.GetPeriodId()}
 	}
 
-	if period.Status != commonpb.PeriodStatus_PERIOD_ARCHIVING {
-		return nil, &domain.ErrPeriodNotArchiving{PeriodID: order.PeriodId}
+	if period.GetStatus() != commonpb.PeriodStatus_PERIOD_ARCHIVING {
+		return nil, &domain.ErrPeriodNotArchiving{PeriodID: order.GetPeriodId()}
 	}
 
 	period.Status = commonpb.PeriodStatus_PERIOD_ARCHIVED
 	s.UpdatePeriod(period)
 
 	// Signal the FSM to purge logs and audit entries for this period's sequence range
-	s.SetPurgeRange(period.Id, period.StartSequence, period.CloseSequence)
+	s.SetPurgeRange(period.GetId(), period.GetStartSequence(), period.GetCloseSequence())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_ConfirmArchivePeriod{

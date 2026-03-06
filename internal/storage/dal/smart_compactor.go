@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 )
@@ -137,9 +138,7 @@ func (c *SmartCompactor) compactSequenceRange(reason string, fromSeq, toSeq uint
 		return false
 	}
 
-	c.compactWg.Add(1)
-	go func() {
-		defer c.compactWg.Done()
+	c.compactWg.Go(func() {
 		defer c.compacting.Store(false)
 
 		start := time.Now()
@@ -155,7 +154,8 @@ func (c *SmartCompactor) compactSequenceRange(reason string, fromSeq, toSeq uint
 			startKey := sequenceKey(prefix, fromSeq)
 			endKey := sequenceKey(prefix, toSeq+1)
 
-			if err := db.Compact(startKey, endKey, false); err != nil {
+			err := db.Compact(startKey, endKey, false)
+			if err != nil {
 				c.logger.WithFields(map[string]any{
 					"reason":  reason,
 					"prefix":  fmt.Sprintf("0x%02x", prefix),
@@ -163,6 +163,7 @@ func (c *SmartCompactor) compactSequenceRange(reason string, fromSeq, toSeq uint
 					"toSeq":   toSeq,
 					"error":   err,
 				}).Infof("Incremental compaction failed (non-fatal)")
+
 				continue
 			}
 		}
@@ -174,7 +175,7 @@ func (c *SmartCompactor) compactSequenceRange(reason string, fromSeq, toSeq uint
 			"count":    toSeq - fromSeq + 1,
 			"duration": time.Since(start).String(),
 		}).Infof("Incremental compaction complete")
-	}()
+	})
 
 	return true
 }
@@ -184,6 +185,7 @@ func sequenceKey(prefix byte, seq uint64) []byte {
 	key := make([]byte, 9)
 	key[0] = prefix
 	binary.BigEndian.PutUint64(key[1:], seq)
+
 	return key
 }
 
@@ -194,10 +196,12 @@ func (c *SmartCompactor) Stop() {
 	c.w.Stop()
 
 	done := make(chan struct{})
+
 	go func() {
 		c.compactWg.Wait()
 		close(done)
 	}()
+
 	select {
 	case <-done:
 	case <-time.After(10 * time.Second):
@@ -212,10 +216,12 @@ func (c *SmartCompactor) Stop() {
 func (s *Store) CompactAll() error {
 	db := s.getDB()
 	for _, p := range allCompactPrefixes {
-		if err := db.Compact([]byte{p.start}, []byte{p.end}, false); err != nil {
+		err := db.Compact([]byte{p.start}, []byte{p.end}, false)
+		if err != nil {
 			return fmt.Errorf("compacting prefix %s: %w", p.name, err)
 		}
 	}
+
 	return nil
 }
 
@@ -226,6 +232,7 @@ func (c *SmartCompactor) compactPrefixes(reason string, prefixes []compactPrefix
 		c.logger.WithFields(map[string]any{
 			"reason": reason,
 		}).Infof("Skipping compaction (another compaction in progress)")
+
 		return
 	}
 
@@ -239,12 +246,11 @@ func (c *SmartCompactor) compactPrefixes(reason string, prefixes []compactPrefix
 		"l0Size":      m.Levels[0].Size,
 	}).Infof("Starting prefix-by-prefix compaction")
 
-	c.compactWg.Add(1)
-	go func() {
-		defer c.compactWg.Done()
+	c.compactWg.Go(func() {
 		defer c.compacting.Store(false)
 
 		overallStart := time.Now()
+
 		for _, p := range prefixes {
 			// Check for shutdown between prefix iterations so we abort early
 			// rather than starting another potentially long db.Compact call.
@@ -253,19 +259,24 @@ func (c *SmartCompactor) compactPrefixes(reason string, prefixes []compactPrefix
 				c.logger.WithFields(map[string]any{
 					"reason": reason,
 				}).Infof("Compaction aborted due to shutdown")
+
 				return
 			default:
 			}
 
 			prefixStart := time.Now()
-			if err := db.Compact([]byte{p.start}, []byte{p.end}, false); err != nil {
+
+			err := db.Compact([]byte{p.start}, []byte{p.end}, false)
+			if err != nil {
 				c.logger.WithFields(map[string]any{
 					"reason": reason,
 					"prefix": p.name,
 					"error":  err,
 				}).Infof("Prefix compaction failed (non-fatal)")
+
 				continue
 			}
+
 			c.logger.WithFields(map[string]any{
 				"reason":   reason,
 				"prefix":   p.name,
@@ -280,5 +291,5 @@ func (c *SmartCompactor) compactPrefixes(reason string, prefixes []compactPrefix
 			"l0FileCount": m2.Levels[0].NumFiles,
 			"l0Size":      m2.Levels[0].Size,
 		}).Infof("All prefix compactions complete")
-	}()
+	})
 }

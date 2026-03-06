@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func TestProtoCursor_Basic(t *testing.T) {
@@ -47,20 +48,21 @@ func TestProtoCursor_Basic(t *testing.T) {
 	require.NoError(t, err)
 
 	cursor := NewProtoCursor[*commonpb.Timestamp](iter)
+
 	defer func() { _ = cursor.Close() }()
 
 	// Read items
 	got1, err := cursor.Next()
 	require.NoError(t, err)
-	require.Equal(t, uint64(1000), got1.Data)
+	require.Equal(t, uint64(1000), got1.GetData())
 
 	got2, err := cursor.Next()
 	require.NoError(t, err)
-	require.Equal(t, uint64(2000), got2.Data)
+	require.Equal(t, uint64(2000), got2.GetData())
 
 	got3, err := cursor.Next()
 	require.NoError(t, err)
-	require.Equal(t, uint64(3000), got3.Data)
+	require.Equal(t, uint64(3000), got3.GetData())
 
 	// EOF
 	_, err = cursor.Next()
@@ -80,6 +82,7 @@ func TestProtoCursor_Empty(t *testing.T) {
 	require.NoError(t, err)
 
 	cursor := NewProtoCursor[*commonpb.Timestamp](iter)
+
 	defer func() { _ = cursor.Close() }()
 
 	_, err = cursor.Next()
@@ -117,12 +120,13 @@ func TestProtoCursor_MultipleCallsAfterEOF(t *testing.T) {
 	require.NoError(t, err)
 
 	cursor := NewProtoCursor[*commonpb.Timestamp](iter)
+
 	defer func() { _ = cursor.Close() }()
 
 	// Read the one item
 	got, err := cursor.Next()
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), got.Data)
+	require.Equal(t, uint64(42), got.GetData())
 
 	// Should get EOF
 	_, err = cursor.Next()

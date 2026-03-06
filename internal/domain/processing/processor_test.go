@@ -3,11 +3,12 @@ package processing
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
@@ -55,11 +56,11 @@ func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
 		domain.IdempotencyKey{Key: "unique-key-123"},
 		gomock.Any(),
 	).Do(func(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
-		require.Equal(t, uint64(100), value.LogSequence)
-		require.NotEmpty(t, value.Hash)
+		require.Equal(t, uint64(100), value.GetLogSequence())
+		require.NotEmpty(t, value.GetHash())
 	})
 
-	response, err := processor.ProcessOrders(proposal.Orders, mockStore)
+	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	require.Len(t, response, 1)
@@ -67,10 +68,10 @@ func TestProcessOrders_WithIdempotencyKey_NewRequest(t *testing.T) {
 	// Should be a created log, not a reference
 	createdLog := response[0].GetCreatedLog()
 	require.NotNil(t, createdLog)
-	require.Equal(t, uint64(100), createdLog.Sequence)
-	require.NotNil(t, createdLog.Idempotency)
-	require.Equal(t, "unique-key-123", createdLog.Idempotency.Key)
-	require.NotEmpty(t, createdLog.Hash, "log should have a hash")
+	require.Equal(t, uint64(100), createdLog.GetSequence())
+	require.NotNil(t, createdLog.GetIdempotency())
+	require.Equal(t, "unique-key-123", createdLog.GetIdempotency().GetKey())
+	require.NotEmpty(t, createdLog.GetHash(), "log should have a hash")
 }
 
 func TestProcessOrders_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
@@ -113,7 +114,7 @@ func TestProcessOrders_WithIdempotencyKey_DuplicateRequest(t *testing.T) {
 
 	// No other calls should be made - the order should not be processed
 
-	response, err := processor.ProcessOrders(proposal.Orders, mockStore)
+	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	require.Len(t, response, 1)
@@ -160,7 +161,7 @@ func TestProcessOrders_WithIdempotencyKey_Conflict(t *testing.T) {
 
 	// No other calls should be made - should fail immediately
 
-	response, err := processor.ProcessOrders(proposal.Orders, mockStore)
+	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
 	require.Error(t, err)
 	require.Nil(t, response)
 	require.ErrorAs(t, err, new(*domain.ErrIdempotencyKeyConflict))
@@ -202,15 +203,15 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	mockStore.EXPECT().GetLastLogHash().Return(nil)
 	mockStore.EXPECT().SetLastLogHash(gomock.Any())
 
-	response, err := processor.ProcessOrders(proposal.Orders, mockStore)
+	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	require.Len(t, response, 1)
 
 	createdLog := response[0].GetCreatedLog()
 	require.NotNil(t, createdLog)
-	require.Equal(t, uint64(100), createdLog.Sequence)
-	require.NotEmpty(t, createdLog.Hash, "log should have a hash")
+	require.Equal(t, uint64(100), createdLog.GetSequence())
+	require.NotEmpty(t, createdLog.GetHash(), "log should have a hash")
 }
 
 func TestProcessOrders_HashChaining(t *testing.T) {
@@ -267,7 +268,7 @@ func TestProcessOrders_HashChaining(t *testing.T) {
 		}),
 	)
 
-	response, err := processor.ProcessOrders(proposal.Orders, mockStore)
+	response, err := processor.ProcessOrders(proposal.GetOrders(), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	require.Len(t, response, 3)
@@ -276,13 +277,14 @@ func TestProcessOrders_HashChaining(t *testing.T) {
 	for i, logOrRef := range response {
 		createdLog := logOrRef.GetCreatedLog()
 		require.NotNil(t, createdLog, "log %d should be a created log", i)
-		require.NotEmpty(t, createdLog.Hash, "log %d should have a hash", i)
+		require.NotEmpty(t, createdLog.GetHash(), "log %d should have a hash", i)
 	}
 
 	// Verify hashes are all different (chaining produces unique hashes)
-	hash1 := response[0].GetCreatedLog().Hash
-	hash2 := response[1].GetCreatedLog().Hash
-	hash3 := response[2].GetCreatedLog().Hash
+	hash1 := response[0].GetCreatedLog().GetHash()
+	hash2 := response[1].GetCreatedLog().GetHash()
+	hash3 := response[2].GetCreatedLog().GetHash()
+
 	require.NotEqual(t, hash1, hash2, "consecutive log hashes should differ")
 	require.NotEqual(t, hash2, hash3, "consecutive log hashes should differ")
 	require.NotEqual(t, hash1, hash3, "non-consecutive log hashes should differ")
@@ -292,6 +294,7 @@ func TestProcessOrders_HashChaining(t *testing.T) {
 	require.NoError(t, err)
 
 	mockStore2 := NewMockInMemoryStore(ctrl)
+
 	var capturedHashes2 [][]byte
 
 	for i, name := range []string{"ledger-1", "ledger-2", "ledger-3"} {
@@ -321,14 +324,14 @@ func TestProcessOrders_HashChaining(t *testing.T) {
 		}),
 	)
 
-	response2, err := processor2.ProcessOrders(proposal.Orders, mockStore2)
+	response2, err := processor2.ProcessOrders(proposal.GetOrders(), mockStore2)
 	require.NoError(t, err)
 
 	// Hashes should be identical for same inputs
 	for i := range response {
 		require.Equal(t,
-			response[i].GetCreatedLog().Hash,
-			response2[i].GetCreatedLog().Hash,
+			response[i].GetCreatedLog().GetHash(),
+			response2[i].GetCreatedLog().GetHash(),
 			"hash %d should be deterministic", i,
 		)
 	}

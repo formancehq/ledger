@@ -1,13 +1,15 @@
 package accounts
 
 import (
+	"errors"
 	"fmt"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewDeleteMetadataCommand creates the accounts delete-metadata command.
@@ -40,9 +42,11 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -62,7 +66,8 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 
 	if address == "" {
 		pterm.Error.Println("Account address is required")
-		return cmdutil.Displayed(fmt.Errorf("account address is required"))
+
+		return cmdutil.Displayed(errors.New("account address is required"))
 	}
 
 	var key string
@@ -79,7 +84,8 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 
 	if key == "" {
 		pterm.Error.Println("Metadata key is required")
-		return cmdutil.Displayed(fmt.Errorf("metadata key is required"))
+
+		return cmdutil.Displayed(errors.New("metadata key is required"))
 	}
 
 	yes, _ := cmd.Flags().GetBool("yes")
@@ -93,8 +99,10 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read confirmation: %w", err)
 		}
+
 		if !confirmed {
 			pterm.Info.Println("Deletion cancelled")
+
 			return nil
 		}
 	}
@@ -126,14 +134,16 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 		},
 	}
 
-	if err := cmdutil.SignRequests(cmd, req.Requests); err != nil {
+	if err := cmdutil.SignRequests(cmd, req.GetRequests()); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, req)
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to delete metadata", err)
 	}
 

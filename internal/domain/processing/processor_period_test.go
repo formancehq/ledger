@@ -3,11 +3,12 @@ package processing
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestProcessClosePeriod_Success(t *testing.T) {
@@ -37,14 +38,14 @@ func TestProcessClosePeriod_Success(t *testing.T) {
 	mockStore.EXPECT().GetLastLogHash().Return(lastLogHash)
 	mockStore.EXPECT().IncrementNextPeriodID().Return(uint64(2))
 	mockStore.EXPECT().SetClosingPeriod(gomock.Any()).Do(func(period *commonpb.Period) {
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSING, period.Status)
-		require.Equal(t, uint64(42), period.CloseSequence)
-		require.Equal(t, lastLogHash, period.LastLogHash)
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSING, period.GetStatus())
+		require.Equal(t, uint64(42), period.GetCloseSequence())
+		require.Equal(t, lastLogHash, period.GetLastLogHash())
 	})
 	mockStore.EXPECT().SetCurrentOpenPeriod(gomock.Any()).Do(func(period *commonpb.Period) {
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, period.Status)
-		require.Equal(t, uint64(2), period.Id)
-		require.Equal(t, uint64(43), period.StartSequence) // CloseSequence + 1
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, period.GetStatus())
+		require.Equal(t, uint64(2), period.GetId())
+		require.Equal(t, uint64(43), period.GetStartSequence()) // CloseSequence + 1
 	})
 
 	payload, err := processor.processClosePeriod(&raftcmdpb.ClosePeriodOrder{}, mockStore)
@@ -53,10 +54,10 @@ func TestProcessClosePeriod_Success(t *testing.T) {
 
 	closePeriodLog := payload.GetClosePeriod()
 	require.NotNil(t, closePeriodLog)
-	require.Equal(t, uint64(1), closePeriodLog.ClosedPeriod.Id)
-	require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSING, closePeriodLog.ClosedPeriod.Status)
-	require.Equal(t, uint64(2), closePeriodLog.NewPeriod.Id)
-	require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, closePeriodLog.NewPeriod.Status)
+	require.Equal(t, uint64(1), closePeriodLog.GetClosedPeriod().GetId())
+	require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSING, closePeriodLog.GetClosedPeriod().GetStatus())
+	require.Equal(t, uint64(2), closePeriodLog.GetNewPeriod().GetId())
+	require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, closePeriodLog.GetNewPeriod().GetStatus())
 }
 
 func TestProcessClosePeriod_NoPeriodOpen(t *testing.T) {
@@ -133,9 +134,9 @@ func TestProcessSealPeriod_Success(t *testing.T) {
 
 	sealPeriodLog := payload.GetSealPeriod()
 	require.NotNil(t, sealPeriodLog)
-	require.Equal(t, uint64(1), sealPeriodLog.Period.Id)
-	require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, sealPeriodLog.Period.Status)
-	require.Equal(t, []byte("seal-hash"), sealPeriodLog.Period.SealingHash)
+	require.Equal(t, uint64(1), sealPeriodLog.GetPeriod().GetId())
+	require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, sealPeriodLog.GetPeriod().GetStatus())
+	require.Equal(t, []byte("seal-hash"), sealPeriodLog.GetPeriod().GetSealingHash())
 }
 
 func TestProcessSealPeriod_PeriodNotFound(t *testing.T) {
@@ -217,7 +218,7 @@ func TestProcessArchivePeriod_Success(t *testing.T) {
 
 	mockStore.EXPECT().GetPeriodByID(uint64(1)).Return(closedPeriod, true)
 	mockStore.EXPECT().UpdatePeriod(gomock.Any()).Do(func(period *commonpb.Period) {
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVING, period.Status)
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVING, period.GetStatus())
 	})
 	mockStore.EXPECT().SetPendingArchive(uint64(1), uint64(1), uint64(42))
 
@@ -227,8 +228,8 @@ func TestProcessArchivePeriod_Success(t *testing.T) {
 
 	archiveLog := payload.GetArchivePeriod()
 	require.NotNil(t, archiveLog)
-	require.Equal(t, uint64(1), archiveLog.Period.Id)
-	require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVING, archiveLog.Period.Status)
+	require.Equal(t, uint64(1), archiveLog.GetPeriod().GetId())
+	require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVING, archiveLog.GetPeriod().GetStatus())
 }
 
 func TestProcessArchivePeriod_NotFound(t *testing.T) {
@@ -298,7 +299,7 @@ func TestProcessConfirmArchivePeriod_Success(t *testing.T) {
 
 	mockStore.EXPECT().GetPeriodByID(uint64(1)).Return(archivingPeriod, true)
 	mockStore.EXPECT().UpdatePeriod(gomock.Any()).Do(func(period *commonpb.Period) {
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVED, period.Status)
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVED, period.GetStatus())
 	})
 	mockStore.EXPECT().SetPurgeRange(uint64(1), uint64(1), uint64(42))
 
@@ -308,8 +309,8 @@ func TestProcessConfirmArchivePeriod_Success(t *testing.T) {
 
 	confirmLog := payload.GetConfirmArchivePeriod()
 	require.NotNil(t, confirmLog)
-	require.Equal(t, uint64(1), confirmLog.Period.Id)
-	require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVED, confirmLog.Period.Status)
+	require.Equal(t, uint64(1), confirmLog.GetPeriod().GetId())
+	require.Equal(t, commonpb.PeriodStatus_PERIOD_ARCHIVED, confirmLog.GetPeriod().GetStatus())
 }
 
 func TestProcessConfirmArchivePeriod_NotFound(t *testing.T) {

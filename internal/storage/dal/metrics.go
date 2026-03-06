@@ -18,6 +18,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	if err != nil {
 		panic(err)
 	}
+
 	flushDurMilliseconds, err := m.Int64Histogram(
 		"pebble.flush.duration.milliseconds",
 		metric.WithUnit("ms"),
@@ -26,6 +27,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	if err != nil {
 		panic(err)
 	}
+
 	flushInputBytes, err := m.Int64Histogram(
 		"pebble.flush.input.bytes",
 		metric.WithUnit("By"),
@@ -42,6 +44,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	if err != nil {
 		panic(err)
 	}
+
 	compactionMilliseconds, err := m.Int64Histogram(
 		"pebble.compaction.duration.milliseconds",
 		metric.WithUnit("ms"),
@@ -58,6 +61,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	if err != nil {
 		panic(err)
 	}
+
 	stallMilliseconds, err := m.Int64Histogram(
 		"pebble.write_stall.duration.milliseconds",
 		metric.WithUnit("ms"),
@@ -66,6 +70,7 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 	if err != nil {
 		panic(err)
 	}
+
 	stallActiveGauge, err := m.Int64Gauge(
 		"pebble.write_stall.active",
 		metric.WithDescription("Whether Pebble is currently stalling writes (1/0)"),
@@ -135,8 +140,10 @@ func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.Eve
 				mu.Unlock()
 				// best effort: still record gauge down with base attrs
 				stallActiveGauge.Record(ctx, 0)
+
 				return
 			}
+
 			start := stallStart
 			attrs := stallAttrs
 			stallOn = false
@@ -155,5 +162,6 @@ func statusFromErr(err error) string {
 	if err == nil {
 		return "ok"
 	}
+
 	return "error"
 }

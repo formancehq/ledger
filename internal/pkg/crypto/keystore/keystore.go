@@ -27,6 +27,7 @@ func NewKeyStore() *KeyStore {
 func (ks *KeyStore) GetPublicKey(keyID string) ed25519.PublicKey {
 	ks.mu.RLock()
 	defer ks.mu.RUnlock()
+
 	return ks.publicKeys[keyID]
 }
 
@@ -34,6 +35,7 @@ func (ks *KeyStore) GetPublicKey(keyID string) ed25519.PublicKey {
 func (ks *KeyStore) AddPublicKey(keyID string, pubKey ed25519.PublicKey, parentKeyID string) {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
+
 	ks.publicKeys[keyID] = pubKey
 	if parentKeyID != "" {
 		ks.parents[keyID] = parentKeyID
@@ -44,6 +46,7 @@ func (ks *KeyStore) AddPublicKey(keyID string, pubKey ed25519.PublicKey, parentK
 func (ks *KeyStore) RemovePublicKey(keyID string) {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
+
 	delete(ks.publicKeys, keyID)
 	delete(ks.parents, keyID)
 }
@@ -52,12 +55,15 @@ func (ks *KeyStore) RemovePublicKey(keyID string) {
 func (ks *KeyStore) GetChildren(keyID string) []string {
 	ks.mu.RLock()
 	defer ks.mu.RUnlock()
+
 	var children []string
+
 	for childID, parentID := range ks.parents {
 		if parentID == keyID {
 			children = append(children, childID)
 		}
 	}
+
 	return children
 }
 
@@ -65,6 +71,7 @@ func (ks *KeyStore) GetChildren(keyID string) []string {
 func (ks *KeyStore) HasKeys() bool {
 	ks.mu.RLock()
 	defer ks.mu.RUnlock()
+
 	return len(ks.publicKeys) > 0
 }
 
@@ -72,6 +79,7 @@ func (ks *KeyStore) HasKeys() bool {
 func (ks *KeyStore) Reset() {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
+
 	ks.publicKeys = make(map[string]ed25519.PublicKey)
 	ks.parents = make(map[string]string)
 }

@@ -6,11 +6,12 @@ import (
 )
 
 func (p *RequestProcessor) processSetAuditConfig(order *raftcmdpb.SetAuditConfigOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	s.SetAuditEnabled(order.Enabled)
+	s.SetAuditEnabled(order.GetEnabled())
+
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_SetAuditConfig{
 			SetAuditConfig: &commonpb.SetAuditConfigLog{
-				Enabled: order.Enabled,
+				Enabled: order.GetEnabled(),
 			},
 		},
 	}, nil

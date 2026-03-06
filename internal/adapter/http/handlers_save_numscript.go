@@ -4,9 +4,10 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/go-chi/chi/v5"
 )
 
 // handleSaveNumscript handles POST /numscripts/{name} to save a numscript.
@@ -14,6 +15,7 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if name == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("numscript name is required"))
+
 		return
 	}
 
@@ -23,6 +25,7 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
+
 		return
 	}
 
@@ -37,12 +40,14 @@ func (s *Server) handleSaveNumscript(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		handleError(w, r, err)
+
 		return
 	}
 
 	if len(logs) > 0 {
-		if saved := logs[0].Payload.GetSavedNumscript(); saved != nil {
-			writeCreated(w, saved.Info)
+		if saved := logs[0].GetPayload().GetSavedNumscript(); saved != nil {
+			writeCreated(w, saved.GetInfo())
+
 			return
 		}
 	}

@@ -1,12 +1,11 @@
 package audit
 
 import (
-	"fmt"
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewEnableCommand creates the audit enable command.
@@ -66,6 +65,7 @@ func runSetAuditConfig(cmd *cobra.Command, enabled bool) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -75,7 +75,8 @@ func runSetAuditConfig(cmd *cobra.Command, enabled bool) error {
 	if !enabled {
 		action = "Disabling"
 	}
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("%s audit logging...", action))
+
+	spinner, _ := pterm.DefaultSpinner.Start(action + " audit logging...")
 
 	requests := []*servicepb.Request{
 		{
@@ -89,12 +90,14 @@ func runSetAuditConfig(cmd *cobra.Command, enabled bool) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to update audit config", err)
 	}
 

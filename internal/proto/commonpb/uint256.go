@@ -11,12 +11,14 @@ import (
 func (u *Uint256) IntoUint256(dst *uint256.Int) {
 	if u == nil {
 		dst.Clear()
+
 		return
 	}
-	dst[0] = u.V0
-	dst[1] = u.V1
-	dst[2] = u.V2
-	dst[3] = u.V3
+
+	dst[0] = u.GetV0()
+	dst[1] = u.GetV1()
+	dst[2] = u.GetV2()
+	dst[3] = u.GetV3()
 }
 
 // SetFromUint256 copies the 4 limbs from v into the proto message fields.
@@ -50,11 +52,14 @@ func (u *Uint256) ToBigInt() *big.Int {
 	if u == nil || u.IsZero() {
 		return new(big.Int)
 	}
+
 	var v uint256.Int
-	v[0] = u.V0
-	v[1] = u.V1
-	v[2] = u.V2
-	v[3] = u.V3
+
+	v[0] = u.GetV0()
+	v[1] = u.GetV1()
+	v[2] = u.GetV2()
+	v[3] = u.GetV3()
+
 	return v.ToBig()
 }
 
@@ -63,7 +68,8 @@ func (u *Uint256) IsZero() bool {
 	if u == nil {
 		return true
 	}
-	return u.V0 == 0 && u.V1 == 0 && u.V2 == 0 && u.V3 == 0
+
+	return u.GetV0() == 0 && u.GetV1() == 0 && u.GetV2() == 0 && u.GetV3() == 0
 }
 
 // Dec returns the decimal string representation of the value.
@@ -71,11 +77,14 @@ func (u *Uint256) Dec() string {
 	if u == nil {
 		return "0"
 	}
+
 	var v uint256.Int
-	v[0] = u.V0
-	v[1] = u.V1
-	v[2] = u.V2
-	v[3] = u.V3
+
+	v[0] = u.GetV0()
+	v[1] = u.GetV1()
+	v[2] = u.GetV2()
+	v[3] = u.GetV3()
+
 	return v.Dec()
 }
 
@@ -87,12 +96,16 @@ func (u *Uint256) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON decodes a decimal string (no quotes) into the Uint256.
 func (u *Uint256) UnmarshalJSON(data []byte) error {
 	var v uint256.Int
-	if err := v.SetFromDecimal(string(data)); err != nil {
+
+	err := v.SetFromDecimal(string(data))
+	if err != nil {
 		return err
 	}
+
 	u.V0 = v[0]
 	u.V1 = v[1]
 	u.V2 = v[2]
 	u.V3 = v[3]
+
 	return nil
 }

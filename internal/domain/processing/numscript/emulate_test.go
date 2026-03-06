@@ -3,8 +3,9 @@ package numscript
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 )
 
 func TestDiscoverNumscriptDependencies(t *testing.T) {
@@ -35,6 +36,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "users:bob"},
 			Asset:      "USD/2",
 		}]
+
 		require.True(t, hasAlice, "should discover source account")
 		require.True(t, hasBob, "should discover destination account")
 	})
@@ -62,6 +64,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "treasury"},
 			Asset:      "EUR/2",
 		}]
+
 		require.True(t, hasWorld, "should discover world account")
 		require.True(t, hasTreasury, "should discover destination account")
 	})
@@ -125,6 +128,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "merchant"},
 			Asset:      "USD/2",
 		}]
+
 		require.True(t, hasChecking, "should discover first source")
 		require.True(t, hasSavings, "should discover second source")
 		require.True(t, hasMerchant, "should discover destination")
@@ -154,6 +158,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 			AccountKey: domain.AccountKey{Ledger: ledgerID, Account: "users:bob"},
 			Asset:      "USD/2",
 		}]
+
 		require.True(t, hasAlice, "should discover first destination")
 		require.True(t, hasBob, "should discover second destination")
 	})
@@ -210,6 +215,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		for key := range result.SourceVolumes {
 			require.Equal(t, ledgerID, key.Ledger, "all source volume keys should have the correct ledger ID")
 		}
+
 		for key := range result.DestinationVolumes {
 			require.Equal(t, ledgerID, key.Ledger, "all destination volume keys should have the correct ledger ID")
 		}

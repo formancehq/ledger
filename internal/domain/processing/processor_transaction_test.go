@@ -3,12 +3,13 @@ package processing
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestProcessCreateTransaction(t *testing.T) {
@@ -54,14 +55,14 @@ func TestProcessCreateTransaction(t *testing.T) {
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
 		func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Output should increase by 100
-			require.Equal(t, int64(100), value.OutputKnown.ToBigInt().Int64())
+			require.Equal(t, int64(100), value.GetOutputKnown().ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetVolume(destKey).Return(destVolume, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
 		func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Input should increase by 100
-			require.Equal(t, int64(100), value.InputKnown.ToBigInt().Int64())
+			require.Equal(t, int64(100), value.GetInputKnown().ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -94,10 +95,10 @@ func TestProcessCreateTransaction(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Equal(t, uint64(1), createdTx.Transaction.Id)
-	require.Len(t, createdTx.Transaction.Postings, 1)
+	require.Equal(t, uint64(1), createdTx.GetTransaction().GetId())
+	require.Len(t, createdTx.GetTransaction().GetPostings(), 1)
 }
 
 func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
@@ -318,16 +319,16 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Equal(t, uint64(1), createdTx.Transaction.Id)
-	require.Len(t, createdTx.Transaction.Postings, 1)
+	require.Equal(t, uint64(1), createdTx.GetTransaction().GetId())
+	require.Len(t, createdTx.GetTransaction().GetPostings(), 1)
 
-	posting := createdTx.Transaction.Postings[0]
-	require.Equal(t, "world", posting.Source)
-	require.Equal(t, "users:alice", posting.Destination)
-	require.Equal(t, int64(10000), posting.Amount.ToBigInt().Int64())
-	require.Equal(t, "USD/2", posting.Asset)
+	posting := createdTx.GetTransaction().GetPostings()[0]
+	require.Equal(t, "world", posting.GetSource())
+	require.Equal(t, "users:alice", posting.GetDestination())
+	require.Equal(t, int64(10000), posting.GetAmount().ToBigInt().Int64())
+	require.Equal(t, "USD/2", posting.GetAsset())
 }
 
 func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
@@ -387,15 +388,15 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Len(t, createdTx.Transaction.Postings, 1)
+	require.Len(t, createdTx.GetTransaction().GetPostings(), 1)
 
-	posting := createdTx.Transaction.Postings[0]
-	require.Equal(t, "world", posting.Source)
-	require.Equal(t, "merchants:shop1", posting.Destination)
-	require.Equal(t, int64(5000), posting.Amount.ToBigInt().Int64())
-	require.Equal(t, "EUR/2", posting.Asset)
+	posting := createdTx.GetTransaction().GetPostings()[0]
+	require.Equal(t, "world", posting.GetSource())
+	require.Equal(t, "merchants:shop1", posting.GetDestination())
+	require.Equal(t, int64(5000), posting.GetAmount().ToBigInt().Int64())
+	require.Equal(t, "EUR/2", posting.GetAsset())
 }
 
 func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
@@ -451,19 +452,19 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Len(t, createdTx.Transaction.Postings, 2)
+	require.Len(t, createdTx.GetTransaction().GetPostings(), 2)
 
 	// Verify first posting
-	require.Equal(t, "world", createdTx.Transaction.Postings[0].Source)
-	require.Equal(t, "users:alice", createdTx.Transaction.Postings[0].Destination)
-	require.Equal(t, int64(10000), createdTx.Transaction.Postings[0].Amount.ToBigInt().Int64())
+	require.Equal(t, "world", createdTx.GetTransaction().GetPostings()[0].GetSource())
+	require.Equal(t, "users:alice", createdTx.GetTransaction().GetPostings()[0].GetDestination())
+	require.Equal(t, int64(10000), createdTx.GetTransaction().GetPostings()[0].GetAmount().ToBigInt().Int64())
 
 	// Verify second posting
-	require.Equal(t, "world", createdTx.Transaction.Postings[1].Source)
-	require.Equal(t, "users:bob", createdTx.Transaction.Postings[1].Destination)
-	require.Equal(t, int64(5000), createdTx.Transaction.Postings[1].Amount.ToBigInt().Int64())
+	require.Equal(t, "world", createdTx.GetTransaction().GetPostings()[1].GetSource())
+	require.Equal(t, "users:bob", createdTx.GetTransaction().GetPostings()[1].GetDestination())
+	require.Equal(t, int64(5000), createdTx.GetTransaction().GetPostings()[1].GetAmount().ToBigInt().Int64())
 }
 
 func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
@@ -516,14 +517,14 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Len(t, createdTx.Transaction.Postings, 1)
+	require.Len(t, createdTx.GetTransaction().GetPostings(), 1)
 
-	posting := createdTx.Transaction.Postings[0]
-	require.Equal(t, "bank:main", posting.Source)
-	require.Equal(t, "users:alice", posting.Destination)
-	require.Equal(t, int64(100000), posting.Amount.ToBigInt().Int64())
+	posting := createdTx.GetTransaction().GetPostings()[0]
+	require.Equal(t, "bank:main", posting.GetSource())
+	require.Equal(t, "users:alice", posting.GetDestination())
+	require.Equal(t, int64(100000), posting.GetAmount().ToBigInt().Int64())
 }
 
 func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
@@ -613,9 +614,9 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Len(t, createdTx.Transaction.Postings, 0) // Empty transaction
+	require.Empty(t, createdTx.GetTransaction().GetPostings()) // Empty transaction
 }
 
 func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testing.T) {
@@ -671,18 +672,18 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Len(t, createdTx.Transaction.Postings, 2)
+	require.Len(t, createdTx.GetTransaction().GetPostings(), 2)
 
 	// Should split 10000 into 5000 each
-	require.Equal(t, "world", createdTx.Transaction.Postings[0].Source)
-	require.Equal(t, "users:alice", createdTx.Transaction.Postings[0].Destination)
-	require.Equal(t, int64(5000), createdTx.Transaction.Postings[0].Amount.ToBigInt().Int64())
+	require.Equal(t, "world", createdTx.GetTransaction().GetPostings()[0].GetSource())
+	require.Equal(t, "users:alice", createdTx.GetTransaction().GetPostings()[0].GetDestination())
+	require.Equal(t, int64(5000), createdTx.GetTransaction().GetPostings()[0].GetAmount().ToBigInt().Int64())
 
-	require.Equal(t, "world", createdTx.Transaction.Postings[1].Source)
-	require.Equal(t, "users:bob", createdTx.Transaction.Postings[1].Destination)
-	require.Equal(t, int64(5000), createdTx.Transaction.Postings[1].Amount.ToBigInt().Int64())
+	require.Equal(t, "world", createdTx.GetTransaction().GetPostings()[1].GetSource())
+	require.Equal(t, "users:bob", createdTx.GetTransaction().GetPostings()[1].GetDestination())
+	require.Equal(t, int64(5000), createdTx.GetTransaction().GetPostings()[1].GetAmount().ToBigInt().Int64())
 }
 
 func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
@@ -737,12 +738,12 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.NotNil(t, createdTx.Transaction.Metadata)
+	require.NotNil(t, createdTx.GetTransaction().GetMetadata())
 
 	// Verify metadata was set
-	metaMap := createdTx.Transaction.Metadata.ToMap()
+	metaMap := createdTx.GetTransaction().GetMetadata().ToMap()
 	require.Equal(t, "payment", metaMap["type"])
 	require.Equal(t, "purchase", metaMap["category"])
 }
@@ -815,14 +816,14 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Len(t, createdTx.Transaction.Postings, 1)
+	require.Len(t, createdTx.GetTransaction().GetPostings(), 1)
 
 	// Verify account metadata was returned in the log payload
-	require.NotNil(t, createdTx.AccountMetadata, "AccountMetadata should not be nil")
-	require.Contains(t, createdTx.AccountMetadata, "users:alice", "AccountMetadata should contain users:alice")
-	aliceMeta := createdTx.AccountMetadata["users:alice"]
+	require.NotNil(t, createdTx.GetAccountMetadata(), "AccountMetadata should not be nil")
+	require.Contains(t, createdTx.GetAccountMetadata(), "users:alice", "AccountMetadata should contain users:alice")
+	aliceMeta := createdTx.GetAccountMetadata()["users:alice"]
 	require.NotNil(t, aliceMeta)
 	metaMap := aliceMeta.ToMap()
 	require.Equal(t, "savings", metaMap["account_type"])
@@ -871,14 +872,14 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
 		func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Output should increase by 100 (50 + 100 = 150)
-			require.Equal(t, int64(150), value.OutputKnown.ToBigInt().Int64())
+			require.Equal(t, int64(150), value.GetOutputKnown().ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetVolume(destKey).Return(destVolume, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
 		func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Input should increase by 100
-			require.Equal(t, int64(100), value.InputKnown.ToBigInt().Int64())
+			require.Equal(t, int64(100), value.GetInputKnown().ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -913,9 +914,9 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Equal(t, uint64(1), createdTx.Transaction.Id)
+	require.Equal(t, uint64(1), createdTx.GetTransaction().GetId())
 }
 
 func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
@@ -953,16 +954,16 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
 		func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Output should use OutputDiff since we don't know the absolute value
-			require.Nil(t, value.OutputKnown)
-			require.Equal(t, int64(100), value.OutputDiff.ToBigInt().Int64())
+			require.Nil(t, value.GetOutputKnown())
+			require.Equal(t, int64(100), value.GetOutputDiff().ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetVolume(destKey).Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
 		func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Input should use InputDiff since we don't know the absolute value
-			require.Nil(t, value.InputKnown)
-			require.Equal(t, int64(100), value.InputDiff.ToBigInt().Int64())
+			require.Nil(t, value.GetInputKnown())
+			require.Equal(t, int64(100), value.GetInputDiff().ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1048,14 +1049,14 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Len(t, createdTx.Transaction.Postings, 1)
+	require.Len(t, createdTx.GetTransaction().GetPostings(), 1)
 
-	posting := createdTx.Transaction.Postings[0]
-	require.Equal(t, "users:broke", posting.Source)
-	require.Equal(t, "users:alice", posting.Destination)
-	require.Equal(t, int64(100000), posting.Amount.ToBigInt().Int64())
+	posting := createdTx.GetTransaction().GetPostings()[0]
+	require.Equal(t, "users:broke", posting.GetSource())
+	require.Equal(t, "users:alice", posting.GetDestination())
+	require.Equal(t, int64(100000), posting.GetAmount().ToBigInt().Int64())
 }
 
 func TestProcessCreateTransaction_Numscript_OverflowUint256(t *testing.T) {
@@ -1219,10 +1220,10 @@ func TestProcessCreateTransaction_PeriodIdInCreatedTransaction(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Equal(t, uint64(5), createdTx.PeriodId, "PeriodId should match the open period")
-	require.Equal(t, uint64(1), createdTx.Transaction.Id)
+	require.Equal(t, uint64(5), createdTx.GetPeriodId(), "PeriodId should match the open period")
+	require.Equal(t, uint64(1), createdTx.GetTransaction().GetId())
 }
 
 func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
@@ -1287,7 +1288,7 @@ func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	createdTx := applyLog.Log.Data.GetCreatedTransaction()
+	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	require.Equal(t, uint64(0), createdTx.PeriodId, "PeriodId should be 0 when no open period exists")
+	require.Equal(t, uint64(0), createdTx.GetPeriodId(), "PeriodId should be 0 when no open period exists")
 }

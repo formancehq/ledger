@@ -3,9 +3,10 @@ package processing
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 func TestProcessSetMaintenanceMode_Enable(t *testing.T) {
@@ -34,7 +35,7 @@ func TestProcessSetMaintenanceMode_Enable(t *testing.T) {
 
 	mmLog := result.GetSetMaintenanceMode()
 	require.NotNil(t, mmLog)
-	require.True(t, mmLog.Enabled)
+	require.True(t, mmLog.GetEnabled())
 }
 
 func TestProcessSetMaintenanceMode_Disable(t *testing.T) {
@@ -63,5 +64,5 @@ func TestProcessSetMaintenanceMode_Disable(t *testing.T) {
 
 	mmLog := result.GetSetMaintenanceMode()
 	require.NotNil(t, mmLog)
-	require.False(t, mmLog.Enabled)
+	require.False(t, mmLog.GetEnabled())
 }

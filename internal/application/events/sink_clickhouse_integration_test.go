@@ -11,12 +11,14 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	libtime "github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+
 	"github.com/formancehq/ledger-v3-poc/internal/application/events"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/stretchr/testify/require"
 )
 
 // openTestClickHouseConn opens a ClickHouse connection with the required settings
@@ -30,6 +32,7 @@ func openTestClickHouseConn(t *testing.T, dsn string) clickhouse.Conn {
 	if opts.Settings == nil {
 		opts.Settings = make(clickhouse.Settings)
 	}
+
 	opts.Settings["allow_experimental_json_type"] = true
 	opts.Settings["allow_experimental_variant_type"] = true
 	opts.Settings["output_format_json_quote_64bit_integers"] = false
@@ -52,6 +55,7 @@ func queryClickHouseEvents(t *testing.T, dsn, table string) []struct {
 	Data        string
 } {
 	t.Helper()
+
 	ctx := context.Background()
 
 	conn := openTestClickHouseConn(t, dsn)
@@ -59,6 +63,7 @@ func queryClickHouseEvents(t *testing.T, dsn, table string) []struct {
 	rows, err := conn.Query(ctx, fmt.Sprintf(
 		"SELECT log_sequence, type, ledger, date, toJSONString(data) FROM %s ORDER BY log_sequence", table))
 	require.NoError(t, err)
+
 	defer func() { _ = rows.Close() }()
 
 	var results []struct {
@@ -80,6 +85,7 @@ func queryClickHouseEvents(t *testing.T, dsn, table string) []struct {
 		require.NoError(t, rows.Scan(&row.LogSequence, &row.Type, &row.Ledger, &row.Date, &row.Data))
 		results = append(results, row)
 	}
+
 	require.NoError(t, rows.Err())
 
 	return results
@@ -96,6 +102,7 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "orders")
+
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -135,6 +142,7 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 		Table: table,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = sink.Close() }()
 
 	cfg := events.DefaultEmitterConfig()
@@ -143,7 +151,8 @@ func TestClickHouseSinkIntegration_PublishAndConsume(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := query.ReadSinkCursor(store,"ch-sink")
+		cursor, err := query.ReadSinkCursor(store, "ch-sink")
+
 		return err == nil && cursor >= 2
 	}, 10*time.Second, 10*time.Millisecond, "emitter should process all logs")
 
@@ -195,6 +204,7 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 	logger := logging.Testing()
 
 	registerLedger(t, store, "analytics")
+
 	now := libtime.Now()
 
 	appendTestLogs(t, store,
@@ -234,6 +244,7 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 		Table: table,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = sink.Close() }()
 
 	cfg := events.DefaultEmitterConfig()
@@ -242,7 +253,8 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 	emitter.Start()
 
 	require.Eventually(t, func() bool {
-		cursor, err := query.ReadSinkCursor(store,"typed-sub")
+		cursor, err := query.ReadSinkCursor(store, "typed-sub")
+
 		return err == nil && cursor >= 2
 	}, 10*time.Second, 10*time.Millisecond, "emitter should process logs")
 
@@ -253,6 +265,7 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 
 	// Query typed sub-columns: ledgerName for CREATED_LEDGER event
 	var ledgerName string
+
 	row := conn.QueryRow(ctx, fmt.Sprintf(
 		"SELECT data.ledgerName FROM %s WHERE type = 'created_ledger' LIMIT 1", table))
 	require.NoError(t, row.Scan(&ledgerName))
@@ -260,6 +273,7 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 
 	// Query transaction sub-columns: transaction.id (UInt64) and posting details
 	var txID uint64
+
 	row = conn.QueryRow(ctx, fmt.Sprintf(
 		"SELECT data.transaction.id FROM %s WHERE type = 'committed_transaction' LIMIT 1", table))
 	require.NoError(t, row.Scan(&txID))
@@ -273,6 +287,7 @@ func TestClickHouseSinkIntegration_TypedSubColumnQueries(t *testing.T) {
 		postingDest   string
 		postingAsset  string
 	)
+
 	row = conn.QueryRow(ctx, fmt.Sprintf(
 		"SELECT data.transaction.postings.source[1], data.transaction.postings.destination[1], data.transaction.postings.asset[1] FROM %s WHERE type = 'committed_transaction' LIMIT 1", table))
 	require.NoError(t, row.Scan(&postingSource, &postingDest, &postingAsset))
@@ -292,6 +307,7 @@ func TestClickHouseSinkIntegration_AutoCreateTable(t *testing.T) {
 		Table: table,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = sink.Close() }()
 
 	// Verify the table exists and is empty

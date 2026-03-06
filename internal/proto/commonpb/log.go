@@ -1,37 +1,41 @@
 package commonpb
 
 import (
-	"github.com/formancehq/go-libs/v3/pointer"
 	"github.com/formancehq/go-libs/v3/time"
+
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 )
 
-// NewLedgerLog creates a new LedgerLog from a LedgerLogPayload
+// NewLedgerLog creates a new LedgerLog from a LedgerLogPayload.
 func NewLedgerLog(payload *LedgerLogPayload) *LedgerLog {
 	return &LedgerLog{
 		Data: payload,
 	}
 }
 
-// WithDate sets the date of the log
+// WithDate sets the date of the log.
 func (l *LedgerLog) WithDate(date time.Time) *LedgerLog {
 	if l == nil {
 		l = &LedgerLog{}
 	}
+
 	l.Date = NewTimestamp(date)
+
 	return l
 }
 
-// WithID sets the ID of the log
+// WithID sets the ID of the log.
 func (l *LedgerLog) WithID(id uint64) *LedgerLog {
 	if l == nil {
 		l = &LedgerLog{}
 	}
+
 	l.Id = id
+
 	return l
 }
 
-// UnmarshalJSON implements json.Unmarshaler for LedgerLog
+// UnmarshalJSON implements json.Unmarshaler for LedgerLog.
 func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 	type auxLog struct {
 		Type LogType       `json:"type"`
@@ -39,14 +43,18 @@ func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 		Date *time.Time    `json:"date"`
 		ID   *uint64       `json:"id"`
 	}
+
 	rawLog := auxLog{}
-	if err := json.Unmarshal(data, &rawLog); err != nil {
+
+	err := json.Unmarshal(data, &rawLog)
+	if err != nil {
 		return err
 	}
 
 	if rawLog.Date != nil {
 		l.Date = NewTimestamp(*rawLog.Date)
 	}
+
 	if rawLog.ID != nil {
 		l.Id = *rawLog.ID
 	}
@@ -57,6 +65,7 @@ func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return err
 		}
+
 		switch p := payload.(type) {
 		case *CreatedTransaction:
 			l.Data = &LedgerLogPayload{
@@ -108,10 +117,11 @@ func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
+
 	return nil
 }
 
-// MarshalJSON implements json.Marshaler for LedgerLog
+// MarshalJSON implements json.Marshaler for LedgerLog.
 func (l *LedgerLog) MarshalJSON() ([]byte, error) {
 	type auxLog struct {
 		Type LogType           `json:"type"`
@@ -122,15 +132,16 @@ func (l *LedgerLog) MarshalJSON() ([]byte, error) {
 
 	aux := auxLog{
 		Type: GetLogTypeFromLog(l),
-		Data: l.Data,
+		Data: l.GetData(),
 	}
 
-	if l.Date != nil {
-		t := l.Date.AsTime()
+	if l.GetDate() != nil {
+		t := l.GetDate().AsTime()
 		aux.Date = &t
 	}
-	if l.Id != 0 {
-		aux.ID = pointer.For(l.Id)
+
+	if l.GetId() != 0 {
+		aux.ID = new(l.GetId())
 	}
 
 	return json.Marshal(aux)

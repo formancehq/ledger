@@ -61,31 +61,39 @@ func TestSharedStateConcurrency(t *testing.T) {
 	t.Parallel()
 
 	ss := NewSharedState()
+
 	var wg sync.WaitGroup
+
 	const goroutines = 50
 
 	// Concurrent writers
 	wg.Add(goroutines * 2)
-	for i := 0; i < goroutines; i++ {
+
+	for i := range goroutines {
 		go func(enabled bool) {
 			defer wg.Done()
+
 			ss.SetMaintenanceMode(enabled)
 		}(i%2 == 0)
 		go func(enabled bool) {
 			defer wg.Done()
+
 			ss.SetRequireSignatures(enabled)
 		}(i%2 == 0)
 	}
 
 	// Concurrent readers
 	wg.Add(goroutines * 2)
-	for i := 0; i < goroutines; i++ {
+
+	for range goroutines {
 		go func() {
 			defer wg.Done()
+
 			_ = ss.MaintenanceMode()
 		}()
 		go func() {
 			defer wg.Done()
+
 			_ = ss.RequireSignatures()
 		}()
 	}

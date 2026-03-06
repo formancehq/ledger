@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"path/filepath"
 
-	cryptosigning "github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/spf13/cobra"
+
+	cryptosigning "github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 )
 
 func NewGenerateKeyCommand() *cobra.Command {

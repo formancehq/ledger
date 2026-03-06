@@ -6,24 +6,24 @@ import "encoding/binary"
 var (
 	// BucketMetadataIndex is the inverted index for metadata.
 	// Key: [ledgerName\x00][ns:][metadataKey\x00][typeTag][sortableValue][entityID]
-	// Value: (empty)
+	// Value: (empty).
 	BucketMetadataIndex = []byte("midx")
 
 	// BucketExistence is the existence index for accounts and transactions.
 	// Key: [ledgerName\x00][ns:][entityID]
-	// Value: (empty)
+	// Value: (empty).
 	BucketExistence = []byte("exist")
 
 	// BucketReverseMap is the reverse metadata map (entity → current value per key).
 	// Key: [ledgerName\x00][ns:][entityID separator][metadataKey]
 	//   accounts:     [ledger\x00][a:][account\x00][key]
 	//   transactions: [ledger\x00][t:][txID(8B)][key]
-	// Value: MetadataValue protobuf
+	// Value: MetadataValue protobuf.
 	BucketReverseMap = []byte("rmap")
 
 	// BucketAccountTx maps accounts to their transactions (any role: source or destination).
 	// Key: [ledgerName\x00][accountAddress\x00][txID(8B)]
-	// Value: (empty)
+	// Value: (empty).
 	BucketAccountTx = []byte("atxm")
 
 	// BucketSourceAccountTx maps source accounts to their transactions.
@@ -40,12 +40,12 @@ var (
 	// Key: [ledgerName\x00][ns:][metadataKey\x00][nullFlag(1B)][entityID]
 	//   nullFlag = 0x00 → non-null (typed metadata: string, int, uint, bool)
 	//   nullFlag = 0x01 → null (TypeTagNull — unconvertible or explicit null)
-	// Value: (empty)
+	// Value: (empty).
 	BucketEntityExists = []byte("eidx")
 
 	// BucketProgress stores index builder progress.
 	// Key: "lastSeq"
-	// Value: uint64 big-endian
+	// Value: uint64 big-endian.
 	BucketProgress = []byte("prog")
 
 	// BucketBackfill stores per-index backfill progress cursors.
@@ -55,22 +55,22 @@ var (
 	//   AcctBuiltin:  [ledger\x00]A[builtin_byte]
 	//   AcctMetadata: [ledger\x00]a[key]
 	//   LogBuiltin:   [ledger\x00]l[builtin_byte]
-	// Value: uint64 big-endian (cursor position)
+	// Value: uint64 big-endian (cursor position).
 	BucketBackfill = []byte("bfil")
 
 	// BucketTransactionReference maps (ledger, reference) → txID for exact-match lookups.
 	// Key: [ledger\x00][reference\x00][txID_BE(8B)]
-	// Value: (empty)
+	// Value: (empty).
 	BucketTransactionReference = []byte("txref")
 
 	// BucketTransactionTimestamp maps (ledger, timestamp, txID) for range scans by timestamp.
 	// Key: [ledger\x00][timestamp_BE(8B)][txID_BE(8B)]
-	// Value: (empty)
+	// Value: (empty).
 	BucketTransactionTimestamp = []byte("tstmp")
 
 	// BucketLedgerLogs maps (ledger, ledgerLogID) → globalSequence for per-ledger log listing.
 	// Key: [ledger\x00][ledgerLogID_BE(8B)]
-	// Value: [globalSequence_BE(8B)]
+	// Value: [globalSequence_BE(8B)].
 	BucketLedgerLogs = []byte("llog")
 )
 
@@ -96,6 +96,7 @@ func NewKeyBuilder() *KeyBuilder {
 // Reset clears the builder for reuse.
 func (kb *KeyBuilder) Reset() *KeyBuilder {
 	kb.buf = kb.buf[:0]
+
 	return kb
 }
 
@@ -103,18 +104,21 @@ func (kb *KeyBuilder) Reset() *KeyBuilder {
 func (kb *KeyBuilder) PutLedger(name string) *KeyBuilder {
 	kb.buf = append(kb.buf, name...)
 	kb.buf = append(kb.buf, 0x00)
+
 	return kb
 }
 
 // PutNamespace appends a namespace prefix (e.g., "a:" or "t:").
 func (kb *KeyBuilder) PutNamespace(ns string) *KeyBuilder {
 	kb.buf = append(kb.buf, ns...)
+
 	return kb
 }
 
 // PutString appends a raw string.
 func (kb *KeyBuilder) PutString(s string) *KeyBuilder {
 	kb.buf = append(kb.buf, s...)
+
 	return kb
 }
 
@@ -122,18 +126,21 @@ func (kb *KeyBuilder) PutString(s string) *KeyBuilder {
 func (kb *KeyBuilder) PutStringNull(s string) *KeyBuilder {
 	kb.buf = append(kb.buf, s...)
 	kb.buf = append(kb.buf, 0x00)
+
 	return kb
 }
 
 // PutBytes appends raw bytes.
 func (kb *KeyBuilder) PutBytes(b []byte) *KeyBuilder {
 	kb.buf = append(kb.buf, b...)
+
 	return kb
 }
 
 // PutByte appends a single byte.
 func (kb *KeyBuilder) PutByte(b byte) *KeyBuilder {
 	kb.buf = append(kb.buf, b)
+
 	return kb
 }
 
@@ -142,6 +149,7 @@ func (kb *KeyBuilder) PutUint64(v uint64) *KeyBuilder {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], v)
 	kb.buf = append(kb.buf, buf[:]...)
+
 	return kb
 }
 
@@ -150,6 +158,7 @@ func (kb *KeyBuilder) Build() []byte {
 	result := make([]byte, len(kb.buf))
 	copy(result, kb.buf)
 	kb.buf = kb.buf[:0]
+
 	return result
 }
 
@@ -157,6 +166,7 @@ func (kb *KeyBuilder) Build() []byte {
 func (kb *KeyBuilder) Snapshot() []byte {
 	result := make([]byte, len(kb.buf))
 	copy(result, kb.buf)
+
 	return result
 }
 
@@ -270,6 +280,7 @@ func EntityExistsKey(kb *KeyBuilder, ledger, ns, metaKey string, isNull bool, en
 	if isNull {
 		nullFlag = EntityExistsNull
 	}
+
 	return kb.Reset().
 		PutLedger(ledger).
 		PutNamespace(ns).
@@ -318,9 +329,11 @@ func ParseBackfillKey(key []byte) (ledger string, kind byte, details []byte, ok 
 			if i+1 >= len(key) {
 				return "", 0, nil, false
 			}
+
 			return string(key[:i]), key[i+1], key[i+2:], true
 		}
 	}
+
 	return "", 0, nil, false
 }
 

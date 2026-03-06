@@ -4,14 +4,15 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/blake3"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func TestHashVersion(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, byte(1), HashVersion)
+	require.Equal(t, HashVersion, byte(1))
 }
 
 func TestGoldenHashCreateLedger(t *testing.T) {

@@ -6,11 +6,12 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewRevertCommand creates the transactions revert command.
@@ -60,10 +61,12 @@ func runRevert(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	// Get ledger name (from flag or interactive selection)
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -75,6 +78,7 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		txID, err = strconv.ParseUint(args[0], 10, 64)
 		if err != nil {
 			pterm.Error.Printfln("Invalid transaction ID: %v", err)
+
 			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	} else {
@@ -84,9 +88,11 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
+
 		txID, err = strconv.ParseUint(input, 10, 64)
 		if err != nil {
 			pterm.Error.Printfln("Invalid transaction ID: %v", err)
+
 			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	}
@@ -100,12 +106,15 @@ func runRevert(cmd *cobra.Command, args []string) error {
 
 	// Parse metadata
 	metadata := make(map[string]string)
+
 	for _, m := range metadataFlags {
 		key, value, err := cmdutil.ParseKeyValue(m)
 		if err != nil {
 			pterm.Error.Printfln("Invalid metadata format: %s", m)
+
 			return cmdutil.Displayed(fmt.Errorf("invalid metadata format %q: %w", m, err))
 		}
+
 		metadata[key] = value
 	}
 
@@ -123,8 +132,10 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read confirmation: %w", err)
 		}
+
 		if !confirmed {
 			pterm.Info.Println("Revert cancelled")
+
 			return nil
 		}
 	}
@@ -157,40 +168,47 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		},
 	}
 
-	if err := cmdutil.SignRequests(cmd, req.Requests); err != nil {
+	if err := cmdutil.SignRequests(cmd, req.GetRequests()); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	resp, err := client.Apply(ctx, req)
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to revert transaction", err)
 	}
 
-	if err := cmdutil.VerifyResponseSignatures(cmd, resp.Logs); err != nil {
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
 		spinner.Fail("Response signature verification failed")
+
 		return cmdutil.Displayed(fmt.Errorf("response signature verification failed: %w", err))
 	}
 
 	spinner.Success("Reverted")
 
-	if len(resp.Logs) == 0 {
+	if len(resp.GetLogs()) == 0 {
 		pterm.Warning.Println("No logs returned")
+
 		return nil
 	}
 
 	// Get the revert transaction from response
-	log := resp.Logs[0]
-	applyLog := log.Payload.GetApply()
+	log := resp.GetLogs()[0]
+
+	applyLog := log.GetPayload().GetApply()
 	if applyLog == nil {
 		pterm.Warning.Println("Unexpected response format")
+
 		return nil
 	}
 
-	revertedTx := applyLog.Log.Data.GetRevertedTransaction()
+	revertedTx := applyLog.GetLog().GetData().GetRevertedTransaction()
 	if revertedTx == nil {
 		pterm.Warning.Println("No reverted transaction in response")
+
 		return nil
 	}
 
@@ -198,21 +216,23 @@ func runRevert(cmd *cobra.Command, args []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(revertedTx)
 	}
 
 	pterm.Println()
 
 	// Display revert info
-	pterm.Printf("Revert Transaction #%d\n", revertedTx.RevertTransaction.Id)
+	pterm.Printf("Revert Transaction #%d\n", revertedTx.GetRevertTransaction().GetId())
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 	pterm.Printf("Original Transaction: #%d\n", txID)
-	if revertedTx.RevertTransaction.Timestamp != nil {
-		pterm.Printf("Timestamp:            %s\n", pterm.Gray(revertedTx.RevertTransaction.Timestamp.AsTime().Format("2006-01-02T15:04:05Z07:00")))
+
+	if revertedTx.GetRevertTransaction().GetTimestamp() != nil {
+		pterm.Printf("Timestamp:            %s\n", pterm.Gray(revertedTx.GetRevertTransaction().GetTimestamp().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
 
 	// Display postings of the revert transaction
-	if len(revertedTx.RevertTransaction.Postings) > 0 {
+	if len(revertedTx.GetRevertTransaction().GetPostings()) > 0 {
 		pterm.Println()
 		pterm.Println("Revert Postings:")
 
@@ -220,25 +240,27 @@ func runRevert(cmd *cobra.Command, args []string) error {
 			{"#", "SOURCE", "", "DESTINATION", "AMOUNT", "ASSET"},
 		}
 
-		for i, posting := range revertedTx.RevertTransaction.Postings {
+		for i, posting := range revertedTx.GetRevertTransaction().GetPostings() {
 			postingsTable = append(postingsTable, []string{
-				fmt.Sprintf("%d", i+1),
-				posting.Source,
+				strconv.Itoa(i + 1),
+				posting.GetSource(),
 				"→",
-				posting.Destination,
-				posting.Amount.Dec(),
-				posting.Asset,
+				posting.GetDestination(),
+				posting.GetAmount().Dec(),
+				posting.GetAsset(),
 			})
 		}
 
-		if err := pterm.DefaultTable.WithHasHeader().WithData(postingsTable).Render(); err != nil {
+		err := pterm.DefaultTable.WithHasHeader().WithData(postingsTable).Render()
+		if err != nil {
 			return err
 		}
 	}
 
 	// Display post-commit volumes
-	if revertedTx.PostCommitVolumes != nil {
-		if err := renderPostCommitVolumes(revertedTx.PostCommitVolumes); err != nil {
+	if revertedTx.GetPostCommitVolumes() != nil {
+		err := renderPostCommitVolumes(revertedTx.GetPostCommitVolumes())
+		if err != nil {
 			return err
 		}
 	}

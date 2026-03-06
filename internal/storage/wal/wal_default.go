@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
 	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -19,6 +18,8 @@ import (
 	"go.etcd.io/etcd/server/v3/wal/walpb"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 const (
@@ -40,7 +41,7 @@ func WithPurgeInterval(d time.Duration) Option {
 	}
 }
 
-// DefaultWAL implements raft.Storage interface for etcd/raft using etcd/wal
+// DefaultWAL implements raft.Storage interface for etcd/raft using etcd/wal.
 type DefaultWAL struct {
 	// mu protects all mutable state (entries, snapshot, hardState)
 	mu sync.RWMutex
@@ -78,9 +79,8 @@ type DefaultWAL struct {
 	appendBatchSizeHistogram metric.Int64Histogram
 }
 
-// New creates a new DefaultWAL instance
+// New creates a new DefaultWAL instance.
 func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Option) (*DefaultWAL, error) {
-
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
 	}
@@ -103,6 +103,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 
 	// Create metrics
 	var err error
+
 	s.appendCacheHistogram, err = meter.Int64Histogram(
 		"wal.append.cache.duration",
 		metric.WithDescription("Time spent updating in-memory cache"),
@@ -138,6 +139,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	} else {
 		s.zapLogger = zap.NewNop()
 	}
+
 	zapLogger := s.zapLogger
 
 	markerFilePath := filepath.Join(s.dataDir, walCreationCompletedFile)
@@ -146,18 +148,23 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("checking DefaultWAL creation completion marker: %w", err)
 	}
+
 	var snap walpb.Snapshot
+
 	if err == nil {
 		s.logger.Infof("WAL creation completed, opening existing DefaultWAL")
+
 		data, err := os.ReadFile(s.stateFile)
 		if err != nil && !os.IsNotExist(err) {
 			return nil, err
 		}
 
 		if err == nil {
-			if err := unmarshalStateFile(data, &s.snapshot); err != nil {
+			err := unmarshalStateFile(data, &s.snapshot)
+			if err != nil {
 				return nil, err
 			}
+
 			s.logger.
 				WithFields(map[string]any{
 					"index": s.snapshot.Metadata.Index,
@@ -174,9 +181,9 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		if err != nil {
 			return nil, fmt.Errorf("opening existing DefaultWAL: %w", err)
 		}
-
 	} else {
 		s.logger.Infof("DefaultWAL creation not completed, creating new DefaultWAL")
+
 		if err := os.RemoveAll(s.etcdWalDir); err != nil {
 			return nil, fmt.Errorf("removing existing DefaultWAL directory: %w", err)
 		}
@@ -225,12 +232,13 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		s.logger.Errorf("Attempting automatic repair by truncating incomplete records...")
 		s.logger.Errorf("========================================")
 
-		if closeErr := s.wal.Close(); closeErr != nil {
+		closeErr := s.wal.Close()
+		if closeErr != nil {
 			s.logger.WithFields(map[string]any{"error": closeErr}).Errorf("Failed to close corrupted WAL before repair")
 		}
 
 		if !wal.Repair(zapLogger, s.etcdWalDir) {
-			return nil, fmt.Errorf("WAL repair failed after unexpected EOF — manual intervention required")
+			return nil, errors.New("WAL repair failed after unexpected EOF — manual intervention required")
 		}
 
 		s.logger.Errorf("WAL repair succeeded — re-opening WAL")
@@ -272,20 +280,20 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 
 func unmarshalStateFile(data []byte, to *raftpb.Snapshot) error {
 	if len(data) < 8 {
-		return fmt.Errorf("state file too short")
+		return errors.New("state file too short")
 	}
 
 	// Format: [snapshotLength (8 bytes)][snapshotData]
 	snapshotLen := binary.BigEndian.Uint64(data[0:8])
 	if len(data) < int(8+snapshotLen) {
-		return fmt.Errorf("state file truncated at snapshot")
+		return errors.New("state file truncated at snapshot")
 	}
 
 	return to.Unmarshal(data[8 : 8+snapshotLen])
 }
 
 // saveSnapshot saves snapshot to disk
-// Format: [snapshotLength (8 bytes)][snapshotData]
+// Format: [snapshotLength (8 bytes)][snapshotData].
 func (s *DefaultWAL) saveSnapshot(snap raftpb.Snapshot) error {
 	// Marshal Snapshot
 	snapshotData, err := snap.Marshal()
@@ -308,6 +316,7 @@ func (s *DefaultWAL) saveSnapshot(snap raftpb.Snapshot) error {
 	if err != nil {
 		return fmt.Errorf("creating state file: %w", err)
 	}
+
 	defer func() {
 		_ = stateFile.Close()
 	}()
@@ -332,14 +341,15 @@ func (s *DefaultWAL) saveSnapshot(snap raftpb.Snapshot) error {
 	return nil
 }
 
-// InitialState returns the saved HardState and ConfState information
+// InitialState returns the saved HardState and ConfState information.
 func (s *DefaultWAL) InitialState() (raftpb.HardState, raftpb.ConfState, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	return s.hardState, s.snapshot.Metadata.ConfState, nil
 }
 
-// Entries returns a slice of log entries in the range [lo, hi)
+// Entries returns a slice of log entries in the range [lo, hi).
 func (s *DefaultWAL) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -354,6 +364,7 @@ func (s *DefaultWAL) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 	if lo < firstIndex {
 		return nil, raft.ErrCompacted
 	}
+
 	if hi > lastIndex+1 {
 		return nil, fmt.Errorf("entries[%d:%d) is out of bound [%d:%d]", lo, hi, firstIndex, lastIndex+1)
 	}
@@ -367,6 +378,7 @@ func (s *DefaultWAL) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 	if lo < offset {
 		return nil, raft.ErrCompacted
 	}
+
 	if hi > offset+uint64(len(s.entries)) {
 		return nil, raft.ErrUnavailable
 	}
@@ -380,6 +392,7 @@ func (s *DefaultWAL) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 		size += uint64(ents[i].Size())
 		if size > maxSize {
 			ents = ents[:i+1]
+
 			break
 		}
 	}
@@ -387,56 +400,63 @@ func (s *DefaultWAL) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 	return ents, nil
 }
 
-// Term returns the term of entry i
+// Term returns the term of entry i.
 func (s *DefaultWAL) Term(i uint64) (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	return s.termLocked(i)
 }
 
-// LastIndex returns the index of the last entry in the log
+// LastIndex returns the index of the last entry in the log.
 func (s *DefaultWAL) LastIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	return s.lastIndexLocked(), nil
 }
 
-// lastIndexLocked returns the last index without acquiring lock (caller must hold lock)
+// lastIndexLocked returns the last index without acquiring lock (caller must hold lock).
 func (s *DefaultWAL) lastIndexLocked() uint64 {
 	if len(s.entries) == 0 {
 		return s.snapshot.Metadata.Index
 	}
+
 	return s.entries[len(s.entries)-1].Index
 }
 
-// FirstIndex returns the index of the first log entry
+// FirstIndex returns the index of the first log entry.
 func (s *DefaultWAL) FirstIndex() (uint64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	return s.firstIndexLocked(), nil
 }
 
-// firstIndexLocked returns the first index without acquiring lock (caller must hold lock)
+// firstIndexLocked returns the first index without acquiring lock (caller must hold lock).
 func (s *DefaultWAL) firstIndexLocked() uint64 {
 	if len(s.entries) == 0 {
 		return s.snapshot.Metadata.Index + 1
 	}
+
 	return s.entries[0].Index
 }
 
-// Snapshot returns the most recent snapshot
+// Snapshot returns the most recent snapshot.
 func (s *DefaultWAL) Snapshot() (raftpb.Snapshot, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	return s.snapshot, nil
 }
 
-// Append appends entries to the log
+// Append appends entries to the log.
 func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) error {
 	s.mu.Lock()
 
 	if hardState == s.hardState && len(entries) == 0 {
 		s.mu.Unlock()
+
 		return nil
 	}
 
@@ -450,13 +470,16 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 
 	// Update in-memory cache
 	cacheStart := time.Now()
+
 	if len(entries) > 0 {
 		if len(s.entries) > 0 {
 			offset := s.entries[0].Index
+
 			last := entries[0].Index + uint64(len(entries)) - 1
 			if last < offset {
 				return nil
 			}
+
 			if entries[0].Index > offset+uint64(len(s.entries)) {
 				s.entries = append(s.entries, entries...)
 			} else {
@@ -464,6 +487,7 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 				if truncateIndex > offset {
 					s.entries = s.entries[:truncateIndex-offset]
 				}
+
 				s.entries = append(s.entries, entries...)
 			}
 		} else {
@@ -496,7 +520,7 @@ func (s *DefaultWAL) Append(hardState raftpb.HardState, entries []raftpb.Entry) 
 	return err
 }
 
-// CreateSnapshot creates a snapshot at the given index
+// CreateSnapshot creates a snapshot at the given index.
 func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []byte) error {
 	s.mu.Lock()
 
@@ -509,14 +533,18 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 		len(s.entries) == 0
 	if !isEmptyStorage && index <= s.snapshot.Metadata.Index {
 		s.mu.Unlock()
+
 		return raft.ErrSnapOutOfDate
 	}
 
 	// Get term directly without taking another lock
 	// For initial snapshot (index 0 on empty storage), use term 0
 	// For restore snapshot (empty storage, index > 0), use term 1
-	var term uint64
-	var err error
+	var (
+		term uint64
+		err  error
+	)
+
 	if s.snapshot.Metadata.Index == 0 && len(s.entries) == 0 {
 		if index == 0 {
 			// Initial snapshot at index 0 - use term 0
@@ -530,6 +558,7 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 		term, err = s.termLocked(index)
 		if err != nil {
 			s.mu.Unlock()
+
 			return err
 		}
 	}
@@ -572,6 +601,7 @@ func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 	// Nothing to update if there is no snapshot yet.
 	if s.snapshot.Metadata.Index == 0 && len(s.snapshot.Metadata.ConfState.Voters) == 0 {
 		s.mu.Unlock()
+
 		return nil
 	}
 
@@ -580,15 +610,17 @@ func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 	s.snapshot = snap
 	s.mu.Unlock()
 
-	if err := s.saveSnapshot(snap); err != nil {
+	err := s.saveSnapshot(snap)
+	if err != nil {
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
 
-	if err := s.wal.SaveSnapshot(walpb.Snapshot{
+	err = s.wal.SaveSnapshot(walpb.Snapshot{
 		Index:     snap.Metadata.Index,
 		Term:      snap.Metadata.Term,
 		ConfState: cs,
-	}); err != nil {
+	})
+	if err != nil {
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
 
@@ -599,9 +631,10 @@ func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 	return nil
 }
 
-// termLocked returns the term of entry i without taking a lock (assumes lock is already held)
+// termLocked returns the term of entry i without taking a lock (assumes lock is already held).
 func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 	firstIndex := s.snapshot.Metadata.Index + 1
+
 	var lastIndex uint64
 	if len(s.entries) == 0 {
 		lastIndex = s.snapshot.Metadata.Index
@@ -612,6 +645,7 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 	if i < firstIndex-1 {
 		return 0, raft.ErrCompacted
 	}
+
 	if i > lastIndex {
 		return 0, fmt.Errorf("term of index %d is out of bound", i)
 	}
@@ -628,6 +662,7 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 	if i < offset {
 		return 0, raft.ErrCompacted
 	}
+
 	if i >= offset+uint64(len(s.entries)) {
 		return 0, raft.ErrUnavailable
 	}
@@ -635,7 +670,7 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 	return s.entries[i-offset].Term, nil
 }
 
-// ApplySnapshot applies a snapshot to the storage
+// ApplySnapshot applies a snapshot to the storage.
 func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -644,19 +679,21 @@ func (s *DefaultWAL) ApplySnapshot(snap raftpb.Snapshot) error {
 	s.entries = nil // Clear entries after applying snapshot
 
 	// Save to disk
-	if err := s.saveSnapshot(snap); err != nil {
+	err := s.saveSnapshot(snap)
+	if err != nil {
 		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to save snapshot to disk")
 	}
 
 	return nil
 }
 
-// Compact compacts the log up to the given index
+// Compact compacts the log up to the given index.
 func (s *DefaultWAL) Compact(compactIndex uint64) error {
 	s.mu.Lock()
 
 	if compactIndex > s.snapshot.Metadata.Index {
 		s.mu.Unlock()
+
 		return fmt.Errorf(
 			"index (%d) after last snapshot index(%d): %w",
 			compactIndex,
@@ -668,11 +705,13 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 	firstIndex := s.firstIndexLocked()
 	if compactIndex < firstIndex {
 		s.mu.Unlock()
+
 		return fmt.Errorf("index before first index: %w", raft.ErrCompacted)
 	}
 
 	if len(s.entries) == 0 {
 		s.mu.Unlock()
+
 		return nil
 	}
 
@@ -700,7 +739,8 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 	// This allows the etcd WAL to release memory associated with old log entries
 	// and potentially remove old WAL segment files.
 	// Without this call, the etcd WAL keeps file handles and memory indefinitely.
-	if err := s.wal.ReleaseLockTo(compactIndex); err != nil {
+	err := s.wal.ReleaseLockTo(compactIndex)
+	if err != nil {
 		s.logger.WithFields(map[string]any{
 			"compactIndex": compactIndex,
 			"error":        err,
@@ -711,9 +751,10 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 	return nil
 }
 
-// Close closes the DefaultWAL
+// Close closes the DefaultWAL.
 func (s *DefaultWAL) Close() error {
 	close(s.stopPurge)
 	<-s.purgeDone
+
 	return s.wal.Close()
 }

@@ -22,6 +22,7 @@ var queryTracer = otel.Tracer("query")
 func ReadLedgers(ctx context.Context, reader dal.PebbleReader) (dal.Cursor[*commonpb.LedgerInfo], error) {
 	_, span := queryTracer.Start(ctx, "query.list_ledgers")
 	defer span.End()
+
 	lowerBound := []byte{dal.KeyPrefixLedgerInfo}
 	upperBound := []byte{dal.KeyPrefixLedgerInfo + 1}
 
@@ -51,8 +52,10 @@ func GetLedgerByName(ctx context.Context, reader dal.PebbleReader, name string) 
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, domain.ErrNotFound
 		}
+
 		return nil, fmt.Errorf("getting ledger by name: %w", err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	info := &commonpb.LedgerInfo{}
@@ -60,8 +63,9 @@ func GetLedgerByName(ctx context.Context, reader dal.PebbleReader, name string) 
 		return nil, fmt.Errorf("unmarshaling ledger info: %w", err)
 	}
 
-	if info.DeletedAt != nil {
+	if info.GetDeletedAt() != nil {
 		return nil, domain.ErrNotFound
 	}
+
 	return info, nil
 }

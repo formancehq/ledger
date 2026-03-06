@@ -3,10 +3,11 @@ package processing
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 func TestProcessSetPeriodSchedule_ValidCron(t *testing.T) {
@@ -35,7 +36,7 @@ func TestProcessSetPeriodSchedule_ValidCron(t *testing.T) {
 
 	scheduleLog := result.GetSetPeriodSchedule()
 	require.NotNil(t, scheduleLog)
-	require.Equal(t, "0 0 1 * *", scheduleLog.Cron)
+	require.Equal(t, "0 0 1 * *", scheduleLog.GetCron())
 }
 
 func TestProcessSetPeriodSchedule_InvalidCron(t *testing.T) {

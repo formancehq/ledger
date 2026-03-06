@@ -7,17 +7,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/application/events"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/require"
 )
 
 func saveHTTPSinkConfig(t *testing.T, s *dal.Store, name, endpoint string) {
 	t.Helper()
+
 	batch := s.NewBatch()
 	require.NoError(t, state.SaveSinkConfig(batch, &commonpb.SinkConfig{
 		Name: name,
@@ -88,6 +91,7 @@ func TestManager_HTTPSink_ConfigChangeRemovesSink(t *testing.T) {
 	saveHTTPSinkConfig(t, store, "http-sink", server.URL)
 
 	manager := events.NewManager(store, proposer, logger, notifications)
+
 	manager.Start()
 	defer manager.Stop()
 
@@ -106,6 +110,7 @@ func TestManager_HTTPSink_ConfigChangeRemovesSink(t *testing.T) {
 	require.Eventually(t, func() bool {
 		// Signal again to confirm the config change was processed
 		notifications.NotifyConfigChanged()
+
 		return true
 	}, 2*time.Second, 50*time.Millisecond)
 }

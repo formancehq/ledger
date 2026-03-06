@@ -3,20 +3,21 @@ package http
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace/noop"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"go.opentelemetry.io/otel/trace/noop"
-	"github.com/stretchr/testify/require"
 )
 
 // --------------------------------------------------------------------------
@@ -299,9 +300,11 @@ func TestHandleRevertTransaction_WithMetadataInBody(t *testing.T) {
 	t.Parallel()
 
 	var capturedRequest *servicepb.Request
+
 	backend := &mockBackend{
 		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 			capturedRequest = requests[0]
+
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -338,10 +341,14 @@ func TestHandleRevertTransaction_WithMetadataInBody(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 	require.NotNil(t, capturedRequest)
 
-	revertPayload := capturedRequest.Type.(*servicepb.Request_Apply).Apply.Data.(*servicepb.LedgerApplyRequest_RevertTransaction).RevertTransaction
-	require.True(t, revertPayload.Force)
-	require.True(t, revertPayload.AtEffectiveDate)
-	require.NotNil(t, revertPayload.Metadata)
+	applyType, ok := capturedRequest.GetType().(*servicepb.Request_Apply)
+	require.True(t, ok)
+	revertData, ok := applyType.Apply.GetData().(*servicepb.LedgerApplyRequest_RevertTransaction)
+	require.True(t, ok)
+	revertPayload := revertData.RevertTransaction
+	require.True(t, revertPayload.GetForce())
+	require.True(t, revertPayload.GetAtEffectiveDate())
+	require.NotNil(t, revertPayload.GetMetadata())
 }
 
 func TestHandleRevertTransaction_BackendError(t *testing.T) {
@@ -765,9 +772,11 @@ func TestHandleListAccounts_WithPrefix(t *testing.T) {
 	t.Parallel()
 
 	var capturedFilter *commonpb.QueryFilter
+
 	backend := &mockBackend{
 		listAccountsFn: func(_ context.Context, _ string, _ uint32, _ string, filter *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
 			capturedFilter = filter
+
 			return dal.NewSliceCursor[*commonpb.Account](nil), nil
 		},
 	}
@@ -826,9 +835,11 @@ func TestConvertBulkElementToRequest(t *testing.T) {
 	req := convertBulkElementToRequest("ledger1", elem)
 
 	require.NotNil(t, req)
-	require.Equal(t, "ik-123", req.IdempotencyKey)
-	applyReq := req.Type.(*servicepb.Request_Apply).Apply
-	require.Equal(t, "ledger1", applyReq.Ledger)
+	require.Equal(t, "ik-123", req.GetIdempotencyKey())
+	applyType, ok := req.GetType().(*servicepb.Request_Apply)
+	require.True(t, ok)
+	applyReq := applyType.Apply
+	require.Equal(t, "ledger1", applyReq.GetLedger())
 }
 
 func TestRunBulk_EmptyElements(t *testing.T) {
@@ -857,6 +868,7 @@ func TestRunBulk_Atomic(t *testing.T) {
 					},
 				}
 			}
+
 			return logs, nil
 		},
 	}
@@ -870,6 +882,7 @@ func TestRunBulk_Atomic(t *testing.T) {
 	results := srv.runBulk(context.Background(), "ledger1", elements, bulkOptions{atomic: true})
 
 	require.Len(t, results, 2)
+
 	for _, r := range results {
 		require.NoError(t, r.err)
 	}
@@ -1029,6 +1042,7 @@ func TestHandleBulk_WithAtomicFlag(t *testing.T) {
 					},
 				}
 			}
+
 			return logs, nil
 		},
 	}
@@ -1055,6 +1069,7 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 			if callCount == 1 {
 				return nil, errors.New("first fails")
 			}
+
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -1223,6 +1238,7 @@ type errorCursor[T any] struct {
 
 func (c *errorCursor[T]) Next() (T, error) {
 	var zero T
+
 	return zero, c.err
 }
 
@@ -1378,6 +1394,7 @@ func TestChiLogFormatter_NewLogEntry_WithSpan(t *testing.T) {
 
 	// Create a context with a valid span using the noop tracer
 	tracer := noop.NewTracerProvider().Tracer("test")
+
 	ctx, span := tracer.Start(context.Background(), "test-span")
 	defer span.End()
 
@@ -1396,6 +1413,7 @@ func TestChiLogEntry_Panic_WithSpan(t *testing.T) {
 	t.Parallel()
 
 	tracer := noop.NewTracerProvider().Tracer("test")
+
 	ctx, span := tracer.Start(context.Background(), "test-span")
 	defer span.End()
 
@@ -1405,7 +1423,7 @@ func TestChiLogEntry_Panic_WithSpan(t *testing.T) {
 	}
 
 	// Should not panic and should record the error on the span
-	entry.Panic(fmt.Errorf("test panic"), []byte("stack trace data"))
+	entry.Panic(errors.New("test panic"), []byte("stack trace data"))
 }
 
 // --------------------------------------------------------------------------
@@ -1416,9 +1434,11 @@ func TestHandleCreateLedger_IdempotencyKeyPropagated(t *testing.T) {
 	t.Parallel()
 
 	var capturedRequest *servicepb.Request
+
 	backend := &mockBackend{
 		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 			capturedRequest = requests[0]
+
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -1444,7 +1464,7 @@ func TestHandleCreateLedger_IdempotencyKeyPropagated(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated, w.Code)
 	require.NotNil(t, capturedRequest)
-	require.Equal(t, "create-ledger-ik-123", capturedRequest.IdempotencyKey)
+	require.Equal(t, "create-ledger-ik-123", capturedRequest.GetIdempotencyKey())
 }
 
 // --------------------------------------------------------------------------
@@ -1455,9 +1475,11 @@ func TestHandleDeleteLedger_IdempotencyKeyPropagated(t *testing.T) {
 	t.Parallel()
 
 	var capturedRequest *servicepb.Request
+
 	backend := &mockBackend{
 		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 			capturedRequest = requests[0]
+
 			return []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -1479,5 +1501,5 @@ func TestHandleDeleteLedger_IdempotencyKeyPropagated(t *testing.T) {
 
 	require.Equal(t, http.StatusNoContent, w.Code)
 	require.NotNil(t, capturedRequest)
-	require.Equal(t, "delete-ledger-ik-456", capturedRequest.IdempotencyKey)
+	require.Equal(t, "delete-ledger-ik-456", capturedRequest.GetIdempotencyKey())
 }

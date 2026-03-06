@@ -4,9 +4,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 )
 
 // NewLogoutCommand returns the "auth logout" command.
@@ -26,12 +27,15 @@ func runLogout(cmd *cobra.Command, _ []string) error {
 	err := cmdutil.GetKeyring(cmd).Delete(server)
 	if errors.Is(err, cmdutil.ErrTokenNotFound) {
 		pterm.Info.Printfln("No token stored for server %s", pterm.Bold.Sprint(server))
+
 		return nil
 	}
+
 	if err != nil {
 		return fmt.Errorf("removing token from keychain: %w", err)
 	}
 
 	pterm.Success.Printfln("Token removed for server %s", pterm.Bold.Sprint(server))
+
 	return nil
 }

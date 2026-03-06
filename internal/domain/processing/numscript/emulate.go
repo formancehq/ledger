@@ -5,8 +5,9 @@ import (
 	"maps"
 	"math/big"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	numscriptlib "github.com/formancehq/numscript"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 )
 
 // DiscoveryResult holds the results of Numscript dependency discovery.
@@ -40,13 +41,16 @@ type discoveryStore struct {
 func (s *discoveryStore) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
 	if s.balancesCalled {
 		s.nonDeterministic = &ErrNonDeterministicScript{Method: "GetBalances"}
+
 		return nil, s.nonDeterministic
 	}
+
 	s.balancesCalled = true
 
 	balances := make(numscriptlib.Balances, len(query))
 	for account, assets := range query {
 		accountBalance := make(numscriptlib.AccountBalance, len(assets))
+
 		balances[account] = accountBalance
 		for _, asset := range assets {
 			s.queriedVolumes[domain.VolumeKey{
@@ -56,14 +60,17 @@ func (s *discoveryStore) GetBalances(_ context.Context, query numscriptlib.Balan
 			accountBalance[asset] = new(big.Int).Set(MaxForceBalance)
 		}
 	}
+
 	return balances, nil
 }
 
 func (s *discoveryStore) GetAccountsMetadata(_ context.Context, query numscriptlib.MetadataQuery) (numscriptlib.AccountsMetadata, error) {
 	if s.metadataCalled {
 		s.nonDeterministic = &ErrNonDeterministicScript{Method: "GetAccountsMetadata"}
+
 		return nil, s.nonDeterministic
 	}
+
 	s.metadataCalled = true
 
 	result := make(numscriptlib.AccountsMetadata, len(query))
@@ -76,6 +83,7 @@ func (s *discoveryStore) GetAccountsMetadata(_ context.Context, query numscriptl
 			}] = struct{}{}
 		}
 	}
+
 	return result, nil
 }
 
@@ -130,15 +138,18 @@ func DiscoverNumscriptDependencies(script string, vars map[string]string, ledger
 	// Also collect volume keys from postings: sources go into sourceVolumes,
 	// destinations go into destinationVolumes.
 	var destinationVolumes map[domain.VolumeKey]struct{}
+
 	if len(execResult.Postings) > 0 {
 		for _, posting := range execResult.Postings {
 			sourceVolumes[domain.VolumeKey{
 				AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.Source},
 				Asset:      posting.Asset,
 			}] = struct{}{}
+
 			if destinationVolumes == nil {
 				destinationVolumes = make(map[domain.VolumeKey]struct{})
 			}
+
 			destinationVolumes[domain.VolumeKey{
 				AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.Destination},
 				Asset:      posting.Asset,

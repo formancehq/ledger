@@ -18,6 +18,7 @@ type mockExporter struct {
 
 func (m *mockExporter) ExportSpans(_ context.Context, spans []trace.ReadOnlySpan) error {
 	m.spans = append(m.spans, spans...)
+
 	return nil
 }
 
@@ -123,7 +124,7 @@ func TestErrorAwareSamplingExporter_DeterministicSampling(t *testing.T) {
 	_ = exporter2.ExportSpans(context.Background(), []trace.ReadOnlySpan{span})
 
 	// Both exporters should make the same decision for the same trace ID
-	require.Equal(t, len(mock1.spans), len(mock2.spans),
+	require.Len(t, mock2.spans, len(mock1.spans),
 		"same trace ID should have deterministic sampling result")
 }
 

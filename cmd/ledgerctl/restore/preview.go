@@ -1,14 +1,15 @@
 package restore
 
 import (
-	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 )
 
 // NewPreviewCommand creates the restore preview command.
@@ -30,6 +31,7 @@ func runPreview(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -48,8 +50,9 @@ func runPreview(cmd *cobra.Command, _ []string) error {
 func printRestorePreview(resp *restorepb.PreviewRestoreResponse) {
 	// Format timestamp
 	var timestampStr string
-	if resp.LastAppliedTimestamp > 0 {
-		t := time.UnixMicro(int64(resp.LastAppliedTimestamp))
+
+	if resp.GetLastAppliedTimestamp() > 0 {
+		t := time.UnixMicro(int64(resp.GetLastAppliedTimestamp()))
 		timestampStr = t.Format(time.RFC3339)
 	} else {
 		timestampStr = "N/A"
@@ -58,11 +61,11 @@ func printRestorePreview(resp *restorepb.PreviewRestoreResponse) {
 	pterm.DefaultSection.Println("Restore Preview")
 
 	data := [][]string{
-		{"Last Applied Index", fmt.Sprintf("%d", resp.LastAppliedIndex)},
+		{"Last Applied Index", strconv.FormatUint(resp.GetLastAppliedIndex(), 10)},
 		{"Last Applied Time", timestampStr},
-		{"Last Log Sequence", fmt.Sprintf("%d", resp.LastSequence)},
-		{"Ledger Count", fmt.Sprintf("%d", resp.LedgerCount)},
-		{"Ledgers", strings.Join(resp.LedgerNames, ", ")},
+		{"Last Log Sequence", strconv.FormatUint(resp.GetLastSequence(), 10)},
+		{"Ledger Count", strconv.FormatUint(uint64(resp.GetLedgerCount()), 10)},
+		{"Ledgers", strings.Join(resp.GetLedgerNames(), ", ")},
 	}
 
 	_ = pterm.DefaultTable.

@@ -4,18 +4,20 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 const (
@@ -54,10 +56,12 @@ func GetClientTransportCredentials(cmd *cobra.Command) (credentials.TransportCre
 		if err != nil {
 			return nil, fmt.Errorf("reading CA cert: %w", err)
 		}
+
 		certPool := x509.NewCertPool()
 		if !certPool.AppendCertsFromPEM(caPEM) {
 			return nil, fmt.Errorf("failed to parse CA certificate from %s", caCertPath)
 		}
+
 		tlsConfig.RootCAs = certPool
 	}
 
@@ -116,13 +120,16 @@ func GetContext(cmd *cobra.Command) (context.Context, context.CancelFunc) {
 	if timeout == 0 {
 		timeout = DefaultTimeout
 	}
+
 	ctx := cmd.Context()
 	if consistency, _ := cmd.Flags().GetString("consistency"); consistency != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, "x-consistency", consistency)
 	}
+
 	if token := resolveAuthToken(cmd); token != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
 	}
+
 	return context.WithTimeout(ctx, timeout)
 }
 
@@ -138,8 +145,10 @@ func resolveAuthToken(cmd *cobra.Command) string {
 			if err != nil {
 				return ""
 			}
+
 			return strings.TrimSpace(string(data))
 		}
+
 		return token
 	}
 
@@ -160,11 +169,14 @@ func ResolveTokenSource(cmd *cobra.Command) (source string, token string) {
 			if err != nil {
 				return "file (error)", ""
 			}
+
 			return "file (" + t[1:] + ")", strings.TrimSpace(string(data))
 		}
+
 		if _, ok := os.LookupEnv("AUTH_TOKEN"); ok && !cmd.Flags().Changed("auth-token") {
 			return "environment (AUTH_TOKEN)", t
 		}
+
 		return "flag (--auth-token)", t
 	}
 
@@ -180,7 +192,8 @@ func ResolveTokenSource(cmd *cobra.Command) (source string, token string) {
 func ParseKeyValue(s string) (string, string, error) {
 	parts := strings.SplitN(s, "=", 2)
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("expected key=value format")
+		return "", "", errors.New("expected key=value format")
 	}
+
 	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]), nil
 }

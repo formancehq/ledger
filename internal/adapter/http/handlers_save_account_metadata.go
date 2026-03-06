@@ -5,23 +5,26 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/go-chi/chi/v5"
 )
 
-// handleSaveAccountMetadata handles POST /{ledgerName}/accounts/{address}/metadata to save account metadata
+// handleSaveAccountMetadata handles POST /{ledgerName}/accounts/{address}/metadata to save account metadata.
 func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
+
 		return
 	}
 
 	address := chi.URLParam(r, "address")
 	if address == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("account address is required"))
+
 		return
 	}
 
@@ -29,12 +32,14 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 	var inputMetadata map[string]any
 	if err := json.UnmarshalRead(r.Body, &inputMetadata); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
+
 		return
 	}
 
 	ms, err := commonpb.MetadataSetFromAnyMap(inputMetadata)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid metadata: %w", err))
+
 		return
 	}
 
@@ -61,6 +66,7 @@ func (s *Server) handleSaveAccountMetadata(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		s.logger.WithFields(map[string]any{"ledger": ledgerName, "address": address, "error": err}).Errorf("Failed to save account metadata")
 		handleError(w, r, err)
+
 		return
 	}
 

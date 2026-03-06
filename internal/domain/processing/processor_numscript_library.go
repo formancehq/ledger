@@ -11,19 +11,20 @@ import (
 )
 
 func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	if order.Name == "" {
+	if order.GetName() == "" {
 		return nil, domain.ErrNumscriptNameRequired
 	}
-	if order.Content == "" {
+
+	if order.GetContent() == "" {
 		return nil, domain.ErrNumscriptContentRequired
 	}
 
 	// Validate the script parses correctly
-	if _, err := p.numscriptCache.GetOrParse(order.Content); err != nil {
+	if _, err := p.numscriptCache.GetOrParse(order.GetContent()); err != nil {
 		return nil, &numscript.ErrNumscriptParse{Details: err.Error()}
 	}
 
-	version := order.Version
+	version := order.GetVersion()
 	if version == "" {
 		// Default: treat as "latest"
 		version = "latest"
@@ -36,21 +37,23 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 		resolvedVersion = "latest"
 	} else if _, err := semver.Parse(version); err == nil {
 		// Semver versions are immutable — check the specific version doesn't already exist
-		exists, err := s.NumscriptVersionExists(order.Name, version)
+		exists, err := s.NumscriptVersionExists(order.GetName(), version)
 		if err != nil {
 			return nil, fmt.Errorf("checking numscript version existence: %w", err)
 		}
+
 		if exists {
-			return nil, &domain.ErrNumscriptVersionAlreadyExists{Name: order.Name, Version: version}
+			return nil, &domain.ErrNumscriptVersionAlreadyExists{Name: order.GetName(), Version: version}
 		}
+
 		resolvedVersion = version
 	} else {
 		return nil, &domain.ErrNumscriptInvalidVersion{Version: version}
 	}
 
 	info := &commonpb.NumscriptInfo{
-		Name:      order.Name,
-		Content:   order.Content,
+		Name:      order.GetName(),
+		Content:   order.GetContent(),
 		Version:   resolvedVersion,
 		CreatedAt: s.GetDate(),
 	}
@@ -67,24 +70,25 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 }
 
 func (p *RequestProcessor) processDeleteNumscript(order *raftcmdpb.DeleteNumscriptOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	if order.Name == "" {
+	if order.GetName() == "" {
 		return nil, domain.ErrNumscriptNameRequired
 	}
 
-	currentVersion, err := s.GetNumscriptLatestVersion(order.Name)
+	currentVersion, err := s.GetNumscriptLatestVersion(order.GetName())
 	if err != nil {
 		return nil, fmt.Errorf("getting numscript latest version: %w", err)
 	}
+
 	if currentVersion == "" {
-		return nil, &domain.ErrNumscriptNotFound{Name: order.Name}
+		return nil, &domain.ErrNumscriptNotFound{Name: order.GetName()}
 	}
 
-	s.DeleteNumscriptLatest(order.Name)
+	s.DeleteNumscriptLatest(order.GetName())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedNumscript{
 			DeletedNumscript: &commonpb.DeletedNumscriptLog{
-				Name: order.Name,
+				Name: order.GetName(),
 			},
 		},
 	}, nil

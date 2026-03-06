@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
 	"github.com/cockroachdb/pebble"
+	bolt "go.etcd.io/bbolt"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	bolt "go.etcd.io/bbolt"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -36,6 +37,7 @@ func ReadLastLog(reader dal.PebbleReader) (*commonpb.Log, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	if !iter.Last() {
@@ -62,10 +64,12 @@ func ReadLastSequence(reader dal.PebbleReader) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	if log == nil {
 		return 0, nil
 	}
-	return log.Sequence, nil
+
+	return log.GetSequence(), nil
 }
 
 // ReadLogBySequence retrieves a log by its sequence number from the given reader.
@@ -73,17 +77,20 @@ func ReadLogBySequence(ctx context.Context, reader dal.PebbleReader, sequence ui
 	_, span := queryTracer.Start(ctx, "query.get_log",
 		trace.WithAttributes(attribute.Int64("sequence", int64(sequence))))
 	defer span.End()
+
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixLog).
 		PutUInt64(sequence)
 
 	value, closer, err := reader.Get(kb.Build())
 	if err != nil {
-		if err == pebble.ErrNotFound {
+		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("getting system log by sequence: %w", err)
 	}
+
 	defer func() {
 		_ = closer.Close()
 	}()
@@ -108,15 +115,19 @@ func (c *ledgerLogCursor) Next() (*commonpb.Log, error) {
 	if c.pos >= len(c.seqs) {
 		return nil, io.EOF
 	}
+
 	seq := c.seqs[c.pos]
 	c.pos++
+
 	log, err := ReadLogBySequence(context.Background(), c.pebble, seq)
 	if err != nil {
 		return nil, err
 	}
+
 	if log == nil {
 		return nil, fmt.Errorf("log with sequence %d not found in Pebble", seq)
 	}
+
 	return log, nil
 }
 
@@ -147,21 +158,25 @@ func ReadLedgerLogsSince(
 	}
 
 	var seqs []uint64
+
 	err := readStore.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(readstore.BucketLedgerLogs)
 		if b == nil {
 			return nil
 		}
+
 		c := b.Cursor()
 		for k, v := c.Seek(startKey); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
 			if len(v) != 8 {
 				continue
 			}
+
 			seqs = append(seqs, binary.BigEndian.Uint64(v))
 			if pageSize > 0 && uint32(len(seqs)) >= pageSize {
 				break
 			}
 		}
+
 		return nil
 	})
 	if err != nil {
@@ -176,11 +191,14 @@ func ReadLedgerLogsSince(
 func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence uint64, opts ...dal.ProtoCursorOption) (dal.Cursor[*commonpb.Log], error) {
 	_, span := queryTracer.Start(ctx, "query.list_logs")
 	defer span.End()
+
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixLog)
+
 	if afterSequence > 0 {
 		kb.PutUInt64(afterSequence + 1)
 	}
+
 	lowerBound := kb.Build()
 
 	kb2 := dal.NewKeyBuilder()

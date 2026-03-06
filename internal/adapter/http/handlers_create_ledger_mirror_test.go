@@ -7,9 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/stretchr/testify/require"
 )
 
 func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
@@ -20,6 +21,7 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 	backend := &mockBackend{
 		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 			capturedReq = requests[0]
+
 			return []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_CreateLedger{
@@ -49,18 +51,18 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 	require.NotNil(t, capturedReq)
 
 	createReq := capturedReq.GetCreateLedger()
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, createReq.Mode)
-	require.NotNil(t, createReq.MirrorSource)
-	require.Equal(t, "default", createReq.MirrorSource.LedgerName)
+	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, createReq.GetMode())
+	require.NotNil(t, createReq.GetMirrorSource())
+	require.Equal(t, "default", createReq.GetMirrorSource().GetLedgerName())
 
-	httpCfg := createReq.MirrorSource.GetHttp()
+	httpCfg := createReq.GetMirrorSource().GetHttp()
 	require.NotNil(t, httpCfg)
-	require.Equal(t, "http://v2:3068", httpCfg.BaseUrl)
-	require.NotNil(t, httpCfg.Oauth2ClientCredentials)
-	require.Equal(t, "my-id", httpCfg.Oauth2ClientCredentials.ClientId)
-	require.Equal(t, "my-secret", httpCfg.Oauth2ClientCredentials.ClientSecret)
-	require.Equal(t, "https://auth.example.com/token", httpCfg.Oauth2ClientCredentials.TokenEndpoint)
-	require.Equal(t, []string{"ledger:read"}, httpCfg.Oauth2ClientCredentials.Scopes)
+	require.Equal(t, "http://v2:3068", httpCfg.GetBaseUrl())
+	require.NotNil(t, httpCfg.GetOauth2ClientCredentials())
+	require.Equal(t, "my-id", httpCfg.GetOauth2ClientCredentials().GetClientId())
+	require.Equal(t, "my-secret", httpCfg.GetOauth2ClientCredentials().GetClientSecret())
+	require.Equal(t, "https://auth.example.com/token", httpCfg.GetOauth2ClientCredentials().GetTokenEndpoint())
+	require.Equal(t, []string{"ledger:read"}, httpCfg.GetOauth2ClientCredentials().GetScopes())
 }
 
 func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
@@ -71,6 +73,7 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 	backend := &mockBackend{
 		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 			capturedReq = requests[0]
+
 			return []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_CreateLedger{
@@ -100,11 +103,11 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 	require.NotNil(t, capturedReq)
 
 	createReq := capturedReq.GetCreateLedger()
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, createReq.Mode)
+	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, createReq.GetMode())
 
-	pgCfg := createReq.MirrorSource.GetPostgres()
+	pgCfg := createReq.GetMirrorSource().GetPostgres()
 	require.NotNil(t, pgCfg)
-	require.Equal(t, "postgres://user:pass@host:5432/ledger", pgCfg.Dsn)
+	require.Equal(t, "postgres://user:pass@host:5432/ledger", pgCfg.GetDsn())
 }
 
 func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
@@ -115,6 +118,7 @@ func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
 	backend := &mockBackend{
 		applyFn: func(_ context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 			capturedReq = requests[0]
+
 			return []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_CreateLedger{
@@ -139,7 +143,7 @@ func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
 	srv.handleCreateLedger(w, r)
 
 	require.Equal(t, http.StatusCreated, w.Code)
-	require.NotNil(t, capturedReq.GetCreateLedger().MirrorSource.GetHttp())
+	require.NotNil(t, capturedReq.GetCreateLedger().GetMirrorSource().GetHttp())
 }
 
 func TestHandleCreateLedger_MirrorModeUnsupportedType(t *testing.T) {
@@ -174,16 +178,16 @@ func TestMirrorSourceToProto_HTTP(t *testing.T) {
 
 	cfg, err := mirrorSourceToProto(body)
 	require.NoError(t, err)
-	require.Equal(t, "src-ledger", cfg.LedgerName)
+	require.Equal(t, "src-ledger", cfg.GetLedgerName())
 
 	httpCfg := cfg.GetHttp()
 	require.NotNil(t, httpCfg)
-	require.Equal(t, "http://localhost:3068", httpCfg.BaseUrl)
-	require.NotNil(t, httpCfg.Oauth2ClientCredentials)
-	require.Equal(t, "my-client-id", httpCfg.Oauth2ClientCredentials.ClientId)
-	require.Equal(t, "my-client-secret", httpCfg.Oauth2ClientCredentials.ClientSecret)
-	require.Equal(t, "https://auth.example.com/token", httpCfg.Oauth2ClientCredentials.TokenEndpoint)
-	require.Equal(t, []string{"ledger:read"}, httpCfg.Oauth2ClientCredentials.Scopes)
+	require.Equal(t, "http://localhost:3068", httpCfg.GetBaseUrl())
+	require.NotNil(t, httpCfg.GetOauth2ClientCredentials())
+	require.Equal(t, "my-client-id", httpCfg.GetOauth2ClientCredentials().GetClientId())
+	require.Equal(t, "my-client-secret", httpCfg.GetOauth2ClientCredentials().GetClientSecret())
+	require.Equal(t, "https://auth.example.com/token", httpCfg.GetOauth2ClientCredentials().GetTokenEndpoint())
+	require.Equal(t, []string{"ledger:read"}, httpCfg.GetOauth2ClientCredentials().GetScopes())
 }
 
 func TestMirrorSourceToProto_Postgres(t *testing.T) {
@@ -197,11 +201,11 @@ func TestMirrorSourceToProto_Postgres(t *testing.T) {
 
 	cfg, err := mirrorSourceToProto(body)
 	require.NoError(t, err)
-	require.Equal(t, "src-ledger", cfg.LedgerName)
+	require.Equal(t, "src-ledger", cfg.GetLedgerName())
 
 	pgCfg := cfg.GetPostgres()
 	require.NotNil(t, pgCfg)
-	require.Equal(t, "postgres://user:pass@host/db", pgCfg.Dsn)
+	require.Equal(t, "postgres://user:pass@host/db", pgCfg.GetDsn())
 }
 
 func TestMirrorSourceToProto_EmptyType(t *testing.T) {
@@ -218,7 +222,7 @@ func TestMirrorSourceToProto_EmptyType(t *testing.T) {
 
 	httpCfg := cfg.GetHttp()
 	require.NotNil(t, httpCfg)
-	require.Nil(t, httpCfg.Oauth2ClientCredentials)
+	require.Nil(t, httpCfg.GetOauth2ClientCredentials())
 }
 
 func TestMirrorSourceToProto_Unsupported(t *testing.T) {

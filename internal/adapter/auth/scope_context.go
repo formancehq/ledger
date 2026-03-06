@@ -13,5 +13,6 @@ func WithExpandedScopes(ctx context.Context, scopes map[Scope]struct{}) context.
 // Returns nil if no expanded scopes are present (e.g., auth disabled).
 func ExpandedScopesFromContext(ctx context.Context) map[Scope]struct{} {
 	scopes, _ := ctx.Value(expandedScopesKey{}).(map[Scope]struct{})
+
 	return scopes
 }

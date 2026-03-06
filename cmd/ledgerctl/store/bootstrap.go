@@ -4,14 +4,20 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/application/check"
@@ -21,8 +27,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewBootstrapCommand creates the store bootstrap command.
@@ -74,14 +78,18 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	f, err := os.Open(inputPath)
 	if err != nil {
 		spinner.Fail("Failed to open input file")
+
 		return cmdutil.Displayed(fmt.Errorf("opening input file: %w", err))
 	}
 
 	if err := tarutil.ExtractTar(f, stagingDir); err != nil {
 		_ = f.Close()
+
 		spinner.Fail("Failed to extract backup")
+
 		return cmdutil.Displayed(fmt.Errorf("extracting tar: %w", err))
 	}
+
 	_ = f.Close()
 
 	spinner.Success("Backup extracted")
@@ -97,6 +105,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	lastAppliedIndex, lastAppliedTimestamp, ledgerNames, err := readBootstrapPreviewData(store)
 	if err != nil {
 		_ = store.Close()
+
 		return fmt.Errorf("reading preview data: %w", err)
 	}
 
@@ -108,9 +117,11 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 
 	// Optionally validate integrity.
 	if validate {
-		if err := runBootstrapValidation(cmd.Context(), stagingDir, logger); err != nil {
+		err := runBootstrapValidation(cmd.Context(), stagingDir, logger)
+		if err != nil {
 			return err
 		}
+
 		pterm.Println()
 	}
 
@@ -120,6 +131,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		pterm.Print("Continue? [y/N] ")
 
 		reader := bufio.NewReader(os.Stdin)
+
 		answer, err := reader.ReadString('\n')
 		if err != nil {
 			return fmt.Errorf("reading confirmation: %w", err)
@@ -127,7 +139,9 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 
 		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y") {
 			pterm.Info.Println("Bootstrap cancelled")
+
 			_ = os.RemoveAll(stagingDir)
+
 			return nil
 		}
 	}
@@ -153,6 +167,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 		LastAppliedIndex:     lastAppliedIndex,
 		LastAppliedTimestamp: lastAppliedTimestamp,
 	}
+
 	markerData, err := json.Marshal(marker)
 	if err != nil {
 		return fmt.Errorf("marshaling restored marker: %w", err)
@@ -190,17 +205,20 @@ func readBootstrapPreviewData(store *dal.Store) (lastAppliedIndex, lastAppliedTi
 	if err != nil {
 		return 0, 0, nil, fmt.Errorf("listing ledgers: %w", err)
 	}
+
 	defer func() { _ = cursor.Close() }()
 
 	for {
 		ledger, cursorErr := cursor.Next()
-		if cursorErr == io.EOF {
+		if errors.Is(cursorErr, io.EOF) {
 			break
 		}
+
 		if cursorErr != nil {
 			return 0, 0, nil, fmt.Errorf("iterating ledgers: %w", cursorErr)
 		}
-		ledgerNames = append(ledgerNames, ledger.Name)
+
+		ledgerNames = append(ledgerNames, ledger.GetName())
 	}
 
 	return lastAppliedIndex, lastAppliedTimestamp, ledgerNames, nil
@@ -208,6 +226,7 @@ func readBootstrapPreviewData(store *dal.Store) (lastAppliedIndex, lastAppliedTi
 
 func printBootstrapPreview(lastAppliedIndex, lastAppliedTimestamp uint64, ledgerNames []string) {
 	var timestampStr string
+
 	if lastAppliedTimestamp > 0 {
 		t := time.UnixMicro(int64(lastAppliedTimestamp))
 		timestampStr = t.Format(time.RFC3339)
@@ -218,9 +237,9 @@ func printBootstrapPreview(lastAppliedIndex, lastAppliedTimestamp uint64, ledger
 	pterm.DefaultSection.Println("Bootstrap Preview")
 
 	tableData := [][]string{
-		{"Last Applied Index", fmt.Sprintf("%d", lastAppliedIndex)},
+		{"Last Applied Index", strconv.FormatUint(lastAppliedIndex, 10)},
 		{"Last Applied Time", timestampStr},
-		{"Ledger Count", fmt.Sprintf("%d", len(ledgerNames))},
+		{"Ledger Count", strconv.Itoa(len(ledgerNames))},
 		{"Ledgers", strings.Join(ledgerNames, ", ")},
 	}
 
@@ -237,6 +256,7 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 	if err != nil {
 		return fmt.Errorf("opening staging store for validation: %w", err)
 	}
+
 	defer func() { _ = store.Close() }()
 
 	attrs := attributes.New()
@@ -248,26 +268,29 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 	)
 
 	err = checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
-		switch t := event.Type.(type) {
+		switch t := event.GetType().(type) {
 		case *servicepb.CheckStoreEvent_Progress:
-			if t.Progress.TotalLogs > 0 {
-				pct := float64(t.Progress.LogsChecked) / float64(t.Progress.TotalLogs) * 100
+			if t.Progress.GetTotalLogs() > 0 {
+				pct := float64(t.Progress.GetLogsChecked()) / float64(t.Progress.GetTotalLogs()) * 100
 				validationSpinner.UpdateText(fmt.Sprintf("Validating backup integrity... %d/%d logs (%.0f%%)",
-					t.Progress.LogsChecked, t.Progress.TotalLogs, pct))
+					t.Progress.GetLogsChecked(), t.Progress.GetTotalLogs(), pct))
 			}
 		case *servicepb.CheckStoreEvent_Error:
 			errorCount++
-			pterm.Printf("  %s %s\n", pterm.Red("ERROR"), t.Error.Message)
+
+			pterm.Printf("  %s %s\n", pterm.Red("ERROR"), t.Error.GetMessage())
 		}
 	})
 	if err != nil {
 		validationSpinner.Fail("Failed to validate backup")
+
 		return fmt.Errorf("running integrity check: %w", err)
 	}
 
 	_ = validationSpinner.Stop()
 
 	pterm.Println()
+
 	if errorCount == 0 {
 		pterm.Success.Println("Backup is valid - no integrity errors found")
 	} else {
@@ -276,4 +299,3 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 
 	return nil
 }
-

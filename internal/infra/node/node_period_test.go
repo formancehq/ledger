@@ -5,16 +5,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 )
 
 // createForceTransaction proposes a force transaction (bypasses balance checks) to the node.
@@ -36,6 +39,7 @@ func createForceTransaction(node *Node, ledger string, postings []*commonpb.Post
 			},
 		}},
 	}
+
 	return proposeAndWait(node, proposal)
 }
 
@@ -67,6 +71,7 @@ func saveAccountMetadata(node *Node, ledger, address string, metadata map[string
 			},
 		}},
 	}
+
 	return proposeAndWait(node, proposal)
 }
 
@@ -81,6 +86,7 @@ func closePeriod(node *Node) ([]*commonpb.Log, error) {
 			},
 		}},
 	}
+
 	return proposeAndWait(node, proposal)
 }
 
@@ -109,12 +115,15 @@ func startClusterSealers(t *testing.T, cluster *Cluster) func() {
 					},
 				}},
 			}
+
 			cmdData, err := proto.Marshal(proposal)
 			if err != nil {
 				t.Logf("Sealer: failed to marshal SealPeriod proposal: %v", err)
+
 				return
 			}
-			p := NewProposal(proposal.Id, cmdData)
+
+			p := NewProposal(proposal.GetId(), cmdData)
 			if _, err := node.Propose(p); err != nil {
 				// Expected on followers (DisableProposalForwarding)
 				t.Logf("Sealer node %d: propose SealPeriod failed (expected on followers): %v", clusterNode.ID, err)
@@ -187,8 +196,8 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 		numMetadataOps := 5
 		for i := range numMetadataOps {
 			_, err := saveAccountMetadata(leader.Node, "period-test", fmt.Sprintf("user:%d:%d", cycle, i), map[string]string{
-				"cycle":   fmt.Sprintf("%d", cycle),
-				"index":   fmt.Sprintf("%d", i),
+				"cycle":   strconv.Itoa(cycle),
+				"index":   strconv.Itoa(i),
 				"version": "test",
 			})
 			require.NoError(t, err)
@@ -197,10 +206,11 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 		// Close the period
 		logs, err := closePeriod(leader.Node)
 		require.NoError(t, err)
-		closePeriodLog := logs[0].Payload.GetClosePeriod()
+
+		closePeriodLog := logs[0].GetPayload().GetClosePeriod()
 		require.NotNil(t, closePeriodLog)
-		closedPeriodID := closePeriodLog.ClosedPeriod.Id
-		t.Logf("Closed period %d, new open period %d", closedPeriodID, closePeriodLog.NewPeriod.Id)
+		closedPeriodID := closePeriodLog.GetClosedPeriod().GetId()
+		t.Logf("Closed period %d, new open period %d", closedPeriodID, closePeriodLog.GetNewPeriod().GetId())
 
 		// Wait for the period to be sealed (CLOSED status with sealing hash)
 		require.Eventually(t, func() bool {
@@ -208,11 +218,13 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 			if err != nil {
 				return false
 			}
+
 			for _, p := range periods {
-				if p.Id == closedPeriodID && p.Status == commonpb.PeriodStatus_PERIOD_CLOSED && len(p.SealingHash) > 0 {
+				if p.GetId() == closedPeriodID && p.GetStatus() == commonpb.PeriodStatus_PERIOD_CLOSED && len(p.GetSealingHash()) > 0 {
 					return true
 				}
 			}
+
 			return false
 		}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on leader", closedPeriodID)
 
@@ -221,16 +233,19 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 		require.NoError(t, err)
 
 		var leaderSealedPeriod *commonpb.Period
+
 		for _, p := range leaderPeriods {
-			if p.Id == closedPeriodID {
+			if p.GetId() == closedPeriodID {
 				leaderSealedPeriod = p
+
 				break
 			}
 		}
+
 		require.NotNil(t, leaderSealedPeriod, "leader should have period %d", closedPeriodID)
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, leaderSealedPeriod.Status)
-		require.NotEmpty(t, leaderSealedPeriod.SealingHash)
-		t.Logf("Leader sealing hash for period %d: %x", closedPeriodID, leaderSealedPeriod.SealingHash)
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, leaderSealedPeriod.GetStatus())
+		require.NotEmpty(t, leaderSealedPeriod.GetSealingHash())
+		t.Logf("Leader sealing hash for period %d: %x", closedPeriodID, leaderSealedPeriod.GetSealingHash())
 
 		// Verify all followers have the same sealing hash
 		for _, clusterNode := range cluster.nodes {
@@ -243,11 +258,13 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 				if err != nil {
 					return false
 				}
+
 				for _, p := range periods {
-					if p.Id == closedPeriodID && p.Status == commonpb.PeriodStatus_PERIOD_CLOSED && len(p.SealingHash) > 0 {
+					if p.GetId() == closedPeriodID && p.GetStatus() == commonpb.PeriodStatus_PERIOD_CLOSED && len(p.GetSealingHash()) > 0 {
 						return true
 					}
 				}
+
 				return false
 			}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on node %d", closedPeriodID, clusterNode.ID)
 
@@ -255,18 +272,21 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 			require.NoError(t, err)
 
 			var followerSealedPeriod *commonpb.Period
+
 			for _, p := range followerPeriods {
-				if p.Id == closedPeriodID {
+				if p.GetId() == closedPeriodID {
 					followerSealedPeriod = p
+
 					break
 				}
 			}
-			require.NotNil(t, followerSealedPeriod, "node %d should have period %d", clusterNode.ID, closedPeriodID)
-			require.Equal(t, leaderSealedPeriod.SealingHash, followerSealedPeriod.SealingHash,
-				"node %d sealing hash for period %d should match leader (leader=%x, node=%x)",
-				clusterNode.ID, closedPeriodID, leaderSealedPeriod.SealingHash, followerSealedPeriod.SealingHash)
 
-			t.Logf("Node %d sealing hash for period %d: %x (matches leader)", clusterNode.ID, closedPeriodID, followerSealedPeriod.SealingHash)
+			require.NotNil(t, followerSealedPeriod, "node %d should have period %d", clusterNode.ID, closedPeriodID)
+			require.Equal(t, leaderSealedPeriod.GetSealingHash(), followerSealedPeriod.GetSealingHash(),
+				"node %d sealing hash for period %d should match leader (leader=%x, node=%x)",
+				clusterNode.ID, closedPeriodID, leaderSealedPeriod.GetSealingHash(), followerSealedPeriod.GetSealingHash())
+
+			t.Logf("Node %d sealing hash for period %d: %x (matches leader)", clusterNode.ID, closedPeriodID, followerSealedPeriod.GetSealingHash())
 		}
 
 		t.Logf("Period %d: all nodes have matching sealing hashes", closedPeriodID)
@@ -275,6 +295,7 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 	// Final verification: all nodes should have the same number of periods
 	// and all CLOSED periods should have matching hashes
 	var expectedPeriods []*commonpb.Period
+
 	for _, clusterNode := range cluster.nodes {
 		periods, err := query.ReadAllPeriods(context.Background(), clusterNode.Store)
 		require.NoError(t, err)
@@ -282,17 +303,20 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 		if expectedPeriods == nil {
 			expectedPeriods = periods
 			t.Logf("Final state: %d periods", len(periods))
+
 			for _, p := range periods {
-				t.Logf("  Period %d: status=%s, hash=%x", p.Id, p.Status.String(), p.SealingHash)
+				t.Logf("  Period %d: status=%s, hash=%x", p.GetId(), p.GetStatus().String(), p.GetSealingHash())
 			}
 		} else {
 			require.Len(t, periods, len(expectedPeriods), "node %d should have same number of periods", clusterNode.ID)
+
 			for j, p := range periods {
-				require.Equal(t, expectedPeriods[j].Id, p.Id, "period ID mismatch on node %d", clusterNode.ID)
-				require.Equal(t, expectedPeriods[j].Status, p.Status, "period status mismatch on node %d", clusterNode.ID)
-				if p.Status == commonpb.PeriodStatus_PERIOD_CLOSED {
-					require.Equal(t, expectedPeriods[j].SealingHash, p.SealingHash,
-						"sealing hash mismatch for period %d on node %d", p.Id, clusterNode.ID)
+				require.Equal(t, expectedPeriods[j].GetId(), p.GetId(), "period ID mismatch on node %d", clusterNode.ID)
+				require.Equal(t, expectedPeriods[j].GetStatus(), p.GetStatus(), "period status mismatch on node %d", clusterNode.ID)
+
+				if p.GetStatus() == commonpb.PeriodStatus_PERIOD_CLOSED {
+					require.Equal(t, expectedPeriods[j].GetSealingHash(), p.GetSealingHash(),
+						"sealing hash mismatch for period %d on node %d", p.GetId(), clusterNode.ID)
 				}
 			}
 		}
@@ -355,10 +379,11 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 	// Close the period — ClosePeriod is proposed as the last operation
 	logs, err := closePeriod(leader.Node)
 	require.NoError(t, err)
-	closePeriodLog := logs[0].Payload.GetClosePeriod()
+
+	closePeriodLog := logs[0].GetPayload().GetClosePeriod()
 	require.NotNil(t, closePeriodLog)
-	closedPeriodID := closePeriodLog.ClosedPeriod.Id
-	t.Logf("Closed period %d, new open period %d", closedPeriodID, closePeriodLog.NewPeriod.Id)
+	closedPeriodID := closePeriodLog.GetClosedPeriod().GetId()
+	t.Logf("Closed period %d, new open period %d", closedPeriodID, closePeriodLog.GetNewPeriod().GetId())
 
 	// Wait for the period to be fully sealed (CLOSED status with sealing hash) on the leader.
 	// This means the maintenance task has created the checkpoint, the sealer has computed
@@ -368,24 +393,30 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 		if err != nil {
 			return false
 		}
+
 		for _, p := range periods {
-			if p.Id == closedPeriodID && p.Status == commonpb.PeriodStatus_PERIOD_CLOSED && len(p.SealingHash) > 0 {
+			if p.GetId() == closedPeriodID && p.GetStatus() == commonpb.PeriodStatus_PERIOD_CLOSED && len(p.GetSealingHash()) > 0 {
 				return true
 			}
 		}
+
 		return false
 	}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on leader", closedPeriodID)
 
 	// Record the expected sealing hash from the leader
 	leaderPeriods, err := query.ReadAllPeriods(context.Background(), leader.Store)
 	require.NoError(t, err)
+
 	var expectedSealingHash []byte
+
 	for _, p := range leaderPeriods {
-		if p.Id == closedPeriodID {
-			expectedSealingHash = p.SealingHash
+		if p.GetId() == closedPeriodID {
+			expectedSealingHash = p.GetSealingHash()
+
 			break
 		}
 	}
+
 	require.NotEmpty(t, expectedSealingHash)
 	t.Logf("Expected sealing hash for period %d: %x", closedPeriodID, expectedSealingHash)
 
@@ -394,6 +425,7 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 
 	// Stop the leader
 	t.Logf("Stopping leader node %d", leaderID)
+
 	err = leader.Node.Stop(ctx)
 	require.NoError(t, err)
 
@@ -428,24 +460,30 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 		if err != nil {
 			return false
 		}
+
 		for _, p := range periods {
-			if p.Id == closedPeriodID && p.Status == commonpb.PeriodStatus_PERIOD_CLOSED && len(p.SealingHash) > 0 {
+			if p.GetId() == closedPeriodID && p.GetStatus() == commonpb.PeriodStatus_PERIOD_CLOSED && len(p.GetSealingHash()) > 0 {
 				return true
 			}
 		}
+
 		return false
 	}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on restarted node", closedPeriodID)
 
 	// Verify the sealing hash matches the expected hash
 	restartedPeriods, err := query.ReadAllPeriods(context.Background(), restartedNode.Store)
 	require.NoError(t, err)
+
 	var recoveredSealingHash []byte
+
 	for _, p := range restartedPeriods {
-		if p.Id == closedPeriodID {
-			recoveredSealingHash = p.SealingHash
+		if p.GetId() == closedPeriodID {
+			recoveredSealingHash = p.GetSealingHash()
+
 			break
 		}
 	}
+
 	require.Equal(t, expectedSealingHash, recoveredSealingHash,
 		"recovered sealing hash should match original (expected=%x, got=%x)",
 		expectedSealingHash, recoveredSealingHash)
@@ -458,22 +496,26 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 			if err != nil {
 				return false
 			}
+
 			for _, p := range periods {
-				if p.Id == closedPeriodID && p.Status == commonpb.PeriodStatus_PERIOD_CLOSED && len(p.SealingHash) > 0 {
+				if p.GetId() == closedPeriodID && p.GetStatus() == commonpb.PeriodStatus_PERIOD_CLOSED && len(p.GetSealingHash()) > 0 {
 					return true
 				}
 			}
+
 			return false
 		}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on node %d", closedPeriodID, clusterNode.ID)
 
 		periods, err := query.ReadAllPeriods(context.Background(), clusterNode.Store)
 		require.NoError(t, err)
+
 		for _, p := range periods {
-			if p.Id == closedPeriodID {
-				require.Equal(t, expectedSealingHash, p.SealingHash,
+			if p.GetId() == closedPeriodID {
+				require.Equal(t, expectedSealingHash, p.GetSealingHash(),
 					"node %d sealing hash should match (expected=%x, got=%x)",
-					clusterNode.ID, expectedSealingHash, p.SealingHash)
-				t.Logf("Node %d sealing hash: %x (matches)", clusterNode.ID, p.SealingHash)
+					clusterNode.ID, expectedSealingHash, p.GetSealingHash())
+				t.Logf("Node %d sealing hash: %x (matches)", clusterNode.ID, p.GetSealingHash())
+
 				break
 			}
 		}

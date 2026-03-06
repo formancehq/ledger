@@ -3,8 +3,9 @@ package bootstrap
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 )
 
 func TestServiceAdvertiseAddr_WithPort(t *testing.T) {

@@ -4,8 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // handleDeleteNumscript handles DELETE /numscripts/{name} to delete a numscript.
@@ -13,6 +14,7 @@ func (s *Server) handleDeleteNumscript(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	if name == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("numscript name is required"))
+
 		return
 	}
 
@@ -25,6 +27,7 @@ func (s *Server) handleDeleteNumscript(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		handleError(w, r, err)
+
 		return
 	}
 

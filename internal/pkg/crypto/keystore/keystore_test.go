@@ -26,7 +26,7 @@ func TestAddAndGetPublicKey(t *testing.T) {
 	ks.AddPublicKey("admin-key", pub, "")
 
 	require.True(t, ks.HasKeys())
-	require.Equal(t, ed25519.PublicKey(pub), ks.GetPublicKey("admin-key"))
+	require.Equal(t, pub, ks.GetPublicKey("admin-key"))
 	require.Nil(t, ks.GetPublicKey("nonexistent"))
 }
 
@@ -116,7 +116,7 @@ func TestAddPublicKey_WithParent(t *testing.T) {
 	ks.AddPublicKey("child-key", pub, "parent-key")
 
 	require.True(t, ks.HasKeys())
-	require.Equal(t, ed25519.PublicKey(pub), ks.GetPublicKey("child-key"))
+	require.Equal(t, pub, ks.GetPublicKey("child-key"))
 	children := ks.GetChildren("parent-key")
 	require.Len(t, children, 1)
 	require.Equal(t, "child-key", children[0])
@@ -135,12 +135,12 @@ func TestMultipleKeys(t *testing.T) {
 	ks.AddPublicKey("key-2", pub2, "")
 
 	require.True(t, ks.HasKeys())
-	require.Equal(t, ed25519.PublicKey(pub1), ks.GetPublicKey("key-1"))
-	require.Equal(t, ed25519.PublicKey(pub2), ks.GetPublicKey("key-2"))
+	require.Equal(t, pub1, ks.GetPublicKey("key-1"))
+	require.Equal(t, pub2, ks.GetPublicKey("key-2"))
 
 	// Remove one key, the other should still be there
 	ks.RemovePublicKey("key-1")
 	require.True(t, ks.HasKeys())
 	require.Nil(t, ks.GetPublicKey("key-1"))
-	require.Equal(t, ed25519.PublicKey(pub2), ks.GetPublicKey("key-2"))
+	require.Equal(t, pub2, ks.GetPublicKey("key-2"))
 }

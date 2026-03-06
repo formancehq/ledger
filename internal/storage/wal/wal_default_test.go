@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 func countWALFiles(t *testing.T, dir string) int {
@@ -21,6 +22,7 @@ func countWALFiles(t *testing.T, dir string) int {
 	require.NoError(t, err)
 
 	count := 0
+
 	for _, e := range entries {
 		if filepath.Ext(e.Name()) == ".wal" {
 			count++
@@ -54,6 +56,7 @@ func TestPurgeOldWALSegments(t *testing.T) {
 	// ReleaseLockTo requires at least 3 segments to actually release the oldest lock,
 	// because it always keeps the segment just before the target index locked.
 	const numEntries = 10
+
 	entryData := make([]byte, 20*1024*1024)
 	for i := uint64(1); i <= numEntries; i++ {
 		err := w.Append(
@@ -927,11 +930,13 @@ func TestWAL_RepairCorruptedEntry(t *testing.T) {
 	require.NoError(t, err)
 
 	var lastWALFile string
+
 	for _, e := range dirEntries {
 		if filepath.Ext(e.Name()) == ".wal" {
 			lastWALFile = filepath.Join(etcdDir, e.Name())
 		}
 	}
+
 	require.NotEmpty(t, lastWALFile, "should find at least one .wal file")
 
 	// etcd pre-allocates WAL files; find the end of actual data (last non-zero byte)
@@ -943,8 +948,9 @@ func TestWAL_RepairCorruptedEntry(t *testing.T) {
 	for lastNonZero > 0 && fileData[lastNonZero] == 0 {
 		lastNonZero--
 	}
+
 	truncateAt := int64(lastNonZero - 5)
-	require.Greater(t, truncateAt, int64(0))
+	require.Positive(t, truncateAt)
 	require.NoError(t, os.Truncate(lastWALFile, truncateAt))
 
 	// Step 3: Re-open — should auto-repair and succeed.
@@ -968,11 +974,14 @@ func TestWAL_RepairCorruptedEntry(t *testing.T) {
 	require.NoError(t, err)
 
 	hasBroken := false
+
 	for _, e := range dirEntries {
 		if filepath.Ext(e.Name()) == ".broken" {
 			hasBroken = true
+
 			break
 		}
 	}
+
 	require.True(t, hasBroken, "repair should create a .broken backup file")
 }

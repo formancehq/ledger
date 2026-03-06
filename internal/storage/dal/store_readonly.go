@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
+
 	"github.com/formancehq/go-libs/v3/logging"
 )
 
@@ -27,6 +28,7 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 		dataDir: dirPath,
 	}
 	store.db = db
+
 	return store, nil
 }
 
@@ -47,5 +49,6 @@ func OpenDirect(dirPath string, logger logging.Logger) (*Store, error) {
 		dataDir: dirPath,
 	}
 	store.db = db
+
 	return store, nil
 }

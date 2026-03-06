@@ -1,13 +1,15 @@
 package restore
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 )
 
 // NewValidateCommand creates the restore validate command.
@@ -29,6 +31,7 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -46,30 +49,34 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 
 	for {
 		event, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			_ = spinner.Stop()
+
 			return cmdutil.FormatGRPCError("receiving validation event", err)
 		}
 
-		switch t := event.Type.(type) {
+		switch t := event.GetType().(type) {
 		case *restorepb.ValidateRestoreEvent_Progress:
-			if t.Progress.TotalLogs > 0 {
-				pct := float64(t.Progress.LogsChecked) / float64(t.Progress.TotalLogs) * 100
+			if t.Progress.GetTotalLogs() > 0 {
+				pct := float64(t.Progress.GetLogsChecked()) / float64(t.Progress.GetTotalLogs()) * 100
 				spinner.UpdateText(fmt.Sprintf("Validating backup integrity... %d/%d logs (%.0f%%)",
-					t.Progress.LogsChecked, t.Progress.TotalLogs, pct))
+					t.Progress.GetLogsChecked(), t.Progress.GetTotalLogs(), pct))
 			}
 		case *restorepb.ValidateRestoreEvent_Error:
 			errorCount++
-			pterm.Printf("  %s %s\n", pterm.Red("ERROR"), t.Error.Message)
+
+			pterm.Printf("  %s %s\n", pterm.Red("ERROR"), t.Error.GetMessage())
 		}
 	}
 
 	_ = spinner.Stop()
 
 	pterm.Println()
+
 	if errorCount == 0 {
 		pterm.Success.Println("Backup is valid - no integrity errors found")
 	} else {

@@ -3,17 +3,19 @@ package auth
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 )
 
 // keyBundle is the JSON format for agent key bundles produced by
@@ -92,15 +94,18 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 		if err != nil {
 			return tokenParams{}, fmt.Errorf("decoding bundle signingKey: %w", err)
 		}
+
 		seed = decoded
 
 		// Use bundle values as defaults; explicit flags override.
 		if keyID == "" {
 			keyID = bundle.KeyID
 		}
+
 		if subject == "" {
 			subject = bundle.Subject
 		}
+
 		if len(scopes) == 0 {
 			scopes = bundle.Scopes
 		}
@@ -109,10 +114,11 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 	// If no bundle seed, fall back to --signing-key file.
 	if seed == nil {
 		if signingKeyPath == "" {
-			return tokenParams{}, fmt.Errorf("either --bundle/stdin or --signing-key is required")
+			return tokenParams{}, errors.New("either --bundle/stdin or --signing-key is required")
 		}
 
 		var loadErr error
+
 		seed, loadErr = signing.LoadSeedFromFile(signingKeyPath)
 		if loadErr != nil {
 			return tokenParams{}, fmt.Errorf("loading signing key: %w", loadErr)
@@ -120,10 +126,11 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 	}
 
 	if keyID == "" {
-		return tokenParams{}, fmt.Errorf("required flag \"key-id\" not set")
+		return tokenParams{}, errors.New("required flag \"key-id\" not set")
 	}
+
 	if subject == "" {
-		return tokenParams{}, fmt.Errorf("required flag \"subject\" not set")
+		return tokenParams{}, errors.New("required flag \"subject\" not set")
 	}
 
 	return tokenParams{
@@ -141,10 +148,12 @@ func readBundle(cmd *cobra.Command) (*keyBundle, error) {
 	bundlePath, _ := cmd.Flags().GetString("bundle")
 
 	var data []byte
+
 	switch {
 	case bundlePath == "-":
 		// Explicit stdin.
 		var err error
+
 		data, err = io.ReadAll(os.Stdin)
 		if err != nil {
 			return nil, fmt.Errorf("reading bundle from stdin: %w", err)
@@ -152,6 +161,7 @@ func readBundle(cmd *cobra.Command) (*keyBundle, error) {
 	case bundlePath != "":
 		// File path.
 		var err error
+
 		data, err = os.ReadFile(bundlePath)
 		if err != nil {
 			return nil, fmt.Errorf("reading bundle file: %w", err)
@@ -159,6 +169,7 @@ func readBundle(cmd *cobra.Command) (*keyBundle, error) {
 	case !term.IsTerminal(int(os.Stdin.Fd())):
 		// Piped stdin (no --bundle flag but stdin is not a terminal).
 		var err error
+
 		data, err = io.ReadAll(os.Stdin)
 		if err != nil {
 			return nil, fmt.Errorf("reading bundle from stdin: %w", err)
@@ -172,9 +183,12 @@ func readBundle(cmd *cobra.Command) (*keyBundle, error) {
 	}
 
 	var b keyBundle
-	if err := json.Unmarshal(data, &b); err != nil {
+
+	err := json.Unmarshal(data, &b)
+	if err != nil {
 		return nil, fmt.Errorf("parsing bundle JSON: %w", err)
 	}
+
 	return &b, nil
 }
 
@@ -182,9 +196,11 @@ func readBundle(cmd *cobra.Command) (*keyBundle, error) {
 func printTokenSummary(tokenStr string) {
 	parser := jwt.NewParser()
 	claims := jwt.MapClaims{}
+
 	_, _, err := parser.ParseUnverified(tokenStr, claims)
 	if err != nil {
 		pterm.Warning.Printfln("Could not decode token: %v", err)
+
 		return
 	}
 
@@ -192,18 +208,23 @@ func printTokenSummary(tokenStr string) {
 	if sub, _ := claims.GetSubject(); sub != "" {
 		rows = append(rows, []string{"Subject", sub})
 	}
+
 	if iss, _ := claims.GetIssuer(); iss != "" {
 		rows = append(rows, []string{"Issuer", iss})
 	}
+
 	if scopes, ok := claims["scope"].(string); ok && scopes != "" {
 		rows = append(rows, []string{"Scopes", scopes})
 	}
+
 	if exp, _ := claims.GetExpirationTime(); exp != nil {
 		remaining := time.Until(exp.Time)
+
 		status := pterm.Green("valid")
 		if remaining <= 0 {
 			status = pterm.Red("EXPIRED")
 		}
+
 		rows = append(rows, []string{"Expires", fmt.Sprintf("%s (%s)", exp.Format(time.RFC3339), status)})
 	}
 

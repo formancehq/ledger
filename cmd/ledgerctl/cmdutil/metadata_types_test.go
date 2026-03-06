@@ -3,8 +3,9 @@ package cmdutil
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func TestParseTargetType(t *testing.T) {
@@ -27,11 +28,14 @@ func TestParseTargetType(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := ParseTargetType(tt.input)
 			if tt.wantErr {
 				require.Error(t, err)
+
 				return
 			}
+
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
 		})
@@ -66,11 +70,14 @@ func TestParseMetadataType(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := ParseMetadataType(tt.input)
 			if tt.wantErr {
 				require.Error(t, err)
+
 				return
 			}
+
 			require.NoError(t, err)
 			require.Equal(t, tt.want, got)
 		})
@@ -200,11 +207,14 @@ func TestParseSchemaEntry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			target, key, mdType, err := ParseSchemaEntry(tt.input)
 			if tt.wantErr {
 				require.Error(t, err)
+
 				return
 			}
+
 			require.NoError(t, err)
 			require.Equal(t, tt.wantTarget, target)
 			require.Equal(t, tt.wantKey, key)
@@ -220,6 +230,7 @@ func TestParseMetadataTypeRoundTrip(t *testing.T) {
 	for _, name := range MetadataTypeOptions() {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			mdType, err := ParseMetadataType(name)
 			require.NoError(t, err)
 			require.Equal(t, name, MetadataTypeString(mdType))
@@ -233,6 +244,7 @@ func TestParseTargetTypeRoundTrip(t *testing.T) {
 	for _, name := range TargetTypeOptions() {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			targetType, err := ParseTargetType(name)
 			require.NoError(t, err)
 			require.Equal(t, name, TargetTypeString(targetType))

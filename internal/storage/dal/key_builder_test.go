@@ -127,6 +127,6 @@ func TestKeyBuilder_KeyOrdering(t *testing.T) {
 	key2 := kb.PutUInt32(1).PutUInt64(20).Build()
 	key3 := kb.PutUInt32(2).PutUInt64(1).Build()
 
-	require.True(t, bytes.Compare(key1, key2) < 0, "key1 should sort before key2")
-	require.True(t, bytes.Compare(key2, key3) < 0, "key2 should sort before key3")
+	require.Negative(t, bytes.Compare(key1, key2), "key1 should sort before key2")
+	require.Negative(t, bytes.Compare(key2, key3), "key2 should sort before key3")
 }

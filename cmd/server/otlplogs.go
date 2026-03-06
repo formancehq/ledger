@@ -1,12 +1,14 @@
 package server
 
 import (
+	"github.com/spf13/cobra"
+	flag "github.com/spf13/pflag"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/otlp"
 	"github.com/formancehq/go-libs/v3/service"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
-	"github.com/spf13/cobra"
-	flag "github.com/spf13/pflag"
 )
 
 const (
@@ -35,6 +37,7 @@ func loggerFromFlags(cmd *cobra.Command, defaultFields map[string]any) (logging.
 			if exporter != otlplogs.OTLPExporter {
 				return nil
 			}
+
 			mode, _ := cmd.Flags().GetString(OtelLogsExporterOTLPModeFlag)
 			endpoint, _ := cmd.Flags().GetString(OtelLogsExporterOTLPEndpointFlag)
 			insecure, _ := cmd.Flags().GetBool(OtelLogsExporterOTLPInsecureFlag)

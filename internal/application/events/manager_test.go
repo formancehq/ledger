@@ -4,17 +4,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/application/events"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/require"
 )
 
 func saveSinkConfig(t *testing.T, s *dal.Store, config *commonpb.SinkConfig) {
 	t.Helper()
+
 	batch := s.NewBatch()
 	require.NoError(t, state.SaveSinkConfig(batch, config))
 	require.NoError(t, batch.Commit())
@@ -22,6 +25,7 @@ func saveSinkConfig(t *testing.T, s *dal.Store, config *commonpb.SinkConfig) {
 
 func deleteSinkConfig(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
+
 	batch := s.NewBatch()
 	require.NoError(t, state.DeleteSinkConfig(batch, name))
 	require.NoError(t, batch.Commit())
@@ -36,6 +40,7 @@ func TestManager_AddRemoveSink(t *testing.T) {
 	notifications := signal.NewNotifications()
 
 	manager := events.NewManager(store, proposer, logger, notifications)
+
 	manager.Start()
 	defer manager.Stop()
 
@@ -61,6 +66,7 @@ func TestManager_AddRemoveSink(t *testing.T) {
 	require.Eventually(t, func() bool {
 		// Signal again to ensure the previous one was consumed
 		notifications.NotifyConfigChanged()
+
 		return true
 	}, time.Second, 10*time.Millisecond)
 }
@@ -80,6 +86,7 @@ func TestManager_LeadershipChange(t *testing.T) {
 	})
 
 	manager := events.NewManager(store, proposer, logger, notifications)
+
 	manager.Start()
 	defer manager.Stop()
 
@@ -102,6 +109,7 @@ func TestManager_ConfigChangeWhileFollower(t *testing.T) {
 	notifications := signal.NewNotifications()
 
 	manager := events.NewManager(store, proposer, logger, notifications)
+
 	manager.Start()
 	defer manager.Stop()
 
@@ -117,6 +125,7 @@ func TestManager_ConfigChangeWhileFollower(t *testing.T) {
 	// Give run() goroutine time to process
 	require.Eventually(t, func() bool {
 		notifications.NotifyConfigChanged()
+
 		return true
 	}, time.Second, 10*time.Millisecond)
 }
@@ -150,6 +159,7 @@ func TestManager_LogNotificationForwarding(t *testing.T) {
 	})
 
 	manager := events.NewManager(store, proposer, logger, notifications)
+
 	manager.Start()
 	defer manager.Stop()
 

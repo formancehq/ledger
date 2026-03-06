@@ -4,17 +4,20 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	libtime "github.com/formancehq/go-libs/v3/time"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 )
 
 func newTestStore(t *testing.T) *dal.Store {
 	t.Helper()
+
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
@@ -28,6 +31,7 @@ func newTestStore(t *testing.T) *dal.Store {
 
 func registerLedger(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
+
 	batch := s.NewBatch()
 	err := SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:      name,
@@ -39,6 +43,7 @@ func registerLedger(t *testing.T, s *dal.Store, name string) {
 
 func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*commonpb.Log) {
 	t.Helper()
+
 	batch := s.NewBatch()
 	err := AppendLogs(batch, logs...)
 	require.NoError(t, err)

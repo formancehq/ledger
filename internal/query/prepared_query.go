@@ -2,13 +2,15 @@ package query
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // ReadPreparedQuery reads a single prepared query by ledger and name.
@@ -19,6 +21,7 @@ func ReadPreparedQuery(ctx context.Context, reader dal.PebbleReader, ledger, nam
 			attribute.String("name", name),
 		))
 	defer span.End()
+
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixPreparedQuery)
 	kb.PutLedgerName(ledger)
@@ -27,11 +30,13 @@ func ReadPreparedQuery(ctx context.Context, reader dal.PebbleReader, ledger, nam
 
 	val, closer, err := reader.Get(key)
 	if err != nil {
-		if err == pebble.ErrNotFound {
+		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("reading prepared query %s/%s: %w", ledger, name, err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	pq := &commonpb.PreparedQuery{}
@@ -47,6 +52,7 @@ func ReadPreparedQueries(ctx context.Context, reader dal.PebbleReader, ledger st
 	_, span := queryTracer.Start(ctx, "query.list_prepared_queries",
 		trace.WithAttributes(attribute.String("ledger", ledger)))
 	defer span.End()
+
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixPreparedQuery)
 	kb.PutLedgerName(ledger)
@@ -65,9 +71,11 @@ func ReadPreparedQueries(ctx context.Context, reader dal.PebbleReader, ledger st
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for prepared queries: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	var queries []*commonpb.PreparedQuery
+
 	for iter.First(); iter.Valid(); iter.Next() {
 		val, err := iter.ValueAndErr()
 		if err != nil {
@@ -78,6 +86,7 @@ func ReadPreparedQueries(ctx context.Context, reader dal.PebbleReader, ledger st
 		if err := pq.UnmarshalVT(val); err != nil {
 			return nil, fmt.Errorf("unmarshaling prepared query: %w", err)
 		}
+
 		queries = append(queries, pq)
 	}
 
@@ -88,8 +97,8 @@ func ReadPreparedQueries(ctx context.Context, reader dal.PebbleReader, ledger st
 func WritePreparedQuery(batch *dal.Batch, pq *commonpb.PreparedQuery) error {
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixPreparedQuery)
-	kb.PutLedgerName(pq.Ledger)
-	kb.PutString(pq.Name)
+	kb.PutLedgerName(pq.GetLedger())
+	kb.PutString(pq.GetName())
 	key := kb.Build()
 
 	return batch.SetProto(key, pq)

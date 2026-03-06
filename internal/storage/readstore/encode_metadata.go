@@ -11,7 +11,8 @@ func EncodeMetadataValue(dst []byte, v *commonpb.MetadataValue) []byte {
 	if v == nil {
 		return EncodeNull(dst, "")
 	}
-	switch t := v.Type.(type) {
+
+	switch t := v.GetType().(type) {
 	case *commonpb.MetadataValue_StringValue:
 		return EncodeString(dst, t.StringValue)
 	case *commonpb.MetadataValue_IntValue:
@@ -23,8 +24,9 @@ func EncodeMetadataValue(dst []byte, v *commonpb.MetadataValue) []byte {
 	case *commonpb.MetadataValue_NullValue:
 		original := ""
 		if t.NullValue != nil {
-			original = t.NullValue.Original
+			original = t.NullValue.GetOriginal()
 		}
+
 		return EncodeNull(dst, original)
 	default:
 		return EncodeNull(dst, "")

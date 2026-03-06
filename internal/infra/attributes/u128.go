@@ -8,7 +8,7 @@ import (
 )
 
 // U128 is a comparable 128-bit identifier usable as a map key.
-// Layout: bytes 0-7 = Hi (big-endian), bytes 8-15 = Lo (big-endian)
+// Layout: bytes 0-7 = Hi (big-endian), bytes 8-15 = Lo (big-endian).
 type U128 [16]byte
 
 // NewU128 creates a U128 from high and low 64-bit values.
@@ -16,6 +16,7 @@ func NewU128(hi, lo uint64) U128 {
 	var u U128
 	binary.BigEndian.PutUint64(u[0:8], hi)
 	binary.BigEndian.PutUint64(u[8:16], lo)
+
 	return u
 }
 
@@ -25,6 +26,7 @@ func NewU128(hi, lo uint64) U128 {
 func U128FromBytes(b []byte) U128 {
 	var u U128
 	copy(u[:], b)
+
 	return u
 }
 
@@ -42,6 +44,7 @@ func (u U128) Lo() uint64 {
 func (u U128) Bytes() []byte {
 	b := make([]byte, 16)
 	copy(b, u[:])
+
 	return b
 }
 
@@ -56,6 +59,7 @@ func (u U128) Equal(v U128) bool { return u == v }
 // HashU128 computes a deterministic 128-bit ID from canonical bytes using XXH3-128.
 func HashU128(seeds Seeds, canonical []byte) U128 {
 	u := xxh3.Hash128Seed(canonical, seeds.IDSeed)
+
 	return NewU128(u.Hi, u.Lo)
 }
 

@@ -7,13 +7,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"go.etcd.io/etcd/raft/v3"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 var readIndexTracer = otel.Tracer("node.read_index")
@@ -32,6 +33,7 @@ var nextReadIndexID atomic.Uint64
 func makeReadIndexContext(id uint64) []byte {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], id)
+
 	return buf[:]
 }
 
@@ -40,6 +42,7 @@ func parseReadIndexContext(rctx []byte) (uint64, bool) {
 	if len(rctx) != 8 {
 		return 0, false
 	}
+
 	return binary.BigEndian.Uint64(rctx), true
 }
 
@@ -63,16 +66,20 @@ func (node *Node) ReadIndex(ctx context.Context) (uint64, error) {
 		if st.RaftState != raft.StateLeader && st.Lead == 0 {
 			return ErrNotLeader
 		}
+
 		node.rawNode.ReadIndex(rctx)
+
 		return nil
 	}); err != nil {
 		node.pendingReads.Delete(reqID)
+
 		return 0, fmt.Errorf("dispatching ReadIndex: %w", err)
 	}
 
 	commitIndex, err := req.future.WaitContext(ctx)
 	if err != nil {
 		node.pendingReads.Delete(reqID)
+
 		return 0, err
 	}
 
@@ -102,7 +109,9 @@ func (node *Node) ReadIndexAndWait(ctx context.Context) error {
 
 	ctx, riSpan := readIndexTracer.Start(ctx, "node.read_index_quorum")
 	commitIndex, err := node.ReadIndex(ctx)
+
 	riSpan.End()
+
 	if err != nil {
 		return err
 	}
@@ -113,8 +122,10 @@ func (node *Node) ReadIndexAndWait(ctx context.Context) error {
 		trace.WithAttributes(attribute.Int64("target_index", int64(commitIndex))))
 	if err := node.fsm.WaitForApplied(ctx, commitIndex); err != nil {
 		waitSpan.End()
+
 		return err
 	}
+
 	waitSpan.End()
 
 	if node.readIndexDurationHistogram != nil {
@@ -130,6 +141,7 @@ func (node *Node) failAllPendingReads(err error) {
 	node.pendingReads.Range(func(id uint64, req *readIndexRequest) bool {
 		req.future.Resolve(0, err)
 		node.pendingReads.Delete(id)
+
 		return true
 	})
 }
@@ -137,6 +149,7 @@ func (node *Node) failAllPendingReads(err error) {
 // initReadIndexMetric initializes the ReadIndex duration histogram.
 func (node *Node) initReadIndexMetric(meter metric.Meter) error {
 	var err error
+
 	node.readIndexDurationHistogram, err = meter.Int64Histogram(
 		"raft.read_index.duration",
 		metric.WithDescription("Time spent in ReadIndex+WaitForApplied for linearizable reads"),
@@ -145,5 +158,6 @@ func (node *Node) initReadIndexMetric(meter metric.Meter) error {
 			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000,
 		),
 	)
+
 	return err
 }

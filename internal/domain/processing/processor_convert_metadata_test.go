@@ -3,11 +3,12 @@ package processing
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 func TestProcessConvertMetadataBatch_LedgerNotFound(t *testing.T) {
@@ -62,7 +63,7 @@ func TestProcessConvertMetadataBatch_StaleSchema(t *testing.T) {
 
 	// Ledger exists but the schema field is no longer CONVERTING
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name:           "test-ledger",
+		Name: "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -100,9 +101,9 @@ func TestProcessConvertMetadataBatch_StaleSchema(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	batchLog := applyLog.Log.Data.GetConvertMetadataBatch()
+	batchLog := applyLog.GetLog().GetData().GetConvertMetadataBatch()
 	require.NotNil(t, batchLog)
-	require.Equal(t, uint32(0), batchLog.Count, "stale batch should report count=0")
+	require.Equal(t, uint32(0), batchLog.GetCount(), "stale batch should report count=0")
 }
 
 func TestProcessConvertMetadataBatch_Success(t *testing.T) {
@@ -119,7 +120,7 @@ func TestProcessConvertMetadataBatch_Success(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name:           "test-ledger",
+		Name: "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -178,9 +179,9 @@ func TestProcessConvertMetadataBatch_Success(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	batchLog := applyLog.Log.Data.GetConvertMetadataBatch()
+	batchLog := applyLog.GetLog().GetData().GetConvertMetadataBatch()
 	require.NotNil(t, batchLog)
-	require.Equal(t, uint32(1), batchLog.Count)
+	require.Equal(t, uint32(1), batchLog.GetCount())
 }
 
 func TestProcessConvertMetadataBatch_AlreadyMatchesType(t *testing.T) {
@@ -197,7 +198,7 @@ func TestProcessConvertMetadataBatch_AlreadyMatchesType(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name:           "test-ledger",
+		Name: "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -250,9 +251,9 @@ func TestProcessConvertMetadataBatch_AlreadyMatchesType(t *testing.T) {
 	require.NotNil(t, result)
 
 	applyLog := result.GetApply()
-	batchLog := applyLog.Log.Data.GetConvertMetadataBatch()
+	batchLog := applyLog.GetLog().GetData().GetConvertMetadataBatch()
 	require.NotNil(t, batchLog)
-	require.Equal(t, uint32(0), batchLog.Count, "value already matches type, count should be 0")
+	require.Equal(t, uint32(0), batchLog.GetCount(), "value already matches type, count should be 0")
 }
 
 func TestProcessMetadataConversionComplete_LedgerNotFound(t *testing.T) {
@@ -307,7 +308,7 @@ func TestProcessMetadataConversionComplete_Stale(t *testing.T) {
 
 	// Schema is COMPLETE, so the completion order is stale
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name:           "test-ledger",
+		Name: "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -345,9 +346,9 @@ func TestProcessMetadataConversionComplete_Stale(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	completeLog := applyLog.Log.Data.GetMetadataConversionComplete()
+	completeLog := applyLog.GetLog().GetData().GetMetadataConversionComplete()
 	require.NotNil(t, completeLog)
-	require.Equal(t, "age", completeLog.Key)
+	require.Equal(t, "age", completeLog.GetKey())
 }
 
 func TestProcessMetadataConversionComplete_Success(t *testing.T) {
@@ -364,7 +365,7 @@ func TestProcessMetadataConversionComplete_Success(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name:           "test-ledger",
+		Name: "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"age": {
@@ -404,8 +405,8 @@ func TestProcessMetadataConversionComplete_Success(t *testing.T) {
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
 
-	completeLog := applyLog.Log.Data.GetMetadataConversionComplete()
+	completeLog := applyLog.GetLog().GetData().GetMetadataConversionComplete()
 	require.NotNil(t, completeLog)
-	require.Equal(t, "age", completeLog.Key)
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, completeLog.TargetType)
+	require.Equal(t, "age", completeLog.GetKey())
+	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, completeLog.GetTargetType())
 }

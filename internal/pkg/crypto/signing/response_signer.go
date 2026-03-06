@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -22,7 +23,7 @@ type ResponseSigner struct {
 // NewResponseSigner creates a new ResponseSigner from a 32-byte Ed25519 seed.
 func NewResponseSigner(seed []byte) *ResponseSigner {
 	privateKey := ed25519.NewKeyFromSeed(seed)
-	publicKey := privateKey.Public().(ed25519.PublicKey)
+	publicKey, _ := privateKey.Public().(ed25519.PublicKey)
 
 	// Key ID is the SHA256 fingerprint of the public key (hex-encoded, first 16 chars)
 	hash := sha256.Sum256(publicKey)
@@ -71,18 +72,21 @@ func (s *ResponseSigner) KeyID() string {
 // VerifyResponseSignature verifies a ResponseSignature against a known public key.
 func VerifyResponseSignature(sig *signaturepb.ResponseSignature, publicKey ed25519.PublicKey) error {
 	if sig == nil {
-		return fmt.Errorf("missing response signature")
-	}
-	if len(sig.SignedPayload) == 0 {
-		return fmt.Errorf("empty signed_payload in response signature")
-	}
-	if len(sig.Signature) != ed25519.SignatureSize {
-		return fmt.Errorf("invalid response signature length %d", len(sig.Signature))
+		return errors.New("missing response signature")
 	}
 
-	if !ed25519.Verify(publicKey, sig.SignedPayload, sig.Signature) {
-		return fmt.Errorf("response signature verification failed")
+	if len(sig.GetSignedPayload()) == 0 {
+		return errors.New("empty signed_payload in response signature")
 	}
+
+	if len(sig.GetSignature()) != ed25519.SignatureSize {
+		return fmt.Errorf("invalid response signature length %d", len(sig.GetSignature()))
+	}
+
+	if !ed25519.Verify(publicKey, sig.GetSignedPayload(), sig.GetSignature()) {
+		return errors.New("response signature verification failed")
+	}
+
 	return nil
 }
 
@@ -96,6 +100,7 @@ func LoadSeedFromFile(path string) ([]byte, error) {
 
 	// Try to interpret as hex-encoded seed
 	seed := data
+
 	trimmed := strings.TrimSpace(string(data))
 	if decoded, err := hex.DecodeString(trimmed); err == nil && len(decoded) == ed25519.SeedSize {
 		seed = decoded
@@ -117,6 +122,7 @@ func LoadPublicKeyFromFile(path string) (ed25519.PublicKey, error) {
 	}
 
 	key := data
+
 	trimmed := strings.TrimSpace(string(data))
 	if decoded, err := hex.DecodeString(trimmed); err == nil && len(decoded) == ed25519.PublicKeySize {
 		key = decoded

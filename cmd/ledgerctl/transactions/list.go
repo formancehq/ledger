@@ -2,17 +2,20 @@ package transactions
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"time"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewListCommand creates the transactions list command.
@@ -60,10 +63,12 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	// Get ledger name (from flag or interactive selection)
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -94,10 +99,12 @@ func buildTransactionFilter(filterExpr string) (*commonpb.QueryFilter, error) {
 	if filterExpr == "" {
 		return nil, nil
 	}
+
 	filter, err := filterexpr.Parse(filterExpr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid filter expression: %w", err)
 	}
+
 	return filter, nil
 }
 
@@ -120,19 +127,24 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 	})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to list transactions", err)
 	}
 
 	var transactions []*commonpb.Transaction
+
 	for {
 		tx, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			_ = spinner.Stop()
+
 			return cmdutil.FormatGRPCError("failed to receive transaction", err)
 		}
+
 		transactions = append(transactions, tx)
 	}
 
@@ -141,12 +153,14 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(transactions)
 	}
 
 	if len(transactions) == 0 {
 		pterm.Info.Println("No transactions found.")
 		pterm.Println(pterm.Gray("Create one with: ledgerctl transactions create --ledger " + ledgerName))
+
 		return nil
 	}
 
@@ -155,11 +169,13 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 	if showProfile {
 		cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
 	}
+
 	return nil
 }
 
 func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool, minLogSeq uint64, showProfile bool) error {
 	var afterTxID uint64
+
 	pageNum := 1
 
 	for {
@@ -180,21 +196,28 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 		})
 		if err != nil {
 			cancel()
+
 			_ = spinner.Stop()
+
 			return cmdutil.FormatGRPCError("failed to list transactions", err)
 		}
 
 		var transactions []*commonpb.Transaction
+
 		for {
 			tx, err := stream.Recv()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			if err != nil {
 				cancel()
+
 				_ = spinner.Stop()
+
 				return cmdutil.FormatGRPCError("failed to receive transaction", err)
 			}
+
 			transactions = append(transactions, tx)
 		}
 
@@ -202,10 +225,12 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 
 		if len(transactions) == 0 {
 			spinner.Info("No more transactions.")
+
 			if pageNum == 1 {
 				pterm.Info.Println("No transactions found.")
 				pterm.Println(pterm.Gray("Create one with: ledgerctl transactions create --ledger " + ledgerName))
 			}
+
 			return nil
 		}
 
@@ -214,7 +239,9 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 		if jsonOutput {
 			encoder := json.NewEncoder(os.Stdout)
 			encoder.SetIndent("", "  ")
-			if err := encoder.Encode(transactions); err != nil {
+
+			err := encoder.Encode(transactions)
+			if err != nil {
 				return err
 			}
 		} else {
@@ -233,11 +260,12 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 			if !jsonOutput {
 				pterm.Info.Println("End of transactions.")
 			}
+
 			return nil
 		}
 
 		// Update afterTxID for next page (last transaction in current page)
-		afterTxID = transactions[len(transactions)-1].Id
+		afterTxID = transactions[len(transactions)-1].GetId()
 
 		// Prompt for next page
 		if !jsonOutput {
@@ -248,6 +276,7 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 			if err != nil {
 				return fmt.Errorf("failed to read input: %w", err)
 			}
+
 			if !result {
 				return nil
 			}
@@ -267,25 +296,25 @@ func renderTransactionsTable(transactions []*commonpb.Transaction) {
 
 	for _, tx := range transactions {
 		timestamp := "-"
-		if tx.Timestamp != nil {
-			timestamp = tx.Timestamp.AsTime().Format(time.RFC3339)
+		if tx.GetTimestamp() != nil {
+			timestamp = tx.GetTimestamp().AsTime().Format(time.RFC3339)
 		}
 
 		reference := "-"
-		if tx.Reference != "" {
-			reference = tx.Reference
+		if tx.GetReference() != "" {
+			reference = tx.GetReference()
 		}
 
 		status := pterm.Green("OK")
-		if tx.Reverted {
+		if tx.GetReverted() {
 			status = pterm.Yellow("Reverted")
 		}
 
 		tableData = append(tableData, []string{
-			fmt.Sprintf("%d", tx.Id),
+			strconv.FormatUint(tx.GetId(), 10),
 			timestamp,
 			reference,
-			fmt.Sprintf("%d", len(tx.Postings)),
+			strconv.Itoa(len(tx.GetPostings())),
 			status,
 		})
 	}

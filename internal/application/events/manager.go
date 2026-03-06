@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -60,6 +61,7 @@ func (m *Manager) Stop() {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.teardown()
 }
 
@@ -85,6 +87,7 @@ func (m *Manager) loop(stop <-chan struct{}) {
 		func() {
 			m.mu.Lock()
 			defer m.mu.Unlock()
+
 			if m.isLeader {
 				m.reconcile()
 			}
@@ -99,23 +102,27 @@ func (m *Manager) loop(stop <-chan struct{}) {
 func (m *Manager) reconcile() {
 	if !m.isLeader {
 		m.teardown()
+
 		return
 	}
 
 	sinkCfgs, err := query.ReadAllSinkConfigs(m.store)
 	if err != nil {
 		m.logger.Errorf("Failed to load sink configs: %v", err)
+
 		return
 	}
 
 	// Build desired state as a map keyed by sink name
 	desired := make(map[string]*commonpb.SinkConfig, len(sinkCfgs))
 	for _, sc := range sinkCfgs {
-		if sc.Name == "" {
+		if sc.GetName() == "" {
 			m.logger.Errorf("Sink config has empty name, skipping")
+
 			continue
 		}
-		desired[sc.Name] = sc
+
+		desired[sc.GetName()] = sc
 	}
 
 	// Remove sinks that no longer exist or whose config changed
@@ -132,6 +139,7 @@ func (m *Manager) reconcile() {
 		if _, exists := m.emitters[name]; exists {
 			continue // already running with same config
 		}
+
 		if ms := m.startSink(sc); ms != nil {
 			m.emitters[name] = ms
 		}
@@ -144,38 +152,45 @@ func (m *Manager) reconcile() {
 // Returns nil if the sink type is unsupported or creation fails.
 func (m *Manager) startSink(sc *commonpb.SinkConfig) *managedSink {
 	emitterCfg := DefaultEmitterConfig()
-	if sc.Format != "" {
-		emitterCfg.Format = Format(sc.Format)
+	if sc.GetFormat() != "" {
+		emitterCfg.Format = Format(sc.GetFormat())
 	}
-	if sc.BatchSize > 0 {
-		emitterCfg.BatchSize = int(sc.BatchSize)
+
+	if sc.GetBatchSize() > 0 {
+		emitterCfg.BatchSize = int(sc.GetBatchSize())
 	}
-	if sc.BatchDelayMs > 0 {
-		emitterCfg.BatchDelay = time.Duration(sc.BatchDelayMs) * time.Millisecond
+
+	if sc.GetBatchDelayMs() > 0 {
+		emitterCfg.BatchDelay = time.Duration(sc.GetBatchDelayMs()) * time.Millisecond
 	}
-	if len(sc.EventTypes) > 0 {
-		emitterCfg.EventTypes = make(map[commonpb.EventType]struct{}, len(sc.EventTypes))
-		for _, et := range sc.EventTypes {
+
+	if len(sc.GetEventTypes()) > 0 {
+		emitterCfg.EventTypes = make(map[commonpb.EventType]struct{}, len(sc.GetEventTypes()))
+		for _, et := range sc.GetEventTypes() {
 			emitterCfg.EventTypes[et] = struct{}{}
 		}
 	}
 
 	sink, err := m.createSink(sc)
 	if err != nil {
-		m.logger.Errorf("Failed to create sink %q: %v", sc.Name, err)
+		m.logger.Errorf("Failed to create sink %q: %v", sc.GetName(), err)
+
 		return nil
 	}
 
-	emitter := NewEmitter(m.store, sink, sc.Name, m.proposer, m.logger, emitterCfg)
+	emitter := NewEmitter(m.store, sink, sc.GetName(), m.proposer, m.logger, emitterCfg)
 	emitter.Start()
 	<-emitter.Ready()
+
 	return &managedSink{emitter: emitter, sink: sink, config: sc}
 }
 
 // stopSink stops an emitter and closes its sink.
 func (m *Manager) stopSink(name string, ms *managedSink) {
 	ms.emitter.Stop()
-	if err := ms.sink.Close(); err != nil {
+
+	err := ms.sink.Close()
+	if err != nil {
 		m.logger.Errorf("Failed to close sink %q: %v", name, err)
 	}
 }
@@ -185,6 +200,7 @@ func (m *Manager) teardown() {
 	for name, ms := range m.emitters {
 		m.stopSink(name, ms)
 	}
+
 	m.emitters = make(map[string]*managedSink)
 }
 
@@ -192,7 +208,7 @@ func (m *Manager) teardown() {
 // HTTP sinks are always available. Other sink types (Kafka, NATS, ClickHouse)
 // are only available when compiled with their respective build tags.
 func (m *Manager) createSink(sc *commonpb.SinkConfig) (Sink, error) {
-	format := Format(sc.Format)
+	format := Format(sc.GetFormat())
 	if format == "" {
 		format = FormatJSON
 	}
@@ -200,17 +216,19 @@ func (m *Manager) createSink(sc *commonpb.SinkConfig) (Sink, error) {
 	// HTTP sink is always available (no heavy dependencies).
 	if s, ok := sc.GetType().(*commonpb.SinkConfig_Http); ok {
 		return NewHTTPSink(HTTPSinkConfig{
-			Endpoint: s.Http.Endpoint,
-			Secret:   s.Http.Secret,
+			Endpoint: s.Http.GetEndpoint(),
+			Secret:   s.Http.GetSecret(),
 			Format:   format,
 		})
 	}
 
 	// Look up optional sinks in the registry.
 	typeName := sinkTypeName(sc)
+
 	factory, ok := sinkFactories[typeName]
 	if !ok {
 		return nil, fmt.Errorf("unsupported events sink type: %s (not compiled in this build)", typeName)
 	}
+
 	return factory(sc, format)
 }

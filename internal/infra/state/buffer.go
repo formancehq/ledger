@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/holiman/uint256"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
@@ -11,8 +14,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/holiman/uint256"
-	"google.golang.org/protobuf/proto"
 )
 
 // mergeSimple writes each update to a SimpleAttribute using Set + selective delete.
@@ -27,24 +28,29 @@ func mergeSimple[K attributes.Key, V proto.Message](
 	updates []attributes.Update[K, V],
 ) error {
 	for _, update := range updates {
-		if err := attr.Set(batch, index, update.CanonicalKey, update.New); err != nil {
+		err := attr.Set(batch, index, update.CanonicalKey, update.New)
+		if err != nil {
 			return err
 		}
+
 		switch {
 		case !update.Old.IsDefined():
 			// First write — nothing to delete.
 		case update.OldBaseIndex > 0:
 			// Known previous index — point delete (no range tombstone).
-			if err := attr.DeleteAt(batch, update.OldBaseIndex, update.CanonicalKey); err != nil {
+			err := attr.DeleteAt(batch, update.OldBaseIndex, update.CanonicalKey)
+			if err != nil {
 				return err
 			}
 		default:
 			// Unknown previous index (cold preload) — fallback to range delete.
-			if err := attr.DeleteOldest(batch, index, update.CanonicalKey); err != nil {
+			err := attr.DeleteOldest(batch, index, update.CanonicalKey)
+			if err != nil {
 				return err
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -111,11 +117,14 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if err != nil {
 		return fmt.Errorf("failed to merge ledgers: %w", err)
 	}
+
 	if err := mergeSimple(b.attrs.Ledger, batch, index, ledgerUpdates); err != nil {
 		return fmt.Errorf("failed merging ledger attributes: %w", err)
 	}
+
 	for _, update := range ledgerUpdates {
-		if err := SaveLedger(batch, update.New); err != nil {
+		err := SaveLedger(batch, update.New)
+		if err != nil {
 			return fmt.Errorf("failed to save ledger: %w", err)
 		}
 	}
@@ -125,6 +134,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if err != nil {
 		return fmt.Errorf("failed to merge boundaries: %w", err)
 	}
+
 	if err := mergeSimple(b.attrs.Boundary, batch, index, boundaryUpdates); err != nil {
 		return fmt.Errorf("failed merging boundary attributes: %w", err)
 	}
@@ -134,25 +144,29 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if err != nil {
 		return fmt.Errorf("failed to merge volumes: %w", err)
 	}
+
 	for _, update := range volumeUpdates {
 		// Normalize for Pebble storage: the Known/Diff distinction is an in-memory
 		// optimization only. In Pebble, values are always stored in InputKnown/OutputKnown.
 		storePair := &raftcmdpb.VolumePair{
-			InputKnown:  coalesceVolumeSide(update.New.InputKnown, update.New.InputDiff),
-			OutputKnown: coalesceVolumeSide(update.New.OutputKnown, update.New.OutputDiff),
+			InputKnown:  coalesceVolumeSide(update.New.GetInputKnown(), update.New.GetInputDiff()),
+			OutputKnown: coalesceVolumeSide(update.New.GetOutputKnown(), update.New.GetOutputDiff()),
 		}
 
 		// If the original VolumePair had Known values, write as SetBase (absolute).
 		// Otherwise, write as AddDiff (cumulative delta).
-		if update.New.InputKnown != nil || update.New.OutputKnown != nil {
-			if err := b.attrs.Volume.SetBase(batch, index, update.CanonicalKey, storePair); err != nil {
+		if update.New.GetInputKnown() != nil || update.New.GetOutputKnown() != nil {
+			err := b.attrs.Volume.SetBase(batch, index, update.CanonicalKey, storePair)
+			if err != nil {
 				return fmt.Errorf("could not set volume base: %w", err)
 			}
 		} else {
-			if err := b.attrs.Volume.AddDiff(batch, index, update.CanonicalKey, storePair); err != nil {
+			err := b.attrs.Volume.AddDiff(batch, index, update.CanonicalKey, storePair)
+			if err != nil {
 				return fmt.Errorf("failed adding volume diff: %w", err)
 			}
 		}
+
 		b.fsm.dirtyVolumeKeys[0][string(update.CanonicalKey)]++
 	}
 
@@ -165,12 +179,15 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if err != nil {
 		return fmt.Errorf("failed to merge account metadata: %w", err)
 	}
+
 	if err := mergeSimple(b.attrs.Metadata, batch, index, accountMetadataUpdates); err != nil {
 		return fmt.Errorf("failed merging metadata attributes: %w", err)
 	}
+
 	for _, deletion := range accountMetadataDeletions {
-		if err := b.attrs.Metadata.Delete(batch, deletion.CanonicalKey); err != nil {
-			return fmt.Errorf("failed deleting metadata attribute: %v", err)
+		err := b.attrs.Metadata.Delete(batch, deletion.CanonicalKey)
+		if err != nil {
+			return fmt.Errorf("failed deleting metadata attribute: %w", err)
 		}
 	}
 
@@ -185,6 +202,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if err != nil {
 		return fmt.Errorf("failed to merge idempotency keys: %w", err)
 	}
+
 	if err := mergeSimple(b.attrs.IdempotencyKeys, batch, index, idempotencyUpdates); err != nil {
 		return fmt.Errorf("failed merging idempotency key attributes: %w", err)
 	}
@@ -194,6 +212,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if err != nil {
 		return fmt.Errorf("failed to merge references: %w", err)
 	}
+
 	if err := mergeSimple(b.attrs.References, batch, index, referenceUpdates); err != nil {
 		return fmt.Errorf("failed merging reference attributes: %w", err)
 	}
@@ -215,49 +234,66 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	// Apply signing key updates to Pebble batch and in-memory KeyStore
 	for _, update := range b.pendingSigningKeyUpdates {
 		if update.remove {
-			if err := DeleteSigningKey(batch, update.keyID); err != nil {
+			err := DeleteSigningKey(batch, update.keyID)
+			if err != nil {
 				return fmt.Errorf("deleting signing key: %w", err)
 			}
+
 			if b.fsm.keyStore != nil {
 				b.fsm.keyStore.RemovePublicKey(update.keyID)
 			}
 		} else {
-			if err := SaveSigningKey(batch, update.keyID, update.publicKey, update.parentKeyID); err != nil {
+			err := SaveSigningKey(batch, update.keyID, update.publicKey, update.parentKeyID)
+			if err != nil {
 				return fmt.Errorf("saving signing key: %w", err)
 			}
+
 			if b.fsm.keyStore != nil {
 				b.fsm.keyStore.AddPublicKey(update.keyID, update.publicKey, update.parentKeyID)
 			}
 		}
 	}
+
 	if b.pendingSigningConfigUpdate != nil {
-		if err := SaveSigningConfig(batch, b.pendingSigningConfigUpdate.requireSignatures); err != nil {
+		err := SaveSigningConfig(batch, b.pendingSigningConfigUpdate.requireSignatures)
+		if err != nil {
 			return fmt.Errorf("saving signing config: %w", err)
 		}
+
 		b.fsm.sharedState.SetRequireSignatures(b.pendingSigningConfigUpdate.requireSignatures)
 	}
+
 	if b.pendingMaintenanceModeUpdate != nil {
-		if err := SaveMaintenanceMode(batch, b.pendingMaintenanceModeUpdate.enabled); err != nil {
+		err := SaveMaintenanceMode(batch, b.pendingMaintenanceModeUpdate.enabled)
+		if err != nil {
 			return fmt.Errorf("saving maintenance mode: %w", err)
 		}
+
 		b.fsm.sharedState.SetMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled)
 	}
+
 	if b.pendingAuditConfigUpdate != nil {
-		if err := SaveAuditConfig(batch, b.pendingAuditConfigUpdate.enabled); err != nil {
+		err := SaveAuditConfig(batch, b.pendingAuditConfigUpdate.enabled)
+		if err != nil {
 			return fmt.Errorf("saving audit config: %w", err)
 		}
+
 		b.fsm.sharedState.SetAuditEnabled(b.pendingAuditConfigUpdate.enabled)
 	}
+
 	if b.pendingPeriodScheduleUpdate != nil {
 		if *b.pendingPeriodScheduleUpdate == "" {
-			if err := BatchDeletePeriodSchedule(batch); err != nil {
+			err := BatchDeletePeriodSchedule(batch)
+			if err != nil {
 				return fmt.Errorf("deleting period schedule: %w", err)
 			}
 		} else {
-			if err := SavePeriodSchedule(batch, *b.pendingPeriodScheduleUpdate); err != nil {
+			err := SavePeriodSchedule(batch, *b.pendingPeriodScheduleUpdate)
+			if err != nil {
 				return fmt.Errorf("saving period schedule: %w", err)
 			}
 		}
+
 		b.fsm.Periods.SetSchedule(*b.pendingPeriodScheduleUpdate)
 	}
 
@@ -266,6 +302,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if _, _, err := b.Derived.NumscriptVersions.Merge(index); err != nil {
 		return fmt.Errorf("failed to merge numscript versions: %w", err)
 	}
+
 	if _, _, err := b.Derived.NumscriptEntries.Merge(index); err != nil {
 		return fmt.Errorf("failed to merge numscript entries: %w", err)
 	}
@@ -274,53 +311,65 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if err != nil {
 		return fmt.Errorf("failed to merge sink configs: %w", err)
 	}
+
 	for _, update := range sinkUpdates {
-		if err := SaveSinkConfig(batch, update.New); err != nil {
+		err := SaveSinkConfig(batch, update.New)
+		if err != nil {
 			return fmt.Errorf("saving sink config %q: %w", update.Key.Name, err)
 		}
 	}
+
 	for _, deletion := range sinkDeletions {
-		if err := DeleteSinkConfig(batch, deletion.Key.Name); err != nil {
+		err := DeleteSinkConfig(batch, deletion.Key.Name)
+		if err != nil {
 			return fmt.Errorf("deleting sink config %q: %w", deletion.Key.Name, err)
 		}
 	}
 
 	for key, pq := range b.pendingPreparedQueries {
 		if pq != nil {
-			if err := SavePreparedQuery(batch, pq); err != nil {
+			err := SavePreparedQuery(batch, pq)
+			if err != nil {
 				return fmt.Errorf("saving prepared query %s/%s: %w", key.Ledger, key.Name, err)
 			}
 		} else {
-			if err := DeletePreparedQuery(batch, key.Ledger, key.Name); err != nil {
+			err := DeletePreparedQuery(batch, key.Ledger, key.Name)
+			if err != nil {
 				return fmt.Errorf("deleting prepared query %s/%s: %w", key.Ledger, key.Name, err)
 			}
 		}
 	}
 
 	for _, p := range b.changedPeriods {
-		if err := StorePeriod(batch, p); err != nil {
-			return fmt.Errorf("storing period %d: %w", p.Id, err)
+		err := StorePeriod(batch, p)
+		if err != nil {
+			return fmt.Errorf("storing period %d: %w", p.GetId(), err)
 		}
 	}
+
 	if err := StoreNextPeriodID(batch, b.periods.NextPeriodID()); err != nil {
 		return fmt.Errorf("storing next period ID: %w", err)
 	}
 
 	// Purge archived period data (logs + audit entries) if requested
 	for i := range b.purgeRanges {
-		if err := b.executePurge(batch, &b.purgeRanges[i]); err != nil {
+		err := b.executePurge(batch, &b.purgeRanges[i])
+		if err != nil {
 			return fmt.Errorf("purging archived period %d data: %w", b.purgeRanges[i].periodID, err)
 		}
 	}
 
 	// Process numscript writes
 	for _, info := range b.pendingNumscriptWrites {
-		if err := SaveNumscript(batch, info); err != nil {
-			return fmt.Errorf("saving numscript %q: %w", info.Name, err)
+		err := SaveNumscript(batch, info)
+		if err != nil {
+			return fmt.Errorf("saving numscript %q: %w", info.GetName(), err)
 		}
 	}
+
 	for _, name := range b.pendingNumscriptDeletes {
-		if err := ClearNumscriptLatestVersion(batch, name); err != nil {
+		err := ClearNumscriptLatestVersion(batch, name)
+		if err != nil {
 			return fmt.Errorf("clearing numscript latest version %q: %w", name, err)
 		}
 	}
@@ -366,6 +415,7 @@ func (b *Buffered) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
 	if err != nil || info == nil {
 		return nil, false
 	}
+
 	return info, true
 }
 
@@ -378,6 +428,7 @@ func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bo
 	if err != nil || boundaries == nil {
 		return nil, false
 	}
+
 	return boundaries, true
 }
 
@@ -458,6 +509,7 @@ func (b *Buffered) GetSigningKeyChildren(keyID string) []string {
 
 	// Build a set of pending removals for fast lookup
 	pendingRemovals := make(map[string]struct{})
+
 	for _, update := range b.pendingSigningKeyUpdates {
 		if update.remove {
 			pendingRemovals[update.keyID] = struct{}{}
@@ -516,11 +568,12 @@ func (b *Buffered) GetSinkConfig(name string) (*commonpb.SinkConfig, error) {
 	if err != nil {
 		return nil, nil
 	}
+
 	return cfg, nil
 }
 
 func (b *Buffered) AddSinkConfig(config *commonpb.SinkConfig) {
-	b.Derived.SinkConfigs.Put(domain.SinkConfigKey{Name: config.Name}, config)
+	b.Derived.SinkConfigs.Put(domain.SinkConfigKey{Name: config.GetName()}, config)
 	b.sinkConfigChanged = true
 }
 
@@ -540,6 +593,7 @@ func (b *Buffered) GetNextSequenceID() uint64 {
 func (b *Buffered) IncrementNextSequenceID() uint64 {
 	id := b.NextSequenceID
 	b.NextSequenceID++
+
 	return id
 }
 
@@ -562,6 +616,7 @@ func coalesceVolumeSide(known, diff *commonpb.Uint256) *commonpb.Uint256 {
 	if known != nil {
 		return known
 	}
+
 	return diff
 }
 
@@ -570,23 +625,31 @@ func coalesceVolumeSide(known, diff *commonpb.Uint256) *commonpb.Uint256 {
 func addVolumeSideDelta(acc *uint256.Int, tmp *uint256.Int, scratch *uint256.Int, newKnown, newDiff *commonpb.Uint256, oldKnown, oldDiff *commonpb.Uint256) {
 	if newKnown != nil {
 		newKnown.IntoUint256(tmp)
+
 		if oldKnown != nil {
 			oldKnown.IntoUint256(scratch)
 			tmp.Sub(tmp, scratch)
 			acc.Add(acc, tmp)
+
 			return
 		}
+
 		acc.Add(acc, tmp)
+
 		return
 	}
+
 	if newDiff != nil {
 		newDiff.IntoUint256(tmp)
+
 		if oldDiff != nil {
 			oldDiff.IntoUint256(scratch)
 			tmp.Sub(tmp, scratch)
 			acc.Add(acc, tmp)
+
 			return
 		}
+
 		acc.Add(acc, tmp)
 	}
 }
@@ -606,17 +669,19 @@ func checkDoubleEntryInvariant(
 
 	for _, update := range volumeUpdates {
 		var oldInputKnown, oldInputDiff, oldOutputKnown, oldOutputDiff *commonpb.Uint256
+
 		if update.Old.IsDefined() {
 			old := update.Old.Value()
 			if old != nil {
-				oldInputKnown = old.InputKnown
-				oldInputDiff = old.InputDiff
-				oldOutputKnown = old.OutputKnown
-				oldOutputDiff = old.OutputDiff
+				oldInputKnown = old.GetInputKnown()
+				oldInputDiff = old.GetInputDiff()
+				oldOutputKnown = old.GetOutputKnown()
+				oldOutputDiff = old.GetOutputDiff()
 			}
 		}
-		addVolumeSideDelta(&inputSum, &tmp, &scratch, update.New.InputKnown, update.New.InputDiff, oldInputKnown, oldInputDiff)
-		addVolumeSideDelta(&outputSum, &tmp, &scratch, update.New.OutputKnown, update.New.OutputDiff, oldOutputKnown, oldOutputDiff)
+
+		addVolumeSideDelta(&inputSum, &tmp, &scratch, update.New.GetInputKnown(), update.New.GetInputDiff(), oldInputKnown, oldInputDiff)
+		addVolumeSideDelta(&outputSum, &tmp, &scratch, update.New.GetOutputKnown(), update.New.GetOutputDiff(), oldOutputKnown, oldOutputDiff)
 	}
 
 	if !inputSum.Eq(&outputSum) {
@@ -636,6 +701,7 @@ func (b *Buffered) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
 	if p != nil {
 		return p, true
 	}
+
 	return nil, false
 }
 
@@ -644,6 +710,7 @@ func (b *Buffered) GetClosingPeriod() (*commonpb.Period, bool) {
 	if p != nil {
 		return p, true
 	}
+
 	return nil, false
 }
 
@@ -662,6 +729,7 @@ func (b *Buffered) ClearClosingPeriod() {
 	if closing := b.periods.ClosingPeriod(); closing != nil {
 		b.changedPeriods = append(b.changedPeriods, closing)
 	}
+
 	b.periods.ClearClosingPeriod()
 }
 
@@ -672,6 +740,7 @@ func (b *Buffered) GetNextPeriodID() uint64 {
 func (b *Buffered) IncrementNextPeriodID() uint64 {
 	id := b.periods.NextPeriodID()
 	b.periods.SetNextPeriodID(id + 1)
+
 	return id
 }
 
@@ -680,7 +749,7 @@ func (b *Buffered) IncrementNextPeriodID() uint64 {
 func (b *Buffered) GetPeriodByID(periodID uint64) (*commonpb.Period, bool) {
 	// Check changedPeriods (most recently changed first)
 	for i := len(b.changedPeriods) - 1; i >= 0; i-- {
-		if b.changedPeriods[i].Id == periodID {
+		if b.changedPeriods[i].GetId() == periodID {
 			return b.changedPeriods[i], true
 		}
 	}
@@ -720,14 +789,18 @@ func (b *Buffered) executePurge(batch *dal.Batch, pr *purgeRange) error {
 	// Sequence-keyed prefixes (logs, audit): efficient range delete.
 	for _, prefix := range dal.ColdSequencePrefixes {
 		start := dal.NewKeyBuilder().PutByte(prefix).PutUInt64(pr.startSequence).Build()
+
 		end := dal.NewKeyBuilder().PutByte(prefix).PutUInt64(pr.closeSequence + 1).Build()
-		if err := batch.DeleteRange(start, end, nil); err != nil {
+
+		err := batch.DeleteRange(start, end, nil)
+		if err != nil {
 			return fmt.Errorf("purging prefix 0x%02x [%d, %d]: %w", prefix, pr.startSequence, pr.closeSequence, err)
 		}
 	}
 
 	// Transaction updates: iterate and point-delete by byLog range.
-	if err := PurgeTransactionUpdates(batch, pr.startSequence, pr.closeSequence); err != nil {
+	err := PurgeTransactionUpdates(batch, pr.startSequence, pr.closeSequence)
+	if err != nil {
 		return fmt.Errorf("purging transaction updates [%d, %d]: %w", pr.startSequence, pr.closeSequence, err)
 	}
 
@@ -766,13 +839,15 @@ func (b *Buffered) PutPreparedQuery(pq *commonpb.PreparedQuery) {
 	if b.pendingPreparedQueries == nil {
 		b.pendingPreparedQueries = make(map[domain.PreparedQueryKey]*commonpb.PreparedQuery)
 	}
-	b.pendingPreparedQueries[domain.PreparedQueryKey{Ledger: pq.Ledger, Name: pq.Name}] = pq
+
+	b.pendingPreparedQueries[domain.PreparedQueryKey{Ledger: pq.GetLedger(), Name: pq.GetName()}] = pq
 }
 
 func (b *Buffered) DeletePreparedQuery(ledger, name string) {
 	if b.pendingPreparedQueries == nil {
 		b.pendingPreparedQueries = make(map[domain.PreparedQueryKey]*commonpb.PreparedQuery)
 	}
+
 	b.pendingPreparedQueries[domain.PreparedQueryKey{Ledger: ledger, Name: name}] = nil
 }
 
@@ -783,8 +858,8 @@ func (b *Buffered) GetNumscriptLatestVersion(name string) (string, error) {
 }
 
 func (b *Buffered) PutNumscript(info *commonpb.NumscriptInfo) {
-	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Name: info.Name}, info.Version)
-	b.Derived.NumscriptEntries.Put(domain.NumscriptEntryKey{Name: info.Name, Version: info.Version}, true)
+	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{Name: info.GetName()}, info.GetVersion())
+	b.Derived.NumscriptEntries.Put(domain.NumscriptEntryKey{Name: info.GetName(), Version: info.GetVersion()}, true)
 	b.pendingNumscriptWrites = append(b.pendingNumscriptWrites, info)
 }
 
@@ -799,8 +874,9 @@ func (b *Buffered) NumscriptVersionExists(name, version string) (bool, error) {
 		// Not in cache — treat as not existing (admission ensures preloading)
 		return false, nil
 	}
+
 	return exists, nil
 }
 
-// Ensure Buffered implements InMemoryStore
+// Ensure Buffered implements InMemoryStore.
 var _ processing.InMemoryStore = (*Buffered)(nil)

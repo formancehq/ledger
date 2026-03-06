@@ -6,8 +6,9 @@ import (
 	"sort"
 	"unsafe"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/zeebo/blake3"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 // HashVersion is written as the first byte of every hash computation.
@@ -37,16 +38,16 @@ func (h *logHasher) writeUint32(v uint32) {
 
 func (h *logHasher) writeString(s string) {
 	binary.LittleEndian.PutUint32(h.buf[:4], uint32(len(s)))
+
 	_, _ = h.w.Write(h.buf[:4])
 	if len(s) > 0 {
 		_, _ = h.w.Write(unsafe.Slice(unsafe.StringData(s), len(s)))
 	}
 }
 
-
-
 func (h *logHasher) writeBytes(b []byte) {
 	binary.LittleEndian.PutUint32(h.buf[:4], uint32(len(b)))
+
 	_, _ = h.w.Write(h.buf[:4])
 	if len(b) > 0 {
 		_, _ = h.w.Write(b)
@@ -69,6 +70,7 @@ func (h *logHasher) writeBool(v bool) {
 	} else {
 		h.buf[0] = 0
 	}
+
 	_, _ = h.w.Write(h.buf[:1])
 }
 
@@ -85,18 +87,21 @@ func (h *logHasher) writeDiscriminator(d byte) {
 
 func (h *logHasher) hashLog(log *commonpb.Log) {
 	// Hash fields: sequence, payload, idempotency (excludes hash field 4)
-	h.writeUint64(log.Sequence)
-	h.hashLogPayload(log.Payload)
-	h.hashIdempotency(log.Idempotency)
+	h.writeUint64(log.GetSequence())
+	h.hashLogPayload(log.GetPayload())
+	h.hashIdempotency(log.GetIdempotency())
 }
 
 func (h *logHasher) hashLogPayload(p *commonpb.LogPayload) {
 	if p == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	switch v := p.Type.(type) {
+
+	switch v := p.GetType().(type) {
 	case *commonpb.LogPayload_CreateLedger:
 		h.writeDiscriminator(1)
 		h.hashCreateLedgerLog(v.CreateLedger)
@@ -156,49 +161,60 @@ func (h *logHasher) hashLogPayload(p *commonpb.LogPayload) {
 func (h *logHasher) hashCreateLedgerLog(cl *commonpb.CreateLedgerLog) {
 	if cl == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.hashLedgerInfo(cl.Info)
+	h.hashLedgerInfo(cl.GetInfo())
 }
 
 func (h *logHasher) hashDeleteLedgerLog(dl *commonpb.DeleteLedgerLog) {
 	if dl == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.hashLedgerInfo(dl.Info)
+	h.hashLedgerInfo(dl.GetInfo())
 }
 
 func (h *logHasher) hashLedgerInfo(info *commonpb.LedgerInfo) {
 	if info == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(info.Name)
-	h.hashTimestamp(info.CreatedAt)
-	h.hashTimestamp(info.DeletedAt)
-	h.writeInt32(int32(info.Mode))
-	h.hashMirrorSourceConfig(info.MirrorSource)
+	h.writeString(info.GetName())
+	h.hashTimestamp(info.GetCreatedAt())
+	h.hashTimestamp(info.GetDeletedAt())
+	h.writeInt32(int32(info.GetMode()))
+	h.hashMirrorSourceConfig(info.GetMirrorSource())
 }
 
 func (h *logHasher) hashMirrorSourceConfig(cfg *commonpb.MirrorSourceConfig) {
 	if cfg == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(cfg.LedgerName)
+	h.writeString(cfg.GetLedgerName())
+
 	switch s := cfg.GetType().(type) {
 	case *commonpb.MirrorSourceConfig_Http:
 		h.writeDiscriminator(1)
 		h.writeString(s.Http.GetBaseUrl())
+
 		if cc := s.Http.GetOauth2ClientCredentials(); cc != nil {
 			h.writeString(cc.GetClientId())
 			h.writeString(cc.GetClientSecret())
 			h.writeString(cc.GetTokenEndpoint())
+
 			for _, scope := range cc.GetScopes() {
 				h.writeString(scope)
 			}
@@ -214,31 +230,38 @@ func (h *logHasher) hashMirrorSourceConfig(cfg *commonpb.MirrorSourceConfig) {
 func (h *logHasher) hashApplyLedgerLog(a *commonpb.ApplyLedgerLog) {
 	if a == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(a.LedgerName)
-	h.hashLedgerLog(a.Log)
+	h.writeString(a.GetLedgerName())
+	h.hashLedgerLog(a.GetLog())
 }
 
 func (h *logHasher) hashLedgerLog(ll *commonpb.LedgerLog) {
 	if ll == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.hashLedgerLogPayload(ll.Data)
-	h.hashTimestamp(ll.Date)
-	h.writeUint64(ll.Id)
+	h.hashLedgerLogPayload(ll.GetData())
+	h.hashTimestamp(ll.GetDate())
+	h.writeUint64(ll.GetId())
 }
 
 func (h *logHasher) hashLedgerLogPayload(p *commonpb.LedgerLogPayload) {
 	if p == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	switch v := p.Payload.(type) {
+
+	switch v := p.GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		h.writeDiscriminator(1)
 		h.hashCreatedTransaction(v.CreatedTransaction)
@@ -274,21 +297,26 @@ func (h *logHasher) hashLedgerLogPayload(p *commonpb.LedgerLogPayload) {
 func (h *logHasher) hashCreatedTransaction(ct *commonpb.CreatedTransaction) {
 	if ct == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.hashTransaction(ct.Transaction)
+	h.hashTransaction(ct.GetTransaction())
 	// map<string, MetadataSet> — sorted iteration for determinism
-	h.writeUint32(uint32(len(ct.AccountMetadata)))
-	if len(ct.AccountMetadata) > 0 {
-		keys := make([]string, 0, len(ct.AccountMetadata))
-		for k := range ct.AccountMetadata {
+	h.writeUint32(uint32(len(ct.GetAccountMetadata())))
+
+	if len(ct.GetAccountMetadata()) > 0 {
+		keys := make([]string, 0, len(ct.GetAccountMetadata()))
+		for k := range ct.GetAccountMetadata() {
 			keys = append(keys, k)
 		}
+
 		sort.Strings(keys)
+
 		for _, k := range keys {
 			h.writeString(k)
-			h.hashMetadataSet(ct.AccountMetadata[k])
+			h.hashMetadataSet(ct.GetAccountMetadata()[k])
 		}
 	}
 }
@@ -296,140 +324,167 @@ func (h *logHasher) hashCreatedTransaction(ct *commonpb.CreatedTransaction) {
 func (h *logHasher) hashTransaction(tx *commonpb.Transaction) {
 	if tx == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
 	// repeated Posting
-	h.writeUint32(uint32(len(tx.Postings)))
-	for _, p := range tx.Postings {
+	h.writeUint32(uint32(len(tx.GetPostings())))
+
+	for _, p := range tx.GetPostings() {
 		h.hashPosting(p)
 	}
-	h.hashMetadataSet(tx.Metadata)
-	h.hashTimestamp(tx.Timestamp)
-	h.writeString(tx.Reference)
-	h.writeUint64(tx.Id)
-	h.writeBool(tx.Reverted)
-	h.hashTimestamp(tx.InsertedAt)
-	h.hashTimestamp(tx.UpdatedAt)
-	h.hashTimestamp(tx.RevertedAt)
+
+	h.hashMetadataSet(tx.GetMetadata())
+	h.hashTimestamp(tx.GetTimestamp())
+	h.writeString(tx.GetReference())
+	h.writeUint64(tx.GetId())
+	h.writeBool(tx.GetReverted())
+	h.hashTimestamp(tx.GetInsertedAt())
+	h.hashTimestamp(tx.GetUpdatedAt())
+	h.hashTimestamp(tx.GetRevertedAt())
 }
 
 func (h *logHasher) hashPosting(p *commonpb.Posting) {
 	if p == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(p.Source)
-	h.writeString(p.Destination)
-	h.hashUint256(p.Amount)
-	h.writeString(p.Asset)
+	h.writeString(p.GetSource())
+	h.writeString(p.GetDestination())
+	h.hashUint256(p.GetAmount())
+	h.writeString(p.GetAsset())
 }
 
 func (h *logHasher) hashUint256(u *commonpb.Uint256) {
 	if u == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeUint64(u.V0)
-	h.writeUint64(u.V1)
-	h.writeUint64(u.V2)
-	h.writeUint64(u.V3)
+	h.writeUint64(u.GetV0())
+	h.writeUint64(u.GetV1())
+	h.writeUint64(u.GetV2())
+	h.writeUint64(u.GetV3())
 }
 
 func (h *logHasher) hashRevertedTransaction(rt *commonpb.RevertedTransaction) {
 	if rt == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeUint64(rt.RevertedTransactionId)
-	h.hashTransaction(rt.RevertTransaction)
+	h.writeUint64(rt.GetRevertedTransactionId())
+	h.hashTransaction(rt.GetRevertTransaction())
 }
 
 func (h *logHasher) hashSavedMetadata(sm *commonpb.SavedMetadata) {
 	if sm == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.hashTarget(sm.Target)
-	h.hashMetadataSet(sm.Metadata)
+	h.hashTarget(sm.GetTarget())
+	h.hashMetadataSet(sm.GetMetadata())
 }
 
 func (h *logHasher) hashDeletedMetadata(dm *commonpb.DeletedMetadata) {
 	if dm == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.hashTarget(dm.Target)
-	h.writeString(dm.Key)
+	h.hashTarget(dm.GetTarget())
+	h.writeString(dm.GetKey())
 }
 
 func (h *logHasher) hashSetMetadataFieldType(l *commonpb.SetMetadataFieldTypeLog) {
 	if l == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeUint32(uint32(l.TargetType))
-	h.writeString(l.Key)
-	h.writeUint32(uint32(l.Type))
+	h.writeUint32(uint32(l.GetTargetType()))
+	h.writeString(l.GetKey())
+	h.writeUint32(uint32(l.GetType()))
 }
 
 func (h *logHasher) hashRemovedMetadataFieldType(l *commonpb.RemovedMetadataFieldTypeLog) {
 	if l == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeUint32(uint32(l.TargetType))
-	h.writeString(l.Key)
+	h.writeUint32(uint32(l.GetTargetType()))
+	h.writeString(l.GetKey())
 }
 
 func (h *logHasher) hashConvertMetadataBatchLog(l *commonpb.ConvertMetadataBatchLog) {
 	if l == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeUint32(uint32(l.TargetType))
-	h.writeString(l.Key)
-	h.writeUint32(l.Count)
+	h.writeUint32(uint32(l.GetTargetType()))
+	h.writeString(l.GetKey())
+	h.writeUint32(l.GetCount())
 }
 
 func (h *logHasher) hashMetadataConversionCompleteLog(l *commonpb.MetadataConversionCompleteLog) {
 	if l == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeUint32(uint32(l.TargetType))
-	h.writeString(l.Key)
+	h.writeUint32(uint32(l.GetTargetType()))
+	h.writeString(l.GetKey())
 }
 
 func (h *logHasher) hashTarget(t *commonpb.Target) {
 	if t == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	switch v := t.Target.(type) {
+
+	switch v := t.GetTarget().(type) {
 	case *commonpb.Target_Account:
 		h.writeDiscriminator(1)
+
 		if v.Account != nil {
 			h.writePresence(true)
-			h.writeString(v.Account.Addr)
+			h.writeString(v.Account.GetAddr())
 		} else {
 			h.writePresence(false)
 		}
 	case *commonpb.Target_Transaction:
 		h.writeDiscriminator(2)
+
 		if v.Transaction != nil {
 			h.writePresence(true)
-			h.writeUint64(v.Transaction.Id)
+			h.writeUint64(v.Transaction.GetId())
 		} else {
 			h.writePresence(false)
 		}
@@ -441,10 +496,12 @@ func (h *logHasher) hashTarget(t *commonpb.Target) {
 func (h *logHasher) hashIdempotency(i *commonpb.Idempotency) {
 	if i == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(i.Key)
+	h.writeString(i.GetKey())
 }
 
 // --- Signing key log hashers ---
@@ -452,29 +509,35 @@ func (h *logHasher) hashIdempotency(i *commonpb.Idempotency) {
 func (h *logHasher) hashRegisterSigningKeyLog(r *commonpb.RegisterSigningKeyLog) {
 	if r == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(r.KeyId)
-	h.writeBytes(r.PublicKey)
+	h.writeString(r.GetKeyId())
+	h.writeBytes(r.GetPublicKey())
 }
 
 func (h *logHasher) hashRevokeSigningKeyLog(r *commonpb.RevokeSigningKeyLog) {
 	if r == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(r.KeyId)
+	h.writeString(r.GetKeyId())
 }
 
 func (h *logHasher) hashSetSigningConfigLog(s *commonpb.SetSigningConfigLog) {
 	if s == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeBool(s.RequireSignatures)
+	h.writeBool(s.GetRequireSignatures())
 }
 
 // --- Events sink log hashers ---
@@ -482,29 +545,36 @@ func (h *logHasher) hashSetSigningConfigLog(s *commonpb.SetSigningConfigLog) {
 func (h *logHasher) hashAddedEventsSinkLog(a *commonpb.AddedEventsSinkLog) {
 	if a == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.hashSinkConfig(a.Config)
+	h.hashSinkConfig(a.GetConfig())
 }
 
 func (h *logHasher) hashRemovedEventsSinkLog(r *commonpb.RemovedEventsSinkLog) {
 	if r == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(r.Name)
+	h.writeString(r.GetName())
 }
 
 func (h *logHasher) hashSinkConfig(c *commonpb.SinkConfig) {
 	if c == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(c.Name)
-	switch v := c.Type.(type) {
+	h.writeString(c.GetName())
+
+	switch v := c.GetType().(type) {
 	case *commonpb.SinkConfig_Nats:
 		h.writeDiscriminator(1)
 		h.hashNatsSinkConfig(v.Nats)
@@ -520,56 +590,67 @@ func (h *logHasher) hashSinkConfig(c *commonpb.SinkConfig) {
 	default:
 		h.writeDiscriminator(0)
 	}
-	h.writeString(c.Format)
-	h.writeInt32(c.BatchSize)
-	h.writeInt64(c.BatchDelayMs)
+
+	h.writeString(c.GetFormat())
+	h.writeInt32(c.GetBatchSize())
+	h.writeInt64(c.GetBatchDelayMs())
 }
 
 func (h *logHasher) hashNatsSinkConfig(n *commonpb.NatsSinkConfig) {
 	if n == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(n.Url)
-	h.writeString(n.Topic)
+	h.writeString(n.GetUrl())
+	h.writeString(n.GetTopic())
 }
 
 func (h *logHasher) hashClickHouseSinkConfig(c *commonpb.ClickHouseSinkConfig) {
 	if c == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(c.Dsn)
-	h.writeString(c.Table)
+	h.writeString(c.GetDsn())
+	h.writeString(c.GetTable())
 }
 
 func (h *logHasher) hashKafkaSinkConfig(k *commonpb.KafkaSinkConfig) {
 	if k == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeUint32(uint32(len(k.Brokers)))
-	for _, b := range k.Brokers {
+	h.writeUint32(uint32(len(k.GetBrokers())))
+
+	for _, b := range k.GetBrokers() {
 		h.writeString(b)
 	}
-	h.writeString(k.Topic)
-	h.writeBool(k.Tls)
-	h.writeString(k.SaslMechanism)
-	h.writeString(k.SaslUsername)
-	h.writeString(k.SaslPassword)
+
+	h.writeString(k.GetTopic())
+	h.writeBool(k.GetTls())
+	h.writeString(k.GetSaslMechanism())
+	h.writeString(k.GetSaslUsername())
+	h.writeString(k.GetSaslPassword())
 }
 
 func (h *logHasher) hashHttpSinkConfig(c *commonpb.HttpSinkConfig) {
 	if c == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(c.Endpoint)
-	h.writeString(c.Secret)
+	h.writeString(c.GetEndpoint())
+	h.writeString(c.GetSecret())
 }
 
 // --- Period log hashers ---
@@ -577,54 +658,64 @@ func (h *logHasher) hashHttpSinkConfig(c *commonpb.HttpSinkConfig) {
 func (h *logHasher) hashClosePeriodLog(c *commonpb.ClosePeriodLog) {
 	if c == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.hashPeriod(c.ClosedPeriod)
-	h.hashPeriod(c.NewPeriod)
+	h.hashPeriod(c.GetClosedPeriod())
+	h.hashPeriod(c.GetNewPeriod())
 }
 
 func (h *logHasher) hashSealPeriodLog(s *commonpb.SealPeriodLog) {
 	if s == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.hashPeriod(s.Period)
+	h.hashPeriod(s.GetPeriod())
 }
 
 func (h *logHasher) hashArchivePeriodLog(a *commonpb.ArchivePeriodLog) {
 	if a == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.hashPeriod(a.Period)
+	h.hashPeriod(a.GetPeriod())
 }
 
 func (h *logHasher) hashConfirmArchivePeriodLog(c *commonpb.ConfirmArchivePeriodLog) {
 	if c == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.hashPeriod(c.Period)
+	h.hashPeriod(c.GetPeriod())
 }
 
 func (h *logHasher) hashPeriod(p *commonpb.Period) {
 	if p == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeUint64(p.Id)
-	h.hashTimestamp(p.Start)
-	h.hashTimestamp(p.End)
-	h.writeInt32(int32(p.Status))
-	h.writeUint64(p.CloseSequence)
-	h.writeBytes(p.SealingHash)
-	h.writeBytes(p.LastLogHash)
-	h.writeUint64(p.StartSequence)
+	h.writeUint64(p.GetId())
+	h.hashTimestamp(p.GetStart())
+	h.hashTimestamp(p.GetEnd())
+	h.writeInt32(int32(p.GetStatus()))
+	h.writeUint64(p.GetCloseSequence())
+	h.writeBytes(p.GetSealingHash())
+	h.writeBytes(p.GetLastLogHash())
+	h.writeUint64(p.GetStartSequence())
 }
 
 // --- Maintenance mode log hasher ---
@@ -632,10 +723,12 @@ func (h *logHasher) hashPeriod(p *commonpb.Period) {
 func (h *logHasher) hashSetMaintenanceModeLog(m *commonpb.SetMaintenanceModeLog) {
 	if m == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeBool(m.Enabled)
+	h.writeBool(m.GetEnabled())
 }
 
 // --- Period schedule log hasher ---
@@ -643,10 +736,12 @@ func (h *logHasher) hashSetMaintenanceModeLog(m *commonpb.SetMaintenanceModeLog)
 func (h *logHasher) hashSetPeriodScheduleLog(m *commonpb.SetPeriodScheduleLog) {
 	if m == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(m.Cron)
+	h.writeString(m.GetCron())
 }
 
 // --- Delete period schedule log hasher ---
@@ -654,19 +749,24 @@ func (h *logHasher) hashSetPeriodScheduleLog(m *commonpb.SetPeriodScheduleLog) {
 func (h *logHasher) hashDeletePeriodScheduleLog(m *commonpb.DeletePeriodScheduleLog) {
 	if m == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
 }
 
 func (h *logHasher) hashMetadataSet(ms *commonpb.MetadataSet) {
 	if ms == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeUint32(uint32(len(ms.Metadata)))
-	for _, m := range ms.Metadata {
+	h.writeUint32(uint32(len(ms.GetMetadata())))
+
+	for _, m := range ms.GetMetadata() {
 		h.hashMetadata(m)
 	}
 }
@@ -674,18 +774,22 @@ func (h *logHasher) hashMetadataSet(ms *commonpb.MetadataSet) {
 func (h *logHasher) hashMetadata(m *commonpb.Metadata) {
 	if m == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeString(m.Key)
-	h.hashMetadataValue(m.Value)
+	h.writeString(m.GetKey())
+	h.hashMetadataValue(m.GetValue())
 }
 
 func (h *logHasher) hashMetadataValue(mv *commonpb.MetadataValue) {
 	if mv == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
 	h.writeString(commonpb.MetadataValueToString(mv))
 }
@@ -693,10 +797,12 @@ func (h *logHasher) hashMetadataValue(mv *commonpb.MetadataValue) {
 func (h *logHasher) hashTimestamp(ts *commonpb.Timestamp) {
 	if ts == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeUint64(ts.Data)
+	h.writeUint64(ts.GetData())
 }
 
 // --- Audit config log hasher ---
@@ -704,10 +810,12 @@ func (h *logHasher) hashTimestamp(ts *commonpb.Timestamp) {
 func (h *logHasher) hashSetAuditConfigLog(a *commonpb.SetAuditConfigLog) {
 	if a == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeBool(a.Enabled)
+	h.writeBool(a.GetEnabled())
 }
 
 // --- FillGap log hasher ---
@@ -715,10 +823,12 @@ func (h *logHasher) hashSetAuditConfigLog(a *commonpb.SetAuditConfigLog) {
 func (h *logHasher) hashFillGapLog(f *commonpb.FillGapLog) {
 	if f == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.writeUint64(f.OriginalId)
+	h.writeUint64(f.GetOriginalId())
 }
 
 // --- Promote ledger log hasher ---
@@ -726,10 +836,12 @@ func (h *logHasher) hashFillGapLog(f *commonpb.FillGapLog) {
 func (h *logHasher) hashPromoteLedgerLog(p *commonpb.PromoteLedgerLog) {
 	if p == nil {
 		h.writePresence(false)
+
 		return
 	}
+
 	h.writePresence(true)
-	h.hashLedgerInfo(p.Info)
+	h.hashLedgerInfo(p.GetInfo())
 }
 
 // ComputeLogHash computes a blake3 hash for log chaining:
@@ -740,11 +852,14 @@ func (h *logHasher) hashPromoteLedgerLog(p *commonpb.PromoteLedgerLog) {
 // The hasher is reset and reused to avoid allocation overhead.
 func ComputeLogHash(hasher *blake3.Hasher, lastHash []byte, log *commonpb.Log) []byte {
 	hasher.Reset()
+
 	_, _ = hasher.Write([]byte{HashVersion})
 	if len(lastHash) > 0 {
 		_, _ = hasher.Write(lastHash)
 	}
+
 	lh := logHasher{w: hasher}
 	lh.hashLog(log)
+
 	return hasher.Sum(nil)
 }

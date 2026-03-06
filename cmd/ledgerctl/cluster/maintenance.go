@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // NewMaintenanceCommand creates the cluster maintenance command.
@@ -43,6 +44,7 @@ Examples:
 
 func runMaintenance(cmd *cobra.Command, args []string) error {
 	var enabled bool
+
 	switch args[0] {
 	case "true", "1", "yes", "on", "enable":
 		enabled = true
@@ -56,6 +58,7 @@ func runMaintenance(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -65,7 +68,8 @@ func runMaintenance(cmd *cobra.Command, args []string) error {
 	if !enabled {
 		action = "Disabling"
 	}
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("%s maintenance mode...", action))
+
+	spinner, _ := pterm.DefaultSpinner.Start(action + " maintenance mode...")
 
 	requests := []*servicepb.Request{
 		{
@@ -79,12 +83,14 @@ func runMaintenance(cmd *cobra.Command, args []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to update maintenance mode", err)
 	}
 
@@ -98,6 +104,7 @@ func runMaintenance(cmd *cobra.Command, args []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(map[string]any{"maintenanceMode": enabled})
 	}
 

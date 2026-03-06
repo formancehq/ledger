@@ -21,6 +21,7 @@ func NewS3Client(region, endpoint string) (*s3.Client, error) {
 	if region != "" {
 		opts = append(opts, awsconfig.WithRegion(region))
 	}
+
 	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
 		return nil, fmt.Errorf("loading AWS config: %w", err)
@@ -33,6 +34,7 @@ func NewS3Client(region, endpoint string) (*s3.Client, error) {
 			o.UsePathStyle = true
 		})
 	}
+
 	return s3.NewFromConfig(cfg, s3Opts...), nil
 }
 
@@ -53,6 +55,7 @@ func (s *S3Storage) archiveKey(bucketID string, periodID uint64) string {
 
 func (s *S3Storage) Archive(ctx context.Context, bucketID string, periodID uint64, data io.Reader) error {
 	key := s.archiveKey(bucketID, periodID)
+
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(key),
@@ -62,23 +65,30 @@ func (s *S3Storage) Archive(ctx context.Context, bucketID string, periodID uint6
 	if err != nil {
 		return fmt.Errorf("s3 PutObject %s: %w", key, err)
 	}
+
 	return nil
 }
 
 func (s *S3Storage) Exists(ctx context.Context, bucketID string, periodID uint64) (bool, error) {
 	key := s.archiveKey(bucketID, periodID)
+
 	_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		var noSuchKey *types.NoSuchKey
-		var notFound *types.NotFound
+		var (
+			noSuchKey *types.NoSuchKey
+			notFound  *types.NotFound
+		)
+
 		if errors.As(err, &noSuchKey) || errors.As(err, &notFound) {
 			return false, nil
 		}
+
 		return false, fmt.Errorf("s3 HeadObject %s: %w", key, err)
 	}
+
 	return true, nil
 }
 
@@ -92,5 +102,6 @@ func NewS3ColdStorage(bucket, region, endpoint string) (ColdStorage, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return NewS3Storage(client, bucket), nil
 }

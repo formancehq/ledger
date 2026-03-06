@@ -28,6 +28,7 @@ func TestParse(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := Parse(tc.input)
 			if tc.wantErr {
 				require.Error(t, err)
@@ -63,6 +64,7 @@ func TestParsePartial(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
 			t.Parallel()
+
 			major, minor, patch, depth, err := ParsePartial(tc.input)
 			if tc.wantErr {
 				require.Error(t, err)

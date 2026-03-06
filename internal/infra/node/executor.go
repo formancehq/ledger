@@ -6,10 +6,11 @@ import (
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
 )
 
-// singleTaskExecutor manages a single background task that can be interrupted
+// singleTaskExecutor manages a single background task that can be interrupted.
 type singleTaskExecutor struct {
 	mu         sync.Mutex
 	ctx        context.Context
@@ -40,6 +41,7 @@ func (t *singleTaskExecutor) run(ctx context.Context, fn func(ctx context.Contex
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return
 			}
+
 			if err != nil {
 				errCh <- err
 			}
@@ -61,12 +63,14 @@ func (t *singleTaskExecutor) interrupt() {
 func (t *singleTaskExecutor) error() chan error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
 	return t.errChan
 }
 
 func newSingleTaskExecutor(logger logging.Logger) *singleTaskExecutor {
 	terminatedChan := make(chan struct{})
 	close(terminatedChan)
+
 	return &singleTaskExecutor{
 		terminated: terminatedChan,
 		logger:     logger,

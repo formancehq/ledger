@@ -22,7 +22,10 @@ This document contains rules and conventions for AI agents working on this codeb
 **CRITICAL**: Before completing any task, run pre-commit checks.
 
 ```bash
-# For Nix environments
+# Preferred: uses nix develop for reproducible toolchain
+nix develop --command bash -c "just pre-commit"
+
+# Alternative: direnv-based
 direnv allow && eval "$(direnv export bash)" && GOROOT= just pre-commit
 ```
 

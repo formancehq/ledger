@@ -3,13 +3,15 @@ package cmdutil
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 const (
@@ -30,10 +32,14 @@ func ExtractProfile(trailer metadata.MD) *servicepb.QueryProfile {
 	if len(vals) == 0 {
 		return nil
 	}
+
 	var profile servicepb.QueryProfile
-	if err := proto.Unmarshal([]byte(vals[0]), &profile); err != nil {
+
+	err := proto.Unmarshal([]byte(vals[0]), &profile)
+	if err != nil {
 		return nil
 	}
+
 	return &profile
 }
 
@@ -41,6 +47,7 @@ func ExtractProfile(trailer metadata.MD) *servicepb.QueryProfile {
 func RenderProfile(profile *servicepb.QueryProfile) {
 	if profile == nil {
 		pterm.Warning.Println("No profile data received from server.")
+
 		return
 	}
 
@@ -49,20 +56,20 @@ func RenderProfile(profile *servicepb.QueryProfile) {
 
 	tableData := pterm.TableData{
 		{"Metric", "Value"},
-		{"Index Duration", formatDurationUs(profile.IndexDurationUs)},
-		{"Enrichment Duration", formatDurationUs(profile.EnrichmentDurationUs)},
-		{"Total Duration", formatDurationUs(profile.IndexDurationUs + profile.EnrichmentDurationUs)},
-		{"Items Collected", fmt.Sprintf("%d", profile.ItemsCollected)},
-		{"Enriched Count", fmt.Sprintf("%d", profile.EnrichedCount)},
-		{"Materialized Ranges", fmt.Sprintf("%d", profile.MaterializedRanges)},
-		{"Materialized Items", fmt.Sprintf("%d", profile.MaterializedItems)},
+		{"Index Duration", formatDurationUs(profile.GetIndexDurationUs())},
+		{"Enrichment Duration", formatDurationUs(profile.GetEnrichmentDurationUs())},
+		{"Total Duration", formatDurationUs(profile.GetIndexDurationUs() + profile.GetEnrichmentDurationUs())},
+		{"Items Collected", strconv.Itoa(int(profile.GetItemsCollected()))},
+		{"Enriched Count", strconv.Itoa(int(profile.GetEnrichedCount()))},
+		{"Materialized Ranges", strconv.Itoa(int(profile.GetMaterializedRanges()))},
+		{"Materialized Items", strconv.Itoa(int(profile.GetMaterializedItems()))},
 	}
 	_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 
-	if profile.RootIterator != nil {
+	if profile.GetRootIterator() != nil {
 		pterm.Println()
 		pterm.DefaultSection.Println("Iterator Tree")
-		renderIteratorTree(profile.RootIterator, 0)
+		renderIteratorTree(profile.GetRootIterator(), 0)
 	}
 }
 
@@ -71,24 +78,26 @@ func formatDurationUs(us int64) string {
 	if d < time.Millisecond {
 		return fmt.Sprintf("%dus", us)
 	}
+
 	return fmt.Sprintf("%.2fms", float64(us)/1000.0)
 }
 
 func renderIteratorTree(iter *servicepb.IteratorProfile, depth int) {
 	indent := strings.Repeat("  ", depth)
-	label := iter.Label
+
+	label := iter.GetLabel()
 	if label == "" {
-		label = iter.Kind
+		label = iter.GetKind()
 	}
 
-	stats := fmt.Sprintf("next=%d seek=%d", iter.NextCalls, iter.SeekCalls)
-	if iter.Bucket != "" {
-		stats += fmt.Sprintf(" bucket=%s", iter.Bucket)
+	stats := fmt.Sprintf("next=%d seek=%d", iter.GetNextCalls(), iter.GetSeekCalls())
+	if iter.GetBucket() != "" {
+		stats += " bucket=" + iter.GetBucket()
 	}
 
 	pterm.Printf("%s%s  %s\n", indent, pterm.Cyan(label), pterm.Gray(stats))
 
-	for _, child := range iter.Children {
+	for _, child := range iter.GetChildren() {
 		renderIteratorTree(child, depth+1)
 	}
 }

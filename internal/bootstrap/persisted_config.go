@@ -40,23 +40,28 @@ func LoadPersistedConfig(reader dal.PebbleReader) (*PersistedConfig, error) {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("loading persisted config: %w", err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	var cfg PersistedConfig
 	if err := json.Unmarshal(value, &cfg); err != nil {
 		return nil, fmt.Errorf("unmarshaling persisted config: %w", err)
 	}
+
 	return &cfg, nil
 }
 
 // DeletePersistedConfig removes the persisted configuration from the batch.
 // This is used during backup compaction so the backup is portable to any cluster.
 func DeletePersistedConfig(b *dal.Batch) error {
-	if err := b.DeleteKey([]byte{dal.KeyPrefixPersistedConfig}); err != nil {
+	err := b.DeleteKey([]byte{dal.KeyPrefixPersistedConfig})
+	if err != nil {
 		return fmt.Errorf("deleting persisted config: %w", err)
 	}
+
 	return nil
 }
 
@@ -66,5 +71,6 @@ func SavePersistedConfig(b *dal.Batch, cfg *PersistedConfig) error {
 	if err != nil {
 		return fmt.Errorf("marshaling persisted config: %w", err)
 	}
+
 	return b.SetBytes([]byte{dal.KeyPrefixPersistedConfig}, value)
 }

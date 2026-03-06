@@ -10,7 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -70,17 +70,21 @@ const (
 
 func NewDefault(cfg DefaultSpoolConfig) (*Default, error) {
 	if cfg.Dir == "" {
-		return nil, fmt.Errorf("dir required")
+		return nil, errors.New("dir required")
 	}
+
 	if cfg.SegmentMaxBytes <= 0 {
 		cfg.SegmentMaxBytes = 256 << 20
 	}
+
 	if cfg.WriteBufBytes <= 0 {
 		cfg.WriteBufBytes = 1 << 20
 	}
+
 	if cfg.SyncEvery <= 0 {
 		cfg.SyncEvery = 1024
 	}
+
 	if cfg.SyncMaxDelay <= 0 {
 		cfg.SyncMaxDelay = 200 * time.Millisecond
 	}
@@ -100,6 +104,7 @@ func NewDefault(cfg DefaultSpoolConfig) (*Default, error) {
 	} else {
 		s.segID = ids[len(ids)-1]
 	}
+
 	if err := s.openWriter(s.segID); err != nil {
 		return nil, err
 	}
@@ -125,11 +130,14 @@ func (s *Default) Close() error {
 	if s.w != nil {
 		_ = s.w.Flush()
 	}
+
 	if s.f != nil {
 		_ = s.f.Sync()
 		_ = s.writeTrailerLocked()
+
 		return s.f.Close()
 	}
+
 	return nil
 }
 
@@ -154,7 +162,8 @@ func (s *Default) AppendCommittedEntries(ctx context.Context, entries ...raftpb.
 
 		approx := s.size + recHdrLen + int64(e.Size()) + trailerLen
 		if approx > s.cfg.SegmentMaxBytes {
-			if err := s.rotateLocked(); err != nil {
+			err := s.rotateLocked()
+			if err != nil {
 				return err
 			}
 		}
@@ -163,11 +172,13 @@ func (s *Default) AppendCommittedEntries(ctx context.Context, entries ...raftpb.
 		if err != nil {
 			return err
 		}
+
 		s.size += int64(n)
 
 		if s.segMinIndex == 0 || e.Index < s.segMinIndex {
 			s.segMinIndex = e.Index
 		}
+
 		if e.Index > s.segMaxIndex {
 			s.segMaxIndex = e.Index
 		}
@@ -175,15 +186,18 @@ func (s *Default) AppendCommittedEntries(ctx context.Context, entries ...raftpb.
 		if s.pendingN == 0 {
 			s.pendingSince = time.Now()
 		}
+
 		s.pendingN++
 
 		if s.pendingN >= s.cfg.SyncEvery ||
 			time.Since(s.pendingSince) >= s.cfg.SyncMaxDelay {
-			if err := s.flushAndSyncLocked(); err != nil {
+			err := s.flushAndSyncLocked()
+			if err != nil {
 				return err
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -196,14 +210,17 @@ func (s *Default) End() (*Position, error) {
 	defer s.mu.Unlock()
 
 	if s.w != nil {
-		if err := s.w.Flush(); err != nil {
+		err := s.w.Flush()
+		if err != nil {
 			return nil, err
 		}
 	}
+
 	off, err := s.f.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return nil, err
 	}
+
 	return &Position{SegID: s.segID, Offset: off}, nil
 }
 
@@ -222,11 +239,11 @@ func (s *Default) ReplayUntil(
 	lastApplied uint64,
 	applyFn func(raftpb.Entry) error,
 ) error {
-
 	ids, err := listSegments(s.cfg.Dir)
 	if err != nil {
 		return err
 	}
+
 	if len(ids) == 0 {
 		return nil
 	}
@@ -242,12 +259,14 @@ func (s *Default) ReplayUntil(
 			s.rSegID = ids[0]
 			s.rOffset = 0
 		}
+
 		s.rLastApplied = lastApplied
 
 		// If cache is beyond the end bound, nothing to do.
 		if s.rSegID > end.SegID || (s.rSegID == end.SegID && s.rOffset >= end.Offset) {
 			return s.rSegID, s.rOffset
 		}
+
 		return s.rSegID, s.rOffset
 	}()
 
@@ -265,9 +284,11 @@ func (s *Default) ReplayUntil(
 	if startIdx >= len(ids) {
 		return nil
 	}
+
 	if ids[startIdx] != startSeg {
 		startSeg = ids[startIdx]
 		startOff = 0
+
 		s.mu.Lock()
 		s.rSegID = startSeg
 		s.rOffset = 0
@@ -282,6 +303,7 @@ func (s *Default) ReplayUntil(
 		}
 
 		path := segmentPath(s.cfg.Dir, segID)
+
 		f, err := os.Open(path)
 		if err != nil {
 			return err
@@ -307,6 +329,7 @@ func (s *Default) ReplayUntil(
 				_ = f.Close()
 				// advance the cache to the next segment
 				s.advanceReadCache(segID, 0, true, ids, i)
+
 				continue
 			}
 		}
@@ -314,6 +337,7 @@ func (s *Default) ReplayUntil(
 		// Seek to the correct offset
 		if _, err := f.Seek(curOff, io.SeekStart); err != nil {
 			_ = f.Close()
+
 			return err
 		}
 
@@ -323,6 +347,7 @@ func (s *Default) ReplayUntil(
 			select {
 			case <-ctx.Done():
 				_ = f.Close()
+
 				return ctx.Err()
 			default:
 			}
@@ -332,11 +357,13 @@ func (s *Default) ReplayUntil(
 			}
 
 			e, n, err := readRecord(r)
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			if err != nil {
 				_ = f.Close()
+
 				return err
 			}
 
@@ -350,8 +377,10 @@ func (s *Default) ReplayUntil(
 
 			// Apply (if necessary)
 			if e.Index > lastApplied {
-				if err := applyFn(e); err != nil {
+				err := applyFn(e)
+				if err != nil {
 					_ = f.Close()
+
 					return err
 				}
 				// NOTE: we don't update lastApplied here: the FSM persists it.
@@ -384,12 +413,14 @@ func (s *Default) ResetReadCache() error {
 	if err != nil {
 		return err
 	}
+
 	if len(ids) == 0 {
 		s.mu.Lock()
 		s.rInit = true
 		s.rSegID = s.segID
 		s.rOffset = 0
 		s.mu.Unlock()
+
 		return nil
 	}
 
@@ -398,6 +429,7 @@ func (s *Default) ResetReadCache() error {
 	s.rSegID = ids[0]
 	s.rOffset = 0
 	s.mu.Unlock()
+
 	return nil
 }
 
@@ -413,12 +445,15 @@ func (s *Default) Prune(lastApplied uint64) error {
 		if err != nil {
 			continue
 		}
+
 		_, maxI, ok := readTrailer(f)
 		_ = f.Close()
+
 		if ok && maxI <= lastApplied {
 			_ = os.Remove(segmentPath(s.cfg.Dir, id))
 		}
 	}
+
 	return nil
 }
 
@@ -429,6 +464,7 @@ func (s *Default) Prune(lastApplied uint64) error {
 func (s *Default) setReadCache(segID uint64, off int64, lastApplied uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.rInit = true
 	s.rSegID = segID
 	s.rOffset = off
@@ -444,8 +480,10 @@ func (s *Default) advanceReadCache(curSeg uint64, curOff int64, moveNext bool, i
 	if !moveNext {
 		s.rSegID = curSeg
 		s.rOffset = curOff
+
 		return
 	}
+
 	if idx+1 < len(ids) {
 		s.rSegID = ids[idx+1]
 		s.rOffset = 0
@@ -461,14 +499,17 @@ func (s *Default) advanceReadCache(curSeg uint64, curOff int64, moveNext bool, i
 // --------------------
 
 func (s *Default) rotateLocked() error {
-	if err := s.flushAndSyncLocked(); err != nil {
+	err := s.flushAndSyncLocked()
+	if err != nil {
 		return err
 	}
+
 	_ = s.writeTrailerLocked()
 	_ = s.f.Sync()
 	_ = s.f.Close()
 
 	s.segID++
+
 	return s.openWriter(s.segID)
 }
 
@@ -478,9 +519,11 @@ func (s *Default) openWriter(id uint64) error {
 	if err != nil {
 		return err
 	}
+
 	pos, err := f.Seek(0, io.SeekEnd)
 	if err != nil {
 		_ = f.Close()
+
 		return err
 	}
 
@@ -492,13 +535,18 @@ func (s *Default) openWriter(id uint64) error {
 		_, _, hasTrailer := readTrailer(f)
 		if hasTrailer {
 			pos -= trailerLen
-			if err := f.Truncate(pos); err != nil {
+
+			err := f.Truncate(pos)
+			if err != nil {
 				_ = f.Close()
+
 				return err
 			}
 		}
+
 		if _, err := f.Seek(pos, io.SeekStart); err != nil {
 			_ = f.Close()
+
 			return err
 		}
 	}
@@ -509,21 +557,27 @@ func (s *Default) openWriter(id uint64) error {
 	s.segMinIndex = 0
 	s.segMaxIndex = 0
 	s.pendingN = 0
+
 	return nil
 }
 
 func (s *Default) flushAndSyncLocked() error {
 	if s.w != nil {
-		if err := s.w.Flush(); err != nil {
+		err := s.w.Flush()
+		if err != nil {
 			return err
 		}
 	}
+
 	if s.f != nil {
-		if err := s.f.Sync(); err != nil {
+		err := s.f.Sync()
+		if err != nil {
 			return err
 		}
 	}
+
 	s.pendingN = 0
+
 	return nil
 }
 
@@ -531,6 +585,7 @@ func (s *Default) writeTrailerLocked() error {
 	if s.segMaxIndex == 0 {
 		return nil
 	}
+
 	buf := make([]byte, trailerLen)
 	binary.LittleEndian.PutUint32(buf[0:4], trailMagic)
 	binary.LittleEndian.PutUint64(buf[4:12], s.segMinIndex)
@@ -539,11 +594,14 @@ func (s *Default) writeTrailerLocked() error {
 	binary.LittleEndian.PutUint32(buf[20:24], crc)
 
 	if s.w != nil {
-		if err := s.w.Flush(); err != nil {
+		err := s.w.Flush()
+		if err != nil {
 			return err
 		}
 	}
+
 	_, err := s.f.Write(buf)
+
 	return err
 }
 
@@ -556,6 +614,7 @@ func writeRecord(w io.Writer, e raftpb.Entry) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	crc := crc32.ChecksumIEEE(payload)
 
 	h := make([]byte, recHdrLen)
@@ -567,24 +626,30 @@ func writeRecord(w io.Writer, e raftpb.Entry) (int, error) {
 	if err != nil {
 		return n1, err
 	}
+
 	n2, err := w.Write(payload)
+
 	return n1 + n2, err
 }
 
 func readRecord(r *bufio.Reader) (raftpb.Entry, int, error) {
 	var e raftpb.Entry
+
 	h := make([]byte, recHdrLen)
 	if _, err := io.ReadFull(r, h); err != nil {
 		return e, 0, err
 	}
+
 	magic := binary.LittleEndian.Uint32(h[0:4])
 	if magic == trailMagic {
 		// Trailer encountered mid-segment: treat as end of data records.
 		return e, 0, io.EOF
 	}
+
 	if magic != recMagic {
 		return e, 0, ErrCorrupt
 	}
+
 	n := int(binary.LittleEndian.Uint32(h[4:8]))
 	want := binary.LittleEndian.Uint32(h[8:12])
 
@@ -592,12 +657,16 @@ func readRecord(r *bufio.Reader) (raftpb.Entry, int, error) {
 	if _, err := io.ReadFull(r, payload); err != nil {
 		return e, 0, err
 	}
+
 	if crc32.ChecksumIEEE(payload) != want {
 		return e, 0, ErrCorrupt
 	}
-	if err := e.Unmarshal(payload); err != nil {
+
+	err := e.Unmarshal(payload)
+	if err != nil {
 		return e, 0, err
 	}
+
 	return e, recHdrLen + n, nil
 }
 
@@ -610,20 +679,25 @@ func readTrailer(f *os.File) (minI, maxI uint64, ok bool) {
 	if err != nil || st.Size() < trailerLen {
 		return 0, 0, false
 	}
+
 	if _, err := f.Seek(st.Size()-trailerLen, io.SeekStart); err != nil {
 		return 0, 0, false
 	}
+
 	buf := make([]byte, trailerLen)
 	if _, err := io.ReadFull(f, buf); err != nil {
 		return 0, 0, false
 	}
+
 	if binary.LittleEndian.Uint32(buf[0:4]) != trailMagic {
 		return 0, 0, false
 	}
+
 	crc := binary.LittleEndian.Uint32(buf[20:24])
 	if crc32.ChecksumIEEE(buf[0:20]) != crc {
 		return 0, 0, false
 	}
+
 	return binary.LittleEndian.Uint64(buf[4:12]),
 		binary.LittleEndian.Uint64(buf[12:20]), true
 }
@@ -637,12 +711,15 @@ func listSegments(dir string) ([]uint64, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var ids []uint64
+
 	for _, e := range ents {
 		n := e.Name()
 		if !strings.HasPrefix(n, "spool-") || !strings.HasSuffix(n, ".log") {
 			continue
 		}
+
 		u, err := strconv.ParseUint(
 			strings.TrimSuffix(strings.TrimPrefix(n, "spool-"), ".log"),
 			10, 64,
@@ -651,6 +728,8 @@ func listSegments(dir string) ([]uint64, error) {
 			ids = append(ids, u)
 		}
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	slices.Sort(ids)
+
 	return ids, nil
 }

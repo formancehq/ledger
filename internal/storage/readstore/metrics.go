@@ -55,9 +55,10 @@ func (s *Store) RegisterMetrics(m metric.Meter) (metric.Registration, error) {
 		o.ObserveInt64(freelistPages, int64(stats.FreePageN), metric.WithAttributes(attribute.String("type", "free")))
 		o.ObserveInt64(freelistPages, int64(stats.PendingPageN), metric.WithAttributes(attribute.String("type", "pending")))
 		o.ObserveInt64(freelistBytes, int64(stats.FreeAlloc))
-		o.ObserveInt64(txPageReads, int64(stats.TxStats.PageCount))
+		o.ObserveInt64(txPageReads, stats.TxStats.PageCount)
+
 		if pageSize > 0 {
-			o.ObserveInt64(txPageWrites, int64(stats.TxStats.PageAlloc)/pageSize)
+			o.ObserveInt64(txPageWrites, stats.TxStats.PageAlloc/pageSize)
 		}
 
 		return nil

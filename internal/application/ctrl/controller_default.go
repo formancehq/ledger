@@ -7,12 +7,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"time"
 
+	bolt "go.etcd.io/bbolt"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/analysis"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/analysis"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -20,10 +27,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	bolt "go.etcd.io/bbolt"
 )
 
 var tracer = otel.Tracer("ctrl")
@@ -45,7 +48,7 @@ type DefaultController struct {
 	readStore *readstore.Store
 }
 
-// NewDefaultController creates a new default controller
+// NewDefaultController creates a new default controller.
 func NewDefaultController(
 	admission Admission,
 	store *dal.Store,
@@ -62,18 +65,21 @@ func NewDefaultController(
 	}
 }
 
-// ListLedgers returns a cursor over all active (non-deleted) ledgers
+// ListLedgers returns a cursor over all active (non-deleted) ledgers.
 func (ctrl *DefaultController) ListLedgers(ctx context.Context) (dal.Cursor[*commonpb.LedgerInfo], error) {
 	handle := ctrl.store.NewReadHandle()
+
 	cursor, err := query.ReadLedgers(ctx, handle)
 	if err != nil {
 		_ = handle.Close()
+
 		return nil, err
 	}
 	// Filter out soft-deleted ledgers, close handle when cursor closes
 	filtered := dal.NewFilteredCursor(cursor, func(ledger *commonpb.LedgerInfo) bool {
-		return ledger.DeletedAt == nil
+		return ledger.GetDeletedAt() == nil
 	})
+
 	return dal.NewClosingCursor(filtered, handle), nil
 }
 
@@ -85,18 +91,20 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName st
 		))
 	defer span.End()
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store,ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
+
 		return nil, err
 	}
 
 	handle := ctrl.store.NewReadHandle()
+
 	defer func() { _ = handle.Close() }()
 
-	return buildTransaction(ctx, handle, ledgerInfo.Name, transactionID, ledgerInfo.MetadataSchema)
+	return buildTransaction(ctx, handle, ledgerInfo.GetName(), transactionID, ledgerInfo.GetMetadataSchema())
 }
 
 // buildTransaction builds a transaction from updates and logs using the given reader.
@@ -112,16 +120,18 @@ func buildTransaction(ctx context.Context, reader dal.PebbleReader, ledger strin
 // enforceTransactionSchema converts transaction metadata values in-place
 // according to the ledger's declared metadata schema. Mirrors enforceAccountSchema.
 func enforceTransactionSchema(schema *commonpb.MetadataSchema, metadata []*commonpb.Metadata) {
-	if schema == nil || len(schema.TransactionFields) == 0 {
+	if schema == nil || len(schema.GetTransactionFields()) == 0 {
 		return
 	}
+
 	for _, m := range metadata {
-		fieldSchema, ok := schema.TransactionFields[m.Key]
-		if !ok || m.Value == nil {
+		fieldSchema, ok := schema.GetTransactionFields()[m.GetKey()]
+		if !ok || m.GetValue() == nil {
 			continue
 		}
-		if !commonpb.TypeMatches(m.Value, fieldSchema.Type) {
-			m.Value = commonpb.ConvertMetadataValue(m.Value, fieldSchema.Type)
+
+		if !commonpb.TypeMatches(m.GetValue(), fieldSchema.GetType()) {
+			m.Value = commonpb.ConvertMetadataValue(m.GetValue(), fieldSchema.GetType())
 		}
 	}
 }
@@ -136,21 +146,25 @@ func assembleTransaction(ctx context.Context, reader dal.PebbleReader, transacti
 		metadataToAdd    = make(map[string]*commonpb.MetadataValue)
 		metadataToDelete = make(map[string]struct{})
 	)
+
 	for _, update := range updates {
-		for _, updateType := range update.Updates {
+		for _, updateType := range update.GetUpdates() {
 			if updateType.GetTransactionInit() != nil {
-				sequence = update.ByLog
+				sequence = update.GetByLog()
 			}
+
 			if updateType.GetTransactionModificationRevert() != nil {
 				reverted = true
 			}
+
 			if addMeta := updateType.GetTransactionModificationAddMetadata(); addMeta != nil {
-				metadataToAdd[addMeta.Metadata.Key] = addMeta.Metadata.Value
-				delete(metadataToDelete, addMeta.Metadata.Key)
+				metadataToAdd[addMeta.GetMetadata().GetKey()] = addMeta.GetMetadata().GetValue()
+				delete(metadataToDelete, addMeta.GetMetadata().GetKey())
 			}
+
 			if delMeta := updateType.GetTransactionModificationDeleteMetadata(); delMeta != nil {
-				metadataToDelete[delMeta.Key] = struct{}{}
-				delete(metadataToAdd, delMeta.Key)
+				metadataToDelete[delMeta.GetKey()] = struct{}{}
+				delete(metadataToAdd, delMeta.GetKey())
 			}
 		}
 	}
@@ -163,44 +177,51 @@ func assembleTransaction(ctx context.Context, reader dal.PebbleReader, transacti
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
 	}
+
 	if log == nil {
 		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
 	}
 
-	applyLog, ok := log.Payload.Type.(*commonpb.LogPayload_Apply)
-	if !ok || applyLog.Apply == nil || applyLog.Apply.Log == nil {
+	applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+	if !ok || applyLog.Apply == nil || applyLog.Apply.GetLog() == nil {
 		return nil, fmt.Errorf("log %d does not contain an apply log", sequence)
 	}
-	ledgerLog := applyLog.Apply.Log
+
+	ledgerLog := applyLog.Apply.GetLog()
 
 	var tx *commonpb.Transaction
-	switch payload := ledgerLog.Data.Payload.(type) {
+
+	switch payload := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		if payload.CreatedTransaction == nil || payload.CreatedTransaction.Transaction == nil {
-			return nil, fmt.Errorf("invalid log payload: missing transaction")
+		if payload.CreatedTransaction == nil || payload.CreatedTransaction.GetTransaction() == nil {
+			return nil, errors.New("invalid log payload: missing transaction")
 		}
-		tx = payload.CreatedTransaction.Transaction
+
+		tx = payload.CreatedTransaction.GetTransaction()
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		if payload.RevertedTransaction == nil || payload.RevertedTransaction.RevertTransaction == nil {
-			return nil, fmt.Errorf("invalid log payload: missing revert transaction")
+		if payload.RevertedTransaction == nil || payload.RevertedTransaction.GetRevertTransaction() == nil {
+			return nil, errors.New("invalid log payload: missing revert transaction")
 		}
-		tx = payload.RevertedTransaction.RevertTransaction
+
+		tx = payload.RevertedTransaction.GetRevertTransaction()
 	default:
-		return nil, fmt.Errorf("ledger log %d does not contain a transaction", ledgerLog.Id)
+		return nil, fmt.Errorf("ledger log %d does not contain a transaction", ledgerLog.GetId())
 	}
 
 	tx.Reverted = reverted
+
 	if len(metadataToAdd) > 0 || len(metadataToDelete) > 0 {
 		// Build a map from existing metadata (preserving typed values).
 		existing := make(map[string]*commonpb.MetadataValue)
-		if tx.Metadata != nil {
-			for _, m := range tx.Metadata.Metadata {
-				existing[m.Key] = m.Value
+
+		if tx.GetMetadata() != nil {
+			for _, m := range tx.GetMetadata().GetMetadata() {
+				existing[m.GetKey()] = m.GetValue()
 			}
 		}
-		for key, value := range metadataToAdd {
-			existing[key] = value
-		}
+
+		maps.Copy(existing, metadataToAdd)
+
 		for key := range metadataToDelete {
 			delete(existing, key)
 		}
@@ -209,12 +230,13 @@ func assembleTransaction(ctx context.Context, reader dal.PebbleReader, transacti
 		for key, value := range existing {
 			mdList = append(mdList, &commonpb.Metadata{Key: key, Value: value})
 		}
+
 		tx.Metadata = &commonpb.MetadataSet{Metadata: mdList}
 	}
 
 	// Apply read-time schema enforcement for transaction metadata.
-	if tx.Metadata != nil {
-		enforceTransactionSchema(schema, tx.Metadata.Metadata)
+	if tx.GetMetadata() != nil {
+		enforceTransactionSchema(schema, tx.GetMetadata().GetMetadata())
 	}
 
 	return tx, nil
@@ -234,11 +256,12 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 
 	profile := query.ProfileFromContext(ctx)
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store,ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
+
 		return nil, err
 	}
 
@@ -246,24 +269,28 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 		pageSize = math.MaxUint32
 	}
 
-	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.MetadataSchema, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 
 	var entityIDs [][]byte
+
 	indexStart := time.Now()
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
 		if reverse {
 			// Oldest-first (ascending txID): compiled iterator is naturally ascending
-			return ctrl.listTransactionsAscending(tx, ledgerInfo.Name, pageSize, afterTxID, filter, schemaFields, ledgerInfo.BuiltinIndexes, &entityIDs, profile)
+			return ctrl.listTransactionsAscending(tx, ledgerInfo.GetName(), pageSize, afterTxID, filter, schemaFields, ledgerInfo.GetBuiltinIndexes(), &entityIDs, profile)
 		}
 		// Newest-first (descending txID) — default
 		if filter != nil {
-			return ctrl.listTransactionsDescFiltered(tx, ledgerInfo.Name, pageSize, afterTxID, filter, schemaFields, ledgerInfo.BuiltinIndexes, &entityIDs, profile)
+			return ctrl.listTransactionsDescFiltered(tx, ledgerInfo.GetName(), pageSize, afterTxID, filter, schemaFields, ledgerInfo.GetBuiltinIndexes(), &entityIDs, profile)
 		}
-		return ctrl.listTransactionsDescUnfiltered(tx, ledgerInfo.Name, pageSize, afterTxID, &entityIDs, profile)
+
+		return ctrl.listTransactionsDescUnfiltered(tx, ledgerInfo.GetName(), pageSize, afterTxID, &entityIDs, profile)
 	})
+
 	if profile != nil {
 		profile.IndexDuration = time.Since(indexStart)
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("listing transactions from index: %w", err)
 	}
@@ -271,16 +298,21 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 	// Enrich each transaction ID from Pebble
 	enrichStart := time.Now()
 	handle := ctrl.store.NewReadHandle()
+
 	txns := make([]*commonpb.Transaction, 0, len(entityIDs))
 	for _, eid := range entityIDs {
 		txID := binary.BigEndian.Uint64(eid)
-		tx, txErr := buildTransaction(ctx, handle, ledgerInfo.Name, txID, ledgerInfo.MetadataSchema)
+
+		tx, txErr := buildTransaction(ctx, handle, ledgerInfo.GetName(), txID, ledgerInfo.GetMetadataSchema())
 		if txErr != nil {
 			_ = handle.Close()
+
 			return nil, txErr
 		}
+
 		txns = append(txns, tx)
 	}
+
 	if profile != nil {
 		profile.EnrichmentDuration = time.Since(enrichStart)
 		profile.EnrichedCount = len(txns)
@@ -295,6 +327,7 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 // paginate forward directly.
 func (ctrl *DefaultController) listTransactionsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, builtinCfg *commonpb.BuiltinIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
 	kb := readstore.NewKeyBuilder()
+
 	iter, err := query.Compile(
 		tx, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
@@ -310,7 +343,9 @@ func (ctrl *DefaultController) listTransactionsAscending(tx *bolt.Tx, ledgerName
 		after = make([]byte, 8)
 		binary.BigEndian.PutUint64(after, afterTxID)
 	}
+
 	*out, _ = readstore.PaginateForward(iter, pageSize, after)
+
 	return nil
 }
 
@@ -320,6 +355,7 @@ func (ctrl *DefaultController) listTransactionsDescUnfiltered(tx *bolt.Tx, ledge
 	if b == nil {
 		return nil
 	}
+
 	kb := readstore.NewKeyBuilder()
 	prefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceTransaction)
 	iter := readstore.NewReversePrefixIterator(b.Cursor(), prefix, len(prefix), 8)
@@ -337,7 +373,9 @@ func (ctrl *DefaultController) listTransactionsDescUnfiltered(tx *bolt.Tx, ledge
 		before = make([]byte, 8)
 		binary.BigEndian.PutUint64(before, afterTxID)
 	}
+
 	*out, _ = readstore.PaginateReverse(iter, pageSize, before)
+
 	return nil
 }
 
@@ -345,6 +383,7 @@ func (ctrl *DefaultController) listTransactionsDescUnfiltered(tx *bolt.Tx, ledge
 // them for newest-first ordering, and applies pagination.
 func (ctrl *DefaultController) listTransactionsDescFiltered(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, builtinCfg *commonpb.BuiltinIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
 	kb := readstore.NewKeyBuilder()
+
 	iter, err := query.Compile(
 		tx, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
@@ -357,6 +396,7 @@ func (ctrl *DefaultController) listTransactionsDescFiltered(tx *bolt.Tx, ledgerN
 
 	// Collect all matching IDs (forward sorted, ascending)
 	var all [][]byte
+
 	for iter.Next() {
 		cp := make([]byte, len(iter.Current()))
 		copy(cp, iter.Current())
@@ -372,7 +412,9 @@ func (ctrl *DefaultController) listTransactionsDescFiltered(tx *bolt.Tx, ledgerN
 	if afterTxID > 0 {
 		afterBytes := make([]byte, 8)
 		binary.BigEndian.PutUint64(afterBytes, afterTxID)
+
 		skip := 0
+
 		for _, id := range all {
 			if bytes.Compare(id, afterBytes) >= 0 {
 				skip++
@@ -380,6 +422,7 @@ func (ctrl *DefaultController) listTransactionsDescFiltered(tx *bolt.Tx, ledgerN
 				break
 			}
 		}
+
 		all = all[skip:]
 	}
 
@@ -388,6 +431,7 @@ func (ctrl *DefaultController) listTransactionsDescFiltered(tx *bolt.Tx, ledgerN
 	}
 
 	*out = all
+
 	return nil
 }
 
@@ -405,11 +449,12 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 
 	profile := query.ProfileFromContext(ctx)
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store,ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
+
 		return nil, err
 	}
 
@@ -417,19 +462,23 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 		pageSize = math.MaxUint32
 	}
 
-	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.MetadataSchema, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
 	var addresses [][]byte
+
 	indexStart := time.Now()
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
 		if reverse {
-			return ctrl.listAccountsDescending(tx, ledgerInfo.Name, pageSize, afterAddress, filter, schemaFields, ledgerInfo.BuiltinIndexes, &addresses, profile)
+			return ctrl.listAccountsDescending(tx, ledgerInfo.GetName(), pageSize, afterAddress, filter, schemaFields, ledgerInfo.GetBuiltinIndexes(), &addresses, profile)
 		}
-		return ctrl.listAccountsAscending(tx, ledgerInfo.Name, pageSize, afterAddress, filter, schemaFields, ledgerInfo.BuiltinIndexes, &addresses, profile)
+
+		return ctrl.listAccountsAscending(tx, ledgerInfo.GetName(), pageSize, afterAddress, filter, schemaFields, ledgerInfo.GetBuiltinIndexes(), &addresses, profile)
 	})
+
 	if profile != nil {
 		profile.IndexDuration = time.Since(indexStart)
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("listing accounts from index: %w", err)
 	}
@@ -437,15 +486,19 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	// Enrich each account from Pebble
 	enrichStart := time.Now()
 	handle := ctrl.store.NewReadHandle()
+
 	accounts := make([]*commonpb.Account, 0, len(addresses))
 	for _, addr := range addresses {
-		acc, accErr := scanAccount(handle, ctrl.attrs, ledgerInfo.Name, string(addr), ledgerInfo.MetadataSchema)
+		acc, accErr := scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), string(addr), ledgerInfo.GetMetadataSchema())
 		if accErr != nil {
 			_ = handle.Close()
+
 			return nil, accErr
 		}
+
 		accounts = append(accounts, acc)
 	}
+
 	if profile != nil {
 		profile.EnrichmentDuration = time.Since(enrichStart)
 		profile.EnrichedCount = len(accounts)
@@ -458,6 +511,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 // listAccountsAscending returns accounts in alphabetical order (A→Z).
 func (ctrl *DefaultController) listAccountsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, builtinCfg *commonpb.BuiltinIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
 	kb := readstore.NewKeyBuilder()
+
 	iter, err := query.Compile(
 		tx, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
@@ -472,7 +526,9 @@ func (ctrl *DefaultController) listAccountsAscending(tx *bolt.Tx, ledgerName str
 	if afterAddress != "" {
 		after = []byte(afterAddress)
 	}
+
 	*out, _ = readstore.PaginateForward(iter, pageSize, after)
+
 	return nil
 }
 
@@ -481,6 +537,7 @@ func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName st
 	if filter != nil {
 		// Filtered: collect all ascending, reverse, then paginate manually
 		kb := readstore.NewKeyBuilder()
+
 		iter, err := query.Compile(
 			tx, kb, filter,
 			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
@@ -492,6 +549,7 @@ func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName st
 		defer iter.Close()
 
 		var all [][]byte
+
 		for iter.Next() {
 			cp := make([]byte, len(iter.Current()))
 			copy(cp, iter.Current())
@@ -507,6 +565,7 @@ func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName st
 		if afterAddress != "" {
 			afterBytes := []byte(afterAddress)
 			skip := 0
+
 			for _, addr := range all {
 				if bytes.Compare(addr, afterBytes) >= 0 {
 					skip++
@@ -514,6 +573,7 @@ func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName st
 					break
 				}
 			}
+
 			all = all[skip:]
 		}
 
@@ -522,6 +582,7 @@ func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName st
 		}
 
 		*out = all
+
 		return nil
 	}
 
@@ -530,6 +591,7 @@ func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName st
 	if b == nil {
 		return nil
 	}
+
 	kb := readstore.NewKeyBuilder()
 	prefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceAccount)
 	iter := readstore.NewReversePrefixIterator(b.Cursor(), prefix, len(prefix), 0)
@@ -546,7 +608,9 @@ func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName st
 	if afterAddress != "" {
 		before = []byte(afterAddress)
 	}
+
 	*out, _ = readstore.PaginateReverse(iter, pageSize, before)
+
 	return nil
 }
 
@@ -558,31 +622,35 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 		))
 	defer span.End()
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store,ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
+
 		return nil, err
 	}
 
 	handle := ctrl.store.NewReadHandle()
+
 	defer func() { _ = handle.Close() }()
 
-	return scanAccount(handle, ctrl.attrs, ledgerInfo.Name, address, ledgerInfo.MetadataSchema)
+	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ledgerInfo.GetMetadataSchema())
 }
 
 // GetLedgerStats returns aggregate statistics (account count, transaction count) for a ledger.
 func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
-	_, err := query.GetLedgerByName(ctx, ctrl.store,ledgerName)
+	_, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
+
 		return nil, err
 	}
 
 	var stats commonpb.LedgerStats
+
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(readstore.BucketExistence)
 		if b == nil {
@@ -593,6 +661,7 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 
 		// Count accounts
 		accountPrefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceAccount)
+
 		accountIter := readstore.NewPrefixIterator(b.Cursor(), accountPrefix, len(accountPrefix), 0)
 		for accountIter.Next() {
 			stats.AccountCount++
@@ -600,6 +669,7 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 
 		// Count transactions
 		txPrefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceTransaction)
+
 		txIter := readstore.NewPrefixIterator(b.Cursor(), txPrefix, len(txPrefix), 8)
 		for txIter.Next() {
 			stats.TransactionCount++
@@ -619,20 +689,22 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 		trace.WithAttributes(attribute.String("ledger", name)))
 	defer span.End()
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store,name)
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, name)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", name)
 		}
+
 		return nil, err
 	}
 
 	// Enrich mirror ledgers with sync progress computed from Pebble state
-	if ledgerInfo.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+	if ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
 		progress, err := query.ReadMirrorSyncProgress(ctx, ctrl.store, name)
 		if err != nil {
 			return nil, fmt.Errorf("reading mirror sync progress: %w", err)
 		}
+
 		ledgerInfo.MirrorSyncProgress = progress
 	}
 
@@ -641,11 +713,12 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 
 // GetMetadataSchemaStatus returns the conversion status of all declared metadata fields.
 func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store,ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
+
 		return nil, err
 	}
 
@@ -653,24 +726,27 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledg
 		AccountFields:     make(map[string]*servicepb.MetadataFieldStatus),
 		TransactionFields: make(map[string]*servicepb.MetadataFieldStatus),
 	}
-	if ledgerInfo.MetadataSchema != nil {
-		for key, field := range ledgerInfo.MetadataSchema.AccountFields {
+
+	if ledgerInfo.GetMetadataSchema() != nil {
+		for key, field := range ledgerInfo.GetMetadataSchema().GetAccountFields() {
 			resp.AccountFields[key] = &servicepb.MetadataFieldStatus{
-				DeclaredType:  field.Type,
-				Status:        field.Status,
-				TotalKeys:     field.TotalKeys,
-				ConvertedKeys: field.ConvertedKeys,
+				DeclaredType:  field.GetType(),
+				Status:        field.GetStatus(),
+				TotalKeys:     field.GetTotalKeys(),
+				ConvertedKeys: field.GetConvertedKeys(),
 			}
 		}
-		for key, field := range ledgerInfo.MetadataSchema.TransactionFields {
+
+		for key, field := range ledgerInfo.GetMetadataSchema().GetTransactionFields() {
 			resp.TransactionFields[key] = &servicepb.MetadataFieldStatus{
-				DeclaredType:  field.Type,
-				Status:        field.Status,
-				TotalKeys:     field.TotalKeys,
-				ConvertedKeys: field.ConvertedKeys,
+				DeclaredType:  field.GetType(),
+				Status:        field.GetStatus(),
+				TotalKeys:     field.GetTotalKeys(),
+				ConvertedKeys: field.GetConvertedKeys(),
 			}
 		}
 	}
+
 	return resp, nil
 }
 
@@ -682,16 +758,19 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
+
 		return nil, fmt.Errorf("validating ledger for analysis: %w", err)
 	}
 
 	handle := ctrl.store.NewReadHandle()
+
 	defer func() { _ = handle.Close() }()
 
 	it, err := query.NewCompactAccountIterator(handle, ledgerName)
 	if err != nil {
 		return nil, err
 	}
+
 	defer func() { _ = it.Close() }()
 
 	return analysis.AnalyzeFromIterator(it.Next, variableThreshold, onProgress)
@@ -702,24 +781,30 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 // all transactions into memory (O(unique addresses + unique signatures) instead of O(N)).
 func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
 	handle := ctrl.store.NewReadHandle()
+
 	defer func() { _ = handle.Close() }()
 
 	if _, err := query.GetLedgerByName(ctx, handle, ledgerName); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
+
 		return nil, fmt.Errorf("validating ledger for analysis: %w", err)
 	}
 
 	// makeStreamIter returns an iterator function that streams CompactTransactions
 	// from a fresh log scan. Each call creates a new scan cursor.
-	var totalReverted uint64
-	var pass1Done bool
+	var (
+		totalReverted uint64
+		pass1Done     bool
+	)
+
 	makeStreamIter := func() (func() (analysis.CompactTransaction, error), func()) {
 		var (
 			cursor dal.Cursor[*commonpb.Log]
 			done   bool
 		)
+
 		next := func() (analysis.CompactTransaction, error) {
 			if done {
 				return analysis.CompactTransaction{}, io.EOF
@@ -727,6 +812,7 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 			// Lazy cursor creation on first call
 			if cursor == nil {
 				var err error
+
 				cursor, err = query.ReadLogsSince(ctx, handle, 0, dal.WithReuse())
 				if err != nil {
 					return analysis.CompactTransaction{}, fmt.Errorf("creating log cursor for analysis: %w", err)
@@ -735,44 +821,52 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 
 			for {
 				log, err := cursor.Next()
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					done = true
+
 					return analysis.CompactTransaction{}, io.EOF
 				}
+
 				if err != nil {
 					return analysis.CompactTransaction{}, fmt.Errorf("reading log for analysis: %w", err)
 				}
 
-				if log.Payload == nil {
-					continue
-				}
-				applyLog, ok := log.Payload.Type.(*commonpb.LogPayload_Apply)
-				if !ok {
-					continue
-				}
-				if applyLog.Apply.LedgerName != ledgerName {
-					continue
-				}
-				ledgerLog := applyLog.Apply.Log
-				if ledgerLog == nil || ledgerLog.Data == nil {
+				if log.GetPayload() == nil {
 					continue
 				}
 
-				switch p := ledgerLog.Data.Payload.(type) {
+				applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+				if !ok {
+					continue
+				}
+
+				if applyLog.Apply.GetLedgerName() != ledgerName {
+					continue
+				}
+
+				ledgerLog := applyLog.Apply.GetLog()
+				if ledgerLog == nil || ledgerLog.GetData() == nil {
+					continue
+				}
+
+				switch p := ledgerLog.GetData().GetPayload().(type) {
 				case *commonpb.LedgerLogPayload_CreatedTransaction:
-					if p.CreatedTransaction.Transaction == nil {
+					if p.CreatedTransaction.GetTransaction() == nil {
 						continue
 					}
-					return analysis.ExtractCompactTransaction(p.CreatedTransaction.Transaction), nil
+
+					return analysis.ExtractCompactTransaction(p.CreatedTransaction.GetTransaction()), nil
 
 				case *commonpb.LedgerLogPayload_RevertedTransaction:
 					// Count reverted during pass 1 only
 					if !pass1Done {
 						totalReverted++
 					}
-					if p.RevertedTransaction.RevertTransaction != nil {
-						return analysis.ExtractCompactTransaction(p.RevertedTransaction.RevertTransaction), nil
+
+					if p.RevertedTransaction.GetRevertTransaction() != nil {
+						return analysis.ExtractCompactTransaction(p.RevertedTransaction.GetRevertTransaction()), nil
 					}
+
 					continue
 				default:
 					continue
@@ -784,6 +878,7 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 				_ = cursor.Close()
 			}
 		}
+
 		return next, cleanup
 	}
 
@@ -797,9 +892,10 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 	// will have been counted. Mark pass1Done to avoid double counting during pass2.
 	wrappedPass1 := func() (analysis.CompactTransaction, error) {
 		ct, err := pass1()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			pass1Done = true
 		}
+
 		return ct, err
 	}
 
@@ -814,23 +910,29 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint6
 
 	if ledger := extractLedgerFilter(filter); ledger != "" {
 		afterLogID := extractLogIdMinExclusive(filter)
+
 		c, err := query.ReadLedgerLogsSince(ctx, handle, ctrl.readStore, ledger, afterLogID, pageSize)
 		if err != nil {
 			_ = handle.Close()
+
 			return nil, fmt.Errorf("listing ledger logs: %w", err)
 		}
+
 		return dal.NewClosingCursor(c, handle), nil
 	}
 
 	c, err := query.ReadLogsSince(ctx, handle, afterSequence)
 	if err != nil {
 		_ = handle.Close()
+
 		return nil, fmt.Errorf("listing logs: %w", err)
 	}
+
 	cursor := dal.NewClosingCursor(c, handle)
 	if pageSize > 0 {
 		cursor = dal.NewLimitedCursor(cursor, pageSize)
 	}
+
 	return cursor, nil
 }
 
@@ -840,28 +942,30 @@ func extractLedgerFilter(f *commonpb.QueryFilter) string {
 	if f == nil {
 		return ""
 	}
-	switch v := f.Filter.(type) {
+
+	switch v := f.GetFilter().(type) {
 	case *commonpb.QueryFilter_Ledger:
-		if v.Ledger != nil && v.Ledger.Cond != nil {
-			if h := v.Ledger.Cond.GetHardcoded(); h != "" {
+		if v.Ledger != nil && v.Ledger.GetCond() != nil {
+			if h := v.Ledger.GetCond().GetHardcoded(); h != "" {
 				return h
 			}
 		}
 	case *commonpb.QueryFilter_And:
-		for _, sub := range v.And.Filters {
+		for _, sub := range v.And.GetFilters() {
 			if l := extractLedgerFilter(sub); l != "" {
 				return l
 			}
 		}
 	case *commonpb.QueryFilter_Or:
-		for _, sub := range v.Or.Filters {
+		for _, sub := range v.Or.GetFilters() {
 			if l := extractLedgerFilter(sub); l != "" {
 				return l
 			}
 		}
 	case *commonpb.QueryFilter_Not:
-		return extractLedgerFilter(v.Not.Filter)
+		return extractLedgerFilter(v.Not.GetFilter())
 	}
+
 	return ""
 }
 
@@ -872,37 +976,41 @@ func extractLogIdMinExclusive(f *commonpb.QueryFilter) uint64 {
 	if f == nil {
 		return 0
 	}
-	switch v := f.Filter.(type) {
+
+	switch v := f.GetFilter().(type) {
 	case *commonpb.QueryFilter_LogId:
-		if v.LogId != nil && v.LogId.Cond != nil {
-			if v.LogId.Cond.Min != nil && v.LogId.Cond.MinExclusive {
-				return *v.LogId.Cond.Min
+		if v.LogId != nil && v.LogId.GetCond() != nil {
+			if v.LogId.Cond.Min != nil && v.LogId.GetCond().GetMinExclusive() {
+				return v.LogId.GetCond().GetMin()
 			}
 		}
 	case *commonpb.QueryFilter_And:
-		for _, sub := range v.And.Filters {
+		for _, sub := range v.And.GetFilters() {
 			if id := extractLogIdMinExclusive(sub); id > 0 {
 				return id
 			}
 		}
 	case *commonpb.QueryFilter_Or:
-		for _, sub := range v.Or.Filters {
+		for _, sub := range v.Or.GetFilters() {
 			if id := extractLogIdMinExclusive(sub); id > 0 {
 				return id
 			}
 		}
 	case *commonpb.QueryFilter_Not:
-		return extractLogIdMinExclusive(v.Not.Filter)
+		return extractLogIdMinExclusive(v.Not.GetFilter())
 	}
+
 	return 0
 }
 
 // ListAuditEntries returns a cursor over audit entries, applying optional filters.
 func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequence *uint64, failuresOnly bool, pageSize uint32) (dal.Cursor[*auditpb.AuditEntry], error) {
 	handle := ctrl.store.NewReadHandle()
+
 	cursor, err := query.ReadAuditEntries(ctx, handle, afterSequence)
 	if err != nil {
 		_ = handle.Close()
+
 		return nil, fmt.Errorf("listing audit entries: %w", err)
 	}
 
@@ -924,21 +1032,25 @@ func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequen
 // GetLog returns a single system log by sequence number.
 func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
 	handle := ctrl.store.NewReadHandle()
+
 	defer func() { _ = handle.Close() }()
 
 	log, err := query.ReadLogBySequence(ctx, handle, sequence)
 	if err != nil {
 		return nil, fmt.Errorf("getting log %d: %w", sequence, err)
 	}
+
 	if log == nil {
 		return nil, commonpb.NewNotFoundError("log %d not found", sequence)
 	}
+
 	return log, nil
 }
 
 // GetAuditEntry returns a single audit entry by sequence number.
 func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
 	handle := ctrl.store.NewReadHandle()
+
 	defer func() { _ = handle.Close() }()
 
 	entry, err := query.ReadAuditEntry(ctx, handle, sequence)
@@ -946,30 +1058,38 @@ func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint6
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("audit entry %d not found", sequence)
 		}
+
 		return nil, fmt.Errorf("getting audit entry %d: %w", sequence, err)
 	}
+
 	return entry, nil
 }
 
 // ListPeriods returns a cursor over all non-purged periods from the store.
 func (ctrl *DefaultController) ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.Period], error) {
 	handle := ctrl.store.NewReadHandle()
+
 	cursor, err := query.ReadPeriods(ctx, handle)
 	if err != nil {
 		_ = handle.Close()
+
 		return nil, err
 	}
+
 	return dal.NewClosingCursor(cursor, handle), nil
 }
 
 // ListSigningKeys returns a cursor over all registered signing keys.
 func (ctrl *DefaultController) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
 	handle := ctrl.store.NewReadHandle()
+
 	cursor, err := query.ReadSigningKeysCursor(ctx, handle)
 	if err != nil {
 		_ = handle.Close()
+
 		return nil, err
 	}
+
 	return dal.NewClosingCursor(cursor, handle), nil
 }
 
@@ -981,27 +1101,32 @@ func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger s
 // ExecutePreparedQuery executes a prepared query against the read index store.
 func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 	profile := query.ProfileFromContext(ctx)
+
 	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, req, profile)
 }
 
 // GetNumscript returns a numscript by name and optional version ("" = latest).
 func (ctrl *DefaultController) GetNumscript(ctx context.Context, name string, version string) (*commonpb.NumscriptInfo, error) {
 	handle := ctrl.store.NewReadHandle()
+
 	defer func() { _ = handle.Close() }()
 
 	info, err := query.ReadNumscript(ctx, handle, name, version)
 	if err != nil {
 		return nil, fmt.Errorf("reading numscript %q: %w", name, err)
 	}
+
 	if info == nil {
 		return nil, commonpb.NewNotFoundError("numscript %q not found", name)
 	}
+
 	return info, nil
 }
 
 // ListNumscripts returns the latest version of all numscripts.
 func (ctrl *DefaultController) ListNumscripts(ctx context.Context) ([]*commonpb.NumscriptInfo, error) {
 	handle := ctrl.store.NewReadHandle()
+
 	defer func() { _ = handle.Close() }()
 
 	return query.ReadAllNumscripts(ctx, handle)
@@ -1017,7 +1142,7 @@ func (ctrl *DefaultController) Apply(ctx context.Context, requests ...*servicepb
 	defer span.End()
 
 	if len(requests) == 0 {
-		return nil, fmt.Errorf("at least one request is required")
+		return nil, errors.New("at least one request is required")
 	}
 
 	logs, err := ctrl.admission.Admit(ctx, requests...)

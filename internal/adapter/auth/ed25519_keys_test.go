@@ -14,12 +14,14 @@ import (
 
 func writeTestKey(t *testing.T, dir, name string) ed25519.PublicKey {
 	t.Helper()
+
 	seed := make([]byte, ed25519.SeedSize)
 	_, err := rand.Read(seed)
 	require.NoError(t, err)
 
 	privKey := ed25519.NewKeyFromSeed(seed)
-	pubKey := privKey.Public().(ed25519.PublicKey)
+	pubKey, ok := privKey.Public().(ed25519.PublicKey)
+	require.True(t, ok, "ed25519 private key must produce ed25519.PublicKey")
 
 	pubKeyPath := filepath.Join(dir, name+".pubkey.hex")
 	err = os.WriteFile(pubKeyPath, []byte(hex.EncodeToString(pubKey)+"\n"), 0644)

@@ -5,23 +5,26 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/go-chi/chi/v5"
 )
 
-// handleSetChartOfAccounts handles PUT /{ledgerName}/chart-of-accounts
+// handleSetChartOfAccounts handles PUT /{ledgerName}/chart-of-accounts.
 func (s *Server) handleSetChartOfAccounts(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
+
 		return
 	}
 
 	var body chartJSON
 	if err := json.UnmarshalRead(r.Body, &body); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
+
 		return
 	}
 
@@ -37,6 +40,7 @@ func (s *Server) handleSetChartOfAccounts(w http.ResponseWriter, r *http.Request
 	})
 	if err != nil {
 		handleError(w, r, err)
+
 		return
 	}
 
@@ -47,10 +51,12 @@ func fromChartJSON(c *chartJSON) *commonpb.ChartOfAccounts {
 	if c == nil {
 		return nil
 	}
+
 	roots := make(map[string]*commonpb.ChartSegment, len(c.Roots))
 	for name, segment := range c.Roots {
 		roots[name] = fromSegmentJSON(segment)
 	}
+
 	return &commonpb.ChartOfAccounts{Roots: roots}
 }
 
@@ -58,6 +64,7 @@ func fromSegmentJSON(s *chartSegmentJSON) *commonpb.ChartSegment {
 	if s == nil {
 		return nil
 	}
+
 	result := &commonpb.ChartSegment{
 		Account: s.Account,
 	}
@@ -67,9 +74,11 @@ func fromSegmentJSON(s *chartSegmentJSON) *commonpb.ChartSegment {
 			result.Children[name] = fromSegmentJSON(child)
 		}
 	}
+
 	if s.Variable != nil {
 		result.Variable = fromVariableJSON(s.Variable)
 	}
+
 	return result
 }
 
@@ -77,6 +86,7 @@ func fromVariableJSON(v *chartVariableJSON) *commonpb.ChartVariable {
 	if v == nil {
 		return nil
 	}
+
 	result := &commonpb.ChartVariable{
 		Name:    v.Name,
 		Pattern: v.Pattern,
@@ -88,8 +98,10 @@ func fromVariableJSON(v *chartVariableJSON) *commonpb.ChartVariable {
 			result.Children[name] = fromSegmentJSON(child)
 		}
 	}
+
 	if v.Variable != nil {
 		result.Variable = fromVariableJSON(v.Variable)
 	}
+
 	return result
 }

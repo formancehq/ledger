@@ -4,20 +4,22 @@ import (
 	"context"
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/blake3"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 func createTestStore(t *testing.T) *dal.Store {
@@ -109,26 +111,27 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 
 	store := &inMemoryStore{
 		engine:             e,
-		date:               proposal.Date,
+		date:               proposal.GetDate(),
 		modifiedVolumes:    modifiedVolumes,
 		modifiedMetadata:   modifiedMetadata,
 		transactionUpdates: make(map[string][]*commonpb.TransactionUpdate),
 		reverted:           make(map[string]bool),
 	}
-	resp, err := e.processor.ProcessOrders(proposal.Orders, store)
+	resp, err := e.processor.ProcessOrders(proposal.GetOrders(), store)
 	require.NoError(e.t, err)
 
 	// Collect actual logs from the response
 	var logs []*commonpb.Log
+
 	for _, logOrRef := range resp {
-		switch t := logOrRef.Type.(type) {
-		case *raftcmdpb.CreatedLogOrReference_CreatedLog:
+		if t, ok := logOrRef.GetType().(*raftcmdpb.CreatedLogOrReference_CreatedLog); ok {
 			logs = append(logs, t.CreatedLog)
 		}
 	}
 
 	// Write logs and attributes to the store (mimicking Buffered.Merge)
 	batch := e.store.NewBatch()
+
 	defer func() { _ = batch.Cancel() }()
 
 	err = state.AppendLogs(batch, logs...)
@@ -140,14 +143,15 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	for key := range modifiedVolumes {
 		vp := e.volumes[key]
 		canonicalKey := []byte(key)
+
 		storePair := &raftcmdpb.VolumePair{
-			InputKnown:  coalesceVolumeSide(vp.InputKnown, vp.InputDiff),
-			OutputKnown: coalesceVolumeSide(vp.OutputKnown, vp.OutputDiff),
+			InputKnown:  coalesceVolumeSide(vp.GetInputKnown(), vp.GetInputDiff()),
+			OutputKnown: coalesceVolumeSide(vp.GetOutputKnown(), vp.GetOutputDiff()),
 		}
-		if vp.InputKnown != nil || vp.OutputKnown != nil {
+		if vp.GetInputKnown() != nil || vp.GetOutputKnown() != nil {
 			err := e.attrs.Volume.SetBase(batch, e.raftIndex, canonicalKey, storePair)
 			require.NoError(e.t, err)
-		} else if vp.InputDiff != nil || vp.OutputDiff != nil {
+		} else if vp.GetInputDiff() != nil || vp.GetOutputDiff() != nil {
 			err := e.attrs.Volume.AddDiff(batch, e.raftIndex, canonicalKey, storePair)
 			require.NoError(e.t, err)
 		}
@@ -156,6 +160,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	// Write only modified metadata attributes
 	for key := range modifiedMetadata {
 		value, ok := e.metadata[key]
+
 		canonicalKey := []byte(key)
 		if ok {
 			err := e.attrs.Metadata.Set(batch, e.raftIndex, canonicalKey, value)
@@ -170,8 +175,10 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	// Write transaction updates to Pebble
 	for keyStr, updates := range store.transactionUpdates {
 		var tk domain.TransactionKey
+
 		err := tk.Unmarshal([]byte(keyStr))
 		require.NoError(e.t, err)
+
 		for _, update := range updates {
 			err := state.StoreTransactionUpdate(batch, tk, update)
 			require.NoError(e.t, err)
@@ -182,7 +189,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	for _, info := range e.ledgers {
 		err := state.SaveLedger(batch, info)
 		require.NoError(e.t, err)
-		err = e.attrs.Ledger.Set(batch, e.raftIndex, domain.LedgerKey{Name: info.Name}.Bytes(), info)
+		err = e.attrs.Ledger.Set(batch, e.raftIndex, domain.LedgerKey{Name: info.GetName()}.Bytes(), info)
 		require.NoError(e.t, err)
 	}
 
@@ -199,6 +206,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	}
 
 	e.raftIndex++
+
 	return logs
 }
 
@@ -208,6 +216,7 @@ func coalesceVolumeSide(known, diff *commonpb.Uint256) *commonpb.Uint256 {
 	if known != nil {
 		return known
 	}
+
 	return diff
 }
 
@@ -221,23 +230,25 @@ func (e *testEngine) consolidateVolumePair(key string) {
 	}
 
 	// Ensure input side is Known
-	if vp.InputKnown == nil {
-		if vp.InputDiff != nil {
-			vp.InputKnown = vp.InputDiff
+	if vp.GetInputKnown() == nil {
+		if vp.GetInputDiff() != nil {
+			vp.InputKnown = vp.GetInputDiff()
 		} else {
 			vp.InputKnown = commonpb.NewUint256FromUint64(0)
 		}
 	}
+
 	vp.InputDiff = nil
 
 	// Ensure output side is Known
-	if vp.OutputKnown == nil {
-		if vp.OutputDiff != nil {
-			vp.OutputKnown = vp.OutputDiff
+	if vp.GetOutputKnown() == nil {
+		if vp.GetOutputDiff() != nil {
+			vp.OutputKnown = vp.GetOutputDiff()
 		} else {
 			vp.OutputKnown = commonpb.NewUint256FromUint64(0)
 		}
 	}
+
 	vp.OutputDiff = nil
 }
 
@@ -255,6 +266,7 @@ type inMemoryStore struct {
 
 func (s *inMemoryStore) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
 	info, ok := s.engine.ledgers[name]
+
 	return info, ok
 }
 
@@ -264,6 +276,7 @@ func (s *inMemoryStore) PutLedger(name string, info *commonpb.LedgerInfo) {
 
 func (s *inMemoryStore) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool) {
 	b, ok := s.engine.boundaries[ledger]
+
 	return b, ok
 }
 
@@ -276,6 +289,7 @@ func (s *inMemoryStore) GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, 
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
+
 	return proto.CloneOf(vp), nil
 }
 
@@ -290,6 +304,7 @@ func (s *inMemoryStore) GetAccountMetadata(key domain.MetadataKey) (*commonpb.Me
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
+
 	return v, nil
 }
 
@@ -318,6 +333,7 @@ func (s *inMemoryStore) GetIdempotencyKey(key domain.IdempotencyKey) (*commonpb.
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
+
 	return v, nil
 }
 
@@ -330,6 +346,7 @@ func (s *inMemoryStore) GetTransactionReference(key domain.TransactionReferenceK
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
+
 	return v, nil
 }
 
@@ -369,6 +386,7 @@ func (s *inMemoryStore) GetNextSequenceID() uint64 {
 func (s *inMemoryStore) IncrementNextSequenceID() uint64 {
 	id := s.engine.nextSequenceID
 	s.engine.nextSequenceID++
+
 	return id
 }
 
@@ -380,6 +398,7 @@ func (s *inMemoryStore) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
 	if s.engine.currentOpenPeriod != nil {
 		return s.engine.currentOpenPeriod, true
 	}
+
 	return nil, false
 }
 
@@ -387,6 +406,7 @@ func (s *inMemoryStore) GetClosingPeriod() (*commonpb.Period, bool) {
 	if s.engine.closingPeriod != nil {
 		return s.engine.closingPeriod, true
 	}
+
 	return nil, false
 }
 
@@ -409,6 +429,7 @@ func (s *inMemoryStore) GetNextPeriodID() uint64 {
 func (s *inMemoryStore) IncrementNextPeriodID() uint64 {
 	id := s.engine.nextPeriodID
 	s.engine.nextPeriodID++
+
 	return id
 }
 
@@ -428,12 +449,12 @@ func (s *inMemoryStore) AddMetadataConvertRequest(_ string, _ commonpb.TargetTyp
 func (s *inMemoryStore) GetPreparedQuery(_, _ string) (*commonpb.PreparedQuery, error) {
 	return nil, nil
 }
-func (s *inMemoryStore) PutPreparedQuery(_ *commonpb.PreparedQuery)  {}
-func (s *inMemoryStore) DeletePreparedQuery(_, _ string)             {}
-func (s *inMemoryStore) GetNumscriptLatestVersion(_ string) (string, error)   { return "", nil }
-func (s *inMemoryStore) NumscriptVersionExists(_, _ string) (bool, error)    { return false, nil }
-func (s *inMemoryStore) PutNumscript(_ *commonpb.NumscriptInfo)              {}
-func (s *inMemoryStore) DeleteNumscriptLatest(_ string)                      {}
+func (s *inMemoryStore) PutPreparedQuery(_ *commonpb.PreparedQuery)         {}
+func (s *inMemoryStore) DeletePreparedQuery(_, _ string)                    {}
+func (s *inMemoryStore) GetNumscriptLatestVersion(_ string) (string, error) { return "", nil }
+func (s *inMemoryStore) NumscriptVersionExists(_, _ string) (bool, error)   { return false, nil }
+func (s *inMemoryStore) PutNumscript(_ *commonpb.NumscriptInfo)             {}
+func (s *inMemoryStore) DeleteNumscriptLatest(_ string)                     {}
 
 // Helper functions for building orders
 
@@ -565,10 +586,11 @@ func collectCheckErrors(t *testing.T, store *dal.Store, attrs *attributes.Attrib
 	t.Helper()
 
 	checker := NewChecker(store, attrs)
+
 	var errors []*servicepb.CheckStoreError
 
 	err := checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.Type.(*servicepb.CheckStoreEvent_Error); ok {
+		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 			errors = append(errors, e.Error)
 		}
 	})
@@ -729,8 +751,9 @@ func TestCheckerComprehensive(t *testing.T) {
 	errors := collectCheckErrors(t, engine.store, engine.attrs)
 	for _, e := range errors {
 		t.Logf("Check error: [%s] %s (log=%d, ledger=%s, account=%s, asset=%s)",
-			e.ErrorType, e.Message, e.LogSequence, e.Ledger, e.Account, e.Asset)
+			e.GetErrorType(), e.GetMessage(), e.GetLogSequence(), e.GetLedger(), e.GetAccount(), e.GetAsset())
 	}
+
 	require.Empty(t, errors, "store built from valid operations should have no integrity errors")
 }
 
@@ -777,20 +800,20 @@ func TestCheckerDetectsHashMismatch(t *testing.T) {
 
 	batch := store.NewBatch()
 	require.NoError(t, state.AppendLogs(batch, log1, log2))
-	require.NoError(t, state.SaveLedger(batch, log1.Payload.GetCreateLedger().Info))
-	require.NoError(t, state.SaveLedger(batch, log2.Payload.GetCreateLedger().Info))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetInfo()))
+	require.NoError(t, state.SaveLedger(batch, log2.GetPayload().GetCreateLedger().GetInfo()))
 	require.NoError(t, batch.Commit())
 
 	// Write ledger attributes
 	batch2 := store.NewBatch()
-	require.NoError(t, attrs.Ledger.Set(batch2, 1, domain.LedgerKey{Name: "test"}.Bytes(), log1.Payload.GetCreateLedger().Info))
-	require.NoError(t, attrs.Ledger.Set(batch2, 1, domain.LedgerKey{Name: "test2"}.Bytes(), log2.Payload.GetCreateLedger().Info))
+	require.NoError(t, attrs.Ledger.Set(batch2, 1, domain.LedgerKey{Name: "test"}.Bytes(), log1.GetPayload().GetCreateLedger().GetInfo()))
+	require.NoError(t, attrs.Ledger.Set(batch2, 1, domain.LedgerKey{Name: "test2"}.Bytes(), log2.GetPayload().GetCreateLedger().GetInfo()))
 	require.NoError(t, batch2.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
 	require.Len(t, errors, 1, "should detect exactly one hash mismatch")
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH, errors[0].ErrorType)
-	require.Equal(t, uint64(2), errors[0].LogSequence)
+	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH, errors[0].GetErrorType())
+	require.Equal(t, uint64(2), errors[0].GetLogSequence())
 }
 
 // TestCheckerDetectsSequenceGap verifies the checker detects missing log entries.
@@ -833,25 +856,27 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 		},
 	}
 	// Even with correct hash chaining from log1, the gap will be detected
-	log3.Hash = computeCorrectHash(hasher, log1.Hash, log3)
+	log3.Hash = computeCorrectHash(hasher, log1.GetHash(), log3)
 
 	batch := store.NewBatch()
 	require.NoError(t, state.AppendLogs(batch, log1, log3))
-	require.NoError(t, state.SaveLedger(batch, log1.Payload.GetCreateLedger().Info))
-	require.NoError(t, state.SaveLedger(batch, log3.Payload.GetCreateLedger().Info))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetInfo()))
+	require.NoError(t, state.SaveLedger(batch, log3.GetPayload().GetCreateLedger().GetInfo()))
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
 
 	// Should detect the gap at sequence 2
 	var gapErrors []*servicepb.CheckStoreError
+
 	for _, e := range errors {
-		if e.ErrorType == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP {
+		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP {
 			gapErrors = append(gapErrors, e)
 		}
 	}
+
 	require.NotEmpty(t, gapErrors, "should detect sequence gap")
-	require.Equal(t, uint64(2), gapErrors[0].LogSequence)
+	require.Equal(t, uint64(2), gapErrors[0].GetLogSequence())
 }
 
 // TestCheckerProgressEvents verifies that progress events are emitted.
@@ -862,17 +887,19 @@ func TestCheckerProgressEvents(t *testing.T) {
 
 	// Create a ledger and a few transactions
 	engine.processAndCommit(createLedgerOrder("test"))
-	for i := 0; i < 5; i++ {
+
+	for i := range 5 {
 		engine.processAndCommit(createTransactionOrder("test", true,
 			newPosting("world", "user:alice", "USD", int64(100*(i+1))),
 		))
 	}
 
 	checker := NewChecker(engine.store, engine.attrs)
+
 	var progressEvents []*servicepb.CheckStoreProgress
 
 	err := checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
-		if p, ok := event.Type.(*servicepb.CheckStoreEvent_Progress); ok {
+		if p, ok := event.GetType().(*servicepb.CheckStoreEvent_Progress); ok {
 			progressEvents = append(progressEvents, p.Progress)
 		}
 	})
@@ -880,7 +907,7 @@ func TestCheckerProgressEvents(t *testing.T) {
 
 	require.NotEmpty(t, progressEvents, "should emit at least one progress event")
 	lastProgress := progressEvents[len(progressEvents)-1]
-	require.Equal(t, lastProgress.LogsChecked, lastProgress.TotalLogs, "final progress should show all logs checked")
+	require.Equal(t, lastProgress.GetLogsChecked(), lastProgress.GetTotalLogs(), "final progress should show all logs checked")
 }
 
 // TestCheckerManyOperationTypes tests with a broad variety of operations:
@@ -913,6 +940,7 @@ func TestCheckerManyOperationTypes(t *testing.T) {
 
 	// Distribute from treasury to 5 users in different assets
 	users := []string{"user:alpha", "user:beta", "user:gamma", "user:delta", "user:epsilon"}
+
 	distributionAmounts := []int64{1000, 1000, 1000, 1, 1000} // BTC (index 3) only has 10, use 1
 	for i, user := range users {
 		engine.processAndCommit(createTransactionOrder("main", false,
@@ -993,8 +1021,9 @@ func TestCheckerManyOperationTypes(t *testing.T) {
 	errors := collectCheckErrors(t, engine.store, engine.attrs)
 	for _, e := range errors {
 		t.Logf("Check error: [%s] %s (log=%d, ledger=%s, account=%s, asset=%s)",
-			e.ErrorType, e.Message, e.LogSequence, e.Ledger, e.Account, e.Asset)
+			e.GetErrorType(), e.GetMessage(), e.GetLogSequence(), e.GetLedger(), e.GetAccount(), e.GetAsset())
 	}
+
 	require.Empty(t, errors, "store built from valid operations should have no integrity errors")
 }
 
@@ -1078,14 +1107,17 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, engine.store, engine.attrs)
+
 	var txErrors []*servicepb.CheckStoreError
+
 	for _, e := range errors {
-		if e.ErrorType == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH {
+		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH {
 			txErrors = append(txErrors, e)
 		}
 	}
+
 	require.NotEmpty(t, txErrors, "should detect transaction update mismatch")
-	require.Equal(t, uint64(1), txErrors[0].TransactionId)
+	require.Equal(t, uint64(1), txErrors[0].GetTransactionId())
 }
 
 // TestCheckerWithTransactionMetadata verifies that transaction metadata
@@ -1121,8 +1153,9 @@ func TestCheckerWithTransactionMetadata(t *testing.T) {
 	errors := collectCheckErrors(t, engine.store, engine.attrs)
 	for _, e := range errors {
 		t.Logf("Check error: [%s] %s (log=%d, ledger=%s, account=%s, asset=%s, tx=%d)",
-			e.ErrorType, e.Message, e.LogSequence, e.Ledger, e.Account, e.Asset, e.TransactionId)
+			e.GetErrorType(), e.GetMessage(), e.GetLogSequence(), e.GetLedger(), e.GetAccount(), e.GetAsset(), e.GetTransactionId())
 	}
+
 	require.Empty(t, errors, "store with transaction metadata should have no integrity errors")
 }
 
@@ -1141,6 +1174,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	// 4. Revert tx 1 AGAIN (double revert — should be detected)
 
 	var lastHash []byte
+
 	seqID := uint64(1)
 
 	// Log 1: Create ledger
@@ -1211,19 +1245,22 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 
 	batch := store.NewBatch()
 	require.NoError(t, state.AppendLogs(batch, log1, log2, log3, log4))
-	require.NoError(t, state.SaveLedger(batch, log1.Payload.GetCreateLedger().Info))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetInfo()))
 	require.NoError(t, writeVolumes(batch, attrs, posting, "test", 1))
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
+
 	var revertErrors []*servicepb.CheckStoreError
+
 	for _, e := range errors {
-		if e.ErrorType == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
+		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
 			revertErrors = append(revertErrors, e)
 		}
 	}
+
 	require.NotEmpty(t, revertErrors, "should detect double revert")
-	require.Contains(t, revertErrors[0].Message, "double-reverts")
+	require.Contains(t, revertErrors[0].GetMessage(), "double-reverts")
 }
 
 // TestCheckerDetectsRevertOfNonExistentTransaction verifies the checker detects
@@ -1236,6 +1273,7 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 	hasher := blake3.New()
 
 	var lastHash []byte
+
 	seqID := uint64(1)
 
 	// Log 1: Create ledger
@@ -1269,18 +1307,21 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 
 	batch := store.NewBatch()
 	require.NoError(t, state.AppendLogs(batch, log1, log2))
-	require.NoError(t, state.SaveLedger(batch, log1.Payload.GetCreateLedger().Info))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetInfo()))
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
+
 	var revertErrors []*servicepb.CheckStoreError
+
 	for _, e := range errors {
-		if e.ErrorType == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
+		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
 			revertErrors = append(revertErrors, e)
 		}
 	}
+
 	require.NotEmpty(t, revertErrors, "should detect revert of non-existent transaction")
-	require.Contains(t, revertErrors[0].Message, "non-existent")
+	require.Contains(t, revertErrors[0].GetMessage(), "non-existent")
 }
 
 // buildLog creates a log entry with the correct hash chain.
@@ -1290,38 +1331,41 @@ func buildLog(hasher *blake3.Hasher, lastHash *[]byte, seqID *uint64, payload *c
 		Payload:  payload,
 	}
 	log.Hash = processing.ComputeLogHash(hasher, *lastHash, log)
-	*lastHash = log.Hash
+	*lastHash = log.GetHash()
 	*seqID++
+
 	return log
 }
 
 // reversePosting returns a posting with source and destination swapped.
 func reversePosting(p *commonpb.Posting) *commonpb.Posting {
 	return &commonpb.Posting{
-		Source:      p.Destination,
-		Destination: p.Source,
-		Amount:      p.Amount,
-		Asset:       p.Asset,
+		Source:      p.GetDestination(),
+		Destination: p.GetSource(),
+		Amount:      p.GetAmount(),
+		Asset:       p.GetAsset(),
 	}
 }
 
 // writeVolumes writes volume attributes for a posting to make the store consistent.
 func writeVolumes(batch *dal.Batch, attrs *attributes.Attributes, posting *commonpb.Posting, ledger string, raftIndex uint64) error {
 	sourceKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.Source},
-		Asset:      posting.Asset,
+		AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.GetSource()},
+		Asset:      posting.GetAsset(),
 	}
 	destKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.Destination},
-		Asset:      posting.Asset,
+		AccountKey: domain.AccountKey{Ledger: ledger, Account: posting.GetDestination()},
+		Asset:      posting.GetAsset(),
 	}
 
-	if err := attrs.Volume.AddDiff(batch, raftIndex, sourceKey.Bytes(), &raftcmdpb.VolumePair{
-		OutputKnown: posting.Amount,
-	}); err != nil {
+	err := attrs.Volume.AddDiff(batch, raftIndex, sourceKey.Bytes(), &raftcmdpb.VolumePair{
+		OutputKnown: posting.GetAmount(),
+	})
+	if err != nil {
 		return err
 	}
+
 	return attrs.Volume.AddDiff(batch, raftIndex, destKey.Bytes(), &raftcmdpb.VolumePair{
-		InputKnown: posting.Amount,
+		InputKnown: posting.GetAmount(),
 	})
 }

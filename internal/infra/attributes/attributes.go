@@ -5,8 +5,9 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // core is the unexported shared implementation for all attribute types.
@@ -72,9 +73,12 @@ func marshalProto(buf []byte, msg proto.Message) ([]byte, error) {
 		} else {
 			buf = make([]byte, size)
 		}
+
 		n, err := m.MarshalToVT(buf)
+
 		return buf[:n], err
 	}
+
 	return proto.MarshalOptions{}.MarshalAppend(buf[:0], msg)
 }
 
@@ -84,6 +88,7 @@ func unmarshalProto(data []byte, msg proto.Message) error {
 	if m, ok := msg.(vtUnmarshaler); ok {
 		return m.UnmarshalVT(data)
 	}
+
 	return proto.Unmarshal(data, msg)
 }
 
@@ -102,6 +107,7 @@ func (a *core[V]) writeEntry(batch *dal.Batch, index uint64, canonicalKey []byte
 	if err != nil {
 		return fmt.Errorf("marshaling value: %w", err)
 	}
+
 	a.protoBuffer = valueBytes
 
 	return batch.Set(a.keyBuf[:keyLen], valueBytes, pebble.NoSync)
@@ -134,12 +140,14 @@ func (a *core[V]) ComputeValue(reader dal.PebbleReader, index uint64, canonicalK
 
 	// Key prefix: [KeyPrefixAttributes][canonicalKey][attrType]
 	pLen := prefixLen(canonicalKey)
+
 	var upperExtra int
 	if index == ^uint64(0) {
 		upperExtra = 1 // 0xFF sentinel
 	} else {
 		upperExtra = 8 // index+1 as big-endian uint64
 	}
+
 	buf := make([]byte, pLen+upperExtra)
 	a.putPrefix(buf, canonicalKey)
 
@@ -156,6 +164,7 @@ func (a *core[V]) ComputeValue(reader dal.PebbleReader, index uint64, canonicalK
 	if err != nil {
 		return zeroValue, fmt.Errorf("creating iterator: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	// Track the most recent base and the last diff after it
@@ -268,6 +277,7 @@ func (a *core[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte) (*Sc
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	result := &ScanResult[V]{}
@@ -286,10 +296,12 @@ func (a *core[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte) (*Sc
 				if err != nil {
 					return nil, fmt.Errorf("reading base value: %w", err)
 				}
+
 				v := a.newValue()
 				if err := unmarshalProto(valueBytes, v); err != nil {
 					return nil, fmt.Errorf("unmarshaling base value: %w", err)
 				}
+
 				result.LatestBase = v
 				result.LatestBaseIndex = raftIndex
 				result.HasBase = true
@@ -336,6 +348,7 @@ func (a *core[V]) ForEachInPrefix(
 	if err != nil {
 		return fmt.Errorf("creating iterator for prefix scan: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	ab := accumulatorBase[V]{attr: a}
@@ -361,8 +374,10 @@ func (a *core[V]) ForEachInPrefix(
 		if err != nil {
 			return err
 		}
+
 		if prev != nil {
-			if err := fn(*prev); err != nil {
+			err := fn(*prev)
+			if err != nil {
 				return err
 			}
 		}
@@ -374,7 +389,8 @@ func (a *core[V]) ForEachInPrefix(
 
 	// Flush the last canonical key.
 	if entry := ab.flush(); entry != nil {
-		if err := fn(*entry); err != nil {
+		err := fn(*entry)
+		if err != nil {
 			return err
 		}
 	}
@@ -389,13 +405,16 @@ func (a *core[V]) ForEachInPrefix(
 // Thread-safe: allocates its own buffer for concurrent access.
 func (a *core[V]) ComputeAllForPrefix(reader dal.PebbleReader, maxIndex uint64, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
 	var results []ComputedEntry[V]
+
 	err := a.ForEachInPrefix(reader, maxIndex, canonicalPrefix, func(entry ComputedEntry[V]) error {
 		results = append(results, entry)
+
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	return results, nil
 }
 
@@ -405,6 +424,7 @@ func AttrTypeFromKey(pebbleKey []byte) (byte, bool) {
 	if len(pebbleKey) <= 1+SuffixLen {
 		return 0, false
 	}
+
 	return pebbleKey[len(pebbleKey)-SuffixLen], true
 }
 
@@ -414,6 +434,7 @@ func CanonicalKeyFromPebbleKey(pebbleKey []byte) []byte {
 	if len(pebbleKey) <= 1+SuffixLen {
 		return nil
 	}
+
 	return pebbleKey[1 : len(pebbleKey)-SuffixLen]
 }
 
@@ -422,13 +443,13 @@ func CanonicalKeyFromPebbleKey(pebbleKey []byte) []byte {
 func IncrementBytes(b []byte) []byte {
 	result := make([]byte, len(b))
 	copy(result, b)
+
 	for i := len(result) - 1; i >= 0; i-- {
 		result[i]++
 		if result[i] != 0 {
 			return result
 		}
 	}
+
 	return nil
 }
-
-

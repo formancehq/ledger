@@ -34,6 +34,7 @@ func ConsistencyFromContext(ctx context.Context) string {
 	if v, ok := ctx.Value(consistencyKey{}).(string); ok && v != "" {
 		return v
 	}
+
 	return ConsistencyLinearizable
 }
 
@@ -52,6 +53,7 @@ func IsLeaderRead(ctx context.Context) bool {
 func consistencyInterceptor() ggrpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
 		ctx = extractConsistency(ctx)
+
 		return handler(ctx, req)
 	}
 }
@@ -61,6 +63,7 @@ func consistencyInterceptor() ggrpc.UnaryServerInterceptor {
 func consistencyStreamInterceptor() ggrpc.StreamServerInterceptor {
 	return func(srv any, ss ggrpc.ServerStream, info *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
 		ctx := extractConsistency(ss.Context())
+
 		return handler(srv, &consistencyServerStream{ServerStream: ss, ctx: ctx})
 	}
 }
@@ -68,6 +71,7 @@ func consistencyStreamInterceptor() ggrpc.StreamServerInterceptor {
 // consistencyServerStream wraps a ServerStream to override its Context.
 type consistencyServerStream struct {
 	ggrpc.ServerStream
+
 	ctx context.Context
 }
 
@@ -83,10 +87,12 @@ func extractConsistency(ctx context.Context) context.Context {
 	if !ok {
 		return ctx
 	}
+
 	vals := md.Get(metadataKeyConsistency)
 	if len(vals) == 0 {
 		return ctx
 	}
+
 	level := strings.ToLower(strings.TrimSpace(vals[0]))
 	switch level {
 	case ConsistencyStale, ConsistencyLeader:

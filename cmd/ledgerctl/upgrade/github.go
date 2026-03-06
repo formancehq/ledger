@@ -2,6 +2,7 @@ package upgrade
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,7 +14,7 @@ import (
 )
 
 const (
-	githubRepo = "formancehq/ledger-v3-poc"
+	githubRepo  = "formancehq/ledger-v3-poc"
 	projectName = "ledger-v3"
 )
 
@@ -47,7 +48,9 @@ func fetchNightlyRelease() (*releaseInfo, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/tags/nightly", githubRepo)
 
 	var release releaseInfo
-	if err := githubGet(url, &release); err != nil {
+
+	err := githubGet(url, &release)
+	if err != nil {
 		return nil, err
 	}
 
@@ -60,7 +63,9 @@ func fetchStableRelease() (*releaseInfo, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=20", githubRepo)
 
 	var releases []releaseInfo
-	if err := githubGet(url, &releases); err != nil {
+
+	err := githubGet(url, &releases)
+	if err != nil {
 		return nil, err
 	}
 
@@ -70,7 +75,7 @@ func fetchStableRelease() (*releaseInfo, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("no stable release found; use --channel nightly")
+	return nil, errors.New("no stable release found; use --channel nightly")
 }
 
 var (
@@ -84,8 +89,10 @@ func resolveGitHubToken() string {
 	githubTokenOnce.Do(func() {
 		if t := os.Getenv("GITHUB_TOKEN"); t != "" {
 			githubToken = t
+
 			return
 		}
+
 		out, err := exec.Command("gh", "auth", "token").Output()
 		if err == nil {
 			githubToken = strings.TrimSpace(string(out))
@@ -107,6 +114,7 @@ func githubGet(url string, target any) error {
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
+
 	req.Header.Set("Accept", "application/vnd.github+json")
 	setGitHubAuth(req)
 
@@ -114,17 +122,21 @@ func githubGet(url string, target any) error {
 	if err != nil {
 		return fmt.Errorf("fetching %s: %w", url, err)
 	}
+
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusForbidden {
-		return fmt.Errorf("GitHub API rate limit exceeded; try again later or set GITHUB_TOKEN")
+		return errors.New("GitHub API rate limit exceeded; try again later or set GITHUB_TOKEN")
 	}
+
 	if resp.StatusCode == http.StatusNotFound {
 		if resolveGitHubToken() == "" {
 			return fmt.Errorf("GitHub API returned 404 for %s (the repo may be private; set GITHUB_TOKEN or run `gh auth login`)", url)
 		}
+
 		return fmt.Errorf("GitHub API returned 404 for %s (check that the token has access to the repo)", url)
 	}
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GitHub API returned %s for %s", resp.Status, url)
 	}
@@ -143,6 +155,7 @@ func githubDownload(url string) (*http.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
+
 	req.Header.Set("Accept", "application/octet-stream")
 	setGitHubAuth(req)
 
@@ -153,6 +166,7 @@ func githubDownload(url string) (*http.Response, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
+
 		return nil, fmt.Errorf("HTTP %s for %s", resp.Status, url)
 	}
 

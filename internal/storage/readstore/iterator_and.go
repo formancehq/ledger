@@ -24,6 +24,7 @@ func (it *AndIterator) Next() bool {
 	// Advance first child
 	if !it.children[0].Next() {
 		it.exhausted = true
+
 		return false
 	}
 
@@ -42,6 +43,7 @@ func (it *AndIterator) SeekGE(target []byte) bool {
 	// Seek all children to target
 	if !it.children[0].SeekGE(target) {
 		it.exhausted = true
+
 		return false
 	}
 
@@ -61,6 +63,7 @@ func (it *AndIterator) converge() bool {
 
 	for {
 		allMatch := true
+
 		for i := 1; i < len(it.children); i++ {
 			cmp := bytes.Compare(it.children[i].Current(), candidate)
 
@@ -68,8 +71,10 @@ func (it *AndIterator) converge() bool {
 				// Child is behind — seek forward
 				if !it.children[i].SeekGE(candidate) {
 					it.exhausted = true
+
 					return false
 				}
+
 				cmp = bytes.Compare(it.children[i].Current(), candidate)
 			}
 
@@ -81,9 +86,12 @@ func (it *AndIterator) converge() bool {
 				// Seek the first child to the new candidate
 				if !it.children[0].SeekGE(candidate) {
 					it.exhausted = true
+
 					return false
 				}
+
 				candidate = it.children[0].Current()
+
 				break // restart the inner loop
 			}
 			// cmp == 0: this child matches, continue to next
@@ -91,6 +99,7 @@ func (it *AndIterator) converge() bool {
 
 		if allMatch {
 			it.current = candidate
+
 			return true
 		}
 	}

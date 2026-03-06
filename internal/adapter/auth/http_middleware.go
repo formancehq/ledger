@@ -18,6 +18,7 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !cfg.Enabled {
 				next.ServeHTTP(w, r)
+
 				return
 			}
 
@@ -25,6 +26,7 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 			path := strings.TrimPrefix(r.URL.Path, "/v2")
 			if path == "/health" || path == "/livez" || path == "/readyz" || strings.HasPrefix(path, "/debug/") {
 				next.ServeHTTP(w, r)
+
 				return
 			}
 
@@ -32,6 +34,7 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 			if err != nil {
 				logHTTPAuthFailure(r, "", "missing_token", err)
 				http.Error(w, err.Error(), http.StatusUnauthorized)
+
 				return
 			}
 
@@ -41,6 +44,7 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 			if err != nil {
 				logHTTPAuthFailure(r, keyID, "invalid_token", err)
 				http.Error(w, "invalid token: "+err.Error(), http.StatusUnauthorized)
+
 				return
 			}
 
@@ -63,6 +67,7 @@ func RequireScope(cfg AuthConfig, scopes ...Scope) func(http.Handler) http.Handl
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !cfg.Enabled {
 				next.ServeHTTP(w, r)
+
 				return
 			}
 
@@ -70,12 +75,14 @@ func RequireScope(cfg AuthConfig, scopes ...Scope) func(http.Handler) http.Handl
 			if effective == nil {
 				logHTTPAuthFailure(r, "", "missing_auth", errors.New("no expanded scopes in context"))
 				http.Error(w, "missing authentication", http.StatusUnauthorized)
+
 				return
 			}
 
 			if !HasScope(effective, scopes...) {
 				logHTTPAuthFailure(r, "", "missing_scope", fmt.Errorf("required: %v", scopes))
 				http.Error(w, "missing required scope", http.StatusForbidden)
+
 				return
 			}
 
@@ -94,6 +101,7 @@ func logHTTPAuthFailure(r *http.Request, keyID, reason string, err error) {
 	if keyID != "" {
 		fields["keyId"] = keyID
 	}
+
 	logging.FromContext(r.Context()).WithFields(fields).Infof("auth failure")
 }
 

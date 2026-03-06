@@ -18,6 +18,7 @@ var (
 // SignPayload signs raw bytes and returns a RequestSignature.
 func SignPayload(payload []byte, keyID string, privateKey ed25519.PrivateKey) *signaturepb.RequestSignature {
 	sig := ed25519.Sign(privateKey, payload)
+
 	return &signaturepb.RequestSignature{
 		KeyId:         keyID,
 		Signature:     sig,
@@ -37,6 +38,7 @@ func Sign(req *servicepb.Request, keyID string, privateKey ed25519.PrivateKey) e
 	}
 
 	req.Signature = SignPayload(payload, keyID, privateKey)
+
 	return nil
 }
 
@@ -46,16 +48,19 @@ func Verify(sig *signaturepb.RequestSignature, publicKey ed25519.PublicKey) erro
 	if sig == nil {
 		return ErrMissingSignature
 	}
-	if len(sig.SignedPayload) == 0 {
+
+	if len(sig.GetSignedPayload()) == 0 {
 		return fmt.Errorf("%w: empty signed_payload", ErrInvalidSignature)
 	}
-	if len(sig.Signature) != ed25519.SignatureSize {
-		return fmt.Errorf("%w: invalid signature length %d", ErrInvalidSignature, len(sig.Signature))
+
+	if len(sig.GetSignature()) != ed25519.SignatureSize {
+		return fmt.Errorf("%w: invalid signature length %d", ErrInvalidSignature, len(sig.GetSignature()))
 	}
 
-	if !ed25519.Verify(publicKey, sig.SignedPayload, sig.Signature) {
+	if !ed25519.Verify(publicKey, sig.GetSignedPayload(), sig.GetSignature()) {
 		return ErrInvalidSignature
 	}
+
 	return nil
 }
 
@@ -64,13 +69,17 @@ func ExtractRequest(sig *signaturepb.RequestSignature) (*servicepb.Request, erro
 	if sig == nil {
 		return nil, ErrMissingSignature
 	}
-	if len(sig.SignedPayload) == 0 {
+
+	if len(sig.GetSignedPayload()) == 0 {
 		return nil, fmt.Errorf("%w: empty signed_payload", ErrInvalidSignature)
 	}
 
 	req := &servicepb.Request{}
-	if err := req.UnmarshalVT(sig.SignedPayload); err != nil {
+
+	err := req.UnmarshalVT(sig.GetSignedPayload())
+	if err != nil {
 		return nil, fmt.Errorf("unmarshaling signed_payload: %w", err)
 	}
+
 	return req, nil
 }

@@ -17,6 +17,7 @@ var ErrNotLeader = errors.New("not leader")
 // leadership-specific log message; other errors log a generic retry message.
 func RetryWithBackoff(stop <-chan struct{}, logger logging.Logger, fn func() error) {
 	backoff := 100 * time.Millisecond
+
 	const maxBackoff = 10 * time.Second
 
 	for {
@@ -36,6 +37,7 @@ func RetryWithBackoff(stop <-chan struct{}, logger logging.Logger, fn func() err
 			return
 		case <-time.After(backoff):
 		}
+
 		backoff = min(backoff*2, maxBackoff)
 	}
 }

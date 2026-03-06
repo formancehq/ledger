@@ -8,9 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/stretchr/testify/require"
 )
 
 func TestHandleBulk_InvalidBody(t *testing.T) {
@@ -93,6 +94,7 @@ func TestRunBulkAtomic_AllFail(t *testing.T) {
 	results := srv.runBulkAtomic(context.Background(), requests)
 
 	require.Len(t, results, 2)
+
 	for _, r := range results {
 		require.ErrorIs(t, r.err, expectedErr)
 	}
@@ -115,6 +117,7 @@ func TestRunBulkAtomic_Success(t *testing.T) {
 	results := srv.runBulkAtomic(context.Background(), requests)
 
 	require.Len(t, results, 2)
+
 	for _, r := range results {
 		require.NoError(t, r.err)
 		require.NotNil(t, r.log)
@@ -131,6 +134,7 @@ func TestRunBulkSequential_StopOnError(t *testing.T) {
 			if callCount == 1 {
 				return nil, errors.New("first fails")
 			}
+
 			return []*commonpb.Log{
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{}}}}},
 			}, nil
@@ -157,6 +161,7 @@ func TestRunBulkSequential_ContinueOnFailure(t *testing.T) {
 			if callCount == 1 {
 				return nil, errors.New("first fails")
 			}
+
 			return []*commonpb.Log{
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{}}}}},
 			}, nil

@@ -6,11 +6,12 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewGetCommand creates the transactions get command.
@@ -44,10 +45,12 @@ func runGet(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	// Get ledger name (from flag or interactive selection)
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -59,6 +62,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		txID, err = strconv.ParseUint(args[0], 10, 64)
 		if err != nil {
 			pterm.Error.Printfln("Invalid transaction ID: %v", err)
+
 			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	} else {
@@ -68,9 +72,11 @@ func runGet(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
+
 		txID, err = strconv.ParseUint(input, 10, 64)
 		if err != nil {
 			pterm.Error.Printfln("Invalid transaction ID: %v", err)
+
 			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	}
@@ -86,54 +92,59 @@ func runGet(cmd *cobra.Command, args []string) error {
 	})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to get transaction", err)
 	}
 
 	_ = spinner.Stop()
 
-	tx := resp.Transaction
+	tx := resp.GetTransaction()
 
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(resp)
 	}
 
 	pterm.Println()
 
 	// Display transaction header
-	pterm.Printf("Transaction: %s\n", pterm.Cyan(fmt.Sprintf("#%d", tx.Id)))
+	pterm.Printf("Transaction: %s\n", pterm.Cyan(fmt.Sprintf("#%d", tx.GetId())))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
 	// Display basic info
-	if tx.Reference != "" {
-		pterm.Printf("Reference:   %s\n", tx.Reference)
+	if tx.GetReference() != "" {
+		pterm.Printf("Reference:   %s\n", tx.GetReference())
 	}
-	if tx.Timestamp != nil {
-		pterm.Printf("Timestamp:   %s\n", pterm.Gray(tx.Timestamp.AsTime().Format("2006-01-02T15:04:05Z07:00")))
+
+	if tx.GetTimestamp() != nil {
+		pterm.Printf("Timestamp:   %s\n", pterm.Gray(tx.GetTimestamp().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
-	if tx.InsertedAt != nil {
-		pterm.Printf("Inserted At: %s\n", pterm.Gray(tx.InsertedAt.AsTime().Format("2006-01-02T15:04:05Z07:00")))
+
+	if tx.GetInsertedAt() != nil {
+		pterm.Printf("Inserted At: %s\n", pterm.Gray(tx.GetInsertedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 	}
 
 	// Display reverted status
-	if tx.Reverted {
+	if tx.GetReverted() {
 		pterm.Printf("Reverted:    %s\n", pterm.Yellow("Yes"))
-		if tx.RevertedAt != nil {
-			pterm.Printf("Reverted At: %s\n", pterm.Gray(tx.RevertedAt.AsTime().Format("2006-01-02T15:04:05Z07:00")))
+
+		if tx.GetRevertedAt() != nil {
+			pterm.Printf("Reverted At: %s\n", pterm.Gray(tx.GetRevertedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")))
 		}
 	} else {
 		pterm.Printf("Reverted:    %s\n", pterm.Green("No"))
 	}
 
 	// Display receipt if available
-	if resp.Receipt != "" {
-		pterm.Printf("Receipt:     %s\n", pterm.Gray(resp.Receipt))
+	if resp.GetReceipt() != "" {
+		pterm.Printf("Receipt:     %s\n", pterm.Gray(resp.GetReceipt()))
 	}
 
 	// Display postings
-	if len(tx.Postings) > 0 {
+	if len(tx.GetPostings()) > 0 {
 		pterm.Println()
 		pterm.Println("Postings:")
 
@@ -144,20 +155,16 @@ func runGet(cmd *cobra.Command, args []string) error {
 		termWidth := pterm.GetTerminalWidth()
 		// Reserve space for #(3) + arrow(1) + AMOUNT(12) + ASSET(8) + separators(5*3=15) + indent(2)
 		const fixedColsWidth = 3 + 1 + 12 + 8 + 15 + 2
-		maxAddrWidth := (termWidth - fixedColsWidth) / 2
-		if maxAddrWidth < 15 {
-			maxAddrWidth = 15
-		}
+
+		maxAddrWidth := max((termWidth-fixedColsWidth)/2, 15)
 
 		const continuationIndent = "  "
-		for i, posting := range tx.Postings {
-			srcLines := cmdutil.WrapText(posting.Source, maxAddrWidth, ":")
-			dstLines := cmdutil.WrapText(posting.Destination, maxAddrWidth, ":")
 
-			maxLines := len(srcLines)
-			if len(dstLines) > maxLines {
-				maxLines = len(dstLines)
-			}
+		for i, posting := range tx.GetPostings() {
+			srcLines := cmdutil.WrapText(posting.GetSource(), maxAddrWidth, ":")
+			dstLines := cmdutil.WrapText(posting.GetDestination(), maxAddrWidth, ":")
+
+			maxLines := max(len(dstLines), len(srcLines))
 
 			for line := range maxLines {
 				src, dst := "", ""
@@ -169,6 +176,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 						src = continuationIndent + src
 					}
 				}
+
 				if line < len(dstLines) {
 					dst = dstLines[line]
 					if line > 0 {
@@ -177,10 +185,10 @@ func runGet(cmd *cobra.Command, args []string) error {
 				}
 
 				if line == 0 {
-					num = fmt.Sprintf("%d", i+1)
+					num = strconv.Itoa(i + 1)
 					arrow = "→"
-					amount = posting.Amount.Dec()
-					asset = posting.Asset
+					amount = posting.GetAmount().Dec()
+					asset = posting.GetAsset()
 				}
 
 				postingsTable = append(postingsTable, []string{
@@ -189,25 +197,27 @@ func runGet(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		if err := pterm.DefaultTable.WithHasHeader().WithData(postingsTable).Render(); err != nil {
+		err := pterm.DefaultTable.WithHasHeader().WithData(postingsTable).Render()
+		if err != nil {
 			return err
 		}
 	}
 
 	// Display metadata
-	if tx.Metadata != nil && len(tx.Metadata.Metadata) > 0 {
+	if tx.GetMetadata() != nil && len(tx.GetMetadata().GetMetadata()) > 0 {
 		pterm.Println()
 		pterm.Println("Metadata:")
 
 		metadataTable := pterm.TableData{
 			{"KEY", "VALUE"},
 		}
-		for _, md := range tx.Metadata.Metadata {
+		for _, md := range tx.GetMetadata().GetMetadata() {
 			metadataTable = append(metadataTable, []string{
-				md.Key,
-				commonpb.MetadataValueToString(md.Value),
+				md.GetKey(),
+				commonpb.MetadataValueToString(md.GetValue()),
 			})
 		}
+
 		return pterm.DefaultTable.WithHasHeader().WithData(metadataTable).Render()
 	}
 

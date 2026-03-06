@@ -3,28 +3,31 @@ package query_test
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/query"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 )
 
 // mockEntityIterator is a minimal EntityIterator for testing TrackedIterator.
 type mockEntityIterator struct {
-	nextResults  []bool
-	seekResults  []bool
-	nextIdx      int
-	seekIdx      int
-	currentVal   []byte
-	closeCalled  bool
+	nextResults []bool
+	seekResults []bool
+	nextIdx     int
+	seekIdx     int
+	currentVal  []byte
+	closeCalled bool
 }
 
 func (m *mockEntityIterator) Next() bool {
 	if m.nextIdx >= len(m.nextResults) {
 		return false
 	}
+
 	result := m.nextResults[m.nextIdx]
 	m.nextIdx++
+
 	return result
 }
 
@@ -36,8 +39,10 @@ func (m *mockEntityIterator) SeekGE(_ []byte) bool {
 	if m.seekIdx >= len(m.seekResults) {
 		return false
 	}
+
 	result := m.seekResults[m.seekIdx]
 	m.seekIdx++
+
 	return result
 }
 

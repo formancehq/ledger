@@ -17,6 +17,7 @@ func WithClaims(ctx context.Context, claims *oidc.AccessTokenClaims) context.Con
 // Returns nil if no claims are present (e.g., auth disabled or unauthenticated endpoint).
 func ClaimsFromContext(ctx context.Context) *oidc.AccessTokenClaims {
 	claims, _ := ctx.Value(contextKey{}).(*oidc.AccessTokenClaims)
+
 	return claims
 }
 
@@ -27,5 +28,6 @@ func SubjectFromContext(ctx context.Context) string {
 	if claims == nil {
 		return ""
 	}
+
 	return claims.GetSubject()
 }

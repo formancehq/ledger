@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -23,6 +24,12 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	var (
 		pgDSN        = flag.String("dsn", "", "PostgreSQL DSN to the v2 instance (e.g. postgres://user:pass@host:5432/postgres)")
 		v3Server     = flag.String("server", "localhost:8888", "Ledger v3 gRPC server address")
@@ -32,12 +39,14 @@ func main() {
 		insecureMode = flag.Bool("insecure", false, "Use plaintext gRPC (no TLS)")
 		authToken    = flag.String("token", "", "Bearer token for gRPC authentication")
 	)
+
 	flag.Parse()
 
 	if *pgDSN == "" {
 		fmt.Fprintln(os.Stderr, "error: --dsn is required")
 		flag.Usage()
-		os.Exit(1)
+
+		return errors.New("--dsn is required")
 	}
 
 	ctx := context.Background()
@@ -47,26 +56,29 @@ func main() {
 
 	ledgers, err := discoverV2Ledgers(ctx, *pgDSN)
 	if err != nil {
-		log.Fatalf("discovery failed: %v", err)
+		return fmt.Errorf("discovery failed: %w", err)
 	}
 
 	log.Printf("Found %d ledger(s)\n", len(ledgers))
 
 	if len(ledgers) == 0 {
-		return
+		return nil
 	}
 
 	// Print table.
 	fmt.Printf("\n%-30s %-30s %-20s\n", "DATABASE", "LEDGER", "BUCKET")
 	fmt.Println(strings.Repeat("-", 80))
+
 	for _, l := range ledgers {
 		fmt.Printf("%-30s %-30s %-20s\n", l.database, l.name, l.bucket)
 	}
+
 	fmt.Println()
 
 	if *dryRun {
 		log.Println("Dry run - exiting.")
-		return
+
+		return nil
 	}
 
 	// Step 2: Connect to v3.
@@ -76,6 +88,7 @@ func main() {
 	} else {
 		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 	}
+
 	dialOpts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
 	if *authToken != "" {
 		dialOpts = append(dialOpts,
@@ -83,10 +96,12 @@ func main() {
 			grpc.WithStreamInterceptor(bearerStreamInterceptor(*authToken)),
 		)
 	}
+
 	conn, err := grpc.NewClient(*v3Server, dialOpts...)
 	if err != nil {
-		log.Fatalf("failed to connect to v3 server: %v", err)
+		return fmt.Errorf("failed to connect to v3 server: %w", err)
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	client := servicepb.NewBucketServiceClient(conn)
@@ -101,7 +116,9 @@ func main() {
 
 		if _, ok := existing[mirrorName]; ok {
 			log.Printf("  SKIP  %s (already exists)", mirrorName)
+
 			skipped++
+
 			continue
 		}
 
@@ -110,19 +127,24 @@ func main() {
 		err := createMirrorLedger(ctx, client, mirrorName, l.name, dbDSN, uint32(*batchSize), *timeout)
 		if err != nil {
 			log.Printf("  FAIL  %s: %v", mirrorName, err)
+
 			failed++
+
 			continue
 		}
 
 		log.Printf("  OK    %s", mirrorName)
+
 		created++
 	}
 
 	log.Printf("\nDone: created=%d skipped=%d failed=%d", created, skipped, failed)
 
 	if failed > 0 {
-		os.Exit(1)
+		return fmt.Errorf("%d mirror(s) failed to create", failed)
 	}
+
+	return nil
 }
 
 // v2Ledger holds info about a ledger discovered from a v2 PostgreSQL database.
@@ -144,33 +166,45 @@ func discoverV2Ledgers(ctx context.Context, dsn string) ([]v2Ledger, error) {
 	)
 	if err != nil {
 		_ = conn.Close(ctx)
+
 		return nil, fmt.Errorf("listing databases: %w", err)
 	}
 
 	var databases []string
+
 	for rows.Next() {
 		var name string
-		if err := rows.Scan(&name); err != nil {
+
+		err := rows.Scan(&name)
+		if err != nil {
 			rows.Close()
 			_ = conn.Close(ctx)
+
 			return nil, fmt.Errorf("scanning database: %w", err)
 		}
+
 		databases = append(databases, name)
 	}
+
 	rows.Close()
 	_ = conn.Close(ctx)
 
 	var ledgers []v2Ledger
+
 	for _, db := range databases {
 		if !strings.Contains(db, "-") {
 			continue
 		}
+
 		dbDSN := replaceDSNDatabase(dsn, db)
+
 		found, err := discoverLedgersInDB(ctx, dbDSN, db)
 		if err != nil {
 			log.Printf("  WARN  %s: %v (skipping)", db, err)
+
 			continue
 		}
+
 		ledgers = append(ledgers, found...)
 	}
 
@@ -183,9 +217,11 @@ func discoverLedgersInDB(ctx context.Context, dsn, database string) ([]v2Ledger,
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
 	}
+
 	defer func() { _ = conn.Close(ctx) }()
 
 	var exists bool
+
 	err = conn.QueryRow(ctx,
 		`SELECT EXISTS (
 			SELECT 1 FROM information_schema.tables
@@ -195,12 +231,14 @@ func discoverLedgersInDB(ctx context.Context, dsn, database string) ([]v2Ledger,
 	if err != nil {
 		return nil, fmt.Errorf("check _system.ledgers: %w", err)
 	}
+
 	if !exists {
 		return nil, nil
 	}
 
 	// Check whether the "name" column exists — older v2 versions don't have it.
 	var hasNameCol bool
+
 	_ = conn.QueryRow(ctx,
 		`SELECT EXISTS (
 			SELECT 1 FROM information_schema.columns
@@ -219,11 +257,15 @@ func discoverLedgersInDB(ctx context.Context, dsn, database string) ([]v2Ledger,
 	defer rows.Close()
 
 	var ledgers []v2Ledger
+
 	for rows.Next() {
 		var l v2Ledger
-		if err := rows.Scan(&l.name, &l.bucket); err != nil {
+
+		err := rows.Scan(&l.name, &l.bucket)
+		if err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
+
 		l.database = database
 		ledgers = append(ledgers, l)
 	}
@@ -239,20 +281,25 @@ func listExistingLedgers(ctx context.Context, client servicepb.BucketServiceClie
 	stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{})
 	if err != nil {
 		log.Printf("  WARN  could not list existing v3 ledgers: %v", err)
+
 		return nil
 	}
 
 	existing := make(map[string]struct{})
+
 	for {
 		info, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			log.Printf("  WARN  error listing v3 ledgers: %v", err)
+
 			break
 		}
-		existing[info.Name] = struct{}{}
+
+		existing[info.GetName()] = struct{}{}
 	}
 
 	return existing
@@ -309,20 +356,22 @@ func sanitizeDSN(dsn string) string {
 	}
 
 	rest := dsn[schemeEnd+3:]
+
 	atIdx := strings.LastIndex(rest, "@")
 	if atIdx == -1 {
 		return dsn // no userinfo
 	}
 
 	userinfo := rest[:atIdx]
-	colonIdx := strings.Index(userinfo, ":")
-	if colonIdx == -1 {
+
+	before, after, ok := strings.Cut(userinfo, ":")
+	if !ok {
 		// User only, no password.
 		return dsn[:schemeEnd+3] + url.PathEscape(userinfo) + rest[atIdx:]
 	}
 
-	user := userinfo[:colonIdx]
-	pass := userinfo[colonIdx+1:]
+	user := before
+	pass := after
 	encoded := url.PathEscape(user) + ":" + url.PathEscape(pass)
 
 	return dsn[:schemeEnd+3] + encoded + rest[atIdx:]
@@ -340,8 +389,10 @@ func replaceDSNDatabase(dsn, database string) string {
 					parts[i] = "dbname=" + database
 				}
 			}
+
 			return strings.Join(parts, " ")
 		}
+
 		return dsn + " dbname=" + database
 	}
 
@@ -349,6 +400,7 @@ func replaceDSNDatabase(dsn, database string) string {
 	rest := dsn[schemeEnd+3:]
 
 	atIdx := strings.LastIndex(rest, "@")
+
 	var hostAndPath string
 	if atIdx >= 0 {
 		hostAndPath = rest[atIdx+1:]
@@ -362,6 +414,7 @@ func replaceDSNDatabase(dsn, database string) string {
 	}
 
 	queryIdx := strings.Index(hostAndPath[slashIdx:], "?")
+
 	var query string
 	if queryIdx >= 0 {
 		query = hostAndPath[slashIdx+queryIdx:]
@@ -371,6 +424,7 @@ func replaceDSNDatabase(dsn, database string) string {
 	if atIdx >= 0 {
 		prefixLen += atIdx + 1
 	}
+
 	prefixLen += slashIdx
 
 	return dsn[:prefixLen] + "/" + database + query
@@ -380,6 +434,7 @@ func replaceDSNDatabase(dsn, database string) string {
 func bearerInterceptor(token string) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
 }
@@ -388,6 +443,7 @@ func bearerInterceptor(token string) grpc.UnaryClientInterceptor {
 func bearerStreamInterceptor(token string) grpc.StreamClientInterceptor {
 	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+
 		return streamer(ctx, desc, cc, method, opts...)
 	}
 }

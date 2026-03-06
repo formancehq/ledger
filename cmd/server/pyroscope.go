@@ -6,11 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/collectionutils"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/pyroscope"
 	gopyscope "github.com/grafana/pyroscope-go"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
+
+	"github.com/formancehq/go-libs/v3/collectionutils"
+
+	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/pyroscope"
 )
 
 const (
@@ -106,20 +108,24 @@ func pyroscopeConfigFromFlags(cmd *cobra.Command) pyroscope.Config {
 // parsePyroscopeTags parses a slice of key=value pairs into a map.
 func parsePyroscopeTags(tagsSlice []string) map[string]string {
 	tags := make(map[string]string)
+
 	for _, pair := range tagsSlice {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
 			continue
 		}
+
 		parts := strings.SplitN(pair, "=", 2)
 		if len(parts) == 2 {
 			key := strings.TrimSpace(parts[0])
+
 			value := strings.TrimSpace(parts[1])
 			if key != "" {
 				tags[key] = value
 			}
 		}
 	}
+
 	return tags
 }
 

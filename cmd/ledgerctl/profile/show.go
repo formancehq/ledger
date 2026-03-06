@@ -1,11 +1,13 @@
 package profile
 
 import (
+	"errors"
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 )
 
 // NewShowCommand returns the "profile show" command.
@@ -34,12 +36,13 @@ func runShow(cmd *cobra.Command, args []string) error {
 	}
 
 	if name == "" {
-		return fmt.Errorf("no profile specified and no active profile set")
+		return errors.New("no profile specified and no active profile set")
 	}
 
 	if cfg.Profiles == nil {
 		return fmt.Errorf("profile %q not found", name)
 	}
+
 	p, ok := cfg.Profiles[name]
 	if !ok {
 		return fmt.Errorf("profile %q not found", name)
@@ -63,6 +66,7 @@ func runShow(cmd *cobra.Command, args []string) error {
 	}
 
 	kr := cmdutil.GetKeyring(cmd)
+
 	authStatus := pterm.Yellow("no token stored")
 	if cmdutil.HasStoredToken(kr, p.Server) {
 		authStatus = pterm.Green("token stored in keychain")

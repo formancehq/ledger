@@ -6,15 +6,18 @@ import (
 	"os"
 	"path/filepath"
 
+	ggrpc "google.golang.org/grpc"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	ggrpc "google.golang.org/grpc"
 )
 
 // SnapshotServiceServerImpl implements the SnapshotService gRPC server.
 type SnapshotServiceServerImpl struct {
 	snapshotpb.UnimplementedSnapshotServiceServer
+
 	logger logging.Logger
 	store  *dal.Store
 }
@@ -30,28 +33,31 @@ func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store) snapshotpb.Sn
 // DescribeSnapshot returns metadata about a snapshot.
 func (s *SnapshotServiceServerImpl) DescribeSnapshot(ctx context.Context, req *snapshotpb.DescribeSnapshotRequest) (*snapshotpb.DescribeSnapshotResponse, error) {
 	s.logger.WithFields(map[string]any{
-		"snapshot_id": req.SnapshotId,
-		"node_id":     req.NodeId,
+		"snapshot_id": req.GetSnapshotId(),
+		"node_id":     req.GetNodeId(),
 	}).Debugf("DescribeSnapshot request received")
 
 	// Get checkpoint path
-	checkpointPath, err := s.store.GetCheckpointPath(req.SnapshotId)
+	checkpointPath, err := s.store.GetCheckpointPath(req.GetSnapshotId())
 	if err != nil {
 		return &snapshotpb.DescribeSnapshotResponse{
-			SnapshotId: req.SnapshotId,
+			SnapshotId: req.GetSnapshotId(),
 			Status:     snapshotpb.DescribeSnapshotResponse_NOT_FOUND,
 		}, nil
 	}
 
 	// Calculate total size of the checkpoint directory
 	var totalSize uint64
+
 	err = filepath.Walk(checkpointPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+
 		if !info.IsDir() {
 			totalSize += uint64(info.Size())
 		}
+
 		return nil
 	})
 	if err != nil {
@@ -59,7 +65,7 @@ func (s *SnapshotServiceServerImpl) DescribeSnapshot(ctx context.Context, req *s
 	}
 
 	return &snapshotpb.DescribeSnapshotResponse{
-		SnapshotId:  req.SnapshotId,
+		SnapshotId:  req.GetSnapshotId(),
 		ContentSize: totalSize,
 		Format:      snapshotpb.DescribeSnapshotResponse_FORMAT_TAR,
 		Compression: snapshotpb.DescribeSnapshotResponse_COMP_NONE,
@@ -70,21 +76,21 @@ func (s *SnapshotServiceServerImpl) DescribeSnapshot(ctx context.Context, req *s
 // FetchSnapshot streams the snapshot as a tar archive.
 func (s *SnapshotServiceServerImpl) FetchSnapshot(req *snapshotpb.FetchSnapshotRequest, stream ggrpc.ServerStreamingServer[snapshotpb.FetchSnapshotResponse]) error {
 	s.logger.WithFields(map[string]any{
-		"snapshot_id": req.SnapshotId,
-		"offset":      req.Offset,
-		"node_id":     req.NodeId,
+		"snapshot_id": req.GetSnapshotId(),
+		"offset":      req.GetOffset(),
+		"node_id":     req.GetNodeId(),
 	}).Debugf("FetchSnapshot request received")
 
 	// Get checkpoint path
-	checkpointPath, err := s.store.GetCheckpointPath(req.SnapshotId)
+	checkpointPath, err := s.store.GetCheckpointPath(req.GetSnapshotId())
 	if err != nil {
 		return fmt.Errorf("checkpoint not found: %w", err)
 	}
 
-	err = StreamDirAsTar(checkpointPath, req.Offset, func(chunk TarStreamChunk) error {
+	err = StreamDirAsTar(checkpointPath, req.GetOffset(), func(chunk TarStreamChunk) error {
 		return stream.Send(&snapshotpb.FetchSnapshotResponse{
 			Header:        chunk.IsFirst,
-			SnapshotId:    req.SnapshotId,
+			SnapshotId:    req.GetSnapshotId(),
 			ChunkOffset:   chunk.ChunkOffset,
 			Data:          chunk.Data,
 			Eof:           chunk.IsEOF,
@@ -97,7 +103,7 @@ func (s *SnapshotServiceServerImpl) FetchSnapshot(req *snapshotpb.FetchSnapshotR
 	}
 
 	s.logger.WithFields(map[string]any{
-		"snapshot_id": req.SnapshotId,
+		"snapshot_id": req.GetSnapshotId(),
 	}).Infof("FetchSnapshot completed")
 
 	return nil

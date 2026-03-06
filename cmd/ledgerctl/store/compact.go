@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 )
 
 // NewCompactCommand creates the store compact command.
@@ -32,6 +33,7 @@ func runCompact(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -49,20 +51,22 @@ func runCompact(cmd *cobra.Command, _ []string) error {
 		if spinner != nil {
 			_ = spinner.Stop()
 		}
+
 		return cmdutil.FormatGRPCError("compaction failed", err)
 	}
 
 	if spinner != nil {
-		spinner.Success(fmt.Sprintf("Compaction complete (%dms)", resp.DurationMs))
+		spinner.Success(fmt.Sprintf("Compaction complete (%dms)", resp.GetDurationMs()))
 	}
 
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(struct {
 			DurationMs int64 `json:"durationMs"`
 		}{
-			DurationMs: resp.DurationMs,
+			DurationMs: resp.GetDurationMs(),
 		})
 	}
 

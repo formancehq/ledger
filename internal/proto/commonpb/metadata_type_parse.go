@@ -54,6 +54,7 @@ func ParseTargetType(s string) (TargetType, error) {
 	if !ok {
 		return 0, fmt.Errorf("invalid target type %q: must be one of %s", s, strings.Join(TargetTypeOptions(), ", "))
 	}
+
 	return t, nil
 }
 
@@ -63,6 +64,7 @@ func ParseMetadataType(s string) (MetadataType, error) {
 	if !ok {
 		return 0, fmt.Errorf("invalid metadata type %q: must be one of %s", s, strings.Join(MetadataTypeOptions(), ", "))
 	}
+
 	return t, nil
 }
 
@@ -71,6 +73,7 @@ func MetadataTypeToString(t MetadataType) string {
 	if name, ok := metadataTypeNames[t]; ok {
 		return name
 	}
+
 	return t.String()
 }
 
@@ -79,6 +82,7 @@ func TargetTypeToString(t TargetType) string {
 	if name, ok := targetTypeNames[t]; ok {
 		return name
 	}
+
 	return t.String()
 }
 
@@ -87,6 +91,7 @@ func ConversionStatusToString(s MetadataConversionStatus) string {
 	if name, ok := conversionStatusNames[s]; ok {
 		return name
 	}
+
 	return s.String()
 }
 

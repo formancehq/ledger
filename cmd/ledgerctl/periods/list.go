@@ -2,17 +2,20 @@ package periods
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewListCommand creates the periods list command.
@@ -34,6 +37,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -45,14 +49,17 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	var periods []*commonpb.Period
+
 	for {
 		period, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			return fmt.Errorf("receiving period: %w", err)
 		}
+
 		periods = append(periods, period)
 	}
 
@@ -60,11 +67,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(periods)
 	}
 
 	if len(periods) == 0 {
 		pterm.Info.Println("No periods found.")
+
 		return nil
 	}
 
@@ -80,19 +89,21 @@ func runList(cmd *cobra.Command, _ []string) error {
 			closeSeqStr = "-"
 		)
 
-		if p.Start != nil {
-			startStr = time.UnixMicro(int64(p.Start.Data)).Format(time.RFC3339)
+		if p.GetStart() != nil {
+			startStr = time.UnixMicro(int64(p.GetStart().GetData())).Format(time.RFC3339)
 		}
-		if p.End != nil {
-			endStr = time.UnixMicro(int64(p.End.Data)).Format(time.RFC3339)
+
+		if p.GetEnd() != nil {
+			endStr = time.UnixMicro(int64(p.GetEnd().GetData())).Format(time.RFC3339)
 		}
-		if p.CloseSequence > 0 {
-			closeSeqStr = fmt.Sprintf("%d", p.CloseSequence)
+
+		if p.GetCloseSequence() > 0 {
+			closeSeqStr = strconv.FormatUint(p.GetCloseSequence(), 10)
 		}
 
 		tableData = append(tableData, []string{
-			fmt.Sprintf("%d", p.Id),
-			formatPeriodStatus(p.Status),
+			strconv.FormatUint(p.GetId(), 10),
+			formatPeriodStatus(p.GetStatus()),
 			startStr,
 			endStr,
 			closeSeqStr,

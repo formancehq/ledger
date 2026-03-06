@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,7 +14,8 @@ import (
 // GenerateKeyPair generates an Ed25519 keypair and writes the seed and public key
 // to the specified output directory. Returns the key ID (SHA256 fingerprint prefix).
 func GenerateKeyPair(outputDir string) (string, error) {
-	if err := os.MkdirAll(outputDir, 0700); err != nil {
+	err := os.MkdirAll(outputDir, 0700)
+	if err != nil {
 		return "", fmt.Errorf("creating output directory: %w", err)
 	}
 
@@ -23,15 +25,22 @@ func GenerateKeyPair(outputDir string) (string, error) {
 	}
 
 	privKey := ed25519.NewKeyFromSeed(seed)
-	pubKey := privKey.Public().(ed25519.PublicKey)
+	pubKey, ok := privKey.Public().(ed25519.PublicKey)
+	if !ok {
+		return "", errors.New("unexpected public key type")
+	}
 
 	seedPath := filepath.Join(outputDir, "seed.hex")
-	if err := os.WriteFile(seedPath, []byte(hex.EncodeToString(seed)+"\n"), 0600); err != nil {
+
+	err = os.WriteFile(seedPath, []byte(hex.EncodeToString(seed)+"\n"), 0600)
+	if err != nil {
 		return "", fmt.Errorf("writing seed file: %w", err)
 	}
 
 	pubKeyPath := filepath.Join(outputDir, "pubkey.hex")
-	if err := os.WriteFile(pubKeyPath, []byte(hex.EncodeToString(pubKey)+"\n"), 0644); err != nil {
+
+	err = os.WriteFile(pubKeyPath, []byte(hex.EncodeToString(pubKey)+"\n"), 0644)
+	if err != nil {
 		return "", fmt.Errorf("writing public key file: %w", err)
 	}
 

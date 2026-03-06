@@ -2,15 +2,17 @@ package ctrl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/tarutil"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
 )
 
 // grpcSnapshotFetcher implements raft.SnapshotFetcher using gRPC.
@@ -23,6 +25,7 @@ func isUnavailableError(err error) bool {
 	if s, ok := status.FromError(err); ok {
 		return s.Code() == codes.Unavailable
 	}
+
 	return false
 }
 
@@ -32,8 +35,8 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID uint
 		desc, err := f.client.DescribeSnapshot(ctx, &snapshotpb.DescribeSnapshotRequest{
 			SnapshotId: snapshotID,
 		})
-		if err == nil && desc.Status == snapshotpb.DescribeSnapshotResponse_READY {
-			progress.SetTotal(desc.ContentSize)
+		if err == nil && desc.GetStatus() == snapshotpb.DescribeSnapshotResponse_READY {
+			progress.SetTotal(desc.GetContentSize())
 		}
 	}
 
@@ -45,6 +48,7 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID uint
 		if isUnavailableError(err) {
 			return 0, "", fmt.Errorf("starting snapshot fetch: %w", state.ErrNotAvailable)
 		}
+
 		return 0, "", fmt.Errorf("starting snapshot fetch: %w", err)
 	}
 
@@ -59,6 +63,7 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID uint
 		defer func() {
 			_ = pr.Close()
 		}()
+
 		extractErrCh <- tarutil.ExtractTar(pr, targetDir)
 	}()
 
@@ -70,29 +75,33 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, snapshotID uint
 
 	for {
 		resp, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			_ = pw.CloseWithError(err)
 			if isUnavailableError(err) {
 				return 0, "", fmt.Errorf("receiving snapshot chunk: %w", state.ErrNotAvailable)
 			}
+
 			return 0, "", fmt.Errorf("receiving snapshot chunk: %w", err)
 		}
 
-		if len(resp.Data) > 0 {
-			if _, err := pw.Write(resp.Data); err != nil {
+		if len(resp.GetData()) > 0 {
+			if _, err := pw.Write(resp.GetData()); err != nil {
 				return 0, "", fmt.Errorf("writing to tar pipe: %w", err)
 			}
+
 			if progress != nil {
-				progress.AddReceived(uint64(len(resp.Data)))
+				progress.AddReceived(uint64(len(resp.GetData())))
 			}
 		}
 
-		if resp.Eof {
-			totalSize = resp.ContentSize
-			contentHash = resp.ContentSha256
+		if resp.GetEof() {
+			totalSize = resp.GetContentSize()
+			contentHash = resp.GetContentSha256()
+
 			break
 		}
 	}
@@ -117,6 +126,7 @@ type grpcSnapshotFetcherProvider struct {
 
 func (p *grpcSnapshotFetcherProvider) GetForPeer(id uint64) (state.SnapshotFetcher, error) {
 	conn := p.transport.GetPeerConnection(id)
+
 	return &grpcSnapshotFetcher{
 		client: snapshotpb.NewSnapshotServiceClient(conn),
 	}, nil

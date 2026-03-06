@@ -1,6 +1,7 @@
 package dal
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
@@ -35,9 +36,12 @@ func (b *Batch) MarshalProto(msg proto.Message) ([]byte, error) {
 		} else {
 			b.protoBuffer = make([]byte, size)
 		}
+
 		n, err := m.MarshalToVT(b.protoBuffer)
+
 		return b.protoBuffer[:n], err
 	}
+
 	return b.marshalOptions.MarshalAppend(b.protoBuffer, msg)
 }
 
@@ -60,21 +64,24 @@ func (b *Batch) Cancel() error {
 	if b.batch != nil {
 		return b.batch.Close()
 	}
+
 	return nil
 }
 
 // Commit commits all buffered operations atomically with NoSync.
 func (b *Batch) Commit() error {
 	if b.committed {
-		return fmt.Errorf("batch already committed")
+		return errors.New("batch already committed")
 	}
 
 	// Commit with NoSync for performance
-	if err := b.batch.Commit(pebble.NoSync); err != nil {
+	err := b.batch.Commit(pebble.NoSync)
+	if err != nil {
 		return fmt.Errorf("committing batch: %w", err)
 	}
 
 	b.committed = true
+
 	return nil
 }
 
@@ -87,12 +94,14 @@ func (b *Batch) Set(key, value []byte, options *pebble.WriteOptions) error {
 // Returns an error if the batch is already committed.
 func (b *Batch) SetProto(key []byte, msg proto.Message) error {
 	if b.committed {
-		return fmt.Errorf("batch already committed")
+		return errors.New("batch already committed")
 	}
+
 	data, err := b.MarshalProto(msg)
 	if err != nil {
 		return err
 	}
+
 	return b.batch.Set(key, data, pebble.NoSync)
 }
 
@@ -100,8 +109,9 @@ func (b *Batch) SetProto(key []byte, msg proto.Message) error {
 // Returns an error if the batch is already committed.
 func (b *Batch) SetBytes(key, value []byte) error {
 	if b.committed {
-		return fmt.Errorf("batch already committed")
+		return errors.New("batch already committed")
 	}
+
 	return b.batch.Set(key, value, pebble.NoSync)
 }
 
@@ -109,8 +119,9 @@ func (b *Batch) SetBytes(key, value []byte) error {
 // Returns an error if the batch is already committed.
 func (b *Batch) DeleteKey(key []byte) error {
 	if b.committed {
-		return fmt.Errorf("batch already committed")
+		return errors.New("batch already committed")
 	}
+
 	return b.batch.Delete(key, pebble.NoSync)
 }
 
@@ -123,8 +134,9 @@ func (b *Batch) DeleteRange(start, end []byte, options *pebble.WriteOptions) err
 // Returns an error if the batch is already committed.
 func (b *Batch) DeleteRangeNoSync(start, end []byte) error {
 	if b.committed {
-		return fmt.Errorf("batch already committed")
+		return errors.New("batch already committed")
 	}
+
 	return b.batch.DeleteRange(start, end, pebble.NoSync)
 }
 

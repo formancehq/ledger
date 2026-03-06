@@ -6,11 +6,13 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -96,6 +98,7 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 	// cold storage I/O (Exists, Archive) is interrupted during shutdown.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
 	go func() {
 		select {
 		case <-stop:
@@ -116,6 +119,7 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 	if err != nil {
 		return fmt.Errorf("checking archive existence: %w", err)
 	}
+
 	if exists {
 		if a.isLeader() {
 			// Leader crash-recovery: we uploaded before crashing, propose confirm.
@@ -125,6 +129,7 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 			// Follower: the leader pushed the archive, nothing left to do.
 			a.logger.WithFields(logFields).Infof("Archive already exists in cold storage, done")
 		}
+
 		return nil
 	}
 
@@ -140,8 +145,10 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 	pr, pw := io.Pipe()
 
 	streamErrCh := make(chan error, 1)
+
 	go func() {
 		err := a.streamArchive(req, pw)
+
 		_ = pw.CloseWithError(err) // signals EOF (or error) to the reader side
 		streamErrCh <- err
 	}()
@@ -156,11 +163,13 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 	streamErr := <-streamErrCh
 
 	if streamErr != nil && uploadErr != nil {
-		return fmt.Errorf("streaming archive: %w (upload also failed: %v)", streamErr, uploadErr)
+		return fmt.Errorf("streaming archive: %w (upload also failed: %w)", streamErr, uploadErr)
 	}
+
 	if streamErr != nil {
 		return fmt.Errorf("streaming archive: %w", streamErr)
 	}
+
 	if uploadErr != nil {
 		return fmt.Errorf("uploading archive: %w", uploadErr)
 	}
@@ -170,8 +179,9 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 	if err != nil {
 		return fmt.Errorf("verifying archive: %w", err)
 	}
+
 	if !exists {
-		return fmt.Errorf("archive verification failed: archive not found after upload")
+		return errors.New("archive verification failed: archive not found after upload")
 	}
 
 	a.logger.WithFields(logFields).Infof("Period archival complete, proposing ConfirmArchivePeriod")
@@ -211,10 +221,12 @@ func (a *Archiver) streamArchive(req ArchiveRequest, w io.Writer) error {
 		CloseSequence: req.CloseSequence,
 		ArchivedAt:    time.Now().UTC().Format(time.RFC3339),
 	}
+
 	metaJSON, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshaling period metadata: %w", err)
 	}
+
 	if err := addTarEntry(tarWriter, "metadata.json", metaJSON); err != nil {
 		return err
 	}
@@ -222,8 +234,10 @@ func (a *Archiver) streamArchive(req ArchiveRequest, w io.Writer) error {
 	// 2. Dump all cold-storable KV pairs as raw binary (two-pass streaming)
 	// Pass 1: compute data.bin size so we can write the tar header.
 	var dataSize int64
+
 	if err := a.dataStore.IterateColdKVPairs(req.StartSequence, req.CloseSequence, func(key, value []byte) error {
 		dataSize += 4 + int64(len(key)) + 4 + int64(len(value))
+
 		return nil
 	}); err != nil {
 		return fmt.Errorf("computing data size: %w", err)
@@ -231,32 +245,41 @@ func (a *Archiver) streamArchive(req ArchiveRequest, w io.Writer) error {
 
 	// Pass 2: stream KV pairs directly into the tar entry.
 	if dataSize > 0 {
-		if err := tarWriter.WriteHeader(&tar.Header{
+		err := tarWriter.WriteHeader(&tar.Header{
 			Name: "data.bin",
 			Mode: 0o644,
 			Size: dataSize,
-		}); err != nil {
+		})
+		if err != nil {
 			return fmt.Errorf("writing tar header for data.bin: %w", err)
 		}
 
 		var lenBuf [4]byte
-		if err := a.dataStore.IterateColdKVPairs(req.StartSequence, req.CloseSequence, func(key, value []byte) error {
+
+		err = a.dataStore.IterateColdKVPairs(req.StartSequence, req.CloseSequence, func(key, value []byte) error {
 			binary.BigEndian.PutUint32(lenBuf[:], uint32(len(key)))
+
 			if _, err := tarWriter.Write(lenBuf[:]); err != nil {
 				return err
 			}
+
 			if _, err := tarWriter.Write(key); err != nil {
 				return err
 			}
+
 			binary.BigEndian.PutUint32(lenBuf[:], uint32(len(value)))
+
 			if _, err := tarWriter.Write(lenBuf[:]); err != nil {
 				return err
 			}
+
 			if _, err := tarWriter.Write(value); err != nil {
 				return err
 			}
+
 			return nil
-		}); err != nil {
+		})
+		if err != nil {
 			return fmt.Errorf("streaming cold KV pairs: %w", err)
 		}
 	}
@@ -264,6 +287,7 @@ func (a *Archiver) streamArchive(req ArchiveRequest, w io.Writer) error {
 	if err := tarWriter.Close(); err != nil {
 		return fmt.Errorf("closing tar writer: %w", err)
 	}
+
 	if err := gzWriter.Close(); err != nil {
 		return fmt.Errorf("closing gzip writer: %w", err)
 	}
@@ -278,11 +302,15 @@ func addTarEntry(tw *tar.Writer, name string, data []byte) error {
 		Mode: 0o644,
 		Size: int64(len(data)),
 	}
-	if err := tw.WriteHeader(header); err != nil {
+
+	err := tw.WriteHeader(header)
+	if err != nil {
 		return fmt.Errorf("writing tar header for %s: %w", name, err)
 	}
+
 	if _, err := tw.Write(data); err != nil {
 		return fmt.Errorf("writing tar data for %s: %w", name, err)
 	}
+
 	return nil
 }

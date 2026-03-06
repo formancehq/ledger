@@ -6,7 +6,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// ComputeIdempotencyHash computes a hash from inputs for idempotency checking
+// ComputeIdempotencyHash computes a hash from inputs for idempotency checking.
 func ComputeIdempotencyHash(inputs proto.Message) []byte {
 	data, err := proto.Marshal(inputs)
 	if err != nil {

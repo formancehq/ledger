@@ -5,21 +5,23 @@ package events
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
-
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
 )
 
 func init() {
 	registerSinkFactory("clickhouse", func(sc *commonpb.SinkConfig, _ Format) (Sink, error) {
 		s := sc.GetType().(*commonpb.SinkConfig_Clickhouse)
+
 		return NewClickHouseSink(context.Background(), ClickHouseSinkConfig{
-			DSN:   s.Clickhouse.Dsn,
-			Table: s.Clickhouse.Table,
+			DSN:   s.Clickhouse.GetDsn(),
+			Table: s.Clickhouse.GetTable(),
 		})
 	})
 }
@@ -64,9 +66,8 @@ func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (*ClickHou
 	if opts.Settings == nil {
 		opts.Settings = make(clickhouse.Settings)
 	}
-	for k, v := range clickhouseRequiredSettings {
-		opts.Settings[k] = v
-	}
+
+	maps.Copy(opts.Settings, clickhouseRequiredSettings)
 
 	conn, err := clickhouse.Open(opts)
 	if err != nil {
@@ -93,7 +94,7 @@ func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (*ClickHou
 }
 
 func (s *ClickHouseSink) Publish(ctx context.Context, events []*eventspb.Event) error {
-	batch, err := s.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s", s.table))
+	batch, err := s.conn.PrepareBatch(ctx, "INSERT INTO "+s.table)
 	if err != nil {
 		return fmt.Errorf("preparing ClickHouse batch: %w", err)
 	}
@@ -101,20 +102,20 @@ func (s *ClickHouseSink) Publish(ctx context.Context, events []*eventspb.Event) 
 	for _, event := range events {
 		data, err := eventToClickHouseJSON(event)
 		if err != nil {
-			return fmt.Errorf("serializing event seq=%d: %w", event.LogSequence, err)
+			return fmt.Errorf("serializing event seq=%d: %w", event.GetLogSequence(), err)
 		}
 
-		eventType := strings.ToLower(event.Type.String())
-		eventDate := event.Date.AsTime().Time
+		eventType := strings.ToLower(event.GetType().String())
+		eventDate := event.GetDate().AsTime().Time
 
 		if err := batch.Append(
-			event.LogSequence,
+			event.GetLogSequence(),
 			eventType,
-			event.Ledger,
+			event.GetLedger(),
 			eventDate,
 			string(data),
 		); err != nil {
-			return fmt.Errorf("appending event seq=%d to batch: %w", event.LogSequence, err)
+			return fmt.Errorf("appending event seq=%d to batch: %w", event.GetLogSequence(), err)
 		}
 	}
 

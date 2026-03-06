@@ -7,9 +7,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/eventspb"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNewHTTPSink_EmptyEndpoint(t *testing.T) {
@@ -35,17 +36,23 @@ func TestNewHTTPSink_Success(t *testing.T) {
 func TestHTTPSink_Publish_Success(t *testing.T) {
 	t.Parallel()
 
-	var receivedBody []byte
-	var receivedHeaders http.Header
+	var (
+		receivedBody    []byte
+		receivedHeaders http.Header
+	)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedHeaders = r.Header
+
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
+
 			return
 		}
+
 		receivedBody = body
+
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -80,6 +87,7 @@ func TestHTTPSink_Publish_WithSignature(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		signature = r.Header.Get("X-Webhook-Signature")
+
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -112,6 +120,7 @@ func TestHTTPSink_Publish_ProtoFormat(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		contentType = r.Header.Get("Content-Type")
+
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()

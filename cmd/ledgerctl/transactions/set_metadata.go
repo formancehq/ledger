@@ -6,11 +6,12 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewSetMetadataCommand creates the transactions set-metadata command.
@@ -47,10 +48,12 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	// Get ledger name (from flag or interactive selection)
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -62,6 +65,7 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 		txID, err = strconv.ParseUint(args[0], 10, 64)
 		if err != nil {
 			pterm.Error.Printfln("Invalid transaction ID: %v", err)
+
 			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	} else {
@@ -71,9 +75,11 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read input: %w", err)
 		}
+
 		txID, err = strconv.ParseUint(input, 10, 64)
 		if err != nil {
 			pterm.Error.Printfln("Invalid transaction ID: %v", err)
+
 			return cmdutil.Displayed(fmt.Errorf("invalid transaction ID: %w", err))
 		}
 	}
@@ -93,26 +99,32 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return fmt.Errorf("failed to read input: %w", err)
 			}
+
 			if input == "" {
 				break
 			}
+
 			metadataFlags = append(metadataFlags, input)
 		}
 	}
 
 	if len(metadataFlags) == 0 {
 		pterm.Warning.Println("No metadata provided")
+
 		return nil
 	}
 
 	// Parse metadata
 	metadata := make(map[string]string)
+
 	for _, m := range metadataFlags {
 		key, value, err := cmdutil.ParseKeyValue(m)
 		if err != nil {
 			pterm.Error.Printfln("Invalid metadata format: %s", m)
+
 			return cmdutil.Displayed(fmt.Errorf("invalid metadata format %q: %w", m, err))
 		}
+
 		metadata[key] = value
 	}
 
@@ -144,14 +156,16 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 		},
 	}
 
-	if err := cmdutil.SignRequests(cmd, req.Requests); err != nil {
+	if err := cmdutil.SignRequests(cmd, req.GetRequests()); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, req)
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to set metadata", err)
 	}
 
@@ -165,6 +179,7 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 		}
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(result)
 	}
 

@@ -4,9 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 func TestStoreInterceptor_Delegate(t *testing.T) {
@@ -43,12 +44,15 @@ func TestStoreInterceptor_NewBatch_Intercepted(t *testing.T) {
 	interceptor := NewStoreInterceptor(s)
 
 	var interceptCalled bool
+
 	interceptor.SetNewBatchInterceptor(func(delegate *Store) *Batch {
 		interceptCalled = true
+
 		return delegate.NewBatch()
 	})
 
 	batch := interceptor.NewBatch()
+
 	require.True(t, interceptCalled)
 	require.NotNil(t, batch)
 	_ = batch.Cancel()
@@ -72,6 +76,7 @@ func TestStoreInterceptor_CreateSnapshot_Intercepted(t *testing.T) {
 	interceptor := NewStoreInterceptor(s)
 
 	errInjected := errors.New("snapshot blocked")
+
 	interceptor.SetCreateSnapshotInterceptor(func(delegate *Store) (uint64, error) {
 		return 0, errInjected
 	})
@@ -110,8 +115,10 @@ func TestStoreInterceptor_Close_Intercepted(t *testing.T) {
 	interceptor := NewStoreInterceptor(s)
 
 	var closeCalled bool
+
 	interceptor.SetCloseInterceptor(func(delegate *Store) error {
 		closeCalled = true
+
 		return delegate.Close()
 	})
 
@@ -135,14 +142,17 @@ func TestStoreInterceptor_ClearInterceptors(t *testing.T) {
 	// Set interceptors
 	interceptor.SetNewBatchInterceptor(func(delegate *Store) *Batch {
 		t.Fatal("should not be called after clear")
+
 		return nil
 	})
 	interceptor.SetCreateSnapshotInterceptor(func(delegate *Store) (uint64, error) {
 		t.Fatal("should not be called after clear")
+
 		return 0, nil
 	})
 	interceptor.SetCloseInterceptor(func(delegate *Store) error {
 		t.Fatal("should not be called after clear")
+
 		return nil
 	})
 

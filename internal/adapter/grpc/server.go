@@ -6,19 +6,13 @@ import (
 	"fmt"
 	"net"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -27,6 +21,15 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 )
 
 // vtFallbackCodec is a gRPC codec that uses vtprotobuf when available
@@ -41,9 +44,11 @@ func (vtFallbackCodec) Marshal(v any) ([]byte, error) {
 	if m, ok := v.(interface{ MarshalVT() ([]byte, error) }); ok {
 		return m.MarshalVT()
 	}
+
 	if m, ok := v.(proto.Message); ok {
 		return proto.Marshal(m)
 	}
+
 	return nil, fmt.Errorf("failed to marshal: %T is not a proto.Message", v)
 }
 
@@ -51,9 +56,11 @@ func (vtFallbackCodec) Unmarshal(data []byte, v any) error {
 	if m, ok := v.(interface{ UnmarshalVT([]byte) error }); ok {
 		return m.UnmarshalVT(data)
 	}
+
 	if m, ok := v.(proto.Message); ok {
 		return proto.Unmarshal(data, m)
 	}
+
 	return fmt.Errorf("failed to unmarshal: %T is not a proto.Message", v)
 }
 
@@ -61,7 +68,7 @@ func init() {
 	encoding.RegisterCodec(vtFallbackCodec{})
 }
 
-// baseServer contains common server functionality
+// baseServer contains common server functionality.
 type baseServer struct {
 	server   *ggrpc.Server
 	listener net.Listener
@@ -79,6 +86,7 @@ func (s *baseServer) Start(listening chan struct{}) error {
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
+
 	s.listener = lis
 
 	s.logger.
@@ -90,28 +98,32 @@ func (s *baseServer) Start(listening chan struct{}) error {
 	if err := s.server.Serve(lis); err != nil {
 		return fmt.Errorf("%s server failed: %w", s.name, err)
 	}
+
 	return nil
 }
 
 func (s *baseServer) Stop() error {
 	s.logger.Infof("Stopping %s server", s.name)
+
 	if s.server != nil {
 		s.server.Stop()
 		s.server = nil
 	}
+
 	if s.listener != nil {
 		_ = s.listener.Close()
 		s.listener = nil
 	}
+
 	return nil
 }
 
-// RaftServer is the gRPC server for Raft transport (internal inter-node communication)
+// RaftServer is the gRPC server for Raft transport (internal inter-node communication).
 type RaftServer struct {
 	baseServer
 }
 
-// ServiceServer is the gRPC server for service API (external client-facing)
+// ServiceServer is the gRPC server for service API (external client-facing).
 type ServiceServer struct {
 	baseServer
 }
@@ -122,12 +134,15 @@ type ServiceServer struct {
 // gRPC server stops.
 func (s *ServiceServer) Stop() error {
 	s.logger.Infof("Stopping %s server", s.name)
+
 	if s.server != nil {
 		done := make(chan struct{})
+
 		go func() {
 			s.server.GracefulStop()
 			close(done)
 		}()
+
 		select {
 		case <-done:
 		case <-time.After(2 * time.Second):
@@ -135,12 +150,15 @@ func (s *ServiceServer) Stop() error {
 			s.server.Stop()
 			<-done // Wait for the GracefulStop goroutine to exit
 		}
+
 		s.server = nil
 	}
+
 	if s.listener != nil {
 		_ = s.listener.Close()
 		s.listener = nil
 	}
+
 	return nil
 }
 
@@ -156,6 +174,7 @@ func handlePanic(ctx context.Context, logger logging.Logger, r any, stack []byte
 	)
 	grpcErr := status.Errorf(codes.Internal, "panic: %v\n%s", r, stack)
 	span.RecordError(grpcErr)
+
 	return grpcErr
 }
 
@@ -167,6 +186,7 @@ func recoveryInterceptor(logger logging.Logger) ggrpc.UnaryServerInterceptor {
 				err = handlePanic(ctx, logger, r, debug.Stack())
 			}
 		}()
+
 		return handler(ctx, req)
 	}
 }
@@ -179,6 +199,7 @@ func recoveryStreamInterceptor(logger logging.Logger) ggrpc.StreamServerIntercep
 				err = handlePanic(ss.Context(), logger, r, debug.Stack())
 			}
 		}()
+
 		return handler(srv, ss)
 	}
 }
@@ -195,17 +216,19 @@ func loggingInterceptor(logger logging.Logger, slowThreshold time.Duration) ggrp
 			"duration": duration.String(),
 			"code":     status.Code(err).String(),
 		}
-		if err != nil {
+		switch {
+		case err != nil:
 			fields["error"] = err.Error()
 			logger.WithFields(fields).Errorf("gRPC call failed")
-		} else if duration > slowThreshold {
+		case duration > slowThreshold:
 			fields["slow"] = true
 			logger.WithFields(fields).Infof("gRPC call slow")
-		} else if strings.HasPrefix(info.FullMethod, "/grpc.health.v1.Health/") {
+		case strings.HasPrefix(info.FullMethod, "/grpc.health.v1.Health/"):
 			logger.WithFields(fields).Debugf("gRPC call")
-		} else {
+		default:
 			logger.WithFields(fields).Infof("gRPC call")
 		}
+
 		return resp, err
 	}
 }
@@ -222,42 +245,46 @@ func loggingStreamInterceptor(logger logging.Logger, slowThreshold time.Duration
 			"duration": duration.String(),
 			"code":     status.Code(err).String(),
 		}
-		if err != nil {
+		switch {
+		case err != nil:
 			fields["error"] = err.Error()
 			logger.WithFields(fields).Errorf("gRPC stream failed")
-		} else if duration > slowThreshold {
+		case duration > slowThreshold:
 			fields["slow"] = true
 			logger.WithFields(fields).Infof("gRPC stream slow")
-		} else {
+		default:
 			logger.WithFields(fields).Infof("gRPC stream")
 		}
+
 		return err
 	}
 }
 
-// errorConversionInterceptor converts known errors to proper gRPC status codes
+// errorConversionInterceptor converts known errors to proper gRPC status codes.
 func errorConversionInterceptor() ggrpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
 		resp, err := handler(ctx, req)
 		if err != nil {
 			err = convertToGRPCError(err)
 		}
+
 		return resp, err
 	}
 }
 
-// errorConversionStreamInterceptor converts known errors to proper gRPC status codes for streaming RPCs
+// errorConversionStreamInterceptor converts known errors to proper gRPC status codes for streaming RPCs.
 func errorConversionStreamInterceptor() ggrpc.StreamServerInterceptor {
 	return func(srv any, ss ggrpc.ServerStream, info *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
 		err := handler(srv, ss)
 		if err != nil {
 			err = convertToGRPCError(err)
 		}
+
 		return err
 	}
 }
 
-// convertToGRPCError converts known errors to proper gRPC status errors
+// convertToGRPCError converts known errors to proper gRPC status errors.
 func convertToGRPCError(err error) error {
 	// Already a gRPC status error, return as-is
 	if _, ok := status.FromError(err); ok {
@@ -268,9 +295,11 @@ func convertToGRPCError(err error) error {
 	if errors.Is(err, signing.ErrMissingSignature) {
 		return status.Error(codes.Unauthenticated, err.Error())
 	}
+
 	if errors.Is(err, signing.ErrInvalidSignature) {
 		return status.Error(codes.PermissionDenied, err.Error())
 	}
+
 	if errors.Is(err, signing.ErrUnknownKeyID) {
 		return status.Error(codes.PermissionDenied, err.Error())
 	}
@@ -294,6 +323,7 @@ func convertToGRPCError(err error) error {
 	// Convert ErrAuditDisabled to FailedPrecondition with ErrorInfo
 	if errors.Is(err, domain.ErrAuditDisabled) {
 		st := status.New(codes.FailedPrecondition, err.Error())
+
 		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
 			Reason: domain.ErrReasonAuditDisabled,
 			Domain: "ledger",
@@ -301,6 +331,7 @@ func convertToGRPCError(err error) error {
 		if detailErr == nil {
 			return detailed.Err()
 		}
+
 		return st.Err()
 	}
 
@@ -308,6 +339,7 @@ func convertToGRPCError(err error) error {
 	var periodNotClosedErr *domain.ErrPeriodNotClosed
 	if errors.As(err, &periodNotClosedErr) {
 		st := status.New(codes.FailedPrecondition, err.Error())
+
 		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
 			Reason: domain.ErrReasonPeriodNotClosed,
 			Domain: "ledger",
@@ -315,6 +347,7 @@ func convertToGRPCError(err error) error {
 		if detailErr == nil {
 			return detailed.Err()
 		}
+
 		return st.Err()
 	}
 
@@ -322,6 +355,7 @@ func convertToGRPCError(err error) error {
 	var periodNotArchivingErr *domain.ErrPeriodNotArchiving
 	if errors.As(err, &periodNotArchivingErr) {
 		st := status.New(codes.FailedPrecondition, err.Error())
+
 		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
 			Reason: domain.ErrReasonPeriodNotArchiving,
 			Domain: "ledger",
@@ -329,6 +363,7 @@ func convertToGRPCError(err error) error {
 		if detailErr == nil {
 			return detailed.Err()
 		}
+
 		return st.Err()
 	}
 
@@ -336,17 +371,19 @@ func convertToGRPCError(err error) error {
 	var notCaughtUp *query.ErrReadIndexNotCaughtUp
 	if errors.As(err, &notCaughtUp) {
 		st := status.New(codes.FailedPrecondition, notCaughtUp.Error())
+
 		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
 			Reason: "READ_INDEX_NOT_CAUGHT_UP",
 			Domain: "ledger",
 			Metadata: map[string]string{
-				"requested": fmt.Sprintf("%d", notCaughtUp.Requested),
-				"current":   fmt.Sprintf("%d", notCaughtUp.Current),
+				"requested": strconv.FormatUint(notCaughtUp.Requested, 10),
+				"current":   strconv.FormatUint(notCaughtUp.Current, 10),
 			},
 		})
 		if detailErr == nil {
 			return detailed.Err()
 		}
+
 		return st.Err()
 	}
 

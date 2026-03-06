@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/holiman/uint256"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
-	"github.com/holiman/uint256"
 )
 
 // aggregatedVol accumulates input/output volumes for a single asset.
@@ -22,7 +23,7 @@ type aggregatedVol struct {
 // aggregateVolumes executes a cross-store merge-scan:
 // 1. Iterate matching accounts from bbolt (accountIter)
 // 2. For each account, scan volumes in Pebble via ForEachInPrefix
-// 3. Accumulate per-asset totals
+// 3. Accumulate per-asset totals.
 func aggregateVolumes(
 	pebbleReader dal.PebbleReader,
 	volumeAttr *attributes.AccumulatingAttribute[*raftcmdpb.VolumePair],
@@ -45,7 +46,9 @@ func aggregateVolumes(
 
 		err := volumeAttr.ForEachInPrefix(pebbleReader, ^uint64(0), canonicalPrefix, func(entry attributes.ComputedEntry[*raftcmdpb.VolumePair]) error {
 			var vk domain.VolumeKey
-			if err := vk.Unmarshal(entry.CanonicalKey); err != nil {
+
+			err := vk.Unmarshal(entry.CanonicalKey)
+			if err != nil {
 				return fmt.Errorf("unmarshaling volume key: %w", err)
 			}
 
@@ -60,15 +63,17 @@ func aggregateVolumes(
 
 			if entry.Value != nil {
 				var tmp uint256.Int
-				if entry.Value.InputKnown != nil {
-					entry.Value.InputKnown.IntoUint256(&tmp)
+				if entry.Value.GetInputKnown() != nil {
+					entry.Value.GetInputKnown().IntoUint256(&tmp)
 					agg.input.Add(agg.input, &tmp)
 				}
-				if entry.Value.OutputKnown != nil {
-					entry.Value.OutputKnown.IntoUint256(&tmp)
+
+				if entry.Value.GetOutputKnown() != nil {
+					entry.Value.GetOutputKnown().IntoUint256(&tmp)
 					agg.output.Add(agg.output, &tmp)
 				}
 			}
+
 			return nil
 		})
 		if err != nil {
@@ -85,8 +90,9 @@ func aggregateVolumes(
 			Output: commonpb.NewUint256(agg.output),
 		})
 	}
+
 	sort.Slice(volumes, func(i, j int) bool {
-		return volumes[i].Asset < volumes[j].Asset
+		return volumes[i].GetAsset() < volumes[j].GetAsset()
 	})
 
 	return &commonpb.AggregateResult{Volumes: volumes}, nil

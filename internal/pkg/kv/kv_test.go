@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"maps"
 	"sync"
 	"testing"
 
@@ -60,10 +61,8 @@ func TestMap_Iter(t *testing.T) {
 	m.Put("b", 2)
 	m.Put("c", 3)
 
-	collected := map[string]int{}
-	for k, v := range m.Iter() {
-		collected[k] = v
-	}
+	collected := maps.Collect(m.Iter())
+
 	require.Equal(t, map[string]int{"a": 1, "b": 2, "c": 3}, collected)
 }
 
@@ -156,10 +155,8 @@ func TestSyncMap_Iter(t *testing.T) {
 	m.Put("a", 1)
 	m.Put("b", 2)
 
-	collected := map[string]int{}
-	for k, v := range m.Iter() {
-		collected[k] = v
-	}
+	collected := maps.Collect(m.Iter())
+
 	require.Equal(t, map[string]int{"a": 1, "b": 2}, collected)
 }
 
@@ -167,14 +164,19 @@ func TestSyncMap_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
 	m := NewSyncMap[int, int]()
-	const goroutines = 100
-	const opsPerGoroutine = 100
+
+	const (
+		goroutines      = 100
+		opsPerGoroutine = 100
+	)
 
 	var wg sync.WaitGroup
 	for i := range goroutines {
 		wg.Add(1)
+
 		go func(base int) {
 			defer wg.Done()
+
 			for j := range opsPerGoroutine {
 				key := base*opsPerGoroutine + j
 				m.Put(key, key)
@@ -182,6 +184,7 @@ func TestSyncMap_ConcurrentAccess(t *testing.T) {
 			}
 		}(i)
 	}
+
 	wg.Wait()
 
 	require.Equal(t, uint64(goroutines*opsPerGoroutine), m.Size())

@@ -7,5 +7,6 @@ import (
 // NewRequest creates a servicepb.Request with optional idempotency key for test purposes.
 func NewRequest(req *servicepb.Request, idempotencyKey string) *servicepb.Request {
 	req.IdempotencyKey = idempotencyKey
+
 	return req
 }

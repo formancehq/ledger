@@ -2,16 +2,19 @@ package accounts
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewListCommand creates the accounts list command.
@@ -58,9 +61,11 @@ func runList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -91,8 +96,10 @@ func runList(cmd *cobra.Command, _ []string) error {
 // buildAccountFilter combines --filter and --prefix flags into a single QueryFilter.
 func buildAccountFilter(filterExpr, prefix string) (*commonpb.QueryFilter, error) {
 	var parsedFilter *commonpb.QueryFilter
+
 	if filterExpr != "" {
 		var err error
+
 		parsedFilter, err = filterexpr.Parse(filterExpr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid filter expression: %w", err)
@@ -145,19 +152,24 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 	})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to list accounts", err)
 	}
 
 	var accounts []*commonpb.Account
+
 	for {
 		account, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			_ = spinner.Stop()
+
 			return cmdutil.FormatGRPCError("failed to receive account", err)
 		}
+
 		accounts = append(accounts, account)
 	}
 
@@ -166,12 +178,14 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(accounts)
 	}
 
 	if len(accounts) == 0 {
 		pterm.Info.Println("No accounts found.")
 		pterm.Println(pterm.Gray("Create transactions to populate accounts."))
+
 		return nil
 	}
 
@@ -180,11 +194,13 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 	if showProfile {
 		cmdutil.RenderProfile(cmdutil.ExtractProfile(stream.Trailer()))
 	}
+
 	return nil
 }
 
 func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool, minLogSeq uint64, showProfile bool) error {
 	var afterAddress string
+
 	pageNum := 1
 
 	for {
@@ -205,21 +221,28 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 		})
 		if err != nil {
 			cancel()
+
 			_ = spinner.Stop()
+
 			return cmdutil.FormatGRPCError("failed to list accounts", err)
 		}
 
 		var accounts []*commonpb.Account
+
 		for {
 			account, err := stream.Recv()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			if err != nil {
 				cancel()
+
 				_ = spinner.Stop()
+
 				return cmdutil.FormatGRPCError("failed to receive account", err)
 			}
+
 			accounts = append(accounts, account)
 		}
 
@@ -227,10 +250,12 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 
 		if len(accounts) == 0 {
 			spinner.Info("No more accounts.")
+
 			if pageNum == 1 {
 				pterm.Info.Println("No accounts found.")
 				pterm.Println(pterm.Gray("Create transactions to populate accounts."))
 			}
+
 			return nil
 		}
 
@@ -239,7 +264,9 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 		if jsonOutput {
 			encoder := json.NewEncoder(os.Stdout)
 			encoder.SetIndent("", "  ")
-			if err := encoder.Encode(accounts); err != nil {
+
+			err := encoder.Encode(accounts)
+			if err != nil {
 				return err
 			}
 		} else {
@@ -257,10 +284,11 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 			if !jsonOutput {
 				pterm.Info.Println("End of accounts.")
 			}
+
 			return nil
 		}
 
-		afterAddress = accounts[len(accounts)-1].Address
+		afterAddress = accounts[len(accounts)-1].GetAddress()
 
 		if !jsonOutput {
 			result, err := pterm.DefaultInteractiveConfirm.
@@ -270,6 +298,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 			if err != nil {
 				return fmt.Errorf("failed to read input: %w", err)
 			}
+
 			if !result {
 				return nil
 			}
@@ -287,15 +316,12 @@ func renderAccountsTable(accounts []*commonpb.Account) {
 	// Reserve space for METADATA column (header is 8 chars), separator (3 spaces),
 	// and continuation indent (2 spaces).
 	const (
-		metadataColWidth    = 8
-		separatorWidth      = 3
-		continuationIndent  = "  "
+		metadataColWidth   = 8
+		separatorWidth     = 3
+		continuationIndent = "  "
 	)
 
-	maxAddressWidth := termWidth - metadataColWidth - separatorWidth - len(continuationIndent)
-	if maxAddressWidth < 20 {
-		maxAddressWidth = 20
-	}
+	maxAddressWidth := max(termWidth-metadataColWidth-separatorWidth-len(continuationIndent), 20)
 
 	tableData := pterm.TableData{
 		{"ADDRESS", "METADATA"},
@@ -303,11 +329,12 @@ func renderAccountsTable(accounts []*commonpb.Account) {
 
 	for _, account := range accounts {
 		metadataCount := "0"
-		if account.Metadata != nil {
-			metadataCount = fmt.Sprintf("%d", len(account.Metadata.Metadata))
+		if account.GetMetadata() != nil {
+			metadataCount = strconv.Itoa(len(account.GetMetadata().GetMetadata()))
 		}
 
-		lines := cmdutil.WrapText(account.Address, maxAddressWidth, ":")
+		lines := cmdutil.WrapText(account.GetAddress(), maxAddressWidth, ":")
+
 		tableData = append(tableData, []string{lines[0], metadataCount})
 		for _, line := range lines[1:] {
 			tableData = append(tableData, []string{continuationIndent + line, ""})

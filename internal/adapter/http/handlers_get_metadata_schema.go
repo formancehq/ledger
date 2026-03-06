@@ -4,9 +4,10 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/go-chi/chi/v5"
 )
 
 // metadataFieldStatusJSON is the camelCase JSON DTO for MetadataFieldStatus.
@@ -25,38 +26,42 @@ type metadataSchemaStatusJSON struct {
 
 func toFieldStatusJSON(fs *servicepb.MetadataFieldStatus) *metadataFieldStatusJSON {
 	return &metadataFieldStatusJSON{
-		DeclaredType:  commonpb.MetadataTypeToString(fs.DeclaredType),
-		Status:        commonpb.ConversionStatusToString(fs.Status),
-		TotalKeys:     fs.TotalKeys,
-		ConvertedKeys: fs.ConvertedKeys,
+		DeclaredType:  commonpb.MetadataTypeToString(fs.GetDeclaredType()),
+		Status:        commonpb.ConversionStatusToString(fs.GetStatus()),
+		TotalKeys:     fs.GetTotalKeys(),
+		ConvertedKeys: fs.GetConvertedKeys(),
 	}
 }
 
 func toSchemaStatusJSON(resp *servicepb.GetMetadataSchemaStatusResponse) *metadataSchemaStatusJSON {
 	result := &metadataSchemaStatusJSON{
-		AccountFields:     make(map[string]*metadataFieldStatusJSON, len(resp.AccountFields)),
-		TransactionFields: make(map[string]*metadataFieldStatusJSON, len(resp.TransactionFields)),
+		AccountFields:     make(map[string]*metadataFieldStatusJSON, len(resp.GetAccountFields())),
+		TransactionFields: make(map[string]*metadataFieldStatusJSON, len(resp.GetTransactionFields())),
 	}
-	for k, v := range resp.AccountFields {
+	for k, v := range resp.GetAccountFields() {
 		result.AccountFields[k] = toFieldStatusJSON(v)
 	}
-	for k, v := range resp.TransactionFields {
+
+	for k, v := range resp.GetTransactionFields() {
 		result.TransactionFields[k] = toFieldStatusJSON(v)
 	}
+
 	return result
 }
 
-// handleGetMetadataSchema handles GET /{ledgerName}/metadata-schema to get schema status
+// handleGetMetadataSchema handles GET /{ledgerName}/metadata-schema to get schema status.
 func (s *Server) handleGetMetadataSchema(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
+
 		return
 	}
 
 	resp, err := s.backend.GetMetadataSchemaStatus(r.Context(), ledgerName)
 	if err != nil {
 		handleError(w, r, err)
+
 		return
 	}
 

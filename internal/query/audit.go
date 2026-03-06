@@ -33,6 +33,7 @@ func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("creating iterator: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	if !iter.Last() {
@@ -49,7 +50,7 @@ func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
 		return 0, fmt.Errorf("unmarshaling audit entry: %w", err)
 	}
 
-	return entry.Sequence, nil
+	return entry.GetSequence(), nil
 }
 
 // ReadAuditEntries returns a cursor over audit entries after the given sequence from the given reader.
@@ -60,9 +61,11 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixAudit)
+
 	if afterSequence != nil {
 		kb.PutUInt64(*afterSequence + 1)
 	}
+
 	lowerBound := kb.Build()
 
 	kb2 := dal.NewKeyBuilder()
@@ -97,8 +100,10 @@ func ReadAuditEntry(ctx context.Context, reader dal.PebbleReader, sequence uint6
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, domain.ErrNotFound
 		}
+
 		return nil, fmt.Errorf("reading audit entry %d: %w", sequence, err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	entry := &auditpb.AuditEntry{}
@@ -117,12 +122,15 @@ func ReadAuditConfig(reader dal.PebbleReader) (bool, error) {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return false, nil
 		}
+
 		return false, fmt.Errorf("loading audit config: %w", err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	if len(value) == 0 {
 		return false, nil
 	}
+
 	return value[0] == 0x01, nil
 }

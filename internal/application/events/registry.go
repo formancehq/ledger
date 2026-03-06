@@ -14,7 +14,7 @@ var sinkFactories = map[string]sinkFactory{}
 
 // registerSinkFactory registers a factory for the given sink type name.
 // Called from init() functions in build-tagged sink files.
-func registerSinkFactory(name string, fn sinkFactory) {
+func registerSinkFactory(name string, fn sinkFactory) { //nolint:unused // used by build-tagged sink files
 	sinkFactories[name] = fn
 }
 

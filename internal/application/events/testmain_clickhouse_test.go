@@ -17,6 +17,7 @@ func init() {
 	registerTestSetup(
 		func(ctx context.Context) error {
 			var err error
+
 			chContainer, err = chmodule.Run(ctx, "clickhouse/clickhouse-server:24-alpine")
 			if err != nil {
 				return fmt.Errorf("failed to start ClickHouse container: %w", err)
@@ -25,6 +26,7 @@ func init() {
 			sharedClickHouseDSN, err = chContainer.ConnectionString(ctx)
 			if err != nil {
 				_ = chContainer.Terminate(ctx)
+
 				return fmt.Errorf("failed to get ClickHouse DSN: %w", err)
 			}
 

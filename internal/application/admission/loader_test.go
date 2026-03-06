@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 func TestAttributeLoader_LoadOrWait_FirstLoad(t *testing.T) {
@@ -23,6 +24,7 @@ func TestAttributeLoader_LoadOrWait_FirstLoad(t *testing.T) {
 	loadCount := 0
 	result, err := loader.LoadOrWait(key, 100, func() (int, error) {
 		loadCount++
+
 		return 42, nil
 	})
 
@@ -48,6 +50,7 @@ func TestAttributeLoader_LoadOrWait_CachedResult(t *testing.T) {
 	loadCount := 0
 	result, err := loader.LoadOrWait(key, 100, func() (int, error) {
 		loadCount++
+
 		return 999, nil
 	})
 
@@ -73,6 +76,7 @@ func TestAttributeLoader_LoadOrWait_CachedResultWithLowerBoundary(t *testing.T) 
 	loadCount := 0
 	result, err := loader.LoadOrWait(key, 100, func() (int, error) {
 		loadCount++
+
 		return 999, nil
 	})
 
@@ -89,24 +93,25 @@ func TestAttributeLoader_LoadOrWait_ConcurrentLoads(t *testing.T) {
 	key := attributes.NewU128(1, 2)
 
 	var loadCount atomic.Int32
+
 	loadStarted := make(chan struct{})
 	loadContinue := make(chan struct{})
 
 	// Start first goroutine that will hold the load
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+
+	wg.Go(func() {
 		result, err := loader.LoadOrWait(key, 100, func() (int, error) {
 			loadCount.Add(1)
 			close(loadStarted)
 			<-loadContinue // Wait for signal to continue
+
 			return 42, nil
 		})
 		require.NoError(t, err)
 		assert.Equal(t, 42, result.Value)
 		assert.True(t, result.FromLoad)
-	}()
+	})
 
 	// Wait for first load to start
 	<-loadStarted
@@ -116,14 +121,17 @@ func TestAttributeLoader_LoadOrWait_ConcurrentLoads(t *testing.T) {
 	wg.Add(numWaiters)
 	results := make(chan *LoadResult[int], numWaiters)
 
-	for i := 0; i < numWaiters; i++ {
+	for range numWaiters {
 		go func() {
 			defer wg.Done()
+
 			result, err := loader.LoadOrWait(key, 100, func() (int, error) {
 				loadCount.Add(1)
+
 				return 999, nil // Should never be called
 			})
 			require.NoError(t, err)
+
 			results <- result
 		}()
 	}
@@ -166,6 +174,7 @@ func TestAttributeLoader_LoadOrWait_Error(t *testing.T) {
 	loadCount := 0
 	result, err = loader.LoadOrWait(key, 100, func() (int, error) {
 		loadCount++
+
 		return 42, nil
 	})
 
@@ -186,23 +195,25 @@ func TestAttributeLoader_LoadOrWait_ErrorReleasesWaiters(t *testing.T) {
 
 	// Start first goroutine that will fail
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+
+	wg.Go(func() {
 		_, err := loader.LoadOrWait(key, 100, func() (int, error) {
 			close(loadStarted)
 			<-loadContinue
+
 			return 0, errors.New("load failed")
 		})
 		require.Error(t, err)
-	}()
+	})
 
 	// Wait for first load to start
 	<-loadStarted
 
 	// Start waiter
 	wg.Add(1)
+
 	waiterDone := make(chan struct{})
+
 	go func() {
 		defer wg.Done()
 		// This should wait, then try to load again since the first one failed
@@ -255,6 +266,7 @@ func TestAttributeLoader_MarkApplied(t *testing.T) {
 	loadCount := 0
 	result, err := loader.LoadOrWait(key, 100, func() (int, error) {
 		loadCount++
+
 		return 999, nil
 	})
 	require.NoError(t, err)
@@ -268,6 +280,7 @@ func TestAttributeLoader_MarkApplied(t *testing.T) {
 	// Should load again
 	result, err = loader.LoadOrWait(key, 100, func() (int, error) {
 		loadCount++
+
 		return 123, nil
 	})
 	require.NoError(t, err)
@@ -347,6 +360,7 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 	volumeLoadCount := 0
 	_, err = loaders.Volumes.LoadOrWait(key1, 100, func() (*raftcmdpb.VolumePair, error) {
 		volumeLoadCount++
+
 		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(100)}, nil
 	})
 	require.NoError(t, err)
@@ -355,6 +369,7 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 	volumeLoadCount2 := 0
 	_, err = loaders.Volumes.LoadOrWait(key2, 100, func() (*raftcmdpb.VolumePair, error) {
 		volumeLoadCount2++
+
 		return &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(100)}, nil
 	})
 	require.NoError(t, err)
@@ -363,6 +378,7 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 	idempotencyLoadCount := 0
 	_, err = loaders.IdempotencyKeys.LoadOrWait(key4, 100, func() (*commonpb.IdempotencyKeyValue, error) {
 		idempotencyLoadCount++
+
 		return &commonpb.IdempotencyKeyValue{LogSequence: 2, Hash: []byte("new")}, nil
 	})
 	require.NoError(t, err)

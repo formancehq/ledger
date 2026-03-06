@@ -6,7 +6,7 @@ import (
 
 // RequiredScopeForRequest returns the granular scope required to execute the given Request.
 func RequiredScopeForRequest(req *servicepb.Request) Scope {
-	switch req.Type.(type) {
+	switch req.GetType().(type) {
 	case *servicepb.Request_Apply:
 		return requiredScopeForLedgerApply(req.GetApply())
 	case *servicepb.Request_CreateLedger:
@@ -62,7 +62,8 @@ func requiredScopeForLedgerApply(req *servicepb.LedgerApplyRequest) Scope {
 	if req == nil {
 		return ScopeOpsWrite
 	}
-	switch req.Data.(type) {
+
+	switch req.GetData().(type) {
 	case *servicepb.LedgerApplyRequest_CreateTransaction:
 		return ScopeTransactionsWrite
 	case *servicepb.LedgerApplyRequest_RevertTransaction:

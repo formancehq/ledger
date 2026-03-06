@@ -3,8 +3,9 @@ package state
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func newTestPeriodTracker() *PeriodTracker {
@@ -23,7 +24,7 @@ func TestPeriodTrackerNewAndDefaults(t *testing.T) {
 	require.Nil(t, pt.CurrentOpenPeriod())
 	require.Nil(t, pt.ClosingPeriod())
 	require.Equal(t, uint64(1), pt.NextPeriodID())
-	require.Equal(t, "", pt.Schedule())
+	require.Empty(t, pt.Schedule())
 	require.NotNil(t, pt.ScheduleChanged())
 }
 
@@ -126,7 +127,7 @@ func TestPeriodTrackerSchedule(t *testing.T) {
 	t.Parallel()
 
 	pt := newTestPeriodTracker()
-	require.Equal(t, "", pt.Schedule())
+	require.Empty(t, pt.Schedule())
 
 	sig := pt.ScheduleChanged()
 
@@ -143,7 +144,7 @@ func TestPeriodTrackerSchedule(t *testing.T) {
 
 	// Clear schedule
 	pt.SetSchedule("")
-	require.Equal(t, "", pt.Schedule())
+	require.Empty(t, pt.Schedule())
 }
 
 func TestPeriodTrackerReset(t *testing.T) {
@@ -186,13 +187,13 @@ func TestPeriodTrackerClone(t *testing.T) {
 	require.Len(t, clone.AllPeriods(), 3)
 	require.Equal(t, uint64(4), clone.NextPeriodID())
 	require.NotNil(t, clone.CurrentOpenPeriod())
-	require.Equal(t, uint64(1), clone.CurrentOpenPeriod().Id)
+	require.Equal(t, uint64(1), clone.CurrentOpenPeriod().GetId())
 	require.NotNil(t, clone.ClosingPeriod())
-	require.Equal(t, uint64(2), clone.ClosingPeriod().Id)
+	require.Equal(t, uint64(2), clone.ClosingPeriod().GetId())
 
 	// Clone is a deep copy — mutating clone doesn't affect original
 	clone.CurrentOpenPeriod().StartSequence = 999
-	require.Equal(t, uint64(10), pt.CurrentOpenPeriod().StartSequence)
+	require.Equal(t, uint64(10), pt.CurrentOpenPeriod().GetStartSequence())
 
 	clone.PutPeriod(&commonpb.Period{Id: 100})
 	require.Len(t, clone.AllPeriods(), 4)
@@ -202,7 +203,7 @@ func TestPeriodTrackerClone(t *testing.T) {
 	require.Equal(t, uint64(4), pt.NextPeriodID())
 
 	// Schedule is NOT cloned
-	require.Equal(t, "", clone.Schedule())
+	require.Empty(t, clone.Schedule())
 }
 
 func TestPeriodTrackerCloneNilPeriods(t *testing.T) {

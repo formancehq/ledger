@@ -17,6 +17,7 @@ func (m *Copier[K, V]) Get(k K) (V, bool) {
 	if ok {
 		return v, true
 	}
+
 	for _, src := range m.sources {
 		val, ok := src.Get(k)
 		if !ok {
@@ -31,6 +32,7 @@ func (m *Copier[K, V]) Get(k K) (V, bool) {
 	}
 
 	var zero V
+
 	return zero, false
 }
 
@@ -40,6 +42,7 @@ func (m *Copier[K, V]) LoadOrInit(k K, init func() V) V {
 		v = init()
 		m.updated.Put(k, v)
 	}
+
 	return v
 }
 
@@ -47,6 +50,7 @@ func (m *Copier[K, V]) Put(k K, v V) {
 	if m.merged {
 		panic("already merged")
 	}
+
 	m.updated.Put(k, v)
 }
 
@@ -54,11 +58,14 @@ func (m *Copier[K, V]) Merge() KV[K, V] {
 	if m.merged {
 		return m.sources[0]
 	}
+
 	ret := m.sources[0]
 	for k, v := range m.updated.Iter() {
 		ret.Put(k, v)
 	}
+
 	m.updated = nil
+
 	return ret
 }
 

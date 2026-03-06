@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Cursor provides a way to iterate over a stream of items
+// Cursor provides a way to iterate over a stream of items.
 type Cursor[T any] interface {
 	// Next returns the next item in the cursor
 	// Returns io.EOF when there are no more items
@@ -28,9 +28,12 @@ func (cursor GRPCStreamCursor[Res, To]) Next() (To, error) {
 		if status.Code(err) == codes.Canceled {
 			err = io.EOF
 		}
+
 		var zero To
+
 		return zero, err
 	}
+
 	return cursor.mapper(next)
 }
 
@@ -44,7 +47,7 @@ func NewGRPCStreamCursor[Res, To any](client grpc.ServerStreamingClient[Res], ma
 	return GRPCStreamCursor[Res, To]{client: client, mapper: mapper}
 }
 
-// SliceCursor wraps a slice to implement the Cursor interface
+// SliceCursor wraps a slice to implement the Cursor interface.
 type SliceCursor[T any] struct {
 	items []T
 	index int
@@ -53,10 +56,13 @@ type SliceCursor[T any] struct {
 func (c *SliceCursor[T]) Next() (T, error) {
 	if c.index >= len(c.items) {
 		var zero T
+
 		return zero, io.EOF
 	}
+
 	item := c.items[c.index]
 	c.index++
+
 	return item, nil
 }
 
@@ -66,12 +72,12 @@ func (c *SliceCursor[T]) Close() error {
 
 var _ Cursor[any] = (*SliceCursor[any])(nil)
 
-// NewSliceCursor creates a new cursor from a slice
+// NewSliceCursor creates a new cursor from a slice.
 func NewSliceCursor[T any](items []T) Cursor[T] {
 	return &SliceCursor[T]{items: items, index: 0}
 }
 
-// FilteredCursor wraps a cursor and filters items based on a predicate
+// FilteredCursor wraps a cursor and filters items based on a predicate.
 type FilteredCursor[T any] struct {
 	inner     Cursor[T]
 	predicate func(T) bool
@@ -82,8 +88,10 @@ func (c *FilteredCursor[T]) Next() (T, error) {
 		item, err := c.inner.Next()
 		if err != nil {
 			var zero T
+
 			return zero, err
 		}
+
 		if c.predicate(item) {
 			return item, nil
 		}
@@ -97,12 +105,12 @@ func (c *FilteredCursor[T]) Close() error {
 
 var _ Cursor[any] = (*FilteredCursor[any])(nil)
 
-// NewFilteredCursor creates a new cursor that filters items based on a predicate
+// NewFilteredCursor creates a new cursor that filters items based on a predicate.
 func NewFilteredCursor[T any](inner Cursor[T], predicate func(T) bool) Cursor[T] {
 	return &FilteredCursor[T]{inner: inner, predicate: predicate}
 }
 
-// LimitedCursor wraps a cursor and limits the number of items returned
+// LimitedCursor wraps a cursor and limits the number of items returned.
 type LimitedCursor[T any] struct {
 	inner    Cursor[T]
 	limit    uint32
@@ -112,14 +120,19 @@ type LimitedCursor[T any] struct {
 func (c *LimitedCursor[T]) Next() (T, error) {
 	if c.returned >= c.limit {
 		var zero T
+
 		return zero, io.EOF
 	}
+
 	item, err := c.inner.Next()
 	if err != nil {
 		var zero T
+
 		return zero, err
 	}
+
 	c.returned++
+
 	return item, nil
 }
 
@@ -129,7 +142,7 @@ func (c *LimitedCursor[T]) Close() error {
 
 var _ Cursor[any] = (*LimitedCursor[any])(nil)
 
-// NewLimitedCursor creates a new cursor that returns at most limit items
+// NewLimitedCursor creates a new cursor that returns at most limit items.
 func NewLimitedCursor[T any](inner Cursor[T], limit uint32) Cursor[T] {
 	return &LimitedCursor[T]{inner: inner, limit: limit}
 }

@@ -6,12 +6,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/pterm/pterm"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 )
 
 // CLIError wraps an error that has already been displayed to the user.
@@ -26,6 +27,7 @@ func Displayed(err error) error {
 	if err == nil {
 		return nil
 	}
+
 	return &CLIError{Err: err}
 }
 
@@ -34,10 +36,12 @@ func Displayed(err error) error {
 // For other gRPC errors, it uses a human-friendly message based on the status code.
 // For non-gRPC errors, it wraps the original error.
 func FormatGRPCError(context string, err error) error {
-	if bizErr := BusinessErrorFromGRPC(err); bizErr != nil {
+	bizErr := BusinessErrorFromGRPC(err)
+	if bizErr != nil {
 		msg := fmt.Sprintf("%s: %s", context, bizErr.Err.Error())
 		pterm.Error.Println(msg)
 		printErrorDetails(bizErr.Err)
+
 		return Displayed(fmt.Errorf("%s", msg))
 	}
 
@@ -48,12 +52,14 @@ func FormatGRPCError(context string, err error) error {
 		if msg := friendlyMessage(st); msg != "" {
 			formatted := fmt.Sprintf("%s: %s", context, msg)
 			pterm.Error.Println(formatted)
+
 			return Displayed(fmt.Errorf("%s", formatted))
 		}
 	}
 
 	msg := fmt.Sprintf("%s: %s", context, err.Error())
 	pterm.Error.Println(msg)
+
 	return Displayed(fmt.Errorf("%s", msg))
 }
 
@@ -63,13 +69,13 @@ func friendlyMessage(st *status.Status) string {
 	case codes.Unauthenticated:
 		return formatAuthError(st.Message())
 	case codes.PermissionDenied:
-		return fmt.Sprintf("access denied: %s", st.Message())
+		return "access denied: " + st.Message()
 	case codes.Unavailable:
-		return fmt.Sprintf("server unavailable: %s", st.Message())
+		return "server unavailable: " + st.Message()
 	case codes.DeadlineExceeded:
 		return "request timed out"
 	case codes.Unimplemented:
-		return fmt.Sprintf("not supported by server: %s", st.Message())
+		return "not supported by server: " + st.Message()
 	default:
 		return st.Message()
 	}
@@ -82,7 +88,7 @@ func formatAuthError(serverMsg string) string {
 		return "authentication failed (check your credentials or token)"
 	}
 
-	msg := fmt.Sprintf("authentication failed: %s", serverMsg)
+	msg := "authentication failed: " + serverMsg
 
 	// Add hints for common failure reasons.
 	switch {
@@ -137,11 +143,11 @@ func BusinessErrorFromGRPC(err error) *domain.BusinessError {
 
 	for _, detail := range st.Details() {
 		info, ok := detail.(*errdetails.ErrorInfo)
-		if !ok || info.Domain != "ledger" {
+		if !ok || info.GetDomain() != "ledger" {
 			continue
 		}
 
-		inner := reconstructError(info.Reason, info.Metadata, st.Message())
+		inner := reconstructError(info.GetReason(), info.GetMetadata(), st.Message())
 		if inner != nil {
 			return &domain.BusinessError{Err: inner}
 		}
@@ -170,10 +176,12 @@ func reconstructError(reason string, metadata map[string]string, message string)
 
 	case domain.ErrReasonTransactionNotFound:
 		txID, _ := strconv.ParseUint(metadata["transactionId"], 10, 64)
+
 		return &domain.ErrTransactionNotFound{TransactionID: txID}
 
 	case domain.ErrReasonTransactionAlreadyReverted:
 		txID, _ := strconv.ParseUint(metadata["transactionId"], 10, 64)
+
 		return &domain.ErrTransactionAlreadyReverted{TransactionID: txID}
 
 	case domain.ErrReasonInsufficientFunds:

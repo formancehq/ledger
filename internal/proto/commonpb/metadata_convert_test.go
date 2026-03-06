@@ -10,52 +10,58 @@ import (
 
 func TestNewStringValue(t *testing.T) {
 	t.Parallel()
+
 	v := NewStringValue("hello")
 	require.NotNil(t, v)
-	sv, ok := v.Type.(*MetadataValue_StringValue)
+	sv, ok := v.GetType().(*MetadataValue_StringValue)
 	require.True(t, ok)
 	assert.Equal(t, "hello", sv.StringValue)
 }
 
 func TestNewIntValue(t *testing.T) {
 	t.Parallel()
+
 	v := NewIntValue(-42)
 	require.NotNil(t, v)
-	iv, ok := v.Type.(*MetadataValue_IntValue)
+	iv, ok := v.GetType().(*MetadataValue_IntValue)
 	require.True(t, ok)
 	assert.Equal(t, int64(-42), iv.IntValue)
 }
 
 func TestNewUintValue(t *testing.T) {
 	t.Parallel()
+
 	v := NewUintValue(42)
 	require.NotNil(t, v)
-	uv, ok := v.Type.(*MetadataValue_UintValue)
+	uv, ok := v.GetType().(*MetadataValue_UintValue)
 	require.True(t, ok)
 	assert.Equal(t, uint64(42), uv.UintValue)
 }
 
 func TestNewBoolValue(t *testing.T) {
 	t.Parallel()
+
 	v := NewBoolValue(true)
 	require.NotNil(t, v)
-	bv, ok := v.Type.(*MetadataValue_BoolValue)
+	bv, ok := v.GetType().(*MetadataValue_BoolValue)
 	require.True(t, ok)
 	assert.True(t, bv.BoolValue)
 }
 
 func TestNewNullValue(t *testing.T) {
 	t.Parallel()
+
 	v := NewNullValue("original")
 	require.NotNil(t, v)
-	nv, ok := v.Type.(*MetadataValue_NullValue)
+	nv, ok := v.GetType().(*MetadataValue_NullValue)
 	require.True(t, ok)
 	require.NotNil(t, nv.NullValue)
-	assert.Equal(t, "original", nv.NullValue.Original)
+	assert.Equal(t, "original", nv.NullValue.GetOriginal())
 }
 
 func TestMetadataValueToString(t *testing.T) {
 	t.Parallel()
+
 	tests := []struct {
 		name     string
 		value    *MetadataValue
@@ -83,6 +89,7 @@ func TestMetadataValueToString(t *testing.T) {
 
 func TestTypeMatches(t *testing.T) {
 	t.Parallel()
+
 	tests := []struct {
 		name     string
 		value    *MetadataValue
@@ -134,6 +141,7 @@ func TestTypeMatches(t *testing.T) {
 
 func TestConvertFromString(t *testing.T) {
 	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    string
@@ -189,14 +197,16 @@ func TestConvertFromString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			result := ConvertMetadataValue(NewStringValue(tt.input), tt.target)
-			assert.Equal(t, tt.expected.Type, result.Type)
+			assert.Equal(t, tt.expected.GetType(), result.GetType())
 		})
 	}
 }
 
 func TestConvertFromInt64(t *testing.T) {
 	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    int64
@@ -242,14 +252,16 @@ func TestConvertFromInt64(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			result := ConvertMetadataValue(NewIntValue(tt.input), tt.target)
-			assert.Equal(t, tt.expected.Type, result.Type)
+			assert.Equal(t, tt.expected.GetType(), result.GetType())
 		})
 	}
 }
 
 func TestConvertFromUint64(t *testing.T) {
 	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    uint64
@@ -291,14 +303,16 @@ func TestConvertFromUint64(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			result := ConvertMetadataValue(NewUintValue(tt.input), tt.target)
-			assert.Equal(t, tt.expected.Type, result.Type)
+			assert.Equal(t, tt.expected.GetType(), result.GetType())
 		})
 	}
 }
 
 func TestConvertFromBool(t *testing.T) {
 	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    bool
@@ -332,14 +346,16 @@ func TestConvertFromBool(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			result := ConvertMetadataValue(NewBoolValue(tt.input), tt.target)
-			assert.Equal(t, tt.expected.Type, result.Type)
+			assert.Equal(t, tt.expected.GetType(), result.GetType())
 		})
 	}
 }
 
 func TestConvertFromNull(t *testing.T) {
 	t.Parallel()
+
 	tests := []struct {
 		name     string
 		original string
@@ -376,16 +392,18 @@ func TestConvertFromNull(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			result := ConvertMetadataValue(NewNullValue(tt.original), tt.target)
-			assert.Equal(t, tt.expected.Type, result.Type)
+			assert.Equal(t, tt.expected.GetType(), result.GetType())
 		})
 	}
 }
 
 func TestConvertNilValue(t *testing.T) {
 	t.Parallel()
+
 	result := ConvertMetadataValue(nil, MetadataType_METADATA_TYPE_STRING)
-	_, ok := result.Type.(*MetadataValue_NullValue)
+	_, ok := result.GetType().(*MetadataValue_NullValue)
 	assert.True(t, ok)
 }
 

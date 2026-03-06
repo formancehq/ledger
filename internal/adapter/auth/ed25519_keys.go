@@ -2,11 +2,14 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
-	"github.com/formancehq/go-libs/v3/oidc"
 	jose "github.com/go-jose/go-jose/v4"
+
+	"github.com/formancehq/go-libs/v3/oidc"
+
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 )
 
@@ -36,7 +39,7 @@ func LoadEd25519KeySet(configPath string) (*oidc.StaticKeySet, map[string][]stri
 	}
 
 	if len(cfg.Keys) == 0 {
-		return nil, nil, fmt.Errorf("Ed25519 keys config contains no keys")
+		return nil, nil, errors.New("Ed25519 keys config contains no keys")
 	}
 
 	var (
@@ -46,8 +49,9 @@ func LoadEd25519KeySet(configPath string) (*oidc.StaticKeySet, map[string][]stri
 
 	for _, entry := range cfg.Keys {
 		if entry.KeyID == "" {
-			return nil, nil, fmt.Errorf("Ed25519 key entry missing keyId")
+			return nil, nil, errors.New("Ed25519 key entry missing keyId")
 		}
+
 		if entry.PublicKeyFile == "" {
 			return nil, nil, fmt.Errorf("Ed25519 key %q missing publicKeyFile", entry.KeyID)
 		}

@@ -2,13 +2,15 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	ggrpc "google.golang.org/grpc"
+
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // sendCursorToStream drains a cursor into a gRPC server stream,
@@ -22,21 +24,27 @@ func sendCursorToStream[Res any](ctx context.Context, cursor dal.Cursor[*Res], s
 	}()
 
 	span := trace.SpanFromContext(ctx)
+
 	var count int64
 
 	for {
 		item, err := cursor.Next()
 		if err != nil {
 			span.SetAttributes(attribute.Int64("stream.items_sent", count))
-			if err == io.EOF {
+
+			if errors.Is(err, io.EOF) {
 				return nil
 			}
+
 			return fmt.Errorf("reading %s: %w", itemName, err)
 		}
+
 		if err := stream.Send(item); err != nil {
 			span.SetAttributes(attribute.Int64("stream.items_sent", count))
+
 			return fmt.Errorf("sending %s: %w", itemName, err)
 		}
+
 		count++
 	}
 }

@@ -18,6 +18,7 @@ func EncodeString(dst []byte, value string) []byte {
 	dst = append(dst, TypeTagString)
 	dst = append(dst, value...)
 	dst = append(dst, 0x00)
+
 	return dst
 }
 
@@ -26,6 +27,7 @@ func EncodeString(dst []byte, value string) []byte {
 // values in unsigned byte order (big-endian).
 func EncodeInt64(dst []byte, v int64) []byte {
 	dst = append(dst, TypeTagInt)
+
 	var buf [8]byte
 	// XOR with 0x8000000000000000 flips the sign bit:
 	//   -9223372036854775808 → 0x0000000000000000
@@ -33,6 +35,7 @@ func EncodeInt64(dst []byte, v int64) []byte {
 	//   9223372036854775807  → 0xFFFFFFFFFFFFFFFF
 	binary.BigEndian.PutUint64(buf[:], uint64(v)^0x8000000000000000)
 	dst = append(dst, buf[:]...)
+
 	return dst
 }
 
@@ -46,9 +49,11 @@ func DecodeInt64(b []byte) int64 {
 // Big-endian encoding naturally produces the correct sort order.
 func EncodeUint64(dst []byte, v uint64) []byte {
 	dst = append(dst, TypeTagUint)
+
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], v)
 	dst = append(dst, buf[:]...)
+
 	return dst
 }
 
@@ -66,6 +71,7 @@ func EncodeBool(dst []byte, v bool) []byte {
 	} else {
 		dst = append(dst, 0x00)
 	}
+
 	return dst
 }
 
@@ -75,6 +81,7 @@ func EncodeNull(dst []byte, rawValue string) []byte {
 	dst = append(dst, TypeTagNull)
 	dst = append(dst, rawValue...)
 	dst = append(dst, 0x00)
+
 	return dst
 }
 
@@ -82,6 +89,7 @@ func EncodeNull(dst []byte, rawValue string) []byte {
 func EncodeTxID(dst []byte, txID uint64) []byte {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], txID)
+
 	return append(dst, buf[:]...)
 }
 

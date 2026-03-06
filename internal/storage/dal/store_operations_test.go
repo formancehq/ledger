@@ -6,9 +6,10 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 func TestStore_DataDir(t *testing.T) {
@@ -225,7 +226,7 @@ func TestStore_RestoreCheckpoint_PreservesPersistedConfig(t *testing.T) {
 	val, closer, err := s.Get(configKey)
 	require.NoError(t, err)
 	// The preserved config is whatever was in the DB before close, which was node-2
-	require.Equal(t, []byte(`{"nodeId":"node-2"}`), val)
+	require.JSONEq(t, `{"nodeId":"node-2"}`, string(val))
 	require.NoError(t, closer.Close())
 }
 
@@ -269,7 +270,7 @@ func TestStore_CleanupOldCheckpoints(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	// Create multiple snapshots to exceed maxCheckpoints
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		batch := s.NewBatch()
 		require.NoError(t, batch.SetBytes([]byte("k"), []byte("v")))
 		require.NoError(t, batch.Commit())
@@ -306,6 +307,7 @@ func TestStore_IterateColdKVPairs(t *testing.T) {
 	// Write some audit pairs
 	key4 := kb.PutByte(KeyPrefixAudit).PutUInt64(1).Build()
 	key5 := kb.PutByte(KeyPrefixAudit).PutUInt64(2).Build()
+
 	require.NoError(t, batch.SetBytes(key4, []byte("audit-1")))
 	require.NoError(t, batch.SetBytes(key5, []byte("audit-2")))
 
@@ -315,8 +317,10 @@ func TestStore_IterateColdKVPairs(t *testing.T) {
 	// Note: IterateColdKVPairs uses KeyBuilder.Snapshot() which creates a range
 	// that effectively captures sequences startSeq through closeSeq for each prefix.
 	var collected []string
+
 	err := s.IterateColdKVPairs(1, 3, func(key, value []byte) error {
 		collected = append(collected, string(value))
+
 		return nil
 	})
 	require.NoError(t, err)
@@ -332,8 +336,10 @@ func TestStore_IterateColdKVPairs_NoMatches(t *testing.T) {
 	s := newTestStore(t)
 
 	var count int
+
 	err := s.IterateColdKVPairs(100, 200, func(key, value []byte) error {
 		count++
+
 		return nil
 	})
 	require.NoError(t, err)
@@ -355,12 +361,14 @@ func TestStore_NewIter(t *testing.T) {
 		UpperBound: []byte("iter-\xff"),
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = iter.Close() }()
 
 	var keys []string
 	for iter.First(); iter.Valid(); iter.Next() {
 		keys = append(keys, string(iter.Key()))
 	}
+
 	require.NoError(t, iter.Error())
 	require.Equal(t, []string{"iter-a", "iter-b"}, keys)
 }
@@ -384,6 +392,7 @@ func TestStore_OpenReadOnly(t *testing.T) {
 
 	roStore, err := OpenReadOnly(cpDir, logger)
 	require.NoError(t, err)
+
 	defer func() { _ = roStore.Close() }()
 
 	val, closer, err := roStore.Get([]byte("ro-key"))
@@ -411,6 +420,7 @@ func TestStore_OpenDirect(t *testing.T) {
 
 	directStore, err := OpenDirect(cpDir, logger)
 	require.NoError(t, err)
+
 	defer func() { _ = directStore.Close() }()
 
 	val, closer, err := directStore.Get([]byte("direct-key"))
@@ -444,6 +454,7 @@ func TestStore_NewStoreReopensExisting(t *testing.T) {
 	// Reopen the store
 	s2, err := NewStore(dir, logger, meter, DefaultConfig())
 	require.NoError(t, err)
+
 	defer func() { _ = s2.Close() }()
 
 	val, closer, err := s2.Get([]byte("persist-key"))

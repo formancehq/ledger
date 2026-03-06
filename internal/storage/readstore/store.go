@@ -3,14 +3,16 @@ package readstore
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
 	bolt "go.etcd.io/bbolt"
+
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 var progressKey = []byte("lastSeq")
@@ -55,17 +57,21 @@ func New(dir string, noFreelistSync bool, initialMmapSize int, logger logging.Lo
 
 	dbPath := filepath.Join(dir, "readindex.db")
 	info, _ := os.Stat(dbPath)
+
 	var fileSize int64
 	if info != nil {
 		fileSize = info.Size()
 	}
+
 	logger.WithFields(map[string]any{
 		"path":            dbPath,
 		"fileSize":        fileSize,
 		"noFreelistSync":  noFreelistSync,
 		"initialMmapSize": initialMmapSize,
 	}).Infof("Opening bbolt read index")
+
 	openStart := time.Now()
+
 	db, err := bolt.Open(dbPath, 0o600, &bolt.Options{
 		// The read index is a derived view rebuilt from Pebble (the Raft log
 		// is the source of truth). We can safely disable fsync: on crash the
@@ -84,6 +90,7 @@ func New(dir string, noFreelistSync bool, initialMmapSize int, logger logging.Lo
 	if err != nil {
 		return nil, fmt.Errorf("opening bbolt database: %w", err)
 	}
+
 	logger.WithFields(map[string]any{
 		"duration": time.Since(openStart).String(),
 		"fileSize": fileSize,
@@ -109,9 +116,11 @@ func New(dir string, noFreelistSync bool, initialMmapSize int, logger logging.Lo
 				return fmt.Errorf("creating bucket %q: %w", string(bucket), err)
 			}
 		}
+
 		return nil
 	}); err != nil {
 		_ = db.Close()
+
 		return nil, fmt.Errorf("initializing buckets: %w", err)
 	}
 
@@ -123,6 +132,7 @@ func New(dir string, noFreelistSync bool, initialMmapSize int, logger logging.Lo
 		initialMmapSize: initialMmapSize,
 	}
 	s.progressCond = sync.NewCond(&s.progressMu)
+
 	return s, nil
 }
 
@@ -136,6 +146,7 @@ func New(dir string, noFreelistSync bool, initialMmapSize int, logger logging.Lo
 // read-write transaction whose Commit() writes the freelist page.
 func (s *Store) SyncFreelist() error {
 	s.logger.Infof("Syncing bbolt freelist to disk (may take a moment for large databases)...")
+
 	start := time.Now()
 
 	// Temporarily enable freelist serialization for this single commit,
@@ -147,9 +158,12 @@ func (s *Store) SyncFreelist() error {
 
 	if err != nil {
 		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to sync freelist")
+
 		return fmt.Errorf("syncing freelist: %w", err)
 	}
+
 	s.logger.WithFields(map[string]any{"duration": time.Since(start).String()}).Infof("Freelist synced to disk")
+
 	return nil
 }
 
@@ -170,7 +184,8 @@ func (s *Store) RunPeriodicFreelistSync(ctx context.Context, interval time.Durat
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := s.SyncFreelist(); err != nil {
+			err := s.SyncFreelist()
+			if err != nil {
 				s.logger.WithFields(map[string]any{
 					"error": err.Error(),
 				}).Errorf("Periodic freelist sync failed")
@@ -212,13 +227,16 @@ func (s *Store) ReadProgress(tx *bolt.Tx) (uint64, error) {
 	if b == nil {
 		return 0, nil
 	}
+
 	v := b.Get(progressKey)
 	if v == nil {
 		return 0, nil
 	}
+
 	if len(v) != 8 {
 		return 0, fmt.Errorf("corrupt progress value: expected 8 bytes, got %d", len(v))
 	}
+
 	return binary.BigEndian.Uint64(v), nil
 }
 
@@ -226,21 +244,27 @@ func (s *Store) ReadProgress(tx *bolt.Tx) (uint64, error) {
 func (s *Store) WriteProgress(tx *bolt.Tx, sequence uint64) error {
 	b := tx.Bucket(BucketProgress)
 	if b == nil {
-		return fmt.Errorf("progress bucket not found")
+		return errors.New("progress bucket not found")
 	}
+
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], sequence)
+
 	return b.Put(progressKey, buf[:])
 }
 
 // LastIndexedSequence returns the last indexed log sequence (read-only).
 func (s *Store) LastIndexedSequence() (uint64, error) {
 	var seq uint64
+
 	err := s.db.View(func(tx *bolt.Tx) error {
 		var readErr error
+
 		seq, readErr = s.ReadProgress(tx)
+
 		return readErr
 	})
+
 	return seq, err
 }
 
@@ -254,10 +278,12 @@ func (s *Store) NotifyProgress() {
 func (s *Store) WriteBackfillProgress(tx *bolt.Tx, key []byte, cursor uint64) error {
 	b := tx.Bucket(BucketBackfill)
 	if b == nil {
-		return fmt.Errorf("backfill bucket not found")
+		return errors.New("backfill bucket not found")
 	}
+
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], cursor)
+
 	return b.Put(key, buf[:])
 }
 
@@ -268,10 +294,12 @@ func (s *Store) ReadBackfillProgress(tx *bolt.Tx, key []byte) (uint64, bool) {
 	if b == nil {
 		return 0, false
 	}
+
 	v := b.Get(key)
 	if v == nil || len(v) != 8 {
 		return 0, false
 	}
+
 	return binary.BigEndian.Uint64(v), true
 }
 
@@ -281,6 +309,7 @@ func (s *Store) DeleteBackfillProgress(tx *bolt.Tx, key []byte) error {
 	if b == nil {
 		return nil
 	}
+
 	return b.Delete(key)
 }
 
@@ -290,14 +319,18 @@ func (s *Store) ReadAllBackfillProgress(tx *bolt.Tx) (map[string]uint64, error) 
 	if b == nil {
 		return nil, nil
 	}
+
 	result := make(map[string]uint64)
+
 	c := b.Cursor()
 	for k, v := c.First(); k != nil; k, v = c.Next() {
 		if len(v) != 8 {
 			continue
 		}
+
 		result[string(k)] = binary.BigEndian.Uint64(v)
 	}
+
 	return result, nil
 }
 
@@ -313,16 +346,19 @@ type BackfillEntry struct {
 // Entries with unrecognised key formats are silently skipped.
 func (s *Store) ListBackfillProgress() ([]BackfillEntry, error) {
 	var entries []BackfillEntry
+
 	err := s.db.View(func(tx *bolt.Tx) error {
 		all, err := s.ReadAllBackfillProgress(tx)
 		if err != nil {
 			return err
 		}
+
 		for key, cursor := range all {
 			ledger, kind, details, ok := ParseBackfillKey([]byte(key))
 			if !ok {
 				continue
 			}
+
 			entries = append(entries, BackfillEntry{
 				Ledger:  ledger,
 				Kind:    kind,
@@ -330,8 +366,10 @@ func (s *Store) ListBackfillProgress() ([]BackfillEntry, error) {
 				Cursor:  cursor,
 			})
 		}
+
 		return nil
 	})
+
 	return entries, err
 }
 
@@ -344,6 +382,7 @@ func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {
 	if err != nil {
 		return fmt.Errorf("reading index progress: %w", err)
 	}
+
 	if cur >= minSeq {
 		return nil
 	}
@@ -352,6 +391,7 @@ func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {
 	// the Wait() below is unblocked.
 	done := make(chan struct{})
 	defer close(done)
+
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -364,17 +404,23 @@ func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {
 	for {
 		if ctx.Err() != nil {
 			s.progressMu.Unlock()
+
 			return ctx.Err()
 		}
+
 		cur, err = s.LastIndexedSequence()
 		if err != nil {
 			s.progressMu.Unlock()
+
 			return fmt.Errorf("reading index progress: %w", err)
 		}
+
 		if cur >= minSeq {
 			s.progressMu.Unlock()
+
 			return nil
 		}
+
 		s.progressCond.Wait()
 	}
 }

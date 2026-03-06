@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 )
 
 func TestWithProfile_ContextPropagation(t *testing.T) {
@@ -58,19 +59,19 @@ func TestQueryProfile_ToProto(t *testing.T) {
 
 	pb := p.ToProto()
 	require.NotNil(t, pb)
-	assert.Equal(t, int64(5000), pb.IndexDurationUs)
-	assert.Equal(t, int64(2000), pb.EnrichmentDurationUs)
-	assert.Equal(t, int32(42), pb.ItemsCollected)
-	assert.Equal(t, int32(10), pb.EnrichedCount)
-	assert.Equal(t, int32(3), pb.MaterializedRanges)
-	assert.Equal(t, int32(15), pb.MaterializedItems)
+	assert.Equal(t, int64(5000), pb.GetIndexDurationUs())
+	assert.Equal(t, int64(2000), pb.GetEnrichmentDurationUs())
+	assert.Equal(t, int32(42), pb.GetItemsCollected())
+	assert.Equal(t, int32(10), pb.GetEnrichedCount())
+	assert.Equal(t, int32(3), pb.GetMaterializedRanges())
+	assert.Equal(t, int32(15), pb.GetMaterializedItems())
 
-	require.NotNil(t, pb.RootIterator)
-	assert.Equal(t, "PrefixIterator(exist:ledger:a:)", pb.RootIterator.Label)
-	assert.Equal(t, "Prefix", pb.RootIterator.Kind)
-	assert.Equal(t, "exist", pb.RootIterator.Bucket)
-	assert.Equal(t, int64(100), pb.RootIterator.NextCalls)
-	assert.Equal(t, int64(1), pb.RootIterator.SeekCalls)
+	require.NotNil(t, pb.GetRootIterator())
+	assert.Equal(t, "PrefixIterator(exist:ledger:a:)", pb.GetRootIterator().GetLabel())
+	assert.Equal(t, "Prefix", pb.GetRootIterator().GetKind())
+	assert.Equal(t, "exist", pb.GetRootIterator().GetBucket())
+	assert.Equal(t, int64(100), pb.GetRootIterator().GetNextCalls())
+	assert.Equal(t, int64(1), pb.GetRootIterator().GetSeekCalls())
 }
 
 func TestQueryProfile_ToProto_NilProfile(t *testing.T) {
@@ -88,8 +89,8 @@ func TestQueryProfile_ToProto_NoRoot(t *testing.T) {
 	}
 	pb := p.ToProto()
 	require.NotNil(t, pb)
-	assert.Nil(t, pb.RootIterator)
-	assert.Equal(t, int32(5), pb.ItemsCollected)
+	assert.Nil(t, pb.GetRootIterator())
+	assert.Equal(t, int32(5), pb.GetItemsCollected())
 }
 
 func TestIteratorStats_ToProto_WithChildren(t *testing.T) {
@@ -118,10 +119,10 @@ func TestIteratorStats_ToProto_WithChildren(t *testing.T) {
 
 	pb := stats.ToProto()
 	require.NotNil(t, pb)
-	assert.Equal(t, "AndIterator", pb.Label)
-	require.Len(t, pb.Children, 2)
-	assert.Equal(t, int64(10), pb.Children[0].NextCalls)
-	assert.Equal(t, int64(20), pb.Children[1].NextCalls)
+	assert.Equal(t, "AndIterator", pb.GetLabel())
+	require.Len(t, pb.GetChildren(), 2)
+	assert.Equal(t, int64(10), pb.GetChildren()[0].GetNextCalls())
+	assert.Equal(t, int64(20), pb.GetChildren()[1].GetNextCalls())
 }
 
 func TestIteratorStats_ToProto_Nil(t *testing.T) {
@@ -170,7 +171,7 @@ func TestQueryProfile_EmitToSpan_NilSafe(t *testing.T) {
 
 	// Should not panic on nil profile
 	var p *query.QueryProfile
-	p.EmitToSpan(nil) //nolint:staticcheck
+	p.EmitToSpan(nil)
 }
 
 func TestQueryProfile_LogTo_NilSafe(t *testing.T) {
@@ -178,5 +179,5 @@ func TestQueryProfile_LogTo_NilSafe(t *testing.T) {
 
 	// Should not panic on nil profile
 	var p *query.QueryProfile
-	p.LogTo(nil) //nolint:staticcheck
+	p.LogTo(nil)
 }

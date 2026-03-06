@@ -5,30 +5,35 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/go-chi/chi/v5"
 )
 
-// handleCreatePreparedQuery handles POST /{ledgerName}/prepared-queries
+// handleCreatePreparedQuery handles POST /{ledgerName}/prepared-queries.
 func (s *Server) handleCreatePreparedQuery(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
+
 		return
 	}
 
 	var body struct {
-		Name   string              `json:"name"`
-		Target string              `json:"target"`
+		Name   string                `json:"name"`
+		Target string                `json:"target"`
 		Filter *commonpb.QueryFilter `json:"filter"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
+
 		return
 	}
+
 	if body.Name == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("name is required"))
+
 		return
 	}
 
@@ -52,6 +57,7 @@ func (s *Server) handleCreatePreparedQuery(w http.ResponseWriter, r *http.Reques
 	})
 	if err != nil {
 		handleError(w, r, err)
+
 		return
 	}
 

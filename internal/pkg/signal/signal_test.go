@@ -55,6 +55,7 @@ func TestSignal_NonBlockingNotify(t *testing.T) {
 	s.Notify()
 	// This second Notify must not block
 	done := make(chan struct{})
+
 	go func() {
 		s.Notify()
 		close(done)

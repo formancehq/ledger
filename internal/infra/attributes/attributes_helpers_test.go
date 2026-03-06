@@ -4,11 +4,12 @@ import (
 	"encoding/binary"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestAttrTypeFromKey(t *testing.T) {
@@ -28,6 +29,7 @@ func TestAttrTypeFromKey(t *testing.T) {
 
 	t.Run("too short key", func(t *testing.T) {
 		t.Parallel()
+
 		key := make([]byte, 5) // less than 1+SuffixLen
 		_, ok := AttrTypeFromKey(key)
 		require.False(t, ok)
@@ -35,6 +37,7 @@ func TestAttrTypeFromKey(t *testing.T) {
 
 	t.Run("exactly boundary length", func(t *testing.T) {
 		t.Parallel()
+
 		key := make([]byte, 1+SuffixLen) // exactly 11 bytes
 		_, ok := AttrTypeFromKey(key)
 		require.False(t, ok) // must be strictly greater than 1+SuffixLen
@@ -46,6 +49,7 @@ func TestCanonicalKeyFromPebbleKey(t *testing.T) {
 
 	t.Run("valid key extracts canonical", func(t *testing.T) {
 		t.Parallel()
+
 		canonical := []byte("ledger:account:USD")
 		// Build: [prefix(1)][canonical][suffix(SuffixLen)]
 		key := make([]byte, 1+len(canonical)+SuffixLen)
@@ -58,6 +62,7 @@ func TestCanonicalKeyFromPebbleKey(t *testing.T) {
 
 	t.Run("too short key returns nil", func(t *testing.T) {
 		t.Parallel()
+
 		key := make([]byte, 5)
 		result := CanonicalKeyFromPebbleKey(key)
 		require.Nil(t, result)
@@ -65,6 +70,7 @@ func TestCanonicalKeyFromPebbleKey(t *testing.T) {
 
 	t.Run("exactly boundary returns nil", func(t *testing.T) {
 		t.Parallel()
+
 		key := make([]byte, 1+SuffixLen)
 		result := CanonicalKeyFromPebbleKey(key)
 		require.Nil(t, result)
@@ -76,42 +82,49 @@ func TestIncrementBytes(t *testing.T) {
 
 	t.Run("simple increment", func(t *testing.T) {
 		t.Parallel()
+
 		result := IncrementBytes([]byte{0x00, 0x01})
 		require.Equal(t, []byte{0x00, 0x02}, result)
 	})
 
 	t.Run("carry propagation", func(t *testing.T) {
 		t.Parallel()
+
 		result := IncrementBytes([]byte{0x00, 0xFF})
 		require.Equal(t, []byte{0x01, 0x00}, result)
 	})
 
 	t.Run("all 0xFF overflow returns nil", func(t *testing.T) {
 		t.Parallel()
+
 		result := IncrementBytes([]byte{0xFF, 0xFF, 0xFF})
 		require.Nil(t, result)
 	})
 
 	t.Run("single byte increment", func(t *testing.T) {
 		t.Parallel()
+
 		result := IncrementBytes([]byte{0x42})
 		require.Equal(t, []byte{0x43}, result)
 	})
 
 	t.Run("single byte 0xFF overflow", func(t *testing.T) {
 		t.Parallel()
+
 		result := IncrementBytes([]byte{0xFF})
 		require.Nil(t, result)
 	})
 
 	t.Run("empty input", func(t *testing.T) {
 		t.Parallel()
+
 		result := IncrementBytes([]byte{})
 		require.Nil(t, result)
 	})
 
 	t.Run("does not mutate original", func(t *testing.T) {
 		t.Parallel()
+
 		original := []byte{0x01, 0x02}
 		_ = IncrementBytes(original)
 		require.Equal(t, []byte{0x01, 0x02}, original)
@@ -162,7 +175,7 @@ func TestDeleteOldest(t *testing.T) {
 	// Computed value should still work (latest diff = 400)
 	result, err := attrs.Volume.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), result.InputKnown.ToBigInt().Int64())
+	require.Equal(t, int64(400), result.GetInputKnown().ToBigInt().Int64())
 }
 
 func TestAccumulator(t *testing.T) {
@@ -189,8 +202,10 @@ func TestAccumulator(t *testing.T) {
 
 	// Use ForEachInPrefix to iterate and verify results
 	var results []ComputedEntry[*raftcmdpb.VolumePair]
+
 	err := attrs.Volume.ForEachInPrefix(store, ^uint64(0), []byte("ledger\x00"), func(entry ComputedEntry[*raftcmdpb.VolumePair]) error {
 		results = append(results, entry)
+
 		return nil
 	})
 	require.NoError(t, err)
@@ -220,17 +235,22 @@ func TestAccumulatorFeedAndFlush(t *testing.T) {
 	// Verify computed values
 	foundAlice := false
 	foundBob := false
+
 	for _, entry := range entries {
 		canonical := string(entry.CanonicalKey)
 		if canonical == string(keyA) {
 			foundAlice = true
+
 			require.Equal(t, "alice-val", commonpb.MetadataValueToString(entry.Value))
 		}
+
 		if canonical == string(keyB) {
 			foundBob = true
+
 			require.Equal(t, "bob-val", commonpb.MetadataValueToString(entry.Value))
 		}
 	}
+
 	require.True(t, foundAlice)
 	require.True(t, foundBob)
 }
@@ -280,19 +300,19 @@ func TestComputeValueMaxIndex(t *testing.T) {
 	// Query at max index 15 should only see base at 5 and diff at 10
 	result, err := attrs.Volume.ComputeValue(store, 15, testKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(300), result.InputKnown.ToBigInt().Int64())
+	require.Equal(t, int64(300), result.GetInputKnown().ToBigInt().Int64())
 	// Actually: base=100, diff at 10=200 -> 100+200=300. Correct.
 
 	// Query at max index 7 should only see base at 5
 	result, err = attrs.Volume.ComputeValue(store, 7, testKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(100), result.InputKnown.ToBigInt().Int64())
+	require.Equal(t, int64(100), result.GetInputKnown().ToBigInt().Int64())
 
 	// Query at max index 3 should see nothing (base is at index 5)
 	result, err = attrs.Volume.ComputeValue(store, 3, testKey)
 	require.NoError(t, err)
 	// No base or diffs found - returns zero
-	require.Equal(t, int64(0), result.InputKnown.ToBigInt().Int64())
+	require.Equal(t, int64(0), result.GetInputKnown().ToBigInt().Int64())
 }
 
 func TestForEachInPrefixMaxIndex(t *testing.T) {
@@ -318,8 +338,10 @@ func TestForEachInPrefixMaxIndex(t *testing.T) {
 
 	// ForEachInPrefix with maxIndex=10 should filter out diff at index 50
 	var results []ComputedEntry[*raftcmdpb.VolumePair]
+
 	err := attrs.Volume.ForEachInPrefix(store, 10, []byte("test\x00"), func(entry ComputedEntry[*raftcmdpb.VolumePair]) error {
 		results = append(results, entry)
+
 		return nil
 	})
 	require.NoError(t, err)
@@ -343,7 +365,7 @@ func TestIdempotencyKeysAttribute(t *testing.T) {
 
 	result, err := attrs.IdempotencyKeys.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
-	require.Equal(t, uint64(10), result.LogSequence)
+	require.Equal(t, uint64(10), result.GetLogSequence())
 
 	// Overwrite with a later Set
 	batch = store.NewBatch()
@@ -354,7 +376,7 @@ func TestIdempotencyKeysAttribute(t *testing.T) {
 
 	result, err = attrs.IdempotencyKeys.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
-	require.Equal(t, uint64(20), result.LogSequence)
+	require.Equal(t, uint64(20), result.GetLogSequence())
 }
 
 func TestReferenceAttribute(t *testing.T) {
@@ -374,7 +396,7 @@ func TestReferenceAttribute(t *testing.T) {
 
 	result, err := attrs.References.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), result.TransactionId)
+	require.Equal(t, uint64(42), result.GetTransactionId())
 
 	// Overwrite with a later Set
 	batch = store.NewBatch()
@@ -385,7 +407,7 @@ func TestReferenceAttribute(t *testing.T) {
 
 	result, err = attrs.References.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
-	require.Equal(t, uint64(99), result.TransactionId)
+	require.Equal(t, uint64(99), result.GetTransactionId())
 }
 
 func TestModuleNew(t *testing.T) {
@@ -417,7 +439,7 @@ func TestLedgerAttribute(t *testing.T) {
 
 	result, err := attrs.Ledger.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
-	require.Equal(t, "my-ledger", result.Name)
+	require.Equal(t, "my-ledger", result.GetName())
 
 	// Overwrite with a later Set — latest wins
 	batch = store.NewBatch()
@@ -428,7 +450,7 @@ func TestLedgerAttribute(t *testing.T) {
 
 	result, err = attrs.Ledger.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
-	require.Equal(t, "my-ledger-renamed", result.Name)
+	require.Equal(t, "my-ledger-renamed", result.GetName())
 }
 
 func TestBoundaryAttribute(t *testing.T) {
@@ -442,18 +464,18 @@ func TestBoundaryAttribute(t *testing.T) {
 	batch := store.NewBatch()
 	require.NoError(t, attrs.Boundary.Set(batch, 1, testKey, &raftcmdpb.LedgerBoundaries{
 		NextTransactionId: 10,
-		NextLogId:   20,
+		NextLogId:         20,
 	}))
 	require.NoError(t, batch.Commit())
 
 	result, err := attrs.Boundary.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
-	require.Equal(t, uint64(10), result.NextTransactionId)
-	require.Equal(t, uint64(20), result.NextLogId)
+	require.Equal(t, uint64(10), result.GetNextTransactionId())
+	require.Equal(t, uint64(20), result.GetNextLogId())
 }
 
 // makePebbleKey builds a pebble attribute key for testing:
-// [KeyPrefixAttributes(1B)][canonical][attrType(1B)][raftIndex(8B BE)][entryType(1B)]
+// [KeyPrefixAttributes(1B)][canonical][attrType(1B)][raftIndex(8B BE)][entryType(1B)].
 func makePebbleKey(canonical []byte, attrType byte, raftIndex uint64, entryType byte) []byte {
 	key := make([]byte, 1+len(canonical)+1+8+1)
 	key[0] = dal.KeyPrefixAttributes
@@ -461,6 +483,7 @@ func makePebbleKey(canonical []byte, attrType byte, raftIndex uint64, entryType 
 	key[1+len(canonical)] = attrType
 	binary.BigEndian.PutUint64(key[1+len(canonical)+1:], raftIndex)
 	key[len(key)-1] = entryType
+
 	return key
 }
 
@@ -476,6 +499,7 @@ func TestAccumulatorFeedPublicMethod(t *testing.T) {
 	baseValue := commonpb.NewStringValue("base-val")
 	baseBytes, err := proto.Marshal(baseValue)
 	require.NoError(t, err)
+
 	pebbleKey := makePebbleKey(canonical, dal.AttributePrefixMetadata, 1, 0) // entryType=0 is base
 
 	matched, feedErr := acc.Feed(pebbleKey, baseBytes)
@@ -486,6 +510,7 @@ func TestAccumulatorFeedPublicMethod(t *testing.T) {
 	overwriteValue := commonpb.NewStringValue("overwrite-val")
 	overwriteBytes, err := proto.Marshal(overwriteValue)
 	require.NoError(t, err)
+
 	overwriteKey := makePebbleKey(canonical, dal.AttributePrefixMetadata, 5, 0) // entryType=0 is base
 
 	matched, feedErr = acc.Feed(overwriteKey, overwriteBytes)
@@ -497,6 +522,7 @@ func TestAccumulatorFeedPublicMethod(t *testing.T) {
 	base2Value := commonpb.NewStringValue("base2-val")
 	base2Bytes, err := proto.Marshal(base2Value)
 	require.NoError(t, err)
+
 	pebbleKey2 := makePebbleKey(canonical2, dal.AttributePrefixMetadata, 1, 0)
 
 	matched, feedErr = acc.Feed(pebbleKey2, base2Bytes)
@@ -519,6 +545,7 @@ func TestAccumulatorFeedNonMatchingPrefix(t *testing.T) {
 	baseValue := &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(100)}
 	baseBytes, err := proto.Marshal(baseValue)
 	require.NoError(t, err)
+
 	pebbleKey := makePebbleKey(canonical, dal.AttributePrefixVolume, 1, 0)
 
 	matched, feedErr := acc.Feed(pebbleKey, baseBytes)
@@ -630,7 +657,7 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 	// Verify data is NOT visible at index 0 before compaction
 	vol, err := attrs.Volume.ComputeValue(store, 0, volumeKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(0), vol.InputKnown.ToBigInt().Int64(), "volume should not be visible at index 0 before compaction")
+	require.Equal(t, int64(0), vol.GetInputKnown().ToBigInt().Int64(), "volume should not be visible at index 0 before compaction")
 
 	// Run compaction
 	require.NoError(t, CompactAllForBackup(store))
@@ -641,8 +668,8 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 	vol, err = freshAttrs.Volume.ComputeValue(store, 0, volumeKey)
 	require.NoError(t, err)
 	require.NotNil(t, vol)
-	require.Equal(t, int64(1300), vol.InputKnown.ToBigInt().Int64(), "volume input: base 1000 + diff 300")
-	require.Equal(t, int64(600), vol.OutputKnown.ToBigInt().Int64(), "volume output: base 500 + diff 100")
+	require.Equal(t, int64(1300), vol.GetInputKnown().ToBigInt().Int64(), "volume input: base 1000 + diff 300")
+	require.Equal(t, int64(600), vol.GetOutputKnown().ToBigInt().Int64(), "volume output: base 500 + diff 100")
 
 	meta, err := freshAttrs.Metadata.ComputeValue(store, 0, metadataKey)
 	require.NoError(t, err)
@@ -652,23 +679,23 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 	idem, err := freshAttrs.IdempotencyKeys.ComputeValue(store, 0, idempotencyKey)
 	require.NoError(t, err)
 	require.NotNil(t, idem)
-	require.Equal(t, uint64(42), idem.LogSequence)
+	require.Equal(t, uint64(42), idem.GetLogSequence())
 
 	ref, err := freshAttrs.References.ComputeValue(store, 0, referenceKey)
 	require.NoError(t, err)
 	require.NotNil(t, ref)
-	require.Equal(t, uint64(99), ref.TransactionId)
+	require.Equal(t, uint64(99), ref.GetTransactionId())
 
 	ledger, err := freshAttrs.Ledger.ComputeValue(store, 0, ledgerKey)
 	require.NoError(t, err)
 	require.NotNil(t, ledger)
-	require.Equal(t, "myledger", ledger.Name)
+	require.Equal(t, "myledger", ledger.GetName())
 
 	boundary, err := freshAttrs.Boundary.ComputeValue(store, 0, boundaryKey)
 	require.NoError(t, err)
 	require.NotNil(t, boundary)
-	require.Equal(t, uint64(10), boundary.NextTransactionId)
-	require.Equal(t, uint64(5), boundary.NextLogId)
+	require.Equal(t, uint64(10), boundary.GetNextTransactionId())
+	require.Equal(t, uint64(5), boundary.GetNextLogId())
 
 	// Verify lastAppliedIndex was reset to 0
 	lastIdx, err := readLastAppliedIndex(store)
@@ -717,17 +744,17 @@ func TestCompactAllForBackupMultiKeyPerType(t *testing.T) {
 	alice, err := freshAttrs.Volume.ComputeValue(store, 0, keyAlice)
 	require.NoError(t, err)
 	require.NotNil(t, alice)
-	require.Equal(t, int64(150), alice.InputKnown.ToBigInt().Int64(), "alice: base 100 + diff 50")
+	require.Equal(t, int64(150), alice.GetInputKnown().ToBigInt().Int64(), "alice: base 100 + diff 50")
 
 	bob, err := freshAttrs.Volume.ComputeValue(store, 0, keyBob)
 	require.NoError(t, err)
 	require.NotNil(t, bob)
-	require.Equal(t, int64(200), bob.InputKnown.ToBigInt().Int64(), "bob: base only 200")
+	require.Equal(t, int64(200), bob.GetInputKnown().ToBigInt().Int64(), "bob: base only 200")
 
 	charlie, err := freshAttrs.Volume.ComputeValue(store, 0, keyCharlie)
 	require.NoError(t, err)
 	require.NotNil(t, charlie)
-	require.Equal(t, int64(300), charlie.InputKnown.ToBigInt().Int64(), "charlie: last diff 300")
+	require.Equal(t, int64(300), charlie.GetInputKnown().ToBigInt().Int64(), "charlie: last diff 300")
 }
 
 // TestCompactAllForBackupEmpty verifies that compacting an empty store succeeds
@@ -750,4 +777,3 @@ func TestCompactAllForBackupEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), lastIdx, "lastAppliedIndex should be 0 even on empty store")
 }
-

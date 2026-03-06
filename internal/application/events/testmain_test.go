@@ -8,12 +8,12 @@ import (
 	"testing"
 )
 
-var topicCounter atomic.Int64
+var topicCounter atomic.Int64 //nolint:unused // used by build-tagged integration tests
 
 // uniqueTopic returns a unique topic name for each test invocation,
 // preventing cross-invocation message contamination when tests run
 // in parallel or with -count > 1.
-func uniqueTopic(prefix string) string {
+func uniqueTopic(prefix string) string { //nolint:unused // used by build-tagged integration tests
 	return fmt.Sprintf("%s_%d", prefix, topicCounter.Add(1))
 }
 
@@ -26,7 +26,7 @@ type testSetupFunc struct {
 
 var testSetups []testSetupFunc
 
-func registerTestSetup(setup func(ctx context.Context) error, teardown func(ctx context.Context)) {
+func registerTestSetup(setup func(ctx context.Context) error, teardown func(ctx context.Context)) { //nolint:unused // used by build-tagged integration tests
 	testSetups = append(testSetups, testSetupFunc{setup: setup, teardown: teardown})
 }
 
@@ -34,7 +34,8 @@ func TestMain(m *testing.M) {
 	ctx := context.Background()
 
 	for _, s := range testSetups {
-		if err := s.setup(ctx); err != nil {
+		err := s.setup(ctx)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "test setup failed: %v\n", err)
 			os.Exit(1)
 		}

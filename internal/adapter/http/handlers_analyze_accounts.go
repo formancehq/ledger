@@ -5,8 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // analyzeAccountsResponseJSON is the camelCase JSON DTO for AnalyzeAccountsResponse.
@@ -36,15 +37,15 @@ type patternSegmentJSON struct {
 
 func toAnalyzeAccountsJSON(resp *servicepb.AnalyzeAccountsResponse) *analyzeAccountsResponseJSON {
 	result := &analyzeAccountsResponseJSON{
-		TotalAccounts: resp.TotalAccounts,
+		TotalAccounts: resp.GetTotalAccounts(),
 	}
 
-	if resp.SuggestedChart != nil {
-		result.SuggestedChart = toChartJSON(resp.SuggestedChart)
+	if resp.GetSuggestedChart() != nil {
+		result.SuggestedChart = toChartJSON(resp.GetSuggestedChart())
 	}
 
-	result.Patterns = make([]*accountPatternJSON, 0, len(resp.Patterns))
-	for _, p := range resp.Patterns {
+	result.Patterns = make([]*accountPatternJSON, 0, len(resp.GetPatterns()))
+	for _, p := range resp.GetPatterns() {
 		result.Patterns = append(result.Patterns, toAccountPatternJSON(p))
 	}
 
@@ -53,55 +54,63 @@ func toAnalyzeAccountsJSON(resp *servicepb.AnalyzeAccountsResponse) *analyzeAcco
 
 func toAccountPatternJSON(p *servicepb.AccountPattern) *accountPatternJSON {
 	result := &accountPatternJSON{
-		Pattern:      p.Pattern,
-		AccountCount: p.AccountCount,
-		Assets:       p.Assets,
-		MetadataKeys: p.MetadataKeys,
+		Pattern:      p.GetPattern(),
+		AccountCount: p.GetAccountCount(),
+		Assets:       p.GetAssets(),
+		MetadataKeys: p.GetMetadataKeys(),
 	}
-	result.Segments = make([]*patternSegmentJSON, 0, len(p.Segments))
-	for _, s := range p.Segments {
+
+	result.Segments = make([]*patternSegmentJSON, 0, len(p.GetSegments()))
+	for _, s := range p.GetSegments() {
 		result.Segments = append(result.Segments, toPatternSegmentJSON(s))
 	}
+
 	return result
 }
 
 func toPatternSegmentJSON(s *servicepb.PatternSegment) *patternSegmentJSON {
 	segType := "fixed"
-	if s.Type == servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
+	if s.GetType() == servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
 		segType = "variable"
 	}
+
 	return &patternSegmentJSON{
-		Position:        s.Position,
+		Position:        s.GetPosition(),
 		Type:            segType,
-		FixedValue:      s.FixedValue,
-		VariableName:    s.VariableName,
-		InferredPattern: s.InferredPattern,
-		UniqueValues:    s.UniqueValues,
-		Examples:        s.Examples,
+		FixedValue:      s.GetFixedValue(),
+		VariableName:    s.GetVariableName(),
+		InferredPattern: s.GetInferredPattern(),
+		UniqueValues:    s.GetUniqueValues(),
+		Examples:        s.GetExamples(),
 	}
 }
 
-// handleAnalyzeAccounts handles GET /{ledgerName}/analyze-accounts
+// handleAnalyzeAccounts handles GET /{ledgerName}/analyze-accounts.
 func (s *Server) handleAnalyzeAccounts(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
+
 		return
 	}
 
 	var variableThreshold uint32
+
 	if v := r.URL.Query().Get("variableThreshold"); v != "" {
 		parsed, err := strconv.ParseUint(v, 10, 32)
 		if err != nil {
 			writeBadRequest(w, "INVALID_REQUEST", errors.New("variableThreshold must be a positive integer"))
+
 			return
 		}
+
 		variableThreshold = uint32(parsed)
 	}
 
 	resp, err := s.backend.AnalyzeAccounts(r.Context(), ledgerName, variableThreshold, nil)
 	if err != nil {
 		handleError(w, r, err)
+
 		return
 	}
 

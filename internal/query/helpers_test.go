@@ -1,22 +1,26 @@
 package query_test
 
 import (
+	"errors"
 	"io"
 	"math/big"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/formancehq/go-libs/v3/metadata"
 	libtime "github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 )
 
 func newTestStore(t *testing.T) *dal.Store {
 	t.Helper()
+
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
@@ -30,6 +34,7 @@ func newTestStore(t *testing.T) *dal.Store {
 
 func registerLedger(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
+
 	batch := s.NewBatch()
 	err := state.SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:      name,
@@ -41,6 +46,7 @@ func registerLedger(t *testing.T, s *dal.Store, name string) {
 
 func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*commonpb.Log) {
 	t.Helper()
+
 	batch := s.NewBatch()
 	err := state.AppendLogs(batch, logs...)
 	require.NoError(t, err)
@@ -50,33 +56,43 @@ func appendLogs(t *testing.T, s *dal.Store, lastAppliedIndex uint64, logs ...*co
 
 func collectLedgers(cursor dal.Cursor[*commonpb.LedgerInfo]) ([]*commonpb.LedgerInfo, error) {
 	defer func() { _ = cursor.Close() }()
+
 	var ledgers []*commonpb.LedgerInfo
+
 	for {
 		ledger, err := cursor.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			return nil, err
 		}
+
 		ledgers = append(ledgers, ledger)
 	}
+
 	return ledgers, nil
 }
 
 func collectLogs(t *testing.T, cursor dal.Cursor[*commonpb.Log]) []*commonpb.Log {
 	t.Helper()
+
 	defer func() { _ = cursor.Close() }()
 
 	var logs []*commonpb.Log
+
 	for {
 		log, err := cursor.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		require.NoError(t, err)
+
 		logs = append(logs, log)
 	}
+
 	return logs
 }
 

@@ -3,11 +3,12 @@ package processing
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestProcessAddEventsSink_Success(t *testing.T) {
@@ -48,7 +49,7 @@ func TestProcessAddEventsSink_Success(t *testing.T) {
 
 	addedLog := result.GetAddedEventsSink()
 	require.NotNil(t, addedLog)
-	require.Equal(t, "my-nats-sink", addedLog.Config.Name)
+	require.Equal(t, "my-nats-sink", addedLog.GetConfig().GetName())
 }
 
 func TestProcessAddEventsSink_AlreadyExists(t *testing.T) {
@@ -111,7 +112,7 @@ func TestProcessRemoveEventsSink_Success(t *testing.T) {
 
 	removedLog := result.GetRemovedEventsSink()
 	require.NotNil(t, removedLog)
-	require.Equal(t, "my-nats-sink", removedLog.Name)
+	require.Equal(t, "my-nats-sink", removedLog.GetName())
 }
 
 func TestProcessRemoveEventsSink_NotFound(t *testing.T) {

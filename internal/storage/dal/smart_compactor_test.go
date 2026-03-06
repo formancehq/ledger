@@ -4,15 +4,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 func newTestStoreForCompactor(t *testing.T) *dal.Store {
 	t.Helper()
+
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
@@ -20,6 +23,7 @@ func newTestStoreForCompactor(t *testing.T) *dal.Store {
 	s, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
+
 	return s
 }
 
@@ -72,6 +76,7 @@ func TestSmartCompactorColdRequestMultiple(t *testing.T) {
 	// Send two signals. The concurrency guard may skip the second one, but
 	// neither should cause a deadlock or panic.
 	coldCh <- struct{}{}
+
 	coldCh <- struct{}{}
 
 	// Wait for the channel to be drained by the compactor.

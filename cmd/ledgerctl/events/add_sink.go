@@ -2,15 +2,17 @@ package events
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewAddSinkCommand creates the events add-sink command.
@@ -83,7 +85,7 @@ Examples:
 func runAddSink(cmd *cobra.Command, _ []string) error {
 	name, _ := cmd.Flags().GetString("name")
 	if name == "" {
-		return fmt.Errorf("--name is required")
+		return errors.New("--name is required")
 	}
 
 	var (
@@ -110,21 +112,25 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 	if hasNATS {
 		sinkCount++
 	}
+
 	if hasCH {
 		sinkCount++
 	}
+
 	if hasKafka {
 		sinkCount++
 	}
+
 	if hasHTTP {
 		sinkCount++
 	}
 
 	if sinkCount > 1 {
-		return fmt.Errorf("cannot specify multiple sink types; choose one of: NATS (--nats-url), ClickHouse (--ch-dsn), Kafka (--kafka-brokers), or HTTP (--http-endpoint)")
+		return errors.New("cannot specify multiple sink types; choose one of: NATS (--nats-url), ClickHouse (--ch-dsn), Kafka (--kafka-brokers), or HTTP (--http-endpoint)")
 	}
+
 	if sinkCount == 0 {
-		return fmt.Errorf("must specify a sink type: NATS (--nats-url and --nats-topic), ClickHouse (--ch-dsn), Kafka (--kafka-brokers and --kafka-topic), or HTTP (--http-endpoint)")
+		return errors.New("must specify a sink type: NATS (--nats-url and --nats-topic), ClickHouse (--ch-dsn), Kafka (--kafka-brokers and --kafka-topic), or HTTP (--http-endpoint)")
 	}
 
 	var (
@@ -146,15 +152,18 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
+
 		config.EventTypes = eventTypes
 	}
 
 	var sinkType string
+
 	switch {
 	case hasNATS:
 		if natsURL == "" || natsTopic == "" {
-			return fmt.Errorf("--nats-url and --nats-topic are both required for NATS sinks")
+			return errors.New("--nats-url and --nats-topic are both required for NATS sinks")
 		}
+
 		config.Type = &commonpb.SinkConfig_Nats{
 			Nats: &commonpb.NatsSinkConfig{
 				Url:   natsURL,
@@ -172,8 +181,9 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		sinkType = "ClickHouse"
 	case hasKafka:
 		if kafkaBrokersStr == "" || kafkaTopic == "" {
-			return fmt.Errorf("--kafka-brokers and --kafka-topic are both required for Kafka sinks")
+			return errors.New("--kafka-brokers and --kafka-topic are both required for Kafka sinks")
 		}
+
 		brokers := strings.Split(kafkaBrokersStr, ",")
 		config.Type = &commonpb.SinkConfig_Kafka{
 			Kafka: &commonpb.KafkaSinkConfig{
@@ -181,7 +191,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 				Topic:         kafkaTopic,
 				Tls:           kafkaTLS,
 				SaslMechanism: kafkaSASL,
-				SaslUsername:   kafkaUser,
+				SaslUsername:  kafkaUser,
 				SaslPassword:  kafkaPass,
 			},
 		}
@@ -200,6 +210,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -219,12 +230,14 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to add event sink", err)
 	}
 
@@ -234,6 +247,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(config)
 	}
 
@@ -241,6 +255,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 	pterm.Printf("Sink: %s\n", pterm.Cyan(name))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 	pterm.Printf("Type:   %s\n", sinkType)
+
 	switch {
 	case hasNATS:
 		pterm.Printf("URL:    %s\n", natsURL)
@@ -253,12 +268,14 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		pterm.Printf("Topic:   %s\n", kafkaTopic)
 	case hasHTTP:
 		pterm.Printf("Endpoint: %s\n", httpEndpoint)
+
 		if httpSecret != "" {
 			pterm.Printf("Secret:   (set)\n")
 		}
 	}
+
 	pterm.Printf("Format: %s\n", format)
-	pterm.Printf("Events: %s\n", formatEventTypes(config.EventTypes))
+	pterm.Printf("Events: %s\n", formatEventTypes(config.GetEventTypes()))
 
 	return nil
 }
@@ -270,30 +287,37 @@ var validEventTypes = func() map[string]commonpb.EventType {
 		if commonpb.EventType(v) == commonpb.EventType_EVENT_TYPE_UNSPECIFIED {
 			continue
 		}
+
 		m[name] = commonpb.EventType(v)
 	}
+
 	return m
 }()
 
 // parseEventTypes parses a comma-separated list of event type names into proto enum values.
 func parseEventTypes(s string) ([]commonpb.EventType, error) {
 	parts := strings.Split(s, ",")
+
 	result := make([]commonpb.EventType, 0, len(parts))
 	for _, p := range parts {
 		name := strings.TrimSpace(p)
 		if name == "" {
 			continue
 		}
+
 		et, ok := validEventTypes[strings.ToUpper(name)]
 		if !ok {
 			var valid []string
 			for n := range validEventTypes {
 				valid = append(valid, n)
 			}
+
 			return nil, fmt.Errorf("unknown event type %q; valid types: %s", name, strings.Join(valid, ", "))
 		}
+
 		result = append(result, et)
 	}
+
 	return result, nil
 }
 
@@ -302,9 +326,11 @@ func formatEventTypes(types []commonpb.EventType) string {
 	if len(types) == 0 {
 		return "all"
 	}
+
 	names := make([]string, len(types))
 	for i, et := range types {
 		names[i] = et.String()
 	}
+
 	return strings.Join(names, ", ")
 }

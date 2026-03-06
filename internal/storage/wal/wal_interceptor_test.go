@@ -45,6 +45,7 @@ func TestInterceptor_InitialState_Intercepted(t *testing.T) {
 
 	customHS := raftpb.HardState{Term: 99}
 	customCS := raftpb.ConfState{Voters: []uint64{99}}
+
 	interceptor.SetInitialStateInterceptor(func(delegate WAL) (raftpb.HardState, raftpb.ConfState, error) {
 		return customHS, customCS, nil
 	})
@@ -78,6 +79,7 @@ func TestInterceptor_Entries_Intercepted(t *testing.T) {
 	interceptor := NewWALInterceptor(mock)
 
 	errInjected := errors.New("injected")
+
 	interceptor.SetEntriesInterceptor(func(delegate WAL, lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 		return nil, errInjected
 	})
@@ -199,6 +201,7 @@ func TestInterceptor_Snapshot_Intercepted(t *testing.T) {
 	interceptor := NewWALInterceptor(mock)
 
 	custom := raftpb.Snapshot{Metadata: raftpb.SnapshotMetadata{Index: 42}}
+
 	interceptor.SetSnapshotInterceptor(func(delegate WAL) (raftpb.Snapshot, error) {
 		return custom, nil
 	})
@@ -230,6 +233,7 @@ func TestInterceptor_CreateSnapshot_Intercepted(t *testing.T) {
 	interceptor := NewWALInterceptor(mock)
 
 	errInjected := errors.New("snapshot error")
+
 	interceptor.SetCreateSnapshotInterceptor(func(delegate WAL, i uint64, r *raftpb.ConfState, data []byte) error {
 		return errInjected
 	})
@@ -289,8 +293,10 @@ func TestInterceptor_Append_Intercepted(t *testing.T) {
 	interceptor := NewWALInterceptor(mock)
 
 	var capturedEntries []raftpb.Entry
+
 	interceptor.SetAppendInterceptor(func(delegate WAL, state raftpb.HardState, entries []raftpb.Entry) error {
 		capturedEntries = entries
+
 		return nil
 	})
 

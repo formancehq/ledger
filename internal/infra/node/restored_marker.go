@@ -26,6 +26,7 @@ func ReadRestoredMarker(dataDir string) (*RestoredMarker, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("reading restored marker: %w", err)
 	}
 
@@ -40,8 +41,11 @@ func ReadRestoredMarker(dataDir string) (*RestoredMarker, error) {
 // RemoveRestoredMarker removes the RESTORED marker file from the data directory.
 func RemoveRestoredMarker(dataDir string) error {
 	markerPath := filepath.Join(dataDir, restoredMarkerFile)
-	if err := os.Remove(markerPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+
+	err := os.Remove(markerPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("removing restored marker: %w", err)
 	}
+
 	return nil
 }

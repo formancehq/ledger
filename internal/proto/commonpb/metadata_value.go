@@ -103,7 +103,8 @@ func ValueFromProto(v *MetadataValue) Value {
 	if v == nil {
 		return NullValueOf("")
 	}
-	switch t := v.Type.(type) {
+
+	switch t := v.GetType().(type) {
 	case *MetadataValue_StringValue:
 		return StringValue(t.StringValue)
 	case *MetadataValue_IntValue:
@@ -114,8 +115,9 @@ func ValueFromProto(v *MetadataValue) Value {
 		return BoolValue(t.BoolValue)
 	case *MetadataValue_NullValue:
 		if t.NullValue != nil {
-			return NullValueOf(t.NullValue.Original)
+			return NullValueOf(t.NullValue.GetOriginal())
 		}
+
 		return NullValueOf("")
 	default:
 		return NullValueOf("")

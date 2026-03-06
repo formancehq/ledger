@@ -57,6 +57,7 @@ func (c *ClosingCursor[T]) Close() error {
 	if closeErr := c.closer.Close(); err == nil {
 		err = closeErr
 	}
+
 	return err
 }
 

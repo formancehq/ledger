@@ -6,11 +6,12 @@ import (
 	"os"
 	"sort"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewGetSchemaCommand creates the ledgers get-schema command.
@@ -45,6 +46,7 @@ func runGetSchema(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -57,6 +59,7 @@ func runGetSchema(cmd *cobra.Command, args []string) error {
 	})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to get schema status", err)
 	}
 
@@ -66,6 +69,7 @@ func runGetSchema(cmd *cobra.Command, args []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(resp)
 	}
 
@@ -73,23 +77,24 @@ func runGetSchema(cmd *cobra.Command, args []string) error {
 	pterm.Printf("Metadata Schema: %s\n", ledgerName)
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
-	hasAccountFields := len(resp.AccountFields) > 0
-	hasTransactionFields := len(resp.TransactionFields) > 0
+	hasAccountFields := len(resp.GetAccountFields()) > 0
+	hasTransactionFields := len(resp.GetTransactionFields()) > 0
 
 	if !hasAccountFields && !hasTransactionFields {
 		pterm.Println(pterm.Gray("(no schema defined)"))
+
 		return nil
 	}
 
 	if hasAccountFields {
 		pterm.Println("Account Fields:")
-		renderSchemaStatusTable(resp.AccountFields)
+		renderSchemaStatusTable(resp.GetAccountFields())
 		pterm.Println()
 	}
 
 	if hasTransactionFields {
 		pterm.Println("Transaction Fields:")
-		renderSchemaStatusTable(resp.TransactionFields)
+		renderSchemaStatusTable(resp.GetTransactionFields())
 		pterm.Println()
 	}
 
@@ -105,14 +110,15 @@ func renderSchemaStatusTable(fields map[string]*servicepb.MetadataFieldStatus) {
 	for k := range fields {
 		keys = append(keys, k)
 	}
+
 	sort.Strings(keys)
 
 	for _, key := range keys {
 		field := fields[key]
-		status := conversionStatusString(field.Status, field.TotalKeys, field.ConvertedKeys)
+		status := conversionStatusString(field.GetStatus(), field.GetTotalKeys(), field.GetConvertedKeys())
 		table = append(table, []string{
 			key,
-			cmdutil.MetadataTypeString(field.DeclaredType),
+			cmdutil.MetadataTypeString(field.GetDeclaredType()),
 			status,
 		})
 	}
@@ -129,6 +135,7 @@ func conversionStatusString(s commonpb.MetadataConversionStatus, totalKeys, conv
 		if totalKeys > 0 {
 			return pterm.Yellow(fmt.Sprintf("CONVERTING (%d/%d)", convertedKeys, totalKeys))
 		}
+
 		return pterm.Yellow("CONVERTING")
 	default:
 		return s.String()

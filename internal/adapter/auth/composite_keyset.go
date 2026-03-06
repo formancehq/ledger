@@ -3,8 +3,9 @@ package auth
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/v3/oidc"
 	jose "github.com/go-jose/go-jose/v4"
+
+	"github.com/formancehq/go-libs/v3/oidc"
 )
 
 // compositeKeySet tries multiple KeySets in order until one succeeds.
@@ -17,6 +18,7 @@ type compositeKeySet struct {
 // Nil entries are filtered out. If only one key set remains, it is returned directly.
 func NewCompositeKeySet(keySets ...oidc.KeySet) oidc.KeySet {
 	var filtered []oidc.KeySet
+
 	for _, ks := range keySets {
 		if ks != nil {
 			filtered = append(filtered, ks)
@@ -35,16 +37,19 @@ func NewCompositeKeySet(keySets ...oidc.KeySet) oidc.KeySet {
 
 func (c *compositeKeySet) VerifySignature(ctx context.Context, jws *jose.JSONWebSignature) ([]byte, error) {
 	var lastErr error
+
 	for _, ks := range c.keySets {
 		payload, err := ks.VerifySignature(ctx, jws)
 		if err == nil {
 			return payload, nil
 		}
+
 		lastErr = err
 	}
 
 	if lastErr != nil {
 		return nil, lastErr
 	}
+
 	return nil, oidc.ErrKeyNone
 }

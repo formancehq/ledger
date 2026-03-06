@@ -6,94 +6,105 @@ import (
 	"sort"
 
 	"github.com/formancehq/go-libs/v3/metadata"
+
 	jsonPkg "github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 )
 
-// Target type constants
+// Target type constants.
 const (
 	MetaTargetTypeAccount     = "ACCOUNT"
 	MetaTargetTypeTransaction = "TRANSACTION"
 )
 
-// MetadataFromMap converts a metadata.Metadata (map[string]string) to a []*Metadata slice
+// MetadataFromMap converts a metadata.Metadata (map[string]string) to a []*Metadata slice.
 func MetadataFromMap(m metadata.Metadata) []*Metadata {
 	if m == nil {
 		return nil
 	}
+
 	result := make([]*Metadata, 0, len(m))
 	for k, v := range m {
 		result = append(result, &Metadata{Key: k, Value: NewStringValue(v)})
 	}
 	// Sort by key for deterministic output
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].Key < result[j].Key
+		return result[i].GetKey() < result[j].GetKey()
 	})
+
 	return result
 }
 
-// MetadataSetFromMap converts a metadata.Metadata (map[string]string) to a *MetadataSet
+// MetadataSetFromMap converts a metadata.Metadata (map[string]string) to a *MetadataSet.
 func MetadataSetFromMap(m metadata.Metadata) *MetadataSet {
 	if m == nil {
 		return nil
 	}
+
 	return &MetadataSet{
 		Metadata: MetadataFromMap(m),
 	}
 }
 
-// MetadataToMap converts a []*Metadata slice to metadata.Metadata (map[string]string)
+// MetadataToMap converts a []*Metadata slice to metadata.Metadata (map[string]string).
 func MetadataToMap(m []*Metadata) metadata.Metadata {
 	if m == nil {
 		return nil
 	}
+
 	result := make(metadata.Metadata, len(m))
 	for _, md := range m {
-		if md != nil && md.Value != nil {
-			result[md.Key] = MetadataValueToString(md.Value)
+		if md != nil && md.GetValue() != nil {
+			result[md.GetKey()] = MetadataValueToString(md.GetValue())
 		}
 	}
+
 	return result
 }
 
-// MetadataSetToMap converts a *MetadataSet to metadata.Metadata (map[string]string)
+// MetadataSetToMap converts a *MetadataSet to metadata.Metadata (map[string]string).
 func MetadataSetToMap(ms *MetadataSet) metadata.Metadata {
 	if ms == nil {
 		return nil
 	}
-	return MetadataToMap(ms.Metadata)
+
+	return MetadataToMap(ms.GetMetadata())
 }
 
-// NewMetadataSet creates a new MetadataSet from a metadata.Metadata map
+// NewMetadataSet creates a new MetadataSet from a metadata.Metadata map.
 func NewMetadataSet(m metadata.Metadata) *MetadataSet {
 	return MetadataSetFromMap(m)
 }
 
-// ToMap converts a MetadataSet to metadata.Metadata (map[string]string)
+// ToMap converts a MetadataSet to metadata.Metadata (map[string]string).
 func (ms *MetadataSet) ToMap() metadata.Metadata {
 	return MetadataSetToMap(ms)
 }
 
-// AccountMetadataFromMap converts a map[string]metadata.Metadata to map[string]*MetadataSet
+// AccountMetadataFromMap converts a map[string]metadata.Metadata to map[string]*MetadataSet.
 func AccountMetadataFromMap(m map[string]metadata.Metadata) map[string]*MetadataSet {
 	if m == nil {
 		return nil
 	}
+
 	result := make(map[string]*MetadataSet, len(m))
 	for k, v := range m {
 		result[k] = MetadataSetFromMap(v)
 	}
+
 	return result
 }
 
-// AccountMetadataToMap converts a map[string]*MetadataSet to map[string]metadata.Metadata
+// AccountMetadataToMap converts a map[string]*MetadataSet to map[string]metadata.Metadata.
 func AccountMetadataToMap(m map[string]*MetadataSet) map[string]metadata.Metadata {
 	if m == nil {
 		return nil
 	}
+
 	result := make(map[string]metadata.Metadata, len(m))
 	for k, v := range m {
 		result[k] = MetadataSetToMap(v)
 	}
+
 	return result
 }
 
@@ -104,7 +115,8 @@ func MetadataValueToAny(v *MetadataValue) any {
 	if v == nil {
 		return nil
 	}
-	switch t := v.Type.(type) {
+
+	switch t := v.GetType().(type) {
 	case *MetadataValue_StringValue:
 		return t.StringValue
 	case *MetadataValue_IntValue:
@@ -125,12 +137,14 @@ func MetadataSetToAnyMap(ms *MetadataSet) map[string]any {
 	if ms == nil {
 		return nil
 	}
-	result := make(map[string]any, len(ms.Metadata))
-	for _, md := range ms.Metadata {
-		if md != nil && md.Value != nil {
-			result[md.Key] = MetadataValueToAny(md.Value)
+
+	result := make(map[string]any, len(ms.GetMetadata()))
+	for _, md := range ms.GetMetadata() {
+		if md != nil && md.GetValue() != nil {
+			result[md.GetKey()] = MetadataValueToAny(md.GetValue())
 		}
 	}
+
 	return result
 }
 
@@ -156,20 +170,25 @@ func MetadataValueFromAny(v any) (*MetadataValue, error) {
 		if val != math.Trunc(val) {
 			return nil, fmt.Errorf("float values are not supported for metadata, got %v", val)
 		}
+
 		if val < 0 {
 			if val < math.MinInt64 {
 				return nil, fmt.Errorf("integer value %v overflows int64", val)
 			}
+
 			return NewIntValue(int64(val)), nil
 		}
+
 		if val > math.MaxUint64 {
 			return nil, fmt.Errorf("integer value %v overflows uint64", val)
 		}
+
 		return NewUintValue(uint64(val)), nil
 	case int64:
 		if val < 0 {
 			return NewIntValue(val), nil
 		}
+
 		return NewUintValue(uint64(val)), nil
 	case uint64:
 		return NewUintValue(val), nil
@@ -177,6 +196,7 @@ func MetadataValueFromAny(v any) (*MetadataValue, error) {
 		if val < 0 {
 			return NewIntValue(int64(val)), nil
 		}
+
 		return NewUintValue(uint64(val)), nil
 	default:
 		return nil, fmt.Errorf("unsupported metadata value type %T (objects and arrays are not supported)", v)
@@ -189,20 +209,25 @@ func MetadataFromAnyMap(m map[string]any) ([]*Metadata, error) {
 	if m == nil {
 		return nil, nil
 	}
+
 	result := make([]*Metadata, 0, len(m))
 	for k, v := range m {
 		mv, err := MetadataValueFromAny(v)
 		if err != nil {
 			return nil, fmt.Errorf("metadata key %q: %w", k, err)
 		}
+
 		if mv == nil {
 			continue // nil means delete this key
 		}
+
 		result = append(result, &Metadata{Key: k, Value: mv})
 	}
+
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].Key < result[j].Key
+		return result[i].GetKey() < result[j].GetKey()
 	})
+
 	return result, nil
 }
 
@@ -211,20 +236,23 @@ func MetadataSetFromAnyMap(m map[string]any) (*MetadataSet, error) {
 	if m == nil {
 		return nil, nil
 	}
+
 	md, err := MetadataFromAnyMap(m)
 	if err != nil {
 		return nil, err
 	}
+
 	return &MetadataSet{Metadata: md}, nil
 }
 
 // MarshalJSON implements json.Marshaler for MetadataSet.
-// Outputs a flat JSON object with typed values: {"key": "str", "count": 42, "active": true}
+// Outputs a flat JSON object with typed values: {"key": "str", "count": 42, "active": true}.
 func (ms *MetadataSet) MarshalJSON() ([]byte, error) {
 	m := MetadataSetToAnyMap(ms)
 	if m == nil {
 		m = make(map[string]any)
 	}
+
 	return jsonPkg.Marshal(m)
 }
 
@@ -236,22 +264,27 @@ func (ms *MetadataSet) UnmarshalJSON(data []byte) error {
 	if err := jsonPkg.Unmarshal(data, &m); err != nil {
 		return err
 	}
+
 	md, err := MetadataFromAnyMap(m)
 	if err != nil {
 		return err
 	}
+
 	ms.Metadata = md
+
 	return nil
 }
 
-// AccountMetadataToAnyMap converts a map[string]*MetadataSet to map[string]map[string]any
+// AccountMetadataToAnyMap converts a map[string]*MetadataSet to map[string]map[string]any.
 func AccountMetadataToAnyMap(m map[string]*MetadataSet) map[string]map[string]any {
 	if m == nil {
 		return nil
 	}
+
 	result := make(map[string]map[string]any, len(m))
 	for k, v := range m {
 		result[k] = MetadataSetToAnyMap(v)
 	}
+
 	return result
 }

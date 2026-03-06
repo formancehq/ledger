@@ -7,11 +7,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/stretchr/testify/require"
 )
 
 func TestHandleGetLedgerStats_Success(t *testing.T) {
@@ -20,6 +22,7 @@ func TestHandleGetLedgerStats_Success(t *testing.T) {
 	backend := &mockBackend{
 		getLedgerStatsFn: func(_ context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
 			require.Equal(t, "my-ledger", ledgerName)
+
 			return &commonpb.LedgerStats{
 				AccountCount:     42,
 				TransactionCount: 100,

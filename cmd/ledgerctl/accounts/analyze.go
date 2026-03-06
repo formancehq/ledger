@@ -2,17 +2,20 @@ package accounts
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
+
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewAnalyzeCommand creates the accounts analyze command.
@@ -45,9 +48,11 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -67,26 +72,32 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 	})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to analyze accounts", err)
 	}
 
 	var resp *servicepb.AnalyzeAccountsResponse
+
 	for {
 		event, err := stream.Recv()
 		if err != nil {
 			_ = spinner.Stop()
-			if err == io.EOF {
-				return fmt.Errorf("stream ended without result")
+
+			if errors.Is(err, io.EOF) {
+				return errors.New("stream ended without result")
 			}
+
 			return cmdutil.FormatGRPCError("failed to analyze accounts", err)
 		}
-		switch t := event.Type.(type) {
+
+		switch t := event.GetType().(type) {
 		case *servicepb.AnalyzeAccountsEvent_Progress:
 			p := t.Progress
-			spinner.UpdateText(fmt.Sprintf("Analyzing accounts... %d scanned", p.Processed))
+			spinner.UpdateText(fmt.Sprintf("Analyzing accounts... %d scanned", p.GetProcessed()))
 		case *servicepb.AnalyzeAccountsEvent_Result:
 			resp = t.Result
 		}
+
 		if resp != nil {
 			break
 		}
@@ -97,90 +108,99 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(resp)
 	}
 
 	renderAnalysisResult(resp)
+
 	return nil
 }
 
 func renderAnalysisResult(resp *servicepb.AnalyzeAccountsResponse) {
 	// Summary
 	pterm.DefaultHeader.WithFullWidth().Println("Account Analysis")
-	pterm.Info.Printfln("Total accounts: %d", resp.TotalAccounts)
-	pterm.Info.Printfln("Patterns discovered: %d", len(resp.Patterns))
+	pterm.Info.Printfln("Total accounts: %d", resp.GetTotalAccounts())
+	pterm.Info.Printfln("Patterns discovered: %d", len(resp.GetPatterns()))
 	pterm.Println()
 
 	// Patterns table
-	if len(resp.Patterns) > 0 {
+	if len(resp.GetPatterns()) > 0 {
 		pterm.DefaultSection.Println("Discovered Patterns")
+
 		tableData := pterm.TableData{
 			{"PATTERN", "ACCOUNTS", "ASSETS", "METADATA KEYS"},
 		}
-		for _, p := range resp.Patterns {
+		for _, p := range resp.GetPatterns() {
 			tableData = append(tableData, []string{
-				p.Pattern,
-				fmt.Sprintf("%d", p.AccountCount),
-				strings.Join(p.Assets, ", "),
-				strings.Join(p.MetadataKeys, ", "),
+				p.GetPattern(),
+				strconv.FormatUint(p.GetAccountCount(), 10),
+				strings.Join(p.GetAssets(), ", "),
+				strings.Join(p.GetMetadataKeys(), ", "),
 			})
 		}
+
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+
 		pterm.Println()
 	}
 
 	// Chart tree
-	if resp.SuggestedChart != nil && len(resp.SuggestedChart.Roots) > 0 {
+	if resp.GetSuggestedChart() != nil && len(resp.GetSuggestedChart().GetRoots()) > 0 {
 		pterm.DefaultSection.Println("Suggested Chart of Accounts")
+
 		tree := pterm.TreeNode{Text: "root"}
-		keys := sortedMapKeys(resp.SuggestedChart.Roots)
+
+		keys := sortedMapKeys(resp.GetSuggestedChart().GetRoots())
 		for _, key := range keys {
-			tree.Children = append(tree.Children, buildSegmentTreeNode(key, resp.SuggestedChart.Roots[key]))
+			tree.Children = append(tree.Children, buildSegmentTreeNode(key, resp.GetSuggestedChart().GetRoots()[key]))
 		}
+
 		_ = pterm.DefaultTree.WithRoot(tree).Render()
 	}
 }
 
 func buildSegmentTreeNode(name string, seg *commonpb.ChartSegment) pterm.TreeNode {
 	label := name
-	if seg.Account {
+	if seg.GetAccount() {
 		label += pterm.Gray(" [account]")
 	}
 
 	node := pterm.TreeNode{Text: label}
 
 	// Add fixed children (sorted)
-	for _, key := range sortedMapKeys(seg.Children) {
-		node.Children = append(node.Children, buildSegmentTreeNode(key, seg.Children[key]))
+	for _, key := range sortedMapKeys(seg.GetChildren()) {
+		node.Children = append(node.Children, buildSegmentTreeNode(key, seg.GetChildren()[key]))
 	}
 
 	// Add variable child
-	if seg.Variable != nil {
-		node.Children = append(node.Children, buildVariableTreeNode(seg.Variable))
+	if seg.GetVariable() != nil {
+		node.Children = append(node.Children, buildVariableTreeNode(seg.GetVariable()))
 	}
 
 	return node
 }
 
 func buildVariableTreeNode(v *commonpb.ChartVariable) pterm.TreeNode {
-	label := fmt.Sprintf("{%s}", v.Name)
-	if v.Pattern != "" {
-		label += pterm.Gray(fmt.Sprintf(" ~ %s", v.Pattern))
+	label := fmt.Sprintf("{%s}", v.GetName())
+	if v.GetPattern() != "" {
+		label += pterm.Gray(" ~ " + v.GetPattern())
 	}
-	if v.Account {
+
+	if v.GetAccount() {
 		label += pterm.Gray(" [account]")
 	}
 
 	node := pterm.TreeNode{Text: label}
 
 	// Add fixed children
-	for _, key := range sortedMapKeys(v.Children) {
-		node.Children = append(node.Children, buildSegmentTreeNode(key, v.Children[key]))
+	for _, key := range sortedMapKeys(v.GetChildren()) {
+		node.Children = append(node.Children, buildSegmentTreeNode(key, v.GetChildren()[key]))
 	}
 
 	// Add nested variable
-	if v.Variable != nil {
-		node.Children = append(node.Children, buildVariableTreeNode(v.Variable))
+	if v.GetVariable() != nil {
+		node.Children = append(node.Children, buildVariableTreeNode(v.GetVariable()))
 	}
 
 	return node
@@ -191,6 +211,8 @@ func sortedMapKeys[V any](m map[string]V) []string {
 	for k := range m {
 		keys = append(keys, k)
 	}
+
 	sort.Strings(keys)
+
 	return keys
 }

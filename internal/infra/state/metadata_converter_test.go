@@ -5,21 +5,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	libtime "github.com/formancehq/go-libs/v3/time"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/go-libs/v3/logging"
+	libtime "github.com/formancehq/go-libs/v3/time"
+
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // newConverterTestStore creates a fresh Pebble-backed dal.Store for testing.
 func newConverterTestStore(t *testing.T) *dal.Store {
 	t.Helper()
+
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
@@ -27,12 +30,14 @@ func newConverterTestStore(t *testing.T) *dal.Store {
 	s, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
+
 	return s
 }
 
 // registerLedgerWithSchema registers a ledger with a metadata schema.
 func registerLedgerWithSchema(t *testing.T, s *dal.Store, name string, schema *commonpb.MetadataSchema) {
 	t.Helper()
+
 	batch := s.NewBatch()
 	err := SaveLedger(batch, &commonpb.LedgerInfo{
 		Name:           name,
@@ -53,6 +58,7 @@ func newTestConverter(
 	poolSize int,
 ) (*MetadataConverter, chan MetadataConvertRequest) {
 	t.Helper()
+
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	attrs := attributes.New()
@@ -69,6 +75,7 @@ func newTestConverter(
 		poolSize,
 	)
 	t.Cleanup(mc.Stop)
+
 	return mc, requestCh
 }
 
@@ -184,12 +191,17 @@ func TestMetadataConverterLeaderProposesCompletion(t *testing.T) {
 	})
 
 	// Expect exactly one ProposeOrders call: the ConversionComplete order.
-	var mu sync.Mutex
-	var capturedOrders []*raftcmdpb.Order
+	var (
+		mu             sync.Mutex
+		capturedOrders []*raftcmdpb.Order
+	)
+
 	proposer.EXPECT().ProposeOrders(gomock.Any()).DoAndReturn(func(orders ...*raftcmdpb.Order) error {
 		mu.Lock()
 		defer mu.Unlock()
+
 		capturedOrders = append(capturedOrders, orders...)
+
 		return nil
 	}).AnyTimes()
 
@@ -207,6 +219,7 @@ func TestMetadataConverterLeaderProposesCompletion(t *testing.T) {
 	require.Eventually(t, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
+
 		return len(capturedOrders) > 0
 	}, 5*time.Second, 50*time.Millisecond)
 
@@ -215,9 +228,10 @@ func TestMetadataConverterLeaderProposesCompletion(t *testing.T) {
 	lastOrder := capturedOrders[len(capturedOrders)-1]
 	mu.Unlock()
 
-	applyOrder, ok := lastOrder.Type.(*raftcmdpb.Order_Apply)
+	applyOrder, ok := lastOrder.GetType().(*raftcmdpb.Order_Apply)
 	require.True(t, ok)
-	_, isComplete := applyOrder.Apply.Data.(*raftcmdpb.LedgerApplyOrder_ConversionComplete)
+
+	_, isComplete := applyOrder.Apply.GetData().(*raftcmdpb.LedgerApplyOrder_ConversionComplete)
 	assert.True(t, isComplete, "expected ConversionComplete order")
 }
 
@@ -246,12 +260,17 @@ func TestMetadataConverterPoolConcurrency(t *testing.T) {
 		},
 	})
 
-	var mu sync.Mutex
-	var orderCount int
+	var (
+		mu         sync.Mutex
+		orderCount int
+	)
+
 	proposer.EXPECT().ProposeOrders(gomock.Any()).DoAndReturn(func(orders ...*raftcmdpb.Order) error {
 		mu.Lock()
 		defer mu.Unlock()
+
 		orderCount += len(orders)
+
 		return nil
 	}).AnyTimes()
 
@@ -261,12 +280,14 @@ func TestMetadataConverterPoolConcurrency(t *testing.T) {
 	// Send 3 conversion requests concurrently.
 	for _, key := range []string{"field1", "field2", "field3"} {
 		mdType := commonpb.MetadataType_METADATA_TYPE_INT64
+
 		switch key {
 		case "field2":
 			mdType = commonpb.MetadataType_METADATA_TYPE_BOOL
 		case "field3":
 			mdType = commonpb.MetadataType_METADATA_TYPE_UINT64
 		}
+
 		requestCh <- MetadataConvertRequest{
 			LedgerName: "test-ledger",
 			TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -279,6 +300,7 @@ func TestMetadataConverterPoolConcurrency(t *testing.T) {
 	require.Eventually(t, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
+
 		return orderCount >= 3
 	}, 5*time.Second, 50*time.Millisecond)
 }
@@ -340,7 +362,7 @@ func TestMetadataConverterQueueDrainsOnStop(t *testing.T) {
 	)
 
 	// Fill the channel before starting.
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		requestCh <- MetadataConvertRequest{
 			LedgerName: "test-ledger",
 			TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -353,6 +375,7 @@ func TestMetadataConverterQueueDrainsOnStop(t *testing.T) {
 
 	// Stop should not hang — the converter processes or drops queued items.
 	done := make(chan struct{})
+
 	go func() {
 		mc.Stop()
 		close(done)

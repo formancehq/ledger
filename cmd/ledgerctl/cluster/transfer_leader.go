@@ -1,13 +1,15 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 )
 
 // NewTransferLeaderCommand creates the cluster transfer-leader command.
@@ -34,7 +36,7 @@ func runTransferLeader(cmd *cobra.Command, args []string) error {
 	}
 
 	if nodeID == 0 {
-		return fmt.Errorf("node ID must be non-zero")
+		return errors.New("node ID must be non-zero")
 	}
 
 	// Get gRPC connection
@@ -42,6 +44,7 @@ func runTransferLeader(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	// Get context
@@ -56,7 +59,7 @@ func runTransferLeader(cmd *cobra.Command, args []string) error {
 		return cmdutil.FormatGRPCError("failed to transfer leadership", err)
 	}
 
-	pterm.Success.Printfln("Leadership transferred to node %s", pterm.Green(fmt.Sprintf("%d", resp.NewLeader)))
+	pterm.Success.Printfln("Leadership transferred to node %s", pterm.Green(strconv.FormatUint(uint64(resp.GetNewLeader()), 10)))
 
 	return nil
 }

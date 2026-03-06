@@ -1,13 +1,15 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 )
 
 // NewPromoteLearnerCommand creates the cluster promote-learner command.
@@ -32,13 +34,14 @@ func runPromoteLearner(cmd *cobra.Command, args []string) error {
 	}
 
 	if nodeID == 0 {
-		return fmt.Errorf("node ID must be non-zero")
+		return errors.New("node ID must be non-zero")
 	}
 
 	client, conn, err := cmdutil.GetClusterClient(cmd)
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -52,7 +55,7 @@ func runPromoteLearner(cmd *cobra.Command, args []string) error {
 	}
 
 	pterm.Success.Printfln("Learner node %s promoted to voter",
-		pterm.Green(fmt.Sprintf("%d", nodeID)),
+		pterm.Green(strconv.FormatUint(nodeID, 10)),
 	)
 
 	return nil

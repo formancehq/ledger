@@ -11,8 +11,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/pterm/pterm"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 )
 
 // parseChecksums parses a checksums.txt file (goreleaser format: "<sha256>  <filename>")
@@ -50,6 +51,7 @@ func downloadAndVerify(archiveAsset, checksumsAsset *assetInfo, spinner *pterm.S
 	if err != nil {
 		return "", fmt.Errorf("downloading checksums: %w", err)
 	}
+
 	defer func() { _ = checksumsResp.Body.Close() }()
 
 	checksums, err := parseChecksums(checksumsResp.Body)
@@ -69,12 +71,14 @@ func downloadAndVerify(archiveAsset, checksumsAsset *assetInfo, spinner *pterm.S
 	if err != nil {
 		return "", fmt.Errorf("downloading archive: %w", err)
 	}
+
 	defer func() { _ = archiveResp.Body.Close() }()
 
 	tmpArchive, err := os.CreateTemp("", "ledgerctl-upgrade-*.tar.gz")
 	if err != nil {
 		return "", fmt.Errorf("creating temp file: %w", err)
 	}
+
 	defer func() {
 		_ = tmpArchive.Close()
 		_ = os.Remove(tmpArchive.Name())
@@ -84,6 +88,7 @@ func downloadAndVerify(archiveAsset, checksumsAsset *assetInfo, spinner *pterm.S
 	tee := io.TeeReader(archiveResp.Body, hash)
 
 	var written int64
+
 	buf := make([]byte, 32*1024)
 	for {
 		n, readErr := tee.Read(buf)
@@ -91,13 +96,16 @@ func downloadAndVerify(archiveAsset, checksumsAsset *assetInfo, spinner *pterm.S
 			if _, wErr := tmpArchive.Write(buf[:n]); wErr != nil {
 				return "", fmt.Errorf("writing archive: %w", wErr)
 			}
+
 			written += int64(n)
 			spinner.UpdateText(fmt.Sprintf("Downloading %s... %s",
 				archiveAsset.Name, cmdutil.FormatBytes(uint64(written))))
 		}
+
 		if readErr == io.EOF {
 			break
 		}
+
 		if readErr != nil {
 			return "", fmt.Errorf("reading archive: %w", readErr)
 		}
@@ -128,6 +136,7 @@ func extractBinary(archive io.Reader, name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("opening gzip reader: %w", err)
 	}
+
 	defer func() { _ = gz.Close() }()
 
 	tr := tar.NewReader(gz)
@@ -136,6 +145,7 @@ func extractBinary(archive io.Reader, name string) (string, error) {
 		if err == io.EOF {
 			break
 		}
+
 		if err != nil {
 			return "", fmt.Errorf("reading tar: %w", err)
 		}
@@ -149,11 +159,13 @@ func extractBinary(archive io.Reader, name string) (string, error) {
 			if _, err := io.Copy(tmpBinary, tr); err != nil {
 				_ = tmpBinary.Close()
 				_ = os.Remove(tmpBinary.Name())
+
 				return "", fmt.Errorf("extracting binary: %w", err)
 			}
 
 			if err := tmpBinary.Close(); err != nil {
 				_ = os.Remove(tmpBinary.Name())
+
 				return "", fmt.Errorf("closing temp binary: %w", err)
 			}
 

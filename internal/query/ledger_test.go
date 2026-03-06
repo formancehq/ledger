@@ -5,14 +5,16 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	libtime "github.com/formancehq/go-libs/v3/time"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/stretchr/testify/require"
 )
 
 func TestReadLedgers(t *testing.T) {
@@ -33,7 +35,7 @@ func TestReadLedgers(t *testing.T) {
 	ledgers, err = collectLedgers(cursor)
 	require.NoError(t, err)
 	require.Len(t, ledgers, 1)
-	require.Equal(t, "ledger-1", ledgers[0].Name)
+	require.Equal(t, "ledger-1", ledgers[0].GetName())
 
 	// Register second ledger
 	registerLedger(t, s, "ledger-2")
@@ -53,7 +55,7 @@ func TestGetLedgerByName(t *testing.T) {
 	ledger, err := query.GetLedgerByName(context.Background(), s, "my-ledger")
 	require.NoError(t, err)
 	require.NotNil(t, ledger)
-	require.Equal(t, "my-ledger", ledger.Name)
+	require.Equal(t, "my-ledger", ledger.GetName())
 
 	ledger, err = query.GetLedgerByName(context.Background(), s, "non-existing")
 	require.Error(t, err)
@@ -66,6 +68,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	attrs := attributes.New()
 
 	const ledgerName = "test-ledger"
+
 	createdAt := commonpb.NewTimestamp(libtime.Now())
 	batch := s.NewBatch()
 	err := state.SaveLedger(batch, &commonpb.LedgerInfo{
@@ -82,6 +85,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	require.NoError(t, attrs.Volume.AddDiff(batch, 1, worldCanonicalKey, &raftcmdpb.VolumePair{
 		OutputKnown: commonpb.NewUint256FromUint64(100),
 	}))
+
 	metadataKey := domain.MetadataKey{AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "bank"}, Key: "key"}
 	metadataCanonicalKey := metadataKey.Bytes()
 	require.NoError(t, attrs.Metadata.Set(batch, 1, metadataCanonicalKey, commonpb.NewStringValue("value")))
@@ -103,7 +107,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	ledgers, err := collectLedgers(cursor)
 	require.NoError(t, err)
 	require.Len(t, ledgers, 1)
-	require.Nil(t, ledgers[0].DeletedAt)
+	require.Nil(t, ledgers[0].GetDeletedAt())
 
 	// Soft delete ledger
 	deletedAt := commonpb.NewTimestamp(libtime.Now())
@@ -121,11 +125,11 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	ledgers, err = collectLedgers(cursor)
 	require.NoError(t, err)
 	require.Len(t, ledgers, 1)
-	require.NotNil(t, ledgers[0].DeletedAt)
-	require.Equal(t, deletedAt.Data, ledgers[0].DeletedAt.Data)
+	require.NotNil(t, ledgers[0].GetDeletedAt())
+	require.Equal(t, deletedAt.GetData(), ledgers[0].GetDeletedAt().GetData())
 
 	// Verify data still exists (soft delete doesn't remove data)
 	volumeResult, err := attrs.Volume.ComputeValue(s, 100, worldCanonicalKey)
 	require.NoError(t, err)
-	require.Equal(t, big.NewInt(100), volumeResult.OutputKnown.ToBigInt())
+	require.Equal(t, big.NewInt(100), volumeResult.GetOutputKnown().ToBigInt())
 }

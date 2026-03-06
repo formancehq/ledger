@@ -29,6 +29,7 @@ func (f *Future[T]) Wait() (T, error) {
 	for !f.done {
 		f.cond.Wait()
 	}
+
 	value := f.value
 	err := f.err
 	f.mu.Unlock()
@@ -44,12 +45,14 @@ func (f *Future[T]) WaitContext(ctx context.Context) (T, error) {
 	if f.done {
 		value, err := f.value, f.err
 		f.mu.Unlock()
+
 		return value, err
 	}
 	f.mu.Unlock()
 
 	if err := ctx.Err(); err != nil {
 		var zero T
+
 		return zero, err
 	}
 
@@ -57,6 +60,7 @@ func (f *Future[T]) WaitContext(ctx context.Context) (T, error) {
 	// so any cond.Wait() call below wakes up and can check ctx.Err().
 	done := make(chan struct{})
 	defer close(done)
+
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -69,11 +73,15 @@ func (f *Future[T]) WaitContext(ctx context.Context) (T, error) {
 	for !f.done {
 		if ctx.Err() != nil {
 			f.mu.Unlock()
+
 			var zero T
+
 			return zero, ctx.Err()
 		}
+
 		f.cond.Wait()
 	}
+
 	value, err := f.value, f.err
 	f.mu.Unlock()
 
@@ -83,5 +91,6 @@ func (f *Future[T]) WaitContext(ctx context.Context) (T, error) {
 func New[T any]() *Future[T] {
 	ret := &Future[T]{}
 	ret.cond = sync.NewCond(&ret.mu)
+
 	return ret
 }

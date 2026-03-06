@@ -3,11 +3,12 @@ package cache
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 func TestGen(t *testing.T) {
@@ -127,6 +128,7 @@ func TestDualGen_Update(t *testing.T) {
 	t.Parallel()
 
 	type counter struct{ value int }
+
 	d := newDualGen[*counter](&counter{value: 0}, &counter{value: 0})
 
 	d.Update(func(c *counter) {
@@ -142,6 +144,7 @@ func TestAttributeCache_PutGet(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
+
 	ac := cache.Volumes
 
 	key := attributes.NewU128(1, 2)
@@ -166,6 +169,7 @@ func TestAttributeCache_Del(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
+
 	ac := cache.Volumes
 
 	key := attributes.NewU128(1, 2)
@@ -188,6 +192,7 @@ func TestAttributeCache_Size(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
+
 	ac := cache.Volumes
 
 	assert.Equal(t, uint64(0), ac.Size())
@@ -204,6 +209,7 @@ func TestAttributeCache_Rotate(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
+
 	ac := cache.Volumes
 
 	key1 := attributes.NewU128(1, 1)
@@ -243,6 +249,7 @@ func TestAttributeCache_IsGuaranteedInCache_SameGeneration(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
+
 	ac := cache.Volumes
 	cache.SetCurrentGeneration(0)
 
@@ -262,6 +269,7 @@ func TestAttributeCache_IsGuaranteedInCache_NextGeneration(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
+
 	ac := cache.Volumes
 	cache.SetCurrentGeneration(0)
 
@@ -287,6 +295,7 @@ func TestAttributeCache_IsGuaranteedInCache_TwoGenerationsAhead(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
+
 	ac := cache.Volumes
 	cache.SetCurrentGeneration(0)
 
@@ -443,11 +452,13 @@ func TestAttributeCache_Iter(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
+
 	ac := cache.Volumes
 
 	// Add data to gen0
 	key1 := attributes.NewU128(1, 1)
 	key2 := attributes.NewU128(2, 2)
+
 	ac.Put(key1, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 10})
 	ac.Put(key2, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 20})
 
@@ -463,6 +474,7 @@ func TestAttributeCache_Iter(t *testing.T) {
 	for _, entry := range ac.Iter() {
 		seen[entry.Tag] = true
 	}
+
 	assert.True(t, seen[10])
 	assert.True(t, seen[20])
 	assert.True(t, seen[30])
@@ -473,6 +485,7 @@ func TestAttributeCache_Gen0Gen1_Accessors(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
+
 	ac := cache.Volumes
 
 	require.NotNil(t, ac.Gen0())
@@ -488,6 +501,7 @@ func TestCache_CheckRotationNeeded_ZeroThreshold(t *testing.T) {
 	// Create a cache and forcibly set threshold to 0
 	cache, err := New(10, nil)
 	require.NoError(t, err)
+
 	cache.GenerationThreshold = 0
 
 	rotated, _ := cache.CheckRotationNeeded(100)
@@ -499,6 +513,7 @@ func TestAttributeCache_IsGuaranteedInCache_ZeroThreshold(t *testing.T) {
 
 	cache, err := New(10, nil)
 	require.NoError(t, err)
+
 	cache.GenerationThreshold = 0
 
 	key := attributes.NewU128(1, 1)

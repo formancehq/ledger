@@ -10,9 +10,9 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 )
 
 type RequestProcessor struct {
@@ -30,9 +30,12 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 	}
 
 	cache := numscript.NewNumscriptCache(numscriptCacheSize)
-	if err := cache.InitCacheMetrics(m); err != nil {
+
+	err := cache.InitCacheMetrics(m)
+	if err != nil {
 		return nil, fmt.Errorf("creating numscript cache metrics: %w", err)
 	}
+
 	return &RequestProcessor{
 		numscriptCache: cache,
 		logHasher:      blake3.New(),
@@ -46,12 +49,14 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 
 	for i, order := range orders {
 		// Compute idempotency hash once if needed (reused for check + store)
-		hasIdempotency := order.Idempotency != nil && order.Idempotency.Key != ""
+		hasIdempotency := order.GetIdempotency() != nil && order.GetIdempotency().GetKey() != ""
+
 		var orderHash []byte
 		if hasIdempotency {
 			orderHash = p.computeOrderHash(order)
 
-			ikKey := domain.IdempotencyKey{Key: order.Idempotency.Key}
+			ikKey := domain.IdempotencyKey{Key: order.GetIdempotency().GetKey()}
+
 			storedValue, err := s.GetIdempotencyKey(ikKey)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return nil, fmt.Errorf("checking idempotency key: %w", err)
@@ -59,16 +64,17 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 
 			// Check if idempotency key exists
 			if storedValue != nil {
-				if !bytes.Equal(orderHash, storedValue.Hash) {
-					return nil, &domain.ErrIdempotencyKeyConflict{Key: order.Idempotency.Key}
+				if !bytes.Equal(orderHash, storedValue.GetHash()) {
+					return nil, &domain.ErrIdempotencyKeyConflict{Key: order.GetIdempotency().GetKey()}
 				}
 
 				// Hash matches - return reference to existing log without processing
 				logs[i] = &raftcmdpb.CreatedLogOrReference{
 					Type: &raftcmdpb.CreatedLogOrReference_ReferenceSequence{
-						ReferenceSequence: storedValue.LogSequence,
+						ReferenceSequence: storedValue.GetLogSequence(),
 					},
 				}
+
 				continue
 			}
 		}
@@ -83,11 +89,11 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 		log := &commonpb.Log{
 			Sequence:    nextSequenceID,
 			Payload:     payload,
-			Idempotency: order.Idempotency,
-			Signature:   order.Signature,
+			Idempotency: order.GetIdempotency(),
+			Signature:   order.GetSignature(),
 		}
 		log.Hash = ComputeLogHash(p.logHasher, s.GetLastLogHash(), log)
-		s.SetLastLogHash(log.Hash)
+		s.SetLastLogHash(log.GetHash())
 
 		logs[i] = &raftcmdpb.CreatedLogOrReference{
 			Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{
@@ -99,7 +105,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 		if hasIdempotency {
 			s.PutIdempotencyKey(
 				domain.IdempotencyKey{
-					Key: order.Idempotency.Key,
+					Key: order.GetIdempotency().GetKey(),
 				},
 				&commonpb.IdempotencyKeyValue{
 					LogSequence: nextSequenceID,
@@ -118,7 +124,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 func (p *RequestProcessor) computeOrderHash(order *raftcmdpb.Order) []byte {
 	// Temporarily nil the idempotency field to exclude it from the hash,
 	// then restore it. This avoids a full CloneVT of the order.
-	saved := order.Idempotency
+	saved := order.GetIdempotency()
 	order.Idempotency = nil
 
 	size := order.SizeVT()
@@ -127,19 +133,22 @@ func (p *RequestProcessor) computeOrderHash(order *raftcmdpb.Order) []byte {
 	} else {
 		p.orderHashBuf = p.orderHashBuf[:size]
 	}
+
 	n, err := order.MarshalToVT(p.orderHashBuf)
 	order.Idempotency = saved
+
 	if err != nil {
 		panic(fmt.Sprintf("failed to marshal order: %v", err))
 	}
 
 	hash := blake3.Sum256(p.orderHashBuf[:n])
+
 	return hash[:]
 }
 
 // ProcessOrder processes an Order and returns the resulting LogPayload.
 func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s InMemoryStore) (*commonpb.LogPayload, error) {
-	switch orderType := order.Type.(type) {
+	switch orderType := order.GetType().(type) {
 	case *raftcmdpb.Order_Apply:
 		return p.processApply(orderType.Apply, s)
 	case *raftcmdpb.Order_CreateLedger:
@@ -187,6 +196,6 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s InMemoryStore)
 	case *raftcmdpb.Order_DeleteNumscript:
 		return p.processDeleteNumscript(orderType.DeleteNumscript, s)
 	default:
-		return nil, fmt.Errorf("invalid order type")
+		return nil, errors.New("invalid order type")
 	}
 }

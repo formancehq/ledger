@@ -3,11 +3,12 @@ package processing
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestProcessSetMetadataFieldType_Account(t *testing.T) {
@@ -28,12 +29,12 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
-			require.NotNil(t, info.MetadataSchema)
-			require.NotNil(t, info.MetadataSchema.AccountFields)
-			field := info.MetadataSchema.AccountFields["amount"]
+			require.NotNil(t, info.GetMetadataSchema())
+			require.NotNil(t, info.GetMetadataSchema().GetAccountFields())
+			field := info.GetMetadataSchema().GetAccountFields()["amount"]
 			require.NotNil(t, field)
-			require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.Type)
-			require.Equal(t, commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING, field.Status)
+			require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
+			require.Equal(t, commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING, field.GetStatus())
 		},
 	)
 	mockStore.EXPECT().AddMetadataConvertRequest("test-ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "amount", commonpb.MetadataType_METADATA_TYPE_INT64)
@@ -61,11 +62,11 @@ func TestProcessSetMetadataFieldType_Account(t *testing.T) {
 
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
-	setLog := applyLog.Log.Data.GetSetMetadataFieldType()
+	setLog := applyLog.GetLog().GetData().GetSetMetadataFieldType()
 	require.NotNil(t, setLog)
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, setLog.TargetType)
-	require.Equal(t, "amount", setLog.Key)
-	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, setLog.Type)
+	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, setLog.GetTargetType())
+	require.Equal(t, "amount", setLog.GetKey())
+	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, setLog.GetType())
 }
 
 func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
@@ -86,11 +87,11 @@ func TestProcessSetMetadataFieldType_Transaction(t *testing.T) {
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
-			require.NotNil(t, info.MetadataSchema)
-			require.NotNil(t, info.MetadataSchema.TransactionFields)
-			field := info.MetadataSchema.TransactionFields["priority"]
+			require.NotNil(t, info.GetMetadataSchema())
+			require.NotNil(t, info.GetMetadataSchema().GetTransactionFields())
+			field := info.GetMetadataSchema().GetTransactionFields()["priority"]
 			require.NotNil(t, field)
-			require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.Type)
+			require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
 		},
 	)
 	mockStore.EXPECT().AddMetadataConvertRequest("test-ledger", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority", commonpb.MetadataType_METADATA_TYPE_INT64)
@@ -167,7 +168,7 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name:           "test-ledger",
+		Name: "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
@@ -179,7 +180,7 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
-			_, exists := info.MetadataSchema.AccountFields["amount"]
+			_, exists := info.GetMetadataSchema().GetAccountFields()["amount"]
 			require.False(t, exists, "amount field should have been removed")
 		},
 	)
@@ -206,10 +207,10 @@ func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
-	removeLog := applyLog.Log.Data.GetRemovedMetadataFieldType()
+	removeLog := applyLog.GetLog().GetData().GetRemovedMetadataFieldType()
 	require.NotNil(t, removeLog)
-	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, removeLog.TargetType)
-	require.Equal(t, "amount", removeLog.Key)
+	require.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, removeLog.GetTargetType())
+	require.Equal(t, "amount", removeLog.GetKey())
 }
 
 func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
@@ -225,7 +226,7 @@ func TestProcessRemoveMetadataFieldType_Transaction(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{
-		Name:           "test-ledger",
+		Name: "test-ledger",
 		MetadataSchema: &commonpb.MetadataSchema{
 			TransactionFields: map[string]*commonpb.MetadataFieldSchema{
 				"priority": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
@@ -263,14 +264,16 @@ func TestEnforceSchema(t *testing.T) {
 
 	t.Run("NilSchema", func(t *testing.T) {
 		t.Parallel()
+
 		metadata := []*commonpb.Metadata{{Key: "k", Value: commonpb.NewStringValue("v")}}
 		enforceSchema(nil, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata)
 		// Should not panic
-		require.Equal(t, "v", commonpb.MetadataValueToString(metadata[0].Value))
+		require.Equal(t, "v", commonpb.MetadataValueToString(metadata[0].GetValue()))
 	})
 
 	t.Run("EmptyMetadata", func(t *testing.T) {
 		t.Parallel()
+
 		schema := &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
@@ -282,6 +285,7 @@ func TestEnforceSchema(t *testing.T) {
 
 	t.Run("NoFieldsForTarget", func(t *testing.T) {
 		t.Parallel()
+
 		schema := &commonpb.MetadataSchema{
 			// Only account fields, no transaction fields
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
@@ -291,11 +295,12 @@ func TestEnforceSchema(t *testing.T) {
 		metadata := []*commonpb.Metadata{{Key: "amount", Value: commonpb.NewStringValue("42")}}
 		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, metadata)
 		// Should not modify since no transaction fields
-		require.Equal(t, "42", commonpb.MetadataValueToString(metadata[0].Value))
+		require.Equal(t, "42", commonpb.MetadataValueToString(metadata[0].GetValue()))
 	})
 
 	t.Run("UndeclaredKey", func(t *testing.T) {
 		t.Parallel()
+
 		schema := &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
@@ -304,11 +309,12 @@ func TestEnforceSchema(t *testing.T) {
 		metadata := []*commonpb.Metadata{{Key: "status", Value: commonpb.NewStringValue("active")}}
 		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata)
 		// "status" is not declared, should stay as string
-		require.Equal(t, "active", commonpb.MetadataValueToString(metadata[0].Value))
+		require.Equal(t, "active", commonpb.MetadataValueToString(metadata[0].GetValue()))
 	})
 
 	t.Run("NilValue", func(t *testing.T) {
 		t.Parallel()
+
 		schema := &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
@@ -317,7 +323,7 @@ func TestEnforceSchema(t *testing.T) {
 		metadata := []*commonpb.Metadata{{Key: "amount", Value: nil}}
 		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata)
 		// Nil value should be left as nil
-		require.Nil(t, metadata[0].Value)
+		require.Nil(t, metadata[0].GetValue())
 	})
 }
 
@@ -326,18 +332,21 @@ func TestPopulateInitialSchema(t *testing.T) {
 
 	t.Run("NilCommands", func(t *testing.T) {
 		t.Parallel()
+
 		result := populateInitialSchema(nil)
 		require.Nil(t, result)
 	})
 
 	t.Run("EmptyCommands", func(t *testing.T) {
 		t.Parallel()
+
 		result := populateInitialSchema([]*commonpb.SetMetadataFieldTypeCommand{})
 		require.Nil(t, result)
 	})
 
 	t.Run("AccountFields", func(t *testing.T) {
 		t.Parallel()
+
 		commands := []*commonpb.SetMetadataFieldTypeCommand{
 			{
 				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -347,15 +356,16 @@ func TestPopulateInitialSchema(t *testing.T) {
 		}
 		result := populateInitialSchema(commands)
 		require.NotNil(t, result)
-		require.NotNil(t, result.AccountFields)
-		field := result.AccountFields["amount"]
+		require.NotNil(t, result.GetAccountFields())
+		field := result.GetAccountFields()["amount"]
 		require.NotNil(t, field)
-		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.Type)
-		require.Equal(t, commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE, field.Status)
+		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
+		require.Equal(t, commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE, field.GetStatus())
 	})
 
 	t.Run("TransactionFields", func(t *testing.T) {
 		t.Parallel()
+
 		commands := []*commonpb.SetMetadataFieldTypeCommand{
 			{
 				TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
@@ -365,15 +375,16 @@ func TestPopulateInitialSchema(t *testing.T) {
 		}
 		result := populateInitialSchema(commands)
 		require.NotNil(t, result)
-		require.NotNil(t, result.TransactionFields)
-		field := result.TransactionFields["priority"]
+		require.NotNil(t, result.GetTransactionFields())
+		field := result.GetTransactionFields()["priority"]
 		require.NotNil(t, field)
-		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.Type)
-		require.Equal(t, commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE, field.Status)
+		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
+		require.Equal(t, commonpb.MetadataConversionStatus_METADATA_CONVERSION_COMPLETE, field.GetStatus())
 	})
 
 	t.Run("MixedFields", func(t *testing.T) {
 		t.Parallel()
+
 		commands := []*commonpb.SetMetadataFieldTypeCommand{
 			{
 				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
@@ -388,8 +399,8 @@ func TestPopulateInitialSchema(t *testing.T) {
 		}
 		result := populateInitialSchema(commands)
 		require.NotNil(t, result)
-		require.Len(t, result.AccountFields, 1)
-		require.Len(t, result.TransactionFields, 1)
+		require.Len(t, result.GetAccountFields(), 1)
+		require.Len(t, result.GetTransactionFields(), 1)
 	})
 }
 
@@ -398,6 +409,7 @@ func TestSchemaFieldForTarget(t *testing.T) {
 
 	t.Run("NilSchema", func(t *testing.T) {
 		t.Parallel()
+
 		fields, field := schemaFieldForTarget(nil, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
 		require.Nil(t, fields)
 		require.Nil(t, field)
@@ -405,6 +417,7 @@ func TestSchemaFieldForTarget(t *testing.T) {
 
 	t.Run("NilFieldMap", func(t *testing.T) {
 		t.Parallel()
+
 		schema := &commonpb.MetadataSchema{} // No AccountFields or TransactionFields
 		fields, field := schemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "key")
 		require.Nil(t, fields)
@@ -413,6 +426,7 @@ func TestSchemaFieldForTarget(t *testing.T) {
 
 	t.Run("KeyNotFound", func(t *testing.T) {
 		t.Parallel()
+
 		schema := &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
@@ -425,6 +439,7 @@ func TestSchemaFieldForTarget(t *testing.T) {
 
 	t.Run("KeyFound", func(t *testing.T) {
 		t.Parallel()
+
 		schema := &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"amount": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
@@ -433,11 +448,12 @@ func TestSchemaFieldForTarget(t *testing.T) {
 		fields, field := schemaFieldForTarget(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "amount")
 		require.NotNil(t, fields)
 		require.NotNil(t, field)
-		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.Type)
+		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, field.GetType())
 	})
 
 	t.Run("TransactionField", func(t *testing.T) {
 		t.Parallel()
+
 		schema := &commonpb.MetadataSchema{
 			TransactionFields: map[string]*commonpb.MetadataFieldSchema{
 				"priority": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},

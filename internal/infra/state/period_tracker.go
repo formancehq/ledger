@@ -1,9 +1,10 @@
 package state
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 // PeriodTracker encapsulates all period-related state: the map of all
@@ -45,6 +46,7 @@ func (pt *PeriodTracker) AllPeriods() []*commonpb.Period {
 	for _, p := range pt.allPeriods {
 		periods = append(periods, p)
 	}
+
 	return periods
 }
 
@@ -57,7 +59,7 @@ func (pt *PeriodTracker) CurrentOpenPeriod() *commonpb.Period {
 func (pt *PeriodTracker) SetCurrentOpenPeriod(p *commonpb.Period) {
 	pt.currentOpenPeriod = p
 	if p != nil {
-		pt.allPeriods[p.Id] = p
+		pt.allPeriods[p.GetId()] = p
 	}
 }
 
@@ -79,12 +81,13 @@ func (pt *PeriodTracker) ClearClosingPeriod() {
 // GetPeriodByID looks up a period by ID.
 func (pt *PeriodTracker) GetPeriodByID(id uint64) (*commonpb.Period, bool) {
 	p, ok := pt.allPeriods[id]
+
 	return p, ok
 }
 
 // PutPeriod adds or updates a period in the map.
 func (pt *PeriodTracker) PutPeriod(p *commonpb.Period) {
-	pt.allPeriods[p.Id] = p
+	pt.allPeriods[p.GetId()] = p
 }
 
 // DeletePeriod removes a period from the map.
@@ -142,10 +145,11 @@ func (pt *PeriodTracker) Clone() *PeriodTracker {
 
 	var clonedOpen, clonedClosing *commonpb.Period
 	if pt.currentOpenPeriod != nil {
-		clonedOpen = clonedAll[pt.currentOpenPeriod.Id]
+		clonedOpen = clonedAll[pt.currentOpenPeriod.GetId()]
 	}
+
 	if pt.closingPeriod != nil {
-		clonedClosing = clonedAll[pt.closingPeriod.Id]
+		clonedClosing = clonedAll[pt.closingPeriod.GetId()]
 	}
 
 	return &PeriodTracker{

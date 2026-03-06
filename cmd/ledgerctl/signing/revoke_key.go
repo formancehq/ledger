@@ -2,13 +2,15 @@ package signing
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // NewRevokeKeyCommand creates the signing revoke-key command.
@@ -38,14 +40,16 @@ Examples:
 func runRevokeKey(cmd *cobra.Command, _ []string) error {
 	keyID, _ := cmd.Flags().GetString("key-id")
 	if keyID == "" {
-		return fmt.Errorf("--key-id is required")
+		return errors.New("--key-id is required")
 	}
+
 	cascade, _ := cmd.Flags().GetBool("cascade")
 
 	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -66,12 +70,14 @@ func runRevokeKey(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to revoke signing key", err)
 	}
 
@@ -81,6 +87,7 @@ func runRevokeKey(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(map[string]any{"keyId": keyID, "revoked": true})
 	}
 

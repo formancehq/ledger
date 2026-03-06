@@ -8,13 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestHandleListAccounts_Success(t *testing.T) {
@@ -43,12 +44,16 @@ func TestHandleListAccounts_Success(t *testing.T) {
 func TestHandleListAccounts_WithPagination(t *testing.T) {
 	t.Parallel()
 
-	var capturedPageSize uint32
-	var capturedAfter string
+	var (
+		capturedPageSize uint32
+		capturedAfter    string
+	)
+
 	backend := &mockBackend{
 		listAccountsFn: func(_ context.Context, _ string, pageSize uint32, afterAddress string, _ *commonpb.QueryFilter, _ bool) (dal.Cursor[*commonpb.Account], error) {
 			capturedPageSize = pageSize
 			capturedAfter = afterAddress
+
 			return dal.NewSliceCursor[*commonpb.Account](nil), nil
 		},
 	}
@@ -106,6 +111,7 @@ func TestHandleListAccounts_WithProfileHeader(t *testing.T) {
 				profile.IndexDuration = 2 * time.Millisecond
 				profile.ItemsCollected = 1
 			}
+
 			return dal.NewSliceCursor([]*commonpb.Account{
 				{Address: "alice"},
 			}), nil
@@ -133,8 +139,8 @@ func TestHandleListAccounts_WithProfileHeader(t *testing.T) {
 
 	var pb servicepb.QueryProfile
 	require.NoError(t, proto.Unmarshal(data, &pb))
-	assert.Equal(t, int64(2000), pb.IndexDurationUs)
-	assert.Equal(t, int32(1), pb.ItemsCollected)
+	assert.Equal(t, int64(2000), pb.GetIndexDurationUs())
+	assert.Equal(t, int32(1), pb.GetItemsCollected())
 }
 
 func TestHandleListAccounts_WithoutProfileHeader(t *testing.T) {

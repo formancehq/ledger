@@ -7,12 +7,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/stretchr/testify/require"
 )
 
 func TestHandleAnalyzeAccounts_Success(t *testing.T) {
@@ -22,6 +24,7 @@ func TestHandleAnalyzeAccounts_Success(t *testing.T) {
 		analyzeAccountsFn: func(_ context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
 			require.Equal(t, "my-ledger", ledgerName)
 			require.Equal(t, uint32(0), variableThreshold)
+
 			return &servicepb.AnalyzeAccountsResponse{
 				TotalAccounts: 42,
 				SuggestedChart: &commonpb.ChartOfAccounts{
@@ -81,9 +84,11 @@ func TestHandleAnalyzeAccounts_WithThreshold(t *testing.T) {
 	t.Parallel()
 
 	var capturedThreshold uint32
+
 	backend := &mockBackend{
 		analyzeAccountsFn: func(_ context.Context, _ string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
 			capturedThreshold = variableThreshold
+
 			return &servicepb.AnalyzeAccountsResponse{
 				TotalAccounts: 0,
 				Patterns:      nil,

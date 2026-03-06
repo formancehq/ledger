@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 )
 
 // NewCompactReadIndexCommand creates the store compact-read-index command.
@@ -31,6 +32,7 @@ func runCompactReadIndex(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ctx, cancel := cmdutil.GetContext(cmd)
@@ -48,24 +50,26 @@ func runCompactReadIndex(cmd *cobra.Command, _ []string) error {
 		if spinner != nil {
 			_ = spinner.Stop()
 		}
+
 		return cmdutil.FormatGRPCError("read index compaction failed", err)
 	}
 
 	if spinner != nil {
-		spinner.Success(fmt.Sprintf("Read index compaction complete (%dms, %d → %d bytes)", resp.DurationMs, resp.SizeBeforeBytes, resp.SizeAfterBytes))
+		spinner.Success(fmt.Sprintf("Read index compaction complete (%dms, %d → %d bytes)", resp.GetDurationMs(), resp.GetSizeBeforeBytes(), resp.GetSizeAfterBytes()))
 	}
 
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(struct {
 			DurationMs      int64 `json:"durationMs"`
 			SizeBeforeBytes int64 `json:"sizeBeforeBytes"`
 			SizeAfterBytes  int64 `json:"sizeAfterBytes"`
 		}{
-			DurationMs:      resp.DurationMs,
-			SizeBeforeBytes: resp.SizeBeforeBytes,
-			SizeAfterBytes:  resp.SizeAfterBytes,
+			DurationMs:      resp.GetDurationMs(),
+			SizeBeforeBytes: resp.GetSizeBeforeBytes(),
+			SizeAfterBytes:  resp.GetSizeAfterBytes(),
 		})
 	}
 

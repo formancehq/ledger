@@ -6,13 +6,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 )
 
 func createSealerTestStore(t *testing.T) *dal.Store {
@@ -99,6 +101,7 @@ func TestSealerDeterministic(t *testing.T) {
 			CheckpointPath: checkpointPath,
 		})
 		require.NoError(t, err)
+
 		hashes[i] = result.sealingHash
 	}
 
@@ -129,6 +132,7 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 		CheckpointPath: checkpointPath,
 	})
 	require.NoError(t, err)
+
 	hashBefore := result.sealingHash
 
 	// Write additional data at index 20 (after the checkpoint was taken)

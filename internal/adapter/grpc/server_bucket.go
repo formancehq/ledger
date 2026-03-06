@@ -2,32 +2,35 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	ggrpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
+	"github.com/formancehq/ledger-v3-poc/internal/application/check"
+	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/application/check"
-	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
-	ggrpc "google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
 )
 
 var bucketTracer = otel.Tracer("grpc.bucket")
@@ -39,30 +42,31 @@ const (
 
 type BucketServiceServerImpl struct {
 	servicepb.UnimplementedBucketServiceServer
-	logger                 logging.Logger
-	ctrl                   ctrl.Controller
-	store                  *dal.Store
-	readStore              *readstore.Store
-	attrs                  *attributes.Attributes
-	sharedState            *state.SharedState
-	receiptSigner          *receipt.Signer
-	responseSigner         *signing.ResponseSigner
-	authCfg                internalauth.AuthConfig
-	queryProfileThreshold  time.Duration
+
+	logger                logging.Logger
+	ctrl                  ctrl.Controller
+	store                 *dal.Store
+	readStore             *readstore.Store
+	attrs                 *attributes.Attributes
+	sharedState           *state.SharedState
+	receiptSigner         *receipt.Signer
+	responseSigner        *signing.ResponseSigner
+	authCfg               internalauth.AuthConfig
+	queryProfileThreshold time.Duration
 }
 
 func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration) servicepb.BucketServiceServer {
 	return &BucketServiceServerImpl{
-		logger:                 logger,
-		ctrl:                   ctrl,
-		store:                  s,
-		readStore:              rs,
-		attrs:                  attrs,
-		sharedState:            sharedState,
-		receiptSigner:          receiptSigner,
-		responseSigner:         responseSigner,
-		authCfg:                authCfg,
-		queryProfileThreshold:  queryProfileThreshold,
+		logger:                logger,
+		ctrl:                  ctrl,
+		store:                 s,
+		readStore:             rs,
+		attrs:                 attrs,
+		sharedState:           sharedState,
+		receiptSigner:         receiptSigner,
+		responseSigner:        responseSigner,
+		authCfg:               authCfg,
+		queryProfileThreshold: queryProfileThreshold,
 	}
 }
 
@@ -73,14 +77,15 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		return nil, err
 	}
 
-	if len(req.Requests) == 0 {
-		return nil, fmt.Errorf("at least one request is required")
+	if len(req.GetRequests()) == 0 {
+		return nil, errors.New("at least one request is required")
 	}
 
 	// Per-request scope check: each request in the batch may require a different granular scope.
 	if impl.authCfg.Enabled {
 		effective := internalauth.ExpandedScopesFromContext(ctx)
-		for i, r := range req.Requests {
+
+		for i, r := range req.GetRequests() {
 			required := internalauth.RequiredScopeForRequest(r)
 			if !internalauth.HasScope(effective, required) {
 				return nil, status.Errorf(codes.PermissionDenied,
@@ -89,9 +94,9 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		}
 	}
 
-	impl.logger.Debugf("Apply request received with %d requests", len(req.Requests))
+	impl.logger.Debugf("Apply request received with %d requests", len(req.GetRequests()))
 
-	logs, err := impl.ctrl.Apply(ctx, req.Requests...)
+	logs, err := impl.ctrl.Apply(ctx, req.GetRequests()...)
 	if err != nil {
 		return nil, err
 	}
@@ -115,27 +120,31 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 
 // signReceiptIfNeeded signs a JWT receipt for logs containing created transactions.
 func (impl *BucketServiceServerImpl) signReceiptIfNeeded(log *commonpb.Log) {
-	applyLog := log.Payload.GetApply()
-	if applyLog == nil || applyLog.Log == nil {
-		return
-	}
-	created := applyLog.Log.Data.GetCreatedTransaction()
-	if created == nil || created.Transaction == nil {
+	applyLog := log.GetPayload().GetApply()
+	if applyLog == nil || applyLog.GetLog() == nil {
 		return
 	}
 
-	tx := created.Transaction
-	receiptToken, err := impl.receiptSigner.Sign(
-		applyLog.LedgerName,
-		tx.Id,
-		tx.Postings,
-		tx.Timestamp,
-		created.PeriodId,
-	)
-	if err != nil {
-		impl.logger.Errorf("Failed to sign receipt for tx %d: %v", tx.Id, err)
+	created := applyLog.GetLog().GetData().GetCreatedTransaction()
+	if created == nil || created.GetTransaction() == nil {
 		return
 	}
+
+	tx := created.GetTransaction()
+
+	receiptToken, err := impl.receiptSigner.Sign(
+		applyLog.GetLedgerName(),
+		tx.GetId(),
+		tx.GetPostings(),
+		tx.GetTimestamp(),
+		created.GetPeriodId(),
+	)
+	if err != nil {
+		impl.logger.Errorf("Failed to sign receipt for tx %d: %v", tx.GetId(), err)
+
+		return
+	}
+
 	log.Receipt = receiptToken
 }
 
@@ -152,8 +161,8 @@ func (impl *BucketServiceServerImpl) ListPeriods(req *servicepb.ListPeriodsReque
 		return fmt.Errorf("listing periods: %w", err)
 	}
 
-	if req.PageSize > 0 {
-		cursor = dal.NewLimitedCursor(cursor, req.PageSize)
+	if req.GetPageSize() > 0 {
+		cursor = dal.NewLimitedCursor(cursor, req.GetPageSize())
 	}
 
 	return sendCursorToStream(ctx, cursor, stream, "period")
@@ -164,22 +173,23 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 		return nil, err
 	}
 
-	if req.Ledger == "" {
-		return nil, fmt.Errorf("ledger name is required")
+	if req.GetLedger() == "" {
+		return nil, errors.New("ledger name is required")
 	}
 
-	tx, err := impl.ctrl.GetTransaction(ctx, req.Ledger, req.TransactionId)
+	tx, err := impl.ctrl.GetTransaction(ctx, req.GetLedger(), req.GetTransactionId())
 	if err != nil {
 		return nil, err
 	}
 
 	resp := &servicepb.GetTransactionResponse{Transaction: tx}
 	if impl.receiptSigner != nil {
-		receiptToken, err := impl.computeTransactionReceipt(ctx, req.Ledger, req.TransactionId, tx)
+		receiptToken, err := impl.computeTransactionReceipt(ctx, req.GetLedger(), req.GetTransactionId(), tx)
 		if err == nil {
 			resp.Receipt = receiptToken
 		}
 	}
+
 	return resp, nil
 }
 
@@ -191,16 +201,17 @@ func (impl *BucketServiceServerImpl) computeTransactionReceipt(ctx context.Conte
 		return "", err
 	}
 
-	applyLog := log.Payload.GetApply()
-	if applyLog == nil || applyLog.Log == nil {
-		return "", fmt.Errorf("not an apply log")
-	}
-	created := applyLog.Log.Data.GetCreatedTransaction()
-	if created == nil {
-		return "", fmt.Errorf("not a created transaction log")
+	applyLog := log.GetPayload().GetApply()
+	if applyLog == nil || applyLog.GetLog() == nil {
+		return "", errors.New("not an apply log")
 	}
 
-	return impl.receiptSigner.Sign(ledger, txID, tx.Postings, tx.Timestamp, created.PeriodId)
+	created := applyLog.GetLog().GetData().GetCreatedTransaction()
+	if created == nil {
+		return "", errors.New("not a created transaction log")
+	}
+
+	return impl.receiptSigner.Sign(ledger, txID, tx.GetPostings(), tx.GetTimestamp(), created.GetPeriodId())
 }
 
 // waitMinLogSequence blocks until the bbolt read index has processed at
@@ -209,38 +220,40 @@ func (impl *BucketServiceServerImpl) waitMinLogSequence(ctx context.Context, min
 	if minLogSequence == 0 {
 		return nil
 	}
+
 	return impl.readStore.WaitForSequence(ctx, minLogSequence)
 }
 
 func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransactionsRequest, stream servicepb.BucketService_ListTransactionsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListTransactions",
-		trace.WithAttributes(attribute.String("ledger", req.Ledger)))
+		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
 	defer span.End()
 
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
 		return err
 	}
 
-	if req.Ledger == "" {
-		return fmt.Errorf("ledger name is required")
+	if req.GetLedger() == "" {
+		return errors.New("ledger name is required")
 	}
 
-	if err := impl.waitMinLogSequence(ctx, req.MinLogSequence); err != nil {
+	if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
 		return err
 	}
 
 	impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, hasFilter=%v, reverse=%v)",
-		req.Ledger, req.PageSize, req.AfterTxId, req.Filter != nil, req.Reverse)
+		req.GetLedger(), req.GetPageSize(), req.GetAfterTxId(), req.GetFilter() != nil, req.GetReverse())
 
 	profileCtx, profile := query.WithProfile(ctx)
 
-	cursor, err := impl.ctrl.ListTransactions(profileCtx, req.Ledger, req.PageSize, req.AfterTxId, req.Filter, req.Reverse)
+	cursor, err := impl.ctrl.ListTransactions(profileCtx, req.GetLedger(), req.GetPageSize(), req.GetAfterTxId(), req.GetFilter(), req.GetReverse())
 	if err != nil {
 		return fmt.Errorf("listing transactions: %w", err)
 	}
 
 	err = sendCursorToStream(ctx, cursor, stream, "transaction")
 	impl.emitProfile(ctx, profile)
+
 	return err
 }
 
@@ -257,8 +270,8 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 		return fmt.Errorf("listing ledgers: %w", err)
 	}
 
-	if req.PageSize > 0 {
-		cursor = dal.NewLimitedCursor(cursor, req.PageSize)
+	if req.GetPageSize() > 0 {
+		cursor = dal.NewLimitedCursor(cursor, req.GetPageSize())
 	}
 
 	return sendCursorToStream(ctx, cursor, stream, "ledger")
@@ -272,10 +285,11 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 		return nil, err
 	}
 
-	if req.Ledger == "" {
-		return nil, fmt.Errorf("ledger name is required")
+	if req.GetLedger() == "" {
+		return nil, errors.New("ledger name is required")
 	}
-	return impl.ctrl.GetLedgerByName(ctx, req.Ledger)
+
+	return impl.ctrl.GetLedgerByName(ctx, req.GetLedger())
 }
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
@@ -283,42 +297,43 @@ func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servic
 		return nil, err
 	}
 
-	if req.Ledger == "" {
-		return nil, fmt.Errorf("ledger name is required")
+	if req.GetLedger() == "" {
+		return nil, errors.New("ledger name is required")
 	}
 
-	return impl.ctrl.GetAccount(ctx, req.Ledger, req.Address)
+	return impl.ctrl.GetAccount(ctx, req.GetLedger(), req.GetAddress())
 }
 
 func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsRequest, stream servicepb.BucketService_ListAccountsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListAccounts",
-		trace.WithAttributes(attribute.String("ledger", req.Ledger)))
+		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
 	defer span.End()
 
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
 		return err
 	}
 
-	if req.Ledger == "" {
-		return fmt.Errorf("ledger name is required")
+	if req.GetLedger() == "" {
+		return errors.New("ledger name is required")
 	}
 
-	if err := impl.waitMinLogSequence(ctx, req.MinLogSequence); err != nil {
+	if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
 		return err
 	}
 
 	impl.logger.Debugf("ListAccounts request received for ledger %s (pageSize=%d, afterAddress=%q, hasFilter=%v, reverse=%v)",
-		req.Ledger, req.PageSize, req.AfterAddress, req.Filter != nil, req.Reverse)
+		req.GetLedger(), req.GetPageSize(), req.GetAfterAddress(), req.GetFilter() != nil, req.GetReverse())
 
 	profileCtx, profile := query.WithProfile(ctx)
 
-	cursor, err := impl.ctrl.ListAccounts(profileCtx, req.Ledger, req.PageSize, req.AfterAddress, req.Filter, req.Reverse)
+	cursor, err := impl.ctrl.ListAccounts(profileCtx, req.GetLedger(), req.GetPageSize(), req.GetAfterAddress(), req.GetFilter(), req.GetReverse())
 	if err != nil {
 		return fmt.Errorf("listing accounts: %w", err)
 	}
 
 	err = sendCursorToStream(ctx, cursor, stream, "account")
 	impl.emitProfile(ctx, profile)
+
 	return err
 }
 
@@ -371,6 +386,7 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 	if err != nil {
 		return nil, fmt.Errorf("reading backfill progress: %w", err)
 	}
+
 	progress := make([]*servicepb.IndexBackfillProgress, 0, len(backfillEntries))
 	for _, e := range backfillEntries {
 		entry := &servicepb.IndexBackfillProgress{
@@ -421,6 +437,7 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 				}
 			}
 		}
+
 		progress = append(progress, entry)
 	}
 
@@ -439,6 +456,7 @@ func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, 
 	}
 
 	checker := check.NewChecker(impl.store, impl.attrs)
+
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		_ = stream.Send(event)
 	})
@@ -449,7 +467,7 @@ func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *ser
 		return nil, err
 	}
 
-	return impl.ctrl.GetAuditEntry(ctx, req.Sequence)
+	return impl.ctrl.GetAuditEntry(ctx, req.GetSequence())
 }
 
 func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEntriesRequest, stream servicepb.BucketService_ListAuditEntriesServer) error {
@@ -460,7 +478,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		return err
 	}
 
-	if err := impl.waitMinLogSequence(ctx, req.MinLogSequence); err != nil {
+	if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
 		return err
 	}
 
@@ -477,7 +495,7 @@ func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.
 		return nil, err
 	}
 
-	return impl.ctrl.GetLog(ctx, req.Sequence)
+	return impl.ctrl.GetLog(ctx, req.GetSequence())
 }
 
 func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
@@ -488,16 +506,16 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		return err
 	}
 
-	if err := impl.waitMinLogSequence(ctx, req.MinLogSequence); err != nil {
+	if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
 		return err
 	}
 
 	var afterSequence uint64
 	if req.AfterSequence != nil {
-		afterSequence = *req.AfterSequence
+		afterSequence = req.GetAfterSequence()
 	}
 
-	cursor, err := impl.ctrl.ListLogs(ctx, afterSequence, req.PageSize, req.Filter)
+	cursor, err := impl.ctrl.ListLogs(ctx, afterSequence, req.GetPageSize(), req.GetFilter())
 	if err != nil {
 		return fmt.Errorf("listing logs: %w", err)
 	}
@@ -535,6 +553,7 @@ func (impl *BucketServiceServerImpl) GetPeriodSchedule(ctx context.Context, _ *s
 	if err != nil {
 		return nil, fmt.Errorf("loading period schedule: %w", err)
 	}
+
 	return &servicepb.GetPeriodScheduleResponse{Cron: cronExpr}, nil
 }
 
@@ -559,7 +578,7 @@ func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context
 		return nil, err
 	}
 
-	return impl.ctrl.GetMetadataSchemaStatus(ctx, req.Ledger)
+	return impl.ctrl.GetMetadataSchemaStatus(ctx, req.GetLedger())
 }
 
 func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccountsRequest, stream servicepb.BucketService_AnalyzeAccountsServer) error {
@@ -567,8 +586,8 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccou
 		return err
 	}
 
-	if req.Ledger == "" {
-		return fmt.Errorf("ledger name is required")
+	if req.GetLedger() == "" {
+		return errors.New("ledger name is required")
 	}
 
 	onProgress := func(processed, total uint64) {
@@ -583,7 +602,7 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccou
 		})
 	}
 
-	resp, err := impl.ctrl.AnalyzeAccounts(stream.Context(), req.Ledger, req.VariableThreshold, onProgress)
+	resp, err := impl.ctrl.AnalyzeAccounts(stream.Context(), req.GetLedger(), req.GetVariableThreshold(), onProgress)
 	if err != nil {
 		return err
 	}
@@ -598,8 +617,8 @@ func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeT
 		return err
 	}
 
-	if req.Ledger == "" {
-		return fmt.Errorf("ledger name is required")
+	if req.GetLedger() == "" {
+		return errors.New("ledger name is required")
 	}
 
 	onProgress := func(processed, total uint64) {
@@ -613,7 +632,7 @@ func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeT
 		})
 	}
 
-	resp, err := impl.ctrl.AnalyzeTransactions(stream.Context(), req.Ledger, req.VariableThreshold, onProgress)
+	resp, err := impl.ctrl.AnalyzeTransactions(stream.Context(), req.GetLedger(), req.GetVariableThreshold(), onProgress)
 	if err != nil {
 		return err
 	}
@@ -636,6 +655,7 @@ func (impl *BucketServiceServerImpl) CreatePreparedQuery(ctx context.Context, re
 	if err != nil {
 		return nil, err
 	}
+
 	return &servicepb.CreatePreparedQueryResponse{}, nil
 }
 
@@ -652,6 +672,7 @@ func (impl *BucketServiceServerImpl) UpdatePreparedQuery(ctx context.Context, re
 	if err != nil {
 		return nil, err
 	}
+
 	return &servicepb.UpdatePreparedQueryResponse{}, nil
 }
 
@@ -668,6 +689,7 @@ func (impl *BucketServiceServerImpl) DeletePreparedQuery(ctx context.Context, re
 	if err != nil {
 		return nil, err
 	}
+
 	return &servicepb.DeletePreparedQueryResponse{}, nil
 }
 
@@ -676,10 +698,11 @@ func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, re
 		return nil, err
 	}
 
-	queries, err := impl.ctrl.ListPreparedQueries(ctx, req.Ledger)
+	queries, err := impl.ctrl.ListPreparedQueries(ctx, req.GetLedger())
 	if err != nil {
 		return nil, err
 	}
+
 	return &servicepb.ListPreparedQueriesResponse{Queries: queries}, nil
 }
 
@@ -692,6 +715,7 @@ func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, r
 
 	resp, err := impl.ctrl.ExecutePreparedQuery(profileCtx, req)
 	impl.emitProfile(ctx, profile)
+
 	return resp, err
 }
 
@@ -700,15 +724,15 @@ func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *se
 		return nil, err
 	}
 
-	if req.Ledger == "" {
-		return nil, fmt.Errorf("ledger name is required")
+	if req.GetLedger() == "" {
+		return nil, errors.New("ledger name is required")
 	}
 
-	return impl.ctrl.GetLedgerStats(ctx, req.Ledger)
+	return impl.ctrl.GetLedgerStats(ctx, req.GetLedger())
 }
 
 func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *servicepb.GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {
-	return impl.ctrl.GetNumscript(ctx, req.Name, req.Version)
+	return impl.ctrl.GetNumscript(ctx, req.GetName(), req.GetVersion())
 }
 
 func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscriptsRequest, stream servicepb.BucketService_ListNumscriptsServer) error {
@@ -719,11 +743,14 @@ func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscript
 	if err != nil {
 		return fmt.Errorf("listing numscripts: %w", err)
 	}
+
 	for _, script := range scripts {
-		if err := stream.Send(script); err != nil {
+		err := stream.Send(script)
+		if err != nil {
 			return fmt.Errorf("sending numscript: %w", err)
 		}
 	}
+
 	return nil
 }
 
@@ -732,9 +759,10 @@ func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.D
 	if impl.responseSigner != nil {
 		resp.ResponseSigning = &servicepb.ResponseSigningInfo{
 			PublicKey: impl.responseSigner.PublicKey(),
-			KeyId:    impl.responseSigner.KeyID(),
+			KeyId:     impl.responseSigner.KeyID(),
 		}
 	}
+
 	return resp, nil
 }
 
@@ -742,10 +770,12 @@ func (impl *BucketServiceServerImpl) emitProfile(ctx context.Context, profile *q
 	if profile == nil {
 		return
 	}
+
 	if profile.TotalDuration() >= impl.queryProfileThreshold {
 		profile.LogTo(impl.logger)
 		profile.EmitToSpan(trace.SpanFromContext(ctx))
 	}
+
 	if wantsProfile(ctx) {
 		_ = ggrpc.SetTrailer(ctx, profileToMetadata(profile))
 	}
@@ -753,15 +783,18 @@ func (impl *BucketServiceServerImpl) emitProfile(ctx context.Context, profile *q
 
 func wantsProfile(ctx context.Context) bool {
 	md, ok := metadata.FromIncomingContext(ctx)
+
 	return ok && len(md.Get(metadataKeyQueryProfile)) > 0
 }
 
 func profileToMetadata(profile *query.QueryProfile) metadata.MD {
 	pb := profile.ToProto()
+
 	data, err := proto.Marshal(pb)
 	if err != nil {
 		return nil
 	}
+
 	return metadata.Pairs(metadataKeyQueryProfileResult, string(data))
 }
 

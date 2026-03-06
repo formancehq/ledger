@@ -9,9 +9,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/signaturepb"
-	"github.com/stretchr/testify/require"
 )
 
 func TestResponseSigner(t *testing.T) {
@@ -25,6 +26,7 @@ func TestResponseSigner(t *testing.T) {
 
 	t.Run("key ID is SHA256 fingerprint of public key", func(t *testing.T) {
 		t.Parallel()
+
 		hash := sha256.Sum256(signer.PublicKey())
 		expected := hex.EncodeToString(hash[:8])
 		require.Equal(t, expected, signer.KeyID())
@@ -32,13 +34,16 @@ func TestResponseSigner(t *testing.T) {
 
 	t.Run("public key matches seed", func(t *testing.T) {
 		t.Parallel()
+
 		privKey := ed25519.NewKeyFromSeed(seed)
-		expectedPubKey := privKey.Public().(ed25519.PublicKey)
+		expectedPubKey, ok := privKey.Public().(ed25519.PublicKey)
+		require.True(t, ok)
 		require.Equal(t, expectedPubKey, signer.PublicKey())
 	})
 
 	t.Run("sign and verify log", func(t *testing.T) {
 		t.Parallel()
+
 		log := &commonpb.Log{
 			Sequence: 42,
 			Payload: &commonpb.LogPayload{
@@ -54,9 +59,9 @@ func TestResponseSigner(t *testing.T) {
 
 		sig := signer.SignLog(log)
 		require.NotNil(t, sig)
-		require.Equal(t, signer.KeyID(), sig.KeyId)
-		require.Len(t, sig.Signature, ed25519.SignatureSize)
-		require.NotEmpty(t, sig.SignedPayload)
+		require.Equal(t, signer.KeyID(), sig.GetKeyId())
+		require.Len(t, sig.GetSignature(), ed25519.SignatureSize)
+		require.NotEmpty(t, sig.GetSignedPayload())
 
 		// Verify should succeed with the correct public key
 		err := VerifyResponseSignature(sig, signer.PublicKey())
@@ -65,6 +70,7 @@ func TestResponseSigner(t *testing.T) {
 
 	t.Run("verify fails with wrong public key", func(t *testing.T) {
 		t.Parallel()
+
 		log := &commonpb.Log{
 			Sequence: 1,
 			Payload: &commonpb.LogPayload{
@@ -83,6 +89,7 @@ func TestResponseSigner(t *testing.T) {
 		wrongSeed := make([]byte, ed25519.SeedSize)
 		_, err := rand.Read(wrongSeed)
 		require.NoError(t, err)
+
 		wrongPubKey := ed25519.NewKeyFromSeed(wrongSeed).Public().(ed25519.PublicKey)
 
 		err = VerifyResponseSignature(sig, wrongPubKey)
@@ -91,6 +98,7 @@ func TestResponseSigner(t *testing.T) {
 
 	t.Run("verify fails with tampered payload", func(t *testing.T) {
 		t.Parallel()
+
 		log := &commonpb.Log{
 			Sequence: 1,
 			Payload: &commonpb.LogPayload{
@@ -114,12 +122,14 @@ func TestResponseSigner(t *testing.T) {
 
 	t.Run("verify fails with nil signature", func(t *testing.T) {
 		t.Parallel()
+
 		err := VerifyResponseSignature(nil, signer.PublicKey())
 		require.Error(t, err)
 	})
 
 	t.Run("receipt is not part of signed content", func(t *testing.T) {
 		t.Parallel()
+
 		log1 := &commonpb.Log{
 			Sequence: 1,
 			Receipt:  "some-jwt-token",
@@ -148,7 +158,7 @@ func TestResponseSigner(t *testing.T) {
 		sig2 := signer.SignLog(log2)
 
 		// signed_payload should be identical since receipt is cleared
-		require.Equal(t, sig1.SignedPayload, sig2.SignedPayload)
+		require.Equal(t, sig1.GetSignedPayload(), sig2.GetSignedPayload())
 	})
 }
 
@@ -158,6 +168,7 @@ func TestVerifyResponseSignature_EmptyPayload(t *testing.T) {
 	seed := make([]byte, ed25519.SeedSize)
 	_, err := rand.Read(seed)
 	require.NoError(t, err)
+
 	signer := NewResponseSigner(seed)
 
 	sig := &signaturepb.ResponseSignature{
@@ -177,6 +188,7 @@ func TestVerifyResponseSignature_InvalidSignatureLength(t *testing.T) {
 	seed := make([]byte, ed25519.SeedSize)
 	_, err := rand.Read(seed)
 	require.NoError(t, err)
+
 	signer := NewResponseSigner(seed)
 
 	sig := &signaturepb.ResponseSignature{
@@ -220,6 +232,7 @@ func TestLoadSeedFromFile(t *testing.T) {
 
 	t.Run("load raw binary seed", func(t *testing.T) {
 		t.Parallel()
+
 		seed := make([]byte, ed25519.SeedSize)
 		_, err := rand.Read(seed)
 		require.NoError(t, err)
@@ -234,6 +247,7 @@ func TestLoadSeedFromFile(t *testing.T) {
 
 	t.Run("load hex-encoded seed", func(t *testing.T) {
 		t.Parallel()
+
 		seed := make([]byte, ed25519.SeedSize)
 		_, err := rand.Read(seed)
 		require.NoError(t, err)
@@ -261,8 +275,10 @@ func TestLoadPublicKeyFromFile(t *testing.T) {
 
 	t.Run("load raw binary public key", func(t *testing.T) {
 		t.Parallel()
+
 		_, privKey, err := ed25519.GenerateKey(rand.Reader)
 		require.NoError(t, err)
+
 		pubKey := privKey.Public().(ed25519.PublicKey)
 
 		path := filepath.Join(t.TempDir(), "pubkey.bin")
@@ -275,8 +291,10 @@ func TestLoadPublicKeyFromFile(t *testing.T) {
 
 	t.Run("load hex-encoded public key", func(t *testing.T) {
 		t.Parallel()
+
 		_, privKey, err := ed25519.GenerateKey(rand.Reader)
 		require.NoError(t, err)
+
 		pubKey := privKey.Public().(ed25519.PublicKey)
 
 		path := filepath.Join(t.TempDir(), "pubkey.hex")

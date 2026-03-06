@@ -4,12 +4,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	libtime "github.com/formancehq/go-libs/v3/time"
+
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/stretchr/testify/require"
 )
 
 func TestAllOrdersAreMaintenanceMode(t *testing.T) {
@@ -17,6 +19,7 @@ func TestAllOrdersAreMaintenanceMode(t *testing.T) {
 
 	t.Run("all maintenance mode", func(t *testing.T) {
 		t.Parallel()
+
 		orders := []*raftcmdpb.Order{
 			{Type: &raftcmdpb.Order_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{Enabled: true}}},
 			{Type: &raftcmdpb.Order_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{Enabled: false}}},
@@ -26,6 +29,7 @@ func TestAllOrdersAreMaintenanceMode(t *testing.T) {
 
 	t.Run("mixed orders", func(t *testing.T) {
 		t.Parallel()
+
 		orders := []*raftcmdpb.Order{
 			{Type: &raftcmdpb.Order_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{Enabled: true}}},
 			{Type: &raftcmdpb.Order_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "test"}}},
@@ -35,6 +39,7 @@ func TestAllOrdersAreMaintenanceMode(t *testing.T) {
 
 	t.Run("no maintenance mode orders", func(t *testing.T) {
 		t.Parallel()
+
 		orders := []*raftcmdpb.Order{
 			{Type: &raftcmdpb.Order_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "a"}}},
 		}
@@ -90,7 +95,7 @@ func TestMachineClosingPeriod(t *testing.T) {
 	// Set closing period
 	machine.Periods.SetClosingPeriod(&commonpb.Period{Id: 3, Status: commonpb.PeriodStatus_PERIOD_CLOSING})
 	require.NotNil(t, machine.ClosingPeriod())
-	require.Equal(t, uint64(3), machine.ClosingPeriod().Id)
+	require.Equal(t, uint64(3), machine.ClosingPeriod().GetId())
 }
 
 func TestMachinePeriodSchedule(t *testing.T) {
@@ -99,7 +104,7 @@ func TestMachinePeriodSchedule(t *testing.T) {
 	machine, _, _ := newTestMachine(t)
 
 	// Initially empty
-	require.Equal(t, "", machine.PeriodSchedule())
+	require.Empty(t, machine.PeriodSchedule())
 
 	// Set schedule
 	machine.Periods.SetSchedule("*/5 * * * *")
@@ -187,13 +192,14 @@ func TestReadLastLog(t *testing.T) {
 
 	// Add logs
 	registerLedger(t, s, "test-ledger")
+
 	testLogs := createTestLogs("test-ledger")
 	appendLogs(t, s, 1, testLogs...)
 
 	log, err = query.ReadLastLog(s)
 	require.NoError(t, err)
 	require.NotNil(t, log)
-	require.Equal(t, uint64(4), log.Sequence)
+	require.Equal(t, uint64(4), log.GetSequence())
 }
 
 func TestReadAuditEntriesCursor(t *testing.T) {
@@ -201,10 +207,12 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 	s := newTestStore(t)
 
 	// Empty store
-	cursor, err := query.ReadAuditEntries(context.Background(), s,nil)
+	cursor, err := query.ReadAuditEntries(context.Background(), s, nil)
 	require.NoError(t, err)
+
 	_, curErr := cursor.Next()
 	require.Error(t, curErr) // io.EOF
+
 	_ = cursor.Close()
 
 	// Add entries
@@ -217,35 +225,45 @@ func TestReadAuditEntriesCursor(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Read all
-	cursor, err = query.ReadAuditEntries(context.Background(), s,nil)
+	cursor, err = query.ReadAuditEntries(context.Background(), s, nil)
 	require.NoError(t, err)
+
 	var entries []*auditpb.AuditEntry
+
 	for {
 		entry, nextErr := cursor.Next()
 		if nextErr != nil {
 			break
 		}
+
 		entries = append(entries, entry)
 	}
+
 	_ = cursor.Close()
+
 	require.Len(t, entries, 3)
 
 	// Read after sequence 1
 	afterSeq := uint64(1)
-	cursor, err = query.ReadAuditEntries(context.Background(), s,&afterSeq)
+	cursor, err = query.ReadAuditEntries(context.Background(), s, &afterSeq)
 	require.NoError(t, err)
+
 	entries = nil
+
 	for {
 		entry, nextErr := cursor.Next()
 		if nextErr != nil {
 			break
 		}
+
 		entries = append(entries, entry)
 	}
+
 	_ = cursor.Close()
+
 	require.Len(t, entries, 2)
-	require.Equal(t, uint64(2), entries[0].Sequence)
-	require.Equal(t, uint64(3), entries[1].Sequence)
+	require.Equal(t, uint64(2), entries[0].GetSequence())
+	require.Equal(t, uint64(3), entries[1].GetSequence())
 }
 
 func TestCheckClosePeriod(t *testing.T) {

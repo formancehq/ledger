@@ -18,8 +18,10 @@ func ReadLastAppliedIndex(reader dal.PebbleReader) (uint64, error) {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
 		}
+
 		return 0, err
 	}
+
 	defer func() {
 		_ = closer.Close()
 	}()
@@ -39,8 +41,10 @@ func ReadLastAppliedTimestamp(reader dal.PebbleReader) (uint64, error) {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
 		}
+
 		return 0, err
 	}
+
 	defer func() {
 		_ = closer.Close()
 	}()
@@ -60,12 +64,15 @@ func ReadMaintenanceMode(reader dal.PebbleReader) (bool, error) {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return false, nil
 		}
+
 		return false, fmt.Errorf("loading maintenance mode: %w", err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	if len(value) == 0 {
 		return false, nil
 	}
+
 	return value[0] == 0x01, nil
 }

@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
@@ -21,7 +22,7 @@ import (
 // errConversionAborted is returned from the streaming callback when the field
 // is no longer in CONVERTING state mid-batch. It signals an early exit from the
 // ForEachInPrefix iteration without being treated as a real error.
-var errConversionAborted = fmt.Errorf("conversion aborted: field no longer converting")
+var errConversionAborted = errors.New("conversion aborted: field no longer converting")
 
 // Proposer proposes Raft commands to the cluster.
 // Implemented by a thin adapter around *node.Node that serializes orders into a
@@ -79,6 +80,7 @@ func NewMetadataConverter(
 	if poolSize < 1 {
 		poolSize = 1
 	}
+
 	return &MetadataConverter{
 		logger:    logger.WithFields(map[string]any{"cmp": "metadata-converter"}),
 		dataStore: dataStore,
@@ -110,6 +112,7 @@ func (mc *MetadataConverter) Stop() {
 //   - dispatching the head of the queue when a pool slot is available
 func (mc *MetadataConverter) dispatchLoop(stop <-chan struct{}) {
 	sem := make(chan struct{}, mc.poolSize)
+
 	var pending []MetadataConvertRequest
 
 	for {
@@ -124,12 +127,12 @@ func (mc *MetadataConverter) dispatchLoop(stop <-chan struct{}) {
 			case sem <- struct{}{}:
 				req := pending[0]
 				pending = pending[1:]
-				mc.wg.Add(1)
-				go func() {
-					defer mc.wg.Done()
+
+				mc.wg.Go(func() {
 					defer func() { <-sem }()
+
 					mc.convertWithRetry(stop, req)
-				}()
+				})
 			}
 		} else {
 			// Nothing pending: just wait for new work or stop.
@@ -150,24 +153,30 @@ func (mc *MetadataConverter) isFieldStillConverting(ledgerName string, targetTyp
 	if err != nil {
 		return false
 	}
-	if ledgerInfo.MetadataSchema == nil {
+
+	if ledgerInfo.GetMetadataSchema() == nil {
 		return false
 	}
+
 	var fields map[string]*commonpb.MetadataFieldSchema
+
 	switch targetType {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		fields = ledgerInfo.MetadataSchema.AccountFields
+		fields = ledgerInfo.GetMetadataSchema().GetAccountFields()
 	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		fields = ledgerInfo.MetadataSchema.TransactionFields
+		fields = ledgerInfo.GetMetadataSchema().GetTransactionFields()
 	}
+
 	if fields == nil {
 		return false
 	}
+
 	field, ok := fields[key]
 	if !ok {
 		return false
 	}
-	return field.Status == commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING && field.Type == expectedType
+
+	return field.GetStatus() == commonpb.MetadataConversionStatus_METADATA_CONVERSION_CONVERTING && field.GetType() == expectedType
 }
 
 // convertWithRetry retries convert() with exponential backoff until it succeeds
@@ -183,6 +192,7 @@ func (mc *MetadataConverter) convertWithRetry(stop <-chan struct{}, req Metadata
 				"ledger": req.LedgerName,
 				"key":    req.Key,
 			}).Infof("Field no longer converting (completed by leader), done")
+
 			return nil
 		}
 
@@ -272,6 +282,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 
 	if !mc.isFieldStillConverting(req.LedgerName, req.TargetType, req.Key, req.Type) {
 		mc.logger.WithFields(logFields).Infof("Field no longer converting (completed by leader), done")
+
 		return nil
 	}
 
@@ -291,6 +302,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 	if req.TargetType == commonpb.TargetType_TARGET_TYPE_TRANSACTION {
 		mc.proposeComplete(req.LedgerName, req.TargetType, req.Key, req.Type)
 		mc.logger.WithFields(logFields).Infof("Transaction metadata conversion complete (read-time enforcement)")
+
 		return nil
 	}
 
@@ -301,19 +313,25 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 
 	// Open a Pebble read handle for a point-in-time snapshot used by both passes.
 	reader := mc.dataStore.NewReadHandle()
+
 	defer func() { _ = reader.Close() }()
 
 	// Pass 1: count matching keys for progress tracking (O(1) memory).
 	var totalMatchingKeys uint64
+
 	err = mc.attrs.Metadata.ForEachInPrefix(reader, ^uint64(0), ledgerPrefix,
 		func(entry attributes.ComputedEntry[*commonpb.MetadataValue]) error {
 			var mk domain.MetadataKey
-			if err := mk.Unmarshal(entry.CanonicalKey); err != nil {
+
+			err := mk.Unmarshal(entry.CanonicalKey)
+			if err != nil {
 				return nil // skip unparseable keys
 			}
+
 			if mk.Key == req.Key {
 				totalMatchingKeys++
 			}
+
 			return nil
 		},
 	)
@@ -329,13 +347,17 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 
 	// Pass 2: convert and propose in batches (O(batch_size) memory).
 	batch := make([]*raftcmdpb.ConvertMetadataEntry, 0, mc.batchSize)
+
 	var convertedSoFar uint64
 
 	err = mc.attrs.Metadata.ForEachInPrefix(reader, ^uint64(0), ledgerPrefix,
 		func(entry attributes.ComputedEntry[*commonpb.MetadataValue]) error {
 			var mk domain.MetadataKey
-			if err := mk.Unmarshal(entry.CanonicalKey); err != nil {
+
+			err := mk.Unmarshal(entry.CanonicalKey)
+			if err != nil {
 				mc.logger.Errorf("Failed to unmarshal metadata key %x: %v", entry.CanonicalKey, err)
+
 				return nil // skip unparseable keys
 			}
 
@@ -346,6 +368,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 			// Check if the value already matches the expected type.
 			if commonpb.TypeMatches(entry.Value, req.Type) {
 				convertedSoFar++
+
 				return nil
 			}
 
@@ -361,6 +384,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 				// Check staleness before proposing each batch.
 				if !mc.isFieldStillConverting(req.LedgerName, req.TargetType, req.Key, req.Type) {
 					mc.logger.WithFields(logFields).Infof("Field no longer converting mid-batch, aborting")
+
 					return errConversionAborted
 				}
 
@@ -376,6 +400,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 		if errors.Is(err, errConversionAborted) {
 			return nil
 		}
+
 		return fmt.Errorf("converting metadata for ledger %s: %w", req.LedgerName, err)
 	}
 
@@ -383,6 +408,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 	if len(batch) > 0 {
 		if !mc.isFieldStillConverting(req.LedgerName, req.TargetType, req.Key, req.Type) {
 			mc.logger.WithFields(logFields).Infof("Field no longer converting mid-batch, aborting")
+
 			return nil
 		}
 

@@ -28,8 +28,10 @@ func ReadMirrorCursor(reader dal.PebbleReader, ledgerName string) (uint64, error
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
 		}
+
 		return 0, fmt.Errorf("reading mirror cursor: %w", err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	if len(get) < 8 {
@@ -51,14 +53,17 @@ func ReadMirrorStatus(reader dal.PebbleReader, ledgerName string) (*commonpb.Mir
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("reading mirror status: %w", err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	syncErr := &commonpb.MirrorSyncError{}
 	if err := proto.Unmarshal(get, syncErr); err != nil {
 		return nil, fmt.Errorf("unmarshaling mirror status: %w", err)
 	}
+
 	return syncErr, nil
 }
 
@@ -74,8 +79,10 @@ func ReadMirrorSourceHead(reader dal.PebbleReader, ledgerName string) (uint64, e
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
 		}
+
 		return 0, fmt.Errorf("reading mirror source head: %w", err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	if len(get) < 8 {
@@ -138,20 +145,25 @@ func ReadMirrorLedgers(ctx context.Context, reader dal.PebbleReader) ([]*commonp
 	if err != nil {
 		return nil, fmt.Errorf("reading ledgers: %w", err)
 	}
+
 	defer func() { _ = cursor.Close() }()
 
 	var result []*commonpb.LedgerInfo
+
 	for {
 		info, err := cursor.Next()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			return nil, fmt.Errorf("iterating ledgers: %w", err)
 		}
-		if info.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR && info.DeletedAt == nil {
+
+		if info.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && info.GetDeletedAt() == nil {
 			result = append(result, info)
 		}
 	}
+
 	return result, nil
 }

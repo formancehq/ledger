@@ -4,11 +4,12 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestValidateChart(t *testing.T) {
@@ -16,18 +17,21 @@ func TestValidateChart(t *testing.T) {
 
 	t.Run("NilChart", func(t *testing.T) {
 		t.Parallel()
+
 		err := validateChart(nil)
 		require.Error(t, err)
 	})
 
 	t.Run("EmptyRoots", func(t *testing.T) {
 		t.Parallel()
+
 		err := validateChart(&commonpb.ChartOfAccounts{Roots: map[string]*commonpb.ChartSegment{}})
 		require.Error(t, err)
 	})
 
 	t.Run("InvalidSegmentName", func(t *testing.T) {
 		t.Parallel()
+
 		err := validateChart(&commonpb.ChartOfAccounts{
 			Roots: map[string]*commonpb.ChartSegment{
 				"invalid name!": {Account: true},
@@ -39,6 +43,7 @@ func TestValidateChart(t *testing.T) {
 
 	t.Run("NoAccountNodes", func(t *testing.T) {
 		t.Parallel()
+
 		err := validateChart(&commonpb.ChartOfAccounts{
 			Roots: map[string]*commonpb.ChartSegment{
 				"users": {Account: false},
@@ -50,6 +55,7 @@ func TestValidateChart(t *testing.T) {
 
 	t.Run("ValidSimpleChart", func(t *testing.T) {
 		t.Parallel()
+
 		err := validateChart(&commonpb.ChartOfAccounts{
 			Roots: map[string]*commonpb.ChartSegment{
 				"users": {Account: true},
@@ -60,6 +66,7 @@ func TestValidateChart(t *testing.T) {
 
 	t.Run("InvalidVariableEmptyName", func(t *testing.T) {
 		t.Parallel()
+
 		err := validateChart(&commonpb.ChartOfAccounts{
 			Roots: map[string]*commonpb.ChartSegment{
 				"users": {
@@ -76,6 +83,7 @@ func TestValidateChart(t *testing.T) {
 
 	t.Run("InvalidVariablePattern", func(t *testing.T) {
 		t.Parallel()
+
 		err := validateChart(&commonpb.ChartOfAccounts{
 			Roots: map[string]*commonpb.ChartSegment{
 				"users": {
@@ -93,6 +101,7 @@ func TestValidateChart(t *testing.T) {
 
 	t.Run("ValidChartWithVariable", func(t *testing.T) {
 		t.Parallel()
+
 		err := validateChart(&commonpb.ChartOfAccounts{
 			Roots: map[string]*commonpb.ChartSegment{
 				"users": {
@@ -152,6 +161,7 @@ func TestValidateAccountInChart(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			result := validateAccountInChart(tt.address, chart)
 			require.Equal(t, tt.valid, result, "address: %s", tt.address)
 		})
@@ -169,6 +179,7 @@ func TestValidatePostingsInChart_Strict(t *testing.T) {
 
 	t.Run("ValidPostings", func(t *testing.T) {
 		t.Parallel()
+
 		postings := []*commonpb.Posting{
 			{Source: "world", Destination: "bank"},
 		}
@@ -179,11 +190,13 @@ func TestValidatePostingsInChart_Strict(t *testing.T) {
 
 	t.Run("InvalidSource", func(t *testing.T) {
 		t.Parallel()
+
 		postings := []*commonpb.Posting{
 			{Source: "unknown", Destination: "bank"},
 		}
 		_, err := validatePostingsInChart(postings, chart, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
 		require.Error(t, err)
+
 		var chartErr *domain.ErrAccountNotInChart
 		require.ErrorAs(t, err, &chartErr)
 		require.Equal(t, "unknown", chartErr.Address)
@@ -191,11 +204,13 @@ func TestValidatePostingsInChart_Strict(t *testing.T) {
 
 	t.Run("InvalidDestination", func(t *testing.T) {
 		t.Parallel()
+
 		postings := []*commonpb.Posting{
 			{Source: "world", Destination: "invalid"},
 		}
 		_, err := validatePostingsInChart(postings, chart, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
 		require.Error(t, err)
+
 		var chartErr *domain.ErrAccountNotInChart
 		require.ErrorAs(t, err, &chartErr)
 		require.Equal(t, "invalid", chartErr.Address)
@@ -217,8 +232,8 @@ func TestValidatePostingsInChart_Audit(t *testing.T) {
 	warnings, err := validatePostingsInChart(postings, chart, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT)
 	require.NoError(t, err)
 	require.Len(t, warnings, 2)
-	require.Equal(t, "unknown", warnings[0].Address)
-	require.Equal(t, "invalid", warnings[1].Address)
+	require.Equal(t, "unknown", warnings[0].GetAddress())
+	require.Equal(t, "invalid", warnings[1].GetAddress())
 }
 
 func TestValidatePostingsInChart_Audit_Deduplication(t *testing.T) {
@@ -237,7 +252,7 @@ func TestValidatePostingsInChart_Audit_Deduplication(t *testing.T) {
 	warnings, err := validatePostingsInChart(postings, chart, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT)
 	require.NoError(t, err)
 	require.Len(t, warnings, 1)
-	require.Equal(t, "unknown", warnings[0].Address)
+	require.Equal(t, "unknown", warnings[0].GetAddress())
 }
 
 func TestValidatePostingsInChart_NilChart(t *testing.T) {
@@ -275,8 +290,8 @@ func TestProcessSetChartOfAccounts(t *testing.T) {
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
-			require.NotNil(t, info.ChartOfAccounts)
-			require.Contains(t, info.ChartOfAccounts.Roots, "bank")
+			require.NotNil(t, info.GetChartOfAccounts())
+			require.Contains(t, info.GetChartOfAccounts().GetRoots(), "bank")
 		},
 	)
 	mockStore.EXPECT().GetDate().Return(now)
@@ -301,9 +316,9 @@ func TestProcessSetChartOfAccounts(t *testing.T) {
 
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
-	setLog := applyLog.Log.Data.GetSetChartOfAccounts()
+	setLog := applyLog.GetLog().GetData().GetSetChartOfAccounts()
 	require.NotNil(t, setLog)
-	require.NotNil(t, setLog.ChartOfAccounts)
+	require.NotNil(t, setLog.GetChartOfAccounts())
 }
 
 func TestProcessSetChartOfAccounts_InvalidChart(t *testing.T) {
@@ -407,7 +422,7 @@ func TestProcessSetChartEnforcementMode(t *testing.T) {
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
-			require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.EnforcementMode)
+			require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.GetEnforcementMode())
 		},
 	)
 	mockStore.EXPECT().GetDate().Return(now)
@@ -432,9 +447,9 @@ func TestProcessSetChartEnforcementMode(t *testing.T) {
 
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
-	modeLog := applyLog.Log.Data.GetSetChartEnforcementMode()
+	modeLog := applyLog.GetLog().GetData().GetSetChartEnforcementMode()
 	require.NotNil(t, modeLog)
-	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, modeLog.EnforcementMode)
+	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, modeLog.GetEnforcementMode())
 }
 
 func TestProcessSetChartEnforcementMode_LedgerNotFound(t *testing.T) {
@@ -642,10 +657,10 @@ func TestProcessAddMetadata_ChartValidation_Audit(t *testing.T) {
 
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
-	savedMeta := applyLog.Log.Data.GetSavedMetadata()
+	savedMeta := applyLog.GetLog().GetData().GetSavedMetadata()
 	require.NotNil(t, savedMeta)
-	require.Len(t, savedMeta.Warnings, 1)
-	require.Equal(t, "invalid:account", savedMeta.Warnings[0].Address)
+	require.Len(t, savedMeta.GetWarnings(), 1)
+	require.Equal(t, "invalid:account", savedMeta.GetWarnings()[0].GetAddress())
 }
 
 func TestProcessCreateTransaction_ChartValidation_Audit_Warnings(t *testing.T) {
@@ -703,10 +718,10 @@ func TestProcessCreateTransaction_ChartValidation_Audit_Warnings(t *testing.T) {
 
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
-	created := applyLog.Log.Data.GetCreatedTransaction()
+	created := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, created)
-	require.Len(t, created.Warnings, 1)
-	require.Equal(t, "invalid:account", created.Warnings[0].Address)
+	require.Len(t, created.GetWarnings(), 1)
+	require.Equal(t, "invalid:account", created.GetWarnings()[0].GetAddress())
 }
 
 func TestProcessCreateTransaction_ChartValidation_NoWarnings(t *testing.T) {
@@ -764,9 +779,9 @@ func TestProcessCreateTransaction_ChartValidation_NoWarnings(t *testing.T) {
 
 	applyLog := result.GetApply()
 	require.NotNil(t, applyLog)
-	created := applyLog.Log.Data.GetCreatedTransaction()
+	created := applyLog.GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, created)
-	require.Empty(t, created.Warnings)
+	require.Empty(t, created.GetWarnings())
 }
 
 func TestProcessCreateLedger_WithChart(t *testing.T) {
@@ -790,9 +805,9 @@ func TestProcessCreateLedger_WithChart(t *testing.T) {
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("chart-ledger", gomock.Any()).Do(
 		func(_ string, info *commonpb.LedgerInfo) {
-			require.NotNil(t, info.ChartOfAccounts)
-			require.Contains(t, info.ChartOfAccounts.Roots, "bank")
-			require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.EnforcementMode)
+			require.NotNil(t, info.GetChartOfAccounts())
+			require.Contains(t, info.GetChartOfAccounts().GetRoots(), "bank")
+			require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.GetEnforcementMode())
 		},
 	)
 	mockStore.EXPECT().PutBoundaries("chart-ledger", gomock.Any())
@@ -813,6 +828,6 @@ func TestProcessCreateLedger_WithChart(t *testing.T) {
 
 	createLog := result.GetCreateLedger()
 	require.NotNil(t, createLog)
-	require.NotNil(t, createLog.Info.ChartOfAccounts)
-	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, createLog.Info.EnforcementMode)
+	require.NotNil(t, createLog.GetInfo().GetChartOfAccounts())
+	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, createLog.GetInfo().GetEnforcementMode())
 }

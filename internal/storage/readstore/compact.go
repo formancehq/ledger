@@ -28,7 +28,8 @@ func (s *Store) Compact(_ context.Context) (sizeBefore, sizeAfter int64, err err
 	}
 
 	// Remove any leftover tmp file from a previous failed attempt.
-	if removeErr := os.Remove(tmpPath); removeErr != nil && !os.IsNotExist(removeErr) {
+	removeErr := os.Remove(tmpPath)
+	if removeErr != nil && !os.IsNotExist(removeErr) {
 		return 0, 0, fmt.Errorf("removing leftover tmp file: %w", removeErr)
 	}
 
@@ -43,25 +44,32 @@ func (s *Store) Compact(_ context.Context) (sizeBefore, sizeAfter int64, err err
 
 	// Copy live data via read transactions. bolt.Compact reads the source
 	// using successive read transactions, so concurrent writes are safe.
-	if compactErr := bolt.Compact(tmpDB, s.db, 65536); compactErr != nil {
+	compactErr := bolt.Compact(tmpDB, s.db, 65536)
+	if compactErr != nil {
 		_ = tmpDB.Close()
 		_ = os.Remove(tmpPath)
+
 		return 0, 0, fmt.Errorf("compacting database: %w", compactErr)
 	}
 
-	if closeErr := tmpDB.Close(); closeErr != nil {
+	closeErr := tmpDB.Close()
+	if closeErr != nil {
 		_ = os.Remove(tmpPath)
+
 		return 0, 0, fmt.Errorf("closing tmp database: %w", closeErr)
 	}
 
 	// Close the current database. bbolt waits for in-flight transactions.
-	if closeErr := s.db.Close(); closeErr != nil {
+	closeErr = s.db.Close()
+	if closeErr != nil {
 		_ = os.Remove(tmpPath)
+
 		return 0, 0, fmt.Errorf("closing current database: %w", closeErr)
 	}
 
 	// Atomically swap files.
-	if renameErr := os.Rename(tmpPath, s.path); renameErr != nil {
+	renameErr := os.Rename(tmpPath, s.path)
+	if renameErr != nil {
 		return sizeBefore, 0, fmt.Errorf("renaming tmp database: %w", renameErr)
 	}
 
@@ -70,6 +78,7 @@ func (s *Store) Compact(_ context.Context) (sizeBefore, sizeAfter int64, err err
 	if initialMmapSize == 0 {
 		initialMmapSize = DefaultInitialMmapSize
 	}
+
 	s.db, err = bolt.Open(s.path, 0o600, &bolt.Options{
 		NoSync:          true,
 		FreelistType:    bolt.FreelistMapType,

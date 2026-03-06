@@ -7,9 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func TestReadIndexOnLeader(t *testing.T) {
@@ -51,13 +53,16 @@ func TestReadIndexOnFollower(t *testing.T) {
 
 	// Find a follower
 	var follower *ClusterNode
+
 	for i := range cluster.Size() {
 		n := cluster.GetNode(i)
 		if n.ID != leaderID {
 			follower = n
+
 			break
 		}
 	}
+
 	require.NotNil(t, follower)
 
 	// Create a ledger on the leader
@@ -90,13 +95,16 @@ func TestReadIndexLinearizability(t *testing.T) {
 
 	// Find a follower
 	var follower *ClusterNode
+
 	for i := range cluster.Size() {
 		n := cluster.GetNode(i)
 		if n.ID != leaderID {
 			follower = n
+
 			break
 		}
 	}
+
 	require.NotNil(t, follower)
 
 	// Create multiple ledgers on the leader
@@ -131,13 +139,16 @@ func TestReadIndexContextCancellation(t *testing.T) {
 
 	// Find a follower and disconnect it
 	var follower *ClusterNode
+
 	for i := range cluster.Size() {
 		n := cluster.GetNode(i)
 		if n.ID != leaderID {
 			follower = n
+
 			break
 		}
 	}
+
 	require.NotNil(t, follower)
 
 	// Disconnect the follower so ReadIndex can't complete

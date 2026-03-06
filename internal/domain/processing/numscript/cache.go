@@ -5,9 +5,10 @@ import (
 	"context"
 	"sync"
 
-	numscriptlib "github.com/formancehq/numscript"
 	"github.com/zeebo/blake3"
 	"go.opentelemetry.io/otel/metric"
+
+	numscriptlib "github.com/formancehq/numscript"
 )
 
 // NumscriptCache stores parsed Numscript programs keyed by their content hash.
@@ -44,6 +45,7 @@ func NewNumscriptCache(maxSize int) *NumscriptCache {
 	if maxSize <= 0 {
 		maxSize = 1024
 	}
+
 	return &NumscriptCache{
 		cache:   make(map[[32]byte]*list.Element, maxSize),
 		order:   list.New(),
@@ -64,6 +66,7 @@ func (c *NumscriptCache) computeHash(script string) [32]byte {
 
 	var result [32]byte
 	copy(result[:], sum)
+
 	return result
 }
 
@@ -77,7 +80,8 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, er
 	// Try to get from cache
 	if elem, ok := c.cache[hash]; ok {
 		c.order.MoveToFront(elem)
-		entry := elem.Value.(*lruEntry)
+		entry, _ := elem.Value.(*lruEntry)
+
 		return entry.script.program, entry.script.err
 	}
 
@@ -96,7 +100,7 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, er
 	if c.order.Len() >= c.maxSize {
 		back := c.order.Back()
 		if back != nil {
-			evicted := c.order.Remove(back).(*lruEntry)
+			evicted, _ := c.order.Remove(back).(*lruEntry)
 			delete(c.cache, evicted.hash)
 		}
 	}
@@ -128,6 +132,7 @@ func (c *NumscriptCache) InitCacheMetrics(m metric.Meter) error {
 	}
 
 	c.sizeGauge = size
+
 	return nil
 }
 
@@ -136,5 +141,6 @@ func (c *NumscriptCache) recordSize(size int64) {
 	if c.sizeGauge == nil {
 		return
 	}
+
 	c.sizeGauge.Record(context.Background(), size)
 }

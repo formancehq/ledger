@@ -11,12 +11,12 @@ import (
 func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, order *raftcmdpb.RevertTransactionOrder, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
 	txKey := domain.TransactionKey{
 		Ledger: ledger,
-		ID:     order.TransactionId,
+		ID:     order.GetTransactionId(),
 	}
 
 	// Check if transaction exists (ID must be less than next transaction ID)
-	if order.TransactionId >= boundaries.NextTransactionId {
-		return nil, &domain.ErrTransactionNotFound{TransactionID: order.TransactionId}
+	if order.GetTransactionId() >= boundaries.GetNextTransactionId() {
+		return nil, &domain.ErrTransactionNotFound{TransactionID: order.GetTransactionId()}
 	}
 
 	// Check if the transaction is already reverted (bitset lookup, never errors)
@@ -24,28 +24,31 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 	if err != nil {
 		return nil, fmt.Errorf("checking reverted status: %w", err)
 	}
+
 	if reverted {
-		return nil, &domain.ErrTransactionAlreadyReverted{TransactionID: order.TransactionId}
+		return nil, &domain.ErrTransactionAlreadyReverted{TransactionID: order.GetTransactionId()}
 	}
 
 	// Create reversed postings and update volumes
 	// For a revert: original destination becomes source, original source becomes destination
-	revertPostings := make([]*commonpb.Posting, len(order.OriginalPostings))
-	for i, originalPosting := range order.OriginalPostings {
+	revertPostings := make([]*commonpb.Posting, len(order.GetOriginalPostings()))
+	for i, originalPosting := range order.GetOriginalPostings() {
 		// Create reversed posting
 		revertPostings[i] = &commonpb.Posting{
-			Source:      originalPosting.Destination, // Original destination is now source
-			Destination: originalPosting.Source,      // Original source is now destination
-			Amount:      originalPosting.Amount,
-			Asset:       originalPosting.Asset,
+			Source:      originalPosting.GetDestination(), // Original destination is now source
+			Destination: originalPosting.GetSource(),      // Original source is now destination
+			Amount:      originalPosting.GetAmount(),
+			Asset:       originalPosting.GetAsset(),
 		}
 	}
 
 	// Validate reversed postings against chart of accounts
 	var warnings []*commonpb.ChartViolation
-	if info, ok := s.GetLedger(ledger); ok && info.ChartOfAccounts != nil {
+
+	if info, ok := s.GetLedger(ledger); ok && info.GetChartOfAccounts() != nil {
 		var chartErr error
-		warnings, chartErr = validatePostingsInChart(revertPostings, info.ChartOfAccounts, info.EnforcementMode)
+
+		warnings, chartErr = validatePostingsInChart(revertPostings, info.GetChartOfAccounts(), info.GetEnforcementMode())
 		if chartErr != nil {
 			return nil, chartErr
 		}
@@ -53,7 +56,8 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 
 	for _, posting := range revertPostings {
 		// Apply the reversed posting (skip balance check if force is set)
-		if err := applyPosting(s, ledger, posting, order.Force); err != nil {
+		err := applyPosting(s, ledger, posting, order.GetForce())
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -62,11 +66,11 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 	s.PutReverted(txKey, true)
 
 	// Get new transaction ID for the revert transaction
-	revertTxID := boundaries.NextTransactionId
+	revertTxID := boundaries.GetNextTransactionId()
 	boundaries.NextTransactionId = revertTxID + 1
 
 	// Add transaction update for the original transaction (mark as reverted)
-	s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: order.TransactionId}, &commonpb.TransactionUpdate{
+	s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: order.GetTransactionId()}, &commonpb.TransactionUpdate{
 		ByLog: s.GetNextSequenceID(),
 		Updates: []*commonpb.TransactionUpdateType{{
 			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationRevert{
@@ -89,17 +93,17 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 
 	// Compute post-commit volumes if requested
 	var postCommitVolumes *commonpb.PostCommitVolumes
-	if order.ExpandVolumes {
+	if order.GetExpandVolumes() {
 		postCommitVolumes = buildPostCommitVolumes(s, ledger, revertPostings)
 	}
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 			RevertedTransaction: &commonpb.RevertedTransaction{
-				RevertedTransactionId: order.TransactionId,
+				RevertedTransactionId: order.GetTransactionId(),
 				RevertTransaction: &commonpb.Transaction{
 					Postings:   revertPostings,
-					Metadata:   order.Metadata,
+					Metadata:   order.GetMetadata(),
 					Timestamp:  s.GetDate(),
 					Id:         revertTxID,
 					InsertedAt: s.GetDate(),

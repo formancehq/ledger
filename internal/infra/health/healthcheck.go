@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
@@ -73,6 +74,7 @@ func NewHealthChecker(
 		w:                  worker.New(),
 	}
 	hc.healthy.Store(true)
+
 	return hc
 }
 
@@ -110,6 +112,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	// its own child context with a per-call timeout (healthCheckCallTimeout).
 	baseCtx, baseCancel := context.WithCancel(context.Background())
 	defer baseCancel()
+
 	go func() {
 		select {
 		case <-stop:
@@ -145,7 +148,9 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 		// Check disk usage
 		callCtx, callCancel := context.WithTimeout(baseCtx, healthCheckCallTimeout)
 		resp, err := client.GetDiskUsage(callCtx, &clusterpb.GetDiskUsageRequest{})
+
 		callCancel()
+
 		if err != nil {
 			hc.logger.WithFields(map[string]any{
 				"node_id": peerID,
@@ -153,10 +158,10 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 			}).Errorf("Failed to get disk usage from peer")
 		} else if hc.exceedsThreshold(
 			peerID,
-			resp.WalVolumeBytes,
-			resp.WalVolumeTotalBytes,
-			resp.DataVolumeBytes,
-			resp.DataVolumeTotalBytes,
+			resp.GetWalVolumeBytes(),
+			resp.GetWalVolumeTotalBytes(),
+			resp.GetDataVolumeBytes(),
+			resp.GetDataVolumeTotalBytes(),
 		) {
 			healthy = false
 		}
@@ -187,6 +192,7 @@ func (hc *HealthChecker) exceedsThreshold(nodeID uint64, walUsed, walTotal, data
 				"total":   walTotal,
 				"percent": percent * 100,
 			}).Errorf("Disk usage exceeds threshold (%.0f%%)", hc.walThreshold*100)
+
 			exceeded = true
 		}
 	}
@@ -201,6 +207,7 @@ func (hc *HealthChecker) exceedsThreshold(nodeID uint64, walUsed, walTotal, data
 				"total":   dataTotal,
 				"percent": percent * 100,
 			}).Errorf("Disk usage exceeds threshold (%.0f%%)", hc.dataThreshold*100)
+
 			exceeded = true
 		}
 	}
@@ -215,19 +222,22 @@ func (hc *HealthChecker) exceedsClockSkew(baseCtx context.Context, client cluste
 	defer callCancel()
 
 	beforeCall := time.Now()
+
 	resp, err := client.GetNodeTime(callCtx, &clusterpb.GetNodeTimeRequest{})
 	if err != nil {
 		hc.logger.WithFields(map[string]any{
 			"node_id": nodeID,
 			"error":   err,
 		}).Errorf("Failed to get node time from peer")
+
 		return false
 	}
+
 	afterCall := time.Now()
 
 	// Use the midpoint of the request as the local reference time to account for network RTT
 	localTime := beforeCall.Add(afterCall.Sub(beforeCall) / 2)
-	remoteTime := time.UnixMicro(int64(resp.TimestampUs))
+	remoteTime := time.UnixMicro(int64(resp.GetTimestampUs()))
 
 	skew := localTime.Sub(remoteTime)
 	if skew < 0 {
@@ -239,6 +249,7 @@ func (hc *HealthChecker) exceedsClockSkew(baseCtx context.Context, client cluste
 			"node_id": nodeID,
 			"skew":    skew.String(),
 		}).Errorf("Clock skew exceeds threshold (%s)", hc.clockSkewThreshold)
+
 		return true
 	}
 

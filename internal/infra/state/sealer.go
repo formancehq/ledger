@@ -5,11 +5,13 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/zeebo/blake3"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/zeebo/blake3"
 )
 
 // SealRequest contains the data needed to seal a period.
@@ -85,16 +87,19 @@ func (s *Sealer) recoverPendingSeal() {
 	if closingPeriod == nil {
 		return
 	}
+
 	checkpointPath, exists := s.dataStore.TemporaryCheckpointPath("seal")
 	if !exists {
 		return
 	}
+
 	req := SealRequestFromPeriod(closingPeriod)
 	req.CheckpointPath = checkpointPath
 	s.logger.WithFields(map[string]any{
 		"periodId":      req.PeriodID,
 		"closeSequence": req.CloseSequence,
 	}).Infof("Recovering pending period seal after restart")
+
 	select {
 	case s.sealRequestCh <- *req:
 	default:
@@ -116,7 +121,7 @@ func (s *Sealer) Stop() {
 //   - Only the leader computes the hash and proposes SealPeriod.
 //
 // sealing_hash = BLAKE3(period_id || close_sequence || last_log_hash || state_hash)
-// state_hash = BLAKE3(all attribute key+value pairs in the checkpoint)
+// state_hash = BLAKE3(all attribute key+value pairs in the checkpoint).
 func (s *Sealer) seal(req SealRequest) error {
 	logFields := map[string]any{
 		"periodId":      req.PeriodID,
@@ -126,10 +131,11 @@ func (s *Sealer) seal(req SealRequest) error {
 	// Check if the period is still CLOSING — if not, the leader already sealed
 	// it and the SealPeriod was applied through Raft. Followers can exit.
 	cp := s.periodState.ClosingPeriod()
-	if cp == nil || cp.Id != req.PeriodID {
+	if cp == nil || cp.GetId() != req.PeriodID {
 		s.logger.WithFields(logFields).Infof("Period no longer closing (sealed by leader), done")
 		// Clean up the seal checkpoint if it exists on this node
 		_ = s.dataStore.RemoveTemporaryCheckpoint("seal")
+
 		return nil
 	}
 
@@ -150,6 +156,7 @@ func (s *Sealer) seal(req SealRequest) error {
 	stateHash, err := computeStateHash(db)
 	// Close the DB before cleanup — must happen regardless of hash computation result
 	_ = db.Close()
+
 	if err != nil {
 		return err
 	}
@@ -210,14 +217,17 @@ func computeStateHash(src iteratorSource) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for state hash: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		_, _ = hasher.Write(iter.Key())
+
 		value, err := iter.ValueAndErr()
 		if err != nil {
 			return nil, fmt.Errorf("reading attribute value: %w", err)
 		}
+
 		_, _ = hasher.Write(value)
 	}
 

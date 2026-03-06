@@ -6,12 +6,12 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
@@ -27,8 +27,10 @@ func ReadNumscriptLatestVersion(ctx context.Context, reader dal.PebbleReader, na
 		if errors.Is(err, pebble.ErrNotFound) {
 			return "", nil
 		}
+
 		return "", fmt.Errorf("reading numscript latest version for %q: %w", name, err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	return string(value), nil
@@ -55,9 +57,11 @@ func ReadNumscript(ctx context.Context, reader dal.PebbleReader, name string, ve
 		if err != nil {
 			return nil, err
 		}
+
 		if latestVersion == "" {
 			return nil, nil
 		}
+
 		return ReadNumscript(ctx, reader, name, latestVersion)
 	}
 
@@ -110,20 +114,23 @@ func readNumscriptFromKey(reader dal.PebbleReader, key []byte, name, version str
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("reading numscript %q v%s: %w", name, version, err)
 	}
+
 	defer func() { _ = closer.Close() }()
 
 	info := &commonpb.NumscriptInfo{}
 	if err := proto.Unmarshal(value, info); err != nil {
 		return nil, fmt.Errorf("unmarshaling numscript %q v%s: %w", name, version, err)
 	}
+
 	return info, nil
 }
 
 // resolvePartialVersion performs a range scan to find the highest matching semver.
 // depth=1: scan [major.0.0, major+1.0.0)
-// depth=2: scan [major.minor.0, major.minor+1.0)
+// depth=2: scan [major.minor.0, major.minor+1.0).
 func resolvePartialVersion(reader dal.PebbleReader, name string, major, minor uint32, depth int) (*commonpb.NumscriptInfo, error) {
 	kb := dal.NewKeyBuilder()
 
@@ -151,6 +158,7 @@ func resolvePartialVersion(reader dal.PebbleReader, name string, major, minor ui
 		// Scan [major.minor.0, major.(minor+1).0)
 		kb.PutUInt32(major).PutUInt32(minor + 1).PutUInt32(0)
 	}
+
 	upperBound := kb.Build()
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -160,6 +168,7 @@ func resolvePartialVersion(reader dal.PebbleReader, name string, major, minor ui
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for partial version resolution: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	if !iter.Last() {
@@ -175,6 +184,7 @@ func resolvePartialVersion(reader dal.PebbleReader, name string, major, minor ui
 	if err := proto.Unmarshal(value, info); err != nil {
 		return nil, fmt.Errorf("unmarshaling partial version result: %w", err)
 	}
+
 	return info, nil
 }
 
@@ -182,6 +192,7 @@ func resolvePartialVersion(reader dal.PebbleReader, name string, major, minor ui
 func ReadAllNumscripts(ctx context.Context, reader dal.PebbleReader) ([]*commonpb.NumscriptInfo, error) {
 	_, span := queryTracer.Start(ctx, "query.list_numscripts")
 	defer span.End()
+
 	lowerBound := []byte{dal.KeyPrefixNumscriptLatest}
 	upperBound := []byte{dal.KeyPrefixNumscriptLatest + 1}
 
@@ -192,9 +203,11 @@ func ReadAllNumscripts(ctx context.Context, reader dal.PebbleReader) ([]*commonp
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for numscript latest versions: %w", err)
 	}
+
 	defer func() { _ = iter.Close() }()
 
 	var scripts []*commonpb.NumscriptInfo
+
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
 		name := string(key[1:]) // skip prefix byte
@@ -203,6 +216,7 @@ func ReadAllNumscripts(ctx context.Context, reader dal.PebbleReader) ([]*commonp
 		if err != nil {
 			return nil, fmt.Errorf("reading numscript latest version value: %w", err)
 		}
+
 		version := string(value)
 		if version == "" {
 			continue
@@ -212,6 +226,7 @@ func ReadAllNumscripts(ctx context.Context, reader dal.PebbleReader) ([]*commonp
 		if err != nil {
 			return nil, fmt.Errorf("reading numscript %q v%s: %w", name, version, err)
 		}
+
 		if info != nil {
 			scripts = append(scripts, info)
 		}

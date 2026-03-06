@@ -7,18 +7,20 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // newTestMachineWithThreshold creates a Machine with a configurable generation threshold.
@@ -52,6 +54,7 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 // newTestMachine creates a Machine backed by a real Pebble store for testing.
 func newTestMachine(t *testing.T) (*Machine, *dal.Store, *attributes.Attributes) {
 	t.Helper()
+
 	return newTestMachineWithThreshold(t, 1000)
 }
 
@@ -135,12 +138,15 @@ func effectiveVolumeInput(vp *raftcmdpb.VolumePair) int64 {
 	if vp == nil {
 		return 0
 	}
-	if vp.InputKnown != nil {
-		return vp.InputKnown.ToBigInt().Int64()
+
+	if vp.GetInputKnown() != nil {
+		return vp.GetInputKnown().ToBigInt().Int64()
 	}
-	if vp.InputDiff != nil {
-		return vp.InputDiff.ToBigInt().Int64()
+
+	if vp.GetInputDiff() != nil {
+		return vp.GetInputDiff().ToBigInt().Int64()
 	}
+
 	return 0
 }
 
@@ -150,12 +156,15 @@ func effectiveVolumeOutput(vp *raftcmdpb.VolumePair) int64 {
 	if vp == nil {
 		return 0
 	}
-	if vp.OutputKnown != nil {
-		return vp.OutputKnown.ToBigInt().Int64()
+
+	if vp.GetOutputKnown() != nil {
+		return vp.GetOutputKnown().ToBigInt().Int64()
 	}
-	if vp.OutputDiff != nil {
-		return vp.OutputDiff.ToBigInt().Int64()
+
+	if vp.GetOutputDiff() != nil {
+		return vp.GetOutputDiff().ToBigInt().Int64()
 	}
+
 	return 0
 }
 
@@ -290,6 +299,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		wantOutput  int64
 		wantBalance int64
 	}
+
 	expectations := []volumeExpectation{
 		{"customer:carol", "EUR", 1000, 220, 780},
 		{"customer:dave", "EUR", 500, 330, 170},
@@ -311,6 +321,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("unexpected error reading cache volumes for %s: %v", account, err)
 		}
+
 		input = effectiveVolumeInput(pair)
 		output = effectiveVolumeOutput(pair)
 
@@ -355,12 +366,14 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			require.NoError(t, err, "store volume read error for %s/%s", exp.account, exp.asset)
 
 			var gotInput, gotOutput int64
+
 			if pair != nil {
-				if pair.InputKnown != nil {
-					gotInput = pair.InputKnown.ToBigInt().Int64()
+				if pair.GetInputKnown() != nil {
+					gotInput = pair.GetInputKnown().ToBigInt().Int64()
 				}
-				if pair.OutputKnown != nil {
-					gotOutput = pair.OutputKnown.ToBigInt().Int64()
+
+				if pair.GetOutputKnown() != nil {
+					gotOutput = pair.GetOutputKnown().ToBigInt().Int64()
 				}
 			}
 
@@ -397,8 +410,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		pair, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
 		require.NoError(t, err)
 		require.NotNil(t, pair)
-		require.NotNil(t, pair.InputKnown)
-		require.Equal(t, int64(300), pair.InputKnown.ToBigInt().Int64(),
+		require.NotNil(t, pair.GetInputKnown())
+		require.Equal(t, int64(300), pair.GetInputKnown().ToBigInt().Int64(),
 			"merchant:bob store input should be 300 (batch 3 only)")
 	})
 
@@ -419,8 +432,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		pair, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
 		require.NoError(t, err)
 		require.NotNil(t, pair)
-		require.NotNil(t, pair.OutputKnown)
-		require.Equal(t, int64(330), pair.OutputKnown.ToBigInt().Int64(),
+		require.NotNil(t, pair.GetOutputKnown())
+		require.Equal(t, int64(330), pair.GetOutputKnown().ToBigInt().Int64(),
 			"customer:dave store output should be 330 (batch 3 only)")
 	})
 
@@ -441,8 +454,8 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 		pair, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
 		require.NoError(t, err)
 		require.NotNil(t, pair)
-		require.NotNil(t, pair.InputKnown)
-		require.Equal(t, int64(50), pair.InputKnown.ToBigInt().Int64(),
+		require.NotNil(t, pair.GetInputKnown())
+		require.Equal(t, int64(50), pair.GetInputKnown().ToBigInt().Int64(),
 			"platform:revenue store input should be 50 (20+30)")
 	})
 }
@@ -473,9 +486,11 @@ func listRawAttributeEntries(t *testing.T, store *dal.Store, attrPrefix byte, ca
 		UpperBound: upperBound,
 	})
 	require.NoError(t, err)
+
 	defer func() { _ = iter.Close() }()
 
 	var entries []attributeEntryInfo
+
 	for iter.First(); iter.Valid(); iter.Next() {
 		iterKey := iter.Key()
 		raftIndex := binary.BigEndian.Uint64(iterKey[len(iterKey)-9 : len(iterKey)-1])
@@ -485,6 +500,7 @@ func listRawAttributeEntries(t *testing.T, store *dal.Store, attrPrefix byte, ca
 			IsBase:    entryType == 0,
 		})
 	}
+
 	return entries
 }
 
@@ -541,6 +557,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	// Verify initial state: 4 diff entries for each key
 	inputEntries := listRawAttributeEntries(t, dataStore, dal.AttributePrefixVolume, aliceInputKey)
 	require.Len(t, inputEntries, 4, "should have 4 diff entries initially")
+
 	for _, e := range inputEntries {
 		require.False(t, e.IsBase, "all initial entries should be diffs")
 	}
@@ -551,11 +568,11 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	// Verify computed values before compaction: latest cumul diff = 400
 	alicePair, err := attrs.Volume.ComputeValue(dataStore, 5, aliceInputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), alicePair.InputKnown.ToBigInt().Int64())
+	require.Equal(t, int64(400), alicePair.GetInputKnown().ToBigInt().Int64())
 
 	worldPair, err := attrs.Volume.ComputeValue(dataStore, 5, worldOutputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), worldPair.OutputKnown.ToBigInt().Int64())
+	require.Equal(t, int64(400), worldPair.GetOutputKnown().ToBigInt().Int64())
 
 	// ---------------------------------------------------------------
 	// First compaction at index 4: prunes diffs strictly before 4
@@ -578,9 +595,11 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 
 	inputEntries = listRawAttributeEntries(t, dataStore, dal.AttributePrefixVolume, aliceInputKey)
 	require.Len(t, inputEntries, 2, "should have 2 diffs remaining after compaction")
+
 	for _, e := range inputEntries {
 		require.False(t, e.IsBase, "prune-only compaction must not create bases")
 	}
+
 	require.Equal(t, uint64(4), inputEntries[0].RaftIndex)
 	require.Equal(t, uint64(5), inputEntries[1].RaftIndex)
 
@@ -590,12 +609,12 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	// Computed values unchanged: latest cumul diff = 400
 	alicePair, err = attrs.Volume.ComputeValue(dataStore, 5, aliceInputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), alicePair.InputKnown.ToBigInt().Int64(),
+	require.Equal(t, int64(400), alicePair.GetInputKnown().ToBigInt().Int64(),
 		"alice input should still be 400 after compaction")
 
 	worldPair, err = attrs.Volume.ComputeValue(dataStore, 5, worldOutputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), worldPair.OutputKnown.ToBigInt().Int64(),
+	require.Equal(t, int64(400), worldPair.GetOutputKnown().ToBigInt().Int64(),
 		"world output should still be 400 after compaction")
 
 	// ---------------------------------------------------------------
@@ -614,7 +633,7 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 	// Latest cumul diff at index 7 = 600 -> computed value = 0 + 600 = 600
 	alicePair, err = attrs.Volume.ComputeValue(dataStore, 7, aliceInputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(600), alicePair.InputKnown.ToBigInt().Int64(),
+	require.Equal(t, int64(600), alicePair.GetInputKnown().ToBigInt().Int64(),
 		"alice input should be 600 (latest cumulative diff from implicit base 0)")
 
 	// ---------------------------------------------------------------
@@ -628,16 +647,18 @@ func TestVolumeDiffCompactionAtGenerationRotation(t *testing.T) {
 
 	inputEntries = listRawAttributeEntries(t, dataStore, dal.AttributePrefixVolume, aliceInputKey)
 	require.Len(t, inputEntries, 2, "should have 2 diffs remaining after second compaction")
+
 	for _, e := range inputEntries {
 		require.False(t, e.IsBase, "prune-only compaction must not create bases")
 	}
+
 	require.Equal(t, uint64(6), inputEntries[0].RaftIndex)
 	require.Equal(t, uint64(7), inputEntries[1].RaftIndex)
 
 	// Computed value unchanged: latest cumul diff at index 7 = 600
 	alicePair, err = attrs.Volume.ComputeValue(dataStore, 7, aliceInputKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(600), alicePair.InputKnown.ToBigInt().Int64(),
+	require.Equal(t, int64(600), alicePair.GetInputKnown().ToBigInt().Int64(),
 		"alice input should remain 600 after second compaction")
 }
 
@@ -704,11 +725,11 @@ func TestVolumeDiffCompactionSkipsInactiveKeys(t *testing.T) {
 	// Both computed values are still correct
 	activePair, err := attrs.Volume.ComputeValue(dataStore, 5, activeKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), activePair.InputKnown.ToBigInt().Int64())
+	require.Equal(t, int64(400), activePair.GetInputKnown().ToBigInt().Int64())
 
 	dormantPair, err := attrs.Volume.ComputeValue(dataStore, 5, dormantKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), dormantPair.InputKnown.ToBigInt().Int64())
+	require.Equal(t, int64(400), dormantPair.GetInputKnown().ToBigInt().Int64())
 }
 
 // makeLedgerPreloadSet creates a PreloadSet that injects ledger info into the cache.
@@ -752,6 +773,7 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 	t.Parallel()
 
 	const generationThreshold = 10
+
 	machine, dataStore, attrs := newTestMachineWithThreshold(t, generationThreshold)
 	ctx := context.Background()
 
@@ -799,14 +821,14 @@ func TestVolumeDiffCompactionIntegration(t *testing.T) {
 	pair, err := attrs.Volume.ComputeValue(dataStore, 42, aliceVolumeKey)
 	require.NoError(t, err)
 	require.NotNil(t, pair)
-	require.NotNil(t, pair.InputKnown)
-	require.Equal(t, int64(4100), pair.InputKnown.ToBigInt().Int64(),
+	require.NotNil(t, pair.GetInputKnown())
+	require.Equal(t, int64(4100), pair.GetInputKnown().ToBigInt().Int64(),
 		"users:alice input should be 4100 (41 * 100)")
 
 	// Verify that compaction pruned old entries.
 	// 41 diffs initially, 18 pruned (8 at rotation 3 + 10 at rotation 4) = 23 remaining.
 	entries := listRawAttributeEntries(t, dataStore, dal.AttributePrefixVolume, aliceVolumeKey)
-	require.Equal(t, 23, len(entries),
+	require.Len(t, entries, 23,
 		"compaction should have pruned old diffs, leaving 23 entries (diffs at indexes 20-42)")
 
 	// All remaining entries should be diffs (prune-only compaction creates no bases)

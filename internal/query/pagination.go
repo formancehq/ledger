@@ -13,7 +13,12 @@ type cursorData struct {
 
 // encodeCursor encodes the last entity seen into an opaque cursor string.
 func encodeCursor(lastEntity []byte) string {
-	data, _ := json.Marshal(cursorData{After: lastEntity})
+	// cursorData contains only a []byte field, so json.Marshal cannot fail.
+	data, err := json.Marshal(cursorData{After: lastEntity})
+	if err != nil {
+		panic(fmt.Sprintf("encodeCursor: json.Marshal failed: %v", err))
+	}
+
 	return base64.RawURLEncoding.EncodeToString(data)
 }
 
@@ -23,9 +28,11 @@ func decodeCursor(cursor string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid cursor encoding: %w", err)
 	}
+
 	var data cursorData
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return nil, fmt.Errorf("invalid cursor data: %w", err)
 	}
+
 	return data.After, nil
 }

@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/pterm/pterm"
 	"github.com/pterm/pterm/putils"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 )
 
 // NewStatusCommand creates the cluster status command.
@@ -37,6 +39,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	// Get context
@@ -58,6 +61,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(state)
 	}
 
@@ -89,20 +93,20 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 	b.WriteString(sectionStr)
 
 	maintenanceDisplay := pterm.Green("Off")
-	if state.MaintenanceMode {
+	if state.GetMaintenanceMode() {
 		maintenanceDisplay = pterm.Red("On")
 	}
 
 	syncStatusDisplay := pterm.Green("Normal")
-	if sp := state.SyncProgress; sp != nil {
-		syncStatusDisplay = getSyncStatusColor(sp.Status)
+	if sp := state.GetSyncProgress(); sp != nil {
+		syncStatusDisplay = getSyncStatusColor(sp.GetStatus())
 	}
 
 	overviewData := [][]string{
-		{pterm.LightCyan("State:"), getStateColor(state.State)},
-		{pterm.LightCyan("Local Node ID:"), fmt.Sprintf("%d", state.LocalNode)},
-		{pterm.LightCyan("Leader ID:"), getLeaderDisplay(state.Leader)},
-		{pterm.LightCyan("Total Nodes:"), fmt.Sprintf("%d", len(state.Nodes))},
+		{pterm.LightCyan("State:"), getStateColor(state.GetState())},
+		{pterm.LightCyan("Local Node ID:"), strconv.FormatUint(uint64(state.GetLocalNode()), 10)},
+		{pterm.LightCyan("Leader ID:"), getLeaderDisplay(state.GetLeader())},
+		{pterm.LightCyan("Total Nodes:"), strconv.Itoa(len(state.GetNodes()))},
 		{pterm.LightCyan("Maintenance:"), maintenanceDisplay},
 		{pterm.LightCyan("Sync Status:"), syncStatusDisplay},
 	}
@@ -112,7 +116,7 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 	b.WriteString("\n\n")
 
 	// Show checkpoint fetch progress when syncing
-	if sp := state.SyncProgress; sp != nil && sp.Status == "syncing" && sp.BytesTotal > 0 {
+	if sp := state.GetSyncProgress(); sp != nil && sp.GetStatus() == "syncing" && sp.GetBytesTotal() > 0 {
 		sectionStr = pterm.DefaultSection.Sprintln("Checkpoint Fetch Progress")
 		b.WriteString(sectionStr)
 		b.WriteString(renderSyncProgress(sp))
@@ -120,19 +124,19 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 	}
 
 	// Raft status
-	if state.RaftStatus != nil {
+	if state.GetRaftStatus() != nil {
 		sectionStr = pterm.DefaultSection.Sprintln("Raft Status")
 		b.WriteString(sectionStr)
 
 		raftData := [][]string{
-			{pterm.LightCyan("Term:"), fmt.Sprintf("%d", state.RaftStatus.Term)},
-			{pterm.LightCyan("Applied Index:"), fmt.Sprintf("%d", state.RaftStatus.Applied)},
-			{pterm.LightCyan("Commit Index:"), fmt.Sprintf("%d", state.RaftStatus.Commit)},
-			{pterm.LightCyan("Last Index:"), fmt.Sprintf("%d", state.RaftStatus.LastIndex)},
+			{pterm.LightCyan("Term:"), strconv.FormatUint(state.GetRaftStatus().GetTerm(), 10)},
+			{pterm.LightCyan("Applied Index:"), strconv.FormatUint(state.GetRaftStatus().GetApplied(), 10)},
+			{pterm.LightCyan("Commit Index:"), strconv.FormatUint(state.GetRaftStatus().GetCommit(), 10)},
+			{pterm.LightCyan("Last Index:"), strconv.FormatUint(state.GetRaftStatus().GetLastIndex(), 10)},
 		}
 
-		if state.RaftStatus.Vote != 0 {
-			raftData = append(raftData, []string{pterm.LightCyan("Vote:"), fmt.Sprintf("%d", state.RaftStatus.Vote)})
+		if state.GetRaftStatus().GetVote() != 0 {
+			raftData = append(raftData, []string{pterm.LightCyan("Vote:"), strconv.FormatUint(state.GetRaftStatus().GetVote(), 10)})
 		}
 
 		tableStr, _ = pterm.DefaultTable.WithHasHeader(false).WithData(raftData).Srender()
@@ -141,7 +145,7 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 	}
 
 	// Nodes table - only display if nodes list is available (i.e., querying the leader)
-	if len(state.Nodes) > 0 {
+	if len(state.GetNodes()) > 0 {
 		sectionStr = pterm.DefaultSection.Sprintln("Cluster Nodes")
 		b.WriteString(sectionStr)
 
@@ -150,23 +154,24 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 		}
 
 		// Sort nodes by ID for consistent display
-		sortedNodes := make([]*clusterpb.NodeInfo, len(state.Nodes))
-		copy(sortedNodes, state.Nodes)
+		sortedNodes := make([]*clusterpb.NodeInfo, len(state.GetNodes()))
+		copy(sortedNodes, state.GetNodes())
 		sort.Slice(sortedNodes, func(i, j int) bool {
-			return sortedNodes[i].Id < sortedNodes[j].Id
+			return sortedNodes[i].GetId() < sortedNodes[j].GetId()
 		})
 
 		commitIndex := uint64(0)
-		if state.RaftStatus != nil {
-			commitIndex = state.RaftStatus.Commit
+		if state.GetRaftStatus() != nil {
+			commitIndex = state.GetRaftStatus().GetCommit()
 		}
 
 		for _, node := range sortedNodes {
 			status := ""
-			switch node.Id {
-			case state.Leader:
+
+			switch node.GetId() {
+			case state.GetLeader():
 				status = pterm.Green("Leader")
-			case state.LocalNode:
+			case state.GetLocalNode():
 				status = pterm.Yellow("Local")
 			}
 
@@ -174,26 +179,27 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 			nextStr := "-"
 			stateStr := "-"
 			progressStr := pterm.Gray("-")
-			if node.Progress != nil {
-				matchStr = fmt.Sprintf("%d", node.Progress.Match)
-				nextStr = fmt.Sprintf("%d", node.Progress.Next)
-				stateStr = node.Progress.State
-				isLeader := node.Id == state.Leader
-				progressStr = formatNodeProgress(node.Progress, commitIndex, isLeader)
+
+			if node.GetProgress() != nil {
+				matchStr = strconv.FormatUint(node.GetProgress().GetMatch(), 10)
+				nextStr = strconv.FormatUint(node.GetProgress().GetNext(), 10)
+				stateStr = node.GetProgress().GetState()
+				isLeader := node.GetId() == state.GetLeader()
+				progressStr = formatNodeProgress(node.GetProgress(), commitIndex, isLeader)
 			}
 
 			syncStr := pterm.Green("ok")
-			if sp := node.SyncProgress; sp != nil {
+			if sp := node.GetSyncProgress(); sp != nil {
 				syncStr = formatSyncStatus(sp)
-			} else if node.Progress != nil && node.Progress.State == "Probe" {
+			} else if node.GetProgress() != nil && node.GetProgress().GetState() == "Probe" {
 				syncStr = pterm.Gray("unknown")
 			}
 
-			indexStr := formatIndexProgress(node.IndexProgress)
+			indexStr := formatIndexProgress(node.GetIndexProgress())
 
 			nodeData = append(nodeData, []string{
-				fmt.Sprintf("%d", node.Id),
-				node.Suffrage,
+				strconv.FormatUint(uint64(node.GetId()), 10),
+				node.GetSuffrage(),
 				status,
 				matchStr,
 				nextStr,
@@ -214,24 +220,27 @@ func renderClusterStatus(state *clusterpb.ClusterState, showBanner bool) string 
 
 // formatNodeProgress returns a visual progress indicator for a cluster node.
 func formatNodeProgress(prog *clusterpb.ProgressInfo, commitIndex uint64, isLeader bool) string {
-	if prog.State == "Snapshot" {
+	if prog.GetState() == "Snapshot" {
 		return pterm.Cyan("receiving snapshot...")
 	}
-	if !prog.RecentActive && !isLeader {
+
+	if !prog.GetRecentActive() && !isLeader {
 		return pterm.Red("inactive")
 	}
+
 	if commitIndex == 0 {
 		return pterm.Gray("n/a")
 	}
 
-	pct := float64(prog.Match) / float64(commitIndex) * 100
+	pct := float64(prog.GetMatch()) / float64(commitIndex) * 100
 	if pct > 100 {
 		pct = 100
 	}
 
 	var lagStr string
-	if prog.Match < commitIndex {
-		lag := commitIndex - prog.Match
+
+	if prog.GetMatch() < commitIndex {
+		lag := commitIndex - prog.GetMatch()
 		lagStr = fmt.Sprintf(" (%d behind)", lag)
 	}
 
@@ -262,47 +271,50 @@ func getSyncStatusColor(status string) string {
 }
 
 func formatSyncStatus(sp *clusterpb.SyncProgress) string {
-	switch sp.Status {
+	switch sp.GetStatus() {
 	case "normal":
 		return pterm.Green("ok")
 	case "syncing":
-		if sp.BytesTotal > 0 {
-			pct := float64(sp.BytesReceived) / float64(sp.BytesTotal) * 100
+		if sp.GetBytesTotal() > 0 {
+			pct := float64(sp.GetBytesReceived()) / float64(sp.GetBytesTotal()) * 100
 			if pct > 100 {
 				pct = 100
 			}
+
 			return pterm.Cyan(fmt.Sprintf("%.1f%%", pct))
 		}
+
 		return pterm.Cyan("syncing")
 	case "snapshotting":
 		return pterm.Yellow("snapshotting")
 	case "out_of_sync":
 		return pterm.Red("out of sync")
 	default:
-		return sp.Status
+		return sp.GetStatus()
 	}
 }
 
 // renderSyncProgress builds the sync progress display as a string.
 func renderSyncProgress(sp *clusterpb.SyncProgress) string {
 	pct := float64(0)
-	if sp.BytesTotal > 0 {
-		pct = float64(sp.BytesReceived) / float64(sp.BytesTotal) * 100
+	if sp.GetBytesTotal() > 0 {
+		pct = float64(sp.GetBytesReceived()) / float64(sp.GetBytesTotal()) * 100
 		if pct > 100 {
 			pct = 100
 		}
 	}
 
-	receivedMB := float64(sp.BytesReceived) / (1024 * 1024)
-	totalMB := float64(sp.BytesTotal) / (1024 * 1024)
+	receivedMB := float64(sp.GetBytesReceived()) / (1024 * 1024)
+	totalMB := float64(sp.GetBytesTotal()) / (1024 * 1024)
 
 	progressData := [][]string{
-		{pterm.LightCyan("Checkpoint ID:"), fmt.Sprintf("%d", sp.CheckpointId)},
+		{pterm.LightCyan("Checkpoint ID:"), strconv.FormatUint(sp.GetCheckpointId(), 10)},
 		{pterm.LightCyan("Progress:"), pterm.Cyan(fmt.Sprintf("%.1f%%", pct))},
 		{pterm.LightCyan("Transferred:"), fmt.Sprintf("%.1f / %.1f MB", receivedMB, totalMB)},
 	}
 
 	tableStr, _ := pterm.DefaultTable.WithHasHeader(false).WithData(progressData).Srender()
+
 	return tableStr
 }
 
@@ -325,7 +337,8 @@ func getLeaderDisplay(leaderID uint32) string {
 	if leaderID == 0 {
 		return pterm.Red("No leader")
 	}
-	return pterm.Green(fmt.Sprintf("%d", leaderID))
+
+	return pterm.Green(strconv.FormatUint(uint64(leaderID), 10))
 }
 
 // formatIndexProgress formats index builder progress for the node table.
@@ -334,36 +347,41 @@ func formatIndexProgress(ip *clusterpb.IndexProgress) string {
 		return pterm.Gray("unknown")
 	}
 
-	if ip.PebbleLastSequence == 0 {
+	if ip.GetPebbleLastSequence() == 0 {
 		return pterm.Green("ok")
 	}
 
-	lag := int64(ip.PebbleLastSequence) - int64(ip.LastIndexedSequence)
+	lag := int64(ip.GetPebbleLastSequence()) - int64(ip.GetLastIndexedSequence())
 	if lag <= 0 {
 		return pterm.Green("ok")
 	}
 
-	pctBehind := float64(lag) / float64(ip.PebbleLastSequence) * 100
+	pctBehind := float64(lag) / float64(ip.GetPebbleLastSequence()) * 100
 	label := fmt.Sprintf("%s behind (%.1f%%)", formatNumber(uint64(lag)), pctBehind)
 
 	if lag < 1000 {
 		return pterm.Yellow(label)
 	}
+
 	return pterm.Red(label)
 }
 
 // formatNumber formats an integer with comma separators (e.g. 70000000 -> "70,000,000").
 func formatNumber(n uint64) string {
-	s := fmt.Sprintf("%d", n)
+	s := strconv.FormatUint(n, 10)
 	if len(s) <= 3 {
 		return s
 	}
+
 	var result []byte
+
 	for i, c := range s {
 		if i > 0 && (len(s)-i)%3 == 0 {
 			result = append(result, ',')
 		}
+
 		result = append(result, byte(c))
 	}
+
 	return string(result)
 }

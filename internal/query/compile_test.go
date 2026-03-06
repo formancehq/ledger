@@ -3,17 +3,17 @@ package query
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
-func ptr[T any](v T) *T { return &v }
-
-func fieldCondition(metaKey string, cond interface{}) *commonpb.FieldCondition {
+func fieldCondition(metaKey string, cond any) *commonpb.FieldCondition {
 	fc := &commonpb.FieldCondition{
 		Field: &commonpb.FieldRef{Metadata: metaKey},
 	}
+
 	switch c := cond.(type) {
 	case *commonpb.IntCondition:
 		fc.Condition = &commonpb.FieldCondition_IntCond{IntCond: c}
@@ -26,6 +26,7 @@ func fieldCondition(metaKey string, cond interface{}) *commonpb.FieldCondition {
 	case *commonpb.ExistsCondition:
 		fc.Condition = &commonpb.FieldCondition_ExistsCond{ExistsCond: c}
 	}
+
 	return fc
 }
 
@@ -41,7 +42,7 @@ func TestValidateAndCoerceCondition(t *testing.T) {
 	}{
 		{
 			name:   "int schema + IntCondition → OK",
-			fc:     fieldCondition("age", &commonpb.IntCondition{Min: ptr(int64(10)), Max: ptr(int64(99))}),
+			fc:     fieldCondition("age", &commonpb.IntCondition{Min: new(int64(10)), Max: new(int64(99))}),
 			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_INT64},
 		},
 		{
@@ -58,22 +59,23 @@ func TestValidateAndCoerceCondition(t *testing.T) {
 		},
 		{
 			name:    "int schema + UintCondition → error",
-			fc:      fieldCondition("age", &commonpb.UintCondition{Min: ptr(uint64(10))}),
+			fc:      fieldCondition("age", &commonpb.UintCondition{Min: new(uint64(10))}),
 			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_INT64},
 			wantErr: `field "age" is declared as METADATA_TYPE_INT64, cannot use unsigned integer condition`,
 		},
 		{
 			name:   "uint schema + IntCondition (positive) → coerced to UintCondition",
-			fc:     fieldCondition("counter", &commonpb.IntCondition{Min: ptr(int64(5)), Max: ptr(int64(100))}),
+			fc:     fieldCondition("counter", &commonpb.IntCondition{Min: new(int64(5)), Max: new(int64(100))}),
 			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
 			checkCond: func(t *testing.T, fc *commonpb.FieldCondition) {
 				t.Helper()
-				uc, ok := fc.Condition.(*commonpb.FieldCondition_UintCond)
+
+				uc, ok := fc.GetCondition().(*commonpb.FieldCondition_UintCond)
 				require.True(t, ok, "expected UintCondition after coercion")
 				require.NotNil(t, uc.UintCond.Min)
-				assert.Equal(t, uint64(5), *uc.UintCond.Min)
+				assert.Equal(t, uint64(5), uc.UintCond.GetMin())
 				require.NotNil(t, uc.UintCond.Max)
-				assert.Equal(t, uint64(100), *uc.UintCond.Max)
+				assert.Equal(t, uint64(100), uc.UintCond.GetMax())
 			},
 		},
 		{
@@ -82,28 +84,29 @@ func TestValidateAndCoerceCondition(t *testing.T) {
 			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
 			checkCond: func(t *testing.T, fc *commonpb.FieldCondition) {
 				t.Helper()
-				uc, ok := fc.Condition.(*commonpb.FieldCondition_UintCond)
+
+				uc, ok := fc.GetCondition().(*commonpb.FieldCondition_UintCond)
 				require.True(t, ok, "expected UintCondition after coercion")
-				assert.Equal(t, "lo", uc.UintCond.ParamMin)
-				assert.Equal(t, "hi", uc.UintCond.ParamMax)
-				assert.True(t, uc.UintCond.MinExclusive)
+				assert.Equal(t, "lo", uc.UintCond.GetParamMin())
+				assert.Equal(t, "hi", uc.UintCond.GetParamMax())
+				assert.True(t, uc.UintCond.GetMinExclusive())
 			},
 		},
 		{
 			name:    "uint schema + IntCondition (negative min) → error",
-			fc:      fieldCondition("counter", &commonpb.IntCondition{Min: ptr(int64(-1))}),
+			fc:      fieldCondition("counter", &commonpb.IntCondition{Min: new(int64(-1))}),
 			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
 			wantErr: `field "counter" is unsigned, cannot use negative min bound -1`,
 		},
 		{
 			name:    "uint schema + IntCondition (negative max) → error",
-			fc:      fieldCondition("counter", &commonpb.IntCondition{Max: ptr(int64(-5))}),
+			fc:      fieldCondition("counter", &commonpb.IntCondition{Max: new(int64(-5))}),
 			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
 			wantErr: `field "counter" is unsigned, cannot use negative max bound -5`,
 		},
 		{
 			name:   "uint schema + UintCondition → OK",
-			fc:     fieldCondition("counter", &commonpb.UintCondition{Min: ptr(uint64(10))}),
+			fc:     fieldCondition("counter", &commonpb.UintCondition{Min: new(uint64(10))}),
 			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
 		},
 		{
@@ -119,7 +122,7 @@ func TestValidateAndCoerceCondition(t *testing.T) {
 		},
 		{
 			name:    "string schema + IntCondition → error",
-			fc:      fieldCondition("name", &commonpb.IntCondition{Min: ptr(int64(5))}),
+			fc:      fieldCondition("name", &commonpb.IntCondition{Min: new(int64(5))}),
 			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_STRING},
 			wantErr: `field "name" is declared as METADATA_TYPE_STRING, cannot use integer condition`,
 		},
@@ -131,7 +134,7 @@ func TestValidateAndCoerceCondition(t *testing.T) {
 		},
 		{
 			name:    "string schema + UintCondition → error",
-			fc:      fieldCondition("name", &commonpb.UintCondition{Min: ptr(uint64(1))}),
+			fc:      fieldCondition("name", &commonpb.UintCondition{Min: new(uint64(1))}),
 			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_STRING},
 			wantErr: `field "name" is declared as METADATA_TYPE_STRING, cannot use unsigned integer condition`,
 		},
@@ -148,7 +151,7 @@ func TestValidateAndCoerceCondition(t *testing.T) {
 		},
 		{
 			name:    "bool schema + IntCondition → error",
-			fc:      fieldCondition("active", &commonpb.IntCondition{Min: ptr(int64(1))}),
+			fc:      fieldCondition("active", &commonpb.IntCondition{Min: new(int64(1))}),
 			schema:  &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_BOOL},
 			wantErr: `field "active" is declared as METADATA_TYPE_BOOL, cannot use integer condition`,
 		},
@@ -169,31 +172,33 @@ func TestValidateAndCoerceCondition(t *testing.T) {
 		},
 		{
 			name:   "int8 schema + IntCondition → OK",
-			fc:     fieldCondition("level", &commonpb.IntCondition{Min: ptr(int64(-128)), Max: ptr(int64(127))}),
+			fc:     fieldCondition("level", &commonpb.IntCondition{Min: new(int64(-128)), Max: new(int64(127))}),
 			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_INT8},
 		},
 		{
 			name:   "uint16 schema + IntCondition → coerced",
-			fc:     fieldCondition("port", &commonpb.IntCondition{Min: ptr(int64(80))}),
+			fc:     fieldCondition("port", &commonpb.IntCondition{Min: new(int64(80))}),
 			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT16},
 			checkCond: func(t *testing.T, fc *commonpb.FieldCondition) {
 				t.Helper()
-				uc, ok := fc.Condition.(*commonpb.FieldCondition_UintCond)
+
+				uc, ok := fc.GetCondition().(*commonpb.FieldCondition_UintCond)
 				require.True(t, ok, "expected UintCondition after coercion")
 				require.NotNil(t, uc.UintCond.Min)
-				assert.Equal(t, uint64(80), *uc.UintCond.Min)
+				assert.Equal(t, uint64(80), uc.UintCond.GetMin())
 			},
 		},
 		{
 			name:   "uint schema + IntCondition with zero min → coerced",
-			fc:     fieldCondition("counter", &commonpb.IntCondition{Min: ptr(int64(0))}),
+			fc:     fieldCondition("counter", &commonpb.IntCondition{Min: new(int64(0))}),
 			schema: &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
 			checkCond: func(t *testing.T, fc *commonpb.FieldCondition) {
 				t.Helper()
-				uc, ok := fc.Condition.(*commonpb.FieldCondition_UintCond)
+
+				uc, ok := fc.GetCondition().(*commonpb.FieldCondition_UintCond)
 				require.True(t, ok, "expected UintCondition after coercion")
 				require.NotNil(t, uc.UintCond.Min)
-				assert.Equal(t, uint64(0), *uc.UintCond.Min)
+				assert.Equal(t, uint64(0), uc.UintCond.GetMin())
 			},
 		},
 	}
@@ -201,13 +206,17 @@ func TestValidateAndCoerceCondition(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := validateAndCoerceCondition(tt.fc, tt.schema)
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
+
 				return
 			}
+
 			require.NoError(t, err)
+
 			if tt.checkCond != nil {
 				tt.checkCond(t, got)
 			}
@@ -220,8 +229,8 @@ func TestCoerceIntToUint_ExclusiveFlags(t *testing.T) {
 
 	// Verify that exclusivity flags are preserved through coercion
 	fc := fieldCondition("x", &commonpb.IntCondition{
-		Min:          ptr(int64(10)),
-		Max:          ptr(int64(20)),
+		Min:          new(int64(10)),
+		Max:          new(int64(20)),
 		MinExclusive: true,
 		MaxExclusive: true,
 	})
@@ -230,14 +239,14 @@ func TestCoerceIntToUint_ExclusiveFlags(t *testing.T) {
 	got, err := validateAndCoerceCondition(fc, schema)
 	require.NoError(t, err)
 
-	uc, ok := got.Condition.(*commonpb.FieldCondition_UintCond)
+	uc, ok := got.GetCondition().(*commonpb.FieldCondition_UintCond)
 	require.True(t, ok)
-	assert.True(t, uc.UintCond.MinExclusive)
-	assert.True(t, uc.UintCond.MaxExclusive)
+	assert.True(t, uc.UintCond.GetMinExclusive())
+	assert.True(t, uc.UintCond.GetMaxExclusive())
 	require.NotNil(t, uc.UintCond.Min)
-	assert.Equal(t, uint64(10), *uc.UintCond.Min)
+	assert.Equal(t, uint64(10), uc.UintCond.GetMin())
 	require.NotNil(t, uc.UintCond.Max)
-	assert.Equal(t, uint64(20), *uc.UintCond.Max)
+	assert.Equal(t, uint64(20), uc.UintCond.GetMax())
 }
 
 func TestCoerceIntToUint_NoMinNoMax(t *testing.T) {
@@ -250,7 +259,7 @@ func TestCoerceIntToUint_NoMinNoMax(t *testing.T) {
 	got, err := validateAndCoerceCondition(fc, schema)
 	require.NoError(t, err)
 
-	uc, ok := got.Condition.(*commonpb.FieldCondition_UintCond)
+	uc, ok := got.GetCondition().(*commonpb.FieldCondition_UintCond)
 	require.True(t, ok)
 	assert.Nil(t, uc.UintCond.Min)
 	assert.Nil(t, uc.UintCond.Max)
@@ -259,18 +268,18 @@ func TestCoerceIntToUint_NoMinNoMax(t *testing.T) {
 func TestCoerceIntToUint_FieldRefPreserved(t *testing.T) {
 	t.Parallel()
 
-	fc := fieldCondition("myfield", &commonpb.IntCondition{Min: ptr(int64(0))})
+	fc := fieldCondition("myfield", &commonpb.IntCondition{Min: new(int64(0))})
 	schema := &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_UINT64}
 
 	got, err := validateAndCoerceCondition(fc, schema)
 	require.NoError(t, err)
-	assert.Equal(t, "myfield", got.Field.Metadata)
+	assert.Equal(t, "myfield", got.GetField().GetMetadata())
 }
 
 func TestValidateCondition_BoolSchemaRejectsUint(t *testing.T) {
 	t.Parallel()
 
-	fc := fieldCondition("active", &commonpb.UintCondition{Min: ptr(uint64(1))})
+	fc := fieldCondition("active", &commonpb.UintCondition{Min: new(uint64(1))})
 	schema := &commonpb.MetadataFieldSchema{Type: commonpb.MetadataType_METADATA_TYPE_BOOL}
 
 	_, err := validateAndCoerceCondition(fc, schema)
@@ -305,7 +314,7 @@ func TestResolveIntBounds(t *testing.T) {
 	}{
 		{
 			name:       "equality: min == max, both inclusive",
-			cond:       &commonpb.IntCondition{Min: ptr(int64(25)), Max: ptr(int64(25))},
+			cond:       &commonpb.IntCondition{Min: new(int64(25)), Max: new(int64(25))},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -314,7 +323,7 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:       "range: min < max",
-			cond:       &commonpb.IntCondition{Min: ptr(int64(10)), Max: ptr(int64(20))},
+			cond:       &commonpb.IntCondition{Min: new(int64(10)), Max: new(int64(20))},
 			wantMin:    10,
 			wantMax:    21,
 			wantHasMin: true,
@@ -323,7 +332,7 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:       "min exclusive: min=24 exclusive → effective 25, max=25 inclusive → 26",
-			cond:       &commonpb.IntCondition{Min: ptr(int64(24)), Max: ptr(int64(25)), MinExclusive: true},
+			cond:       &commonpb.IntCondition{Min: new(int64(24)), Max: new(int64(25)), MinExclusive: true},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -332,7 +341,7 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:       "max exclusive: min=25, max=26 exclusive → equality on 25",
-			cond:       &commonpb.IntCondition{Min: ptr(int64(25)), Max: ptr(int64(26)), MaxExclusive: true},
+			cond:       &commonpb.IntCondition{Min: new(int64(25)), Max: new(int64(26)), MaxExclusive: true},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -341,7 +350,7 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:       "both exclusive: min=24 excl, max=26 excl → range [25, 26) = equality",
-			cond:       &commonpb.IntCondition{Min: ptr(int64(24)), Max: ptr(int64(26)), MinExclusive: true, MaxExclusive: true},
+			cond:       &commonpb.IntCondition{Min: new(int64(24)), Max: new(int64(26)), MinExclusive: true, MaxExclusive: true},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -350,7 +359,7 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:       "only min",
-			cond:       &commonpb.IntCondition{Min: ptr(int64(5))},
+			cond:       &commonpb.IntCondition{Min: new(int64(5))},
 			wantMin:    5,
 			wantHasMin: true,
 			wantHasMax: false,
@@ -358,7 +367,7 @@ func TestResolveIntBounds(t *testing.T) {
 		},
 		{
 			name:       "only max",
-			cond:       &commonpb.IntCondition{Max: ptr(int64(100))},
+			cond:       &commonpb.IntCondition{Max: new(int64(100))},
 			wantMax:    101,
 			wantHasMin: false,
 			wantHasMax: true,
@@ -391,20 +400,26 @@ func TestResolveIntBounds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := resolveIntBounds(tt.cond, tt.params)
 			if tt.wantErr {
 				require.Error(t, err)
+
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantHasMin, got.hasMin, "hasMin")
 			assert.Equal(t, tt.wantHasMax, got.hasMax, "hasMax")
+
 			if tt.wantHasMin {
 				assert.Equal(t, tt.wantMin, got.min, "min")
 			}
+
 			if tt.wantHasMax {
 				assert.Equal(t, tt.wantMax, got.max, "max")
 			}
+
 			assert.Equal(t, tt.wantEq, got.isEquality(), "isEquality")
 		})
 	}
@@ -426,7 +441,7 @@ func TestResolveUintBounds(t *testing.T) {
 	}{
 		{
 			name:       "equality: min == max, both inclusive",
-			cond:       &commonpb.UintCondition{Min: ptr(uint64(25)), Max: ptr(uint64(25))},
+			cond:       &commonpb.UintCondition{Min: new(uint64(25)), Max: new(uint64(25))},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -435,7 +450,7 @@ func TestResolveUintBounds(t *testing.T) {
 		},
 		{
 			name:       "range: min < max",
-			cond:       &commonpb.UintCondition{Min: ptr(uint64(10)), Max: ptr(uint64(20))},
+			cond:       &commonpb.UintCondition{Min: new(uint64(10)), Max: new(uint64(20))},
 			wantMin:    10,
 			wantMax:    21,
 			wantHasMin: true,
@@ -444,7 +459,7 @@ func TestResolveUintBounds(t *testing.T) {
 		},
 		{
 			name:       "min exclusive: min=24 exclusive, max=25 → equality on 25",
-			cond:       &commonpb.UintCondition{Min: ptr(uint64(24)), Max: ptr(uint64(25)), MinExclusive: true},
+			cond:       &commonpb.UintCondition{Min: new(uint64(24)), Max: new(uint64(25)), MinExclusive: true},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -453,7 +468,7 @@ func TestResolveUintBounds(t *testing.T) {
 		},
 		{
 			name:       "max exclusive: min=25, max=26 exclusive → equality on 25",
-			cond:       &commonpb.UintCondition{Min: ptr(uint64(25)), Max: ptr(uint64(26)), MaxExclusive: true},
+			cond:       &commonpb.UintCondition{Min: new(uint64(25)), Max: new(uint64(26)), MaxExclusive: true},
 			wantMin:    25,
 			wantMax:    26,
 			wantHasMin: true,
@@ -462,7 +477,7 @@ func TestResolveUintBounds(t *testing.T) {
 		},
 		{
 			name:       "only min",
-			cond:       &commonpb.UintCondition{Min: ptr(uint64(5))},
+			cond:       &commonpb.UintCondition{Min: new(uint64(5))},
 			wantMin:    5,
 			wantHasMin: true,
 			wantHasMax: false,
@@ -495,20 +510,26 @@ func TestResolveUintBounds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := resolveUintBounds(tt.cond, tt.params)
 			if tt.wantErr {
 				require.Error(t, err)
+
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantHasMin, got.hasMin, "hasMin")
 			assert.Equal(t, tt.wantHasMax, got.hasMax, "hasMax")
+
 			if tt.wantHasMin {
 				assert.Equal(t, tt.wantMin, got.min, "min")
 			}
+
 			if tt.wantHasMax {
 				assert.Equal(t, tt.wantMax, got.max, "max")
 			}
+
 			assert.Equal(t, tt.wantEq, got.isEquality(), "isEquality")
 		})
 	}
@@ -519,12 +540,14 @@ func TestSchemaFieldsForTarget(t *testing.T) {
 
 	t.Run("nil schema", func(t *testing.T) {
 		t.Parallel()
+
 		result := SchemaFieldsForTarget(nil, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 		assert.Nil(t, result)
 	})
 
 	t.Run("accounts target", func(t *testing.T) {
 		t.Parallel()
+
 		schema := &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"name": {Type: commonpb.MetadataType_METADATA_TYPE_STRING},
@@ -540,6 +563,7 @@ func TestSchemaFieldsForTarget(t *testing.T) {
 
 	t.Run("transactions target", func(t *testing.T) {
 		t.Parallel()
+
 		schema := &commonpb.MetadataSchema{
 			AccountFields: map[string]*commonpb.MetadataFieldSchema{
 				"name": {Type: commonpb.MetadataType_METADATA_TYPE_STRING},

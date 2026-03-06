@@ -27,6 +27,7 @@ func (b *ReversionBitset) IsReverted(txID uint64) bool {
 	if w >= uint64(len(b.words)) {
 		return false
 	}
+
 	return b.words[w]&(1<<bitIndex(txID)) != 0
 }
 
@@ -43,8 +44,10 @@ func (b *ReversionBitset) grow(txID uint64) {
 	if uint64(len(b.words)) >= needed {
 		return
 	}
+
 	if uint64(cap(b.words)) >= needed {
 		b.words = b.words[:needed]
+
 		return
 	}
 	// Grow with some headroom to avoid frequent re-allocations.
@@ -65,6 +68,7 @@ func (b *ReversionBitset) MarshalWords() []byte {
 	for i, w := range b.words {
 		binary.LittleEndian.PutUint64(buf[i*8:], w)
 	}
+
 	return buf
 }
 
@@ -73,8 +77,10 @@ func (b *ReversionBitset) Clone() *ReversionBitset {
 	if b == nil {
 		return nil
 	}
+
 	words := make([]uint64, len(b.words))
 	copy(words, b.words)
+
 	return &ReversionBitset{words: words}
 }
 
@@ -83,11 +89,14 @@ func ReversionBitsetFromWords(data []byte) *ReversionBitset {
 	if len(data) == 0 {
 		return &ReversionBitset{}
 	}
+
 	nWords := len(data) / 8
+
 	words := make([]uint64, nWords)
 	for i := range nWords {
 		words[i] = binary.LittleEndian.Uint64(data[i*8:])
 	}
+
 	return &ReversionBitset{words: words}
 }
 

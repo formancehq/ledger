@@ -6,7 +6,10 @@ import (
 	"net/http"
 	"sync"
 
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	v2 "github.com/formancehq/ledger-v3-poc/internal/adapter/v2"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
@@ -18,7 +21,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"go.opentelemetry.io/otel/metric"
 )
 
 // Proposer submits a Raft proposal and returns a future for the apply result.
@@ -74,6 +76,7 @@ func (m *Manager) Stop() {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.teardown()
 }
 
@@ -99,6 +102,7 @@ func (m *Manager) loop(stop <-chan struct{}) {
 		func() {
 			m.mu.Lock()
 			defer m.mu.Unlock()
+
 			if m.isLeader {
 				m.reconcile()
 			}
@@ -111,19 +115,21 @@ func (m *Manager) loop(stop <-chan struct{}) {
 func (m *Manager) reconcile() {
 	if !m.isLeader {
 		m.teardown()
+
 		return
 	}
 
 	mirrorLedgers, err := query.ReadMirrorLedgers(context.Background(), m.store)
 	if err != nil {
 		m.logger.Errorf("Failed to load mirror ledgers: %v", err)
+
 		return
 	}
 
 	// Build desired state as a set of ledger names
 	desired := make(map[string]*commonpb.LedgerInfo, len(mirrorLedgers))
 	for _, info := range mirrorLedgers {
-		desired[info.Name] = info
+		desired[info.GetName()] = info
 	}
 
 	// Remove workers for ledgers that are no longer mirrors
@@ -139,19 +145,25 @@ func (m *Manager) reconcile() {
 		if _, exists := m.workers[name]; exists {
 			continue // already running
 		}
-		if info.MirrorSource == nil {
+
+		if info.GetMirrorSource() == nil {
 			m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Mirror ledger has no source config")
+
 			continue
 		}
-		source, err := createSource(info.MirrorSource)
+
+		source, err := createSource(info.GetMirrorSource())
 		if err != nil {
 			m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Failed to create mirror source: %v", err)
+
 			continue
 		}
-		batchSize := int(info.MirrorSource.BatchSize)
+
+		batchSize := int(info.GetMirrorSource().GetBatchSize())
 		if m.maxBatchSize > 0 && (batchSize <= 0 || batchSize > m.maxBatchSize) {
 			batchSize = m.maxBatchSize
 		}
+
 		w := NewWorker(name, batchSize, source, m.store, m.proposer, m.cache, m.attrs, m.logger, m.meterProvider)
 		w.Start()
 		m.workers[name] = w
@@ -173,12 +185,13 @@ func createSource(cfg *commonpb.MirrorSourceConfig) (v2.Source, error) {
 	switch s := cfg.GetType().(type) {
 	case *commonpb.MirrorSourceConfig_Http:
 		var httpClient *http.Client
-		if cc := s.Http.Oauth2ClientCredentials; cc != nil {
-			httpClient = v2.NewOAuth2ClientCredentialsClient(cc.ClientId, cc.ClientSecret, cc.TokenEndpoint, cc.Scopes)
+		if cc := s.Http.GetOauth2ClientCredentials(); cc != nil {
+			httpClient = v2.NewOAuth2ClientCredentialsClient(cc.GetClientId(), cc.GetClientSecret(), cc.GetTokenEndpoint(), cc.GetScopes())
 		}
-		return v2.NewHTTPSource(s.Http.BaseUrl, cfg.LedgerName, httpClient), nil
+
+		return v2.NewHTTPSource(s.Http.GetBaseUrl(), cfg.GetLedgerName(), httpClient), nil
 	case *commonpb.MirrorSourceConfig_Postgres:
-		return v2.NewPostgresSource(context.Background(), s.Postgres.Dsn, cfg.LedgerName)
+		return v2.NewPostgresSource(context.Background(), s.Postgres.GetDsn(), cfg.GetLedgerName())
 	default:
 		return nil, fmt.Errorf("unsupported mirror source type: %T", s)
 	}

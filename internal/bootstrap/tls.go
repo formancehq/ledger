@@ -34,6 +34,7 @@ func ServerCredentials(cfg TLSConfig) (grpc.ServerOption, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		tlsCfg.ClientCAs = caPool
 		tlsCfg.ClientAuth = tls.VerifyClientCertIfGiven
 	}
@@ -58,6 +59,7 @@ func ClientTransportCredentials(cfg TLSConfig) (credentials.TransportCredentials
 		if err != nil {
 			return nil, err
 		}
+
 		tlsCfg.RootCAs = caPool
 	}
 
@@ -66,6 +68,7 @@ func ClientTransportCredentials(cfg TLSConfig) (credentials.TransportCredentials
 		if err != nil {
 			return nil, fmt.Errorf("loading client certificate: %w", err)
 		}
+
 		tlsCfg.Certificates = []tls.Certificate{cert}
 	}
 

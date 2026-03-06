@@ -30,7 +30,7 @@ type ChannelTransport struct {
 	closed bool
 }
 
-// ChannelTransportConfig holds configuration for the ChannelTransport
+// ChannelTransportConfig holds configuration for the ChannelTransport.
 type ChannelTransportConfig struct {
 	// RecvBufferSize is the buffer size for each priority receive channel (high, medium, low)
 	RecvBufferSize [3]int
@@ -38,7 +38,7 @@ type ChannelTransportConfig struct {
 	UnreachableBufferSize int
 }
 
-// DefaultChannelTransportConfig returns a default configuration
+// DefaultChannelTransportConfig returns a default configuration.
 func DefaultChannelTransportConfig() ChannelTransportConfig {
 	return ChannelTransportConfig{
 		RecvBufferSize:        [3]int{1000, 1000, 1000},
@@ -46,7 +46,7 @@ func DefaultChannelTransportConfig() ChannelTransportConfig {
 	}
 }
 
-// NewChannelTransport creates a new channel-based transport
+// NewChannelTransport creates a new channel-based transport.
 func NewChannelTransport(nodeID uint64, config ChannelTransportConfig) *ChannelTransport {
 	return &ChannelTransport{
 		nodeID:        nodeID,
@@ -70,9 +70,10 @@ func (t *ChannelTransport) Connect(peer *ChannelTransport) {
 	peer.mu.Unlock()
 }
 
-// Disconnect removes the connection to a peer
+// Disconnect removes the connection to a peer.
 func (t *ChannelTransport) Disconnect(peerID uint64) {
 	t.mu.Lock()
+
 	peer, exists := t.peers[peerID]
 	if exists {
 		delete(t.peers, peerID)
@@ -97,6 +98,7 @@ func (t *ChannelTransport) Send(msgs []raftpb.Message) {
 		if _, exists := msgsByPeerAndPriority[msg.To]; !exists {
 			msgsByPeerAndPriority[msg.To] = make(map[int][]raftpb.Message)
 		}
+
 		priority := channelMessagePriority(msg.Type)
 		msgsByPeerAndPriority[msg.To][priority] = append(msgsByPeerAndPriority[msg.To][priority], msg)
 	}
@@ -109,7 +111,7 @@ func (t *ChannelTransport) Send(msgs []raftpb.Message) {
 	}
 }
 
-// channelMessagePriority returns the priority level for a raft message type
+// channelMessagePriority returns the priority level for a raft message type.
 func channelMessagePriority(msgType raftpb.MessageType) int {
 	switch msgType {
 	case raftpb.MsgHeartbeat, raftpb.MsgHeartbeatResp:
@@ -138,6 +140,7 @@ func (t *ChannelTransport) sendBatch(peerID uint64, priority int, msgs []raftpb.
 		default:
 			// Unreachable channel full, drop
 		}
+
 		return
 	}
 
@@ -152,10 +155,12 @@ func (t *ChannelTransport) sendBatch(peerID uint64, priority int, msgs []raftpb.
 		case t.unreachableCh <- peerID:
 		default:
 		}
+
 		return
 	}
 
 	var ch chan []raftpb.Message
+
 	switch priority {
 	case 0:
 		ch = peer.priorityHigh
@@ -177,22 +182,22 @@ func (t *ChannelTransport) sendBatch(peerID uint64, priority int, msgs []raftpb.
 	}
 }
 
-// RecvHighPriority returns the channel for receiving high priority messages (heartbeats)
+// RecvHighPriority returns the channel for receiving high priority messages (heartbeats).
 func (t *ChannelTransport) RecvHighPriority() <-chan []raftpb.Message {
 	return t.priorityHigh
 }
 
-// RecvMediumPriority returns the channel for receiving medium priority messages (votes, responses)
+// RecvMediumPriority returns the channel for receiving medium priority messages (votes, responses).
 func (t *ChannelTransport) RecvMediumPriority() <-chan []raftpb.Message {
 	return t.priorityMid
 }
 
-// RecvLowPriority returns the channel for receiving low priority messages (data)
+// RecvLowPriority returns the channel for receiving low priority messages (data).
 func (t *ChannelTransport) RecvLowPriority() <-chan []raftpb.Message {
 	return t.priorityLow
 }
 
-// Unreachable returns the channel for reporting unreachable peers
+// Unreachable returns the channel for reporting unreachable peers.
 func (t *ChannelTransport) Unreachable() <-chan uint64 {
 	return t.unreachableCh
 }
@@ -204,7 +209,7 @@ func (t *ChannelTransport) GetPeerConnection(peerID uint64) *grpc.ClientConn {
 	return nil
 }
 
-// Close closes the transport and all its channels
+// Close closes the transport and all its channels.
 func (t *ChannelTransport) Close() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -228,20 +233,22 @@ func (t *ChannelTransport) Close() {
 	}
 }
 
-// NodeID returns the node ID of this transport
+// NodeID returns the node ID of this transport.
 func (t *ChannelTransport) NodeID() uint64 {
 	return t.nodeID
 }
 
-// IsConnected checks if a peer is connected
+// IsConnected checks if a peer is connected.
 func (t *ChannelTransport) IsConnected(peerID uint64) bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
+
 	_, exists := t.peers[peerID]
+
 	return exists
 }
 
-// ConnectedPeers returns a list of connected peer IDs
+// ConnectedPeers returns a list of connected peer IDs.
 func (t *ChannelTransport) ConnectedPeers() []uint64 {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -250,8 +257,9 @@ func (t *ChannelTransport) ConnectedPeers() []uint64 {
 	for peerID := range t.peers {
 		peers = append(peers, peerID)
 	}
+
 	return peers
 }
 
-// Ensure ChannelTransport implements Transport interface
+// Ensure ChannelTransport implements Transport interface.
 var _ Transport = (*ChannelTransport)(nil)

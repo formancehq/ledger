@@ -97,14 +97,14 @@ func TestCollector_StartAndStop(t *testing.T) {
 	c.Start()
 
 	// After Start, collect should have run once synchronously
-	require.Greater(t, c.SpoolBytes(), int64(0))
+	require.Positive(t, c.SpoolBytes())
 	require.GreaterOrEqual(t, c.WALBytes(), int64(0))
-	require.Greater(t, c.DataBytes(), int64(0))
-	require.Greater(t, c.ReadIndexBytes(), int64(0))
-	require.Greater(t, c.WALVolumeBytes(), int64(0))
-	require.Greater(t, c.DataVolumeBytes(), int64(0))
-	require.Greater(t, c.WALVolumeTotalBytes(), int64(0))
-	require.Greater(t, c.DataVolumeTotalBytes(), int64(0))
+	require.Positive(t, c.DataBytes())
+	require.Positive(t, c.ReadIndexBytes())
+	require.Positive(t, c.WALVolumeBytes())
+	require.Positive(t, c.DataVolumeBytes())
+	require.Positive(t, c.WALVolumeTotalBytes())
+	require.Positive(t, c.DataVolumeTotalBytes())
 
 	c.Stop()
 }
@@ -131,6 +131,7 @@ func TestCollector_RegisterMetrics(t *testing.T) {
 
 	// Trigger the callback by collecting metrics
 	var rm metricdata.ResourceMetrics
+
 	err := reader.Collect(t.Context(), &rm)
 	require.NoError(t, err)
 	require.NotEmpty(t, rm.ScopeMetrics)
@@ -161,6 +162,6 @@ func TestCollector_AtomicReads(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(readIndexDir, "readindex.db"), []byte("idx"), 0644))
 	c.collect()
 
-	require.Equal(t, int64(7), c.DataBytes())     // "content" only, readindex excluded
+	require.Equal(t, int64(7), c.DataBytes())      // "content" only, readindex excluded
 	require.Equal(t, int64(3), c.ReadIndexBytes()) // "idx"
 }

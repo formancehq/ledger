@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/oidc"
 	jose "github.com/go-jose/go-jose/v4"
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/oidc"
+
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 )
 
 func TestGenerateToken_RoundTrip(t *testing.T) {
@@ -67,6 +69,7 @@ func TestGenerateToken_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	var verifiedClaims oidc.AccessTokenClaims
+
 	err = json.Unmarshal(verifiedPayload, &verifiedClaims)
 	require.NoError(t, err)
 	assert.Equal(t, "test-bot", verifiedClaims.GetSubject())

@@ -8,17 +8,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/oidc"
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/oidc"
 )
 
 func ed25519KeyPair(t *testing.T) (ed25519.PrivateKey, oidc.KeySet) {
 	t.Helper()
+
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
-	pub := priv.Public().(ed25519.PublicKey)
+
+	pub, ok := priv.Public().(ed25519.PublicKey)
+	require.True(t, ok, "ed25519 private key must produce ed25519.PublicKey")
 
 	jwk := jose.JSONWebKey{
 		Key:       pub,
@@ -26,6 +30,7 @@ func ed25519KeyPair(t *testing.T) (ed25519.PrivateKey, oidc.KeySet) {
 		Algorithm: string(jose.EdDSA),
 		Use:       "sig",
 	}
+
 	return priv, oidc.NewStaticKeySet(jwk)
 }
 
@@ -53,6 +58,7 @@ func signEdDSAToken(t *testing.T, privKey ed25519.PrivateKey, keyID string) stri
 
 	token, err := jws.CompactSerialize()
 	require.NoError(t, err)
+
 	return token
 }
 

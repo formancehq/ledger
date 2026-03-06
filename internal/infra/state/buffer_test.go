@@ -1,13 +1,13 @@
 package state
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
-	"github.com/stretchr/testify/require"
 )
 
 // newTestBuffer creates a Machine and returns a Buffered for testing accessor methods.
@@ -15,6 +15,7 @@ func newTestBuffer(t *testing.T) (*Buffered, *Machine) {
 	t.Helper()
 	machine, _, _ := newTestMachine(t)
 	buf := NewBuffer(&commonpb.Timestamp{Data: 1700000000}, machine)
+
 	return buf, machine
 }
 
@@ -31,7 +32,7 @@ func TestBufferedGetPutLedger(t *testing.T) {
 	buf.PutLedger("test", &commonpb.LedgerInfo{Name: "test"})
 	info, ok = buf.GetLedger("test")
 	require.True(t, ok)
-	require.Equal(t, "test", info.Name)
+	require.Equal(t, "test", info.GetName())
 }
 
 func TestBufferedGetPutBoundaries(t *testing.T) {
@@ -50,8 +51,8 @@ func TestBufferedGetPutBoundaries(t *testing.T) {
 	})
 	b, ok = buf.GetBoundaries("ledger-1")
 	require.True(t, ok)
-	require.Equal(t, uint64(10), b.NextTransactionId)
-	require.Equal(t, uint64(20), b.NextLogId)
+	require.Equal(t, uint64(10), b.GetNextTransactionId())
+	require.Equal(t, uint64(20), b.GetNextLogId())
 }
 
 func TestBufferedGetPutAccountMetadata(t *testing.T) {
@@ -62,7 +63,7 @@ func TestBufferedGetPutAccountMetadata(t *testing.T) {
 
 	// Non-existent key falls through to KeyStore which returns ErrNotFound
 	_, err := buf.GetAccountMetadata(key)
-	require.True(t, errors.Is(err, domain.ErrNotFound))
+	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	buf.PutAccountMetadata(key, commonpb.NewStringValue("admin"))
 	val, err := buf.GetAccountMetadata(key)
@@ -114,13 +115,13 @@ func TestBufferedGetPutIdempotencyKey(t *testing.T) {
 
 	// Non-existent key returns ErrNotFound
 	_, err := buf.GetIdempotencyKey(key)
-	require.True(t, errors.Is(err, domain.ErrNotFound))
+	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	buf.PutIdempotencyKey(key, &commonpb.IdempotencyKeyValue{LogSequence: 5})
 	val, err := buf.GetIdempotencyKey(key)
 	require.NoError(t, err)
 	require.NotNil(t, val)
-	require.Equal(t, uint64(5), val.LogSequence)
+	require.Equal(t, uint64(5), val.GetLogSequence())
 }
 
 func TestBufferedGetPutTransactionReference(t *testing.T) {
@@ -131,13 +132,13 @@ func TestBufferedGetPutTransactionReference(t *testing.T) {
 
 	// Non-existent key returns ErrNotFound
 	_, err := buf.GetTransactionReference(key)
-	require.True(t, errors.Is(err, domain.ErrNotFound))
+	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	buf.PutTransactionReference(key, &commonpb.TransactionReferenceValue{TransactionId: 100})
 	val, err := buf.GetTransactionReference(key)
 	require.NoError(t, err)
 	require.NotNil(t, val)
-	require.Equal(t, uint64(100), val.TransactionId)
+	require.Equal(t, uint64(100), val.GetTransactionId())
 }
 
 func TestBufferedAddTransactionUpdate(t *testing.T) {
@@ -156,7 +157,7 @@ func TestBufferedAddTransactionUpdate(t *testing.T) {
 
 	buf.AddTransactionUpdate(key, update)
 	require.Len(t, buf.TransactionsUpdates[key], 1)
-	require.Equal(t, uint64(5), buf.TransactionsUpdates[key][0].ByLog)
+	require.Equal(t, uint64(5), buf.TransactionsUpdates[key][0].GetByLog())
 }
 
 func TestBufferedSigningKeyOperations(t *testing.T) {
@@ -228,7 +229,7 @@ func TestBufferedSetDeletePeriodSchedule(t *testing.T) {
 
 	buf.DeletePeriodSchedule()
 	require.NotNil(t, buf.pendingPeriodScheduleUpdate)
-	require.Equal(t, "", *buf.pendingPeriodScheduleUpdate)
+	require.Empty(t, *buf.pendingPeriodScheduleUpdate)
 }
 
 func TestBufferedSinkConfigOperations(t *testing.T) {
@@ -250,7 +251,7 @@ func TestBufferedSinkConfigOperations(t *testing.T) {
 	cfg, err = buf.GetSinkConfig("my-sink")
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
-	require.Equal(t, "my-sink", cfg.Name)
+	require.Equal(t, "my-sink", cfg.GetName())
 
 	// Remove it
 	buf.RemoveSinkConfig("my-sink")
@@ -272,7 +273,7 @@ func TestBufferedDateAndHash(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
-	require.Equal(t, uint64(1700000000), buf.GetDate().Data)
+	require.Equal(t, uint64(1700000000), buf.GetDate().GetData())
 
 	require.Nil(t, buf.GetLastLogHash())
 	buf.SetLastLogHash([]byte("hash123"))
@@ -298,14 +299,14 @@ func TestBufferedPeriodOperations(t *testing.T) {
 	buf.SetCurrentOpenPeriod(openPeriod)
 	p, ok = buf.GetCurrentOpenPeriod()
 	require.True(t, ok)
-	require.Equal(t, uint64(1), p.Id)
+	require.Equal(t, uint64(1), p.GetId())
 
 	// Set closing period
 	closingPeriod := &commonpb.Period{Id: 2, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
 	buf.SetClosingPeriod(closingPeriod)
 	p, ok = buf.GetClosingPeriod()
 	require.True(t, ok)
-	require.Equal(t, uint64(2), p.Id)
+	require.Equal(t, uint64(2), p.GetId())
 
 	// Clear closing period
 	buf.ClearClosingPeriod()
@@ -337,13 +338,13 @@ func TestBufferedGetPeriodByID(t *testing.T) {
 
 	p, ok := buf.GetPeriodByID(10)
 	require.True(t, ok)
-	require.Equal(t, uint64(10), p.Id)
+	require.Equal(t, uint64(10), p.GetId())
 
 	// Changed periods take priority over allPeriods
 	buf.changedPeriods = append(buf.changedPeriods, &commonpb.Period{Id: 10, Status: commonpb.PeriodStatus_PERIOD_OPEN})
 	p, ok = buf.GetPeriodByID(10)
 	require.True(t, ok)
-	require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, p.Status)
+	require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, p.GetStatus())
 }
 
 func TestBufferedUpdatePeriod(t *testing.T) {
@@ -353,7 +354,7 @@ func TestBufferedUpdatePeriod(t *testing.T) {
 	period := &commonpb.Period{Id: 5, Status: commonpb.PeriodStatus_PERIOD_CLOSED}
 	buf.UpdatePeriod(period)
 	require.Len(t, buf.changedPeriods, 1)
-	require.Equal(t, uint64(5), buf.changedPeriods[0].Id)
+	require.Equal(t, uint64(5), buf.changedPeriods[0].GetId())
 }
 
 func TestBufferedSetPurgeRange(t *testing.T) {

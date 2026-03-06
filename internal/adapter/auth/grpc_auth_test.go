@@ -9,13 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/oidc"
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/go-libs/v3/oidc"
 )
 
 const testIssuer = "https://test-issuer.example.com"
@@ -23,6 +24,7 @@ const testIssuer = "https://test-issuer.example.com"
 // testKeyPair generates an RSA key pair and returns both private key and a static JWKS KeySet.
 func testKeyPair(t *testing.T) (*rsa.PrivateKey, oidc.KeySet) {
 	t.Helper()
+
 	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
@@ -32,6 +34,7 @@ func testKeyPair(t *testing.T) (*rsa.PrivateKey, oidc.KeySet) {
 		Algorithm: string(jose.RS256),
 		Use:       "sig",
 	}
+
 	return privKey, oidc.NewStaticKeySet(jwk)
 }
 
@@ -53,6 +56,7 @@ func signToken(t *testing.T, privKey *rsa.PrivateKey, claims *oidc.AccessTokenCl
 
 	token, err := jws.CompactSerialize()
 	require.NoError(t, err)
+
 	return token
 }
 
@@ -64,16 +68,19 @@ func newTestClaims(scopes ...string) *oidc.AccessTokenClaims {
 	claims.IssuedAt = oidc.FromTime(oidc.Time(now.Unix()).AsTime())
 	claims.Expiration = oidc.FromTime(oidc.Time(now.Add(1 * time.Hour).Unix()).AsTime())
 	claims.Scopes = oidc.SpaceDelimitedArray(scopes)
+
 	return claims
 }
 
 func ctxWithBearer(token string) context.Context {
 	md := metadata.Pairs("authorization", "Bearer "+token)
+
 	return metadata.NewIncomingContext(context.Background(), md)
 }
 
 func testAuthConfig(t *testing.T, keySet oidc.KeySet) AuthConfig {
 	t.Helper()
+
 	return AuthConfig{
 		Enabled:      true,
 		KeySet:       keySet,
@@ -103,6 +110,7 @@ func TestAuthenticate_NoScopes(t *testing.T) {
 
 	newCtx, err := Authenticate(ctx, cfg)
 	require.NoError(t, err)
+
 	claims := ClaimsFromContext(newCtx)
 	require.NotNil(t, claims)
 	assert.Equal(t, "test-user", claims.GetSubject())
@@ -134,6 +142,7 @@ func TestAuthenticate_ValidToken_VirtualToGranular(t *testing.T) {
 
 	newCtx, err := Authenticate(ctx, cfg, ScopeLedgersRead)
 	require.NoError(t, err)
+
 	claims := ClaimsFromContext(newCtx)
 	require.NotNil(t, claims)
 	assert.Equal(t, "test-user", claims.GetSubject())
@@ -255,9 +264,12 @@ func TestAuthenticate_WrongIssuer(t *testing.T) {
 
 func ed25519TestKeyPair(t *testing.T, keyID string) (ed25519.PrivateKey, oidc.KeySet) {
 	t.Helper()
+
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
-	pub := priv.Public().(ed25519.PublicKey)
+
+	pub, ok := priv.Public().(ed25519.PublicKey)
+	require.True(t, ok, "expected ed25519.PublicKey")
 
 	jwk := jose.JSONWebKey{
 		Key:       pub,
@@ -265,6 +277,7 @@ func ed25519TestKeyPair(t *testing.T, keyID string) (ed25519.PrivateKey, oidc.Ke
 		Algorithm: string(jose.EdDSA),
 		Use:       "sig",
 	}
+
 	return priv, oidc.NewStaticKeySet(jwk)
 }
 
@@ -285,6 +298,7 @@ func signEdDSA(t *testing.T, privKey ed25519.PrivateKey, keyID string, claims *o
 
 	token, err := jws.CompactSerialize()
 	require.NoError(t, err)
+
 	return token
 }
 
@@ -309,6 +323,7 @@ func TestAuthenticate_EdDSA_Valid(t *testing.T) {
 
 	newCtx, err := Authenticate(ctx, cfg, ScopeLedgersRead)
 	require.NoError(t, err)
+
 	got := ClaimsFromContext(newCtx)
 	require.NotNil(t, got)
 	assert.Equal(t, "test-user", got.GetSubject())
@@ -350,9 +365,9 @@ func TestAuthenticate_EdDSA_UnknownKey(t *testing.T) {
 	_, edKeySet := ed25519TestKeyPair(t, "known-key")
 
 	cfg := AuthConfig{
-		Enabled:     true,
-		KeySet:      edKeySet,
-		Service:     "ledger",
+		Enabled: true,
+		KeySet:  edKeySet,
+		Service: "ledger",
 	}
 
 	claims := newTestClaims("ledger:read")
@@ -372,9 +387,9 @@ func TestAuthenticate_EdDSA_Expired(t *testing.T) {
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-key")
 	cfg := AuthConfig{
-		Enabled:     true,
-		KeySet:      edKeySet,
-		Service:     "ledger",
+		Enabled: true,
+		KeySet:  edKeySet,
+		Service: "ledger",
 	}
 
 	claims := newTestClaims("ledger:read")
@@ -398,10 +413,10 @@ func TestAuthenticate_EdDSA_NoIssuerCheck(t *testing.T) {
 	// EdDSA tokens should not fail due to issuer mismatch
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-key")
 	cfg := AuthConfig{
-		Enabled:     true,
-		KeySet:      edKeySet,
-		Issuer:      "https://oidc-issuer.example.com", // OIDC issuer configured but should be ignored for EdDSA
-		Service:     "ledger",
+		Enabled: true,
+		KeySet:  edKeySet,
+		Issuer:  "https://oidc-issuer.example.com", // OIDC issuer configured but should be ignored for EdDSA
+		Service: "ledger",
 	}
 
 	claims := newTestClaims("ledger:read")
@@ -426,6 +441,7 @@ func TestAuthenticate_GranularScopePassThrough(t *testing.T) {
 
 	newCtx, err := Authenticate(ctx, cfg, ScopeTransactionsRead)
 	require.NoError(t, err)
+
 	effective := ExpandedScopesFromContext(newCtx)
 	assert.True(t, HasScope(effective, ScopeTransactionsRead))
 	// Should NOT have other read scopes

@@ -4,8 +4,9 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // ComputedEntry holds a computed attribute value alongside its canonical key.
@@ -53,8 +54,11 @@ func (ab *accumulatorBase[V]) feed(pebbleKey, pebbleValue []byte) (matched bool,
 				}
 			}
 		}
+
 		ab.currentCanonical = canonical
+
 		var zero V
+
 		ab.baseValue = zero
 		ab.baseIndex = 0
 		ab.lastDiff = zero
@@ -69,7 +73,9 @@ func (ab *accumulatorBase[V]) feed(pebbleKey, pebbleValue []byte) (matched bool,
 	case 0: // base
 		ab.baseValue = v
 		ab.baseIndex = raftIndex
+
 		var zero V
+
 		ab.lastDiff = zero
 	case 1: // diff
 		if (any)(ab.baseValue) == nil || raftIndex > ab.baseIndex {
@@ -86,19 +92,24 @@ func (ab *accumulatorBase[V]) flush() *ComputedEntry[V] {
 	if ab.currentCanonical == "" {
 		return nil
 	}
+
 	computed := ab.attr.resolveFn(ab.baseValue, ab.lastDiff)
 	key := ab.currentCanonical
 	ab.currentCanonical = ""
+
 	var zero V
+
 	ab.baseValue = zero
 	ab.lastDiff = zero
 	ab.baseIndex = 0
+
 	if (any)(computed) != nil {
 		return &ComputedEntry[V]{
 			CanonicalKey: []byte(key),
 			Value:        computed,
 		}
 	}
+
 	return nil
 }
 
@@ -110,6 +121,7 @@ func (ab *accumulatorBase[V]) flush() *ComputedEntry[V] {
 // call Flush when a logical group boundary is reached (e.g., a different entity).
 type Accumulator[V proto.Message] struct {
 	accumulatorBase[V]
+
 	pending []ComputedEntry[V]
 }
 
@@ -131,12 +143,15 @@ func (acc *Accumulator[V]) Feed(pebbleKey, pebbleValue []byte) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
 	if !matched {
 		return false, nil
 	}
+
 	if prev != nil {
 		acc.pending = append(acc.pending, *prev)
 	}
+
 	return true, nil
 }
 
@@ -146,8 +161,10 @@ func (acc *Accumulator[V]) Flush() []ComputedEntry[V] {
 	if entry := acc.flush(); entry != nil {
 		acc.pending = append(acc.pending, *entry)
 	}
+
 	results := acc.pending
 	acc.pending = nil
+
 	return results
 }
 

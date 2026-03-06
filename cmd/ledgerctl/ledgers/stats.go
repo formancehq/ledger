@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // NewStatsCommand creates the ledgers stats command.
@@ -33,9 +34,11 @@ func runStats(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = conn.Close() }()
 
 	ledgerFlag, _ := cmd.Flags().GetString("ledger")
+
 	ledgerName, err := cmdutil.SelectLedger(cmd, client, ledgerFlag)
 	if err != nil {
 		return err
@@ -51,6 +54,7 @@ func runStats(cmd *cobra.Command, _ []string) error {
 	})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to get ledger stats", err)
 	}
 
@@ -60,14 +64,15 @@ func runStats(cmd *cobra.Command, _ []string) error {
 	if jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
+
 		return encoder.Encode(stats)
 	}
 
 	pterm.Println()
 	pterm.Printf("Ledger: %s\n", pterm.Cyan(ledgerName))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
-	pterm.Printf("Accounts:     %d\n", stats.AccountCount)
-	pterm.Printf("Transactions: %d\n", stats.TransactionCount)
+	pterm.Printf("Accounts:     %d\n", stats.GetAccountCount())
+	pterm.Printf("Transactions: %d\n", stats.GetTransactionCount())
 
 	return nil
 }

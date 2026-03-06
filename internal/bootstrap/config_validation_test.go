@@ -3,11 +3,13 @@ package bootstrap
 import (
 	"testing"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/formancehq/go-libs/v3/logging"
+
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 func newTestStore(t *testing.T) *dal.Store {
@@ -20,6 +22,7 @@ func newTestStore(t *testing.T) *dal.Store {
 	t.Cleanup(func() {
 		require.NoError(t, store.Close())
 	})
+
 	return store
 }
 
@@ -141,4 +144,3 @@ func TestValidateOrPersistConfig_ForceOverride(t *testing.T) {
 	require.Equal(t, uint64(2), persisted.NodeID)
 	require.Equal(t, "cluster-b", persisted.ClusterID)
 }
-

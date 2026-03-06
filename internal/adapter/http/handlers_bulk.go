@@ -6,31 +6,37 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/go-chi/chi/v5"
 )
 
-// handleBulk handles POST /{ledgerName}/_bulk to create multiple transactions/operations
+// handleBulk handles POST /{ledgerName}/_bulk to create multiple transactions/operations.
 func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
+
 		return
 	}
 
 	// Parse JSON array of bulk elements
 	var rawElements []json.RawValue
-	if err := json.UnmarshalRead(r.Body, &rawElements); err != nil {
+
+	err := json.UnmarshalRead(r.Body, &rawElements)
+	if err != nil {
 		writeBulkErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
+
 		return
 	}
 
 	if s.bulkMaxSize > 0 && len(rawElements) > s.bulkMaxSize {
 		writeBulkErrorResponse(w, http.StatusRequestEntityTooLarge, "BULK_SIZE_EXCEEDED",
 			fmt.Errorf("bulk size exceeded, max size is %d", s.bulkMaxSize))
+
 		return
 	}
 
@@ -38,11 +44,15 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	elements := make([]*servicepb.BulkElement, 0, len(rawElements))
 	for i, rawElem := range rawElements {
 		elem := &servicepb.BulkElement{}
-		if err := json.Unmarshal(rawElem, elem); err != nil {
+
+		err := json.Unmarshal(rawElem, elem)
+		if err != nil {
 			writeBulkErrorResponse(w, http.StatusBadRequest, "VALIDATION",
 				fmt.Errorf("error parsing element %d: %w", i, err))
+
 			return
 		}
+
 		elements = append(elements, elem)
 	}
 
@@ -51,10 +61,12 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	if effective != nil {
 		for i, elem := range elements {
 			req := convertBulkElementToRequest(ledgerName, elem)
+
 			required := internalauth.RequiredScopeForRequest(req)
 			if !internalauth.HasScope(effective, required) {
 				writeBulkErrorResponse(w, http.StatusForbidden, "PERMISSION_DENIED",
 					fmt.Errorf("element %d requires scope %s", i, required))
+
 				return
 			}
 		}
@@ -71,23 +83,23 @@ func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
 	writeBulkResponse(w, elements, results)
 }
 
-// bulkOptions contains options for bulk processing
+// bulkOptions contains options for bulk processing.
 type bulkOptions struct {
 	continueOnFailure bool
 	atomic            bool
 }
 
-// bulkResult represents the result of a single bulk element
+// bulkResult represents the result of a single bulk element.
 type bulkResult struct {
 	log *commonpb.LedgerLog
 	err error
 }
 
-// convertBulkElementToRequest converts a servicepb.BulkElement to a servicepb.Request
+// convertBulkElementToRequest converts a servicepb.BulkElement to a servicepb.Request.
 func convertBulkElementToRequest(ledgerName string, elem *servicepb.BulkElement) *servicepb.Request {
 	applyRequest := &servicepb.LedgerApplyRequest{
 		Ledger: ledgerName,
-		Data:   elem.Action.Data,
+		Data:   elem.Action.GetData(),
 	}
 
 	return &servicepb.Request{
@@ -98,7 +110,7 @@ func convertBulkElementToRequest(ledgerName string, elem *servicepb.BulkElement)
 	}
 }
 
-// runBulk processes a list of bulk elements and returns the results
+// runBulk processes a list of bulk elements and returns the results.
 func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*servicepb.BulkElement, opts bulkOptions) []bulkResult {
 	if len(elements) == 0 {
 		return nil
@@ -113,10 +125,11 @@ func (s *Server) runBulk(ctx context.Context, ledgerName string, elements []*ser
 	if opts.atomic {
 		return s.runBulkAtomic(ctx, requests)
 	}
+
 	return s.runBulkSequential(ctx, requests, opts.continueOnFailure)
 }
 
-// runBulkAtomic applies all requests in a single batch
+// runBulkAtomic applies all requests in a single batch.
 func (s *Server) runBulkAtomic(ctx context.Context, requests []*servicepb.Request) []bulkResult {
 	results := make([]bulkResult, len(requests))
 
@@ -126,16 +139,18 @@ func (s *Server) runBulkAtomic(ctx context.Context, requests []*servicepb.Reques
 		for i := range results {
 			results[i] = bulkResult{err: err}
 		}
+
 		return results
 	}
 
 	for i, log := range logs {
-		results[i] = bulkResult{log: log.Payload.GetApply().GetLog()}
+		results[i] = bulkResult{log: log.GetPayload().GetApply().GetLog()}
 	}
+
 	return results
 }
 
-// runBulkSequential applies requests one by one
+// runBulkSequential applies requests one by one.
 func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Request, continueOnFailure bool) []bulkResult {
 	results := make([]bulkResult, len(requests))
 	hasError := false
@@ -143,6 +158,7 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 	for i, request := range requests {
 		if hasError && !continueOnFailure {
 			results[i] = bulkResult{err: context.Canceled}
+
 			continue
 		}
 
@@ -150,22 +166,24 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 		if err != nil {
 			hasError = true
 			results[i] = bulkResult{err: err}
+
 			continue
 		}
 
-		results[i] = bulkResult{log: logs[0].Payload.GetApply().GetLog()}
+		results[i] = bulkResult{log: logs[0].GetPayload().GetApply().GetLog()}
 	}
 
 	return results
 }
 
-// writeBulkResponse writes the bulk response
+// writeBulkResponse writes the bulk response.
 func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement, results []bulkResult) {
 	hasError := false
 	apiResults := make([]bulkAPIResult, len(results))
 
 	for i, result := range results {
 		responseType := servicepb.GetLedgerApplyActionType(elements[i].Action)
+
 		var data any
 
 		if result.err != nil {
@@ -175,15 +193,16 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 				ErrorCode:        "ERROR",
 				ErrorDescription: result.err.Error(),
 			}
+
 			continue
 		}
 
 		// Extract data from log
 		if log := result.log; log != nil {
-			apiResults[i].LogID = log.Id
-			if log.Data != nil {
-				if ct := log.Data.GetCreatedTransaction(); ct != nil {
-					data = ct.Transaction
+			apiResults[i].LogID = log.GetId()
+			if log.GetData() != nil {
+				if ct := log.GetData().GetCreatedTransaction(); ct != nil {
+					data = ct.GetTransaction()
 				}
 			}
 		}
@@ -202,17 +221,20 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 	response := bulkResponse{Data: apiResults}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.MarshalWrite(w, response); err != nil {
+
+	err := json.MarshalWrite(w, response)
+	if err != nil {
 		panic(err)
 	}
 }
 
-// writeBulkErrorResponse writes a bulk error response
+// writeBulkErrorResponse writes a bulk error response.
 func writeBulkErrorResponse(w http.ResponseWriter, statusCode int, errorCode string, err error) {
 	errorMsg := ""
 	if err != nil {
 		errorMsg = err.Error()
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = json.MarshalWrite(w, bulkResponse{
@@ -221,7 +243,7 @@ func writeBulkErrorResponse(w http.ResponseWriter, statusCode int, errorCode str
 	})
 }
 
-// bulkAPIResult represents a single result in the API response
+// bulkAPIResult represents a single result in the API response.
 type bulkAPIResult struct {
 	ErrorCode        string `json:"errorCode,omitempty"`
 	ErrorDescription string `json:"errorDescription,omitempty"`
@@ -230,7 +252,7 @@ type bulkAPIResult struct {
 	LogID            uint64 `json:"logID"`
 }
 
-// bulkResponse is the response structure for bulk operations
+// bulkResponse is the response structure for bulk operations.
 type bulkResponse struct {
 	Data         []bulkAPIResult `json:"data,omitempty"`
 	ErrorCode    string          `json:"errorCode,omitempty"`

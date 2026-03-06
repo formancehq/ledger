@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 func makeCompactAccount(address string) CompactAccount {
@@ -26,10 +27,10 @@ func TestAnalyze_EmptyAccounts(t *testing.T) {
 
 	resp := Analyze(nil, 0)
 	require.NotNil(t, resp)
-	require.NotNil(t, resp.SuggestedChart)
-	assert.Empty(t, resp.SuggestedChart.Roots)
-	assert.Empty(t, resp.Patterns)
-	assert.Equal(t, uint64(0), resp.TotalAccounts)
+	require.NotNil(t, resp.GetSuggestedChart())
+	assert.Empty(t, resp.GetSuggestedChart().GetRoots())
+	assert.Empty(t, resp.GetPatterns())
+	assert.Equal(t, uint64(0), resp.GetTotalAccounts())
 }
 
 func TestAnalyze_SingleAccount(t *testing.T) {
@@ -38,18 +39,18 @@ func TestAnalyze_SingleAccount(t *testing.T) {
 	resp := Analyze([]CompactAccount{makeCompactAccount("world")}, 0)
 
 	require.NotNil(t, resp)
-	assert.Equal(t, uint64(1), resp.TotalAccounts)
+	assert.Equal(t, uint64(1), resp.GetTotalAccounts())
 
 	// Chart: single root "world" segment
-	require.Len(t, resp.SuggestedChart.Roots, 1)
-	worldSeg, ok := resp.SuggestedChart.Roots["world"]
+	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
+	worldSeg, ok := resp.GetSuggestedChart().GetRoots()["world"]
 	require.True(t, ok, "expected 'world' root")
-	assert.True(t, worldSeg.Account)
+	assert.True(t, worldSeg.GetAccount())
 
 	// Pattern: "world"
-	require.Len(t, resp.Patterns, 1)
-	assert.Equal(t, "world", resp.Patterns[0].Pattern)
-	assert.Equal(t, uint64(1), resp.Patterns[0].AccountCount)
+	require.Len(t, resp.GetPatterns(), 1)
+	assert.Equal(t, "world", resp.GetPatterns()[0].GetPattern())
+	assert.Equal(t, uint64(1), resp.GetPatterns()[0].GetAccountCount())
 }
 
 func TestAnalyze_SimpleFixedHierarchy(t *testing.T) {
@@ -64,23 +65,24 @@ func TestAnalyze_SimpleFixedHierarchy(t *testing.T) {
 	resp := Analyze(accounts, 0)
 
 	require.NotNil(t, resp)
-	assert.Equal(t, uint64(3), resp.TotalAccounts)
+	assert.Equal(t, uint64(3), resp.GetTotalAccounts())
 
 	// Chart should have 2 top-level roots: "bank" and "world"
-	require.Len(t, resp.SuggestedChart.Roots, 2)
+	require.Len(t, resp.GetSuggestedChart().GetRoots(), 2)
 
 	// Check bank segment
-	bankSeg, ok := resp.SuggestedChart.Roots["bank"]
+	bankSeg, ok := resp.GetSuggestedChart().GetRoots()["bank"]
 	require.True(t, ok, "expected 'bank' root")
-	require.Len(t, bankSeg.Children, 2) // fees, main
+	require.Len(t, bankSeg.GetChildren(), 2) // fees, main
 
-	_, hasFees := bankSeg.Children["fees"]
-	_, hasMain := bankSeg.Children["main"]
+	_, hasFees := bankSeg.GetChildren()["fees"]
+	_, hasMain := bankSeg.GetChildren()["main"]
+
 	assert.True(t, hasFees, "expected 'fees' child")
 	assert.True(t, hasMain, "expected 'main' child")
 
 	// Patterns should include "bank:main", "bank:fees", "world"
-	assert.Len(t, resp.Patterns, 3)
+	assert.Len(t, resp.GetPatterns(), 3)
 }
 
 func TestAnalyze_VariableDetection(t *testing.T) {
@@ -88,7 +90,8 @@ func TestAnalyze_VariableDetection(t *testing.T) {
 
 	// Create 15 user accounts with UUIDs — exceeds default threshold of 10
 	var accounts []CompactAccount
-	for i := 0; i < 15; i++ {
+
+	for i := range 15 {
 		uuid := fmt.Sprintf("a0eebc99-9c0b-4ef8-bb6d-6bb9bd38%04x", i)
 		accounts = append(accounts, makeCompactAccount("users:"+uuid))
 	}
@@ -96,42 +99,42 @@ func TestAnalyze_VariableDetection(t *testing.T) {
 	resp := Analyze(accounts, 0)
 
 	require.NotNil(t, resp)
-	assert.Equal(t, uint64(15), resp.TotalAccounts)
+	assert.Equal(t, uint64(15), resp.GetTotalAccounts())
 
 	// Chart: one root "users" segment with a variable child
-	require.Len(t, resp.SuggestedChart.Roots, 1)
-	usersSeg, ok := resp.SuggestedChart.Roots["users"]
+	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
+	usersSeg, ok := resp.GetSuggestedChart().GetRoots()["users"]
 	require.True(t, ok, "expected 'users' root")
-	require.NotNil(t, usersSeg.Variable, "expected variable child")
-	assert.Equal(t, "id", usersSeg.Variable.Name)
-	assert.Equal(t, uuidPattern, usersSeg.Variable.Pattern)
+	require.NotNil(t, usersSeg.GetVariable(), "expected variable child")
+	assert.Equal(t, "id", usersSeg.GetVariable().GetName())
+	assert.Equal(t, uuidPattern, usersSeg.GetVariable().GetPattern())
 
 	// Pattern: "users:{id}"
-	require.Len(t, resp.Patterns, 1)
-	assert.Equal(t, "users:{id}", resp.Patterns[0].Pattern)
-	assert.Equal(t, uint64(15), resp.Patterns[0].AccountCount)
+	require.Len(t, resp.GetPatterns(), 1)
+	assert.Equal(t, "users:{id}", resp.GetPatterns()[0].GetPattern())
+	assert.Equal(t, uint64(15), resp.GetPatterns()[0].GetAccountCount())
 
 	// Segments should describe the variable
-	require.Len(t, resp.Patterns[0].Segments, 2) // "users", then variable
-	assert.Equal(t, servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE, resp.Patterns[0].Segments[1].Type)
+	require.Len(t, resp.GetPatterns()[0].GetSegments(), 2) // "users", then variable
+	assert.Equal(t, servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE, resp.GetPatterns()[0].GetSegments()[1].GetType())
 }
 
 func TestAnalyze_NumericPattern(t *testing.T) {
 	t.Parallel()
 
 	var accounts []CompactAccount
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		accounts = append(accounts, makeCompactAccount(fmt.Sprintf("orders:%d", 1000+i)))
 	}
 
 	resp := Analyze(accounts, 0)
 
-	require.Len(t, resp.SuggestedChart.Roots, 1)
-	ordersSeg, ok := resp.SuggestedChart.Roots["orders"]
+	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
+	ordersSeg, ok := resp.GetSuggestedChart().GetRoots()["orders"]
 	require.True(t, ok, "expected 'orders' root")
-	require.NotNil(t, ordersSeg.Variable, "expected variable child")
-	assert.Equal(t, "number", ordersSeg.Variable.Name)
-	assert.Equal(t, numericPattern, ordersSeg.Variable.Pattern)
+	require.NotNil(t, ordersSeg.GetVariable(), "expected variable child")
+	assert.Equal(t, "number", ordersSeg.GetVariable().GetName())
+	assert.Equal(t, numericPattern, ordersSeg.GetVariable().GetPattern())
 }
 
 func TestAnalyze_DeepNestedHierarchy(t *testing.T) {
@@ -146,11 +149,11 @@ func TestAnalyze_DeepNestedHierarchy(t *testing.T) {
 	resp := Analyze(accounts, 0)
 
 	require.NotNil(t, resp)
-	assert.Equal(t, uint64(3), resp.TotalAccounts)
+	assert.Equal(t, uint64(3), resp.GetTotalAccounts())
 
 	// Should have a nested structure: platform -> region -> (eu, us) -> (main, fees)
-	require.Len(t, resp.SuggestedChart.Roots, 1)
-	_, ok := resp.SuggestedChart.Roots["platform"]
+	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
+	_, ok := resp.GetSuggestedChart().GetRoots()["platform"]
 	assert.True(t, ok, "expected 'platform' root")
 }
 
@@ -166,13 +169,15 @@ func TestAnalyze_AssetsAggregation(t *testing.T) {
 
 	// Find the "bank:main" pattern
 	var mainPattern *servicepb.AccountPattern
-	for _, p := range resp.Patterns {
-		if p.Pattern == "bank:main" {
+
+	for _, p := range resp.GetPatterns() {
+		if p.GetPattern() == "bank:main" {
 			mainPattern = p
 		}
 	}
+
 	require.NotNil(t, mainPattern)
-	assert.Equal(t, []string{"EUR", "USD"}, mainPattern.Assets)
+	assert.Equal(t, []string{"EUR", "USD"}, mainPattern.GetAssets())
 }
 
 func TestAnalyze_MetadataKeysAggregation(t *testing.T) {
@@ -187,14 +192,16 @@ func TestAnalyze_MetadataKeysAggregation(t *testing.T) {
 
 	// With 2 users, they're fixed segments
 	var alicePattern *servicepb.AccountPattern
-	for _, p := range resp.Patterns {
-		if p.Pattern == "users:alice" {
+
+	for _, p := range resp.GetPatterns() {
+		if p.GetPattern() == "users:alice" {
 			alicePattern = p
 		}
 	}
+
 	require.NotNil(t, alicePattern)
-	assert.Contains(t, alicePattern.MetadataKeys, "role")
-	assert.Contains(t, alicePattern.MetadataKeys, "email")
+	assert.Contains(t, alicePattern.GetMetadataKeys(), "role")
+	assert.Contains(t, alicePattern.GetMetadataKeys(), "email")
 }
 
 func TestAnalyze_ThresholdConfigurability(t *testing.T) {
@@ -202,24 +209,24 @@ func TestAnalyze_ThresholdConfigurability(t *testing.T) {
 
 	// Create 5 user accounts with numeric IDs — below default threshold but above 3
 	var accounts []CompactAccount
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		accounts = append(accounts, makeCompactAccount(fmt.Sprintf("users:%d", 1000+i)))
 	}
 
 	// With default threshold (10), should be fixed
 	resp := Analyze(accounts, 0)
-	require.Len(t, resp.SuggestedChart.Roots, 1)
-	usersSeg, ok := resp.SuggestedChart.Roots["users"]
+	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
+	usersSeg, ok := resp.GetSuggestedChart().GetRoots()["users"]
 	require.True(t, ok)
-	require.Len(t, usersSeg.Children, 5)
-	assert.Nil(t, usersSeg.Variable, "expected no variable with default threshold")
+	require.Len(t, usersSeg.GetChildren(), 5)
+	assert.Nil(t, usersSeg.GetVariable(), "expected no variable with default threshold")
 
 	// With threshold=3, should become variable (5 numeric IDs > threshold 3)
 	resp2 := Analyze(accounts, 3)
-	require.Len(t, resp2.SuggestedChart.Roots, 1)
-	usersSeg2, ok := resp2.SuggestedChart.Roots["users"]
+	require.Len(t, resp2.GetSuggestedChart().GetRoots(), 1)
+	usersSeg2, ok := resp2.GetSuggestedChart().GetRoots()["users"]
 	require.True(t, ok)
-	assert.NotNil(t, usersSeg2.Variable, "expected variable child with threshold=3")
+	assert.NotNil(t, usersSeg2.GetVariable(), "expected variable child with threshold=3")
 }
 
 func TestAnalyze_WorldAndUsersPattern(t *testing.T) {
@@ -227,11 +234,12 @@ func TestAnalyze_WorldAndUsersPattern(t *testing.T) {
 
 	// Realistic pattern: world + bank + 15 users with UUIDs + wallet sub-accounts
 	var accounts []CompactAccount
+
 	accounts = append(accounts, makeCompactAccount("world"))
 	accounts = append(accounts, makeCompactAccount("bank:main"))
 	accounts = append(accounts, makeCompactAccount("bank:fees"))
 
-	for i := 0; i < 15; i++ {
+	for i := range 15 {
 		uuid := fmt.Sprintf("a0eebc99-9c0b-4ef8-bb6d-6bb9bd38%04x", i)
 		accounts = append(accounts, makeCompactAccount("users:"+uuid+":main"))
 		accounts = append(accounts, makeCompactAccount("users:"+uuid+":savings"))
@@ -240,10 +248,10 @@ func TestAnalyze_WorldAndUsersPattern(t *testing.T) {
 	resp := Analyze(accounts, 0)
 
 	require.NotNil(t, resp)
-	assert.Equal(t, uint64(33), resp.TotalAccounts)
+	assert.Equal(t, uint64(33), resp.GetTotalAccounts())
 
 	// Chart should have top-level roots: bank, users, world
-	require.Len(t, resp.SuggestedChart.Roots, 3)
+	require.Len(t, resp.GetSuggestedChart().GetRoots(), 3)
 }
 
 func TestInferPattern(t *testing.T) {

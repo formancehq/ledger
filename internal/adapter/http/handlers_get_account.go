@@ -7,17 +7,19 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// handleGetAccount handles GET /{ledgerName}/accounts/{address} to retrieve an account
+// handleGetAccount handles GET /{ledgerName}/accounts/{address} to retrieve an account.
 func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
+
 		return
 	}
 
 	address := chi.URLParam(r, "address")
 	if address == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("account address is required"))
+
 		return
 	}
 
@@ -25,6 +27,7 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request) {
 	_, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
 	if err != nil {
 		handleError(w, r, err)
+
 		return
 	}
 
@@ -36,6 +39,7 @@ func (s *Server) handleGetAccount(w http.ResponseWriter, r *http.Request) {
 			"error":   err,
 		}).Errorf("Failed to get account")
 		handleError(w, r, err)
+
 		return
 	}
 

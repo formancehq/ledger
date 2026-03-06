@@ -6,8 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 // handleListLedgerLogs handles GET /{ledgerName}/logs to list logs for a specific ledger.
@@ -16,16 +17,20 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
+
 		return
 	}
 
 	var pageSize uint32
+
 	if ps := r.URL.Query().Get("pageSize"); ps != "" {
 		parsed, err := strconv.ParseUint(ps, 10, 32)
 		if err != nil {
 			writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid pageSize parameter"))
+
 			return
 		}
+
 		pageSize = uint32(parsed)
 	}
 
@@ -45,8 +50,10 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 		parsed, err := strconv.ParseUint(after, 10, 64)
 		if err != nil {
 			writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid after parameter"))
+
 			return
 		}
+
 		filters = append(filters, &commonpb.QueryFilter{
 			Filter: &commonpb.QueryFilter_LogId{
 				LogId: &commonpb.LogIdCondition{
@@ -71,22 +78,28 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 	cursor, err := s.backend.ListLogs(r.Context(), 0, pageSize, filter)
 	if err != nil {
 		handleError(w, r, err)
+
 		return
 	}
+
 	defer func() {
 		_ = cursor.Close()
 	}()
 
 	var logs []*commonpb.Log
+
 	for {
 		log, err := cursor.Next()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			handleError(w, r, err)
+
 			return
 		}
+
 		logs = append(logs, log)
 	}
 

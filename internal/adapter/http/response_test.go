@@ -8,11 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 )
 
 func TestWriteJSONResponse(t *testing.T) {
@@ -83,7 +84,7 @@ func TestWriteErrorResponse_NilError(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	resp := decodeResponse[ErrorResponse](t, w)
 	require.Equal(t, "TEST", resp.ErrorCode)
-	require.Equal(t, "", resp.ErrorMessage)
+	require.Empty(t, resp.ErrorMessage)
 }
 
 func TestWantsHTTPProfile(t *testing.T) {
@@ -101,10 +102,12 @@ func TestWantsHTTPProfile(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			r := httptest.NewRequest(http.MethodGet, "/", nil)
 			if tc.header != "" {
 				r.Header.Set("X-Query-Profile", tc.header)
 			}
+
 			assert.Equal(t, tc.expected, wantsHTTPProfile(r))
 		})
 	}
@@ -136,11 +139,11 @@ func TestWriteProfileHeader(t *testing.T) {
 	var pb servicepb.QueryProfile
 	require.NoError(t, proto.Unmarshal(data, &pb))
 
-	assert.Equal(t, int64(5000), pb.IndexDurationUs)
-	assert.Equal(t, int32(10), pb.ItemsCollected)
-	require.NotNil(t, pb.RootIterator)
-	assert.Equal(t, "Prefix", pb.RootIterator.Kind)
-	assert.Equal(t, int64(15), pb.RootIterator.NextCalls)
+	assert.Equal(t, int64(5000), pb.GetIndexDurationUs())
+	assert.Equal(t, int32(10), pb.GetItemsCollected())
+	require.NotNil(t, pb.GetRootIterator())
+	assert.Equal(t, "Prefix", pb.GetRootIterator().GetKind())
+	assert.Equal(t, int64(15), pb.GetRootIterator().GetNextCalls())
 }
 
 func TestWriteProfileHeader_NilProfile(t *testing.T) {
@@ -171,6 +174,7 @@ func TestQueryParamBool(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			r := httptest.NewRequest(http.MethodGet, "/"+tc.query, nil)
 			require.Equal(t, tc.expected, queryParamBool(r, tc.key))
 		})

@@ -2,17 +2,19 @@ package cmdutil
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
 // ErrNoLedgers is returned when no ledgers exist.
-var ErrNoLedgers = fmt.Errorf("no ledgers found")
+var ErrNoLedgers = errors.New("no ledgers found")
 
 // SelectLedger selects a ledger interactively or automatically.
 // If ledgerFlag is set, it returns that value.
@@ -49,12 +51,14 @@ func SelectLedger(cmd *cobra.Command, client servicepb.BucketServiceClient, ledg
 		pterm.Println("No ledgers found.")
 		pterm.Println(pterm.Gray("Hint: Create a ledger first using:"))
 		pterm.FgCyan.Println("  ledgerctl ledgers create --name <ledger-name>")
+
 		return "", ErrNoLedgers
 	}
 
 	// Only one ledger exists, use it automatically
 	if len(ledgerNames) == 1 {
 		pterm.Info.Printfln("Using ledger: %s", pterm.Cyan(ledgerNames[0]))
+
 		return ledgerNames[0], nil
 	}
 
@@ -72,7 +76,7 @@ func SelectLedger(cmd *cobra.Command, client servicepb.BucketServiceClient, ledg
 
 // sortStrings sorts a slice of strings in place.
 func sortStrings(s []string) {
-	for i := 0; i < len(s)-1; i++ {
+	for i := range len(s) - 1 {
 		for j := i + 1; j < len(s); j++ {
 			if s[i] > s[j] {
 				s[i], s[j] = s[j], s[i]
@@ -89,15 +93,18 @@ func GetAllLedgersInfo(ctx context.Context, client servicepb.BucketServiceClient
 	}
 
 	ledgers := make(map[string]*commonpb.LedgerInfo)
+
 	for {
 		ledger, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			return nil, err
 		}
-		ledgers[ledger.Name] = ledger
+
+		ledgers[ledger.GetName()] = ledger
 	}
 
 	return ledgers, nil

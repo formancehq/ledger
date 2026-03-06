@@ -7,7 +7,7 @@ import "bytes"
 // past that entity before collecting. Returns the collected items and whether
 // more items exist beyond the page.
 func PaginateForward(iter EntityIterator, pageSize uint32, after []byte) (items [][]byte, hasMore bool) {
-	positioned := false
+	var positioned bool
 	if after != nil {
 		positioned = iter.SeekGE(after)
 		// Skip the cursor entity itself (we want items after it)
@@ -30,7 +30,7 @@ func PaginateForward(iter EntityIterator, pageSize uint32, after []byte) (items 
 // is positioned at the first entity <= before and that entity is skipped.
 // Returns the collected items and whether more items exist.
 func PaginateReverse(iter *ReversePrefixIterator, pageSize uint32, before []byte) (items [][]byte, hasMore bool) {
-	positioned := false
+	var positioned bool
 	if before != nil {
 		positioned = iter.SeekLE(before)
 		// Skip the cursor entity itself
@@ -59,13 +59,16 @@ type nextable interface {
 // hasMore is true and only pageSize items are returned.
 func collectPage(iter nextable, pageSize uint32) (items [][]byte, hasMore bool) {
 	limit := int(pageSize) + 1
+
 	for {
 		cp := make([]byte, len(iter.Current()))
 		copy(cp, iter.Current())
+
 		items = append(items, cp)
 		if len(items) >= limit {
 			break
 		}
+
 		if !iter.Next() {
 			break
 		}
@@ -75,5 +78,6 @@ func collectPage(iter nextable, pageSize uint32) (items [][]byte, hasMore bool) 
 	if hasMore {
 		items = items[:pageSize]
 	}
+
 	return items, hasMore
 }

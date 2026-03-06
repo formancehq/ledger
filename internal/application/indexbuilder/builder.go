@@ -2,11 +2,16 @@ package indexbuilder
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync/atomic"
 	"time"
 
+	bolt "go.etcd.io/bbolt"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -14,8 +19,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
-	bolt "go.etcd.io/bbolt"
-	"go.opentelemetry.io/otel/metric"
 )
 
 // DefaultBatchSize is the default number of log entries per bbolt write
@@ -105,6 +108,7 @@ func NewBuilder(
 	if batchSize <= 0 {
 		batchSize = DefaultBatchSize
 	}
+
 	return &Builder{
 		pebbleStore: pebbleStore,
 		readStore:   readStore,
@@ -123,27 +127,34 @@ func NewBuilder(
 // cursors from bbolt so backfills survive restarts.
 func (b *Builder) initIndexConfig() {
 	handle := b.pebbleStore.NewReadHandle()
+
 	defer func() { _ = handle.Close() }()
 
 	cursor, err := query.ReadLedgers(context.Background(), handle)
 	if err != nil {
 		b.logger.Errorf("Failed to read ledgers for index config: %v", err)
+
 		return
 	}
+
 	defer func() { _ = cursor.Close() }()
 
 	for {
 		info, err := cursor.Next()
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			b.logger.Errorf("Error reading ledger info: %v", err)
+
 			return
 		}
-		if info.DeletedAt != nil {
+
+		if info.GetDeletedAt() != nil {
 			continue
 		}
+
 		b.loadLedgerIndexConfig(info)
 	}
 
@@ -155,6 +166,7 @@ func (b *Builder) initIndexConfig() {
 					task.cursor = c
 				}
 			}
+
 			return nil
 		})
 		b.logger.WithFields(map[string]any{
@@ -170,54 +182,56 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 	cfg := newLedgerIndexConfig()
 
 	// Metadata indexes — include both READY and BUILDING.
-	if info.MetadataSchema != nil {
-		b.loadMetadataIndexes(cfg, info.Name, commonpb.TargetType_TARGET_TYPE_ACCOUNT, info.MetadataSchema.AccountFields)
-		b.loadMetadataIndexes(cfg, info.Name, commonpb.TargetType_TARGET_TYPE_TRANSACTION, info.MetadataSchema.TransactionFields)
+	if info.GetMetadataSchema() != nil {
+		b.loadMetadataIndexes(cfg, info.GetName(), commonpb.TargetType_TARGET_TYPE_ACCOUNT, info.GetMetadataSchema().GetAccountFields())
+		b.loadMetadataIndexes(cfg, info.GetName(), commonpb.TargetType_TARGET_TYPE_TRANSACTION, info.GetMetadataSchema().GetTransactionFields())
 	}
 
 	// Builtin transaction indexes (including address indexes) — include both READY and BUILDING.
-	if bi := info.BuiltinIndexes; bi != nil {
+	if bi := info.GetBuiltinIndexes(); bi != nil {
 		for _, entry := range []struct {
 			index   commonpb.TransactionBuiltinIndex
 			enabled bool
 			status  commonpb.IndexBuildStatus
 		}{
-			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE, bi.Reference, bi.ReferenceStatus},
-			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, bi.Timestamp, bi.TimestampStatus},
-			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS, bi.Address, bi.AddressStatus},
-			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS, bi.SourceAddress, bi.SourceAddressStatus},
-			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS, bi.DestAddress, bi.DestAddressStatus},
+			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE, bi.GetReference(), bi.GetReferenceStatus()},
+			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, bi.GetTimestamp(), bi.GetTimestampStatus()},
+			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS, bi.GetAddress(), bi.GetAddressStatus()},
+			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS, bi.GetSourceAddress(), bi.GetSourceAddressStatus()},
+			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS, bi.GetDestAddress(), bi.GetDestAddressStatus()},
 		} {
 			if !entry.enabled {
 				continue
 			}
+
 			cfg.txBuiltinIndexed[entry.index] = true
 			if entry.status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-				b.addBackfillTaskForTxBuiltin(info.Name, entry.index)
+				b.addBackfillTaskForTxBuiltin(info.GetName(), entry.index)
 			}
 		}
 	}
 
 	// Builtin log indexes — include both READY and BUILDING.
-	if li := info.LogBuiltinIndexes; li != nil {
+	if li := info.GetLogBuiltinIndexes(); li != nil {
 		for _, entry := range []struct {
 			index   commonpb.LogBuiltinIndex
 			enabled bool
 			status  commonpb.IndexBuildStatus
 		}{
-			{commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER, li.Ledger, li.LedgerStatus},
+			{commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER, li.GetLedger(), li.GetLedgerStatus()},
 		} {
 			if !entry.enabled {
 				continue
 			}
+
 			cfg.logBuiltinIndexed[entry.index] = true
 			if entry.status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-				b.addBackfillTaskForLogBuiltin(info.Name, entry.index)
+				b.addBackfillTaskForLogBuiltin(info.GetName(), entry.index)
 			}
 		}
 	}
 
-	b.indexConfig[info.Name] = cfg
+	b.indexConfig[info.GetName()] = cfg
 }
 
 // loadMetadataIndexes loads metadata indexes for a given target type.
@@ -228,18 +242,19 @@ func (b *Builder) loadMetadataIndexes(
 	fields map[string]*commonpb.MetadataFieldSchema,
 ) {
 	for key, field := range fields {
-		if !field.Indexed {
+		if !field.GetIndexed() {
 			continue
 		}
+
 		switch target {
 		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 			cfg.acctMetadataIndexed[key] = true
-			if field.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+			if field.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 				b.addBackfillTaskForAcctMetadata(ledger, key)
 			}
 		case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
 			cfg.txMetadataIndexed[key] = true
-			if field.IndexBuildStatus == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+			if field.GetIndexBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
 				b.addBackfillTaskForTxMetadata(ledger, key)
 			}
 		}
@@ -252,6 +267,7 @@ func (b *Builder) isMetadataIndexed(ledger string, target commonpb.TargetType, k
 	if !ok {
 		return false
 	}
+
 	switch target {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 		return cfg.acctMetadataIndexed[key]
@@ -268,6 +284,7 @@ func (b *Builder) isBuiltinIndexed(ledger string, index commonpb.TransactionBuil
 	if !ok {
 		return false
 	}
+
 	return cfg.txBuiltinIndexed[index]
 }
 
@@ -277,6 +294,7 @@ func (b *Builder) isLogBuiltinIndexed(ledger string, index commonpb.LogBuiltinIn
 	if !ok {
 		return false
 	}
+
 	return cfg.logBuiltinIndexed[index]
 }
 
@@ -297,6 +315,7 @@ func (b *Builder) Start() {
 	if reg, err := b.registerMetrics(); err == nil {
 		b.metricsRegistration = reg
 	}
+
 	b.w = worker.New()
 	b.w.Run(b.loop)
 }
@@ -304,6 +323,7 @@ func (b *Builder) Start() {
 // Stop gracefully stops the background loop and unregisters OTEL metrics.
 func (b *Builder) Stop() {
 	b.w.Stop()
+
 	if b.metricsRegistration != nil {
 		_ = b.metricsRegistration.Unregister()
 	}
@@ -357,14 +377,14 @@ func (b *Builder) registerMetrics() (metric.Registration, error) {
 		func(_ context.Context, o metric.Observer) error {
 			indexed := int64(b.lastIndexedSeq.Load())
 			pebbleLast := int64(b.pebbleLastSeq.Load())
-			lag := pebbleLast - indexed
-			if lag < 0 {
-				lag = 0
-			}
+
+			lag := max(pebbleLast-indexed, 0)
+
 			o.ObserveInt64(lastIndexedGauge, indexed)
 			o.ObserveInt64(pebbleLastGauge, pebbleLast)
 			o.ObserveInt64(lagGauge, lag)
 			o.ObserveInt64(logsIndexedGauge, int64(b.logsIndexed.Load()))
+
 			return nil
 		},
 		lastIndexedGauge,
@@ -381,8 +401,10 @@ func (b *Builder) loop(stop <-chan struct{}) {
 	cursor, err := b.readStore.LastIndexedSequence()
 	if err != nil {
 		b.logger.Errorf("Failed to read progress: %v", err)
+
 		return
 	}
+
 	b.lastIndexedSeq.Store(cursor)
 
 	// Seed pebble last sequence.
@@ -396,6 +418,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 	if cursor, err = b.processLogs(cursor); err != nil {
 		b.logger.Errorf("Error during initial catch-up: %v", err)
 	}
+
 	b.processBackfills(stop, cursor)
 
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -405,6 +428,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		select {
 		case <-stop:
 			b.logger.Infof("Index builder stopped")
+
 			return
 		case <-b.notifications.LogCommitted.C():
 		case <-ticker.C:
@@ -416,6 +440,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		select {
 		case <-stop:
 			b.logger.Infof("Index builder stopped")
+
 			return
 		default:
 		}
@@ -441,6 +466,7 @@ func (b *Builder) processLogs(cursor uint64) (uint64, error) {
 	if err != nil {
 		return cursor, err
 	}
+
 	defer func() { _ = logsCursor.Close() }()
 
 	for {
@@ -455,20 +481,24 @@ func (b *Builder) processLogs(cursor uint64) (uint64, error) {
 		// minimize random B+ tree page access.
 		if err := b.readStore.Update(func(tx *bolt.Tx) error {
 			b.wb.Init(tx)
+
 			for batchCount < b.batchSize {
 				log, err := logsCursor.Next()
 				if err != nil {
-					if err == io.EOF {
+					if errors.Is(err, io.EOF) {
 						eof = true
+
 						break
 					}
+
 					return err
 				}
 
 				if err := b.indexLogEntry(tx, log); err != nil {
 					return err
 				}
-				lastSeq = log.Sequence
+
+				lastSeq = log.GetSequence()
 				batchCount++
 			}
 
@@ -476,8 +506,10 @@ func (b *Builder) processLogs(cursor uint64) (uint64, error) {
 				if err := b.wb.Flush(); err != nil {
 					return err
 				}
+
 				return b.readStore.WriteProgress(tx, lastSeq)
 			}
+
 			return nil
 		}); err != nil {
 			b.logger.WithFields(map[string]any{
@@ -485,6 +517,7 @@ func (b *Builder) processLogs(cursor uint64) (uint64, error) {
 				"lastSeq":   lastSeq,
 				"error":     err,
 			}).Errorf("Error processing batch")
+
 			return cursor, err
 		}
 
@@ -522,27 +555,28 @@ func (b *Builder) RebuildAll() (uint64, error) {
 // indexLogEntry dispatches a single log entry to the appropriate index handler.
 // It does NOT call WriteProgress — the caller batches that.
 func (b *Builder) indexLogEntry(tx *bolt.Tx, log *commonpb.Log) error {
-	if log.Payload == nil {
+	if log.GetPayload() == nil {
 		return nil
 	}
 
-	applyLog, ok := log.Payload.Type.(*commonpb.LogPayload_Apply)
+	applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
 	if !ok {
 		return nil
 	}
 
-	ledgerName := applyLog.Apply.LedgerName
-	ledgerLog := applyLog.Apply.Log
-	if ledgerLog == nil || ledgerLog.Data == nil {
+	ledgerName := applyLog.Apply.GetLedgerName()
+
+	ledgerLog := applyLog.Apply.GetLog()
+	if ledgerLog == nil || ledgerLog.GetData() == nil {
 		return nil
 	}
 
 	// Index ledger log for per-ledger listing (opt-in via log builtin index).
 	if b.isLogBuiltinIndexed(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER) {
-		b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.Id, log.Sequence)
+		b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.GetId(), log.GetSequence())
 	}
 
-	switch p := ledgerLog.Data.Payload.(type) {
+	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		return b.indexCreatedTransaction(tx, b.kb, ledgerName, p.CreatedTransaction)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
@@ -557,7 +591,9 @@ func (b *Builder) indexLogEntry(tx *bolt.Tx, log *commonpb.Log) error {
 		if err := b.wb.Flush(); err != nil {
 			return err
 		}
+
 		b.wb.Init(tx) // re-init after flush (Flush calls Reset)
+
 		return b.indexSetMetadataFieldType(tx, b.kb, ledgerName, p.SetMetadataFieldType)
 	case *commonpb.LedgerLogPayload_CreateIndex:
 		b.handleCreateIndexLog(ledgerName, p.CreateIndex)
@@ -575,23 +611,24 @@ func (b *Builder) indexLogEntry(tx *bolt.Tx, log *commonpb.Log) error {
 // - account existence (for all accounts in postings + account_metadata)
 // - account metadata (from account_metadata)
 // - transaction metadata (from transaction.metadata)
-// - account→transaction mapping
+// - account→transaction mapping.
 func (b *Builder) indexCreatedTransaction(
 	tx *bolt.Tx,
 	kb *readstore.KeyBuilder,
 	ledger string,
 	ct *commonpb.CreatedTransaction,
 ) error {
-	if ct.Transaction == nil {
+	if ct.GetTransaction() == nil {
 		return nil
 	}
-	txn := ct.Transaction
+
+	txn := ct.GetTransaction()
 
 	wb := b.wb
 
 	// Transaction existence (skip during backfill — already written by normal processing)
 	if !b.backfillMode {
-		wb.WriteTransactionExistence(kb, ledger, txn.Id)
+		wb.WriteTransactionExistence(kb, ledger, txn.GetId())
 	}
 
 	// Collect unique accounts from postings (reuse builder's map)
@@ -600,21 +637,23 @@ func (b *Builder) indexCreatedTransaction(
 	indexDst := b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)
 
 	clear(b.accounts)
-	for _, posting := range txn.Postings {
-		b.accounts[posting.Source] = struct{}{}
-		b.accounts[posting.Destination] = struct{}{}
+
+	for _, posting := range txn.GetPostings() {
+		b.accounts[posting.GetSource()] = struct{}{}
+		b.accounts[posting.GetDestination()] = struct{}{}
 
 		// Account→transaction mapping (any role)
 		if indexAny {
-			wb.WriteAccountTxMapping(kb, ledger, posting.Source, txn.Id)
-			wb.WriteAccountTxMapping(kb, ledger, posting.Destination, txn.Id)
+			wb.WriteAccountTxMapping(kb, ledger, posting.GetSource(), txn.GetId())
+			wb.WriteAccountTxMapping(kb, ledger, posting.GetDestination(), txn.GetId())
 		}
 		// Role-specific mappings
 		if indexSrc {
-			wb.WriteSourceAccountTxMapping(kb, ledger, posting.Source, txn.Id)
+			wb.WriteSourceAccountTxMapping(kb, ledger, posting.GetSource(), txn.GetId())
 		}
+
 		if indexDst {
-			wb.WriteDestAccountTxMapping(kb, ledger, posting.Destination, txn.Id)
+			wb.WriteDestAccountTxMapping(kb, ledger, posting.GetDestination(), txn.GetId())
 		}
 	}
 
@@ -626,20 +665,22 @@ func (b *Builder) indexCreatedTransaction(
 	}
 
 	// Account existence + metadata from account_metadata map
-	for account, metadataSet := range ct.AccountMetadata {
+	for account, metadataSet := range ct.GetAccountMetadata() {
 		if !b.backfillMode {
 			wb.WriteAccountExistence(kb, ledger, account)
 		}
+
 		if metadataSet != nil {
-			for _, md := range metadataSet.Metadata {
-				if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, md.Key) {
+			for _, md := range metadataSet.GetMetadata() {
+				if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, md.GetKey()) {
 					continue
 				}
-				reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, md.Key)
-				encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
+
+				reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, md.GetKey())
+				encodedValue := readstore.EncodeMetadataValue(nil, md.GetValue())
 				wb.UpdateMetadataIndex(
 					kb, reverseKey,
-					ledger, readstore.NamespaceAccount, md.Key,
+					ledger, readstore.NamespaceAccount, md.GetKey(),
 					encodedValue, []byte(account),
 				)
 			}
@@ -647,29 +688,32 @@ func (b *Builder) indexCreatedTransaction(
 	}
 
 	// Transaction metadata
-	if txn.Metadata != nil {
+	if txn.GetMetadata() != nil {
 		txIDBytes := make([]byte, 0, 8)
-		txIDBytes = readstore.EncodeTxID(txIDBytes, txn.Id)
-		for _, md := range txn.Metadata.Metadata {
-			if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, md.Key) {
+
+		txIDBytes = readstore.EncodeTxID(txIDBytes, txn.GetId())
+		for _, md := range txn.GetMetadata().GetMetadata() {
+			if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, md.GetKey()) {
 				continue
 			}
-			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txn.Id, md.Key)
-			encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
+
+			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txn.GetId(), md.GetKey())
+			encodedValue := readstore.EncodeMetadataValue(nil, md.GetValue())
 			wb.UpdateMetadataIndex(
 				kb, reverseKey,
-				ledger, readstore.NamespaceTransaction, md.Key,
+				ledger, readstore.NamespaceTransaction, md.GetKey(),
 				encodedValue, txIDBytes,
 			)
 		}
 	}
 
 	// Builtin indexes
-	if b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE) && txn.Reference != "" {
-		wb.WriteTransactionReferenceIndex(kb, ledger, txn.Reference, txn.Id)
+	if b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE) && txn.GetReference() != "" {
+		wb.WriteTransactionReferenceIndex(kb, ledger, txn.GetReference(), txn.GetId())
 	}
-	if b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && txn.Timestamp != nil {
-		wb.WriteTransactionTimestampIndex(kb, ledger, txn.Timestamp.Data, txn.Id)
+
+	if b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && txn.GetTimestamp() != nil {
+		wb.WriteTransactionTimestampIndex(kb, ledger, txn.GetTimestamp().GetData(), txn.GetId())
 	}
 
 	return nil
@@ -678,22 +722,23 @@ func (b *Builder) indexCreatedTransaction(
 // indexRevertedTransaction handles RevertedTransaction logs by indexing:
 // - revert transaction existence
 // - account existence for revert postings
-// - account→transaction mapping for revert postings
+// - account→transaction mapping for revert postings.
 func (b *Builder) indexRevertedTransaction(
 	tx *bolt.Tx,
 	kb *readstore.KeyBuilder,
 	ledger string,
 	rt *commonpb.RevertedTransaction,
 ) error {
-	if rt.RevertTransaction == nil {
+	if rt.GetRevertTransaction() == nil {
 		return nil
 	}
-	revertTxn := rt.RevertTransaction
+
+	revertTxn := rt.GetRevertTransaction()
 	wb := b.wb
 
 	// Revert transaction existence (skip during backfill)
 	if !b.backfillMode {
-		wb.WriteTransactionExistence(kb, ledger, revertTxn.Id)
+		wb.WriteTransactionExistence(kb, ledger, revertTxn.GetId())
 	}
 
 	// Account existence + account→tx mapping for revert postings (reuse builder's map)
@@ -702,21 +747,25 @@ func (b *Builder) indexRevertedTransaction(
 	indexDst := b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)
 
 	clear(b.accounts)
-	for _, posting := range revertTxn.Postings {
-		b.accounts[posting.Source] = struct{}{}
-		b.accounts[posting.Destination] = struct{}{}
+
+	for _, posting := range revertTxn.GetPostings() {
+		b.accounts[posting.GetSource()] = struct{}{}
+
+		b.accounts[posting.GetDestination()] = struct{}{}
 		if indexAny {
-			wb.WriteAccountTxMapping(kb, ledger, posting.Source, revertTxn.Id)
-			wb.WriteAccountTxMapping(kb, ledger, posting.Destination, revertTxn.Id)
+			wb.WriteAccountTxMapping(kb, ledger, posting.GetSource(), revertTxn.GetId())
+			wb.WriteAccountTxMapping(kb, ledger, posting.GetDestination(), revertTxn.GetId())
 		}
 		// Role-specific mappings
 		if indexSrc {
-			wb.WriteSourceAccountTxMapping(kb, ledger, posting.Source, revertTxn.Id)
+			wb.WriteSourceAccountTxMapping(kb, ledger, posting.GetSource(), revertTxn.GetId())
 		}
+
 		if indexDst {
-			wb.WriteDestAccountTxMapping(kb, ledger, posting.Destination, revertTxn.Id)
+			wb.WriteDestAccountTxMapping(kb, ledger, posting.GetDestination(), revertTxn.GetId())
 		}
 	}
+
 	if !b.backfillMode {
 		for account := range b.accounts {
 			wb.WriteAccountExistence(kb, ledger, account)
@@ -724,26 +773,28 @@ func (b *Builder) indexRevertedTransaction(
 	}
 
 	// Transaction metadata for the revert transaction
-	if revertTxn.Metadata != nil {
+	if revertTxn.GetMetadata() != nil {
 		txIDBytes := make([]byte, 0, 8)
-		txIDBytes = readstore.EncodeTxID(txIDBytes, revertTxn.Id)
-		for _, md := range revertTxn.Metadata.Metadata {
-			if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, md.Key) {
+
+		txIDBytes = readstore.EncodeTxID(txIDBytes, revertTxn.GetId())
+		for _, md := range revertTxn.GetMetadata().GetMetadata() {
+			if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, md.GetKey()) {
 				continue
 			}
-			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, revertTxn.Id, md.Key)
-			encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
+
+			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, revertTxn.GetId(), md.GetKey())
+			encodedValue := readstore.EncodeMetadataValue(nil, md.GetValue())
 			wb.UpdateMetadataIndex(
 				kb, reverseKey,
-				ledger, readstore.NamespaceTransaction, md.Key,
+				ledger, readstore.NamespaceTransaction, md.GetKey(),
 				encodedValue, txIDBytes,
 			)
 		}
 	}
 
 	// Builtin indexes (no reference on revert transactions)
-	if b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && revertTxn.Timestamp != nil {
-		wb.WriteTransactionTimestampIndex(kb, ledger, revertTxn.Timestamp.Data, revertTxn.Id)
+	if b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && revertTxn.GetTimestamp() != nil {
+		wb.WriteTransactionTimestampIndex(kb, ledger, revertTxn.GetTimestamp().GetData(), revertTxn.GetId())
 	}
 
 	return nil
@@ -756,40 +807,44 @@ func (b *Builder) indexSavedMetadata(
 	ledger string,
 	sm *commonpb.SavedMetadata,
 ) error {
-	if sm.Target == nil || sm.Metadata == nil {
+	if sm.GetTarget() == nil || sm.GetMetadata() == nil {
 		return nil
 	}
 
 	wb := b.wb
 
-	switch t := sm.Target.Target.(type) {
+	switch t := sm.GetTarget().GetTarget().(type) {
 	case *commonpb.Target_Account:
-		account := t.Account.Addr
-		for _, md := range sm.Metadata.Metadata {
-			if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, md.Key) {
+		account := t.Account.GetAddr()
+
+		for _, md := range sm.GetMetadata().GetMetadata() {
+			if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, md.GetKey()) {
 				continue
 			}
-			reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, md.Key)
-			encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
+
+			reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, md.GetKey())
+			encodedValue := readstore.EncodeMetadataValue(nil, md.GetValue())
 			wb.UpdateMetadataIndex(
 				kb, reverseKey,
-				ledger, readstore.NamespaceAccount, md.Key,
+				ledger, readstore.NamespaceAccount, md.GetKey(),
 				encodedValue, []byte(account),
 			)
 		}
 	case *commonpb.Target_Transaction:
-		txID := t.Transaction.Id
+		txID := t.Transaction.GetId()
 		txIDBytes := make([]byte, 0, 8)
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txID)
-		for _, md := range sm.Metadata.Metadata {
-			if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, md.Key) {
+
+		for _, md := range sm.GetMetadata().GetMetadata() {
+			if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, md.GetKey()) {
 				continue
 			}
-			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, md.Key)
-			encodedValue := readstore.EncodeMetadataValue(nil, md.Value)
+
+			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, md.GetKey())
+			encodedValue := readstore.EncodeMetadataValue(nil, md.GetValue())
 			wb.UpdateMetadataIndex(
 				kb, reverseKey,
-				ledger, readstore.NamespaceTransaction, md.Key,
+				ledger, readstore.NamespaceTransaction, md.GetKey(),
 				encodedValue, txIDBytes,
 			)
 		}
@@ -805,35 +860,37 @@ func (b *Builder) indexDeletedMetadata(
 	ledger string,
 	dm *commonpb.DeletedMetadata,
 ) error {
-	if dm.Target == nil {
+	if dm.GetTarget() == nil {
 		return nil
 	}
 
 	wb := b.wb
 
-	switch t := dm.Target.Target.(type) {
+	switch t := dm.GetTarget().GetTarget().(type) {
 	case *commonpb.Target_Account:
-		if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, dm.Key) {
+		if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, dm.GetKey()) {
 			return nil
 		}
-		account := t.Account.Addr
-		reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, dm.Key)
+
+		account := t.Account.GetAddr()
+		reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, dm.GetKey())
 		wb.DeleteMetadataEntry(
 			kb, reverseKey,
-			ledger, readstore.NamespaceAccount, dm.Key,
+			ledger, readstore.NamespaceAccount, dm.GetKey(),
 			[]byte(account),
 		)
 	case *commonpb.Target_Transaction:
-		if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, dm.Key) {
+		if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, dm.GetKey()) {
 			return nil
 		}
-		txID := t.Transaction.Id
+
+		txID := t.Transaction.GetId()
 		txIDBytes := make([]byte, 0, 8)
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txID)
-		reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, dm.Key)
+		reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, dm.GetKey())
 		wb.DeleteMetadataEntry(
 			kb, reverseKey,
-			ledger, readstore.NamespaceTransaction, dm.Key,
+			ledger, readstore.NamespaceTransaction, dm.GetKey(),
 			txIDBytes,
 		)
 	}
@@ -854,12 +911,13 @@ func (b *Builder) indexSetMetadataFieldType(
 	smft *commonpb.SetMetadataFieldTypeLog,
 ) error {
 	// Only re-encode if this metadata key is indexed.
-	if !b.isMetadataIndexed(ledger, smft.TargetType, smft.Key) {
+	if !b.isMetadataIndexed(ledger, smft.GetTargetType(), smft.GetKey()) {
 		return nil
 	}
 
 	var ns string
-	switch smft.TargetType {
+
+	switch smft.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 		ns = readstore.NamespaceAccount
 	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
@@ -883,12 +941,13 @@ func (b *Builder) indexSetMetadataFieldType(
 		entityID []byte // account address or txID bytes
 		oldValue []byte // old MetadataValue protobuf
 	}
+
 	var entries []rmapEntry
 
 	rc := rmapBucket.Cursor()
 	for k, v := rc.Seek(rmapPrefix); k != nil && readstore.HasPrefix(k, rmapPrefix); k, v = rc.Next() {
 		metaKey := extractMetadataKeyFromReverseMap(k, rmapPrefix, ns)
-		if metaKey != smft.Key {
+		if metaKey != smft.GetKey() {
 			continue
 		}
 
@@ -905,39 +964,43 @@ func (b *Builder) indexSetMetadataFieldType(
 		oldMV := &commonpb.MetadataValue{}
 		if err := oldMV.UnmarshalVT(e.oldValue); err != nil {
 			b.logger.WithFields(map[string]any{
-				"key":   smft.Key,
+				"key":   smft.GetKey(),
 				"error": err,
 			}).Errorf("Failed to unmarshal reverse map value during schema change")
+
 			continue
 		}
 
 		// Delete old forward index entry
 		oldEncoded := readstore.EncodeMetadataValue(nil, oldMV)
-		oldKey := readstore.MetadataIndexKey(kb, ledger, ns, smft.Key, oldEncoded, e.entityID)
+
+		oldKey := readstore.MetadataIndexKey(kb, ledger, ns, smft.GetKey(), oldEncoded, e.entityID)
 		if err := midxBucket.Delete(oldKey); err != nil {
 			return err
 		}
 
 		// Convert to new type
-		newMV := commonpb.ConvertMetadataValue(oldMV, smft.Type)
+		newMV := commonpb.ConvertMetadataValue(oldMV, smft.GetType())
 		newEncoded := readstore.EncodeMetadataValue(nil, newMV)
 
 		// Update eidx if null status changed
 		oldIsNull := len(oldEncoded) > 0 && oldEncoded[0] == readstore.TypeTagNull
+
 		newIsNull := len(newEncoded) > 0 && newEncoded[0] == readstore.TypeTagNull
 		if oldIsNull != newIsNull {
-			oldEidxKey := readstore.EntityExistsKey(kb, ledger, ns, smft.Key, oldIsNull, e.entityID)
+			oldEidxKey := readstore.EntityExistsKey(kb, ledger, ns, smft.GetKey(), oldIsNull, e.entityID)
 			if err := eidxBucket.Delete(oldEidxKey); err != nil {
 				return err
 			}
-			newEidxKey := readstore.EntityExistsKey(kb, ledger, ns, smft.Key, newIsNull, e.entityID)
+
+			newEidxKey := readstore.EntityExistsKey(kb, ledger, ns, smft.GetKey(), newIsNull, e.entityID)
 			if err := eidxBucket.Put(newEidxKey, nil); err != nil {
 				return err
 			}
 		}
 
 		// Write new forward index entry
-		newKey := readstore.MetadataIndexKey(kb, ledger, ns, smft.Key, newEncoded, e.entityID)
+		newKey := readstore.MetadataIndexKey(kb, ledger, ns, smft.GetKey(), newEncoded, e.entityID)
 		if err := midxBucket.Put(newKey, nil); err != nil {
 			return err
 		}
@@ -947,6 +1010,7 @@ func (b *Builder) indexSetMetadataFieldType(
 		if err != nil {
 			return err
 		}
+
 		if err := rmapBucket.Put(e.rmapKey, newMVBytes); err != nil {
 			return err
 		}
@@ -959,13 +1023,14 @@ func (b *Builder) indexSetMetadataFieldType(
 func cloneBytes(b []byte) []byte {
 	c := make([]byte, len(b))
 	copy(c, b)
+
 	return c
 }
 
 // extractMetadataKeyFromReverseMap extracts the metadata key name from a
 // reverse map key, given the prefix up to the namespace.
 // For accounts:     [ledger\x00][a:][account\x00][metadataKey]
-// For transactions: [ledger\x00][t:][txID(8B)][metadataKey]
+// For transactions: [ledger\x00][t:][txID(8B)][metadataKey].
 func extractMetadataKeyFromReverseMap(key, nsPrefix []byte, ns string) string {
 	suffix := key[len(nsPrefix):]
 	if ns == readstore.NamespaceAccount {
@@ -975,12 +1040,14 @@ func extractMetadataKeyFromReverseMap(key, nsPrefix []byte, ns string) string {
 				return string(suffix[i+1:])
 			}
 		}
+
 		return ""
 	}
 	// Transaction: skip 8-byte txID
 	if len(suffix) > 8 {
 		return string(suffix[8:])
 	}
+
 	return ""
 }
 
@@ -989,9 +1056,10 @@ func extractMetadataKeyFromReverseMap(key, nsPrefix []byte, ns string) string {
 // A backfill task is created to replay historical logs for the new index.
 func (b *Builder) handleCreateIndexLog(ledger string, log *commonpb.CreateIndexLog) {
 	cfg := b.getOrCreateLedgerConfig(ledger)
-	switch idx := log.Index.(type) {
+
+	switch idx := log.GetIndex().(type) {
 	case *commonpb.CreateIndexLog_Transaction:
-		switch txIdx := idx.Transaction.Kind.(type) {
+		switch txIdx := idx.Transaction.GetKind().(type) {
 		case *commonpb.TransactionIndex_Builtin:
 			cfg.txBuiltinIndexed[txIdx.Builtin] = true
 			b.addBackfillTaskForTxBuiltin(ledger, txIdx.Builtin)
@@ -1000,7 +1068,7 @@ func (b *Builder) handleCreateIndexLog(ledger string, log *commonpb.CreateIndexL
 			b.addBackfillTaskForTxMetadata(ledger, txIdx.MetadataKey)
 		}
 	case *commonpb.CreateIndexLog_Account:
-		switch acctIdx := idx.Account.Kind.(type) {
+		switch acctIdx := idx.Account.GetKind().(type) {
 		case *commonpb.AccountIndex_Builtin:
 			cfg.acctBuiltinIndexed[acctIdx.Builtin] = true
 			// No backfill function for account builtins yet — add when needed.
@@ -1018,9 +1086,10 @@ func (b *Builder) handleCreateIndexLog(ledger string, log *commonpb.CreateIndexL
 // It also removes any active backfill task for the dropped index.
 func (b *Builder) handleDropIndexLog(ledger string, log *commonpb.DropIndexLog) {
 	cfg := b.getOrCreateLedgerConfig(ledger)
-	switch idx := log.Index.(type) {
+
+	switch idx := log.GetIndex().(type) {
 	case *commonpb.DropIndexLog_Transaction:
-		switch txIdx := idx.Transaction.Kind.(type) {
+		switch txIdx := idx.Transaction.GetKind().(type) {
 		case *commonpb.TransactionIndex_Builtin:
 			delete(cfg.txBuiltinIndexed, txIdx.Builtin)
 			b.removeBackfillTask(indexID{transaction: idx.Transaction})
@@ -1029,7 +1098,7 @@ func (b *Builder) handleDropIndexLog(ledger string, log *commonpb.DropIndexLog) 
 			b.removeBackfillTask(indexID{transaction: idx.Transaction})
 		}
 	case *commonpb.DropIndexLog_Account:
-		switch acctIdx := idx.Account.Kind.(type) {
+		switch acctIdx := idx.Account.GetKind().(type) {
 		case *commonpb.AccountIndex_Builtin:
 			delete(cfg.acctBuiltinIndexed, acctIdx.Builtin)
 			b.removeBackfillTask(indexID{account: idx.Account})
@@ -1047,22 +1116,25 @@ func (b *Builder) handleDropIndexLog(ledger string, log *commonpb.DropIndexLog) 
 // This marks the index as READY and removes any residual backfill task.
 func (b *Builder) handleIndexReadyLog(ledger string, log *commonpb.IndexReadyLog) {
 	cfg := b.getOrCreateLedgerConfig(ledger)
-	switch idx := log.Index.(type) {
+
+	switch idx := log.GetIndex().(type) {
 	case *commonpb.IndexReadyLog_Transaction:
-		switch txIdx := idx.Transaction.Kind.(type) {
+		switch txIdx := idx.Transaction.GetKind().(type) {
 		case *commonpb.TransactionIndex_Builtin:
 			cfg.txBuiltinIndexed[txIdx.Builtin] = true
 		case *commonpb.TransactionIndex_MetadataKey:
 			cfg.txMetadataIndexed[txIdx.MetadataKey] = true
 		}
+
 		b.removeBackfillTask(indexID{transaction: idx.Transaction})
 	case *commonpb.IndexReadyLog_Account:
-		switch acctIdx := idx.Account.Kind.(type) {
+		switch acctIdx := idx.Account.GetKind().(type) {
 		case *commonpb.AccountIndex_Builtin:
 			cfg.acctBuiltinIndexed[acctIdx.Builtin] = true
 		case *commonpb.AccountIndex_MetadataKey:
 			cfg.acctMetadataIndexed[acctIdx.MetadataKey] = true
 		}
+
 		b.removeBackfillTask(indexID{account: idx.Account})
 	case *commonpb.IndexReadyLog_LogBuiltin:
 		cfg.logBuiltinIndexed[idx.LogBuiltin] = true
@@ -1088,6 +1160,7 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 		cfg = newLedgerIndexConfig()
 		b.indexConfig[ledger] = cfg
 	}
+
 	return cfg
 }
 
@@ -1101,12 +1174,14 @@ func extractEntityIDFromReverseMap(key, nsPrefix []byte, ns string) []byte {
 				return suffix[:i]
 			}
 		}
+
 		return suffix
 	}
 	// Transaction: entity ID is first 8 bytes
 	if len(suffix) >= 8 {
 		return suffix[:8]
 	}
+
 	return suffix
 }
 
@@ -1122,41 +1197,49 @@ func extractEntityIDFromReverseMap(key, nsPrefix []byte, ns string) []byte {
 //	LogBuiltin:   [ledger\x00]l[builtin_byte]
 func backfillBBKey(ledger string, id indexID) []byte {
 	if id.transaction != nil {
-		switch txIdx := id.transaction.Kind.(type) {
+		switch txIdx := id.transaction.GetKind().(type) {
 		case *commonpb.TransactionIndex_Builtin:
 			key := make([]byte, 0, len(ledger)+3)
 			key = append(key, ledger...)
 			key = append(key, 0x00, readstore.BackfillKindTxBuiltin, byte(txIdx.Builtin))
+
 			return key
 		case *commonpb.TransactionIndex_MetadataKey:
 			key := make([]byte, 0, len(ledger)+2+len(txIdx.MetadataKey))
 			key = append(key, ledger...)
 			key = append(key, 0x00, readstore.BackfillKindTxMetadata)
 			key = append(key, txIdx.MetadataKey...)
+
 			return key
 		}
 	}
+
 	if id.account != nil {
-		switch acctIdx := id.account.Kind.(type) {
+		switch acctIdx := id.account.GetKind().(type) {
 		case *commonpb.AccountIndex_Builtin:
 			key := make([]byte, 0, len(ledger)+3)
 			key = append(key, ledger...)
 			key = append(key, 0x00, readstore.BackfillKindAcctBuiltin, byte(acctIdx.Builtin))
+
 			return key
 		case *commonpb.AccountIndex_MetadataKey:
 			key := make([]byte, 0, len(ledger)+2+len(acctIdx.MetadataKey))
 			key = append(key, ledger...)
 			key = append(key, 0x00, readstore.BackfillKindAcctMetadata)
 			key = append(key, acctIdx.MetadataKey...)
+
 			return key
 		}
 	}
+
 	if id.logBuiltin != nil {
 		key := make([]byte, 0, len(ledger)+3)
 		key = append(key, ledger...)
 		key = append(key, 0x00, readstore.BackfillKindLogBuiltin, byte(*id.logBuiltin))
+
 		return key
 	}
+
 	return nil
 }
 
@@ -1169,6 +1252,7 @@ func (b *Builder) addBackfillTask(ledger string, id indexID) {
 			return
 		}
 	}
+
 	b.backfillTasks = append(b.backfillTasks, &backfillTask{
 		ledger: ledger,
 		index:  id,
@@ -1215,6 +1299,7 @@ func (b *Builder) removeBackfillTask(id indexID) {
 			// Remove from slice (order doesn't matter).
 			b.backfillTasks[i] = b.backfillTasks[len(b.backfillTasks)-1]
 			b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
+
 			return
 		}
 	}
@@ -1225,42 +1310,47 @@ func matchesBackfillIndex(a, b indexID) bool {
 	if a.transaction != nil && b.transaction != nil {
 		return matchesTransactionIndex(a.transaction, b.transaction)
 	}
+
 	if a.account != nil && b.account != nil {
 		return matchesAccountIndex(a.account, b.account)
 	}
+
 	if a.logBuiltin != nil && b.logBuiltin != nil {
 		return *a.logBuiltin == *b.logBuiltin
 	}
+
 	return false
 }
 
 // matchesTransactionIndex checks if two TransactionIndex values represent the same index.
 func matchesTransactionIndex(a, b *commonpb.TransactionIndex) bool {
-	switch ak := a.Kind.(type) {
+	switch ak := a.GetKind().(type) {
 	case *commonpb.TransactionIndex_Builtin:
-		if bk, ok := b.Kind.(*commonpb.TransactionIndex_Builtin); ok {
+		if bk, ok := b.GetKind().(*commonpb.TransactionIndex_Builtin); ok {
 			return ak.Builtin == bk.Builtin
 		}
 	case *commonpb.TransactionIndex_MetadataKey:
-		if bk, ok := b.Kind.(*commonpb.TransactionIndex_MetadataKey); ok {
+		if bk, ok := b.GetKind().(*commonpb.TransactionIndex_MetadataKey); ok {
 			return ak.MetadataKey == bk.MetadataKey
 		}
 	}
+
 	return false
 }
 
 // matchesAccountIndex checks if two AccountIndex values represent the same index.
 func matchesAccountIndex(a, b *commonpb.AccountIndex) bool {
-	switch ak := a.Kind.(type) {
+	switch ak := a.GetKind().(type) {
 	case *commonpb.AccountIndex_Builtin:
-		if bk, ok := b.Kind.(*commonpb.AccountIndex_Builtin); ok {
+		if bk, ok := b.GetKind().(*commonpb.AccountIndex_Builtin); ok {
 			return ak.Builtin == bk.Builtin
 		}
 	case *commonpb.AccountIndex_MetadataKey:
-		if bk, ok := b.Kind.(*commonpb.AccountIndex_MetadataKey); ok {
+		if bk, ok := b.GetKind().(*commonpb.AccountIndex_MetadataKey); ok {
 			return ak.MetadataKey == bk.MetadataKey
 		}
 	}
+
 	return false
 }
 
@@ -1305,6 +1395,7 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 			// Remove from slice.
 			b.backfillTasks[i] = b.backfillTasks[len(b.backfillTasks)-1]
 			b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
+
 			continue
 		}
 
@@ -1328,6 +1419,7 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) erro
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = logsCursor.Close() }()
 
 	// Build a temporary index config with only the backfilling index enabled.
@@ -1337,6 +1429,7 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) erro
 	origConfig := b.indexConfig
 	b.indexConfig = tmpConfig
 	b.backfillMode = true
+
 	defer func() {
 		b.indexConfig = origConfig
 		b.backfillMode = false
@@ -1357,27 +1450,32 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) erro
 
 		if err := b.readStore.Update(func(tx *bolt.Tx) error {
 			b.wb.Init(tx)
+
 			for batchCount < b.batchSize {
 				log, err := logsCursor.Next()
 				if err != nil {
-					if err == io.EOF {
+					if errors.Is(err, io.EOF) {
 						eof = true
+
 						break
 					}
+
 					return err
 				}
 
 				// Skip config-mutation log types during backfill.
 				if !isDataLog(log) {
-					lastSeq = log.Sequence
+					lastSeq = log.GetSequence()
 					batchCount++
+
 					continue
 				}
 
 				if err := b.indexLogEntry(tx, log); err != nil {
 					return err
 				}
-				lastSeq = log.Sequence
+
+				lastSeq = log.GetSequence()
 				batchCount++
 			}
 
@@ -1386,8 +1484,10 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) erro
 				if err := b.wb.Flush(); err != nil {
 					return err
 				}
+
 				return b.readStore.WriteBackfillProgress(tx, task.bbKey, lastSeq)
 			}
+
 			return nil
 		}); err != nil {
 			return err
@@ -1411,25 +1511,29 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) erro
 // backfilling index's ledger config with only that index enabled.
 func (b *Builder) buildBackfillConfig(task *backfillTask) map[string]*ledgerIndexConfig {
 	cfg := newLedgerIndexConfig()
+
 	if task.index.transaction != nil {
-		switch txIdx := task.index.transaction.Kind.(type) {
+		switch txIdx := task.index.transaction.GetKind().(type) {
 		case *commonpb.TransactionIndex_Builtin:
 			cfg.txBuiltinIndexed[txIdx.Builtin] = true
 		case *commonpb.TransactionIndex_MetadataKey:
 			cfg.txMetadataIndexed[txIdx.MetadataKey] = true
 		}
 	}
+
 	if task.index.account != nil {
-		switch acctIdx := task.index.account.Kind.(type) {
+		switch acctIdx := task.index.account.GetKind().(type) {
 		case *commonpb.AccountIndex_Builtin:
 			cfg.acctBuiltinIndexed[acctIdx.Builtin] = true
 		case *commonpb.AccountIndex_MetadataKey:
 			cfg.acctMetadataIndexed[acctIdx.MetadataKey] = true
 		}
 	}
+
 	if task.index.logBuiltin != nil {
 		cfg.logBuiltinIndexed[*task.index.logBuiltin] = true
 	}
+
 	return map[string]*ledgerIndexConfig{task.ledger: cfg}
 }
 
@@ -1437,17 +1541,20 @@ func (b *Builder) buildBackfillConfig(task *backfillTask) map[string]*ledgerInde
 // (transactions, metadata). Returns false for config-mutation logs
 // (CreateIndex, DropIndex, IndexReady, etc.) which must be skipped during backfill.
 func isDataLog(log *commonpb.Log) bool {
-	if log.Payload == nil {
+	if log.GetPayload() == nil {
 		return false
 	}
-	applyLog, ok := log.Payload.Type.(*commonpb.LogPayload_Apply)
+
+	applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
 	if !ok {
 		return false
 	}
-	if applyLog.Apply.Log == nil || applyLog.Apply.Log.Data == nil {
+
+	if applyLog.Apply.GetLog() == nil || applyLog.Apply.GetLog().GetData() == nil {
 		return false
 	}
-	switch applyLog.Apply.Log.Data.Payload.(type) {
+
+	switch applyLog.Apply.GetLog().GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction,
 		*commonpb.LedgerLogPayload_RevertedTransaction,
 		*commonpb.LedgerLogPayload_SavedMetadata,
@@ -1473,7 +1580,8 @@ func (b *Builder) proposeIndexReady(task *backfillTask) bool {
 		},
 	}
 
-	if task.index.transaction != nil {
+	switch {
+	case task.index.transaction != nil:
 		order.GetApply().Data = &raftcmdpb.LedgerApplyOrder_IndexReady{
 			IndexReady: &raftcmdpb.IndexReadyOrder{
 				Index: &raftcmdpb.IndexReadyOrder_Transaction{
@@ -1481,7 +1589,7 @@ func (b *Builder) proposeIndexReady(task *backfillTask) bool {
 				},
 			},
 		}
-	} else if task.index.account != nil {
+	case task.index.account != nil:
 		order.GetApply().Data = &raftcmdpb.LedgerApplyOrder_IndexReady{
 			IndexReady: &raftcmdpb.IndexReadyOrder{
 				Index: &raftcmdpb.IndexReadyOrder_Account{
@@ -1489,7 +1597,7 @@ func (b *Builder) proposeIndexReady(task *backfillTask) bool {
 				},
 			},
 		}
-	} else if task.index.logBuiltin != nil {
+	case task.index.logBuiltin != nil:
 		order.GetApply().Data = &raftcmdpb.LedgerApplyOrder_IndexReady{
 			IndexReady: &raftcmdpb.IndexReadyOrder{
 				Index: &raftcmdpb.IndexReadyOrder_LogBuiltin{
@@ -1504,7 +1612,9 @@ func (b *Builder) proposeIndexReady(task *backfillTask) bool {
 			"ledger": task.ledger,
 			"error":  err,
 		}).Errorf("Failed to propose IndexReady")
+
 		return false
 	}
+
 	return true
 }

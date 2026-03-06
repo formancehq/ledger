@@ -35,30 +35,7 @@ const clickhouseTransactionColumns = `JSON(
 // ClickHouseCreateTableDDL returns the CREATE TABLE statement for the events table
 // with a fully-typed JSON column matching the ledger v2 reference implementation.
 func ClickHouseCreateTableDDL(table string) string {
-	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-    log_sequence UInt64,
-    type         LowCardinality(String),
-    ledger       LowCardinality(String),
-    date         DateTime64(6, 'UTC'),
-    data         JSON(
-        transaction %s,
-        accountMetadata Map(String, Map(String, String)),
-        revertedTransactionId Nullable(UInt64),
-        revertTransaction %s,
-        targetType Nullable(String),
-        targetId Variant(UInt64, String),
-        metadata Map(String, String),
-        key Nullable(String),
-        ledgerName Nullable(String),
-        signingKeyId Nullable(String),
-        publicKey Nullable(String),
-        requireSignatures Nullable(Bool),
-        sinkName Nullable(String),
-        hash Nullable(String),
-        idempotencyKey Nullable(String)
-    )
-) ENGINE = MergeTree()
-ORDER BY (ledger, log_sequence)`, table, clickhouseTransactionColumns, clickhouseTransactionColumns)
+	return fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n    log_sequence UInt64,\n    type         LowCardinality(String),\n    ledger       LowCardinality(String),\n    date         DateTime64(6, 'UTC'),\n    data         JSON(\n        transaction %s,\n        accountMetadata Map(String, String)),\n        revertedTransactionId Nullable(UInt64),\n        revertTransaction %s,\n        targetType Nullable(String),\n        targetId Variant(UInt64, String),\n        metadata Map(String, String),\n        key Nullable(String),\n        ledgerName Nullable(String),\n        signingKeyId Nullable(String),\n        publicKey Nullable(String),\n        requireSignatures Nullable(Bool),\n        sinkName Nullable(String),\n        hash Nullable(String),\n        idempotencyKey Nullable(String)\n    ) ENGINE = MergeTree()\nORDER BY (ledger, log_sequence)", table, clickhouseTransactionColumns, clickhouseTransactionColumns)
 }
 
 // ---------- ClickHouse-compatible time type ----------
@@ -72,7 +49,7 @@ type clickhouseTime time.Time
 const clickhouseTimeFormat = "2006-01-02 15:04:05.999999"
 
 func (t clickhouseTime) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf(`"%s"`, time.Time(t).UTC().Format(clickhouseTimeFormat))), nil
+	return fmt.Appendf(nil, `"%s"`, time.Time(t).UTC().Format(clickhouseTimeFormat)), nil
 }
 
 // ---------- Go structs for ClickHouse-friendly JSON ----------
@@ -136,37 +113,38 @@ type clickhousePosting struct {
 func eventToClickHouseJSON(event *eventspb.Event) ([]byte, error) {
 	data := clickhouseEventData{}
 
-	log := event.Log
+	log := event.GetLog()
 	if log == nil {
 		return json.Marshal(data)
 	}
 
 	// Audit trail
-	if len(log.Hash) > 0 {
-		h := hex.EncodeToString(log.Hash)
+	if len(log.GetHash()) > 0 {
+		h := hex.EncodeToString(log.GetHash())
 		data.Hash = &h
 	}
-	if log.Idempotency != nil && log.Idempotency.Key != "" {
+
+	if log.GetIdempotency() != nil && log.GetIdempotency().GetKey() != "" {
 		data.IdempotencyKey = &log.Idempotency.Key
 	}
 
-	if log.Payload == nil {
+	if log.GetPayload() == nil {
 		return json.Marshal(data)
 	}
 
-	switch p := log.Payload.Type.(type) {
+	switch p := log.GetPayload().GetType().(type) {
 	case *commonpb.LogPayload_CreateLedger:
-		populateLedgerInfo(&data, p.CreateLedger.Info)
+		populateLedgerInfo(&data, p.CreateLedger.GetInfo())
 
 	case *commonpb.LogPayload_DeleteLedger:
-		populateLedgerInfo(&data, p.DeleteLedger.Info)
+		populateLedgerInfo(&data, p.DeleteLedger.GetInfo())
 
 	case *commonpb.LogPayload_Apply:
 		populateApply(&data, p.Apply)
 
 	case *commonpb.LogPayload_RegisterSigningKey:
 		data.SigningKeyID = &p.RegisterSigningKey.KeyId
-		pk := hex.EncodeToString(p.RegisterSigningKey.PublicKey)
+		pk := hex.EncodeToString(p.RegisterSigningKey.GetPublicKey())
 		data.PublicKey = &pk
 
 	case *commonpb.LogPayload_RevokeSigningKey:
@@ -176,7 +154,7 @@ func eventToClickHouseJSON(event *eventspb.Event) ([]byte, error) {
 		data.RequireSignatures = &p.SetSigningConfig.RequireSignatures
 
 	case *commonpb.LogPayload_AddedEventsSink:
-		if p.AddedEventsSink.Config != nil {
+		if p.AddedEventsSink.GetConfig() != nil {
 			data.SinkName = &p.AddedEventsSink.Config.Name
 		}
 
@@ -193,29 +171,30 @@ func populateLedgerInfo(data *clickhouseEventData, info *commonpb.LedgerInfo) {
 	if info == nil {
 		return
 	}
+
 	data.LedgerName = &info.Name
 }
 
 func populateApply(data *clickhouseEventData, apply *commonpb.ApplyLedgerLog) {
-	if apply == nil || apply.Log == nil || apply.Log.Data == nil {
+	if apply == nil || apply.GetLog() == nil || apply.GetLog().GetData() == nil {
 		return
 	}
 
-	switch lp := apply.Log.Data.Payload.(type) {
+	switch lp := apply.GetLog().GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		data.Transaction = convertTransaction(lp.CreatedTransaction.Transaction)
-		data.AccountMetadata = convertAccountMetadataMap(lp.CreatedTransaction.AccountMetadata)
+		data.Transaction = convertTransaction(lp.CreatedTransaction.GetTransaction())
+		data.AccountMetadata = convertAccountMetadataMap(lp.CreatedTransaction.GetAccountMetadata())
 
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		data.RevertedTransactionID = &lp.RevertedTransaction.RevertedTransactionId
-		data.RevertTransaction = convertTransaction(lp.RevertedTransaction.RevertTransaction)
+		data.RevertTransaction = convertTransaction(lp.RevertedTransaction.GetRevertTransaction())
 
 	case *commonpb.LedgerLogPayload_SavedMetadata:
-		data.TargetType, data.TargetID = convertTarget(lp.SavedMetadata.Target)
-		data.Metadata = convertMetadataSet(lp.SavedMetadata.Metadata)
+		data.TargetType, data.TargetID = convertTarget(lp.SavedMetadata.GetTarget())
+		data.Metadata = convertMetadataSet(lp.SavedMetadata.GetMetadata())
 
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
-		data.TargetType, data.TargetID = convertTarget(lp.DeletedMetadata.Target)
+		data.TargetType, data.TargetID = convertTarget(lp.DeletedMetadata.GetTarget())
 		data.Key = &lp.DeletedMetadata.Key
 
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
@@ -235,43 +214,46 @@ func convertTransaction(tx *commonpb.Transaction) *clickhouseTransaction {
 	}
 
 	result := &clickhouseTransaction{
-		ID:        tx.Id,
-		Reference: tx.Reference,
-		Reverted:  tx.Reverted,
+		ID:        tx.GetId(),
+		Reference: tx.GetReference(),
+		Reverted:  tx.GetReverted(),
 	}
 
-	if tx.Timestamp != nil {
-		result.Timestamp = clickhouseTime(tx.Timestamp.AsTime().Time)
-	}
-	if tx.InsertedAt != nil {
-		result.InsertedAt = clickhouseTime(tx.InsertedAt.AsTime().Time)
+	if tx.GetTimestamp() != nil {
+		result.Timestamp = clickhouseTime(tx.GetTimestamp().AsTime().Time)
 	}
 
-	result.Postings = make([]clickhousePosting, len(tx.Postings))
-	for i, p := range tx.Postings {
+	if tx.GetInsertedAt() != nil {
+		result.InsertedAt = clickhouseTime(tx.GetInsertedAt().AsTime().Time)
+	}
+
+	result.Postings = make([]clickhousePosting, len(tx.GetPostings()))
+	for i, p := range tx.GetPostings() {
 		result.Postings[i] = clickhousePosting{
-			Source:      p.Source,
-			Destination: p.Destination,
-			Asset:       p.Asset,
-			Amount:      p.Amount.ToBigInt(),
+			Source:      p.GetSource(),
+			Destination: p.GetDestination(),
+			Asset:       p.GetAsset(),
+			Amount:      p.GetAmount().ToBigInt(),
 		}
 	}
 
-	result.Metadata = convertMetadataSet(tx.Metadata)
+	result.Metadata = convertMetadataSet(tx.GetMetadata())
 
 	return result
 }
 
 func convertMetadataSet(ms *commonpb.MetadataSet) map[string]string {
-	if ms == nil || len(ms.Metadata) == 0 {
+	if ms == nil || len(ms.GetMetadata()) == 0 {
 		return nil
 	}
-	result := make(map[string]string, len(ms.Metadata))
-	for _, entry := range ms.Metadata {
-		if entry.Value != nil {
-			result[entry.Key] = commonpb.MetadataValueToString(entry.Value)
+
+	result := make(map[string]string, len(ms.GetMetadata()))
+	for _, entry := range ms.GetMetadata() {
+		if entry.GetValue() != nil {
+			result[entry.GetKey()] = commonpb.MetadataValueToString(entry.GetValue())
 		}
 	}
+
 	return result
 }
 
@@ -279,10 +261,12 @@ func convertAccountMetadataMap(am map[string]*commonpb.MetadataSet) map[string]m
 	if len(am) == 0 {
 		return nil
 	}
+
 	result := make(map[string]map[string]string, len(am))
 	for addr, ms := range am {
 		result[addr] = convertMetadataSet(ms)
 	}
+
 	return result
 }
 
@@ -290,13 +274,16 @@ func convertTarget(target *commonpb.Target) (*string, any) {
 	if target == nil {
 		return nil, nil
 	}
-	switch t := target.Target.(type) {
+
+	switch t := target.GetTarget().(type) {
 	case *commonpb.Target_Account:
 		tt := "account"
-		return &tt, t.Account.Addr
+
+		return &tt, t.Account.GetAddr()
 	case *commonpb.Target_Transaction:
 		tt := "transaction"
-		return &tt, t.Transaction.Id
+
+		return &tt, t.Transaction.GetId()
 	default:
 		return nil, nil
 	}

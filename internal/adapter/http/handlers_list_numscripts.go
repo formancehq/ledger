@@ -9,6 +9,7 @@ func (s *Server) handleListNumscripts(w http.ResponseWriter, r *http.Request) {
 	scripts, err := s.backend.ListNumscripts(r.Context())
 	if err != nil {
 		handleError(w, r, err)
+
 		return
 	}
 

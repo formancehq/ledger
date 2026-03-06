@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -72,8 +73,9 @@ type Config struct {
 
 func (c Config) Validate() error {
 	if c.ClusterID == "" {
-		return fmt.Errorf("--cluster-id is required")
+		return errors.New("--cluster-id is required")
 	}
+
 	return c.RaftConfig.Validate()
 }
 
@@ -85,5 +87,6 @@ func (c Config) ServiceAdvertiseAddr() string {
 	if err != nil {
 		host = c.RaftConfig.AdvertiseAddr
 	}
+
 	return fmt.Sprintf("%s:%d", host, c.GRPCPort)
 }

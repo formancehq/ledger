@@ -5,16 +5,18 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/formancehq/go-libs/v3/logging"
 	libtime "github.com/formancehq/go-libs/v3/time"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestSaveMaintenanceMode(t *testing.T) {
@@ -54,7 +56,7 @@ func TestSavePeriodSchedule(t *testing.T) {
 	// Default: empty schedule
 	schedule, err := query.ReadPeriodSchedule(s)
 	require.NoError(t, err)
-	require.Equal(t, "", schedule)
+	require.Empty(t, schedule)
 
 	// Save a cron expression
 	batch := s.NewBatch()
@@ -96,7 +98,7 @@ func TestBatchDeletePeriodScheduleFunc(t *testing.T) {
 
 	schedule, err = query.ReadPeriodSchedule(s)
 	require.NoError(t, err)
-	require.Equal(t, "", schedule)
+	require.Empty(t, schedule)
 }
 
 func TestSaveSinkConfig(t *testing.T) {
@@ -118,11 +120,12 @@ func TestSaveSinkConfig(t *testing.T) {
 	kb.PutByte(dal.KeyPrefixEventsConfig).PutString("my-sink")
 	val, closer, err := s.Get(kb.Build())
 	require.NoError(t, err)
+
 	defer func() { _ = closer.Close() }()
 
 	readBack := &commonpb.SinkConfig{}
 	require.NoError(t, proto.Unmarshal(val, readBack))
-	require.Equal(t, "my-sink", readBack.Name)
+	require.Equal(t, "my-sink", readBack.GetName())
 }
 
 func TestDeleteSinkConfig(t *testing.T) {
@@ -164,7 +167,9 @@ func TestSetSinkCursor(t *testing.T) {
 	kb.PutByte(dal.KeyPrefixSinkCursor).PutString("my-sink")
 	val, closer, err := s.Get(kb.Build())
 	require.NoError(t, err)
+
 	defer func() { _ = closer.Close() }()
+
 	require.Len(t, val, 8)
 }
 
@@ -186,7 +191,9 @@ func TestSetSinkStatus(t *testing.T) {
 	kb.PutByte(dal.KeyPrefixSinkStatus).PutString("test-sink")
 	val, closer, err := s.Get(kb.Build())
 	require.NoError(t, err)
+
 	defer func() { _ = closer.Close() }()
+
 	require.NotEmpty(t, val)
 }
 
@@ -228,6 +235,7 @@ func TestPurgeTransactionUpdates(t *testing.T) {
 
 	// Store transaction updates with different byLog values
 	batch := s.NewBatch()
+
 	for _, seq := range []uint64{5, 10, 15, 20, 25} {
 		key := domain.TransactionKey{Ledger: "test", ID: 1}
 		update := &commonpb.TransactionUpdate{
@@ -242,10 +250,11 @@ func TestPurgeTransactionUpdates(t *testing.T) {
 		}
 		require.NoError(t, StoreTransactionUpdate(batch, key, update))
 	}
+
 	require.NoError(t, batch.Commit())
 
 	// Verify all 5 updates exist
-	updates, err := query.ReadTransactionUpdates(context.Background(), s,"test", 1)
+	updates, err := query.ReadTransactionUpdates(context.Background(), s, "test", 1)
 	require.NoError(t, err)
 	require.Len(t, updates, 5)
 
@@ -255,11 +264,11 @@ func TestPurgeTransactionUpdates(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify only updates with byLog 5 and 25 remain
-	updates, err = query.ReadTransactionUpdates(context.Background(), s,"test", 1)
+	updates, err = query.ReadTransactionUpdates(context.Background(), s, "test", 1)
 	require.NoError(t, err)
 	require.Len(t, updates, 2)
-	require.Equal(t, uint64(5), updates[0].ByLog)
-	require.Equal(t, uint64(25), updates[1].ByLog)
+	require.Equal(t, uint64(5), updates[0].GetByLog())
+	require.Equal(t, uint64(25), updates[1].GetByLog())
 }
 
 func TestAppendAuditEntries(t *testing.T) {
@@ -283,13 +292,13 @@ func TestAppendAuditEntries(t *testing.T) {
 	require.Equal(t, uint64(3), lastSeq)
 
 	// Read single entry
-	entry, err := query.ReadAuditEntry(context.Background(), s,2)
+	entry, err := query.ReadAuditEntry(context.Background(), s, 2)
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), entry.Sequence)
-	require.Equal(t, uint64(20), entry.ProposalId)
+	require.Equal(t, uint64(2), entry.GetSequence())
+	require.Equal(t, uint64(20), entry.GetProposalId())
 
 	// Read non-existent entry
-	_, err = query.ReadAuditEntry(context.Background(), s,999)
+	_, err = query.ReadAuditEntry(context.Background(), s, 999)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 }
 
@@ -355,19 +364,19 @@ func TestReadTransactionUpdates(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Read updates for transaction 100
-	updates, err := query.ReadTransactionUpdates(context.Background(), s,"test", 100)
+	updates, err := query.ReadTransactionUpdates(context.Background(), s, "test", 100)
 	require.NoError(t, err)
 	require.Len(t, updates, 2)
-	require.Equal(t, uint64(1), updates[0].ByLog)
-	require.Equal(t, uint64(5), updates[1].ByLog)
+	require.Equal(t, uint64(1), updates[0].GetByLog())
+	require.Equal(t, uint64(5), updates[1].GetByLog())
 
 	// Read updates for transaction 200
-	updates, err = query.ReadTransactionUpdates(context.Background(), s,"test", 200)
+	updates, err = query.ReadTransactionUpdates(context.Background(), s, "test", 200)
 	require.NoError(t, err)
 	require.Len(t, updates, 1)
 
 	// Read updates for non-existent transaction
-	updates, err = query.ReadTransactionUpdates(context.Background(), s,"test", 999)
+	updates, err = query.ReadTransactionUpdates(context.Background(), s, "test", 999)
 	require.NoError(t, err)
 	require.Empty(t, updates)
 }
@@ -407,17 +416,17 @@ func TestFindTransactionCreationLog(t *testing.T) {
 	appendLogs(t, s, 1, logs...)
 
 	// Find the creation log
-	log, err := query.FindTransactionCreationLog(context.Background(), s,"find-tx-ledger", 1)
+	log, err := query.FindTransactionCreationLog(context.Background(), s, "find-tx-ledger", 1)
 	require.NoError(t, err)
 	require.NotNil(t, log)
-	require.Equal(t, uint64(5), log.Sequence)
+	require.Equal(t, uint64(5), log.GetSequence())
 
 	// Non-existent transaction should return ErrNotFound
-	_, err = query.FindTransactionCreationLog(context.Background(), s,"find-tx-ledger", 999)
+	_, err = query.FindTransactionCreationLog(context.Background(), s, "find-tx-ledger", 999)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Non-existent ledger should return error
-	_, err = query.FindTransactionCreationLog(context.Background(), s,"non-existent", 1)
+	_, err = query.FindTransactionCreationLog(context.Background(), s, "non-existent", 1)
 	require.Error(t, err)
 }
 
@@ -453,20 +462,26 @@ func TestReadSigningKeysCursorFunc(t *testing.T) {
 	// Empty store
 	cursor, err := query.ReadSigningKeysCursor(context.Background(), s)
 	require.NoError(t, err)
+
 	var keys []*commonpb.SigningKey
+
 	for {
 		key, curErr := cursor.Next()
 		if curErr != nil {
 			break
 		}
+
 		keys = append(keys, key)
 	}
+
 	_ = cursor.Close()
+
 	require.Empty(t, keys)
 
 	// Add signing keys with parent hierarchy
 	pubKey1 := make([]byte, 32)
 	pubKey2 := make([]byte, 32)
+
 	for i := range pubKey1 {
 		pubKey1[i] = byte(i)
 		pubKey2[i] = byte(i + 50)
@@ -479,27 +494,35 @@ func TestReadSigningKeysCursorFunc(t *testing.T) {
 
 	cursor, err = query.ReadSigningKeysCursor(context.Background(), s)
 	require.NoError(t, err)
+
 	keys = nil
+
 	for {
 		key, curErr := cursor.Next()
 		if curErr != nil {
 			break
 		}
+
 		keys = append(keys, key)
 	}
+
 	_ = cursor.Close()
+
 	require.Len(t, keys, 2)
 
 	// Find the child key
 	var childKey *commonpb.SigningKey
+
 	for _, k := range keys {
-		if k.KeyId == "child-key" {
+		if k.GetKeyId() == "child-key" {
 			childKey = k
+
 			break
 		}
 	}
+
 	require.NotNil(t, childKey)
-	require.Equal(t, "root-key", childKey.ParentKeyId)
+	require.Equal(t, "root-key", childKey.GetParentKeyId())
 }
 
 func TestReadAuditEntry(t *testing.T) {
@@ -508,7 +531,7 @@ func TestReadAuditEntry(t *testing.T) {
 	s := newTestStore(t)
 
 	// Non-existent entry
-	_, err := query.ReadAuditEntry(context.Background(), s,99)
+	_, err := query.ReadAuditEntry(context.Background(), s, 99)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Add entry and read back
@@ -522,8 +545,8 @@ func TestReadAuditEntry(t *testing.T) {
 	))
 	require.NoError(t, batch.Commit())
 
-	entry, err := query.ReadAuditEntry(context.Background(), s,42)
+	entry, err := query.ReadAuditEntry(context.Background(), s, 42)
 	require.NoError(t, err)
-	require.Equal(t, uint64(42), entry.Sequence)
-	require.Equal(t, uint64(100), entry.ProposalId)
+	require.Equal(t, uint64(42), entry.GetSequence())
+	require.Equal(t, uint64(100), entry.GetProposalId())
 }

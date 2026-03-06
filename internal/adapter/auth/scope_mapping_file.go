@@ -12,14 +12,17 @@ func LoadScopeMappingFromFile(path string) (ScopeMapping, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading scope mapping file: %w", err)
 	}
+
 	return ParseScopeMappingJSON(data)
 }
 
 // ParseScopeMappingJSON parses a JSON-encoded scope mapping.
-// Expected format: {"ledger:read": ["ledgers:read", "transactions:read", ...], ...}
+// Expected format: {"ledger:read": ["ledgers:read", "transactions:read", ...], ...}.
 func ParseScopeMappingJSON(data []byte) (ScopeMapping, error) {
 	var raw map[string][]string
-	if err := json.Unmarshal(data, &raw); err != nil {
+
+	err := json.Unmarshal(data, &raw)
+	if err != nil {
 		return nil, fmt.Errorf("parsing scope mapping JSON: %w", err)
 	}
 
@@ -31,8 +34,10 @@ func ParseScopeMappingJSON(data []byte) (ScopeMapping, error) {
 			if _, ok := AllGranularScopes[scope]; !ok {
 				return nil, fmt.Errorf("unknown granular scope %q in mapping for %q", s, virtualScope)
 			}
+
 			scopes[i] = scope
 		}
+
 		mapping[virtualScope] = scopes
 	}
 

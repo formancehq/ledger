@@ -10,41 +10,41 @@ var ErrNotFound = errors.New("not found")
 
 // Reason constants shared between server and client for gRPC error mapping.
 const (
-	ErrReasonLedgerAlreadyExists          = "LEDGER_ALREADY_EXISTS"
-	ErrReasonLedgerNotFound               = "LEDGER_NOT_FOUND"
-	ErrReasonIdempotencyKeyConflict       = "IDEMPOTENCY_KEY_CONFLICT"
-	ErrReasonTransactionReferenceConflict = "TRANSACTION_REFERENCE_CONFLICT"
-	ErrReasonTransactionNotFound          = "TRANSACTION_NOT_FOUND"
-	ErrReasonTransactionAlreadyReverted   = "TRANSACTION_ALREADY_REVERTED"
-	ErrReasonInsufficientFunds            = "INSUFFICIENT_FUNDS"
-	ErrReasonBalanceNotFound              = "BALANCE_NOT_FOUND"
-	ErrReasonBalanceNotPreloaded          = "BALANCE_NOT_PRELOADED"
-	ErrReasonNumscriptParseError          = "NUMSCRIPT_PARSE_ERROR"
-	ErrReasonValidation                   = "VALIDATION"
-	ErrReasonAuditDisabled                = "AUDIT_DISABLED"
-	ErrReasonSinkAlreadyExists            = "SINK_ALREADY_EXISTS"
-	ErrReasonSinkNotFound                 = "SINK_NOT_FOUND"
-	ErrReasonNoPeriodOpen                 = "NO_PERIOD_OPEN"
-	ErrReasonPeriodAlreadyClosing         = "PERIOD_ALREADY_CLOSING"
-	ErrReasonPeriodNotFound               = "PERIOD_NOT_FOUND"
-	ErrReasonPeriodNotClosing             = "PERIOD_NOT_CLOSING"
-	ErrReasonPeriodNotClosed              = "PERIOD_NOT_CLOSED"
-	ErrReasonPeriodNotArchiving           = "PERIOD_NOT_ARCHIVING"
-	ErrReasonMetadataNotFound             = "METADATA_NOT_FOUND"
-	ErrReasonInvalidReceipt               = "INVALID_RECEIPT"
-	ErrReasonMaintenanceMode              = "MAINTENANCE_MODE"
-	ErrReasonInvalidCronExpression        = "INVALID_CRON_EXPRESSION"
-	ErrReasonLedgerInMirrorMode              = "LEDGER_IN_MIRROR_MODE"
-	ErrReasonLedgerNotInMirrorMode           = "LEDGER_NOT_IN_MIRROR_MODE"
-	ErrReasonPreparedQueryAlreadyExists      = "PREPARED_QUERY_ALREADY_EXISTS"
-	ErrReasonPreparedQueryNotFound           = "PREPARED_QUERY_NOT_FOUND"
-	ErrReasonIndexNotFound                   = "INDEX_NOT_FOUND"
-	ErrReasonIndexBuilding                   = "INDEX_BUILDING"
-	ErrReasonNumscriptNotFound               = "NUMSCRIPT_NOT_FOUND"
-	ErrReasonNumscriptVersionAlreadyExists   = "NUMSCRIPT_VERSION_ALREADY_EXISTS"
-	ErrReasonNumscriptInvalidVersion         = "NUMSCRIPT_INVALID_VERSION"
-	ErrReasonAccountNotInChart               = "ACCOUNT_NOT_IN_CHART"
-	ErrReasonInvalidChart                    = "INVALID_CHART"
+	ErrReasonLedgerAlreadyExists           = "LEDGER_ALREADY_EXISTS"
+	ErrReasonLedgerNotFound                = "LEDGER_NOT_FOUND"
+	ErrReasonIdempotencyKeyConflict        = "IDEMPOTENCY_KEY_CONFLICT"
+	ErrReasonTransactionReferenceConflict  = "TRANSACTION_REFERENCE_CONFLICT"
+	ErrReasonTransactionNotFound           = "TRANSACTION_NOT_FOUND"
+	ErrReasonTransactionAlreadyReverted    = "TRANSACTION_ALREADY_REVERTED"
+	ErrReasonInsufficientFunds             = "INSUFFICIENT_FUNDS"
+	ErrReasonBalanceNotFound               = "BALANCE_NOT_FOUND"
+	ErrReasonBalanceNotPreloaded           = "BALANCE_NOT_PRELOADED"
+	ErrReasonNumscriptParseError           = "NUMSCRIPT_PARSE_ERROR"
+	ErrReasonValidation                    = "VALIDATION"
+	ErrReasonAuditDisabled                 = "AUDIT_DISABLED"
+	ErrReasonSinkAlreadyExists             = "SINK_ALREADY_EXISTS"
+	ErrReasonSinkNotFound                  = "SINK_NOT_FOUND"
+	ErrReasonNoPeriodOpen                  = "NO_PERIOD_OPEN"
+	ErrReasonPeriodAlreadyClosing          = "PERIOD_ALREADY_CLOSING"
+	ErrReasonPeriodNotFound                = "PERIOD_NOT_FOUND"
+	ErrReasonPeriodNotClosing              = "PERIOD_NOT_CLOSING"
+	ErrReasonPeriodNotClosed               = "PERIOD_NOT_CLOSED"
+	ErrReasonPeriodNotArchiving            = "PERIOD_NOT_ARCHIVING"
+	ErrReasonMetadataNotFound              = "METADATA_NOT_FOUND"
+	ErrReasonInvalidReceipt                = "INVALID_RECEIPT"
+	ErrReasonMaintenanceMode               = "MAINTENANCE_MODE"
+	ErrReasonInvalidCronExpression         = "INVALID_CRON_EXPRESSION"
+	ErrReasonLedgerInMirrorMode            = "LEDGER_IN_MIRROR_MODE"
+	ErrReasonLedgerNotInMirrorMode         = "LEDGER_NOT_IN_MIRROR_MODE"
+	ErrReasonPreparedQueryAlreadyExists    = "PREPARED_QUERY_ALREADY_EXISTS"
+	ErrReasonPreparedQueryNotFound         = "PREPARED_QUERY_NOT_FOUND"
+	ErrReasonIndexNotFound                 = "INDEX_NOT_FOUND"
+	ErrReasonIndexBuilding                 = "INDEX_BUILDING"
+	ErrReasonNumscriptNotFound             = "NUMSCRIPT_NOT_FOUND"
+	ErrReasonNumscriptVersionAlreadyExists = "NUMSCRIPT_VERSION_ALREADY_EXISTS"
+	ErrReasonNumscriptInvalidVersion       = "NUMSCRIPT_INVALID_VERSION"
+	ErrReasonAccountNotInChart             = "ACCOUNT_NOT_IN_CHART"
+	ErrReasonInvalidChart                  = "INVALID_CHART"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -64,13 +64,13 @@ func (e *BusinessError) Unwrap() error {
 
 // Sentinel validation errors (no context needed).
 var (
-	ErrTargetRequired           = errors.New("target is required")
-	ErrMetadataKeyRequired      = errors.New("key is required")
-	ErrAuditDisabled            = errors.New("audit log is disabled on this server")
-	ErrMaintenanceMode          = errors.New("cluster is in maintenance mode: write operations are blocked")
-	ErrNumscriptNameRequired       = errors.New("numscript name is required")
-	ErrNumscriptContentRequired    = errors.New("numscript content is required")
-	ErrScriptAndReferenceConflict  = errors.New("cannot specify both script and scriptReference")
+	ErrTargetRequired             = errors.New("target is required")
+	ErrMetadataKeyRequired        = errors.New("key is required")
+	ErrAuditDisabled              = errors.New("audit log is disabled on this server")
+	ErrMaintenanceMode            = errors.New("cluster is in maintenance mode: write operations are blocked")
+	ErrNumscriptNameRequired      = errors.New("numscript name is required")
+	ErrNumscriptContentRequired   = errors.New("numscript content is required")
+	ErrScriptAndReferenceConflict = errors.New("cannot specify both script and scriptReference")
 )
 
 // ErrLedgerAlreadyExists is returned when attempting to create a ledger that already exists.
@@ -79,7 +79,7 @@ type ErrLedgerAlreadyExists struct {
 }
 
 func (e *ErrLedgerAlreadyExists) Error() string {
-	return fmt.Sprintf("ledger already exists: %s", e.Name)
+	return "ledger already exists: " + e.Name
 }
 
 // ErrLedgerNotFound is returned when a referenced ledger does not exist.
@@ -88,7 +88,7 @@ type ErrLedgerNotFound struct {
 }
 
 func (e *ErrLedgerNotFound) Error() string {
-	return fmt.Sprintf("ledger does not exist: %s", e.Name)
+	return "ledger does not exist: " + e.Name
 }
 
 // ErrIdempotencyKeyConflict is returned when an idempotency key is reused with different content.
@@ -159,7 +159,7 @@ type ErrSinkAlreadyExists struct {
 }
 
 func (e *ErrSinkAlreadyExists) Error() string {
-	return fmt.Sprintf("event sink already exists: %s", e.Name)
+	return "event sink already exists: " + e.Name
 }
 
 // ErrMetadataNotFound is returned when deleting a metadata key that does not exist.
@@ -178,12 +178,12 @@ type ErrSinkNotFound struct {
 }
 
 func (e *ErrSinkNotFound) Error() string {
-	return fmt.Sprintf("event sink not found: %s", e.Name)
+	return "event sink not found: " + e.Name
 }
 
 // Period-related sentinel errors.
 var (
-	ErrNoPeriodOpen     = errors.New("no open period exists")
+	ErrNoPeriodOpen         = errors.New("no open period exists")
 	ErrPeriodAlreadyClosing = errors.New("a period is already in CLOSING state")
 )
 
@@ -277,7 +277,7 @@ type ErrIndexNotFound struct {
 }
 
 func (e *ErrIndexNotFound) Error() string {
-	return fmt.Sprintf("index not found: %s", e.Index)
+	return "index not found: " + e.Index
 }
 
 // ErrIndexBuilding is returned when a query references an index that is still being built.
@@ -286,7 +286,7 @@ type ErrIndexBuilding struct {
 }
 
 func (e *ErrIndexBuilding) Error() string {
-	return fmt.Sprintf("index is still building: %s", e.Index)
+	return "index is still building: " + e.Index
 }
 
 // ErrInvalidReceipt is returned when a JWT receipt fails verification.
@@ -295,7 +295,7 @@ type ErrInvalidReceipt struct {
 }
 
 func (e *ErrInvalidReceipt) Error() string {
-	return fmt.Sprintf("invalid receipt: %s", e.Reason)
+	return "invalid receipt: " + e.Reason
 }
 
 // ErrNumscriptNotFound is returned when a referenced numscript does not exist in the library.
@@ -304,7 +304,7 @@ type ErrNumscriptNotFound struct {
 }
 
 func (e *ErrNumscriptNotFound) Error() string {
-	return fmt.Sprintf("numscript not found: %s", e.Name)
+	return "numscript not found: " + e.Name
 }
 
 // ErrNumscriptVersionAlreadyExists is returned when saving with a semver version that already exists.
@@ -332,7 +332,7 @@ type ErrAccountNotInChart struct {
 }
 
 func (e *ErrAccountNotInChart) Error() string {
-	return fmt.Sprintf("account not in chart: %s", e.Address)
+	return "account not in chart: " + e.Address
 }
 
 // ErrInvalidChart is returned when a chart of accounts fails self-validation.
@@ -341,5 +341,5 @@ type ErrInvalidChart struct {
 }
 
 func (e *ErrInvalidChart) Error() string {
-	return fmt.Sprintf("invalid chart of accounts: %s", e.Details)
+	return "invalid chart of accounts: " + e.Details
 }

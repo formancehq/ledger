@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // FilesystemStorage implements ColdStorage using the local filesystem.
@@ -20,7 +21,7 @@ func NewFilesystemStorage(basePath string) *FilesystemStorage {
 }
 
 func (f *FilesystemStorage) archivePath(bucketID string, periodID uint64) string {
-	return filepath.Join(f.basePath, bucketID, "periods", fmt.Sprintf("%d", periodID), "archive.tar.gz")
+	return filepath.Join(f.basePath, bucketID, "periods", strconv.FormatUint(periodID, 10), "archive.tar.gz")
 }
 
 func (f *FilesystemStorage) Archive(_ context.Context, bucketID string, periodID uint64, data io.Reader) error {
@@ -33,23 +34,28 @@ func (f *FilesystemStorage) Archive(_ context.Context, bucketID string, periodID
 	if err != nil {
 		return fmt.Errorf("creating archive file: %w", err)
 	}
+
 	defer func() { _ = file.Close() }()
 
 	if _, err := io.Copy(file, data); err != nil {
 		return fmt.Errorf("writing archive data: %w", err)
 	}
+
 	return file.Close()
 }
 
 func (f *FilesystemStorage) Exists(_ context.Context, bucketID string, periodID uint64) (bool, error) {
 	path := f.archivePath(bucketID, periodID)
+
 	_, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
+
 		return false, fmt.Errorf("checking archive existence: %w", err)
 	}
+
 	return true, nil
 }
 

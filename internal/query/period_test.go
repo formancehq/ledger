@@ -4,13 +4,15 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
+
 	"github.com/formancehq/go-libs/v3/logging"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 )
 
 func TestReadPeriods(t *testing.T) {
@@ -55,9 +57,9 @@ func TestReadPeriods(t *testing.T) {
 		periods, err := query.ReadAllPeriods(context.Background(), s)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
-		require.Equal(t, uint64(1), periods[0].Id)
-		require.Equal(t, uint64(1000), periods[0].Start.Data)
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, periods[0].Status)
+		require.Equal(t, uint64(1), periods[0].GetId())
+		require.Equal(t, uint64(1000), periods[0].GetStart().GetData())
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, periods[0].GetStatus())
 
 		nextID, err := query.ReadNextPeriodID(s)
 		require.NoError(t, err)
@@ -99,16 +101,16 @@ func TestReadPeriods(t *testing.T) {
 		periods, err := query.ReadAllPeriods(context.Background(), s)
 		require.NoError(t, err)
 		require.Len(t, periods, 3)
-		require.Equal(t, uint64(1), periods[0].Id)
-		require.Equal(t, uint64(2), periods[1].Id)
-		require.Equal(t, uint64(3), periods[2].Id)
+		require.Equal(t, uint64(1), periods[0].GetId())
+		require.Equal(t, uint64(2), periods[1].GetId())
+		require.Equal(t, uint64(3), periods[2].GetId())
 
 		// Verify fields
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, periods[0].Status)
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, periods[1].Status)
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, periods[2].Status)
-		require.Equal(t, uint64(10), periods[1].CloseSequence)
-		require.Equal(t, []byte("hash-2"), periods[1].SealingHash)
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, periods[0].GetStatus())
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, periods[1].GetStatus())
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, periods[2].GetStatus())
+		require.Equal(t, uint64(10), periods[1].GetCloseSequence())
+		require.Equal(t, []byte("hash-2"), periods[1].GetSealingHash())
 
 		nextID, err := query.ReadNextPeriodID(s)
 		require.NoError(t, err)
@@ -147,9 +149,9 @@ func TestReadPeriods(t *testing.T) {
 		periods, err := query.ReadAllPeriods(context.Background(), s)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
-		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, periods[0].Status)
-		require.Equal(t, uint64(5), periods[0].CloseSequence)
-		require.Equal(t, []byte("sealed"), periods[0].SealingHash)
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, periods[0].GetStatus())
+		require.Equal(t, uint64(5), periods[0].GetCloseSequence())
+		require.Equal(t, []byte("sealed"), periods[0].GetSealingHash())
 	})
 
 	t.Run("PersistAcrossReopen", func(t *testing.T) {
@@ -188,8 +190,8 @@ func TestReadPeriods(t *testing.T) {
 		periods, err := query.ReadAllPeriods(context.Background(), s2)
 		require.NoError(t, err)
 		require.Len(t, periods, 2)
-		require.Equal(t, uint64(1), periods[0].Id)
-		require.Equal(t, uint64(2), periods[1].Id)
+		require.Equal(t, uint64(1), periods[0].GetId())
+		require.Equal(t, uint64(2), periods[1].GetId())
 
 		nextID, err := query.ReadNextPeriodID(s2)
 		require.NoError(t, err)

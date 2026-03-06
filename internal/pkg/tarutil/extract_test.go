@@ -16,6 +16,7 @@ func createTarArchive(t *testing.T, entries []tarEntry) io.Reader {
 	t.Helper()
 
 	var buf bytes.Buffer
+
 	tw := tar.NewWriter(&buf)
 
 	for _, e := range entries {
@@ -26,11 +27,13 @@ func createTarArchive(t *testing.T, entries []tarEntry) io.Reader {
 			Size:     int64(len(e.content)),
 		}
 		require.NoError(t, tw.WriteHeader(hdr))
+
 		if len(e.content) > 0 {
 			_, err := tw.Write([]byte(e.content))
 			require.NoError(t, err)
 		}
 	}
+
 	require.NoError(t, tw.Close())
 
 	return &buf
@@ -102,7 +105,9 @@ func TestExtractTar_EmptyArchive(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
+
 	var buf bytes.Buffer
+
 	tw := tar.NewWriter(&buf)
 	require.NoError(t, tw.Close())
 

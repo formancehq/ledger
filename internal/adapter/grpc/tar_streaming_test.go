@@ -18,6 +18,7 @@ func TestStreamDirAsTar_SingleFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hello world"), 0644))
 
 	var chunks []TarStreamChunk
+
 	err := StreamDirAsTar(dir, 0, func(c TarStreamChunk) error {
 		chunks = append(chunks, TarStreamChunk{
 			Data:          append([]byte(nil), c.Data...),
@@ -27,6 +28,7 @@ func TestStreamDirAsTar_SingleFile(t *testing.T) {
 			ContentSHA256: c.ContentSHA256,
 			ContentSize:   c.ContentSize,
 		})
+
 		return nil
 	})
 	require.NoError(t, err)
@@ -42,7 +44,7 @@ func TestStreamDirAsTar_SingleFile(t *testing.T) {
 	last := chunks[len(chunks)-1]
 	require.True(t, last.IsEOF)
 	require.NotEmpty(t, last.ContentSHA256)
-	require.Greater(t, last.ContentSize, uint64(0))
+	require.Positive(t, last.ContentSize)
 
 	// Reassemble and verify tar content
 	var tarData bytes.Buffer
@@ -52,12 +54,15 @@ func TestStreamDirAsTar_SingleFile(t *testing.T) {
 
 	tr := tar.NewReader(&tarData)
 	foundFile := false
+
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
 			break
 		}
+
 		require.NoError(t, err)
+
 		if header.Name == "hello.txt" {
 			foundFile = true
 			data, err := io.ReadAll(tr)
@@ -65,6 +70,7 @@ func TestStreamDirAsTar_SingleFile(t *testing.T) {
 			require.Equal(t, "hello world", string(data))
 		}
 	}
+
 	require.True(t, foundFile, "expected hello.txt in tar archive")
 }
 
@@ -78,6 +84,7 @@ func TestStreamDirAsTar_NestedDirectory(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(sub, "nested.txt"), []byte("nested"), 0644))
 
 	var chunks []TarStreamChunk
+
 	err := StreamDirAsTar(dir, 0, func(c TarStreamChunk) error {
 		chunks = append(chunks, TarStreamChunk{
 			Data:          append([]byte(nil), c.Data...),
@@ -87,6 +94,7 @@ func TestStreamDirAsTar_NestedDirectory(t *testing.T) {
 			ContentSHA256: c.ContentSHA256,
 			ContentSize:   c.ContentSize,
 		})
+
 		return nil
 	})
 	require.NoError(t, err)
@@ -98,15 +106,19 @@ func TestStreamDirAsTar_NestedDirectory(t *testing.T) {
 
 	tr := tar.NewReader(&tarData)
 	files := make(map[string]string)
+
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
 			break
 		}
+
 		require.NoError(t, err)
+
 		if !header.FileInfo().IsDir() {
 			data, err := io.ReadAll(tr)
 			require.NoError(t, err)
+
 			files[header.Name] = string(data)
 		}
 	}
@@ -121,6 +133,7 @@ func TestStreamDirAsTar_EmptyDirectory(t *testing.T) {
 	dir := t.TempDir()
 
 	var chunks []TarStreamChunk
+
 	err := StreamDirAsTar(dir, 0, func(c TarStreamChunk) error {
 		chunks = append(chunks, TarStreamChunk{
 			Data:          append([]byte(nil), c.Data...),
@@ -130,6 +143,7 @@ func TestStreamDirAsTar_EmptyDirectory(t *testing.T) {
 			ContentSHA256: c.ContentSHA256,
 			ContentSize:   c.ContentSize,
 		})
+
 		return nil
 	})
 	require.NoError(t, err)
@@ -149,6 +163,7 @@ func TestStreamDirAsTar_WithOffset(t *testing.T) {
 
 	// First, stream fully to get total size
 	var fullChunks []TarStreamChunk
+
 	err := StreamDirAsTar(dir, 0, func(c TarStreamChunk) error {
 		fullChunks = append(fullChunks, TarStreamChunk{
 			Data:          append([]byte(nil), c.Data...),
@@ -158,12 +173,14 @@ func TestStreamDirAsTar_WithOffset(t *testing.T) {
 			ContentSHA256: c.ContentSHA256,
 			ContentSize:   c.ContentSize,
 		})
+
 		return nil
 	})
 	require.NoError(t, err)
 
 	// Now stream with an offset
 	var offsetChunks []TarStreamChunk
+
 	err = StreamDirAsTar(dir, 1024, func(c TarStreamChunk) error {
 		offsetChunks = append(offsetChunks, TarStreamChunk{
 			Data:          append([]byte(nil), c.Data...),
@@ -173,6 +190,7 @@ func TestStreamDirAsTar_WithOffset(t *testing.T) {
 			ContentSHA256: c.ContentSHA256,
 			ContentSize:   c.ContentSize,
 		})
+
 		return nil
 	})
 	require.NoError(t, err)
@@ -182,9 +200,11 @@ func TestStreamDirAsTar_WithOffset(t *testing.T) {
 	for _, c := range fullChunks {
 		fullSize += uint64(len(c.Data))
 	}
+
 	for _, c := range offsetChunks {
 		offsetSize += uint64(len(c.Data))
 	}
+
 	require.Less(t, offsetSize, fullSize)
 }
 
