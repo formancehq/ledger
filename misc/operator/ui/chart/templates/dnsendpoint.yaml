@@ -1,0 +1,27 @@
+{{- if and .Values.ingress.enabled .Values.ingress.dnsEndpoint.enabled -}}
+apiVersion: externaldns.k8s.io/v1alpha1
+kind: DNSEndpoint
+metadata:
+  name: {{ include "ledger-operator-ui.fullname" . }}
+  labels:
+    {{- include "ledger-operator-ui.labels" . | nindent 4 }}
+  {{- with .Values.ingress.dnsEndpoint.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  endpoints:
+    {{- range .Values.ingress.dnsEndpoint.endpoints }}
+    - dnsName: {{ .dnsName | quote }}
+      recordType: {{ .recordType | default "CNAME" }}
+      targets:
+        {{- toYaml .targets | nindent 8 }}
+      {{- if .recordTTL }}
+      recordTTL: {{ .recordTTL }}
+      {{- end }}
+      {{- if .providerSpecific }}
+      providerSpecific:
+        {{- toYaml .providerSpecific | nindent 8 }}
+      {{- end }}
+    {{- end }}
+{{- end }}

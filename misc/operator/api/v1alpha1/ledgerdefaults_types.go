@@ -90,6 +90,14 @@ type LedgerDefaultsSpec struct {
 	// Persistence configuration for WAL and data volumes.
 	// +optional
 	Persistence *PersistenceSpec `json:"persistence,omitempty"`
+
+	// AutoIngress automatically creates an Ingress from the LedgerService name.
+	// +optional
+	AutoIngress *AutoIngressSpec `json:"autoIngress,omitempty"`
+
+	// AutoDNSEndpoint automatically creates a DNSEndpoint from the LedgerService name.
+	// +optional
+	AutoDNSEndpoint *AutoDNSEndpointSpec `json:"autoDNSEndpoint,omitempty"`
 }
 
 // LedgerDefaultsConfig holds the subset of LedgerServiceConfig fields that are safe

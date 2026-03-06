@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"maps"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,7 +14,10 @@ import (
 func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	name := ledger.Name
 
-	if ledger.Spec.Ingress == nil || !ledger.Spec.Ingress.Enabled {
+	autoEnabled := ledger.Spec.AutoIngress != nil && ledger.Spec.AutoIngress.Enabled
+	manualEnabled := ledger.Spec.Ingress != nil && ledger.Spec.Ingress.Enabled
+
+	if !autoEnabled && !manualEnabled {
 		return r.deleteIfExists(ctx, &networkingv1.Ingress{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
@@ -31,15 +35,48 @@ func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, ing, func() error {
 		ing.Labels = commonLabels(ledger)
-		ing.Annotations = ledger.Spec.Ingress.Annotations
 
-		spec := networkingv1.IngressSpec{}
-		if ledger.Spec.Ingress.ClassName != "" {
-			spec.IngressClassName = &ledger.Spec.Ingress.ClassName
+		annotations := make(map[string]string)
+		var className string
+		var hosts []ledgerv1alpha1.IngressHost
+		var tlsSpecs []ledgerv1alpha1.IngressTLS
+
+		if autoEnabled {
+			auto := ledger.Spec.AutoIngress
+			host := ledger.Name + auto.Suffix + "." + auto.TLD
+
+			paths := auto.Paths
+			if len(paths) == 0 {
+				paths = []ledgerv1alpha1.IngressPath{{Path: "/", PathType: "Prefix"}}
+			}
+
+			hosts = append(hosts, ledgerv1alpha1.IngressHost{
+				Host:  host,
+				Paths: paths,
+			})
+			className = auto.ClassName
+			tlsSpecs = append(tlsSpecs, auto.TLS...)
+			maps.Copy(annotations, auto.Annotations)
 		}
 
-		spec.TLS = buildIngressTLS(ledger.Spec.Ingress.TLS)
-		spec.Rules = buildHTTPIngressRules(ledger, ledger.Spec.Ingress.Hosts)
+		if manualEnabled {
+			hosts = append(hosts, ledger.Spec.Ingress.Hosts...)
+			if ledger.Spec.Ingress.ClassName != "" {
+				className = ledger.Spec.Ingress.ClassName
+			}
+			tlsSpecs = append(tlsSpecs, ledger.Spec.Ingress.TLS...)
+			maps.Copy(annotations, ledger.Spec.Ingress.Annotations)
+		}
+
+		ing.Annotations = annotations
+
+		spec := networkingv1.IngressSpec{}
+		if className != "" {
+			spec.IngressClassName = &className
+		}
+
+		spec.TLS = buildIngressTLS(tlsSpecs)
+		spec.Rules = buildHTTPIngressRules(ledger, hosts)
 
 		ing.Spec = spec
 

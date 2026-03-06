@@ -313,3 +313,63 @@ func TestApplyDefaultsFromRef_NetworkPolicy(t *testing.T) {
 	applyDefaultsFromRef(spec2, defaults)
 	assert.False(t, spec2.NetworkPolicy.Enabled)
 }
+
+func TestApplyDefaultsFromRef_AutoNetworking(t *testing.T) {
+	t.Parallel()
+
+	ttl := int64(300)
+	defaults := &ledgerv1alpha1.LedgerDefaultsSpec{
+		AutoNetworking: &ledgerv1alpha1.AutoNetworkingSpec{
+			TLD:    "example.com",
+			Suffix: "-ledger-v3",
+			Ingress: &ledgerv1alpha1.AutoIngressConfig{
+				Enabled:   true,
+				ClassName: "traefik",
+				Annotations: map[string]string{
+					"traefik.ingress.kubernetes.io/router.tls": "true",
+				},
+			},
+			DNSEndpoint: &ledgerv1alpha1.AutoDNSEndpointConfig{
+				Enabled:    true,
+				Targets:    []string{"lb.example.com"},
+				RecordTTL:  &ttl,
+				RecordType: "CNAME",
+				Annotations: map[string]string{
+					"external-dns.alpha.kubernetes.io/cloudflare-proxied": "true",
+				},
+			},
+		},
+	}
+
+	// Empty spec inherits AutoNetworking from defaults.
+	spec := &ledgerv1alpha1.LedgerServiceSpec{}
+	applyDefaultsFromRef(spec, defaults)
+
+	require.NotNil(t, spec.AutoNetworking)
+	assert.Equal(t, "example.com", spec.AutoNetworking.TLD)
+	assert.Equal(t, "-ledger-v3", spec.AutoNetworking.Suffix)
+
+	require.NotNil(t, spec.AutoNetworking.Ingress)
+	assert.True(t, spec.AutoNetworking.Ingress.Enabled)
+	assert.Equal(t, "traefik", spec.AutoNetworking.Ingress.ClassName)
+	assert.Len(t, spec.AutoNetworking.Ingress.Annotations, 1)
+
+	require.NotNil(t, spec.AutoNetworking.DNSEndpoint)
+	assert.True(t, spec.AutoNetworking.DNSEndpoint.Enabled)
+	assert.Equal(t, []string{"lb.example.com"}, spec.AutoNetworking.DNSEndpoint.Targets)
+	assert.Equal(t, &ttl, spec.AutoNetworking.DNSEndpoint.RecordTTL)
+	assert.Len(t, spec.AutoNetworking.DNSEndpoint.Annotations, 1)
+
+	// Spec-level AutoNetworking wins (whole-block replacement).
+	spec2 := &ledgerv1alpha1.LedgerServiceSpec{
+		AutoNetworking: &ledgerv1alpha1.AutoNetworkingSpec{
+			TLD: "other.com",
+			Ingress: &ledgerv1alpha1.AutoIngressConfig{
+				Enabled: false,
+			},
+		},
+	}
+	applyDefaultsFromRef(spec2, defaults)
+	assert.Equal(t, "other.com", spec2.AutoNetworking.TLD)
+	assert.False(t, spec2.AutoNetworking.Ingress.Enabled)
+}

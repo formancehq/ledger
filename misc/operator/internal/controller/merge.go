@@ -44,6 +44,12 @@ func applyDefaultsFromRef(spec *ledgerv1alpha1.LedgerServiceSpec, defaults *ledg
 	if spec.NetworkPolicy == nil {
 		spec.NetworkPolicy = defaults.NetworkPolicy
 	}
+	if spec.AutoIngress == nil {
+		spec.AutoIngress = defaults.AutoIngress
+	}
+	if spec.AutoDNSEndpoint == nil {
+		spec.AutoDNSEndpoint = defaults.AutoDNSEndpoint
+	}
 
 	// Maps: LedgerService non-nil replaces.
 	if spec.NodeSelector == nil {

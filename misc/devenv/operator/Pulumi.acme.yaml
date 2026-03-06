@@ -1,0 +1,47 @@
+config:
+  ledger-operator:k8s-context: eks-acme-dev-euw1-01
+  ledger-operator:namespace: ledger-v3
+  ledger-operator:registry: ghcr.io
+  ledger-operator:arch: arm64
+  ledger-operator:pull-registry: 760319359092.dkr.ecr.eu-west-1.amazonaws.com/ghcr
+  ledger-operator:formance-dev-registry-username:
+    secure: AAABAPrYdbjIiKvDSi+dsfZKbycsd+Rw1cCWJ2IKOJqFRXV1INc=
+  ledger-operator:formance-dev-registry-password:
+    secure: AAABAL9Evo0OgUqstaBzgB0ln65XdytttNOGXVzLVQmbJL+bTgqoufCsZVGAA5Nh+bLYbMyNaZJV9ggcXMOaj+KHAEHQjSj6
+  # Optional components
+  ledger-operator:operatorUI-enabled: "true"
+  ledger-operator:operatorUI-ingress-host: portal-ledger-v3.dev.acme.frmnc.net
+  ledger-operator:operatorUI-auth-enabled: "true"
+  ledger-operator:operatorUI-auth-issuer-url: https://accounts.google.com
+  ledger-operator:operatorUI-auth-client-id: 660725413384-lmsonmlepjpl79bbbpd8rdcpiqd84raj.apps.googleusercontent.com
+  ledger-operator:operatorUI-auth-client-secret:
+    secure: AAABANnPOIm3ASnhHC8TgULzu6xiEOjtTPcBmO8Lr/M1xMUmAHCep7WI0zMUkWsC4MDybI/VPu2Idauua9GUuF4Jdw==
+  ledger-operator:operatorUI-auth-session-secret:
+    secure: AAABAHcSp23B4daIyEGYUaptfRj/U4WmrBDqxRaWBPe7COLuchGYfnoigPns9HwAOVRXmynGJuFvHgP2DDFMyg==
+  ledger-operator:operatorUI-auth-redirect-uri: https://portal-ledger-v3.dev.acme.frmnc.net/api/auth/callback
+  # Cold storage (S3)
+  ledger-operator:coldStorage-enabled: "false"
+  #  ledger-operator:coldStorage-s3-region: eu-west-1
+  #  ledger-operator:coldStorage-eks-oidc-issuer: "https://oidc.eks.eu-west-1.amazonaws.com/id/45E5BC35331522C015273F1FD2D14DC9"
+  ledger-operator:operatorUI-ingress-dnsEndpoint:
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+    endpoints:
+      - dnsName: portal-ledger-v3.dev.acme.frmnc.net
+        recordType: CNAME
+        providerSpecific:
+          - name: alias
+            value: "true"
+          - name: aws/target-hosted-zone
+            value: "same-zone"
+        targets:
+          - rp-01-eks-euw1-01.dev.acme.frmnc.net
+        recordTTL: 300
+  ledger-operator:operatorUI-ingress-annotations:
+    "traefik.ingress.kubernetes.io/router.entrypoints": https-private
+    "traefik.ingress.kubernetes.io/router.observability.tracing": "true"
+    traefik.ingress.kubernetes.io/router.tls: "true"
+  ledger-operator:operatorUI-ingress-labels:
+    formance.com/ingress: traefik
+  ledger-operator:ledger:
+    file: values/acme/ledger.yaml

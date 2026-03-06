@@ -28,8 +28,21 @@ ingress:
   enabled: false
   className: ""
   annotations: {}
+  labels: {}
   hosts: []
   tls: []
+  # DNSEndpoint for ExternalDNS (created only when ingress is enabled).
+  dnsEndpoint:
+    enabled: false
+    annotations: {}
+    endpoints: []
+    # Example:
+    #   endpoints:
+    #     - dnsName: operator-ui.example.com
+    #       recordType: CNAME
+    #       targets:
+    #         - my-lb.elb.amazonaws.com
+    #       recordTTL: 300
 
 # ── Authentication (optional) ─────────────────────────────────────────────────
 # Enable OIDC authentication to restrict access to the operator UI.

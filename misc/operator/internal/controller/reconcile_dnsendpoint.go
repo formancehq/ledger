@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"maps"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -18,9 +19,11 @@ func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledg
 		Kind:    "DNSEndpoint",
 	}
 
-	enabled := ledger.Spec.DNSEndpoint != nil && ledger.Spec.DNSEndpoint.Enabled
+	auto := ledger.Spec.AutoNetworking
+	autoEnabled := auto != nil && auto.DNSEndpoint != nil && auto.DNSEndpoint.Enabled
+	manualEnabled := ledger.Spec.DNSEndpoint != nil && ledger.Spec.DNSEndpoint.Enabled
 
-	if !enabled {
+	if !autoEnabled && !manualEnabled {
 		obj := &unstructured.Unstructured{}
 		obj.SetGroupVersionKind(gvk)
 		obj.SetName(ledger.Name)
@@ -39,37 +42,33 @@ func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledg
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
 		obj.SetLabels(commonLabels(ledger))
-		obj.SetAnnotations(ledger.Spec.DNSEndpoint.Annotations)
 
-		endpoints := make([]any, 0, len(ledger.Spec.DNSEndpoint.Endpoints))
-		for _, ep := range ledger.Spec.DNSEndpoint.Endpoints {
-			entry := map[string]any{
-				"dnsName": ep.DNSName,
-				"targets": toInterfaceSlice(ep.Targets),
+		annotations := make(map[string]string)
+		if autoEnabled {
+			maps.Copy(annotations, auto.DNSEndpoint.Annotations)
+		}
+		if manualEnabled {
+			maps.Copy(annotations, ledger.Spec.DNSEndpoint.Annotations)
+		}
+		obj.SetAnnotations(annotations)
+
+		var endpoints []any
+
+		if autoEnabled {
+			cfg := auto.DNSEndpoint
+			endpoints = append(endpoints, buildEndpointEntry(ledgerv1alpha1.DNSEndpointEntry{
+				DNSName:          autoHost(ledger.Name, auto),
+				RecordType:       cfg.RecordType,
+				Targets:          cfg.Targets,
+				RecordTTL:        cfg.RecordTTL,
+				ProviderSpecific: cfg.ProviderSpecific,
+			}))
+		}
+
+		if manualEnabled {
+			for _, ep := range ledger.Spec.DNSEndpoint.Endpoints {
+				endpoints = append(endpoints, buildEndpointEntry(ep))
 			}
-
-			recordType := ep.RecordType
-			if recordType == "" {
-				recordType = "CNAME"
-			}
-			entry["recordType"] = recordType
-
-			if ep.RecordTTL != nil {
-				entry["recordTTL"] = *ep.RecordTTL
-			}
-
-			if len(ep.ProviderSpecific) > 0 {
-				ps := make([]any, 0, len(ep.ProviderSpecific))
-				for _, p := range ep.ProviderSpecific {
-					ps = append(ps, map[string]any{
-						"name":  p.Name,
-						"value": p.Value,
-					})
-				}
-				entry["providerSpecific"] = ps
-			}
-
-			endpoints = append(endpoints, entry)
 		}
 
 		if err := unstructured.SetNestedSlice(obj.Object, endpoints, "spec", "endpoints"); err != nil {
@@ -80,6 +79,36 @@ func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledg
 	})
 
 	return err
+}
+
+func buildEndpointEntry(ep ledgerv1alpha1.DNSEndpointEntry) map[string]any {
+	entry := map[string]any{
+		"dnsName": ep.DNSName,
+		"targets": toInterfaceSlice(ep.Targets),
+	}
+
+	recordType := ep.RecordType
+	if recordType == "" {
+		recordType = "CNAME"
+	}
+	entry["recordType"] = recordType
+
+	if ep.RecordTTL != nil {
+		entry["recordTTL"] = *ep.RecordTTL
+	}
+
+	if len(ep.ProviderSpecific) > 0 {
+		ps := make([]any, 0, len(ep.ProviderSpecific))
+		for _, p := range ep.ProviderSpecific {
+			ps = append(ps, map[string]any{
+				"name":  p.Name,
+				"value": p.Value,
+			})
+		}
+		entry["providerSpecific"] = ps
+	}
+
+	return entry
 }
 
 func toInterfaceSlice(ss []string) []any {
