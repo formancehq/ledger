@@ -1,24 +1,4 @@
 ---
-# LedgerService optimized for fast mirror ingestion (single-replica, write-heavy).
-#
-# Tuning rationale:
-#   - 1 replica: eliminates Raft replication overhead (no heartbeats, no snapshot
-#     transfers, no follower lag). Single-node Raft still provides write-ahead
-#     logging and crash recovery.
-#   - 6 CPU / 12 GB memory: fits on c6a.2xlarge dedicated node (~8 vCPU / 15 GB).
-#     GOMEMLIMIT is auto-set to 90% of memory limit (~10.8 GB) by the operator.
-#   - Pebble: large memtables (256 MB × 4 active = 1 GB write buffer) reduce flush
-#     frequency. 4 GB block cache for read-side preloads. High L0 thresholds prevent
-#     write stalls during burst ingestion. 4 concurrent compactions to keep up.
-#   - Raft: higher snapshotThreshold (5000) and compactionMargin (5000) amortize
-#     snapshot overhead. Deep propose queue (4096) prevents back-pressure on the
-#     mirror worker. Large cache rotation threshold (5000) reduces generation churn.
-#   - Monitoring: inherited from LedgerDefaults (metrics, logs, traces, pyroscope).
-#     Do NOT set config.monitoring here — the merge is whole-block replacement,
-#     so any partial override would lose metrics/logs/traces endpoints.
-#
-# Target: catch-up sync of ~57M v2 logs as fast as possible.
-# Once caught up, scale back to 3 replicas with the standard config.
 apiVersion: ledger.formance.com/v1alpha1
 kind: LedgerService
 metadata:

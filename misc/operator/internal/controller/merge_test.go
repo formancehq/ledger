@@ -313,8 +313,3 @@ func TestApplyDefaultsFromRef_NetworkPolicy(t *testing.T) {
 	applyDefaultsFromRef(spec2, defaults)
 	assert.False(t, spec2.NetworkPolicy.Enabled)
 }
-
-//go:fix inline
-func boolPtr(v bool) *bool {
-	return new(v)
-}

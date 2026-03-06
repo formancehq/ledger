@@ -1,0 +1,212 @@
+---
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerDefaults
+metadata:
+  name: default
+spec:
+  config:
+    coldStorage:
+      driver: s3
+      s3:
+        bucket: ledger-exp-cold-storage-staging
+        region: eu-west-1
+    monitoring:
+      logs:
+        enabled: true
+        endpoint: opentelemetry-collector.monitoring.svc.cluster.local
+        exporter: otlp
+        insecure: "true"
+        mode: grpc
+        port: "4317"
+      metrics:
+        enabled: true
+        endpoint: opentelemetry-collector.monitoring.svc.cluster.local
+        exporter: otlp
+        exporterPushInterval: 15s
+        insecure: "true"
+        mode: grpc
+        port: "4317"
+        runtime: true
+        runtimeMinimumReadMemStatsInterval: 5s
+#      pyroscope:
+#        enabled: true
+#        profileTypes: cpu,alloc_space,inuse_space,goroutines,mutex_count,mutex_duration,block_count,block_duration
+#        serverAddress: http://pyroscope:4040
+#        tags: version=9d9fbecf-dirty-20260305-162512
+#        uploadRate: 30s
+      serviceName: ledger-v3-poc
+      traces:
+        batch: "true"
+        enabled: true
+        endpoint: opentelemetry-collector.monitoring.svc.cluster.local
+        exporter: otlp
+        insecure: "true"
+        mode: grpc
+        port: "4317"
+        sampling:
+          enabled: true
+          successRatio: "0.1"
+    pebble:
+      bytesPerSync: 1048576
+      cacheSize: 536870912
+      disableWAL: false
+      l0CompactionThreshold: 64
+      l0StopWritesThreshold: 256
+      lBaseMaxBytes: 2147483648
+      maxConcurrentCompactions: 2
+      memTableSize: 67108864
+      memTableStopWritesThreshold: 4
+      targetFileSize: 268435456
+      walBytesPerSync: 1048576
+      walMinSyncInterval: "0"
+    raft:
+      compactionMargin: 50000
+      electionTick: 10
+      heartbeatTick: 1
+      maxInflightMsgs: 1024
+      maxSizePerMsg: 2097152
+      proposeQueueCapacity: 1024
+      snapshotThreshold: 1000
+      tickInterval: 100ms
+      transport:
+        receptionQueues:
+          - 10
+          - 4096
+          - 2048
+        sendQueues:
+          - 10
+          - 1024
+          - 1024
+  image:
+    pullPolicy: IfNotPresent
+    repository: 760319359092.dkr.ecr.eu-west-1.amazonaws.com/ghcr/formancehq/ledger-exp
+    tag: latest@sha256:dd2ba6b0fbc04690de35b1a2d40955ba12d354285635a59da53dc2fbe6692d6f
+  networkPolicy:
+    enabled: true
+  persistence:
+    data:
+      accessMode: ReadWriteOnce
+      size: 50Gi
+      storageClass: ""
+    retentionPolicy:
+      whenDeleted: Delete
+      whenScaled: Retain
+    wal:
+      accessMode: ReadWriteOnce
+      size: 15Gi
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2048Mi
+    requests:
+      cpu: 2000m
+      memory: 2048Mi
+
+---
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerService
+metadata:
+  name: test0
+  namespace: ledger-v3
+spec:
+  defaultsRef: default
+  replicas: 1
+  dnsEndpoint:
+    enabled: true
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+    endpoints:
+      - dnsName: demo0-ledger-v3.dev.acme.frmnc.net
+        targets:
+          - rp-01-eks-euw1-01.dev.acme.frmnc.net
+        providerSpecific:
+          - name: alias
+            value: "true"
+          - name: aws/target-hosted-zone
+            value: "same-zone"
+  resources:
+    requests:
+      cpu: "4"
+      memory: 12Gi
+    limits:
+      cpu: "4"
+      memory: 12Gi
+
+  config:
+    auth:
+      enabled: true
+    readIndex:
+      noFreelistSync: false
+      batchSize: 10000
+
+    pebble:
+      memTableSize: 268435456              # 256 MB (4× current 64 MB)
+      memTableStopWritesThreshold: 4       # up to 1 GB buffered before stall
+      l0CompactionThreshold: 4            # keep current — high threshold
+      l0StopWritesThreshold: 256           # keep current — very permissive
+      lBaseMaxBytes: 4294967296            # 4 GB (2× current)
+      cacheSize: 4294967296                # 4 GB block cache (was 512 MB)
+      targetFileSize: 268435456            # 256 MB (keep)
+      bytesPerSync: 4194304                # 4 MB (4× current — fewer syncs)
+      walBytesPerSync: 4194304             # 4 MB
+      maxConcurrentCompactions: 4          # 4 (2× current — use extra CPU)
+      walMinSyncInterval: "0"              # immediate sync (keep for durability)
+      disableWAL: false
+
+    raft:
+      snapshotThreshold: 5000              # 5× current — less frequent snapshots
+      compactionMargin: 5000               # match snapshotThreshold
+      proposeQueueCapacity: 4096           # 4× current — deep queue for burst
+      maxSizePerMsg: 4194304               # 4 MB (2× current)
+      maxInflightMsgs: 256                 # irrelevant with 1 replica
+      electionTick: 10
+      heartbeatTick: 1
+      tickInterval: 100ms
+
+    cache:
+      rotationThreshold: 5000              # 2.5× current — less rotation overhead
+
+    # monitoring: inherited from LedgerDefaults via defaultsRef
+
+  ingressGrpc:
+    enabled: true
+    #className: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: https-private
+      traefik.ingress.kubernetes.io/router.observability.tracing: "true"
+      traefik.ingress.kubernetes.io/router.tls: "true"
+    hosts:
+      - host: demo0-ledger-v3.dev.acme.frmnc.net
+        paths:
+          - path: /
+            pathType: Prefix
+
+  persistence:
+    retentionPolicy:
+      whenDeleted: Delete
+    data:
+      size: 500Gi
+    wal:
+      size: 15Gi
+---
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerClusterAgent
+metadata:
+  name: agent-gfyrag
+spec:
+  scopes:
+    - ledger:read
+    - ledger:write
+    - ledger:admin
+  selector: {}
+---
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerClusterAgent
+metadata:
+  name: agent-sylvain
+spec:
+  scopes:
+    - ledger:read
+    - ledger:write
+    - ledger:admin
+  selector: {}

@@ -35,26 +35,26 @@ func getBuildVersion() string {
 	cmd := exec.Command("git", "rev-parse", "--short", "HEAD")
 	cmd.Dir = "../.." // Root of the project
 	output, err := cmd.Output()
-	
+
 	timestamp := time.Now().Format("20060102-150405")
-	
+
 	if err != nil {
 		// Fallback to timestamp only
 		return timestamp
 	}
-	
+
 	commit := strings.TrimSpace(string(output))
-	
+
 	// Check if working directory is dirty
 	cmd = exec.Command("git", "status", "--porcelain")
 	cmd.Dir = "../.."
 	statusOutput, _ := cmd.Output()
-	
+
 	if len(statusOutput) > 0 {
 		// Working directory has uncommitted changes
 		return fmt.Sprintf("%s-dirty-%s", commit, timestamp)
 	}
-	
+
 	return fmt.Sprintf("%s-%s", commit, timestamp)
 }
 
@@ -138,7 +138,7 @@ func main() {
 		if pullRegistry == "" {
 			pullRegistry = registry
 		}
-		
+
 		// Docker builder name (e.g., a custom buildx builder)
 		dockerBuilderName := cfg.Get("docker-builder-name")
 		if dockerBuilderName == "" {
@@ -148,7 +148,7 @@ func main() {
 		// Generate build version from git commit + timestamp
 		buildVersion := getBuildVersion()
 		_ = ctx.Log.Info(fmt.Sprintf("Build version: %s", buildVersion), nil)
-		
+
 		imageTag := cfg.Get("imageTag")
 		if imageTag == "" {
 			imageTag = buildVersion
@@ -181,6 +181,7 @@ func main() {
 			},
 			Platforms: dockerbuild.PlatformArray{
 				"linux/amd64",
+				"linux/arm64",
 			},
 			Push: pulumi.Bool(true),
 			Registries: dockerbuild.RegistryArray{
@@ -190,10 +191,10 @@ func main() {
 					Password: config.GetSecret(ctx, "formance-dev-registry-password"),
 				},
 			},
-		Tags: pulumi.StringArray{
-			pulumi.Sprintf("%s/formancehq/ledger-exp:latest", registry),
-			pulumi.Sprintf("%s/formancehq/ledger-exp:%s", registry, imageTag),
-		},
+			Tags: pulumi.StringArray{
+				pulumi.Sprintf("%s/formancehq/ledger-exp:latest", registry),
+				pulumi.Sprintf("%s/formancehq/ledger-exp:%s", registry, imageTag),
+			},
 		})
 		if err != nil {
 			return fmt.Errorf("failed to build Docker image: %w", err)
@@ -225,6 +226,7 @@ func main() {
 			},
 			Platforms: dockerbuild.PlatformArray{
 				"linux/amd64",
+				"linux/arm64",
 			},
 			Push: pulumi.Bool(true),
 			Registries: dockerbuild.RegistryArray{
@@ -234,10 +236,10 @@ func main() {
 					Password: config.GetSecret(ctx, "formance-dev-registry-password"),
 				},
 			},
-		Tags: pulumi.StringArray{
-			pulumi.Sprintf("%s/formancehq/benchmark-operator:latest", registry),
-			pulumi.Sprintf("%s/formancehq/benchmark-operator:%s", registry, imageTag),
-		},
+			Tags: pulumi.StringArray{
+				pulumi.Sprintf("%s/formancehq/benchmark-operator:latest", registry),
+				pulumi.Sprintf("%s/formancehq/benchmark-operator:%s", registry, imageTag),
+			},
 		})
 		if err != nil {
 			return fmt.Errorf("failed to build benchmark operator image: %w", err)
@@ -270,6 +272,7 @@ func main() {
 			},
 			Platforms: dockerbuild.PlatformArray{
 				"linux/amd64",
+				"linux/arm64",
 			},
 			Push: pulumi.Bool(true),
 			Registries: dockerbuild.RegistryArray{
@@ -317,6 +320,7 @@ func main() {
 				},
 				Platforms: dockerbuild.PlatformArray{
 					"linux/amd64",
+					"linux/arm64",
 				},
 				Push: pulumi.Bool(true),
 				Registries: dockerbuild.RegistryArray{

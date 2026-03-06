@@ -8,6 +8,7 @@ Business:
 * Query validations against types
 * accounts migration
 * Checkpoint when promoting ledger to be able to shutdown the mirrored ledger properly
+* Databricks sinks
 
 Docs:
 * Clean relying parties distinctions
@@ -35,6 +36,7 @@ Refactor:
 * bbolt compact
 * configuration via command
 * reorganize storage keys
+* go-libs v4
 
 Later:
 * Store
