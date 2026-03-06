@@ -56,6 +56,7 @@ type Emitter struct {
 	logger   logging.Logger
 
 	notify  signal.Signal
+	cancel  context.CancelFunc
 	stopCh  chan struct{}
 	stopped chan struct{}
 	ready   chan struct{}
@@ -114,7 +115,10 @@ func (e *Emitter) Start() {
 	e.stopped = make(chan struct{})
 	e.ready = make(chan struct{})
 
-	go e.run()
+	ctx, cancel := context.WithCancel(context.Background())
+	e.cancel = cancel
+
+	go e.run(ctx)
 }
 
 // Stop gracefully stops the background emission loop.
@@ -128,11 +132,12 @@ func (e *Emitter) Stop() {
 	}
 
 	e.running = false
+	e.cancel()
 	close(e.stopCh)
 	<-e.stopped
 }
 
-func (e *Emitter) run() {
+func (e *Emitter) run(ctx context.Context) {
 	defer close(e.stopped)
 
 	cursor, err := query.ReadSinkCursor(e.store, e.sinkName)
@@ -145,7 +150,7 @@ func (e *Emitter) run() {
 	e.logger.WithFields(map[string]any{"cursor": cursor}).Infof("Event emitter started")
 
 	// Initial catch-up: process any logs since the cursor
-	if cursor, err = e.processLogs(cursor); err != nil {
+	if cursor, err = e.processLogs(ctx, cursor); err != nil {
 		e.logger.Errorf("Error during initial catch-up: %v", err)
 	}
 
@@ -162,11 +167,11 @@ func (e *Emitter) run() {
 
 			return
 		case <-e.notify.C():
-			if cursor, err = e.processLogs(cursor); err != nil {
+			if cursor, err = e.processLogs(ctx, cursor); err != nil {
 				e.logger.Errorf("Error processing logs: %v", err)
 			}
 		case <-ticker.C:
-			if cursor, err = e.processLogs(cursor); err != nil {
+			if cursor, err = e.processLogs(ctx, cursor); err != nil {
 				e.logger.Errorf("Error processing logs (poll): %v", err)
 			}
 		}
@@ -175,8 +180,8 @@ func (e *Emitter) run() {
 
 // processLogs reads logs from the store starting after the given cursor,
 // publishes them, and returns the updated cursor position.
-func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
-	logsCursor, err := query.ReadLogsSince(context.Background(), e.store, cursor)
+func (e *Emitter) processLogs(ctx context.Context, cursor uint64) (uint64, error) {
+	logsCursor, err := query.ReadLogsSince(ctx, e.store, cursor)
 	if err != nil {
 		return cursor, err
 	}
@@ -215,7 +220,7 @@ func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
 		batch = append(batch, event)
 
 		if len(batch) >= e.config.BatchSize {
-			err := e.publishBatch(batch)
+			err := e.publishBatch(ctx, batch)
 			if err != nil {
 				return cursor, err
 			}
@@ -228,7 +233,7 @@ func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
 
 	// Flush remaining events
 	if len(batch) > 0 {
-		err := e.publishBatch(batch)
+		err := e.publishBatch(ctx, batch)
 		if err != nil {
 			return cursor, err
 		}
@@ -255,9 +260,7 @@ func (e *Emitter) processLogs(cursor uint64) (uint64, error) {
 	return cursor, nil
 }
 
-func (e *Emitter) publishBatch(batch []*eventspb.Event) error {
-	ctx := context.Background()
-
+func (e *Emitter) publishBatch(ctx context.Context, batch []*eventspb.Event) error {
 	err := e.sink.Publish(ctx, batch)
 	if err != nil {
 		// Report the error via Raft (best-effort)
