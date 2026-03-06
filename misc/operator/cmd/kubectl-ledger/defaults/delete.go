@@ -87,6 +87,7 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		}
 		if !confirm {
 			pterm.Warning.Println("Aborted.")
+
 			return nil
 		}
 	}
@@ -95,9 +96,11 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 
 	if err := crdClient.Delete(ctx, defaults); err != nil {
 		spinner.Fail("Failed to delete LedgerDefaults")
+
 		return fmt.Errorf("deleting ledger defaults %q: %w", name, err)
 	}
 
 	spinner.Success(fmt.Sprintf("LedgerDefaults %s deleted", pterm.Cyan(name)))
+
 	return nil
 }

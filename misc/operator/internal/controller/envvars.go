@@ -2,7 +2,6 @@ package controller
 
 import (
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -43,6 +42,7 @@ func appendIfStr(envs []corev1.EnvVar, name, value string) []corev1.EnvVar {
 	if value != "" {
 		return append(envs, strEnv(name, value))
 	}
+
 	return envs
 }
 
@@ -51,6 +51,7 @@ func appendIfInt32(envs []corev1.EnvVar, name string, value *int32) []corev1.Env
 	if value != nil {
 		return append(envs, int32Env(name, *value))
 	}
+
 	return envs
 }
 
@@ -59,6 +60,7 @@ func appendIfInt64(envs []corev1.EnvVar, name string, value *int64) []corev1.Env
 	if value != nil {
 		return append(envs, intEnv(name, *value))
 	}
+
 	return envs
 }
 
@@ -67,6 +69,7 @@ func appendIfBool(envs []corev1.EnvVar, name string, value *bool) []corev1.EnvVa
 	if value != nil {
 		return append(envs, boolEnv(name, *value))
 	}
+
 	return envs
 }
 
@@ -306,7 +309,8 @@ func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.Monitorin
 func int32SliceToCSV(values []int32) string {
 	parts := make([]string, len(values))
 	for i, v := range values {
-		parts[i] = fmt.Sprintf("%d", v)
+		parts[i] = strconv.Itoa(int(v))
 	}
+
 	return strings.Join(parts, ",")
 }

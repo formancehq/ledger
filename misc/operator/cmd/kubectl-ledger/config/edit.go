@@ -87,6 +87,7 @@ func runEdit(cmd *cobra.Command, opts *cmdutil.Options, flags *editFlags, args [
 	changes := cmdutil.ComputeDiff(original, working, "spec")
 	if len(changes) == 0 {
 		pterm.Info.Println("No changes made.")
+
 		return nil
 	}
 
@@ -109,6 +110,7 @@ func runEdit(cmd *cobra.Command, opts *cmdutil.Options, flags *editFlags, args [
 	}
 	if !ok {
 		pterm.Info.Println("Aborted.")
+
 		return nil
 	}
 
@@ -130,6 +132,7 @@ func runEdit(cmd *cobra.Command, opts *cmdutil.Options, flags *editFlags, args [
 	}
 
 	pterm.Success.Printfln("LedgerService %s updated", name)
+
 	return nil
 }
 
@@ -144,5 +147,6 @@ func runRawEdit(name, ns string) error {
 	if err := kubectlCmd.Run(); err != nil {
 		return fmt.Errorf("kubectl edit failed: %w", err)
 	}
+
 	return nil
 }

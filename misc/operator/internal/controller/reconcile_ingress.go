@@ -42,8 +42,10 @@ func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *
 		spec.Rules = buildHTTPIngressRules(ledger, ledger.Spec.Ingress.Hosts)
 
 		ing.Spec = spec
+
 		return controllerutil.SetControllerReference(ledger, ing, r.Scheme)
 	})
+
 	return err
 }
 
@@ -79,6 +81,7 @@ func buildHTTPIngressRules(ledger *ledgerv1alpha1.LedgerService, hosts []ledgerv
 			},
 		})
 	}
+
 	return rules
 }
 
@@ -93,5 +96,6 @@ func buildIngressTLS(tlsSpecs []ledgerv1alpha1.IngressTLS) []networkingv1.Ingres
 			SecretName: t.SecretName,
 		})
 	}
+
 	return result
 }

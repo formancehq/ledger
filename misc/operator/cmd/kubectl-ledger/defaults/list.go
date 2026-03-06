@@ -36,6 +36,7 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 	defaults, err := cmdutil.ListLedgerDefaults(ctx, crdClient)
 	if err != nil {
 		spinner.Fail("Failed to list LedgerDefaults resources")
+
 		return fmt.Errorf("listing ledger defaults: %w", err)
 	}
 
@@ -69,11 +70,13 @@ func renderListTable(defaults *ledgerv1alpha1.LedgerDefaultsList) error {
 	if len(rows) == 0 {
 		pterm.Info.Println("No LedgerDefaults resources found.")
 		pterm.Println(pterm.Gray("Create one with: kubectl ledger defaults create"))
+
 		return nil
 	}
 
 	pterm.Println()
 	cmdutil.RenderTable(header, rows)
+
 	return nil
 }
 
@@ -81,6 +84,7 @@ func formatDefaultsImage(img ledgerv1alpha1.ImageSpec) string {
 	if img.Repository == "" && img.Tag == "" {
 		return pterm.Gray("<not set>")
 	}
+
 	return cmdutil.FormatImage(img)
 }
 
@@ -88,6 +92,7 @@ func formatDefaultsResources(r corev1.ResourceRequirements) string {
 	if r.Requests == nil && r.Limits == nil {
 		return pterm.Gray("<not set>")
 	}
+
 	return "configured"
 }
 
@@ -95,5 +100,6 @@ func formatBoolPresence(v bool) string {
 	if v {
 		return pterm.Green("yes")
 	}
+
 	return pterm.Gray("no")
 }

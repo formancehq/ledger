@@ -29,7 +29,8 @@ type LedgerService struct {
 type LedgerServiceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []LedgerService `json:"items"`
+
+	Items []LedgerService `json:"items"`
 }
 
 // LedgerServiceSpec defines the desired state of LedgerService.

@@ -200,10 +200,10 @@ func TestApplyDefaultsFromRef_SecurityContext(t *testing.T) {
 
 	defaults := &ledgerv1alpha1.LedgerDefaultsSpec{
 		PodSecurityContext: &corev1.PodSecurityContext{
-			RunAsNonRoot: boolPtr(true),
+			RunAsNonRoot: new(true),
 		},
 		SecurityContext: &corev1.SecurityContext{
-			ReadOnlyRootFilesystem: boolPtr(true),
+			ReadOnlyRootFilesystem: new(true),
 		},
 	}
 
@@ -314,6 +314,7 @@ func TestApplyDefaultsFromRef_NetworkPolicy(t *testing.T) {
 	assert.False(t, spec2.NetworkPolicy.Enabled)
 }
 
+//go:fix inline
 func boolPtr(v bool) *bool {
-	return &v
+	return new(v)
 }

@@ -27,8 +27,10 @@ func (r *LedgerServiceReconciler) reconcileServiceAccount(ctx context.Context, l
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sa, func() error {
 		sa.Labels = commonLabels(ledger)
 		sa.Annotations = ledger.Spec.ServiceAccount.Annotations
+
 		return controllerutil.SetControllerReference(ledger, sa, r.Scheme)
 	})
+
 	return err
 }
 
@@ -36,5 +38,6 @@ func serviceAccountName(ledger *ledgerv1alpha1.LedgerService) string {
 	if ledger.Spec.ServiceAccount.Name != "" {
 		return ledger.Spec.ServiceAccount.Name
 	}
+
 	return ledger.Name
 }

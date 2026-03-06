@@ -86,6 +86,7 @@ func runGetKey(cmd *cobra.Command, opts *cmdutil.Options, f *getKeyFlags, args [
 
 	if f.seedOnly {
 		fmt.Print(seedHex)
+
 		return nil
 	}
 
@@ -105,6 +106,7 @@ func runGetKey(cmd *cobra.Command, opts *cmdutil.Options, f *getKeyFlags, args [
 		if f.bundle == "-" {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
+
 			return enc.Encode(b)
 		}
 
@@ -117,6 +119,7 @@ func runGetKey(cmd *cobra.Command, opts *cmdutil.Options, f *getKeyFlags, args [
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(b); err != nil {
 			_ = file.Close() // best-effort close on encode error
+
 			return fmt.Errorf("writing bundle: %w", err)
 		}
 
@@ -125,6 +128,7 @@ func runGetKey(cmd *cobra.Command, opts *cmdutil.Options, f *getKeyFlags, args [
 		}
 
 		pterm.Success.Printfln("Bundle written to %s", f.bundle)
+
 		return nil
 	}
 
@@ -146,6 +150,7 @@ func runGetKey(cmd *cobra.Command, opts *cmdutil.Options, f *getKeyFlags, args [
 		pterm.Success.Printfln("Keys written to %s", f.outputDir)
 		pterm.Info.Printfln("  seed.hex:   %s (mode 0600)", seedPath)
 		pterm.Info.Printfln("  pubkey.hex: %s (mode 0644)", pubKeyPath)
+
 		return nil
 	}
 

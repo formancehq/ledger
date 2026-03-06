@@ -1,6 +1,7 @@
 package defaults
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/pterm/pterm"
@@ -92,6 +93,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 		pterm.Info.Println("Dry run - YAML output:")
 		pterm.Println()
 		fmt.Print(string(b))
+
 		return nil
 	}
 
@@ -101,6 +103,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 	}
 	if !confirm {
 		pterm.Warning.Println("Aborted.")
+
 		return nil
 	}
 
@@ -113,10 +116,12 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 
 	if err := crdClient.Create(cmd.Context(), defaults); err != nil {
 		spinner.Fail("Failed to create LedgerDefaults")
+
 		return fmt.Errorf("creating ledger defaults %q: %w", name, err)
 	}
 
 	spinner.Success(fmt.Sprintf("LedgerDefaults %s created", pterm.Cyan(name)))
+
 	return nil
 }
 
@@ -287,6 +292,7 @@ func buildPreviewRows(name string, f *createFlags) [][]string {
 	if f.serviceMonitor {
 		rows = append(rows, []string{"Service Monitor", pterm.Green("enabled")})
 	}
+
 	return rows
 }
 
@@ -300,8 +306,9 @@ func resolveDefaultsName(args []string) (string, error) {
 		return "", err
 	}
 	if name == "" {
-		return "", fmt.Errorf("name is required")
+		return "", errors.New("name is required")
 	}
+
 	return name, nil
 }
 
@@ -422,5 +429,6 @@ func parseByteSize(s string) (int64, error) {
 	if n <= 0 {
 		return 0, fmt.Errorf("must be a positive integer, got %d", n)
 	}
+
 	return n, nil
 }

@@ -43,8 +43,10 @@ func (r *LedgerServiceReconciler) reconcileNetworkPolicy(ctx context.Context, le
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, np, func() error {
 		np.Labels = commonLabels(ledger)
 		np.Spec = buildNetworkPolicySpec(ledger)
+
 		return controllerutil.SetControllerReference(ledger, np, r.Scheme)
 	})
+
 	return err
 }
 
@@ -177,6 +179,7 @@ func enabledFromTraces(t *ledgerv1alpha1.TracesConfig) *bool {
 	if t == nil {
 		return nil
 	}
+
 	return t.Enabled
 }
 
@@ -184,6 +187,7 @@ func enabledFromMetrics(m *ledgerv1alpha1.MetricsConfig) *bool {
 	if m == nil {
 		return nil
 	}
+
 	return m.Enabled
 }
 
@@ -191,6 +195,7 @@ func enabledFromLogs(l *ledgerv1alpha1.LogsConfig) *bool {
 	if l == nil {
 		return nil
 	}
+
 	return l.Enabled
 }
 
@@ -198,6 +203,7 @@ func portFromTraces(t *ledgerv1alpha1.TracesConfig) string {
 	if t == nil {
 		return ""
 	}
+
 	return t.Port
 }
 
@@ -205,6 +211,7 @@ func portFromMetrics(m *ledgerv1alpha1.MetricsConfig) string {
 	if m == nil {
 		return ""
 	}
+
 	return m.Port
 }
 
@@ -212,5 +219,6 @@ func portFromLogs(l *ledgerv1alpha1.LogsConfig) string {
 	if l == nil {
 		return ""
 	}
+
 	return l.Port
 }

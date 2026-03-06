@@ -2,6 +2,7 @@ package agents
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -78,7 +79,7 @@ func renderAgentDetails(agent *ledgerv1alpha1.LedgerClusterAgent) error {
 			{"Key ID", keyID},
 			{"Secret", secretRef},
 			{"Scopes", scopes},
-			{"Matched Services", fmt.Sprintf("%d", len(agent.Status.MatchedServices))},
+			{"Matched Services", strconv.Itoa(len(agent.Status.MatchedServices))},
 			{"Age", cmdutil.FormatAge(time.Since(agent.CreationTimestamp.Time))},
 		},
 	)

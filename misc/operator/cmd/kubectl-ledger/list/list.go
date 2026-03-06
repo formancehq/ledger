@@ -55,6 +55,7 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options, f *listFlags) error {
 	ledgers, err := cmdutil.ListLedgerServices(ctx, crdClient, ns)
 	if err != nil {
 		spinner.Fail("Failed to list LedgerService resources")
+
 		return fmt.Errorf("listing ledgers: %w", err)
 	}
 
@@ -94,10 +95,12 @@ func renderTable(ledgers *ledgerv1alpha1.LedgerServiceList, showNamespace bool) 
 	if len(rows) == 0 {
 		pterm.Info.Println("No LedgerService resources found.")
 		pterm.Println(pterm.Gray("Create one with: kubectl ledger create"))
+
 		return nil
 	}
 
 	pterm.Println()
 	cmdutil.RenderTable(header, rows)
+
 	return nil
 }

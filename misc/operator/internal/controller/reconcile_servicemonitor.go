@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"maps"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -26,6 +27,7 @@ func (r *LedgerServiceReconciler) reconcileServiceMonitor(ctx context.Context, l
 		obj.SetGroupVersionKind(gvk)
 		obj.SetName(name)
 		obj.SetNamespace(ledger.Namespace)
+
 		return r.deleteUnstructuredIfExists(ctx, obj)
 	}
 
@@ -35,16 +37,14 @@ func (r *LedgerServiceReconciler) reconcileServiceMonitor(ctx context.Context, l
 	obj.SetNamespace(ledger.Namespace)
 
 	// Fetch existing to merge
-	_ = r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, obj) //nolint:errcheck // ignore not-found
+	_ = r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, obj)
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
 		labels := commonLabels(ledger)
-		for k, v := range ledger.Spec.ServiceMonitor.Labels {
-			labels[k] = v
-		}
+		maps.Copy(labels, ledger.Spec.ServiceMonitor.Labels)
 		obj.SetLabels(labels)
 
-		endpoint := map[string]interface{}{
+		endpoint := map[string]any{
 			"port": "http",
 			"path": "/metrics",
 		}
@@ -61,39 +61,43 @@ func (r *LedgerServiceReconciler) reconcileServiceMonitor(ctx context.Context, l
 			endpoint["metricRelabelings"] = rawExtensionsToUnstructured(ledger.Spec.ServiceMonitor.MetricRelabelings)
 		}
 
-		spec := map[string]interface{}{
-			"selector": map[string]interface{}{
+		spec := map[string]any{
+			"selector": map[string]any{
 				"matchLabels": toStringInterfaceMap(selectorLabels(ledger)),
 			},
-			"endpoints": []interface{}{endpoint},
+			"endpoints": []any{endpoint},
 		}
 
 		if err := unstructured.SetNestedField(obj.Object, spec, "spec"); err != nil {
 			return err
 		}
+
 		return controllerutil.SetControllerReference(ledger, obj, r.Scheme)
 	})
+
 	return err
 }
 
-func toStringInterfaceMap(m map[string]string) map[string]interface{} {
-	result := make(map[string]interface{}, len(m))
+func toStringInterfaceMap(m map[string]string) map[string]any {
+	result := make(map[string]any, len(m))
 	for k, v := range m {
 		result[k] = v
 	}
+
 	return result
 }
 
 // rawExtensionsToUnstructured converts a slice of RawExtension to []interface{} for unstructured usage.
-func rawExtensionsToUnstructured(items []runtime.RawExtension) []interface{} {
-	result := make([]interface{}, 0, len(items))
+func rawExtensionsToUnstructured(items []runtime.RawExtension) []any {
+	result := make([]any, 0, len(items))
 	for _, item := range items {
 		if item.Raw != nil {
-			var parsed interface{}
+			var parsed any
 			if err := json.Unmarshal(item.Raw, &parsed); err == nil {
 				result = append(result, parsed)
 			}
 		}
 	}
+
 	return result
 }

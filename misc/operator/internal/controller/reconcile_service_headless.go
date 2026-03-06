@@ -55,10 +55,12 @@ func (r *LedgerServiceReconciler) reconcileHeadlessService(ctx context.Context, 
 				},
 			},
 			PublishNotReadyAddresses: true,
-			Selector:                selectorLabels(ledger),
+			Selector:                 selectorLabels(ledger),
 		}
+
 		return controllerutil.SetControllerReference(ledger, svc, r.Scheme)
 	})
+
 	return err
 }
 
@@ -70,6 +72,7 @@ func serviceRaftPort(ledger *ledgerv1alpha1.LedgerService) int32 {
 	if ledger.Spec.Service.RaftPort != 0 {
 		return ledger.Spec.Service.RaftPort
 	}
+
 	return 7777
 }
 
@@ -77,6 +80,7 @@ func serviceGrpcPort(ledger *ledgerv1alpha1.LedgerService) int32 {
 	if ledger.Spec.Service.GrpcPort != 0 {
 		return ledger.Spec.Service.GrpcPort
 	}
+
 	return 8888
 }
 
@@ -84,5 +88,6 @@ func serviceHttpPort(ledger *ledgerv1alpha1.LedgerService) int32 {
 	if ledger.Spec.Service.HttpPort != 0 {
 		return ledger.Spec.Service.HttpPort
 	}
+
 	return 9000
 }

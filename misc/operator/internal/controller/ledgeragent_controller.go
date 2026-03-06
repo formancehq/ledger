@@ -21,6 +21,7 @@ import (
 // LedgerAgentReconciler reconciles a LedgerAgent object.
 type LedgerAgentReconciler struct {
 	client.Client
+
 	Scheme *runtime.Scheme
 }
 
@@ -73,7 +74,8 @@ func (r *LedgerAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			ObservedGeneration: agent.Generation,
 		})
 		agent.Status.Phase = "Error"
-		_ = r.Status().Update(ctx, agent) //nolint:errcheck // best-effort status update
+		_ = r.Status().Update(ctx, agent)
+
 		return ctrl.Result{}, fmt.Errorf("reconciling secret: %w", err)
 	}
 	if result != controllerutil.OperationResultNone {
@@ -95,7 +97,8 @@ func (r *LedgerAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			ObservedGeneration: agent.Generation,
 		})
 		agent.Status.Phase = "Error"
-		_ = r.Status().Update(ctx, agent) //nolint:errcheck // best-effort status update
+		_ = r.Status().Update(ctx, agent)
+
 		return ctrl.Result{}, fmt.Errorf("resolving matched services: %w", err)
 	}
 
@@ -168,4 +171,3 @@ func (r *LedgerAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Secret{}).
 		Complete(r)
 }
-

@@ -114,6 +114,7 @@ func mergeDefaultsConfig(spec *ledgerv1alpha1.LedgerServiceConfig, defaults *led
 func mergeColdStorageConfig(spec **ledgerv1alpha1.ColdStorageConfig, defaults *ledgerv1alpha1.ColdStorageConfig) {
 	if *spec == nil {
 		*spec = defaults
+
 		return
 	}
 	if defaults == nil {

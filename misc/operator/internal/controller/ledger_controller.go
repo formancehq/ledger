@@ -27,6 +27,7 @@ import (
 // LedgerServiceReconciler reconciles a LedgerService object.
 type LedgerServiceReconciler struct {
 	client.Client
+
 	Scheme    *runtime.Scheme
 	Config    *rest.Config
 	Clientset kubernetes.Interface
@@ -74,6 +75,7 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			})
 			ledger.Status.Phase = "Degraded"
 			_ = r.Status().Update(ctx, ledger)
+
 			return ctrl.Result{}, nil // Don't requeue; wait for LedgerDefaults to appear.
 		}
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -98,6 +100,7 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		})
 		ledger.Status.Phase = "Degraded"
 		_ = r.Status().Update(ctx, ledger)
+
 		return ctrl.Result{}, nil // Don't requeue; wait for spec change.
 	}
 
@@ -133,6 +136,7 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	for _, rec := range reconcilers {
 		if err := rec.fn(ctx, ledger); err != nil {
 			logger.Error(err, "failed to reconcile", "resource", rec.name)
+
 			return ctrl.Result{}, fmt.Errorf("reconciling %s: %w", rec.name, err)
 		}
 	}
@@ -141,18 +145,21 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	agents, err := r.reconcileAuthKeys(ctx, ledger)
 	if err != nil {
 		logger.Error(err, "failed to reconcile auth keys")
+
 		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
 	}
 
 	// StatefulSet needs the specHash and agent info
 	if err := r.reconcileStatefulSet(ctx, ledger, specHash, agents); err != nil {
 		logger.Error(err, "failed to reconcile StatefulSet")
+
 		return ctrl.Result{}, fmt.Errorf("reconciling StatefulSet: %w", err)
 	}
 
 	// Update status
 	if err := r.updateStatus(ctx, ledger); err != nil {
 		logger.Error(err, "failed to update status")
+
 		return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
 	}
 
@@ -186,6 +193,7 @@ func (r *LedgerServiceReconciler) applyLedgerDefaults(ctx context.Context, ledge
 		return fmt.Errorf("fetching LedgerDefaults %q: %w", ledger.Spec.DefaultsRef, err)
 	}
 	applyDefaultsFromRef(&ledger.Spec, &defaults.Spec)
+
 	return nil
 }
 
@@ -197,6 +205,7 @@ func (r *LedgerServiceReconciler) ledgerDefaultsToLedgerServices(ctx context.Con
 	var ledgers ledgerv1alpha1.LedgerServiceList
 	if err := r.List(ctx, &ledgers); err != nil {
 		log.FromContext(ctx).Error(err, "failed to list LedgerServices for LedgerDefaults mapping")
+
 		return nil
 	}
 
@@ -211,6 +220,7 @@ func (r *LedgerServiceReconciler) ledgerDefaultsToLedgerServices(ctx context.Con
 			})
 		}
 	}
+
 	return requests
 }
 
@@ -292,6 +302,7 @@ func (r *LedgerServiceReconciler) deleteIfExists(ctx context.Context, obj client
 	if err != nil {
 		return ignoreNotFound(err)
 	}
+
 	return r.Delete(ctx, obj)
 }
 
@@ -303,6 +314,7 @@ func (r *LedgerServiceReconciler) deleteUnstructuredIfExists(ctx context.Context
 	if err != nil {
 		return ignoreNotFound(err)
 	}
+
 	return r.Delete(ctx, obj)
 }
 
@@ -313,6 +325,7 @@ func ignoreNotFound(err error) error {
 	if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
 		return nil
 	}
+
 	return err
 }
 
@@ -376,6 +389,7 @@ func ingressHosts(spec *ledgerv1alpha1.IngressSpec) ([]ledgerv1alpha1.IngressHos
 	if spec == nil {
 		return nil, false
 	}
+
 	return spec.Hosts, spec.Enabled
 }
 
@@ -383,6 +397,7 @@ func ingressGrpcHosts(spec *ledgerv1alpha1.IngressGrpcSpec) ([]ledgerv1alpha1.In
 	if spec == nil {
 		return nil, false
 	}
+
 	return spec.Hosts, spec.Enabled
 }
 
@@ -413,6 +428,7 @@ func validateSpec(ledger *ledgerv1alpha1.LedgerService) error {
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -425,5 +441,6 @@ func validateIngressHosts(field string, hosts []ledgerv1alpha1.IngressHost) erro
 			return fmt.Errorf("%s.hosts[%d].host must not be empty", field, i)
 		}
 	}
+
 	return nil
 }
