@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"maps"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,9 +43,7 @@ func (r *LedgerServiceReconciler) reconcileIngressGrpc(ctx context.Context, ledg
 		case "traefik":
 			annotations["traefik.ingress.kubernetes.io/service.serversscheme"] = "h2c"
 		}
-		for k, v := range ledger.Spec.IngressGrpc.Annotations {
-			annotations[k] = v
-		}
+		maps.Copy(annotations, ledger.Spec.IngressGrpc.Annotations)
 		ing.Annotations = annotations
 
 		spec := networkingv1.IngressSpec{}
@@ -56,8 +55,10 @@ func (r *LedgerServiceReconciler) reconcileIngressGrpc(ctx context.Context, ledg
 		spec.Rules = buildGrpcIngressRules(ledger, ledger.Spec.IngressGrpc.Hosts)
 
 		ing.Spec = spec
+
 		return controllerutil.SetControllerReference(ledger, ing, r.Scheme)
 	})
+
 	return err
 }
 
@@ -94,5 +95,6 @@ func buildGrpcIngressRules(ledger *ledgerv1alpha1.LedgerService, hosts []ledgerv
 			},
 		})
 	}
+
 	return rules
 }

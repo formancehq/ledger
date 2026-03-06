@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -74,6 +75,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 		pterm.Info.Println("Dry run - YAML output:")
 		pterm.Println()
 		fmt.Print(string(b))
+
 		return nil
 	}
 
@@ -83,6 +85,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 	}
 	if !confirm {
 		pterm.Warning.Println("Aborted.")
+
 		return nil
 	}
 
@@ -95,10 +98,12 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 
 	if err := crdClient.Create(cmd.Context(), agent); err != nil {
 		spinner.Fail("Failed to create LedgerClusterAgent")
+
 		return fmt.Errorf("creating agent %q: %w", name, err)
 	}
 
 	spinner.Success(fmt.Sprintf("LedgerClusterAgent %s created", pterm.Cyan(name)))
+
 	return nil
 }
 
@@ -134,8 +139,9 @@ func resolveAgentName(args []string) (string, error) {
 		return "", err
 	}
 	if name == "" {
-		return "", fmt.Errorf("name is required")
+		return "", errors.New("name is required")
 	}
+
 	return name, nil
 }
 
@@ -181,6 +187,7 @@ func parseSelectorString(s string) (map[string]string, error) {
 		}
 		result[key] = value
 	}
+
 	return result, nil
 }
 
@@ -194,5 +201,6 @@ func splitAndTrim(s string) []string {
 			result = append(result, p)
 		}
 	}
+
 	return result
 }

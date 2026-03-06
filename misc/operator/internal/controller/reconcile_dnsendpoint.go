@@ -25,6 +25,7 @@ func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledg
 		obj.SetGroupVersionKind(gvk)
 		obj.SetName(ledger.Name)
 		obj.SetNamespace(ledger.Namespace)
+
 		return r.deleteUnstructuredIfExists(ctx, obj)
 	}
 
@@ -34,15 +35,15 @@ func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledg
 	obj.SetNamespace(ledger.Namespace)
 
 	// Fetch existing to merge
-	_ = r.Get(ctx, types.NamespacedName{Name: ledger.Name, Namespace: ledger.Namespace}, obj) //nolint:errcheck // ignore not-found
+	_ = r.Get(ctx, types.NamespacedName{Name: ledger.Name, Namespace: ledger.Namespace}, obj)
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
 		obj.SetLabels(commonLabels(ledger))
 		obj.SetAnnotations(ledger.Spec.DNSEndpoint.Annotations)
 
-		endpoints := make([]interface{}, 0, len(ledger.Spec.DNSEndpoint.Endpoints))
+		endpoints := make([]any, 0, len(ledger.Spec.DNSEndpoint.Endpoints))
 		for _, ep := range ledger.Spec.DNSEndpoint.Endpoints {
-			entry := map[string]interface{}{
+			entry := map[string]any{
 				"dnsName": ep.DNSName,
 				"targets": toInterfaceSlice(ep.Targets),
 			}
@@ -58,9 +59,9 @@ func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledg
 			}
 
 			if len(ep.ProviderSpecific) > 0 {
-				ps := make([]interface{}, 0, len(ep.ProviderSpecific))
+				ps := make([]any, 0, len(ep.ProviderSpecific))
 				for _, p := range ep.ProviderSpecific {
-					ps = append(ps, map[string]interface{}{
+					ps = append(ps, map[string]any{
 						"name":  p.Name,
 						"value": p.Value,
 					})
@@ -74,15 +75,18 @@ func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledg
 		if err := unstructured.SetNestedSlice(obj.Object, endpoints, "spec", "endpoints"); err != nil {
 			return err
 		}
+
 		return controllerutil.SetControllerReference(ledger, obj, r.Scheme)
 	})
+
 	return err
 }
 
-func toInterfaceSlice(ss []string) []interface{} {
-	result := make([]interface{}, len(ss))
+func toInterfaceSlice(ss []string) []any {
+	result := make([]any, len(ss))
 	for i, s := range ss {
 		result[i] = s
 	}
+
 	return result
 }

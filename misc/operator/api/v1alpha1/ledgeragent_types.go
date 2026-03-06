@@ -29,7 +29,8 @@ type LedgerAgent struct {
 type LedgerAgentList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []LedgerAgent `json:"items"`
+
+	Items []LedgerAgent `json:"items"`
 }
 
 // LedgerAgentSpec defines the desired state of a LedgerAgent.

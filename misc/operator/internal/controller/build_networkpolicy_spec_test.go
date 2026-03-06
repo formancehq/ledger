@@ -14,6 +14,7 @@ import (
 
 func newTestLedgerService(name string, np *ledgerv1alpha1.NetworkPolicySpec) *ledgerv1alpha1.LedgerService {
 	replicas := int32(3)
+
 	return &ledgerv1alpha1.LedgerService{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -134,7 +135,7 @@ func TestBuildNetworkPolicySpec_OTELDefaultPorts(t *testing.T) {
 
 	ls := newTestLedgerService("otel", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
 	ls.Spec.Config.Monitoring = &ledgerv1alpha1.MonitoringConfig{
-		Traces: &ledgerv1alpha1.TracesConfig{Enabled: boolPtr(true)},
+		Traces: &ledgerv1alpha1.TracesConfig{Enabled: new(true)},
 	}
 	spec := buildNetworkPolicySpec(ls)
 
@@ -161,7 +162,7 @@ func TestBuildNetworkPolicySpec_OTELCustomPort(t *testing.T) {
 	ls := newTestLedgerService("otel-custom", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
 	ls.Spec.Config.Monitoring = &ledgerv1alpha1.MonitoringConfig{
 		Traces: &ledgerv1alpha1.TracesConfig{
-			Enabled: boolPtr(true),
+			Enabled: new(true),
 			Port:    "4320",
 		},
 	}
@@ -195,11 +196,11 @@ func TestBuildNetworkPolicySpec_OTELFromDefaults(t *testing.T) {
 		Config: ledgerv1alpha1.LedgerDefaultsConfig{
 			Monitoring: &ledgerv1alpha1.MonitoringConfig{
 				Traces: &ledgerv1alpha1.TracesConfig{
-					Enabled: boolPtr(true),
+					Enabled: new(true),
 					Port:    "4317",
 				},
 				Metrics: &ledgerv1alpha1.MetricsConfig{
-					Enabled: boolPtr(true),
+					Enabled: new(true),
 					Port:    "4318",
 				},
 			},

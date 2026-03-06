@@ -172,4 +172,3 @@ func listDescFiltered[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params enti
 
 	return nil
 }
-

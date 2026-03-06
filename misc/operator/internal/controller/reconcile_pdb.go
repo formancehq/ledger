@@ -49,5 +49,6 @@ func (r *LedgerServiceReconciler) reconcilePDB(ctx context.Context, ledger *ledg
 
 		return controllerutil.SetControllerReference(ledger, pdb, r.Scheme)
 	})
+
 	return err
 }

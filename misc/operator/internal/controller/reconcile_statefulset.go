@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -58,6 +59,7 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
 		sts.Labels = commonLabels(ledger)
 		sts.Spec = buildStatefulSetSpec(ledger, specHash, agents)
+
 		return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
 	})
 	if err != nil {
@@ -123,9 +125,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 
 	// Pod annotations with spec hash for rolling updates
 	podAnnotations := make(map[string]string)
-	for k, v := range ledger.Spec.PodAnnotations {
-		podAnnotations[k] = v
-	}
+	maps.Copy(podAnnotations, ledger.Spec.PodAnnotations)
 	podAnnotations[annotationSpecHash] = specHash
 	if len(agents) > 0 {
 		podAnnotations[annotationAuthKeysHash] = computeAuthKeysHash(agents)
@@ -429,6 +429,7 @@ func raftPortFromBindAddr(bindAddr string) int32 {
 			return int32(port)
 		}
 	}
+
 	return 7777
 }
 

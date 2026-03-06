@@ -2,6 +2,7 @@ package scale
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -56,7 +57,7 @@ func runScale(cmd *cobra.Command, opts *cmdutil.Options, replicas *int32, args [
 	// Prompt for replicas if not explicitly set
 	newReplicas := *replicas
 	if !cmd.Flags().Changed("replicas") {
-		pterm.Info.Printfln("Current replicas: %s", pterm.Cyan(fmt.Sprintf("%d", currentReplicas)))
+		pterm.Info.Printfln("Current replicas: %s", pterm.Cyan(strconv.Itoa(int(currentReplicas))))
 		newReplicas, err = cmdutil.PromptReplicas(currentReplicas)
 		if err != nil {
 			return err
@@ -69,6 +70,7 @@ func runScale(cmd *cobra.Command, opts *cmdutil.Options, replicas *int32, args [
 
 	if newReplicas == currentReplicas {
 		pterm.Info.Printfln("LedgerService %s is already at %d replicas", pterm.Cyan(name), currentReplicas)
+
 		return nil
 	}
 
@@ -83,9 +85,11 @@ func runScale(cmd *cobra.Command, opts *cmdutil.Options, replicas *int32, args [
 
 	if err := crdClient.Patch(ctx, ledger, patch); err != nil {
 		spinner.Fail("Failed to scale LedgerService")
+
 		return fmt.Errorf("scaling ledger %q: %w", name, err)
 	}
 
 	spinner.Success(fmt.Sprintf("LedgerService %s scaled to %d replicas", pterm.Cyan(name), newReplicas))
+
 	return nil
 }

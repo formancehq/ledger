@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -73,7 +74,7 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 ) error {
 	logger := log.FromContext(ctx)
 	grpcPort := ledger.Spec.Config.GrpcPort
-	pod0 := fmt.Sprintf("%s-0", ledger.Name)
+	pod0 := ledger.Name + "-0"
 	container := "ledger"
 
 	// Transfer leadership to node 1 (pod-0) so the leader is never among the removed nodes.
@@ -147,7 +148,7 @@ func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Inte
 	logger := log.FromContext(ctx)
 
 	args := []string{
-		"./ledgerctl", "cluster", "remove-node", fmt.Sprintf("%d", nodeID),
+		"./ledgerctl", "cluster", "remove-node", strconv.Itoa(int(nodeID)),
 		"--server", fmt.Sprintf("127.0.0.1:%d", grpcPort),
 		"--insecure",
 	}
@@ -167,8 +168,10 @@ func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Inte
 			logger.Info("node already removed from cluster, skipping",
 				"nodeID", nodeID,
 			)
+
 			return nil
 		}
+
 		return fmt.Errorf("removing node %d (force=%v): %w", nodeID, force, err)
 	}
 
@@ -176,6 +179,7 @@ func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Inte
 		"nodeID", nodeID,
 		"force", force,
 	)
+
 	return nil
 }
 
@@ -225,6 +229,7 @@ func isPodCrashed(ctx context.Context, clientset kubernetes.Interface, namespace
 // absent from the Raft cluster (idempotent removal).
 func isNodeNotInCluster(stderr string) bool {
 	lower := strings.ToLower(stderr)
+
 	return strings.Contains(lower, "not in cluster") ||
 		strings.Contains(lower, "not a member") ||
 		strings.Contains(lower, "not found")
@@ -234,6 +239,7 @@ func isNodeNotInCluster(stderr string) bool {
 // the leader (transfer-leader is a no-op).
 func isAlreadyLeader(stderr string) bool {
 	lower := strings.ToLower(stderr)
+
 	return strings.Contains(lower, "already the leader") ||
 		strings.Contains(lower, "already leader")
 }
@@ -262,8 +268,10 @@ func deleteScaledDownPVCs(ctx context.Context, clientset kubernetes.Interface,
 				// Already gone — idempotent.
 				if strings.Contains(err.Error(), "not found") {
 					logger.Info("PVC already deleted, skipping", "pvc", pvcName)
+
 					continue
 				}
+
 				return fmt.Errorf("deleting PVC %s: %w", pvcName, err)
 			}
 		}

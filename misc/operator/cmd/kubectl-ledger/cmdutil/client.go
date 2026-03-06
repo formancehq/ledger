@@ -46,6 +46,7 @@ func (o *Options) clientConfig() clientcmd.ClientConfig {
 	if o.namespace != "" {
 		overrides.Context.Namespace = o.namespace
 	}
+
 	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
 }
 
@@ -57,6 +58,7 @@ func (o *Options) RESTConfig() (*rest.Config, error) {
 // ResolvedNamespace returns the namespace resolved from flags or kubeconfig.
 func (o *Options) ResolvedNamespace() (string, error) {
 	ns, _, err := o.clientConfig().Namespace()
+
 	return ns, err
 }
 
@@ -80,5 +82,6 @@ func (o *Options) Clientset() (kubernetes.Interface, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return kubernetes.NewForConfig(rc)
 }

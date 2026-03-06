@@ -3,6 +3,7 @@ package logs
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -32,7 +33,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 		Use:     "logs [name]",
 		Aliases: []string{"log"},
 		Short:   "Stream logs from a LedgerService deployment",
-		Args:  cobra.MaximumNArgs(1),
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runLogs(cmd, opts, &f, args)
 		},
@@ -79,12 +80,10 @@ func runLogs(cmd *cobra.Command, opts *cmdutil.Options, f *logsFlags, args []str
 		return streamAllPods(ctx, cs, ns, name, logOpts)
 	}
 
-	ordinal := 0
-	if f.pod >= 0 {
-		ordinal = f.pod
-	}
+	ordinal := max(f.pod, 0)
 	podName := fmt.Sprintf("%s-%d", name, ordinal)
 	pterm.Info.Printfln("Streaming logs from %s", pterm.Cyan(podName))
+
 	return streamPodLogs(ctx, cs, ns, podName, "", logOpts)
 }
 
@@ -96,6 +95,7 @@ func streamAllPods(ctx context.Context, cs kubernetes.Interface, ns, name string
 
 	if len(pods.Items) == 0 {
 		pterm.Error.Printfln("No pods found for LedgerService %s", pterm.Cyan(name))
+
 		return fmt.Errorf("no pods found for ledger %q", name)
 	}
 
@@ -104,15 +104,14 @@ func streamAllPods(ctx context.Context, cs kubernetes.Interface, ns, name string
 	var wg sync.WaitGroup
 	for i := range pods.Items {
 		podName := pods.Items[i].Name
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := streamPodLogs(ctx, cs, ns, podName, podName, logOpts); err != nil {
 				pterm.Error.Printfln("[%s] %v", podName, err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
+
 	return nil
 }
 
@@ -134,8 +133,9 @@ func streamPodLogs(ctx context.Context, cs kubernetes.Interface, ns, podName, pr
 			pterm.Println(scanner.Text())
 		}
 	}
-	if err := scanner.Err(); err != nil && err != io.EOF {
+	if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("reading logs from %q: %w", podName, err)
 	}
+
 	return nil
 }

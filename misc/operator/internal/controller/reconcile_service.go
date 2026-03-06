@@ -40,7 +40,9 @@ func (r *LedgerServiceReconciler) reconcileService(ctx context.Context, ledger *
 			},
 			Selector: selectorLabels(ledger),
 		}
+
 		return controllerutil.SetControllerReference(ledger, svc, r.Scheme)
 	})
+
 	return err
 }

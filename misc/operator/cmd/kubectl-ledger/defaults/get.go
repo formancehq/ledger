@@ -60,5 +60,6 @@ func renderGetDetails(defaults *ledgerv1alpha1.LedgerDefaults) error {
 		return fmt.Errorf("marshaling spec: %w", err)
 	}
 	fmt.Print(string(b))
+
 	return nil
 }

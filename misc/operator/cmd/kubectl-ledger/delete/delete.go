@@ -2,6 +2,7 @@ package delete
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -21,7 +22,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 		Use:     "delete [name]",
 		Aliases: []string{"rm", "del"},
 		Short:   "Delete a LedgerService deployment",
-		Args:  cobra.MaximumNArgs(1),
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDelete(cmd, opts, &f, args)
 		},
@@ -70,8 +71,8 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 			{"Name", pterm.Cyan(name)},
 			{"Namespace", ns},
 			{"Image", cmdutil.FormatImage(ledger.Spec.Image)},
-			{"Replicas", fmt.Sprintf("%d", replicas)},
-			{"PVCs", fmt.Sprintf("%d", len(pvcs.Items))},
+			{"Replicas", strconv.Itoa(int(replicas))},
+			{"PVCs", strconv.Itoa(len(pvcs.Items))},
 		})
 		pterm.Println()
 
@@ -84,6 +85,7 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		}
 		if !confirm {
 			pterm.Warning.Println("Aborted.")
+
 			return nil
 		}
 	}
@@ -92,9 +94,11 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 
 	if err := crdClient.Delete(ctx, ledger); err != nil {
 		spinner.Fail("Failed to delete LedgerService")
+
 		return fmt.Errorf("deleting ledger %q: %w", name, err)
 	}
 
 	spinner.Success(fmt.Sprintf("LedgerService %s deleted", pterm.Cyan(name)))
+
 	return nil
 }

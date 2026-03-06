@@ -52,6 +52,7 @@ func NewCommand() *cobra.Command {
 			if showDefaults {
 				return runExplainDefaults(args)
 			}
+
 			return runExplain(args)
 		},
 	}
@@ -79,12 +80,14 @@ func runExplain(args []string) error {
 		}
 		pterm.Println()
 		printFields(node.Children, 0)
+
 		return nil
 	}
 
 	pterm.Println()
 	pterm.DefaultSection.Println("LedgerService CRD — ledger.formance.com/v1alpha1")
 	printFields(root, 0)
+
 	return nil
 }
 
@@ -95,9 +98,11 @@ func lookup(fields []Field, path string) (Field, bool) {
 			if len(parts) == 1 {
 				return f, true
 			}
+
 			return lookup(f.Children, parts[1])
 		}
 	}
+
 	return Field{}, false
 }
 
@@ -477,12 +482,14 @@ func runExplainDefaults(args []string) error {
 		}
 		pterm.Println()
 		printFields(node.Children, 0)
+
 		return nil
 	}
 
 	pterm.Println()
 	pterm.DefaultSection.Println("LedgerDefaults CRD — ledger.formance.com/v1alpha1")
 	printFields(root, 0)
+
 	return nil
 }
 

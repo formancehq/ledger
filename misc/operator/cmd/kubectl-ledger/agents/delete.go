@@ -76,6 +76,7 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 		}
 		if !confirm {
 			pterm.Warning.Println("Aborted.")
+
 			return nil
 		}
 	}
@@ -84,9 +85,11 @@ func runDelete(cmd *cobra.Command, opts *cmdutil.Options, f *deleteFlags, args [
 
 	if err := crdClient.Delete(ctx, agent); err != nil {
 		spinner.Fail("Failed to delete LedgerClusterAgent")
+
 		return fmt.Errorf("deleting agent %q: %w", name, err)
 	}
 
 	spinner.Success(fmt.Sprintf("LedgerClusterAgent %s deleted", pterm.Cyan(name)))
+
 	return nil
 }

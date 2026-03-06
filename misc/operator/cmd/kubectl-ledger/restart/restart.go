@@ -23,8 +23,8 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 		Use:     "restart [name]",
 		Aliases: []string{"rollout"},
 		Short:   "Rolling restart of a LedgerService deployment",
-		Long:  "Triggers a rolling restart by patching podAnnotations on the LedgerService CR. The operator detects the spec hash change and performs a StatefulSet rolling update.",
-		Args:  cobra.MaximumNArgs(1),
+		Long:    "Triggers a rolling restart by patching podAnnotations on the LedgerService CR. The operator detects the spec hash change and performs a StatefulSet rolling update.",
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRestart(cmd, opts, &f, args)
 		},
@@ -65,6 +65,7 @@ func runRestart(cmd *cobra.Command, opts *cmdutil.Options, f *restartFlags, args
 		}
 		if !confirm {
 			pterm.Warning.Println("Aborted.")
+
 			return nil
 		}
 	}
@@ -79,9 +80,11 @@ func runRestart(cmd *cobra.Command, opts *cmdutil.Options, f *restartFlags, args
 
 	if err := crdClient.Patch(ctx, ledger, patch); err != nil {
 		spinner.Fail("Failed to restart LedgerService")
+
 		return fmt.Errorf("restarting ledger %q: %w", name, err)
 	}
 
-	spinner.Success(fmt.Sprintf("Rolling restart triggered for LedgerService %s", pterm.Cyan(name)))
+	spinner.Success("Rolling restart triggered for LedgerService " + pterm.Cyan(name))
+
 	return nil
 }

@@ -28,7 +28,8 @@ type LedgerClusterAgent struct {
 type LedgerClusterAgentList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []LedgerClusterAgent `json:"items"`
+
+	Items []LedgerClusterAgent `json:"items"`
 }
 
 // LedgerClusterAgentSpec defines the desired state of a LedgerClusterAgent.

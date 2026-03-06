@@ -24,7 +24,8 @@ type LedgerDefaults struct {
 type LedgerDefaultsList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []LedgerDefaults `json:"items"`
+
+	Items []LedgerDefaults `json:"items"`
 }
 
 // LedgerDefaultsSpec defines shared defaults that can be referenced by multiple LedgerServices.

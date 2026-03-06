@@ -2,6 +2,7 @@ package cmdutil
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -32,6 +33,7 @@ func ResolveLedgerServiceName(ctx context.Context, opts *Options, args []string)
 	ledgers, err := ListLedgerServices(ctx, crdClient, ns)
 	if err != nil {
 		spinner.Fail("Failed to list LedgerService resources")
+
 		return "", "", fmt.Errorf("listing ledgers: %w", err)
 	}
 
@@ -48,6 +50,7 @@ func ResolveLedgerServiceName(ctx context.Context, opts *Options, args []string)
 
 	if len(names) == 1 {
 		pterm.Info.Printfln("Using ledger: %s", pterm.Cyan(names[0]))
+
 		return names[0], ns, nil
 	}
 
@@ -79,13 +82,14 @@ func ResolveLedgerDefaultsName(ctx context.Context, opts *Options, args []string
 	defaults, err := ListLedgerDefaults(ctx, crdClient)
 	if err != nil {
 		spinner.Fail("Failed to list LedgerDefaults resources")
+
 		return "", fmt.Errorf("listing ledger defaults: %w", err)
 	}
 
 	_ = spinner.Stop()
 
 	if len(defaults.Items) == 0 {
-		return "", fmt.Errorf("no LedgerDefaults resources found")
+		return "", errors.New("no LedgerDefaults resources found")
 	}
 
 	names := make([]string, len(defaults.Items))
@@ -95,6 +99,7 @@ func ResolveLedgerDefaultsName(ctx context.Context, opts *Options, args []string
 
 	if len(names) == 1 {
 		pterm.Info.Printfln("Using defaults: %s", pterm.Cyan(names[0]))
+
 		return names[0], nil
 	}
 
@@ -126,13 +131,14 @@ func ResolveLedgerClusterAgentName(ctx context.Context, opts *Options, args []st
 	agents, err := ListLedgerClusterAgents(ctx, crdClient)
 	if err != nil {
 		spinner.Fail("Failed to list LedgerClusterAgent resources")
+
 		return "", fmt.Errorf("listing agents: %w", err)
 	}
 
 	_ = spinner.Stop()
 
 	if len(agents.Items) == 0 {
-		return "", fmt.Errorf("no LedgerClusterAgent resources found")
+		return "", errors.New("no LedgerClusterAgent resources found")
 	}
 
 	names := make([]string, len(agents.Items))
@@ -142,6 +148,7 @@ func ResolveLedgerClusterAgentName(ctx context.Context, opts *Options, args []st
 
 	if len(names) == 1 {
 		pterm.Info.Printfln("Using agent: %s", pterm.Cyan(names[0]))
+
 		return names[0], nil
 	}
 
@@ -166,6 +173,7 @@ func PromptText(prompt, defaultValue string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to read input: %w", err)
 	}
+
 	return strings.TrimSpace(result), nil
 }
 
@@ -177,7 +185,7 @@ var ValidReplicaCounts = []string{"1", "3", "5", "7"}
 
 // PromptReplicas prompts the user to select a replica count from valid options.
 func PromptReplicas(defaultValue int32) (int32, error) {
-	defaultStr := fmt.Sprintf("%d", defaultValue)
+	defaultStr := strconv.Itoa(int(defaultValue))
 
 	selected, err := pterm.DefaultInteractiveSelect.
 		WithOptions(ValidReplicaCounts).
@@ -207,6 +215,7 @@ func ValidateReplicas(replicas int32) error {
 	if replicas%2 == 0 {
 		return fmt.Errorf("replicas must be odd for Raft consensus, got %d", replicas)
 	}
+
 	return nil
 }
 
@@ -232,6 +241,7 @@ func PromptBool(prompt string, currentValue *bool) (*bool, error) {
 		return nil, nil //nolint:nilnil // nil means "unset"
 	}
 	v := selected == "true"
+
 	return &v, nil
 }
 
@@ -244,5 +254,6 @@ func PromptConfirm(prompt string, defaultValue bool) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to read input: %w", err)
 	}
+
 	return result, nil
 }

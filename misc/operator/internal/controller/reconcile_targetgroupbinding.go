@@ -30,6 +30,7 @@ func (r *LedgerServiceReconciler) reconcileTargetGroupBinding(ctx context.Contex
 		obj.SetGroupVersionKind(gvk)
 		obj.SetName(name)
 		obj.SetNamespace(ledger.Namespace)
+
 		return r.deleteUnstructuredIfExists(ctx, obj)
 	}
 
@@ -41,7 +42,7 @@ func (r *LedgerServiceReconciler) reconcileTargetGroupBinding(ctx context.Contex
 	obj.SetNamespace(ledger.Namespace)
 
 	// Fetch existing to merge
-	_ = r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, obj) //nolint:errcheck // ignore not-found
+	_ = r.Get(ctx, types.NamespacedName{Name: name, Namespace: ledger.Namespace}, obj)
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
 		obj.SetLabels(commonLabels(ledger))
@@ -51,12 +52,12 @@ func (r *LedgerServiceReconciler) reconcileTargetGroupBinding(ctx context.Contex
 
 		// Preserve existing spec to avoid overwriting immutable fields
 		// (ipAddressType, vpcID) set by the AWS Load Balancer Controller webhook.
-		existingSpec, _, _ := unstructured.NestedMap(obj.Object, "spec") //nolint:errcheck
+		existingSpec, _, _ := unstructured.NestedMap(obj.Object, "spec")
 		if existingSpec == nil {
-			existingSpec = map[string]interface{}{}
+			existingSpec = map[string]any{}
 		}
 
-		existingSpec["serviceRef"] = map[string]interface{}{
+		existingSpec["serviceRef"] = map[string]any{
 			"name": grpcSvcName,
 			"port": int64(grpcPort),
 		}
@@ -67,7 +68,7 @@ func (r *LedgerServiceReconciler) reconcileTargetGroupBinding(ctx context.Contex
 		}
 
 		if tgb.Networking != nil && tgb.Networking.Raw != nil {
-			var networking interface{}
+			var networking any
 			if err := json.Unmarshal(tgb.Networking.Raw, &networking); err == nil {
 				existingSpec["networking"] = networking
 			}
@@ -76,7 +77,9 @@ func (r *LedgerServiceReconciler) reconcileTargetGroupBinding(ctx context.Contex
 		if err := unstructured.SetNestedField(obj.Object, existingSpec, "spec"); err != nil {
 			return err
 		}
+
 		return controllerutil.SetControllerReference(ledger, obj, r.Scheme)
 	})
+
 	return err
 }

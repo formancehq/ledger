@@ -2,6 +2,8 @@ package get
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pterm/pterm"
@@ -16,7 +18,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 		Use:     "get [name]",
 		Aliases: []string{"describe", "show", "inspect", "status", "st"},
 		Short:   "Show details of a LedgerService deployment",
-		Args:  cobra.MaximumNArgs(1),
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGet(cmd, opts, args)
 		},
@@ -46,15 +48,18 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 	ledger, err := cmdutil.GetLedgerService(ctx, crdClient, ns, name)
 	if err != nil {
 		spinner.Fail("Failed to get LedgerService")
+
 		return fmt.Errorf("getting ledger %q: %w", name, err)
 	}
 
 	switch opts.OutputFormat() {
 	case "json":
 		_ = spinner.Stop()
+
 		return cmdutil.OutputJSON(ledger)
 	case "yaml":
 		_ = spinner.Stop()
+
 		return cmdutil.OutputYAML(ledger)
 	}
 
@@ -97,7 +102,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 				string(p.Status.Phase),
 				cmdutil.PodReadyCount(p),
 				p.Spec.NodeName,
-				fmt.Sprintf("%d", cmdutil.PodRestarts(p)),
+				strconv.Itoa(int(cmdutil.PodRestarts(p))),
 				cmdutil.FormatAge(time.Since(p.CreationTimestamp.Time)),
 			})
 		}
@@ -145,12 +150,14 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		for i := range svcs.Items {
 			svc := &svcs.Items[i]
 			ports := ""
+			var portsSb148 strings.Builder
 			for j, p := range svc.Spec.Ports {
 				if j > 0 {
-					ports += ", "
+					portsSb148.WriteString(", ")
 				}
-				ports += fmt.Sprintf("%s:%d", p.Name, p.Port)
+				fmt.Fprintf(&portsSb148, "%s:%d", p.Name, p.Port)
 			}
+			ports += portsSb148.String()
 			svcRows = append(svcRows, []string{
 				svc.Name,
 				string(svc.Spec.Type),
@@ -189,8 +196,8 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 		[]string{"KEY", "VALUE"},
 		[][]string{
 			{"Cluster ID", cfg.ClusterID},
-			{"HTTP Port", fmt.Sprintf("%d", cfg.HttpPort)},
-			{"gRPC Port", fmt.Sprintf("%d", cfg.GrpcPort)},
+			{"HTTP Port", strconv.Itoa(int(cfg.HttpPort))},
+			{"gRPC Port", strconv.Itoa(int(cfg.GrpcPort))},
 			{"Bind Addr", cfg.BindAddr},
 			{"Image", cmdutil.FormatImage(ledger.Spec.Image)},
 			{"Debug", debug},

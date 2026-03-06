@@ -29,7 +29,7 @@ func NewCommand(opts *cmdutil.Options) *cobra.Command {
 		Use:     "port-forward [name]",
 		Aliases: []string{"pf"},
 		Short:   "Port-forward to a LedgerService deployment",
-		Args:  cobra.MaximumNArgs(1),
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runPortForward(cmd, opts, &f, args)
 		},

@@ -2,8 +2,10 @@ package create
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -17,17 +19,17 @@ import (
 )
 
 type createFlags struct {
-	replicas    int32
-	image       string
-	tag         string
-	walSize     string
-	dataSize    string
+	replicas     int32
+	image        string
+	tag          string
+	walSize      string
+	dataSize     string
 	storageClass string
-	clusterID   string
-	cpu         string
-	memory      string
-	defaultsRef string
-	dryRun      bool
+	clusterID    string
+	cpu          string
+	memory       string
+	defaultsRef  string
+	dryRun       bool
 }
 
 // NewCommand returns the "create" command.
@@ -132,7 +134,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 	if f.defaultsRef != "" {
 		previewRows = append(previewRows, []string{"Defaults", pterm.Cyan(f.defaultsRef)})
 	}
-	previewRows = append(previewRows, []string{"Replicas", fmt.Sprintf("%d", f.replicas)})
+	previewRows = append(previewRows, []string{"Replicas", strconv.Itoa(int(f.replicas))})
 	if ledger.Spec.Image.Repository != "" || ledger.Spec.Image.Tag != "" {
 		previewRows = append(previewRows, []string{"Image", cmdutil.FormatImage(ledger.Spec.Image)})
 	} else {
@@ -154,6 +156,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 		pterm.Info.Println("Dry run - YAML output:")
 		pterm.Println()
 		fmt.Print(string(b))
+
 		return nil
 	}
 
@@ -163,6 +166,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 	}
 	if !confirm {
 		pterm.Warning.Println("Aborted.")
+
 		return nil
 	}
 
@@ -175,10 +179,12 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, f *createFlags, args [
 
 	if err := crdClient.Create(cmd.Context(), ledger); err != nil {
 		spinner.Fail("Failed to create LedgerService")
+
 		return fmt.Errorf("creating ledger %q: %w", name, err)
 	}
 
 	spinner.Success(fmt.Sprintf("LedgerService %s created in namespace %s", pterm.Cyan(name), pterm.Cyan(ns)))
+
 	return nil
 }
 
@@ -192,8 +198,9 @@ func resolveName(args []string) (string, error) {
 		return "", err
 	}
 	if name == "" {
-		return "", fmt.Errorf("ledger name is required")
+		return "", errors.New("ledger name is required")
 	}
+
 	return name, nil
 }
 
@@ -221,6 +228,7 @@ func resolveNamespace(cmd *cobra.Command, opts *cmdutil.Options) (string, error)
 	if err != nil {
 		return "", fmt.Errorf("namespace selection failed: %w", err)
 	}
+
 	return selected, nil
 }
 
@@ -240,6 +248,7 @@ func listNamespaces(ctx context.Context, opts *cmdutil.Options) ([]string, error
 		names = append(names, nsList.Items[i].Name)
 	}
 	sort.Strings(names)
+
 	return names, nil
 }
 

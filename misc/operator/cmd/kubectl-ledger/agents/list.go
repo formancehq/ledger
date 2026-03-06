@@ -2,6 +2,7 @@ package agents
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +37,7 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options) error {
 	agents, err := cmdutil.ListLedgerClusterAgents(ctx, crdClient)
 	if err != nil {
 		spinner.Fail("Failed to list LedgerClusterAgent resources")
+
 		return fmt.Errorf("listing agents: %w", err)
 	}
 
@@ -58,7 +60,7 @@ func renderAgentListTable(agents *ledgerv1alpha1.LedgerClusterAgentList) error {
 	for i := range agents.Items {
 		a := &agents.Items[i]
 		scopes := strings.Join(a.Spec.Scopes, ", ")
-		matched := fmt.Sprintf("%d", len(a.Status.MatchedServices))
+		matched := strconv.Itoa(len(a.Status.MatchedServices))
 		phase := cmdutil.PhaseColor(agentPhaseColor(a.Status.Phase))
 		age := cmdutil.FormatAge(time.Since(a.CreationTimestamp.Time))
 		keyID := a.Status.KeyID
@@ -79,11 +81,13 @@ func renderAgentListTable(agents *ledgerv1alpha1.LedgerClusterAgentList) error {
 	if len(rows) == 0 {
 		pterm.Info.Println("No LedgerClusterAgent resources found.")
 		pterm.Println(pterm.Gray("Create one with: kubectl ledger agents create"))
+
 		return nil
 	}
 
 	pterm.Println()
 	cmdutil.RenderTable(header, rows)
+
 	return nil
 }
 

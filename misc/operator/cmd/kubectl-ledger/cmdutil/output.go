@@ -23,6 +23,7 @@ func PhaseColor(phase string) string {
 		if phase == "" {
 			phase = "Pending"
 		}
+
 		return pterm.FgGray.Sprint(phase)
 	}
 }
@@ -33,7 +34,7 @@ func RenderTable(header []string, rows [][]string) {
 	for _, row := range rows {
 		data = append(data, row)
 	}
-	//nolint:errcheck // best-effort terminal rendering
+
 	_ = pterm.DefaultTable.WithHasHeader().WithData(data).Render()
 }
 
@@ -41,6 +42,7 @@ func RenderTable(header []string, rows [][]string) {
 func OutputJSON(v any) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
+
 	return enc.Encode(v)
 }
 
@@ -51,6 +53,7 @@ func OutputYAML(v any) error {
 		return err
 	}
 	_, err = os.Stdout.Write(b)
+
 	return err
 }
 
@@ -74,6 +77,7 @@ func FormatReadyReplicas(ready int32, desired *int32) string {
 	if desired != nil {
 		d = *desired
 	}
+
 	return fmt.Sprintf("%d/%d", ready, d)
 }
 
@@ -90,6 +94,7 @@ func FormatImage(img ledgerv1alpha1.ImageSpec) string {
 	if img.Tag == "" {
 		return img.Repository
 	}
+
 	return fmt.Sprintf("%s:%s", img.Repository, img.Tag)
 }
 

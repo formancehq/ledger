@@ -1,6 +1,7 @@
 package cmdutil
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -31,10 +32,7 @@ func clearScreen() {
 // SelectPrompt wraps pterm interactive select with auto-sizing and iTerm cleanup.
 // Filter is only enabled for long lists (>10 options) to avoid rendering artifacts.
 func SelectPrompt(label string, options []string) (string, error) {
-	maxVisible := len(options)
-	if maxVisible > 15 {
-		maxVisible = 15
-	}
+	maxVisible := min(len(options), 15)
 
 	selector := pterm.DefaultInteractiveSelect.
 		WithOptions(options).
@@ -44,6 +42,7 @@ func SelectPrompt(label string, options []string) (string, error) {
 
 	selected, err := selector.Show()
 	ClearTermBelow()
+
 	return selected, err
 }
 
@@ -79,6 +78,7 @@ func EditLoop(fields []explain.Field, data map[string]any, path string, isRoot b
 
 		if strings.Contains(selected, sentinel) {
 			clearScreen()
+
 			return nil
 		}
 
@@ -86,6 +86,7 @@ func EditLoop(fields []explain.Field, data map[string]any, path string, isRoot b
 		for i, opt := range options {
 			if opt == selected {
 				idx = i
+
 				break
 			}
 		}
@@ -143,6 +144,7 @@ func editList(f explain.Field, data map[string]any, path string) error {
 
 		if strings.Contains(selected, "Back") {
 			clearScreen()
+
 			break
 		}
 
@@ -155,6 +157,7 @@ func editList(f explain.Field, data map[string]any, path string) error {
 			if len(newItem) > 0 {
 				items = append(items, newItem)
 			}
+
 			continue
 		}
 
@@ -197,6 +200,7 @@ func editList(f explain.Field, data map[string]any, path string) error {
 	} else {
 		data[f.Name] = items
 	}
+
 	return nil
 }
 
@@ -245,6 +249,7 @@ func editBool(f explain.Field, data map[string]any, currentVal any) error {
 	} else {
 		data[f.Name] = *result
 	}
+
 	return nil
 }
 
@@ -261,6 +266,7 @@ func editInt(f explain.Field, data map[string]any, currentVal any, bitSize int, 
 			return err
 		}
 		data[f.Name] = float64(replicas)
+
 		return nil
 	}
 
@@ -272,15 +278,18 @@ func editInt(f explain.Field, data map[string]any, currentVal any, bitSize int, 
 	input = strings.TrimSpace(input)
 	if input == "" || input == "<unset>" {
 		delete(data, f.Name)
+
 		return nil
 	}
 
 	n, err := strconv.ParseInt(input, 10, bitSize)
 	if err != nil {
 		pterm.Warning.Printfln("Invalid integer: %s", input)
+
 		return nil
 	}
 	data[f.Name] = float64(n) // JSON numbers are float64.
+
 	return nil
 }
 
@@ -298,10 +307,12 @@ func editString(f explain.Field, data map[string]any, currentVal any) error {
 	input = strings.TrimSpace(input)
 	if input == "" || input == "<unset>" {
 		delete(data, f.Name)
+
 		return nil
 	}
 
 	data[f.Name] = input
+
 	return nil
 }
 
@@ -310,10 +321,7 @@ func formatMenuOption(f explain.Field, val any) string {
 	name := f.Name
 	summary := fieldSummary(f, val)
 
-	padding := 30 - len(name)
-	if padding < 2 {
-		padding = 2
-	}
+	padding := max(30-len(name), 2)
 
 	return name + strings.Repeat(" ", padding) + summary
 }
@@ -324,6 +332,7 @@ func fieldSummary(f explain.Field, val any) string {
 		if len(items) == 0 {
 			return pterm.Gray("(empty list)")
 		}
+
 		return pterm.Gray(fmt.Sprintf("(%d items)", len(items)))
 	}
 
@@ -346,6 +355,7 @@ func fieldSummary(f explain.Field, val any) string {
 		if count > len(names) {
 			suffix = fmt.Sprintf(" +%d more", count-len(names))
 		}
+
 		return pterm.Gray("▸ " + strings.Join(names, ", ") + suffix)
 	}
 
@@ -375,6 +385,7 @@ func isSkippedType(f explain.Field) bool {
 		"PodSecurityContext", "SecurityContext":
 		return true
 	}
+
 	return false
 }
 
@@ -421,6 +432,7 @@ func valuesEqual(a, b any) bool {
 	if a == nil || b == nil {
 		return false
 	}
+
 	return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
 }
 
@@ -434,6 +446,7 @@ func DeepCopyMap(m map[string]any) map[string]any {
 			cp[k] = v
 		}
 	}
+
 	return cp
 }
 
@@ -441,6 +454,7 @@ func formatCurrentValue(val any) string {
 	if val == nil {
 		return pterm.Gray("<not set>")
 	}
+
 	return pterm.Green(FormatLeafValue(val))
 }
 
@@ -451,6 +465,7 @@ func FormatLeafValue(val any) string {
 		if v == float64(int64(v)) {
 			return strconv.FormatInt(int64(v), 10)
 		}
+
 		return strconv.FormatFloat(v, 'f', -1, 64)
 	case bool:
 		return strconv.FormatBool(v)
@@ -464,6 +479,7 @@ func FormatChangeValue(val any) string {
 	if val == nil {
 		return "<not set>"
 	}
+
 	return FormatLeafValue(val)
 }
 
@@ -473,8 +489,10 @@ func FormatNumericValue(val any) string {
 		if f == float64(int64(f)) {
 			return strconv.FormatInt(int64(f), 10)
 		}
+
 		return strconv.FormatFloat(f, 'f', -1, 64)
 	}
+
 	return fmt.Sprintf("%v", val)
 }
 
@@ -486,6 +504,7 @@ func ParseCurrentInt32(val any, fallback int32) int32 {
 	if f, ok := val.(float64); ok {
 		return int32(f)
 	}
+
 	return fallback
 }
 
@@ -496,6 +515,7 @@ func countConfiguredChildren(fields []explain.Field, data map[string]any) int {
 			count++
 		}
 	}
+
 	return count
 }
 
@@ -508,6 +528,7 @@ func getSlice(data map[string]any, key string) []any {
 	if !ok {
 		return nil
 	}
+
 	return slice
 }
 
@@ -519,6 +540,7 @@ func toSlice(val any) []any {
 	if !ok {
 		return nil
 	}
+
 	return slice
 }
 
@@ -540,17 +562,19 @@ func listItemSummary(children []explain.Field, item any) string {
 	if len(parts) == 0 {
 		return pterm.Gray("(empty)")
 	}
+
 	return strings.Join(parts, ", ")
 }
 
 func parseListIndex(s string) (int, error) {
 	s = strings.TrimSpace(s)
 	if !strings.HasPrefix(s, "[") {
-		return -1, fmt.Errorf("no index prefix")
+		return -1, errors.New("no index prefix")
 	}
 	end := strings.Index(s, "]")
 	if end < 0 {
-		return -1, fmt.Errorf("no closing bracket")
+		return -1, errors.New("no closing bracket")
 	}
+
 	return strconv.Atoi(s[1:end])
 }

@@ -31,6 +31,7 @@ func GetLedgerService(ctx context.Context, c client.Client, namespace, name stri
 	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &ledger); err != nil {
 		return nil, err
 	}
+
 	return &ledger, nil
 }
 
@@ -44,6 +45,7 @@ func ListLedgerServices(ctx context.Context, c client.Client, namespace string) 
 	if err := c.List(ctx, &list, opts...); err != nil {
 		return nil, err
 	}
+
 	return &list, nil
 }
 
@@ -79,6 +81,7 @@ func GetLedgerDefaults(ctx context.Context, c client.Client, name string) (*ledg
 	if err := c.Get(ctx, types.NamespacedName{Name: name}, &defaults); err != nil {
 		return nil, err
 	}
+
 	return &defaults, nil
 }
 
@@ -88,6 +91,7 @@ func ListLedgerDefaults(ctx context.Context, c client.Client) (*ledgerv1alpha1.L
 	if err := c.List(ctx, &list); err != nil {
 		return nil, err
 	}
+
 	return &list, nil
 }
 
@@ -97,6 +101,7 @@ func GetLedgerClusterAgent(ctx context.Context, c client.Client, name string) (*
 	if err := c.Get(ctx, types.NamespacedName{Name: name}, &agent); err != nil {
 		return nil, err
 	}
+
 	return &agent, nil
 }
 
@@ -106,6 +111,7 @@ func ListLedgerClusterAgents(ctx context.Context, c client.Client) (*ledgerv1alp
 	if err := c.List(ctx, &list); err != nil {
 		return nil, err
 	}
+
 	return &list, nil
 }
 
@@ -118,6 +124,7 @@ func PodReadyCount(p *corev1.Pod) string {
 			ready++
 		}
 	}
+
 	return fmt.Sprintf("%d/%d", ready, total)
 }
 
@@ -127,5 +134,6 @@ func PodRestarts(p *corev1.Pod) int32 {
 	for _, cs := range p.Status.ContainerStatuses {
 		restarts += cs.RestartCount
 	}
+
 	return restarts
 }

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"maps"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,9 +38,7 @@ func (r *LedgerServiceReconciler) reconcileGrpcService(ctx context.Context, ledg
 		if ledger.Spec.IngressGrpc.ClassName == "traefik" {
 			annotations["traefik.ingress.kubernetes.io/service.serversscheme"] = "h2c"
 		}
-		for k, v := range ledger.Spec.Service.Annotations {
-			annotations[k] = v
-		}
+		maps.Copy(annotations, ledger.Spec.Service.Annotations)
 		svc.Annotations = annotations
 
 		svc.Spec = corev1.ServiceSpec{
@@ -54,7 +53,9 @@ func (r *LedgerServiceReconciler) reconcileGrpcService(ctx context.Context, ledg
 			},
 			Selector: selectorLabels(ledger),
 		}
+
 		return controllerutil.SetControllerReference(ledger, svc, r.Scheme)
 	})
+
 	return err
 }
