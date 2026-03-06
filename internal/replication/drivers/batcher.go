@@ -111,7 +111,7 @@ func (b *Batcher) Stop(ctx context.Context) error {
 	}
 }
 
-func newBatcher(driver Driver, batching Batching, logger logging.Logger) *Batcher {
+func NewBatcher(driver Driver, batching Batching, logger logging.Logger) *Batcher {
 	ret := &Batcher{
 		Driver:   driver,
 		batching: batching,

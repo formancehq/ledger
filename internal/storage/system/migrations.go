@@ -294,6 +294,18 @@ func GetMigrator(db bun.IDB, options ...migrations.Option) *migrations.Migrator 
 				})
 			},
 		},
+		migrations.Migration{
+			Name: "Add global exporter state table",
+			Up: func(ctx context.Context, db bun.IDB) error {
+				_, err := db.ExecContext(ctx, `
+					create table if not exists _system.global_exporter_state (
+						ledger varchar(63) primary key references _system.ledgers(name) on delete cascade,
+						last_log_id bigint not null
+					);
+				`)
+				return err
+			},
+		},
 	)
 
 	return migrator

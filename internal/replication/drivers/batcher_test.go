@@ -72,7 +72,7 @@ func TestBatcher(t *testing.T) {
 		Accept(gomock.Any(), log).
 		Return([]error{nil}, nil)
 
-	batcher := newBatcher(driver, Batching{
+	batcher := NewBatcher(driver, Batching{
 		MaxItems:      5,
 		FlushInterval: 50 * time.Millisecond,
 	}, logger)

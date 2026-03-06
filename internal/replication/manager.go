@@ -18,12 +18,42 @@ import (
 	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 
+type managedPipeline struct {
+	handler    *PipelineHandler
+	exporterID string
+	driver     drivers.Driver
+}
+
+type managerProgressTracker struct {
+	ledgerName string
+	lastLogID  *uint64
+	pipelineID string
+	storage    Storage
+	logger     logging.Logger
+}
+
+func (t *managerProgressTracker) LedgerName() string {
+	return t.ledgerName
+}
+
+func (t *managerProgressTracker) LastLogID() *uint64 {
+	return t.lastLogID
+}
+
+func (t *managerProgressTracker) UpdateLastLogID(ctx context.Context, id uint64) error {
+	t.lastLogID = &id
+	if err := t.storage.StorePipelineState(ctx, t.pipelineID, id); err != nil {
+		t.logger.Errorf("Unable to store state: %s", err)
+	}
+	return nil
+}
+
 type Manager struct {
 	mu sync.Mutex
 
 	stopChannel        chan chan error
 	storage            Storage
-	pipelines          map[string]*PipelineHandler
+	pipelines          map[string]managedPipeline
 	pipelinesWaitGroup sync.WaitGroup
 	logger             logging.Logger
 
@@ -121,53 +151,54 @@ func (m *Manager) startPipeline(ctx context.Context, pipeline ledger.Pipeline) (
 		return nil, errors.Wrap(err, "opening ledger")
 	}
 
+	tracker := &managerProgressTracker{
+		ledgerName: pipeline.Ledger,
+		lastLogID:  pipeline.LastLogID,
+		pipelineID: pipeline.ID,
+		storage:    m.storage,
+		logger:     m.logger,
+	}
+
 	pipelineHandler := NewPipelineHandler(
-		pipeline,
+		tracker,
 		store,
 		m.drivers[pipeline.ExporterID],
-		m.logger,
+		m.logger.WithField("driver", pipeline.ExporterID),
 		m.pipelineOptions...,
 	)
-	m.pipelines[pipeline.ID] = pipelineHandler
+	m.pipelines[pipeline.ID] = managedPipeline{
+		handler:    pipelineHandler,
+		exporterID: pipeline.ExporterID,
+		driver:     m.drivers[pipeline.ExporterID],
+	}
 	m.pipelinesWaitGroup.Add(1)
 
-	// ignore the cancel function, as it will be called by the pipeline at its end
-	subscription := make(chan uint64)
-
 	m.logger.Infof("starting handler")
-	go func() {
-		for lastLogID := range subscription {
-			if err := m.storage.StorePipelineState(ctx, pipeline.ID, lastLogID); err != nil {
-				m.logger.Errorf("Unable to store state: %s", err)
-			}
-		}
-	}()
 	go func() {
 		defer func() {
 			m.mu.Lock()
 			defer m.mu.Unlock()
 			defer m.pipelinesWaitGroup.Done()
-			close(subscription)
 		}()
-		pipelineHandler.Run(ctx, subscription)
+		pipelineHandler.Run(ctx)
 	}()
 
 	return pipelineHandler, nil
 }
 
 func (m *Manager) stopPipeline(ctx context.Context, id string) error {
-	handler, ok := m.pipelines[id]
+	mp, ok := m.pipelines[id]
 	if !ok {
 		return ledger.NewErrPipelineNotFound(id)
 	}
 
-	if err := handler.Shutdown(ctx); err != nil {
+	if err := mp.handler.Shutdown(ctx); err != nil {
 		return fmt.Errorf("error stopping pipeline: %w", err)
 	}
 	delete(m.pipelines, id)
 
 	m.logger.Infof("pipeline terminated, pruning exporter...")
-	m.stopExporterIfNeeded(ctx, handler)
+	m.stopExporterIfNeeded(ctx, mp)
 
 	return nil
 }
@@ -190,18 +221,17 @@ func (m *Manager) stopPipelines(ctx context.Context) {
 	}
 }
 
-func (m *Manager) stopExporterIfNeeded(ctx context.Context, handler *PipelineHandler) {
-	// Check if the exporter associated to the pipeline is still in used
-	exporter := handler.exporter
+func (m *Manager) stopExporterIfNeeded(ctx context.Context, mp managedPipeline) {
+	// Check if the exporter associated to the pipeline is still in use
 	for _, anotherPipeline := range m.pipelines {
-		if anotherPipeline.exporter == exporter {
+		if anotherPipeline.driver == mp.driver {
 			// Exporter still used, keep it
 			return
 		}
 	}
 
-	m.logger.Infof("exporter %s no more used, stopping it...", handler.pipeline.ExporterID)
-	m.stopDriver(ctx, exporter)
+	m.logger.Infof("exporter %s no more used, stopping it...", mp.exporterID)
+	m.stopDriver(ctx, mp.driver)
 }
 
 func (m *Manager) synchronizePipelines(ctx context.Context) error {
@@ -344,8 +374,8 @@ func (m *Manager) ListExporters(ctx context.Context) (*bunpaginate.Cursor[ledger
 
 func (m *Manager) stopExporter(ctx context.Context, exporterID string) error {
 
-	for id, config := range m.pipelines {
-		if config.pipeline.ExporterID == exporterID {
+	for id, mp := range m.pipelines {
+		if mp.exporterID == exporterID {
 			if err := m.stopPipeline(ctx, id); err != nil {
 				return fmt.Errorf("stopping pipeline: %w", err)
 			}
@@ -449,7 +479,7 @@ func (m *Manager) ResetPipeline(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	started := m.pipelines[id] != nil
+	_, started := m.pipelines[id]
 
 	if started {
 		if err := m.stopPipeline(ctx, id); err != nil {
@@ -486,7 +516,7 @@ func NewManager(
 	ret := &Manager{
 		storage:                  storageDriver,
 		stopChannel:              make(chan chan error, 1),
-		pipelines:                map[string]*PipelineHandler{},
+		pipelines:                map[string]managedPipeline{},
 		driverFactory:            driverFactory,
 		drivers:                  map[string]*DriverFacade{},
 		logger:                   logger.WithField("component", "manager"),
