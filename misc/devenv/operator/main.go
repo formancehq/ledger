@@ -106,6 +106,10 @@ func main() {
 				},
 			}
 
+			if allowedNS := cfg.Get("operatorUI-allowed-namespaces"); allowedNS != "" {
+				uiValues["allowedNamespaces"] = pulumi.String(allowedNS)
+			}
+
 			// Configure ingress only when host is provided.
 			if ingressHost := cfg.Get("operatorUI-ingress-host"); ingressHost != "" {
 				ingressValues := pulumi.Map{

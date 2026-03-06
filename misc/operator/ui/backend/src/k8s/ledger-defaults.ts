@@ -56,12 +56,15 @@ export async function patchLedgerDefaults(
   name: string,
   patch: Record<string, unknown>
 ): Promise<LedgerDefaults> {
-  const res = await customApi.patchClusterCustomObject({
-    group: CRD_GROUP,
-    version: CRD_VERSION,
-    plural: LEDGER_DEFAULTS_PLURAL,
-    name,
-    body: patch,
-  });
+  const res = await customApi.patchClusterCustomObject(
+    {
+      group: CRD_GROUP,
+      version: CRD_VERSION,
+      plural: LEDGER_DEFAULTS_PLURAL,
+      name,
+      body: patch,
+    },
+    { headers: { "Content-Type": "application/merge-patch+json" } },
+  );
   return res as unknown as LedgerDefaults;
 }

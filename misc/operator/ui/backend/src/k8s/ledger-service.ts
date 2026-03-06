@@ -68,13 +68,16 @@ export async function patchLedgerService(
   name: string,
   patch: Record<string, unknown>
 ): Promise<LedgerService> {
-  const res = await customApi.patchNamespacedCustomObject({
-    group: CRD_GROUP,
-    version: CRD_VERSION,
-    namespace,
-    plural: LEDGER_SERVICE_PLURAL,
-    name,
-    body: patch,
-  });
+  const res = await customApi.patchNamespacedCustomObject(
+    {
+      group: CRD_GROUP,
+      version: CRD_VERSION,
+      namespace,
+      plural: LEDGER_SERVICE_PLURAL,
+      name,
+      body: patch,
+    },
+    { headers: { "Content-Type": "application/merge-patch+json" } },
+  );
   return res as unknown as LedgerService;
 }

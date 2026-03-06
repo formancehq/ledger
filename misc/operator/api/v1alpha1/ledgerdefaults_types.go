@@ -91,13 +91,10 @@ type LedgerDefaultsSpec struct {
 	// +optional
 	Persistence *PersistenceSpec `json:"persistence,omitempty"`
 
-	// AutoIngress automatically creates an Ingress from the LedgerService name.
+	// AutoNetworking automatically creates Ingress, gRPC Ingress, and DNSEndpoint
+	// resources from the LedgerService name.
 	// +optional
-	AutoIngress *AutoIngressSpec `json:"autoIngress,omitempty"`
-
-	// AutoDNSEndpoint automatically creates a DNSEndpoint from the LedgerService name.
-	// +optional
-	AutoDNSEndpoint *AutoDNSEndpointSpec `json:"autoDNSEndpoint,omitempty"`
+	AutoNetworking *AutoNetworkingSpec `json:"autoNetworking,omitempty"`
 }
 
 // LedgerDefaultsConfig holds the subset of LedgerServiceConfig fields that are safe

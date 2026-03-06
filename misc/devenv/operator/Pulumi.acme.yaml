@@ -10,6 +10,7 @@ config:
     secure: AAABAL9Evo0OgUqstaBzgB0ln65XdytttNOGXVzLVQmbJL+bTgqoufCsZVGAA5Nh+bLYbMyNaZJV9ggcXMOaj+KHAEHQjSj6
   # Optional components
   ledger-operator:operatorUI-enabled: "true"
+  ledger-operator:operatorUI-allowed-namespaces: ledger-v3
   ledger-operator:operatorUI-ingress-host: portal-ledger-v3.dev.acme.frmnc.net
   ledger-operator:operatorUI-auth-enabled: "true"
   ledger-operator:operatorUI-auth-issuer-url: https://accounts.google.com

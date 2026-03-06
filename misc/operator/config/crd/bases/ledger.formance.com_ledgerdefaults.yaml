@@ -959,112 +959,165 @@ spec:
                         x-kubernetes-list-type: atomic
                     type: object
                 type: object
-              autoDNSEndpoint:
-                description: AutoDNSEndpoint automatically creates a DNSEndpoint from
-                  the LedgerService name.
+              autoNetworking:
+                description: |-
+                  AutoNetworking automatically creates Ingress, gRPC Ingress, and DNSEndpoint
+                  resources from the LedgerService name.
                 properties:
-                  annotations:
-                    additionalProperties:
-                      type: string
-                    description: Annotations to add to the DNSEndpoint resource.
+                  dnsEndpoint:
+                    description: DNSEndpoint configuration for automatic DNS record
+                      creation.
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: Annotations to add to the DNSEndpoint resource.
+                        type: object
+                      enabled:
+                        description: Enabled enables automatic DNSEndpoint creation.
+                        type: boolean
+                      providerSpecific:
+                        description: ProviderSpecific holds provider-specific properties.
+                        items:
+                          description: ProviderSpecificProperty defines a provider-specific
+                            key-value pair.
+                          properties:
+                            name:
+                              description: Name is the property name.
+                              type: string
+                            value:
+                              description: Value is the property value.
+                              type: string
+                          required:
+                          - name
+                          - value
+                          type: object
+                        type: array
+                      recordTTL:
+                        description: RecordTTL is the TTL in seconds for the DNS record.
+                        format: int64
+                        type: integer
+                      recordType:
+                        description: RecordType is the DNS record type (e.g., CNAME,
+                          A). Defaults to CNAME.
+                        type: string
+                      targets:
+                        description: Targets is the list of target hostnames or IPs.
+                        items:
+                          type: string
+                        type: array
+                    required:
+                    - targets
                     type: object
-                  enabled:
-                    description: Enabled enables automatic DNSEndpoint creation.
-                    type: boolean
-                  providerSpecific:
-                    description: ProviderSpecific holds provider-specific properties.
-                    items:
-                      description: ProviderSpecificProperty defines a provider-specific
-                        key-value pair.
-                      properties:
-                        name:
-                          description: Name is the property name.
+                  ingress:
+                    description: Ingress configuration for automatic HTTP Ingress.
+                    properties:
+                      annotations:
+                        additionalProperties:
                           type: string
-                        value:
-                          description: Value is the property value.
+                        description: Annotations to add to the ingress.
+                        type: object
+                      className:
+                        description: ClassName is the ingress class name.
+                        type: string
+                      enabled:
+                        description: Enabled enables automatic Ingress creation.
+                        type: boolean
+                      labels:
+                        additionalProperties:
                           type: string
-                      required:
-                      - name
-                      - value
-                      type: object
-                    type: array
-                  recordTTL:
-                    description: RecordTTL is the TTL in seconds for the DNS record.
-                    format: int64
-                    type: integer
-                  recordType:
-                    description: RecordType is the DNS record type (e.g., CNAME, A).
-                      Defaults to CNAME.
-                    type: string
+                        description: Labels to add to the ingress.
+                        type: object
+                      paths:
+                        description: Paths are the path rules. Defaults to a single
+                          "/" Prefix path.
+                        items:
+                          description: IngressPath defines an ingress path rule.
+                          properties:
+                            path:
+                              default: /
+                              description: Path is the URL path.
+                              type: string
+                            pathType:
+                              default: Prefix
+                              description: PathType is the path matching type.
+                              type: string
+                          type: object
+                        type: array
+                      tls:
+                        description: TLS configuration.
+                        items:
+                          description: IngressTLS defines ingress TLS configuration.
+                          properties:
+                            hosts:
+                              description: Hosts are the TLS hostnames.
+                              items:
+                                type: string
+                              type: array
+                            secretName:
+                              description: SecretName is the TLS secret.
+                              type: string
+                          type: object
+                        type: array
+                    type: object
+                  ingressGrpc:
+                    description: IngressGrpc configuration for automatic gRPC Ingress.
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: Annotations to add to the ingress.
+                        type: object
+                      className:
+                        description: ClassName is the ingress class name.
+                        type: string
+                      enabled:
+                        description: Enabled enables automatic Ingress creation.
+                        type: boolean
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Labels to add to the ingress.
+                        type: object
+                      paths:
+                        description: Paths are the path rules. Defaults to a single
+                          "/" Prefix path.
+                        items:
+                          description: IngressPath defines an ingress path rule.
+                          properties:
+                            path:
+                              default: /
+                              description: Path is the URL path.
+                              type: string
+                            pathType:
+                              default: Prefix
+                              description: PathType is the path matching type.
+                              type: string
+                          type: object
+                        type: array
+                      tls:
+                        description: TLS configuration.
+                        items:
+                          description: IngressTLS defines ingress TLS configuration.
+                          properties:
+                            hosts:
+                              description: Hosts are the TLS hostnames.
+                              items:
+                                type: string
+                              type: array
+                            secretName:
+                              description: SecretName is the TLS secret.
+                              type: string
+                          type: object
+                        type: array
+                    type: object
                   suffix:
                     description: Suffix is appended to the service name before the
                       TLD (e.g., "-ledger-v3").
                     type: string
-                  targets:
-                    description: Targets is the list of target hostnames or IPs.
-                    items:
-                      type: string
-                    type: array
                   tld:
                     description: TLD is the top-level domain (e.g., "example.com").
                     type: string
-                required:
-                - targets
-                - tld
-                type: object
-              autoIngress:
-                description: AutoIngress automatically creates an Ingress from the
-                  LedgerService name.
-                properties:
-                  annotations:
-                    additionalProperties:
-                      type: string
-                    description: Annotations to add to the ingress.
-                    type: object
-                  className:
-                    description: ClassName is the ingress class name.
-                    type: string
-                  enabled:
-                    description: Enabled enables automatic Ingress creation.
-                    type: boolean
-                  paths:
-                    description: Paths are the path rules. Defaults to a single "/"
-                      Prefix path.
-                    items:
-                      description: IngressPath defines an ingress path rule.
-                      properties:
-                        path:
-                          default: /
-                          description: Path is the URL path.
-                          type: string
-                        pathType:
-                          default: Prefix
-                          description: PathType is the path matching type.
-                          type: string
-                      type: object
-                    type: array
-                  suffix:
-                    description: Suffix is appended to the service name before the
-                      TLD (e.g., "-ledger-v3").
-                    type: string
-                  tld:
-                    description: TLD is the top-level domain (e.g., "example.com").
-                    type: string
-                  tls:
-                    description: TLS configuration.
-                    items:
-                      description: IngressTLS defines ingress TLS configuration.
-                      properties:
-                        hosts:
-                          description: Hosts are the TLS hostnames.
-                          items:
-                            type: string
-                          type: array
-                        secretName:
-                          description: SecretName is the TLS secret.
-                          type: string
-                      type: object
-                    type: array
                 required:
                 - tld
                 type: object

@@ -83,11 +83,6 @@ type LedgerServiceSpec struct {
 	// +optional
 	Ingress *IngressSpec `json:"ingress,omitempty"`
 
-	// AutoIngress automatically creates an Ingress from the LedgerService name.
-	// The generated host is: <service-name><suffix>.<tld>
-	// +optional
-	AutoIngress *AutoIngressSpec `json:"autoIngress,omitempty"`
-
 	// IngressGrpc configuration for gRPC access.
 	// +optional
 	IngressGrpc *IngressGrpcSpec `json:"ingressGrpc,omitempty"`
@@ -136,9 +131,11 @@ type LedgerServiceSpec struct {
 	// +optional
 	DNSEndpoint *DNSEndpointSpec `json:"dnsEndpoint,omitempty"`
 
-	// AutoDNSEndpoint automatically creates a DNSEndpoint from the LedgerService name.
+	// AutoNetworking automatically creates Ingress, gRPC Ingress, and DNSEndpoint
+	// resources from the LedgerService name. TLD and suffix are shared across all sub-resources.
+	// Generated host: <service-name><suffix>.<tld>
 	// +optional
-	AutoDNSEndpoint *AutoDNSEndpointSpec `json:"autoDNSEndpoint,omitempty"`
+	AutoNetworking *AutoNetworkingSpec `json:"autoNetworking,omitempty"`
 }
 
 // ImageSpec defines container image configuration.
@@ -765,19 +762,35 @@ type HeadlessServiceSpec struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-// AutoIngressSpec automatically creates an Ingress from the LedgerService name.
-// The generated host is: <service-name><suffix>.<tld>
-type AutoIngressSpec struct {
-	// Enabled enables automatic Ingress creation.
-	// +optional
-	Enabled bool `json:"enabled,omitempty"`
-
+// AutoNetworkingSpec centralizes automatic Ingress, gRPC Ingress, and DNSEndpoint
+// creation from the LedgerService name. TLD and suffix are shared.
+// Generated host/dnsName: <service-name><suffix>.<tld>
+type AutoNetworkingSpec struct {
 	// TLD is the top-level domain (e.g., "example.com").
 	TLD string `json:"tld"`
 
 	// Suffix is appended to the service name before the TLD (e.g., "-ledger-v3").
 	// +optional
 	Suffix string `json:"suffix,omitempty"`
+
+	// Ingress configuration for automatic HTTP Ingress.
+	// +optional
+	Ingress *AutoIngressConfig `json:"ingress,omitempty"`
+
+	// IngressGrpc configuration for automatic gRPC Ingress.
+	// +optional
+	IngressGrpc *AutoIngressConfig `json:"ingressGrpc,omitempty"`
+
+	// DNSEndpoint configuration for automatic DNS record creation.
+	// +optional
+	DNSEndpoint *AutoDNSEndpointConfig `json:"dnsEndpoint,omitempty"`
+}
+
+// AutoIngressConfig holds configuration specific to an auto-created Ingress.
+type AutoIngressConfig struct {
+	// Enabled enables automatic Ingress creation.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
 
 	// ClassName is the ingress class name.
 	// +optional
@@ -787,6 +800,10 @@ type AutoIngressSpec struct {
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
 
+	// Labels to add to the ingress.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+
 	// TLS configuration.
 	// +optional
 	TLS []IngressTLS `json:"tls,omitempty"`
@@ -794,6 +811,32 @@ type AutoIngressSpec struct {
 	// Paths are the path rules. Defaults to a single "/" Prefix path.
 	// +optional
 	Paths []IngressPath `json:"paths,omitempty"`
+}
+
+// AutoDNSEndpointConfig holds configuration specific to an auto-created DNSEndpoint.
+type AutoDNSEndpointConfig struct {
+	// Enabled enables automatic DNSEndpoint creation.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// RecordType is the DNS record type (e.g., CNAME, A). Defaults to CNAME.
+	// +optional
+	RecordType string `json:"recordType,omitempty"`
+
+	// Targets is the list of target hostnames or IPs.
+	Targets []string `json:"targets"`
+
+	// RecordTTL is the TTL in seconds for the DNS record.
+	// +optional
+	RecordTTL *int64 `json:"recordTTL,omitempty"`
+
+	// Annotations to add to the DNSEndpoint resource.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+
+	// ProviderSpecific holds provider-specific properties.
+	// +optional
+	ProviderSpecific []ProviderSpecificProperty `json:"providerSpecific,omitempty"`
 }
 
 // IngressSpec defines HTTP ingress configuration.
@@ -1024,40 +1067,6 @@ type ServiceMonitorSpec struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Schemaless
 	MetricRelabelings []runtime.RawExtension `json:"metricRelabelings,omitempty"`
-}
-
-// AutoDNSEndpointSpec automatically creates a DNSEndpoint from the LedgerService name.
-// The generated dnsName is: <service-name><suffix>.<tld>
-type AutoDNSEndpointSpec struct {
-	// Enabled enables automatic DNSEndpoint creation.
-	// +optional
-	Enabled bool `json:"enabled,omitempty"`
-
-	// TLD is the top-level domain (e.g., "example.com").
-	TLD string `json:"tld"`
-
-	// Suffix is appended to the service name before the TLD (e.g., "-ledger-v3").
-	// +optional
-	Suffix string `json:"suffix,omitempty"`
-
-	// RecordType is the DNS record type (e.g., CNAME, A). Defaults to CNAME.
-	// +optional
-	RecordType string `json:"recordType,omitempty"`
-
-	// Targets is the list of target hostnames or IPs.
-	Targets []string `json:"targets"`
-
-	// RecordTTL is the TTL in seconds for the DNS record.
-	// +optional
-	RecordTTL *int64 `json:"recordTTL,omitempty"`
-
-	// Annotations to add to the DNSEndpoint resource.
-	// +optional
-	Annotations map[string]string `json:"annotations,omitempty"`
-
-	// ProviderSpecific holds provider-specific properties.
-	// +optional
-	ProviderSpecific []ProviderSpecificProperty `json:"providerSpecific,omitempty"`
 }
 
 // DNSEndpointSpec defines ExternalDNS DNSEndpoint configuration.

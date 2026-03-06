@@ -53,12 +53,12 @@ func TestReconcile_IngressHTTP(t *testing.T) {
 	requireOwnerRef(t, ing.OwnerReferences, "ing-http")
 }
 
-func TestReconcile_IngressGrpcTraefik(t *testing.T) {
+func TestReconcile_IngressGrpc(t *testing.T) {
 	ns := createTestNamespace(t)
-	ls := newLedgerService("ing-traefik", ns)
+	ls := newLedgerService("ing-grpc", ns)
 	ls.Spec.IngressGrpc = &ledgerv1alpha1.IngressGrpcSpec{
 		Enabled:   true,
-		ClassName: "traefik",
+		ClassName: "custom-class",
 		Hosts: []ledgerv1alpha1.IngressHost{
 			{Host: "grpc.example.com"},
 		},
@@ -67,39 +67,15 @@ func TestReconcile_IngressGrpcTraefik(t *testing.T) {
 
 	ing := &networkingv1.Ingress{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "ing-traefik-grpc", Namespace: ns}, ing) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ing-grpc-grpc", Namespace: ns}, ing) == nil
 	}, "gRPC Ingress should be created")
-
-	// Traefik h2c annotation
-	assert.Equal(t, "h2c", ing.Annotations["traefik.ingress.kubernetes.io/service.serversscheme"])
 
 	// Backend should point to the gRPC service
 	require.Len(t, ing.Spec.Rules, 1)
 	paths := ing.Spec.Rules[0].HTTP.Paths
 	require.Len(t, paths, 1)
-	assert.Equal(t, "ing-traefik-grpc", paths[0].Backend.Service.Name)
+	assert.Equal(t, "ing-grpc-grpc", paths[0].Backend.Service.Name)
 	assert.Equal(t, int32(8888), paths[0].Backend.Service.Port.Number)
-}
-
-func TestReconcile_IngressGrpcNginx(t *testing.T) {
-	ns := createTestNamespace(t)
-	ls := newLedgerService("ing-nginx", ns)
-	ls.Spec.IngressGrpc = &ledgerv1alpha1.IngressGrpcSpec{
-		Enabled:   true,
-		ClassName: "nginx",
-		Hosts: []ledgerv1alpha1.IngressHost{
-			{Host: "grpc.example.com"},
-		},
-	}
-	require.NoError(t, k8sClient.Create(ctx, ls))
-
-	ing := &networkingv1.Ingress{}
-	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "ing-nginx-grpc", Namespace: ns}, ing) == nil
-	}, "gRPC Ingress should be created")
-
-	// Nginx gRPC annotation
-	assert.Equal(t, "GRPC", ing.Annotations["nginx.ingress.kubernetes.io/backend-protocol"])
 }
 
 func TestReconcile_IngressDisabledCleansUp(t *testing.T) {

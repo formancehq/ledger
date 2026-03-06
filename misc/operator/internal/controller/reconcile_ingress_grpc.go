@@ -15,9 +15,16 @@ import (
 func (r *LedgerServiceReconciler) reconcileIngressGrpc(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	name := ledger.Name + "-grpc"
 
-	// Delete the Ingress if gRPC ingress is disabled or has no hosts
-	// (e.g. only a TargetGroupBinding is configured).
-	if ledger.Spec.IngressGrpc == nil || !ledger.Spec.IngressGrpc.Enabled || len(ledger.Spec.IngressGrpc.Hosts) == 0 {
+	auto := ledger.Spec.AutoNetworking
+	autoEnabled := auto != nil && auto.IngressGrpc != nil && auto.IngressGrpc.Enabled
+	manualEnabled := ledger.Spec.IngressGrpc != nil && ledger.Spec.IngressGrpc.Enabled
+
+	// For manual mode, also require hosts (e.g. only a TargetGroupBinding may be configured).
+	if manualEnabled && len(ledger.Spec.IngressGrpc.Hosts) == 0 {
+		manualEnabled = false
+	}
+
+	if !autoEnabled && !manualEnabled {
 		return r.deleteIfExists(ctx, &networkingv1.Ingress{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
@@ -34,25 +41,50 @@ func (r *LedgerServiceReconciler) reconcileIngressGrpc(ctx context.Context, ledg
 	}
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, ing, func() error {
-		ing.Labels = commonLabels(ledger)
-
+		labels := commonLabels(ledger)
 		annotations := make(map[string]string)
-		switch ledger.Spec.IngressGrpc.ClassName {
-		case "nginx":
-			annotations["nginx.ingress.kubernetes.io/backend-protocol"] = "GRPC"
-		case "traefik":
-			annotations["traefik.ingress.kubernetes.io/service.serversscheme"] = "h2c"
+		var className string
+		var hosts []ledgerv1alpha1.IngressHost
+		var tlsSpecs []ledgerv1alpha1.IngressTLS
+
+		if autoEnabled {
+			cfg := auto.IngressGrpc
+			host := autoHost(ledger.Name, auto)
+
+			paths := cfg.Paths
+			if len(paths) == 0 {
+				paths = []ledgerv1alpha1.IngressPath{{Path: "/", PathType: "Prefix"}}
+			}
+
+			hosts = append(hosts, ledgerv1alpha1.IngressHost{
+				Host:  host,
+				Paths: paths,
+			})
+			className = cfg.ClassName
+			tlsSpecs = append(tlsSpecs, cfg.TLS...)
+			maps.Copy(labels, cfg.Labels)
+			maps.Copy(annotations, cfg.Annotations)
 		}
-		maps.Copy(annotations, ledger.Spec.IngressGrpc.Annotations)
+
+		if manualEnabled {
+			hosts = append(hosts, ledger.Spec.IngressGrpc.Hosts...)
+			if ledger.Spec.IngressGrpc.ClassName != "" {
+				className = ledger.Spec.IngressGrpc.ClassName
+			}
+			tlsSpecs = append(tlsSpecs, ledger.Spec.IngressGrpc.TLS...)
+			maps.Copy(annotations, ledger.Spec.IngressGrpc.Annotations)
+		}
+
+		ing.Labels = labels
 		ing.Annotations = annotations
 
 		spec := networkingv1.IngressSpec{}
-		if ledger.Spec.IngressGrpc.ClassName != "" {
-			spec.IngressClassName = &ledger.Spec.IngressGrpc.ClassName
+		if className != "" {
+			spec.IngressClassName = &className
 		}
 
-		spec.TLS = buildIngressTLS(ledger.Spec.IngressGrpc.TLS)
-		spec.Rules = buildGrpcIngressRules(ledger, ledger.Spec.IngressGrpc.Hosts)
+		spec.TLS = buildIngressTLS(tlsSpecs)
+		spec.Rules = buildGrpcIngressRules(ledger, hosts)
 
 		ing.Spec = spec
 

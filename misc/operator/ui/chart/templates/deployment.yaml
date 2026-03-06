@@ -28,6 +28,10 @@ spec:
           value: "{{ .Values.port }}"
         - name: NODE_ENV
           value: "production"
+        {{- if .Values.allowedNamespaces }}
+        - name: ALLOWED_NAMESPACES
+          value: {{ .Values.allowedNamespaces | quote }}
+        {{- end }}
         {{- /* Auth env vars — only injected when auth.enabled is true */}}
         {{- if .Values.auth.enabled }}
         - name: AUTH_ENABLED

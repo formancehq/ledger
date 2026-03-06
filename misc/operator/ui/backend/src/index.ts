@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import api from "./routes/index.js";
 import { errorHandler } from "./middleware/error-handler.js";
+import { namespaceGuard } from "./middleware/namespace-guard.js";
 import { handleUpgrade } from "./ws/terminal.js";
 import { authEnabled, loadAuthConfig } from "./auth/config.js";
 import { initSessions } from "./auth/session.js";
@@ -35,6 +36,9 @@ async function start(): Promise<void> {
   // Auth middleware — must come before API routes
   app.use("*", createAuthMiddleware());
 
+  // Namespace restriction — blocks requests to namespaces not in ALLOWED_NAMESPACES
+  app.use("/api/*", namespaceGuard);
+
   // Auth routes
   app.route("/api/auth", createAuthRoutes(authConfig));
 
@@ -53,7 +57,9 @@ async function start(): Promise<void> {
 
   const port = parseInt(process.env.PORT ?? "3001", 10);
 
+  const allowedNS = process.env.ALLOWED_NAMESPACES?.trim();
   console.log(`Auth: ${authEnabled ? "enabled" : "disabled"}`);
+  console.log(`Namespaces: ${allowedNS ? allowedNS : "all (unrestricted)"}`);
   console.log(`Backend listening on http://localhost:${port}`);
   const server = serve({ fetch: app.fetch, port });
 

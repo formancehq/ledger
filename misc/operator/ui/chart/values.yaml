@@ -15,6 +15,10 @@ resources:
     cpu: 200m
     memory: 256Mi
 
+# Restrict the UI to specific namespaces (comma-separated).
+# When empty, all namespaces visible to the ServiceAccount are available.
+allowedNamespaces: ""
+
 serviceAccount:
   create: true
   annotations: {}

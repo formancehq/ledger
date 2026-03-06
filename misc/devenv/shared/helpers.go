@@ -155,7 +155,7 @@ func ExtractLedgerDefaults(ledgerSpec map[string]any) map[string]any {
 		"nodeSelector", "tolerations", "affinity", "podAntiAffinity",
 		"podDisruptionBudget", "serviceMonitor", "networkPolicy",
 		"livenessProbe", "readinessProbe", "podSecurityContext",
-		"securityContext", "persistence", "autoIngress", "autoDNSEndpoint",
+		"securityContext", "persistence", "autoNetworking",
 	}
 
 	for _, key := range topLevelKeys {

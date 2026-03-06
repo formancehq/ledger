@@ -14,7 +14,8 @@ import (
 func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	name := ledger.Name
 
-	autoEnabled := ledger.Spec.AutoIngress != nil && ledger.Spec.AutoIngress.Enabled
+	auto := ledger.Spec.AutoNetworking
+	autoEnabled := auto != nil && auto.Ingress != nil && auto.Ingress.Enabled
 	manualEnabled := ledger.Spec.Ingress != nil && ledger.Spec.Ingress.Enabled
 
 	if !autoEnabled && !manualEnabled {
@@ -34,18 +35,17 @@ func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *
 	}
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, ing, func() error {
-		ing.Labels = commonLabels(ledger)
-
+		labels := commonLabels(ledger)
 		annotations := make(map[string]string)
 		var className string
 		var hosts []ledgerv1alpha1.IngressHost
 		var tlsSpecs []ledgerv1alpha1.IngressTLS
 
 		if autoEnabled {
-			auto := ledger.Spec.AutoIngress
-			host := ledger.Name + auto.Suffix + "." + auto.TLD
+			cfg := auto.Ingress
+			host := autoHost(ledger.Name, auto)
 
-			paths := auto.Paths
+			paths := cfg.Paths
 			if len(paths) == 0 {
 				paths = []ledgerv1alpha1.IngressPath{{Path: "/", PathType: "Prefix"}}
 			}
@@ -54,9 +54,10 @@ func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *
 				Host:  host,
 				Paths: paths,
 			})
-			className = auto.ClassName
-			tlsSpecs = append(tlsSpecs, auto.TLS...)
-			maps.Copy(annotations, auto.Annotations)
+			className = cfg.ClassName
+			tlsSpecs = append(tlsSpecs, cfg.TLS...)
+			maps.Copy(annotations, cfg.Annotations)
+			maps.Copy(labels, cfg.Labels)
 		}
 
 		if manualEnabled {
@@ -68,6 +69,7 @@ func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *
 			maps.Copy(annotations, ledger.Spec.Ingress.Annotations)
 		}
 
+		ing.Labels = labels
 		ing.Annotations = annotations
 
 		spec := networkingv1.IngressSpec{}
@@ -84,6 +86,11 @@ func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *
 	})
 
 	return err
+}
+
+// autoHost builds <name><suffix>.<tld> from the shared AutoNetworkingSpec.
+func autoHost(name string, auto *ledgerv1alpha1.AutoNetworkingSpec) string {
+	return name + auto.Suffix + "." + auto.TLD
 }
 
 func buildHTTPIngressRules(ledger *ledgerv1alpha1.LedgerService, hosts []ledgerv1alpha1.IngressHost) []networkingv1.IngressRule {

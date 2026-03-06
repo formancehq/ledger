@@ -1,4 +1,5 @@
-FROM golang:1.26-alpine AS base
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS base
+ARG TARGETARCH
 WORKDIR /build
 RUN apk add --no-cache git make
 COPY go.mod go.sum ./
@@ -11,10 +12,10 @@ COPY internal internal
 COPY cmd cmd
 
 FROM base AS build-server
-RUN go build -o ledger-v3-poc .
+RUN GOARCH=$TARGETARCH go build -o ledger-v3-poc .
 
 FROM base AS build-ledgerctl
-RUN go build -o ledgerctl ./cmd/ledgerctl
+RUN GOARCH=$TARGETARCH go build -o ledgerctl ./cmd/ledgerctl
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata

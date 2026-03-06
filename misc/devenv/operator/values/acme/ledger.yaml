@@ -102,30 +102,30 @@ persistence:
     accessMode: ReadWriteOnce
     size: 50Gi
 
-autoIngress:
-  enabled: true
+autoNetworking:
   tld: dev.acme.frmnc.net
   suffix: "-ledger-v3"
-  annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: https-private
-    traefik.ingress.kubernetes.io/router.observability.tracing: "true"
-    traefik.ingress.kubernetes.io/router.tls: "true"
-
-autoDNSEndpoint:
-  enabled: true
-  tld: dev.acme.frmnc.net
-  suffix: "-ledger-v3"
-  recordType: CNAME
-  recordTTL: 300
-  targets:
-    - rp-01-eks-euw1-01.dev.acme.frmnc.net
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
-  providerSpecific:
-    - name: alias
-      value: "true"
-    - name: aws/target-hosted-zone
-      value: same-zone
+  ingress:
+    enabled: true
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: https-private
+      traefik.ingress.kubernetes.io/router.observability.tracing: "true"
+      traefik.ingress.kubernetes.io/router.tls: "true"
+    labels:
+      formance.com/ingress: traefik
+  dnsEndpoint:
+    enabled: true
+    recordType: CNAME
+    recordTTL: 300
+    targets:
+      - rp-01-eks-euw1-01.dev.acme.frmnc.net
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+    providerSpecific:
+      - name: alias
+        value: "true"
+      - name: aws/target-hosted-zone
+        value: same-zone
 
 networkPolicy:
   enabled: true

@@ -35,9 +35,6 @@ func (r *LedgerServiceReconciler) reconcileGrpcService(ctx context.Context, ledg
 		svc.Labels = commonLabels(ledger)
 
 		annotations := make(map[string]string)
-		if ledger.Spec.IngressGrpc.ClassName == "traefik" {
-			annotations["traefik.ingress.kubernetes.io/service.serversscheme"] = "h2c"
-		}
 		maps.Copy(annotations, ledger.Spec.Service.Annotations)
 		svc.Annotations = annotations
 
