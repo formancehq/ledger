@@ -35,7 +35,30 @@ const clickhouseTransactionColumns = `JSON(
 // ClickHouseCreateTableDDL returns the CREATE TABLE statement for the events table
 // with a fully-typed JSON column matching the ledger v2 reference implementation.
 func ClickHouseCreateTableDDL(table string) string {
-	return fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n    log_sequence UInt64,\n    type         LowCardinality(String),\n    ledger       LowCardinality(String),\n    date         DateTime64(6, 'UTC'),\n    data         JSON(\n        transaction %s,\n        accountMetadata Map(String, String)),\n        revertedTransactionId Nullable(UInt64),\n        revertTransaction %s,\n        targetType Nullable(String),\n        targetId Variant(UInt64, String),\n        metadata Map(String, String),\n        key Nullable(String),\n        ledgerName Nullable(String),\n        signingKeyId Nullable(String),\n        publicKey Nullable(String),\n        requireSignatures Nullable(Bool),\n        sinkName Nullable(String),\n        hash Nullable(String),\n        idempotencyKey Nullable(String)\n    ) ENGINE = MergeTree()\nORDER BY (ledger, log_sequence)", table, clickhouseTransactionColumns, clickhouseTransactionColumns)
+	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+    log_sequence UInt64,
+    type         LowCardinality(String),
+    ledger       LowCardinality(String),
+    date         DateTime64(6, 'UTC'),
+    data         JSON(
+        transaction %s,
+        accountMetadata Map(String, String),
+        revertedTransactionId Nullable(UInt64),
+        revertTransaction %s,
+        targetType Nullable(String),
+        targetId Variant(UInt64, String),
+        metadata Map(String, String),
+        key Nullable(String),
+        ledgerName Nullable(String),
+        signingKeyId Nullable(String),
+        publicKey Nullable(String),
+        requireSignatures Nullable(Bool),
+        sinkName Nullable(String),
+        hash Nullable(String),
+        idempotencyKey Nullable(String)
+    )
+) ENGINE = MergeTree()
+ORDER BY (ledger, log_sequence)`, table, clickhouseTransactionColumns, clickhouseTransactionColumns)
 }
 
 // ---------- ClickHouse-compatible time type ----------

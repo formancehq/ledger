@@ -19,9 +19,8 @@ message LedgerState {
 
 message State {
   map<string, LedgerState> ledgers = 1;
-  reserved 2;                                // Was: uint32 next_ledger_id (removed: ledger name used as key)
-  uint64 next_sequence = 3;                 // Next global sequence number for SystemLog
-  uint64 checkpoint_id = 4;                 // ID of the last checkpoint (for snapshot recovery)
+  uint64 next_sequence = 2;                 // Next global sequence number for SystemLog
+  uint64 checkpoint_id = 3;                 // ID of the last checkpoint (for snapshot recovery)
 }
 
 // Order represents a request to be processed by the FSM
@@ -137,11 +136,11 @@ message DeleteNumscriptOrder {
 
 message CreateLedgerOrder {
   string name = 1;
-  repeated common.SetMetadataFieldTypeCommand initial_schema = 3;
-  common.LedgerMode mode = 4;
-  common.MirrorSourceConfig mirror_source = 5;
-  common.ChartOfAccounts chart_of_accounts = 6;
-  common.ChartEnforcementMode enforcement_mode = 7;
+  repeated common.SetMetadataFieldTypeCommand initial_schema = 2;
+  common.LedgerMode mode = 3;
+  common.MirrorSourceConfig mirror_source = 4;
+  common.ChartOfAccounts chart_of_accounts = 5;
+  common.ChartEnforcementMode enforcement_mode = 6;
 }
 
 message MirrorIngestOrder {
@@ -220,31 +219,28 @@ message LedgerApplyOrder {
 
 // CreateIndexOrder requests the creation of a new index.
 message CreateIndexOrder {
-  reserved 1, 2, 3;  // Was: address_role, metadata, builtin
   oneof index {
-    common.LogBuiltinIndex log_builtin = 4;
-    common.TransactionIndex transaction = 5;
-    common.AccountIndex account = 6;
+    common.LogBuiltinIndex log_builtin = 1;
+    common.TransactionIndex transaction = 2;
+    common.AccountIndex account = 3;
   }
 }
 
 // DropIndexOrder requests the removal of an index.
 message DropIndexOrder {
-  reserved 1, 2, 3;  // Was: address_role, metadata, builtin
   oneof index {
-    common.LogBuiltinIndex log_builtin = 4;
-    common.TransactionIndex transaction = 5;
-    common.AccountIndex account = 6;
+    common.LogBuiltinIndex log_builtin = 1;
+    common.TransactionIndex transaction = 2;
+    common.AccountIndex account = 3;
   }
 }
 
 // IndexReadyOrder signals that an index has finished building.
 message IndexReadyOrder {
-  reserved 1, 2, 3;  // Was: address_role, metadata, builtin
   oneof index {
-    common.LogBuiltinIndex log_builtin = 4;
-    common.TransactionIndex transaction = 5;
-    common.AccountIndex account = 6;
+    common.LogBuiltinIndex log_builtin = 1;
+    common.TransactionIndex transaction = 2;
+    common.AccountIndex account = 3;
   }
 }
 
@@ -355,37 +351,9 @@ message CreatedLogOrReference {
   }
 }
 
-// ============================================================================
-// Mementos (for snapshots)
-// ============================================================================
-
-// TransactionResume represents a simplified transaction for memento purposes
-// Excludes postCommitVolumes and postCommitEffectiveVolumes fields
-message TransactionResume {
-  repeated common.Posting postings = 1;
-  map<string, string> metadata = 2;
-  common.Timestamp timestamp = 3;
-  string reference = 4;
-  uint64 id = 5;                            // Optional, 0 means nil
-  bool reverted = 6;
-}
-
-// CreatedTransactionMemento represents the memento structure for CreatedTransaction
-message CreatedTransactionMemento {
-  TransactionResume transaction = 1;
-  map<string, common.MetadataSet> account_metadata = 2;
-}
-
-// RevertedTransactionMemento represents the memento structure for RevertedTransaction
-message RevertedTransactionMemento {
-  uint64 reverted_transaction_id = 1;      // Optional, 0 means nil
-  TransactionResume revert_transaction = 2;
-}
-
 message LedgerBoundaries {
   uint64 next_transaction_id = 1;
   uint64 next_log_id = 2;
-  reserved 3;                               // Was: uint32 ledger_id (removed: ledger name used as key)
 }
 
 message VolumePair {
@@ -403,15 +371,14 @@ message PreloadSet {
 message Preload {
   oneof type {
      PreloadVolume volume = 1;
-     // field 2 removed: PreloadReverted (replaced by in-memory bitset)
-     PreloadIdempotencyKey idempotency_key = 3;
-     PreloadLedger ledger = 4;
-     PreloadBoundary boundary = 5;
-     PreloadTransactionReference transaction_reference = 6;
-     PreloadSinkConfig sink_config = 7;
-     PreloadAccountMetadata account_metadata = 8;
-     PreloadNumscriptVersion numscript_version = 9;
-     PreloadNumscriptEntry numscript_entry = 10;
+     PreloadIdempotencyKey idempotency_key = 2;
+     PreloadLedger ledger = 3;
+     PreloadBoundary boundary = 4;
+     PreloadTransactionReference transaction_reference = 5;
+     PreloadSinkConfig sink_config = 6;
+     PreloadAccountMetadata account_metadata = 7;
+     PreloadNumscriptVersion numscript_version = 8;
+     PreloadNumscriptEntry numscript_entry = 9;
   }
 }
 
@@ -420,8 +387,6 @@ message PreloadVolume {
   common.Uint256 input = 2;
   common.Uint256 output = 3;
 }
-
-// PreloadReverted removed: reversions now use in-memory bitset per ledger.
 
 message PreloadIdempotencyKey {
   AttributeID id = 1;
@@ -469,23 +434,21 @@ message PreloadNumscriptEntry {
 // ============================================================================
 
 message MemorySnapshot {
-  reserved 1;                                // Was: uint32 next_ledger_id (removed: ledger name used as key)
-  uint64 next_sequence_id = 2;
-  bytes last_log_hash = 3;
-  GenerationSnapshot gen0 = 4;
-  GenerationSnapshot gen1 = 5;  // May be nil
-  uint64 checkpoint_id = 6;
-  uint64 current_generation = 7;
-  uint64 last_applied_timestamp = 8;  // HLC timestamp (microseconds since epoch)
-  uint64 next_audit_sequence_id = 9;  // Next audit log sequence ID
+  uint64 next_sequence_id = 1;
+  bytes last_log_hash = 2;
+  GenerationSnapshot gen0 = 3;
+  GenerationSnapshot gen1 = 4;  // May be nil
+  uint64 checkpoint_id = 5;
+  uint64 current_generation = 6;
+  uint64 last_applied_timestamp = 7;  // HLC timestamp (microseconds since epoch)
+  uint64 next_audit_sequence_id = 8;  // Next audit log sequence ID
   // Signing keys are persisted in Pebble, not in the memory snapshot.
   // They are reloaded from Pebble after SynchronizeWithLeader restores the checkpoint.
-  common.Period open_period = 10;     // Current open period (may be nil before first proposal)
-  common.Period closing_period = 11;  // Period being sealed (nil when no period is closing)
-  uint64 next_period_id = 12;
-  repeated common.Period closed_periods = 13;  // CLOSED + ARCHIVED periods (non-purged)
-  repeated ReversionBitsetEntry reversions = 14;  // Per-ledger reversion bitsets
-  reserved 15;                                     // Was: repeated PeerAddress peer_addresses (moved to NodeSnapshot)
+  common.Period open_period = 9;      // Current open period (may be nil before first proposal)
+  common.Period closing_period = 10;  // Period being sealed (nil when no period is closing)
+  uint64 next_period_id = 11;
+  repeated common.Period closed_periods = 12;  // CLOSED + ARCHIVED periods (non-purged)
+  repeated ReversionBitsetEntry reversions = 13;  // Per-ledger reversion bitsets
 }
 
 // NodeSnapshot wraps the FSM snapshot with cluster-level metadata.

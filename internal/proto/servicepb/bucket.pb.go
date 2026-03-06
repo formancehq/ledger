@@ -526,11 +526,11 @@ func (x *ListAccountsRequest) GetMinLogSequence() uint64 {
 type CreateLedgerRequest struct {
 	state           protoimpl.MessageState                  `protogen:"open.v1"`
 	Name            string                                  `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	InitialSchema   []*commonpb.SetMetadataFieldTypeCommand `protobuf:"bytes,3,rep,name=initial_schema,json=initialSchema,proto3" json:"initial_schema,omitempty"`
-	Mode            commonpb.LedgerMode                     `protobuf:"varint,4,opt,name=mode,proto3,enum=common.LedgerMode" json:"mode,omitempty"`
-	MirrorSource    *commonpb.MirrorSourceConfig            `protobuf:"bytes,5,opt,name=mirror_source,json=mirrorSource,proto3" json:"mirror_source,omitempty"`
-	ChartOfAccounts *commonpb.ChartOfAccounts               `protobuf:"bytes,6,opt,name=chart_of_accounts,json=chartOfAccounts,proto3" json:"chart_of_accounts,omitempty"`
-	EnforcementMode commonpb.ChartEnforcementMode           `protobuf:"varint,7,opt,name=enforcement_mode,json=enforcementMode,proto3,enum=common.ChartEnforcementMode" json:"enforcement_mode,omitempty"`
+	InitialSchema   []*commonpb.SetMetadataFieldTypeCommand `protobuf:"bytes,2,rep,name=initial_schema,json=initialSchema,proto3" json:"initial_schema,omitempty"`
+	Mode            commonpb.LedgerMode                     `protobuf:"varint,3,opt,name=mode,proto3,enum=common.LedgerMode" json:"mode,omitempty"`
+	MirrorSource    *commonpb.MirrorSourceConfig            `protobuf:"bytes,4,opt,name=mirror_source,json=mirrorSource,proto3" json:"mirror_source,omitempty"`
+	ChartOfAccounts *commonpb.ChartOfAccounts               `protobuf:"bytes,5,opt,name=chart_of_accounts,json=chartOfAccounts,proto3" json:"chart_of_accounts,omitempty"`
+	EnforcementMode commonpb.ChartEnforcementMode           `protobuf:"varint,6,opt,name=enforcement_mode,json=enforcementMode,proto3,enum=common.ChartEnforcementMode" json:"enforcement_mode,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -2319,15 +2319,15 @@ type isCreateIndexRequest_Index interface {
 }
 
 type CreateIndexRequest_LogBuiltin struct {
-	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,5,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
+	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,2,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
 }
 
 type CreateIndexRequest_Transaction struct {
-	Transaction *commonpb.TransactionIndex `protobuf:"bytes,6,opt,name=transaction,proto3,oneof"`
+	Transaction *commonpb.TransactionIndex `protobuf:"bytes,3,opt,name=transaction,proto3,oneof"`
 }
 
 type CreateIndexRequest_Account struct {
-	Account *commonpb.AccountIndex `protobuf:"bytes,7,opt,name=account,proto3,oneof"`
+	Account *commonpb.AccountIndex `protobuf:"bytes,4,opt,name=account,proto3,oneof"`
 }
 
 func (*CreateIndexRequest_LogBuiltin) isCreateIndexRequest_Index() {}
@@ -2426,15 +2426,15 @@ type isDropIndexRequest_Index interface {
 }
 
 type DropIndexRequest_LogBuiltin struct {
-	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,5,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
+	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,2,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
 }
 
 type DropIndexRequest_Transaction struct {
-	Transaction *commonpb.TransactionIndex `protobuf:"bytes,6,opt,name=transaction,proto3,oneof"`
+	Transaction *commonpb.TransactionIndex `protobuf:"bytes,3,opt,name=transaction,proto3,oneof"`
 }
 
 type DropIndexRequest_Account struct {
-	Account *commonpb.AccountIndex `protobuf:"bytes,7,opt,name=account,proto3,oneof"`
+	Account *commonpb.AccountIndex `protobuf:"bytes,4,opt,name=account,proto3,oneof"`
 }
 
 func (*DropIndexRequest_LogBuiltin) isDropIndexRequest_Index() {}
@@ -6869,7 +6869,7 @@ type IndexBackfillProgress struct {
 	//	*IndexBackfillProgress_Transaction
 	//	*IndexBackfillProgress_Account
 	Index         isIndexBackfillProgress_Index `protobuf_oneof:"index"`
-	Cursor        uint64                        `protobuf:"varint,4,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	Cursor        uint64                        `protobuf:"varint,5,opt,name=cursor,proto3" json:"cursor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6957,15 +6957,15 @@ type isIndexBackfillProgress_Index interface {
 }
 
 type IndexBackfillProgress_LogBuiltin struct {
-	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,6,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
+	LogBuiltin commonpb.LogBuiltinIndex `protobuf:"varint,2,opt,name=log_builtin,json=logBuiltin,proto3,enum=common.LogBuiltinIndex,oneof"`
 }
 
 type IndexBackfillProgress_Transaction struct {
-	Transaction *commonpb.TransactionIndex `protobuf:"bytes,7,opt,name=transaction,proto3,oneof"`
+	Transaction *commonpb.TransactionIndex `protobuf:"bytes,3,opt,name=transaction,proto3,oneof"`
 }
 
 type IndexBackfillProgress_Account struct {
-	Account *commonpb.AccountIndex `protobuf:"bytes,8,opt,name=account,proto3,oneof"`
+	Account *commonpb.AccountIndex `protobuf:"bytes,4,opt,name=account,proto3,oneof"`
 }
 
 func (*IndexBackfillProgress_LogBuiltin) isIndexBackfillProgress_Index() {}
@@ -7287,11 +7287,11 @@ const file_bucket_proto_rawDesc = "" +
 	"\x10min_log_sequence\x18\x06 \x01(\x04R\x0eminLogSequence\"\xec\x02\n" +
 	"\x13CreateLedgerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12J\n" +
-	"\x0einitial_schema\x18\x03 \x03(\v2#.common.SetMetadataFieldTypeCommandR\rinitialSchema\x12&\n" +
-	"\x04mode\x18\x04 \x01(\x0e2\x12.common.LedgerModeR\x04mode\x12?\n" +
-	"\rmirror_source\x18\x05 \x01(\v2\x1a.common.MirrorSourceConfigR\fmirrorSource\x12C\n" +
-	"\x11chart_of_accounts\x18\x06 \x01(\v2\x17.common.ChartOfAccountsR\x0fchartOfAccounts\x12G\n" +
-	"\x10enforcement_mode\x18\a \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\")\n" +
+	"\x0einitial_schema\x18\x02 \x03(\v2#.common.SetMetadataFieldTypeCommandR\rinitialSchema\x12&\n" +
+	"\x04mode\x18\x03 \x01(\x0e2\x12.common.LedgerModeR\x04mode\x12?\n" +
+	"\rmirror_source\x18\x04 \x01(\v2\x1a.common.MirrorSourceConfigR\fmirrorSource\x12C\n" +
+	"\x11chart_of_accounts\x18\x05 \x01(\v2\x17.common.ChartOfAccountsR\x0fchartOfAccounts\x12G\n" +
+	"\x10enforcement_mode\x18\x06 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\")\n" +
 	"\x13DeleteLedgerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x16\n" +
 	"\x14DeleteLedgerResponse\"1\n" +
@@ -7381,21 +7381,21 @@ const file_bucket_proto_rawDesc = "" +
 	"targetType\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\tR\x03key\"1\n" +
 	"\x15SetAuditConfigRequest\x12\x18\n" +
-	"\aenabled\x18\x01 \x01(\bR\aenabled\"\xf3\x01\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\"\xe1\x01\n" +
 	"\x12CreateIndexRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12:\n" +
-	"\vlog_builtin\x18\x05 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
+	"\vlog_builtin\x18\x02 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
 	"logBuiltin\x12<\n" +
-	"\vtransaction\x18\x06 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
-	"\aaccount\x18\a \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
-	"\x05indexJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05\"\xf1\x01\n" +
+	"\vtransaction\x18\x03 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
+	"\aaccount\x18\x04 \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
+	"\x05index\"\xdf\x01\n" +
 	"\x10DropIndexRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12:\n" +
-	"\vlog_builtin\x18\x05 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
+	"\vlog_builtin\x18\x02 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
 	"logBuiltin\x12<\n" +
-	"\vtransaction\x18\x06 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
-	"\aaccount\x18\a \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
-	"\x05indexJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05\"^\n" +
+	"\vtransaction\x18\x03 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
+	"\aaccount\x18\x04 \x01(\v2\x14.common.AccountIndexH\x00R\aaccountB\a\n" +
+	"\x05index\"^\n" +
 	"\x14SaveNumscriptRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x18\n" +
@@ -7728,15 +7728,15 @@ const file_bucket_proto_rawDesc = "" +
 	"\x11last_log_sequence\x18\x02 \x01(\x04R\x0flastLogSequence\x12\x10\n" +
 	"\x03lag\x18\x03 \x01(\x04R\x03lag\x12&\n" +
 	"\x0findex_file_size\x18\x04 \x01(\x04R\rindexFileSize\x12J\n" +
-	"\x11backfill_progress\x18\x05 \x03(\v2\x1d.ledger.IndexBackfillProgressR\x10backfillProgress\"\x8e\x02\n" +
+	"\x11backfill_progress\x18\x05 \x03(\v2\x1d.ledger.IndexBackfillProgressR\x10backfillProgress\"\xfc\x01\n" +
 	"\x15IndexBackfillProgress\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12:\n" +
-	"\vlog_builtin\x18\x06 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
+	"\vlog_builtin\x18\x02 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
 	"logBuiltin\x12<\n" +
-	"\vtransaction\x18\a \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
-	"\aaccount\x18\b \x01(\v2\x14.common.AccountIndexH\x00R\aaccount\x12\x16\n" +
-	"\x06cursor\x18\x04 \x01(\x04R\x06cursorB\a\n" +
-	"\x05indexJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x05\x10\x06\"/\n" +
+	"\vtransaction\x18\x03 \x01(\v2\x18.common.TransactionIndexH\x00R\vtransaction\x120\n" +
+	"\aaccount\x18\x04 \x01(\v2\x14.common.AccountIndexH\x00R\aaccount\x12\x16\n" +
+	"\x06cursor\x18\x05 \x01(\x04R\x06cursorB\a\n" +
+	"\x05index\"/\n" +
 	"\x15GetLedgerStatsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\x88\x01\n" +
 	"\x17AggregateVolumesRequest\x12\x16\n" +

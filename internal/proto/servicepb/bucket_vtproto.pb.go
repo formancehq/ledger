@@ -7212,7 +7212,7 @@ func (m *CreateLedgerRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.EnforcementMode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.EnforcementMode))
 		i--
-		dAtA[i] = 0x38
+		dAtA[i] = 0x30
 	}
 	if m.ChartOfAccounts != nil {
 		size, err := m.ChartOfAccounts.MarshalToSizedBufferVT(dAtA[:i])
@@ -7222,7 +7222,7 @@ func (m *CreateLedgerRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x32
+		dAtA[i] = 0x2a
 	}
 	if m.MirrorSource != nil {
 		size, err := m.MirrorSource.MarshalToSizedBufferVT(dAtA[:i])
@@ -7232,12 +7232,12 @@ func (m *CreateLedgerRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2a
+		dAtA[i] = 0x22
 	}
 	if m.Mode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Mode))
 		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x18
 	}
 	if len(m.InitialSchema) > 0 {
 		for iNdEx := len(m.InitialSchema) - 1; iNdEx >= 0; iNdEx-- {
@@ -7248,7 +7248,7 @@ func (m *CreateLedgerRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1a
+			dAtA[i] = 0x12
 		}
 	}
 	if len(m.Name) > 0 {
@@ -8937,7 +8937,7 @@ func (m *CreateIndexRequest_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int
 	i := len(dAtA)
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
 	i--
-	dAtA[i] = 0x28
+	dAtA[i] = 0x10
 	return len(dAtA) - i, nil
 }
 func (m *CreateIndexRequest_Transaction) MarshalToVT(dAtA []byte) (int, error) {
@@ -8955,7 +8955,7 @@ func (m *CreateIndexRequest_Transaction) MarshalToSizedBufferVT(dAtA []byte) (in
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x32
+		dAtA[i] = 0x1a
 	}
 	return len(dAtA) - i, nil
 }
@@ -8974,7 +8974,7 @@ func (m *CreateIndexRequest_Account) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x3a
+		dAtA[i] = 0x22
 	}
 	return len(dAtA) - i, nil
 }
@@ -9036,7 +9036,7 @@ func (m *DropIndexRequest_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	i := len(dAtA)
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
 	i--
-	dAtA[i] = 0x28
+	dAtA[i] = 0x10
 	return len(dAtA) - i, nil
 }
 func (m *DropIndexRequest_Transaction) MarshalToVT(dAtA []byte) (int, error) {
@@ -9054,7 +9054,7 @@ func (m *DropIndexRequest_Transaction) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x32
+		dAtA[i] = 0x1a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9073,7 +9073,7 @@ func (m *DropIndexRequest_Account) MarshalToSizedBufferVT(dAtA []byte) (int, err
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x3a
+		dAtA[i] = 0x22
 	}
 	return len(dAtA) - i, nil
 }
@@ -13143,7 +13143,7 @@ func (m *IndexBackfillProgress) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	if m.Cursor != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Cursor))
 		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x28
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
@@ -13164,7 +13164,7 @@ func (m *IndexBackfillProgress_LogBuiltin) MarshalToSizedBufferVT(dAtA []byte) (
 	i := len(dAtA)
 	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogBuiltin))
 	i--
-	dAtA[i] = 0x30
+	dAtA[i] = 0x10
 	return len(dAtA) - i, nil
 }
 func (m *IndexBackfillProgress_Transaction) MarshalToVT(dAtA []byte) (int, error) {
@@ -13182,7 +13182,7 @@ func (m *IndexBackfillProgress_Transaction) MarshalToSizedBufferVT(dAtA []byte) 
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x3a
+		dAtA[i] = 0x1a
 	}
 	return len(dAtA) - i, nil
 }
@@ -13201,7 +13201,7 @@ func (m *IndexBackfillProgress_Account) MarshalToSizedBufferVT(dAtA []byte) (int
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x42
+		dAtA[i] = 0x22
 	}
 	return len(dAtA) - i, nil
 }
@@ -16042,11 +16042,11 @@ func (m *IndexBackfillProgress) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Cursor != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Cursor))
-	}
 	if vtmsg, ok := m.Index.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
+	}
+	if m.Cursor != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Cursor))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -16988,7 +16988,7 @@ func (m *CreateLedgerRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Name = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 3:
+		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field InitialSchema", wireType)
 			}
@@ -17022,7 +17022,7 @@ func (m *CreateLedgerRequest) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 4:
+		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Mode", wireType)
 			}
@@ -17041,7 +17041,7 @@ func (m *CreateLedgerRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 5:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MirrorSource", wireType)
 			}
@@ -17077,7 +17077,7 @@ func (m *CreateLedgerRequest) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 6:
+		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ChartOfAccounts", wireType)
 			}
@@ -17113,7 +17113,7 @@ func (m *CreateLedgerRequest) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 7:
+		case 6:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field EnforcementMode", wireType)
 			}
@@ -20462,7 +20462,7 @@ func (m *CreateIndexRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 5:
+		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
 			}
@@ -20482,7 +20482,7 @@ func (m *CreateIndexRequest) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Index = &CreateIndexRequest_LogBuiltin{LogBuiltin: v}
-		case 6:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Transaction", wireType)
 			}
@@ -20523,7 +20523,7 @@ func (m *CreateIndexRequest) UnmarshalVT(dAtA []byte) error {
 				m.Index = &CreateIndexRequest_Transaction{Transaction: v}
 			}
 			iNdEx = postIndex
-		case 7:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
 			}
@@ -20647,7 +20647,7 @@ func (m *DropIndexRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 5:
+		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
 			}
@@ -20667,7 +20667,7 @@ func (m *DropIndexRequest) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Index = &DropIndexRequest_LogBuiltin{LogBuiltin: v}
-		case 6:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Transaction", wireType)
 			}
@@ -20708,7 +20708,7 @@ func (m *DropIndexRequest) UnmarshalVT(dAtA []byte) error {
 				m.Index = &DropIndexRequest_Transaction{Transaction: v}
 			}
 			iNdEx = postIndex
-		case 7:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
 			}
@@ -30527,26 +30527,7 @@ func (m *IndexBackfillProgress) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Cursor", wireType)
-			}
-			m.Cursor = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Cursor |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 6:
+		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltin", wireType)
 			}
@@ -30566,7 +30547,7 @@ func (m *IndexBackfillProgress) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Index = &IndexBackfillProgress_LogBuiltin{LogBuiltin: v}
-		case 7:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Transaction", wireType)
 			}
@@ -30607,7 +30588,7 @@ func (m *IndexBackfillProgress) UnmarshalVT(dAtA []byte) error {
 				m.Index = &IndexBackfillProgress_Transaction{Transaction: v}
 			}
 			iNdEx = postIndex
-		case 8:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Account", wireType)
 			}
@@ -30648,6 +30629,25 @@ func (m *IndexBackfillProgress) UnmarshalVT(dAtA []byte) error {
 				m.Index = &IndexBackfillProgress_Account{Account: v}
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cursor", wireType)
+			}
+			m.Cursor = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Cursor |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

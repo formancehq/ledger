@@ -131,11 +131,11 @@ message ListAccountsRequest {
 
 message CreateLedgerRequest {
   string name = 1;
-  repeated common.SetMetadataFieldTypeCommand initial_schema = 3;
-  common.LedgerMode mode = 4;
-  common.MirrorSourceConfig mirror_source = 5;
-  common.ChartOfAccounts chart_of_accounts = 6;
-  common.ChartEnforcementMode enforcement_mode = 7;
+  repeated common.SetMetadataFieldTypeCommand initial_schema = 2;
+  common.LedgerMode mode = 3;
+  common.MirrorSourceConfig mirror_source = 4;
+  common.ChartOfAccounts chart_of_accounts = 5;
+  common.ChartEnforcementMode enforcement_mode = 6;
 }
 
 message DeleteLedgerRequest {
@@ -296,22 +296,20 @@ message SetAuditConfigRequest {
 // CreateIndexRequest requests the creation of an index on a ledger.
 message CreateIndexRequest {
   string ledger = 1;
-  reserved 2, 3, 4;  // Was: address_role, metadata, builtin
   oneof index {
-    common.LogBuiltinIndex log_builtin = 5;
-    common.TransactionIndex transaction = 6;
-    common.AccountIndex account = 7;
+    common.LogBuiltinIndex log_builtin = 2;
+    common.TransactionIndex transaction = 3;
+    common.AccountIndex account = 4;
   }
 }
 
 // DropIndexRequest requests the removal of an index from a ledger.
 message DropIndexRequest {
   string ledger = 1;
-  reserved 2, 3, 4;  // Was: address_role, metadata, builtin
   oneof index {
-    common.LogBuiltinIndex log_builtin = 5;
-    common.TransactionIndex transaction = 6;
-    common.AccountIndex account = 7;
+    common.LogBuiltinIndex log_builtin = 2;
+    common.TransactionIndex transaction = 3;
+    common.AccountIndex account = 4;
   }
 }
 
@@ -845,13 +843,12 @@ message GetIndexStatusResponse {
 // IndexBackfillProgress reports per-index backfill cursor position.
 message IndexBackfillProgress {
   string ledger = 1;
-  reserved 2, 3, 5;  // Was: address_role, metadata, builtin
   oneof index {
-    common.LogBuiltinIndex log_builtin = 6;
-    common.TransactionIndex transaction = 7;
-    common.AccountIndex account = 8;
+    common.LogBuiltinIndex log_builtin = 2;
+    common.TransactionIndex transaction = 3;
+    common.AccountIndex account = 4;
   }
-  uint64 cursor = 4;
+  uint64 cursor = 5;
 }
 
 message GetLedgerStatsRequest {

@@ -1,7 +1,6 @@
 package commonpb
 
 import (
-	"math/big"
 	"slices"
 	"sort"
 
@@ -181,83 +180,6 @@ func (tx *Transaction) InvolvedAccounts() []string {
 	sort.Strings(ret)
 
 	return slices.Compact(ret)
-}
-
-// VolumeUpdates calculates volume updates for all accounts and assets.
-func (tx *Transaction) VolumeUpdates() []*AccountsVolumes {
-	aggregatedVolumes := make(map[string]map[string][]*Posting)
-
-	for _, posting := range tx.GetPostings() {
-		if posting == nil {
-			continue
-		}
-
-		if _, ok := aggregatedVolumes[posting.GetSource()]; !ok {
-			aggregatedVolumes[posting.GetSource()] = make(map[string][]*Posting)
-		}
-
-		aggregatedVolumes[posting.GetSource()][posting.GetAsset()] = append(aggregatedVolumes[posting.GetSource()][posting.GetAsset()], posting)
-
-		if posting.GetSource() == posting.GetDestination() {
-			continue
-		}
-
-		if _, ok := aggregatedVolumes[posting.GetDestination()]; !ok {
-			aggregatedVolumes[posting.GetDestination()] = make(map[string][]*Posting)
-		}
-
-		aggregatedVolumes[posting.GetDestination()][posting.GetAsset()] = append(aggregatedVolumes[posting.GetDestination()][posting.GetAsset()], posting)
-	}
-
-	ret := make([]*AccountsVolumes, 0)
-
-	for account, movesByAsset := range aggregatedVolumes {
-		for asset, postings := range movesByAsset {
-			input := big.NewInt(0)
-			output := big.NewInt(0)
-
-			for _, posting := range postings {
-				if posting == nil {
-					continue
-				}
-
-				if account == posting.GetSource() {
-					output.Add(output, posting.GetAmount().ToBigInt())
-				}
-
-				if account == posting.GetDestination() {
-					input.Add(input, posting.GetAmount().ToBigInt())
-				}
-			}
-
-			ret = append(ret, &AccountsVolumes{
-				Account: account,
-				Asset:   asset,
-				Input:   input.String(),
-				Output:  output.String(),
-			})
-		}
-	}
-
-	slices.SortStableFunc(ret, func(a, b *AccountsVolumes) int {
-		switch {
-		case a.GetAccount() < b.GetAccount():
-			return -1
-		case a.GetAccount() > b.GetAccount():
-			return 1
-		default:
-			switch {
-			case a.GetAsset() < b.GetAsset():
-				return -1
-			case a.GetAsset() > b.GetAsset():
-				return 1
-			default:
-				return 0
-			}
-		}
-	})
-
-	return ret
 }
 
 // MarshalJSON implements json.Marshaler for Transaction.

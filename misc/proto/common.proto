@@ -115,14 +115,6 @@ message Account {
   map<string, VolumesWithBalance> volumes = 6;  // Volumes per asset
 }
 
-// AccountsVolumes represents volumes for a specific account and asset
-message AccountsVolumes {
-  string account = 1;
-  string asset = 2;
-  string input = 3;   // big.Int as string
-  string output = 4;  // big.Int as string
-}
-
 // ============================================================================
 // Target (for metadata operations)
 // ============================================================================
@@ -518,31 +510,28 @@ message LedgerLogPayload {
 
 // CreateIndexLog records the creation of an index.
 message CreateIndexLog {
-  reserved 1, 2, 3;  // Was: address_role, metadata, builtin
   oneof index {
-    LogBuiltinIndex log_builtin = 4;
-    TransactionIndex transaction = 5;
-    AccountIndex account = 6;
+    LogBuiltinIndex log_builtin = 1;
+    TransactionIndex transaction = 2;
+    AccountIndex account = 3;
   }
 }
 
 // DropIndexLog records the removal of an index.
 message DropIndexLog {
-  reserved 1, 2, 3;  // Was: address_role, metadata, builtin
   oneof index {
-    LogBuiltinIndex log_builtin = 4;
-    TransactionIndex transaction = 5;
-    AccountIndex account = 6;
+    LogBuiltinIndex log_builtin = 1;
+    TransactionIndex transaction = 2;
+    AccountIndex account = 3;
   }
 }
 
 // IndexReadyLog records that an index has finished building.
 message IndexReadyLog {
-  reserved 1, 2, 3;  // Was: address_role, metadata, builtin
   oneof index {
-    LogBuiltinIndex log_builtin = 4;
-    TransactionIndex transaction = 5;
-    AccountIndex account = 6;
+    LogBuiltinIndex log_builtin = 1;
+    TransactionIndex transaction = 2;
+    AccountIndex account = 3;
   }
 }
 
@@ -700,17 +689,15 @@ message MirrorSyncProgress {
 message LedgerInfo {
   string name = 1;                          // Ledger name
   Timestamp created_at = 2;                 // Creation timestamp
-  reserved 3;                               // Was: uint32 id (removed: ledger name used as key)
-  Timestamp deleted_at = 4;                 // Soft delete timestamp (nil if not deleted)
-  MetadataSchema metadata_schema = 5;       // Per-key metadata type declarations
-  LedgerMode mode = 6;                      // Normal or mirror mode
-  MirrorSourceConfig mirror_source = 7;     // Mirror source config (set when mode=MIRROR)
-  MirrorSyncProgress mirror_sync_progress = 8;  // Populated at read time for MIRROR ledgers
-  reserved 9;                               // Was: AddressIndexConfig address_indexes
-  ChartOfAccounts chart_of_accounts = 10;    // Account address validation tree (nil = no validation)
-  ChartEnforcementMode enforcement_mode = 11; // How chart violations are handled
-  BuiltinIndexConfig builtin_indexes = 12;  // Built-in transaction field index config
-  LogBuiltinIndexConfig log_builtin_indexes = 13;  // Built-in log field index config
+  Timestamp deleted_at = 3;                 // Soft delete timestamp (nil if not deleted)
+  MetadataSchema metadata_schema = 4;       // Per-key metadata type declarations
+  LedgerMode mode = 5;                      // Normal or mirror mode
+  MirrorSourceConfig mirror_source = 6;     // Mirror source config (set when mode=MIRROR)
+  MirrorSyncProgress mirror_sync_progress = 7;  // Populated at read time for MIRROR ledgers
+  ChartOfAccounts chart_of_accounts = 8;    // Account address validation tree (nil = no validation)
+  ChartEnforcementMode enforcement_mode = 9; // How chart violations are handled
+  BuiltinIndexConfig builtin_indexes = 10;  // Built-in transaction field index config
+  LogBuiltinIndexConfig log_builtin_indexes = 11;  // Built-in log field index config
 }
 
 // ============================================================================
