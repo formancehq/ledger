@@ -5,6 +5,7 @@ import {
   CRD_VERSION,
   LEDGER_SERVICE_PLURAL,
 } from "./client.js";
+import { mergePatchOptions } from "./patch.js";
 
 export async function listLedgerServices(
   namespace: string
@@ -77,7 +78,7 @@ export async function patchLedgerService(
       name,
       body: patch,
     },
-    { headers: { "Content-Type": "application/merge-patch+json" } },
+    mergePatchOptions,
   );
   return res as unknown as LedgerService;
 }

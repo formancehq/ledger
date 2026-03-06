@@ -5,6 +5,7 @@ import {
   CRD_VERSION,
   LEDGER_DEFAULTS_PLURAL,
 } from "./client.js";
+import { mergePatchOptions } from "./patch.js";
 
 export async function listLedgerDefaults(): Promise<LedgerDefaults[]> {
   const res = await customApi.listClusterCustomObject({
@@ -64,7 +65,7 @@ export async function patchLedgerDefaults(
       name,
       body: patch,
     },
-    { headers: { "Content-Type": "application/merge-patch+json" } },
+    mergePatchOptions,
   );
   return res as unknown as LedgerDefaults;
 }
