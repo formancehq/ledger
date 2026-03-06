@@ -90,7 +90,7 @@ func NewMetadataAttribute() *SimpleAttribute[*commonpb.MetadataValue] {
 // NewIdempotencyKeysAttribute creates a new IdempotencyKeys attribute for storing idempotency key mappings.
 func NewIdempotencyKeysAttribute() *SimpleAttribute[*commonpb.IdempotencyKeyValue] {
 	return &SimpleAttribute[*commonpb.IdempotencyKeyValue]{core: core[*commonpb.IdempotencyKeyValue]{
-		prefix:    dal.AttributePrefixIdempotencyKey,
+		prefix:    dal.AttributePrefixIdempotency,
 		newValue:  func() *commonpb.IdempotencyKeyValue { return &commonpb.IdempotencyKeyValue{} },
 		resolveFn: simpleResolve[*commonpb.IdempotencyKeyValue],
 		keyBuf:    make([]byte, 128),

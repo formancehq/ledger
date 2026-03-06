@@ -497,7 +497,7 @@ func listRawAttributeEntries(t *testing.T, store *dal.Store, attrPrefix byte, ca
 		entryType := iterKey[len(iterKey)-1]
 		entries = append(entries, attributeEntryInfo{
 			RaftIndex: raftIndex,
-			IsBase:    entryType == 0,
+			IsBase:    entryType == dal.EntryTypeBase,
 		})
 	}
 

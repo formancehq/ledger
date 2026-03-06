@@ -18,7 +18,7 @@ func AppendLogs(b *dal.Batch, logs ...*commonpb.Log) error {
 	for _, log := range logs {
 		b.KeyBuilder.
 			PutByte(dal.KeyPrefixLog).
-			PutUInt64(log.GetSequence())
+			PutUint64(log.GetSequence())
 
 		err := b.SetProto(b.KeyBuilder.Build(), log)
 		if err != nil {
@@ -64,8 +64,8 @@ func StoreTransactionUpdate(b *dal.Batch, key domain.TransactionKey, update *com
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixTransactionUpdate).
 		PutLedgerName(key.Ledger).
-		PutUInt64(key.ID).
-		PutUInt64(update.GetByLog())
+		PutUint64(key.ID).
+		PutUint64(update.GetByLog())
 
 	err := b.SetProto(b.KeyBuilder.Build(), update)
 	if err != nil {
@@ -80,7 +80,7 @@ func AppendAuditEntries(b *dal.Batch, entries ...*auditpb.AuditEntry) error {
 	for _, entry := range entries {
 		b.KeyBuilder.
 			PutByte(dal.KeyPrefixAudit).
-			PutUInt64(entry.GetSequence())
+			PutUint64(entry.GetSequence())
 
 		err := b.SetProto(b.KeyBuilder.Build(), entry)
 		if err != nil {
@@ -301,7 +301,7 @@ func ClearSinkStatus(b *dal.Batch, sinkName string) error {
 func StorePeriod(b *dal.Batch, period *commonpb.Period) error {
 	b.KeyBuilder.
 		PutByte(dal.KeyPrefixPeriods).
-		PutUInt64(period.GetId())
+		PutUint64(period.GetId())
 
 	err := b.SetProto(b.KeyBuilder.Build(), period)
 	if err != nil {
@@ -452,9 +452,9 @@ func SaveNumscript(b *dal.Batch, info *commonpb.NumscriptInfo) error {
 
 		b.KeyBuilder.
 			PutByte(domain.NumscriptVersionTagSemver).
-			PutUInt32(sv.Major).
-			PutUInt32(sv.Minor).
-			PutUInt32(sv.Patch)
+			PutUint32(sv.Major).
+			PutUint32(sv.Minor).
+			PutUint32(sv.Patch)
 	}
 
 	err := b.SetProto(b.KeyBuilder.Build(), info)

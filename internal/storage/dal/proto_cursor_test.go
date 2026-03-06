@@ -24,9 +24,9 @@ func TestProtoCursor_Basic(t *testing.T) {
 	ts3 := &commonpb.Timestamp{Data: 3000}
 
 	kb := NewKeyBuilder()
-	key1 := kb.PutByte(0xAA).PutUInt64(1).Build()
-	key2 := kb.PutByte(0xAA).PutUInt64(2).Build()
-	key3 := kb.PutByte(0xAA).PutUInt64(3).Build()
+	key1 := kb.PutByte(0xAA).PutUint64(1).Build()
+	key2 := kb.PutByte(0xAA).PutUint64(2).Build()
+	key3 := kb.PutByte(0xAA).PutUint64(3).Build()
 
 	data1, err := proto.Marshal(ts1)
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func TestProtoCursor_MultipleCallsAfterEOF(t *testing.T) {
 	require.NoError(t, err)
 
 	kb := NewKeyBuilder()
-	key := kb.PutByte(0xCC).PutUInt64(1).Build()
+	key := kb.PutByte(0xCC).PutUint64(1).Build()
 	require.NoError(t, batch.SetBytes(key, data))
 	require.NoError(t, batch.Commit())
 

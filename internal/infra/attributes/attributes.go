@@ -92,7 +92,7 @@ func unmarshalProto(data []byte, msg proto.Message) error {
 	return proto.Unmarshal(data, msg)
 }
 
-// writeEntry writes a base (entryType=0) or diff (entryType=1) entry to the batch.
+// writeEntry writes a base (EntryTypeBase) or diff (EntryTypeDiff) entry to the batch.
 // Key format: [KeyPrefixAttributes][canonicalKey][prefix][index BE 8 bytes][entryType].
 // Uses the pre-allocated keyBuf — not safe for concurrent use.
 func (a *core[V]) writeEntry(batch *dal.Batch, index uint64, canonicalKey []byte, entryType byte, value V) error {
@@ -117,14 +117,14 @@ func (a *core[V]) writeEntry(batch *dal.Batch, index uint64, canonicalKey []byte
 // The canonical key is used directly as the Pebble key for better data locality.
 // Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
 func (a *core[V]) setBase(batch *dal.Batch, index uint64, canonicalKey []byte, base V) error {
-	return a.writeEntry(batch, index, canonicalKey, 0, base)
+	return a.writeEntry(batch, index, canonicalKey, dal.EntryTypeBase, base)
 }
 
 // addDiff stores a diff value for the given canonical key at the specified raft index.
 // The canonical key is used directly as the Pebble key for better data locality.
 // Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
 func (a *core[V]) addDiff(batch *dal.Batch, index uint64, canonicalKey []byte, diff V) error {
-	return a.writeEntry(batch, index, canonicalKey, 1, diff)
+	return a.writeEntry(batch, index, canonicalKey, dal.EntryTypeDiff, diff)
 }
 
 // SuffixLen is the fixed suffix length of an attribute Pebble key:
@@ -191,12 +191,12 @@ func (a *core[V]) ComputeValue(reader dal.PebbleReader, index uint64, canonicalK
 		}
 
 		switch entryType {
-		case 0:
+		case dal.EntryTypeBase:
 			// Base entry - reset computation from this point
 			baseValue = v
 			baseIndex = raftIndex
 			lastDiff = zeroValue
-		case 1:
+		case dal.EntryTypeDiff:
 			if (any)(baseValue) == nil || raftIndex > baseIndex {
 				lastDiff = v
 			}
@@ -231,7 +231,7 @@ func (a *core[V]) DeleteAt(batch *dal.Batch, index uint64, canonicalKey []byte) 
 	a.ensureKeyBuf(keyLen)
 	a.putPrefix(a.keyBuf, canonicalKey)
 	binary.BigEndian.PutUint64(a.keyBuf[pLen:], index)
-	a.keyBuf[keyLen-1] = 0 // base entry type
+	a.keyBuf[keyLen-1] = dal.EntryTypeBase
 
 	return batch.DeleteKey(a.keyBuf[:keyLen])
 }
@@ -290,7 +290,7 @@ func (a *core[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte) (*Sc
 		entryType := iterKey[len(iterKey)-1]
 
 		switch entryType {
-		case 0: // base
+		case dal.EntryTypeBase:
 			if !result.HasBase || raftIndex > result.LatestBaseIndex {
 				valueBytes, err := iter.ValueAndErr()
 				if err != nil {
@@ -306,7 +306,7 @@ func (a *core[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte) (*Sc
 				result.LatestBaseIndex = raftIndex
 				result.HasBase = true
 			}
-		case 1: // diff
+		case dal.EntryTypeDiff:
 			if !result.HasDiff || raftIndex > result.LatestDiffIndex {
 				result.LatestDiffIndex = raftIndex
 				result.HasDiff = true

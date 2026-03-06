@@ -77,29 +77,81 @@ func (s *Store) IsWriteStalled() bool {
 	return s.stallState.IsStalled()
 }
 
-// Key prefixes for Pebble storage, organized into three zones:
+// Key prefixes for Pebble storage, organized into four zones:
 //
-//	Cold-storable zone [0x01, 0xF1) — archived to cold storage then purged per period.
-//	Attributes zone    [0xF1, 0xF2) — derived data hashed during seal, stays in hot storage.
-//	System zone        [0xF2, 0xFF] — metadata that lives forever.
+//	Cold zone            [0x01, 0x04) — archived to cold storage then purged per period.
+//	Per-ledger system    [0xE0, 0xF1) — per-ledger data persisted forever (prepared queries, numscript, mirror, audit config, period schedule).
+//	Attributes zone      [0xF1, 0xF2) — derived data hashed during seal, stays in hot storage.
+//	Global system zone   [0xF2, 0xFF] — cluster-wide metadata persisted forever.
+
+// Zone boundary constants define the four contiguous key ranges.
+const (
+	ZoneColdStart         byte = 0x01
+	ZoneColdEnd           byte = 0x04
+	ZonePerLedgerSysStart byte = 0xE0
+	ZonePerLedgerSysEnd   byte = 0xF1 // == KeyPrefixAttributes
+	ZoneAttributesStart   byte = 0xF1
+	ZoneAttributesEnd     byte = 0xF2
+	ZoneGlobalSysStart    byte = 0xF2
+	ZoneGlobalSysEnd      byte = 0xFF
+)
+
+// Canonical key separators used inside attribute canonical keys
+// to delimit volume and metadata sub-keys.
+const (
+	CanonicalKeySepVolume   byte = 0x00
+	CanonicalKeySepMetadata byte = 0x01
+)
+
+// Entry type bytes for the attribute suffix.
+const (
+	EntryTypeBase byte = 0x00
+	EntryTypeDiff byte = 0x01
+)
+
+// MaxUint64Bytes is the big-endian representation of math.MaxUint64,
+// used as an upper bound sentinel for sequence-keyed iterations.
+var MaxUint64Bytes = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+
 var (
-	// Cold-storable zone [0x01, 0xF1)
-	//
-	// Sequence-keyed prefixes: [prefix][sequence] -- support efficient range scan/delete.
+	// --- Cold zone [0x01, 0x04) ---.
+
+	// Sequence-keyed prefixes: [prefix][sequence] — support efficient range scan/delete.
 	KeyPrefixLog   byte = 0x01 // [KeyPrefixLog][sequence] -> Log
 	KeyPrefixAudit byte = 0x02 // [KeyPrefixAudit][sequence] -> AuditEntry
+
+	// Composite-keyed cold prefix: [prefix][name]\x00[txID][byLog] — requires filtered iteration.
+	KeyPrefixTransactionUpdate byte = 0x03 // [KeyPrefixTransactionUpdate][name]\x00[txID(8)][byLog(8)] -> TransactionUpdate
 
 	// ColdSequencePrefixes lists cold-storable prefixes keyed by sequence number.
 	// These support efficient range scan and range delete by [prefix][startSeq]..[prefix][endSeq].
 	ColdSequencePrefixes = []byte{KeyPrefixLog, KeyPrefixAudit}
 
-	// Composite-keyed cold prefix: [prefix][name]\x00[txID][byLog] -- requires filtered iteration.
-	KeyPrefixTransactionUpdate byte = 0x03 // [KeyPrefixTransactionUpdate][name]\x00[txID(8)][byLog(8)] -> TransactionUpdate
+	// --- Per-ledger system zone [0xE0, 0xF1) ---.
 
-	// Attributes zone [0xF1, 0xF2) -- seal hash domain.
+	KeyPrefixPreparedQuery    byte = 0xE0 // [KeyPrefixPreparedQuery][name\x00][queryName] -> PreparedQuery protobuf
+	KeyPrefixNumscript        byte = 0xE9 // [KeyPrefixNumscript][name]\x00[version_BE] -> NumscriptInfo protobuf
+	KeyPrefixNumscriptLatest  byte = 0xEA // [KeyPrefixNumscriptLatest][name] -> uint64 (latest version)
+	KeyPrefixMirrorSourceHead byte = 0xEB // [KeyPrefixMirrorSourceHead][ledger_name] -> uint64 (latest known v2 source log ID)
+	KeyPrefixMirrorCursor     byte = 0xEC // [KeyPrefixMirrorCursor][ledger_name] -> uint64 (last ingested v2 log ID)
+	KeyPrefixMirrorStatus     byte = 0xED // [KeyPrefixMirrorStatus][ledger_name] -> MirrorSyncError protobuf
+	KeyPrefixAuditConfig      byte = 0xEE // [KeyPrefixAuditConfig] -> audit config byte (0x00=false, 0x01=true)
+	KeyPrefixPeriodSchedule   byte = 0xEF // [KeyPrefixPeriodSchedule] -> cron expression string
+
+	// --- Attributes zone [0xF1, 0xF2) — seal hash domain ---.
+
 	KeyPrefixAttributes byte = 0xF1
 
-	// System zone [0xF2, 0xFF].
+	// Attribute type prefixes used within the attributes zone.
+	AttributePrefixVolume      = byte('V') // Volume — unchanged
+	AttributePrefixMetadata    = byte('M') // Metadata — unchanged
+	AttributePrefixIdempotency = byte('I') // Idempotency
+	AttributePrefixReference   = byte('R') // Reference
+	AttributePrefixLedger      = byte('L') // Ledger
+	AttributePrefixBoundary    = byte('B') // Boundary — unchanged
+
+	// --- Global system zone [0xF2, 0xFF] ---.
+
 	KeyPrefixLastAppliedIndex     byte = 0xF2 // [KeyPrefixLastAppliedIndex] -> uint64
 	KeyPrefixLastAppliedTimestamp byte = 0xF3 // [KeyPrefixLastAppliedTimestamp] -> uint64 (HLC microseconds)
 	KeyPrefixIdempotency          byte = 0xF4 // [KeyPrefixIdempotency][key] -> sequence
@@ -113,21 +165,6 @@ var (
 	KeyPrefixSinkStatus           byte = 0xFC // [KeyPrefixSinkStatus][name] -> SinkStatus protobuf
 	KeyPrefixMaintenanceMode      byte = 0xFD // [KeyPrefixMaintenanceMode] -> maintenance mode byte (0x00=false, 0x01=true)
 	KeyPrefixPersistedConfig      byte = 0xFE // [KeyPrefixPersistedConfig] -> PersistedConfig JSON (startup safety checks)
-	KeyPrefixPreparedQuery        byte = 0xE0 // [KeyPrefixPreparedQuery][name\x00][queryName] -> PreparedQuery protobuf
-	KeyPrefixNumscript            byte = 0xE9 // [KeyPrefixNumscript][name]\x00[version_BE] -> NumscriptInfo protobuf
-	KeyPrefixNumscriptLatest      byte = 0xEA // [KeyPrefixNumscriptLatest][name] -> uint64 (latest version)
-	KeyPrefixMirrorSourceHead     byte = 0xEB // [KeyPrefixMirrorSourceHead][ledger_name] -> uint64 (latest known v2 source log ID)
-	KeyPrefixMirrorCursor         byte = 0xEC // [KeyPrefixMirrorCursor][ledger_name] -> uint64 (last ingested v2 log ID)
-	KeyPrefixMirrorStatus         byte = 0xED // [KeyPrefixMirrorStatus][ledger_name] -> MirrorSyncError protobuf
-	KeyPrefixAuditConfig          byte = 0xEE // [KeyPrefixAuditConfig] -> audit config byte (0x00=false, 0x01=true)
-	KeyPrefixPeriodSchedule       byte = 0xEF // [KeyPrefixPeriodSchedule] -> cron expression string
-
-	AttributePrefixVolume         = byte('V')
-	AttributePrefixMetadata       = byte('M')
-	AttributePrefixIdempotencyKey = byte('K')
-	AttributePrefixReference      = byte('F')
-	AttributePrefixLedger         = byte('G')
-	AttributePrefixBoundary       = byte('B')
 )
 
 // NewStore creates a new Store instance.
@@ -334,8 +371,8 @@ func (s *Store) WarmSystemKeys() {
 	db := s.getDB()
 
 	ranges := [][2]byte{
-		{0xE0, KeyPrefixAttributes},     // 0xE0..0xF0 (numscripts, mirror, audit, period schedule, etc.)
-		{KeyPrefixAttributes + 1, 0xFF}, // 0xF2..0xFE (applied index, ledger info, periods, signing, etc.)
+		{ZonePerLedgerSysStart, ZonePerLedgerSysEnd}, // 0xE0..0xF0 (numscripts, mirror, audit, period schedule, etc.)
+		{ZoneGlobalSysStart, ZoneGlobalSysEnd},       // 0xF2..0xFE (applied index, ledger info, periods, signing, etc.)
 	}
 
 	var totalKeys int64
@@ -372,7 +409,7 @@ func (s *Store) WarmBlockCache() {
 	start := time.Now()
 	db := s.getDB()
 
-	keys, err := s.warmRange(db, KeyPrefixAttributes, KeyPrefixAttributes+1)
+	keys, err := s.warmRange(db, ZoneAttributesStart, ZoneAttributesEnd)
 	if err != nil {
 		s.logger.WithFields(map[string]any{"error": err}).
 			Errorf("Block cache warmup failed")
@@ -749,9 +786,9 @@ func (s *Store) IterateColdKVPairs(startSeq, closeSeq uint64, fn func(key, value
 
 	for _, prefix := range ColdSequencePrefixes {
 		kb := NewKeyBuilder()
-		kb.PutByte(prefix).PutUInt64(startSeq)
+		kb.PutByte(prefix).PutUint64(startSeq)
 		lowerBound := kb.Snapshot()
-		kb.PutByte(prefix).PutUInt64(closeSeq + 1)
+		kb.PutByte(prefix).PutUint64(closeSeq + 1)
 		upperBound := kb.Build()
 
 		err := iterateRawRange(db, lowerBound, upperBound, fn)

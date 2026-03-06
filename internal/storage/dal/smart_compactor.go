@@ -28,10 +28,12 @@ var coldPrefixes = []compactPrefix{
 	{"tx-updates", KeyPrefixTransactionUpdate, KeyPrefixTransactionUpdate + 1},
 }
 
-// allCompactPrefixes returns all prefix ranges for a full compaction (cold + attributes).
-var allCompactPrefixes = append(coldPrefixes, compactPrefix{
-	"attributes", KeyPrefixAttributes, KeyPrefixAttributes + 1,
-})
+// allCompactPrefixes returns all prefix ranges for a full compaction (cold + system + attributes).
+var allCompactPrefixes = append(coldPrefixes,
+	compactPrefix{"per-ledger-system", ZonePerLedgerSysStart, ZonePerLedgerSysEnd},
+	compactPrefix{"attributes", ZoneAttributesStart, ZoneAttributesEnd},
+	compactPrefix{"global-system", ZoneGlobalSysStart, ZoneGlobalSysEnd},
+)
 
 // sequencePrefixes are the cold prefixes keyed by [prefix][sequence_uint64_BE].
 // These support incremental range compaction.

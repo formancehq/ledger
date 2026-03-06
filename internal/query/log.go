@@ -27,7 +27,7 @@ func ReadLastLog(reader dal.PebbleReader) (*commonpb.Log, error) {
 	kb.Reset()
 
 	kb.PutByte(dal.KeyPrefixLog).
-		PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb.Build()
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -80,7 +80,7 @@ func ReadLogBySequence(ctx context.Context, reader dal.PebbleReader, sequence ui
 
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixLog).
-		PutUInt64(sequence)
+		PutUint64(sequence)
 
 	value, closer, err := reader.Get(kb.Build())
 	if err != nil {
@@ -147,7 +147,7 @@ func ReadLedgerLogsSince(
 	afterLogID uint64,
 	pageSize uint32,
 ) (dal.Cursor[*commonpb.Log], error) {
-	kb := readstore.NewKeyBuilder()
+	kb := dal.NewKeyBuilder()
 	prefix := readstore.LedgerLogPrefix(kb, ledger)
 
 	var startKey []byte
@@ -196,14 +196,14 @@ func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence u
 	kb.PutByte(dal.KeyPrefixLog)
 
 	if afterSequence > 0 {
-		kb.PutUInt64(afterSequence + 1)
+		kb.PutUint64(afterSequence + 1)
 	}
 
 	lowerBound := kb.Build()
 
 	kb2 := dal.NewKeyBuilder()
 	kb2.PutByte(dal.KeyPrefixLog).
-		PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb2.Build()
 
 	iter, err := reader.NewIter(&pebble.IterOptions{

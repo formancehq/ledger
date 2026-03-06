@@ -97,9 +97,9 @@ func (it *CompactAccountIterator) Next() (analysis.CompactAccount, error) {
 
 		switch attrType {
 		case dal.AttributePrefixVolume:
-			sepByte = 0x00
+			sepByte = dal.CanonicalKeySepVolume
 		case dal.AttributePrefixMetadata:
-			sepByte = 0x01
+			sepByte = dal.CanonicalKeySepMetadata
 		default:
 			it.iter.Next()
 

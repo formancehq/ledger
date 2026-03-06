@@ -185,7 +185,7 @@ In the FSM's `handleCreateLog` method (or equivalent in `Buffered.Merge`), add o
 // During log application
 kb.PutByte(keyPrefixLedgerLog).
     PutLedgerName(ledgerName).
-    PutUInt64(ledgerLogID)
+    PutUint64(ledgerLogID)
 batch.Set(kb.Build(), sequenceBytes, pebble.NoSync)
 ```
 
@@ -368,7 +368,7 @@ for _, account := range accounts {
         PutLedgerName(ledgerName).
         PutString(account).
         PutByte(0x00).
-        PutUInt64(txID)
+        PutUint64(txID)
     batch.Set(kb.Build(), nil, pebble.NoSync)
 }
 ```
@@ -1106,7 +1106,7 @@ For typical use cases (10-20% selectivity), a 2-filter merge-join on 1M accounts
 
 1. **AggregateBalances performance**: for ledgers with millions of accounts, a full aggregation scan could take seconds. Should we add a time limit or streaming aggregation? Or is this acceptable given it's a read-only operation on a follower?
 2. **Index backfill**: should `store rebuild-indexes` be a blocking CLI command, or a background operation with progress streaming (like `store check`)?
-3. **Interaction with data retention**: when periods are archived and purged, secondary indexes for purged data should also be cleaned up. The per-ledger log index (`0x05`) can use range delete on `[0x05][ledgerName\x00][startLogID]...[endLogID]`. The account-tx index (`0x0B`) requires scanning to find entries in the purged range — should we store txID in big-endian so range delete works? (Note: txID is already stored big-endian via `PutUInt64`.)
+3. **Interaction with data retention**: when periods are archived and purged, secondary indexes for purged data should also be cleaned up. The per-ledger log index (`0x05`) can use range delete on `[0x05][ledgerName\x00][startLogID]...[endLogID]`. The account-tx index (`0x0B`) requires scanning to find entries in the purged range — should we store txID in big-endian so range delete works? (Note: txID is already stored big-endian via `PutUint64`.)
 4. **Point-in-time reads**: the compaction strategy destroys historical data (see Section 5.4). If PIT becomes a requirement, the most promising approach is log replay from period boundary snapshots (builds on the data retention draft). Should we plan for this, or is current-state-only sufficient?
 5. **Metadata preload cost**: extending the admission preload to include old metadata values adds Pebble reads on the leader during admission. For high-throughput metadata updates, this could become a bottleneck. Should we batch metadata preloads? Or is the async index builder (Section 5.8) sufficient to avoid this entirely?
 6. **Eventually consistent reads**: is the eventual consistency model (Section 5.8) acceptable for all use cases? Some clients may expect read-after-write consistency for metadata filtering. The `min_raft_index` opt-in mechanism adds latency.

@@ -1,9 +1,13 @@
 package readstore
 
-import bolt "go.etcd.io/bbolt"
+import (
+	bolt "go.etcd.io/bbolt"
+
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+)
 
 // WriteAccountExistence records that an account exists in the read store.
-func WriteAccountExistence(tx *bolt.Tx, kb *KeyBuilder, ledger, account string) error {
+func WriteAccountExistence(tx *bolt.Tx, kb *dal.KeyBuilder, ledger, account string) error {
 	b := tx.Bucket(BucketExistence)
 	key := ExistenceKey(kb, ledger, NamespaceAccount, []byte(account))
 
@@ -11,7 +15,7 @@ func WriteAccountExistence(tx *bolt.Tx, kb *KeyBuilder, ledger, account string) 
 }
 
 // WriteTransactionExistence records that a transaction exists in the read store.
-func WriteTransactionExistence(tx *bolt.Tx, kb *KeyBuilder, ledger string, txID uint64) error {
+func WriteTransactionExistence(tx *bolt.Tx, kb *dal.KeyBuilder, ledger string, txID uint64) error {
 	b := tx.Bucket(BucketExistence)
 	entityID := make([]byte, 0, 8)
 	entityID = EncodeTxID(entityID, txID)

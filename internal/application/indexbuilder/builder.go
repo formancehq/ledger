@@ -90,7 +90,7 @@ type Builder struct {
 	batchSize int
 
 	// Reusable scratch objects to reduce allocations in the hot loop.
-	kb       *readstore.KeyBuilder
+	kb       *dal.KeyBuilder
 	wb       *readstore.WriteBatch
 	accounts map[string]struct{}
 }
@@ -116,7 +116,7 @@ func NewBuilder(
 		meter:       meter,
 		batchSize:   batchSize,
 		indexConfig: make(map[string]*ledgerIndexConfig),
-		kb:          readstore.NewKeyBuilder(),
+		kb:          dal.NewKeyBuilder(),
 		wb:          readstore.NewWriteBatch(),
 		accounts:    make(map[string]struct{}, 64),
 	}
@@ -614,7 +614,7 @@ func (b *Builder) indexLogEntry(tx *bolt.Tx, log *commonpb.Log) error {
 // - account→transaction mapping.
 func (b *Builder) indexCreatedTransaction(
 	tx *bolt.Tx,
-	kb *readstore.KeyBuilder,
+	kb *dal.KeyBuilder,
 	ledger string,
 	ct *commonpb.CreatedTransaction,
 ) error {
@@ -725,7 +725,7 @@ func (b *Builder) indexCreatedTransaction(
 // - account→transaction mapping for revert postings.
 func (b *Builder) indexRevertedTransaction(
 	tx *bolt.Tx,
-	kb *readstore.KeyBuilder,
+	kb *dal.KeyBuilder,
 	ledger string,
 	rt *commonpb.RevertedTransaction,
 ) error {
@@ -803,7 +803,7 @@ func (b *Builder) indexRevertedTransaction(
 // indexSavedMetadata handles SavedMetadata logs.
 func (b *Builder) indexSavedMetadata(
 	tx *bolt.Tx,
-	kb *readstore.KeyBuilder,
+	kb *dal.KeyBuilder,
 	ledger string,
 	sm *commonpb.SavedMetadata,
 ) error {
@@ -856,7 +856,7 @@ func (b *Builder) indexSavedMetadata(
 // indexDeletedMetadata handles DeletedMetadata logs.
 func (b *Builder) indexDeletedMetadata(
 	tx *bolt.Tx,
-	kb *readstore.KeyBuilder,
+	kb *dal.KeyBuilder,
 	ledger string,
 	dm *commonpb.DeletedMetadata,
 ) error {
@@ -906,7 +906,7 @@ func (b *Builder) indexDeletedMetadata(
 // insert the new forward index entry, and update the reverse map.
 func (b *Builder) indexSetMetadataFieldType(
 	tx *bolt.Tx,
-	kb *readstore.KeyBuilder,
+	kb *dal.KeyBuilder,
 	ledger string,
 	smft *commonpb.SetMetadataFieldTypeLog,
 ) error {
@@ -932,7 +932,7 @@ func (b *Builder) indexSetMetadataFieldType(
 
 	// Iterate the reverse map for this namespace to find all entities with the key.
 	rmapPrefix := kb.Reset().
-		PutLedger(ledger).
+		PutLedgerName(ledger).
 		PutNamespace(ns).
 		Snapshot()
 

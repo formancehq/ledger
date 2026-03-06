@@ -451,7 +451,7 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 			return nil
 		}
 
-		kb := readstore.NewKeyBuilder()
+		kb := dal.NewKeyBuilder()
 
 		// Count accounts
 		accountPrefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceAccount)
@@ -716,7 +716,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 	var result *commonpb.AggregateResult
 
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
-		kb := readstore.NewKeyBuilder()
+		kb := dal.NewKeyBuilder()
 
 		iter, compileErr := query.Compile(tx, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo.GetBuiltinIndexes(), nil)
 		if compileErr != nil {

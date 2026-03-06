@@ -155,11 +155,7 @@ func runGet(cmd *cobra.Command, opts *cmdutil.Options, args []string) error {
 				if j > 0 {
 					portsSb148.WriteString(", ")
 				}
-<<<<<<< HEAD
 				fmt.Fprintf(&portsSb148, "%s:%d", p.Name, p.Port)
-=======
-				portsSb148.WriteString(fmt.Sprintf("%s:%d", p.Name, p.Port))
->>>>>>> clean-shutdown
 			}
 			ports += portsSb148.String()
 			svcRows = append(svcRows, []string{

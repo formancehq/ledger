@@ -23,7 +23,7 @@ func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
 	kb.Reset()
 
 	kb.PutByte(dal.KeyPrefixAudit).
-		PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb.Build()
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -63,14 +63,14 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 	kb.PutByte(dal.KeyPrefixAudit)
 
 	if afterSequence != nil {
-		kb.PutUInt64(*afterSequence + 1)
+		kb.PutUint64(*afterSequence + 1)
 	}
 
 	lowerBound := kb.Build()
 
 	kb2 := dal.NewKeyBuilder()
 	kb2.PutByte(dal.KeyPrefixAudit).
-		PutBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb2.Build()
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -92,7 +92,7 @@ func ReadAuditEntry(ctx context.Context, reader dal.PebbleReader, sequence uint6
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixAudit).PutUInt64(sequence)
+	kb.PutByte(dal.KeyPrefixAudit).PutUint64(sequence)
 	key := kb.Build()
 
 	value, closer, err := reader.Get(key)

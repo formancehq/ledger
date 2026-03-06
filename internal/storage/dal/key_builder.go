@@ -1,88 +1,100 @@
 package dal
 
-import (
-	"bytes"
-	"encoding/binary"
-)
+import "encoding/binary"
 
+// KeyBuilder constructs Pebble and bbolt keys by appending typed components
+// into a reusable byte slice. All write methods return *KeyBuilder for chaining.
 type KeyBuilder struct {
-	buf *bytes.Buffer
-	err error
+	buf []byte
 }
 
-func (kb *KeyBuilder) Reset() {
-	kb.buf.Reset()
+// NewKeyBuilder creates a new KeyBuilder with preallocated capacity.
+func NewKeyBuilder() *KeyBuilder {
+	return &KeyBuilder{buf: make([]byte, 0, 256)}
 }
 
-func (kb *KeyBuilder) PutUInt64(v uint64) *KeyBuilder {
+// Reset clears the builder for reuse.
+func (kb *KeyBuilder) Reset() *KeyBuilder {
+	kb.buf = kb.buf[:0]
+
+	return kb
+}
+
+// PutByte appends a single byte.
+func (kb *KeyBuilder) PutByte(value byte) *KeyBuilder {
+	kb.buf = append(kb.buf, value)
+
+	return kb
+}
+
+// PutBytes appends raw bytes.
+func (kb *KeyBuilder) PutBytes(value []byte) *KeyBuilder {
+	kb.buf = append(kb.buf, value...)
+
+	return kb
+}
+
+// PutString appends a raw string.
+func (kb *KeyBuilder) PutString(value string) *KeyBuilder {
+	kb.buf = append(kb.buf, value...)
+
+	return kb
+}
+
+// PutStringNull appends a string followed by a null terminator.
+func (kb *KeyBuilder) PutStringNull(s string) *KeyBuilder {
+	kb.buf = append(kb.buf, s...)
+	kb.buf = append(kb.buf, 0x00)
+
+	return kb
+}
+
+// PutUint64 appends a uint64 in big-endian order.
+func (kb *KeyBuilder) PutUint64(v uint64) *KeyBuilder {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], v)
-
-	if _, err := kb.buf.Write(buf[:]); err != nil {
-		kb.err = err
-	}
+	kb.buf = append(kb.buf, buf[:]...)
 
 	return kb
 }
 
-func (kb *KeyBuilder) PutUInt32(v uint32) *KeyBuilder {
+// PutUint32 appends a uint32 in big-endian order.
+func (kb *KeyBuilder) PutUint32(v uint32) *KeyBuilder {
 	var buf [4]byte
 	binary.BigEndian.PutUint32(buf[:], v)
-
-	if _, err := kb.buf.Write(buf[:]); err != nil {
-		kb.err = err
-	}
+	kb.buf = append(kb.buf, buf[:]...)
 
 	return kb
 }
 
-func (kb *KeyBuilder) PutString(value string) *KeyBuilder {
-	if _, err := kb.buf.WriteString(value); err != nil {
-		kb.err = err
-	}
-
-	return kb
-}
-
-func (kb *KeyBuilder) PutByte(value byte) *KeyBuilder {
-	err := kb.buf.WriteByte(value)
-	if err != nil {
-		kb.err = err
-	}
-
-	return kb
-}
-
-func (kb *KeyBuilder) PutBytes(value []byte) *KeyBuilder {
-	if _, err := kb.buf.Write(value); err != nil {
-		kb.err = err
-	}
-
-	return kb
-}
-
+// PutLedgerName appends a ledger name followed by a null terminator.
 func (kb *KeyBuilder) PutLedgerName(name string) *KeyBuilder {
-	return kb.PutString(name).PutByte(0x00)
+	return kb.PutStringNull(name)
+}
+
+// PutNamespace appends a namespace prefix (e.g., "a:" or "t:").
+func (kb *KeyBuilder) PutNamespace(ns string) *KeyBuilder {
+	return kb.PutString(ns)
 }
 
 // Build returns a copy of the built key and resets the buffer for reuse.
 func (kb *KeyBuilder) Build() []byte {
-	if kb.err != nil {
-		panic(kb.err)
-	}
-	defer kb.Reset()
+	result := make([]byte, len(kb.buf))
+	copy(result, kb.buf)
+	kb.buf = kb.buf[:0]
 
-	return bytes.Clone(kb.buf.Bytes())
+	return result
 }
 
-// Snapshot returns a copy of the current key without resetting the buffer.
-// Useful when you need to continue building from the current state.
+// Snapshot returns a copy of the current key state without resetting.
 func (kb *KeyBuilder) Snapshot() []byte {
-	return bytes.Clone(kb.buf.Bytes())
+	result := make([]byte, len(kb.buf))
+	copy(result, kb.buf)
+
+	return result
 }
 
-func NewKeyBuilder() *KeyBuilder {
-	return &KeyBuilder{
-		buf: bytes.NewBuffer(make([]byte, 0, 1024)),
-	}
+// Len returns the current length of the key being built.
+func (kb *KeyBuilder) Len() int {
+	return len(kb.buf)
 }

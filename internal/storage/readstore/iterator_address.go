@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 
 	bolt "go.etcd.io/bbolt"
+
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // AddressTxIterator translates an address match on the TRANSACTIONS target into
@@ -17,7 +19,7 @@ import (
 // intermediate sets.
 type AddressTxIterator struct {
 	tx          *bolt.Tx
-	kb          *KeyBuilder
+	kb          *dal.KeyBuilder
 	ledger      string
 	bucket      []byte         // which account→tx bucket to scan
 	addrIter    EntityIterator // iterates over matching account addresses
@@ -32,7 +34,7 @@ type AddressTxIterator struct {
 // account→tx bucket and produces them in sorted order (merge-union).
 func NewAddressTxIterator(
 	tx *bolt.Tx,
-	kb *KeyBuilder,
+	kb *dal.KeyBuilder,
 	ledger string,
 	addrIter EntityIterator,
 	bucket []byte,

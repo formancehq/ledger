@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 )
 
@@ -65,7 +66,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 
 // listAscending returns entities in natural ascending order using the compiled iterator.
 func listAscending[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params entityListParams[T], out *[][]byte) error {
-	kb := readstore.NewKeyBuilder()
+	kb := dal.NewKeyBuilder()
 
 	iter, err := query.Compile(
 		tx, kb, params.filter,
@@ -96,7 +97,7 @@ func listDescUnfiltered[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params en
 		return nil
 	}
 
-	kb := readstore.NewKeyBuilder()
+	kb := dal.NewKeyBuilder()
 	prefix := readstore.ExistencePrefix(kb, params.ledger, params.namespace)
 	iter := readstore.NewReversePrefixIterator(b.Cursor(), prefix, len(prefix), params.idLen)
 
@@ -122,7 +123,7 @@ func listDescUnfiltered[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params en
 
 // listDescFiltered collects all ascending results, reverses them, and paginates.
 func listDescFiltered[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params entityListParams[T], out *[][]byte) error {
-	kb := readstore.NewKeyBuilder()
+	kb := dal.NewKeyBuilder()
 
 	iter, err := query.Compile(
 		tx, kb, params.filter,

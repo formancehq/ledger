@@ -100,9 +100,9 @@ func readNumscriptExactSemver(reader dal.PebbleReader, name string, major, minor
 		PutString(name).
 		PutByte(0x00).
 		PutByte(domain.NumscriptVersionTagSemver).
-		PutUInt32(major).
-		PutUInt32(minor).
-		PutUInt32(patch)
+		PutUint32(major).
+		PutUint32(minor).
+		PutUint32(patch)
 
 	return readNumscriptFromKey(reader, kb.Build(), name, fmt.Sprintf("%d.%d.%d", major, minor, patch))
 }
@@ -139,9 +139,9 @@ func resolvePartialVersion(reader dal.PebbleReader, name string, major, minor ui
 		PutString(name).
 		PutByte(0x00).
 		PutByte(domain.NumscriptVersionTagSemver).
-		PutUInt32(major).
-		PutUInt32(minor).
-		PutUInt32(0)
+		PutUint32(major).
+		PutUint32(minor).
+		PutUint32(0)
 	lowerBound := kb.Build()
 
 	// Build upper bound depending on depth
@@ -153,10 +153,10 @@ func resolvePartialVersion(reader dal.PebbleReader, name string, major, minor ui
 	switch depth {
 	case 1:
 		// Scan [major.0.0, (major+1).0.0)
-		kb.PutUInt32(major + 1).PutUInt32(0).PutUInt32(0)
+		kb.PutUint32(major + 1).PutUint32(0).PutUint32(0)
 	case 2:
 		// Scan [major.minor.0, major.(minor+1).0)
-		kb.PutUInt32(major).PutUInt32(minor + 1).PutUInt32(0)
+		kb.PutUint32(major).PutUint32(minor + 1).PutUint32(0)
 	}
 
 	upperBound := kb.Build()

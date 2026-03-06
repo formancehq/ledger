@@ -79,8 +79,8 @@ func CompactAllForBackup(s *dal.Store) error {
 
 	// Bulk-delete the entire attribute range — compacted bases are written back below.
 	if err := batch.DeleteRange(
-		[]byte{dal.KeyPrefixAttributes},
-		[]byte{dal.KeyPrefixAttributes + 1},
+		[]byte{dal.ZoneAttributesStart},
+		[]byte{dal.ZoneAttributesEnd},
 		pebble.NoSync,
 	); err != nil {
 		_ = batch.Cancel()
@@ -90,18 +90,18 @@ func CompactAllForBackup(s *dal.Store) error {
 
 	// Build dispatch table: attrType byte → compactor
 	dispatch := map[byte]compactor{
-		dal.AttributePrefixVolume:         newCompactor(&attrs.Volume.core, batch, 0),
-		dal.AttributePrefixMetadata:       newCompactor(&attrs.Metadata.core, batch, 0),
-		dal.AttributePrefixIdempotencyKey: newCompactor(&attrs.IdempotencyKeys.core, batch, 0),
-		dal.AttributePrefixReference:      newCompactor(&attrs.References.core, batch, 0),
-		dal.AttributePrefixLedger:         newCompactor(&attrs.Ledger.core, batch, 0),
-		dal.AttributePrefixBoundary:       newCompactor(&attrs.Boundary.core, batch, 0),
+		dal.AttributePrefixVolume:      newCompactor(&attrs.Volume.core, batch, 0),
+		dal.AttributePrefixMetadata:    newCompactor(&attrs.Metadata.core, batch, 0),
+		dal.AttributePrefixIdempotency: newCompactor(&attrs.IdempotencyKeys.core, batch, 0),
+		dal.AttributePrefixReference:   newCompactor(&attrs.References.core, batch, 0),
+		dal.AttributePrefixLedger:      newCompactor(&attrs.Ledger.core, batch, 0),
+		dal.AttributePrefixBoundary:    newCompactor(&attrs.Boundary.core, batch, 0),
 	}
 
 	// Single scan over the entire attribute range
 	buf := make([]byte, 2)
-	buf[0] = dal.KeyPrefixAttributes
-	buf[1] = dal.KeyPrefixAttributes + 1
+	buf[0] = dal.ZoneAttributesStart
+	buf[1] = dal.ZoneAttributesEnd
 
 	iter, err := s.NewIter(&pebble.IterOptions{
 		LowerBound: buf[:1],

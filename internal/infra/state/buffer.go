@@ -788,9 +788,9 @@ func (b *Buffered) SetPendingArchive(periodID, startSequence, closeSequence uint
 func (b *Buffered) executePurge(batch *dal.Batch, pr *purgeRange) error {
 	// Sequence-keyed prefixes (logs, audit): efficient range delete.
 	for _, prefix := range dal.ColdSequencePrefixes {
-		start := dal.NewKeyBuilder().PutByte(prefix).PutUInt64(pr.startSequence).Build()
+		start := dal.NewKeyBuilder().PutByte(prefix).PutUint64(pr.startSequence).Build()
 
-		end := dal.NewKeyBuilder().PutByte(prefix).PutUInt64(pr.closeSequence + 1).Build()
+		end := dal.NewKeyBuilder().PutByte(prefix).PutUint64(pr.closeSequence + 1).Build()
 
 		err := batch.DeleteRange(start, end, nil)
 		if err != nil {

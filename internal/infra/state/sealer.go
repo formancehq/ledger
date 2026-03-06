@@ -211,8 +211,8 @@ func computeStateHash(src iteratorSource) ([]byte, error) {
 	hasher := blake3.New()
 
 	iter, err := src.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{dal.KeyPrefixAttributes},
-		UpperBound: []byte{dal.KeyPrefixAttributes + 1},
+		LowerBound: []byte{dal.ZoneAttributesStart},
+		UpperBound: []byte{dal.ZoneAttributesEnd},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating iterator for state hash: %w", err)

@@ -12,6 +12,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 )
 
@@ -20,7 +21,7 @@ import (
 // read (never mutated) by every sub-function.
 type compileCtx struct {
 	tx         *bolt.Tx
-	kb         *readstore.KeyBuilder
+	kb         *dal.KeyBuilder
 	target     commonpb.QueryTarget
 	ledger     string
 	params     map[string]string
@@ -49,7 +50,7 @@ type metadataCtx struct {
 // profile.Root is set to the root of the iterator stats tree.
 func Compile(
 	tx *bolt.Tx,
-	kb *readstore.KeyBuilder,
+	kb *dal.KeyBuilder,
 	filter *commonpb.QueryFilter,
 	target commonpb.QueryTarget,
 	ledger string,

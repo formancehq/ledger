@@ -126,11 +126,11 @@ func scanAccount(
 
 	lowerBound := make([]byte, baseLen+1)
 	copy(lowerBound, buf)
-	lowerBound[baseLen] = 0x00
+	lowerBound[baseLen] = dal.CanonicalKeySepVolume
 
 	upperBound := make([]byte, baseLen+1)
 	copy(upperBound, buf)
-	upperBound[baseLen] = 0x02
+	upperBound[baseLen] = dal.CanonicalKeySepMetadata + 1
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: lowerBound,

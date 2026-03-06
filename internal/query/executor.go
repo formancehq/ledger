@@ -94,7 +94,7 @@ func Execute(
 	var resp *servicepb.ExecutePreparedQueryResponse
 
 	err = rs.View(func(tx *bolt.Tx) error {
-		kb := readstore.NewKeyBuilder()
+		kb := dal.NewKeyBuilder()
 
 		// Compile filter into iterator tree
 		iter, compileErr := Compile(tx, kb, pq.GetFilter(), pq.GetTarget(), req.GetLedger(), req.GetParameters(), schema, ledgerInfo.GetBuiltinIndexes(), profile)

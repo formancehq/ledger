@@ -8,21 +8,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestKeyBuilder_PutUInt64(t *testing.T) {
+func TestKeyBuilder_PutUint64(t *testing.T) {
 	t.Parallel()
 
 	kb := NewKeyBuilder()
-	key := kb.PutUInt64(42).Build()
+	key := kb.PutUint64(42).Build()
 
 	require.Len(t, key, 8)
 	require.Equal(t, uint64(42), binary.BigEndian.Uint64(key))
 }
 
-func TestKeyBuilder_PutUInt32(t *testing.T) {
+func TestKeyBuilder_PutUint32(t *testing.T) {
 	t.Parallel()
 
 	kb := NewKeyBuilder()
-	key := kb.PutUInt32(100).Build()
+	key := kb.PutUint32(100).Build()
 
 	require.Len(t, key, 4)
 	require.Equal(t, uint32(100), binary.BigEndian.Uint32(key))
@@ -68,7 +68,7 @@ func TestKeyBuilder_Chaining(t *testing.T) {
 	t.Parallel()
 
 	kb := NewKeyBuilder()
-	key := kb.PutUInt32(1).PutByte(0x00).PutString("test").Build()
+	key := kb.PutUint32(1).PutByte(0x00).PutString("test").Build()
 
 	require.Len(t, key, 4+1+4)
 	require.Equal(t, uint32(1), binary.BigEndian.Uint32(key[:4]))
@@ -80,7 +80,7 @@ func TestKeyBuilder_Snapshot(t *testing.T) {
 	t.Parallel()
 
 	kb := NewKeyBuilder()
-	kb.PutUInt32(1).PutByte(0x00)
+	kb.PutUint32(1).PutByte(0x00)
 	snapshot := kb.Snapshot()
 
 	// Continue building
@@ -95,7 +95,7 @@ func TestKeyBuilder_Reset(t *testing.T) {
 	t.Parallel()
 
 	kb := NewKeyBuilder()
-	kb.PutUInt32(1).PutString("first")
+	kb.PutUint32(1).PutString("first")
 	kb.Reset()
 
 	key := kb.PutString("second").Build()
@@ -107,8 +107,8 @@ func TestKeyBuilder_BuildResetsForReuse(t *testing.T) {
 
 	kb := NewKeyBuilder()
 
-	key1 := kb.PutUInt32(1).Build()
-	key2 := kb.PutUInt32(2).Build()
+	key1 := kb.PutUint32(1).Build()
+	key2 := kb.PutUint32(2).Build()
 
 	require.Equal(t, uint32(1), binary.BigEndian.Uint32(key1))
 	require.Equal(t, uint32(2), binary.BigEndian.Uint32(key2))
@@ -123,9 +123,9 @@ func TestKeyBuilder_KeyOrdering(t *testing.T) {
 	kb := NewKeyBuilder()
 
 	// Keys with same prefix but different suffixes should sort correctly
-	key1 := kb.PutUInt32(1).PutUInt64(10).Build()
-	key2 := kb.PutUInt32(1).PutUInt64(20).Build()
-	key3 := kb.PutUInt32(2).PutUInt64(1).Build()
+	key1 := kb.PutUint32(1).PutUint64(10).Build()
+	key2 := kb.PutUint32(1).PutUint64(20).Build()
+	key3 := kb.PutUint32(2).PutUint64(1).Build()
 
 	require.Negative(t, bytes.Compare(key1, key2), "key1 should sort before key2")
 	require.Negative(t, bytes.Compare(key2, key3), "key2 should sort before key3")

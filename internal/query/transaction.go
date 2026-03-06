@@ -26,7 +26,7 @@ func ReadTransactionUpdates(ctx context.Context, reader dal.PebbleReader, ledger
 	kb := dal.NewKeyBuilder()
 	kb.PutByte(dal.KeyPrefixTransactionUpdate).
 		PutLedgerName(ledger).
-		PutUInt64(transactionID)
+		PutUint64(transactionID)
 	lowerBound := kb.Snapshot()
 
 	// Upper bound: add 0xFF to get all entries for this transaction

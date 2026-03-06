@@ -4,13 +4,15 @@ import (
 	"fmt"
 
 	bolt "go.etcd.io/bbolt"
+
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // WriteMetadataIndex inserts a forward index entry in the metadata inverted index.
 //
 //	Key: [ledger\x00][ns:][metadataKey\x00][typeTag][sortableValue][entityID]
 //	Value: (empty)
-func WriteMetadataIndex(tx *bolt.Tx, kb *KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) error {
+func WriteMetadataIndex(tx *bolt.Tx, kb *dal.KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) error {
 	b := tx.Bucket(BucketMetadataIndex)
 	key := MetadataIndexKey(kb, ledger, ns, metadataKey, encodedValue, entityID)
 
@@ -18,7 +20,7 @@ func WriteMetadataIndex(tx *bolt.Tx, kb *KeyBuilder, ledger, ns, metadataKey str
 }
 
 // DeleteMetadataIndex removes a forward index entry from the metadata inverted index.
-func DeleteMetadataIndex(tx *bolt.Tx, kb *KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) error {
+func DeleteMetadataIndex(tx *bolt.Tx, kb *dal.KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) error {
 	b := tx.Bucket(BucketMetadataIndex)
 	key := MetadataIndexKey(kb, ledger, ns, metadataKey, encodedValue, entityID)
 
@@ -53,7 +55,7 @@ func isNullEncoded(encodedValue []byte) bool {
 }
 
 // WriteEntityExists inserts an entry in the entity-ordered existence index.
-func WriteEntityExists(tx *bolt.Tx, kb *KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) error {
+func WriteEntityExists(tx *bolt.Tx, kb *dal.KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) error {
 	b := tx.Bucket(BucketEntityExists)
 	key := EntityExistsKey(kb, ledger, ns, metaKey, isNull, entityID)
 
@@ -61,7 +63,7 @@ func WriteEntityExists(tx *bolt.Tx, kb *KeyBuilder, ledger, ns, metaKey string, 
 }
 
 // DeleteEntityExists removes an entry from the entity-ordered existence index.
-func DeleteEntityExists(tx *bolt.Tx, kb *KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) error {
+func DeleteEntityExists(tx *bolt.Tx, kb *dal.KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) error {
 	b := tx.Bucket(BucketEntityExists)
 	key := EntityExistsKey(kb, ledger, ns, metaKey, isNull, entityID)
 
@@ -81,7 +83,7 @@ func DeleteEntityExists(tx *bolt.Tx, kb *KeyBuilder, ledger, ns, metaKey string,
 //   - entityID: account address bytes or txID bytes
 func UpdateMetadataIndex(
 	tx *bolt.Tx,
-	kb *KeyBuilder,
+	kb *dal.KeyBuilder,
 	reverseKey []byte,
 	ledger, ns, metadataKey string,
 	newEncodedValue, entityID []byte,
@@ -126,7 +128,7 @@ func UpdateMetadataIndex(
 // for a metadata key on a specific entity.
 func DeleteMetadataEntry(
 	tx *bolt.Tx,
-	kb *KeyBuilder,
+	kb *dal.KeyBuilder,
 	reverseKey []byte,
 	ledger, ns, metadataKey string,
 	entityID []byte,

@@ -6,6 +6,8 @@ import (
 	"sort"
 
 	bolt "go.etcd.io/bbolt"
+
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // Bucket indexes for WriteBatch. Each index corresponds to one bbolt bucket.
@@ -185,13 +187,13 @@ func (wb *WriteBatch) deleteReverseMap(key []byte) {
 // --- High-level write helpers (mirror the package-level Write* functions) ---
 
 // WriteAccountExistence records that an account exists.
-func (wb *WriteBatch) WriteAccountExistence(kb *KeyBuilder, ledger, account string) {
+func (wb *WriteBatch) WriteAccountExistence(kb *dal.KeyBuilder, ledger, account string) {
 	key := ExistenceKey(kb, ledger, NamespaceAccount, []byte(account))
 	wb.put(batchBucketExist, key, nil)
 }
 
 // WriteTransactionExistence records that a transaction exists.
-func (wb *WriteBatch) WriteTransactionExistence(kb *KeyBuilder, ledger string, txID uint64) {
+func (wb *WriteBatch) WriteTransactionExistence(kb *dal.KeyBuilder, ledger string, txID uint64) {
 	entityID := make([]byte, 0, 8)
 	entityID = EncodeTxID(entityID, txID)
 	key := ExistenceKey(kb, ledger, NamespaceTransaction, entityID)
@@ -199,43 +201,43 @@ func (wb *WriteBatch) WriteTransactionExistence(kb *KeyBuilder, ledger string, t
 }
 
 // WriteAccountTxMapping records that a transaction involves an account (any role).
-func (wb *WriteBatch) WriteAccountTxMapping(kb *KeyBuilder, ledger, account string, txID uint64) {
+func (wb *WriteBatch) WriteAccountTxMapping(kb *dal.KeyBuilder, ledger, account string, txID uint64) {
 	key := AccountTxKey(kb, ledger, account, txID)
 	wb.put(batchBucketAtxm, key, nil)
 }
 
 // WriteSourceAccountTxMapping records that an account is a source in a transaction.
-func (wb *WriteBatch) WriteSourceAccountTxMapping(kb *KeyBuilder, ledger, account string, txID uint64) {
+func (wb *WriteBatch) WriteSourceAccountTxMapping(kb *dal.KeyBuilder, ledger, account string, txID uint64) {
 	key := AccountTxKey(kb, ledger, account, txID)
 	wb.put(batchBucketSatx, key, nil)
 }
 
 // WriteDestAccountTxMapping records that an account is a destination in a transaction.
-func (wb *WriteBatch) WriteDestAccountTxMapping(kb *KeyBuilder, ledger, account string, txID uint64) {
+func (wb *WriteBatch) WriteDestAccountTxMapping(kb *dal.KeyBuilder, ledger, account string, txID uint64) {
 	key := AccountTxKey(kb, ledger, account, txID)
 	wb.put(batchBucketDatx, key, nil)
 }
 
 // WriteMetadataIndex inserts a forward index entry in the metadata inverted index.
-func (wb *WriteBatch) WriteMetadataIndex(kb *KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) {
+func (wb *WriteBatch) WriteMetadataIndex(kb *dal.KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) {
 	key := MetadataIndexKey(kb, ledger, ns, metadataKey, encodedValue, entityID)
 	wb.put(batchBucketMidx, key, nil)
 }
 
 // DeleteMetadataIndex removes a forward index entry from the metadata inverted index.
-func (wb *WriteBatch) DeleteMetadataIndex(kb *KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) {
+func (wb *WriteBatch) DeleteMetadataIndex(kb *dal.KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) {
 	key := MetadataIndexKey(kb, ledger, ns, metadataKey, encodedValue, entityID)
 	wb.del(batchBucketMidx, key)
 }
 
 // WriteEntityExists inserts an entry in the entity-ordered existence index.
-func (wb *WriteBatch) WriteEntityExists(kb *KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) {
+func (wb *WriteBatch) WriteEntityExists(kb *dal.KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) {
 	key := EntityExistsKey(kb, ledger, ns, metaKey, isNull, entityID)
 	wb.put(batchBucketEidx, key, nil)
 }
 
 // DeleteEntityExists removes an entry from the entity-ordered existence index.
-func (wb *WriteBatch) DeleteEntityExists(kb *KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) {
+func (wb *WriteBatch) DeleteEntityExists(kb *dal.KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) {
 	key := EntityExistsKey(kb, ledger, ns, metaKey, isNull, entityID)
 	wb.del(batchBucketEidx, key)
 }
@@ -246,7 +248,7 @@ func (wb *WriteBatch) DeleteEntityExists(kb *KeyBuilder, ledger, ns, metaKey str
 //  3. Insert new forward index + eidx entry
 //  4. Update reverse map with new value
 func (wb *WriteBatch) UpdateMetadataIndex(
-	kb *KeyBuilder,
+	kb *dal.KeyBuilder,
 	reverseKey []byte,
 	ledger, ns, metadataKey string,
 	newEncodedValue, entityID []byte,
@@ -269,20 +271,20 @@ func (wb *WriteBatch) UpdateMetadataIndex(
 }
 
 // WriteTransactionReferenceIndex inserts an entry in the transaction reference index.
-func (wb *WriteBatch) WriteTransactionReferenceIndex(kb *KeyBuilder, ledger, reference string, txID uint64) {
+func (wb *WriteBatch) WriteTransactionReferenceIndex(kb *dal.KeyBuilder, ledger, reference string, txID uint64) {
 	key := TransactionReferenceKey(kb, ledger, reference, txID)
 	wb.put(batchBucketTxref, key, nil)
 }
 
 // WriteTransactionTimestampIndex inserts an entry in the transaction timestamp index.
-func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *KeyBuilder, ledger string, timestamp, txID uint64) {
+func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *dal.KeyBuilder, ledger string, timestamp, txID uint64) {
 	key := TransactionTimestampKey(kb, ledger, timestamp, txID)
 	wb.put(batchBucketTstmp, key, nil)
 }
 
 // WriteLedgerLogIndex inserts an entry in the per-ledger log index.
 // The value is the global sequence, encoded as big-endian uint64.
-func (wb *WriteBatch) WriteLedgerLogIndex(kb *KeyBuilder, ledger string, logID, globalSequence uint64) {
+func (wb *WriteBatch) WriteLedgerLogIndex(kb *dal.KeyBuilder, ledger string, logID, globalSequence uint64) {
 	key := LedgerLogKey(kb, ledger, logID)
 
 	var val [8]byte
@@ -293,7 +295,7 @@ func (wb *WriteBatch) WriteLedgerLogIndex(kb *KeyBuilder, ledger string, logID, 
 // DeleteMetadataEntry removes both the forward index and reverse map entries
 // for a metadata key on a specific entity.
 func (wb *WriteBatch) DeleteMetadataEntry(
-	kb *KeyBuilder,
+	kb *dal.KeyBuilder,
 	reverseKey []byte,
 	ledger, ns, metadataKey string,
 	entityID []byte,

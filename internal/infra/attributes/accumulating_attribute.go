@@ -70,14 +70,14 @@ func (ab *accumulatorBase[V]) feed(pebbleKey, pebbleValue []byte) (matched bool,
 	}
 
 	switch entryType {
-	case 0: // base
+	case dal.EntryTypeBase:
 		ab.baseValue = v
 		ab.baseIndex = raftIndex
 
 		var zero V
 
 		ab.lastDiff = zero
-	case 1: // diff
+	case dal.EntryTypeDiff:
 		if (any)(ab.baseValue) == nil || raftIndex > ab.baseIndex {
 			ab.lastDiff = v
 		}
