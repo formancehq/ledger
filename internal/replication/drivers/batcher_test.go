@@ -62,7 +62,7 @@ func TestBatcher(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	driver := NewMockDriver(ctrl)
 	logger := logging.Testing()
-	ctx := context.TODO()
+	ctx := t.Context()
 
 	log := NewLogWithLedger("module1", ledger.Log{})
 
@@ -78,7 +78,8 @@ func TestBatcher(t *testing.T) {
 	}, logger)
 	require.NoError(t, batcher.Start(ctx))
 	t.Cleanup(func() {
-		require.NoError(t, batcher.Stop(ctx))
+		//nolint:usetesting // t.Context() is already canceled when cleanup runs, which would cause Stop to fail
+		require.NoError(t, batcher.Stop(context.Background()))
 	})
 
 	itemsErrors, err := batcher.Accept(ctx, log)
