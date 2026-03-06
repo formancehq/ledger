@@ -116,7 +116,7 @@ func Execute(
 
 			defer func() { _ = handle.Close() }()
 
-			aggResult, aggErr := aggregateVolumes(handle, volumeAttr, req.GetLedger(), iter)
+			aggResult, aggErr := AggregateVolumes(handle, volumeAttr, req.GetLedger(), iter)
 			if aggErr != nil {
 				return aggErr
 			}

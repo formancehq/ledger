@@ -20,11 +20,11 @@ type aggregatedVol struct {
 	output *uint256.Int
 }
 
-// aggregateVolumes executes a cross-store merge-scan:
+// AggregateVolumes executes a cross-store merge-scan:
 // 1. Iterate matching accounts from bbolt (accountIter)
 // 2. For each account, scan volumes in Pebble via ForEachInPrefix
 // 3. Accumulate per-asset totals.
-func aggregateVolumes(
+func AggregateVolumes(
 	pebbleReader dal.PebbleReader,
 	volumeAttr *attributes.AccumulatingAttribute[*raftcmdpb.VolumePair],
 	ledger string,

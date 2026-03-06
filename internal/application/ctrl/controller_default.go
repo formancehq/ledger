@@ -1,7 +1,6 @@
 package ctrl
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -271,20 +270,26 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 
-	var entityIDs [][]byte
-
 	indexStart := time.Now()
-	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
-		if reverse {
-			// Oldest-first (ascending txID): compiled iterator is naturally ascending
-			return ctrl.listTransactionsAscending(tx, ledgerInfo.GetName(), pageSize, afterTxID, filter, schemaFields, ledgerInfo.GetBuiltinIndexes(), &entityIDs, profile)
-		}
-		// Newest-first (descending txID) — default
-		if filter != nil {
-			return ctrl.listTransactionsDescFiltered(tx, ledgerInfo.GetName(), pageSize, afterTxID, filter, schemaFields, ledgerInfo.GetBuiltinIndexes(), &entityIDs, profile)
-		}
 
-		return ctrl.listTransactionsDescUnfiltered(tx, ledgerInfo.GetName(), pageSize, afterTxID, &entityIDs, profile)
+	entityIDs, err := listEntities(ctrl.readStore, entityListParams[uint64]{
+		target:     commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		ledger:     ledgerInfo.GetName(),
+		pageSize:   pageSize,
+		after:      afterTxID,
+		filter:     filter,
+		reverse:    !reverse, // Default (reverse=false) is newest-first (descending), so we invert
+		schema:     schemaFields,
+		builtinCfg: ledgerInfo.GetBuiltinIndexes(),
+		profile:    profile,
+		namespace:  readstore.NamespaceTransaction,
+		afterToBytes: func(id uint64) []byte {
+			b := make([]byte, 8)
+			binary.BigEndian.PutUint64(b, id)
+
+			return b
+		},
+		idLen: 8,
 	})
 
 	if profile != nil {
@@ -322,119 +327,6 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 	return dal.NewClosingCursor(dal.NewSliceCursor(txns), handle), nil
 }
 
-// listTransactionsAscending returns transactions in oldest-first order.
-// The compiled iterator (filtered or not) is naturally ascending, so we
-// paginate forward directly.
-func (ctrl *DefaultController) listTransactionsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, builtinCfg *commonpb.BuiltinIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
-	kb := readstore.NewKeyBuilder()
-
-	iter, err := query.Compile(
-		tx, kb, filter,
-		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		ledgerName, nil, schema, builtinCfg, profile,
-	)
-	if err != nil {
-		return fmt.Errorf("compiling transaction filter: %w", err)
-	}
-	defer iter.Close()
-
-	var after []byte
-	if afterTxID > 0 {
-		after = make([]byte, 8)
-		binary.BigEndian.PutUint64(after, afterTxID)
-	}
-
-	*out, _ = readstore.PaginateForward(iter, pageSize, after)
-
-	return nil
-}
-
-// listTransactionsDescUnfiltered uses reverse prefix iteration for newest-first ordering.
-func (ctrl *DefaultController) listTransactionsDescUnfiltered(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, out *[][]byte, profile *query.QueryProfile) error {
-	b := tx.Bucket(readstore.BucketExistence)
-	if b == nil {
-		return nil
-	}
-
-	kb := readstore.NewKeyBuilder()
-	prefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceTransaction)
-	iter := readstore.NewReversePrefixIterator(b.Cursor(), prefix, len(prefix), 8)
-
-	if profile != nil {
-		profile.Root = &query.IteratorStats{
-			Label:  fmt.Sprintf("ReversePrefixIterator(exist:%s:t:)", ledgerName),
-			Kind:   "Reverse",
-			Bucket: "exist",
-		}
-	}
-
-	var before []byte
-	if afterTxID > 0 {
-		before = make([]byte, 8)
-		binary.BigEndian.PutUint64(before, afterTxID)
-	}
-
-	*out, _ = readstore.PaginateReverse(iter, pageSize, before)
-
-	return nil
-}
-
-// listTransactionsDescFiltered compiles a filter, collects matching IDs, reverses
-// them for newest-first ordering, and applies pagination.
-func (ctrl *DefaultController) listTransactionsDescFiltered(tx *bolt.Tx, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, builtinCfg *commonpb.BuiltinIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
-	kb := readstore.NewKeyBuilder()
-
-	iter, err := query.Compile(
-		tx, kb, filter,
-		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		ledgerName, nil, schema, builtinCfg, profile,
-	)
-	if err != nil {
-		return fmt.Errorf("compiling transaction filter: %w", err)
-	}
-	defer iter.Close()
-
-	// Collect all matching IDs (forward sorted, ascending)
-	var all [][]byte
-
-	for iter.Next() {
-		cp := make([]byte, len(iter.Current()))
-		copy(cp, iter.Current())
-		all = append(all, cp)
-	}
-
-	// Reverse for newest-first ordering
-	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
-		all[i], all[j] = all[j], all[i]
-	}
-
-	// Apply pagination: skip past afterTxID
-	if afterTxID > 0 {
-		afterBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(afterBytes, afterTxID)
-
-		skip := 0
-
-		for _, id := range all {
-			if bytes.Compare(id, afterBytes) >= 0 {
-				skip++
-			} else {
-				break
-			}
-		}
-
-		all = all[skip:]
-	}
-
-	if uint32(len(all)) > pageSize {
-		all = all[:pageSize]
-	}
-
-	*out = all
-
-	return nil
-}
-
 // ListAccounts returns a cursor over accounts for a ledger.
 // Default order is alphabetical (A→Z); reverse=true gives reverse-alphabetical (Z→A).
 // Uses the bbolt read index for entity discovery and Pebble for enrichment.
@@ -464,15 +356,23 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
-	var addresses [][]byte
-
 	indexStart := time.Now()
-	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
-		if reverse {
-			return ctrl.listAccountsDescending(tx, ledgerInfo.GetName(), pageSize, afterAddress, filter, schemaFields, ledgerInfo.GetBuiltinIndexes(), &addresses, profile)
-		}
 
-		return ctrl.listAccountsAscending(tx, ledgerInfo.GetName(), pageSize, afterAddress, filter, schemaFields, ledgerInfo.GetBuiltinIndexes(), &addresses, profile)
+	addresses, err := listEntities(ctrl.readStore, entityListParams[string]{
+		target:     commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		ledger:     ledgerInfo.GetName(),
+		pageSize:   pageSize,
+		after:      afterAddress,
+		filter:     filter,
+		reverse:    reverse,
+		schema:     schemaFields,
+		builtinCfg: ledgerInfo.GetBuiltinIndexes(),
+		profile:    profile,
+		namespace:  readstore.NamespaceAccount,
+		afterToBytes: func(addr string) []byte {
+			return []byte(addr)
+		},
+		idLen: 0,
 	})
 
 	if profile != nil {
@@ -506,112 +406,6 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	}
 
 	return dal.NewClosingCursor(dal.NewSliceCursor(accounts), handle), nil
-}
-
-// listAccountsAscending returns accounts in alphabetical order (A→Z).
-func (ctrl *DefaultController) listAccountsAscending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, builtinCfg *commonpb.BuiltinIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
-	kb := readstore.NewKeyBuilder()
-
-	iter, err := query.Compile(
-		tx, kb, filter,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		ledgerName, nil, schema, builtinCfg, profile,
-	)
-	if err != nil {
-		return fmt.Errorf("compiling account filter: %w", err)
-	}
-	defer iter.Close()
-
-	var after []byte
-	if afterAddress != "" {
-		after = []byte(afterAddress)
-	}
-
-	*out, _ = readstore.PaginateForward(iter, pageSize, after)
-
-	return nil
-}
-
-// listAccountsDescending returns accounts in reverse-alphabetical order (Z→A).
-func (ctrl *DefaultController) listAccountsDescending(tx *bolt.Tx, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, schema map[string]*commonpb.MetadataFieldSchema, builtinCfg *commonpb.BuiltinIndexConfig, out *[][]byte, profile *query.QueryProfile) error {
-	if filter != nil {
-		// Filtered: collect all ascending, reverse, then paginate manually
-		kb := readstore.NewKeyBuilder()
-
-		iter, err := query.Compile(
-			tx, kb, filter,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			ledgerName, nil, schema, builtinCfg, profile,
-		)
-		if err != nil {
-			return fmt.Errorf("compiling account filter: %w", err)
-		}
-		defer iter.Close()
-
-		var all [][]byte
-
-		for iter.Next() {
-			cp := make([]byte, len(iter.Current()))
-			copy(cp, iter.Current())
-			all = append(all, cp)
-		}
-
-		// Reverse for Z→A ordering
-		for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
-			all[i], all[j] = all[j], all[i]
-		}
-
-		// Apply pagination: skip past afterAddress
-		if afterAddress != "" {
-			afterBytes := []byte(afterAddress)
-			skip := 0
-
-			for _, addr := range all {
-				if bytes.Compare(addr, afterBytes) >= 0 {
-					skip++
-				} else {
-					break
-				}
-			}
-
-			all = all[skip:]
-		}
-
-		if uint32(len(all)) > pageSize {
-			all = all[:pageSize]
-		}
-
-		*out = all
-
-		return nil
-	}
-
-	// Unfiltered: use ReversePrefixIterator directly on the existence bucket
-	b := tx.Bucket(readstore.BucketExistence)
-	if b == nil {
-		return nil
-	}
-
-	kb := readstore.NewKeyBuilder()
-	prefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceAccount)
-	iter := readstore.NewReversePrefixIterator(b.Cursor(), prefix, len(prefix), 0)
-
-	if profile != nil {
-		profile.Root = &query.IteratorStats{
-			Label:  fmt.Sprintf("ReversePrefixIterator(exist:%s:a:)", ledgerName),
-			Kind:   "Reverse",
-			Bucket: "exist",
-		}
-	}
-
-	var before []byte
-	if afterAddress != "" {
-		before = []byte(afterAddress)
-	}
-
-	*out, _ = readstore.PaginateReverse(iter, pageSize, before)
-
-	return nil
 }
 
 func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
@@ -900,6 +694,48 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 	}
 
 	return analysis.AnalyzeTransactionsFromIterators(wrappedPass1, pass2Fn, func() uint64 { return totalReverted }, variableThreshold, onProgress)
+}
+
+// AggregateVolumes returns per-asset aggregated volumes for filtered accounts.
+func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter) (*commonpb.AggregateResult, error) {
+	ctx, span := tracer.Start(ctx, "ctrl.aggregate_volumes",
+		trace.WithAttributes(attribute.String("ledger", ledgerName)))
+	defer span.End()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+		}
+
+		return nil, err
+	}
+
+	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+
+	var result *commonpb.AggregateResult
+
+	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
+		kb := readstore.NewKeyBuilder()
+
+		iter, compileErr := query.Compile(tx, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo.GetBuiltinIndexes(), nil)
+		if compileErr != nil {
+			return fmt.Errorf("compiling filter: %w", compileErr)
+		}
+		defer iter.Close()
+
+		handle := ctrl.store.NewReadHandle()
+		defer func() { _ = handle.Close() }()
+
+		result, err = query.AggregateVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), iter)
+
+		return err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("aggregating volumes: %w", err)
+	}
+
+	return result, nil
 }
 
 // ListLogs returns a cursor over logs. When filter contains a ledger condition, only logs for

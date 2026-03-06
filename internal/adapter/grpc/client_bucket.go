@@ -241,6 +241,13 @@ func (g *BucketGrpcClient) AnalyzeTransactions(ctx context.Context, ledgerName s
 	}
 }
 
+func (g *BucketGrpcClient) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter) (*commonpb.AggregateResult, error) {
+	return g.client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
+		Ledger: ledgerName,
+		Filter: filter,
+	})
+}
+
 func (g *BucketGrpcClient) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
 	resp, err := g.client.ListPreparedQueries(ctx, &servicepb.ListPreparedQueriesRequest{
 		Ledger: ledger,

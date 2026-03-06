@@ -18,6 +18,7 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewSetMetadataCommand())
 	cmd.AddCommand(NewDeleteMetadataCommand())
 	cmd.AddCommand(NewAnalyzeCommand())
+	cmd.AddCommand(NewAggregateVolumesCommand())
 
 	return cmd
 }

@@ -45,6 +45,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Get account balances | ⚠️ | ✅ | Included in account volumes |
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |
+| Aggregate volumes | ✅ | ✅ | Per-asset aggregated volumes for filtered accounts (direct RPC, no prepared query needed) |
 | **Logs** |
 | List logs | ✅ | ✅ | gRPC stream, supports `--filter 'ledger == "foo"'` for per-ledger listing (opt-in index) |
 | **Import/Export** |
@@ -626,6 +627,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
 | `GetIndexStatus` | Read index builder progress (lag, file size) | ✅ |
 | `GetLedgerStats` | Get aggregate statistics (account + transaction count) | ✅ |
+| `AggregateVolumes` | Per-asset aggregated volumes for filtered accounts | ✅ |
 
 ### Apply Method
 

@@ -207,6 +207,15 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 }
 
+func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter) (*commonpb.AggregateResult, error) {
+	c, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.AggregateVolumes(ctx, ledgerName, filter)
+}
+
 func (b *RoutedController) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {
 	c, err := b.readCtrl(ctx)
 	if err != nil {

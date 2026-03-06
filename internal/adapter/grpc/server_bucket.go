@@ -731,6 +731,27 @@ func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *se
 	return impl.ctrl.GetLedgerStats(ctx, req.GetLedger())
 }
 
+func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *servicepb.AggregateVolumesRequest) (*commonpb.AggregateResult, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
+		return nil, err
+	}
+
+	if req.GetLedger() == "" {
+		return nil, errors.New("ledger name is required")
+	}
+
+	if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
+		return nil, err
+	}
+
+	profileCtx, profile := query.WithProfile(ctx)
+
+	result, err := impl.ctrl.AggregateVolumes(profileCtx, req.GetLedger(), req.GetFilter())
+	impl.emitProfile(ctx, profile)
+
+	return result, err
+}
+
 func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *servicepb.GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {
 	return impl.ctrl.GetNumscript(ctx, req.GetName(), req.GetVersion())
 }

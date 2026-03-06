@@ -71,6 +71,8 @@ service BucketService {
   rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
   // GetLedgerStats returns aggregate statistics for a ledger
   rpc GetLedgerStats(GetLedgerStatsRequest) returns (common.LedgerStats);
+  // AggregateVolumes returns per-asset aggregated volumes for filtered accounts
+  rpc AggregateVolumes(AggregateVolumesRequest) returns (common.AggregateResult);
   // GetNumscript returns a numscript by name and optional version
   rpc GetNumscript(GetNumscriptRequest) returns (common.NumscriptInfo);
   // ListNumscripts streams all numscripts (latest version of each)
@@ -854,6 +856,12 @@ message IndexBackfillProgress {
 
 message GetLedgerStatsRequest {
   string ledger = 1;
+}
+
+message AggregateVolumesRequest {
+  string ledger = 1;
+  common.QueryFilter filter = 2;
+  uint64 min_log_sequence = 3;
 }
 
 // ============================================================================

@@ -48,6 +48,9 @@ type Controller interface {
 	AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeAccountsResponse, error)
 	AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeTransactionsResponse, error)
 
+	// Aggregation operations
+	AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter) (*commonpb.AggregateResult, error)
+
 	// Prepared query operations (read-only)
 	ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error)
 	ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error)
