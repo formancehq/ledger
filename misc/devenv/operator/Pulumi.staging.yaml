@@ -1,0 +1,27 @@
+config:
+  ledger-operator:k8s-context: staging-eu-west-1-hosting
+  ledger-operator:namespace: ledger-exp
+  ledger-operator:registry: ghcr.io
+  ledger-operator:pull-registry: 760319359092.dkr.ecr.eu-west-1.amazonaws.com/ghcr
+  ledger-operator:formance-dev-registry-username:
+    secure: AAABAPtYYUMURLfL3vRFlFule48wHMwy1eGUbMny2L/JenpPAAU=
+  ledger-operator:formance-dev-registry-password:
+    secure: AAABAPgFQlfdNj78IYmkeXxoa938k+0KSzSe/npVwYJlbAUSkCXXghFnYXdXr4LqnpvFaB+LzgNkZwzuIeoMN0pMc7X4lNkf
+  # Optional components
+  ledger-operator:operatorUI-enabled: "true"
+  ledger-operator:operatorUI-ingress-host: operator-ledger-exp.staging.formance.cloud
+  ledger-operator:operatorUI-ingress-class: traefik
+  ledger-operator:operatorUI-auth-enabled: "true"
+  ledger-operator:operatorUI-auth-issuer-url: https://accounts.google.com
+  ledger-operator:operatorUI-auth-client-id: 660725413384-lmsonmlepjpl79bbbpd8rdcpiqd84raj.apps.googleusercontent.com
+  ledger-operator:operatorUI-auth-client-secret:
+    secure: AAABAPDl4xOvGNfcOoo1Ac55GCZiYVguuLxz3MKMXyxhINie+VPDixuPfE8ezpZKrTYT6WJmAsQ/rvMql3FqVY6ArQ==
+  ledger-operator:operatorUI-auth-session-secret:
+    secure: AAABAIJh0p4fEez+PeT/Jyb7juSVwfSp9KPdl3KnyG/JQTxM5BoeVWYOIWmUdxsyjR68mZZz6vhWQmO0gTKjlLM3nLhrZLJwKZ3MyO5k4HEQ+7YKiEF7iO91sipsZm7/
+  ledger-operator:operatorUI-auth-redirect-uri: https://operator-ledger-exp.staging.formance.cloud/api/auth/callback
+  # Cold storage (S3)
+  ledger-operator:coldStorage-enabled: "true"
+  ledger-operator:coldStorage-s3-region: eu-west-1
+  ledger-operator:coldStorage-eks-oidc-issuer: "https://oidc.eks.eu-west-1.amazonaws.com/id/45E5BC35331522C015273F1FD2D14DC9"
+  ledger-operator:ledger:
+    file: values/staging/ledger.yaml

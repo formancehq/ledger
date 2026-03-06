@@ -64,3 +64,4 @@ misc/devenv/devenv
 
 # Python
 .venv/
+misc/devenv/operator/operator

@@ -1,0 +1,6 @@
+name: ledger-monitoring
+runtime:
+  name: go
+  options:
+    buildTarget: ./bin/pulumi
+description: Monitoring stack (VictoriaMetrics, Grafana, Loki, Tempo, Pyroscope, OTLP)

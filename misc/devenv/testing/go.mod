@@ -1,13 +1,13 @@
-module github.com/formancehq/ledger-v3-poc/deployments/devenv
+module github.com/formancehq/ledger-v3-poc/deployments/devenv/testing
 
 go 1.26.0
 
+replace github.com/formancehq/ledger-v3-poc/deployments/devenv/shared => ../shared
+
 require (
-	github.com/pulumi/pulumi-aws/sdk/v6 v6.83.2
-	github.com/pulumi/pulumi-docker-build/sdk/go/dockerbuild v0.0.15
+	github.com/formancehq/ledger-v3-poc/deployments/devenv/shared v0.0.0
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.24.1
 	github.com/pulumi/pulumi/sdk/v3 v3.207.0
-	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -64,6 +64,7 @@ require (
 	github.com/pkg/term v1.1.0 // indirect
 	github.com/pulumi/appdash v0.0.0-20231130102222-75f619a67231 // indirect
 	github.com/pulumi/esc v0.17.0 // indirect
+	github.com/pulumi/pulumi-docker-build/sdk/go/dockerbuild v0.0.15 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1 // indirect
@@ -92,5 +93,6 @@ require (
 	google.golang.org/grpc v1.72.1 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/frand v1.5.1 // indirect
 )

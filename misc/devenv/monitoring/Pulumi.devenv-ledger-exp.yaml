@@ -1,0 +1,17 @@
+config:
+  ledger-monitoring:k8s-context: ledger-exp-devenv-operator.tailedcc0.ts.net
+  ledger-monitoring:namespace: ledger-exp
+  # Optional components
+  ledger-monitoring:pyroscope-enabled: "true"
+  ledger-monitoring:grafana:
+    file: values/devenv-ledger-exp/grafana.yaml
+  ledger-monitoring:loki:
+    file: values/devenv-ledger-exp/loki.yaml
+  ledger-monitoring:otlp:
+    file: values/devenv-ledger-exp/otlp.yaml
+  ledger-monitoring:tempo:
+    file: values/devenv-ledger-exp/tempo.yaml
+  ledger-monitoring:victoriametrics:
+    file: values/devenv-ledger-exp/victoriametrics.yaml
+  ledger-monitoring:pyroscope:
+    file: values/devenv-ledger-exp/pyroscope.yaml
