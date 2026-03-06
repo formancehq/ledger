@@ -67,13 +67,13 @@ services:
       - "./Caddyfile:/etc/caddy/Caddyfile"
 
   console:
-    image: ghcr.io/formancehq/console-v3:v1.17.0
+    image: ghcr.io/formancehq/console-v3:v1.18.0
     ports:
       - "3000:3000"
     environment:
       - PORT=3000
       - MICRO_STACK=1
-      - API_URL=http://gateway:8080/api
+      - API_STACK_URL=http://gateway:8080/api
       - COOKIE_SECRET=secret
       - COOKIE_DOMAIN=localhost
     depends_on:
