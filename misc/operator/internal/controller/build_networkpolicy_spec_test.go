@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
@@ -185,6 +186,44 @@ func TestBuildNetworkPolicySpec_NoOTELWithoutMonitoring(t *testing.T) {
 
 	// Only the base 3 egress rules.
 	require.Len(t, spec.Egress, 3)
+}
+
+func TestBuildNetworkPolicySpec_AdditionalEgress(t *testing.T) {
+	t.Parallel()
+
+	tcp := corev1.ProtocolTCP
+	port := intstr.FromInt32(5432)
+	additionalRules := []networkingv1.NetworkPolicyEgressRule{
+		{
+			To: []networkingv1.NetworkPolicyPeer{
+				{
+					IPBlock: &networkingv1.IPBlock{
+						CIDR: "10.70.6.90/32",
+					},
+				},
+			},
+			Ports: []networkingv1.NetworkPolicyPort{
+				{Port: &port, Protocol: &tcp},
+			},
+		},
+	}
+
+	ls := newTestLedgerService("additional", &ledgerv1alpha1.NetworkPolicySpec{
+		Enabled:          true,
+		AdditionalEgress: additionalRules,
+	})
+	spec := buildNetworkPolicySpec(ls)
+
+	// 3 base rules + 1 additional.
+	require.Len(t, spec.Egress, 4)
+
+	additional := spec.Egress[3]
+	require.Len(t, additional.To, 1)
+	require.NotNil(t, additional.To[0].IPBlock)
+	assert.Equal(t, "10.70.6.90/32", additional.To[0].IPBlock.CIDR)
+	require.Len(t, additional.Ports, 1)
+	assert.Equal(t, int32(5432), additional.Ports[0].Port.IntVal)
+	assert.Equal(t, &tcp, additional.Ports[0].Protocol)
 }
 
 func TestBuildNetworkPolicySpec_OTELFromDefaults(t *testing.T) {

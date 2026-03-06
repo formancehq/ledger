@@ -1,106 +1,105 @@
----
-apiVersion: ledger.formance.com/v1alpha1
-kind: LedgerDefaults
-metadata:
-  name: default
-spec:
-  config:
-    coldStorage:
-      driver: s3
-      s3:
-        bucket: ledger-exp-cold-storage-staging
-        region: eu-west-1
-    monitoring:
-      logs:
-        enabled: true
-        endpoint: opentelemetry-collector.monitoring.svc.cluster.local
-        exporter: otlp
-        insecure: "true"
-        mode: grpc
-        port: "4317"
-      metrics:
-        enabled: true
-        endpoint: opentelemetry-collector.monitoring.svc.cluster.local
-        exporter: otlp
-        exporterPushInterval: 15s
-        insecure: "true"
-        mode: grpc
-        port: "4317"
-        runtime: true
-        runtimeMinimumReadMemStatsInterval: 5s
-#      pyroscope:
+#---
+#apiVersion: ledger.formance.com/v1alpha1
+#kind: LedgerDefaults
+#metadata:
+#  name: default
+#spec:
+#  config:
+#    coldStorage:
+#      driver: s3
+#      s3:
+#        bucket: ledger-exp-cold-storage-staging
+#        region: eu-west-1
+#    monitoring:
+#      logs:
 #        enabled: true
-#        profileTypes: cpu,alloc_space,inuse_space,goroutines,mutex_count,mutex_duration,block_count,block_duration
-#        serverAddress: http://pyroscope:4040
-#        tags: version=9d9fbecf-dirty-20260305-162512
-#        uploadRate: 30s
-      serviceName: ledger-v3-poc
-      traces:
-        batch: "true"
-        enabled: true
-        endpoint: opentelemetry-collector.monitoring.svc.cluster.local
-        exporter: otlp
-        insecure: "true"
-        mode: grpc
-        port: "4317"
-        sampling:
-          enabled: true
-          successRatio: "0.1"
-    pebble:
-      bytesPerSync: 1048576
-      cacheSize: 536870912
-      disableWAL: false
-      l0CompactionThreshold: 64
-      l0StopWritesThreshold: 256
-      lBaseMaxBytes: 2147483648
-      maxConcurrentCompactions: 2
-      memTableSize: 67108864
-      memTableStopWritesThreshold: 4
-      targetFileSize: 268435456
-      walBytesPerSync: 1048576
-      walMinSyncInterval: "0"
-    raft:
-      compactionMargin: 50000
-      electionTick: 10
-      heartbeatTick: 1
-      maxInflightMsgs: 1024
-      maxSizePerMsg: 2097152
-      proposeQueueCapacity: 1024
-      snapshotThreshold: 1000
-      tickInterval: 100ms
-      transport:
-        receptionQueues:
-          - 10
-          - 4096
-          - 2048
-        sendQueues:
-          - 10
-          - 1024
-          - 1024
-  image:
-    pullPolicy: IfNotPresent
-    repository: 760319359092.dkr.ecr.eu-west-1.amazonaws.com/ghcr/formancehq/ledger-exp
-    tag: latest@sha256:dd2ba6b0fbc04690de35b1a2d40955ba12d354285635a59da53dc2fbe6692d6f
-  networkPolicy:
-    enabled: true
-  persistence:
-    data:
-      accessMode: ReadWriteOnce
-      size: 50Gi
-      storageClass: ""
-    retentionPolicy:
-      whenDeleted: Delete
-      whenScaled: Retain
-    wal:
-      accessMode: ReadWriteOnce
-      size: 15Gi
-  resources:
-    limits:
-      cpu: 2000m
-      memory: 2048Mi
-    requests:
-      cpu: 2000m
-      memory: 2048Mi
+#        endpoint: opentelemetry-collector.monitoring.svc.cluster.local
+#        exporter: otlp
+#        insecure: "true"
+#        mode: grpc
+#        port: "4317"
+#      metrics:
+#        enabled: true
+#        endpoint: opentelemetry-collector.monitoring.svc.cluster.local
+#        exporter: otlp
+#        exporterPushInterval: 15s
+#        insecure: "true"
+#        mode: grpc
+#        port: "4317"
+#        runtime: true
+#        runtimeMinimumReadMemStatsInterval: 5s
+##      pyroscope:
+##        enabled: true
+##        profileTypes: cpu,alloc_space,inuse_space,goroutines,mutex_count,mutex_duration,block_count,block_duration
+##        serverAddress: http://pyroscope:4040
+##        tags: version=9d9fbecf-dirty-20260305-162512
+##        uploadRate: 30s
+#      serviceName: ledger-v3-poc
+#      traces:
+#        batch: "true"
+#        enabled: true
+#        endpoint: opentelemetry-collector.monitoring.svc.cluster.local
+#        exporter: otlp
+#        insecure: "true"
+#        mode: grpc
+#        port: "4317"
+#        sampling:
+#          enabled: true
+#          successRatio: "0.1"
+#    pebble:
+#      bytesPerSync: 1048576
+#      cacheSize: 536870912
+#      disableWAL: false
+#      l0CompactionThreshold: 64
+#      l0StopWritesThreshold: 256
+#      lBaseMaxBytes: 2147483648
+#      maxConcurrentCompactions: 2
+#      memTableSize: 67108864
+#      memTableStopWritesThreshold: 4
+#      targetFileSize: 268435456
+#      walBytesPerSync: 1048576
+#      walMinSyncInterval: "0"
+#    raft:
+#      compactionMargin: 50000
+#      electionTick: 10
+#      heartbeatTick: 1
+#      maxInflightMsgs: 1024
+#      maxSizePerMsg: 2097152
+#      proposeQueueCapacity: 1024
+#      snapshotThreshold: 1000
+#      tickInterval: 100ms
+#      transport:
+#        receptionQueues:
+#          - 10
+#          - 4096
+#          - 2048
+#        sendQueues:
+#          - 10
+#          - 1024
+#          - 1024
+#  image:
+#    pullPolicy: IfNotPresent
+#    repository: 760319359092.dkr.ecr.eu-west-1.amazonaws.com/ghcr/formancehq/ledger-exp
+#  networkPolicy:
+#    enabled: true
+#  persistence:
+#    data:
+#      accessMode: ReadWriteOnce
+#      size: 50Gi
+#      storageClass: ""
+#    retentionPolicy:
+#      whenDeleted: Delete
+#      whenScaled: Retain
+#    wal:
+#      accessMode: ReadWriteOnce
+#      size: 15Gi
+#  resources:
+#    limits:
+#      cpu: 2000m
+#      memory: 2048Mi
+#    requests:
+#      cpu: 2000m
+#      memory: 2048Mi
 
 ---
 apiVersion: ledger.formance.com/v1alpha1
@@ -111,19 +110,6 @@ metadata:
 spec:
   defaultsRef: default
   replicas: 1
-  dnsEndpoint:
-    enabled: true
-    annotations:
-      service.beta.kubernetes.io/aws-load-balancer-internal: "true"
-    endpoints:
-      - dnsName: demo0-ledger-v3.dev.acme.frmnc.net
-        targets:
-          - rp-01-eks-euw1-01.dev.acme.frmnc.net
-        providerSpecific:
-          - name: alias
-            value: "true"
-          - name: aws/target-hosted-zone
-            value: "same-zone"
   resources:
     requests:
       cpu: "4"
@@ -168,18 +154,18 @@ spec:
 
     # monitoring: inherited from LedgerDefaults via defaultsRef
 
+  networkPolicy:
+    enabled: true
+    additionalEgress:
+      - to:
+          - ipBlock:
+              cidr: 10.70.6.90/32
+        ports:
+          - port: 5432
+            protocol: TCP
+
   ingressGrpc:
     enabled: true
-    #className: traefik
-    annotations:
-      traefik.ingress.kubernetes.io/router.entrypoints: https-private
-      traefik.ingress.kubernetes.io/router.observability.tracing: "true"
-      traefik.ingress.kubernetes.io/router.tls: "true"
-    hosts:
-      - host: demo0-ledger-v3.dev.acme.frmnc.net
-        paths:
-          - path: /
-            pathType: Prefix
 
   persistence:
     retentionPolicy:

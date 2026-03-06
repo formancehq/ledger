@@ -1,0 +1,17 @@
+config:
+  ledger-testing:k8s-context: eks-acme-dev-euw1-01
+  ledger-testing:namespace: ledger-v3
+  ledger-testing:arch: arm64
+  ledger-testing:registry: ghcr.io
+  ledger-testing:pull-registry: 760319359092.dkr.ecr.eu-west-1.amazonaws.com/ghcr
+  ledger-testing:formance-dev-registry-username:
+    secure: FIXME
+  ledger-testing:formance-dev-registry-password:
+    secure: FIXME
+  # Optional components
+  ledger-testing:k6operator-enabled: "true"
+  ledger-testing:benchmarkOperator-enabled: "true"
+  ledger-testing:k6operator:
+    file: values/acme/k6operator.yaml
+  ledger-testing:benchmarkOperator:
+    file: values/acme/benchmark-operator.yaml

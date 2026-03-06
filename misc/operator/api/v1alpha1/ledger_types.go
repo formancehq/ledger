@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -1049,6 +1050,11 @@ type NetworkPolicySpec struct {
 	// Defaults to [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16].
 	// +optional
 	ExternalCIDRExcept []string `json:"externalCIDRExcept,omitempty"`
+
+	// AdditionalEgress appends custom egress rules to the generated NetworkPolicy.
+	// Use this to allow traffic to cluster-internal services (e.g. databases, message brokers).
+	// +optional
+	AdditionalEgress []networkingv1.NetworkPolicyEgressRule `json:"additionalEgress,omitempty"`
 }
 
 // ServiceMonitorSpec defines Prometheus ServiceMonitor configuration.

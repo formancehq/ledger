@@ -111,6 +111,8 @@ func buildNetworkPolicySpec(ledger *ledgerv1alpha1.LedgerService) networkingv1.N
 		egress = append(egress, *rule)
 	}
 
+	egress = append(egress, ledger.Spec.NetworkPolicy.AdditionalEgress...)
+
 	return networkingv1.NetworkPolicySpec{
 		PodSelector: metav1.LabelSelector{
 			MatchLabels: selectorLabels(ledger),

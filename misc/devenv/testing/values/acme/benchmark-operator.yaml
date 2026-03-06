@@ -1,0 +1,12 @@
+image:
+  pullSecrets:
+    - zot
+env:
+  GRAFANA_URL: "https://grafana.internal.frmnc.net"
+  GRAFANA_USER: "admin"
+  GRAFANA_PASSWORD: "admin"
+  SNAPSHOT_PER_NODE: "true"
+  NODE_METRIC: "raft.node.lead"
+  NODE_LABEL: "service.node_id"
+  DATASOURCE_NAME: "VictoriaMetrics"
+  SNAPSHOT_NAME_PREFIX: "k6-benchmark"
