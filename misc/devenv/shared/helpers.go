@@ -322,6 +322,20 @@ func (m *MultiArchImage) Resource() pulumi.Resource {
 	return m.Index
 }
 
+// BuildImageOption configures optional parameters for BuildImage.
+type BuildImageOption func(*buildImageOptions)
+
+type buildImageOptions struct {
+	buildArgs pulumi.StringMap
+}
+
+// WithBuildArgs sets Docker build args (ARG) for the image build.
+func WithBuildArgs(args pulumi.StringMap) BuildImageOption {
+	return func(o *buildImageOptions) {
+		o.buildArgs = args
+	}
+}
+
 // BuildImage builds one cached image per platform, then joins them into a
 // multi-arch Index pushed with :latest and :<imageTag> tags.
 func (dc *DockerConfig) BuildImage(
@@ -329,12 +343,19 @@ func (dc *DockerConfig) BuildImage(
 	name string,
 	contextPath string,
 	dockerfilePath string,
+	opts ...BuildImageOption,
 ) (*MultiArchImage, error) {
+	var options buildImageOptions
+	for _, o := range opts {
+		o(&options)
+	}
+
 	var sources pulumi.StringArray
 	var images []*dockerbuild.Image
 
 	for _, platform := range dc.Platforms {
 		img, err := dockerbuild.NewImage(ctx, fmt.Sprintf("%s-%s", name, platform), &dockerbuild.ImageArgs{
+			BuildArgs: options.buildArgs,
 			Context: dockerbuild.BuildContextArgs{
 				Location: pulumi.String(contextPath),
 			},

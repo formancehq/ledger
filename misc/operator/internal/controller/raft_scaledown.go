@@ -79,11 +79,9 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 
 	// Transfer leadership to node 1 (pod-0) so the leader is never among the removed nodes.
 	logger.Info("transferring Raft leadership to node 1 before scale-down")
-	result, err := podExec(ctx, cfg, clientset, ledger.Namespace, pod0, container, []string{
-		"./ledgerctl", "cluster", "transfer-leader", "1",
-		"--server", fmt.Sprintf("127.0.0.1:%d", grpcPort),
-		"--insecure",
-	})
+	result, err := podExec(ctx, cfg, clientset, ledger.Namespace, pod0, container,
+		ledgerctlCommand(grpcPort, "cluster", "transfer-leader", "1"),
+	)
 	if err != nil {
 		// If already leader on node 1, that's fine — check for known benign messages.
 		if result != nil && isAlreadyLeader(result.Stderr) {
@@ -147,14 +145,11 @@ func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Inte
 ) error {
 	logger := log.FromContext(ctx)
 
-	args := []string{
-		"./ledgerctl", "cluster", "remove-node", strconv.Itoa(int(nodeID)),
-		"--server", fmt.Sprintf("127.0.0.1:%d", grpcPort),
-		"--insecure",
-	}
+	subArgs := []string{"cluster", "remove-node", strconv.Itoa(int(nodeID))}
 	if force {
-		args = append(args, "--force")
+		subArgs = append(subArgs, "--force")
 	}
+	args := ledgerctlCommand(grpcPort, subArgs...)
 
 	logger.Info("removing Raft node before scale-down",
 		"nodeID", nodeID,
@@ -181,6 +176,16 @@ func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Inte
 	)
 
 	return nil
+}
+
+// ledgerctlCommand builds a shell command that runs ledgerctl with the cluster
+// secret for authentication. The command is wrapped in sh -c so that the
+// $CLUSTER_SECRET env var is expanded at runtime inside the pod.
+func ledgerctlCommand(grpcPort int32, args ...string) []string {
+	cmd := fmt.Sprintf("./ledgerctl %s --server 127.0.0.1:%d --insecure --auth-token \"$CLUSTER_SECRET\"",
+		strings.Join(args, " "), grpcPort)
+
+	return []string{"/bin/sh", "-c", cmd}
 }
 
 // podForOrdinal returns the pod name for a given StatefulSet ordinal.

@@ -15,7 +15,11 @@ import (
 func (r *LedgerServiceReconciler) reconcileGrpcService(ctx context.Context, ledger *ledgerv1alpha1.LedgerService) error {
 	name := ledger.Name + "-grpc"
 
-	if ledger.Spec.IngressGrpc == nil || !ledger.Spec.IngressGrpc.Enabled {
+	auto := ledger.Spec.AutoNetworking
+	autoEnabled := auto != nil && auto.IngressGrpc != nil && auto.IngressGrpc.Enabled
+	manualEnabled := ledger.Spec.IngressGrpc != nil && ledger.Spec.IngressGrpc.Enabled
+
+	if !autoEnabled && !manualEnabled {
 		return r.deleteIfExists(ctx, &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
@@ -36,6 +40,9 @@ func (r *LedgerServiceReconciler) reconcileGrpcService(ctx context.Context, ledg
 
 		annotations := make(map[string]string)
 		maps.Copy(annotations, ledger.Spec.Service.Annotations)
+		if autoEnabled {
+			maps.Copy(annotations, auto.IngressGrpc.ServiceAnnotations)
+		}
 		svc.Annotations = annotations
 
 		svc.Spec = corev1.ServiceSpec{

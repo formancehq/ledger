@@ -113,6 +113,17 @@ autoNetworking:
       traefik.ingress.kubernetes.io/router.tls: "true"
     labels:
       formance.com/ingress: traefik
+  ingressGrpc:
+    enabled: true
+    suffix: "-grpc"
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: https-private
+      traefik.ingress.kubernetes.io/router.observability.tracing: "true"
+      traefik.ingress.kubernetes.io/router.tls: "true"
+    labels:
+      formance.com/ingress: traefik
+    serviceAnnotations:
+      traefik.ingress.kubernetes.io/service.serversscheme: h2c
   dnsEndpoint:
     enabled: true
     recordType: CNAME

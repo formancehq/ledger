@@ -37,7 +37,11 @@ func main() {
 		_ = ctx.Log.Info(fmt.Sprintf("Build version: %s", buildVersion), nil)
 
 		// Build Docker images
-		dockerImage, err := dc.BuildImage(ctx, "formancehq/ledger-exp", "../../..", "../../../Dockerfile")
+		dockerImage, err := dc.BuildImage(ctx, "formancehq/ledger-exp", "../../..", "../../../Dockerfile",
+			shared.WithBuildArgs(pulumi.StringMap{
+				"BUILD_TAGS": pulumi.String("kafka,nats,clickhouse,s3,pyroscope"),
+			}),
+		)
 		if err != nil {
 			return fmt.Errorf("failed to build Docker image: %w", err)
 		}
@@ -156,6 +160,11 @@ func main() {
 				}
 				if scopes := cfg.Get("operatorUI-auth-scopes"); scopes != "" {
 					authValues["scopes"] = pulumi.String(scopes)
+				}
+
+				var roleMapping map[string]any
+				if err := cfg.GetObject("operatorUI-auth-role-mapping", &roleMapping); err == nil && roleMapping != nil {
+					authValues["roleMapping"] = pulumi.ToMap(roleMapping)
 				}
 
 				uiValues["auth"] = authValues

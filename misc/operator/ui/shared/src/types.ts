@@ -331,10 +331,17 @@ export interface Condition {
 
 // --- LedgerService Status ---
 
+export interface EndpointsStatus {
+  grpc: string;
+  http: string;
+  external: boolean;
+}
+
 export interface LedgerServiceStatus {
   phase?: string;
   readyReplicas?: number;
   observedGeneration?: number;
+  endpoints?: EndpointsStatus;
   conditions?: Condition[];
 }
 

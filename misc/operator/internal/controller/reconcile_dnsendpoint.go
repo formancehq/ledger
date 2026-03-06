@@ -23,7 +23,46 @@ func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledg
 	autoEnabled := auto != nil && auto.DNSEndpoint != nil && auto.DNSEndpoint.Enabled
 	manualEnabled := ledger.Spec.DNSEndpoint != nil && ledger.Spec.DNSEndpoint.Enabled
 
-	if !autoEnabled && !manualEnabled {
+	// Collect all DNS endpoints first, then decide whether to create or delete.
+	var endpoints []any
+	annotations := make(map[string]string)
+
+	if autoEnabled {
+		cfg := auto.DNSEndpoint
+		maps.Copy(annotations, cfg.Annotations)
+
+		// HTTP ingress DNS entry — only when the HTTP ingress is also enabled.
+		if auto.Ingress != nil && auto.Ingress.Enabled {
+			endpoints = append(endpoints, buildEndpointEntry(ledgerv1alpha1.DNSEndpointEntry{
+				DNSName:          autoHost(ledger.Name, auto, cfg.Suffix),
+				RecordType:       cfg.RecordType,
+				Targets:          cfg.Targets,
+				RecordTTL:        cfg.RecordTTL,
+				ProviderSpecific: cfg.ProviderSpecific,
+			}))
+		}
+
+		// gRPC ingress DNS entry — only when the gRPC ingress is also enabled.
+		if auto.IngressGrpc != nil && auto.IngressGrpc.Enabled {
+			endpoints = append(endpoints, buildEndpointEntry(ledgerv1alpha1.DNSEndpointEntry{
+				DNSName:          autoHost(ledger.Name, auto, auto.IngressGrpc.Suffix),
+				RecordType:       cfg.RecordType,
+				Targets:          cfg.Targets,
+				RecordTTL:        cfg.RecordTTL,
+				ProviderSpecific: cfg.ProviderSpecific,
+			}))
+		}
+	}
+
+	if manualEnabled {
+		maps.Copy(annotations, ledger.Spec.DNSEndpoint.Annotations)
+		for _, ep := range ledger.Spec.DNSEndpoint.Endpoints {
+			endpoints = append(endpoints, buildEndpointEntry(ep))
+		}
+	}
+
+	// No endpoints to publish → delete the DNSEndpoint resource.
+	if len(endpoints) == 0 {
 		obj := &unstructured.Unstructured{}
 		obj.SetGroupVersionKind(gvk)
 		obj.SetName(ledger.Name)
@@ -42,34 +81,7 @@ func (r *LedgerServiceReconciler) reconcileDNSEndpoint(ctx context.Context, ledg
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
 		obj.SetLabels(commonLabels(ledger))
-
-		annotations := make(map[string]string)
-		if autoEnabled {
-			maps.Copy(annotations, auto.DNSEndpoint.Annotations)
-		}
-		if manualEnabled {
-			maps.Copy(annotations, ledger.Spec.DNSEndpoint.Annotations)
-		}
 		obj.SetAnnotations(annotations)
-
-		var endpoints []any
-
-		if autoEnabled {
-			cfg := auto.DNSEndpoint
-			endpoints = append(endpoints, buildEndpointEntry(ledgerv1alpha1.DNSEndpointEntry{
-				DNSName:          autoHost(ledger.Name, auto),
-				RecordType:       cfg.RecordType,
-				Targets:          cfg.Targets,
-				RecordTTL:        cfg.RecordTTL,
-				ProviderSpecific: cfg.ProviderSpecific,
-			}))
-		}
-
-		if manualEnabled {
-			for _, ep := range ledger.Spec.DNSEndpoint.Endpoints {
-				endpoints = append(endpoints, buildEndpointEntry(ep))
-			}
-		}
 
 		if err := unstructured.SetNestedSlice(obj.Object, endpoints, "spec", "endpoints"); err != nil {
 			return err

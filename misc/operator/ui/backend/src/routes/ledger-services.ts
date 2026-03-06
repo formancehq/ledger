@@ -183,36 +183,29 @@ app.get("/namespaces/:ns/ledger-services/:name/connect", async (c) => {
 /**
  * Build endpoint URLs for a LedgerService.
  *
- * Priority:
- *  1. Ingress hosts (external access) — derived from spec.ingress / spec.ingressGrpc
- *  2. In-cluster service DNS (fallback)
+ * Uses status.endpoints (resolved by the operator) when available,
+ * falls back to in-cluster service DNS.
  */
 function buildEndpoints(
   svc: Awaited<ReturnType<typeof getLedgerService>>,
   ns: string,
 ): { grpc: string; http: string; external: boolean } {
+  const ep = svc.status?.endpoints;
+  if (ep?.grpc && ep?.http) {
+    return {
+      grpc: ep.grpc,
+      http: ep.http,
+      external: ep.external ?? false,
+    };
+  }
+
+  // Fallback for older operator versions without status.endpoints.
   const name = svc.metadata.name;
 
-  // Check for gRPC ingress
-  const grpcIngress = svc.spec.ingressGrpc;
-  const grpcHost = grpcIngress?.enabled ? grpcIngress.hosts?.[0]?.host : undefined;
-  const grpcTls = grpcIngress?.tls && grpcIngress.tls.length > 0;
-
-  // Check for HTTP ingress
-  const httpIngress = svc.spec.ingress;
-  const httpHost = httpIngress?.enabled ? httpIngress.hosts?.[0]?.host : undefined;
-  const httpTls = httpIngress?.tls && httpIngress.tls.length > 0;
-
-  const hasIngress = !!(grpcHost || httpHost);
-
   return {
-    grpc: grpcHost
-      ? `${grpcHost}:443`
-      : `${name}.${ns}.svc.cluster.local:8888`,
-    http: httpHost
-      ? `${httpTls ? "https" : "http"}://${httpHost}`
-      : `http://${name}.${ns}.svc.cluster.local:9000`,
-    external: hasIngress,
+    grpc: `${name}.${ns}.svc.cluster.local:8888`,
+    http: `http://${name}.${ns}.svc.cluster.local:9000`,
+    external: false,
   };
 }
 

@@ -29,6 +29,7 @@ type AuthConfig struct {
 	Service              string
 	ScopeMapping         ScopeMapping
 	Ed25519AllowedScopes map[string][]string // keyID -> allowed scopes (nil = no Ed25519 auth)
+	ClusterSecret        string              // shared secret for inter-node auth bypass (empty = disabled)
 }
 
 // Authenticate validates the JWT from gRPC metadata and checks required scopes.
@@ -49,6 +50,13 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 		logAuthFailure(ctx, "", "missing_token", err)
 
 		return ctx, status.Error(codes.Unauthenticated, err.Error())
+	}
+
+	// Fast path: cluster-internal shared secret bypasses JWT validation.
+	if cfg.ClusterSecret != "" && token == cfg.ClusterSecret {
+		span.SetAttributes(attribute.Bool("auth.cluster_internal", true))
+
+		return ctx, nil
 	}
 
 	keyID := extractKeyID(token)

@@ -27,6 +27,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/bootstrap"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/pyroscope"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/tracesampling"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
@@ -156,6 +157,9 @@ func NewRunCommand() *cobra.Command {
 
 	// Restore mode: start in restore mode to accept backup upload
 	runCmd.Flags().Bool("restore", false, "Start in restore mode (accepts backup upload, no Raft)")
+
+	// Shared secret for inter-node authentication
+	runCmd.Flags().String("cluster-secret", "", "Shared secret for inter-node gRPC authentication (required when auth is enabled)")
 
 	// Ed25519 authentication keys
 	runCmd.Flags().String("auth-ed25519-keys", "", "Path to JSON file with Ed25519 public keys and scopes for authentication")
@@ -463,6 +467,9 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	// Restore mode
 	cfg.Restore = getBool("restore", false)
 
+	// Cluster secret for inter-node authentication
+	cfg.ClusterSecret = getString("cluster-secret", "")
+
 	// Authentication configuration
 	ed25519KeysFile := getString("auth-ed25519-keys", "")
 	scopeMappingFile := getString("auth-scope-mapping-file", "")
@@ -518,7 +525,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 
 		fmt.Printf("Join mode: discovering peers from cluster via %s\n", joinAddr)
 
-		peers, err := discoverPeersFromClusterWithRetry(joinAddr, cfg.TLSConfig)
+		peers, err := discoverPeersFromClusterWithRetry(joinAddr, cfg.TLSConfig, cfg.ClusterSecret)
 		if err != nil {
 			return nil, fmt.Errorf("discovering peers from cluster: %w", err)
 		}
@@ -535,7 +542,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 
 // discoverPeersFromClusterWithRetry retries peer discovery with exponential backoff
 // for up to 60 seconds, allowing the bootstrap node time to start.
-func discoverPeersFromClusterWithRetry(serviceAddr string, tlsCfg bootstrap.TLSConfig) ([]node.Peer, error) {
+func discoverPeersFromClusterWithRetry(serviceAddr string, tlsCfg bootstrap.TLSConfig, clusterSecret string) ([]node.Peer, error) {
 	var (
 		lastErr  error
 		delay    = 500 * time.Millisecond
@@ -543,7 +550,7 @@ func discoverPeersFromClusterWithRetry(serviceAddr string, tlsCfg bootstrap.TLSC
 	)
 
 	for {
-		peers, err := discoverPeersFromCluster(serviceAddr, tlsCfg)
+		peers, err := discoverPeersFromCluster(serviceAddr, tlsCfg, clusterSecret)
 		if err == nil {
 			return peers, nil
 		}
@@ -563,15 +570,20 @@ func discoverPeersFromClusterWithRetry(serviceAddr string, tlsCfg bootstrap.TLSC
 
 // discoverPeersFromCluster connects to an existing cluster member and discovers
 // all voter nodes and their addresses via GetClusterState.
-func discoverPeersFromCluster(serviceAddr string, tlsCfg bootstrap.TLSConfig) ([]node.Peer, error) {
+func discoverPeersFromCluster(serviceAddr string, tlsCfg bootstrap.TLSConfig, clusterSecret string) ([]node.Peer, error) {
 	creds, err := bootstrap.ClientTransportCredentials(tlsCfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading TLS credentials for peer discovery: %w", err)
 	}
 
-	conn, err := grpc.NewClient(serviceAddr,
+	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(creds),
-	)
+	}
+	if clusterSecret != "" {
+		opts = append(opts, transport.BearerTokenDialOption(clusterSecret))
+	}
+
+	conn, err := grpc.NewClient(serviceAddr, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to cluster member %s: %w", serviceAddr, err)
 	}

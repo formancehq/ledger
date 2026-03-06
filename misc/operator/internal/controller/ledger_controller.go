@@ -89,6 +89,17 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// Apply hardcoded defaults (fills remaining zero-value fields).
 	applyDefaults(ledger)
 
+	// Resolve endpoints early so they are always set in status, even if
+	// later reconciliation steps fail (e.g. StatefulSet scale-down).
+	ledger.Status.Endpoints = resolveEndpoints(ledger)
+
+	// Always persist status (endpoints, conditions) at the end, even on error.
+	defer func() {
+		if statusErr := r.updateStatus(ctx, ledger); statusErr != nil {
+			logger.Error(statusErr, "failed to update status")
+		}
+	}()
+
 	// Validate spec — report errors via status condition instead of retrying.
 	if err := validateSpec(ledger); err != nil {
 		meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
@@ -99,7 +110,6 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			ObservedGeneration: ledger.Generation,
 		})
 		ledger.Status.Phase = "Degraded"
-		_ = r.Status().Update(ctx, ledger)
 
 		return ctrl.Result{}, nil // Don't requeue; wait for spec change.
 	}
@@ -149,18 +159,18 @@ func (r *LedgerServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, fmt.Errorf("reconciling AuthKeys: %w", err)
 	}
 
+	// Reconcile cluster secret for inter-node auth (always, to avoid rolling-update deadlock).
+	if err := r.reconcileClusterSecret(ctx, ledger); err != nil {
+		logger.Error(err, "failed to reconcile cluster secret")
+
+		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret: %w", err)
+	}
+
 	// StatefulSet needs the specHash and agent info
 	if err := r.reconcileStatefulSet(ctx, ledger, specHash, agents); err != nil {
 		logger.Error(err, "failed to reconcile StatefulSet")
 
 		return ctrl.Result{}, fmt.Errorf("reconciling StatefulSet: %w", err)
-	}
-
-	// Update status
-	if err := r.updateStatus(ctx, ledger); err != nil {
-		logger.Error(err, "failed to update status")
-
-		return ctrl.Result{}, fmt.Errorf("updating status: %w", err)
 	}
 
 	return ctrl.Result{}, nil
@@ -272,6 +282,7 @@ func (r *LedgerServiceReconciler) updateStatus(ctx context.Context, ledger *ledg
 	}
 
 	latest.Status.ObservedGeneration = latest.Generation
+	latest.Status.Endpoints = ledger.Status.Endpoints
 
 	// Set condition
 	condition := metav1.Condition{
@@ -291,6 +302,53 @@ func (r *LedgerServiceReconciler) updateStatus(ctx context.Context, ledger *ledg
 	meta.SetStatusCondition(&latest.Status.Conditions, condition)
 
 	return r.Status().Update(ctx, latest)
+}
+
+// resolveEndpoints computes the external or internal endpoints for a LedgerService.
+// It uses the in-memory ledger (after defaults merge) so autoNetworking is available.
+func resolveEndpoints(ledger *ledgerv1alpha1.LedgerService) *ledgerv1alpha1.EndpointsStatus {
+	auto := ledger.Spec.AutoNetworking
+
+	// gRPC endpoint
+	var grpcHost string
+	if auto != nil && auto.IngressGrpc != nil && auto.IngressGrpc.Enabled {
+		grpcHost = autoHost(ledger.Name, auto, auto.IngressGrpc.Suffix)
+	} else if ledger.Spec.IngressGrpc != nil && ledger.Spec.IngressGrpc.Enabled && len(ledger.Spec.IngressGrpc.Hosts) > 0 {
+		grpcHost = ledger.Spec.IngressGrpc.Hosts[0].Host
+	}
+
+	// HTTP endpoint
+	var httpHost string
+	var httpTLS bool
+	if auto != nil && auto.Ingress != nil && auto.Ingress.Enabled {
+		httpHost = autoHost(ledger.Name, auto, auto.Ingress.Suffix)
+		httpTLS = len(auto.Ingress.TLS) > 0
+	} else if ledger.Spec.Ingress != nil && ledger.Spec.Ingress.Enabled && len(ledger.Spec.Ingress.Hosts) > 0 {
+		httpHost = ledger.Spec.Ingress.Hosts[0].Host
+		httpTLS = len(ledger.Spec.Ingress.TLS) > 0
+	}
+
+	external := grpcHost != "" || httpHost != ""
+
+	grpcEndpoint := fmt.Sprintf("%s.%s.svc.cluster.local:8888", ledger.Name, ledger.Namespace)
+	if grpcHost != "" {
+		grpcEndpoint = grpcHost + ":443"
+	}
+
+	httpEndpoint := fmt.Sprintf("http://%s.%s.svc.cluster.local:9000", ledger.Name, ledger.Namespace)
+	if httpHost != "" {
+		scheme := "http"
+		if httpTLS {
+			scheme = "https"
+		}
+		httpEndpoint = fmt.Sprintf("%s://%s", scheme, httpHost)
+	}
+
+	return &ledgerv1alpha1.EndpointsStatus{
+		GRPC:     grpcEndpoint,
+		HTTP:     httpEndpoint,
+		External: external,
+	}
 }
 
 // deleteIfExists deletes a resource if it exists, ignoring not-found errors.
@@ -412,19 +470,30 @@ func validateSpec(ledger *ledgerv1alpha1.LedgerService) error {
 	if ledger.Spec.Replicas != nil && *ledger.Spec.Replicas%2 == 0 {
 		return fmt.Errorf("replicas must be odd for Raft consensus, got %d", *ledger.Spec.Replicas)
 	}
+
+	auto := ledger.Spec.AutoNetworking
+
 	if hosts, enabled := ingressHosts(ledger.Spec.Ingress); enabled {
-		if err := validateIngressHosts("ingress", hosts); err != nil {
-			return err
+		// AutoNetworking provides hosts automatically — skip manual host validation.
+		autoIngress := auto != nil && auto.Ingress != nil && auto.Ingress.Enabled
+		if !autoIngress {
+			if err := validateIngressHosts("ingress", hosts); err != nil {
+				return err
+			}
 		}
 	}
 	if hosts, enabled := ingressGrpcHosts(ledger.Spec.IngressGrpc); enabled {
-		// When only a TargetGroupBinding is configured (no hosts), skip host
-		// validation — the Ingress resource won't be created, only the TGB.
-		hasTGB := ledger.Spec.IngressGrpc.TargetGroupBinding != nil &&
-			ledger.Spec.IngressGrpc.TargetGroupBinding.Enabled
-		if len(hosts) != 0 || !hasTGB {
-			if err := validateIngressHosts("ingressGrpc", hosts); err != nil {
-				return err
+		// AutoNetworking provides hosts automatically — skip manual host validation.
+		autoIngressGrpc := auto != nil && auto.IngressGrpc != nil && auto.IngressGrpc.Enabled
+		if !autoIngressGrpc {
+			// When only a TargetGroupBinding is configured (no hosts), skip host
+			// validation — the Ingress resource won't be created, only the TGB.
+			hasTGB := ledger.Spec.IngressGrpc.TargetGroupBinding != nil &&
+				ledger.Spec.IngressGrpc.TargetGroupBinding.Enabled
+			if len(hosts) != 0 || !hasTGB {
+				if err := validateIngressHosts("ingressGrpc", hosts); err != nil {
+					return err
+				}
 			}
 		}
 	}

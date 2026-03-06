@@ -1007,6 +1007,10 @@ spec:
                         description: RecordType is the DNS record type (e.g., CNAME,
                           A). Defaults to CNAME.
                         type: string
+                      suffix:
+                        description: Suffix is appended to the auto-generated DNS
+                          name (after the global suffix, before the TLD).
+                        type: string
                       targets:
                         description: Targets is the list of target hostnames or IPs.
                         items:
@@ -1050,6 +1054,17 @@ spec:
                               type: string
                           type: object
                         type: array
+                      serviceAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: ServiceAnnotations to add to the backing Kubernetes
+                          Service.
+                        type: object
+                      suffix:
+                        description: |-
+                          Suffix is appended to the auto-generated host (after the global suffix, before the TLD).
+                          For example, suffix "-grpc" with global suffix "-ledger-v3" yields "<name>-ledger-v3-grpc.<tld>".
+                        type: string
                       tls:
                         description: TLS configuration.
                         items:
@@ -1101,6 +1116,17 @@ spec:
                               type: string
                           type: object
                         type: array
+                      serviceAnnotations:
+                        additionalProperties:
+                          type: string
+                        description: ServiceAnnotations to add to the backing Kubernetes
+                          Service.
+                        type: object
+                      suffix:
+                        description: |-
+                          Suffix is appended to the auto-generated host (after the global suffix, before the TLD).
+                          For example, suffix "-grpc" with global suffix "-ledger-v3" yields "<name>-ledger-v3-grpc.<tld>".
+                        type: string
                       tls:
                         description: TLS configuration.
                         items:
@@ -2610,6 +2636,27 @@ spec:
                   - type
                   type: object
                 type: array
+              endpoints:
+                description: Endpoints holds the resolved external and internal endpoints
+                  for this service.
+                properties:
+                  external:
+                    description: External is true when endpoints are externally reachable
+                      (via Ingress).
+                    type: boolean
+                  grpc:
+                    description: GRPC is the gRPC endpoint (e.g. "my-service-grpc.example.com:443"
+                      or "my-service.ns.svc.cluster.local:8888").
+                    type: string
+                  http:
+                    description: HTTP is the HTTP endpoint (e.g. "https://my-service.example.com"
+                      or "http://my-service.ns.svc.cluster.local:9000").
+                    type: string
+                required:
+                - external
+                - grpc
+                - http
+                type: object
               observedGeneration:
                 description: ObservedGeneration is the generation last observed by
                   the controller.

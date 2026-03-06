@@ -792,6 +792,11 @@ type AutoIngressConfig struct {
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`
 
+	// Suffix is appended to the auto-generated host (after the global suffix, before the TLD).
+	// For example, suffix "-grpc" with global suffix "-ledger-v3" yields "<name>-ledger-v3-grpc.<tld>".
+	// +optional
+	Suffix string `json:"suffix,omitempty"`
+
 	// ClassName is the ingress class name.
 	// +optional
 	ClassName string `json:"className,omitempty"`
@@ -811,6 +816,10 @@ type AutoIngressConfig struct {
 	// Paths are the path rules. Defaults to a single "/" Prefix path.
 	// +optional
 	Paths []IngressPath `json:"paths,omitempty"`
+
+	// ServiceAnnotations to add to the backing Kubernetes Service.
+	// +optional
+	ServiceAnnotations map[string]string `json:"serviceAnnotations,omitempty"`
 }
 
 // AutoDNSEndpointConfig holds configuration specific to an auto-created DNSEndpoint.
@@ -818,6 +827,10 @@ type AutoDNSEndpointConfig struct {
 	// Enabled enables automatic DNSEndpoint creation.
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`
+
+	// Suffix is appended to the auto-generated DNS name (after the global suffix, before the TLD).
+	// +optional
+	Suffix string `json:"suffix,omitempty"`
 
 	// RecordType is the DNS record type (e.g., CNAME, A). Defaults to CNAME.
 	// +optional
@@ -1128,9 +1141,25 @@ type LedgerServiceStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
+	// Endpoints holds the resolved external and internal endpoints for this service.
+	// +optional
+	Endpoints *EndpointsStatus `json:"endpoints,omitempty"`
+
 	// Conditions represent the latest available observations.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// EndpointsStatus contains the resolved endpoints for a LedgerService.
+type EndpointsStatus struct {
+	// GRPC is the gRPC endpoint (e.g. "my-service-grpc.example.com:443" or "my-service.ns.svc.cluster.local:8888").
+	GRPC string `json:"grpc"`
+
+	// HTTP is the HTTP endpoint (e.g. "https://my-service.example.com" or "http://my-service.ns.svc.cluster.local:9000").
+	HTTP string `json:"http"`
+
+	// External is true when endpoints are externally reachable (via Ingress).
+	External bool `json:"external"`
 }
 
 func init() {

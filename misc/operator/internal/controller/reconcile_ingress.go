@@ -43,7 +43,7 @@ func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *
 
 		if autoEnabled {
 			cfg := auto.Ingress
-			host := autoHost(ledger.Name, auto)
+			host := autoHost(ledger.Name, auto, cfg.Suffix)
 
 			paths := cfg.Paths
 			if len(paths) == 0 {
@@ -88,9 +88,9 @@ func (r *LedgerServiceReconciler) reconcileIngress(ctx context.Context, ledger *
 	return err
 }
 
-// autoHost builds <name><suffix>.<tld> from the shared AutoNetworkingSpec.
-func autoHost(name string, auto *ledgerv1alpha1.AutoNetworkingSpec) string {
-	return name + auto.Suffix + "." + auto.TLD
+// autoHost builds <name><globalSuffix><extraSuffix>.<tld> from the shared AutoNetworkingSpec.
+func autoHost(name string, auto *ledgerv1alpha1.AutoNetworkingSpec, extraSuffix string) string {
+	return name + auto.Suffix + extraSuffix + "." + auto.TLD
 }
 
 func buildHTTPIngressRules(ledger *ledgerv1alpha1.LedgerService, hosts []ledgerv1alpha1.IngressHost) []networkingv1.IngressRule {

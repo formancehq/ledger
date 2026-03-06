@@ -49,7 +49,7 @@ func (r *LedgerServiceReconciler) reconcileIngressGrpc(ctx context.Context, ledg
 
 		if autoEnabled {
 			cfg := auto.IngressGrpc
-			host := autoHost(ledger.Name, auto)
+			host := autoHost(ledger.Name, auto, cfg.Suffix)
 
 			paths := cfg.Paths
 			if len(paths) == 0 {

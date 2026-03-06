@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -26,6 +27,7 @@ type PoolConfig struct {
 	BackoffMultiplier float64       // Default: 1.6
 	BackoffJitter     float64       // Default: 0.2
 	Compression       bool          // Enable gzip compression on calls
+	AuthToken         string        // Bearer token injected into every outgoing call (for inter-node auth)
 }
 
 func (c *PoolConfig) SetDefaults() {
@@ -44,6 +46,27 @@ func (c *PoolConfig) SetDefaults() {
 	if c.BackoffJitter == 0 {
 		c.BackoffJitter = 0.2
 	}
+}
+
+// staticTokenCredentials implements grpc.PerRPCCredentials by injecting a static bearer token.
+type staticTokenCredentials struct {
+	token string
+}
+
+func (c staticTokenCredentials) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
+	return map[string]string{
+		"authorization": "Bearer " + c.token,
+	}, nil
+}
+
+func (c staticTokenCredentials) RequireTransportSecurity() bool {
+	return false
+}
+
+// BearerTokenDialOption returns a gRPC DialOption that injects a static bearer token
+// into every outgoing call. Returns nil if token is empty.
+func BearerTokenDialOption(token string) grpc.DialOption {
+	return grpc.WithPerRPCCredentials(staticTokenCredentials{token: token})
 }
 
 // dialOptions returns the common gRPC dial options derived from PoolConfig.
@@ -73,6 +96,9 @@ func dialOptions(creds credentials.TransportCredentials, cfg PoolConfig) []grpc.
 		opts = append(opts, grpc.WithDefaultCallOptions(
 			grpc.UseCompressor(gzip.Name),
 		))
+	}
+	if cfg.AuthToken != "" {
+		opts = append(opts, grpc.WithPerRPCCredentials(staticTokenCredentials{token: cfg.AuthToken}))
 	}
 
 	return opts

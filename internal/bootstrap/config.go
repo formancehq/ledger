@@ -62,6 +62,7 @@ type Config struct {
 	PoolConfig                 transport.PoolConfig
 	TLSConfig                  TLSConfig
 	AuthConfig                 AuthFlagConfig
+	ClusterSecret              string
 	Restore                    bool
 	NumscriptCacheSize         int
 	MirrorMaxBatchSize         int

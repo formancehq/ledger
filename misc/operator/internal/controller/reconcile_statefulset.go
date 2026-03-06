@@ -27,7 +27,9 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 	}
 
 	// Check for scale-down: if the existing StatefulSet has more replicas than
-	// desired, remove excess Raft nodes before updating the StatefulSet.
+	// desired, we need to remove Raft nodes before reducing replicas.
+	// First, update the StatefulSet spec (image, env, etc.) while keeping
+	// the current replica count so pods can start with the correct config.
 	var previousReplicas int32
 	scalingDown := false
 	if r.Config != nil && r.Clientset != nil {
@@ -39,6 +41,30 @@ func (r *LedgerServiceReconciler) reconcileStatefulSet(ctx context.Context, ledg
 		if err == nil && existing.Spec.Replicas != nil && *existing.Spec.Replicas > desiredReplicas {
 			previousReplicas = *existing.Spec.Replicas
 			scalingDown = true
+
+			// Update the StatefulSet with the current replica count first
+			// so that the image, env vars, etc. are applied. This allows
+			// pods to start (e.g. after an image change) before we attempt
+			// the Raft scale-down which requires running containers.
+			sts := &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      ledger.Name,
+					Namespace: ledger.Namespace,
+				},
+			}
+			savedReplicas := ledger.Spec.Replicas
+			ledger.Spec.Replicas = &previousReplicas
+			_, err := controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
+				sts.Labels = commonLabels(ledger)
+				sts.Spec = buildStatefulSetSpec(ledger, specHash, agents)
+
+				return controllerutil.SetControllerReference(ledger, sts, r.Scheme)
+			})
+			ledger.Spec.Replicas = savedReplicas
+			if err != nil {
+				return fmt.Errorf("updating StatefulSet spec before scale-down: %w", err)
+			}
+
 			logger.Info("scale-down detected, removing Raft nodes",
 				"currentReplicas", previousReplicas,
 				"desiredReplicas", desiredReplicas,
@@ -203,12 +229,29 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 		})
 	}
 
+	envVars := buildEnvVars(ledger)
+	// Always inject CLUSTER_SECRET so pods send the bearer token on inter-node
+	// calls. This prevents a rolling-update deadlock when agents are added:
+	// not-yet-updated pods already send the token, so updated pods (with auth
+	// enabled) accept their calls.
+	envVars = append(envVars, corev1.EnvVar{
+		Name: "CLUSTER_SECRET",
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: clusterSecretName(ledger),
+				},
+				Key: clusterSecretKey,
+			},
+		},
+	})
+
 	container := corev1.Container{
 		Name:            "ledger",
 		Image:           fmt.Sprintf("%s:%s", ledger.Spec.Image.Repository, ledger.Spec.Image.Tag),
 		ImagePullPolicy: pullPolicy,
 		Ports:           ports,
-		Env:             buildEnvVars(ledger),
+		Env:             envVars,
 		Command:         buildCommand(ledger, agents),
 		VolumeMounts:    volumeMounts,
 		Resources:       ledger.Spec.Resources,
@@ -341,6 +384,10 @@ fi`, cfg.DataDir, bootstrap0)
 		extraFlags += ` \
   --response-signing-key "$RESPONSE_SIGNING_KEY"`
 	}
+	// Always pass --cluster-secret so inter-node calls carry the bearer token.
+	// --auth-ed25519-keys is only added when agents exist (enables auth requirement).
+	extraFlags += ` \
+  --cluster-secret "$CLUSTER_SECRET"`
 	if len(agents) > 0 {
 		extraFlags += ` \
   --auth-ed25519-keys "/auth-keys/auth-keys.json"`

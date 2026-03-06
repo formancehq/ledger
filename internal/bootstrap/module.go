@@ -264,7 +264,12 @@ func Module() fx.Option {
 				return cfg.TransportConfig
 			},
 			func(cfg Config) transport.PoolConfig {
-				return cfg.PoolConfig
+				poolCfg := cfg.PoolConfig
+				if cfg.ClusterSecret != "" {
+					poolCfg.AuthToken = cfg.ClusterSecret
+				}
+
+				return poolCfg
 			},
 			func(cfg Config) (credentials.TransportCredentials, error) {
 				return ClientTransportCredentials(cfg.TLSConfig)
@@ -1072,6 +1077,7 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 	}
 
 	authCfg.ScopeMapping = scopeMapping
+	authCfg.ClusterSecret = cfg.ClusterSecret
 
 	return authCfg, nil
 }
