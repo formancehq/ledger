@@ -337,6 +337,124 @@ func TestPromoteLedger_NotFound(t *testing.T) {
 	require.ErrorAs(t, err, &ledgerNotFound)
 }
 
+// TestMirrorIngest_CreatedTransaction_MissingVolumes verifies that mirror mode
+// rejects the command when volumes are not preloaded (indicating a preloading bug).
+// Before the fix, applyPosting errors were silently ignored with `_ = applyPosting(...)`,
+// resulting in lost volume updates. The fix propagates the error so the FSM rejects
+// the command, making the preloading bug visible instead of silently corrupting data.
+func TestMirrorIngest_CreatedTransaction_MissingVolumes(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "mirror-ledger",
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+	}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true).AnyTimes()
+	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
+	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries, true)
+
+	// Simulate cache miss: GetVolume returns ErrNotFound for the source volume.
+	// This happens when a volume was evicted from the dual-generation cache
+	// and the preload didn't include it.
+	mockStore.EXPECT().GetVolume(gomock.Any()).Return(nil, domain.ErrNotFound)
+
+	postings := []*commonpb.Posting{{
+		Source:      "world",
+		Destination: "users:rare-account",
+		Amount:      commonpb.NewUint256FromUint64(500),
+		Asset:       "USD/2",
+	}}
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_MirrorIngest{
+			MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+				Ledger: "mirror-ledger",
+				Entry: &raftcmdpb.MirrorLogEntry{
+					V2LogId: 1,
+					Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
+						CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
+							TransactionId: 42,
+							Postings:      postings,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// The FSM must reject the command — not silently ignore the missing volume.
+	result, err := processor.ProcessOrder(order, mockStore)
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Contains(t, err.Error(), "not preloaded")
+}
+
+// TestMirrorIngest_RevertedTransaction_MissingVolumes verifies the same behavior
+// for reverted transactions: the FSM must reject when volumes are not preloaded.
+func TestMirrorIngest_RevertedTransaction_MissingVolumes(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "mirror-ledger",
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+	}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 1}
+
+	mockStore.EXPECT().GetLedger("mirror-ledger").Return(ledgerInfo, true).AnyTimes()
+	mockStore.EXPECT().PutLedger("mirror-ledger", ledgerInfo)
+	mockStore.EXPECT().GetBoundaries("mirror-ledger").Return(boundaries, true)
+
+	// Simulate cache miss for volumes
+	mockStore.EXPECT().GetVolume(gomock.Any()).Return(nil, domain.ErrNotFound)
+
+	reversePostings := []*commonpb.Posting{{
+		Source:      "users:rare-account",
+		Destination: "world",
+		Amount:      commonpb.NewUint256FromUint64(500),
+		Asset:       "USD/2",
+	}}
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_MirrorIngest{
+			MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+				Ledger: "mirror-ledger",
+				Entry: &raftcmdpb.MirrorLogEntry{
+					V2LogId: 2,
+					Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
+						RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
+							RevertedTransactionId: 5,
+							NewTransactionId:      42,
+							ReversePostings:       reversePostings,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// The FSM must reject the command — not silently ignore the missing volume.
+	result, err := processor.ProcessOrder(order, mockStore)
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Contains(t, err.Error(), "not preloaded")
+}
+
 func TestWriteGuard_MirrorModeBlocksApply(t *testing.T) {
 	t.Parallel()
 

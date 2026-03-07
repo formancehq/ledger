@@ -1,6 +1,8 @@
 package processing
 
 import (
+	"fmt"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -40,7 +42,12 @@ func (p *RequestProcessor) processMirrorIngest(order *raftcmdpb.MirrorIngestOrde
 		logPayload = p.processMirrorFillGap(order.GetLedger(), boundaries, data.FillGap, entry.GetV2LogId(), s)
 
 	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
-		logPayload = p.processMirrorCreatedTransaction(order.GetLedger(), boundaries, data.CreatedTransaction, s)
+		var err error
+
+		logPayload, err = p.processMirrorCreatedTransaction(order.GetLedger(), boundaries, data.CreatedTransaction, s)
+		if err != nil {
+			return nil, err
+		}
 
 	case *raftcmdpb.MirrorLogEntry_SavedMetadata:
 		logPayload = p.processMirrorSavedMetadata(order.GetLedger(), boundaries, data.SavedMetadata, s)
@@ -49,7 +56,12 @@ func (p *RequestProcessor) processMirrorIngest(order *raftcmdpb.MirrorIngestOrde
 		logPayload = p.processMirrorDeletedMetadata(order.GetLedger(), boundaries, data.DeletedMetadata, s)
 
 	case *raftcmdpb.MirrorLogEntry_RevertedTransaction:
-		logPayload = p.processMirrorRevertedTransaction(order.GetLedger(), boundaries, data.RevertedTransaction, s)
+		var err error
+
+		logPayload, err = p.processMirrorRevertedTransaction(order.GetLedger(), boundaries, data.RevertedTransaction, s)
+		if err != nil {
+			return nil, err
+		}
 
 	default:
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: order.GetLedger()}
@@ -93,11 +105,13 @@ func (p *RequestProcessor) processMirrorFillGap(ledger string, boundaries *raftc
 
 // processMirrorCreatedTransaction creates a transaction from mirror data.
 // It applies postings with force=true (no balance checks) and assigns the exact transaction ID from v2.
-func (p *RequestProcessor) processMirrorCreatedTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, ct *raftcmdpb.MirrorCreatedTransaction, s InMemoryStore) *commonpb.LedgerLogPayload {
-	// Apply each posting with force=true (skip balance checks for mirror)
+// Missing volumes are auto-initialized to zero so postings are never silently skipped.
+func (p *RequestProcessor) processMirrorCreatedTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, ct *raftcmdpb.MirrorCreatedTransaction, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
+	// Apply each posting with force=true (skip balance checks, auto-init missing volumes)
 	for _, posting := range ct.GetPostings() {
-		// Ignore error — mirror force-applies all postings
-		_ = applyPosting(s, ledger, posting, true)
+		if err := applyPosting(s, ledger, posting, true); err != nil {
+			return nil, fmt.Errorf("applying mirror posting: %w", err)
+		}
 	}
 
 	txID := ct.GetTransactionId()
@@ -164,7 +178,7 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledger string, bounda
 				PeriodId:        periodID,
 			},
 		},
-	}
+	}, nil
 }
 
 // processMirrorSavedMetadata applies metadata from a v2 SET_METADATA log.
@@ -245,10 +259,13 @@ func (p *RequestProcessor) processMirrorDeletedMetadata(ledger string, _ *raftcm
 }
 
 // processMirrorRevertedTransaction processes a v2 REVERTED_TRANSACTION log.
-func (p *RequestProcessor) processMirrorRevertedTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, rt *raftcmdpb.MirrorRevertedTransaction, s InMemoryStore) *commonpb.LedgerLogPayload {
-	// Apply reversed postings with force=true
+// Missing volumes are auto-initialized to zero so reverse postings are never silently skipped.
+func (p *RequestProcessor) processMirrorRevertedTransaction(ledger string, boundaries *raftcmdpb.LedgerBoundaries, rt *raftcmdpb.MirrorRevertedTransaction, s InMemoryStore) (*commonpb.LedgerLogPayload, error) {
+	// Apply reversed postings with force=true (auto-init missing volumes)
 	for _, posting := range rt.GetReversePostings() {
-		_ = applyPosting(s, ledger, posting, true)
+		if err := applyPosting(s, ledger, posting, true); err != nil {
+			return nil, fmt.Errorf("applying mirror reverse posting: %w", err)
+		}
 	}
 
 	// Mark original transaction as reverted
@@ -301,7 +318,7 @@ func (p *RequestProcessor) processMirrorRevertedTransaction(ledger string, bound
 				},
 			},
 		},
-	}
+	}, nil
 }
 
 // processPromoteLedger promotes a mirror ledger to normal mode.
