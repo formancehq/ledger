@@ -6386,7 +6386,7 @@
         "type": "prometheus",
         "uid": "VictoriaMetrics"
       },
-      "description": "Time spent in generation rotation (volume diff compaction + boundary flush) during ApplyEntries.\n\nRotation happens when the raft index crosses a generation threshold. During rotation, old volume diffs are compacted and dirty boundaries are flushed to PebbleDB inline in the critical path.",
+      "description": "Time spent in generation rotation (boundary flush) during ApplyEntries.\n\nRotation happens when the raft index crosses a generation threshold. During rotation, dirty boundaries are flushed to PebbleDB inline in the critical path.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -6476,103 +6476,6 @@
         }
       ],
       "title": "FSM rotation duration",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "VictoriaMetrics"
-      },
-      "description": "Number of volume keys compacted per second during generation rotation.\n\nHigh values indicate many dirty volume keys are being cleaned up at rotation boundaries.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "bars",
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "showValues": false,
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 8,
-        "y": 96
-      },
-      "id": 387,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "expr": "rate(raft.fsm.rotation.keys_compacted{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
-          "instant": false,
-          "legendFormat": "Node {{service.node_id}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "FSM rotation keys compacted/s",
       "type": "timeseries"
     },
     {

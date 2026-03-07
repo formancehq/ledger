@@ -63,8 +63,8 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 
 	// Input=1000, Output=300, Balance=700
 	mockStore.EXPECT().GetVolume(volumeKey).Return(&raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(1000),
-		OutputKnown: commonpb.NewUint256FromUint64(300),
+		Input:  commonpb.NewUint256FromUint64(1000),
+		Output: commonpb.NewUint256FromUint64(300),
 	}, nil)
 
 	query := numscriptlib.BalanceQuery{
@@ -75,41 +75,6 @@ func TestGetBalances_PreloadedVolumes(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, balances)
 	require.Equal(t, int64(700), balances["bank"]["USD"].Int64())
-}
-
-func TestGetBalances_DiffOnlyVolume(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := NewMockInMemoryStore(ctrl)
-
-	adapter := &numscriptStoreAdapter{
-		store:  mockStore,
-		ledger: "test-ledger",
-		force:  false,
-	}
-
-	volumeKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
-		Asset:      "USD",
-	}
-
-	// Only diff values present (no Known)
-	mockStore.EXPECT().GetVolume(volumeKey).Return(&raftcmdpb.VolumePair{
-		InputDiff:  commonpb.NewUint256FromUint64(500),
-		OutputDiff: commonpb.NewUint256FromUint64(100),
-	}, nil)
-
-	query := numscriptlib.BalanceQuery{
-		"bank": {"USD"},
-	}
-
-	balances, err := adapter.GetBalances(context.Background(), query)
-	require.NoError(t, err)
-	require.NotNil(t, balances)
-	require.Equal(t, int64(400), balances["bank"]["USD"].Int64())
 }
 
 func TestGetBalances_NotPreloaded(t *testing.T) {
@@ -143,7 +108,7 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 	require.Contains(t, err.Error(), "not preloaded")
 }
 
-func TestGetBalances_VolumeNotFound(t *testing.T) {
+func TestGetBalances_VolumeNotFound_CreatesZero(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -162,16 +127,17 @@ func TestGetBalances_VolumeNotFound(t *testing.T) {
 		Asset:      "USD",
 	}
 
-	// Volume not found at all
+	// Volume not found — the adapter creates a zero VolumePair (Numscript dynamic resolution)
 	mockStore.EXPECT().GetVolume(volumeKey).Return(nil, domain.ErrNotFound)
+	mockStore.EXPECT().PutVolume(volumeKey, gomock.Any())
 
 	query := numscriptlib.BalanceQuery{
 		"bank": {"USD"},
 	}
 
-	_, err := adapter.GetBalances(context.Background(), query)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "not preloaded")
+	balances, err := adapter.GetBalances(context.Background(), query)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), balances["bank"]["USD"].Int64())
 }
 
 func TestGetAccountsMetadata_Basic(t *testing.T) {

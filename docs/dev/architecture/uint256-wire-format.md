@@ -92,9 +92,9 @@ Note: the checker (`internal/application/check/checker.go`) uses `*big.Int` from
 
 During FSM entry application (the critical path):
 
-1. **Volume read**: `volumePair.InputKnown.IntoUint256(&v)` — 4 uint64 copies, no alloc
+1. **Volume read**: `volumePair.Input.IntoUint256(&v)` — 4 uint64 copies, no alloc
 2. **Arithmetic**: `v.Add(&v, &amount)` — in-place 256-bit add, no alloc
-3. **Volume write**: `volumePair.InputKnown.SetFromUint256(&v)` — 4 uint64 copies, no alloc
+3. **Volume write**: `volumePair.Input.SetFromUint256(&v)` — 4 uint64 copies, no alloc
 
 The entire apply-posting path touches zero heap allocations for volume arithmetic.
 
@@ -103,9 +103,9 @@ The entire apply-posting path touches zero heap allocations for volume arithmeti
 | Message | Fields changed |
 |---------|----------------|
 | `Posting` | `amount` |
-| `VolumePair` | `input_known`, `input_diff`, `output_known`, `output_diff` |
+| `VolumePair` | `input`, `output` |
 | `PreloadVolume` | `input`, `output` |
-| `VolumeAttributeSnapshotEntry` | `input_known`, `input_diff`, `output_known`, `output_diff` |
+| `VolumeAttributeSnapshotEntry` | `input`, `output` |
 
 ## Trade-offs
 

@@ -463,11 +463,18 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 				Tag: tag,
 			}
 
-			// Extract input/output for the preload message
+			// Extract input/output for the preload message.
+			// Always send explicit 0 for new accounts so the hot path never sees nil.
 			var preloadInput, preloadOutput *commonpb.Uint256
 			if result.Value != nil {
-				preloadInput = result.Value.GetInputKnown()
-				preloadOutput = result.Value.GetOutputKnown()
+				preloadInput = result.Value.GetInput()
+				preloadOutput = result.Value.GetOutput()
+			}
+			if preloadInput == nil {
+				preloadInput = commonpb.NewUint256FromUint64(0)
+			}
+			if preloadOutput == nil {
+				preloadOutput = commonpb.NewUint256FromUint64(0)
 			}
 
 			a.logger.WithFields(map[string]any{
@@ -1085,12 +1092,11 @@ type preloadNeeds struct {
 //   - References: transaction references for uniqueness enforcement
 //
 // Volume preloading rationale:
-//   - Sources always need balance checks (Input + Output to compute balance)
-//   - Destinations are only preloaded when ExpandVolumes is true (for post-commit volumes)
-//   - When Force is true and ExpandVolumes is false, volume preloading is skipped entirely
-//   - When Force is true and ExpandVolumes is true, all volumes are preloaded
-//   - Metadata preloading is still performed for Force transactions since
-//     Numscript scripts may still query metadata via meta() calls
+//   - All volumes (sources AND destinations) are always preloaded to ensure
+//     absolute Known values. This eliminates the need for diff-based tracking
+//     and prevents data loss on cache eviction.
+//   - Metadata preloading is still performed since Numscript scripts may
+//     query metadata via meta() calls.
 //   - For reverts, postings are reversed: original destination becomes source
 //     and original source becomes destination
 func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds {
@@ -1124,6 +1130,27 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 		case *raftcmdpb.Order_MirrorIngest:
 			p.Ledgers[domain.LedgerKey{Name: orderType.MirrorIngest.GetLedger()}] = struct{}{}
 			p.Boundaries[domain.LedgerKey{Name: orderType.MirrorIngest.GetLedger()}] = struct{}{}
+
+			// Preload volumes for mirror ingest entries
+			ledgerName := orderType.MirrorIngest.GetLedger()
+
+			var postings []*commonpb.Posting
+			if ct := orderType.MirrorIngest.GetEntry().GetCreatedTransaction(); ct != nil {
+				postings = ct.GetPostings()
+			} else if rt := orderType.MirrorIngest.GetEntry().GetRevertedTransaction(); rt != nil {
+				postings = rt.GetReversePostings()
+			}
+
+			for _, posting := range postings {
+				p.Volumes[domain.VolumeKey{
+					AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetSource()},
+					Asset:      posting.GetAsset(),
+				}] = struct{}{}
+				p.Volumes[domain.VolumeKey{
+					AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetDestination()},
+					Asset:      posting.GetAsset(),
+				}] = struct{}{}
+			}
 		case *raftcmdpb.Order_PromoteLedger:
 			p.Ledgers[domain.LedgerKey{Name: orderType.PromoteLedger.GetLedger()}] = struct{}{}
 		case *raftcmdpb.Order_SaveNumscript:
@@ -1168,17 +1195,12 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 					}
 
 					if discovered != nil {
-						expandVolumes := applyData.CreateTransaction.GetExpandVolumes()
-						if !applyData.CreateTransaction.GetForce() || expandVolumes {
-							for key := range discovered.SourceVolumes {
-								p.Volumes[key] = struct{}{}
-							}
+						for key := range discovered.SourceVolumes {
+							p.Volumes[key] = struct{}{}
 						}
 
-						if expandVolumes {
-							for key := range discovered.DestinationVolumes {
-								p.Volumes[key] = struct{}{}
-							}
+						for key := range discovered.DestinationVolumes {
+							p.Volumes[key] = struct{}{}
 						}
 
 						for key := range discovered.Metadata {
@@ -1189,48 +1211,29 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 					continue
 				}
 
-				expandVolumes := applyData.CreateTransaction.GetExpandVolumes()
-				// Skip volume preloading for force transactions without expandVolumes
-				if applyData.CreateTransaction.GetForce() && !expandVolumes {
-					continue
-				}
-
 				for _, posting := range applyData.CreateTransaction.GetPostings() {
-					// Source account needs balance check (or volume expansion)
 					p.Volumes[domain.VolumeKey{
 						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetSource()},
 						Asset:      posting.GetAsset(),
 					}] = struct{}{}
-					if expandVolumes {
-						// Destination account needed for post-commit volumes
-						p.Volumes[domain.VolumeKey{
-							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetDestination()},
-							Asset:      posting.GetAsset(),
-						}] = struct{}{}
-					}
+					p.Volumes[domain.VolumeKey{
+						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetDestination()},
+						Asset:      posting.GetAsset(),
+					}] = struct{}{}
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 				// Reversion status is checked via in-memory bitset (no preload needed).
-				expandVolumes := applyData.RevertTransaction.GetExpandVolumes()
-				// Skip volume preloading for force reverts without expandVolumes
-				if applyData.RevertTransaction.GetForce() && !expandVolumes {
-					continue
-				}
-
-				// For reverts, postings are reversed: original destination becomes source (needs balance check)
+				// For reverts, postings are reversed: original destination becomes source
 				for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
 					p.Volumes[domain.VolumeKey{
 						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetDestination()},
 						Asset:      posting.GetAsset(),
 					}] = struct{}{}
-					if expandVolumes {
-						// Original source becomes destination in revert (needed for post-commit volumes)
-						p.Volumes[domain.VolumeKey{
-							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetSource()},
-							Asset:      posting.GetAsset(),
-						}] = struct{}{}
-					}
+					p.Volumes[domain.VolumeKey{
+						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetSource()},
+						Asset:      posting.GetAsset(),
+					}] = struct{}{}
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:

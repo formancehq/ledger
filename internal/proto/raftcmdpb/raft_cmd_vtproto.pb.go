@@ -1542,10 +1542,8 @@ func (m *VolumePair) CloneVT() *VolumePair {
 		return (*VolumePair)(nil)
 	}
 	r := new(VolumePair)
-	r.InputKnown = m.InputKnown.CloneVT()
-	r.InputDiff = m.InputDiff.CloneVT()
-	r.OutputKnown = m.OutputKnown.CloneVT()
-	r.OutputDiff = m.OutputDiff.CloneVT()
+	r.Input = m.Input.CloneVT()
+	r.Output = m.Output.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2008,10 +2006,8 @@ func (m *VolumeAttributeSnapshotEntry) CloneVT() *VolumeAttributeSnapshotEntry {
 	}
 	r := new(VolumeAttributeSnapshotEntry)
 	r.Id = m.Id.CloneVT()
-	r.InputKnown = m.InputKnown.CloneVT()
-	r.InputDiff = m.InputDiff.CloneVT()
-	r.OutputKnown = m.OutputKnown.CloneVT()
-	r.OutputDiff = m.OutputDiff.CloneVT()
+	r.Input = m.Input.CloneVT()
+	r.Output = m.Output.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4836,16 +4832,10 @@ func (this *VolumePair) EqualVT(that *VolumePair) bool {
 	} else if this == nil || that == nil {
 		return false
 	}
-	if !this.InputKnown.EqualVT(that.InputKnown) {
+	if !this.Input.EqualVT(that.Input) {
 		return false
 	}
-	if !this.InputDiff.EqualVT(that.InputDiff) {
-		return false
-	}
-	if !this.OutputKnown.EqualVT(that.OutputKnown) {
-		return false
-	}
-	if !this.OutputDiff.EqualVT(that.OutputDiff) {
+	if !this.Output.EqualVT(that.Output) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -5629,16 +5619,10 @@ func (this *VolumeAttributeSnapshotEntry) EqualVT(that *VolumeAttributeSnapshotE
 	if !this.Id.EqualVT(that.Id) {
 		return false
 	}
-	if !this.InputKnown.EqualVT(that.InputKnown) {
+	if !this.Input.EqualVT(that.Input) {
 		return false
 	}
-	if !this.InputDiff.EqualVT(that.InputDiff) {
-		return false
-	}
-	if !this.OutputKnown.EqualVT(that.OutputKnown) {
-		return false
-	}
-	if !this.OutputDiff.EqualVT(that.OutputDiff) {
+	if !this.Output.EqualVT(that.Output) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -9500,28 +9484,8 @@ func (m *VolumePair) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.OutputDiff != nil {
-		size, err := m.OutputDiff.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x22
-	}
-	if m.OutputKnown != nil {
-		size, err := m.OutputKnown.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1a
-	}
-	if m.InputDiff != nil {
-		size, err := m.InputDiff.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Output != nil {
+		size, err := m.Output.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -9530,8 +9494,8 @@ func (m *VolumePair) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	if m.InputKnown != nil {
-		size, err := m.InputKnown.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Input != nil {
+		size, err := m.Input.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -10680,28 +10644,8 @@ func (m *VolumeAttributeSnapshotEntry) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.OutputDiff != nil {
-		size, err := m.OutputDiff.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x2a
-	}
-	if m.OutputKnown != nil {
-		size, err := m.OutputKnown.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x22
-	}
-	if m.InputDiff != nil {
-		size, err := m.InputDiff.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Output != nil {
+		size, err := m.Output.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -10710,8 +10654,8 @@ func (m *VolumeAttributeSnapshotEntry) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i--
 		dAtA[i] = 0x1a
 	}
-	if m.InputKnown != nil {
-		size, err := m.InputKnown.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Input != nil {
+		size, err := m.Input.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -12650,20 +12594,12 @@ func (m *VolumePair) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.InputKnown != nil {
-		l = m.InputKnown.SizeVT()
+	if m.Input != nil {
+		l = m.Input.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.InputDiff != nil {
-		l = m.InputDiff.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.OutputKnown != nil {
-		l = m.OutputKnown.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.OutputDiff != nil {
-		l = m.OutputDiff.SizeVT()
+	if m.Output != nil {
+		l = m.Output.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -13143,20 +13079,12 @@ func (m *VolumeAttributeSnapshotEntry) SizeVT() (n int) {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.InputKnown != nil {
-		l = m.InputKnown.SizeVT()
+	if m.Input != nil {
+		l = m.Input.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.InputDiff != nil {
-		l = m.InputDiff.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.OutputKnown != nil {
-		l = m.OutputKnown.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.OutputDiff != nil {
-		l = m.OutputDiff.SizeVT()
+	if m.Output != nil {
+		l = m.Output.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -21551,7 +21479,7 @@ func (m *VolumePair) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field InputKnown", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Input", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -21578,16 +21506,16 @@ func (m *VolumePair) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.InputKnown == nil {
-				m.InputKnown = &commonpb.Uint256{}
+			if m.Input == nil {
+				m.Input = &commonpb.Uint256{}
 			}
-			if err := m.InputKnown.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Input.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field InputDiff", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Output", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -21614,82 +21542,10 @@ func (m *VolumePair) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.InputDiff == nil {
-				m.InputDiff = &commonpb.Uint256{}
+			if m.Output == nil {
+				m.Output = &commonpb.Uint256{}
 			}
-			if err := m.InputDiff.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field OutputKnown", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.OutputKnown == nil {
-				m.OutputKnown = &commonpb.Uint256{}
-			}
-			if err := m.OutputKnown.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field OutputDiff", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.OutputDiff == nil {
-				m.OutputDiff = &commonpb.Uint256{}
-			}
-			if err := m.OutputDiff.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Output.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -24406,7 +24262,7 @@ func (m *VolumeAttributeSnapshotEntry) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field InputKnown", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Input", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -24433,16 +24289,16 @@ func (m *VolumeAttributeSnapshotEntry) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.InputKnown == nil {
-				m.InputKnown = &commonpb.Uint256{}
+			if m.Input == nil {
+				m.Input = &commonpb.Uint256{}
 			}
-			if err := m.InputKnown.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Input.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field InputDiff", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Output", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -24469,82 +24325,10 @@ func (m *VolumeAttributeSnapshotEntry) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.InputDiff == nil {
-				m.InputDiff = &commonpb.Uint256{}
+			if m.Output == nil {
+				m.Output = &commonpb.Uint256{}
 			}
-			if err := m.InputDiff.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field OutputKnown", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.OutputKnown == nil {
-				m.OutputKnown = &commonpb.Uint256{}
-			}
-			if err := m.OutputKnown.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 5:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field OutputDiff", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.OutputDiff == nil {
-				m.OutputDiff = &commonpb.Uint256{}
-			}
-			if err := m.OutputDiff.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Output.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

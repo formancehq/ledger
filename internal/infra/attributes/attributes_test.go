@@ -26,7 +26,7 @@ func createTestStore(t *testing.T) *dal.Store {
 	return s
 }
 
-func TestSetBaseAndComputeValue(t *testing.T) {
+func TestSetAndComputeValue(t *testing.T) {
 	t.Parallel()
 
 	// Create a data store
@@ -44,10 +44,10 @@ func TestSetBaseAndComputeValue(t *testing.T) {
 	testKey := []byte("test-ledger\x00test-account\x00USD")
 
 	// Test value: input=1000, output=0
-	testValue := &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(1000)}
+	testValue := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1000)}
 
-	// Set base at index 5
-	err := attrs.Volume.SetBase(batch, 5, testKey, testValue)
+	// Set at index 5
+	err := attrs.Volume.Set(batch, 5, testKey, testValue)
 	require.NoError(t, err)
 
 	// Commit the batch
@@ -60,11 +60,11 @@ func TestSetBaseAndComputeValue(t *testing.T) {
 
 	// Verify the result
 	require.NotNil(t, result)
-	require.Equal(t, int64(1000), result.GetInputKnown().ToBigInt().Int64())
-	require.Equal(t, int64(0), result.GetOutputKnown().ToBigInt().Int64())
+	require.Equal(t, int64(1000), result.GetInput().ToBigInt().Int64())
+	require.Equal(t, int64(0), result.GetOutput().ToBigInt().Int64())
 }
 
-func TestComputeValueWithCumulativeDiffs(t *testing.T) {
+func TestComputeValueWithMultipleSets(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
@@ -78,32 +78,30 @@ func TestComputeValueWithCumulativeDiffs(t *testing.T) {
 
 	testKey := []byte("test-ledger\x00cumul-account\x00USD")
 
-	// Set base at index 5: input = 1000
-	err := attrs.Volume.SetBase(batch, 5, testKey, &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(1000)})
+	// Set at index 5: input = 1000
+	err := attrs.Volume.Set(batch, 5, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1000)})
 	require.NoError(t, err)
 
-	// Write 3 cumulative diffs (each represents the total cumul since base)
-	// Diff at index 10: cumul input = 100
-	err = attrs.Volume.AddDiff(batch, 10, testKey, &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(100)})
+	// Set at index 10: input = 100
+	err = attrs.Volume.Set(batch, 10, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
 	require.NoError(t, err)
 
-	// Diff at index 15: cumul input = 250
-	err = attrs.Volume.AddDiff(batch, 15, testKey, &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(250)})
+	// Set at index 15: input = 250
+	err = attrs.Volume.Set(batch, 15, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(250)})
 	require.NoError(t, err)
 
-	// Diff at index 20: cumul input = 500
-	err = attrs.Volume.AddDiff(batch, 20, testKey, &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(500)})
+	// Set at index 20: input = 500
+	err = attrs.Volume.Set(batch, 20, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(500)})
 	require.NoError(t, err)
 
 	err = batch.Commit()
 	require.NoError(t, err)
 
-	// ComputeValue should return base + last cumul = 1000 + 500 = 1500
-	// (not base + sum of all = 1000 + 100 + 250 + 500 = 1850)
+	// ComputeValue should return the latest Set value (last-write-wins) = 500
 	result, err := attrs.Volume.ComputeValue(store, 100, testKey)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, int64(1500), result.GetInputKnown().ToBigInt().Int64())
+	require.Equal(t, int64(500), result.GetInput().ToBigInt().Int64())
 }
 
 func TestDeleteRemovesAllEntries(t *testing.T) {
@@ -204,7 +202,7 @@ func TestDeleteNonExistentKey(t *testing.T) {
 	require.Nil(t, result)
 }
 
-func TestScanEntriesBaseAndDiffs(t *testing.T) {
+func TestScanEntriesMultipleSets(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
@@ -216,16 +214,18 @@ func TestScanEntriesBaseAndDiffs(t *testing.T) {
 
 	defer func() { _ = batch.Cancel() }()
 
-	// Set base at index 5: input = 1000
-	err := attrs.Volume.SetBase(batch, 5, testKey, &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(1000)})
+	// Set at index 5: input = 1000
+	err := attrs.Volume.Set(batch, 5, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(1000)})
 	require.NoError(t, err)
 
-	// Write 3 cumulative diffs
-	err = attrs.Volume.AddDiff(batch, 10, testKey, &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(100)})
+	// Set at index 10
+	err = attrs.Volume.Set(batch, 10, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
 	require.NoError(t, err)
-	err = attrs.Volume.AddDiff(batch, 15, testKey, &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(250)})
+	// Set at index 15
+	err = attrs.Volume.Set(batch, 15, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(250)})
 	require.NoError(t, err)
-	err = attrs.Volume.AddDiff(batch, 20, testKey, &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(500)})
+	// Set at index 20
+	err = attrs.Volume.Set(batch, 20, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(500)})
 	require.NoError(t, err)
 
 	err = batch.Commit()
@@ -235,14 +235,12 @@ func TestScanEntriesBaseAndDiffs(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, scan)
 	require.True(t, scan.HasBase)
-	require.Equal(t, uint64(5), scan.LatestBaseIndex)
-	require.Equal(t, int64(1000), scan.LatestBase.GetInputKnown().ToBigInt().Int64())
-	require.True(t, scan.HasDiff)
-	require.Equal(t, uint64(20), scan.LatestDiffIndex)
+	require.Equal(t, uint64(20), scan.LatestBaseIndex)
+	require.Equal(t, int64(500), scan.LatestBase.GetInput().ToBigInt().Int64())
 	require.Equal(t, 4, scan.TotalEntries)
 }
 
-func TestScanEntriesDiffsOnly(t *testing.T) {
+func TestScanEntriesMultipleSetsNoPrior(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
@@ -254,10 +252,10 @@ func TestScanEntriesDiffsOnly(t *testing.T) {
 
 	defer func() { _ = batch.Cancel() }()
 
-	// Only diffs, no base (like @world)
-	err := attrs.Volume.AddDiff(batch, 10, testKey, &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(100)})
+	// Two sets, no prior data
+	err := attrs.Volume.Set(batch, 10, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)})
 	require.NoError(t, err)
-	err = attrs.Volume.AddDiff(batch, 20, testKey, &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(200)})
+	err = attrs.Volume.Set(batch, 20, testKey, &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(200)})
 	require.NoError(t, err)
 
 	err = batch.Commit()
@@ -266,9 +264,9 @@ func TestScanEntriesDiffsOnly(t *testing.T) {
 	scan, err := attrs.Volume.ScanEntries(store, testKey)
 	require.NoError(t, err)
 	require.NotNil(t, scan)
-	require.False(t, scan.HasBase)
-	require.True(t, scan.HasDiff)
-	require.Equal(t, uint64(20), scan.LatestDiffIndex)
+	require.True(t, scan.HasBase)
+	require.Equal(t, uint64(20), scan.LatestBaseIndex)
+	require.Equal(t, int64(200), scan.LatestBase.GetInput().ToBigInt().Int64())
 	require.Equal(t, 2, scan.TotalEntries)
 }
 
@@ -284,11 +282,10 @@ func TestScanEntriesEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, scan)
 	require.False(t, scan.HasBase)
-	require.False(t, scan.HasDiff)
 	require.Equal(t, 0, scan.TotalEntries)
 }
 
-func TestSetBaseWithZeroValue(t *testing.T) {
+func TestSetWithZeroValue(t *testing.T) {
 	t.Parallel()
 
 	// Create a data store
@@ -306,10 +303,10 @@ func TestSetBaseWithZeroValue(t *testing.T) {
 	testKey := []byte("test-ledger\x00another-account\x00EUR")
 
 	// Test value: input=0, output=0
-	testValue := &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(0)}
+	testValue := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0)}
 
-	// Set base at index 5
-	err := attrs.Volume.SetBase(batch, 5, testKey, testValue)
+	// Set at index 5
+	err := attrs.Volume.Set(batch, 5, testKey, testValue)
 	require.NoError(t, err)
 
 	// Commit the batch
@@ -322,5 +319,5 @@ func TestSetBaseWithZeroValue(t *testing.T) {
 
 	// Verify the result
 	require.NotNil(t, result)
-	require.Equal(t, int64(0), result.GetInputKnown().ToBigInt().Int64())
+	require.Equal(t, int64(0), result.GetInput().ToBigInt().Int64())
 }

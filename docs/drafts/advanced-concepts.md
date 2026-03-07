@@ -270,7 +270,7 @@ Balances are **not** reconstructed by replaying all logs (which would be too slo
 
 ### How It Works
 
-- The Store persists balance diff entries in Pebble
+- The Store persists volume entries in Pebble
 - On `AppendLogs()`, balances are updated atomically with the log insertion
 - On recovery, the Store snapshot already contains the correct balances up to the snapshot point
 - Only the recent Raft entries (after the snapshot) need to be replayed

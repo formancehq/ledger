@@ -171,8 +171,8 @@ func TestAuditLogOnFailure(t *testing.T) {
 	require.Equal(t, uint64(2), failEntry.GetSequence())
 	require.Equal(t, uint64(2), failEntry.GetProposalId())
 	require.NotNil(t, failEntry.GetFailure(), "should be failure")
-	// The error is BALANCE_NOT_FOUND because the account doesn't exist yet (no balance preloaded)
-	require.Equal(t, domain.ErrReasonBalanceNotFound, failEntry.GetFailure().GetErrorType())
+	// The error is INSUFFICIENT_FUNDS because nil Input is treated as zero balance
+	require.Equal(t, domain.ErrReasonInsufficientFunds, failEntry.GetFailure().GetErrorType())
 	require.NotEmpty(t, failEntry.GetFailure().GetMessage())
 	require.Contains(t, failEntry.GetFailure().GetContext(), "account")
 	require.Contains(t, failEntry.GetFailure().GetContext(), "asset")

@@ -28,11 +28,15 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 		Asset:      "USD",
 	}
 
-	// Source (world) has nil volumes - should be created on the fly
-	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, domain.ErrNotFound)
+	zeroVol := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}
+
+	mockStore.EXPECT().GetVolume(sourceKey).Return(zeroVol, nil)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any())
 
-	mockStore.EXPECT().GetVolume(destKey).Return(nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetVolume(destKey).Return(zeroVol, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 
 	posting := &commonpb.Posting{
@@ -61,8 +65,8 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 
 	// Source has input=100, output=50, balance=50, but posting is 200
 	sourceVol := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(100),
-		OutputKnown: commonpb.NewUint256FromUint64(50),
+		Input:  commonpb.NewUint256FromUint64(100),
+		Output: commonpb.NewUint256FromUint64(50),
 	}
 
 	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVol, nil)
@@ -83,7 +87,7 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 	require.Equal(t, "USD", insufficientFunds.Asset)
 }
 
-func TestApplyPosting_BalanceNotFound(t *testing.T) {
+func TestApplyPosting_ZeroInputBalance(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -96,9 +100,10 @@ func TestApplyPosting_BalanceNotFound(t *testing.T) {
 		Asset:      "USD",
 	}
 
-	// Source has no input (nil InputKnown and nil InputDiff)
+	// Source has zero input balance, Output=0
 	sourceVol := &raftcmdpb.VolumePair{
-		OutputKnown: commonpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 
 	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVol, nil)
@@ -110,13 +115,14 @@ func TestApplyPosting_BalanceNotFound(t *testing.T) {
 		Asset:       "USD",
 	}
 
+	// Zero input means posting amount > 0 triggers ErrInsufficientFunds
 	err := applyPosting(mockStore, "test-ledger", posting, false)
 	require.Error(t, err)
 
-	var balanceNotFound *domain.ErrBalanceNotFound
-	require.ErrorAs(t, err, &balanceNotFound)
-	require.Equal(t, "bank", balanceNotFound.Account)
-	require.Equal(t, "USD", balanceNotFound.Asset)
+	var insufficientFunds *domain.ErrInsufficientFunds
+	require.ErrorAs(t, err, &insufficientFunds)
+	require.Equal(t, "bank", insufficientFunds.Account)
+	require.Equal(t, "USD", insufficientFunds.Asset)
 }
 
 func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
@@ -138,12 +144,12 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 
 	// Source has insufficient balance, but force=true skips the check
 	sourceVol := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(10),
-		OutputKnown: commonpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(10),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 	destVol := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(0),
-		OutputKnown: commonpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 
 	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVol, nil)
@@ -162,7 +168,7 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestApplyPosting_DiffOnlyVolume(t *testing.T) {
+func TestApplyPosting_NotPreloaded(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -174,25 +180,8 @@ func TestApplyPosting_DiffOnlyVolume(t *testing.T) {
 		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "bank"},
 		Asset:      "USD",
 	}
-	destKey := domain.VolumeKey{
-		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:001"},
-		Asset:      "USD",
-	}
 
-	// Source has only diff values (no Known), InputDiff=1000
-	sourceVol := &raftcmdpb.VolumePair{
-		InputDiff:  commonpb.NewUint256FromUint64(1000),
-		OutputDiff: commonpb.NewUint256FromUint64(0),
-	}
-	destVol := &raftcmdpb.VolumePair{
-		InputDiff:  commonpb.NewUint256FromUint64(0),
-		OutputDiff: commonpb.NewUint256FromUint64(0),
-	}
-
-	mockStore.EXPECT().GetVolume(sourceKey).Return(sourceVol, nil)
-	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(destKey).Return(destVol, nil)
-	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
+	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, nil)
 
 	posting := &commonpb.Posting{
 		Source:      "bank",
@@ -202,5 +191,6 @@ func TestApplyPosting_DiffOnlyVolume(t *testing.T) {
 	}
 
 	err := applyPosting(mockStore, "test-ledger", posting, false)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not fully preloaded")
 }

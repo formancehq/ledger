@@ -693,7 +693,10 @@ func TestProcessCreateTransaction_ChartValidation_Audit_Warnings(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(gomock.Any(), gomock.Any())
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
-	mockStore.EXPECT().GetVolume(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
+	mockStore.EXPECT().GetVolume(gomock.Any()).Return(&raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}, nil).AnyTimes()
 	mockStore.EXPECT().PutVolume(gomock.Any(), gomock.Any()).AnyTimes()
 
 	order := &raftcmdpb.Order{
@@ -754,7 +757,10 @@ func TestProcessCreateTransaction_ChartValidation_NoWarnings(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().AddTransactionUpdate(gomock.Any(), gomock.Any())
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
-	mockStore.EXPECT().GetVolume(gomock.Any()).Return(nil, domain.ErrNotFound).AnyTimes()
+	mockStore.EXPECT().GetVolume(gomock.Any()).Return(&raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}, nil).AnyTimes()
 	mockStore.EXPECT().PutVolume(gomock.Any(), gomock.Any()).AnyTimes()
 
 	order := &raftcmdpb.Order{

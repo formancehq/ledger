@@ -138,21 +138,17 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	require.NoError(e.t, err)
 
 	// Write only modified volume attributes.
-	// Normalize for Pebble storage: the Known/Diff distinction is an in-memory
-	// optimization only. In Pebble, values are always stored in InputKnown/OutputKnown.
+	// Values are always stored as Input/Output.
 	for key := range modifiedVolumes {
 		vp := e.volumes[key]
 		canonicalKey := []byte(key)
 
 		storePair := &raftcmdpb.VolumePair{
-			InputKnown:  coalesceVolumeSide(vp.GetInputKnown(), vp.GetInputDiff()),
-			OutputKnown: coalesceVolumeSide(vp.GetOutputKnown(), vp.GetOutputDiff()),
+			Input:  vp.GetInput(),
+			Output: vp.GetOutput(),
 		}
-		if vp.GetInputKnown() != nil || vp.GetOutputKnown() != nil {
-			err := e.attrs.Volume.SetBase(batch, e.raftIndex, canonicalKey, storePair)
-			require.NoError(e.t, err)
-		} else if vp.GetInputDiff() != nil || vp.GetOutputDiff() != nil {
-			err := e.attrs.Volume.AddDiff(batch, e.raftIndex, canonicalKey, storePair)
+		if storePair.GetInput() != nil || storePair.GetOutput() != nil {
+			err := e.attrs.Volume.Set(batch, e.raftIndex, canonicalKey, storePair)
 			require.NoError(e.t, err)
 		}
 	}
@@ -199,57 +195,9 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	err = batch.Commit()
 	require.NoError(e.t, err)
 
-	// After commit, consolidate diffs into known values for all modified volumes.
-	// This mimics the cache preloading behavior in the real system.
-	for key := range modifiedVolumes {
-		e.consolidateVolumePair(key)
-	}
-
 	e.raftIndex++
 
 	return logs
-}
-
-// coalesceVolumeSide returns Known if set, otherwise Diff.
-// Used to normalize a VolumePair for Pebble storage.
-func coalesceVolumeSide(known, diff *commonpb.Uint256) *commonpb.Uint256 {
-	if known != nil {
-		return known
-	}
-
-	return diff
-}
-
-// consolidateVolumePair converts a VolumePair to fully-known form.
-// In the real system, the admission layer preloads both input and output together,
-// so both sides are always Known. This mirrors that behavior for testing.
-func (e *testEngine) consolidateVolumePair(key string) {
-	vp, ok := e.volumes[key]
-	if !ok || vp == nil {
-		return
-	}
-
-	// Ensure input side is Known
-	if vp.GetInputKnown() == nil {
-		if vp.GetInputDiff() != nil {
-			vp.InputKnown = vp.GetInputDiff()
-		} else {
-			vp.InputKnown = commonpb.NewUint256FromUint64(0)
-		}
-	}
-
-	vp.InputDiff = nil
-
-	// Ensure output side is Known
-	if vp.GetOutputKnown() == nil {
-		if vp.GetOutputDiff() != nil {
-			vp.OutputKnown = vp.GetOutputDiff()
-		} else {
-			vp.OutputKnown = commonpb.NewUint256FromUint64(0)
-		}
-	}
-
-	vp.OutputDiff = nil
 }
 
 // inMemoryStore implements processing.InMemoryStore using the testEngine's in-memory state.
@@ -287,7 +235,11 @@ func (s *inMemoryStore) PutBoundaries(ledger string, boundaries *raftcmdpb.Ledge
 func (s *inMemoryStore) GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, error) {
 	vp, ok := s.engine.volumes[string(key.Bytes())]
 	if !ok {
-		return nil, domain.ErrNotFound
+		// Simulate preloaded zero volumes (in production, admission always preloads)
+		return &raftcmdpb.VolumePair{
+			Input:  commonpb.NewUint256FromUint64(0),
+			Output: commonpb.NewUint256FromUint64(0),
+		}, nil
 	}
 
 	return proto.CloneOf(vp), nil
@@ -1358,14 +1310,16 @@ func writeVolumes(batch *dal.Batch, attrs *attributes.Attributes, posting *commo
 		Asset:      posting.GetAsset(),
 	}
 
-	err := attrs.Volume.AddDiff(batch, raftIndex, sourceKey.Bytes(), &raftcmdpb.VolumePair{
-		OutputKnown: posting.GetAmount(),
+	err := attrs.Volume.Set(batch, raftIndex, sourceKey.Bytes(), &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: posting.GetAmount(),
 	})
 	if err != nil {
 		return err
 	}
 
-	return attrs.Volume.AddDiff(batch, raftIndex, destKey.Bytes(), &raftcmdpb.VolumePair{
-		InputKnown: posting.GetAmount(),
+	return attrs.Volume.Set(batch, raftIndex, destKey.Bytes(), &raftcmdpb.VolumePair{
+		Input:  posting.GetAmount(),
+		Output: commonpb.NewUint256FromUint64(0),
 	})
 }

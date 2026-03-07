@@ -11,7 +11,7 @@ import (
 
 // buildPostCommitVolumes computes the post-commit volumes for all (account, asset)
 // pairs involved in the given postings. It reads the current volume state from the
-// in-memory store (after postings have been applied) and resolves Known/Diff pairs
+// in-memory store (after postings have been applied) and converts Known values
 // into concrete Input/Output values as big integer strings.
 func buildPostCommitVolumes(s InMemoryStore, ledger string, postings []*commonpb.Posting) *commonpb.PostCommitVolumes {
 	// Collect unique (account, asset) pairs
@@ -51,31 +51,13 @@ func buildPostCommitVolumes(s InMemoryStore, ledger string, postings []*commonpb
 			continue
 		}
 
-		// Resolve Input: Known takes priority, then Diff, then zero
 		var inputStr, outputStr string
 
 		if vol != nil {
-			switch {
-			case vol.GetInputKnown() != nil:
-				vol.GetInputKnown().IntoUint256(&scratch)
-				inputStr = scratch.Dec()
-			case vol.GetInputDiff() != nil:
-				vol.GetInputDiff().IntoUint256(&scratch)
-				inputStr = scratch.Dec()
-			default:
-				inputStr = "0"
-			}
-
-			switch {
-			case vol.GetOutputKnown() != nil:
-				vol.GetOutputKnown().IntoUint256(&scratch)
-				outputStr = scratch.Dec()
-			case vol.GetOutputDiff() != nil:
-				vol.GetOutputDiff().IntoUint256(&scratch)
-				outputStr = scratch.Dec()
-			default:
-				outputStr = "0"
-			}
+			vol.GetInput().IntoUint256(&scratch)
+			inputStr = scratch.Dec()
+			vol.GetOutput().IntoUint256(&scratch)
+			outputStr = scratch.Dec()
 		} else {
 			inputStr = "0"
 			outputStr = "0"

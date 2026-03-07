@@ -17,8 +17,8 @@ func TestAttrTypeFromKey(t *testing.T) {
 
 	t.Run("valid key", func(t *testing.T) {
 		t.Parallel()
-		// Build a key: [0xF1][canonical][attrType][raftIndex 8B][entryType 1B]
-		// SuffixLen = 10, so key must be > 1 + 10 = 11 bytes
+		// Build a key: [0xF1][canonical][attrType][raftIndex 8B]
+		// SuffixLen = 9, so key must be > 1 + 9 = 10 bytes
 		key := make([]byte, 20)
 		key[0] = dal.KeyPrefixAttributes
 		key[len(key)-SuffixLen] = 0x42 // attr type
@@ -141,17 +141,17 @@ func TestDeleteOldest(t *testing.T) {
 
 	// Write entries at indexes 5, 10, 15, 20
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.SetBase(batch, 5, testKey, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(100),
+	require.NoError(t, attrs.Volume.Set(batch, 5, testKey, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(100),
 	}))
-	require.NoError(t, attrs.Volume.AddDiff(batch, 10, testKey, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(200),
+	require.NoError(t, attrs.Volume.Set(batch, 10, testKey, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(200),
 	}))
-	require.NoError(t, attrs.Volume.AddDiff(batch, 15, testKey, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(300),
+	require.NoError(t, attrs.Volume.Set(batch, 15, testKey, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(300),
 	}))
-	require.NoError(t, attrs.Volume.AddDiff(batch, 20, testKey, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(400),
+	require.NoError(t, attrs.Volume.Set(batch, 20, testKey, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(400),
 	}))
 	require.NoError(t, batch.Commit())
 
@@ -169,13 +169,13 @@ func TestDeleteOldest(t *testing.T) {
 	scan, err = attrs.Volume.ScanEntries(store, testKey)
 	require.NoError(t, err)
 	require.Equal(t, 2, scan.TotalEntries)
-	require.True(t, scan.HasDiff)
-	require.Equal(t, uint64(20), scan.LatestDiffIndex)
+	require.True(t, scan.HasBase)
+	require.Equal(t, uint64(20), scan.LatestBaseIndex)
 
-	// Computed value should still work (latest diff = 400)
+	// Computed value should still work (latest Set = 400)
 	result, err := attrs.Volume.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(400), result.GetInputKnown().ToBigInt().Int64())
+	require.Equal(t, int64(400), result.GetInput().ToBigInt().Int64())
 }
 
 func TestAccumulator(t *testing.T) {
@@ -189,14 +189,14 @@ func TestAccumulator(t *testing.T) {
 	keyB := []byte("ledger\x00bob\x00USD")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.SetBase(batch, 1, keyA, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(1000),
+	require.NoError(t, attrs.Volume.Set(batch, 1, keyA, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(1000),
 	}))
-	require.NoError(t, attrs.Volume.AddDiff(batch, 2, keyA, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(500),
+	require.NoError(t, attrs.Volume.Set(batch, 2, keyA, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(500),
 	}))
-	require.NoError(t, attrs.Volume.SetBase(batch, 1, keyB, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(2000),
+	require.NoError(t, attrs.Volume.Set(batch, 1, keyB, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(2000),
 	}))
 	require.NoError(t, batch.Commit())
 
@@ -286,33 +286,32 @@ func TestComputeValueMaxIndex(t *testing.T) {
 	testKey := []byte("ledger\x00maxidx\x00USD")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.SetBase(batch, 5, testKey, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(100),
+	require.NoError(t, attrs.Volume.Set(batch, 5, testKey, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(100),
 	}))
-	require.NoError(t, attrs.Volume.AddDiff(batch, 10, testKey, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(200),
+	require.NoError(t, attrs.Volume.Set(batch, 10, testKey, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(200),
 	}))
-	require.NoError(t, attrs.Volume.AddDiff(batch, 20, testKey, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(300),
+	require.NoError(t, attrs.Volume.Set(batch, 20, testKey, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(300),
 	}))
 	require.NoError(t, batch.Commit())
 
-	// Query at max index 15 should only see base at 5 and diff at 10
+	// Query at max index 15 should see last Set at index 10 (last-write-wins) = 200
 	result, err := attrs.Volume.ComputeValue(store, 15, testKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(300), result.GetInputKnown().ToBigInt().Int64())
-	// Actually: base=100, diff at 10=200 -> 100+200=300. Correct.
+	require.Equal(t, int64(200), result.GetInput().ToBigInt().Int64())
 
-	// Query at max index 7 should only see base at 5
+	// Query at max index 7 should only see Set at index 5 = 100
 	result, err = attrs.Volume.ComputeValue(store, 7, testKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(100), result.GetInputKnown().ToBigInt().Int64())
+	require.Equal(t, int64(100), result.GetInput().ToBigInt().Int64())
 
-	// Query at max index 3 should see nothing (base is at index 5)
+	// Query at max index 3 should see nothing (first Set is at index 5)
 	result, err = attrs.Volume.ComputeValue(store, 3, testKey)
 	require.NoError(t, err)
-	// No base or diffs found - returns zero
-	require.Equal(t, int64(0), result.GetInputKnown().ToBigInt().Int64())
+	// No entries found - returns zero
+	require.Equal(t, int64(0), result.GetInput().ToBigInt().Int64())
 }
 
 func TestForEachInPrefixMaxIndex(t *testing.T) {
@@ -325,18 +324,18 @@ func TestForEachInPrefixMaxIndex(t *testing.T) {
 	keyB := []byte("test\x00b\x00USD")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.SetBase(batch, 5, keyA, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(100),
+	require.NoError(t, attrs.Volume.Set(batch, 5, keyA, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(100),
 	}))
-	require.NoError(t, attrs.Volume.AddDiff(batch, 50, keyA, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(500),
+	require.NoError(t, attrs.Volume.Set(batch, 50, keyA, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(500),
 	}))
-	require.NoError(t, attrs.Volume.SetBase(batch, 3, keyB, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(200),
+	require.NoError(t, attrs.Volume.Set(batch, 3, keyB, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(200),
 	}))
 	require.NoError(t, batch.Commit())
 
-	// ForEachInPrefix with maxIndex=10 should filter out diff at index 50
+	// ForEachInPrefix with maxIndex=10 should filter out Set at index 50
 	var results []ComputedEntry[*raftcmdpb.VolumePair]
 
 	err := attrs.Volume.ForEachInPrefix(store, 10, []byte("test\x00"), func(entry ComputedEntry[*raftcmdpb.VolumePair]) error {
@@ -475,14 +474,13 @@ func TestBoundaryAttribute(t *testing.T) {
 }
 
 // makePebbleKey builds a pebble attribute key for testing:
-// [KeyPrefixAttributes(1B)][canonical][attrType(1B)][raftIndex(8B BE)][entryType(1B)].
-func makePebbleKey(canonical []byte, attrType byte, raftIndex uint64, entryType byte) []byte {
-	key := make([]byte, 1+len(canonical)+1+8+1)
+// [KeyPrefixAttributes(1B)][canonical][attrType(1B)][raftIndex(8B BE)].
+func makePebbleKey(canonical []byte, attrType byte, raftIndex uint64) []byte {
+	key := make([]byte, 1+len(canonical)+1+8)
 	key[0] = dal.KeyPrefixAttributes
 	copy(key[1:], canonical)
 	key[1+len(canonical)] = attrType
 	binary.BigEndian.PutUint64(key[1+len(canonical)+1:], raftIndex)
-	key[len(key)-1] = entryType
 
 	return key
 }
@@ -500,18 +498,18 @@ func TestAccumulatorFeedPublicMethod(t *testing.T) {
 	baseBytes, err := proto.Marshal(baseValue)
 	require.NoError(t, err)
 
-	pebbleKey := makePebbleKey(canonical, dal.AttributePrefixMetadata, 1, dal.EntryTypeBase)
+	pebbleKey := makePebbleKey(canonical, dal.AttributePrefixMetadata, 1)
 
 	matched, feedErr := acc.Feed(pebbleKey, baseBytes)
 	require.NoError(t, feedErr)
 	require.True(t, matched)
 
-	// Feed a second base entry for the same canonical key (overwrites first)
+	// Feed a second entry for the same canonical key (overwrites first)
 	overwriteValue := commonpb.NewStringValue("overwrite-val")
 	overwriteBytes, err := proto.Marshal(overwriteValue)
 	require.NoError(t, err)
 
-	overwriteKey := makePebbleKey(canonical, dal.AttributePrefixMetadata, 5, dal.EntryTypeBase)
+	overwriteKey := makePebbleKey(canonical, dal.AttributePrefixMetadata, 5)
 
 	matched, feedErr = acc.Feed(overwriteKey, overwriteBytes)
 	require.NoError(t, feedErr)
@@ -523,7 +521,7 @@ func TestAccumulatorFeedPublicMethod(t *testing.T) {
 	base2Bytes, err := proto.Marshal(base2Value)
 	require.NoError(t, err)
 
-	pebbleKey2 := makePebbleKey(canonical2, dal.AttributePrefixMetadata, 1, dal.EntryTypeBase)
+	pebbleKey2 := makePebbleKey(canonical2, dal.AttributePrefixMetadata, 1)
 
 	matched, feedErr = acc.Feed(pebbleKey2, base2Bytes)
 	require.NoError(t, feedErr)
@@ -542,11 +540,11 @@ func TestAccumulatorFeedNonMatchingPrefix(t *testing.T) {
 
 	// Build a key with a different attribute prefix (volume instead of metadata)
 	canonical := []byte("ledger\x00account\x00USD")
-	baseValue := &raftcmdpb.VolumePair{InputKnown: commonpb.NewUint256FromUint64(100)}
+	baseValue := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)}
 	baseBytes, err := proto.Marshal(baseValue)
 	require.NoError(t, err)
 
-	pebbleKey := makePebbleKey(canonical, dal.AttributePrefixVolume, 1, dal.EntryTypeBase)
+	pebbleKey := makePebbleKey(canonical, dal.AttributePrefixVolume, 1)
 
 	matched, feedErr := acc.Feed(pebbleKey, baseBytes)
 	require.NoError(t, feedErr)
@@ -576,17 +574,17 @@ func TestCompactAllForBackup(t *testing.T) {
 	keyB := []byte("ledger\x00bob\x00USD")
 
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.SetBase(batch, 1, keyA, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(100),
+	require.NoError(t, attrs.Volume.Set(batch, 1, keyA, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(100),
 	}))
-	require.NoError(t, attrs.Volume.AddDiff(batch, 5, keyA, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(200),
+	require.NoError(t, attrs.Volume.Set(batch, 5, keyA, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(200),
 	}))
-	require.NoError(t, attrs.Volume.AddDiff(batch, 10, keyA, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(300),
+	require.NoError(t, attrs.Volume.Set(batch, 10, keyA, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(300),
 	}))
-	require.NoError(t, attrs.Volume.SetBase(batch, 1, keyB, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(500),
+	require.NoError(t, attrs.Volume.Set(batch, 1, keyB, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(500),
 	}))
 	// Also add metadata entries
 	require.NoError(t, attrs.Metadata.Set(batch, 1, []byte("ledger\x00alice\x00field"), commonpb.NewStringValue("val")))
@@ -625,13 +623,13 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 
 	// Write data at high raft indexes
 	batch := store.NewBatch()
-	require.NoError(t, attrs.Volume.SetBase(batch, 100, volumeKey, &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(1000),
-		OutputKnown: commonpb.NewUint256FromUint64(500),
+	require.NoError(t, attrs.Volume.Set(batch, 100, volumeKey, &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(1000),
+		Output: commonpb.NewUint256FromUint64(500),
 	}))
-	require.NoError(t, attrs.Volume.AddDiff(batch, 200, volumeKey, &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(300),
-		OutputKnown: commonpb.NewUint256FromUint64(100),
+	require.NoError(t, attrs.Volume.Set(batch, 200, volumeKey, &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(300),
+		Output: commonpb.NewUint256FromUint64(100),
 	}))
 	require.NoError(t, attrs.Metadata.Set(batch, 50, metadataKey, commonpb.NewStringValue("active")))
 	require.NoError(t, attrs.IdempotencyKeys.Set(batch, 75, idempotencyKey, &commonpb.IdempotencyKeyValue{
@@ -657,7 +655,7 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 	// Verify data is NOT visible at index 0 before compaction
 	vol, err := attrs.Volume.ComputeValue(store, 0, volumeKey)
 	require.NoError(t, err)
-	require.Equal(t, int64(0), vol.GetInputKnown().ToBigInt().Int64(), "volume should not be visible at index 0 before compaction")
+	require.Equal(t, int64(0), vol.GetInput().ToBigInt().Int64(), "volume should not be visible at index 0 before compaction")
 
 	// Run compaction
 	require.NoError(t, CompactAllForBackup(store))
@@ -668,8 +666,8 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 	vol, err = freshAttrs.Volume.ComputeValue(store, 0, volumeKey)
 	require.NoError(t, err)
 	require.NotNil(t, vol)
-	require.Equal(t, int64(1300), vol.GetInputKnown().ToBigInt().Int64(), "volume input: base 1000 + diff 300")
-	require.Equal(t, int64(600), vol.GetOutputKnown().ToBigInt().Int64(), "volume output: base 500 + diff 100")
+	require.Equal(t, int64(300), vol.GetInput().ToBigInt().Int64(), "volume input: last Set wins (300)")
+	require.Equal(t, int64(100), vol.GetOutput().ToBigInt().Int64(), "volume output: last Set wins (100)")
 
 	meta, err := freshAttrs.Metadata.ComputeValue(store, 0, metadataKey)
 	require.NoError(t, err)
@@ -717,23 +715,23 @@ func TestCompactAllForBackupMultiKeyPerType(t *testing.T) {
 	keyCharlie := []byte("ledger\x00charlie\x00USD")
 
 	batch := store.NewBatch()
-	// Alice: base=100, diff=+50 → 150
-	require.NoError(t, attrs.Volume.SetBase(batch, 1, keyAlice, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(100),
+	// Alice: Set 100 then Set 50 → last-write-wins = 50
+	require.NoError(t, attrs.Volume.Set(batch, 1, keyAlice, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(100),
 	}))
-	require.NoError(t, attrs.Volume.AddDiff(batch, 5, keyAlice, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(50),
+	require.NoError(t, attrs.Volume.Set(batch, 5, keyAlice, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(50),
 	}))
-	// Bob: base only = 200
-	require.NoError(t, attrs.Volume.SetBase(batch, 3, keyBob, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(200),
+	// Bob: single Set = 200
+	require.NoError(t, attrs.Volume.Set(batch, 3, keyBob, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(200),
 	}))
-	// Charlie: two diffs, no explicit base → diff=300 (last diff wins)
-	require.NoError(t, attrs.Volume.AddDiff(batch, 2, keyCharlie, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(100),
+	// Charlie: two Sets → last-write-wins = 300
+	require.NoError(t, attrs.Volume.Set(batch, 2, keyCharlie, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(100),
 	}))
-	require.NoError(t, attrs.Volume.AddDiff(batch, 7, keyCharlie, &raftcmdpb.VolumePair{
-		InputKnown: commonpb.NewUint256FromUint64(300),
+	require.NoError(t, attrs.Volume.Set(batch, 7, keyCharlie, &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(300),
 	}))
 	require.NoError(t, batch.Commit())
 
@@ -744,17 +742,17 @@ func TestCompactAllForBackupMultiKeyPerType(t *testing.T) {
 	alice, err := freshAttrs.Volume.ComputeValue(store, 0, keyAlice)
 	require.NoError(t, err)
 	require.NotNil(t, alice)
-	require.Equal(t, int64(150), alice.GetInputKnown().ToBigInt().Int64(), "alice: base 100 + diff 50")
+	require.Equal(t, int64(50), alice.GetInput().ToBigInt().Int64(), "alice: last Set wins (50)")
 
 	bob, err := freshAttrs.Volume.ComputeValue(store, 0, keyBob)
 	require.NoError(t, err)
 	require.NotNil(t, bob)
-	require.Equal(t, int64(200), bob.GetInputKnown().ToBigInt().Int64(), "bob: base only 200")
+	require.Equal(t, int64(200), bob.GetInput().ToBigInt().Int64(), "bob: single Set 200")
 
 	charlie, err := freshAttrs.Volume.ComputeValue(store, 0, keyCharlie)
 	require.NoError(t, err)
 	require.NotNil(t, charlie)
-	require.Equal(t, int64(300), charlie.GetInputKnown().ToBigInt().Int64(), "charlie: last diff 300")
+	require.Equal(t, int64(300), charlie.GetInput().ToBigInt().Int64(), "charlie: last Set wins (300)")
 }
 
 // TestCompactAllForBackupEmpty verifies that compacting an empty store succeeds

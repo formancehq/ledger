@@ -1,7 +1,8 @@
 set dotenv-load
 
 # Go sub-modules relative to project root
-go_submodules := "misc/operator misc/benchmark-operator misc/devenv"
+# Go sub-modules that contain .go files (misc/devenv is Pulumi-only, no Go sources)
+go_submodules := "misc/operator misc/benchmark-operator"
 
 pre-commit: generate generate-proto tidy lint
 pc: pre-commit

@@ -65,7 +65,7 @@ After merging both Input and Output volume updates, the check:
 2. Sums all input deltas and all output deltas independently
 3. Returns an error if the sums differ
 
-The delta computation handles both absolute values (`Known`) and relative values (`DiffSinceBaseIndex`) by subtracting the old value from the new value in each case.
+The delta computation handles absolute `Known` values by subtracting the old value from the new value.
 
 ### When It Triggers
 

@@ -94,8 +94,8 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 
 	// Expect volume operations for source and destination (force=true, no balance checks)
 	zeroVol := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(0),
-		OutputKnown: commonpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 	mockStore.EXPECT().GetVolume(gomock.Any()).Return(zeroVol, nil).Times(2)
 	mockStore.EXPECT().PutVolume(gomock.Any(), gomock.Any()).Times(2)

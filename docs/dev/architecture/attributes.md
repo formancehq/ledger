@@ -2,14 +2,14 @@
 
 ## Overview
 
-Attributes are key-value pairs that track the state of the ledger system. Most attributes use a unified storage and caching model based on **generation-based caching** and **preloading** to ensure deterministic FSM execution across all Raft nodes.
+Attributes are key-value pairs that track the state of the ledger system. All attributes use a unified storage and caching model based on **generation-based caching** and **preloading** to ensure deterministic FSM execution across all Raft nodes.
 
-Most attributes share:
+All attributes share:
 - **U128 hash-based keys** for efficient storage and lookup
 - **Tag-based collision detection** (64-bit secondary hash)
 - **Generation cache** (gen0/gen1) for fast access
 - **AttributeLoader** for coordinated concurrent loads
-- **Base + diff storage** for efficient updates
+- **Last-write-wins storage** — the latest value at a given raft index wins
 
 **Exception:** Reversions use a dedicated in-memory bitset instead of the attribute system. See [Reversions](#reversions) below.
 
@@ -19,8 +19,7 @@ See [Deterministic FSM](./deterministic-fsm.md) for details on the caching and p
 
 | Attribute | Key | Value | Scope | Behavior |
 |-----------|-----|-------|-------|----------|
-| **Input Volumes** | ledger/account/asset | `BigInt` | Per-ledger | Additive (base + latest cumulative diff) |
-| **Output Volumes** | ledger/account/asset | `BigInt` | Per-ledger | Additive (base + latest cumulative diff) |
+| **Volumes** | ledger/account/asset | `VolumePair` (Input + Output) | Per-ledger | Last-write-wins (absolute values) |
 | **Account Metadata** | ledger/account/key | `MetadataValue` | Per-ledger | Last-write-wins |
 | **Ledger Metadata** | ledger/key | `MetadataValue` | Per-ledger | Last-write-wins |
 | **Reversions** | ledger + txID | `bit` | Per-ledger | In-memory bitset (not a Pebble attribute) |
@@ -31,13 +30,13 @@ See [Deterministic FSM](./deterministic-fsm.md) for details on the caching and p
 
 ## Volumes (Input/Output)
 
-Track funds flow for each account and asset combination.
+Track funds flow for each account and asset combination. Volumes are always preloaded with absolute Known values (both sources and destinations) before processing.
 
 | Property | Description |
 |----------|-------------|
 | **Key** | `VolumeKey` = ledger name + account address + asset |
-| **Value** | `BigInt` (arbitrary precision integer) |
-| **Computation** | Base + latest cumulative diff |
+| **Value** | `VolumePair` (Input + Output as Uint256) |
+| **Computation** | Last-write-wins (latest absolute value) |
 | **Balance** | `Input - Output` |
 
 **Example:**
@@ -61,7 +60,7 @@ Key-value metadata attached to accounts.
 |----------|-------------|
 | **Key** | `MetadataKey` = ledger name + account address + metadata key |
 | **Value** | `MetadataValue` (string) |
-| **Computation** | Last diff wins (or base if no diffs) |
+| **Computation** | Last-write-wins |
 
 **Example:**
 ```
@@ -82,7 +81,7 @@ Key-value metadata attached to ledgers.
 |----------|-------------|
 | **Key** | `LedgerMetadataKey` = ledger name + metadata key |
 | **Value** | `MetadataValue` (string) |
-| **Computation** | Last diff wins (or base if no diffs) |
+| **Computation** | Last-write-wins |
 
 **Example:**
 ```
@@ -174,7 +173,7 @@ Track ledger existence and info in the attribute cache.
 |----------|-------------|
 | **Key** | `LedgerKey` = ledger name string |
 | **Value** | `LedgerInfo` protobuf |
-| **Computation** | Last diff wins |
+| **Computation** | Last-write-wins |
 | **Scope** | System-wide |
 
 **Usage:**
@@ -189,7 +188,7 @@ Track per-ledger boundaries (next log ID, next transaction ID).
 |----------|-------------|
 | **Key** | `LedgerID` (uint32) |
 | **Value** | `LedgerBoundaries` (next log ID, next transaction ID) |
-| **Computation** | Last diff wins |
+| **Computation** | Last-write-wins |
 | **Scope** | Per-ledger |
 
 **Usage:**
@@ -203,16 +202,15 @@ Track per-ledger boundaries (next log ID, next transaction ID).
 All attributes use a unified key format in PebbleDB:
 
 ```
-[KeyPrefixAttributes][attribute prefix][canonical key bytes][raft index][entry type]
+[KeyPrefixAttributes][canonical key bytes][attribute prefix][raft index]
 ```
 
 | Component | Size | Description |
 |-----------|------|-------------|
 | `KeyPrefixAttributes` | 1 byte | Constant prefix (`0xF1`) for all attributes |
+| `canonical key bytes` | variable | Domain-specific key (e.g., ledger + account + asset for volumes) |
 | `attribute prefix` | 1 byte | Identifies attribute type (see table below) |
-| `canonical key bytes` | variable | Domain-specific key (e.g., ledgerID + account + asset for volumes) |
 | `raft index` | 8 bytes | Raft log index (big-endian) |
-| `entry type` | 1 byte | `0` = base, `1` = diff |
 
 This layout groups all entries for the same canonical key together, enabling efficient range scans for `ComputeValue`, `DeleteOldest`, and `List`.
 
@@ -222,13 +220,11 @@ All attributes are stored under the `KeyPrefixAttributes` (`0xF1`) top-level pre
 
 | Attribute | Prefix | ASCII |
 |-----------|--------|-------|
-| Input Volumes | `'I'` | `0x49` |
-| Output Volumes | `'O'` | `0x4F` |
+| Volumes | `'V'` | `0x56` |
 | Account Metadata | `'M'` | `0x4D` |
-| Ledger Metadata | `'L'` | `0x4C` |
-| Idempotency Keys | `'K'` | `0x4B` |
-| Transaction References | `'F'` | `0x46` |
-| Ledgers | `'G'` | `0x47` |
+| Idempotency Keys | `'I'` | `0x49` |
+| Transaction References | `'R'` | `0x52` |
+| Ledgers | `'L'` | `0x4C` |
 | Boundaries | `'B'` | `0x42` |
 
 > **Note:** Reversions are stored in-memory as a bitset and are **not** persisted as Pebble attributes. They are reconstructed from WAL replay or snapshot restore.
@@ -237,101 +233,24 @@ All attributes are stored under the `KeyPrefixAttributes` (`0xF1`) top-level pre
 
 During read (`ComputeValue`), the system:
 1. Scans all entries for the canonical key up to the target raft index
-2. Finds the most recent base entry
-3. Finds the latest diff entry after that base
-4. Applies the computation function (varies by attribute type)
+2. Returns the latest entry value (last-write-wins)
 
-For volumes (Input/Output), diffs are cumulative (each stores the total delta since the base), so only the latest diff is needed:
-```
-Final Value = base + latest_cumulative_diff
-```
+All attribute types use the same last-write-wins semantics. The latest raft index wins.
 
-For metadata, the latest diff wins:
-```
-Final Value = latest_diff ?? base
-```
+### Old Entry Cleanup (per Merge)
 
-## Volume Compaction
+When a new value is written during `Buffered.Merge`, old entries for the same canonical key are cleaned up:
+- If the previous raft index is known (from cache), a point delete removes just that entry
+- If the previous index is unknown (cold preload), a range delete removes all entries before the current index
 
-Volume diffs accumulate in PebbleDB over time. Three mechanisms limit growth and keep the entry count bounded:
-
-### 1. Known-Path Base Consolidation (per Merge)
-
-When a volume value is preloaded from the store (cache hit via admission), the `VolumeHolder.Known` field contains the absolute value. During `Buffered.Merge`, this is written as a `SetBase` entry in PebbleDB, effectively consolidating all prior state into a single base value.
-
-This is the primary compaction path for **hot accounts** (frequently accessed, kept in cache).
-
-**Trigger:** Every `Buffered.Merge` where `Known != nil`.
-
-### 2. Generation-Rotation Diff Pruning (periodic)
-
-When a cache generation rotation occurs (every K entries), `compactVolumeDiffs` is called to prune old superseded diffs. For each volume attribute key in PebbleDB, it calls `DeleteOldest(compactionIndex)` which removes all entries with raft index strictly less than the compaction threshold.
-
-The compaction index is the old Gen1 base index, captured just before rotation. This is safe because:
-- All entries below this index were part of Gen1 (now being discarded)
-- The latest cumulative diff above this index still represents the correct total delta
-
-This is a **prune-only** strategy: it removes old diffs but does NOT create a new base. This is critical because cumulative diffs are always relative to the original base (or implicit base 0). Creating a new base would make subsequent diffs inconsistent.
-
-**Trigger:** `CheckRotationNeeded` detects a generation change during `ApplyEntries`.
-
-**Effect:** Keeps the number of entries per key bounded to approximately `2*K` (two generations' worth).
-
-### 3. Inline Volume Diff Compaction (at rotation)
-
-Compaction is performed inline in the same Pebble batch as the generation rotation. When `CheckRotationNeeded` triggers, the FSM calls `compactVolumeDiffs(batch, oldGen1BaseIndex, dirtyKeys)` using the same batch as `ApplyEntries`.
-
-The FSM tracks dirty volume keys per generation in a 3-slot rotating buffer. At rotation, the oldest generation's keys are consumed and `DeleteOldest` is called for each Input/Output key, issuing `DeleteRange` operations that remove entries strictly before the compaction index.
-
-**Safety:** Using the same batch as `ApplyEntries` ensures atomicity — compaction and entry application are committed together. No concurrent batch operations, no race conditions.
-
-**Effect:** Hot accounts compact naturally through `SetBase` during `Buffered.Merge`. Inline compaction removes superseded intermediate diffs without a separate goroutine.
-
-### 4. DeleteOldest for Non-Volume Attributes (per Merge)
-
-For non-cumulative attributes (ledgers, boundaries, idempotency keys), `DeleteOldest` is called during `Buffered.Merge` after writing a new base. Since these attributes use last-write-wins semantics, the old base is simply superseded.
-
-### Compaction Flow
-
-```
-Entry applied at index i
-        │
-        ▼
-  ┌─────────────────────────────────┐
-  │ CheckRotationNeeded(i)          │
-  │   gen(i) != currentGeneration?  │
-  └───────────┬─────────────────────┘
-              │ Yes (rotation)
-              ▼
-  ┌─────────────────────────────────┐
-  │ compactVolumeDiffs(batch,       │
-  │   oldGen1Base, dirtyKeys)       │
-  │   For each Input/Output key:   │
-  │     DeleteOldest(oldGen1Base)   │
-  │   (prune diffs < oldGen1Base)  │
-  │   (same batch as ApplyEntries) │
-  └───────────┬─────────────────────┘
-              │
-              ▼
-  ┌─────────────────────────────────┐
-  │ Process entry → Buffered.Merge  │
-  │   Known != nil → SetBase (hot)  │
-  │   Known == nil → AddDiff (cold) │
-  └───────────┬─────────────────────┘
-              │
-              ▼
-  ┌─────────────────────────────────┐
-  │ batch.Commit()                  │
-  │   Atomic: entries + compaction  │
-  └─────────────────────────────────┘
-```
+This keeps the number of entries per key bounded.
 
 ## Listing Attribute Keys
 
-The `List` method iterates over actual attribute entries in PebbleDB (prefix scan) and extracts unique canonical keys by stripping the prefix (2 bytes) and suffix (9 bytes: index + type) from each Pebble key.
+The `List` method iterates over actual attribute entries in PebbleDB (prefix scan) and extracts unique canonical keys by stripping the prefix (2 bytes) and suffix (9 bytes: attr type + raft index) from each Pebble key.
 
 This enables:
-- Listing all accounts with volumes (for compaction)
+- Listing all accounts with volumes
 - Listing all metadata keys
 - Iterating over all idempotency keys
 
@@ -358,14 +277,14 @@ This enables:
 │   └─────────────┘    └─────────────┘                    │
 │                                                          │
 │   One cache per attribute type:                         │
-│   - Input, Output, AccountMetadata, LedgerMetadata,     │
+│   - Volumes, AccountMetadata, LedgerMetadata,           │
 │     IdempotencyKeys                                     │
 └─────────────────────────────────────────────────────────┘
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────┐
 │                      Pebble Store                        │
-│            (Persisted bases and diffs)                   │
+│              (Persisted absolute values)                 │
 └─────────────────────────────────────────────────────────┘
 ```
 

@@ -330,11 +330,16 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 		panic(err)
 	}
 
+	stopCtx, stopCancel := context.WithCancel(context.Background())
+
 	conn := &peerConnection{
 		highPriorityCh:         make(chan []raftpb.Message, t.config.Send[0]),
 		mediumPriorityCh:       make(chan []raftpb.Message, t.config.Send[1]),
 		lowPriorityCh:          make(chan []raftpb.Message, t.config.Send[2]),
 		closeCh:                make(chan chan struct{}),
+		stopCtx:                stopCtx,
+		stopCancel:             stopCancel,
+		loopDone:               make(chan struct{}),
 		pushUnreachable:        t.pushUnreachable,
 		connectionPool:         t.connectionPool,
 		logger:                 logger,
@@ -862,6 +867,9 @@ type peerConnection struct {
 	lowPriorityCh    chan []raftpb.Message // Data messages (MsgApp with entries)
 
 	closeCh                chan chan struct{}
+	stopCtx                context.Context    // cancelled by stop() to interrupt stream creation and Recv() calls
+	stopCancel             context.CancelFunc // called by stop()
+	loopDone               chan struct{}      // closed when loop() exits; stop() waits on this
 	pushUnreachable        func(peerID uint64) bool
 	connectionPool         *transport.ConnectionPool
 	logger                 logging.Logger
@@ -925,12 +933,15 @@ func (conn *peerConnection) closeQueues() {
 }
 
 func (conn *peerConnection) loop() {
+	defer close(conn.loopDone)
 	defer otlplogs.RecoverAndLogPanics(conn.logger)
 
 	conn.buf = make([]byte, 0, conn.bufferSize)
 
 	for {
 		select {
+		case <-conn.stopCtx.Done():
+			return
 		case ch := <-conn.closeCh:
 			close(ch)
 
@@ -970,6 +981,8 @@ func (conn *peerConnection) loop() {
 		drainLoop:
 			for {
 				select {
+				case <-conn.stopCtx.Done():
+					return
 				case ch := <-conn.closeCh:
 					close(ch)
 
@@ -1019,10 +1032,11 @@ type priorityStream struct {
 func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn) (bool, error) {
 	client := rafttransportpb.NewRaftTransportServiceClient(grpcPeerConnection)
 
-	// Use a cancelable context so that cancelling it unblocks all stream.Recv()
-	// calls in the receive goroutines, ensuring they exit on every path.
-	streamCtx, streamCancel := context.WithCancel(context.Background())
-	defer streamCancel()
+	// Use a cancelable context derived from conn.stopCtx so that:
+	// 1. stop() can interrupt stream creation (via stopCancel)
+	// 2. cancelling streamCtx unblocks all stream.Recv() calls in receive goroutines
+	streamCtx, streamCancel := context.WithCancel(conn.stopCtx)
+	defer streamCancel() // ensure cleanup on all early-return paths (e.g. createStream failure)
 
 	// Create a stream for each priority level
 	createStream := func(priorityName string) (grpc.BidiStreamingClient[rafttransportpb.SendMessageRequest, rafttransportpb.SendMessageResponse], error) {
@@ -1095,9 +1109,13 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	streamErrors := make(chan error, 3)
 
 	// Ensure all receive goroutines have exited before handleConnection returns.
-	// streamCancel() (deferred above) will unblock stream.Recv() calls, and this
-	// Wait() ensures we don't leave orphaned goroutines that could send on closed channels.
-	defer receiveWg.Wait()
+	// streamCancel() must run BEFORE receiveWg.Wait() to unblock Recv() calls.
+	// Combined in a single defer to guarantee correct ordering (LIFO would
+	// otherwise execute Wait before Cancel, causing a deadlock).
+	defer func() {
+		streamCancel()
+		receiveWg.Wait()
+	}()
 
 	for _, ps := range streams {
 		receiveWg.Add(1)
@@ -1380,18 +1398,21 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 func (conn *peerConnection) stop(ctx context.Context) error {
 	conn.logger.Infof("Stopping peer connection")
 
-	ch := make(chan struct{})
-	select {
-	case conn.closeCh <- ch:
-		select {
-		case <-ch:
-			conn.closeQueues()
-			close(conn.closeCh)
+	// Cancel the connection-level context. This unblocks:
+	// 1. Any in-progress stream creation (StreamMessages call)
+	// 2. All stream.Recv() calls in receive goroutines
+	// 3. The drainLoop and top-of-loop checks in loop()
+	// Combined, this ensures loop() exits promptly.
+	conn.stopCancel()
 
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+	// Wait for loop() to fully exit, including all handleConnection defers
+	// (streamCancel, receiveWg.Wait, CloseSend). This guarantees no leaked
+	// goroutines from this peer connection.
+	select {
+	case <-conn.loopDone:
+		conn.closeQueues()
+
+		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}

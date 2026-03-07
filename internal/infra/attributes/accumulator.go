@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	"google.golang.org/protobuf/proto"
-
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // ComputedEntry holds a computed attribute value alongside its canonical key.
@@ -15,19 +13,18 @@ type ComputedEntry[V proto.Message] struct {
 	Value        V
 }
 
-// accumulatorBase holds the shared base/diff computation state used by both
+// accumulatorBase holds the shared computation state used by both
 // Accumulator (slice-based) and streamingAccumulator (callback-based).
+// It tracks the latest value per canonical key during a forward scan.
 type accumulatorBase[V proto.Message] struct {
-	attr             *core[V]
+	attr             *Attribute[V]
 	currentCanonical string
 	baseValue        V
-	baseIndex        uint64
-	lastDiff         V
 }
 
-// feed processes a raw Pebble key-value pair, updating base/diff state.
-// When a canonical key boundary is crossed, it computes the result for the
-// previous key and returns it as prev (non-nil). The caller must handle prev
+// feed processes a raw Pebble key-value pair, updating state.
+// When a canonical key boundary is crossed, it returns the result for the
+// previous key as prev (non-nil). The caller must handle prev
 // before the next call.
 func (ab *accumulatorBase[V]) feed(pebbleKey, pebbleValue []byte) (matched bool, prev *ComputedEntry[V], err error) {
 	if len(pebbleKey) <= 1+SuffixLen {
@@ -40,17 +37,15 @@ func (ab *accumulatorBase[V]) feed(pebbleKey, pebbleValue []byte) (matched bool,
 	}
 
 	canonical := string(pebbleKey[1 : len(pebbleKey)-SuffixLen])
-	raftIndex := binary.BigEndian.Uint64(pebbleKey[len(pebbleKey)-9 : len(pebbleKey)-1])
-	entryType := pebbleKey[len(pebbleKey)-1]
+	_ = binary.BigEndian.Uint64(pebbleKey[len(pebbleKey)-8:]) // raftIndex (used for ordering, already sorted by Pebble)
 
 	if canonical != ab.currentCanonical {
-		// Compute the previous canonical key's result before resetting.
+		// Return the previous canonical key's result before resetting.
 		if ab.currentCanonical != "" {
-			computed := ab.attr.resolveFn(ab.baseValue, ab.lastDiff)
-			if (any)(computed) != nil {
+			if (any)(ab.baseValue) != nil {
 				prev = &ComputedEntry[V]{
 					CanonicalKey: []byte(ab.currentCanonical),
-					Value:        computed,
+					Value:        ab.baseValue,
 				}
 			}
 		}
@@ -60,8 +55,6 @@ func (ab *accumulatorBase[V]) feed(pebbleKey, pebbleValue []byte) (matched bool,
 		var zero V
 
 		ab.baseValue = zero
-		ab.baseIndex = 0
-		ab.lastDiff = zero
 	}
 
 	v := ab.attr.newValue()
@@ -69,19 +62,8 @@ func (ab *accumulatorBase[V]) feed(pebbleKey, pebbleValue []byte) (matched bool,
 		return false, nil, fmt.Errorf("unmarshaling value: %w", err)
 	}
 
-	switch entryType {
-	case dal.EntryTypeBase:
-		ab.baseValue = v
-		ab.baseIndex = raftIndex
-
-		var zero V
-
-		ab.lastDiff = zero
-	case dal.EntryTypeDiff:
-		if (any)(ab.baseValue) == nil || raftIndex > ab.baseIndex {
-			ab.lastDiff = v
-		}
-	}
+	// Latest entry wins (entries are in Pebble key order = raft index order)
+	ab.baseValue = v
 
 	return true, prev, nil
 }
@@ -93,20 +75,18 @@ func (ab *accumulatorBase[V]) flush() *ComputedEntry[V] {
 		return nil
 	}
 
-	computed := ab.attr.resolveFn(ab.baseValue, ab.lastDiff)
+	value := ab.baseValue
 	key := ab.currentCanonical
 	ab.currentCanonical = ""
 
 	var zero V
 
 	ab.baseValue = zero
-	ab.lastDiff = zero
-	ab.baseIndex = 0
 
-	if (any)(computed) != nil {
+	if (any)(value) != nil {
 		return &ComputedEntry[V]{
 			CanonicalKey: []byte(key),
-			Value:        computed,
+			Value:        value,
 		}
 	}
 
@@ -114,7 +94,7 @@ func (ab *accumulatorBase[V]) flush() *ComputedEntry[V] {
 }
 
 // Accumulator collects attribute entries fed in Pebble key order and computes
-// final values per unique canonical key. It tracks base/diff state and flushes
+// final values per unique canonical key. It tracks state and flushes
 // the computed value when a canonical key boundary is crossed.
 //
 // Usage: create via NewAccumulator, call Feed for each Pebble key-value pair,
@@ -126,7 +106,7 @@ type Accumulator[V proto.Message] struct {
 }
 
 // NewAccumulator creates an Accumulator for this attribute type.
-func (a *core[V]) NewAccumulator() *Accumulator[V] {
+func (a *Attribute[V]) NewAccumulator() *Accumulator[V] {
 	return &Accumulator[V]{accumulatorBase: accumulatorBase[V]{attr: a}}
 }
 
@@ -166,25 +146,4 @@ func (acc *Accumulator[V]) Flush() []ComputedEntry[V] {
 	acc.pending = nil
 
 	return results
-}
-
-// AccumulatingAttribute is an attribute type that supports base+diff accumulation.
-// It exposes SetBase() and AddDiff() for writing. Used for Volume attributes where
-// diffs are cumulative deltas that get added to the base value.
-type AccumulatingAttribute[V proto.Message] struct {
-	core[V]
-}
-
-// SetBase stores a base value for the given canonical key at the specified raft index.
-// The canonical key is used directly as the Pebble key for better data locality.
-// Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
-func (a *AccumulatingAttribute[V]) SetBase(batch *dal.Batch, index uint64, canonicalKey []byte, base V) error {
-	return a.setBase(batch, index, canonicalKey, base)
-}
-
-// AddDiff stores a diff value for the given canonical key at the specified raft index.
-// The canonical key is used directly as the Pebble key for better data locality.
-// Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
-func (a *AccumulatingAttribute[V]) AddDiff(batch *dal.Batch, index uint64, canonicalKey []byte, diff V) error {
-	return a.addDiff(batch, index, canonicalKey, diff)
 }

@@ -38,7 +38,7 @@ func Execute(
 	ctx context.Context,
 	rs *readstore.Store,
 	pebbleStore *dal.Store,
-	volumeAttr *attributes.AccumulatingAttribute[*raftcmdpb.VolumePair],
+	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 ) (*servicepb.ExecutePreparedQueryResponse, error) {

@@ -85,15 +85,27 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 		}
 
 		sourceVol, err := s.GetVolume(sourceKey)
-		if err != nil && !errors.Is(err, domain.ErrNotFound) {
-			return nil, err
+		if err != nil {
+			if !errors.Is(err, domain.ErrNotFound) {
+				return nil, fmt.Errorf("source volume %s/%s: %w", posting.Source, posting.Asset, err)
+			}
+
+			// Numscript scripts may resolve accounts dynamically via meta(), making it
+			// impossible for the admission layer to discover all volumes at preload time.
+			// Create a zero VolumePair for accounts that couldn't be preloaded.
+			sourceVol = &raftcmdpb.VolumePair{
+				Input:  commonpb.NewUint256FromUint64(0),
+				Output: commonpb.NewUint256FromUint64(0),
+			}
+			s.PutVolume(sourceKey, sourceVol)
+		}
+		if sourceVol.GetInput() == nil || sourceVol.GetOutput() == nil {
+			return nil, fmt.Errorf("source volume %s/%s not fully materialized", posting.Source, posting.Asset)
 		}
 
-		if sourceVol == nil {
-			sourceVol = &raftcmdpb.VolumePair{}
-		}
-
-		addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, &u256Amount, postings[i].GetAmount(), &scratch)
+		sourceVol.GetOutput().IntoUint256(&scratch)
+		scratch.Add(&scratch, &u256Amount)
+		sourceVol.GetOutput().SetFromUint256(&scratch)
 		s.PutVolume(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
@@ -106,15 +118,24 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 		}
 
 		destVol, err := s.GetVolume(destKey)
-		if err != nil && !errors.Is(err, domain.ErrNotFound) {
-			return nil, err
+		if err != nil {
+			if !errors.Is(err, domain.ErrNotFound) {
+				return nil, fmt.Errorf("destination volume %s/%s: %w", posting.Destination, posting.Asset, err)
+			}
+
+			destVol = &raftcmdpb.VolumePair{
+				Input:  commonpb.NewUint256FromUint64(0),
+				Output: commonpb.NewUint256FromUint64(0),
+			}
+			s.PutVolume(destKey, destVol)
+		}
+		if destVol.GetInput() == nil || destVol.GetOutput() == nil {
+			return nil, fmt.Errorf("destination volume %s/%s not fully materialized", posting.Destination, posting.Asset)
 		}
 
-		if destVol == nil {
-			destVol = &raftcmdpb.VolumePair{}
-		}
-
-		addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, &u256Amount, postings[i].GetAmount(), &scratch)
+		destVol.GetInput().IntoUint256(&scratch)
+		scratch.Add(&scratch, &u256Amount)
+		destVol.GetInput().SetFromUint256(&scratch)
 		s.PutVolume(destKey, destVol)
 	}
 
@@ -194,29 +215,28 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptli
 			}
 
 			vol, err := s.store.GetVolume(volumeKey)
-			if err != nil && !errors.Is(err, domain.ErrNotFound) {
-				return nil, err
+			if err != nil {
+				if !errors.Is(err, domain.ErrNotFound) {
+					return nil, err
+				}
+
+				// Numscript scripts may resolve accounts dynamically via meta(),
+				// making it impossible for the admission layer to discover all volumes.
+				// Treat missing volumes as zero (new account).
+				vol = &raftcmdpb.VolumePair{
+					Input:  commonpb.NewUint256FromUint64(0),
+					Output: commonpb.NewUint256FromUint64(0),
+				}
+				s.store.PutVolume(volumeKey, vol)
 			}
 
-			// Volumes must be preloaded by the admission layer.
-			if vol == nil || (vol.GetInputKnown() == nil && vol.GetInputDiff() == nil) {
+			if vol.GetInput() == nil || vol.GetOutput() == nil {
 				return nil, &numscript.ErrBalanceNotPreloaded{Account: account, Asset: asset}
 			}
 
 			// Calculate balance: Input - Output using uint256, then convert to *big.Int at boundary
-			if vol.GetInputKnown() != nil {
-				vol.GetInputKnown().IntoUint256(&inputVal)
-			} else {
-				vol.GetInputDiff().IntoUint256(&inputVal)
-			}
-
-			outputVal.Clear()
-
-			if vol.GetOutputKnown() != nil {
-				vol.GetOutputKnown().IntoUint256(&outputVal)
-			} else if vol.GetOutputDiff() != nil {
-				vol.GetOutputDiff().IntoUint256(&outputVal)
-			}
+			vol.GetInput().IntoUint256(&inputVal)
+			vol.GetOutput().IntoUint256(&outputVal)
 
 			// balance escapes into the map, so it must be heap-allocated
 			// Convert to *big.Int at the numscript boundary (numscript uses *big.Int)

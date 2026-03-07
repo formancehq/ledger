@@ -14,30 +14,78 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 )
 
+// buildVolumePreloads extracts all unique (ledger, account, asset) tuples from postings
+// and creates zero-value volume preloads for them.
+func buildVolumePreloads(ledger string, postings []*commonpb.Posting) []*raftcmdpb.Preload {
+	type volumeKey struct{ ledger, account, asset string }
+
+	seen := make(map[volumeKey]struct{})
+
+	var preloads []*raftcmdpb.Preload
+
+	zero := commonpb.NewUint256FromUint64(0)
+
+	for _, p := range postings {
+		for _, account := range []string{p.GetSource(), p.GetDestination()} {
+			key := volumeKey{ledger: ledger, account: account, asset: p.GetAsset()}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+
+			seen[key] = struct{}{}
+
+			canonicalKey := domain.VolumeKey{
+				AccountKey: domain.AccountKey{Ledger: ledger, Account: account},
+				Asset:      p.GetAsset(),
+			}
+			id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey.Bytes())
+
+			preloads = append(preloads, &raftcmdpb.Preload{
+				Type: &raftcmdpb.Preload_Volume{
+					Volume: &raftcmdpb.PreloadVolume{
+						Id:     &raftcmdpb.AttributeID{Id: id[:], Tag: tag},
+						Input:  zero,
+						Output: zero,
+					},
+				},
+			})
+		}
+	}
+
+	return preloads
+}
+
 // createForceTransaction proposes a force transaction (bypasses balance checks) to the node.
 func createForceTransaction(node *Node, ledger string, postings []*commonpb.Posting) ([]*commonpb.Log, error) {
-	proposal := &raftcmdpb.Proposal{
-		Id:   generateProposalID(),
-		Date: nowTimestamp(),
-		Orders: []*raftcmdpb.Order{{
-			Type: &raftcmdpb.Order_Apply{
-				Apply: &raftcmdpb.LedgerApplyOrder{
-					Ledger: ledger,
-					Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-							Postings: postings,
-							Force:    true,
-						},
+	orders := []*raftcmdpb.Order{{
+		Type: &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: ledger,
+				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
+					CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+						Postings: postings,
+						Force:    true,
 					},
 				},
 			},
-		}},
+		},
+	}}
+
+	proposal := &raftcmdpb.Proposal{
+		Id:     generateProposalID(),
+		Date:   nowTimestamp(),
+		Orders: orders,
+		Preload: &raftcmdpb.PreloadSet{
+			Preloads: buildVolumePreloads(ledger, postings),
+		},
 	}
 
 	return proposeAndWait(node, proposal)

@@ -27,9 +27,9 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/bootstrap"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/pyroscope"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/tracesampling"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )

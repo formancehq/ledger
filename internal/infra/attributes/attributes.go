@@ -10,28 +10,27 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// core is the unexported shared implementation for all attribute types.
-// It holds the Pebble key layout, serialization helpers, and base/diff entry write logic.
+// Attribute is the implementation for all attribute types.
+// It holds the Pebble key layout, serialization helpers, and entry write logic.
 //
-// Key layout: [KeyPrefixAttributes (1B)][CanonicalKey (NB)][AttrType (1B)][RaftIndex (8B)][EntryType (1B)]
-// The suffix is always 10 bytes: [AttrType 1B][RaftIndex 8B][EntryType 1B].
+// Key layout: [KeyPrefixAttributes (1B)][CanonicalKey (NB)][AttrType (1B)][RaftIndex (8B)]
+// The suffix is always 9 bytes: [AttrType 1B][RaftIndex 8B].
 // This layout co-locates all attributes for the same canonical key in Pebble,
 // improving write locality and compaction.
 //
 // Thread-safety:
-// - Each core instance has its own pre-allocated key buffer.
+// - Each Attribute instance has its own pre-allocated key buffer.
 // - Use dependency injection (New) to get separate instances per Raft node.
 // - Read methods (ComputeValue, List, ScanEntries) allocate their own buffer for concurrent access.
-type core[V proto.Message] struct {
+type Attribute[V proto.Message] struct {
 	prefix      byte
 	newValue    func() V
-	resolveFn   func(base V, lastDiff V) V
 	keyBuf      []byte // pre-allocated buffer for write-path key construction (reused across calls)
 	protoBuffer []byte
 }
 
 // ensureKeyBuf ensures keyBuf can hold at least n bytes.
-func (a *core[V]) ensureKeyBuf(n int) {
+func (a *Attribute[V]) ensureKeyBuf(n int) {
 	if len(a.keyBuf) < n {
 		a.keyBuf = make([]byte, n)
 	}
@@ -39,7 +38,7 @@ func (a *core[V]) ensureKeyBuf(n int) {
 
 // putPrefix writes [KeyPrefixAttributes][canonicalKey][a.prefix] into buf.
 // buf must have at least 2+len(canonicalKey) bytes.
-func (a *core[V]) putPrefix(buf []byte, canonicalKey []byte) {
+func (a *Attribute[V]) putPrefix(buf []byte, canonicalKey []byte) {
 	buf[0] = dal.KeyPrefixAttributes
 	copy(buf[1:], canonicalKey)
 	buf[1+len(canonicalKey)] = a.prefix
@@ -92,16 +91,15 @@ func unmarshalProto(data []byte, msg proto.Message) error {
 	return proto.Unmarshal(data, msg)
 }
 
-// writeEntry writes a base (EntryTypeBase) or diff (EntryTypeDiff) entry to the batch.
-// Key format: [KeyPrefixAttributes][canonicalKey][prefix][index BE 8 bytes][entryType].
+// Set stores a value for the given canonical key at the specified raft index.
+// Key format: [KeyPrefixAttributes][canonicalKey][prefix][index BE 8 bytes].
 // Uses the pre-allocated keyBuf — not safe for concurrent use.
-func (a *core[V]) writeEntry(batch *dal.Batch, index uint64, canonicalKey []byte, entryType byte, value V) error {
+func (a *Attribute[V]) Set(batch *dal.Batch, index uint64, canonicalKey []byte, value V) error {
 	pLen := prefixLen(canonicalKey)
-	keyLen := pLen + 9
+	keyLen := pLen + 8
 	a.ensureKeyBuf(keyLen)
 	a.putPrefix(a.keyBuf, canonicalKey)
 	binary.BigEndian.PutUint64(a.keyBuf[pLen:], index)
-	a.keyBuf[keyLen-1] = entryType
 
 	valueBytes, err := marshalProto(a.protoBuffer, value)
 	if err != nil {
@@ -113,29 +111,15 @@ func (a *core[V]) writeEntry(batch *dal.Batch, index uint64, canonicalKey []byte
 	return batch.Set(a.keyBuf[:keyLen], valueBytes, pebble.NoSync)
 }
 
-// setBase stores a base value for the given canonical key at the specified raft index.
-// The canonical key is used directly as the Pebble key for better data locality.
-// Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
-func (a *core[V]) setBase(batch *dal.Batch, index uint64, canonicalKey []byte, base V) error {
-	return a.writeEntry(batch, index, canonicalKey, dal.EntryTypeBase, base)
-}
-
-// addDiff stores a diff value for the given canonical key at the specified raft index.
-// The canonical key is used directly as the Pebble key for better data locality.
-// Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
-func (a *core[V]) addDiff(batch *dal.Batch, index uint64, canonicalKey []byte, diff V) error {
-	return a.writeEntry(batch, index, canonicalKey, dal.EntryTypeDiff, diff)
-}
-
 // SuffixLen is the fixed suffix length of an attribute Pebble key:
-// [AttrType(1)][RaftIndex(8)][EntryType(1)] = 10 bytes.
-const SuffixLen = 10
+// [AttrType(1)][RaftIndex(8)] = 9 bytes.
+const SuffixLen = 9
 
 // ComputeValue computes the final value for the given canonical key at the specified raft index.
-// It finds the most recent base with index <= maxIndex and applies all diffs with index <= maxIndex.
+// It finds the most recent entry with index <= maxIndex.
 // The canonical key is used directly as the Pebble key for better data locality.
 // Note: This is a read operation — allocates its own buffer for concurrent safety.
-func (a *core[V]) ComputeValue(reader dal.PebbleReader, index uint64, canonicalKey []byte) (V, error) {
+func (a *Attribute[V]) ComputeValue(reader dal.PebbleReader, index uint64, canonicalKey []byte) (V, error) {
 	var zeroValue V
 
 	// Key prefix: [KeyPrefixAttributes][canonicalKey][attrType]
@@ -167,19 +151,10 @@ func (a *core[V]) ComputeValue(reader dal.PebbleReader, index uint64, canonicalK
 
 	defer func() { _ = iter.Close() }()
 
-	// Track the most recent base and the last diff after it
-	var (
-		baseValue V
-		baseIndex uint64
-		lastDiff  V
-	)
+	// Track the most recent value
+	var latestValue V
 
 	for iter.First(); iter.Valid(); iter.Next() {
-		iterKey := iter.Key()
-
-		raftIndex := binary.BigEndian.Uint64(iterKey[len(iterKey)-9 : len(iterKey)-1])
-		entryType := iterKey[len(iterKey)-1]
-
 		valueBytes, err := iter.ValueAndErr()
 		if err != nil {
 			return zeroValue, fmt.Errorf("reading value: %w", err)
@@ -190,26 +165,16 @@ func (a *core[V]) ComputeValue(reader dal.PebbleReader, index uint64, canonicalK
 			return zeroValue, fmt.Errorf("unmarshaling value: %w", err)
 		}
 
-		switch entryType {
-		case dal.EntryTypeBase:
-			// Base entry - reset computation from this point
-			baseValue = v
-			baseIndex = raftIndex
-			lastDiff = zeroValue
-		case dal.EntryTypeDiff:
-			if (any)(baseValue) == nil || raftIndex > baseIndex {
-				lastDiff = v
-			}
-		}
+		latestValue = v
 	}
 
-	return a.resolveFn(baseValue, lastDiff), nil
+	return latestValue, nil
 }
 
-// Delete removes all entries (bases and diffs) for the given canonical key at any raft index.
+// Delete removes all entries for the given canonical key at any raft index.
 // This performs a physical deletion, removing all historical data for this key.
 // Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
-func (a *core[V]) Delete(batch *dal.Batch, canonicalKey []byte) error {
+func (a *Attribute[V]) Delete(batch *dal.Batch, canonicalKey []byte) error {
 	pLen := prefixLen(canonicalKey)
 	upperLen := pLen + 9 // +8 for ^uint64(0) + 1 for 0xFF
 	a.ensureKeyBuf(upperLen)
@@ -221,26 +186,25 @@ func (a *core[V]) Delete(batch *dal.Batch, canonicalKey []byte) error {
 	return batch.DeleteRange(a.keyBuf[:pLen], a.keyBuf[:upperLen], pebble.NoSync)
 }
 
-// DeleteAt deletes the base entry at a specific raft index for the given canonical key.
+// DeleteAt deletes the entry at a specific raft index for the given canonical key.
 // This performs a point delete (no range tombstone), which is more efficient than DeleteOldest
 // when the exact previous index is known.
 // Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
-func (a *core[V]) DeleteAt(batch *dal.Batch, index uint64, canonicalKey []byte) error {
+func (a *Attribute[V]) DeleteAt(batch *dal.Batch, index uint64, canonicalKey []byte) error {
 	pLen := prefixLen(canonicalKey)
-	keyLen := pLen + 9 // +8 for raft index + 1 for entryType(0=base)
+	keyLen := pLen + 8
 	a.ensureKeyBuf(keyLen)
 	a.putPrefix(a.keyBuf, canonicalKey)
 	binary.BigEndian.PutUint64(a.keyBuf[pLen:], index)
-	a.keyBuf[keyLen-1] = dal.EntryTypeBase
 
 	return batch.DeleteKey(a.keyBuf[:keyLen])
 }
 
-// DeleteOldest deletes all entries (bases and diffs) with raft index strictly less than the given index.
+// DeleteOldest deletes all entries with raft index strictly less than the given index.
 // This is used to clean up old data after consolidating into a new base.
 // The canonical key is used directly as the Pebble key for better data locality.
 // Note: Uses the instance's keyBuf — ensure each Raft node has its own instance.
-func (a *core[V]) DeleteOldest(batch *dal.Batch, index uint64, canonicalKey []byte) error {
+func (a *Attribute[V]) DeleteOldest(batch *dal.Batch, index uint64, canonicalKey []byte) error {
 	pLen := prefixLen(canonicalKey)
 	upperLen := pLen + 8
 	a.ensureKeyBuf(upperLen)
@@ -256,14 +220,12 @@ type ScanResult[V proto.Message] struct {
 	LatestBase      V
 	LatestBaseIndex uint64
 	HasBase         bool
-	LatestDiffIndex uint64
-	HasDiff         bool
 	TotalEntries    int
 }
 
-// ScanEntries scans all entries for a canonical key and returns the latest base/diff info.
+// ScanEntries scans all entries for a canonical key and returns the latest entry info.
 // Thread-safe: allocates its own buffer for concurrent access.
-func (a *core[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte) (*ScanResult[V], error) {
+func (a *Attribute[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte) (*ScanResult[V], error) {
 	// Single allocation for both bounds.
 	pLen := prefixLen(canonicalKey)
 	buf := make([]byte, pLen+1)
@@ -286,31 +248,22 @@ func (a *core[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte) (*Sc
 		iterKey := iter.Key()
 		result.TotalEntries++
 
-		raftIndex := binary.BigEndian.Uint64(iterKey[len(iterKey)-9 : len(iterKey)-1])
-		entryType := iterKey[len(iterKey)-1]
+		raftIndex := binary.BigEndian.Uint64(iterKey[len(iterKey)-8:])
 
-		switch entryType {
-		case dal.EntryTypeBase:
-			if !result.HasBase || raftIndex > result.LatestBaseIndex {
-				valueBytes, err := iter.ValueAndErr()
-				if err != nil {
-					return nil, fmt.Errorf("reading base value: %w", err)
-				}
-
-				v := a.newValue()
-				if err := unmarshalProto(valueBytes, v); err != nil {
-					return nil, fmt.Errorf("unmarshaling base value: %w", err)
-				}
-
-				result.LatestBase = v
-				result.LatestBaseIndex = raftIndex
-				result.HasBase = true
+		if !result.HasBase || raftIndex > result.LatestBaseIndex {
+			valueBytes, err := iter.ValueAndErr()
+			if err != nil {
+				return nil, fmt.Errorf("reading value: %w", err)
 			}
-		case dal.EntryTypeDiff:
-			if !result.HasDiff || raftIndex > result.LatestDiffIndex {
-				result.LatestDiffIndex = raftIndex
-				result.HasDiff = true
+
+			v := a.newValue()
+			if err := unmarshalProto(valueBytes, v); err != nil {
+				return nil, fmt.Errorf("unmarshaling value: %w", err)
 			}
+
+			result.LatestBase = v
+			result.LatestBaseIndex = raftIndex
+			result.HasBase = true
 		}
 	}
 
@@ -322,7 +275,7 @@ func (a *core[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte) (*Sc
 // computed entry at canonical key boundaries. This is O(1) memory (excluding
 // the callback's own allocations) vs O(N) for ComputeAllForPrefix.
 // Thread-safe: allocates its own buffer for concurrent access.
-func (a *core[V]) ForEachInPrefix(
+func (a *Attribute[V]) ForEachInPrefix(
 	reader dal.PebbleReader,
 	maxIndex uint64,
 	canonicalPrefix []byte,
@@ -360,7 +313,7 @@ func (a *core[V]) ForEachInPrefix(
 			continue
 		}
 
-		raftIndex := binary.BigEndian.Uint64(key[len(key)-9 : len(key)-1])
+		raftIndex := binary.BigEndian.Uint64(key[len(key)-8:])
 		if raftIndex > maxIndex {
 			continue
 		}
@@ -403,7 +356,7 @@ func (a *core[V]) ForEachInPrefix(
 // This is more efficient than List + ComputeValue per key, as it uses one iterator
 // scoped to just the prefix range instead of the entire attribute space.
 // Thread-safe: allocates its own buffer for concurrent access.
-func (a *core[V]) ComputeAllForPrefix(reader dal.PebbleReader, maxIndex uint64, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
+func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, maxIndex uint64, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
 	var results []ComputedEntry[V]
 
 	err := a.ForEachInPrefix(reader, maxIndex, canonicalPrefix, func(entry ComputedEntry[V]) error {

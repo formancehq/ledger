@@ -39,7 +39,6 @@ func main() {
 	log.Println("benchmark-operator starting")
 
 	stopCh := make(chan struct{})
-	defer close(stopCh)
 
 	go func() {
 		sigCh := make(chan os.Signal, 1)

@@ -36,14 +36,14 @@ func TestProcessCreateTransaction(t *testing.T) {
 
 	// Source has 1000 input, 0 output -> balance = 1000
 	sourceVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(1000),
-		OutputKnown: commonpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(1000),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 
 	// Destination starts with 0
 	destVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(0),
-		OutputKnown: commonpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
@@ -55,14 +55,14 @@ func TestProcessCreateTransaction(t *testing.T) {
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
 		func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Output should increase by 100
-			require.Equal(t, int64(100), value.GetOutputKnown().ToBigInt().Int64())
+			require.Equal(t, int64(100), value.GetOutput().ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetVolume(destKey).Return(destVolume, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
 		func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Input should increase by 100
-			require.Equal(t, int64(100), value.GetInputKnown().ToBigInt().Int64())
+			require.Equal(t, int64(100), value.GetInput().ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -120,8 +120,8 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 
 	// Source has only 50 balance (100 input - 50 output)
 	sourceVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(100),
-		OutputKnown: commonpb.NewUint256FromUint64(50),
+		Input:  commonpb.NewUint256FromUint64(100),
+		Output: commonpb.NewUint256FromUint64(50),
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
@@ -178,12 +178,12 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 
 	// World has negative balance (but "world" bypasses balance check)
 	worldVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(0),
-		OutputKnown: commonpb.NewUint256FromUint64(1000000),
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(1000000),
 	}
 	destVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(0),
-		OutputKnown: commonpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
@@ -263,8 +263,8 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 // All Numscript tests use flexible (AnyTimes) volume mocking with zero balances.
 func setupNumscriptVolumeMocks(mockStore *MockInMemoryStore) {
 	mockStore.EXPECT().GetVolume(gomock.Any()).Return(&raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(0),
-		OutputKnown: commonpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
 	}, nil).AnyTimes()
 	mockStore.EXPECT().PutVolume(gomock.Any(), gomock.Any()).AnyTimes()
 }
@@ -854,12 +854,12 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 
 	// Source has only 50 balance (100 input - 50 output) - not enough for 100
 	sourceVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(100),
-		OutputKnown: commonpb.NewUint256FromUint64(50),
+		Input:  commonpb.NewUint256FromUint64(100),
+		Output: commonpb.NewUint256FromUint64(50),
 	}
 	destVolume := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(0),
-		OutputKnown: commonpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
@@ -872,14 +872,14 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
 		func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Output should increase by 100 (50 + 100 = 150)
-			require.Equal(t, int64(150), value.GetOutputKnown().ToBigInt().Int64())
+			require.Equal(t, int64(150), value.GetOutput().ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetVolume(destKey).Return(destVolume, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
 		func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 			// Input should increase by 100
-			require.Equal(t, int64(100), value.GetInputKnown().ToBigInt().Int64())
+			require.Equal(t, int64(100), value.GetInput().ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -941,29 +941,27 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 		Asset:      "USD",
 	}
 
-	// Source has no volume at all (nil) - would fail balance check normally
-	// With force=true, this should succeed
+	// Source has zero balance, force=true skips balance check
+	zeroVol := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	// Source returns ErrNotFound (no volume)
-	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(zeroVol, nil)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any()).Do(
 		func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
-			// Output should use OutputDiff since we don't know the absolute value
-			require.Nil(t, value.GetOutputKnown())
-			require.Equal(t, int64(100), value.GetOutputDiff().ToBigInt().Int64())
+			require.Equal(t, int64(100), value.GetOutput().ToBigInt().Int64())
 		},
 	)
-	mockStore.EXPECT().GetVolume(destKey).Return(nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetVolume(destKey).Return(zeroVol, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any()).Do(
 		func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
-			// Input should use InputDiff since we don't know the absolute value
-			require.Nil(t, value.GetInputKnown())
-			require.Equal(t, int64(100), value.GetInputDiff().ToBigInt().Int64())
+			require.Equal(t, int64(100), value.GetInput().ToBigInt().Int64())
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1180,11 +1178,16 @@ func TestProcessCreateTransaction_PeriodIdInCreatedTransaction(t *testing.T) {
 		Asset:      "USD",
 	}
 
+	zeroVol := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}
+
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false).AnyTimes()
-	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(zeroVol, nil)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(destKey).Return(nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetVolume(destKey).Return(zeroVol, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(10))
 	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
@@ -1248,11 +1251,16 @@ func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
 		Asset:      "USD",
 	}
 
+	zeroVol := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}
+
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false).AnyTimes()
-	mockStore.EXPECT().GetVolume(sourceKey).Return(nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetVolume(sourceKey).Return(zeroVol, nil)
 	mockStore.EXPECT().PutVolume(sourceKey, gomock.Any())
-	mockStore.EXPECT().GetVolume(destKey).Return(nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetVolume(destKey).Return(zeroVol, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(10))
 	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())

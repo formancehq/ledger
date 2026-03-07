@@ -40,12 +40,12 @@ func assembleAccount(
 			output := big.NewInt(0)
 
 			if entry.Value != nil {
-				if entry.Value.GetInputKnown() != nil {
-					input = entry.Value.GetInputKnown().ToBigInt()
+				if entry.Value.GetInput() != nil {
+					input = entry.Value.GetInput().ToBigInt()
 				}
 
-				if entry.Value.GetOutputKnown() != nil {
-					output = entry.Value.GetOutputKnown().ToBigInt()
+				if entry.Value.GetOutput() != nil {
+					output = entry.Value.GetOutput().ToBigInt()
 				}
 			}
 

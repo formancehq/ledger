@@ -236,13 +236,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		actualOutputVal := big.NewInt(0)
 
 		if pair != nil {
-			if pair.GetInputKnown() != nil {
-				actualInputVal = pair.GetInputKnown().ToBigInt()
-			}
-
-			if pair.GetOutputKnown() != nil {
-				actualOutputVal = pair.GetOutputKnown().ToBigInt()
-			}
+			actualInputVal = pair.GetInput().ToBigInt()
+			actualOutputVal = pair.GetOutput().ToBigInt()
 		}
 
 		if expectedInput, ok := expectedInputs[key]; ok {

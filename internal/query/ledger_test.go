@@ -82,8 +82,8 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	batch = s.NewBatch()
 	worldKey := domain.VolumeKey{AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "world"}, Asset: "USD"}
 	worldCanonicalKey := worldKey.Bytes()
-	require.NoError(t, attrs.Volume.AddDiff(batch, 1, worldCanonicalKey, &raftcmdpb.VolumePair{
-		OutputKnown: commonpb.NewUint256FromUint64(100),
+	require.NoError(t, attrs.Volume.Set(batch, 1, worldCanonicalKey, &raftcmdpb.VolumePair{
+		Output: commonpb.NewUint256FromUint64(100),
 	}))
 
 	metadataKey := domain.MetadataKey{AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "bank"}, Key: "key"}
@@ -131,5 +131,5 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	// Verify data still exists (soft delete doesn't remove data)
 	volumeResult, err := attrs.Volume.ComputeValue(s, 100, worldCanonicalKey)
 	require.NoError(t, err)
-	require.Equal(t, big.NewInt(100), volumeResult.GetOutputKnown().ToBigInt())
+	require.Equal(t, big.NewInt(100), volumeResult.GetOutput().ToBigInt())
 }

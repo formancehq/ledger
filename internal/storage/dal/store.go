@@ -103,12 +103,6 @@ const (
 	CanonicalKeySepMetadata byte = 0x01
 )
 
-// Entry type bytes for the attribute suffix.
-const (
-	EntryTypeBase byte = 0x00
-	EntryTypeDiff byte = 0x01
-)
-
 // MaxUint64Bytes is the big-endian representation of math.MaxUint64,
 // used as an upper bound sentinel for sequence-keyed iterations.
 var MaxUint64Bytes = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}

@@ -102,7 +102,7 @@ If you use UUID-based addresses, prefer **UUIDv7** (time-ordered) over UUIDv4 (r
 ### 2.2. Keep Segments Short
 
 Every byte of the account address is stored in:
-- Every Pebble key (volume diffs, bases, metadata entries)
+- Every Pebble key (volume entries, metadata entries)
 - Every cache key (hashed, but the input size affects hash time)
 - Every protobuf message (Raft entries, snapshots, gRPC responses)
 - Every Numscript execution context
@@ -186,15 +186,15 @@ In Ledger v2, a hot account (e.g., `bank`, `fees`, `treasury`) debited by many c
 
 ### The Solution (v3)
 
-v3 uses **append-only balance diffs**. Each transaction appends a new diff entry keyed by Raft index. No read-modify-write, no locks, no contention.
+v3 uses **append-only volume entries** (last-write-wins). Each transaction appends a new absolute volume value keyed by Raft index. No read-modify-write, no locks, no contention.
 
 ```
-Transaction A: bank/USD/log_1 = -100   (append)
-Transaction B: bank/USD/log_2 = -50    (append, parallel)
-Transaction C: bank/USD/log_3 = -75    (append, parallel)
+Transaction A: bank/USD/log_1 = {input: 1000, output: 100}  (append)
+Transaction B: bank/USD/log_2 = {input: 1000, output: 150}  (append, parallel)
+Transaction C: bank/USD/log_3 = {input: 1000, output: 225}  (append, parallel)
 ```
 
-Balance is reconstructed at read time: `base + latest_cumulative_diff`.
+Balance is the latest absolute value (last-write-wins).
 
 ### Recommendations
 
@@ -296,8 +296,8 @@ Pebble Batch Commit (single commit per batch of entries)
 | **vtprotobuf** | ~2-3x faster serialization than standard protobuf. Registered transparently server-side. |
 | **64-shard concurrent map** | Cache-line padded shards with per-shard RWMutex. ~1.6% reader-writer collision probability. |
 | **XXH3 for cache keys** | 13ns vs 205ns (BLAKE3). 16x faster for non-cryptographic hashing. |
-| **Append-only balance diffs** | No row-level locks. Hot accounts don't create contention. |
-| **Inline diff compaction** | Runs in same Pebble batch as generation rotation. No background goroutine. |
+| **Append-only volume entries** | No row-level locks. Hot accounts don't create contention. Last-write-wins semantics. |
+| **Old entry cleanup at merge** | Runs in same Pebble batch as generation rotation. No background goroutine. |
 
 ---
 

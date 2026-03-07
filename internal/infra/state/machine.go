@@ -2,13 +2,11 @@ package state
 
 import (
 	"context"
-	"crypto/ed25519"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/holiman/uint256"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 
@@ -71,11 +69,6 @@ type Machine struct {
 	// RequestProcessor handles business logic
 	processor *processing.RequestProcessor
 
-	// dirtyVolumeKeys tracks canonical key bytes written during each generation.
-	// The uint32 value counts how many diffs were written for this key in that generation.
-	// [0]=current gen, [1]=previous gen, [2]=gen before (consumed at compaction).
-	dirtyVolumeKeys [3]map[string]uint32
-
 	// sealRequestCh receives seal requests when a ClosePeriod log is applied.
 	// The Sealer reads from this channel to perform background sealing.
 	sealRequestCh chan SealRequest
@@ -96,7 +89,6 @@ type Machine struct {
 	// Metrics
 	logsAppendedCounter       metric.Int64Counter
 	rotationDurationHistogram metric.Int64Histogram
-	rotationKeysCompacted     metric.Int64Counter
 	batchCommitHistogram      metric.Int64Histogram
 	lastPersistedIndex        atomic.Uint64
 
@@ -161,15 +153,6 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating rotation_duration histogram: %w", err)
-	}
-
-	rotationKeysCompacted, err := meter.Int64Counter(
-		"raft.fsm.rotation.keys_compacted",
-		metric.WithDescription("Number of volume keys compacted during generation rotation. Use rate() for keys/s."),
-		metric.WithUnit("1"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating rotation_keys_compacted counter: %w", err)
 	}
 
 	batchCommitHistogram, err := meter.Int64Histogram(
@@ -283,7 +266,6 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		generationRotationThreshold: generationRotationThreshold,
 		logsAppendedCounter:         logsAppendedCounter,
 		rotationDurationHistogram:   rotationDurationHistogram,
-		rotationKeysCompacted:       rotationKeysCompacted,
 		batchCommitHistogram:        batchCommitHistogram,
 		processor:                   processor,
 		eventNotifier:               eventNotifier,
@@ -295,15 +277,10 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		Periods:                     NewPeriodTracker(allPeriods, currentOpenPeriod, closingPeriod, nextPeriodID, periodSchedule),
 		nextSequenceID:              1,
 		nextAuditSequenceID:         1,
-		dirtyVolumeKeys: [3]map[string]uint32{
-			make(map[string]uint32),
-			make(map[string]uint32),
-			make(map[string]uint32),
-		},
-		sealRequestCh:            make(chan SealRequest, 1),
-		archiveRequestCh:         make(chan ArchiveRequest, 1),
-		metadataConvertRequestCh: make(chan MetadataConvertRequest, 16),
-		coldCompactionCh:         make(chan struct{}, 1),
+		sealRequestCh:               make(chan SealRequest, 1),
+		archiveRequestCh:            make(chan ArchiveRequest, 1),
+		metadataConvertRequestCh:    make(chan MetadataConvertRequest, 16),
+		coldCompactionCh:            make(chan struct{}, 1),
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 
@@ -436,23 +413,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			}
 		}
 
-		if rotated, oldGen1BaseIndex := fsm.Registry.Cache.CheckRotationNeeded(entry.Index); rotated {
+		if rotated, _ := fsm.Registry.Cache.CheckRotationNeeded(entry.Index); rotated {
 			rotationStart := time.Now()
-
-			// Rotate dirty key tracking: consume slot[2], shift down, allocate new slot[0]
-			keysToCompact := fsm.dirtyVolumeKeys[2]
-			fsm.dirtyVolumeKeys[2] = fsm.dirtyVolumeKeys[1]
-			fsm.dirtyVolumeKeys[1] = fsm.dirtyVolumeKeys[0]
-			fsm.dirtyVolumeKeys[0] = make(map[string]uint32)
-
-			// Compaction using tracked keys in the same batch (no Pebble scan)
-			compactedKeys, err := fsm.compactVolumeDiffs(batch, oldGen1BaseIndex, keysToCompact)
-			if err != nil {
-				return nil, fmt.Errorf("compacting volume diffs: %w", err)
-			}
-
 			fsm.rotationDurationHistogram.Record(context.Background(), time.Since(rotationStart).Microseconds())
-			fsm.rotationKeysCompacted.Add(context.Background(), compactedKeys)
 		}
 
 		fsm.lastAppliedIndex++
@@ -618,62 +581,6 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 	return ret, nil
 }
 
-// volumeCompactionMinDiffs is the minimum number of diff entries a volume key
-// must have accumulated in a generation before compaction (DeleteRange) is
-// worthwhile.  For keys with fewer diffs the Pebble range-delete tombstone
-// costs more than letting the native LSM compaction clean them up.
-const volumeCompactionMinDiffs uint32 = 4
-
-// compactVolumeDiffs prunes old volume diff entries during generation rotation.
-//
-// Volume diffs are cumulative: each diff stores the total delta since the original base.
-// Only the latest diff is needed by ComputeValue, so older diffs can be safely removed.
-//
-// We delete all entries strictly before compactionIndex. This removes superseded diffs
-// while preserving the latest cumulative diff and any base that might exist.
-// We do NOT create a new base because existing diffs are cumulative from the original base,
-// and introducing a new base would make subsequent diffs inconsistent.
-//
-// Safety: DeleteOldest removes both bases and diffs before compactionIndex.
-// A key that was only active in the compacted generation (no entries in newer
-// generations) would lose all its Pebble data. To prevent this, we skip
-// compaction for keys that have no entries in a more recent generation —
-// their stale entries are left for Pebble's native LSM compaction or will be
-// superseded when the account is next preloaded.
-//
-// dirtyKeys maps canonical keys to the number of diffs written during the
-// generation being compacted. Keys with fewer than volumeCompactionMinDiffs
-// writes are skipped — the overhead of a Pebble range-delete tombstone is
-// not worth it for a handful of entries.
-func (fsm *Machine) compactVolumeDiffs(batch *dal.Batch, compactionIndex uint64, dirtyKeys map[string]uint32) (int64, error) {
-	var compacted int64
-
-	for keyStr, count := range dirtyKeys {
-		if count < volumeCompactionMinDiffs {
-			continue
-		}
-		// Only compact if newer entries exist in a more recent generation.
-		// After the dirty key shift: slot[1] = Gen N, slot[2] = Gen N-1.
-		_, inPrevGen := fsm.dirtyVolumeKeys[2][keyStr]
-
-		_, inCurGen := fsm.dirtyVolumeKeys[1][keyStr]
-		if !inPrevGen && !inCurGen {
-			continue
-		}
-
-		canonicalKey := []byte(keyStr)
-
-		err := fsm.Registry.Attrs.Volume.DeleteOldest(batch, compactionIndex, canonicalKey)
-		if err != nil {
-			return 0, fmt.Errorf("compacting volume: %w", err)
-		}
-
-		compacted++
-	}
-
-	return compacted, nil
-}
-
 // Preload applies preloaded data to the Machine's volatile state.
 func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	if preloadSet == nil || len(preloadSet.GetPreloads()) == 0 {
@@ -695,9 +602,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		}
 	}
 
-	// Helper function to put a preloaded volume pair into a cache generation
-	var scratchA, scratchB uint256.Int // reused across all preload volume merges
-
+	// Helper function to put a preloaded volume pair into a cache generation.
+	// Since volumes are always preloaded with absolute Known values,
+	// if already in cache we keep the existing value (already up to date).
 	putInCacheVolumePair := func(
 		kv kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]],
 		attrID *raftcmdpb.AttributeID,
@@ -711,29 +618,6 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 
 		value, ok := kv.Get(id)
 		if ok {
-			// If InputKnown is not yet set, merge preloaded input with any existing diff
-			if value.Data.GetInputKnown() == nil && pair.GetInputKnown() != nil {
-				if value.Data.GetInputDiff() != nil {
-					pair.GetInputKnown().IntoUint256(&scratchA)
-					value.Data.GetInputDiff().IntoUint256(&scratchB)
-					scratchA.Add(&scratchA, &scratchB)
-					value.Data.InputKnown = commonpb.NewUint256(&scratchA)
-				} else {
-					value.Data.InputKnown = pair.GetInputKnown()
-				}
-			}
-			// If OutputKnown is not yet set, merge preloaded output with any existing diff
-			if value.Data.GetOutputKnown() == nil && pair.GetOutputKnown() != nil {
-				if value.Data.GetOutputDiff() != nil {
-					pair.GetOutputKnown().IntoUint256(&scratchA)
-					value.Data.GetOutputDiff().IntoUint256(&scratchB)
-					scratchA.Add(&scratchA, &scratchB)
-					value.Data.OutputKnown = commonpb.NewUint256(&scratchA)
-				} else {
-					value.Data.OutputKnown = pair.GetOutputKnown()
-				}
-			}
-
 			return value.Data
 		}
 
@@ -955,8 +839,8 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		switch preloadType := preload.GetType().(type) {
 		case *raftcmdpb.Preload_Volume:
 			pair := &raftcmdpb.VolumePair{
-				InputKnown:  preloadType.Volume.GetInput(),
-				OutputKnown: preloadType.Volume.GetOutput(),
+				Input:  preloadType.Volume.GetInput(),
+				Output: preloadType.Volume.GetOutput(),
 			}
 			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
 				aggregated := putInCacheVolumePair(fsm.Registry.Cache.Volumes.Gen1(), preloadType.Volume.GetId(), pair)
@@ -1396,10 +1280,8 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 			},
 		}
 		if entry.Data != nil {
-			ksEntry.InputKnown = entry.Data.GetInputKnown()
-			ksEntry.InputDiff = entry.Data.GetInputDiff()
-			ksEntry.OutputKnown = entry.Data.GetOutputKnown()
-			ksEntry.OutputDiff = entry.Data.GetOutputDiff()
+			ksEntry.Input = entry.Data.GetInput()
+			ksEntry.Output = entry.Data.GetOutput()
 		}
 
 		snapshot.Volumes = append(snapshot.Volumes, ksEntry)
@@ -1528,14 +1410,6 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	// Signing keys are not in the memory snapshot — they live in Pebble.
 	// They will be reloaded from Pebble after SynchronizeWithLeader restores the checkpoint.
 
-	// Reset dirty volume key tracking. The first 2 rotations after restore will do
-	// less cleanup, but the system self-corrects as new keys are tracked.
-	fsm.dirtyVolumeKeys = [3]map[string]uint32{
-		make(map[string]uint32),
-		make(map[string]uint32),
-		make(map[string]uint32),
-	}
-
 	fsm.logger.WithFields(map[string]any{
 		"totalDuration": time.Since(totalStart).String(),
 		"snapshotIndex": snapshot.Metadata.Index,
@@ -1601,7 +1475,7 @@ func (fsm *Machine) reloadStateFromStore() error {
 		}
 
 		for keyID, entry := range signingKeys {
-			fsm.keyStore.AddPublicKey(keyID, ed25519.PublicKey(entry.PublicKey), entry.ParentKeyID)
+			fsm.keyStore.AddPublicKey(keyID, entry.PublicKey, entry.ParentKeyID)
 		}
 	}
 
@@ -1667,10 +1541,8 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 	for _, ksEntry := range snapshot.GetVolumes() {
 		u128 := attributes.U128FromBytes(ksEntry.GetId().GetId())
 		pair := &raftcmdpb.VolumePair{
-			InputKnown:  ksEntry.GetInputKnown(),
-			InputDiff:   ksEntry.GetInputDiff(),
-			OutputKnown: ksEntry.GetOutputKnown(),
-			OutputDiff:  ksEntry.GetOutputDiff(),
+			Input:  ksEntry.GetInput(),
+			Output: ksEntry.GetOutput(),
 		}
 		volumeStore.Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
 			Tag:  ksEntry.GetId().GetTag(),

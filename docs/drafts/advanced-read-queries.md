@@ -88,7 +88,7 @@ Transaction update key:
 
 Attribute types: `'V'` = Volume, `'M'` = Metadata, `'R'` = Reverted, `'K'` = IdempotencyKey, `'F'` = Reference, `'G'` = Ledger, `'B'` = Boundary.
 
-Entry types: `0x00` = Base, `0x01` = Diff (used by the base+diff compaction model).
+All entries use last-write-wins semantics (no entry type byte in the key suffix).
 
 Because keys are sorted lexicographically, **all entries for the same ledger are physically adjacent** in the LSM tree. Within a ledger, accounts are sorted alphabetically. This means:
 
@@ -263,7 +263,7 @@ The account count is incremented during FSM log application when a new account i
 
 #### Detection of New Accounts
 
-During transaction processing in the FSM, when setting a volume diff for an account:
+During transaction processing in the FSM, when setting a volume for an account:
 - Check if this account already has any Input or Output entry (in cache or store)
 - If not, increment `account_count` in the ledger boundaries
 
@@ -293,15 +293,13 @@ At first glance, the attribute system looks like it supports point-in-time reads
 
 In practice, **three compaction mechanisms destroy historical data**:
 
-1. **Generation-rotation pruning** (`compactVolumeDiffs`): on every generation rotation, `DeleteOldest(oldGen1BaseIndex)` removes all diffs with raft index < threshold. Historical diffs disappear.
+1. **Old entry cleanup** (at merge): during `Buffered.Merge`, when a new value is written, the previous entry for the same key is deleted (point delete if index known, range delete otherwise). This keeps entries bounded.
 
-2. **Known-path base consolidation** (hot accounts): during `Buffered.Merge`, when a volume is preloaded from cache, `SetBase` writes a new base at the **current** raft index. The base advances forward, erasing the previous base.
-
-3. **Inline compaction** (at rotation): `DeleteOldest` removes all diffs with raft index < compaction threshold for tracked dirty keys.
+2. **Backup compaction** (`CompactAllForBackup`): consolidates all entries per key into a single entry at index 0 for portable backups.
 
 **Consequence**: if you call `ComputeValue(store, pastIndex, key)`, the upperBound is `pastIndex + 1`. But:
 - The base may have been consolidated at a raft index **after** `pastIndex` → not found (outside range)
-- Diffs at indices before `pastIndex` may have been pruned → nothing left to compute
+- Entries at indices before `pastIndex` may have been pruned → nothing left to compute
 - Result: zero/nil value, or incomplete data — **silently wrong**
 
 This is by design: compaction trades historical accuracy for bounded storage and write performance. The attribute system maintains the **current** value, not a full history.
@@ -1090,7 +1088,7 @@ For typical use cases (10-20% selectivity), a 2-filter merge-join on 1M accounts
 | **Pagination model** | Cursor-based (last address/txID) | Consistent with existing ListTransactions pattern. Offset-based is unreliable with concurrent writes. |
 | **Ledger log index** | New `0x05` prefix | O(1) per log write, enables O(ledger_logs) per-ledger iteration instead of O(total_logs) |
 | **Account-tx index** | New `0x0B` prefix | Enables account-centric transaction views without full scan |
-| **Point-in-time reads** | Out of scope | Compaction destroys historical diffs — `ComputeValue(pastIndex)` returns incorrect results. See Section 5.5 for alternatives. |
+| **Point-in-time reads** | Out of scope | Old entry cleanup removes superseded values — `ComputeValue(pastIndex)` may return incorrect results. See Section 5.5 for alternatives. |
 | **Account count** | Counter in LedgerBoundaries | Avoids expensive count-by-scan; incremented during normal write path |
 | **Metadata index** | Generic (all metadata), not per-query | Avoids per-query backfill, simpler lifecycle, metadata writes are rare enough that indexing everything is cheap |
 | **Multi-filter strategy** | Recursive iterator tree (AND/OR/NOT) on sorted iterators | Leverages Pebble's natural key ordering, constant memory, composable to arbitrary depth |

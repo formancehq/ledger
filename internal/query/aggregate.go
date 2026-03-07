@@ -26,7 +26,7 @@ type aggregatedVol struct {
 // 3. Accumulate per-asset totals.
 func AggregateVolumes(
 	pebbleReader dal.PebbleReader,
-	volumeAttr *attributes.AccumulatingAttribute[*raftcmdpb.VolumePair],
+	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledger string,
 	accountIter readstore.EntityIterator,
 ) (*commonpb.AggregateResult, error) {
@@ -63,13 +63,13 @@ func AggregateVolumes(
 
 			if entry.Value != nil {
 				var tmp uint256.Int
-				if entry.Value.GetInputKnown() != nil {
-					entry.Value.GetInputKnown().IntoUint256(&tmp)
+				if entry.Value.GetInput() != nil {
+					entry.Value.GetInput().IntoUint256(&tmp)
 					agg.input.Add(agg.input, &tmp)
 				}
 
-				if entry.Value.GetOutputKnown() != nil {
-					entry.Value.GetOutputKnown().IntoUint256(&tmp)
+				if entry.Value.GetOutput() != nil {
+					entry.Value.GetOutput().IntoUint256(&tmp)
 					agg.output.Add(agg.output, &tmp)
 				}
 			}

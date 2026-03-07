@@ -16,13 +16,13 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// mergeSimple writes each update to a SimpleAttribute using Set + selective delete.
+// mergeSimple writes each update to an Attribute using Set + selective delete.
 // For new keys (no previous value), no delete is needed.
 // For updates with a known previous raft index, a point delete avoids range tombstones.
 // Falls back to DeleteOldest (range delete) only when the previous index is unknown
 // (e.g. first update after a cold preload from Pebble).
 func mergeSimple[K attributes.Key, V proto.Message](
-	attr *attributes.SimpleAttribute[V],
+	attr *attributes.Attribute[V],
 	batch *dal.Batch,
 	index uint64,
 	updates []attributes.Update[K, V],
@@ -139,35 +139,14 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		return fmt.Errorf("failed merging boundary attributes: %w", err)
 	}
 
-	// Process Volume updates and track dirty volume keys inline
+	// Process Volume updates — all volumes are now always preloaded with Known values.
 	volumeUpdates, _, err := b.Derived.Volumes.Merge(index)
 	if err != nil {
 		return fmt.Errorf("failed to merge volumes: %w", err)
 	}
 
-	for _, update := range volumeUpdates {
-		// Normalize for Pebble storage: the Known/Diff distinction is an in-memory
-		// optimization only. In Pebble, values are always stored in InputKnown/OutputKnown.
-		storePair := &raftcmdpb.VolumePair{
-			InputKnown:  coalesceVolumeSide(update.New.GetInputKnown(), update.New.GetInputDiff()),
-			OutputKnown: coalesceVolumeSide(update.New.GetOutputKnown(), update.New.GetOutputDiff()),
-		}
-
-		// If the original VolumePair had Known values, write as SetBase (absolute).
-		// Otherwise, write as AddDiff (cumulative delta).
-		if update.New.GetInputKnown() != nil || update.New.GetOutputKnown() != nil {
-			err := b.attrs.Volume.SetBase(batch, index, update.CanonicalKey, storePair)
-			if err != nil {
-				return fmt.Errorf("could not set volume base: %w", err)
-			}
-		} else {
-			err := b.attrs.Volume.AddDiff(batch, index, update.CanonicalKey, storePair)
-			if err != nil {
-				return fmt.Errorf("failed adding volume diff: %w", err)
-			}
-		}
-
-		b.fsm.dirtyVolumeKeys[0][string(update.CanonicalKey)]++
+	if err := mergeSimple(b.attrs.Volume, batch, index, volumeUpdates); err != nil {
+		return fmt.Errorf("failed merging volume attributes: %w", err)
 	}
 
 	// Defensive check: double-entry invariant.
@@ -609,49 +588,18 @@ func (b *Buffered) SetLastLogHash(hash []byte) {
 	b.LastLogHash = hash
 }
 
-// coalesceVolumeSide returns Known if set, otherwise Diff.
-// Used to normalize a VolumePair for Pebble storage where
-// the Known/Diff distinction is irrelevant.
-func coalesceVolumeSide(known, diff *commonpb.Uint256) *commonpb.Uint256 {
-	if known != nil {
-		return known
-	}
-
-	return diff
-}
-
 // addVolumeSideDelta extracts the net delta for one side (input or output) of a VolumePair update.
+// Known values are always non-nil (preloaders send explicit 0).
 // Uses the provided tmp and scratch uint256.Ints for intermediate computations to avoid heap allocations.
-func addVolumeSideDelta(acc *uint256.Int, tmp *uint256.Int, scratch *uint256.Int, newKnown, newDiff *commonpb.Uint256, oldKnown, oldDiff *commonpb.Uint256) {
-	if newKnown != nil {
-		newKnown.IntoUint256(tmp)
+func addVolumeSideDelta(acc *uint256.Int, tmp *uint256.Int, scratch *uint256.Int, newKnown, oldKnown *commonpb.Uint256) {
+	newKnown.IntoUint256(tmp)
 
-		if oldKnown != nil {
-			oldKnown.IntoUint256(scratch)
-			tmp.Sub(tmp, scratch)
-			acc.Add(acc, tmp)
-
-			return
-		}
-
-		acc.Add(acc, tmp)
-
-		return
+	if oldKnown != nil {
+		oldKnown.IntoUint256(scratch)
+		tmp.Sub(tmp, scratch)
 	}
 
-	if newDiff != nil {
-		newDiff.IntoUint256(tmp)
-
-		if oldDiff != nil {
-			oldDiff.IntoUint256(scratch)
-			tmp.Sub(tmp, scratch)
-			acc.Add(acc, tmp)
-
-			return
-		}
-
-		acc.Add(acc, tmp)
-	}
+	acc.Add(acc, tmp)
 }
 
 // checkDoubleEntryInvariant verifies that the sum of input deltas equals the sum of output deltas.
@@ -668,20 +616,17 @@ func checkDoubleEntryInvariant(
 	)
 
 	for _, update := range volumeUpdates {
-		var oldInputKnown, oldInputDiff, oldOutputKnown, oldOutputDiff *commonpb.Uint256
+		var oldInput, oldOutput *commonpb.Uint256
 
 		if update.Old.IsDefined() {
-			old := update.Old.Value()
-			if old != nil {
-				oldInputKnown = old.GetInputKnown()
-				oldInputDiff = old.GetInputDiff()
-				oldOutputKnown = old.GetOutputKnown()
-				oldOutputDiff = old.GetOutputDiff()
+			if old := update.Old.Value(); old != nil {
+				oldInput = old.GetInput()
+				oldOutput = old.GetOutput()
 			}
 		}
 
-		addVolumeSideDelta(&inputSum, &tmp, &scratch, update.New.GetInputKnown(), update.New.GetInputDiff(), oldInputKnown, oldInputDiff)
-		addVolumeSideDelta(&outputSum, &tmp, &scratch, update.New.GetOutputKnown(), update.New.GetOutputDiff(), oldOutputKnown, oldOutputDiff)
+		addVolumeSideDelta(&inputSum, &tmp, &scratch, update.New.GetInput(), oldInput)
+		addVolumeSideDelta(&outputSum, &tmp, &scratch, update.New.GetOutput(), oldOutput)
 	}
 
 	if !inputSum.Eq(&outputSum) {

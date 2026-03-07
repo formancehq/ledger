@@ -107,15 +107,17 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		require.Equal(t, uint64(1000000), machine.lastAppliedTimestamp)
 
 		// Create a transaction with a lower timestamp (clock regression)
+		txOrders := []*raftcmdpb.Order{
+			createTransactionOrder(ledgerName, true,
+				newPosting("world", "user:alice", "EUR", 100),
+			),
+		}
 		result, err = machine.ApplyEntries(ctx,
 			makeEntry(t, 2, &raftcmdpb.Proposal{
-				Id: 2,
-				Orders: []*raftcmdpb.Order{
-					createTransactionOrder(ledgerName, true,
-						newPosting("world", "user:alice", "EUR", 100),
-					),
-				},
-				Date: &commonpb.Timestamp{Data: 500000}, // Behind last applied
+				Id:      2,
+				Orders:  txOrders,
+				Date:    &commonpb.Timestamp{Data: 500000}, // Behind last applied
+				Preload: &raftcmdpb.PreloadSet{Preloads: buildVolumePreloads(txOrders)},
 			}),
 		)
 		require.NoError(t, err)
@@ -152,15 +154,17 @@ func TestHLCTimestampIntegration(t *testing.T) {
 		require.NoError(t, result.Results[0].Error)
 
 		// Create transaction with a higher timestamp
+		txOrders := []*raftcmdpb.Order{
+			createTransactionOrder(ledgerName, true,
+				newPosting("world", "user:alice", "EUR", 100),
+			),
+		}
 		result, err = machine.ApplyEntries(ctx,
 			makeEntry(t, 2, &raftcmdpb.Proposal{
-				Id: 2,
-				Orders: []*raftcmdpb.Order{
-					createTransactionOrder(ledgerName, true,
-						newPosting("world", "user:alice", "EUR", 100),
-					),
-				},
-				Date: &commonpb.Timestamp{Data: 5000},
+				Id:      2,
+				Orders:  txOrders,
+				Date:    &commonpb.Timestamp{Data: 5000},
+				Preload: &raftcmdpb.PreloadSet{Preloads: buildVolumePreloads(txOrders)},
 			}),
 		)
 		require.NoError(t, err)
@@ -229,15 +233,17 @@ func TestHLCTimestampIntegration(t *testing.T) {
 
 		proposalDates := []uint64{900, 800, 700, 2000, 1500}
 		for i, date := range proposalDates {
+			txOrders := []*raftcmdpb.Order{
+				createTransactionOrder(ledgerName, true,
+					newPosting("world", "user:alice", "EUR", 10),
+				),
+			}
 			result, err := machine.ApplyEntries(ctx,
 				makeEntry(t, uint64(i+2), &raftcmdpb.Proposal{
-					Id: uint64(i + 2),
-					Orders: []*raftcmdpb.Order{
-						createTransactionOrder(ledgerName, true,
-							newPosting("world", "user:alice", "EUR", 10),
-						),
-					},
-					Date: &commonpb.Timestamp{Data: date},
+					Id:      uint64(i + 2),
+					Orders:  txOrders,
+					Date:    &commonpb.Timestamp{Data: date},
+					Preload: &raftcmdpb.PreloadSet{Preloads: buildVolumePreloads(txOrders)},
 				}),
 			)
 			require.NoError(t, err)

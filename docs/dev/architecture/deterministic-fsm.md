@@ -1,7 +1,7 @@
 # RFC: Deterministic FSM Cache + Preload (Raft Ledger + Pebble)
 
-**Status:** Implemented  
-**Scope:** Raft FSM apply determinism, cache strategy, admission + Preload, AttributeLoader for concurrent loads, storage layout (bases/diffs), snapshots, backpressure  
+**Status:** Implemented
+**Scope:** Raft FSM apply determinism, cache strategy, admission + Preload, AttributeLoader for concurrent loads, storage layout, snapshots, backpressure
 **Non-goals:** consensus algorithm changes, networking, client API semantics beyond admission/preload requirements
 
 ---
@@ -14,7 +14,7 @@ We achieve this with:
 
 1. A **deterministic working set** based on Raft log **generations** (`gen0/gen1`) derived only from Raft indexes.
 2. An **Admission** path (leader-side, parallel) that builds a **Preload** payload at a **canonical generation boundary** `B(i)` and attaches it to the Raft entry.
-3. A storage model that persists **indexed bases** and **indexed diffs**, enabling Admission to rebuild a base at the canonical boundary.
+3. A storage model that persists **indexed values** (last-write-wins), enabling Admission to rebuild values at the canonical boundary.
 
 Snapshots are **not synchronized** across nodes (etcd/raft), therefore snapshots must include `gen0 + gen1`.
 
@@ -169,7 +169,7 @@ B(i) = 0   // initial state
 Correctness model:
 
 ```
-Balance@apply(i) = BaseBalance@B(i) + OverlayDeltaRAM(since B(i))
+Balance@apply(i) = PreloadedBalance@B(i) + OverlayDeltaRAM(since B(i))
 ```
 
 ---
@@ -400,19 +400,19 @@ Business rejection (e.g., insufficient funds) is a deterministic outcome of appl
 
 ---
 
-## 9. RAM Overlays (Deltas) relative to boundary
+## 9. RAM Overlays relative to boundary
 
-We store RAM deltas relative to the canonical base boundary.
+We store RAM overlays relative to the canonical boundary.
 
 Model:
 
 ```
-Balance = PersistedBase@B + OverlayDeltaRAM(since B)
+Balance = PreloadedValue@B + OverlayDeltaRAM(since B)
 ```
 
-When a check becomes necessary for a previously “lazy” account:
+When a check becomes necessary for a previously uncached account:
 
-- use Preload base at `B`
+- use Preload value at `B`
 - apply overlay deltas
 - materialize in `gen0`
 
@@ -465,73 +465,51 @@ In practice: expected negligible with continuous Pebble flush (batch + no sync).
 
 ---
 
-## 12. Storage model (Pebble): indexed bases + indexed diffs
+## 12. Storage model (Pebble): indexed values (last-write-wins)
 
 We need to reconstruct balances at boundary `B`.
 
 ### 12.1 Data model
 
-For each account `acct`:
+For each account `acct`, all attributes (including volumes) use **last-write-wins** semantics:
 
-- `base[acct] = { index, balance, meta }`
-- `diff[acct, index] = { delta, metaDelta }` keyed by Raft index
+- `value[acct, index] = { balance, meta }` keyed by Raft index
 
 Reconstruction for boundary `B`:
 
 ```
-Balance@B = Base@(baseIndex ≤ B) + LatestDiff(index ∈ (baseIndex, B])
+Balance@B = LatestValue(index ≤ B)
 ```
 
-### 12.2 FSM writes (opportunistic)
+All volumes are always preloaded (sources AND destinations) before processing, so the FSM always has absolute Known values. This eliminates the need for diff accumulation.
+
+### 12.2 FSM writes
 
 FSM flushes at apply time (batch, no sync):
 
-- always write indexed cumulative `diff[acct, i]` for entry index `i` (each diff contains the total delta since the base)
-- write/update `base[acct]` opportunistically when a materialized balance/meta is available:
-  - account already materialized in RAM, or
-  - base material arrived via Preload
+- write the absolute volume value `value[acct, i]` for entry index `i`
+- old entries for the same key are cleaned up during merge (point or range delete)
 
-Goal: never force a Pebble read in Apply just to write a base.
+### 12.3 Old Entry Cleanup
 
-### 12.3 Volume Diff Compaction at Generation Rotation
+When a new value is written during `Buffered.Merge`, old entries for the same canonical key are cleaned up:
+- If the previous raft index is known (from cache), a point delete removes just that entry
+- If the previous index is unknown (cold preload), a range delete removes all entries before the current index
 
-Volume diffs accumulate in PebbleDB and must be periodically pruned to prevent unbounded growth. Compaction is triggered deterministically during cache generation rotation (every K entries).
+This keeps the number of entries per key bounded without requiring a separate compaction step.
 
-**Implementation:** When `CheckRotationNeeded` detects a generation change, it captures the old Gen1 base index as the compaction threshold. `compactVolumeDiffs` then calls `DeleteOldest(compactionThreshold)` on every Input and Output volume key, removing all entries with raft index strictly less than the threshold.
+### 12.4 Practical Pebble key layout
 
-This is a **prune-only** strategy — old superseded diffs are deleted, but no new base is created. This design is critical because:
+All attributes use a unified key format:
 
-1. **Cumulative diffs are relative to the original base.** Each diff stores the total delta since the base (or implicit base 0 for force=true transactions). Creating a new base via `SetBase` would corrupt subsequent cumulative diffs that are still relative to the original base.
-
-2. **Only the latest diff matters.** `ComputeValue` uses `base + latestDiff`, so removing older diffs has no effect on computed values.
-
-3. **Hot accounts compact naturally.** Accounts that are frequently accessed via admission get preloaded values (`Known != nil`), which are written as `SetBase` entries during `Buffered.Merge`. This naturally consolidates their state.
-
-**Effect:** Entry count per volume key is bounded to approximately `2*K` (entries from the current and previous generation). For K=10000, this means at most ~20000 diff entries per account/asset combination.
-
-### 12.3.1 Inline Volume Diff Compaction
-
-Compaction is performed **inline** in the same Pebble batch as the generation rotation, inside `ApplyEntries`. When `CheckRotationNeeded` detects a generation change, the FSM calls `compactVolumeDiffs(batch, oldGen1BaseIndex, dirtyKeys)` using the same batch that will be committed atomically with all entry applications.
-
-**Implementation:** The FSM tracks dirty volume keys per generation in a 3-slot rotating buffer (`dirtyVolumeKeys[0..2]`). At rotation, slot[2] (the oldest generation's keys) is consumed and passed to `compactVolumeDiffs`, which calls `DeleteOldest(batch, compactionIndex, canonicalKey)` for each Input/Output key. This issues `DeleteRange` operations that remove all entries strictly before the compaction index.
-
-**Safety:** Using the same batch as `ApplyEntries` ensures atomicity — compaction and entry application are committed together. There are no concurrent batch operations, eliminating any risk of race conditions on Pebble writes.
-
-**Effect:** Entry count per volume key is bounded. Hot accounts compact naturally through `SetBase` during `Buffered.Merge`. The inline compaction removes superseded intermediate diffs without requiring a background goroutine.
-
-See [System Attributes](./attributes.md#volume-compaction) for a detailed description of all compaction mechanisms.
-
-### 12.4 Practical Pebble key layout (suggestion)
-
-Example prefixes:
-
-- `b/<acct>` -> `{index, balance, meta}`  (single latest base record)
-- `d/<acct>/<index>` -> `{delta, metaDelta}` (diff per index)
+```
+[KeyPrefixAttributes(1B)][canonical key(NB)][attr type(1B)][raft index(8B)]
+```
 
 Admission algorithm at boundary `B`:
 
-1) read `b/<acct>` (baseIndex)
-2) scan `d/<acct>/...` for `(baseIndex, B]` (bounded by compaction policy)
+1) Scan attribute entries for the canonical key
+2) Return the latest value at or before `B`
 
 ---
 
@@ -558,8 +536,8 @@ flowchart TD
   A -->|Numscript analysis<br/>Build Preload| P[Raft Propose Entry]
   P --> R[Raft Replication / Commit]
   R -->|CommittedEntries| F[FSM Apply - all nodes<br/>Sequential + deterministic<br/>RAM-only checks]
-  F -->|Flush - batch, no sync<br/>Write diffs always<br/>Write base opportunistically| S[Pebble Storage<br/>Indexed bases + diffs]
-  S --> BG[Inline compaction at rotation<br/>Delete obsolete diffs<br/>Same batch as ApplyEntries]
+  F -->|Flush - batch, no sync<br/>Write absolute values| S[Pebble Storage<br/>Indexed values - last-write-wins]
+  S --> BG[Old entry cleanup at merge<br/>Point or range delete]
 ```
 
 ### 14.2 Generations and canonical boundary
@@ -591,6 +569,6 @@ flowchart LR
 - Apply is RAM-only and enforces checks on every node deterministically.
 - Preload may include an “older” balance at `B(i)`; overlays since `B(i)` ensure correctness.
 - Snapshots are not aligned across nodes → snapshot must embed `gen0 + gen1`.
-- Pebble stores indexed bases and diffs; inline compaction at rotation keeps reads bounded.
+- Pebble stores indexed values (last-write-wins); old entry cleanup at merge keeps reads bounded.
 - `persistedIndex` is an operational guardrail and backpressure signal (rare), not a rotation input.
 - `AttributeLoader` coordinates concurrent attribute loads to prevent duplicate store reads.

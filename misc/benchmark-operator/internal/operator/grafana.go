@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -109,6 +110,7 @@ func (g *GrafanaClient) ProcessTestRun(ctx context.Context, obj *unstructured.Un
 		dashboard, title, err := g.fetchDashboard(ctx, dash.UID)
 		if err != nil {
 			log.Printf("failed to fetch dashboard %s: %v", dash.UID, err)
+
 			continue
 		}
 
@@ -135,12 +137,13 @@ func (g *GrafanaClient) ProcessTestRun(ctx context.Context, obj *unstructured.Un
 				snapshot, err := g.createSnapshot(ctx, snapshotName, variantDashboard)
 				if err != nil {
 					log.Printf("failed to create snapshot for node %s: %v", node, err)
+
 					continue
 				}
 				liveURL := g.liveDashboardURL(dash.UID, fromMs, toMs, node)
 				report.Entries = append(report.Entries, ReportEntry{
 					Dashboard:   title,
-					Variant:     fmt.Sprintf("node %s", node),
+					Variant:     "node " + node,
 					SnapshotURL: snapshot.URL,
 					DeleteURL:   snapshot.DeleteURL,
 					DeleteKey:   snapshot.DeleteKey,
@@ -148,6 +151,7 @@ func (g *GrafanaClient) ProcessTestRun(ctx context.Context, obj *unstructured.Un
 					LiveURL:     liveURL,
 				})
 			}
+
 			continue
 		}
 
@@ -158,6 +162,7 @@ func (g *GrafanaClient) ProcessTestRun(ctx context.Context, obj *unstructured.Un
 		snapshot, err := g.createSnapshot(ctx, snapshotName, dashboard)
 		if err != nil {
 			log.Printf("failed to create snapshot for %s: %v", dash.UID, err)
+
 			continue
 		}
 		liveURL := g.liveDashboardURL(dash.UID, fromMs, toMs, "")
@@ -176,6 +181,7 @@ func (g *GrafanaClient) ProcessTestRun(ctx context.Context, obj *unstructured.Un
 		if report.Entries[i].Dashboard == report.Entries[j].Dashboard {
 			return report.Entries[i].Variant < report.Entries[j].Variant
 		}
+
 		return report.Entries[i].Dashboard < report.Entries[j].Dashboard
 	})
 
@@ -211,8 +217,8 @@ func (g *GrafanaClient) fetchDashboards(ctx context.Context) ([]dashboardInfo, e
 	return list, nil
 }
 
-func (g *GrafanaClient) fetchDashboard(ctx context.Context, uid string) (map[string]interface{}, string, error) {
-	resp, err := g.doRequest(ctx, http.MethodGet, fmt.Sprintf("/api/dashboards/uid/%s", uid), nil)
+func (g *GrafanaClient) fetchDashboard(ctx context.Context, uid string) (map[string]any, string, error) {
+	resp, err := g.doRequest(ctx, http.MethodGet, "/api/dashboards/uid/"+uid, nil)
 	if err != nil {
 		return nil, "", err
 	}
@@ -223,7 +229,7 @@ func (g *GrafanaClient) fetchDashboard(ctx context.Context, uid string) (map[str
 	}
 
 	var payload struct {
-		Dashboard map[string]interface{} `json:"dashboard"`
+		Dashboard map[string]any `json:"dashboard"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
@@ -304,6 +310,7 @@ func (g *GrafanaClient) fetchNodeValues(ctx context.Context, datasourceUID strin
 	}
 
 	sort.Strings(values)
+
 	return unique(values), nil
 }
 
@@ -344,6 +351,7 @@ func (g *GrafanaClient) fetchNodeValuesViaQuery(ctx context.Context, datasourceU
 	}
 
 	sort.Strings(values)
+
 	return unique(values), nil
 }
 
@@ -354,8 +362,8 @@ type SnapshotInfo struct {
 	Key       string
 }
 
-func (g *GrafanaClient) createSnapshot(ctx context.Context, name string, dashboard map[string]interface{}) (SnapshotInfo, error) {
-	payload := map[string]interface{}{
+func (g *GrafanaClient) createSnapshot(ctx context.Context, name string, dashboard map[string]any) (SnapshotInfo, error) {
+	payload := map[string]any{
 		"dashboard": dashboard,
 		"name":      name,
 		"expires":   0,
@@ -396,6 +404,7 @@ func (g *GrafanaClient) createSnapshot(ctx context.Context, name string, dashboa
 				Key:       result.Key,
 			}, nil
 		}
+
 		return SnapshotInfo{
 			URL:       strings.TrimRight(g.cfg.GrafanaURL, "/") + result.URL,
 			DeleteURL: g.resolveURL(result.DeleteURL),
@@ -416,7 +425,7 @@ func (g *GrafanaClient) createSnapshot(ctx context.Context, name string, dashboa
 	if result.Key != "" {
 		return SnapshotInfo{
 			URL:       fmt.Sprintf("%s/dashboard/snapshot/%s", strings.TrimRight(g.cfg.GrafanaURL, "/"), result.Key),
-			DeleteURL: g.resolveURL(fmt.Sprintf("/api/snapshots-delete/%s", result.Key)),
+			DeleteURL: g.resolveURL("/api/snapshots-delete/" + result.Key),
 			DeleteKey: result.DeleteKey,
 			Key:       result.Key,
 		}, nil
@@ -431,10 +440,10 @@ func (g *GrafanaClient) DeleteSnapshot(ctx context.Context, deleteURL, deleteKey
 		candidates = append(candidates, g.resolveURL(deleteURL))
 	}
 	if deleteKey != "" {
-		candidates = append(candidates, g.resolveURL(fmt.Sprintf("/api/snapshots-delete/%s", deleteKey)))
+		candidates = append(candidates, g.resolveURL("/api/snapshots-delete/"+deleteKey))
 	}
 	if snapshotKey != "" {
-		candidates = append(candidates, g.resolveURL(fmt.Sprintf("/api/snapshots/%s", snapshotKey)))
+		candidates = append(candidates, g.resolveURL("/api/snapshots/"+snapshotKey))
 	}
 
 	var lastErr error
@@ -445,6 +454,7 @@ func (g *GrafanaClient) DeleteSnapshot(ctx context.Context, deleteURL, deleteKey
 		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, target, nil)
 		if err != nil {
 			lastErr = err
+
 			continue
 		}
 		if g.cfg.GrafanaUser != "" || g.cfg.GrafanaPassword != "" {
@@ -454,6 +464,7 @@ func (g *GrafanaClient) DeleteSnapshot(ctx context.Context, deleteURL, deleteKey
 		resp, err := g.client.Do(req)
 		if err != nil {
 			lastErr = err
+
 			continue
 		}
 		_ = resp.Body.Close()
@@ -468,6 +479,7 @@ func (g *GrafanaClient) DeleteSnapshot(ctx context.Context, deleteURL, deleteKey
 	if lastErr == nil {
 		return nil
 	}
+
 	return lastErr
 }
 
@@ -477,10 +489,10 @@ func (g *GrafanaClient) liveDashboardURL(uid string, fromMs, toMs int64, nodeVal
 
 	params := url.Values{}
 	if fromMs > 0 {
-		params.Set("from", fmt.Sprintf("%d", fromMs))
+		params.Set("from", strconv.FormatInt(fromMs, 10))
 	}
 	if toMs > 0 {
-		params.Set("to", fmt.Sprintf("%d", toMs))
+		params.Set("to", strconv.FormatInt(toMs, 10))
 	}
 	if nodeValue != "" {
 		params.Set("var-node", nodeValue)
@@ -489,6 +501,7 @@ func (g *GrafanaClient) liveDashboardURL(uid string, fromMs, toMs int64, nodeVal
 	if encoded := params.Encode(); encoded != "" {
 		return path + "?" + encoded
 	}
+
 	return path
 }
 
@@ -499,6 +512,7 @@ func (g *GrafanaClient) resolveURL(path string) string {
 	if strings.HasPrefix(path, "http") {
 		return path
 	}
+
 	return strings.TrimRight(g.cfg.GrafanaURL, "/") + path
 }
 
@@ -533,7 +547,7 @@ func getCompletionTime(obj *unstructured.Unstructured) time.Time {
 	conditions, found, err := unstructured.NestedSlice(obj.Object, "status", "conditions")
 	if err == nil && found {
 		for _, raw := range conditions {
-			condition, ok := raw.(map[string]interface{})
+			condition, ok := raw.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -554,30 +568,30 @@ func getCompletionTime(obj *unstructured.Unstructured) time.Time {
 	return time.Now().UTC()
 }
 
-func setDashboardTime(dashboard map[string]interface{}, from, to time.Time) {
-	dashboard["time"] = map[string]interface{}{
+func setDashboardTime(dashboard map[string]any, from, to time.Time) {
+	dashboard["time"] = map[string]any{
 		"from": from.Format(time.RFC3339),
 		"to":   to.Format(time.RFC3339),
 	}
 }
 
-func updateNodeVariable(dashboard map[string]interface{}, nodes []string, selected string) {
+func updateNodeVariable(dashboard map[string]any, nodes []string, selected string) {
 	if len(nodes) == 0 {
 		return
 	}
 
-	templatingRaw, ok := dashboard["templating"].(map[string]interface{})
+	templatingRaw, ok := dashboard["templating"].(map[string]any)
 	if !ok {
 		return
 	}
 
-	listRaw, ok := templatingRaw["list"].([]interface{})
+	listRaw, ok := templatingRaw["list"].([]any)
 	if !ok {
 		return
 	}
 
 	for _, item := range listRaw {
-		variable, ok := item.(map[string]interface{})
+		variable, ok := item.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -591,9 +605,9 @@ func updateNodeVariable(dashboard map[string]interface{}, nodes []string, select
 			allValue = ".*"
 		}
 
-		options := make([]interface{}, 0, len(nodes)+1)
+		options := make([]any, 0, len(nodes)+1)
 		if includeAll {
-			options = append(options, map[string]interface{}{
+			options = append(options, map[string]any{
 				"text":     "All",
 				"value":    allValue,
 				"selected": selected == "",
@@ -606,7 +620,7 @@ func updateNodeVariable(dashboard map[string]interface{}, nodes []string, select
 		}
 
 		for _, node := range nodes {
-			options = append(options, map[string]interface{}{
+			options = append(options, map[string]any{
 				"text":     node,
 				"value":    node,
 				"selected": selectedValue == node,
@@ -615,11 +629,10 @@ func updateNodeVariable(dashboard map[string]interface{}, nodes []string, select
 
 		variable["options"] = options
 		if selectedValue == "" {
-			variable["current"] = map[string]interface{}{"text": "All", "value": allValue}
+			variable["current"] = map[string]any{"text": "All", "value": allValue}
 		} else {
-			variable["current"] = map[string]interface{}{"text": selectedValue, "value": selectedValue}
+			variable["current"] = map[string]any{"text": selectedValue, "value": selectedValue}
 		}
-
 	}
 }
 
@@ -633,6 +646,7 @@ func unique(values []string) []string {
 		seen[value] = struct{}{}
 		result = append(result, value)
 	}
+
 	return result
 }
 
@@ -642,19 +656,20 @@ func sanitize(value string) string {
 	value = strings.ReplaceAll(value, "_", "-")
 	value = strings.ReplaceAll(value, "/", "-")
 	value = strings.ReplaceAll(value, "--", "-")
+
 	return strings.Trim(value, "-")
 }
 
-func cloneMap(source map[string]interface{}) map[string]interface{} {
+func cloneMap(source map[string]any) map[string]any {
 	bytes, err := json.Marshal(source)
 	if err != nil {
 		return source
 	}
 
-	var copy map[string]interface{}
-	if err := json.Unmarshal(bytes, &copy); err != nil {
+	var cloned map[string]any
+	if err := json.Unmarshal(bytes, &cloned); err != nil {
 		return source
 	}
 
-	return copy
+	return cloned
 }

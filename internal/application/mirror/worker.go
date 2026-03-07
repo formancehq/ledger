@@ -552,4 +552,71 @@ func (w *Worker) buildPreloads(cmd *raftcmdpb.Proposal) {
 			})
 		}
 	}
+
+	// Preload volumes for all postings in the orders
+	seen := make(map[domain.VolumeKey]struct{})
+
+	for _, order := range cmd.GetOrders() {
+		mi := order.GetMirrorIngest()
+		if mi == nil {
+			continue
+		}
+
+		var postings []*commonpb.Posting
+		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
+			postings = ct.GetPostings()
+		} else if rt := mi.GetEntry().GetRevertedTransaction(); rt != nil {
+			postings = rt.GetReversePostings()
+		}
+
+		for _, posting := range postings {
+			for _, volKey := range []domain.VolumeKey{
+				{AccountKey: domain.AccountKey{Ledger: w.ledgerName, Account: posting.GetSource()}, Asset: posting.GetAsset()},
+				{AccountKey: domain.AccountKey{Ledger: w.ledgerName, Account: posting.GetDestination()}, Asset: posting.GetAsset()},
+			} {
+				if _, ok := seen[volKey]; ok {
+					continue
+				}
+
+				seen[volKey] = struct{}{}
+
+				volCanonical := volKey.Bytes()
+				volID, volTag := attributes.MakeKey(attributes.DefaultSeeds, volCanonical)
+
+				if _, ok := w.cache.Volumes.Get(volID); ok {
+					continue
+				}
+
+				w.preloadCacheMiss.Add(context.Background(), 1,
+					metric.WithAttributes(w.ledgerAttr, attribute.String("type", "volume")))
+
+				vol, err := w.attrs.Volume.ComputeValue(w.store, ^uint64(0), volCanonical)
+				if err != nil {
+					continue
+				}
+
+				var preloadInput, preloadOutput *commonpb.Uint256
+				if vol != nil {
+					preloadInput = vol.GetInput()
+					preloadOutput = vol.GetOutput()
+				}
+				if preloadInput == nil {
+					preloadInput = commonpb.NewUint256FromUint64(0)
+				}
+				if preloadOutput == nil {
+					preloadOutput = commonpb.NewUint256FromUint64(0)
+				}
+
+				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
+					Type: &raftcmdpb.Preload_Volume{
+						Volume: &raftcmdpb.PreloadVolume{
+							Id:     &raftcmdpb.AttributeID{Id: volID[:], Tag: volTag},
+							Input:  preloadInput,
+							Output: preloadOutput,
+						},
+					},
+				})
+			}
+		}
+	}
 }

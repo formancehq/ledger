@@ -765,7 +765,7 @@ type HeadlessServiceSpec struct {
 
 // AutoNetworkingSpec centralizes automatic Ingress, gRPC Ingress, and DNSEndpoint
 // creation from the LedgerService name. TLD and suffix are shared.
-// Generated host/dnsName: <service-name><suffix>.<tld>
+// Generated host/dnsName: <service-name><suffix>.<tld>.
 type AutoNetworkingSpec struct {
 	// TLD is the top-level domain (e.g., "example.com").
 	TLD string `json:"tld"`

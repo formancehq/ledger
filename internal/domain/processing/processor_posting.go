@@ -1,19 +1,19 @@
 package processing
 
 import (
-	"errors"
+	"fmt"
 	"math/big"
 
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
 // applyPosting applies a single posting by updating volumes.
 // It checks the source balance (unless skipBalanceCheck is true or source is "world"),
 // increases Output for source and Input for destination.
+// All volumes must be preloaded by the admission layer — nil volumes return an error.
 func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, skipBalanceCheck bool) error {
 	sourceKey := domain.VolumeKey{
 		AccountKey: domain.AccountKey{
@@ -27,39 +27,22 @@ func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, ski
 	var amount uint256.Int
 	posting.GetAmount().IntoUint256(&amount)
 
-	// Get current volume pair for source
+	// Get current volume pair for source — must be preloaded
 	sourceVol, err := s.GetVolume(sourceKey)
-	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		return err
+	if err != nil {
+		return fmt.Errorf("source volume %s/%s not preloaded: %w", posting.GetSource(), posting.GetAsset(), err)
 	}
-
-	if sourceVol == nil {
-		sourceVol = &raftcmdpb.VolumePair{}
+	if sourceVol == nil || sourceVol.GetInput() == nil || sourceVol.GetOutput() == nil {
+		return fmt.Errorf("source volume %s/%s not fully preloaded", posting.GetSource(), posting.GetAsset())
 	}
 
 	// Balance check (skip for "world" account and when skipBalanceCheck is true)
 	if !skipBalanceCheck && posting.GetSource() != "world" {
-		// Compute effective input value. When a preload set InputKnown, it already
-		// includes any prior InputDiff (see putInCacheVolumePair merge). When only
-		// InputDiff is present (force TX volumes still in cache without preload),
-		// the diff IS the total accumulated input.
 		var inputValue uint256.Int
-		switch {
-		case sourceVol.GetInputKnown() != nil:
-			sourceVol.GetInputKnown().IntoUint256(&inputValue)
-		case sourceVol.GetInputDiff() != nil:
-			sourceVol.GetInputDiff().IntoUint256(&inputValue)
-		default:
-			return &domain.ErrBalanceNotFound{Account: posting.GetSource(), Asset: posting.GetAsset()}
-		}
+		sourceVol.GetInput().IntoUint256(&inputValue)
 
-		// Compute effective output value with the same logic.
 		var outputValue, outputPlusAmount uint256.Int
-		if sourceVol.GetOutputKnown() != nil {
-			sourceVol.GetOutputKnown().IntoUint256(&outputValue)
-		} else if sourceVol.GetOutputDiff() != nil {
-			sourceVol.GetOutputDiff().IntoUint256(&outputValue)
-		}
+		sourceVol.GetOutput().IntoUint256(&outputValue)
 
 		sum, overflow := outputPlusAmount.AddOverflow(&outputValue, &amount)
 		if overflow || inputValue.Lt(sum) {
@@ -75,11 +58,13 @@ func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, ski
 		}
 	}
 
-	// scratch is reused across both addToVolumeSide calls
+	// scratch is reused across both volume updates
 	var scratch uint256.Int
 
 	// Increase Output for source (money going out)
-	addToVolumeSide(&sourceVol.OutputKnown, &sourceVol.OutputDiff, &amount, posting.GetAmount(), &scratch)
+	sourceVol.GetOutput().IntoUint256(&scratch)
+	scratch.Add(&scratch, &amount)
+	sourceVol.GetOutput().SetFromUint256(&scratch)
 	s.PutVolume(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
@@ -92,38 +77,17 @@ func applyPosting(s InMemoryStore, ledger string, posting *commonpb.Posting, ski
 	}
 
 	destVol, err := s.GetVolume(destKey)
-	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		return err
+	if err != nil {
+		return fmt.Errorf("destination volume %s/%s not preloaded: %w", posting.GetDestination(), posting.GetAsset(), err)
+	}
+	if destVol == nil || destVol.GetInput() == nil || destVol.GetOutput() == nil {
+		return fmt.Errorf("destination volume %s/%s not fully preloaded", posting.GetDestination(), posting.GetAsset())
 	}
 
-	if destVol == nil {
-		destVol = &raftcmdpb.VolumePair{}
-	}
-
-	addToVolumeSide(&destVol.InputKnown, &destVol.InputDiff, &amount, posting.GetAmount(), &scratch)
+	destVol.GetInput().IntoUint256(&scratch)
+	scratch.Add(&scratch, &amount)
+	destVol.GetInput().SetFromUint256(&scratch)
 	s.PutVolume(destKey, destVol)
 
 	return nil
-}
-
-// addToVolumeSide adds amount to one side (input or output) of a VolumePair.
-// If Known is set, it updates Known (SetBase path). Otherwise, it updates Diff (AddDiff path).
-// rawAmount is the original proto Uint256 used when Diff is nil to avoid re-encoding.
-// scratch is a caller-provided uint256.Int to avoid heap allocation.
-func addToVolumeSide(known **commonpb.Uint256, diff **commonpb.Uint256, amount *uint256.Int, rawAmount *commonpb.Uint256, scratch *uint256.Int) {
-	if *known != nil {
-		// Safe to mutate in-place: *known is always a cloned cache value, never shared.
-		(*known).IntoUint256(scratch)
-		scratch.Add(scratch, amount)
-		(*known).SetFromUint256(scratch)
-	} else {
-		if *diff == nil {
-			*diff = rawAmount
-		} else {
-			// Must create new *Uint256: *diff may point to a shared rawAmount (posting.Amount).
-			(*diff).IntoUint256(scratch)
-			scratch.Add(scratch, amount)
-			*diff = commonpb.NewUint256(scratch)
-		}
-	}
 }

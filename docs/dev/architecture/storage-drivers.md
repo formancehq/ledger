@@ -99,16 +99,15 @@ See [System Attributes](./attributes.md) for the complete attribute storage and 
 
 ### Balance Storage Model
 
-Pebble stores volumes using the **attribute base + cumulative diff** model:
+Pebble stores volumes using **last-write-wins** semantics:
 
-- Each volume attribute has a **base** entry and **cumulative diff** entries keyed by Raft index
-- Balance is computed as `base + latest_cumulative_diff`
-- Only the latest diff is needed (diffs are cumulative, not incremental)
-- Generation-rotation pruning and inline compaction keep entry count bounded
+- Each volume attribute stores absolute `Known` values keyed by Raft index
+- Balance is the latest value at or before a given index
+- Old entry cleanup during merge keeps entries per key bounded
 
 ```
-Key:   [0x09][ledgerID][account]\x00[asset]['V'][raftIndex][entryType]
-Value: VolumePair protobuf (base value or cumulative diff)
+Key:   [0x09][ledgerID][account]\x00[asset]['V'][raftIndex]
+Value: VolumePair protobuf (Input + Output)
 ```
 
 ### Use Cases

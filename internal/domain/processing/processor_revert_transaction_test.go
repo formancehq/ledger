@@ -28,12 +28,12 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 
 	// Source had balance: input=1000, output=0
 	sourceVol := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(1000),
-		OutputKnown: commonpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(1000),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 	destVol := &raftcmdpb.VolumePair{
-		InputKnown:  commonpb.NewUint256FromUint64(100),
-		OutputKnown: commonpb.NewUint256FromUint64(0),
+		Input:  commonpb.NewUint256FromUint64(100),
+		Output: commonpb.NewUint256FromUint64(0),
 	}
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)

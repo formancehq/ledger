@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -75,7 +76,7 @@ func New(restConfig *rest.Config, clientset kubernetes.Interface, cfg Config) (*
 
 	_, err = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    op.enqueue,
-		UpdateFunc: func(_, newObj interface{}) { op.enqueue(newObj) },
+		UpdateFunc: func(_, newObj any) { op.enqueue(newObj) },
 	})
 	if err != nil {
 		return nil, err
@@ -98,6 +99,7 @@ func (o *Operator) Run(stopCh <-chan struct{}) error {
 	go o.runWorker(stopCh)
 
 	<-stopCh
+
 	return nil
 }
 
@@ -124,6 +126,7 @@ func (o *Operator) processNextItem() bool {
 	if err != nil {
 		log.Printf("failed to get object %q: %v", key, err)
 		o.queue.AddRateLimited(key)
+
 		return true
 	}
 	if !exists {
@@ -133,17 +136,20 @@ func (o *Operator) processNextItem() bool {
 	if err := o.reconcile(obj.(*unstructured.Unstructured)); err != nil {
 		log.Printf("reconcile failed for %q: %v", key, err)
 		o.queue.AddRateLimited(key)
+
 		return true
 	}
 
 	o.queue.Forget(key)
+
 	return true
 }
 
-func (o *Operator) enqueue(obj interface{}) {
+func (o *Operator) enqueue(obj any) {
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
 		log.Printf("failed to get key for object: %v", err)
+
 		return
 	}
 	if strings.TrimSpace(key) == "" {
@@ -193,18 +199,18 @@ func (o *Operator) reconcile(obj *unstructured.Unstructured) error {
 	}
 
 	log.Printf("processed testrun %s/%s", obj.GetNamespace(), obj.GetName())
+
 	return o.markProcessed(ctx, obj)
 }
 
 func (o *Operator) ensureFinalizer(ctx context.Context, obj *unstructured.Unstructured) error {
-	for _, value := range obj.GetFinalizers() {
-		if value == benchmarkFinalizer {
-			return nil
-		}
+	if slices.Contains(obj.GetFinalizers(), benchmarkFinalizer) {
+		return nil
 	}
 
-	patch := []byte(fmt.Sprintf(`{"metadata":{"finalizers":["%s"]}}`, benchmarkFinalizer))
+	patch := fmt.Appendf(nil, `{"metadata":{"finalizers":["%s"]}}`, benchmarkFinalizer)
 	_, err := o.dynamic.Resource(testRunGVR).Namespace(obj.GetNamespace()).Patch(ctx, obj.GetName(), types.MergePatchType, patch, metav1.PatchOptions{})
+
 	return err
 }
 
@@ -212,6 +218,7 @@ func (o *Operator) handleDelete(ctx context.Context, obj *unstructured.Unstructu
 	key := fmt.Sprintf("%s/%s", obj.GetNamespace(), obj.GetName())
 	if !hasFinalizer(obj, benchmarkFinalizer) {
 		log.Printf("testrun delete observed without finalizer %s", key)
+
 		return nil
 	}
 
@@ -228,6 +235,7 @@ func (o *Operator) handleDelete(ctx context.Context, obj *unstructured.Unstructu
 	}
 
 	log.Printf("cleanup completed for testrun %s", key)
+
 	return nil
 }
 
@@ -282,6 +290,7 @@ func (o *Operator) logStatus(obj *unstructured.Unstructured, status string) {
 	if !ok {
 		o.statusByKey[key] = status
 		log.Printf("testrun detected %s (status=%s)", key, status)
+
 		return
 	}
 
@@ -297,25 +306,22 @@ func firstNonEmpty(values ...string) string {
 			return value
 		}
 	}
+
 	return ""
 }
 
 func reportConfigMapName(testRunName string) string {
-	return fmt.Sprintf("k6-report-%s", testRunName)
+	return "k6-report-" + testRunName
 }
 
 func hasFinalizer(obj *unstructured.Unstructured, value string) bool {
-	for _, finalizer := range obj.GetFinalizers() {
-		if finalizer == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(obj.GetFinalizers(), value)
 }
 
 func (o *Operator) markProcessed(ctx context.Context, obj *unstructured.Unstructured) error {
-	patch := []byte(fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s"}}}`, processedAnnotation, time.Now().UTC().Format(time.RFC3339)))
+	patch := fmt.Appendf(nil, `{"metadata":{"annotations":{"%s":"%s"}}}`, processedAnnotation, time.Now().UTC().Format(time.RFC3339))
 	_, err := o.dynamic.Resource(testRunGVR).Namespace(obj.GetNamespace()).Patch(ctx, obj.GetName(), types.MergePatchType, patch, metav1.PatchOptions{})
+
 	return err
 }
 
@@ -331,10 +337,12 @@ func (o *Operator) ensureReportConfigMap(ctx context.Context, namespace, name, r
 	_, err := client.Get(ctx, name, metav1.GetOptions{})
 	if err == nil {
 		_, err = client.Update(ctx, configMap, metav1.UpdateOptions{})
+
 		return err
 	}
 
 	_, err = client.Create(ctx, configMap, metav1.CreateOptions{})
+
 	return err
 }
 
@@ -345,10 +353,11 @@ func isProcessed(obj *unstructured.Unstructured) bool {
 	}
 
 	value := strings.TrimSpace(annotations[processedAnnotation])
+
 	return value != ""
 }
 
-func getString(obj map[string]interface{}, path ...string) string {
+func getString(obj map[string]any, path ...string) string {
 	value := obj
 	for i, key := range path {
 		if i == len(path)-1 {
@@ -357,10 +366,11 @@ func getString(obj map[string]interface{}, path ...string) string {
 					return str
 				}
 			}
+
 			return ""
 		}
 
-		next, ok := value[key].(map[string]interface{})
+		next, ok := value[key].(map[string]any)
 		if !ok {
 			return ""
 		}
