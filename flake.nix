@@ -1,5 +1,5 @@
 {
-  description = "A Nix-flake-based Go 1.25 development environment";
+  description = "A Nix-flake-based Go 1.26 development environment";
 
   inputs = {
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2511";
@@ -88,7 +88,7 @@
         let
           stablePackages = with pkgs; [
             ginkgo
-            go_1_25
+            go_1_26
             go-tools
             gomarkdoc
             goperf
