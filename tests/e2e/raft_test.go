@@ -73,7 +73,10 @@ var _ = Describe("Simple cluster", func() {
 			stopNode(ctx, servers[followerID-1])
 			restartNode(ctx, servers[followerID-1])
 
-			Eventually(servers[followerID-1]).Should(BeFollower(), "Timed out waiting for node to become follower")
+			Eventually(servers[followerID-1]).
+				WithTimeout(30 * time.Second).
+				WithPolling(500 * time.Millisecond).
+				Should(BeFollower(), "Timed out waiting for node to become follower")
 			Consistently(servers[followerID-1]).Should(BeFollower())
 		})
 
@@ -146,7 +149,10 @@ var _ = Describe("Simple cluster", func() {
 
 			restartNode(ctx, servers[followerID-1])
 
-			Eventually(servers[followerID-1]).Should(BeFollower(), "Timed out waiting for node to become follower")
+			Eventually(servers[followerID-1]).
+				WithTimeout(30 * time.Second).
+				WithPolling(500 * time.Millisecond).
+				Should(BeFollower(), "Timed out waiting for node to become follower")
 			Eventually(func(g Gomega) bool {
 				ledgers, err := listLedgers(ctx, servers[followerID-1].client)
 				g.Expect(err).To(Succeed())

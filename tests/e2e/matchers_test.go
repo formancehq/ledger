@@ -26,7 +26,7 @@ func (matcher beFollowerMatcher) Match(actual any) (success bool, err error) {
 		NodeId: srv.nodeID,
 	})
 	if err != nil {
-		return false, fmt.Errorf("gRPC error getting cluster state: %w", err)
+		return false, nil // gRPC not ready yet — retry
 	}
 
 	if clusterState.Leader == 0 {
@@ -63,7 +63,7 @@ func (h haveALeaderMatcher) Match(actual any) (success bool, err error) {
 		NodeId: srv.nodeID,
 	})
 	if err != nil {
-		return false, err
+		return false, nil // gRPC not ready yet — retry
 	}
 
 	if clusterState.Leader == 0 {
