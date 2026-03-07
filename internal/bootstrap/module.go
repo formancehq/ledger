@@ -39,6 +39,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/preload"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
@@ -141,6 +142,9 @@ func Module() fx.Option {
 			},
 			func(cfg node.NodeConfig, meterProvider metric.MeterProvider) (*cache.Cache, error) {
 				return cache.New(cfg.RotationThreshold, meterProvider.Meter("cache"))
+			},
+			func(n *node.Node, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, logger logging.Logger) *preload.Preloader {
+				return preload.New(n.InitialIndex(), c, attrs, store, logger)
 			},
 			fx.Annotate(func(
 				cfg Config,
@@ -346,9 +350,9 @@ func Module() fx.Option {
 			fx.Annotate(events.NewManager, fx.ParamTags(``, ``, ``, `name:"events"`)),
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"mirror"`)),
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"index"`)),
-			fx.Annotate(func(store *dal.Store, proposer mirror.Proposer, c *cache.Cache, attrs *attributes.Attributes, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, cfg Config) *mirror.Manager {
-				return mirror.NewManager(store, proposer, c, attrs, logger, notifications, meterProvider, cfg.MirrorMaxBatchSize)
-			}, fx.ParamTags(``, ``, ``, ``, ``, `name:"mirror"`, ``, ``)),
+			fx.Annotate(func(store *dal.Store, proposer mirror.Proposer, preloader *preload.Preloader, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, cfg Config) *mirror.Manager {
+				return mirror.NewManager(store, proposer, preloader, logger, notifications, meterProvider, cfg.MirrorMaxBatchSize)
+			}, fx.ParamTags(``, ``, ``, ``, `name:"mirror"`, ``, ``)),
 			// Provide mirror.Proposer from the Raft node
 			func(n *node.Node) mirror.Proposer {
 				return n
@@ -376,10 +380,9 @@ func Module() fx.Option {
 			func(
 				cfg Config,
 				node *node.Node,
-				cache *cache.Cache,
 				store *dal.Store,
 				logger logging.Logger,
-				attrs *attributes.Attributes,
+				preloader *preload.Preloader,
 				meterProvider metric.MeterProvider,
 				hc *clusterhealth.HealthChecker,
 				ks *keystore.KeyStore,
@@ -396,11 +399,10 @@ func Module() fx.Option {
 				}
 
 				return admission.NewAdmission(
-					cache,
 					store,
 					logger,
 					node,
-					attrs,
+					preloader,
 					meterProvider,
 					hc,
 					ks,

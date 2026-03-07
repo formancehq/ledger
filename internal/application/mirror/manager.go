@@ -11,9 +11,8 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 
 	v2 "github.com/formancehq/ledger-v3-poc/internal/adapter/v2"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/preload"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
@@ -34,8 +33,7 @@ type Proposer interface {
 type Manager struct {
 	store         *dal.Store
 	proposer      Proposer
-	cache         *cache.Cache
-	attrs         *attributes.Attributes
+	preloader     *preload.Preloader
 	logger        logging.Logger
 	notifications *signal.Notifications
 	meterProvider metric.MeterProvider
@@ -49,12 +47,11 @@ type Manager struct {
 }
 
 // NewManager creates a new mirror Manager.
-func NewManager(store *dal.Store, proposer Proposer, cache *cache.Cache, attrs *attributes.Attributes, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, maxBatchSize int) *Manager {
+func NewManager(store *dal.Store, proposer Proposer, preloader *preload.Preloader, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, maxBatchSize int) *Manager {
 	return &Manager{
 		store:         store,
 		proposer:      proposer,
-		cache:         cache,
-		attrs:         attrs,
+		preloader:     preloader,
 		logger:        logger.WithFields(map[string]any{"cmp": "mirror-manager"}),
 		notifications: notifications,
 		meterProvider: meterProvider,
@@ -164,7 +161,7 @@ func (m *Manager) reconcile() {
 			batchSize = m.maxBatchSize
 		}
 
-		w := NewWorker(name, batchSize, source, m.store, m.proposer, m.cache, m.attrs, m.logger, m.meterProvider)
+		w := NewWorker(name, batchSize, source, m.store, m.proposer, m.preloader, m.logger, m.meterProvider)
 		w.Start()
 		m.workers[name] = w
 	}
@@ -181,6 +178,7 @@ func (m *Manager) teardown() {
 }
 
 // createSource builds a Source from a MirrorSourceConfig oneof.
+// todo: add pluggable source factory
 func createSource(cfg *commonpb.MirrorSourceConfig) (v2.Source, error) {
 	switch s := cfg.GetType().(type) {
 	case *commonpb.MirrorSourceConfig_Http:

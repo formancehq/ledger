@@ -1,6 +1,7 @@
 package admission
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"strings"
@@ -13,7 +14,9 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/preload"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
@@ -87,36 +90,24 @@ func createTestAdmission(t *testing.T, store *dal.Store) *Admission {
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
-	meter := noop.NewMeterProvider().Meter("test")
 
 	testCache, _ := cache.New(100, nil)
-
-	// Create noop metrics
-	commandDuration, _ := meter.Int64Histogram("test_command_duration")
-	proposeQueueLoad, _ := meter.Int64Histogram("test_propose_queue_load")
-	proposeQueueFull, _ := meter.Float64Counter("test_propose_queue_full")
-	preloadDuration, _ := meter.Int64Histogram("test_preload_duration")
-	preloadCounter, _ := meter.Int64Counter("test_preload_counter")
+	attrs := attributes.New()
+	testPreloader := preload.New(1, testCache, attrs, store, logger)
 
 	ks := keystore.NewKeyStore()
 	ss := state.NewSharedState()
 
-	a := &Admission{
-		cache:                     testCache,
-		store:                     store,
-		logger:                    logger,
-		keyStore:                  ks,
-		sharedState:               ss,
-		loaders:                   NewLoaders(),
-		commandDurationHistogram:  commandDuration,
-		proposeQueueLoadHistogram: proposeQueueLoad,
-		proposeQueueFullCounter:   proposeQueueFull,
-		preloadDurationHistogram:  preloadDuration,
-		preloadCounter:            preloadCounter,
-	}
-	a.nextIndex.Store(1)
-
-	return a
+	return NewAdmission(
+		store,
+		logger,
+		nil, // no proposer needed for unit tests
+		testPreloader,
+		noop.NewMeterProvider(),
+		nil, // no health checker needed for unit tests
+		ks,
+		ss,
+	)
 }
 
 func TestGetTransactionPostings(t *testing.T) {
@@ -218,7 +209,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(orders).Volumes
+		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
 
 		// Should have 2 volume keys: both source (world) and destination (user:alice) are preloaded
 		require.Len(t, volumes, 2)
@@ -269,7 +260,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(orders).Volumes
+		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
 
 		// Should have 2 volume keys: both the new source (alice) and new destination (world) are preloaded
 		require.Len(t, volumes, 2)
@@ -323,7 +314,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(orders).Volumes
+		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
 
 		// Should have 3 volume keys: alice, bob (original destinations become sources in revert)
 		// AND world (original source becomes destination in revert) - all volumes preloaded
@@ -467,7 +458,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(orders).Volumes
+		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
 
 		// Should have 2 volume keys: both source and destination are always preloaded
 		require.Len(t, volumes, 2, "force=true should still extract all volumes")
@@ -515,7 +506,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(orders).Volumes
+		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
 
 		// Should have 2 volume keys: both source and destination are always preloaded
 		require.Len(t, volumes, 2, "force=false should extract all volumes")
@@ -585,7 +576,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(orders).Volumes
+		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
 
 		// Should have 4 volume keys: source+dest from both orders
 		require.Len(t, volumes, 4)
@@ -649,7 +640,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(orders).Volumes
+		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
 
 		// Revert reverses postings: alice->world. Both source (alice) and destination (world) preloaded.
 		require.Len(t, volumes, 2, "revert with force=true should still extract all volumes")
@@ -806,7 +797,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(orders).Volumes
+		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
 
 		// Both source and destination volumes are preloaded from numscript
 		require.Len(t, volumes, 2, "numscript emulation should discover all volumes")
@@ -855,7 +846,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(orders).Volumes
+		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
 
 		// Force=true no longer skips volume extraction - all volumes are preloaded
 		require.Len(t, volumes, 2, "force=true should still extract numscript volumes")
@@ -906,7 +897,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(orders).Volumes
+		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
 
 		// Should use explicit postings, not numscript emulation; both source and destination preloaded
 		require.Len(t, volumes, 2)

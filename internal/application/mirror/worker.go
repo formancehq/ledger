@@ -14,9 +14,8 @@ import (
 
 	v2 "github.com/formancehq/ledger-v3-poc/internal/adapter/v2"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/preload"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
@@ -63,8 +62,7 @@ type Worker struct {
 	source         v2.Source
 	store          *dal.Store
 	proposer       Proposer
-	cache          *cache.Cache
-	attrs          *attributes.Attributes
+	preloader      *preload.Preloader
 	logger         logging.Logger
 	sourceLogCount uint64
 
@@ -86,7 +84,6 @@ type Worker struct {
 	commandSize       metric.Int64Histogram
 	logsIngested      metric.Int64Counter
 	batchTotal        metric.Int64Counter
-	preloadCacheMiss  metric.Int64Counter
 }
 
 // NewWorker creates a new mirror Worker for the given ledger.
@@ -96,8 +93,7 @@ func NewWorker(
 	source v2.Source,
 	store *dal.Store,
 	proposer Proposer,
-	cache *cache.Cache,
-	attrs *attributes.Attributes,
+	preloader *preload.Preloader,
 	logger logging.Logger,
 	meterProvider metric.MeterProvider,
 ) *Worker {
@@ -132,8 +128,6 @@ func NewWorker(
 		metric.WithUnit("1"))
 	batchTotal, _ := meter.Int64Counter("mirror.batch.total",
 		metric.WithUnit("1"))
-	preloadCacheMiss, _ := meter.Int64Counter("mirror.preload.cache_miss",
-		metric.WithUnit("1"))
 
 	return &Worker{
 		ledgerName: ledgerName,
@@ -141,8 +135,7 @@ func NewWorker(
 		source:     source,
 		store:      store,
 		proposer:   proposer,
-		cache:      cache,
-		attrs:      attrs,
+		preloader:  preloader,
 		logger:     logger.WithFields(map[string]any{"cmp": "mirror-worker", "ledger": ledgerName}),
 		notify:     signal.New(),
 
@@ -156,7 +149,6 @@ func NewWorker(
 		commandSize:       commandSize,
 		logsIngested:      logsIngested,
 		batchTotal:        batchTotal,
-		preloadCacheMiss:  preloadCacheMiss,
 	}
 }
 
@@ -349,7 +341,21 @@ func (w *Worker) processBatch() (bool, error) {
 
 	preloadStart := time.Now()
 
-	w.buildPreloads(cmd)
+	needs := w.extractMirrorNeeds(cmd)
+
+	preloadSet, guard, err := w.preloader.BuildAndValidatePreloads(needs)
+	if err != nil {
+		if guard != nil {
+			guard.ReleaseLoaders()
+		}
+
+		return false, fmt.Errorf("building preloads: %w", err)
+	}
+
+	cmd.Preload = preloadSet
+	// Mirror doesn't need loader dedup through FSM — release immediately.
+	guard.ReleaseLoaders()
+
 	w.preloadDuration.Record(ctx, time.Since(preloadStart).Microseconds(), attrs)
 
 	// Merge cursor update into the data proposal to avoid a second Raft round-trip.
@@ -381,6 +387,7 @@ func (w *Worker) processBatch() (bool, error) {
 	if err != nil {
 		*bufp = buf
 		marshalBufPool.Put(bufp)
+		guard.Release()
 
 		return false, err
 	}
@@ -400,8 +407,12 @@ func (w *Worker) processBatch() (bool, error) {
 
 	fsmFuture, err := w.proposer.Propose(proposal)
 	if err != nil {
+		guard.Release()
+
 		return false, err
 	}
+
+	guard.IncrementAndRelease()
 
 	// Start prefetching the next batch while waiting for Raft consensus.
 	// The goroutine writes to a buffered channel and always exits, even if
@@ -434,7 +445,6 @@ func (w *Worker) processBatch() (bool, error) {
 
 		return false, err
 	}
-
 	w.proposeDuration.Record(ctx, time.Since(proposeStart).Microseconds(), attrs)
 
 	// Wait for FSM application and check for business errors.
@@ -504,57 +514,14 @@ func (w *Worker) reportError(message string) {
 	_, _ = proposal.Wait()
 }
 
-// buildPreloads populates the command's PreloadSet with ledger info and
-// boundaries so the FSM can inject them into the attribute cache. This is
-// necessary because mirror proposals bypass the admission layer which
-// normally builds preloads. Without this, a cold cache (after restart)
-// causes all mirror processing to fail with "ledger does not exist".
-func (w *Worker) buildPreloads(cmd *raftcmdpb.Proposal) {
-	boundary := w.cache.BaseIndex.Gen0
-	cmd.Preload.LastPersistedIndex = boundary
+// extractMirrorNeeds builds preload.Needs from a mirror proposal's orders.
+// Mirror only needs ledger info, boundaries, and volumes.
+func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) *preload.Needs {
+	needs := preload.NewNeeds()
 
-	canonicalKey := domain.LedgerKey{Name: w.ledgerName}.Bytes()
-	id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
-	attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
-
-	// Preload ledger info if not in cache
-	if _, ok := w.cache.Ledgers.Get(id); !ok {
-		w.preloadCacheMiss.Add(context.Background(), 1,
-			metric.WithAttributes(w.ledgerAttr, attribute.String("type", "ledger")))
-
-		info, err := w.attrs.Ledger.ComputeValue(w.store, ^uint64(0), canonicalKey)
-		if err == nil && info != nil {
-			cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-				Type: &raftcmdpb.Preload_Ledger{
-					Ledger: &raftcmdpb.PreloadLedger{
-						Id:   attrID,
-						Info: info,
-					},
-				},
-			})
-		}
-	}
-
-	// Preload boundaries if not in cache (same canonical key, different cache)
-	if _, ok := w.cache.Boundaries.Get(id); !ok {
-		w.preloadCacheMiss.Add(context.Background(), 1,
-			metric.WithAttributes(w.ledgerAttr, attribute.String("type", "boundary")))
-
-		boundaries, err := w.attrs.Boundary.ComputeValue(w.store, ^uint64(0), canonicalKey)
-		if err == nil && boundaries != nil {
-			cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-				Type: &raftcmdpb.Preload_Boundary{
-					Boundary: &raftcmdpb.PreloadBoundary{
-						Id:         attrID,
-						Boundaries: boundaries,
-					},
-				},
-			})
-		}
-	}
-
-	// Preload volumes for all postings in the orders
-	seen := make(map[domain.VolumeKey]struct{})
+	ledgerKey := domain.LedgerKey{Name: w.ledgerName}
+	needs.Ledgers[ledgerKey] = struct{}{}
+	needs.Boundaries[ledgerKey] = struct{}{}
 
 	for _, order := range cmd.GetOrders() {
 		mi := order.GetMirrorIngest()
@@ -574,49 +541,10 @@ func (w *Worker) buildPreloads(cmd *raftcmdpb.Proposal) {
 				{AccountKey: domain.AccountKey{Ledger: w.ledgerName, Account: posting.GetSource()}, Asset: posting.GetAsset()},
 				{AccountKey: domain.AccountKey{Ledger: w.ledgerName, Account: posting.GetDestination()}, Asset: posting.GetAsset()},
 			} {
-				if _, ok := seen[volKey]; ok {
-					continue
-				}
-
-				seen[volKey] = struct{}{}
-
-				volCanonical := volKey.Bytes()
-				volID, volTag := attributes.MakeKey(attributes.DefaultSeeds, volCanonical)
-
-				if _, ok := w.cache.Volumes.Get(volID); ok {
-					continue
-				}
-
-				w.preloadCacheMiss.Add(context.Background(), 1,
-					metric.WithAttributes(w.ledgerAttr, attribute.String("type", "volume")))
-
-				vol, err := w.attrs.Volume.ComputeValue(w.store, ^uint64(0), volCanonical)
-				if err != nil {
-					continue
-				}
-
-				var preloadInput, preloadOutput *commonpb.Uint256
-				if vol != nil {
-					preloadInput = vol.GetInput()
-					preloadOutput = vol.GetOutput()
-				}
-				if preloadInput == nil {
-					preloadInput = commonpb.NewUint256FromUint64(0)
-				}
-				if preloadOutput == nil {
-					preloadOutput = commonpb.NewUint256FromUint64(0)
-				}
-
-				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-					Type: &raftcmdpb.Preload_Volume{
-						Volume: &raftcmdpb.PreloadVolume{
-							Id:     &raftcmdpb.AttributeID{Id: volID[:], Tag: volTag},
-							Input:  preloadInput,
-							Output: preloadOutput,
-						},
-					},
-				})
+				needs.Volumes[volKey] = struct{}{}
 			}
 		}
 	}
+
+	return needs
 }

@@ -18,10 +18,9 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
-	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/preload"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/receipt"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/commands"
@@ -55,20 +54,14 @@ type Proposer interface {
 // Admission handles the admission of orders into the Raft cluster.
 // It is responsible for preloading volumes and proposing commands.
 type Admission struct {
-	cache         *cache.Cache
 	store         *dal.Store
 	logger        logging.Logger
 	proposer      Proposer
-	attrs         *attributes.Attributes
 	healthChecker health.Checker
 	keyStore      *keystore.KeyStore
 	sharedState   *state.SharedState
 	receiptSigner *receipt.Signer
-
-	nextIndex atomic.Uint64
-
-	// Attribute loaders to avoid duplicate store loads
-	loaders *Loaders
+	preloader     *preload.Preloader
 
 	// Metrics (noop when metricsEnabled is false)
 	metricsEnabled            bool
@@ -102,11 +95,10 @@ func WithReceiptSigner(signer *receipt.Signer) func(*Admission) {
 }
 
 func NewAdmission(
-	cache *cache.Cache,
 	store *dal.Store,
 	logger logging.Logger,
 	proposer Proposer,
-	attrs *attributes.Attributes,
+	preloader *preload.Preloader,
 	meterProvider metric.MeterProvider,
 	healthChecker health.Checker,
 	keyStore *keystore.KeyStore,
@@ -114,15 +106,13 @@ func NewAdmission(
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
-		cache:         cache,
 		store:         store,
 		logger:        logger,
 		proposer:      proposer,
-		attrs:         attrs,
+		preloader:     preloader,
 		healthChecker: healthChecker,
 		keyStore:      keyStore,
 		sharedState:   sharedState,
-		loaders:       NewLoaders(),
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -252,7 +242,6 @@ func NewAdmission(
 	a.preloadCounter = preloadCounter
 	a.preloadKeysNeededCounter = preloadKeysNeededCounter
 	a.preloadCacheHitsCounter = preloadCacheHitsCounter
-	a.nextIndex.Store(proposer.InitialIndex())
 
 	return a
 }
@@ -291,22 +280,11 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	// Step 1: Extract all preload needs from orders in a single pass
-	needs := a.extractPreloadNeeds(orders)
+	needs := a.extractPreloadNeeds(ctx, orders)
 
-	// Step 2: Read nextIndex atomically (optimistic snapshot for preload boundary).
-	nextIndex := a.nextIndex.Load()
-
-	// Step 3: Compute canonical boundary B(nextIndex)
-	threshold := a.cache.GenerationThreshold
-	boundary := cache.BoundaryIndex(nextIndex, threshold)
-
-	// Step 4: Build preload - track loaded keys for cleanup after command is applied
-	loadedKeys := NewLoadedKeysTracker()
-
+	// Step 2-4: Build preloads via shared Preloader
 	cmd := commands.NewCommand(orders...)
-	cmd.Preload.LastPersistedIndex = boundary
 
-	// Preload all data from store/cache
 	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
 		trace.WithAttributes(
 			attribute.Int("preload.ledgers", len(needs.Ledgers)),
@@ -314,547 +292,24 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 			attribute.Int("preload.volumes", len(needs.Volumes)),
 			attribute.Int("preload.idempotency_keys", len(needs.IdempotencyKeys)),
 			attribute.Int("preload.references", len(needs.References)),
-			attribute.Int("preload.sink_configs", len(needs.SinkConfigs)),
-			attribute.Int("preload.numscript_versions", len(needs.NumscriptVersions)),
-			attribute.Int("preload.numscript_entries", len(needs.NumscriptEntries)),
 			attribute.Int("preload.metadata", len(needs.Metadata)),
 		))
 
-	// Preload ledgers (for CreateLedger/DeleteLedger orders)
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Ledgers)),
-		metric.WithAttributes(attribute.String("type", "ledgers")))
-
-	for ledgerKey := range needs.Ledgers {
-		canonicalKey := ledgerKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
-
-		if !a.cache.Ledgers.IsGuaranteedInCache(nextIndex, id) {
-			preloadStart := time.Now()
-
-			result, err := a.loaders.Ledgers.LoadOrWait(id, boundary, func() (*commonpb.LedgerInfo, error) {
-				return a.attrs.Ledger.ComputeValue(a.store, boundary, canonicalKey)
-			})
-			if err != nil {
-				return nil, fmt.Errorf("computing ledger value at boundary %d for %s: %w", boundary, ledgerKey.Name, err)
-			}
-
-			if result.FromLoad {
-				loadedKeys.Ledgers = append(loadedKeys.Ledgers, id)
-
-				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "ledgers")))
-				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "ledgers")))
-			}
-
-			if result.Value != nil {
-				attrID := &raftcmdpb.AttributeID{
-					Id:  id[:],
-					Tag: tag,
-				}
-
-				a.logger.WithFields(map[string]any{
-					"id":        id.Hex(),
-					"boundary":  boundary,
-					"nextIndex": nextIndex,
-					"name":      ledgerKey.Name,
-					"fromLoad":  result.FromLoad,
-				}).Debug("Preloading ledger from store")
-
-				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-					Type: &raftcmdpb.Preload_Ledger{
-						Ledger: &raftcmdpb.PreloadLedger{
-							Id:   attrID,
-							Info: result.Value,
-						},
-					},
-				})
-			}
-		} else {
-			a.preloadCacheHitsCounter.Add(ctx, 1,
-				metric.WithAttributes(attribute.String("type", "ledgers")))
+	preloadSet, guard, err := a.preloader.BuildAndValidatePreloads(needs)
+	if err != nil {
+		preloadSpan.End()
+		if guard != nil {
+			guard.ReleaseLoaders()
 		}
+
+		return nil, fmt.Errorf("building preloads: %w", err)
 	}
 
-	// Preload boundaries (for Apply orders)
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Boundaries)),
-		metric.WithAttributes(attribute.String("type", "boundaries")))
-
-	for boundaryKey := range needs.Boundaries {
-		canonicalKey := boundaryKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
-
-		if !a.cache.Boundaries.IsGuaranteedInCache(nextIndex, id) {
-			preloadStart := time.Now()
-
-			result, err := a.loaders.Boundaries.LoadOrWait(id, boundary, func() (*raftcmdpb.LedgerBoundaries, error) {
-				return a.attrs.Boundary.ComputeValue(a.store, boundary, canonicalKey)
-			})
-			if err != nil {
-				return nil, fmt.Errorf("computing boundary value at boundary %d for %s: %w", boundary, boundaryKey.Name, err)
-			}
-
-			if result.FromLoad {
-				loadedKeys.Boundaries = append(loadedKeys.Boundaries, id)
-
-				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "boundaries")))
-				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "boundaries")))
-			}
-
-			if result.Value != nil {
-				attrID := &raftcmdpb.AttributeID{
-					Id:  id[:],
-					Tag: tag,
-				}
-
-				a.logger.WithFields(map[string]any{
-					"id":        id.Hex(),
-					"boundary":  boundary,
-					"nextIndex": nextIndex,
-					"name":      boundaryKey.Name,
-					"fromLoad":  result.FromLoad,
-				}).Debug("Preloading boundary from store")
-
-				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-					Type: &raftcmdpb.Preload_Boundary{
-						Boundary: &raftcmdpb.PreloadBoundary{
-							Id:         attrID,
-							Boundaries: result.Value,
-						},
-					},
-				})
-			}
-		} else {
-			a.preloadCacheHitsCounter.Add(ctx, 1,
-				metric.WithAttributes(attribute.String("type", "boundaries")))
-		}
-	}
-
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Volumes)),
-		metric.WithAttributes(attribute.String("type", "volumes")))
-
-	for volumeKey := range needs.Volumes {
-		canonicalKey := volumeKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
-
-		if !a.cache.Volumes.IsGuaranteedInCache(nextIndex, id) {
-			preloadStart := time.Now()
-
-			result, err := a.loaders.Volumes.LoadOrWait(id, boundary, func() (*raftcmdpb.VolumePair, error) {
-				return a.attrs.Volume.ComputeValue(a.store, boundary, canonicalKey)
-			})
-			if err != nil {
-				return nil, fmt.Errorf("computing volume value at boundary %d for %v: %w", boundary, volumeKey, err)
-			}
-
-			if result.FromLoad {
-				loadedKeys.Volumes = append(loadedKeys.Volumes, id)
-
-				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "volumes")))
-				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "volumes")))
-			}
-
-			attrID := &raftcmdpb.AttributeID{
-				Id:  id[:],
-				Tag: tag,
-			}
-
-			// Extract input/output for the preload message.
-			// Always send explicit 0 for new accounts so the hot path never sees nil.
-			var preloadInput, preloadOutput *commonpb.Uint256
-			if result.Value != nil {
-				preloadInput = result.Value.GetInput()
-				preloadOutput = result.Value.GetOutput()
-			}
-			if preloadInput == nil {
-				preloadInput = commonpb.NewUint256FromUint64(0)
-			}
-			if preloadOutput == nil {
-				preloadOutput = commonpb.NewUint256FromUint64(0)
-			}
-
-			a.logger.WithFields(map[string]any{
-				"id":        id.Hex(),
-				"boundary":  boundary,
-				"nextIndex": nextIndex,
-				"fromLoad":  result.FromLoad,
-			}).Debug("Preloading volume from store")
-
-			cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-				Type: &raftcmdpb.Preload_Volume{
-					Volume: &raftcmdpb.PreloadVolume{
-						Id:     attrID,
-						Input:  preloadInput,
-						Output: preloadOutput,
-					},
-				},
-			})
-		} else {
-			a.preloadCacheHitsCounter.Add(ctx, 1,
-				metric.WithAttributes(attribute.String("type", "volumes")))
-		}
-	}
-
-	// Build preload for idempotency keys not guaranteed in cache
-	// Only preload if the key is actually found (has a value), to reduce command size
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.IdempotencyKeys)),
-		metric.WithAttributes(attribute.String("type", "idempotency_keys")))
-
-	for ikKey := range needs.IdempotencyKeys {
-		canonicalKey := ikKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
-
-		// Check IdempotencyKeys cache
-		if !a.cache.IdempotencyKeys.IsGuaranteedInCache(nextIndex, id) {
-			preloadStart := time.Now()
-
-			result, err := a.loaders.IdempotencyKeys.LoadOrWait(id, boundary, func() (*commonpb.IdempotencyKeyValue, error) {
-				return a.attrs.IdempotencyKeys.ComputeValue(a.store, boundary, canonicalKey)
-			})
-			if err != nil {
-				return nil, fmt.Errorf("computing idempotency key value at boundary %d for key %s: %w", boundary, ikKey.Key, err)
-			}
-
-			if result.FromLoad {
-				loadedKeys.IdempotencyKeys = append(loadedKeys.IdempotencyKeys, id)
-
-				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "idempotency_keys")))
-				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "idempotency_keys")))
-			}
-
-			// Only send preload if the key exists in the store
-			if result.Value != nil {
-				attrID := &raftcmdpb.AttributeID{
-					Id:  id[:],
-					Tag: tag,
-				}
-
-				a.logger.WithFields(map[string]any{
-					"id":          id.Hex(),
-					"boundary":    boundary,
-					"nextIndex":   nextIndex,
-					"key":         ikKey.Key,
-					"logSequence": result.Value.GetLogSequence(),
-					"fromLoad":    result.FromLoad,
-				}).Debug("Preloading idempotency key from store")
-
-				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-					Type: &raftcmdpb.Preload_IdempotencyKey{
-						IdempotencyKey: &raftcmdpb.PreloadIdempotencyKey{
-							Id:          attrID,
-							LogSequence: result.Value.GetLogSequence(),
-							Hash:        result.Value.GetHash(),
-						},
-					},
-				})
-			}
-		} else {
-			a.preloadCacheHitsCounter.Add(ctx, 1,
-				metric.WithAttributes(attribute.String("type", "idempotency_keys")))
-		}
-	}
-
-	// Build preload for transaction references not guaranteed in cache
-	// Only preload if the reference exists (has a value), to reduce command size
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.References)),
-		metric.WithAttributes(attribute.String("type", "references")))
-
-	for refKey := range needs.References {
-		canonicalKey := refKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
-
-		if !a.cache.References.IsGuaranteedInCache(nextIndex, id) {
-			preloadStart := time.Now()
-
-			result, err := a.loaders.References.LoadOrWait(id, boundary, func() (*commonpb.TransactionReferenceValue, error) {
-				return a.attrs.References.ComputeValue(a.store, boundary, canonicalKey)
-			})
-			if err != nil {
-				return nil, fmt.Errorf("computing transaction reference value at boundary %d for ref %s: %w", boundary, refKey.Reference, err)
-			}
-
-			if result.FromLoad {
-				loadedKeys.References = append(loadedKeys.References, id)
-
-				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "references")))
-				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "references")))
-			}
-
-			// Only send preload if the reference exists in the store
-			if result.Value != nil {
-				attrID := &raftcmdpb.AttributeID{
-					Id:  id[:],
-					Tag: tag,
-				}
-
-				a.logger.WithFields(map[string]any{
-					"id":            id.Hex(),
-					"boundary":      boundary,
-					"nextIndex":     nextIndex,
-					"reference":     refKey.Reference,
-					"transactionId": result.Value.GetTransactionId(),
-					"fromLoad":      result.FromLoad,
-				}).Debug("Preloading transaction reference from store")
-
-				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-					Type: &raftcmdpb.Preload_TransactionReference{
-						TransactionReference: &raftcmdpb.PreloadTransactionReference{
-							Id:            attrID,
-							TransactionId: result.Value.GetTransactionId(),
-						},
-					},
-				})
-			}
-		} else {
-			a.preloadCacheHitsCounter.Add(ctx, 1,
-				metric.WithAttributes(attribute.String("type", "references")))
-		}
-	}
-
-	// Phase 4: Preload sink configs for AddEventsSink/RemoveEventsSink
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.SinkConfigs)),
-		metric.WithAttributes(attribute.String("type", "sink_configs")))
-
-	for sinkKey := range needs.SinkConfigs {
-		canonicalKey := sinkKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
-
-		if !a.cache.SinkConfigs.IsGuaranteedInCache(nextIndex, id) {
-			preloadStart := time.Now()
-
-			result, err := a.loaders.SinkConfigs.LoadOrWait(id, boundary, func() (*commonpb.SinkConfig, error) {
-				return query.ReadSinkConfig(a.store, sinkKey.Name)
-			})
-			if err != nil {
-				return nil, fmt.Errorf("loading sink config %q from store: %w", sinkKey.Name, err)
-			}
-
-			if result.FromLoad {
-				loadedKeys.SinkConfigs = append(loadedKeys.SinkConfigs, id)
-
-				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "sink_configs")))
-				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "sink_configs")))
-			}
-
-			// Only send preload if the sink config exists in the store
-			if result.Value != nil {
-				attrID := &raftcmdpb.AttributeID{
-					Id:  id[:],
-					Tag: tag,
-				}
-
-				a.logger.WithFields(map[string]any{
-					"id":        id.Hex(),
-					"boundary":  boundary,
-					"nextIndex": nextIndex,
-					"name":      sinkKey.Name,
-					"fromLoad":  result.FromLoad,
-				}).Debug("Preloading sink config from store")
-
-				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-					Type: &raftcmdpb.Preload_SinkConfig{
-						SinkConfig: &raftcmdpb.PreloadSinkConfig{
-							Id:     attrID,
-							Config: result.Value,
-						},
-					},
-				})
-			}
-		} else {
-			a.preloadCacheHitsCounter.Add(ctx, 1,
-				metric.WithAttributes(attribute.String("type", "sink_configs")))
-		}
-	}
-
-	// Phase 5: Preload numscript versions for SaveNumscript/DeleteNumscript
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.NumscriptVersions)),
-		metric.WithAttributes(attribute.String("type", "numscript_versions")))
-
-	for nsKey := range needs.NumscriptVersions {
-		canonicalKey := nsKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
-
-		if !a.cache.NumscriptVersions.IsGuaranteedInCache(nextIndex, id) {
-			preloadStart := time.Now()
-
-			result, err := a.loaders.NumscriptVersions.LoadOrWait(id, boundary, func() (string, error) {
-				return query.ReadNumscriptLatestVersion(ctx, a.store, nsKey.Name)
-			})
-			if err != nil {
-				return nil, fmt.Errorf("loading numscript version for %q from store: %w", nsKey.Name, err)
-			}
-
-			if result.FromLoad {
-				loadedKeys.NumscriptVersions = append(loadedKeys.NumscriptVersions, id)
-
-				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "numscript_versions")))
-				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "numscript_versions")))
-			}
-
-			// Always send preload (empty string means "not found", which the FSM needs to know)
-			attrID := &raftcmdpb.AttributeID{
-				Id:  id[:],
-				Tag: tag,
-			}
-
-			a.logger.WithFields(map[string]any{
-				"id":        id.Hex(),
-				"boundary":  boundary,
-				"nextIndex": nextIndex,
-				"name":      nsKey.Name,
-				"version":   result.Value,
-				"fromLoad":  result.FromLoad,
-			}).Debug("Preloading numscript version from store")
-
-			cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-				Type: &raftcmdpb.Preload_NumscriptVersion{
-					NumscriptVersion: &raftcmdpb.PreloadNumscriptVersion{
-						Id:      attrID,
-						Version: result.Value,
-					},
-				},
-			})
-		} else {
-			a.preloadCacheHitsCounter.Add(ctx, 1,
-				metric.WithAttributes(attribute.String("type", "numscript_versions")))
-		}
-	}
-
-	// Phase 6: Preload numscript entries for semver immutability checks
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.NumscriptEntries)),
-		metric.WithAttributes(attribute.String("type", "numscript_entries")))
-
-	for entryKey := range needs.NumscriptEntries {
-		canonicalKey := entryKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
-
-		if !a.cache.NumscriptEntries.IsGuaranteedInCache(nextIndex, id) {
-			preloadStart := time.Now()
-
-			result, err := a.loaders.NumscriptEntries.LoadOrWait(id, boundary, func() (bool, error) {
-				info, err := query.ReadNumscript(ctx, a.store, entryKey.Name, entryKey.Version)
-				if err != nil {
-					return false, err
-				}
-
-				return info != nil, nil
-			})
-			if err != nil {
-				return nil, fmt.Errorf("loading numscript entry %q v%s from store: %w", entryKey.Name, entryKey.Version, err)
-			}
-
-			if result.FromLoad {
-				loadedKeys.NumscriptEntries = append(loadedKeys.NumscriptEntries, id)
-
-				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "numscript_entries")))
-				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "numscript_entries")))
-			}
-
-			// Always send preload (both true and false) so the FSM never needs a Pebble read
-			attrID := &raftcmdpb.AttributeID{
-				Id:  id[:],
-				Tag: tag,
-			}
-
-			a.logger.WithFields(map[string]any{
-				"id":        id.Hex(),
-				"boundary":  boundary,
-				"nextIndex": nextIndex,
-				"name":      entryKey.Name,
-				"version":   entryKey.Version,
-				"exists":    result.Value,
-				"fromLoad":  result.FromLoad,
-			}).Debug("Preloading numscript entry existence from store")
-
-			cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-				Type: &raftcmdpb.Preload_NumscriptEntry{
-					NumscriptEntry: &raftcmdpb.PreloadNumscriptEntry{
-						Id:     attrID,
-						Exists: result.Value,
-					},
-				},
-			})
-		} else {
-			a.preloadCacheHitsCounter.Add(ctx, 1,
-				metric.WithAttributes(attribute.String("type", "numscript_entries")))
-		}
-	}
-
-	// Phase 7: Preload account metadata for Numscript meta() calls
-	a.preloadKeysNeededCounter.Add(ctx, int64(len(needs.Metadata)),
-		metric.WithAttributes(attribute.String("type", "account_metadata")))
-
-	for metadataKey := range needs.Metadata {
-		canonicalKey := metadataKey.Bytes()
-		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
-
-		if !a.cache.AccountMetadata.IsGuaranteedInCache(nextIndex, id) {
-			preloadStart := time.Now()
-
-			result, err := a.loaders.AccountMetadata.LoadOrWait(id, boundary, func() (*commonpb.MetadataValue, error) {
-				return a.attrs.Metadata.ComputeValue(a.store, boundary, canonicalKey)
-			})
-			if err != nil {
-				return nil, fmt.Errorf("computing account metadata value at boundary %d for %s/%s: %w", boundary, metadataKey.Account, metadataKey.Key, err)
-			}
-
-			if result.FromLoad {
-				loadedKeys.AccountMetadata = append(loadedKeys.AccountMetadata, id)
-
-				a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds(),
-					metric.WithAttributes(attribute.String("type", "account_metadata")))
-				a.preloadCounter.Add(ctx, 1,
-					metric.WithAttributes(attribute.String("type", "account_metadata")))
-			}
-
-			// Only send preload if the metadata exists in the store
-			if result.Value != nil {
-				attrID := &raftcmdpb.AttributeID{
-					Id:  id[:],
-					Tag: tag,
-				}
-
-				a.logger.WithFields(map[string]any{
-					"id":        id.Hex(),
-					"boundary":  boundary,
-					"nextIndex": nextIndex,
-					"account":   metadataKey.Account,
-					"key":       metadataKey.Key,
-					"fromLoad":  result.FromLoad,
-				}).Debug("Preloading account metadata from store")
-
-				cmd.Preload.Preloads = append(cmd.Preload.Preloads, &raftcmdpb.Preload{
-					Type: &raftcmdpb.Preload_AccountMetadata{
-						AccountMetadata: &raftcmdpb.PreloadAccountMetadata{
-							Id:    attrID,
-							Value: result.Value,
-						},
-					},
-				})
-			}
-		} else {
-			a.preloadCacheHitsCounter.Add(ctx, 1,
-				metric.WithAttributes(attribute.String("type", "account_metadata")))
-		}
-	}
-
+	cmd.Preload = preloadSet
 	preloadSpan.End()
 
-	// Step 5: Propose command - reacquire lock to serialize proposals
+	// Step 5: Propose command — the ProposalGuard holds the proposal lock,
+	// ensuring no generation boundary can be crossed until we increment.
 	start := time.Now()
 
 	defer func() {
@@ -880,6 +335,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 		*bufp = buf
 		marshalBufPool.Put(bufp)
+		guard.ReleaseAll()
 
 		return nil, fmt.Errorf("marshaling command: %w", err)
 	}
@@ -905,8 +361,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	fsmFuture, err := a.proposer.Propose(proposal)
 	if err != nil {
 		proposeSpan.End()
-		// Clean up loaded keys on error
-		loadedKeys.MarkApplied(a.loaders)
+		guard.ReleaseAll()
 		a.logger.WithFields(map[string]any{
 			"channel": "raft.node.propose",
 		}).Errorf("Proposal failed: %v", err)
@@ -915,13 +370,12 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, err
 	}
 
-	a.nextIndex.Add(1)
+	guard.IncrementAndRelease()
 	a.proposeQueueLoadHistogram.Record(context.Background(), int64(a.proposeQueueInflight.Add(1)))
 
 	if _, err := proposal.Wait(); err != nil {
 		proposeSpan.End()
-		// Clean up loaded keys on error
-		loadedKeys.MarkApplied(a.loaders)
+		guard.ReleaseLoaders()
 		a.proposeQueueInflight.Add(-1)
 
 		return nil, err
@@ -941,9 +395,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// Decrement inflight counter after command is fully processed
 	a.proposeQueueInflight.Add(-1)
 
-	// Clean up loaded keys after command is applied (or failed)
-	// At this point, the cache will have the values, so we can remove them from the loader
-	loadedKeys.MarkApplied(a.loaders)
+	// Clean up loaded keys after command is applied (or failed).
+	// At this point, the cache will have the values, so we can remove them from the loader.
+	guard.ReleaseLoaders()
 
 	// Resolve CreatedLogOrReference entries into concrete logs.
 	// Created logs are returned directly; reference sequences (idempotent responses)
@@ -1061,56 +515,9 @@ func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {
 	return true
 }
 
-// preloadNeeds contains all data extracted from orders in a single pass.
-// It combines what was previously split across phase1 (name-based) and phase2
-// (ledger-scoped) extraction, now that DAL keys use ledger names directly.
-type preloadNeeds struct {
-	IdempotencyKeys   map[domain.IdempotencyKey]struct{}
-	Ledgers           map[domain.LedgerKey]struct{}
-	Boundaries        map[domain.LedgerKey]struct{}
-	SinkConfigs       map[domain.SinkConfigKey]struct{}
-	NumscriptVersions map[domain.NumscriptVersionKey]struct{}
-	NumscriptEntries  map[domain.NumscriptEntryKey]struct{}
-	Volumes           map[domain.VolumeKey]struct{}
-	Metadata          map[domain.MetadataKey]struct{}
-	References        map[domain.TransactionReferenceKey]struct{}
-}
-
 // extractPreloadNeeds extracts all preload keys from orders in a single pass.
-//
-// For every order it collects:
-//   - IdempotencyKeys: from orders with an idempotency key set
-//   - Ledgers: from CreateLedger/DeleteLedger orders
-//   - Boundaries: from Apply orders (to access next_transaction_id/next_log_id)
-//   - SinkConfigs: from AddEventsSink/RemoveEventsSink orders
-//   - NumscriptVersions: from SaveNumscript/DeleteNumscript orders
-//   - NumscriptEntries: from SaveNumscript orders with explicit semver
-//
-// For Apply orders it additionally collects:
-//   - Volumes: accounts that need balance checks or post-commit volume expansion
-//   - Metadata: accounts whose metadata is queried (e.g. Numscript meta() calls)
-//   - References: transaction references for uniqueness enforcement
-//
-// Volume preloading rationale:
-//   - All volumes (sources AND destinations) are always preloaded to ensure
-//     absolute Known values. This eliminates the need for diff-based tracking
-//     and prevents data loss on cache eviction.
-//   - Metadata preloading is still performed since Numscript scripts may
-//     query metadata via meta() calls.
-//   - For reverts, postings are reversed: original destination becomes source
-//     and original source becomes destination
-func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds {
-	p := preloadNeeds{
-		IdempotencyKeys:   make(map[domain.IdempotencyKey]struct{}),
-		Ledgers:           make(map[domain.LedgerKey]struct{}),
-		Boundaries:        make(map[domain.LedgerKey]struct{}),
-		SinkConfigs:       make(map[domain.SinkConfigKey]struct{}),
-		NumscriptVersions: make(map[domain.NumscriptVersionKey]struct{}),
-		NumscriptEntries:  make(map[domain.NumscriptEntryKey]struct{}),
-		Volumes:           make(map[domain.VolumeKey]struct{}),
-		Metadata:          make(map[domain.MetadataKey]struct{}),
-		References:        make(map[domain.TransactionReferenceKey]struct{}),
-	}
+func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order) *preload.Needs {
+	p := preload.NewNeeds()
 
 	for _, order := range orders {
 		// Idempotency keys apply to all order types.
@@ -1124,14 +531,27 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 		case *raftcmdpb.Order_DeleteLedger:
 			p.Ledgers[domain.LedgerKey{Name: orderType.DeleteLedger.GetName()}] = struct{}{}
 		case *raftcmdpb.Order_AddEventsSink:
-			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.AddEventsSink.GetConfig().GetName()}] = struct{}{}
+			sinkKey := domain.SinkConfigKey{Name: orderType.AddEventsSink.GetConfig().GetName()}
+			if p.SinkConfigs == nil {
+				p.SinkConfigs = make(map[domain.SinkConfigKey]func() (*commonpb.SinkConfig, error))
+			}
+
+			p.SinkConfigs[sinkKey] = func() (*commonpb.SinkConfig, error) {
+				return query.ReadSinkConfig(a.store, sinkKey.Name)
+			}
 		case *raftcmdpb.Order_RemoveEventsSink:
-			p.SinkConfigs[domain.SinkConfigKey{Name: orderType.RemoveEventsSink.GetName()}] = struct{}{}
+			sinkKey := domain.SinkConfigKey{Name: orderType.RemoveEventsSink.GetName()}
+			if p.SinkConfigs == nil {
+				p.SinkConfigs = make(map[domain.SinkConfigKey]func() (*commonpb.SinkConfig, error))
+			}
+
+			p.SinkConfigs[sinkKey] = func() (*commonpb.SinkConfig, error) {
+				return query.ReadSinkConfig(a.store, sinkKey.Name)
+			}
 		case *raftcmdpb.Order_MirrorIngest:
 			p.Ledgers[domain.LedgerKey{Name: orderType.MirrorIngest.GetLedger()}] = struct{}{}
 			p.Boundaries[domain.LedgerKey{Name: orderType.MirrorIngest.GetLedger()}] = struct{}{}
 
-			// Preload volumes for mirror ingest entries
 			ledgerName := orderType.MirrorIngest.GetLedger()
 
 			var postings []*commonpb.Posting
@@ -1154,14 +574,40 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 		case *raftcmdpb.Order_PromoteLedger:
 			p.Ledgers[domain.LedgerKey{Name: orderType.PromoteLedger.GetLedger()}] = struct{}{}
 		case *raftcmdpb.Order_SaveNumscript:
-			p.NumscriptVersions[domain.NumscriptVersionKey{Name: orderType.SaveNumscript.GetName()}] = struct{}{}
+			nsKey := domain.NumscriptVersionKey{Name: orderType.SaveNumscript.GetName()}
+			if p.NumscriptVersions == nil {
+				p.NumscriptVersions = make(map[domain.NumscriptVersionKey]func() (string, error))
+			}
+
+			p.NumscriptVersions[nsKey] = func() (string, error) {
+				return query.ReadNumscriptLatestVersion(ctx, a.store, nsKey.Name)
+			}
 			// For semver saves, preload the specific version entry for immutability check
 			version := orderType.SaveNumscript.GetVersion()
 			if version != "" && version != "latest" {
-				p.NumscriptEntries[domain.NumscriptEntryKey{Name: orderType.SaveNumscript.GetName(), Version: version}] = struct{}{}
+				entryKey := domain.NumscriptEntryKey{Name: orderType.SaveNumscript.GetName(), Version: version}
+				if p.NumscriptEntries == nil {
+					p.NumscriptEntries = make(map[domain.NumscriptEntryKey]func() (bool, error))
+				}
+
+				p.NumscriptEntries[entryKey] = func() (bool, error) {
+					info, err := query.ReadNumscript(ctx, a.store, entryKey.Name, entryKey.Version)
+					if err != nil {
+						return false, err
+					}
+
+					return info != nil, nil
+				}
 			}
 		case *raftcmdpb.Order_DeleteNumscript:
-			p.NumscriptVersions[domain.NumscriptVersionKey{Name: orderType.DeleteNumscript.GetName()}] = struct{}{}
+			nsKey := domain.NumscriptVersionKey{Name: orderType.DeleteNumscript.GetName()}
+			if p.NumscriptVersions == nil {
+				p.NumscriptVersions = make(map[domain.NumscriptVersionKey]func() (string, error))
+			}
+
+			p.NumscriptVersions[nsKey] = func() (string, error) {
+				return query.ReadNumscriptLatestVersion(ctx, a.store, nsKey.Name)
+			}
 		case *raftcmdpb.Order_Apply:
 			p.Boundaries[domain.LedgerKey{Name: orderType.Apply.GetLedger()}] = struct{}{}
 
@@ -1169,7 +615,6 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 
 			switch applyData := orderType.Apply.GetData().(type) {
 			case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-				// References (extracted regardless of Force or Numscript)
 				if applyData.CreateTransaction.GetReference() != "" {
 					p.References[domain.TransactionReferenceKey{
 						Ledger:    ledgerName,
@@ -1177,9 +622,7 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 					}] = struct{}{}
 				}
 
-				// Numscript emulation: discover required accounts and metadata by running with infinite balances.
-				// This is needed because Numscript transactions have no explicit postings at admission
-				// time -- the accounts are determined dynamically by the script at runtime.
+				// Numscript emulation: discover required accounts and metadata
 				if applyData.CreateTransaction.GetScript() != nil &&
 					applyData.CreateTransaction.GetScript().GetPlain() != "" &&
 					len(applyData.CreateTransaction.GetPostings()) == 0 {
@@ -1223,8 +666,6 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-				// Reversion status is checked via in-memory bitset (no preload needed).
-				// For reverts, postings are reversed: original destination becomes source
 				for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
 					p.Volumes[domain.VolumeKey{
 						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetDestination()},
@@ -1237,7 +678,6 @@ func (a *Admission) extractPreloadNeeds(orders []*raftcmdpb.Order) preloadNeeds 
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
-				// Preload the metadata key so processDeleteMetadata can check existence
 				if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 					p.Metadata[domain.MetadataKey{
 						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.GetAddr()},

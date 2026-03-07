@@ -1,4 +1,4 @@
-package admission
+package preload
 
 import (
 	"sync"
@@ -122,9 +122,9 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 	return &LoadResult[T]{Value: value, FromLoad: true}, nil
 }
 
-// MarkApplied removes the loaded entry for the given key.
+// Release removes the loaded entry for the given key.
 // This should be called after the command has been applied and the cache updated.
-func (al *AttributeLoader[T]) MarkApplied(key attributes.U128) {
+func (al *AttributeLoader[T]) Release(key attributes.U128) {
 	al.mu.Lock()
 	defer al.mu.Unlock()
 
@@ -132,7 +132,6 @@ func (al *AttributeLoader[T]) MarkApplied(key attributes.U128) {
 }
 
 // Loaders groups all attribute loaders by type.
-// Similar to Cache, it provides type-safe access to loaders for each attribute type.
 type Loaders struct {
 	Volumes           *AttributeLoader[*raftcmdpb.VolumePair]
 	IdempotencyKeys   *AttributeLoader[*commonpb.IdempotencyKeyValue]
@@ -160,9 +159,9 @@ func NewLoaders() *Loaders {
 	}
 }
 
-// LoadedKeysTracker tracks which keys were loaded for each attribute type.
+// CleanupToken tracks which keys were loaded for each attribute type.
 // Used to clean up loaded entries after a command is applied.
-type LoadedKeysTracker struct {
+type CleanupToken struct {
 	Volumes           []attributes.U128
 	IdempotencyKeys   []attributes.U128
 	References        []attributes.U128
@@ -174,46 +173,41 @@ type LoadedKeysTracker struct {
 	NumscriptEntries  []attributes.U128
 }
 
-// NewLoadedKeysTracker creates a new empty tracker.
-func NewLoadedKeysTracker() *LoadedKeysTracker {
-	return &LoadedKeysTracker{}
-}
-
-// MarkApplied cleans up all tracked keys from their respective loaders.
-func (t *LoadedKeysTracker) MarkApplied(loaders *Loaders) {
+// Release cleans up all tracked keys from their respective loaders.
+func (t *CleanupToken) Release(loaders *Loaders) {
 	for _, key := range t.Volumes {
-		loaders.Volumes.MarkApplied(key)
+		loaders.Volumes.Release(key)
 	}
 
 	for _, key := range t.IdempotencyKeys {
-		loaders.IdempotencyKeys.MarkApplied(key)
+		loaders.IdempotencyKeys.Release(key)
 	}
 
 	for _, key := range t.References {
-		loaders.References.MarkApplied(key)
+		loaders.References.Release(key)
 	}
 
 	for _, key := range t.Ledgers {
-		loaders.Ledgers.MarkApplied(key)
+		loaders.Ledgers.Release(key)
 	}
 
 	for _, key := range t.Boundaries {
-		loaders.Boundaries.MarkApplied(key)
+		loaders.Boundaries.Release(key)
 	}
 
 	for _, key := range t.SinkConfigs {
-		loaders.SinkConfigs.MarkApplied(key)
+		loaders.SinkConfigs.Release(key)
 	}
 
 	for _, key := range t.AccountMetadata {
-		loaders.AccountMetadata.MarkApplied(key)
+		loaders.AccountMetadata.Release(key)
 	}
 
 	for _, key := range t.NumscriptVersions {
-		loaders.NumscriptVersions.MarkApplied(key)
+		loaders.NumscriptVersions.Release(key)
 	}
 
 	for _, key := range t.NumscriptEntries {
-		loaders.NumscriptEntries.MarkApplied(key)
+		loaders.NumscriptEntries.Release(key)
 	}
 }

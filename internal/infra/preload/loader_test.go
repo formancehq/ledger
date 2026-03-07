@@ -1,4 +1,4 @@
-package admission
+package preload
 
 import (
 	"errors"
@@ -250,7 +250,7 @@ func TestAttributeLoader_LoadOrWait_ErrorReleasesWaiters(t *testing.T) {
 	wg.Wait()
 }
 
-func TestAttributeLoader_MarkApplied(t *testing.T) {
+func TestAttributeLoader_Release(t *testing.T) {
 	t.Parallel()
 
 	loader := NewAttributeLoader[int]()
@@ -274,8 +274,8 @@ func TestAttributeLoader_MarkApplied(t *testing.T) {
 	assert.False(t, result.FromLoad)
 	assert.Equal(t, 0, loadCount)
 
-	// Mark as applied
-	loader.MarkApplied(key)
+	// Release the key
+	loader.Release(key)
 
 	// Should load again
 	result, err = loader.LoadOrWait(key, 100, func() (int, error) {
@@ -285,7 +285,7 @@ func TestAttributeLoader_MarkApplied(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 123, result.Value)
-	assert.True(t, result.FromLoad, "Should load after MarkApplied")
+	assert.True(t, result.FromLoad, "Should load after Release")
 	assert.Equal(t, 1, loadCount)
 }
 
@@ -322,7 +322,7 @@ func TestNewLoaders(t *testing.T) {
 	assert.NotNil(t, loaders.IdempotencyKeys)
 }
 
-func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
+func TestCleanupToken_Release(t *testing.T) {
 	t.Parallel()
 
 	loaders := NewLoaders()
@@ -348,13 +348,13 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create tracker with the loaded keys
-	tracker := &LoadedKeysTracker{
+	token := &CleanupToken{
 		Volumes:         []attributes.U128{key1, key2},
 		IdempotencyKeys: []attributes.U128{key4},
 	}
 
-	// Mark all as applied
-	tracker.MarkApplied(loaders)
+	// Release all tracked keys
+	token.Release(loaders)
 
 	// Verify all keys were removed - next load should actually load
 	volumeLoadCount := 0
@@ -364,7 +364,7 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)}, nil
 	})
 	require.NoError(t, err)
-	assert.Equal(t, 1, volumeLoadCount, "Volumes key1 should reload after MarkApplied")
+	assert.Equal(t, 1, volumeLoadCount, "Volumes key1 should reload after Release")
 
 	volumeLoadCount2 := 0
 	_, err = loaders.Volumes.LoadOrWait(key2, 100, func() (*raftcmdpb.VolumePair, error) {
@@ -373,7 +373,7 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)}, nil
 	})
 	require.NoError(t, err)
-	assert.Equal(t, 1, volumeLoadCount2, "Volumes key2 should reload after MarkApplied")
+	assert.Equal(t, 1, volumeLoadCount2, "Volumes key2 should reload after Release")
 
 	idempotencyLoadCount := 0
 	_, err = loaders.IdempotencyKeys.LoadOrWait(key4, 100, func() (*commonpb.IdempotencyKeyValue, error) {
@@ -382,15 +382,5 @@ func TestLoadedKeysTracker_MarkApplied(t *testing.T) {
 		return &commonpb.IdempotencyKeyValue{LogSequence: 2, Hash: []byte("new")}, nil
 	})
 	require.NoError(t, err)
-	assert.Equal(t, 1, idempotencyLoadCount, "IdempotencyKeys should reload after MarkApplied")
-}
-
-func TestNewLoadedKeysTracker(t *testing.T) {
-	t.Parallel()
-
-	tracker := NewLoadedKeysTracker()
-
-	assert.NotNil(t, tracker)
-	assert.Empty(t, tracker.Volumes)
-	assert.Empty(t, tracker.IdempotencyKeys)
+	assert.Equal(t, 1, idempotencyLoadCount, "IdempotencyKeys should reload after Release")
 }
