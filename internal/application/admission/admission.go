@@ -309,7 +309,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	preloadSpan.End()
 
 	// Step 5: Propose command — the ProposalGuard holds the proposal lock,
-	// ensuring no generation boundary can be crossed until we increment.
+	// ensuring no concurrent preload can proceed until we release.
 	start := time.Now()
 
 	defer func() {
@@ -370,7 +370,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 		return nil, err
 	}
 
-	guard.IncrementAndRelease()
+	guard.Release()
 	a.proposeQueueLoadHistogram.Record(context.Background(), int64(a.proposeQueueInflight.Add(1)))
 
 	if _, err := proposal.Wait(); err != nil {

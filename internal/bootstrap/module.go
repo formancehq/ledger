@@ -144,7 +144,7 @@ func Module() fx.Option {
 				return cache.New(cfg.RotationThreshold, meterProvider.Meter("cache"))
 			},
 			func(n *node.Node, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, logger logging.Logger) *preload.Preloader {
-				return preload.New(n.InitialIndex(), c, attrs, store, logger)
+				return preload.New(n.IndexTracker(), c, attrs, store, logger)
 			},
 			fx.Annotate(func(
 				cfg Config,

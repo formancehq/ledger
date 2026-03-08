@@ -3,12 +3,12 @@ package preload
 import (
 	"fmt"
 	"sync"
-	"sync/atomic"
 
 	"github.com/formancehq/go-libs/v3/logging"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
@@ -16,44 +16,38 @@ import (
 const maxPreloadRetries = 3
 
 // Preloader manages the shared preload infrastructure used by both admission
-// and mirror. It owns the nextIndex counter and the Loaders for deduplication.
+// and mirror. It uses the Node's IndexTracker for accurate Raft index prediction
+// and the Loaders for deduplication.
 type Preloader struct {
-	nextIndex atomic.Uint64
-	cache     *cache.Cache
-	attrs     *attributes.Attributes
-	store     *dal.Store
-	loaders   *Loaders
-	logger    logging.Logger
+	tracker *node.IndexTracker
+	cache   *cache.Cache
+	attrs   *attributes.Attributes
+	store   *dal.Store
+	loaders *Loaders
+	logger  logging.Logger
 
-	// proposeMu serializes the final boundary validation, Propose(), and index
-	// increment. Preload building (the slow part) happens outside this lock;
-	// only the fast critical section (validate + propose + increment) is held.
+	// proposeMu serializes the final boundary validation and Propose().
+	// Preload building (the slow part) happens outside this lock;
+	// only the fast critical section (validate + propose) is held.
 	proposeMu sync.Mutex
 }
 
 // ProposalGuard holds the proposal lock and the cleanup token acquired by
 // BuildAndValidatePreloads. It unifies two concerns:
-//   - proposal lock: serializes boundary validation → Propose → index increment
+//   - proposal lock: serializes boundary validation → Propose
 //   - loader cleanup: tracks loaded keys for deduplication until the FSM applies
 //
-// The caller must call IncrementAndRelease after a successful Propose(), or
-// ReleaseAll on error. ReleaseLoaders must be called after the FSM applies
-// (or immediately if loader dedup is not needed, e.g. mirror).
+// The caller must call Release to unlock the proposal mutex, and ReleaseLoaders
+// after the FSM applies (or immediately if loader dedup is not needed, e.g.
+// mirror). ReleaseAll is a convenience for error paths.
 type ProposalGuard struct {
 	p     *Preloader
 	token *CleanupToken
 }
 
-// IncrementAndRelease atomically increments the next-index counter and releases
-// the proposal lock. Must be called after a successful Propose().
-// The loader cleanup token is NOT released — call ReleaseLoaders separately.
-func (g *ProposalGuard) IncrementAndRelease() {
-	g.p.nextIndex.Add(1)
-	g.p.proposeMu.Unlock()
-}
-
-// Release releases the proposal lock without incrementing the index.
-// Must be called when the proposal fails or is abandoned before Propose.
+// Release releases the proposal lock. Must be called after Propose (success or
+// failure) or when the proposal is abandoned. The Raft index is tracked by the
+// Node's IndexTracker (incremented in Node.Propose).
 // The loader cleanup token is NOT released — call ReleaseLoaders separately.
 func (g *ProposalGuard) Release() {
 	g.p.proposeMu.Unlock()
@@ -75,18 +69,16 @@ func (g *ProposalGuard) ReleaseAll() {
 	g.ReleaseLoaders()
 }
 
-// New creates a Preloader with the given initial Raft index.
-func New(initialIndex uint64, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, logger logging.Logger) *Preloader {
-	p := &Preloader{
+// New creates a Preloader using the given IndexTracker for Raft index prediction.
+func New(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.Attributes, store *dal.Store, logger logging.Logger) *Preloader {
+	return &Preloader{
+		tracker: tracker,
 		cache:   c,
 		attrs:   attrs,
 		store:   store,
 		loaders: NewLoaders(),
 		logger:  logger,
 	}
-	p.nextIndex.Store(initialIndex)
-
-	return p
 }
 
 // BuildAndValidatePreloads resolves all preload needs and acquires the proposal
@@ -95,13 +87,14 @@ func New(initialIndex uint64, c *cache.Cache, attrs *attributes.Attributes, stor
 //
 // Preload building (the slow part: store reads, loader dedup) happens outside
 // the lock. Only the final boundary validation + lock acquisition is serialized,
-// keeping the critical section to the fast marshal→Propose→increment path.
+// keeping the critical section to the fast marshal→Propose path.
 //
 // On error, the caller must call guard.ReleaseLoaders() if guard is non-nil
 // (partial preload built before the error).
 func (p *Preloader) BuildAndValidatePreloads(needs *Needs) (*raftcmdpb.PreloadSet, *ProposalGuard, error) {
 	for attempt := range maxPreloadRetries {
-		nextIndexBefore := p.nextIndex.Load()
+		nextIndexBefore := p.tracker.Next()
+		genBefore := p.cache.CurrentGeneration()
 
 		preloadSet, token, err := p.buildPreloadsAt(nextIndexBefore, needs)
 		if err != nil {
@@ -111,15 +104,20 @@ func (p *Preloader) BuildAndValidatePreloads(needs *Needs) (*raftcmdpb.PreloadSe
 		}
 
 		// Acquire the proposal lock and re-validate the boundary.
-		// Under this lock, nextIndex cannot change (only IncrementAndRelease
-		// changes it, and it also holds this lock).
+		// Under this lock, no other preloader can proceed to Propose.
+		// The IndexTracker may still advance from non-preloader proposals,
+		// but the boundary check below detects that.
 		p.proposeMu.Lock()
 
-		nextIndexAfter := p.nextIndex.Load()
+		nextIndexAfter := p.tracker.Next()
 		boundaryBefore := cache.BoundaryIndex(nextIndexBefore, p.cache.GenerationThreshold)
 		boundaryAfter := cache.BoundaryIndex(nextIndexAfter, p.cache.GenerationThreshold)
+		genAfter := p.cache.CurrentGeneration()
 
-		if boundaryBefore == boundaryAfter {
+		// Validate both the predicted boundary and the actual cache generation.
+		// The IndexTracker now tracks all Raft consumers, so boundary shifts
+		// are rare but still possible during high concurrency.
+		if boundaryBefore == boundaryAfter && genBefore == genAfter {
 			return preloadSet, &ProposalGuard{p: p, token: token}, nil
 		}
 
@@ -131,7 +129,9 @@ func (p *Preloader) BuildAndValidatePreloads(needs *Needs) (*raftcmdpb.PreloadSe
 			"max_retries":     maxPreloadRetries,
 			"boundary_before": boundaryBefore,
 			"boundary_after":  boundaryAfter,
-		}).Infof("Preload validation failed: boundary shifted, retrying")
+			"gen_before":      genBefore,
+			"gen_after":       genAfter,
+		}).Infof("Preload validation failed: boundary or generation shifted, retrying")
 	}
 
 	// Exhausted retries — build under lock as last resort.
@@ -141,7 +141,7 @@ func (p *Preloader) BuildAndValidatePreloads(needs *Needs) (*raftcmdpb.PreloadSe
 
 	p.proposeMu.Lock()
 
-	preloadSet, token, err := p.buildPreloadsAt(p.nextIndex.Load(), needs)
+	preloadSet, token, err := p.buildPreloadsAt(p.tracker.Next(), needs)
 	if err != nil {
 		p.proposeMu.Unlock()
 

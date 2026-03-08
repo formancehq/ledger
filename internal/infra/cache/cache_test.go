@@ -256,12 +256,17 @@ func TestAttributeCache_IsGuaranteedInCache_SameGeneration(t *testing.T) {
 	key := attributes.NewU128(1, 1)
 	ac.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{})
 
-	// Index 5 is in generation 0 (same as current), data will be there
+	// Index 5 is in generation 0 (same as current), key is in Gen0 -> true
 	assert.True(t, ac.IsGuaranteedInCache(5, key))
 
 	// Non-existent key
 	nonExistent := attributes.NewU128(99, 99)
 	assert.False(t, ac.IsGuaranteedInCache(5, nonExistent))
+
+	// Key in Gen1 only IS guaranteed in same generation (no rotation expected)
+	gen1Key := attributes.NewU128(3, 3)
+	ac.Gen1().Put(gen1Key, attributes.Entry[*raftcmdpb.VolumePair]{})
+	assert.True(t, ac.IsGuaranteedInCache(5, gen1Key))
 }
 
 func TestAttributeCache_IsGuaranteedInCache_NextGeneration(t *testing.T) {

@@ -412,7 +412,7 @@ func (w *Worker) processBatch() (bool, error) {
 		return false, err
 	}
 
-	guard.IncrementAndRelease()
+	guard.Release()
 
 	// Start prefetching the next batch while waiting for Raft consensus.
 	// The goroutine writes to a buffered channel and always exits, even if

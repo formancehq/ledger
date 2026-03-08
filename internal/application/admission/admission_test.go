@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/preload"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
@@ -93,7 +94,7 @@ func createTestAdmission(t *testing.T, store *dal.Store) *Admission {
 
 	testCache, _ := cache.New(100, nil)
 	attrs := attributes.New()
-	testPreloader := preload.New(1, testCache, attrs, store, logger)
+	testPreloader := preload.New(node.NewIndexTracker(1), testCache, attrs, store, logger)
 
 	ks := keystore.NewKeyStore()
 	ss := state.NewSharedState()

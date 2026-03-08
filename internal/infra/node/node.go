@@ -130,6 +130,11 @@ type Node struct {
 	// pendingReads tracks in-flight ReadIndex requests, keyed by unique request ID.
 	pendingReads *SyncMap[uint64, *readIndexRequest]
 
+	// indexTracker provides an accurate prediction of the next Raft index.
+	// Incremented by Propose() (all proposals) and processReady() (non-proposal
+	// committed entries like no-ops and config changes).
+	indexTracker *IndexTracker
+
 	// Metrics (kept on Node: WAL/transport/orchestrate-related)
 	processEntryHistogram             metric.Int64Histogram
 	appendEntriesHistogram            metric.Int64Histogram
@@ -417,6 +422,7 @@ func NewNode(
 		recoveredPeers:   recoveredPeers,
 		peerAddresses:    recoveredPeers,
 		lastAutoPromote:  make(map[uint64]time.Time),
+		indexTracker:     NewIndexTracker(initialIndex(wal)),
 	}
 
 	// Ensure peerAddresses is never nil (bootstrap path has no recoveredPeers).
@@ -1144,6 +1150,20 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		f.Resolve(struct{}{}, nil)
 	}
 
+	// Count non-proposal committed entries (no-ops and config changes) and
+	// increment the IndexTracker so the preloader's boundary prediction stays
+	// accurate. Proposals are already counted by Node.Propose().
+	var nonProposalCount uint64
+	for _, entry := range rd.CommittedEntries {
+		if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
+			nonProposalCount++
+		}
+	}
+
+	if nonProposalCount > 0 {
+		node.indexTracker.Increment(nonProposalCount)
+	}
+
 	// Submit committed entries to the Applier for async FSM application
 	if len(rd.CommittedEntries) > 0 {
 		node.applier.Submit(rd.CommittedEntries, node.confState, stop)
@@ -1389,6 +1409,8 @@ func (node *Node) Propose(proposal *Proposal) (*futures.Future[state.ApplyResult
 
 	select {
 	case node.proposeCh <- proposal:
+		node.indexTracker.Increment(1)
+
 		return fsmFuture, nil
 	default:
 		node.applier.futures.Delete(proposal.commandID)
@@ -1397,8 +1419,21 @@ func (node *Node) Propose(proposal *Proposal) (*futures.Future[state.ApplyResult
 	}
 }
 
+// IndexTracker returns the shared index tracker for accurate Raft index prediction.
+func (node *Node) IndexTracker() *IndexTracker {
+	return node.indexTracker
+}
+
+// InitialIndex returns the next Raft index at node creation time.
+//
+// Deprecated: use IndexTracker().Next() instead.
 func (node *Node) InitialIndex() uint64 {
-	ret, err := node.wal.LastIndex()
+	return initialIndex(node.wal)
+}
+
+// initialIndex computes the first index that will be assigned by Raft.
+func initialIndex(w wal.WAL) uint64 {
+	ret, err := w.LastIndex()
 	if err != nil {
 		panic(err)
 	}

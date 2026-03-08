@@ -111,10 +111,9 @@ func (a *AttributeCache[T]) Reset() {
 // - Gen1 contains data from the previous generation
 // - On rotation: Gen1 is discarded, Gen0 becomes Gen1, new Gen0 is created
 //
-// Therefore:
-// - If `at` is in the current generation: no rotation, data will be there
-// - If `at` is in the next generation: one rotation, data must be in Gen0 to survive
-// - If `at` is 2+ generations ahead: data will be lost (too many rotations)
+// The `at` parameter comes from the Node's IndexTracker, which accurately tracks
+// all Raft index consumers (proposals, no-ops, config changes). This ensures the
+// predicted generation matches the actual Raft index progression.
 //
 // This method only takes a brief shared RLock on a single shard.
 func (a *AttributeCache[T]) IsGuaranteedInCache(at uint64, k attributes.U128) bool {
@@ -129,13 +128,14 @@ func (a *AttributeCache[T]) IsGuaranteedInCache(at uint64, k attributes.U128) bo
 	// Check how far ahead the target generation is from current
 	switch futureGeneration - actualGeneration {
 	case 0:
-		// Same generation - no rotation will occur, data will still be there
+		// Same generation — no rotation expected.
+		// Data in Gen0 or Gen1 will survive.
 		_, ok := a.Get(k)
 
 		return ok
 	case 1:
-		// Next generation - one rotation will occur
-		// Data must be in Gen0 now to survive (Gen0 becomes Gen1 after rotation)
+		// Next generation — one rotation expected.
+		// Only Gen0 data survives (it becomes Gen1 after rotation).
 		_, ok := a.gen0.Load().Get(k)
 
 		return ok
