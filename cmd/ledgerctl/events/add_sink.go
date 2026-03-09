@@ -1,10 +1,8 @@
 package events
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/pterm/pterm"
@@ -76,7 +74,7 @@ Examples:
 	cmd.Flags().Int32("batch-size", 0, "Max events per batch (default: 64)")
 	cmd.Flags().Int64("batch-delay-ms", 0, "Max delay before flush in ms (default: 10)")
 	cmd.Flags().String("event-types", "", "Comma-separated event types to filter (e.g. COMMITTED_TRANSACTION,REVERTED_TRANSACTION). Empty = all events")
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -243,12 +241,8 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success("Added")
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(config)
+	if handled, err := cmdutil.EncodeStructured(cmd, config); handled || err != nil {
+		return err
 	}
 
 	pterm.Println()

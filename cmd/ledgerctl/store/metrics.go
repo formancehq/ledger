@@ -1,10 +1,8 @@
 package store
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/pterm/pterm"
@@ -24,7 +22,7 @@ func NewMetricsCommand() *cobra.Command {
 		RunE:    runMetrics,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON instead of formatted table")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -59,12 +57,8 @@ func runMetrics(cmd *cobra.Command, _ []string) error {
 
 	_ = spinner.Stop()
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(resp.GetMetrics())
+	if handled, err := cmdutil.EncodeStructured(cmd, resp.GetMetrics()); handled || err != nil {
+		return err
 	}
 
 	pterm.Println()

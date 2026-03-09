@@ -1,10 +1,8 @@
 package ledgers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/pterm/pterm"
@@ -33,7 +31,7 @@ Examples:
 	}
 
 	cmd.Flags().String("name", "", "Name of the ledger to delete")
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -141,12 +139,8 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	spinner.Success("Deleted")
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(ledger)
+	if handled, err := cmdutil.EncodeStructured(cmd, ledger); handled || err != nil {
+		return err
 	}
 
 	pterm.Println()

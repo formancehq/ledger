@@ -1,9 +1,6 @@
 package cluster
 
 import (
-	"encoding/json"
-	"fmt"
-
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
@@ -21,7 +18,7 @@ func NewDiskUsageCommand() *cobra.Command {
 		RunE:    runDiskUsage,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -43,16 +40,8 @@ func runDiskUsage(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to get disk usage", err)
 	}
 
-	jsonMode, _ := cmd.Flags().GetBool("json")
-	if jsonMode {
-		data, err := json.MarshalIndent(usage, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal response: %w", err)
-		}
-
-		fmt.Println(string(data))
-
-		return nil
+	if handled, err := cmdutil.EncodeStructured(cmd, usage); handled || err != nil {
+		return err
 	}
 
 	displayDiskUsage(usage)

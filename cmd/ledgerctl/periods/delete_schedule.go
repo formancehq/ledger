@@ -1,9 +1,6 @@
 package periods
 
 import (
-	"encoding/json"
-	"os"
-
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
@@ -21,7 +18,7 @@ func NewDeleteScheduleCommand() *cobra.Command {
 		RunE:  runDeleteSchedule,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -63,12 +60,8 @@ func runDeleteSchedule(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success("Period schedule deleted")
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(map[string]any{"deleted": true})
+	if handled, err := cmdutil.EncodeStructured(cmd, map[string]any{"deleted": true}); handled || err != nil {
+		return err
 	}
 
 	return nil

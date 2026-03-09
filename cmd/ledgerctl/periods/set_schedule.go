@@ -1,9 +1,7 @@
 package periods
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -35,7 +33,7 @@ Examples:
 		RunE: runSetSchedule,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -81,12 +79,8 @@ func runSetSchedule(cmd *cobra.Command, args []string) error {
 
 	spinner.Success(fmt.Sprintf("Period schedule set to %q", cronExpr))
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(map[string]any{"cron": cronExpr})
+	if handled, err := cmdutil.EncodeStructured(cmd, map[string]any{"cron": cronExpr}); handled || err != nil {
+		return err
 	}
 
 	return nil

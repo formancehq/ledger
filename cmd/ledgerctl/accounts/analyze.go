@@ -1,11 +1,9 @@
 package accounts
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,7 +36,7 @@ Examples:
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
 	cmd.Flags().Uint32("threshold", 0, "Variable threshold (0 = default 10): max distinct children before classifying as variable")
-	cmd.Flags().Bool("json", false, "Output full response as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -60,8 +58,6 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 	}
 
 	threshold, _ := cmd.Flags().GetUint32("threshold")
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -106,11 +102,8 @@ func runAnalyze(cmd *cobra.Command, _ []string) error {
 
 	_ = spinner.Stop()
 
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(resp)
+	if handled, err := cmdutil.EncodeStructured(cmd, resp); handled || err != nil {
+		return err
 	}
 
 	renderAnalysisResult(resp)
@@ -169,8 +162,8 @@ func renderAnalysisResult(resp *servicepb.AnalyzeAccountsResponse) {
 		}
 		for _, at := range suggestedTypes {
 			typeTable = append(typeTable, []string{
-				at.Name,
-				at.Pattern,
+				at.GetName(),
+				at.GetPattern(),
 				"STRICT",
 			})
 		}

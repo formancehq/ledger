@@ -1,9 +1,7 @@
 package transactions
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/pterm/pterm"
@@ -37,7 +35,7 @@ Examples:
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
 	cmd.Flags().StringArrayP("metadata", "m", nil, "Metadata key=value pairs (can be repeated)")
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -171,16 +169,11 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 
 	spinner.Success("Metadata set")
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		result := map[string]any{
-			"transactionId": txID,
-			"metadata":      metadata,
-		}
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(result)
+	if handled, err := cmdutil.EncodeStructured(cmd, map[string]any{
+		"transactionId": txID,
+		"metadata":      metadata,
+	}); handled || err != nil {
+		return err
 	}
 
 	// Display what was set

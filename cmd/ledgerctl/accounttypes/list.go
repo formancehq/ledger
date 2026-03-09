@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 // NewListCommand creates the account-types list command.
@@ -59,16 +60,17 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("ledger %q not found", ledgerName)
 	}
 
-	if len(info.AccountTypes) == 0 {
+	if len(info.GetAccountTypes()) == 0 {
 		pterm.Info.Printfln("No account types configured on ledger %s.", ledgerName)
 		pterm.Println(pterm.Gray("Hint: Add an account type using:"))
 		pterm.FgCyan.Printfln("  ledgerctl account-types add <name> <pattern> --ledger %s", ledgerName)
+
 		return nil
 	}
 
 	// Sort by name for consistent output.
-	names := make([]string, 0, len(info.AccountTypes))
-	for n := range info.AccountTypes {
+	names := make([]string, 0, len(info.GetAccountTypes()))
+	for n := range info.GetAccountTypes() {
 		names = append(names, n)
 	}
 	sort.Strings(names)
@@ -78,13 +80,13 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	for _, n := range names {
-		at := info.AccountTypes[n]
+		at := info.GetAccountTypes()[n]
 		tableData = append(tableData, []string{
-			at.Name,
-			at.Pattern,
-			formatStatus(at.Status),
-			formatEnforcementMode(at.EnforcementMode),
-			at.SupersededBy,
+			at.GetName(),
+			at.GetPattern(),
+			formatStatus(at.GetStatus()),
+			formatEnforcementMode(at.GetEnforcementMode()),
+			at.GetSupersededBy(),
 		})
 	}
 

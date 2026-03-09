@@ -3,9 +3,10 @@ package accounttypes
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 )
 
 // NewGetCommand creates the account-types get command.
@@ -58,30 +59,30 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("ledger %q not found", ledgerName)
 	}
 
-	at, exists := info.AccountTypes[typeName]
+	at, exists := info.GetAccountTypes()[typeName]
 	if !exists {
 		return fmt.Errorf("account type %q not found on ledger %q", typeName, ledgerName)
 	}
 
-	pterm.Printf("Name:        %s\n", pterm.Cyan(at.Name))
-	pterm.Printf("Pattern:     %s\n", at.Pattern)
-	pterm.Printf("Status:      %s\n", formatStatus(at.Status))
-	pterm.Printf("Enforcement: %s\n", formatEnforcementMode(at.EnforcementMode))
+	pterm.Printf("Name:        %s\n", pterm.Cyan(at.GetName()))
+	pterm.Printf("Pattern:     %s\n", at.GetPattern())
+	pterm.Printf("Status:      %s\n", formatStatus(at.GetStatus()))
+	pterm.Printf("Enforcement: %s\n", formatEnforcementMode(at.GetEnforcementMode()))
 
-	if at.SupersededBy != "" {
-		pterm.Printf("Superseded:  %s\n", at.SupersededBy)
+	if at.GetSupersededBy() != "" {
+		pterm.Printf("Superseded:  %s\n", at.GetSupersededBy())
 	}
 
-	if at.MigrationProgress != nil {
+	if at.GetMigrationProgress() != nil {
 		pterm.Println()
 		pterm.DefaultSection.Println("Migration Progress")
-		pterm.Printf("Total:    %d\n", at.MigrationProgress.TotalAccounts)
-		pterm.Printf("Migrated: %d\n", at.MigrationProgress.MigratedAccounts)
-		if at.MigrationProgress.StartedAt != nil {
-			pterm.Printf("Started:  %s\n", at.MigrationProgress.StartedAt.AsTime().Format("2006-01-02T15:04:05Z07:00"))
+		pterm.Printf("Total:    %d\n", at.GetMigrationProgress().GetTotalAccounts())
+		pterm.Printf("Migrated: %d\n", at.GetMigrationProgress().GetMigratedAccounts())
+		if at.GetMigrationProgress().GetStartedAt() != nil {
+			pterm.Printf("Started:  %s\n", at.GetMigrationProgress().GetStartedAt().AsTime().Format("2006-01-02T15:04:05Z07:00"))
 		}
-		if at.MigrationProgress.CompletedAt != nil {
-			pterm.Printf("Completed: %s\n", at.MigrationProgress.CompletedAt.AsTime().Format("2006-01-02T15:04:05Z07:00"))
+		if at.GetMigrationProgress().GetCompletedAt() != nil {
+			pterm.Printf("Completed: %s\n", at.GetMigrationProgress().GetCompletedAt().AsTime().Format("2006-01-02T15:04:05Z07:00"))
 		}
 	}
 

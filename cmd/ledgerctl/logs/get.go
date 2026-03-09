@@ -1,9 +1,7 @@
 package logs
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -22,7 +20,7 @@ func NewGetCommand() *cobra.Command {
 		RunE:  runGet,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -44,8 +42,6 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid sequence number %q: %w", args[0], err)
 	}
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-
 	log, err := client.GetLog(ctx, &servicepb.GetLogRequest{
 		Sequence: sequence,
 	})
@@ -53,11 +49,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return cmdutil.FormatGRPCError("failed to get log", err)
 	}
 
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(log)
+	if handled, err := cmdutil.EncodeStructured(cmd, log); handled || err != nil {
+		return err
 	}
 
 	printLog(log)

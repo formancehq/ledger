@@ -1,11 +1,9 @@
 package logs
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/pterm/pterm"
@@ -26,7 +24,7 @@ func NewListCommand() *cobra.Command {
 		RunE:    runList,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Uint64("after", 0, "Show logs after this sequence number")
 	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of logs per page (0 = unlimited)")
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
@@ -47,10 +45,9 @@ func runList(cmd *cobra.Command, _ []string) error {
 	defer cancel()
 
 	var (
-		jsonOutput, _ = cmd.Flags().GetBool("json")
-		after, _      = cmd.Flags().GetUint64("after")
-		pageSize, _   = cmd.Flags().GetUint32("page-size")
-		minLogSeq, _  = cmd.Flags().GetUint64("min-log-sequence")
+		after, _     = cmd.Flags().GetUint64("after")
+		pageSize, _  = cmd.Flags().GetUint32("page-size")
+		minLogSeq, _ = cmd.Flags().GetUint64("min-log-sequence")
 	)
 
 	req := &servicepb.ListLogsRequest{
@@ -84,11 +81,8 @@ func runList(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(entries)
+	if handled, err := cmdutil.EncodeStructured(cmd, entries); handled || err != nil {
+		return err
 	}
 
 	if len(entries) == 0 {

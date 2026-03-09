@@ -1,11 +1,9 @@
 package audit
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/pterm/pterm"
@@ -30,7 +28,7 @@ func NewListCommand() *cobra.Command {
 		RunE:    runList,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Bool("failures-only", false, "Show only failed entries")
 	cmd.Flags().Uint64("after", 0, "Show entries after this sequence number")
 	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of entries per page (0 = unlimited)")
@@ -52,7 +50,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 	defer cancel()
 
 	var (
-		jsonOutput, _   = cmd.Flags().GetBool("json")
 		failuresOnly, _ = cmd.Flags().GetBool("failures-only")
 		after, _        = cmd.Flags().GetUint64("after")
 		pageSize, _     = cmd.Flags().GetUint32("page-size")
@@ -105,11 +102,8 @@ func runList(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(entries)
+	if handled, err := cmdutil.EncodeStructured(cmd, entries); handled || err != nil {
+		return err
 	}
 
 	if len(entries) == 0 {

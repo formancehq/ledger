@@ -1,11 +1,9 @@
 package accounts
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 
 	"github.com/pterm/pterm"
@@ -48,7 +46,7 @@ Examples:
 	cmd.Flags().String("filter", "", `Filter expression (e.g. "metadata[category] == premium or address ^= users:")`)
 	cmd.Flags().Bool("reverse", false, "Reverse iteration order (Z→A instead of A→Z)")
 	cmd.Flags().Bool("all", false, "Fetch all accounts at once (no pagination)")
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmd.Flags().Bool("analyze", false, "Display query execution profile (iterator stats, timing)")
@@ -76,7 +74,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 	filterExpr, _ := cmd.Flags().GetString("filter")
 	reverse, _ := cmd.Flags().GetBool("reverse")
 	fetchAll, _ := cmd.Flags().GetBool("all")
-	jsonOutput, _ := cmd.Flags().GetBool("json")
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 	showProfile, _ := cmd.Flags().GetBool("analyze")
 
@@ -87,10 +84,10 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if fetchAll {
-		return fetchAllAccounts(cmd, client, ledgerName, filter, reverse, jsonOutput, minLogSeq, showProfile)
+		return fetchAllAccounts(cmd, client, ledgerName, filter, reverse, minLogSeq, showProfile)
 	}
 
-	return fetchAccountsWithPager(cmd, client, ledgerName, pageSize, filter, reverse, jsonOutput, minLogSeq, showProfile)
+	return fetchAccountsWithPager(cmd, client, ledgerName, pageSize, filter, reverse, minLogSeq, showProfile)
 }
 
 // buildAccountFilter combines --filter and --prefix flags into a single QueryFilter.
@@ -133,7 +130,7 @@ func buildAccountFilter(filterExpr, prefix string) (*commonpb.QueryFilter, error
 	}
 }
 
-func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool, minLogSeq uint64, showProfile bool) error {
+func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, reverse bool, minLogSeq uint64, showProfile bool) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -175,11 +172,8 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 
 	_ = spinner.Stop()
 
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(accounts)
+	if handled, err := cmdutil.EncodeStructured(cmd, accounts); handled || err != nil {
+		return err
 	}
 
 	if len(accounts) == 0 {
@@ -198,7 +192,7 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 	return nil
 }
 
-func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool, minLogSeq uint64, showProfile bool) error {
+func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, minLogSeq uint64, showProfile bool) error {
 	var afterAddress string
 
 	pageNum := 1
@@ -261,12 +255,10 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 
 		_ = spinner.Stop()
 
-		if jsonOutput {
-			encoder := json.NewEncoder(os.Stdout)
-			encoder.SetIndent("", "  ")
+		structuredOutput := cmdutil.IsStructuredOutput(cmd)
 
-			err := encoder.Encode(accounts)
-			if err != nil {
+		if structuredOutput {
+			if handled, err := cmdutil.EncodeStructured(cmd, accounts); handled && err != nil {
 				return err
 			}
 		} else {
@@ -281,7 +273,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 		}
 
 		if uint32(len(accounts)) < pageSize {
-			if !jsonOutput {
+			if !structuredOutput {
 				pterm.Info.Println("End of accounts.")
 			}
 
@@ -290,19 +282,19 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 
 		afterAddress = accounts[len(accounts)-1].GetAddress()
 
-		if !jsonOutput {
-			result, err := pterm.DefaultInteractiveConfirm.
-				WithDefaultText("Load next page?").
-				WithDefaultValue(true).
-				Show()
-			if err != nil {
-				return fmt.Errorf("failed to read input: %w", err)
-			}
+		if structuredOutput {
+			return nil
+		}
 
-			if !result {
-				return nil
-			}
-		} else {
+		result, err := pterm.DefaultInteractiveConfirm.
+			WithDefaultText("Load next page?").
+			WithDefaultValue(true).
+			Show()
+		if err != nil {
+			return fmt.Errorf("failed to read input: %w", err)
+		}
+
+		if !result {
 			return nil
 		}
 

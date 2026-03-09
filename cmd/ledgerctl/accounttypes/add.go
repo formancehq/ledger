@@ -3,11 +3,12 @@ package accounttypes
 import (
 	"fmt"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewAddCommand creates the account-types add command.
@@ -76,12 +77,14 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	if err := cmdutil.SignRequests(cmd, requests); err != nil {
 		spinner.Fail("Failed to sign request")
+
 		return cmdutil.Displayed(err)
 	}
 
 	_, err = client.Apply(ctx, &servicepb.ApplyRequest{Requests: requests})
 	if err != nil {
 		_ = spinner.Stop()
+
 		return cmdutil.FormatGRPCError("failed to add account type", err)
 	}
 

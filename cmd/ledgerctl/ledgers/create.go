@@ -1,7 +1,6 @@
 package ledgers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -29,7 +28,7 @@ func NewCreateCommand() *cobra.Command {
 
 	cmd.Flags().String("name", "", "Name of the ledger to create")
 	cmd.Flags().StringArray("schema", nil, "Metadata schema entries in target:key:type format (can be repeated, e.g. account:age:int64)")
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	// Mirror mode flags
@@ -151,12 +150,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success("Created")
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(ledger)
+	if handled, err := cmdutil.EncodeStructured(cmd, ledger); handled || err != nil {
+		return err
 	}
 
 	pterm.Println()

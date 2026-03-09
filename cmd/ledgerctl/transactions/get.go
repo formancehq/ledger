@@ -1,9 +1,7 @@
 package transactions
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/pterm/pterm"
@@ -34,7 +32,7 @@ Examples:
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -100,12 +98,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	tx := resp.GetTransaction()
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(resp)
+	if handled, err := cmdutil.EncodeStructured(cmd, resp); handled || err != nil {
+		return err
 	}
 
 	pterm.Println()

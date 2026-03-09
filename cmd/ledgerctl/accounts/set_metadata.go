@@ -1,10 +1,8 @@
 package accounts
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -37,7 +35,7 @@ Examples:
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
 	cmd.Flags().StringArrayP("metadata", "m", nil, "Metadata key=value pairs (can be repeated)")
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -159,16 +157,11 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 
 	spinner.Success("Metadata set")
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		result := map[string]any{
-			"address":  address,
-			"metadata": metadata,
-		}
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(result)
+	if handled, err := cmdutil.EncodeStructured(cmd, map[string]any{
+		"address":  address,
+		"metadata": metadata,
+	}); handled || err != nil {
+		return err
 	}
 
 	pterm.Println()

@@ -1,11 +1,9 @@
 package periods
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -27,7 +25,7 @@ func NewListCommand() *cobra.Command {
 		RunE:  runList,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 
 	return cmd
 }
@@ -63,12 +61,8 @@ func runList(cmd *cobra.Command, _ []string) error {
 		periods = append(periods, period)
 	}
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(periods)
+	if handled, err := cmdutil.EncodeStructured(cmd, periods); handled || err != nil {
+		return err
 	}
 
 	if len(periods) == 0 {

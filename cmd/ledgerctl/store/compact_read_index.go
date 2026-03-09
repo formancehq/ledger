@@ -1,9 +1,7 @@
 package store
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -21,7 +19,7 @@ func NewCompactReadIndexCommand() *cobra.Command {
 		RunE:  runCompactReadIndex,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON instead of formatted output")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", 5*cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -38,10 +36,10 @@ func runCompactReadIndex(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
+	structuredOutput := cmdutil.IsStructuredOutput(cmd)
 
 	var spinner *pterm.SpinnerPrinter
-	if !jsonOutput {
+	if !structuredOutput {
 		spinner, _ = pterm.DefaultSpinner.Start("Compacting read index...")
 	}
 
@@ -58,19 +56,16 @@ func runCompactReadIndex(cmd *cobra.Command, _ []string) error {
 		spinner.Success(fmt.Sprintf("Read index compaction complete (%dms, %d → %d bytes)", resp.GetDurationMs(), resp.GetSizeBeforeBytes(), resp.GetSizeAfterBytes()))
 	}
 
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(struct {
-			DurationMs      int64 `json:"durationMs"`
-			SizeBeforeBytes int64 `json:"sizeBeforeBytes"`
-			SizeAfterBytes  int64 `json:"sizeAfterBytes"`
-		}{
-			DurationMs:      resp.GetDurationMs(),
-			SizeBeforeBytes: resp.GetSizeBeforeBytes(),
-			SizeAfterBytes:  resp.GetSizeAfterBytes(),
-		})
+	if handled, err := cmdutil.EncodeStructured(cmd, struct {
+		DurationMs      int64 `json:"durationMs"`
+		SizeBeforeBytes int64 `json:"sizeBeforeBytes"`
+		SizeAfterBytes  int64 `json:"sizeAfterBytes"`
+	}{
+		DurationMs:      resp.GetDurationMs(),
+		SizeBeforeBytes: resp.GetSizeBeforeBytes(),
+		SizeAfterBytes:  resp.GetSizeAfterBytes(),
+	}); handled || err != nil {
+		return err
 	}
 
 	return nil

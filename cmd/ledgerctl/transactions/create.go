@@ -1,7 +1,6 @@
 package transactions
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -95,7 +94,7 @@ Examples:
 	cmd.Flags().StringToString("metadata", nil, "Metadata key=value pairs")
 	cmd.Flags().Bool("force", false, "Bypass balance checks (allow accounts to go negative)")
 	cmd.Flags().Bool("expand-volumes", false, "Include post-commit volumes in response")
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -432,12 +431,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success("Created")
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(createdTx)
+	if handled, err := cmdutil.EncodeStructured(cmd, createdTx); handled || err != nil {
+		return err
 	}
 
 	pterm.Println()

@@ -1,11 +1,9 @@
 package store
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/pterm/pterm"
@@ -25,7 +23,7 @@ func NewCheckCommand() *cobra.Command {
 		RunE:    runCheck,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON instead of formatted output")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", 5*cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -42,7 +40,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
+	structuredOutput := cmdutil.IsStructuredOutput(cmd)
 
 	stream, err := client.CheckStore(ctx, &servicepb.CheckStoreRequest{})
 	if err != nil {
@@ -55,7 +53,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 		checkErrors []*servicepb.CheckStoreError
 	)
 
-	if !jsonOutput {
+	if !structuredOutput {
 		spinner, _ = pterm.DefaultSpinner.Start("Checking store integrity...")
 	}
 
@@ -85,7 +83,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 			errorCount++
 
 			checkErrors = append(checkErrors, t.Error)
-			if !jsonOutput {
+			if !structuredOutput {
 				printCheckError(t.Error)
 			}
 		}
@@ -95,20 +93,16 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 		_ = spinner.Stop()
 	}
 
-	if jsonOutput {
-		result := struct {
-			Valid      bool                         `json:"valid"`
-			ErrorCount int                          `json:"errorCount"`
-			Errors     []*servicepb.CheckStoreError `json:"errors,omitempty"`
-		}{
-			Valid:      errorCount == 0,
-			ErrorCount: errorCount,
-			Errors:     checkErrors,
-		}
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(result)
+	if handled, err := cmdutil.EncodeStructured(cmd, struct {
+		Valid      bool                         `json:"valid"`
+		ErrorCount int                          `json:"errorCount"`
+		Errors     []*servicepb.CheckStoreError `json:"errors,omitempty"`
+	}{
+		Valid:      errorCount == 0,
+		ErrorCount: errorCount,
+		Errors:     checkErrors,
+	}); handled || err != nil {
+		return err
 	}
 
 	pterm.Println()

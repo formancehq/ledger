@@ -1,9 +1,7 @@
 package ledgers
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"time"
 
@@ -26,7 +24,7 @@ func NewGetCommand() *cobra.Command {
 		RunE:    runGet,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -58,12 +56,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	_ = spinner.Stop()
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(ledger)
+	if handled, err := cmdutil.EncodeStructured(cmd, ledger); handled || err != nil {
+		return err
 	}
 
 	pterm.Println()

@@ -2,11 +2,9 @@ package signing
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -26,7 +24,7 @@ func NewListKeysCommand() *cobra.Command {
 		RunE:    runListKeys,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 
 	return cmd
 }
@@ -62,12 +60,8 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 		keys = append(keys, key)
 	}
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(keys)
+	if handled, err := cmdutil.EncodeStructured(cmd, keys); handled || err != nil {
+		return err
 	}
 
 	if len(keys) == 0 {

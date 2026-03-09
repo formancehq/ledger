@@ -1,9 +1,7 @@
 package periods
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -21,7 +19,7 @@ func NewCloseCommand() *cobra.Command {
 		RunE:  runClose,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 
 	return cmd
 }
@@ -50,12 +48,8 @@ func runClose(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("closing period: %w", err)
 	}
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(resp)
+	if handled, err := cmdutil.EncodeStructured(cmd, resp); handled || err != nil {
+		return err
 	}
 
 	if len(resp.GetLogs()) > 0 {

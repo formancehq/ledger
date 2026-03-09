@@ -1,9 +1,7 @@
 package ledgers
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -23,7 +21,7 @@ func NewStatsCommand() *cobra.Command {
 	}
 
 	cmd.Flags().String("ledger", "", "Ledger name (interactive selection if omitted)")
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -60,12 +58,8 @@ func runStats(cmd *cobra.Command, _ []string) error {
 
 	_ = spinner.Stop()
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(stats)
+	if handled, err := cmdutil.EncodeStructured(cmd, stats); handled || err != nil {
+		return err
 	}
 
 	pterm.Println()

@@ -1,9 +1,6 @@
 package periods
 
 import (
-	"encoding/json"
-	"os"
-
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
@@ -21,7 +18,7 @@ func NewGetScheduleCommand() *cobra.Command {
 		RunE:  runGetSchedule,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -49,12 +46,8 @@ func runGetSchedule(cmd *cobra.Command, _ []string) error {
 
 	_ = spinner.Stop()
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(resp)
+	if handled, err := cmdutil.EncodeStructured(cmd, resp); handled || err != nil {
+		return err
 	}
 
 	if resp.GetCron() == "" {

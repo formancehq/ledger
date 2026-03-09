@@ -1,9 +1,7 @@
 package accounts
 
 import (
-	"encoding/json"
 	"math/big"
-	"os"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -34,7 +32,7 @@ Examples:
 	cmd.Flags().String("ledger", "", "Name of the ledger")
 	cmd.Flags().String("prefix", "", "Filter accounts by address prefix (e.g. users:)")
 	cmd.Flags().String("filter", "", `Filter expression (e.g. "metadata[category] == premium")`)
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Bool("analyze", false, "Display query execution profile (iterator stats, timing)")
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
@@ -59,7 +57,6 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 
 	prefix, _ := cmd.Flags().GetString("prefix")
 	filterExpr, _ := cmd.Flags().GetString("filter")
-	jsonOutput, _ := cmd.Flags().GetBool("json")
 	showProfile, _ := cmd.Flags().GetBool("analyze")
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 
@@ -94,7 +91,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 		cmdutil.RenderProfile(cmdutil.ExtractProfile(trailer))
 	}
 
-	if jsonOutput {
+	{
 		type jsonVolume struct {
 			Asset   string `json:"asset"`
 			Input   string `json:"input"`
@@ -116,10 +113,9 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 			})
 		}
 
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(volumes)
+		if handled, err := cmdutil.EncodeStructured(cmd, volumes); handled || err != nil {
+			return err
+		}
 	}
 
 	if len(result.GetVolumes()) == 0 {

@@ -1,10 +1,8 @@
 package events
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -31,7 +29,7 @@ Examples:
 	}
 
 	cmd.Flags().String("name", "", "Name of the sink to remove (required)")
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -80,12 +78,8 @@ func runRemoveSink(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success("Removed")
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(map[string]any{"name": name, "removed": true})
+	if handled, err := cmdutil.EncodeStructured(cmd, map[string]any{"name": name, "removed": true}); handled || err != nil {
+		return err
 	}
 
 	pterm.Println()

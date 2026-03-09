@@ -1,11 +1,9 @@
 package transactions
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"time"
 
@@ -50,7 +48,7 @@ Examples:
 	cmd.Flags().String("filter", "", `Filter expression (e.g. "metadata[category] == premium")`)
 	cmd.Flags().Bool("reverse", false, "Reverse iteration order (oldest first instead of newest first)")
 	cmd.Flags().Bool("all", false, "Fetch all transactions at once (no pagination)")
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmd.Flags().Bool("analyze", false, "Display query execution profile (iterator stats, timing)")
@@ -78,7 +76,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 	filterExpr, _ := cmd.Flags().GetString("filter")
 	reverse, _ := cmd.Flags().GetBool("reverse")
 	fetchAll, _ := cmd.Flags().GetBool("all")
-	jsonOutput, _ := cmd.Flags().GetBool("json")
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 	showProfile, _ := cmd.Flags().GetBool("analyze")
 
@@ -88,10 +85,10 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if fetchAll {
-		return fetchAllTransactions(cmd, client, ledgerName, filter, reverse, jsonOutput, minLogSeq, showProfile)
+		return fetchAllTransactions(cmd, client, ledgerName, filter, reverse, minLogSeq, showProfile)
 	}
 
-	return fetchTransactionsWithPager(cmd, client, ledgerName, pageSize, filter, reverse, jsonOutput, minLogSeq, showProfile)
+	return fetchTransactionsWithPager(cmd, client, ledgerName, pageSize, filter, reverse, minLogSeq, showProfile)
 }
 
 // buildTransactionFilter parses the --filter expression for transaction metadata.
@@ -108,7 +105,7 @@ func buildTransactionFilter(filterExpr string) (*commonpb.QueryFilter, error) {
 	return filter, nil
 }
 
-func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool, minLogSeq uint64, showProfile bool) error {
+func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, reverse bool, minLogSeq uint64, showProfile bool) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -150,11 +147,8 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 
 	_ = spinner.Stop()
 
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(transactions)
+	if handled, err := cmdutil.EncodeStructured(cmd, transactions); handled || err != nil {
+		return err
 	}
 
 	if len(transactions) == 0 {
@@ -173,7 +167,7 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 	return nil
 }
 
-func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, jsonOutput bool, minLogSeq uint64, showProfile bool) error {
+func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, minLogSeq uint64, showProfile bool) error {
 	var afterTxID uint64
 
 	pageNum := 1
@@ -236,12 +230,10 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 
 		_ = spinner.Stop()
 
-		if jsonOutput {
-			encoder := json.NewEncoder(os.Stdout)
-			encoder.SetIndent("", "  ")
+		structuredOutput := cmdutil.IsStructuredOutput(cmd)
 
-			err := encoder.Encode(transactions)
-			if err != nil {
+		if structuredOutput {
+			if handled, err := cmdutil.EncodeStructured(cmd, transactions); handled && err != nil {
 				return err
 			}
 		} else {
@@ -257,7 +249,7 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 
 		// If we got fewer transactions than pageSize, we've reached the end
 		if uint32(len(transactions)) < pageSize {
-			if !jsonOutput {
+			if !structuredOutput {
 				pterm.Info.Println("End of transactions.")
 			}
 
@@ -267,21 +259,19 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 		// Update afterTxID for next page (last transaction in current page)
 		afterTxID = transactions[len(transactions)-1].GetId()
 
-		// Prompt for next page
-		if !jsonOutput {
-			result, err := pterm.DefaultInteractiveConfirm.
-				WithDefaultText("Load next page?").
-				WithDefaultValue(true).
-				Show()
-			if err != nil {
-				return fmt.Errorf("failed to read input: %w", err)
-			}
+		if structuredOutput {
+			return nil
+		}
 
-			if !result {
-				return nil
-			}
-		} else {
-			// In JSON mode, don't paginate interactively - just stop
+		result, err := pterm.DefaultInteractiveConfirm.
+			WithDefaultText("Load next page?").
+			WithDefaultValue(true).
+			Show()
+		if err != nil {
+			return fmt.Errorf("failed to read input: %w", err)
+		}
+
+		if !result {
 			return nil
 		}
 

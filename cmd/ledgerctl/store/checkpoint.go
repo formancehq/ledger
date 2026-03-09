@@ -1,9 +1,7 @@
 package store
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -22,7 +20,7 @@ func NewCheckpointCommand() *cobra.Command {
 		RunE:    runCheckpoint,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON instead of formatted output")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -39,10 +37,10 @@ func runCheckpoint(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
+	structuredOutput := cmdutil.IsStructuredOutput(cmd)
 
 	var spinner *pterm.SpinnerPrinter
-	if !jsonOutput {
+	if !structuredOutput {
 		spinner, _ = pterm.DefaultSpinner.Start("Creating checkpoint...")
 	}
 
@@ -59,15 +57,12 @@ func runCheckpoint(cmd *cobra.Command, _ []string) error {
 		spinner.Success(fmt.Sprintf("Checkpoint created (id=%d)", resp.GetCheckpointId()))
 	}
 
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(struct {
-			CheckpointID uint64 `json:"checkpointId"`
-		}{
-			CheckpointID: resp.GetCheckpointId(),
-		})
+	if handled, err := cmdutil.EncodeStructured(cmd, struct {
+		CheckpointID uint64 `json:"checkpointId"`
+	}{
+		CheckpointID: resp.GetCheckpointId(),
+	}); handled || err != nil {
+		return err
 	}
 
 	return nil

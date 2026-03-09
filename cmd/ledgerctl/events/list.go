@@ -1,9 +1,7 @@
 package events
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/pterm/pterm"
@@ -31,7 +29,7 @@ Examples:
 		RunE: runList,
 	}
 
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -53,12 +51,8 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to get event sinks", err)
 	}
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(resp)
+	if handled, err := cmdutil.EncodeStructured(cmd, resp); handled || err != nil {
+		return err
 	}
 
 	if len(resp.GetSinks()) == 0 {

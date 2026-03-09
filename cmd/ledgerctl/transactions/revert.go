@@ -1,9 +1,7 @@
 package transactions
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/pterm/pterm"
@@ -50,7 +48,7 @@ Examples:
 	cmd.Flags().String("receipt", "", "JWT receipt for the transaction (avoids server-side lookup)")
 	cmd.Flags().Bool("expand-volumes", false, "Include post-commit volumes in response")
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
-	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -212,12 +210,8 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	if jsonOutput {
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetIndent("", "  ")
-
-		return encoder.Encode(revertedTx)
+	if handled, err := cmdutil.EncodeStructured(cmd, revertedTx); handled || err != nil {
+		return err
 	}
 
 	pterm.Println()
