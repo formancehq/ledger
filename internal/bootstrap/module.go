@@ -535,14 +535,13 @@ func Module() fx.Option {
 				logger logging.Logger,
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
-				guard *attributes.IndexGuard,
 			) ctrl.Controller {
 				return NewRoutedController(
-					ctrl.NewDefaultController(admission, store, logger, attrs, rs, guard),
+					ctrl.NewDefaultController(admission, store, logger, attrs, rs),
 					raftNode,
 					servicePool,
 				)
-			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``)),
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node, hc *clusterhealth.HealthChecker) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
@@ -574,8 +573,6 @@ func Module() fx.Option {
 
 			return params.Handler
 		}),
-		fx.Provide(attributes.NewIndexGuard),
-		fx.Provide(attributes.NewCleaner),
 		fx.Invoke(
 			func(
 				lc fx.Lifecycle,
@@ -950,9 +947,6 @@ func Module() fx.Option {
 			},
 			func(lc fx.Lifecycle, compactor *dal.SmartCompactor) {
 				lc.Append(worker.FxHook(compactor))
-			},
-			func(lc fx.Lifecycle, c *attributes.Cleaner) {
-				lc.Append(worker.FxHook(c))
 			},
 			func(lc fx.Lifecycle, hc *clusterhealth.HealthChecker) {
 				lc.Append(worker.FxHook(hc))

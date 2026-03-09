@@ -25,11 +25,18 @@ func PaginateForward(iter EntityIterator, pageSize uint32, after []byte) (items 
 	return collectPage(iter, pageSize)
 }
 
+// ReverseIterator is the interface for reverse (descending) iteration.
+type ReverseIterator interface {
+	Next() bool
+	Current() []byte
+	SeekLE(target []byte) bool
+}
+
 // PaginateReverse collects up to pageSize entity IDs from a
-// ReversePrefixIterator (descending order). If before is non-nil, the iterator
+// ReverseIterator (descending order). If before is non-nil, the iterator
 // is positioned at the first entity <= before and that entity is skipped.
 // Returns the collected items and whether more items exist.
-func PaginateReverse(iter *ReversePrefixIterator, pageSize uint32, before []byte) (items [][]byte, hasMore bool) {
+func PaginateReverse(iter ReverseIterator, pageSize uint32, before []byte) (items [][]byte, hasMore bool) {
 	var positioned bool
 	if before != nil {
 		positioned = iter.SeekLE(before)

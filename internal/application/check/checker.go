@@ -196,11 +196,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	// Pass 2: Compare expected volumes against actual stored values.
 	// Single ForEachInPrefix scan instead of N separate ComputeValue iterators.
-	const maxIndex uint64 = 1 << 62
-
 	actualVolumes := make(map[string]*raftcmdpb.VolumePair)
 
-	err = c.attrs.Volume.ForEachInPrefix(c.store, maxIndex, nil, func(entry attributes.ComputedEntry[*raftcmdpb.VolumePair]) error {
+	err = c.attrs.Volume.ForEachInPrefix(c.store, nil, func(entry attributes.ComputedEntry[*raftcmdpb.VolumePair]) error {
 		actualVolumes[string(entry.CanonicalKey)] = entry.Value
 
 		return nil
@@ -267,7 +265,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// Single ForEachInPrefix scan instead of N separate ComputeValue iterators.
 	actualMetadata := make(map[string]*commonpb.MetadataValue)
 
-	err = c.attrs.Metadata.ForEachInPrefix(c.store, maxIndex, nil, func(entry attributes.ComputedEntry[*commonpb.MetadataValue]) error {
+	err = c.attrs.Metadata.ForEachInPrefix(c.store, nil, func(entry attributes.ComputedEntry[*commonpb.MetadataValue]) error {
 		actualMetadata[string(entry.CanonicalKey)] = entry.Value
 
 		return nil

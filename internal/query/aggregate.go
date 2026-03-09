@@ -20,22 +20,76 @@ type aggregatedVol struct {
 	output *uint256.Int
 }
 
-// AggregateVolumes executes a cross-store merge-scan:
+// volumeAggregator collects volume entries and builds the final result.
+type volumeAggregator struct {
+	byAsset map[string]*aggregatedVol
+}
+
+func newVolumeAggregator() *volumeAggregator {
+	return &volumeAggregator{byAsset: make(map[string]*aggregatedVol)}
+}
+
+func (va *volumeAggregator) accumulate(entry attributes.ComputedEntry[*raftcmdpb.VolumePair]) error {
+	var vk domain.VolumeKey
+
+	err := vk.Unmarshal(entry.CanonicalKey)
+	if err != nil {
+		return fmt.Errorf("unmarshaling volume key: %w", err)
+	}
+
+	agg, ok := va.byAsset[vk.Asset]
+	if !ok {
+		agg = &aggregatedVol{
+			input:  new(uint256.Int),
+			output: new(uint256.Int),
+		}
+		va.byAsset[vk.Asset] = agg
+	}
+
+	if entry.Value != nil {
+		var tmp uint256.Int
+		if entry.Value.GetInput() != nil {
+			entry.Value.GetInput().IntoUint256(&tmp)
+			agg.input.Add(agg.input, &tmp)
+		}
+
+		if entry.Value.GetOutput() != nil {
+			entry.Value.GetOutput().IntoUint256(&tmp)
+			agg.output.Add(agg.output, &tmp)
+		}
+	}
+
+	return nil
+}
+
+func (va *volumeAggregator) result() *commonpb.AggregateResult {
+	volumes := make([]*commonpb.AggregatedVolume, 0, len(va.byAsset))
+	for asset, agg := range va.byAsset {
+		volumes = append(volumes, &commonpb.AggregatedVolume{
+			Asset:  asset,
+			Input:  commonpb.NewUint256(agg.input),
+			Output: commonpb.NewUint256(agg.output),
+		})
+	}
+
+	sort.Slice(volumes, func(i, j int) bool {
+		return volumes[i].GetAsset() < volumes[j].GetAsset()
+	})
+
+	return &commonpb.AggregateResult{Volumes: volumes}
+}
+
+// AggregateVolumes executes a cross-store merge-scan for filtered aggregation:
 // 1. Iterate matching accounts from bbolt (accountIter)
 // 2. For each account, scan volumes in Pebble via ForEachInPrefix
 // 3. Accumulate per-asset totals.
-//
-// maxRaftIndex caps the Pebble scan so that only attribute entries written at
-// or before that raft index are visible. This ensures consistency with what
-// bbolt has indexed.
 func AggregateVolumes(
 	pebbleReader dal.PebbleReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledger string,
 	accountIter readstore.EntityIterator,
-	maxRaftIndex uint64,
 ) (*commonpb.AggregateResult, error) {
-	aggregator := make(map[string]*aggregatedVol)
+	va := newVolumeAggregator()
 
 	for accountIter.Next() {
 		account := string(accountIter.Current())
@@ -49,56 +103,41 @@ func AggregateVolumes(
 		n += copy(canonicalPrefix[n:], account)
 		canonicalPrefix[n] = 0x00
 
-		err := volumeAttr.ForEachInPrefix(pebbleReader, maxRaftIndex, canonicalPrefix, func(entry attributes.ComputedEntry[*raftcmdpb.VolumePair]) error {
-			var vk domain.VolumeKey
-
-			err := vk.Unmarshal(entry.CanonicalKey)
-			if err != nil {
-				return fmt.Errorf("unmarshaling volume key: %w", err)
-			}
-
-			agg, ok := aggregator[vk.Asset]
-			if !ok {
-				agg = &aggregatedVol{
-					input:  new(uint256.Int),
-					output: new(uint256.Int),
-				}
-				aggregator[vk.Asset] = agg
-			}
-
-			if entry.Value != nil {
-				var tmp uint256.Int
-				if entry.Value.GetInput() != nil {
-					entry.Value.GetInput().IntoUint256(&tmp)
-					agg.input.Add(agg.input, &tmp)
-				}
-
-				if entry.Value.GetOutput() != nil {
-					entry.Value.GetOutput().IntoUint256(&tmp)
-					agg.output.Add(agg.output, &tmp)
-				}
-			}
-
-			return nil
-		})
+		err := volumeAttr.ForEachInPrefix(pebbleReader, canonicalPrefix, va.accumulate)
 		if err != nil {
 			return nil, fmt.Errorf("scanning volumes for account %q: %w", account, err)
 		}
 	}
 
-	// Build sorted result
-	volumes := make([]*commonpb.AggregatedVolume, 0, len(aggregator))
-	for asset, agg := range aggregator {
-		volumes = append(volumes, &commonpb.AggregatedVolume{
-			Asset:  asset,
-			Input:  commonpb.NewUint256(agg.input),
-			Output: commonpb.NewUint256(agg.output),
-		})
+	return va.result(), nil
+}
+
+// AggregateAllVolumes performs unfiltered volume aggregation in a single Pebble
+// scan. Instead of enumerating accounts then scanning volumes per account (N+1
+// iterators, N SeekGE hops), it calls ForEachInPrefix once with the ledger
+// prefix, yielding all volume entries in a single sequential pass.
+//
+// This is significantly faster for unfiltered aggregation because:
+//   - 1 Pebble iterator instead of N+1
+//   - sequential scan instead of N SeekGE hops
+//   - no double-read of the same Pebble blocks
+func AggregateAllVolumes(
+	pebbleReader dal.PebbleReader,
+	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
+	ledger string,
+) (*commonpb.AggregateResult, error) {
+	va := newVolumeAggregator()
+
+	// Single-pass: scan [ledger\x00] prefix which covers all accounts.
+	// ForEachInPrefix on volumeAttr skips non-volume entries (metadata).
+	ledgerPrefix := make([]byte, len(ledger)+1)
+	copy(ledgerPrefix, ledger)
+	ledgerPrefix[len(ledger)] = 0x00
+
+	err := volumeAttr.ForEachInPrefix(pebbleReader, ledgerPrefix, va.accumulate)
+	if err != nil {
+		return nil, fmt.Errorf("scanning all volumes: %w", err)
 	}
 
-	sort.Slice(volumes, func(i, j int) bool {
-		return volumes[i].GetAsset() < volumes[j].GetAsset()
-	})
-
-	return &commonpb.AggregateResult{Volumes: volumes}, nil
+	return va.result(), nil
 }

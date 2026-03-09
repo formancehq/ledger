@@ -25,23 +25,20 @@ type entityListParams[T interface{ ~string | ~uint64 }] struct {
 	builtinCfg    *commonpb.BuiltinIndexConfig
 	logBuiltinCfg *commonpb.LogBuiltinIndexConfig
 	profile       *query.QueryProfile
-	// namespace is the readstore namespace for unfiltered reverse iteration (e.g. "a:" or "t:").
-	namespace string
+	pebbleReader  dal.PebbleReader
 	// afterToBytes converts the after cursor to a byte slice for bbolt pagination.
 	afterToBytes func(T) []byte
-	// idLen is the fixed byte length of entity IDs (8 for transactions, 0 for variable-length accounts).
-	idLen int
 }
 
 // entityListResult holds the result of a listEntities call.
 type entityListResult struct {
-	entityIDs    [][]byte
-	maxRaftIndex uint64
+	entityIDs [][]byte
 }
 
-// listEntities is the shared logic for ListTransactions and ListAccounts.
-// It returns the raw entity ID bytes collected from the bbolt read index,
-// along with the last indexed raft index for cross-store consistency.
+// listEntities is the shared logic for ListTransactions, ListAccounts, and ListLogs.
+// reverse=false returns natural ascending order; reverse=true returns descending.
+// It returns the raw entity ID bytes along with the last indexed raft index for
+// cross-store consistency.
 func listEntities[T interface{ ~string | ~uint64 }](
 	readStore *readstore.Store,
 	params entityListParams[T],
@@ -49,24 +46,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 	var result entityListResult
 
 	err := readStore.View(func(tx *bolt.Tx) error {
-		// Read raft index progress for cross-store consistency capping.
-		var readErr error
-
-		result.maxRaftIndex, readErr = readStore.ReadRaftIndexProgress(tx)
-		if readErr != nil {
-			return fmt.Errorf("reading raft index progress: %w", readErr)
-		}
-
 		if params.reverse {
-			if params.target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
-				// Transactions: reverse = newest-first (default). With filter we collect+reverse.
-				if params.filter != nil {
-					return listDescFiltered(tx, params, &result.entityIDs)
-				}
-
-				return listDescUnfiltered(tx, params, &result.entityIDs)
-			}
-			// Accounts: reverse = Z→A. Same logic as transactions desc.
 			if params.filter != nil {
 				return listDescFiltered(tx, params, &result.entityIDs)
 			}
@@ -88,6 +68,7 @@ func listAscending[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params entityL
 		tx, kb, params.filter,
 		params.target,
 		params.ledger, nil, params.schema, params.builtinCfg, params.logBuiltinCfg, params.profile,
+		params.pebbleReader,
 	)
 	if err != nil {
 		return fmt.Errorf("compiling filter: %w", err)
@@ -106,25 +87,9 @@ func listAscending[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params entityL
 	return nil
 }
 
-// listDescUnfiltered uses reverse prefix iteration on the existence bucket.
+// listDescUnfiltered uses reverse iteration on the Pebble source of truth
+// (accounts, transactions) or on bbolt BucketLedgerLogs (logs).
 func listDescUnfiltered[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params entityListParams[T], out *[][]byte) error {
-	b := tx.Bucket(readstore.BucketExistence)
-	if b == nil {
-		return nil
-	}
-
-	kb := dal.NewKeyBuilder()
-	prefix := readstore.ExistencePrefix(kb, params.ledger, params.namespace)
-	iter := readstore.NewReversePrefixIterator(b.Cursor(), prefix, len(prefix), params.idLen)
-
-	if params.profile != nil {
-		params.profile.Root = &query.IteratorStats{
-			Label:  fmt.Sprintf("ReversePrefixIterator(exist:%s:%s:)", params.ledger, params.namespace),
-			Kind:   "Reverse",
-			Bucket: "exist",
-		}
-	}
-
 	var before []byte
 
 	var zero T
@@ -132,9 +97,72 @@ func listDescUnfiltered[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params en
 		before = params.afterToBytes(params.after)
 	}
 
+	iter, label, kind, bucket, err := newReverseIterator(tx, params)
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	if params.profile != nil {
+		params.profile.Root = &query.IteratorStats{
+			Label:  label,
+			Kind:   kind,
+			Bucket: bucket,
+		}
+	}
+
 	*out, _ = readstore.PaginateReverse(iter, params.pageSize, before)
 
 	return nil
+}
+
+// reverseCloser wraps a ReverseIterator with a Close method.
+type reverseCloser struct {
+	readstore.ReverseIterator
+
+	close func()
+}
+
+func (r *reverseCloser) Close() { r.close() }
+
+// newReverseIterator creates the appropriate reverse iterator for the target type.
+func newReverseIterator[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params entityListParams[T]) (iter *reverseCloser, label, kind, bucket string, err error) {
+	switch params.target {
+	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
+		it, itErr := readstore.NewPebbleReverseTxIterator(params.pebbleReader, params.ledger)
+		if itErr != nil {
+			return nil, "", "", "", fmt.Errorf("creating reverse tx iterator: %w", itErr)
+		}
+
+		return &reverseCloser{it, it.Close},
+			fmt.Sprintf("PebbleReverseTxIterator(%s)", params.ledger),
+			"PebbleReverseTx", "pebble:txupdate", nil
+
+	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
+		it, itErr := readstore.NewPebbleReverseAccountIterator(params.pebbleReader, params.ledger)
+		if itErr != nil {
+			return nil, "", "", "", fmt.Errorf("creating reverse account iterator: %w", itErr)
+		}
+
+		return &reverseCloser{it, it.Close},
+			fmt.Sprintf("PebbleReverseAccountIterator(%s)", params.ledger),
+			"PebbleReverseAccount", "pebble:attributes", nil
+
+	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+		kb := dal.NewKeyBuilder()
+		prefix := readstore.LedgerLogPrefix(kb, params.ledger)
+		entityOffset := len(prefix)
+		b := tx.Bucket(readstore.BucketLedgerLogs)
+		cursor := b.Cursor()
+		it := readstore.NewReversePrefixIterator(cursor, prefix, entityOffset, 8)
+
+		return &reverseCloser{it, func() {}},
+			fmt.Sprintf("ReverseLedgerLogIterator(%s)", params.ledger),
+			"ReverseLedgerLog", "bbolt:llog", nil
+
+	default:
+		return nil, "", "", "", fmt.Errorf("unsupported target for reverse: %v", params.target)
+	}
 }
 
 // listDescFiltered collects all ascending results, reverses them, and paginates.
@@ -145,6 +173,7 @@ func listDescFiltered[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params enti
 		tx, kb, params.filter,
 		params.target,
 		params.ledger, nil, params.schema, params.builtinCfg, params.logBuiltinCfg, params.profile,
+		params.pebbleReader,
 	)
 	if err != nil {
 		return fmt.Errorf("compiling filter: %w", err)

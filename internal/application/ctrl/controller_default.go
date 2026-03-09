@@ -45,7 +45,6 @@ type DefaultController struct {
 	store     *dal.Store
 	attrs     *attributes.Attributes
 	readStore *readstore.Store
-	guard     *attributes.IndexGuard
 }
 
 // NewDefaultController creates a new default controller.
@@ -55,7 +54,6 @@ func NewDefaultController(
 	logger logging.Logger,
 	attrs *attributes.Attributes,
 	readStore *readstore.Store,
-	guard *attributes.IndexGuard,
 ) *DefaultController {
 	return &DefaultController{
 		logger:    logger,
@@ -63,7 +61,6 @@ func NewDefaultController(
 		store:     store,
 		attrs:     attrs,
 		readStore: readStore,
-		guard:     guard,
 	}
 }
 
@@ -245,8 +242,8 @@ func assembleTransaction(ctx context.Context, reader dal.PebbleReader, transacti
 }
 
 // ListTransactions returns a cursor over transactions for a ledger.
-// Default order is newest-first; reverse=true gives oldest-first.
-// Uses the bbolt read index for entity discovery and Pebble for enrichment.
+// API convention: reverse=false means newest-first (descending), reverse=true means oldest-first.
+// Internally listEntities uses reverse=true for descending, so we invert the flag here.
 func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
 	ctx, span := tracer.Start(ctx, "ctrl.list_transactions",
 		trace.WithAttributes(
@@ -258,8 +255,14 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 
 	profile := query.ProfileFromContext(ctx)
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
+	// Create a Pebble snapshot first so that GetLedgerByName and the listing
+	// read from the same consistent point-in-time view.
+	handle := ctrl.store.NewReadHandle()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
+		_ = handle.Close()
+
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
@@ -276,23 +279,22 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 	indexStart := time.Now()
 
 	result, err := listEntities(ctrl.readStore, entityListParams[uint64]{
-		target:     commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		ledger:     ledgerInfo.GetName(),
-		pageSize:   pageSize,
-		after:      afterTxID,
-		filter:     filter,
-		reverse:    !reverse, // Default (reverse=false) is newest-first (descending), so we invert
-		schema:     schemaFields,
-		builtinCfg: ledgerInfo.GetBuiltinIndexes(),
-		profile:    profile,
-		namespace:  readstore.NamespaceTransaction,
+		target:       commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		ledger:       ledgerInfo.GetName(),
+		pageSize:     pageSize,
+		after:        afterTxID,
+		filter:       filter,
+		reverse:      !reverse, // API: reverse=false → newest-first (desc); listEntities: reverse=true → desc
+		schema:       schemaFields,
+		builtinCfg:   ledgerInfo.GetBuiltinIndexes(),
+		profile:      profile,
+		pebbleReader: handle,
 		afterToBytes: func(id uint64) []byte {
 			b := make([]byte, 8)
 			binary.BigEndian.PutUint64(b, id)
 
 			return b
 		},
-		idLen: 8,
 	})
 
 	if profile != nil {
@@ -300,12 +302,13 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 	}
 
 	if err != nil {
+		_ = handle.Close()
+
 		return nil, fmt.Errorf("listing transactions from index: %w", err)
 	}
 
 	// Enrich each transaction ID from Pebble
 	enrichStart := time.Now()
-	handle := ctrl.store.NewReadHandle()
 
 	txns := make([]*commonpb.Transaction, 0, len(result.entityIDs))
 	for _, eid := range result.entityIDs {
@@ -331,7 +334,7 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 }
 
 // ListAccounts returns a cursor over accounts for a ledger.
-// Default order is alphabetical (A→Z); reverse=true gives reverse-alphabetical (Z→A).
+// Default order (reverse=false) is ascending (A→Z); reverse=true gives reverse-alphabetical (Z→A).
 // Uses the bbolt read index for entity discovery and Pebble for enrichment.
 func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
 	ctx, span := tracer.Start(ctx, "ctrl.list_accounts",
@@ -344,8 +347,14 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 
 	profile := query.ProfileFromContext(ctx)
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
+	// Create a Pebble snapshot first so that GetLedgerByName and the listing
+	// read from the same consistent point-in-time view.
+	handle := ctrl.store.NewReadHandle()
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
+		_ = handle.Close()
+
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
 		}
@@ -362,20 +371,19 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	indexStart := time.Now()
 
 	result, err := listEntities(ctrl.readStore, entityListParams[string]{
-		target:     commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		ledger:     ledgerInfo.GetName(),
-		pageSize:   pageSize,
-		after:      afterAddress,
-		filter:     filter,
-		reverse:    reverse,
-		schema:     schemaFields,
-		builtinCfg: ledgerInfo.GetBuiltinIndexes(),
-		profile:    profile,
-		namespace:  readstore.NamespaceAccount,
+		target:       commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		ledger:       ledgerInfo.GetName(),
+		pageSize:     pageSize,
+		after:        afterAddress,
+		filter:       filter,
+		reverse:      reverse,
+		schema:       schemaFields,
+		builtinCfg:   ledgerInfo.GetBuiltinIndexes(),
+		profile:      profile,
+		pebbleReader: handle,
 		afterToBytes: func(addr string) []byte {
 			return []byte(addr)
 		},
-		idLen: 0,
 	})
 
 	if profile != nil {
@@ -383,27 +391,17 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	}
 
 	if err != nil {
+		_ = handle.Close()
+
 		return nil, fmt.Errorf("listing accounts from index: %w", err)
 	}
 
-	// Cap Pebble reads at bbolt's raft index progress for cross-store consistency.
-	maxRaftIndex := result.maxRaftIndex
-	if maxRaftIndex == 0 {
-		maxRaftIndex = ^uint64(0)
-	}
-
-	// Register this reader with the index guard so the attribute cleaner
-	// does not delete entries we still need during Pebble enrichment.
-	release := ctrl.guard.Hold(maxRaftIndex)
-	defer release()
-
 	// Enrich each account from Pebble
 	enrichStart := time.Now()
-	handle := ctrl.store.NewReadHandle()
 
 	accounts := make([]*commonpb.Account, 0, len(result.entityIDs))
 	for _, addr := range result.entityIDs {
-		acc, accErr := scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), string(addr), ledgerInfo.GetMetadataSchema(), maxRaftIndex)
+		acc, accErr := scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), string(addr), ledgerInfo.GetMetadataSchema())
 		if accErr != nil {
 			_ = handle.Close()
 
@@ -445,7 +443,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 
 	defer func() { _ = handle.Close() }()
 
-	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ledgerInfo.GetMetadataSchema(), ^uint64(0))
+	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ledgerInfo.GetMetadataSchema())
 }
 
 // GetLedgerStats returns aggregate statistics (account count, transaction count) for a ledger.
@@ -461,35 +459,33 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 
 	var stats commonpb.LedgerStats
 
-	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(readstore.BucketExistence)
-		if b == nil {
-			return nil
-		}
+	handle := ctrl.store.NewReadHandle()
 
-		kb := dal.NewKeyBuilder()
+	defer func() { _ = handle.Close() }()
 
-		// Count accounts
-		accountPrefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceAccount)
-
-		accountIter := readstore.NewPrefixIterator(b.Cursor(), accountPrefix, len(accountPrefix), 0)
-		for accountIter.Next() {
-			stats.AccountCount++
-		}
-
-		// Count transactions
-		txPrefix := readstore.ExistencePrefix(kb, ledgerName, readstore.NamespaceTransaction)
-
-		txIter := readstore.NewPrefixIterator(b.Cursor(), txPrefix, len(txPrefix), 8)
-		for txIter.Next() {
-			stats.TransactionCount++
-		}
-
-		return nil
-	})
+	// Count accounts from Pebble attributes zone
+	accountIter, err := readstore.NewPebbleAccountIterator(handle, ledgerName)
 	if err != nil {
-		return nil, fmt.Errorf("reading ledger stats: %w", err)
+		return nil, fmt.Errorf("creating account iterator for stats: %w", err)
 	}
+
+	for accountIter.Next() {
+		stats.AccountCount++
+	}
+
+	accountIter.Close()
+
+	// Count transactions from Pebble cold zone
+	txIter, err := readstore.NewPebbleTxIterator(handle, ledgerName)
+	if err != nil {
+		return nil, fmt.Errorf("creating tx iterator for stats: %w", err)
+	}
+
+	for txIter.Next() {
+		stats.TransactionCount++
+	}
+
+	txIter.Close()
 
 	return &stats, nil
 }
@@ -727,42 +723,34 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 		return nil, err
 	}
 
+	handle := ctrl.store.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
+	// Fast path: unfiltered aggregation scans Pebble volumes in a single pass.
+	// No bbolt interaction needed — Pebble snapshot is the source of truth.
+	if filter == nil {
+		result, aggErr := query.AggregateAllVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName())
+		if aggErr != nil {
+			return nil, fmt.Errorf("aggregating volumes: %w", aggErr)
+		}
+
+		return result, nil
+	}
+
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
 	var result *commonpb.AggregateResult
 
-	// Take the Pebble snapshot BEFORE the bbolt View so that Pebble reads
-	// are frozen while we read bbolt's progress. Cross-store consistency
-	// is ensured by capping Pebble reads at bbolt's lastIndexedRaftIndex.
-	handle := ctrl.store.NewReadHandle()
-	defer func() { _ = handle.Close() }()
-
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
 		kb := dal.NewKeyBuilder()
 
-		iter, compileErr := query.Compile(tx, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo.GetBuiltinIndexes(), nil, nil)
+		iter, compileErr := query.Compile(tx, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo.GetBuiltinIndexes(), nil, nil, handle)
 		if compileErr != nil {
 			return fmt.Errorf("compiling filter: %w", compileErr)
 		}
 		defer iter.Close()
 
-		// Read the raft index that bbolt has caught up to, so we cap Pebble
-		// reads for cross-store consistency.
-		maxRaftIndex, readErr := ctrl.readStore.ReadRaftIndexProgress(tx)
-		if readErr != nil {
-			return fmt.Errorf("reading raft index progress: %w", readErr)
-		}
-
-		if maxRaftIndex == 0 {
-			maxRaftIndex = ^uint64(0)
-		}
-
-		// Register this reader with the index guard so the attribute cleaner
-		// does not delete entries we still need during Pebble volume reads.
-		release := ctrl.guard.Hold(maxRaftIndex)
-		defer release()
-
-		result, err = query.AggregateVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), iter, maxRaftIndex)
+		result, err = query.AggregateVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), iter)
 
 		return err
 	})
@@ -808,7 +796,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint6
 				tx, kb, remainingFilter,
 				commonpb.QueryTarget_QUERY_TARGET_LOGS,
 				ledgerInfo.GetName(), nil, nil,
-				nil, ledgerInfo.GetLogBuiltinIndexes(), nil,
+				nil, ledgerInfo.GetLogBuiltinIndexes(), nil, handle,
 			)
 			if compileErr != nil {
 				return fmt.Errorf("compiling log filter: %w", compileErr)
@@ -1062,7 +1050,7 @@ func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger s
 func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 	profile := query.ProfileFromContext(ctx)
 
-	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, ctrl.guard, req, profile)
+	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, req, profile)
 }
 
 // GetNumscript returns a numscript by name and optional version ("" = latest).

@@ -13,7 +13,6 @@ import (
 // Bucket indexes for WriteBatch. Each index corresponds to one bbolt bucket.
 const (
 	batchBucketMidx  = iota // BucketMetadataIndex
-	batchBucketExist        // BucketExistence
 	batchBucketEidx         // BucketEntityExists
 	batchBucketRmap         // BucketReverseMap
 	batchBucketAtxm         // BucketAccountTx
@@ -29,7 +28,6 @@ const (
 // batchBucketNames maps bucket indexes to their bbolt bucket names.
 var batchBucketNames = [numBatchBuckets][]byte{
 	BucketMetadataIndex,
-	BucketExistence,
 	BucketEntityExists,
 	BucketReverseMap,
 	BucketAccountTx,
@@ -188,20 +186,6 @@ func (wb *WriteBatch) deleteReverseMap(key []byte) {
 
 // --- High-level write helpers (mirror the package-level Write* functions) ---
 
-// WriteAccountExistence records that an account exists.
-func (wb *WriteBatch) WriteAccountExistence(kb *dal.KeyBuilder, ledger, account string) {
-	key := ExistenceKey(kb, ledger, NamespaceAccount, []byte(account))
-	wb.put(batchBucketExist, key, nil)
-}
-
-// WriteTransactionExistence records that a transaction exists.
-func (wb *WriteBatch) WriteTransactionExistence(kb *dal.KeyBuilder, ledger string, txID uint64) {
-	entityID := make([]byte, 0, 8)
-	entityID = EncodeTxID(entityID, txID)
-	key := ExistenceKey(kb, ledger, NamespaceTransaction, entityID)
-	wb.put(batchBucketExist, key, nil)
-}
-
 // WriteAccountTxMapping records that a transaction involves an account (any role).
 func (wb *WriteBatch) WriteAccountTxMapping(kb *dal.KeyBuilder, ledger, account string, txID uint64) {
 	key := AccountTxKey(kb, ledger, account, txID)
@@ -282,14 +266,6 @@ func (wb *WriteBatch) WriteTransactionReferenceIndex(kb *dal.KeyBuilder, ledger,
 func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *dal.KeyBuilder, ledger string, timestamp, txID uint64) {
 	key := TransactionTimestampKey(kb, ledger, timestamp, txID)
 	wb.put(batchBucketTstmp, key, nil)
-}
-
-// WriteLogExistence records that a log exists in a ledger.
-func (wb *WriteBatch) WriteLogExistence(kb *dal.KeyBuilder, ledger string, logID uint64) {
-	entityID := make([]byte, 0, 8)
-	entityID = binary.BigEndian.AppendUint64(entityID, logID)
-	key := ExistenceKey(kb, ledger, NamespaceLog, entityID)
-	wb.put(batchBucketExist, key, nil)
 }
 
 // WriteLedgerLogDateIndex inserts an entry in the per-ledger log date index.

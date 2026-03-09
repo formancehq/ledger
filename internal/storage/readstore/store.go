@@ -103,7 +103,6 @@ func New(dir string, noFreelistSync bool, initialMmapSize int, logger logging.Lo
 	if err := db.Update(func(tx *bolt.Tx) error {
 		for _, bucket := range [][]byte{
 			BucketMetadataIndex,
-			BucketExistence,
 			BucketEntityExists,
 			BucketReverseMap,
 			BucketAccountTx,
@@ -288,21 +287,6 @@ func (s *Store) ReadRaftIndexProgress(tx *bolt.Tx) (uint64, error) {
 	}
 
 	return binary.BigEndian.Uint64(v), nil
-}
-
-// LastIndexedRaftIndex returns the last indexed raft index (read-only convenience).
-func (s *Store) LastIndexedRaftIndex() (uint64, error) {
-	var idx uint64
-
-	err := s.db.View(func(tx *bolt.Tx) error {
-		var readErr error
-
-		idx, readErr = s.ReadRaftIndexProgress(tx)
-
-		return readErr
-	})
-
-	return idx, err
 }
 
 // LastIndexedSequence returns the last indexed log sequence (read-only).

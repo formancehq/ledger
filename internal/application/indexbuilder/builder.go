@@ -594,7 +594,6 @@ func (b *Builder) indexLogEntry(tx *bolt.Tx, log *commonpb.Log) error {
 	// Index ledger log for per-ledger listing (opt-in via log builtin index).
 	if b.isLogBuiltinIndexed(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER) {
 		b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.GetId(), log.GetSequence())
-		b.wb.WriteLogExistence(b.kb, ledgerName, ledgerLog.GetId())
 	}
 
 	// Index log date for date range filtering (opt-in via log date builtin index).
@@ -652,11 +651,6 @@ func (b *Builder) indexCreatedTransaction(
 
 	wb := b.wb
 
-	// Transaction existence (skip during backfill — already written by normal processing)
-	if !b.backfillMode {
-		wb.WriteTransactionExistence(kb, ledger, txn.GetId())
-	}
-
 	// Collect unique accounts from postings (reuse builder's map)
 	indexAny := b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
 	indexSrc := b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)
@@ -683,19 +677,8 @@ func (b *Builder) indexCreatedTransaction(
 		}
 	}
 
-	// Account existence for all accounts in postings (skip during backfill)
-	if !b.backfillMode {
-		for account := range b.accounts {
-			wb.WriteAccountExistence(kb, ledger, account)
-		}
-	}
-
-	// Account existence + metadata from account_metadata map
+	// Account metadata from account_metadata map
 	for account, metadataSet := range ct.GetAccountMetadata() {
-		if !b.backfillMode {
-			wb.WriteAccountExistence(kb, ledger, account)
-		}
-
 		if metadataSet != nil {
 			for _, md := range metadataSet.GetMetadata() {
 				if !b.isMetadataIndexed(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, md.GetKey()) {
@@ -762,12 +745,7 @@ func (b *Builder) indexRevertedTransaction(
 	revertTxn := rt.GetRevertTransaction()
 	wb := b.wb
 
-	// Revert transaction existence (skip during backfill)
-	if !b.backfillMode {
-		wb.WriteTransactionExistence(kb, ledger, revertTxn.GetId())
-	}
-
-	// Account existence + account→tx mapping for revert postings (reuse builder's map)
+	// Account→tx mapping for revert postings (reuse builder's map)
 	indexAny := b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
 	indexSrc := b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)
 	indexDst := b.isBuiltinIndexed(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS)
@@ -789,12 +767,6 @@ func (b *Builder) indexRevertedTransaction(
 
 		if indexDst {
 			wb.WriteDestAccountTxMapping(kb, ledger, posting.GetDestination(), revertTxn.GetId())
-		}
-	}
-
-	if !b.backfillMode {
-		for account := range b.accounts {
-			wb.WriteAccountExistence(kb, ledger, account)
 		}
 	}
 

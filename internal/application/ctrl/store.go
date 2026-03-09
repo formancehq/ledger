@@ -1,7 +1,6 @@
 package ctrl
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math/big"
 
@@ -108,16 +107,12 @@ func enforceAccountSchema(schema *commonpb.MetadataSchema, metadata []*commonpb.
 // for one account and returns an assembled Account. The scan range is
 // [0xF1][ledger]\x00[address]\x00 .. [0xF1][ledger]\x00[address]\x02, covering both
 // volume (\x00) and metadata (\x01) canonical key separators.
-// maxRaftIndex caps which Pebble entries are considered: entries written at a raft
-// index beyond this value are skipped for cross-store consistency with bbolt.
-// Pass ^uint64(0) to read all entries (no cap).
 func scanAccount(
 	reader dal.PebbleReader,
 	attrs *attributes.Attributes,
 	ledger string,
 	address string,
 	schema *commonpb.MetadataSchema,
-	maxRaftIndex uint64,
 ) (*commonpb.Account, error) {
 	// Build bounds: [0xF1][ledger]\x00[address]\x00 .. [0xF1][ledger]\x00[address]\x02
 	baseLen := 1 + len(ledger) + 1 + len(address)
@@ -152,14 +147,6 @@ func scanAccount(
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
-
-		// Skip entries beyond the raft index cap for cross-store consistency.
-		if len(key) >= 8 {
-			raftIndex := binary.BigEndian.Uint64(key[len(key)-8:])
-			if raftIndex > maxRaftIndex {
-				continue
-			}
-		}
 
 		valueBytes, err := iter.ValueAndErr()
 		if err != nil {

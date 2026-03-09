@@ -39,7 +39,6 @@ func Execute(
 	rs *readstore.Store,
 	pebbleStore *dal.Store,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
-	guard *attributes.IndexGuard,
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 ) (*servicepb.ExecutePreparedQueryResponse, error) {
@@ -109,7 +108,17 @@ func Execute(
 		kb := dal.NewKeyBuilder()
 
 		// Compile filter into iterator tree
-		iter, compileErr := Compile(tx, kb, pq.GetFilter(), pq.GetTarget(), req.GetLedger(), req.GetParameters(), schema, ledgerInfo.GetBuiltinIndexes(), ledgerInfo.GetLogBuiltinIndexes(), profile)
+		// Use the handle if available (AGGREGATE_VOLUMES mode), otherwise create a temporary one.
+		var pebbleReader dal.PebbleReader
+		if handle != nil {
+			pebbleReader = handle
+		} else {
+			tmpHandle := pebbleStore.NewReadHandle()
+			defer func() { _ = tmpHandle.Close() }()
+			pebbleReader = tmpHandle
+		}
+
+		iter, compileErr := Compile(tx, kb, pq.GetFilter(), pq.GetTarget(), req.GetLedger(), req.GetParameters(), schema, ledgerInfo.GetBuiltinIndexes(), ledgerInfo.GetLogBuiltinIndexes(), profile, pebbleReader)
 		if compileErr != nil {
 			return fmt.Errorf("compiling filter: %w", compileErr)
 		}
@@ -124,24 +133,7 @@ func Execute(
 			return listErr
 
 		case commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
-			// Read the raft index that bbolt has caught up to, so we cap Pebble
-			// reads for cross-store consistency.
-			maxRaftIndex, readErr := rs.ReadRaftIndexProgress(tx)
-			if readErr != nil {
-				return fmt.Errorf("reading raft index progress: %w", readErr)
-			}
-
-			if maxRaftIndex == 0 {
-				// No progress yet (fresh cluster) — read all available data.
-				maxRaftIndex = ^uint64(0)
-			}
-
-			// Register this reader with the index guard so the attribute cleaner
-			// does not delete entries we still need during Pebble volume reads.
-			release := guard.Hold(maxRaftIndex)
-			defer release()
-
-			aggResult, aggErr := AggregateVolumes(handle, volumeAttr, req.GetLedger(), iter, maxRaftIndex)
+			aggResult, aggErr := AggregateVolumes(handle, volumeAttr, req.GetLedger(), iter)
 			if aggErr != nil {
 				return aggErr
 			}

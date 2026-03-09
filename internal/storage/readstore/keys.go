@@ -9,11 +9,6 @@ var (
 	// Value: (empty).
 	BucketMetadataIndex = []byte("midx")
 
-	// BucketExistence is the existence index for accounts and transactions.
-	// Key: [ledgerName\x00][ns:][entityID]
-	// Value: (empty).
-	BucketExistence = []byte("exist")
-
 	// BucketReverseMap is the reverse metadata map (entity → current value per key).
 	// Key: [ledgerName\x00][ns:][entityID separator][metadataKey]
 	//   accounts:     [ledger\x00][a:][account\x00][key]
@@ -149,27 +144,6 @@ func MetadataIndexKey(kb *dal.KeyBuilder, ledger, ns, metadataKey string, encode
 		PutBytes(encodedValue).
 		PutBytes(entityID).
 		Build()
-}
-
-// ExistenceKey builds an existence index key.
-//
-//	[ledgerName\x00][ns:][entityID]
-func ExistenceKey(kb *dal.KeyBuilder, ledger, ns string, entityID []byte) []byte {
-	return kb.Reset().
-		PutLedgerName(ledger).
-		PutNamespace(ns).
-		PutBytes(entityID).
-		Build()
-}
-
-// ExistencePrefix returns the prefix for scanning all entities in a namespace.
-//
-//	[ledgerName\x00][ns:]
-func ExistencePrefix(kb *dal.KeyBuilder, ledger, ns string) []byte {
-	return kb.Reset().
-		PutLedgerName(ledger).
-		PutNamespace(ns).
-		Snapshot()
 }
 
 // AccountReverseMapKey builds a reverse map key for account metadata.

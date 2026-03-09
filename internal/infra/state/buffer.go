@@ -16,11 +16,9 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// mergeSimple writes each update to an Attribute using Set.
-// Old attribute entries are retained (not eagerly deleted) so that
-// cross-store queries can cap reads at bbolt's indexed raft index
-// without losing data that bbolt hasn't caught up to yet.
-// A background cleanup will eventually remove stale entries.
+// mergeSimple writes each update to an Attribute using Set,
+// then eagerly deletes the superseded entry so that each canonical key
+// has at most one Pebble entry at any time.
 func mergeSimple[K attributes.Key, V proto.Message](
 	attr *attributes.Attribute[V],
 	batch *dal.Batch,
@@ -31,6 +29,21 @@ func mergeSimple[K attributes.Key, V proto.Message](
 		err := attr.Set(batch, index, update.CanonicalKey, update.New)
 		if err != nil {
 			return err
+		}
+
+		// Delete the previous entry if this is not the first write.
+		if update.OldBaseIndex > 0 {
+			// Known previous index → efficient point delete.
+			err = attr.DeleteAt(batch, update.OldBaseIndex, update.CanonicalKey)
+			if err != nil {
+				return err
+			}
+		} else if update.Old.IsDefined() {
+			// Old value exists but index unknown → range delete everything before the new entry.
+			err = attr.DeleteOldest(batch, index, update.CanonicalKey)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

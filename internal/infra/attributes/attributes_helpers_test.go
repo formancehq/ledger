@@ -203,7 +203,7 @@ func TestAccumulator(t *testing.T) {
 	// Use ForEachInPrefix to iterate and verify results
 	var results []ComputedEntry[*raftcmdpb.VolumePair]
 
-	err := attrs.Volume.ForEachInPrefix(store, ^uint64(0), []byte("ledger\x00"), func(entry ComputedEntry[*raftcmdpb.VolumePair]) error {
+	err := attrs.Volume.ForEachInPrefix(store, []byte("ledger\x00"), func(entry ComputedEntry[*raftcmdpb.VolumePair]) error {
 		results = append(results, entry)
 
 		return nil
@@ -228,7 +228,7 @@ func TestAccumulatorFeedAndFlush(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Use ComputeAllForPrefix to get all entries under the ledger prefix
-	entries, err := attrs.Metadata.ComputeAllForPrefix(store, ^uint64(0), []byte("ledger\x00"))
+	entries, err := attrs.Metadata.ComputeAllForPrefix(store, []byte("ledger\x00"))
 	require.NoError(t, err)
 	require.Len(t, entries, 2)
 
@@ -335,16 +335,26 @@ func TestForEachInPrefixMaxIndex(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	// ForEachInPrefix with maxIndex=10 should filter out Set at index 50
+	// ForEachInPrefix scans all entries and groups by canonical key.
 	var results []ComputedEntry[*raftcmdpb.VolumePair]
 
-	err := attrs.Volume.ForEachInPrefix(store, 10, []byte("test\x00"), func(entry ComputedEntry[*raftcmdpb.VolumePair]) error {
+	err := attrs.Volume.ForEachInPrefix(store, []byte("test\x00"), func(entry ComputedEntry[*raftcmdpb.VolumePair]) error {
 		results = append(results, entry)
 
 		return nil
 	})
 	require.NoError(t, err)
 	require.Len(t, results, 2)
+
+	// keyA has two entries (index 5 and 50); the accumulator picks the latest (500).
+	// keyB has one entry (index 3) with value 200.
+	for _, r := range results {
+		if string(r.CanonicalKey) == string(keyA) {
+			require.Equal(t, int64(500), r.Value.GetInput().ToBigInt().Int64())
+		} else {
+			require.Equal(t, int64(200), r.Value.GetInput().ToBigInt().Int64())
+		}
+	}
 }
 
 func TestIdempotencyKeysAttribute(t *testing.T) {

@@ -319,7 +319,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 	// Pass 1: count matching keys for progress tracking (O(1) memory).
 	var totalMatchingKeys uint64
 
-	err = mc.attrs.Metadata.ForEachInPrefix(reader, ^uint64(0), ledgerPrefix,
+	err = mc.attrs.Metadata.ForEachInPrefix(reader, ledgerPrefix,
 		func(entry attributes.ComputedEntry[*commonpb.MetadataValue]) error {
 			var mk domain.MetadataKey
 
@@ -350,7 +350,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 
 	var convertedSoFar uint64
 
-	err = mc.attrs.Metadata.ForEachInPrefix(reader, ^uint64(0), ledgerPrefix,
+	err = mc.attrs.Metadata.ForEachInPrefix(reader, ledgerPrefix,
 		func(entry attributes.ComputedEntry[*commonpb.MetadataValue]) error {
 			var mk domain.MetadataKey
 

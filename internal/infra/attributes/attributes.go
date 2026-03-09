@@ -277,7 +277,6 @@ func (a *Attribute[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte)
 // Thread-safe: allocates its own buffer for concurrent access.
 func (a *Attribute[V]) ForEachInPrefix(
 	reader dal.PebbleReader,
-	maxIndex uint64,
 	canonicalPrefix []byte,
 	fn func(entry ComputedEntry[V]) error,
 ) error {
@@ -310,11 +309,6 @@ func (a *Attribute[V]) ForEachInPrefix(
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
 		if len(key) <= minKeyLen {
-			continue
-		}
-
-		raftIndex := binary.BigEndian.Uint64(key[len(key)-8:])
-		if raftIndex > maxIndex {
 			continue
 		}
 
@@ -356,10 +350,10 @@ func (a *Attribute[V]) ForEachInPrefix(
 // This is more efficient than List + ComputeValue per key, as it uses one iterator
 // scoped to just the prefix range instead of the entire attribute space.
 // Thread-safe: allocates its own buffer for concurrent access.
-func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, maxIndex uint64, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
+func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
 	var results []ComputedEntry[V]
 
-	err := a.ForEachInPrefix(reader, maxIndex, canonicalPrefix, func(entry ComputedEntry[V]) error {
+	err := a.ForEachInPrefix(reader, canonicalPrefix, func(entry ComputedEntry[V]) error {
 		results = append(results, entry)
 
 		return nil
