@@ -714,6 +714,8 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 		trace.WithAttributes(attribute.String("ledger", ledgerName)))
 	defer span.End()
 
+	profile := query.ProfileFromContext(ctx)
+
 	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -729,9 +731,15 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 	// Fast path: unfiltered aggregation scans Pebble volumes in a single pass.
 	// No bbolt interaction needed — Pebble snapshot is the source of truth.
 	if filter == nil {
+		enrichStart := time.Now()
+
 		result, aggErr := query.AggregateAllVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName())
 		if aggErr != nil {
 			return nil, fmt.Errorf("aggregating volumes: %w", aggErr)
+		}
+
+		if profile != nil {
+			profile.EnrichmentDuration = time.Since(enrichStart)
 		}
 
 		return result, nil
@@ -744,13 +752,25 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
 		kb := dal.NewKeyBuilder()
 
+		indexStart := time.Now()
+
 		iter, compileErr := query.Compile(tx, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo.GetBuiltinIndexes(), nil, nil, handle)
 		if compileErr != nil {
 			return fmt.Errorf("compiling filter: %w", compileErr)
 		}
 		defer iter.Close()
 
+		if profile != nil {
+			profile.IndexDuration = time.Since(indexStart)
+		}
+
+		enrichStart := time.Now()
+
 		result, err = query.AggregateVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), iter)
+
+		if profile != nil {
+			profile.EnrichmentDuration = time.Since(enrichStart)
+		}
 
 		return err
 	})
