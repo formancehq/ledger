@@ -7,6 +7,8 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -33,6 +35,7 @@ Examples:
 	cmd.Flags().String("prefix", "", "Filter accounts by address prefix (e.g. users:)")
 	cmd.Flags().String("filter", "", `Filter expression (e.g. "metadata[category] == premium")`)
 	cmd.Flags().Bool("json", false, "Output as JSON")
+	cmd.Flags().Bool("analyze", false, "Display query execution profile (iterator stats, timing)")
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -57,6 +60,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	prefix, _ := cmd.Flags().GetString("prefix")
 	filterExpr, _ := cmd.Flags().GetString("filter")
 	jsonOutput, _ := cmd.Flags().GetBool("json")
+	showProfile, _ := cmd.Flags().GetBool("analyze")
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 
 	filter, err := buildAccountFilter(filterExpr, prefix)
@@ -67,17 +71,27 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
+	if showProfile {
+		ctx = cmdutil.ProfileContext(ctx)
+	}
+
 	spinner, _ := pterm.DefaultSpinner.Start("Aggregating volumes...")
+
+	var trailer metadata.MD
 
 	result, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
 		Ledger:         ledgerName,
 		Filter:         filter,
 		MinLogSequence: minLogSeq,
-	})
+	}, grpc.Trailer(&trailer))
 	_ = spinner.Stop()
 
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to aggregate volumes", err)
+	}
+
+	if showProfile {
+		cmdutil.RenderProfile(cmdutil.ExtractProfile(trailer))
 	}
 
 	if jsonOutput {
