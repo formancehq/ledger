@@ -19,7 +19,7 @@ func resolveStandard[K interface {
 	nextIndex, boundary uint64,
 	attrCache *cache.AttributeCache[T],
 	loader *AttributeLoader[T],
-	computeValue func(reader dal.PebbleReader, index uint64, canonicalKey []byte) (T, error),
+	computeValue func(reader dal.PebbleReader, index uint64, canonicalKey []byte) (T, uint64, error),
 	store dal.PebbleReader,
 	buildPreload func(id *raftcmdpb.AttributeID, value T) *raftcmdpb.Preload,
 	alwaysSend bool,
@@ -35,7 +35,7 @@ func resolveStandard[K interface {
 			continue
 		}
 
-		result, err := loader.LoadOrWait(id, boundary, func() (T, error) {
+		result, err := loader.LoadOrWait(id, boundary, func() (T, uint64, error) {
 			return computeValue(store, boundary, canonicalKey)
 		})
 		if err != nil {
@@ -50,7 +50,7 @@ func resolveStandard[K interface {
 		hasValue := any(result.Value) != any(zero)
 
 		if alwaysSend || hasValue {
-			attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
+			attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag, BaseIndex: result.BaseIndex}
 			preloads = append(preloads, buildPreload(attrID, result.Value))
 		}
 	}
@@ -59,6 +59,8 @@ func resolveStandard[K interface {
 }
 
 // resolveCustom resolves a custom attribute type where callers provide load functions.
+// Custom types (sink configs, numscript) don't come from Pebble attributes, so
+// baseIndex is always 0 — acceptable since they are rarely overwritten.
 func resolveCustom[K interface {
 	comparable
 	Bytes() []byte
@@ -81,7 +83,13 @@ func resolveCustom[K interface {
 			continue
 		}
 
-		result, err := loader.LoadOrWait(id, boundary, loadFn)
+		// Wrap loadFn to match the (T, uint64, error) signature — baseIndex=0 for custom types.
+		wrappedFn := func() (T, uint64, error) {
+			v, err := loadFn()
+			return v, 0, err
+		}
+
+		result, err := loader.LoadOrWait(id, boundary, wrappedFn)
 		if err != nil {
 			return nil, nil, err
 		}

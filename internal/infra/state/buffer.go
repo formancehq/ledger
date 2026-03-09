@@ -31,16 +31,14 @@ func mergeSimple[K attributes.Key, V proto.Message](
 			return err
 		}
 
-		// Delete the previous entry if this is not the first write.
+		// Delete the previous Pebble entry if one exists.
+		// OldBaseIndex > 0 means we know the exact raft index of the previous entry
+		// (propagated from ComputeValue through the preload system).
+		// OldBaseIndex == 0 means either: (a) first write for this key (no Pebble entry
+		// to delete), or (b) snapshot restore (at most 1 orphan entry, acceptable).
+		// Raft indices start at 1, so 0 is a reliable sentinel for "no previous entry."
 		if update.OldBaseIndex > 0 {
-			// Known previous index → efficient point delete.
 			err = attr.DeleteAt(batch, update.OldBaseIndex, update.CanonicalKey)
-			if err != nil {
-				return err
-			}
-		} else if update.Old.IsDefined() {
-			// Old value exists but index unknown → range delete everything before the new entry.
-			err = attr.DeleteOldest(batch, index, update.CanonicalKey)
 			if err != nil {
 				return err
 			}

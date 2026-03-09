@@ -622,8 +622,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		}
 
 		kv.Put(id, attributes.Entry[*raftcmdpb.VolumePair]{
-			Tag:  attrID.GetTag(),
-			Data: pair,
+			Tag:       attrID.GetTag(),
+			Data:      pair,
+			BaseIndex: attrID.GetBaseIndex(),
 		})
 
 		return pair
@@ -649,8 +650,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		}
 
 		kv.Put(id, attributes.Entry[*commonpb.IdempotencyKeyValue]{
-			Tag:  attrID.GetTag(),
-			Data: value,
+			Tag:       attrID.GetTag(),
+			Data:      value,
+			BaseIndex: attrID.GetBaseIndex(),
 		})
 
 		return value
@@ -675,8 +677,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		}
 
 		kv.Put(id, attributes.Entry[*commonpb.TransactionReferenceValue]{
-			Tag:  attrID.GetTag(),
-			Data: value,
+			Tag:       attrID.GetTag(),
+			Data:      value,
+			BaseIndex: attrID.GetBaseIndex(),
 		})
 
 		return value
@@ -701,8 +704,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		}
 
 		kv.Put(id, attributes.Entry[*commonpb.LedgerInfo]{
-			Tag:  attrID.GetTag(),
-			Data: value,
+			Tag:       attrID.GetTag(),
+			Data:      value,
+			BaseIndex: attrID.GetBaseIndex(),
 		})
 
 		return value
@@ -726,8 +730,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		}
 
 		kv.Put(id, attributes.Entry[*raftcmdpb.LedgerBoundaries]{
-			Tag:  attrID.GetTag(),
-			Data: value,
+			Tag:       attrID.GetTag(),
+			Data:      value,
+			BaseIndex: attrID.GetBaseIndex(),
 		})
 
 		return value
@@ -752,8 +757,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		}
 
 		kv.Put(id, attributes.Entry[*commonpb.SinkConfig]{
-			Tag:  attrID.GetTag(),
-			Data: value,
+			Tag:       attrID.GetTag(),
+			Data:      value,
+			BaseIndex: attrID.GetBaseIndex(),
 		})
 
 		return value
@@ -778,8 +784,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		}
 
 		kv.Put(id, attributes.Entry[string]{
-			Tag:  attrID.GetTag(),
-			Data: value,
+			Tag:       attrID.GetTag(),
+			Data:      value,
+			BaseIndex: attrID.GetBaseIndex(),
 		})
 
 		return value
@@ -803,8 +810,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		}
 
 		kv.Put(id, attributes.Entry[bool]{
-			Tag:  attrID.GetTag(),
-			Data: value,
+			Tag:       attrID.GetTag(),
+			Data:      value,
+			BaseIndex: attrID.GetBaseIndex(),
 		})
 
 		return value
@@ -828,8 +836,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		}
 
 		kv.Put(id, attributes.Entry[*commonpb.MetadataValue]{
-			Tag:  attrID.GetTag(),
-			Data: value,
+			Tag:       attrID.GetTag(),
+			Data:      value,
+			BaseIndex: attrID.GetBaseIndex(),
 		})
 
 		return value

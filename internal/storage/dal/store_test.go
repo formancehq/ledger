@@ -109,19 +109,19 @@ func testStoreCommon(t *testing.T, createStore func(*testing.T) *dal.Store) {
 		require.NoError(t, batch.Commit())
 
 		// world: input=0, output=100 → balance = -100
-		worldVolume, err := attrs.Volume.ComputeValue(s, 100, worldCanonicalKey)
+		worldVolume, _, err := attrs.Volume.ComputeValue(s, 100, worldCanonicalKey)
 		require.NoError(t, err)
 		require.Equal(t, big.NewInt(0), worldVolume.GetInput().ToBigInt())
 		require.Equal(t, big.NewInt(100), worldVolume.GetOutput().ToBigInt())
 
 		// bank: input=100, output=50 → balance = 50
-		bankVolume, err := attrs.Volume.ComputeValue(s, 100, bankCanonicalKey)
+		bankVolume, _, err := attrs.Volume.ComputeValue(s, 100, bankCanonicalKey)
 		require.NoError(t, err)
 		require.Equal(t, big.NewInt(100), bankVolume.GetInput().ToBigInt())
 		require.Equal(t, big.NewInt(50), bankVolume.GetOutput().ToBigInt())
 
 		// user: input=50, output=0 → balance = 50
-		userVolume, err := attrs.Volume.ComputeValue(s, 100, userCanonicalKey)
+		userVolume, _, err := attrs.Volume.ComputeValue(s, 100, userCanonicalKey)
 		require.NoError(t, err)
 		require.Equal(t, big.NewInt(50), userVolume.GetInput().ToBigInt())
 		require.Equal(t, big.NewInt(0), userVolume.GetOutput().ToBigInt())
@@ -277,7 +277,7 @@ func TestVolume(t *testing.T) {
 	bankEURKey := bankEUR.Bytes()
 
 	getVolume := func(canonicalKey []byte, index uint64) *raftcmdpb.VolumePair {
-		result, err := attrs.Volume.ComputeValue(s, index, canonicalKey)
+		result, _, err := attrs.Volume.ComputeValue(s, index, canonicalKey)
 		require.NoError(t, err)
 
 		return result

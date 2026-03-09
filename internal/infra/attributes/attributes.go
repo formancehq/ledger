@@ -117,9 +117,11 @@ const SuffixLen = 9
 
 // ComputeValue computes the final value for the given canonical key at the specified raft index.
 // It finds the most recent entry with index <= maxIndex.
-// The canonical key is used directly as the Pebble key for better data locality.
+// Returns the value, the raft index of the latest Pebble entry (0 if no entry found),
+// and any error. The returned index enables point deletes instead of range tombstones
+// when the entry is later overwritten.
 // Note: This is a read operation — allocates its own buffer for concurrent safety.
-func (a *Attribute[V]) ComputeValue(reader dal.PebbleReader, index uint64, canonicalKey []byte) (V, error) {
+func (a *Attribute[V]) ComputeValue(reader dal.PebbleReader, index uint64, canonicalKey []byte) (V, uint64, error) {
 	var zeroValue V
 
 	// Key prefix: [KeyPrefixAttributes][canonicalKey][attrType]
@@ -146,29 +148,33 @@ func (a *Attribute[V]) ComputeValue(reader dal.PebbleReader, index uint64, canon
 		UpperBound: buf[:pLen+upperExtra],
 	})
 	if err != nil {
-		return zeroValue, fmt.Errorf("creating iterator: %w", err)
+		return zeroValue, 0, fmt.Errorf("creating iterator: %w", err)
 	}
 
 	defer func() { _ = iter.Close() }()
 
-	// Track the most recent value
+	// Track the most recent value and its raft index
 	var latestValue V
+	var latestIndex uint64
 
 	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		latestIndex = binary.BigEndian.Uint64(key[len(key)-8:])
+
 		valueBytes, err := iter.ValueAndErr()
 		if err != nil {
-			return zeroValue, fmt.Errorf("reading value: %w", err)
+			return zeroValue, 0, fmt.Errorf("reading value: %w", err)
 		}
 
 		v := a.newValue()
 		if err := unmarshalProto(valueBytes, v); err != nil {
-			return zeroValue, fmt.Errorf("unmarshaling value: %w", err)
+			return zeroValue, 0, fmt.Errorf("unmarshaling value: %w", err)
 		}
 
 		latestValue = v
 	}
 
-	return latestValue, nil
+	return latestValue, latestIndex, nil
 }
 
 // Delete removes all entries for the given canonical key at any raft index.

@@ -129,7 +129,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	require.Equal(t, deletedAt.GetData(), ledgers[0].GetDeletedAt().GetData())
 
 	// Verify data still exists (soft delete doesn't remove data)
-	volumeResult, err := attrs.Volume.ComputeValue(s, 100, worldCanonicalKey)
+	volumeResult, _, err := attrs.Volume.ComputeValue(s, 100, worldCanonicalKey)
 	require.NoError(t, err)
 	require.Equal(t, big.NewInt(100), volumeResult.GetOutput().ToBigInt())
 }

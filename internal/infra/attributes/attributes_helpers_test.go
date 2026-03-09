@@ -173,7 +173,7 @@ func TestDeleteOldest(t *testing.T) {
 	require.Equal(t, uint64(20), scan.LatestBaseIndex)
 
 	// Computed value should still work (latest Set = 400)
-	result, err := attrs.Volume.ComputeValue(store, ^uint64(0), testKey)
+	result, _, err := attrs.Volume.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.Equal(t, int64(400), result.GetInput().ToBigInt().Int64())
 }
@@ -298,17 +298,17 @@ func TestComputeValueMaxIndex(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Query at max index 15 should see last Set at index 10 (last-write-wins) = 200
-	result, err := attrs.Volume.ComputeValue(store, 15, testKey)
+	result, _, err := attrs.Volume.ComputeValue(store, 15, testKey)
 	require.NoError(t, err)
 	require.Equal(t, int64(200), result.GetInput().ToBigInt().Int64())
 
 	// Query at max index 7 should only see Set at index 5 = 100
-	result, err = attrs.Volume.ComputeValue(store, 7, testKey)
+	result, _, err = attrs.Volume.ComputeValue(store, 7, testKey)
 	require.NoError(t, err)
 	require.Equal(t, int64(100), result.GetInput().ToBigInt().Int64())
 
 	// Query at max index 3 should see nothing (first Set is at index 5)
-	result, err = attrs.Volume.ComputeValue(store, 3, testKey)
+	result, _, err = attrs.Volume.ComputeValue(store, 3, testKey)
 	require.NoError(t, err)
 	// No entries found - returns zero
 	require.Equal(t, int64(0), result.GetInput().ToBigInt().Int64())
@@ -372,7 +372,7 @@ func TestIdempotencyKeysAttribute(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, err := attrs.IdempotencyKeys.ComputeValue(store, ^uint64(0), testKey)
+	result, _, err := attrs.IdempotencyKeys.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), result.GetLogSequence())
 
@@ -383,7 +383,7 @@ func TestIdempotencyKeysAttribute(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, err = attrs.IdempotencyKeys.ComputeValue(store, ^uint64(0), testKey)
+	result, _, err = attrs.IdempotencyKeys.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.Equal(t, uint64(20), result.GetLogSequence())
 }
@@ -403,7 +403,7 @@ func TestReferenceAttribute(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, err := attrs.References.ComputeValue(store, ^uint64(0), testKey)
+	result, _, err := attrs.References.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.Equal(t, uint64(42), result.GetTransactionId())
 
@@ -414,7 +414,7 @@ func TestReferenceAttribute(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, err = attrs.References.ComputeValue(store, ^uint64(0), testKey)
+	result, _, err = attrs.References.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.Equal(t, uint64(99), result.GetTransactionId())
 }
@@ -446,7 +446,7 @@ func TestLedgerAttribute(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, err := attrs.Ledger.ComputeValue(store, ^uint64(0), testKey)
+	result, _, err := attrs.Ledger.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.Equal(t, "my-ledger", result.GetName())
 
@@ -457,7 +457,7 @@ func TestLedgerAttribute(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, err = attrs.Ledger.ComputeValue(store, ^uint64(0), testKey)
+	result, _, err = attrs.Ledger.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.Equal(t, "my-ledger-renamed", result.GetName())
 }
@@ -477,7 +477,7 @@ func TestBoundaryAttribute(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	result, err := attrs.Boundary.ComputeValue(store, ^uint64(0), testKey)
+	result, _, err := attrs.Boundary.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), result.GetNextTransactionId())
 	require.Equal(t, uint64(20), result.GetNextLogId())
@@ -606,11 +606,11 @@ func TestCompactAllForBackup(t *testing.T) {
 
 	// After compaction, the values should still be readable using a fresh Attributes
 	freshAttrs := New()
-	result, err := freshAttrs.Volume.ComputeValue(store, ^uint64(0), keyA)
+	result, _, err := freshAttrs.Volume.ComputeValue(store, ^uint64(0), keyA)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	result, err = freshAttrs.Volume.ComputeValue(store, ^uint64(0), keyB)
+	result, _, err = freshAttrs.Volume.ComputeValue(store, ^uint64(0), keyB)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 }
@@ -663,7 +663,7 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Verify data is NOT visible at index 0 before compaction
-	vol, err := attrs.Volume.ComputeValue(store, 0, volumeKey)
+	vol, _, err := attrs.Volume.ComputeValue(store, 0, volumeKey)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), vol.GetInput().ToBigInt().Int64(), "volume should not be visible at index 0 before compaction")
 
@@ -673,33 +673,33 @@ func TestCompactAllForBackupAllTypes(t *testing.T) {
 	// Verify all types are readable at index 0 with correct values
 	freshAttrs := New()
 
-	vol, err = freshAttrs.Volume.ComputeValue(store, 0, volumeKey)
+	vol, _, err = freshAttrs.Volume.ComputeValue(store, 0, volumeKey)
 	require.NoError(t, err)
 	require.NotNil(t, vol)
 	require.Equal(t, int64(300), vol.GetInput().ToBigInt().Int64(), "volume input: last Set wins (300)")
 	require.Equal(t, int64(100), vol.GetOutput().ToBigInt().Int64(), "volume output: last Set wins (100)")
 
-	meta, err := freshAttrs.Metadata.ComputeValue(store, 0, metadataKey)
+	meta, _, err := freshAttrs.Metadata.ComputeValue(store, 0, metadataKey)
 	require.NoError(t, err)
 	require.NotNil(t, meta)
 	require.Equal(t, "active", commonpb.MetadataValueToString(meta))
 
-	idem, err := freshAttrs.IdempotencyKeys.ComputeValue(store, 0, idempotencyKey)
+	idem, _, err := freshAttrs.IdempotencyKeys.ComputeValue(store, 0, idempotencyKey)
 	require.NoError(t, err)
 	require.NotNil(t, idem)
 	require.Equal(t, uint64(42), idem.GetLogSequence())
 
-	ref, err := freshAttrs.References.ComputeValue(store, 0, referenceKey)
+	ref, _, err := freshAttrs.References.ComputeValue(store, 0, referenceKey)
 	require.NoError(t, err)
 	require.NotNil(t, ref)
 	require.Equal(t, uint64(99), ref.GetTransactionId())
 
-	ledger, err := freshAttrs.Ledger.ComputeValue(store, 0, ledgerKey)
+	ledger, _, err := freshAttrs.Ledger.ComputeValue(store, 0, ledgerKey)
 	require.NoError(t, err)
 	require.NotNil(t, ledger)
 	require.Equal(t, "myledger", ledger.GetName())
 
-	boundary, err := freshAttrs.Boundary.ComputeValue(store, 0, boundaryKey)
+	boundary, _, err := freshAttrs.Boundary.ComputeValue(store, 0, boundaryKey)
 	require.NoError(t, err)
 	require.NotNil(t, boundary)
 	require.Equal(t, uint64(10), boundary.GetNextTransactionId())
@@ -749,17 +749,17 @@ func TestCompactAllForBackupMultiKeyPerType(t *testing.T) {
 
 	freshAttrs := New()
 
-	alice, err := freshAttrs.Volume.ComputeValue(store, 0, keyAlice)
+	alice, _, err := freshAttrs.Volume.ComputeValue(store, 0, keyAlice)
 	require.NoError(t, err)
 	require.NotNil(t, alice)
 	require.Equal(t, int64(50), alice.GetInput().ToBigInt().Int64(), "alice: last Set wins (50)")
 
-	bob, err := freshAttrs.Volume.ComputeValue(store, 0, keyBob)
+	bob, _, err := freshAttrs.Volume.ComputeValue(store, 0, keyBob)
 	require.NoError(t, err)
 	require.NotNil(t, bob)
 	require.Equal(t, int64(200), bob.GetInput().ToBigInt().Int64(), "bob: single Set 200")
 
-	charlie, err := freshAttrs.Volume.ComputeValue(store, 0, keyCharlie)
+	charlie, _, err := freshAttrs.Volume.ComputeValue(store, 0, keyCharlie)
 	require.NoError(t, err)
 	require.NotNil(t, charlie)
 	require.Equal(t, int64(300), charlie.GetInput().ToBigInt().Int64(), "charlie: last Set wins (300)")

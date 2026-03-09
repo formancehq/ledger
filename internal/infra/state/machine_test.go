@@ -414,7 +414,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			}
 			canonicalKey := key.Bytes()
 
-			pair, err := attrs.Volume.ComputeValue(dataStore, lastIndex, canonicalKey)
+			pair, _, err := attrs.Volume.ComputeValue(dataStore, lastIndex, canonicalKey)
 			require.NoError(t, err, "store volume read error for %s/%s", exp.account, exp.asset)
 
 			var gotInput, gotOutput int64
@@ -459,7 +459,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			Asset:      "EUR",
 		}.Bytes()
 
-		pair, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
+		pair, _, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
 		require.NoError(t, err)
 		require.NotNil(t, pair)
 		require.NotNil(t, pair.GetInput())
@@ -481,7 +481,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			Asset:      "EUR",
 		}.Bytes()
 
-		pair, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
+		pair, _, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
 		require.NoError(t, err)
 		require.NotNil(t, pair)
 		require.NotNil(t, pair.GetOutput())
@@ -503,7 +503,7 @@ func TestMachineMemoryNotCorruptedOnError(t *testing.T) {
 			Asset:      "EUR",
 		}.Bytes()
 
-		pair, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
+		pair, _, err := attrs.Volume.ComputeValue(dataStore, 4, canonicalKey)
 		require.NoError(t, err)
 		require.NotNil(t, pair)
 		require.NotNil(t, pair.GetInput())

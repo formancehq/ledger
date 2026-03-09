@@ -5724,6 +5724,7 @@ type AttributeID struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            []byte                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"` // 16-byte U128 identifier
 	Tag           uint64                 `protobuf:"fixed64,2,opt,name=tag,proto3" json:"tag,omitempty"`
+	BaseIndex     uint64                 `protobuf:"varint,3,opt,name=base_index,json=baseIndex,proto3" json:"base_index,omitempty"` // Raft index of the Pebble entry (for eager cleanup via point deletes)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5768,6 +5769,13 @@ func (x *AttributeID) GetId() []byte {
 func (x *AttributeID) GetTag() uint64 {
 	if x != nil {
 		return x.Tag
+	}
+	return 0
+}
+
+func (x *AttributeID) GetBaseIndex() uint64 {
+	if x != nil {
+		return x.BaseIndex
 	}
 	return 0
 }
@@ -6179,10 +6187,12 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2!.common.TransactionReferenceValueR\x05value\"D\n" +
 	"\x14ReversionBitsetEntry\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x14\n" +
-	"\x05words\x18\x02 \x01(\fR\x05words\"/\n" +
+	"\x05words\x18\x02 \x01(\fR\x05words\"N\n" +
 	"\vAttributeID\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\fR\x02id\x12\x10\n" +
-	"\x03tag\x18\x02 \x01(\x06R\x03tagB>Z<github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpbb\x06proto3"
+	"\x03tag\x18\x02 \x01(\x06R\x03tag\x12\x1d\n" +
+	"\n" +
+	"base_index\x18\x03 \x01(\x04R\tbaseIndexB>Z<github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpbb\x06proto3"
 
 var (
 	file_raft_cmd_proto_rawDescOnce sync.Once

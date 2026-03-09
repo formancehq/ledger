@@ -55,7 +55,7 @@ func TestSetAndComputeValue(t *testing.T) {
 	require.NoError(t, err)
 
 	// Compute value
-	result, err := attrs.Volume.ComputeValue(store, 100, testKey)
+	result, _, err := attrs.Volume.ComputeValue(store, 100, testKey)
 	require.NoError(t, err)
 
 	// Verify the result
@@ -98,7 +98,7 @@ func TestComputeValueWithMultipleSets(t *testing.T) {
 	require.NoError(t, err)
 
 	// ComputeValue should return the latest Set value (last-write-wins) = 500
-	result, err := attrs.Volume.ComputeValue(store, 100, testKey)
+	result, _, err := attrs.Volume.ComputeValue(store, 100, testKey)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, int64(500), result.GetInput().ToBigInt().Int64())
@@ -122,7 +122,7 @@ func TestDeleteRemovesAllEntries(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify data exists before deletion
-	result, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
+	result, _, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "inactive", commonpb.MetadataValueToString(result))
@@ -135,7 +135,7 @@ func TestDeleteRemovesAllEntries(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify data is gone
-	result, err = attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
+	result, _, err = attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.Nil(t, result)
 
@@ -175,7 +175,7 @@ func TestDeleteThenReAdd(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify new value is returned
-	result, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
+	result, _, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, "new-value", commonpb.MetadataValueToString(result))
@@ -197,7 +197,7 @@ func TestDeleteNonExistentKey(t *testing.T) {
 	require.NoError(t, err)
 
 	// ComputeValue should still return nil
-	result, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
+	result, _, err := attrs.Metadata.ComputeValue(store, ^uint64(0), testKey)
 	require.NoError(t, err)
 	require.Nil(t, result)
 }
@@ -314,7 +314,7 @@ func TestSetWithZeroValue(t *testing.T) {
 	require.NoError(t, err)
 
 	// Compute value
-	result, err := attrs.Volume.ComputeValue(store, 100, testKey)
+	result, _, err := attrs.Volume.ComputeValue(store, 100, testKey)
 	require.NoError(t, err)
 
 	// Verify the result
