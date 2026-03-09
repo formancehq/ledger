@@ -52,10 +52,20 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 		logPayload, err = p.processDropIndex(apply.GetLedger(), applyData.DropIndex, s)
 	case *raftcmdpb.LedgerApplyOrder_IndexReady:
 		logPayload, err = p.processIndexReady(apply.GetLedger(), applyData.IndexReady, s)
-	case *raftcmdpb.LedgerApplyOrder_SetChartOfAccounts:
-		logPayload, err = p.processSetChartOfAccounts(apply.GetLedger(), applyData.SetChartOfAccounts, s)
-	case *raftcmdpb.LedgerApplyOrder_SetChartEnforcementMode:
-		logPayload, err = p.processSetChartEnforcementMode(apply.GetLedger(), applyData.SetChartEnforcementMode, s)
+	case *raftcmdpb.LedgerApplyOrder_AddAccountType:
+		logPayload, err = p.processAddAccountType(apply.GetLedger(), applyData.AddAccountType, s)
+	case *raftcmdpb.LedgerApplyOrder_UpdateAccountType:
+		logPayload, err = p.processUpdateAccountType(apply.GetLedger(), applyData.UpdateAccountType, s)
+	case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
+		logPayload, err = p.processRemoveAccountType(apply.GetLedger(), applyData.RemoveAccountType, s)
+	case *raftcmdpb.LedgerApplyOrder_MigrateAccountType:
+		logPayload, err = p.processMigrateAccountType(apply.GetLedger(), applyData.MigrateAccountType, s)
+	case *raftcmdpb.LedgerApplyOrder_MigrateAccountBatch:
+		logPayload, err = p.processMigrateAccountBatch(apply.GetLedger(), applyData.MigrateAccountBatch, s)
+	case *raftcmdpb.LedgerApplyOrder_CompleteMigration:
+		logPayload, err = p.processCompleteMigration(apply.GetLedger(), applyData.CompleteMigration, s)
+	case *raftcmdpb.LedgerApplyOrder_CancelMigration:
+		logPayload, err = p.processCancelMigration(apply.GetLedger(), applyData.CancelMigration, s)
 	default:
 		return nil, errors.New("invalid apply type")
 	}
@@ -95,7 +105,10 @@ func isMirrorSafeApply(apply *raftcmdpb.LedgerApplyOrder) bool {
 		*raftcmdpb.LedgerApplyOrder_ConversionComplete,
 		*raftcmdpb.LedgerApplyOrder_CreateIndex,
 		*raftcmdpb.LedgerApplyOrder_DropIndex,
-		*raftcmdpb.LedgerApplyOrder_IndexReady:
+		*raftcmdpb.LedgerApplyOrder_IndexReady,
+		*raftcmdpb.LedgerApplyOrder_AddAccountType,
+		*raftcmdpb.LedgerApplyOrder_UpdateAccountType,
+		*raftcmdpb.LedgerApplyOrder_RemoveAccountType:
 		return true
 	default:
 		return false

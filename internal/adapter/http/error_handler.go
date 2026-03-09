@@ -28,8 +28,13 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		metaNotFound      *domain.ErrMetadataNotFound
 		pqExists          *domain.ErrPreparedQueryAlreadyExists
 		pqNotFound        *domain.ErrPreparedQueryNotFound
-		chartErr          *domain.ErrAccountNotInChart
-		invalidChart      *domain.ErrInvalidChart
+		acctNotMatching   *domain.ErrAccountNotMatchingType
+		acctTypeNotFound  *domain.ErrAccountTypeNotFound
+		acctTypeExists    *domain.ErrAccountTypeAlreadyExists
+		invalidPattern    *domain.ErrInvalidPattern
+		acctTypeHasAccts  *domain.ErrAccountTypeHasAccounts
+		migrationActive   *domain.ErrMigrationAlreadyActive
+		migrationVarErr   *domain.ErrMigrationVariableMismatch
 	)
 
 	switch {
@@ -82,11 +87,26 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.As(err, &pqNotFound):
 		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
 
-	case errors.As(err, &chartErr):
-		writeErrorResponse(w, http.StatusBadRequest, "ACCOUNT_NOT_IN_CHART", err)
+	case errors.As(err, &acctNotMatching):
+		writeErrorResponse(w, http.StatusBadRequest, "ACCOUNT_NOT_MATCHING_TYPE", err)
 
-	case errors.As(err, &invalidChart):
-		writeErrorResponse(w, http.StatusBadRequest, "INVALID_CHART", err)
+	case errors.As(err, &acctTypeNotFound):
+		writeErrorResponse(w, http.StatusNotFound, "ACCOUNT_TYPE_NOT_FOUND", err)
+
+	case errors.As(err, &acctTypeExists):
+		writeErrorResponse(w, http.StatusConflict, "ACCOUNT_TYPE_ALREADY_EXISTS", err)
+
+	case errors.As(err, &invalidPattern):
+		writeErrorResponse(w, http.StatusBadRequest, "INVALID_PATTERN", err)
+
+	case errors.As(err, &acctTypeHasAccts):
+		writeErrorResponse(w, http.StatusConflict, "ACCOUNT_TYPE_HAS_ACCOUNTS", err)
+
+	case errors.As(err, &migrationActive):
+		writeErrorResponse(w, http.StatusConflict, "MIGRATION_ALREADY_ACTIVE", err)
+
+	case errors.As(err, &migrationVarErr):
+		writeErrorResponse(w, http.StatusBadRequest, "MIGRATION_VARIABLE_MISMATCH", err)
 
 	case errors.Is(err, domain.ErrTargetRequired),
 		errors.Is(err, domain.ErrMetadataKeyRequired),

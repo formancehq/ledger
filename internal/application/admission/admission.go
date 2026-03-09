@@ -705,6 +705,7 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				MirrorSource:    reqType.CreateLedger.GetMirrorSource(),
 				ChartOfAccounts: reqType.CreateLedger.GetChartOfAccounts(),
 				EnforcementMode: reqType.CreateLedger.GetEnforcementMode(),
+				AccountTypes:    reqType.CreateLedger.GetAccountTypes(),
 			},
 		}
 	case *servicepb.Request_DeleteLedger:
@@ -907,24 +908,59 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				Name: reqType.DeleteNumscript.GetName(),
 			},
 		}
-	case *servicepb.Request_SetChartOfAccounts:
+	case *servicepb.Request_AddAccountType:
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.SetChartOfAccounts.GetLedger(),
-				Data: &raftcmdpb.LedgerApplyOrder_SetChartOfAccounts{
-					SetChartOfAccounts: &raftcmdpb.SetChartOfAccountsOrder{
-						ChartOfAccounts: reqType.SetChartOfAccounts.GetChartOfAccounts(),
+				Ledger: reqType.AddAccountType.GetLedger(),
+				Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
+					AddAccountType: &raftcmdpb.AddAccountTypeOrder{
+						AccountType: reqType.AddAccountType.GetAccountType(),
 					},
 				},
 			},
 		}
-	case *servicepb.Request_SetChartEnforcementMode:
+	case *servicepb.Request_UpdateAccountType:
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.SetChartEnforcementMode.GetLedger(),
-				Data: &raftcmdpb.LedgerApplyOrder_SetChartEnforcementMode{
-					SetChartEnforcementMode: &raftcmdpb.SetChartEnforcementModeOrder{
-						EnforcementMode: reqType.SetChartEnforcementMode.GetEnforcementMode(),
+				Ledger: reqType.UpdateAccountType.GetLedger(),
+				Data: &raftcmdpb.LedgerApplyOrder_UpdateAccountType{
+					UpdateAccountType: &raftcmdpb.UpdateAccountTypeOrder{
+						Name:            reqType.UpdateAccountType.GetName(),
+						EnforcementMode: reqType.UpdateAccountType.GetEnforcementMode(),
+					},
+				},
+			},
+		}
+	case *servicepb.Request_RemoveAccountType:
+		order.Type = &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: reqType.RemoveAccountType.GetLedger(),
+				Data: &raftcmdpb.LedgerApplyOrder_RemoveAccountType{
+					RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{
+						Name: reqType.RemoveAccountType.GetName(),
+					},
+				},
+			},
+		}
+	case *servicepb.Request_MigrateAccountType:
+		order.Type = &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: reqType.MigrateAccountType.GetLedger(),
+				Data: &raftcmdpb.LedgerApplyOrder_MigrateAccountType{
+					MigrateAccountType: &raftcmdpb.MigrateAccountTypeOrder{
+						SourceType: reqType.MigrateAccountType.GetSourceType(),
+						TargetType: reqType.MigrateAccountType.GetTargetType(),
+					},
+				},
+			},
+		}
+	case *servicepb.Request_CancelMigration:
+		order.Type = &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: reqType.CancelMigration.GetLedger(),
+				Data: &raftcmdpb.LedgerApplyOrder_CancelMigration{
+					CancelMigration: &raftcmdpb.CancelMigrationOrder{
+						SourceType: reqType.CancelMigration.GetSourceType(),
 					},
 				},
 			},
@@ -1011,16 +1047,23 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 				Key:    data.DeleteMetadata.GetKey(),
 			},
 		}
-	case *servicepb.LedgerApplyRequest_SetChartOfAccounts:
-		order.Data = &raftcmdpb.LedgerApplyOrder_SetChartOfAccounts{
-			SetChartOfAccounts: &raftcmdpb.SetChartOfAccountsOrder{
-				ChartOfAccounts: data.SetChartOfAccounts.GetChartOfAccounts(),
+	case *servicepb.LedgerApplyRequest_AddAccountType:
+		order.Data = &raftcmdpb.LedgerApplyOrder_AddAccountType{
+			AddAccountType: &raftcmdpb.AddAccountTypeOrder{
+				AccountType: data.AddAccountType.GetAccountType(),
 			},
 		}
-	case *servicepb.LedgerApplyRequest_SetChartEnforcementMode:
-		order.Data = &raftcmdpb.LedgerApplyOrder_SetChartEnforcementMode{
-			SetChartEnforcementMode: &raftcmdpb.SetChartEnforcementModeOrder{
-				EnforcementMode: data.SetChartEnforcementMode.GetEnforcementMode(),
+	case *servicepb.LedgerApplyRequest_UpdateAccountType:
+		order.Data = &raftcmdpb.LedgerApplyOrder_UpdateAccountType{
+			UpdateAccountType: &raftcmdpb.UpdateAccountTypeOrder{
+				Name:            data.UpdateAccountType.GetName(),
+				EnforcementMode: data.UpdateAccountType.GetEnforcementMode(),
+			},
+		}
+	case *servicepb.LedgerApplyRequest_RemoveAccountType:
+		order.Data = &raftcmdpb.LedgerApplyOrder_RemoveAccountType{
+			RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{
+				Name: data.RemoveAccountType.GetName(),
 			},
 		}
 	case *servicepb.LedgerApplyRequest_RevertTransaction:

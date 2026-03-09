@@ -328,33 +328,20 @@ func TestBusinessErrorToGRPCStatus_InvalidCronExpression(t *testing.T) {
 	require.Equal(t, "expected 5 fields", info.GetMetadata()["details"])
 }
 
-func TestBusinessErrorToGRPCStatus_AccountNotInChart(t *testing.T) {
+func TestBusinessErrorToGRPCStatus_AccountNotMatchingType(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &domain.BusinessError{Err: &domain.ErrAccountNotInChart{Address: "invalid:addr:here"}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrAccountNotMatchingType{Address: "invalid:addr:here"}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 
 	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonAccountNotInChart, info.GetReason())
+	require.Equal(t, domain.ErrReasonAccountNotMatchingType, info.GetReason())
 	require.Equal(t, errorDomain, info.GetDomain())
 	require.Equal(t, "invalid:addr:here", info.GetMetadata()["address"])
 }
 
-func TestBusinessErrorToGRPCStatus_InvalidChart(t *testing.T) {
-	t.Parallel()
-
-	bizErr := &domain.BusinessError{Err: &domain.ErrInvalidChart{Details: "missing root segment"}}
-	st := businessErrorToGRPCStatus(bizErr)
-
-	require.Equal(t, codes.InvalidArgument, st.Code())
-
-	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonInvalidChart, info.GetReason())
-	require.Equal(t, errorDomain, info.GetDomain())
-	require.Equal(t, "missing root segment", info.GetMetadata()["details"])
-}
 
 func TestBusinessErrorToGRPCStatus_UnknownError(t *testing.T) {
 	t.Parallel()

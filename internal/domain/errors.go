@@ -43,8 +43,13 @@ const (
 	ErrReasonNumscriptNotFound             = "NUMSCRIPT_NOT_FOUND"
 	ErrReasonNumscriptVersionAlreadyExists = "NUMSCRIPT_VERSION_ALREADY_EXISTS"
 	ErrReasonNumscriptInvalidVersion       = "NUMSCRIPT_INVALID_VERSION"
-	ErrReasonAccountNotInChart             = "ACCOUNT_NOT_IN_CHART"
-	ErrReasonInvalidChart                  = "INVALID_CHART"
+	ErrReasonAccountNotMatchingType        = "ACCOUNT_NOT_MATCHING_TYPE"
+	ErrReasonAccountTypeNotFound           = "ACCOUNT_TYPE_NOT_FOUND"
+	ErrReasonAccountTypeAlreadyExists      = "ACCOUNT_TYPE_ALREADY_EXISTS"
+	ErrReasonInvalidPattern                = "INVALID_PATTERN"
+	ErrReasonAccountTypeHasAccounts        = "ACCOUNT_TYPE_HAS_ACCOUNTS"
+	ErrReasonMigrationAlreadyActive        = "MIGRATION_ALREADY_ACTIVE"
+	ErrReasonMigrationVariableMismatch     = "MIGRATION_VARIABLE_MISMATCH"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -326,20 +331,66 @@ func (e *ErrNumscriptInvalidVersion) Error() string {
 	return fmt.Sprintf("invalid numscript version %q: must be semver (major.minor.patch) or \"latest\"", e.Version)
 }
 
-// ErrAccountNotInChart is returned when an account address is not in the chart of accounts.
-type ErrAccountNotInChart struct {
+// ErrAccountNotMatchingType is returned when an account address doesn't match any active account type pattern.
+type ErrAccountNotMatchingType struct {
 	Address string
 }
 
-func (e *ErrAccountNotInChart) Error() string {
-	return "account not in chart: " + e.Address
+func (e *ErrAccountNotMatchingType) Error() string {
+	return fmt.Sprintf("account does not match any account type pattern: %s", e.Address)
 }
 
-// ErrInvalidChart is returned when a chart of accounts fails self-validation.
-type ErrInvalidChart struct {
+// ErrAccountTypeNotFound is returned when a referenced account type does not exist.
+type ErrAccountTypeNotFound struct {
+	Name string
+}
+
+func (e *ErrAccountTypeNotFound) Error() string {
+	return fmt.Sprintf("account type not found: %s", e.Name)
+}
+
+// ErrAccountTypeAlreadyExists is returned when creating an account type with a name that already exists.
+type ErrAccountTypeAlreadyExists struct {
+	Name string
+}
+
+func (e *ErrAccountTypeAlreadyExists) Error() string {
+	return fmt.Sprintf("account type already exists: %s", e.Name)
+}
+
+// ErrInvalidPattern is returned when an account type pattern is syntactically invalid.
+type ErrInvalidPattern struct {
+	Pattern string
 	Details string
 }
 
-func (e *ErrInvalidChart) Error() string {
-	return "invalid chart of accounts: " + e.Details
+func (e *ErrInvalidPattern) Error() string {
+	return fmt.Sprintf("invalid pattern %q: %s", e.Pattern, e.Details)
+}
+
+// ErrAccountTypeHasAccounts is returned when removing an account type that still has matching accounts.
+type ErrAccountTypeHasAccounts struct {
+	Name string
+}
+
+func (e *ErrAccountTypeHasAccounts) Error() string {
+	return fmt.Sprintf("account type %q still has matching accounts", e.Name)
+}
+
+// ErrMigrationAlreadyActive is returned when starting a migration while another is in progress.
+type ErrMigrationAlreadyActive struct {
+	ActiveType string
+}
+
+func (e *ErrMigrationAlreadyActive) Error() string {
+	return fmt.Sprintf("migration already active on type %q", e.ActiveType)
+}
+
+// ErrMigrationVariableMismatch is returned when target pattern variables are not a subset of source.
+type ErrMigrationVariableMismatch struct {
+	Details string
+}
+
+func (e *ErrMigrationVariableMismatch) Error() string {
+	return fmt.Sprintf("migration variable mismatch: %s", e.Details)
 }

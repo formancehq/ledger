@@ -42,15 +42,17 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 		}
 	}
 
-	// Validate reversed postings against chart of accounts
+	// Validate reversed postings against account types.
 	var warnings []*commonpb.ChartViolation
 
-	if info, ok := s.GetLedger(ledger); ok && info.GetChartOfAccounts() != nil {
-		var chartErr error
+	if info, ok := s.GetLedger(ledger); ok {
+		if len(info.GetAccountTypes()) > 0 {
+			var typeErr error
 
-		warnings, chartErr = validatePostingsInChart(revertPostings, info.GetChartOfAccounts(), info.GetEnforcementMode())
-		if chartErr != nil {
-			return nil, chartErr
+			warnings, typeErr = validatePostingsAgainstAccountTypes(revertPostings, info.GetAccountTypes())
+			if typeErr != nil {
+				return nil, typeErr
+			}
 		}
 	}
 
