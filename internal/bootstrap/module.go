@@ -573,6 +573,7 @@ func Module() fx.Option {
 
 			return params.Handler
 		}),
+		fx.Provide(attributes.NewCleaner),
 		fx.Invoke(
 			func(
 				lc fx.Lifecycle,
@@ -947,6 +948,9 @@ func Module() fx.Option {
 			},
 			func(lc fx.Lifecycle, compactor *dal.SmartCompactor) {
 				lc.Append(worker.FxHook(compactor))
+			},
+			func(lc fx.Lifecycle, c *attributes.Cleaner) {
+				lc.Append(worker.FxHook(c))
 			},
 			func(lc fx.Lifecycle, hc *clusterhealth.HealthChecker) {
 				lc.Append(worker.FxHook(hc))
