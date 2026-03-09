@@ -14,16 +14,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 )
 
-const (
-	cleanupInterval = 30 * time.Second
-
-	// cleanupSafeMargin is subtracted from LastIndexedRaftIndex before cleanup.
-	// This prevents a race where a concurrent query reads LastIndexedRaftIndex=N,
-	// but the cleaner (having read LastIndexedRaftIndex=N+k) deletes entries
-	// that the query still needs. The margin ensures the cleaner only removes
-	// entries well below any in-flight read's maxRaftIndex.
-	cleanupSafeMargin = 1000
-)
+const cleanupInterval = 30 * time.Second
 
 // CleanupOldEntries scans the entire attributes zone and deletes stale entries
 // that are older than the latest value at or below maxRaftIndex, per group.
@@ -132,15 +123,17 @@ func deleteGroupOldEntries(batch *dal.Batch, group string, latestIdx uint64) err
 type Cleaner struct {
 	store     *dal.Store
 	readStore *readstore.Store
+	guard     *IndexGuard
 	logger    logging.Logger
 	w         worker.Worker
 }
 
 // NewCleaner creates a new Cleaner that will periodically clean up old attribute entries.
-func NewCleaner(store *dal.Store, readStore *readstore.Store, logger logging.Logger) *Cleaner {
+func NewCleaner(store *dal.Store, readStore *readstore.Store, guard *IndexGuard, logger logging.Logger) *Cleaner {
 	return &Cleaner{
 		store:     store,
 		readStore: readStore,
+		guard:     guard,
 		logger:    logger,
 		w:         worker.New(),
 	}
@@ -166,13 +159,17 @@ func (c *Cleaner) tick() {
 		return
 	}
 
-	if maxRaftIndex <= cleanupSafeMargin {
+	if maxRaftIndex == 0 {
 		return // too early to clean
 	}
 
-	safeIndex := maxRaftIndex - cleanupSafeMargin
+	// Cap at the minimum raft index held by active readers to avoid
+	// deleting entries that concurrent queries still need.
+	if minReader := c.guard.Min(); minReader < maxRaftIndex {
+		maxRaftIndex = minReader
+	}
 
-	deleteOps, err := CleanupOldEntries(c.store, safeIndex)
+	deleteOps, err := CleanupOldEntries(c.store, maxRaftIndex)
 	if err != nil {
 		c.logger.Errorf("Attribute cleaner: cleanup failed: %v", err)
 

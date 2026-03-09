@@ -45,6 +45,7 @@ type DefaultController struct {
 	store     *dal.Store
 	attrs     *attributes.Attributes
 	readStore *readstore.Store
+	guard     *attributes.IndexGuard
 }
 
 // NewDefaultController creates a new default controller.
@@ -54,6 +55,7 @@ func NewDefaultController(
 	logger logging.Logger,
 	attrs *attributes.Attributes,
 	readStore *readstore.Store,
+	guard *attributes.IndexGuard,
 ) *DefaultController {
 	return &DefaultController{
 		logger:    logger,
@@ -61,6 +63,7 @@ func NewDefaultController(
 		store:     store,
 		attrs:     attrs,
 		readStore: readStore,
+		guard:     guard,
 	}
 }
 
@@ -388,6 +391,11 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	if maxRaftIndex == 0 {
 		maxRaftIndex = ^uint64(0)
 	}
+
+	// Register this reader with the index guard so the attribute cleaner
+	// does not delete entries we still need during Pebble enrichment.
+	release := ctrl.guard.Hold(maxRaftIndex)
+	defer release()
 
 	// Enrich each account from Pebble
 	enrichStart := time.Now()
@@ -749,6 +757,11 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 			maxRaftIndex = ^uint64(0)
 		}
 
+		// Register this reader with the index guard so the attribute cleaner
+		// does not delete entries we still need during Pebble volume reads.
+		release := ctrl.guard.Hold(maxRaftIndex)
+		defer release()
+
 		result, err = query.AggregateVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), iter, maxRaftIndex)
 
 		return err
@@ -1049,7 +1062,7 @@ func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger s
 func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 	profile := query.ProfileFromContext(ctx)
 
-	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, req, profile)
+	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, ctrl.guard, req, profile)
 }
 
 // GetNumscript returns a numscript by name and optional version ("" = latest).

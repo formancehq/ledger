@@ -39,6 +39,7 @@ func Execute(
 	rs *readstore.Store,
 	pebbleStore *dal.Store,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
+	guard *attributes.IndexGuard,
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
 ) (*servicepb.ExecutePreparedQueryResponse, error) {
@@ -134,6 +135,11 @@ func Execute(
 				// No progress yet (fresh cluster) — read all available data.
 				maxRaftIndex = ^uint64(0)
 			}
+
+			// Register this reader with the index guard so the attribute cleaner
+			// does not delete entries we still need during Pebble volume reads.
+			release := guard.Hold(maxRaftIndex)
+			defer release()
 
 			aggResult, aggErr := AggregateVolumes(handle, volumeAttr, req.GetLedger(), iter, maxRaftIndex)
 			if aggErr != nil {
