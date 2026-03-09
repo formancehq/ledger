@@ -431,21 +431,13 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 		return nil, err
 	}
 
-	// Read raft index progress for cross-store consistency with Pebble.
-	maxRaftIndex, err := ctrl.readStore.LastIndexedRaftIndex()
-	if err != nil {
-		return nil, fmt.Errorf("reading raft index progress: %w", err)
-	}
-
-	if maxRaftIndex == 0 {
-		maxRaftIndex = ^uint64(0)
-	}
-
+	// Single-entity lookup reads directly from Pebble without bbolt filtering,
+	// so no cross-store consistency cap is needed. Use ^uint64(0) to read all entries.
 	handle := ctrl.store.NewReadHandle()
 
 	defer func() { _ = handle.Close() }()
 
-	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ledgerInfo.GetMetadataSchema(), maxRaftIndex)
+	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ledgerInfo.GetMetadataSchema(), ^uint64(0))
 }
 
 // GetLedgerStats returns aggregate statistics (account count, transaction count) for a ledger.
