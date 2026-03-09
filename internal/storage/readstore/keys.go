@@ -44,7 +44,7 @@ var (
 	BucketEntityExists = []byte("eidx")
 
 	// BucketProgress stores index builder progress.
-	// Key: "lastSeq"
+	// Keys: "lastSeq" (last indexed log sequence), "lastRaftIdx" (last indexed raft index).
 	// Value: uint64 big-endian.
 	BucketProgress = []byte("prog")
 

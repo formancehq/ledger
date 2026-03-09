@@ -382,6 +382,21 @@ func ClearMirrorStatus(b *dal.Batch, ledgerName string) error {
 	return nil
 }
 
+// WriteSeqToRaftIndex writes a mapping from the first log sequence produced by
+// a raft entry to the raft index. Used by the index builder to correlate bbolt
+// progress (sequence-based) with Pebble attribute versions (raft-index-based).
+// Key: [0x04][firstSeq BE 8B]  Value: [raftIndex BE 8B].
+func WriteSeqToRaftIndex(b *dal.Batch, firstSeq, raftIndex uint64) error {
+	b.KeyBuilder.
+		PutByte(dal.KeyPrefixSeqToRaftIndex).
+		PutUint64(firstSeq)
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], raftIndex)
+
+	return b.SetBytes(b.KeyBuilder.Build(), buf[:])
+}
+
 // SetAppliedIndex writes the last applied Raft index to the batch.
 func SetAppliedIndex(b *dal.Batch, index uint64) error {
 	value := make([]byte, 8)

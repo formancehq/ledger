@@ -32,36 +32,51 @@ type entityListParams[T interface{ ~string | ~uint64 }] struct {
 	idLen int
 }
 
+// entityListResult holds the result of a listEntities call.
+type entityListResult struct {
+	entityIDs    [][]byte
+	maxRaftIndex uint64
+}
+
 // listEntities is the shared logic for ListTransactions and ListAccounts.
-// It returns the raw entity ID bytes collected from the bbolt read index.
+// It returns the raw entity ID bytes collected from the bbolt read index,
+// along with the last indexed raft index for cross-store consistency.
 func listEntities[T interface{ ~string | ~uint64 }](
 	readStore *readstore.Store,
 	params entityListParams[T],
-) ([][]byte, error) {
-	var entityIDs [][]byte
+) (entityListResult, error) {
+	var result entityListResult
 
 	err := readStore.View(func(tx *bolt.Tx) error {
+		// Read raft index progress for cross-store consistency capping.
+		var readErr error
+
+		result.maxRaftIndex, readErr = readStore.ReadRaftIndexProgress(tx)
+		if readErr != nil {
+			return fmt.Errorf("reading raft index progress: %w", readErr)
+		}
+
 		if params.reverse {
 			if params.target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
 				// Transactions: reverse = newest-first (default). With filter we collect+reverse.
 				if params.filter != nil {
-					return listDescFiltered(tx, params, &entityIDs)
+					return listDescFiltered(tx, params, &result.entityIDs)
 				}
 
-				return listDescUnfiltered(tx, params, &entityIDs)
+				return listDescUnfiltered(tx, params, &result.entityIDs)
 			}
 			// Accounts: reverse = Z→A. Same logic as transactions desc.
 			if params.filter != nil {
-				return listDescFiltered(tx, params, &entityIDs)
+				return listDescFiltered(tx, params, &result.entityIDs)
 			}
 
-			return listDescUnfiltered(tx, params, &entityIDs)
+			return listDescUnfiltered(tx, params, &result.entityIDs)
 		}
 
-		return listAscending(tx, params, &entityIDs)
+		return listAscending(tx, params, &result.entityIDs)
 	})
 
-	return entityIDs, err
+	return result, err
 }
 
 // listAscending returns entities in natural ascending order using the compiled iterator.

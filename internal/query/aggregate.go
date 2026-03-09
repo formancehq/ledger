@@ -24,11 +24,16 @@ type aggregatedVol struct {
 // 1. Iterate matching accounts from bbolt (accountIter)
 // 2. For each account, scan volumes in Pebble via ForEachInPrefix
 // 3. Accumulate per-asset totals.
+//
+// maxRaftIndex caps the Pebble scan so that only attribute entries written at
+// or before that raft index are visible. This ensures consistency with what
+// bbolt has indexed.
 func AggregateVolumes(
 	pebbleReader dal.PebbleReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledger string,
 	accountIter readstore.EntityIterator,
+	maxRaftIndex uint64,
 ) (*commonpb.AggregateResult, error) {
 	aggregator := make(map[string]*aggregatedVol)
 
@@ -44,7 +49,7 @@ func AggregateVolumes(
 		n += copy(canonicalPrefix[n:], account)
 		canonicalPrefix[n] = 0x00
 
-		err := volumeAttr.ForEachInPrefix(pebbleReader, ^uint64(0), canonicalPrefix, func(entry attributes.ComputedEntry[*raftcmdpb.VolumePair]) error {
+		err := volumeAttr.ForEachInPrefix(pebbleReader, maxRaftIndex, canonicalPrefix, func(entry attributes.ComputedEntry[*raftcmdpb.VolumePair]) error {
 			var vk domain.VolumeKey
 
 			err := vk.Unmarshal(entry.CanonicalKey)

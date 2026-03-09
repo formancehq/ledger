@@ -117,6 +117,11 @@ var (
 	// Composite-keyed cold prefix: [prefix][name]\x00[txID][byLog] — requires filtered iteration.
 	KeyPrefixTransactionUpdate byte = 0x03 // [KeyPrefixTransactionUpdate][name]\x00[txID(8)][byLog(8)] -> TransactionUpdate
 
+	// KeyPrefixSeqToRaftIndex maps the first log sequence produced by a raft entry
+	// to the raft index that produced it. Written atomically in applyProposal.
+	// Key: [0x04][firstSequence BE 8B]  Value: [raftIndex BE 8B].
+	KeyPrefixSeqToRaftIndex byte = 0x04
+
 	// ColdSequencePrefixes lists cold-storable prefixes keyed by sequence number.
 	// These support efficient range scan and range delete by [prefix][startSeq]..[prefix][endSeq].
 	ColdSequencePrefixes = []byte{KeyPrefixLog, KeyPrefixAudit}

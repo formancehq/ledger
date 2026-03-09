@@ -90,9 +90,20 @@ func Execute(
 
 	schema := SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), pq.GetTarget())
 
-	// Execute within a bbolt read-only transaction (MVCC snapshot)
-	var resp *servicepb.ExecutePreparedQueryResponse
+	// Take the Pebble snapshot BEFORE the bbolt View so that Pebble reads
+	// are frozen while we read bbolt's progress. Cross-store consistency
+	// is ensured by capping Pebble reads at bbolt's lastIndexedRaftIndex.
+	var (
+		resp   *servicepb.ExecutePreparedQueryResponse
+		handle *dal.ReadHandle
+	)
 
+	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES {
+		handle = pebbleStore.NewReadHandle()
+		defer func() { _ = handle.Close() }()
+	}
+
+	// Execute within a bbolt read-only transaction (MVCC snapshot)
 	err = rs.View(func(tx *bolt.Tx) error {
 		kb := dal.NewKeyBuilder()
 
@@ -112,11 +123,19 @@ func Execute(
 			return listErr
 
 		case commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
-			handle := pebbleStore.NewReadHandle()
+			// Read the raft index that bbolt has caught up to, so we cap Pebble
+			// reads for cross-store consistency.
+			maxRaftIndex, readErr := rs.ReadRaftIndexProgress(tx)
+			if readErr != nil {
+				return fmt.Errorf("reading raft index progress: %w", readErr)
+			}
 
-			defer func() { _ = handle.Close() }()
+			if maxRaftIndex == 0 {
+				// No progress yet (fresh cluster) — read all available data.
+				maxRaftIndex = ^uint64(0)
+			}
 
-			aggResult, aggErr := AggregateVolumes(handle, volumeAttr, req.GetLedger(), iter)
+			aggResult, aggErr := AggregateVolumes(handle, volumeAttr, req.GetLedger(), iter, maxRaftIndex)
 			if aggErr != nil {
 				return aggErr
 			}

@@ -3,6 +3,7 @@ package indexbuilder
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync/atomic"
 	"time"
@@ -507,7 +508,25 @@ func (b *Builder) processLogs(cursor uint64) (uint64, error) {
 					return err
 				}
 
-				return b.readStore.WriteProgress(tx, lastSeq)
+				if err := b.readStore.WriteProgress(tx, lastSeq); err != nil {
+					return err
+				}
+
+				// Look up the raft index that corresponds to this sequence
+				// and persist it in bbolt so cross-store queries can cap
+				// Pebble reads at bbolt's progress level.
+				raftIdx, err := query.ReadRaftIndexForSequence(b.pebbleStore, lastSeq)
+				if err != nil {
+					return fmt.Errorf("reading raft index for sequence %d: %w", lastSeq, err)
+				}
+
+				if raftIdx > 0 {
+					if err := b.readStore.WriteRaftIndexProgress(tx, raftIdx); err != nil {
+						return err
+					}
+				}
+
+				return nil
 			}
 
 			return nil

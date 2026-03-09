@@ -56,6 +56,49 @@ func ReadLastAppliedTimestamp(reader dal.PebbleReader) (uint64, error) {
 	return binary.BigEndian.Uint64(get[:8]), nil
 }
 
+// ReadRaftIndexForSequence returns the raft index that produced (or contains)
+// the given log sequence by performing a SeekLE on the seq→raftIndex mapping.
+// Returns 0 if no mapping exists (fresh cluster or no logs yet).
+func ReadRaftIndexForSequence(reader dal.PebbleReader, sequence uint64) (uint64, error) {
+	// Build bounds: lower = [prefix][0x00..], upper = [prefix][sequence+1]
+	// Then SeekToLast to find the largest firstSeq <= sequence.
+	var lower [9]byte
+	lower[0] = dal.KeyPrefixSeqToRaftIndex
+
+	var upper [9]byte
+	upper[0] = dal.KeyPrefixSeqToRaftIndex
+	binary.BigEndian.PutUint64(upper[1:], sequence+1)
+
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: lower[:],
+		UpperBound: upper[:],
+	})
+	if err != nil {
+		return 0, fmt.Errorf("creating seq-to-raft-index iterator: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	if !iter.Last() {
+		if err := iter.Error(); err != nil {
+			return 0, fmt.Errorf("seeking seq-to-raft-index: %w", err)
+		}
+
+		return 0, nil // no mapping found
+	}
+
+	value, err := iter.ValueAndErr()
+	if err != nil {
+		return 0, fmt.Errorf("reading seq-to-raft-index value: %w", err)
+	}
+
+	if len(value) != 8 {
+		return 0, fmt.Errorf("corrupt seq-to-raft-index value: expected 8 bytes, got %d", len(value))
+	}
+
+	return binary.BigEndian.Uint64(value), nil
+}
+
 // ReadMaintenanceMode loads the maintenance mode flag from the given reader.
 // Returns false if the config key does not exist.
 func ReadMaintenanceMode(reader dal.PebbleReader) (bool, error) {

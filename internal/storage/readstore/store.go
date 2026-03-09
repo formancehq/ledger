@@ -15,7 +15,10 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 )
 
-var progressKey = []byte("lastSeq")
+var (
+	progressKey  = []byte("lastSeq")
+	raftIndexKey = []byte("lastRaftIdx")
+)
 
 // Store wraps a bbolt database for the read-side inverted indexes.
 // It is safe for concurrent use: bbolt supports one writer and many
@@ -251,6 +254,54 @@ func (s *Store) WriteProgress(tx *bolt.Tx, sequence uint64) error {
 	binary.BigEndian.PutUint64(buf[:], sequence)
 
 	return b.Put(progressKey, buf[:])
+}
+
+// WriteRaftIndexProgress stores the last indexed raft index in the progress bucket.
+func (s *Store) WriteRaftIndexProgress(tx *bolt.Tx, raftIndex uint64) error {
+	b := tx.Bucket(BucketProgress)
+	if b == nil {
+		return errors.New("progress bucket not found")
+	}
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], raftIndex)
+
+	return b.Put(raftIndexKey, buf[:])
+}
+
+// ReadRaftIndexProgress returns the last indexed raft index from the progress bucket.
+// Returns 0 if no progress has been recorded.
+func (s *Store) ReadRaftIndexProgress(tx *bolt.Tx) (uint64, error) {
+	b := tx.Bucket(BucketProgress)
+	if b == nil {
+		return 0, nil
+	}
+
+	v := b.Get(raftIndexKey)
+	if v == nil {
+		return 0, nil
+	}
+
+	if len(v) != 8 {
+		return 0, fmt.Errorf("corrupt raft index progress value: expected 8 bytes, got %d", len(v))
+	}
+
+	return binary.BigEndian.Uint64(v), nil
+}
+
+// LastIndexedRaftIndex returns the last indexed raft index (read-only convenience).
+func (s *Store) LastIndexedRaftIndex() (uint64, error) {
+	var idx uint64
+
+	err := s.db.View(func(tx *bolt.Tx) error {
+		var readErr error
+
+		idx, readErr = s.ReadRaftIndexProgress(tx)
+
+		return readErr
+	})
+
+	return idx, err
 }
 
 // LastIndexedSequence returns the last indexed log sequence (read-only).

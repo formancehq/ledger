@@ -272,7 +272,7 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 
 	indexStart := time.Now()
 
-	entityIDs, err := listEntities(ctrl.readStore, entityListParams[uint64]{
+	result, err := listEntities(ctrl.readStore, entityListParams[uint64]{
 		target:     commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		ledger:     ledgerInfo.GetName(),
 		pageSize:   pageSize,
@@ -304,8 +304,8 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 	enrichStart := time.Now()
 	handle := ctrl.store.NewReadHandle()
 
-	txns := make([]*commonpb.Transaction, 0, len(entityIDs))
-	for _, eid := range entityIDs {
+	txns := make([]*commonpb.Transaction, 0, len(result.entityIDs))
+	for _, eid := range result.entityIDs {
 		txID := binary.BigEndian.Uint64(eid)
 
 		tx, txErr := buildTransaction(ctx, handle, ledgerInfo.GetName(), txID, ledgerInfo.GetMetadataSchema())
@@ -321,7 +321,7 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 	if profile != nil {
 		profile.EnrichmentDuration = time.Since(enrichStart)
 		profile.EnrichedCount = len(txns)
-		profile.ItemsCollected = len(entityIDs)
+		profile.ItemsCollected = len(result.entityIDs)
 	}
 
 	return dal.NewClosingCursor(dal.NewSliceCursor(txns), handle), nil
@@ -358,7 +358,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 
 	indexStart := time.Now()
 
-	addresses, err := listEntities(ctrl.readStore, entityListParams[string]{
+	result, err := listEntities(ctrl.readStore, entityListParams[string]{
 		target:     commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		ledger:     ledgerInfo.GetName(),
 		pageSize:   pageSize,
@@ -383,13 +383,19 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 		return nil, fmt.Errorf("listing accounts from index: %w", err)
 	}
 
+	// Cap Pebble reads at bbolt's raft index progress for cross-store consistency.
+	maxRaftIndex := result.maxRaftIndex
+	if maxRaftIndex == 0 {
+		maxRaftIndex = ^uint64(0)
+	}
+
 	// Enrich each account from Pebble
 	enrichStart := time.Now()
 	handle := ctrl.store.NewReadHandle()
 
-	accounts := make([]*commonpb.Account, 0, len(addresses))
-	for _, addr := range addresses {
-		acc, accErr := scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), string(addr), ledgerInfo.GetMetadataSchema())
+	accounts := make([]*commonpb.Account, 0, len(result.entityIDs))
+	for _, addr := range result.entityIDs {
+		acc, accErr := scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), string(addr), ledgerInfo.GetMetadataSchema(), maxRaftIndex)
 		if accErr != nil {
 			_ = handle.Close()
 
@@ -402,7 +408,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	if profile != nil {
 		profile.EnrichmentDuration = time.Since(enrichStart)
 		profile.EnrichedCount = len(accounts)
-		profile.ItemsCollected = len(addresses)
+		profile.ItemsCollected = len(result.entityIDs)
 	}
 
 	return dal.NewClosingCursor(dal.NewSliceCursor(accounts), handle), nil
@@ -425,11 +431,21 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 		return nil, err
 	}
 
+	// Read raft index progress for cross-store consistency with Pebble.
+	maxRaftIndex, err := ctrl.readStore.LastIndexedRaftIndex()
+	if err != nil {
+		return nil, fmt.Errorf("reading raft index progress: %w", err)
+	}
+
+	if maxRaftIndex == 0 {
+		maxRaftIndex = ^uint64(0)
+	}
+
 	handle := ctrl.store.NewReadHandle()
 
 	defer func() { _ = handle.Close() }()
 
-	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ledgerInfo.GetMetadataSchema())
+	return scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), address, ledgerInfo.GetMetadataSchema(), maxRaftIndex)
 }
 
 // GetLedgerStats returns aggregate statistics (account count, transaction count) for a ledger.
@@ -715,6 +731,12 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	var result *commonpb.AggregateResult
 
+	// Take the Pebble snapshot BEFORE the bbolt View so that Pebble reads
+	// are frozen while we read bbolt's progress. Cross-store consistency
+	// is ensured by capping Pebble reads at bbolt's lastIndexedRaftIndex.
+	handle := ctrl.store.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
 		kb := dal.NewKeyBuilder()
 
@@ -724,10 +746,18 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 		}
 		defer iter.Close()
 
-		handle := ctrl.store.NewReadHandle()
-		defer func() { _ = handle.Close() }()
+		// Read the raft index that bbolt has caught up to, so we cap Pebble
+		// reads for cross-store consistency.
+		maxRaftIndex, readErr := ctrl.readStore.ReadRaftIndexProgress(tx)
+		if readErr != nil {
+			return fmt.Errorf("reading raft index progress: %w", readErr)
+		}
 
-		result, err = query.AggregateVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), iter)
+		if maxRaftIndex == 0 {
+			maxRaftIndex = ^uint64(0)
+		}
+
+		result, err = query.AggregateVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), iter, maxRaftIndex)
 
 		return err
 	})
