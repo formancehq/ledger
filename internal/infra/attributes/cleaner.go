@@ -180,6 +180,6 @@ func (c *Cleaner) tick() {
 	}
 
 	if deleteOps > 0 {
-		c.logger.Debugf("Attribute cleaner: issued %d delete-range operations", deleteOps)
+		c.logger.Infof("Attribute cleaner: issued %d delete-range operations", deleteOps)
 	}
 }
