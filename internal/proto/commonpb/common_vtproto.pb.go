@@ -617,6 +617,8 @@ func (m *LogBuiltinIndexConfig) CloneVT() *LogBuiltinIndexConfig {
 	r := new(LogBuiltinIndexConfig)
 	r.Ledger = m.Ledger
 	r.LedgerStatus = m.LedgerStatus
+	r.Date = m.Date
+	r.DateStatus = m.DateStatus
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2669,6 +2671,15 @@ func (m *QueryFilter_LogId) CloneVT() isQueryFilter_Filter {
 	return r
 }
 
+func (m *QueryFilter_LogBuiltinUint) CloneVT() isQueryFilter_Filter {
+	if m == nil {
+		return (*QueryFilter_LogBuiltinUint)(nil)
+	}
+	r := new(QueryFilter_LogBuiltinUint)
+	r.LogBuiltinUint = m.LogBuiltinUint.CloneVT()
+	return r
+}
+
 func (m *ReferenceCondition) CloneVT() *ReferenceCondition {
 	if m == nil {
 		return (*ReferenceCondition)(nil)
@@ -2735,6 +2746,24 @@ func (m *BuiltinUintCondition) CloneVT() *BuiltinUintCondition {
 }
 
 func (m *BuiltinUintCondition) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *LogBuiltinUintCondition) CloneVT() *LogBuiltinUintCondition {
+	if m == nil {
+		return (*LogBuiltinUintCondition)(nil)
+	}
+	r := new(LogBuiltinUintCondition)
+	r.Field = m.Field
+	r.Cond = m.Cond.CloneVT()
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *LogBuiltinUintCondition) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -4137,6 +4166,12 @@ func (this *LogBuiltinIndexConfig) EqualVT(that *LogBuiltinIndexConfig) bool {
 		return false
 	}
 	if this.LedgerStatus != that.LedgerStatus {
+		return false
+	}
+	if this.Date != that.Date {
+		return false
+	}
+	if this.DateStatus != that.DateStatus {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -7629,6 +7664,31 @@ func (this *QueryFilter_LogId) EqualVT(thatIface isQueryFilter_Filter) bool {
 	return true
 }
 
+func (this *QueryFilter_LogBuiltinUint) EqualVT(thatIface isQueryFilter_Filter) bool {
+	that, ok := thatIface.(*QueryFilter_LogBuiltinUint)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.LogBuiltinUint, that.LogBuiltinUint; p != q {
+		if p == nil {
+			p = &LogBuiltinUintCondition{}
+		}
+		if q == nil {
+			q = &LogBuiltinUintCondition{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *ReferenceCondition) EqualVT(that *ReferenceCondition) bool {
 	if this == that {
 		return true
@@ -7703,6 +7763,28 @@ func (this *BuiltinUintCondition) EqualVT(that *BuiltinUintCondition) bool {
 
 func (this *BuiltinUintCondition) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*BuiltinUintCondition)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *LogBuiltinUintCondition) EqualVT(that *LogBuiltinUintCondition) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Field != that.Field {
+		return false
+	}
+	if !this.Cond.EqualVT(that.Cond) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *LogBuiltinUintCondition) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*LogBuiltinUintCondition)
 	if !ok {
 		return false
 	}
@@ -9957,6 +10039,21 @@ func (m *LogBuiltinIndexConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.DateStatus != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DateStatus))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.Date {
+		i--
+		if m.Date {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
 	}
 	if m.LedgerStatus != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LedgerStatus))
@@ -15006,6 +15103,25 @@ func (m *QueryFilter_LogId) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *QueryFilter_LogBuiltinUint) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *QueryFilter_LogBuiltinUint) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.LogBuiltinUint != nil {
+		size, err := m.LogBuiltinUint.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x52
+	}
+	return len(dAtA) - i, nil
+}
 func (m *ReferenceCondition) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -15154,6 +15270,54 @@ func (m *BuiltinUintCondition) MarshalToVT(dAtA []byte) (int, error) {
 }
 
 func (m *BuiltinUintCondition) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Cond != nil {
+		size, err := m.Cond.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Field != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Field))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *LogBuiltinUintCondition) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LogBuiltinUintCondition) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LogBuiltinUintCondition) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -16878,6 +17042,12 @@ func (m *LogBuiltinIndexConfig) SizeVT() (n int) {
 	}
 	if m.LedgerStatus != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.LedgerStatus))
+	}
+	if m.Date {
+		n += 2
+	}
+	if m.DateStatus != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.DateStatus))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -19049,6 +19219,18 @@ func (m *QueryFilter_LogId) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *QueryFilter_LogBuiltinUint) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.LogBuiltinUint != nil {
+		l = m.LogBuiltinUint.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *ReferenceCondition) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -19092,6 +19274,23 @@ func (m *LogIdCondition) SizeVT() (n int) {
 }
 
 func (m *BuiltinUintCondition) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Field != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Field))
+	}
+	if m.Cond != nil {
+		l = m.Cond.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *LogBuiltinUintCondition) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -23293,6 +23492,45 @@ func (m *LogBuiltinIndexConfig) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.LedgerStatus |= IndexBuildStatus(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Date", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Date = bool(v != 0)
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DateStatus", wireType)
+			}
+			m.DateStatus = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DateStatus |= IndexBuildStatus(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -34796,6 +35034,47 @@ func (m *QueryFilter) UnmarshalVT(dAtA []byte) error {
 				m.Filter = &QueryFilter_LogId{LogId: v}
 			}
 			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogBuiltinUint", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Filter.(*QueryFilter_LogBuiltinUint); ok {
+				if err := oneof.LogBuiltinUint.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &LogBuiltinUintCondition{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Filter = &QueryFilter_LogBuiltinUint{LogBuiltinUint: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -35123,6 +35402,112 @@ func (m *BuiltinUintCondition) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.Field |= TransactionBuiltinIndex(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Cond", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Cond == nil {
+				m.Cond = &UintCondition{}
+			}
+			if err := m.Cond.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *LogBuiltinUintCondition) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LogBuiltinUintCondition: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LogBuiltinUintCondition: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Field", wireType)
+			}
+			m.Field = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Field |= LogBuiltinIndex(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

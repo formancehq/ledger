@@ -114,6 +114,7 @@ func New(dir string, noFreelistSync bool, initialMmapSize int, logger logging.Lo
 			BucketTransactionReference,
 			BucketTransactionTimestamp,
 			BucketLedgerLogs,
+			BucketLedgerLogDate,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(bucket); err != nil {
 				return fmt.Errorf("creating bucket %q: %w", string(bucket), err)

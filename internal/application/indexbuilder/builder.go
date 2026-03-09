@@ -593,6 +593,12 @@ func (b *Builder) indexLogEntry(tx *bolt.Tx, log *commonpb.Log) error {
 	// Index ledger log for per-ledger listing (opt-in via log builtin index).
 	if b.isLogBuiltinIndexed(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER) {
 		b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.GetId(), log.GetSequence())
+		b.wb.WriteLogExistence(b.kb, ledgerName, ledgerLog.GetId())
+	}
+
+	// Index log date for date range filtering (opt-in via log date builtin index).
+	if b.isLogBuiltinIndexed(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
+		b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId())
 	}
 
 	switch p := ledgerLog.GetData().GetPayload().(type) {

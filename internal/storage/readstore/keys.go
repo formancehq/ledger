@@ -72,12 +72,18 @@ var (
 	// Key: [ledger\x00][ledgerLogID_BE(8B)]
 	// Value: [globalSequence_BE(8B)].
 	BucketLedgerLogs = []byte("llog")
+
+	// BucketLedgerLogDate maps (ledger, timestamp, logID) for range scans by log date.
+	// Key: [ledger\x00][timestamp_BE(8B)][logID_BE(8B)]
+	// Value: (empty).
+	BucketLedgerLogDate = []byte("lldt")
 )
 
-// Namespace prefixes to distinguish accounts and transactions in shared buckets.
+// Namespace prefixes to distinguish accounts, transactions, and logs in shared buckets.
 const (
 	NamespaceAccount     = "a:"
 	NamespaceTransaction = "t:"
+	NamespaceLog         = "l:"
 )
 
 // Null flag bytes for the entity-ordered existence index (eidx).
@@ -310,6 +316,26 @@ func LedgerLogKey(kb *dal.KeyBuilder, ledger string, logID uint64) []byte {
 //
 //	[ledger\x00]
 func LedgerLogPrefix(kb *dal.KeyBuilder, ledger string) []byte {
+	return kb.Reset().
+		PutLedgerName(ledger).
+		Snapshot()
+}
+
+// LedgerLogDateKey builds a full key in BucketLedgerLogDate.
+//
+//	[ledger\x00][timestamp_BE(8B)][logID_BE(8B)]
+func LedgerLogDateKey(kb *dal.KeyBuilder, ledger string, timestamp, logID uint64) []byte {
+	return kb.Reset().
+		PutLedgerName(ledger).
+		PutUint64(timestamp).
+		PutUint64(logID).
+		Build()
+}
+
+// LedgerLogDateRangePrefix returns the ledger prefix for range scans in BucketLedgerLogDate.
+//
+//	[ledger\x00]
+func LedgerLogDateRangePrefix(kb *dal.KeyBuilder, ledger string) []byte {
 	return kb.Reset().
 		PutLedgerName(ledger).
 		Snapshot()

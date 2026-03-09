@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -61,6 +62,48 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 						Min:          &parsed,
 						MinExclusive: true,
 					},
+				},
+			},
+		})
+	}
+
+	// Build date range filter from startDate/endDate query parameters (RFC3339).
+	dateCond := &commonpb.UintCondition{}
+	hasDateFilter := false
+
+	if sd := r.URL.Query().Get("startDate"); sd != "" {
+		t, err := time.Parse(time.RFC3339, sd)
+		if err != nil {
+			writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid startDate parameter, expected RFC3339 format"))
+
+			return
+		}
+
+		v := uint64(t.UnixMicro())
+		dateCond.Min = &v
+		hasDateFilter = true
+	}
+
+	if ed := r.URL.Query().Get("endDate"); ed != "" {
+		t, err := time.Parse(time.RFC3339, ed)
+		if err != nil {
+			writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid endDate parameter, expected RFC3339 format"))
+
+			return
+		}
+
+		v := uint64(t.UnixMicro())
+		dateCond.Max = &v
+		dateCond.MaxExclusive = true
+		hasDateFilter = true
+	}
+
+	if hasDateFilter {
+		filters = append(filters, &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_LogBuiltinUint{
+				LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
+					Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+					Cond:  dateCond,
 				},
 			},
 		})

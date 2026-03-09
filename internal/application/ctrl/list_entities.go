@@ -15,15 +15,16 @@ import (
 // entityListParams holds the parameters for a generic entity listing.
 // T is the entity identifier type ([]byte for both txIDs and account addresses).
 type entityListParams[T interface{ ~string | ~uint64 }] struct {
-	target     commonpb.QueryTarget
-	ledger     string
-	pageSize   uint32
-	after      T
-	filter     *commonpb.QueryFilter
-	reverse    bool
-	schema     map[string]*commonpb.MetadataFieldSchema
-	builtinCfg *commonpb.BuiltinIndexConfig
-	profile    *query.QueryProfile
+	target        commonpb.QueryTarget
+	ledger        string
+	pageSize      uint32
+	after         T
+	filter        *commonpb.QueryFilter
+	reverse       bool
+	schema        map[string]*commonpb.MetadataFieldSchema
+	builtinCfg    *commonpb.BuiltinIndexConfig
+	logBuiltinCfg *commonpb.LogBuiltinIndexConfig
+	profile       *query.QueryProfile
 	// namespace is the readstore namespace for unfiltered reverse iteration (e.g. "a:" or "t:").
 	namespace string
 	// afterToBytes converts the after cursor to a byte slice for bbolt pagination.
@@ -86,7 +87,7 @@ func listAscending[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params entityL
 	iter, err := query.Compile(
 		tx, kb, params.filter,
 		params.target,
-		params.ledger, nil, params.schema, params.builtinCfg, params.profile,
+		params.ledger, nil, params.schema, params.builtinCfg, params.logBuiltinCfg, params.profile,
 	)
 	if err != nil {
 		return fmt.Errorf("compiling filter: %w", err)
@@ -143,7 +144,7 @@ func listDescFiltered[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params enti
 	iter, err := query.Compile(
 		tx, kb, params.filter,
 		params.target,
-		params.ledger, nil, params.schema, params.builtinCfg, params.profile,
+		params.ledger, nil, params.schema, params.builtinCfg, params.logBuiltinCfg, params.profile,
 	)
 	if err != nil {
 		return fmt.Errorf("compiling filter: %w", err)

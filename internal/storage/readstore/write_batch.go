@@ -22,6 +22,7 @@ const (
 	batchBucketTxref        // BucketTransactionReference
 	batchBucketTstmp        // BucketTransactionTimestamp
 	batchBucketLlog         // BucketLedgerLogs
+	batchBucketLldt         // BucketLedgerLogDate
 	numBatchBuckets
 )
 
@@ -37,6 +38,7 @@ var batchBucketNames = [numBatchBuckets][]byte{
 	BucketTransactionReference,
 	BucketTransactionTimestamp,
 	BucketLedgerLogs,
+	BucketLedgerLogDate,
 }
 
 // writeOp represents a buffered write or delete operation.
@@ -280,6 +282,20 @@ func (wb *WriteBatch) WriteTransactionReferenceIndex(kb *dal.KeyBuilder, ledger,
 func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *dal.KeyBuilder, ledger string, timestamp, txID uint64) {
 	key := TransactionTimestampKey(kb, ledger, timestamp, txID)
 	wb.put(batchBucketTstmp, key, nil)
+}
+
+// WriteLogExistence records that a log exists in a ledger.
+func (wb *WriteBatch) WriteLogExistence(kb *dal.KeyBuilder, ledger string, logID uint64) {
+	entityID := make([]byte, 0, 8)
+	entityID = binary.BigEndian.AppendUint64(entityID, logID)
+	key := ExistenceKey(kb, ledger, NamespaceLog, entityID)
+	wb.put(batchBucketExist, key, nil)
+}
+
+// WriteLedgerLogDateIndex inserts an entry in the per-ledger log date index.
+func (wb *WriteBatch) WriteLedgerLogDateIndex(kb *dal.KeyBuilder, ledger string, timestamp, logID uint64) {
+	key := LedgerLogDateKey(kb, ledger, timestamp, logID)
+	wb.put(batchBucketLldt, key, nil)
 }
 
 // WriteLedgerLogIndex inserts an entry in the per-ledger log index.

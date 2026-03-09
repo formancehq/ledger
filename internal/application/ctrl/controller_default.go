@@ -732,7 +732,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
 		kb := dal.NewKeyBuilder()
 
-		iter, compileErr := query.Compile(tx, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo.GetBuiltinIndexes(), nil)
+		iter, compileErr := query.Compile(tx, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo.GetBuiltinIndexes(), nil, nil)
 		if compileErr != nil {
 			return fmt.Errorf("compiling filter: %w", compileErr)
 		}
@@ -761,19 +761,69 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 }
 
 // ListLogs returns a cursor over logs. When filter contains a ledger condition, only logs for
-// that ledger are returned (ordered by ledger-local log ID, paginated by afterLogID). Otherwise
-// all logs are returned in global sequence order, paginated by afterSequence.
+// that ledger are returned using the Compile framework (supports boolean filters, date ranges).
+// Otherwise all logs are returned in global sequence order, paginated by afterSequence.
 func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (dal.Cursor[*commonpb.Log], error) {
 	handle := ctrl.store.NewReadHandle()
 
 	if ledger := extractLedgerFilter(filter); ledger != "" {
-		afterLogID := extractLogIdMinExclusive(filter)
+		// Strip the LedgerCondition from the filter tree — the ledger is set
+		// as context for the Compile framework, not as a filter node.
+		remainingFilter := stripLedgerFilter(filter)
 
-		c, err := query.ReadLedgerLogsSince(ctx, handle, ctrl.readStore, ledger, afterLogID, pageSize)
+		ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledger)
+		if err != nil {
+			_ = handle.Close()
+
+			if errors.Is(err, domain.ErrNotFound) {
+				return nil, commonpb.NewNotFoundError("ledger %s not found", ledger)
+			}
+
+			return nil, err
+		}
+
+		if pageSize == 0 {
+			pageSize = math.MaxUint32
+		}
+
+		var logIDs [][]byte
+
+		err = ctrl.readStore.View(func(tx *bolt.Tx) error {
+			kb := dal.NewKeyBuilder()
+
+			iter, compileErr := query.Compile(
+				tx, kb, remainingFilter,
+				commonpb.QueryTarget_QUERY_TARGET_LOGS,
+				ledgerInfo.GetName(), nil, nil,
+				nil, ledgerInfo.GetLogBuiltinIndexes(), nil,
+			)
+			if compileErr != nil {
+				return fmt.Errorf("compiling log filter: %w", compileErr)
+			}
+			defer iter.Close()
+
+			logIDs, _ = readstore.PaginateForward(iter, pageSize, nil)
+
+			return nil
+		})
 		if err != nil {
 			_ = handle.Close()
 
 			return nil, fmt.Errorf("listing ledger logs: %w", err)
+		}
+
+		var c dal.Cursor[*commonpb.Log]
+
+		err = ctrl.readStore.View(func(tx *bolt.Tx) error {
+			var readErr error
+			c, readErr = query.ReadLedgerLogsCompiled(handle, tx, ledgerInfo.GetName(), logIDs)
+
+			return readErr
+		})
+		if err != nil {
+			_ = handle.Close()
+
+			return nil, fmt.Errorf("reading ledger logs: %w", err)
 		}
 
 		return dal.NewClosingCursor(c, handle), nil
@@ -827,38 +877,77 @@ func extractLedgerFilter(f *commonpb.QueryFilter) string {
 	return ""
 }
 
-// extractLogIdMinExclusive walks a QueryFilter tree and returns the min exclusive
-// log ID from a LogIdCondition. Returns 0 if absent. This is used for pagination
-// in per-ledger log listing (equivalent to "after log ID X").
-func extractLogIdMinExclusive(f *commonpb.QueryFilter) uint64 {
+// stripLedgerFilter returns a new filter tree with all LedgerCondition nodes
+// removed. AND filters with a single remaining child are unwrapped.
+// Returns nil if the entire tree was a single LedgerCondition.
+func stripLedgerFilter(f *commonpb.QueryFilter) *commonpb.QueryFilter {
 	if f == nil {
-		return 0
+		return nil
 	}
 
 	switch v := f.GetFilter().(type) {
-	case *commonpb.QueryFilter_LogId:
-		if v.LogId != nil && v.LogId.GetCond() != nil {
-			if v.LogId.Cond.Min != nil && v.LogId.GetCond().GetMinExclusive() {
-				return v.LogId.GetCond().GetMin()
+	case *commonpb.QueryFilter_Ledger:
+		return nil
+	case *commonpb.QueryFilter_And:
+		var remaining []*commonpb.QueryFilter
+
+		for _, sub := range v.And.GetFilters() {
+			stripped := stripLedgerFilter(sub)
+			if stripped != nil {
+				remaining = append(remaining, stripped)
 			}
 		}
-	case *commonpb.QueryFilter_And:
-		for _, sub := range v.And.GetFilters() {
-			if id := extractLogIdMinExclusive(sub); id > 0 {
-				return id
-			}
+
+		if len(remaining) == 0 {
+			return nil
+		}
+
+		if len(remaining) == 1 {
+			return remaining[0]
+		}
+
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_And{
+				And: &commonpb.AndFilter{Filters: remaining},
+			},
 		}
 	case *commonpb.QueryFilter_Or:
+		var remaining []*commonpb.QueryFilter
+
 		for _, sub := range v.Or.GetFilters() {
-			if id := extractLogIdMinExclusive(sub); id > 0 {
-				return id
+			stripped := stripLedgerFilter(sub)
+			if stripped != nil {
+				remaining = append(remaining, stripped)
 			}
 		}
-	case *commonpb.QueryFilter_Not:
-		return extractLogIdMinExclusive(v.Not.GetFilter())
-	}
 
-	return 0
+		if len(remaining) == 0 {
+			return nil
+		}
+
+		if len(remaining) == 1 {
+			return remaining[0]
+		}
+
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Or{
+				Or: &commonpb.OrFilter{Filters: remaining},
+			},
+		}
+	case *commonpb.QueryFilter_Not:
+		inner := stripLedgerFilter(v.Not.GetFilter())
+		if inner == nil {
+			return nil
+		}
+
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Not{
+				Not: &commonpb.NotFilter{Filter: inner},
+			},
+		}
+	default:
+		return f
+	}
 }
 
 // ListAuditEntries returns a cursor over audit entries, applying optional filters.

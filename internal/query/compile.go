@@ -20,14 +20,15 @@ import (
 // compilation pipeline. All fields are set once at the entry point and
 // read (never mutated) by every sub-function.
 type compileCtx struct {
-	tx         *bolt.Tx
-	kb         *dal.KeyBuilder
-	target     commonpb.QueryTarget
-	ledger     string
-	params     map[string]string
-	schema     map[string]*commonpb.MetadataFieldSchema
-	builtinCfg *commonpb.BuiltinIndexConfig
-	profile    *QueryProfile
+	tx            *bolt.Tx
+	kb            *dal.KeyBuilder
+	target        commonpb.QueryTarget
+	ledger        string
+	params        map[string]string
+	schema        map[string]*commonpb.MetadataFieldSchema
+	builtinCfg    *commonpb.BuiltinIndexConfig
+	logBuiltinCfg *commonpb.LogBuiltinIndexConfig
+	profile       *QueryProfile
 }
 
 // metadataCtx holds the per-field context used only by type-specific
@@ -46,6 +47,8 @@ type metadataCtx struct {
 // a nil schema causes ErrIndexNotFound for any metadata field condition.
 // The builtinCfg checks that required address/builtin indexes are available;
 // a nil builtinCfg causes ErrIndexNotFound for any address filter on transactions.
+// The logBuiltinCfg checks that required log builtin indexes are available;
+// pass nil when the target is not QUERY_TARGET_LOGS.
 // When profile is non-nil, each iterator is wrapped in a TrackedIterator and
 // profile.Root is set to the root of the iterator stats tree.
 func Compile(
@@ -57,17 +60,19 @@ func Compile(
 	params map[string]string,
 	schema map[string]*commonpb.MetadataFieldSchema,
 	builtinCfg *commonpb.BuiltinIndexConfig,
+	logBuiltinCfg *commonpb.LogBuiltinIndexConfig,
 	profile *QueryProfile,
 ) (readstore.EntityIterator, error) {
 	ctx := &compileCtx{
-		tx:         tx,
-		kb:         kb,
-		target:     target,
-		ledger:     ledger,
-		params:     params,
-		schema:     schema,
-		builtinCfg: builtinCfg,
-		profile:    profile,
+		tx:            tx,
+		kb:            kb,
+		target:        target,
+		ledger:        ledger,
+		params:        params,
+		schema:        schema,
+		builtinCfg:    builtinCfg,
+		logBuiltinCfg: logBuiltinCfg,
+		profile:       profile,
 	}
 
 	return compile(ctx, filter)
@@ -94,6 +99,14 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 		return compileReferenceCondition(ctx, f.Reference)
 	case *commonpb.QueryFilter_BuiltinUint:
 		return compileBuiltinUintCondition(ctx, f.BuiltinUint)
+	case *commonpb.QueryFilter_LogBuiltinUint:
+		return compileLogBuiltinUintCondition(ctx, f.LogBuiltinUint)
+	case *commonpb.QueryFilter_LogId:
+		return compileLogIdCondition(ctx, f.LogId.GetCond())
+	case *commonpb.QueryFilter_Ledger:
+		// Ledger condition is a no-op in the Compile framework — the ledger
+		// is already set in the context. Return the universe iterator.
+		return compileUniverse(ctx)
 	default:
 		return nil, fmt.Errorf("unknown filter type: %T", filter.GetFilter())
 	}
@@ -883,19 +896,31 @@ func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (r
 		return nil, err
 	}
 
+	return compileTimestampRangeCondition(ctx, cond, readstore.BucketTransactionTimestamp,
+		readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledger), "tstmp")
+}
+
+// compileTimestampRangeCondition is the shared logic for timestamp-based range scans.
+// It handles both transaction timestamps and log dates using the same key layout:
+// [ledger\x00][timestamp_BE(8B)][entityID_BE(8B)].
+func compileTimestampRangeCondition(
+	ctx *compileCtx,
+	cond *commonpb.UintCondition,
+	bucket []byte,
+	ledgerPrefix []byte,
+	bucketLabel string,
+) (readstore.EntityIterator, error) {
 	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {
 		return nil, err
 	}
 
-	b := ctx.tx.Bucket(readstore.BucketTransactionTimestamp)
+	b := ctx.tx.Bucket(bucket)
 	if b == nil {
 		return &SliceIterator{}, nil
 	}
 
-	ledgerPrefix := readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledger)
-	// Key layout: [ledger\x00][timestamp_BE(8B)][txID_BE(8B)]
-	// entityOffset = len(ledger)+1+8 (ledger\x00 + timestamp 8B)
+	// Key layout: [ledger\x00][timestamp_BE(8B)][entityID_BE(8B)]
 	entityOffset := len(ledgerPrefix) + 8
 	entityLen := 8
 
@@ -925,10 +950,139 @@ func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (r
 	iter := materializeRange(b.Cursor(), lower, upper, entityOffset, entityLen, ctx.profile)
 
 	return trackIterator(iter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("SliceIterator(tstmp:%s timestamp range)", ctx.ledger),
+		Label:  fmt.Sprintf("SliceIterator(%s:%s range)", bucketLabel, ctx.ledger),
 		Kind:   "Range",
-		Bucket: "tstmp",
+		Bucket: bucketLabel,
 	}), nil
+}
+
+// compileLogBuiltinUintCondition dispatches to the appropriate log builtin uint condition compiler.
+func compileLogBuiltinUintCondition(ctx *compileCtx, cond *commonpb.LogBuiltinUintCondition) (readstore.EntityIterator, error) {
+	if cond.GetCond() == nil {
+		return nil, errors.New("log builtin uint condition has no value")
+	}
+
+	switch cond.GetField() {
+	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
+		return compileLogDateCondition(ctx, cond.GetCond())
+	default:
+		return nil, fmt.Errorf("unsupported log builtin uint field: %v", cond.GetField())
+	}
+}
+
+// compileLogDateCondition filters logs by date using BucketLedgerLogDate.
+// Requires the log date builtin index to be READY.
+func compileLogDateCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
+	if err := checkLogBuiltinIndexed(ctx.logBuiltinCfg, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE); err != nil {
+		return nil, err
+	}
+
+	return compileTimestampRangeCondition(ctx, cond, readstore.BucketLedgerLogDate,
+		readstore.LedgerLogDateRangePrefix(ctx.kb, ctx.ledger), "lldt")
+}
+
+// compileLogIdCondition filters logs by ledger-local log ID using the existence bucket.
+// Same pattern as compileTxIDCondition but using NamespaceLog.
+func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
+	if cond == nil {
+		return compileUniverse(ctx)
+	}
+
+	bounds, err := resolveUintBounds(cond, ctx.params)
+	if err != nil {
+		return nil, err
+	}
+
+	b := ctx.tx.Bucket(readstore.BucketExistence)
+	if b == nil {
+		return &SliceIterator{}, nil
+	}
+
+	prefix := readstore.ExistencePrefix(ctx.kb, ctx.ledger, readstore.NamespaceLog)
+
+	// Equality optimization: single logID → check existence and return slice
+	if bounds.isEquality() {
+		logIDBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(logIDBytes, bounds.min)
+		key := readstore.ExistenceKey(ctx.kb, ctx.ledger, readstore.NamespaceLog, logIDBytes)
+
+		k, _ := b.Cursor().Seek(key)
+		if k == nil || !bytes.Equal(k, key) {
+			return &SliceIterator{}, nil
+		}
+
+		iter := &SliceIterator{entities: [][]byte{logIDBytes}}
+
+		return trackIterator(iter, ctx.profile, &IteratorStats{
+			Label:  fmt.Sprintf("SliceIterator(exist:%s:l:id=%d)", ctx.ledger, bounds.min),
+			Kind:   "Slice",
+			Bucket: "exist",
+		}), nil
+	}
+
+	// Range scan
+	entityOffset := len(prefix)
+	lower := make([]byte, 0, len(prefix)+8)
+	lower = append(lower, prefix...)
+	upper := make([]byte, 0, len(prefix)+8)
+	upper = append(upper, prefix...)
+
+	if bounds.hasMin {
+		minBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(minBytes, bounds.min)
+		lower = append(lower, minBytes...)
+	}
+
+	if bounds.hasMax {
+		maxBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(maxBytes, bounds.max)
+		upper = append(upper, maxBytes...)
+	} else {
+		upper = append(upper, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+	}
+
+	if !bounds.hasMin {
+		lower = prefix
+	}
+
+	entityLen := 8
+	iter := materializeRange(b.Cursor(), lower, upper, entityOffset, entityLen, ctx.profile)
+
+	return trackIterator(iter, ctx.profile, &IteratorStats{
+		Label:  fmt.Sprintf("SliceIterator(exist:%s:l:id range)", ctx.ledger),
+		Kind:   "Range",
+		Bucket: "exist",
+	}), nil
+}
+
+// checkLogBuiltinIndexed validates that the requested log builtin index is enabled and READY.
+func checkLogBuiltinIndexed(cfg *commonpb.LogBuiltinIndexConfig, index commonpb.LogBuiltinIndex) error {
+	var (
+		enabled bool
+		status  commonpb.IndexBuildStatus
+		label   string
+	)
+
+	switch index {
+	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
+		label = "log date"
+
+		if cfg != nil {
+			enabled, status = cfg.GetDate(), cfg.GetDateStatus()
+		}
+	default:
+		return nil
+	}
+
+	if !enabled {
+		return &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
+	}
+
+	if status == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
+		return &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: label}}
+	}
+
+	return nil
 }
 
 // checkBuiltinIndexed validates that the requested builtin index is enabled and READY.
@@ -983,20 +1137,26 @@ func trackIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *
 
 // targetHumanName returns a human-readable name for a query target.
 func targetHumanName(target commonpb.QueryTarget) string {
-	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+	switch target {
+	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		return "transactions"
+	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+		return "logs"
+	default:
+		return "accounts"
 	}
-
-	return "accounts"
 }
 
 // targetNamespaceAndLen returns the namespace and entity length for a query target.
 func targetNamespaceAndLen(target commonpb.QueryTarget) (string, int) {
-	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+	switch target {
+	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		return readstore.NamespaceTransaction, 8
+	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
+		return readstore.NamespaceLog, 8
+	default:
+		return readstore.NamespaceAccount, 0
 	}
-
-	return readstore.NamespaceAccount, 0
 }
 
 func resolveString(cond *commonpb.StringCondition, params map[string]string) (string, error) {

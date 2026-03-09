@@ -198,6 +198,22 @@ paths:
             format: uint64
             minimum: 0
           description: Ledger-local log ID to start after (exclusive, for cursor pagination)
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Filter logs with date >= startDate (inclusive, RFC3339 format).
+            Requires the builtin `LOG_DATE` index to be enabled on the ledger.
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Filter logs with date < endDate (exclusive, RFC3339 format).
+            Requires the builtin `LOG_DATE` index to be enabled on the ledger.
       responses:
         '200':
           description: Logs retrieved successfully

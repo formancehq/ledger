@@ -221,6 +221,7 @@ message AccountIndex {
 // LogBuiltinIndex identifies a built-in log field that can be indexed.
 enum LogBuiltinIndex {
   LOG_BUILTIN_INDEX_LEDGER = 0;     // per-ledger log index (bbolt "llog")
+  LOG_BUILTIN_INDEX_DATE = 1;       // per-ledger log date index (bbolt "lldt")
 }
 
 // BuiltinIndexConfig tracks the status of built-in transaction field indexes.
@@ -241,6 +242,8 @@ message BuiltinIndexConfig {
 message LogBuiltinIndexConfig {
   bool ledger = 1;
   IndexBuildStatus ledger_status = 2;
+  bool date = 3;
+  IndexBuildStatus date_status = 4;
 }
 
 // ============================================================================
@@ -817,6 +820,7 @@ message QueryFilter {
     BuiltinUintCondition builtin_uint = 7;
     LedgerCondition ledger = 8;
     LogIdCondition log_id = 9;
+    LogBuiltinUintCondition log_builtin_uint = 10;
   }
 }
 
@@ -838,6 +842,12 @@ message LogIdCondition {
 // BuiltinUintCondition filters transactions by a built-in uint64 field (id or timestamp).
 message BuiltinUintCondition {
   TransactionBuiltinIndex field = 1;
+  UintCondition cond = 2;
+}
+
+// LogBuiltinUintCondition filters logs by a built-in uint64 field (date).
+message LogBuiltinUintCondition {
+  LogBuiltinIndex field = 1;
   UintCondition cond = 2;
 }
 
@@ -927,6 +937,7 @@ message AddressMatch {
 enum QueryTarget {
   QUERY_TARGET_ACCOUNTS = 0;
   QUERY_TARGET_TRANSACTIONS = 1;
+  QUERY_TARGET_LOGS = 2;
 }
 
 enum QueryMode {

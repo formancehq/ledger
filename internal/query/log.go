@@ -133,6 +133,43 @@ func (c *ledgerLogCursor) Next() (*commonpb.Log, error) {
 
 func (c *ledgerLogCursor) Close() error { return nil }
 
+// ReadLedgerLogsCompiled returns a cursor over log entries using pre-compiled
+// logID bytes from the Compile framework. It resolves logIDs → global sequences
+// via BucketLedgerLogs, then fetches the full Log from Pebble for each entry.
+func ReadLedgerLogsCompiled(
+	pebbleReader dal.PebbleReader,
+	tx *bolt.Tx,
+	ledger string,
+	logIDs [][]byte,
+) (dal.Cursor[*commonpb.Log], error) {
+	kb := dal.NewKeyBuilder()
+	bucket := tx.Bucket(readstore.BucketLedgerLogs)
+
+	if bucket == nil {
+		return &ledgerLogCursor{pebble: pebbleReader}, nil
+	}
+
+	seqs := make([]uint64, 0, len(logIDs))
+
+	for _, logIDBytes := range logIDs {
+		if len(logIDBytes) != 8 {
+			continue
+		}
+
+		logID := binary.BigEndian.Uint64(logIDBytes)
+		key := readstore.LedgerLogKey(kb, ledger, logID)
+
+		v := bucket.Get(key)
+		if v == nil || len(v) != 8 {
+			continue
+		}
+
+		seqs = append(seqs, binary.BigEndian.Uint64(v))
+	}
+
+	return &ledgerLogCursor{pebble: pebbleReader, seqs: seqs}, nil
+}
+
 // ReadLedgerLogsSince returns a cursor over log entries for a specific ledger,
 // ordered by ledger-local log ID (ascending). Pass afterLogID=0 to start from
 // the beginning. pageSize=0 means no limit.

@@ -108,7 +108,7 @@ func Execute(
 		kb := dal.NewKeyBuilder()
 
 		// Compile filter into iterator tree
-		iter, compileErr := Compile(tx, kb, pq.GetFilter(), pq.GetTarget(), req.GetLedger(), req.GetParameters(), schema, ledgerInfo.GetBuiltinIndexes(), profile)
+		iter, compileErr := Compile(tx, kb, pq.GetFilter(), pq.GetTarget(), req.GetLedger(), req.GetParameters(), schema, ledgerInfo.GetBuiltinIndexes(), ledgerInfo.GetLogBuiltinIndexes(), profile)
 		if compileErr != nil {
 			return fmt.Errorf("compiling filter: %w", compileErr)
 		}
