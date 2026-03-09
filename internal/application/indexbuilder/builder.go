@@ -220,7 +220,7 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 			status  commonpb.IndexBuildStatus
 		}{
 			{commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER, li.GetLedger(), li.GetLedgerStatus()},
-		{commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, li.GetDate(), li.GetDateStatus()},
+			{commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE, li.GetDate(), li.GetDateStatus()},
 		} {
 			if !entry.enabled {
 				continue
