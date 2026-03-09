@@ -200,7 +200,7 @@ func (amw *AccountMigrationWorker) migrate(req AccountMigrationRequest) error {
 		return nil
 	}
 
-	err = amw.attrs.Volume.ForEachInPrefix(reader, ^uint64(0), ledgerPrefix,
+	err = amw.attrs.Volume.ForEachInPrefix(reader, ledgerPrefix,
 		func(entry attributes.ComputedEntry[*raftcmdpb.VolumePair]) error {
 			var vk domain.VolumeKey
 			if unmarshalErr := vk.Unmarshal(entry.CanonicalKey); unmarshalErr != nil {
