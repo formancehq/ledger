@@ -87,6 +87,17 @@ func (wb *WriteBatch) Init(tx *bolt.Tx) {
 	wb.tx = tx
 }
 
+// Empty returns true if no operations have been buffered.
+func (wb *WriteBatch) Empty() bool {
+	for i := range wb.ops {
+		if len(wb.ops[i]) > 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
 // Reset clears all buffered operations and the overlay, keeping allocated maps.
 func (wb *WriteBatch) Reset() {
 	for i := range wb.ops {

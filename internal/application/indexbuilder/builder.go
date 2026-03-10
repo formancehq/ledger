@@ -483,6 +483,11 @@ func (b *Builder) loop(stop <-chan struct{}) {
 // (no intermediate slice) so the proto object can be GC'd immediately.
 // When deadline is non-zero, processing stops after the deadline to yield
 // time to other work (e.g. backfills).
+//
+// When a batch produces no index writes (all conditional indexes are disabled),
+// the bbolt write transaction is skipped entirely — logs are iterated from
+// Pebble with zero bbolt overhead. Progress is persisted once at the end,
+// reducing fsyncs from O(logs/batchSize) to O(1).
 func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error) {
 	logsCursor, err := query.ReadLogsSince(context.Background(), b.pebbleStore, cursor, dal.WithReuse())
 	if err != nil {
@@ -491,6 +496,9 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 
 	defer func() { _ = logsCursor.Close() }()
 
+	// Track whether we advanced the cursor without persisting it yet.
+	needsPersist := false
+
 	for {
 		var (
 			batchCount int
@@ -498,71 +506,122 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 			eof        bool
 		)
 
-		// Open one bbolt write tx and stream up to batchSize logs into it.
-		// Writes are buffered in a WriteBatch and flushed sorted by key to
-		// minimize random B+ tree page access.
-		if err := b.readStore.Update(func(tx *bolt.Tx) error {
-			b.wb.Init(tx)
+		// First pass: read batchSize logs from Pebble, dispatch to indexLogEntry
+		// with a nil tx (handlers only buffer writes into b.wb, which doesn't need a tx).
+		// Config-mutation logs (SetMetadataFieldType) that need a live tx are deferred.
+		var deferredSchemaLogs []*commonpb.SetMetadataFieldTypeLog
+		var deferredSchemaLedgers []string
 
-			for batchCount < b.batchSize {
-				log, err := logsCursor.Next()
-				if err != nil {
-					if errors.Is(err, io.EOF) {
-						eof = true
+		for batchCount < b.batchSize {
+			log, err := logsCursor.Next()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					eof = true
 
-						break
-					}
-
-					return err
+					break
 				}
 
-				if err := b.indexLogEntry(tx, log); err != nil {
-					return err
-				}
-
-				lastSeq = log.GetSequence()
-				batchCount++
+				return cursor, err
 			}
 
-			if batchCount > 0 {
-				if err := b.wb.Flush(); err != nil {
-					return err
-				}
+			lastSeq = log.GetSequence()
+			batchCount++
 
-				if err := b.readStore.WriteProgress(tx, lastSeq); err != nil {
-					return err
-				}
-
-				// Look up the raft index that corresponds to this sequence
-				// and persist it in bbolt so cross-store queries can cap
-				// Pebble reads at bbolt's progress level.
-				raftIdx, err := query.ReadRaftIndexForSequence(b.pebbleStore, lastSeq)
-				if err != nil {
-					return fmt.Errorf("reading raft index for sequence %d: %w", lastSeq, err)
-				}
-
-				if raftIdx > 0 {
-					if err := b.readStore.WriteRaftIndexProgress(tx, raftIdx); err != nil {
-						return err
-					}
-				}
-
-				return nil
+			if log.GetPayload() == nil {
+				continue
 			}
 
-			return nil
-		}); err != nil {
-			b.logger.WithFields(map[string]any{
-				"batchSize": batchCount,
-				"lastSeq":   lastSeq,
-				"error":     err,
-			}).Errorf("Error processing batch")
+			applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+			if !ok {
+				continue
+			}
 
-			return cursor, err
+			ledgerName := applyLog.Apply.GetLedgerName()
+			ledgerLog := applyLog.Apply.GetLog()
+
+			if ledgerLog == nil || ledgerLog.GetData() == nil {
+				continue
+			}
+
+			// Index ledger log for per-ledger listing (opt-in via log builtin index).
+			if b.isLogBuiltinIndexed(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER) {
+				b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.GetId(), log.GetSequence())
+			}
+
+			// Index log date for date range filtering (opt-in via log date builtin index).
+			if b.isLogBuiltinIndexed(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
+				b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId())
+			}
+
+			switch p := ledgerLog.GetData().GetPayload().(type) {
+			case *commonpb.LedgerLogPayload_CreatedTransaction:
+				// These handlers only use b.wb (no tx needed).
+				_ = b.indexCreatedTransaction(nil, b.kb, ledgerName, p.CreatedTransaction)
+			case *commonpb.LedgerLogPayload_RevertedTransaction:
+				_ = b.indexRevertedTransaction(nil, b.kb, ledgerName, p.RevertedTransaction)
+			case *commonpb.LedgerLogPayload_SavedMetadata:
+				_ = b.indexSavedMetadata(nil, b.kb, ledgerName, p.SavedMetadata)
+			case *commonpb.LedgerLogPayload_DeletedMetadata:
+				_ = b.indexDeletedMetadata(nil, b.kb, ledgerName, p.DeletedMetadata)
+			case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+				// Needs a live bbolt tx — defer to the write tx below.
+				deferredSchemaLogs = append(deferredSchemaLogs, p.SetMetadataFieldType)
+				deferredSchemaLedgers = append(deferredSchemaLedgers, ledgerName)
+			case *commonpb.LedgerLogPayload_CreateIndex:
+				b.handleCreateIndexLog(ledgerName, p.CreateIndex)
+			case *commonpb.LedgerLogPayload_DropIndex:
+				b.handleDropIndexLog(ledgerName, p.DropIndex)
+			case *commonpb.LedgerLogPayload_IndexReady:
+				b.handleIndexReadyLog(ledgerName, p.IndexReady)
+			}
 		}
 
 		if batchCount == 0 {
 			break
+		}
+
+		// Second pass: if we have index writes or deferred schema changes,
+		// open a bbolt write tx. Otherwise skip bbolt entirely.
+		hasWrites := !b.wb.Empty() || len(deferredSchemaLogs) > 0
+
+		if hasWrites {
+			if err := b.readStore.Update(func(tx *bolt.Tx) error {
+				b.wb.Init(tx)
+
+				// Process deferred schema change logs that need a live tx.
+				for i, smft := range deferredSchemaLogs {
+					// Schema changes scan buckets with cursors — flush first.
+					if err := b.wb.Flush(); err != nil {
+						return err
+					}
+
+					b.wb.Init(tx)
+
+					if err := b.indexSetMetadataFieldType(tx, b.kb, deferredSchemaLedgers[i], smft); err != nil {
+						return err
+					}
+				}
+
+				if err := b.wb.Flush(); err != nil {
+					return err
+				}
+
+				return b.persistProgress(tx, lastSeq)
+			}); err != nil {
+				b.logger.WithFields(map[string]any{
+					"batchSize": batchCount,
+					"lastSeq":   lastSeq,
+					"error":     err,
+				}).Errorf("Error processing batch")
+
+				return cursor, err
+			}
+
+			needsPersist = false
+		} else {
+			// No index writes — skip bbolt entirely. Just update in-memory state.
+			b.wb.Reset()
+			needsPersist = true
 		}
 
 		cursor = lastSeq
@@ -587,7 +646,36 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 		}
 	}
 
+	// Persist progress once if we advanced the cursor without any index writes.
+	// This reduces fsyncs from O(logs/batchSize) to O(1) when no indexes are active.
+	if needsPersist {
+		_ = b.readStore.Update(func(tx *bolt.Tx) error {
+			return b.persistProgress(tx, cursor)
+		})
+	}
+
 	return cursor, nil
+}
+
+// persistProgress writes the index builder's cursor and corresponding raft index
+// to bbolt within an existing write transaction.
+func (b *Builder) persistProgress(tx *bolt.Tx, seq uint64) error {
+	if err := b.readStore.WriteProgress(tx, seq); err != nil {
+		return err
+	}
+
+	raftIdx, err := query.ReadRaftIndexForSequence(b.pebbleStore, seq)
+	if err != nil {
+		return fmt.Errorf("reading raft index for sequence %d: %w", seq, err)
+	}
+
+	if raftIdx > 0 {
+		if err := b.readStore.WriteRaftIndexProgress(tx, raftIdx); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // RebuildAll replays all system logs from scratch (starting at sequence 0),
