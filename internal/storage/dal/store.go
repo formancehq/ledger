@@ -828,7 +828,8 @@ type vtUnmarshaler interface {
 type ProtoCursorOption func(*protoCursorConfig)
 
 type protoCursorConfig struct {
-	reuse bool
+	reuse     bool
+	resetFunc func(proto.Message)
 }
 
 // WithReuse enables object reuse: the same proto message is reset and
@@ -838,14 +839,24 @@ func WithReuse() ProtoCursorOption {
 	return func(c *protoCursorConfig) { c.reuse = true }
 }
 
+// WithResetFunc provides a custom reset function used when WithReuse is enabled.
+// Instead of proto.Reset (which zeros all nested pointers), the custom function
+// can preserve allocations for reuse by UnmarshalVT while clearing values to
+// prevent stale data. The function must reset all fields that might not be
+// overwritten by UnmarshalVT (e.g. optional fields absent from the wire).
+func WithResetFunc(fn func(proto.Message)) ProtoCursorOption {
+	return func(c *protoCursorConfig) { c.resetFunc = fn }
+}
+
 // ProtoCursor implements Cursor[T] for Pebble where T is a proto.Message pointer.
 type ProtoCursor[T proto.Message] struct {
-	iter    *pebble.Iterator
-	started bool
-	elemTyp reflect.Type
-	reuse   bool
-	hasItem bool
-	item    T // reused when reuse=true
+	iter      *pebble.Iterator
+	started   bool
+	elemTyp   reflect.Type
+	reuse     bool
+	resetFunc func(proto.Message)
+	hasItem   bool
+	item      T // reused when reuse=true
 }
 
 func NewProtoCursor[T proto.Message](iter *pebble.Iterator, opts ...ProtoCursorOption) *ProtoCursor[T] {
@@ -857,9 +868,10 @@ func NewProtoCursor[T proto.Message](iter *pebble.Iterator, opts ...ProtoCursorO
 	var zero T
 
 	return &ProtoCursor[T]{
-		iter:    iter,
-		elemTyp: reflect.TypeOf(zero).Elem(),
-		reuse:   cfg.reuse,
+		iter:      iter,
+		elemTyp:   reflect.TypeOf(zero).Elem(),
+		reuse:     cfg.reuse,
+		resetFunc: cfg.resetFunc,
 	}
 }
 
@@ -892,7 +904,11 @@ func (c *ProtoCursor[T]) Next() (T, error) {
 
 	var item T
 	if c.reuse && c.hasItem {
-		proto.Reset(c.item)
+		if c.resetFunc != nil {
+			c.resetFunc(c.item)
+		} else {
+			proto.Reset(c.item)
+		}
 		item = c.item
 	} else {
 		item = reflect.New(c.elemTyp).Interface().(T)

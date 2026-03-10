@@ -85,9 +85,13 @@ func (b *Builder) initIndexConfig() {
 
 			return nil
 		})
-		b.logger.WithFields(map[string]any{
-			"count": len(b.backfillTasks),
-		}).Infof("Loaded backfill tasks for BUILDING indexes")
+		for _, task := range b.backfillTasks {
+			b.logger.WithFields(map[string]any{
+				"ledger": task.ledger,
+				"index":  backfillIndexName(task.index),
+				"cursor": task.cursor,
+			}).Infof("Loaded backfill task")
+		}
 	}
 
 	// Recover schema rewrite tasks from bbolt.
@@ -178,6 +182,68 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 	}
 
 	b.indexConfig[info.GetName()] = cfg
+}
+
+// stripBuildingIndexes temporarily removes BUILDING indexes from all configs,
+// returning a restore function. This is used during the initial catch-up to
+// skip redundant writes — backfill tasks will handle those ranges independently.
+// After restore, the normal loop includes BUILDING indexes for new incoming logs.
+func (b *Builder) stripBuildingIndexes() func() {
+	// Remove each backfill task's index from the config.
+	for _, task := range b.backfillTasks {
+		cfg := b.indexConfig[task.ledger]
+		if cfg == nil {
+			continue
+		}
+
+		if task.index.transaction != nil {
+			switch txIdx := task.index.transaction.GetKind().(type) {
+			case *commonpb.TransactionIndex_Builtin:
+				delete(cfg.txBuiltinIndexed, txIdx.Builtin)
+			case *commonpb.TransactionIndex_MetadataKey:
+				delete(cfg.txMetadataIndexed, txIdx.MetadataKey)
+			}
+		}
+
+		if task.index.account != nil {
+			if acctIdx, ok := task.index.account.GetKind().(*commonpb.AccountIndex_MetadataKey); ok {
+				delete(cfg.acctMetadataIndexed, acctIdx.MetadataKey)
+			}
+		}
+
+		if task.index.logBuiltin != nil {
+			delete(cfg.logBuiltinIndexed, *task.index.logBuiltin)
+		}
+	}
+
+	// Return a restore function that adds the BUILDING indexes back.
+	return func() {
+		for _, task := range b.backfillTasks {
+			cfg := b.indexConfig[task.ledger]
+			if cfg == nil {
+				continue
+			}
+
+			if task.index.transaction != nil {
+				switch txIdx := task.index.transaction.GetKind().(type) {
+				case *commonpb.TransactionIndex_Builtin:
+					cfg.txBuiltinIndexed[txIdx.Builtin] = true
+				case *commonpb.TransactionIndex_MetadataKey:
+					cfg.txMetadataIndexed[txIdx.MetadataKey] = true
+				}
+			}
+
+			if task.index.account != nil {
+				if acctIdx, ok := task.index.account.GetKind().(*commonpb.AccountIndex_MetadataKey); ok {
+					cfg.acctMetadataIndexed[acctIdx.MetadataKey] = true
+				}
+			}
+
+			if task.index.logBuiltin != nil {
+				cfg.logBuiltinIndexed[*task.index.logBuiltin] = true
+			}
+		}
+	}
 }
 
 // loadMetadataIndexes loads metadata indexes for a given target type.

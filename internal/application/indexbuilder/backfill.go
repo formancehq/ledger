@@ -487,7 +487,22 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 			// Backfill is caught up — propose IndexReady.
 			if !b.proposeIndexReady(task) {
 				// Proposal failed (not leader or Raft error) — keep the task
-				// and retry on the next tick.
+				// and retry on the next tick. Log periodically so the operator
+				// can see that the backfill is done but waiting for leadership.
+				now := time.Now()
+				if task.lastProgressLog.IsZero() || now.Sub(task.lastProgressLog) >= 30*time.Second {
+					b.logger.WithFields(map[string]any{
+						"ledger":       task.ledger,
+						"index":        backfillIndexName(task.index),
+						"cursor":       task.cursor,
+						"globalCursor": globalCursor,
+						"isLeader":     b.isLeader != nil && b.isLeader(),
+						"hasProposer":  b.proposer != nil,
+					}).Infof("Backfill caught up, waiting for leadership to propose IndexReady")
+
+					task.lastProgressLog = now
+				}
+
 				b.nextBackfillIdx++
 				tasksProcessed++
 
@@ -557,13 +572,18 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 	}
 }
 
+// backfillBatchSize is the number of log entries per bbolt write transaction
+// during backfill. Larger than DefaultBatchSize to amortize fsync overhead
+// while keeping memory bounded.
+const backfillBatchSize = 10_000
+
 // processBackfill reads logs from Pebble using a single iterator and indexes
 // them in batches using only the backfilling index's configuration.
 // The iterator stays open across batches to avoid repeated NewIter/First
 // overhead during catch-up. Processing continues until the deadline is reached
 // or EOF. Existence writes are skipped.
 func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, deadline time.Time) error {
-	logsCursor, err := query.ReadLogsSince(context.Background(), b.pebbleStore, task.cursor, dal.WithReuse())
+	logsCursor, err := query.ReadLogsSince(context.Background(), b.pebbleStore, task.cursor, dal.WithReuse(), dal.WithResetFunc(resetLogForReuse))
 	if err != nil {
 		return err
 	}
@@ -589,7 +609,7 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, dead
 		if err := b.readStore.Update(func(tx *bolt.Tx) error {
 			b.wb.Init(tx)
 
-			for batchCount < b.batchSize {
+			for batchCount < backfillBatchSize {
 				log, err := logsCursor.Next()
 				if err != nil {
 					if errors.Is(err, io.EOF) {

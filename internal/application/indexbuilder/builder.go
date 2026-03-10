@@ -215,11 +215,37 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		b.pebbleLastSeq.Store(pebbleLast)
 	}
 
-	b.logger.WithFields(map[string]any{"cursor": cursor}).Infof("Index builder started")
+	// Log both the bbolt cursor and the Pebble last sequence for diagnostics.
+	pebbleLast, _ := query.ReadLastSequence(b.pebbleStore)
+	b.logger.WithFields(map[string]any{
+		"cursor":     cursor,
+		"pebbleLast": pebbleLast,
+		"gap":        int64(pebbleLast) - int64(cursor),
+		"backfills":  len(b.backfillTasks),
+	}).Infof("Index builder started")
 
 	// Initial catch-up (unbounded — backfills haven't started yet).
+	// Use a larger batch size to reduce fsync overhead, and strip BUILDING
+	// indexes from the config since their ranges will be covered by backfill
+	// tasks. This avoids millions of redundant bbolt writes.
+	prevCursor := cursor
+	savedBatchSize := b.batchSize
+	b.batchSize = max(b.batchSize, 10_000)
+	restoreIndexes := b.stripBuildingIndexes()
+
 	if cursor, err = b.processLogs(cursor, time.Time{}); err != nil {
 		b.logger.Errorf("Error during initial catch-up: %v", err)
+	}
+
+	restoreIndexes()
+	b.batchSize = savedBatchSize
+
+	if cursor > prevCursor {
+		b.logger.WithFields(map[string]any{
+			"from": prevCursor,
+			"to":   cursor,
+			"logs": cursor - prevCursor,
+		}).Infof("Initial catch-up complete")
 	}
 
 	b.processBackgroundTasks(stop, cursor)
@@ -239,6 +265,8 @@ func (b *Builder) loop(stop <-chan struct{}) {
 
 		// Fast path: skip Pebble iterator + bbolt transaction when the FSM
 		// hasn't advanced past our cursor.
+		logsProcessed := false
+
 		if cached := b.notifications.LastSequence.Load(); cached == 0 || cached > cursor {
 			// When background tasks are active, cap normal processing so they
 			// get their fair share of each tick.
@@ -247,9 +275,20 @@ func (b *Builder) loop(stop <-chan struct{}) {
 				logDeadline = time.Now().Add(b.backfillBudget)
 			}
 
+			prevCursor := cursor
 			if cursor, err = b.processLogs(cursor, logDeadline); err != nil {
 				b.logger.Errorf("Error processing logs: %v", err)
 			}
+
+			logsProcessed = cursor > prevCursor
+		}
+
+		// When processLogs had nothing to do (cluster idle), give backfills
+		// a much larger budget — the full tick interval instead of just 50ms.
+		if !logsProcessed {
+			b.backfillBudget = 90 * time.Millisecond
+		} else {
+			b.backfillBudget = 50 * time.Millisecond
 		}
 
 		b.processBackgroundTasks(stop, cursor)

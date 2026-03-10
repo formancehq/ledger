@@ -29,7 +29,7 @@ import (
 // When a batch produces no index writes, the bbolt transaction is skipped
 // entirely. Progress is persisted once at the end, reducing fsyncs to O(1).
 func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error) {
-	logsCursor, err := query.ReadLogsSince(context.Background(), b.pebbleStore, cursor, dal.WithReuse())
+	logsCursor, err := query.ReadLogsSince(context.Background(), b.pebbleStore, cursor, dal.WithReuse(), dal.WithResetFunc(resetLogForReuse))
 	if err != nil {
 		return cursor, err
 	}
@@ -38,6 +38,8 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 
 	// Track whether we advanced the cursor without persisting it yet.
 	needsPersist := false
+	startCursor := cursor
+	lastProgressLog := time.Now()
 
 	for {
 		var (
@@ -154,6 +156,17 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 		// and deserializing a protobuf just to read a counter.
 		if cached := b.notifications.LastSequence.Load(); cached > 0 {
 			b.pebbleLastSeq.Store(cached)
+		}
+
+		// Periodic progress logging for long catch-up runs.
+		if now := time.Now(); now.Sub(lastProgressLog) >= 10*time.Second {
+			b.logger.WithFields(map[string]any{
+				"cursor":  cursor,
+				"from":    startCursor,
+				"indexed": cursor - startCursor,
+			}).Infof("processLogs progress")
+
+			lastProgressLog = now
 		}
 
 		if eof {
