@@ -78,7 +78,6 @@ type Buffered struct {
 	NextSequenceID                 uint64
 	LastLogHash                    []byte
 	Derived                        *DerivedRegistry
-	TransactionsUpdates            map[domain.TransactionKey][]*commonpb.TransactionUpdate
 	PendingLogs                    []*commonpb.Log
 	pendingSigningKeyUpdates       []signingKeyUpdate
 	pendingSigningConfigUpdate     *signingConfigUpdate
@@ -190,13 +189,14 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		return fmt.Errorf("failed merging reference attributes: %w", err)
 	}
 
-	for key, updates := range b.TransactionsUpdates {
-		for _, update := range updates {
-			err := StoreTransactionUpdate(batch, key, update)
-			if err != nil {
-				return fmt.Errorf("failed storing transaction update for ledger %s: %w", key.Ledger, err)
-			}
-		}
+	// Process Transaction state updates
+	txUpdates, _, err := b.Derived.Transactions.Merge(index)
+	if err != nil {
+		return fmt.Errorf("failed to merge transactions: %w", err)
+	}
+
+	if err := mergeSimple(b.attrs.Transaction, batch, index, txUpdates); err != nil {
+		return fmt.Errorf("failed merging transaction attributes: %w", err)
 	}
 
 	err = AppendLogs(batch, b.PendingLogs...)
@@ -376,8 +376,7 @@ func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 		Derived:             NewDerivedRegistry(fsm.Registry),
 		NextSequenceID:      fsm.nextSequenceID,
 		LastLogHash:         fsm.lastLogHash,
-		TransactionsUpdates: make(map[domain.TransactionKey][]*commonpb.TransactionUpdate),
-		periods:             fsm.Periods.Clone(),
+		periods: fsm.Periods.Clone(),
 	}
 }
 
@@ -455,8 +454,12 @@ func (b *Buffered) PutTransactionReference(key domain.TransactionReferenceKey, v
 	b.Derived.References.Put(key, value)
 }
 
-func (b *Buffered) AddTransactionUpdate(key domain.TransactionKey, update *commonpb.TransactionUpdate) {
-	b.TransactionsUpdates[key] = append(b.TransactionsUpdates[key], update)
+func (b *Buffered) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
+	return b.Derived.Transactions.Get(key)
+}
+
+func (b *Buffered) PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState) {
+	b.Derived.Transactions.Put(key, state)
 }
 
 func (b *Buffered) AddSigningKey(keyID string, publicKey []byte, parentKeyID string) {
@@ -735,12 +738,6 @@ func (b *Buffered) executePurge(batch *dal.Batch, pr *purgeRange) error {
 		if err != nil {
 			return fmt.Errorf("purging prefix 0x%02x [%d, %d]: %w", prefix, pr.startSequence, pr.closeSequence, err)
 		}
-	}
-
-	// Transaction updates: iterate and point-delete by byLog range.
-	err := PurgeTransactionUpdates(batch, pr.startSequence, pr.closeSequence)
-	if err != nil {
-		return fmt.Errorf("purging transaction updates [%d, %d]: %w", pr.startSequence, pr.closeSequence, err)
 	}
 
 	return nil

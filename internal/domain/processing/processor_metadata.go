@@ -59,23 +59,42 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 		if target.Transaction.GetId() >= boundaries.GetNextTransactionId() {
 			return nil, &domain.ErrTransactionNotFound{TransactionID: target.Transaction.GetId()}
 		}
-		// Group all metadata updates into a single TransactionUpdate
-		// to avoid key collisions in PebbleDB (all updates in same request share the same ByLog)
-		updates := make([]*commonpb.TransactionUpdateType, len(order.GetMetadata().GetMetadata()))
-		for i, metadatum := range order.GetMetadata().GetMetadata() {
-			updates[i] = &commonpb.TransactionUpdateType{
-				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationAddMetadata{
-					TransactionModificationAddMetadata: &commonpb.TransactionUpdateAddMetadata{
-						Metadata: metadatum,
-					},
-				},
+
+		txKey := domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}
+
+		state, err := s.GetTransactionState(txKey)
+		if err != nil {
+			return nil, fmt.Errorf("getting transaction state: %w", err)
+		}
+
+		if state == nil {
+			return nil, fmt.Errorf("transaction state not found for tx %d", target.Transaction.GetId())
+		}
+
+		// Add metadata entries to the transaction state
+		if state.Metadata == nil {
+			state.Metadata = &commonpb.MetadataSet{}
+		}
+
+		for _, metadatum := range order.GetMetadata().GetMetadata() {
+			// Replace existing key or append
+			found := false
+
+			for i, existing := range state.Metadata.GetMetadata() {
+				if existing.GetKey() == metadatum.GetKey() {
+					state.Metadata.Metadata[i] = metadatum
+					found = true
+
+					break
+				}
+			}
+
+			if !found {
+				state.Metadata.Metadata = append(state.Metadata.Metadata, metadatum)
 			}
 		}
 
-		s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}, &commonpb.TransactionUpdate{
-			ByLog:   s.GetNextSequenceID(),
-			Updates: updates,
-		})
+		s.PutTransactionState(txKey, state)
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -123,18 +142,32 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raft
 		if target.Transaction.GetId() >= boundaries.GetNextTransactionId() {
 			return nil, &domain.ErrTransactionNotFound{TransactionID: target.Transaction.GetId()}
 		}
-		// Use global sequence ID for ByLog (consistent with processCreateTransaction)
-		// This ensures each transaction update has a unique key in PebbleDB
-		s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}, &commonpb.TransactionUpdate{
-			ByLog: s.GetNextSequenceID(),
-			Updates: []*commonpb.TransactionUpdateType{{
-				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationDeleteMetadata{
-					TransactionModificationDeleteMetadata: &commonpb.TransactionUpdateDeleteMetadata{
-						Key: order.GetKey(),
-					},
-				},
-			}},
-		})
+
+		txKey := domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}
+
+		state, err := s.GetTransactionState(txKey)
+		if err != nil {
+			return nil, fmt.Errorf("getting transaction state for delete: %w", err)
+		}
+
+		if state == nil {
+			return nil, fmt.Errorf("transaction state not found for tx %d", target.Transaction.GetId())
+		}
+
+		// Remove the metadata key from the transaction state
+		if state.Metadata != nil {
+			filtered := make([]*commonpb.Metadata, 0, len(state.Metadata.GetMetadata()))
+
+			for _, md := range state.Metadata.GetMetadata() {
+				if md.GetKey() != order.GetKey() {
+					filtered = append(filtered, md)
+				}
+			}
+
+			state.Metadata.Metadata = filtered
+		}
+
+		s.PutTransactionState(txKey, state)
 	}
 
 	return &commonpb.LedgerLogPayload{

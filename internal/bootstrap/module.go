@@ -388,6 +388,7 @@ func Module() fx.Option {
 				ks *keystore.KeyStore,
 				ss *state.SharedState,
 				receiptSigner *receipt.Signer,
+				attrs *attributes.Attributes,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
 				if cfg.AdmissionMetrics {
@@ -407,6 +408,7 @@ func Module() fx.Option {
 					hc,
 					ks,
 					ss,
+					attrs,
 					opts...,
 				)
 			},

@@ -99,8 +99,9 @@ const (
 // Canonical key separators used inside attribute canonical keys
 // to delimit volume and metadata sub-keys.
 const (
-	CanonicalKeySepVolume   byte = 0x00
-	CanonicalKeySepMetadata byte = 0x01
+	CanonicalKeySepVolume       byte = 0x00
+	CanonicalKeySepMetadata     byte = 0x01
+	CanonicalKeySepTransaction  byte = 0x02
 )
 
 // MaxUint64Bytes is the big-endian representation of math.MaxUint64,
@@ -113,9 +114,6 @@ var (
 	// Sequence-keyed prefixes: [prefix][sequence] — support efficient range scan/delete.
 	KeyPrefixLog   byte = 0x01 // [KeyPrefixLog][sequence] -> Log
 	KeyPrefixAudit byte = 0x02 // [KeyPrefixAudit][sequence] -> AuditEntry
-
-	// Composite-keyed cold prefix: [prefix][name]\x00[txID][byLog] — requires filtered iteration.
-	KeyPrefixTransactionUpdate byte = 0x03 // [KeyPrefixTransactionUpdate][name]\x00[txID(8)][byLog(8)] -> TransactionUpdate
 
 	// KeyPrefixSeqToRaftIndex maps the first log sequence produced by a raft entry
 	// to the raft index that produced it. Written atomically in applyProposal.
@@ -147,7 +145,8 @@ var (
 	AttributePrefixIdempotency = byte('I') // Idempotency
 	AttributePrefixReference   = byte('R') // Reference
 	AttributePrefixLedger      = byte('L') // Ledger
-	AttributePrefixBoundary    = byte('B') // Boundary — unchanged
+	AttributePrefixBoundary     = byte('B') // Boundary — unchanged
+	AttributePrefixTransaction  = byte('T') // Transaction state
 
 	// --- Global system zone [0xF2, 0xFF] ---.
 

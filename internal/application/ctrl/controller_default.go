@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"math"
 	"time"
 
@@ -103,17 +102,21 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName st
 
 	defer func() { _ = handle.Close() }()
 
-	return buildTransaction(ctx, handle, ledgerInfo.GetName(), transactionID, ledgerInfo.GetMetadataSchema())
+	return ctrl.buildTransaction(ctx, handle, ledgerInfo.GetName(), transactionID, ledgerInfo.GetMetadataSchema())
 }
 
-// buildTransaction builds a transaction from updates and logs using the given reader.
-func buildTransaction(ctx context.Context, reader dal.PebbleReader, ledger string, transactionID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
-	updates, err := query.ReadTransactionUpdates(ctx, reader, ledger, transactionID)
+// buildTransaction builds a transaction from its stored state and creation log.
+func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.PebbleReader, ledger string, transactionID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
+	state, err := query.ReadTransactionState(ctx, reader, ctrl.attrs.Transaction, ledger, transactionID)
 	if err != nil {
-		return nil, fmt.Errorf("getting transaction updates for %d: %w", transactionID, err)
+		return nil, fmt.Errorf("reading transaction state for %d: %w", transactionID, err)
 	}
 
-	return assembleTransaction(ctx, reader, transactionID, updates, schema)
+	if state == nil || state.GetCreatedByLog() == 0 {
+		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
+	}
+
+	return assembleTransactionFromState(ctx, reader, transactionID, state, schema)
 }
 
 // enforceTransactionSchema converts transaction metadata values in-place
@@ -135,46 +138,12 @@ func enforceTransactionSchema(schema *commonpb.MetadataSchema, metadata []*commo
 	}
 }
 
-// assembleTransaction builds a transaction from a slice of updates and a log reader.
-// The updates must be in chronological order (lowest byLog first).
+// assembleTransactionFromState builds a transaction from its TransactionState and the creation log.
 // If schema is non-nil, read-time type enforcement is applied to the final metadata.
-func assembleTransaction(ctx context.Context, reader dal.PebbleReader, transactionID uint64, updates []*commonpb.TransactionUpdate, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
-	var (
-		sequence         uint64
-		reverted         bool
-		metadataToAdd    = make(map[string]*commonpb.MetadataValue)
-		metadataToDelete = make(map[string]struct{})
-	)
-
-	for _, update := range updates {
-		for _, updateType := range update.GetUpdates() {
-			if updateType.GetTransactionInit() != nil {
-				sequence = update.GetByLog()
-			}
-
-			if updateType.GetTransactionModificationRevert() != nil {
-				reverted = true
-			}
-
-			if addMeta := updateType.GetTransactionModificationAddMetadata(); addMeta != nil {
-				metadataToAdd[addMeta.GetMetadata().GetKey()] = addMeta.GetMetadata().GetValue()
-				delete(metadataToDelete, addMeta.GetMetadata().GetKey())
-			}
-
-			if delMeta := updateType.GetTransactionModificationDeleteMetadata(); delMeta != nil {
-				metadataToDelete[delMeta.GetKey()] = struct{}{}
-				delete(metadataToAdd, delMeta.GetKey())
-			}
-		}
-	}
-
-	if sequence == 0 {
-		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
-	}
-
-	log, err := query.ReadLogBySequence(ctx, reader, sequence)
+func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, transactionID uint64, state *commonpb.TransactionState, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
+	log, err := query.ReadLogBySequence(ctx, reader, state.GetCreatedByLog())
 	if err != nil {
-		return nil, fmt.Errorf("getting system log %d: %w", sequence, err)
+		return nil, fmt.Errorf("getting system log %d: %w", state.GetCreatedByLog(), err)
 	}
 
 	if log == nil {
@@ -183,7 +152,7 @@ func assembleTransaction(ctx context.Context, reader dal.PebbleReader, transacti
 
 	applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
 	if !ok || applyLog.Apply == nil || applyLog.Apply.GetLog() == nil {
-		return nil, fmt.Errorf("log %d does not contain an apply log", sequence)
+		return nil, fmt.Errorf("log %d does not contain an apply log", state.GetCreatedByLog())
 	}
 
 	ledgerLog := applyLog.Apply.GetLog()
@@ -207,30 +176,11 @@ func assembleTransaction(ctx context.Context, reader dal.PebbleReader, transacti
 		return nil, fmt.Errorf("ledger log %d does not contain a transaction", ledgerLog.GetId())
 	}
 
-	tx.Reverted = reverted
+	tx.Reverted = state.GetRevertedByTransaction() > 0
 
-	if len(metadataToAdd) > 0 || len(metadataToDelete) > 0 {
-		// Build a map from existing metadata (preserving typed values).
-		existing := make(map[string]*commonpb.MetadataValue)
-
-		if tx.GetMetadata() != nil {
-			for _, m := range tx.GetMetadata().GetMetadata() {
-				existing[m.GetKey()] = m.GetValue()
-			}
-		}
-
-		maps.Copy(existing, metadataToAdd)
-
-		for key := range metadataToDelete {
-			delete(existing, key)
-		}
-		// Rebuild the MetadataSet from typed values.
-		mdList := make([]*commonpb.Metadata, 0, len(existing))
-		for key, value := range existing {
-			mdList = append(mdList, &commonpb.Metadata{Key: key, Value: value})
-		}
-
-		tx.Metadata = &commonpb.MetadataSet{Metadata: mdList}
+	// Override metadata from the state (which is the current truth)
+	if state.GetMetadata() != nil && len(state.GetMetadata().GetMetadata()) > 0 {
+		tx.Metadata = state.GetMetadata()
 	}
 
 	// Apply read-time schema enforcement for transaction metadata.
@@ -314,7 +264,7 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 	for _, eid := range result.entityIDs {
 		txID := binary.BigEndian.Uint64(eid)
 
-		tx, txErr := buildTransaction(ctx, handle, ledgerInfo.GetName(), txID, ledgerInfo.GetMetadataSchema())
+		tx, txErr := ctrl.buildTransaction(ctx, handle, ledgerInfo.GetName(), txID, ledgerInfo.GetMetadataSchema())
 		if txErr != nil {
 			_ = handle.Close()
 

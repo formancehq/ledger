@@ -44,15 +44,10 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	nextTransactionID := boundaries.GetNextTransactionId()
 	boundaries.NextTransactionId = nextTransactionID + 1
 
-	// Store the transaction init update for later indexing
-	s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: nextTransactionID}, &commonpb.TransactionUpdate{
-		ByLog: s.GetNextSequenceID(), // Will be set correctly when committing
-		Updates: []*commonpb.TransactionUpdateType{{
-			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-				TransactionInit: &commonpb.TransactionInit{},
-			},
-		}},
-	})
+	txKey := domain.TransactionKey{Ledger: ledger, ID: nextTransactionID}
+	txState := &commonpb.TransactionState{
+		CreatedByLog: s.GetNextSequenceID(),
+	}
 
 	// Load ledger info once for chart validation and schema enforcement (DRY).
 	var (
@@ -106,7 +101,10 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 
 	if finalMetadata != nil {
 		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_TRANSACTION, finalMetadata.GetMetadata())
+		txState.Metadata = finalMetadata
 	}
+
+	s.PutTransactionState(txKey, txState)
 
 	// Convert account metadata to protobuf format (already typed from produceResult).
 	var accountMetadata map[string]*commonpb.MetadataSet

@@ -118,11 +118,14 @@ type TransactionKey struct {
 }
 
 // Bytes returns a canonical byte representation of the transaction key.
-// Format: [ledger]\x00[txID (8 bytes)].
+// Format: [ledger]\x00\x02[txID (8 bytes)].
+// \x02 = CanonicalKeySepTransaction, distinguishes from account keys (\x00 volume, \x01 metadata).
 func (tk TransactionKey) Bytes() []byte {
-	ret := make([]byte, len(tk.Ledger)+1+8)
+	ret := make([]byte, len(tk.Ledger)+1+1+8)
 	n := copy(ret, tk.Ledger)
 	ret[n] = 0x00
+	n++
+	ret[n] = 0x02 // CanonicalKeySepTransaction
 	n++
 	binary.BigEndian.PutUint64(ret[n:], tk.ID)
 
@@ -131,23 +134,23 @@ func (tk TransactionKey) Bytes() []byte {
 
 // Unmarshal parses canonical bytes into the TransactionKey.
 func (tk *TransactionKey) Unmarshal(d []byte) error {
-	// Find the \x00 separator between ledger name and txID
+	// Find the \x00\x02 separator between ledger name and txID
 	sep := -1
 
 	for i, b := range d {
-		if b == 0x00 {
+		if b == 0x00 && i+1 < len(d) && d[i+1] == 0x02 {
 			sep = i
 
 			break
 		}
 	}
 
-	if sep == -1 || len(d) < sep+1+8 {
-		return errors.New("invalid transaction key bytes: expected [ledger]\\x00[txID(8)]")
+	if sep == -1 || len(d) < sep+2+8 {
+		return errors.New("invalid transaction key bytes: expected [ledger]\\x00\\x02[txID(8)]")
 	}
 
 	tk.Ledger = string(d[:sep])
-	tk.ID = binary.BigEndian.Uint64(d[sep+1 : sep+1+8])
+	tk.ID = binary.BigEndian.Uint64(d[sep+2 : sep+2+8])
 
 	return nil
 }

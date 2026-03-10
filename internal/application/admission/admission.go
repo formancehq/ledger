@@ -18,6 +18,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/preload"
@@ -62,6 +63,7 @@ type Admission struct {
 	sharedState   *state.SharedState
 	receiptSigner *receipt.Signer
 	preloader     *preload.Preloader
+	attrs         *attributes.Attributes
 
 	// Metrics (noop when metricsEnabled is false)
 	metricsEnabled            bool
@@ -103,6 +105,7 @@ func NewAdmission(
 	healthChecker health.Checker,
 	keyStore *keystore.KeyStore,
 	sharedState *state.SharedState,
+	attrs *attributes.Attributes,
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
@@ -113,6 +116,7 @@ func NewAdmission(
 		healthChecker: healthChecker,
 		keyStore:      keyStore,
 		sharedState:   sharedState,
+		attrs:         attrs,
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -666,6 +670,11 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
+				p.Transactions[domain.TransactionKey{
+					Ledger: ledgerName,
+					ID:     applyData.RevertTransaction.GetTransactionId(),
+				}] = struct{}{}
+
 				for _, posting := range applyData.RevertTransaction.GetOriginalPostings() {
 					p.Volumes[domain.VolumeKey{
 						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetDestination()},
@@ -677,11 +686,26 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 					}] = struct{}{}
 				}
 
+			case *raftcmdpb.LedgerApplyOrder_AddMetadata:
+				if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Transaction); ok {
+					p.Transactions[domain.TransactionKey{
+						Ledger: ledgerName,
+						ID:     target.Transaction.GetId(),
+					}] = struct{}{}
+				}
+
 			case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
 				if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 					p.Metadata[domain.MetadataKey{
 						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.GetAddr()},
 						Key:        applyData.DeleteMetadata.GetKey(),
+					}] = struct{}{}
+				}
+
+				if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Transaction); ok {
+					p.Transactions[domain.TransactionKey{
+						Ledger: ledgerName,
+						ID:     target.Transaction.GetId(),
 					}] = struct{}{}
 				}
 			}
@@ -1130,7 +1154,7 @@ func (a *Admission) requestsToOrders(reqs []*servicepb.Request) ([]*raftcmdpb.Or
 // getTransactionPostings retrieves the postings of an original transaction from the store.
 // It uses FindTransactionCreationLog to locate the creation log and extract postings.
 func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint64) ([]*commonpb.Posting, error) {
-	log, err := query.FindTransactionCreationLog(context.Background(), a.store, ledgerName, transactionID)
+	log, err := query.FindTransactionCreationLog(context.Background(), a.store, a.attrs.Transaction, ledgerName, transactionID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, &domain.BusinessError{Err: &domain.ErrTransactionNotFound{TransactionID: transactionID}}

@@ -71,26 +71,23 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 	revertTxID := boundaries.GetNextTransactionId()
 	boundaries.NextTransactionId = revertTxID + 1
 
-	// Add transaction update for the original transaction (mark as reverted)
-	s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: order.GetTransactionId()}, &commonpb.TransactionUpdate{
-		ByLog: s.GetNextSequenceID(),
-		Updates: []*commonpb.TransactionUpdateType{{
-			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationRevert{
-				TransactionModificationRevert: &commonpb.TransactionUpdateRevert{
-					ByTransaction: revertTxID,
-				},
-			},
-		}},
-	})
+	// Update the original transaction's state to record the reversion
+	origState, err := s.GetTransactionState(txKey)
+	if err != nil {
+		return nil, fmt.Errorf("getting original transaction state: %w", err)
+	}
 
-	// Add transaction init for the revert transaction
-	s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: revertTxID}, &commonpb.TransactionUpdate{
-		ByLog: s.GetNextSequenceID(),
-		Updates: []*commonpb.TransactionUpdateType{{
-			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-				TransactionInit: &commonpb.TransactionInit{},
-			},
-		}},
+	if origState == nil {
+		return nil, fmt.Errorf("original transaction state not found for tx %d", order.GetTransactionId())
+	}
+
+	origState.RevertedByTransaction = revertTxID
+	s.PutTransactionState(txKey, origState)
+
+	// Store the revert transaction's state (include metadata from the revert order)
+	s.PutTransactionState(domain.TransactionKey{Ledger: ledger, ID: revertTxID}, &commonpb.TransactionState{
+		CreatedByLog: s.GetNextSequenceID(),
+		Metadata:     order.GetMetadata(),
 	})
 
 	// Compute post-commit volumes if requested

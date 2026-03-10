@@ -17,6 +17,7 @@ type Attributes struct {
 	References      *Attribute[*commonpb.TransactionReferenceValue]
 	Ledger          *Attribute[*commonpb.LedgerInfo]
 	Boundary        *Attribute[*raftcmdpb.LedgerBoundaries]
+	Transaction     *Attribute[*commonpb.TransactionState]
 }
 
 // New creates a new Attributes instance with all attribute types initialized.
@@ -28,6 +29,7 @@ func New() *Attributes {
 		References:      NewReferenceAttribute(),
 		Ledger:          NewLedgerAttribute(),
 		Boundary:        NewBoundaryAttribute(),
+		Transaction:     NewTransactionAttribute(),
 	}
 }
 
@@ -81,6 +83,15 @@ func NewBoundaryAttribute() *Attribute[*raftcmdpb.LedgerBoundaries] {
 	return &Attribute[*raftcmdpb.LedgerBoundaries]{
 		prefix:   dal.AttributePrefixBoundary,
 		newValue: func() *raftcmdpb.LedgerBoundaries { return &raftcmdpb.LedgerBoundaries{} },
+		keyBuf:   make([]byte, 128),
+	}
+}
+
+// NewTransactionAttribute creates a new Transaction attribute for storing transaction state.
+func NewTransactionAttribute() *Attribute[*commonpb.TransactionState] {
+	return &Attribute[*commonpb.TransactionState]{
+		prefix:   dal.AttributePrefixTransaction,
+		newValue: func() *commonpb.TransactionState { return &commonpb.TransactionState{} },
 		keyBuf:   make([]byte, 128),
 	}
 }

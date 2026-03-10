@@ -727,33 +727,12 @@ message DeleteMetadataCommand {
   string key = 2;
 }
 
-message TransactionUpdate {
-  uint64 by_log = 1;
-  repeated TransactionUpdateType updates = 2;
+// TransactionState stores the current state of a transaction as a single value.
+message TransactionState {
+  uint64 created_by_log = 1;
+  uint64 reverted_by_transaction = 2;  // 0 = not reverted
+  MetadataSet metadata = 3;
 }
-
-message TransactionUpdateType {
-  oneof transaction_modification_type_payload {
-    TransactionUpdateRevert transaction_modification_revert = 1;
-    TransactionUpdateAddMetadata transaction_modification_add_metadata = 2;
-    TransactionUpdateDeleteMetadata transaction_modification_delete_metadata = 3;
-    TransactionInit transaction_init = 4;
-  }
-}
-
-message TransactionUpdateRevert {
-  uint64 by_transaction = 1;
-}
-
-message TransactionUpdateAddMetadata {
-  Metadata metadata = 1;
-}
-
-message TransactionUpdateDeleteMetadata {
-  string key = 1;
-}
-
-message TransactionInit {}
 
 // IdempotencyKeyValue stores the log sequence associated with an idempotency key.
 message IdempotencyKeyValue {

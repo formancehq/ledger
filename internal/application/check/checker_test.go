@@ -55,6 +55,7 @@ type testEngine struct {
 	metadata          map[string]*commonpb.MetadataValue
 	idempotency       map[string]*commonpb.IdempotencyKeyValue
 	references        map[string]*commonpb.TransactionReferenceValue
+	transactionStates map[string]*commonpb.TransactionState
 	currentOpenPeriod *commonpb.Period
 	closingPeriod     *commonpb.Period
 	nextPeriodID      uint64
@@ -87,8 +88,9 @@ func newTestEngine(t *testing.T) *testEngine {
 		volumes:        make(map[string]*raftcmdpb.VolumePair),
 		metadata:       make(map[string]*commonpb.MetadataValue),
 		idempotency:    make(map[string]*commonpb.IdempotencyKeyValue),
-		references:     make(map[string]*commonpb.TransactionReferenceValue),
-		nextPeriodID:   1,
+		references:        make(map[string]*commonpb.TransactionReferenceValue),
+		transactionStates: make(map[string]*commonpb.TransactionState),
+		nextPeriodID:      1,
 		hasher:         blake3.New(),
 		raftIndex:      1,
 	}
@@ -105,17 +107,18 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		Date:   &commonpb.Timestamp{Data: 1700000000 + e.raftIndex},
 	}
 
-	// Track which volume keys were modified in this batch
+	// Track which keys were modified in this batch
 	modifiedVolumes := make(map[string]struct{})
 	modifiedMetadata := make(map[string]struct{})
+	modifiedTxStates := make(map[string]struct{})
 
 	store := &inMemoryStore{
-		engine:             e,
-		date:               proposal.GetDate(),
-		modifiedVolumes:    modifiedVolumes,
-		modifiedMetadata:   modifiedMetadata,
-		transactionUpdates: make(map[string][]*commonpb.TransactionUpdate),
-		reverted:           make(map[string]bool),
+		engine:           e,
+		date:             proposal.GetDate(),
+		modifiedVolumes:  modifiedVolumes,
+		modifiedMetadata: modifiedMetadata,
+		modifiedTxStates: modifiedTxStates,
+		reverted:         make(map[string]bool),
 	}
 	resp, err := e.processor.ProcessOrders(proposal.GetOrders(), store)
 	require.NoError(e.t, err)
@@ -168,17 +171,11 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		}
 	}
 
-	// Write transaction updates to Pebble
-	for keyStr, updates := range store.transactionUpdates {
-		var tk domain.TransactionKey
-
-		err := tk.Unmarshal([]byte(keyStr))
+	// Write modified transaction states to Pebble via attributes
+	for keyStr := range modifiedTxStates {
+		txState := e.transactionStates[keyStr]
+		err := e.attrs.Transaction.Set(batch, e.raftIndex, []byte(keyStr), txState)
 		require.NoError(e.t, err)
-
-		for _, update := range updates {
-			err := state.StoreTransactionUpdate(batch, tk, update)
-			require.NoError(e.t, err)
-		}
 	}
 
 	// Write ledger info
@@ -206,8 +203,7 @@ type inMemoryStore struct {
 	date             *commonpb.Timestamp
 	modifiedVolumes  map[string]struct{}
 	modifiedMetadata map[string]struct{}
-	// Transaction updates accumulated during this proposal
-	transactionUpdates map[string][]*commonpb.TransactionUpdate // txKey -> updates
+	modifiedTxStates map[string]struct{}
 	// In-memory reverted status (bitset-like, not persisted to Pebble)
 	reverted map[string]bool
 }
@@ -306,9 +302,16 @@ func (s *inMemoryStore) PutTransactionReference(key domain.TransactionReferenceK
 	s.engine.references[string(key.Bytes())] = value
 }
 
-func (s *inMemoryStore) AddTransactionUpdate(key domain.TransactionKey, update *commonpb.TransactionUpdate) {
+func (s *inMemoryStore) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
 	k := string(key.Bytes())
-	s.transactionUpdates[k] = append(s.transactionUpdates[k], update)
+
+	return s.engine.transactionStates[k], nil
+}
+
+func (s *inMemoryStore) PutTransactionState(key domain.TransactionKey, txState *commonpb.TransactionState) {
+	k := string(key.Bytes())
+	s.engine.transactionStates[k] = txState
+	s.modifiedTxStates[k] = struct{}{}
 }
 
 func (s *inMemoryStore) AddSigningKey(_ string, _ []byte, _ string)           {}
@@ -1040,20 +1043,12 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 		newPosting("world", "user:alice", "USD", 1000),
 	))
 
-	// Write a spurious transaction update to Pebble for tx 1 (ledger ID 1)
+	// Write a spurious transaction state to Pebble for tx 1.
+	// Use a high raft index so it overrides the correct state.
 	batch := engine.store.NewBatch()
-	err := state.StoreTransactionUpdate(batch, domain.TransactionKey{Ledger: "test", ID: 1}, &commonpb.TransactionUpdate{
-		ByLog: 999,
-		Updates: []*commonpb.TransactionUpdateType{{
-			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationAddMetadata{
-				TransactionModificationAddMetadata: &commonpb.TransactionUpdateAddMetadata{
-					Metadata: &commonpb.Metadata{
-						Key:   "spurious",
-						Value: commonpb.NewStringValue("data"),
-					},
-				},
-			},
-		}},
+	txKey := domain.TransactionKey{Ledger: "test", ID: 1}
+	err := engine.attrs.Transaction.Set(batch, engine.raftIndex+1, txKey.Bytes(), &commonpb.TransactionState{
+		CreatedByLog: 999,
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())

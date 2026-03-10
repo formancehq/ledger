@@ -844,6 +844,31 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		return value
 	}
 
+	// Helper function to put a preloaded transaction state into a cache generation
+	putInCacheTransactionState := func(
+		kv kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]],
+		attrID *raftcmdpb.AttributeID,
+		value *commonpb.TransactionState,
+	) *commonpb.TransactionState {
+		id := attributes.U128FromBytes(attrID.GetId())
+
+		fsm.logger.WithFields(map[string]any{
+			"id": id.Hex(),
+		}).Debugf("Preload transaction state")
+
+		existing, ok := kv.Get(id)
+		if ok {
+			return existing.Data
+		}
+
+		kv.Put(id, attributes.Entry[*commonpb.TransactionState]{
+			Tag:  attrID.GetTag(),
+			Data: value,
+		})
+
+		return value
+	}
+
 	for _, preload := range preloadSet.GetPreloads() {
 		switch preloadType := preload.GetType().(type) {
 		case *raftcmdpb.Preload_Volume:
@@ -927,6 +952,14 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				putInCacheBool(fsm.Registry.Cache.NumscriptEntries.Gen0(), preloadType.NumscriptEntry.GetId(), value)
 			} else {
 				putInCacheBool(fsm.Registry.Cache.NumscriptEntries.Gen0(), preloadType.NumscriptEntry.GetId(), preloadType.NumscriptEntry.GetExists())
+			}
+
+		case *raftcmdpb.Preload_TransactionState:
+			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
+				value := putInCacheTransactionState(fsm.Registry.Cache.Transactions.Gen1(), preloadType.TransactionState.GetId(), preloadType.TransactionState.GetState())
+				putInCacheTransactionState(fsm.Registry.Cache.Transactions.Gen0(), preloadType.TransactionState.GetId(), value)
+			} else {
+				putInCacheTransactionState(fsm.Registry.Cache.Transactions.Gen0(), preloadType.TransactionState.GetId(), preloadType.TransactionState.GetState())
 			}
 		}
 	}
@@ -1262,7 +1295,8 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		metadataStore  kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerStore    kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
 		boundaryStore  kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
-		referenceStore kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
+		referenceStore    kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
+		transactionStore  kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
 	)
 
 	if genIndex == 0 {
@@ -1273,6 +1307,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		ledgerStore = cache.Ledgers.Gen0()
 		boundaryStore = cache.Boundaries.Gen0()
 		referenceStore = cache.References.Gen0()
+		transactionStore = cache.Transactions.Gen0()
 	} else {
 		baseIndex = cache.BaseIndex.Gen1
 		volumeStore = cache.Volumes.Gen1()
@@ -1281,15 +1316,17 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		ledgerStore = cache.Ledgers.Gen1()
 		boundaryStore = cache.Boundaries.Gen1()
 		referenceStore = cache.References.Gen1()
+		transactionStore = cache.Transactions.Gen1()
 	}
 
 	snapshot := &raftcmdpb.GenerationSnapshot{
-		BaseIndex:  baseIndex,
-		Volumes:    make([]*raftcmdpb.VolumeAttributeSnapshotEntry, 0, volumeStore.Size()),
-		Metadata:   make([]*raftcmdpb.MetadataAttributeEntry, 0, metadataStore.Size()),
-		Ledgers:    make([]*raftcmdpb.LedgerAttributeEntry, 0, ledgerStore.Size()),
-		Boundaries: make([]*raftcmdpb.BoundaryAttributeEntry, 0, boundaryStore.Size()),
-		References: make([]*raftcmdpb.TransactionReferenceAttributeEntry, 0, referenceStore.Size()),
+		BaseIndex:    baseIndex,
+		Volumes:      make([]*raftcmdpb.VolumeAttributeSnapshotEntry, 0, volumeStore.Size()),
+		Metadata:     make([]*raftcmdpb.MetadataAttributeEntry, 0, metadataStore.Size()),
+		Ledgers:      make([]*raftcmdpb.LedgerAttributeEntry, 0, ledgerStore.Size()),
+		Boundaries:   make([]*raftcmdpb.BoundaryAttributeEntry, 0, boundaryStore.Size()),
+		References:   make([]*raftcmdpb.TransactionReferenceAttributeEntry, 0, referenceStore.Size()),
+		Transactions: make([]*raftcmdpb.TransactionStateAttributeEntry, 0, transactionStore.Size()),
 	}
 
 	// Serialize Volumes KeyStore
@@ -1354,6 +1391,18 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 			Value: entry.Data,
 		}
 		snapshot.References = append(snapshot.References, ksEntry)
+	}
+
+	// Serialize Transactions KeyStore
+	for u128, entry := range transactionStore.Iter() {
+		ksEntry := &raftcmdpb.TransactionStateAttributeEntry{
+			Id: &raftcmdpb.AttributeID{
+				Id:  u128[:],
+				Tag: entry.Tag,
+			},
+			State: entry.Data,
+		}
+		snapshot.Transactions = append(snapshot.Transactions, ksEntry)
 	}
 
 	return snapshot
@@ -1537,7 +1586,8 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		metadataStore  kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
 		ledgerStore    kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
 		boundaryStore  kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
-		referenceStore kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
+		referenceStore    kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
+		transactionStore  kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
 	)
 
 	if genIndex == 0 {
@@ -1548,6 +1598,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		ledgerStore = cache.Ledgers.Gen0()
 		boundaryStore = cache.Boundaries.Gen0()
 		referenceStore = cache.References.Gen0()
+		transactionStore = cache.Transactions.Gen0()
 	} else {
 		cache.BaseIndex.Gen1 = snapshot.GetBaseIndex()
 		volumeStore = cache.Volumes.Gen1()
@@ -1556,6 +1607,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		ledgerStore = cache.Ledgers.Gen1()
 		boundaryStore = cache.Boundaries.Gen1()
 		referenceStore = cache.References.Gen1()
+		transactionStore = cache.Transactions.Gen1()
 	}
 
 	// Deserialize Volumes KeyStore
@@ -1604,6 +1656,15 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		referenceStore.Put(u128, attributes.Entry[*commonpb.TransactionReferenceValue]{
 			Tag:  ksEntry.GetId().GetTag(),
 			Data: ksEntry.GetValue(),
+		})
+	}
+
+	// Deserialize Transactions KeyStore
+	for _, ksEntry := range snapshot.GetTransactions() {
+		u128 := attributes.U128FromBytes(ksEntry.GetId().GetId())
+		transactionStore.Put(u128, attributes.Entry[*commonpb.TransactionState]{
+			Tag:  ksEntry.GetId().GetTag(),
+			Data: ksEntry.GetState(),
 		})
 	}
 }

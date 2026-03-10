@@ -23,9 +23,9 @@ import (
 
 const progressInterval = 100
 
-// expectedTxState tracks the expected transaction updates derived from replaying logs.
+// expectedTxState tracks the expected transaction state derived from replaying logs.
 type expectedTxState struct {
-	updates []*commonpb.TransactionUpdate
+	state *commonpb.TransactionState
 }
 
 // Checker verifies store integrity by replaying logs and comparing derived state.
@@ -308,7 +308,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 	}
 
-	// Pass 4: Compare expected transaction updates against actual stored values
+	// Pass 4: Compare expected transaction states against actual stored values
 	for key, expected := range expectedTxStates {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -319,15 +319,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			continue
 		}
 
-		actualUpdates, err := query.ReadTransactionUpdates(context.Background(), c.store, tk.Ledger, tk.ID)
+		actualState, err := query.ReadTransactionState(context.Background(), c.store, c.attrs.Transaction, tk.Ledger, tk.ID)
 		if err != nil {
-			return fmt.Errorf("getting transaction updates for ledger %s tx %d: %w", tk.Ledger, tk.ID, err)
+			return fmt.Errorf("getting transaction state for ledger %s tx %d: %w", tk.Ledger, tk.ID, err)
 		}
 
-		if len(expected.updates) != len(actualUpdates) {
+		if actualState == nil {
 			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
-				fmt.Sprintf("transaction update count mismatch for tx %d: expected %d, got %d",
-					tk.ID, len(expected.updates), len(actualUpdates)),
+				fmt.Sprintf("transaction state missing for tx %d", tk.ID),
 				tk.Ledger, tk.ID))
 
 			errorCount++
@@ -335,16 +334,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			continue
 		}
 
-		for i, expectedUpdate := range expected.updates {
-			actualUpdate := actualUpdates[i]
-			if !proto.Equal(expectedUpdate, actualUpdate) {
-				callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
-					fmt.Sprintf("transaction update mismatch for tx %d at index %d: ByLog expected %d got %d",
-						tk.ID, i, expectedUpdate.GetByLog(), actualUpdate.GetByLog()),
-					tk.Ledger, tk.ID))
+		if !proto.Equal(expected.state, actualState) {
+			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
+				fmt.Sprintf("transaction state mismatch for tx %d: expected created_by_log=%d got %d, expected reverted_by=%d got %d",
+					tk.ID, expected.state.GetCreatedByLog(), actualState.GetCreatedByLog(),
+					expected.state.GetRevertedByTransaction(), actualState.GetRevertedByTransaction()),
+				tk.Ledger, tk.ID))
 
-				errorCount++
-			}
+			errorCount++
 		}
 	}
 
@@ -371,17 +368,11 @@ func replayLedgerLog(
 		tx := p.CreatedTransaction.GetTransaction()
 		applyPostings(ledger, tx.GetPostings(), expectedInputs, expectedOutputs)
 
-		// Track TransactionInit update
+		// Track TransactionState for the created transaction
 		txKey := string(domain.TransactionKey{Ledger: ledger, ID: tx.GetId()}.Bytes())
-		state := getOrCreateTxState(expectedTxStates, txKey)
-		state.updates = append(state.updates, &commonpb.TransactionUpdate{
-			ByLog: seq,
-			Updates: []*commonpb.TransactionUpdateType{{
-				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-					TransactionInit: &commonpb.TransactionInit{},
-				},
-			}},
-		})
+		txState := getOrCreateTxState(expectedTxStates, txKey)
+		txState.state.CreatedByLog = seq
+		txState.state.Metadata = tx.GetMetadata()
 
 		// Apply account metadata from the transaction
 		for account, metaSet := range p.CreatedTransaction.GetAccountMetadata() {
@@ -412,31 +403,16 @@ func replayLedgerLog(
 		revertTx := p.RevertedTransaction.GetRevertTransaction()
 		applyPostings(ledger, revertTx.GetPostings(), expectedInputs, expectedOutputs)
 
-		// Track revert update on the original transaction
+		// Mark original transaction as reverted
 		origTxKey := string(domain.TransactionKey{Ledger: ledger, ID: p.RevertedTransaction.GetRevertedTransactionId()}.Bytes())
 		origState := getOrCreateTxState(expectedTxStates, origTxKey)
-		origState.updates = append(origState.updates, &commonpb.TransactionUpdate{
-			ByLog: seq,
-			Updates: []*commonpb.TransactionUpdateType{{
-				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationRevert{
-					TransactionModificationRevert: &commonpb.TransactionUpdateRevert{
-						ByTransaction: revertTx.GetId(),
-					},
-				},
-			}},
-		})
+		origState.state.RevertedByTransaction = revertTx.GetId()
 
-		// Track TransactionInit for the revert transaction
+		// Track TransactionState for the revert transaction
 		revertTxKey := string(domain.TransactionKey{Ledger: ledger, ID: revertTx.GetId()}.Bytes())
 		revertState := getOrCreateTxState(expectedTxStates, revertTxKey)
-		revertState.updates = append(revertState.updates, &commonpb.TransactionUpdate{
-			ByLog: seq,
-			Updates: []*commonpb.TransactionUpdateType{{
-				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-					TransactionInit: &commonpb.TransactionInit{},
-				},
-			}},
-		})
+		revertState.state.CreatedByLog = seq
+		revertState.state.Metadata = revertTx.GetMetadata()
 
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		if p.SavedMetadata == nil || p.SavedMetadata.GetTarget() == nil {
@@ -465,23 +441,28 @@ func replayLedgerLog(
 		case *commonpb.Target_Transaction:
 			if p.SavedMetadata.GetMetadata() != nil {
 				txKey := string(domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}.Bytes())
-				state := getOrCreateTxState(expectedTxStates, txKey)
+				txState := getOrCreateTxState(expectedTxStates, txKey)
 
-				updates := make([]*commonpb.TransactionUpdateType, len(p.SavedMetadata.GetMetadata().GetMetadata()))
-				for i, m := range p.SavedMetadata.GetMetadata().GetMetadata() {
-					updates[i] = &commonpb.TransactionUpdateType{
-						TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationAddMetadata{
-							TransactionModificationAddMetadata: &commonpb.TransactionUpdateAddMetadata{
-								Metadata: m,
-							},
-						},
-					}
+				if txState.state.Metadata == nil {
+					txState.state.Metadata = &commonpb.MetadataSet{}
 				}
 
-				state.updates = append(state.updates, &commonpb.TransactionUpdate{
-					ByLog:   seq,
-					Updates: updates,
-				})
+				for _, m := range p.SavedMetadata.GetMetadata().GetMetadata() {
+					found := false
+
+					for i, existing := range txState.state.Metadata.GetMetadata() {
+						if existing.GetKey() == m.GetKey() {
+							txState.state.Metadata.Metadata[i] = m
+							found = true
+
+							break
+						}
+					}
+
+					if !found {
+						txState.state.Metadata.Metadata = append(txState.state.Metadata.Metadata, m)
+					}
+				}
 			}
 		}
 
@@ -504,17 +485,18 @@ func replayLedgerLog(
 			deletedMetadata[key] = struct{}{}
 		case *commonpb.Target_Transaction:
 			txKey := string(domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}.Bytes())
-			state := getOrCreateTxState(expectedTxStates, txKey)
-			state.updates = append(state.updates, &commonpb.TransactionUpdate{
-				ByLog: seq,
-				Updates: []*commonpb.TransactionUpdateType{{
-					TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationDeleteMetadata{
-						TransactionModificationDeleteMetadata: &commonpb.TransactionUpdateDeleteMetadata{
-							Key: p.DeletedMetadata.GetKey(),
-						},
-					},
-				}},
-			})
+			txState := getOrCreateTxState(expectedTxStates, txKey)
+
+			if txState.state.Metadata != nil {
+				filtered := make([]*commonpb.Metadata, 0, len(txState.state.Metadata.GetMetadata()))
+				for _, m := range txState.state.Metadata.GetMetadata() {
+					if m.GetKey() != p.DeletedMetadata.GetKey() {
+						filtered = append(filtered, m)
+					}
+				}
+
+				txState.state.Metadata.Metadata = filtered
+			}
 		}
 
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
@@ -577,7 +559,7 @@ func getOrCreateTxState(m map[string]*expectedTxState, key string) *expectedTxSt
 		return state
 	}
 
-	state := &expectedTxState{}
+	state := &expectedTxState{state: &commonpb.TransactionState{}}
 	m[key] = state
 
 	return state

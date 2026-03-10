@@ -100,8 +100,8 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	mockStore.EXPECT().GetVolume(gomock.Any()).Return(zeroVol, nil).Times(2)
 	mockStore.EXPECT().PutVolume(gomock.Any(), gomock.Any()).Times(2)
 
-	// Transaction init update
-	mockStore.EXPECT().AddTransactionUpdate(
+	// Transaction state update
+	mockStore.EXPECT().PutTransactionState(
 		domain.TransactionKey{Ledger: "mirror-ledger", ID: 42},
 		gomock.Any(),
 	)

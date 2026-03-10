@@ -24,6 +24,7 @@ type StateRegistry struct {
 	SinkConfigs       *attributes.KeyStore[domain.SinkConfigKey, *commonpb.SinkConfig]
 	NumscriptVersions *attributes.KeyStore[domain.NumscriptVersionKey, string]
 	NumscriptEntries  *attributes.KeyStore[domain.NumscriptEntryKey, bool]
+	Transactions      *attributes.KeyStore[domain.TransactionKey, *commonpb.TransactionState]
 
 	// Reversions uses a compact bitset per ledger instead of a KeyStore.
 	// Bit N being set means transaction N in that ledger has been reverted.
@@ -72,6 +73,10 @@ func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes) *StateRegist
 		NumscriptEntries: attributes.NewKeyStore[domain.NumscriptEntryKey, bool](
 			attributes.DefaultSeeds,
 			c.NumscriptEntries,
+		),
+		Transactions: attributes.NewKeyStore[domain.TransactionKey, *commonpb.TransactionState](
+			attributes.DefaultSeeds,
+			c.Transactions,
 		),
 		Reversions: make(map[string]*domain.ReversionBitset),
 	}

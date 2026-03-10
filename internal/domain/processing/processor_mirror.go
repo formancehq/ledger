@@ -120,14 +120,10 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledger string, bounda
 		boundaries.NextTransactionId = txID + 1
 	}
 
-	// Record transaction init
-	s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: txID}, &commonpb.TransactionUpdate{
-		ByLog: s.GetNextSequenceID(),
-		Updates: []*commonpb.TransactionUpdateType{{
-			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-				TransactionInit: &commonpb.TransactionInit{},
-			},
-		}},
+	// Record transaction state (include metadata from the mirrored transaction)
+	s.PutTransactionState(domain.TransactionKey{Ledger: ledger, ID: txID}, &commonpb.TransactionState{
+		CreatedByLog: s.GetNextSequenceID(),
+		Metadata:     ct.GetMetadata(),
 	})
 
 	// Store reference if provided
@@ -196,21 +192,33 @@ func (p *RequestProcessor) processMirrorSavedMetadata(ledger string, _ *raftcmdp
 			}
 		case *commonpb.Target_Transaction:
 			if sm.GetMetadata() != nil {
-				updates := make([]*commonpb.TransactionUpdateType, len(sm.GetMetadata().GetMetadata()))
-				for i, metadatum := range sm.GetMetadata().GetMetadata() {
-					updates[i] = &commonpb.TransactionUpdateType{
-						TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationAddMetadata{
-							TransactionModificationAddMetadata: &commonpb.TransactionUpdateAddMetadata{
-								Metadata: metadatum,
-							},
-						},
-					}
-				}
+				txKey := domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}
 
-				s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}, &commonpb.TransactionUpdate{
-					ByLog:   s.GetNextSequenceID(),
-					Updates: updates,
-				})
+				state, _ := s.GetTransactionState(txKey)
+				if state != nil {
+					if state.Metadata == nil {
+						state.Metadata = &commonpb.MetadataSet{}
+					}
+
+					for _, metadatum := range sm.GetMetadata().GetMetadata() {
+						found := false
+
+						for i, existing := range state.Metadata.GetMetadata() {
+							if existing.GetKey() == metadatum.GetKey() {
+								state.Metadata.Metadata[i] = metadatum
+								found = true
+
+								break
+							}
+						}
+
+						if !found {
+							state.Metadata.Metadata = append(state.Metadata.Metadata, metadatum)
+						}
+					}
+
+					s.PutTransactionState(txKey, state)
+				}
 			}
 		}
 	}
@@ -235,16 +243,21 @@ func (p *RequestProcessor) processMirrorDeletedMetadata(ledger string, _ *raftcm
 				Key:        dm.GetKey(),
 			})
 		case *commonpb.Target_Transaction:
-			s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}, &commonpb.TransactionUpdate{
-				ByLog: s.GetNextSequenceID(),
-				Updates: []*commonpb.TransactionUpdateType{{
-					TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationDeleteMetadata{
-						TransactionModificationDeleteMetadata: &commonpb.TransactionUpdateDeleteMetadata{
-							Key: dm.GetKey(),
-						},
-					},
-				}},
-			})
+			txKey := domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}
+
+			state, _ := s.GetTransactionState(txKey)
+			if state != nil && state.Metadata != nil {
+				filtered := make([]*commonpb.Metadata, 0, len(state.Metadata.GetMetadata()))
+
+				for _, md := range state.Metadata.GetMetadata() {
+					if md.GetKey() != dm.GetKey() {
+						filtered = append(filtered, md)
+					}
+				}
+
+				state.Metadata.Metadata = filtered
+				s.PutTransactionState(txKey, state)
+			}
 		}
 	}
 
@@ -277,26 +290,19 @@ func (p *RequestProcessor) processMirrorRevertedTransaction(ledger string, bound
 		boundaries.NextTransactionId = revertTxID + 1
 	}
 
-	// Add transaction update for the original transaction
-	s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: rt.GetRevertedTransactionId()}, &commonpb.TransactionUpdate{
-		ByLog: s.GetNextSequenceID(),
-		Updates: []*commonpb.TransactionUpdateType{{
-			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationRevert{
-				TransactionModificationRevert: &commonpb.TransactionUpdateRevert{
-					ByTransaction: revertTxID,
-				},
-			},
-		}},
-	})
+	// Update the original transaction's state to record the reversion
+	origKey := domain.TransactionKey{Ledger: ledger, ID: rt.GetRevertedTransactionId()}
 
-	// Add transaction init for the revert transaction
-	s.AddTransactionUpdate(domain.TransactionKey{Ledger: ledger, ID: revertTxID}, &commonpb.TransactionUpdate{
-		ByLog: s.GetNextSequenceID(),
-		Updates: []*commonpb.TransactionUpdateType{{
-			TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-				TransactionInit: &commonpb.TransactionInit{},
-			},
-		}},
+	origState, _ := s.GetTransactionState(origKey)
+	if origState != nil {
+		origState.RevertedByTransaction = revertTxID
+		s.PutTransactionState(origKey, origState)
+	}
+
+	// Store the revert transaction's state (include metadata from the mirror revert)
+	s.PutTransactionState(domain.TransactionKey{Ledger: ledger, ID: revertTxID}, &commonpb.TransactionState{
+		CreatedByLog: s.GetNextSequenceID(),
+		Metadata:     rt.GetMetadata(),
 	})
 
 	timestamp := rt.GetTimestamp()

@@ -432,6 +432,7 @@ message Preload {
      PreloadAccountMetadata account_metadata = 7;
      PreloadNumscriptVersion numscript_version = 8;
      PreloadNumscriptEntry numscript_entry = 9;
+     PreloadTransactionState transaction_state = 10;
   }
 }
 
@@ -482,6 +483,11 @@ message PreloadNumscriptEntry {
   bool exists = 2;
 }
 
+message PreloadTransactionState {
+  AttributeID id = 1;
+  common.TransactionState state = 2;
+}
+
 // ============================================================================
 // Memory Snapshot (for Raft snapshots)
 // ============================================================================
@@ -528,6 +534,7 @@ message GenerationSnapshot {
   repeated LedgerAttributeEntry ledgers = 5;
   repeated BoundaryAttributeEntry boundaries = 6;
   repeated TransactionReferenceAttributeEntry references = 7;
+  repeated TransactionStateAttributeEntry transactions = 8;
 }
 
 // VolumeAttributeSnapshotEntry stores a merged Input+Output volume pair in cache snapshots.
@@ -559,6 +566,12 @@ message BoundaryAttributeEntry {
 message TransactionReferenceAttributeEntry {
   AttributeID id = 1;
   common.TransactionReferenceValue value = 2;
+}
+
+// TransactionStateAttributeEntry stores a single entry from KeyStore[*TransactionState]
+message TransactionStateAttributeEntry {
+  AttributeID id = 1;
+  common.TransactionState state = 2;
 }
 
 // ReversionBitsetEntry stores a packed bitset of reverted transaction IDs for a single ledger.

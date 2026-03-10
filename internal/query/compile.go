@@ -1164,14 +1164,16 @@ func pebbleAccountExists(reader dal.PebbleReader, ledger, address string) (bool,
 	return iter.First(), nil
 }
 
-// pebbleTxExists checks if at least one update key exists for the given
-// transaction in Pebble. Key prefix: [0x03][ledger\x00][txID(8B)].
+// pebbleTxExists checks if at least one attribute key exists for the given
+// transaction in Pebble. Key prefix: [0xF1][ledger\x00\x02][txID(8B)].
 func pebbleTxExists(reader dal.PebbleReader, ledger string, txID uint64) (bool, error) {
-	prefix := make([]byte, 1+len(ledger)+1+8)
-	prefix[0] = dal.KeyPrefixTransactionUpdate
+	prefix := make([]byte, 1+len(ledger)+1+1+8)
+	prefix[0] = dal.KeyPrefixAttributes
 	n := 1
 	n += copy(prefix[n:], ledger)
 	prefix[n] = 0x00
+	n++
+	prefix[n] = dal.CanonicalKeySepTransaction
 	n++
 	binary.BigEndian.PutUint64(prefix[n:], txID)
 

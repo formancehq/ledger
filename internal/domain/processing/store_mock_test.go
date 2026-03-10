@@ -22,7 +22,6 @@ import (
 type MockInMemoryStore struct {
 	ctrl     *gomock.Controller
 	recorder *MockInMemoryStoreMockRecorder
-	isgomock struct{}
 }
 
 // MockInMemoryStoreMockRecorder is the mock recorder for MockInMemoryStore.
@@ -76,18 +75,6 @@ func (m *MockInMemoryStore) AddSinkConfig(config *commonpb.SinkConfig) {
 func (mr *MockInMemoryStoreMockRecorder) AddSinkConfig(config any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddSinkConfig", reflect.TypeOf((*MockInMemoryStore)(nil).AddSinkConfig), config)
-}
-
-// AddTransactionUpdate mocks base method.
-func (m *MockInMemoryStore) AddTransactionUpdate(key domain.TransactionKey, update *commonpb.TransactionUpdate) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "AddTransactionUpdate", key, update)
-}
-
-// AddTransactionUpdate indicates an expected call of AddTransactionUpdate.
-func (mr *MockInMemoryStoreMockRecorder) AddTransactionUpdate(key, update any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddTransactionUpdate", reflect.TypeOf((*MockInMemoryStore)(nil).AddTransactionUpdate), key, update)
 }
 
 // ClearClosingPeriod mocks base method.
@@ -400,6 +387,21 @@ func (mr *MockInMemoryStoreMockRecorder) GetTransactionReference(key any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionReference", reflect.TypeOf((*MockInMemoryStore)(nil).GetTransactionReference), key)
 }
 
+// GetTransactionState mocks base method.
+func (m *MockInMemoryStore) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTransactionState", key)
+	ret0, _ := ret[0].(*commonpb.TransactionState)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTransactionState indicates an expected call of GetTransactionState.
+func (mr *MockInMemoryStoreMockRecorder) GetTransactionState(key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTransactionState", reflect.TypeOf((*MockInMemoryStore)(nil).GetTransactionState), key)
+}
+
 // GetVolume mocks base method.
 func (m *MockInMemoryStore) GetVolume(key domain.VolumeKey) (*raftcmdpb.VolumePair, error) {
 	m.ctrl.T.Helper()
@@ -552,6 +554,18 @@ func (m *MockInMemoryStore) PutTransactionReference(key domain.TransactionRefere
 func (mr *MockInMemoryStoreMockRecorder) PutTransactionReference(key, value any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutTransactionReference", reflect.TypeOf((*MockInMemoryStore)(nil).PutTransactionReference), key, value)
+}
+
+// PutTransactionState mocks base method.
+func (m *MockInMemoryStore) PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "PutTransactionState", key, state)
+}
+
+// PutTransactionState indicates an expected call of PutTransactionState.
+func (mr *MockInMemoryStoreMockRecorder) PutTransactionState(key, state any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutTransactionState", reflect.TypeOf((*MockInMemoryStore)(nil).PutTransactionState), key, state)
 }
 
 // PutVolume mocks base method.

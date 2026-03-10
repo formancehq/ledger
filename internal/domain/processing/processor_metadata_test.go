@@ -84,18 +84,22 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
 
+	txKey := domain.TransactionKey{Ledger: "test-ledger", ID: 5}
+	existingState := &commonpb.TransactionState{
+		CreatedByLog: 1,
+	}
+
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false).AnyTimes()
-	mockStore.EXPECT().GetNextSequenceID().Return(uint64(42))
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 5}, gomock.Any()).Do(
-		func(key domain.TransactionKey, update *commonpb.TransactionUpdate) {
-			require.Equal(t, uint64(42), update.GetByLog()) // Global sequence ID
-			require.Len(t, update.GetUpdates(), 1)
-			addMeta := update.GetUpdates()[0].GetTransactionModificationAddMetadata()
-			require.NotNil(t, addMeta)
-			require.Equal(t, "category", addMeta.GetMetadata().GetKey())
+	mockStore.EXPECT().GetTransactionState(txKey).Return(existingState, nil)
+	mockStore.EXPECT().PutTransactionState(txKey, gomock.Any()).Do(
+		func(_ domain.TransactionKey, state *commonpb.TransactionState) {
+			require.NotNil(t, state.GetMetadata())
+			require.Len(t, state.GetMetadata().GetMetadata(), 1)
+			require.Equal(t, "category", state.GetMetadata().GetMetadata()[0].GetKey())
+			require.Equal(t, commonpb.NewStringValue("payment"), state.GetMetadata().GetMetadata()[0].GetValue())
 		},
 	)
 

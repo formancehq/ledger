@@ -62,9 +62,16 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	}, gomock.Any())
 
 	mockStore.EXPECT().PutReverted(txKey, true)
-	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50)).Times(2) // for original TX update + revert TX init
-	mockStore.EXPECT().AddTransactionUpdate(txKey, gomock.Any())
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 5}, gomock.Any())
+
+	// Processor reads original transaction state, then updates it with RevertedByTransaction
+	mockStore.EXPECT().GetTransactionState(txKey).Return(&commonpb.TransactionState{
+		CreatedByLog: 42,
+	}, nil)
+	mockStore.EXPECT().PutTransactionState(txKey, gomock.Any())
+
+	// Processor stores the new revert transaction state
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50))
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 5}, gomock.Any())
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 
 	order := &raftcmdpb.Order{

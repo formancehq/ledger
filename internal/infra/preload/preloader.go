@@ -289,6 +289,22 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 		preloadSet.Preloads = append(preloadSet.Preloads, preloads...)
 	}
 
+	// Transactions — only send if found
+	if len(needs.Transactions) > 0 {
+		var preloads []*raftcmdpb.Preload
+		preloads, token.Transactions, err = resolveStandard(
+			needs.Transactions, nextIndex, boundary,
+			p.cache.Transactions, p.loaders.Transactions,
+			p.attrs.Transaction.ComputeValue, p.store,
+			buildTransactionStatePreload, false, token.Transactions,
+		)
+		if err != nil {
+			return nil, token, fmt.Errorf("preloading transactions: %w", err)
+		}
+
+		preloadSet.Preloads = append(preloadSet.Preloads, preloads...)
+	}
+
 	// Account metadata — only send if found
 	if len(needs.Metadata) > 0 {
 		var preloads []*raftcmdpb.Preload

@@ -164,6 +164,7 @@ type Cache struct {
 	References          *AttributeCache[*commonpb.TransactionReferenceValue]
 	Ledgers             *AttributeCache[*commonpb.LedgerInfo]
 	Boundaries          *AttributeCache[*raftcmdpb.LedgerBoundaries]
+	Transactions        *AttributeCache[*commonpb.TransactionState]
 	SinkConfigs         *AttributeCache[*commonpb.SinkConfig]
 	NumscriptVersions   *AttributeCache[string]
 	NumscriptEntries    *AttributeCache[bool]
@@ -190,6 +191,7 @@ func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
 	c.References.Rotate()
 	c.Ledgers.Rotate()
 	c.Boundaries.Rotate()
+	c.Transactions.Rotate()
 	c.SinkConfigs.Rotate()
 	c.NumscriptVersions.Rotate()
 	c.NumscriptEntries.Rotate()
@@ -212,6 +214,7 @@ func (c *Cache) Reset() {
 	c.References.Reset()
 	c.Ledgers.Reset()
 	c.Boundaries.Reset()
+	c.Transactions.Reset()
 	c.SinkConfigs.Reset()
 	c.NumscriptVersions.Reset()
 	c.NumscriptEntries.Reset()
@@ -285,6 +288,8 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 				metric.WithAttributes(attribute.String("type", "ledgers")))
 			o.ObserveInt64(sizeGauge, int64(c.Boundaries.Size()),
 				metric.WithAttributes(attribute.String("type", "boundaries")))
+			o.ObserveInt64(sizeGauge, int64(c.Transactions.Size()),
+				metric.WithAttributes(attribute.String("type", "transactions")))
 			o.ObserveInt64(sizeGauge, int64(c.SinkConfigs.Size()),
 				metric.WithAttributes(attribute.String("type", "sink_configs")))
 			o.ObserveInt64(sizeGauge, int64(c.NumscriptVersions.Size()),
@@ -356,6 +361,7 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret.References = newAttributeCache[*commonpb.TransactionReferenceValue](ret, "references")
 	ret.Ledgers = newAttributeCache[*commonpb.LedgerInfo](ret, "ledgers")
 	ret.Boundaries = newAttributeCache[*raftcmdpb.LedgerBoundaries](ret, "boundaries")
+	ret.Transactions = newAttributeCache[*commonpb.TransactionState](ret, "transactions")
 	ret.SinkConfigs = newAttributeCache[*commonpb.SinkConfig](ret, "sink_configs")
 	ret.NumscriptVersions = newAttributeCache[string](ret, "numscript_versions")
 	ret.NumscriptEntries = newAttributeCache[bool](ret, "numscript_entries")

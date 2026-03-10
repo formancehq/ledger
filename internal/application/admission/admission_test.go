@@ -86,7 +86,9 @@ func createTransactionLog(sequence uint64, ledgerName string, logID uint64, txID
 }
 
 // createTestAdmission creates an Admission instance for testing.
-func createTestAdmission(t *testing.T, store *dal.Store) *Admission {
+// It returns both the Admission and the Attributes so tests can set up
+// transaction state directly in Pebble.
+func createTestAdmission(t *testing.T, store *dal.Store) (*Admission, *attributes.Attributes) {
 	t.Helper()
 
 	ctx := logging.TestingContext()
@@ -108,7 +110,8 @@ func createTestAdmission(t *testing.T, store *dal.Store) *Admission {
 		nil, // no health checker needed for unit tests
 		ks,
 		ss,
-	)
+		attrs,
+	), attrs
 }
 
 func TestGetTransactionPostings(t *testing.T) {
@@ -117,7 +120,7 @@ func TestGetTransactionPostings(t *testing.T) {
 	t.Run("returns postings for existing transaction", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, attrs := createTestAdmission(t, store)
 
 		// Create test postings
 		expectedPostings := []*commonpb.Posting{
@@ -142,16 +145,9 @@ func TestGetTransactionPostings(t *testing.T) {
 		err := state.AppendLogs(batch, txLog)
 		require.NoError(t, err)
 
-		// Add TransactionUpdate with TransactionInit to link transaction ID to log sequence
-		require.NoError(t, state.StoreTransactionUpdate(batch, domain.TransactionKey{Ledger: testLedgerName, ID: 1}, &commonpb.TransactionUpdate{
-			ByLog: 1,
-			Updates: []*commonpb.TransactionUpdateType{
-				{
-					TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-						TransactionInit: &commonpb.TransactionInit{},
-					},
-				},
-			},
+		// Store TransactionState to link transaction ID to its creating log
+		require.NoError(t, attrs.Transaction.Set(batch, 1, domain.TransactionKey{Ledger: testLedgerName, ID: 1}.Bytes(), &commonpb.TransactionState{
+			CreatedByLog: 1,
 		}))
 		require.NoError(t, state.SetAppliedIndex(batch, 1))
 		require.NoError(t, batch.Commit())
@@ -171,7 +167,7 @@ func TestGetTransactionPostings(t *testing.T) {
 	t.Run("returns error for non-existent transaction", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
 		// Try to get postings for a transaction that doesn't exist
 		_, err := admission.getTransactionPostings(testLedgerName, 999)
@@ -186,7 +182,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 	t.Run("extracts volumes for create transaction", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
 		orders := []*raftcmdpb.Order{
 			{
@@ -233,7 +229,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 	t.Run("extracts volumes for revert transaction", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
 		// For a revert, original postings are reversed:
 		// Original: world -> alice
@@ -284,7 +280,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 	t.Run("extracts volumes for multiple postings in revert", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
 		orders := []*raftcmdpb.Order{
 			{
@@ -350,7 +346,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 	t.Run("fetches original postings for revert transaction", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, attrs := createTestAdmission(t, store)
 
 		// First, create a transaction to revert
 		expectedPostings := []*commonpb.Posting{
@@ -367,15 +363,9 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		batch := store.NewBatch()
 		err := state.AppendLogs(batch, txLog)
 		require.NoError(t, err)
-		require.NoError(t, state.StoreTransactionUpdate(batch, domain.TransactionKey{Ledger: testLedgerName, ID: 1}, &commonpb.TransactionUpdate{
-			ByLog: 1,
-			Updates: []*commonpb.TransactionUpdateType{
-				{
-					TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-						TransactionInit: &commonpb.TransactionInit{},
-					},
-				},
-			},
+		// Store TransactionState to link transaction ID to its creating log
+		require.NoError(t, attrs.Transaction.Set(batch, 1, domain.TransactionKey{Ledger: testLedgerName, ID: 1}.Bytes(), &commonpb.TransactionState{
+			CreatedByLog: 1,
 		}))
 		require.NoError(t, state.SetAppliedIndex(batch, 1))
 		require.NoError(t, batch.Commit())
@@ -411,7 +401,7 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 	t.Run("returns error when transaction to revert does not exist", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
 		applyRequest := &servicepb.LedgerApplyRequest{
 			Ledger: testLedgerName,
@@ -434,7 +424,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 	t.Run("extracts volumes even when force is true for create transaction", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
 		orders := []*raftcmdpb.Order{
 			{
@@ -482,7 +472,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 	t.Run("extracts volumes when force is false for create transaction", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
 		orders := []*raftcmdpb.Order{
 			{
@@ -530,7 +520,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 	t.Run("mixed orders: all volumes extracted regardless of force flag", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
 		orders := []*raftcmdpb.Order{
 			// First order with force=true - volumes are still extracted
@@ -614,7 +604,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 	t.Run("force on revert still extracts volumes", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
 		// force=true on revert still preloads all volumes
 		orders := []*raftcmdpb.Order{
@@ -668,7 +658,7 @@ func TestConvertApplyRequest_CreateTransaction_Force(t *testing.T) {
 	t.Run("propagates force flag to order", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
 		applyRequest := &servicepb.LedgerApplyRequest{
 			Ledger: testLedgerName,
@@ -702,7 +692,7 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 	t.Run("converts revert request with original postings", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, attrs := createTestAdmission(t, store)
 
 		// Setup transaction to revert
 		expectedPostings := []*commonpb.Posting{
@@ -719,15 +709,9 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		batch := store.NewBatch()
 		err := state.AppendLogs(batch, txLog)
 		require.NoError(t, err)
-		require.NoError(t, state.StoreTransactionUpdate(batch, domain.TransactionKey{Ledger: testLedgerName, ID: 42}, &commonpb.TransactionUpdate{
-			ByLog: 1,
-			Updates: []*commonpb.TransactionUpdateType{
-				{
-					TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-						TransactionInit: &commonpb.TransactionInit{},
-					},
-				},
-			},
+		// Store TransactionState to link transaction ID to its creating log
+		require.NoError(t, attrs.Transaction.Set(batch, 1, domain.TransactionKey{Ledger: testLedgerName, ID: 42}.Bytes(), &commonpb.TransactionState{
+			CreatedByLog: 1,
 		}))
 		require.NoError(t, state.SetAppliedIndex(batch, 1))
 		require.NoError(t, batch.Commit())
@@ -773,7 +757,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 	t.Run("discovers volumes from numscript script", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
 		orders := []*raftcmdpb.Order{
 			{
@@ -822,7 +806,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 	t.Run("extracts numscript volumes even when force is true", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
 		orders := []*raftcmdpb.Order{
 			{
@@ -870,7 +854,7 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 	t.Run("falls back to postings when script has explicit postings", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		admission := createTestAdmission(t, store)
+		admission, _ := createTestAdmission(t, store)
 
 		// When both Script and Postings are present, explicit Postings take precedence
 		orders := []*raftcmdpb.Order{
@@ -925,7 +909,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 	t.Run("accepts idempotency key within max length", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		req := &servicepb.Request{
 			IdempotencyKey: "valid-key-123",
@@ -946,7 +930,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 	t.Run("accepts idempotency key at exactly max length", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		// 256 characters exactly
 		key := strings.Repeat("a", 256)
@@ -970,7 +954,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 	t.Run("rejects idempotency key exceeding max length", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		// 257 characters - one over the limit
 		key := strings.Repeat("a", 257)
@@ -992,7 +976,7 @@ func TestRequestToOrder_IdempotencyKeyValidation(t *testing.T) {
 	t.Run("no idempotency key is accepted", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		req := &servicepb.Request{
 			Type: &servicepb.Request_CreateLedger{
@@ -1025,7 +1009,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 	t.Run("bootstrap: unsigned RegisterSigningKey allowed when no keys exist", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		pubKey, _ := generateTestKeyPair(t)
 
@@ -1049,7 +1033,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 	t.Run("unsigned RegisterSigningKey rejected when keys exist", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		existingPubKey, _ := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("existing", existingPubKey, "")
@@ -1074,7 +1058,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 	t.Run("unsigned RevokeSigningKey rejected when keys exist", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		pubKey, _ := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
@@ -1096,7 +1080,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 	t.Run("unsigned SetSigningConfig rejected when keys exist", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		pubKey, _ := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
@@ -1118,7 +1102,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 	t.Run("signed RegisterSigningKey works when keys exist", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		existingPubKey, existingPrivKey := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("existing", existingPubKey, "")
@@ -1146,7 +1130,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 	t.Run("unsigned regular request allowed when requireSignatures is false", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		requests := []*servicepb.Request{
 			{
@@ -1166,7 +1150,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 	t.Run("unsigned regular request rejected when requireSignatures is true", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		adm.sharedState.SetRequireSignatures(true)
 
@@ -1187,7 +1171,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 	t.Run("signed regular request works regardless of requireSignatures", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		pubKey, privKey := generateTestKeyPair(t)
 		adm.keyStore.AddPublicKey("my-key", pubKey, "")
@@ -1213,7 +1197,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 	t.Run("unknown key ID rejected", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		_, privKey := generateTestKeyPair(t)
 
@@ -1235,7 +1219,7 @@ func TestVerifyAndResolveSignatures(t *testing.T) {
 	t.Run("invalid signature rejected", func(t *testing.T) {
 		t.Parallel()
 		store := createTestStore(t)
-		adm := createTestAdmission(t, store)
+		adm, _ := createTestAdmission(t, store)
 
 		pubKey, _ := generateTestKeyPair(t)
 		_, otherPrivKey := generateTestKeyPair(t)

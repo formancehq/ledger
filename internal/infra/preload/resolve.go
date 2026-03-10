@@ -226,3 +226,14 @@ func buildMetadataPreload(id *raftcmdpb.AttributeID, value *commonpb.MetadataVal
 		},
 	}
 }
+
+func buildTransactionStatePreload(id *raftcmdpb.AttributeID, value *commonpb.TransactionState) *raftcmdpb.Preload {
+	return &raftcmdpb.Preload{
+		Type: &raftcmdpb.Preload_TransactionState{
+			TransactionState: &raftcmdpb.PreloadTransactionState{
+				Id:    id,
+				State: value,
+			},
+		},
+	}
+}

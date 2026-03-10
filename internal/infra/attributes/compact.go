@@ -96,6 +96,7 @@ func CompactAllForBackup(s *dal.Store) error {
 		dal.AttributePrefixReference:   newCompactor(attrs.References, batch, 0),
 		dal.AttributePrefixLedger:      newCompactor(attrs.Ledger, batch, 0),
 		dal.AttributePrefixBoundary:    newCompactor(attrs.Boundary, batch, 0),
+		dal.AttributePrefixTransaction: newCompactor(attrs.Transaction, batch, 0),
 	}
 
 	// Single scan over the entire attribute range

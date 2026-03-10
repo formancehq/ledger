@@ -235,16 +235,26 @@ func TestProcessDeleteMetadata_Transaction(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 10, NextLogId: 5}
 
+	txKey := domain.TransactionKey{Ledger: "test-ledger", ID: 3}
+	existingState := &commonpb.TransactionState{
+		CreatedByLog: 1,
+		Metadata: &commonpb.MetadataSet{
+			Metadata: []*commonpb.Metadata{
+				{Key: "category", Value: commonpb.NewStringValue("expense")},
+				{Key: "status", Value: commonpb.NewStringValue("active")},
+			},
+		},
+	}
+
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false).AnyTimes()
-	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 3}, gomock.Any()).Do(
-		func(_ domain.TransactionKey, update *commonpb.TransactionUpdate) {
-			require.Equal(t, uint64(50), update.GetByLog())
-			require.Len(t, update.GetUpdates(), 1)
-			delMeta := update.GetUpdates()[0].GetTransactionModificationDeleteMetadata()
-			require.NotNil(t, delMeta)
-			require.Equal(t, "category", delMeta.GetKey())
+	mockStore.EXPECT().GetTransactionState(txKey).Return(existingState, nil)
+	mockStore.EXPECT().PutTransactionState(txKey, gomock.Any()).Do(
+		func(_ domain.TransactionKey, state *commonpb.TransactionState) {
+			// "category" should be removed, only "status" remains
+			require.NotNil(t, state.GetMetadata())
+			require.Len(t, state.GetMetadata().GetMetadata(), 1)
+			require.Equal(t, "status", state.GetMetadata().GetMetadata()[0].GetKey())
 		},
 	)
 	mockStore.EXPECT().GetDate().Return(now)

@@ -66,7 +66,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -196,7 +196,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	mockStore.EXPECT().GetVolume(destKey).Return(destVolume, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -290,7 +290,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -351,7 +351,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -419,7 +419,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -488,7 +488,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	// Bank starts with 0 balance but can go negative with unbounded overdraft
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -589,7 +589,7 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -639,7 +639,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
 	// Test allotment to multiple destinations
 	request := &servicepb.Request{
@@ -706,7 +706,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
 	// Test set_tx_meta
 	request := &servicepb.Request{
@@ -768,7 +768,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
 	// Expect account metadata to be set (called from numscript adapter + re-pushed after enforceSchema)
 	mockStore.EXPECT().PutAccountMetadata(
@@ -883,7 +883,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -965,7 +965,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 		},
 	)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -1016,7 +1016,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	// when force=true (store adapter returns unlimited balance)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -1190,7 +1190,7 @@ func TestProcessCreateTransaction_PeriodIdInCreatedTransaction(t *testing.T) {
 	mockStore.EXPECT().GetVolume(destKey).Return(zeroVol, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(10))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(&commonpb.Period{Id: 5, Status: commonpb.PeriodStatus_PERIOD_OPEN}, true)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
@@ -1263,7 +1263,7 @@ func TestProcessCreateTransaction_PeriodIdZeroWhenNoPeriod(t *testing.T) {
 	mockStore.EXPECT().GetVolume(destKey).Return(zeroVol, nil)
 	mockStore.EXPECT().PutVolume(destKey, gomock.Any())
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(10))
-	mockStore.EXPECT().AddTransactionUpdate(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
+	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 	mockStore.EXPECT().GetDate().Return(now).Times(4)
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(nil, false)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())

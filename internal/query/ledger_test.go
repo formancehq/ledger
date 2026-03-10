@@ -89,15 +89,9 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	metadataKey := domain.MetadataKey{AccountKey: domain.AccountKey{Ledger: ledgerName, Account: "bank"}, Key: "key"}
 	metadataCanonicalKey := metadataKey.Bytes()
 	require.NoError(t, attrs.Metadata.Set(batch, 1, metadataCanonicalKey, commonpb.NewStringValue("value")))
-	require.NoError(t, state.StoreTransactionUpdate(batch, domain.TransactionKey{Ledger: ledgerName, ID: 1}, &commonpb.TransactionUpdate{
-		ByLog: 1,
-		Updates: []*commonpb.TransactionUpdateType{
-			{
-				TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-					TransactionInit: &commonpb.TransactionInit{},
-				},
-			},
-		},
+	txKey := domain.TransactionKey{Ledger: ledgerName, ID: 1}
+	require.NoError(t, attrs.Transaction.Set(batch, 1, txKey.Bytes(), &commonpb.TransactionState{
+		CreatedByLog: 1,
 	}))
 	require.NoError(t, batch.Commit())
 

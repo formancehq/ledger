@@ -352,14 +352,15 @@ func (it *PebbleReverseAccountIterator) extractAddress(key []byte) []byte {
 }
 
 // PebbleTxIterator iterates over unique transaction IDs stored in the Pebble
-// cold zone. Keys have the format:
+// attributes zone. Keys have the format:
 //
-//	[0x03][ledger\x00][txID(8B)][byLog(8B)]
+//	[0xF1][ledger\x00\x02][txID(8B)]['T'][raftIndex(8B)]
 //
-// The iterator deduplicates by txID, emitting each transaction at most once.
+// The iterator deduplicates by txID, emitting each transaction at most once
+// (there may be multiple raft index entries per transaction).
 type PebbleTxIterator struct {
 	iter     *pebble.Iterator
-	prefix   []byte // [0x03][ledger\x00]
+	prefix   []byte // [0xF1][ledger\x00\x02]
 	idOffset int    // offset where txID starts (= len(prefix))
 
 	current   []byte
@@ -369,11 +370,7 @@ type PebbleTxIterator struct {
 
 // NewPebbleTxIterator creates an iterator over all transactions in a ledger.
 func NewPebbleTxIterator(reader dal.PebbleReader, ledger string) (*PebbleTxIterator, error) {
-	prefix := make([]byte, 1+len(ledger)+1)
-	prefix[0] = dal.KeyPrefixTransactionUpdate
-	copy(prefix[1:], ledger)
-	prefix[1+len(ledger)] = 0x00
-
+	prefix := txAttributePrefix(ledger)
 	upperBound := IncrementBytes(prefix)
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -501,11 +498,7 @@ type PebbleReverseTxIterator struct {
 
 // NewPebbleReverseTxIterator creates a reverse transaction iterator.
 func NewPebbleReverseTxIterator(reader dal.PebbleReader, ledger string) (*PebbleReverseTxIterator, error) {
-	prefix := make([]byte, 1+len(ledger)+1)
-	prefix[0] = dal.KeyPrefixTransactionUpdate
-	copy(prefix[1:], ledger)
-	prefix[1+len(ledger)] = 0x00
-
+	prefix := txAttributePrefix(ledger)
 	upperBound := IncrementBytes(prefix)
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -676,10 +669,7 @@ type PebbleTxRangeIterator struct {
 
 // NewPebbleTxRangeIterator creates a bounded transaction iterator for range queries.
 func NewPebbleTxRangeIterator(reader dal.PebbleReader, ledger string, lower, upper []byte) (*PebbleTxRangeIterator, error) {
-	prefix := make([]byte, 1+len(ledger)+1)
-	prefix[0] = dal.KeyPrefixTransactionUpdate
-	copy(prefix[1:], ledger)
-	prefix[1+len(ledger)] = 0x00
+	prefix := txAttributePrefix(ledger)
 
 	lowerBound := make([]byte, len(prefix)+len(lower))
 	copy(lowerBound, prefix)
@@ -814,6 +804,20 @@ func (it *PebbleTxRangeIterator) extractTxID(key []byte) []byte {
 	return key[it.idOffset : it.idOffset+8]
 }
 
+// --- transaction prefix helper ---
+
+// txAttributePrefix builds the Pebble key prefix for scanning transactions
+// in a ledger within the attributes zone.
+// Format: [0xF1][ledger\x00\x02]
+func txAttributePrefix(ledger string) []byte {
+	prefix := make([]byte, 1+len(ledger)+1+1)
+	prefix[0] = dal.KeyPrefixAttributes
+	copy(prefix[1:], ledger)
+	prefix[1+len(ledger)] = 0x00
+	prefix[1+len(ledger)+1] = dal.CanonicalKeySepTransaction
+	return prefix
+}
+
 // --- account address extraction ---
 
 // extractAccountAddress extracts the account address from an attribute key.
@@ -825,6 +829,12 @@ func extractAccountAddress(key, prefix []byte) []byte {
 	}
 
 	suffix := key[len(prefix):]
+
+	// Skip transaction keys: they start with CanonicalKeySepTransaction (0x02)
+	// after the ledger prefix.
+	if len(suffix) > 0 && suffix[0] == dal.CanonicalKeySepTransaction {
+		return nil
+	}
 
 	// Find the first canonical key separator (0x00 for volume, 0x01 for metadata).
 	idx0 := bytes.IndexByte(suffix, dal.CanonicalKeySepVolume)

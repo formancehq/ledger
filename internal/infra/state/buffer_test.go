@@ -141,23 +141,20 @@ func TestBufferedGetPutTransactionReference(t *testing.T) {
 	require.Equal(t, uint64(100), val.GetTransactionId())
 }
 
-func TestBufferedAddTransactionUpdate(t *testing.T) {
+func TestBufferedTransactionState(t *testing.T) {
 	t.Parallel()
 	buf, _ := newTestBuffer(t)
 
 	key := domain.TransactionKey{Ledger: "test", ID: 1}
-	update := &commonpb.TransactionUpdate{
-		ByLog: 5,
-		Updates: []*commonpb.TransactionUpdateType{
-			{TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-				TransactionInit: &commonpb.TransactionInit{},
-			}},
-		},
+	state := &commonpb.TransactionState{
+		CreatedByLog: 5,
 	}
 
-	buf.AddTransactionUpdate(key, update)
-	require.Len(t, buf.TransactionsUpdates[key], 1)
-	require.Equal(t, uint64(5), buf.TransactionsUpdates[key][0].GetByLog())
+	buf.PutTransactionState(key, state)
+	got, err := buf.GetTransactionState(key)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, uint64(5), got.GetCreatedByLog())
 }
 
 func TestBufferedSigningKeyOperations(t *testing.T) {

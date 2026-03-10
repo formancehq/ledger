@@ -6,13 +6,12 @@ import (
 
 	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/go-libs/v3/logging"
 	libtime "github.com/formancehq/go-libs/v3/time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
@@ -222,55 +221,6 @@ func TestClearSinkStatus(t *testing.T) {
 	require.ErrorIs(t, err, pebble.ErrNotFound)
 }
 
-func TestPurgeTransactionUpdates(t *testing.T) {
-	t.Parallel()
-
-	ctx := logging.TestingContext()
-	logger := logging.FromContext(ctx)
-	meter := noop.NewMeterProvider().Meter("test")
-
-	s, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = s.Close() })
-
-	// Store transaction updates with different byLog values
-	batch := s.NewBatch()
-
-	for _, seq := range []uint64{5, 10, 15, 20, 25} {
-		key := domain.TransactionKey{Ledger: "test", ID: 1}
-		update := &commonpb.TransactionUpdate{
-			ByLog: seq,
-			Updates: []*commonpb.TransactionUpdateType{
-				{
-					TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-						TransactionInit: &commonpb.TransactionInit{},
-					},
-				},
-			},
-		}
-		require.NoError(t, StoreTransactionUpdate(batch, key, update))
-	}
-
-	require.NoError(t, batch.Commit())
-
-	// Verify all 5 updates exist
-	updates, err := query.ReadTransactionUpdates(context.Background(), s, "test", 1)
-	require.NoError(t, err)
-	require.Len(t, updates, 5)
-
-	// Purge updates with byLog in [10, 20]
-	batch = s.NewBatch()
-	require.NoError(t, PurgeTransactionUpdates(batch, 10, 20))
-	require.NoError(t, batch.Commit())
-
-	// Verify only updates with byLog 5 and 25 remain
-	updates, err = query.ReadTransactionUpdates(context.Background(), s, "test", 1)
-	require.NoError(t, err)
-	require.Len(t, updates, 2)
-	require.Equal(t, uint64(5), updates[0].GetByLog())
-	require.Equal(t, uint64(25), updates[1].GetByLog())
-}
-
 func TestAppendAuditEntries(t *testing.T) {
 	t.Parallel()
 
@@ -321,86 +271,56 @@ func TestSetAppliedIndexAndTimestamp(t *testing.T) {
 	require.Equal(t, uint64(1700000000), ts)
 }
 
-func TestReadTransactionUpdates(t *testing.T) {
+func TestReadTransactionState(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
+	txAttr := attributes.NewTransactionAttribute()
 
-	// Store updates for two different transactions
+	// Store state for two different transactions
 	batch := s.NewBatch()
-	require.NoError(t, StoreTransactionUpdate(batch,
-		domain.TransactionKey{Ledger: "test", ID: 100},
-		&commonpb.TransactionUpdate{
-			ByLog: 1,
-			Updates: []*commonpb.TransactionUpdateType{
-				{TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-					TransactionInit: &commonpb.TransactionInit{},
-				}},
-			},
-		},
+	require.NoError(t, txAttr.Set(batch, 1,
+		domain.TransactionKey{Ledger: "test", ID: 100}.Bytes(),
+		&commonpb.TransactionState{CreatedByLog: 1},
 	))
-	require.NoError(t, StoreTransactionUpdate(batch,
-		domain.TransactionKey{Ledger: "test", ID: 100},
-		&commonpb.TransactionUpdate{
-			ByLog: 5,
-			Updates: []*commonpb.TransactionUpdateType{
-				{TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionModificationAddMetadata{
-					TransactionModificationAddMetadata: &commonpb.TransactionUpdateAddMetadata{},
-				}},
-			},
-		},
-	))
-	require.NoError(t, StoreTransactionUpdate(batch,
-		domain.TransactionKey{Ledger: "test", ID: 200},
-		&commonpb.TransactionUpdate{
-			ByLog: 2,
-			Updates: []*commonpb.TransactionUpdateType{
-				{TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-					TransactionInit: &commonpb.TransactionInit{},
-				}},
-			},
-		},
+	require.NoError(t, txAttr.Set(batch, 2,
+		domain.TransactionKey{Ledger: "test", ID: 200}.Bytes(),
+		&commonpb.TransactionState{CreatedByLog: 2},
 	))
 	require.NoError(t, batch.Commit())
 
-	// Read updates for transaction 100
-	updates, err := query.ReadTransactionUpdates(context.Background(), s, "test", 100)
+	// Read state for transaction 100
+	state, err := query.ReadTransactionState(context.Background(), s, txAttr, "test", 100)
 	require.NoError(t, err)
-	require.Len(t, updates, 2)
-	require.Equal(t, uint64(1), updates[0].GetByLog())
-	require.Equal(t, uint64(5), updates[1].GetByLog())
+	require.NotNil(t, state)
+	require.Equal(t, uint64(1), state.GetCreatedByLog())
 
-	// Read updates for transaction 200
-	updates, err = query.ReadTransactionUpdates(context.Background(), s, "test", 200)
+	// Read state for transaction 200
+	state, err = query.ReadTransactionState(context.Background(), s, txAttr, "test", 200)
 	require.NoError(t, err)
-	require.Len(t, updates, 1)
+	require.NotNil(t, state)
+	require.Equal(t, uint64(2), state.GetCreatedByLog())
 
-	// Read updates for non-existent transaction
-	updates, err = query.ReadTransactionUpdates(context.Background(), s, "test", 999)
+	// Read state for non-existent transaction
+	state, err = query.ReadTransactionState(context.Background(), s, txAttr, "test", 999)
 	require.NoError(t, err)
-	require.Empty(t, updates)
+	require.Nil(t, state)
 }
 
 func TestFindTransactionCreationLog(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
+	txAttr := attributes.NewTransactionAttribute()
 
 	// Register a ledger
 	registerLedger(t, s, "find-tx-ledger")
 
-	// Store a transaction update with TransactionInit
+	// Store a transaction state via the attribute system
 	batch := s.NewBatch()
-	require.NoError(t, StoreTransactionUpdate(batch,
-		domain.TransactionKey{Ledger: "find-tx-ledger", ID: 1},
-		&commonpb.TransactionUpdate{
-			ByLog: 5,
-			Updates: []*commonpb.TransactionUpdateType{
-				{TransactionModificationTypePayload: &commonpb.TransactionUpdateType_TransactionInit{
-					TransactionInit: &commonpb.TransactionInit{},
-				}},
-			},
-		},
+	require.NoError(t, txAttr.Set(batch, 1,
+		domain.TransactionKey{Ledger: "find-tx-ledger", ID: 1}.Bytes(),
+		&commonpb.TransactionState{CreatedByLog: 5},
 	))
 	require.NoError(t, batch.Commit())
 
@@ -416,17 +336,17 @@ func TestFindTransactionCreationLog(t *testing.T) {
 	appendLogs(t, s, 1, logs...)
 
 	// Find the creation log
-	log, err := query.FindTransactionCreationLog(context.Background(), s, "find-tx-ledger", 1)
+	log, err := query.FindTransactionCreationLog(context.Background(), s, txAttr, "find-tx-ledger", 1)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	require.Equal(t, uint64(5), log.GetSequence())
 
 	// Non-existent transaction should return ErrNotFound
-	_, err = query.FindTransactionCreationLog(context.Background(), s, "find-tx-ledger", 999)
+	_, err = query.FindTransactionCreationLog(context.Background(), s, txAttr, "find-tx-ledger", 999)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Non-existent ledger should return error
-	_, err = query.FindTransactionCreationLog(context.Background(), s, "non-existent", 1)
+	_, err = query.FindTransactionCreationLog(context.Background(), s, txAttr, "non-existent", 1)
 	require.Error(t, err)
 }
 

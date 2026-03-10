@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/cockroachdb/pebble"
-
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
@@ -53,23 +51,6 @@ func SaveLedger(b *dal.Batch, info *commonpb.LedgerInfo) error {
 	err := b.SetProto(b.KeyBuilder.Build(), info)
 	if err != nil {
 		return fmt.Errorf("inserting ledger info: %w", err)
-	}
-
-	return nil
-}
-
-// StoreTransactionUpdate stores a transaction update (init, revert, add/delete metadata).
-// Key: [KeyPrefixTransactionUpdate][name]\x00[transactionID(8)][byLog(8)] -> TransactionUpdate.
-func StoreTransactionUpdate(b *dal.Batch, key domain.TransactionKey, update *commonpb.TransactionUpdate) error {
-	b.KeyBuilder.
-		PutByte(dal.KeyPrefixTransactionUpdate).
-		PutLedgerName(key.Ledger).
-		PutUint64(key.ID).
-		PutUint64(update.GetByLog())
-
-	err := b.SetProto(b.KeyBuilder.Build(), update)
-	if err != nil {
-		return fmt.Errorf("storing transaction update: %w", err)
 	}
 
 	return nil
@@ -411,41 +392,6 @@ func SetLastAppliedTimestamp(b *dal.Batch, timestamp uint64) error {
 	binary.BigEndian.PutUint64(value, timestamp)
 
 	return b.SetBytes([]byte{dal.KeyPrefixLastAppliedTimestamp}, value)
-}
-
-// PurgeTransactionUpdates deletes all transaction update entries whose byLog
-// field falls in [startSeq, closeSeq]. The key format is
-// [prefix(1)][name]\x00[txID(8)][byLog(8)], so byLog is the last 8 bytes.
-func PurgeTransactionUpdates(b *dal.Batch, startSeq, closeSeq uint64) error {
-	iter, err := b.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{dal.KeyPrefixTransactionUpdate},
-		UpperBound: []byte{dal.KeyPrefixTransactionUpdate + 1},
-	})
-	if err != nil {
-		return fmt.Errorf("creating iterator for transaction update purge: %w", err)
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		key := iter.Key()
-		// Key must be at least prefix(1) + \x00(1) + txID(8) + byLog(8) = 18 bytes
-		if len(key) < 18 {
-			continue
-		}
-
-		byLog := binary.BigEndian.Uint64(key[len(key)-8:])
-		if byLog < startSeq || byLog > closeSeq {
-			continue
-		}
-
-		err := b.DeleteKey(key)
-		if err != nil {
-			return fmt.Errorf("deleting transaction update: %w", err)
-		}
-	}
-
-	return iter.Error()
 }
 
 // SaveNumscript stores a versioned numscript entry and updates the latest version pointer.

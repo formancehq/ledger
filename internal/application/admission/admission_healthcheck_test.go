@@ -23,7 +23,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		mockChecker.EXPECT().IsHealthy().Return(false)
 
 		store := createTestStore(t)
-		a := createTestAdmission(t, store)
+		a, _ := createTestAdmission(t, store)
 		a.healthChecker = mockChecker
 
 		_, err := a.Admit(context.Background(), &servicepb.Request{
@@ -45,7 +45,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		mockChecker.EXPECT().IsHealthy().Return(false)
 
 		store := createTestStore(t)
-		a := createTestAdmission(t, store)
+		a, _ := createTestAdmission(t, store)
 		a.healthChecker = mockChecker
 
 		_, err := a.Admit(context.Background(),
@@ -88,7 +88,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		mockChecker.EXPECT().IsHealthy().Return(false)
 
 		store := createTestStore(t)
-		a := createTestAdmission(t, store)
+		a, _ := createTestAdmission(t, store)
 		a.healthChecker = mockChecker
 
 		_, err := a.Admit(context.Background(), &servicepb.Request{

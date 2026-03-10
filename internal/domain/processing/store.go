@@ -40,8 +40,9 @@ type InMemoryStore interface {
 	GetTransactionReference(key domain.TransactionReferenceKey) (*commonpb.TransactionReferenceValue, error)
 	PutTransactionReference(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue)
 
-	// Transaction updates
-	AddTransactionUpdate(key domain.TransactionKey, update *commonpb.TransactionUpdate)
+	// Transaction state operations
+	GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error)
+	PutTransactionState(key domain.TransactionKey, state *commonpb.TransactionState)
 
 	// Signing key operations
 	AddSigningKey(keyID string, publicKey []byte, parentKeyID string)

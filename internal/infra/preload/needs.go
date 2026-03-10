@@ -16,6 +16,7 @@ type Needs struct {
 	IdempotencyKeys map[domain.IdempotencyKey]struct{}
 	References      map[domain.TransactionReferenceKey]struct{}
 	Metadata        map[domain.MetadataKey]struct{}
+	Transactions    map[domain.TransactionKey]struct{}
 
 	// Custom loaders — value is the load function. Nil map = skip.
 	SinkConfigs       map[domain.SinkConfigKey]func() (*commonpb.SinkConfig, error)
@@ -32,5 +33,6 @@ func NewNeeds() *Needs {
 		IdempotencyKeys: make(map[domain.IdempotencyKey]struct{}),
 		References:      make(map[domain.TransactionReferenceKey]struct{}),
 		Metadata:        make(map[domain.MetadataKey]struct{}),
+		Transactions:    make(map[domain.TransactionKey]struct{}),
 	}
 }

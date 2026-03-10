@@ -25,7 +25,6 @@ type compactPrefix struct {
 var coldPrefixes = []compactPrefix{
 	{"logs", KeyPrefixLog, KeyPrefixLog + 1},
 	{"audit", KeyPrefixAudit, KeyPrefixAudit + 1},
-	{"tx-updates", KeyPrefixTransactionUpdate, KeyPrefixTransactionUpdate + 1},
 }
 
 // allCompactPrefixes returns all prefix ranges for a full compaction (cold + system + attributes).
