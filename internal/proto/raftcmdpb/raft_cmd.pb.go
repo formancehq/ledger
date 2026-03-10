@@ -5936,12 +5936,8 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x12\x16\n" +
 	"\x06ledger\x18\x04 \x01(\tR\x06ledger\"B\n" +
 	"\x14DeleteNumscriptOrder\x12\x12\n" +
-<<<<<<< HEAD
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x90\x04\n" +
-=======
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
-	"\x06ledger\x18\x02 \x01(\tR\x06ledger\"\xea\x02\n" +
->>>>>>> aa2002db (feat: make numscripts per-ledger and add ledgerctl ledgers catalog command)
+	"\x06ledger\x18\x02 \x01(\tR\x06ledger\"\x90\x04\n" +
 	"\x11CreateLedgerOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12J\n" +
 	"\x0einitial_schema\x18\x02 \x03(\v2#.common.SetMetadataFieldTypeCommandR\rinitialSchema\x12&\n" +
