@@ -4,14 +4,28 @@ config:
   # Optional components
   ledger-monitoring:pyroscope-enabled: "true"
   ledger-monitoring:grafana:
-    file: values/staging/grafana.yaml
+    file: values/acme/grafana.yaml
   ledger-monitoring:loki:
-    file: values/staging/loki.yaml
+    file: values/acme/loki.yaml
   ledger-monitoring:otlp:
-    file: values/staging/otlp.yaml
+    file: values/acme/otlp.yaml
   ledger-monitoring:tempo:
-    file: values/staging/tempo.yaml
+    file: values/acme/tempo.yaml
   ledger-monitoring:victoriametrics:
-    file: values/staging/victoriametrics.yaml
+    file: values/acme/victoriametrics.yaml
   ledger-monitoring:pyroscope:
-    file: values/staging/pyroscope.yaml
+    file: values/acme/pyroscope.yaml
+  ledger-monitoring:grafana-dnsEndpoint:
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+    endpoints:
+      - dnsName: grafana-ledger-v3.dev.acme.frmnc.net
+        recordType: CNAME
+        targets:
+          - rp-01-eks-euw1-01.dev.acme.frmnc.net
+        recordTTL: 300
+        providerSpecific:
+          - name: alias
+            value: "true"
+          - name: aws/target-hosted-zone
+            value: "same-zone"

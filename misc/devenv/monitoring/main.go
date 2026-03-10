@@ -6,6 +6,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/deployments/devenv/shared"
 	v1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
+	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apiextensions"
 	"github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v3"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -240,6 +241,41 @@ func main() {
 		)
 		if err != nil {
 			return fmt.Errorf("failed to deploy Grafana: %w", err)
+		}
+
+		// Grafana DNSEndpoint (optional, for ExternalDNS)
+		var grafanaDNSEndpointConfig map[string]any
+		if err := cfg.GetObject("grafana-dnsEndpoint", &grafanaDNSEndpointConfig); err == nil && grafanaDNSEndpointConfig != nil {
+			endpoints, _ := grafanaDNSEndpointConfig["endpoints"].([]any)
+
+			var dnsAnnotations map[string]string
+			if raw, ok := grafanaDNSEndpointConfig["annotations"].(map[string]any); ok {
+				dnsAnnotations = make(map[string]string, len(raw))
+				for k, v := range raw {
+					dnsAnnotations[k] = fmt.Sprintf("%v", v)
+				}
+			}
+
+			_, err = apiextensions.NewCustomResource(ctx, "grafana-dnsendpoint", &apiextensions.CustomResourceArgs{
+				ApiVersion: pulumi.String("externaldns.k8s.io/v1alpha1"),
+				Kind:       pulumi.String("DNSEndpoint"),
+				Metadata: &metav1.ObjectMetaArgs{
+					Name:        pulumi.String("grafana"),
+					Namespace:   namespace.Metadata.Name(),
+					Annotations: pulumi.ToStringMap(dnsAnnotations),
+				},
+				OtherFields: map[string]any{
+					"spec": map[string]any{
+						"endpoints": endpoints,
+					},
+				},
+			},
+				pulumi.DependsOn([]pulumi.Resource{grafana}),
+				pulumi.Provider(k8sProvider),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to create Grafana DNSEndpoint: %w", err)
+			}
 		}
 
 		// Exports
