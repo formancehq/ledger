@@ -172,7 +172,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, result)
 
-		var parseErr *ErrNumscriptParse
+		var parseErr *domain.ErrNumscriptParse
 		require.ErrorAs(t, err, &parseErr)
 	})
 

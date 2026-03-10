@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 )
 
 func TestNewNumscriptCache_DefaultSize(t *testing.T) {
@@ -90,7 +92,7 @@ func TestNumscriptCache_GetOrParse_ParseError(t *testing.T) {
 	_, err := c.GetOrParse(script)
 	require.Error(t, err)
 
-	var parseErr *ErrNumscriptParse
+	var parseErr *domain.ErrNumscriptParse
 	require.ErrorAs(t, err, &parseErr)
 	require.NotEmpty(t, parseErr.Details)
 }

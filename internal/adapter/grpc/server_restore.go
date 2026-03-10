@@ -20,6 +20,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/check"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/tarutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -27,16 +28,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-const (
-	restoreStagingDir  = "restore-staging"
-	restoredMarkerFile = "RESTORED"
-)
-
-// RestoredMarker is the JSON structure written to the RESTORED marker file.
-type RestoredMarker struct {
-	LastAppliedIndex     uint64 `json:"lastAppliedIndex"`
-	LastAppliedTimestamp uint64 `json:"lastAppliedTimestamp"`
-}
+const restoreStagingDir = "restore-staging"
 
 // RestoreServiceServerImpl implements the RestoreService gRPC server.
 type RestoreServiceServerImpl struct {
@@ -341,7 +333,7 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	}
 
 	// Write RESTORED marker
-	marker := RestoredMarker{
+	marker := node.RestoredMarker{
 		LastAppliedIndex:     lastAppliedIndex,
 		LastAppliedTimestamp: lastAppliedTimestamp,
 	}
@@ -351,7 +343,7 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 		return nil, fmt.Errorf("marshaling restored marker: %w", err)
 	}
 
-	markerPath := filepath.Join(s.dataDir, restoredMarkerFile)
+	markerPath := filepath.Join(s.dataDir, "RESTORED")
 	if err := os.WriteFile(markerPath, markerData, 0644); err != nil {
 		return nil, fmt.Errorf("writing restored marker: %w", err)
 	}

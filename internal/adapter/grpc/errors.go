@@ -10,7 +10,6 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 )
 
 const errorDomain = "ledger"
@@ -36,8 +35,8 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		transactionAlreadyReverted    *domain.ErrTransactionAlreadyReverted
 		insufficientFunds             *domain.ErrInsufficientFunds
 		balanceNotFound               *domain.ErrBalanceNotFound
-		balanceNotPreloaded           *numscript.ErrBalanceNotPreloaded
-		numscriptParse                *numscript.ErrNumscriptParse
+		balanceNotPreloaded           *domain.ErrBalanceNotPreloaded
+		numscriptParse                *domain.ErrNumscriptParse
 		numscriptNotFound             *domain.ErrNumscriptNotFound
 		numscriptVersionAlreadyExists *domain.ErrNumscriptVersionAlreadyExists
 		numscriptInvalidVersion       *domain.ErrNumscriptInvalidVersion
@@ -215,7 +214,7 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 
 	case errors.Is(inner, domain.ErrTargetRequired),
 		errors.Is(inner, domain.ErrMetadataKeyRequired),
-		errors.Is(inner, numscript.ErrScriptRequired),
+		errors.Is(inner, domain.ErrScriptRequired),
 		errors.Is(inner, admission.ErrIdempotencyKeyTooLong),
 		errors.Is(inner, domain.ErrNumscriptNameRequired),
 		errors.Is(inner, domain.ErrNumscriptContentRequired),

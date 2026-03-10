@@ -4,12 +4,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 )
 
 func TestErrNumscriptParse_Error(t *testing.T) {
 	t.Parallel()
 
-	err := &ErrNumscriptParse{Details: "unexpected token"}
+	err := &domain.ErrNumscriptParse{Details: "unexpected token"}
 	require.Contains(t, err.Error(), "numscript parse error")
 	require.Contains(t, err.Error(), "unexpected token")
 }
@@ -25,7 +27,7 @@ func TestErrNonDeterministicScript_Error(t *testing.T) {
 func TestErrBalanceNotPreloaded_Error(t *testing.T) {
 	t.Parallel()
 
-	err := &ErrBalanceNotPreloaded{Account: "users:alice", Asset: "USD/2"}
+	err := &domain.ErrBalanceNotPreloaded{Account: "users:alice", Asset: "USD/2"}
 	require.Contains(t, err.Error(), "balance not preloaded")
 	require.Contains(t, err.Error(), "users:alice")
 	require.Contains(t, err.Error(), "USD/2")

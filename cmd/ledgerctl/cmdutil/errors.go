@@ -12,7 +12,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 )
 
 // CLIError wraps an error that has already been displayed to the user.
@@ -199,13 +198,13 @@ func reconstructError(reason string, metadata map[string]string, message string)
 		}
 
 	case domain.ErrReasonBalanceNotPreloaded:
-		return &numscript.ErrBalanceNotPreloaded{
+		return &domain.ErrBalanceNotPreloaded{
 			Account: metadata["account"],
 			Asset:   metadata["asset"],
 		}
 
 	case domain.ErrReasonNumscriptParseError:
-		return &numscript.ErrNumscriptParse{Details: metadata["details"]}
+		return &domain.ErrNumscriptParse{Details: metadata["details"]}
 
 	case domain.ErrReasonValidation:
 		return fmt.Errorf("%s", message)

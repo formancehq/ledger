@@ -24,7 +24,7 @@ type numscriptPostingProducer struct {
 
 func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order *raftcmdpb.CreateTransactionOrder) (*produceResult, error) {
 	if order.GetScript() == nil || order.GetScript().GetPlain() == "" {
-		return nil, numscript.ErrScriptRequired
+		return nil, domain.ErrScriptRequired
 	}
 
 	// Parse the script (uses cache to avoid re-parsing)
@@ -231,7 +231,7 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptli
 			}
 
 			if vol.GetInput() == nil || vol.GetOutput() == nil {
-				return nil, &numscript.ErrBalanceNotPreloaded{Account: account, Asset: asset}
+				return nil, &domain.ErrBalanceNotPreloaded{Account: account, Asset: asset}
 			}
 
 			// Calculate balance: Input - Output using uint256, then convert to *big.Int at boundary

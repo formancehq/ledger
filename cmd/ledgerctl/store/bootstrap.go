@@ -19,10 +19,10 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
-	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/application/check"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/tarutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
@@ -163,7 +163,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Write RESTORED marker.
-	marker := grpcadp.RestoredMarker{
+	marker := node.RestoredMarker{
 		LastAppliedIndex:     lastAppliedIndex,
 		LastAppliedTimestamp: lastAppliedTimestamp,
 	}

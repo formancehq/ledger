@@ -9,6 +9,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	numscriptlib "github.com/formancehq/numscript"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 )
 
 // NumscriptCache stores parsed Numscript programs keyed by their content hash.
@@ -91,7 +93,7 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, er
 	// Check for parsing errors
 	var parseErr error
 	if errs := parsed.GetParsingErrors(); len(errs) > 0 {
-		parseErr = &ErrNumscriptParse{
+		parseErr = &domain.ErrNumscriptParse{
 			Details: numscriptlib.ParseErrorsToString(errs, parsed.GetSource()),
 		}
 	}

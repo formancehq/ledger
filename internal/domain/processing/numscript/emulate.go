@@ -105,7 +105,7 @@ func (s *discoveryStore) GetAccountsMetadata(_ context.Context, query numscriptl
 func DiscoverNumscriptDependencies(script string, vars map[string]string, ledger string) (*DiscoveryResult, error) {
 	parsed := numscriptlib.Parse(script)
 	if errs := parsed.GetParsingErrors(); len(errs) > 0 {
-		return nil, &ErrNumscriptParse{
+		return nil, &domain.ErrNumscriptParse{
 			Details: numscriptlib.ParseErrorsToString(errs, parsed.GetSource()),
 		}
 	}

@@ -13,7 +13,6 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/keystore"
@@ -369,7 +368,7 @@ func TestBuildAuditFailure(t *testing.T) {
 	t.Run("Validation", func(t *testing.T) {
 		t.Parallel()
 
-		err := numscript.ErrScriptRequired
+		err := domain.ErrScriptRequired
 		failure := buildAuditFailure(err)
 		require.Equal(t, domain.ErrReasonValidation, failure.GetErrorType())
 	})

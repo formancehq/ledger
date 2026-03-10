@@ -11,7 +11,6 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
@@ -141,7 +140,7 @@ func TestBusinessErrorToGRPCStatus_BalanceNotFound(t *testing.T) {
 func TestBusinessErrorToGRPCStatus_BalanceNotPreloaded(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &domain.BusinessError{Err: &numscript.ErrBalanceNotPreloaded{
+	bizErr := &domain.BusinessError{Err: &domain.ErrBalanceNotPreloaded{
 		Account: "user:003",
 		Asset:   "BTC",
 	}}
@@ -158,7 +157,7 @@ func TestBusinessErrorToGRPCStatus_BalanceNotPreloaded(t *testing.T) {
 func TestBusinessErrorToGRPCStatus_NumscriptParseError(t *testing.T) {
 	t.Parallel()
 
-	bizErr := &domain.BusinessError{Err: &numscript.ErrNumscriptParse{Details: "unexpected token at line 3"}}
+	bizErr := &domain.BusinessError{Err: &domain.ErrNumscriptParse{Details: "unexpected token at line 3"}}
 	st := businessErrorToGRPCStatus(bizErr)
 
 	require.Equal(t, codes.InvalidArgument, st.Code())
@@ -177,7 +176,7 @@ func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
 	}{
 		{"target required", domain.ErrTargetRequired},
 		{"metadata key required", domain.ErrMetadataKeyRequired},
-		{"script required", numscript.ErrScriptRequired},
+		{"script required", domain.ErrScriptRequired},
 	}
 
 	for _, tt := range tests {

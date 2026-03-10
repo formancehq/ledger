@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
@@ -86,7 +85,7 @@ func TestHandleError(t *testing.T) {
 		},
 		{
 			name:           "numscript parse error",
-			err:            &numscript.ErrNumscriptParse{Details: "syntax error"},
+			err:            &domain.ErrNumscriptParse{Details: "syntax error"},
 			expectedStatus: http.StatusBadRequest,
 			expectedCode:   "SCRIPT_PARSE_ERROR",
 		},
@@ -110,7 +109,7 @@ func TestHandleError(t *testing.T) {
 		},
 		{
 			name:           "script required",
-			err:            numscript.ErrScriptRequired,
+			err:            domain.ErrScriptRequired,
 			expectedStatus: http.StatusBadRequest,
 			expectedCode:   "VALIDATION",
 		},

@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 )
 
 // buildGRPCError creates a gRPC status error with an ErrorInfo detail, simulating what the server sends.
@@ -147,7 +146,7 @@ func TestBusinessErrorFromGRPC_NumscriptParseError(t *testing.T) {
 	bizErr := BusinessErrorFromGRPC(grpcErr)
 	require.NotNil(t, bizErr)
 
-	var parseErr *numscript.ErrNumscriptParse
+	var parseErr *domain.ErrNumscriptParse
 	require.ErrorAs(t, bizErr, &parseErr)
 	require.Equal(t, "unexpected token", parseErr.Details)
 }
@@ -195,8 +194,8 @@ func TestBusinessErrorRoundTrip(t *testing.T) {
 		{"transaction already reverted", &domain.ErrTransactionAlreadyReverted{TransactionID: 100}},
 		{"insufficient funds", &domain.ErrInsufficientFunds{Account: "a", Asset: "USD", Amount: "10", Balance: "5"}},
 		{"balance not found", &domain.ErrBalanceNotFound{Account: "a", Asset: "USD"}},
-		{"balance not preloaded", &numscript.ErrBalanceNotPreloaded{Account: "a", Asset: "USD"}},
-		{"numscript parse error", &numscript.ErrNumscriptParse{Details: "bad syntax"}},
+		{"balance not preloaded", &domain.ErrBalanceNotPreloaded{Account: "a", Asset: "USD"}},
+		{"numscript parse error", &domain.ErrNumscriptParse{Details: "bad syntax"}},
 		{"index not found", &domain.ErrIndexNotFound{Index: "metadata[\"role\"] on a:"}},
 		{"index building", &domain.ErrIndexBuilding{Index: "metadata[\"role\"] on a:"}},
 	}
@@ -314,8 +313,8 @@ func serverSideConvert(bizErr *domain.BusinessError) *status.Status {
 			e5  *domain.ErrTransactionAlreadyReverted
 			e6  *domain.ErrInsufficientFunds
 			e7  *domain.ErrBalanceNotFound
-			e8  *numscript.ErrBalanceNotPreloaded
-			e9  *numscript.ErrNumscriptParse
+			e8  *domain.ErrBalanceNotPreloaded
+			e9  *domain.ErrNumscriptParse
 			e10 *domain.ErrIndexNotFound
 			e11 *domain.ErrIndexBuilding
 		)

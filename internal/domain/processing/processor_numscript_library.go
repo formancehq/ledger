@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -21,7 +20,7 @@ func (p *RequestProcessor) processSaveNumscript(order *raftcmdpb.SaveNumscriptOr
 
 	// Validate the script parses correctly
 	if _, err := p.numscriptCache.GetOrParse(order.GetContent()); err != nil {
-		return nil, &numscript.ErrNumscriptParse{Details: err.Error()}
+		return nil, &domain.ErrNumscriptParse{Details: err.Error()}
 	}
 
 	version := order.GetVersion()

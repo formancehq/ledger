@@ -6,7 +6,6 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
@@ -24,7 +23,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		txReverted        *domain.ErrTransactionAlreadyReverted
 		insufficient      *domain.ErrInsufficientFunds
 		balNotFound       *domain.ErrBalanceNotFound
-		parseErr          *numscript.ErrNumscriptParse
+		parseErr          *domain.ErrNumscriptParse
 		metaNotFound      *domain.ErrMetadataNotFound
 		pqExists          *domain.ErrPreparedQueryAlreadyExists
 		pqNotFound        *domain.ErrPreparedQueryNotFound
@@ -102,7 +101,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.Is(err, domain.ErrTargetRequired),
 		errors.Is(err, domain.ErrMetadataKeyRequired),
-		errors.Is(err, numscript.ErrScriptRequired),
+		errors.Is(err, domain.ErrScriptRequired),
 		errors.Is(err, admission.ErrIdempotencyKeyTooLong):
 		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
 

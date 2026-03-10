@@ -4,7 +4,9 @@ ARG BUILD_TAGS=""
 WORKDIR /build
 RUN apk add --no-cache git make
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 ENV GOEXPERIMENT=jsonv2
 ENV CGO_ENABLED=0
 ENV GOOS=linux
@@ -15,12 +17,16 @@ COPY cmd cmd
 FROM base AS build-server
 ARG TARGETARCH
 ARG BUILD_TAGS
-RUN GOARCH=$TARGETARCH go build -tags "${BUILD_TAGS}" -o ledger-v3-poc .
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    GOARCH=$TARGETARCH go build -tags "${BUILD_TAGS}" -o ledger-v3-poc .
 
 FROM base AS build-ledgerctl
 ARG TARGETARCH
 ARG BUILD_TAGS
-RUN GOARCH=$TARGETARCH go build -tags "${BUILD_TAGS}" -o ledgerctl ./cmd/ledgerctl
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    GOARCH=$TARGETARCH go build -tags "${BUILD_TAGS}" -o ledgerctl ./cmd/ledgerctl
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata

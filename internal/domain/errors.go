@@ -74,6 +74,7 @@ var (
 	ErrNumscriptNameRequired      = errors.New("numscript name is required")
 	ErrNumscriptContentRequired   = errors.New("numscript content is required")
 	ErrScriptAndReferenceConflict = errors.New("cannot specify both script and scriptReference")
+	ErrScriptRequired             = errors.New("numscript: script is required")
 )
 
 // ErrLedgerAlreadyExists is returned when attempting to create a ledger that already exists.
@@ -373,4 +374,24 @@ type ErrAccountTypeHasAccounts struct {
 
 func (e *ErrAccountTypeHasAccounts) Error() string {
 	return fmt.Sprintf("account type %q still has matching accounts", e.Name)
+}
+
+// ErrNumscriptParse is returned when a Numscript program has syntax errors.
+type ErrNumscriptParse struct {
+	Details string
+}
+
+func (e *ErrNumscriptParse) Error() string {
+	return "numscript parse error: " + e.Details
+}
+
+// ErrBalanceNotPreloaded is returned when the balance for an account was not
+// preloaded by the admission layer before script execution.
+type ErrBalanceNotPreloaded struct {
+	Account string
+	Asset   string
+}
+
+func (e *ErrBalanceNotPreloaded) Error() string {
+	return fmt.Sprintf("balance not preloaded for account %q asset %q", e.Account, e.Asset)
 }

@@ -29,8 +29,8 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 		transactionAlreadyReverted   *domain.ErrTransactionAlreadyReverted
 		insufficientFunds            *domain.ErrInsufficientFunds
 		balanceNotFound              *domain.ErrBalanceNotFound
-		balanceNotPreloaded          *numscript.ErrBalanceNotPreloaded
-		numscriptParse               *numscript.ErrNumscriptParse
+		balanceNotPreloaded          *domain.ErrBalanceNotPreloaded
+		numscriptParse               *domain.ErrNumscriptParse
 		nonDeterministic             *numscript.ErrNonDeterministicScript
 		sinkAlreadyExists            *domain.ErrSinkAlreadyExists
 		sinkNotFound                 *domain.ErrSinkNotFound
@@ -151,7 +151,7 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 
 	case errors.Is(err, domain.ErrTargetRequired),
 		errors.Is(err, domain.ErrMetadataKeyRequired),
-		errors.Is(err, numscript.ErrScriptRequired):
+		errors.Is(err, domain.ErrScriptRequired):
 		failure.ErrorType = domain.ErrReasonValidation
 
 	default:
