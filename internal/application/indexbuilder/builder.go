@@ -45,6 +45,10 @@ type backfillTask struct {
 	index  indexID
 	cursor uint64 // current position (persisted in bbolt)
 	bbKey  []byte // precomputed bbolt key for progress persistence
+
+	// Progress logging state.
+	lastProgressLog time.Time // last time a progress log was emitted
+	lastProgressSeq uint64    // cursor value at last progress log
 }
 
 // ledgerIndexConfig caches which indexes are enabled and ready for a ledger.
@@ -90,6 +94,12 @@ type Builder struct {
 	// Batch size for normal index processing and backfill.
 	batchSize int
 
+	// Max time budget per tick for backfill processing (default 50ms).
+	backfillBudget time.Duration
+
+	// Round-robin index for fair scheduling across backfill tasks.
+	nextBackfillIdx int
+
 	// Reusable scratch objects to reduce allocations in the hot loop.
 	kb       *dal.KeyBuilder
 	wb       *readstore.WriteBatch
@@ -111,15 +121,16 @@ func NewBuilder(
 	}
 
 	return &Builder{
-		pebbleStore: pebbleStore,
-		readStore:   readStore,
-		logger:      logger.WithFields(map[string]any{"cmp": "index-builder"}),
-		meter:       meter,
-		batchSize:   batchSize,
-		indexConfig: make(map[string]*ledgerIndexConfig),
-		kb:          dal.NewKeyBuilder(),
-		wb:          readstore.NewWriteBatch(),
-		accounts:    make(map[string]struct{}, 64),
+		pebbleStore:    pebbleStore,
+		readStore:      readStore,
+		logger:         logger.WithFields(map[string]any{"cmp": "index-builder"}),
+		meter:          meter,
+		batchSize:      batchSize,
+		backfillBudget: 50 * time.Millisecond,
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		kb:             dal.NewKeyBuilder(),
+		wb:             readstore.NewWriteBatch(),
+		accounts:       make(map[string]struct{}, 64),
 	}
 }
 
@@ -1352,9 +1363,36 @@ func matchesAccountIndex(a, b *commonpb.AccountIndex) bool {
 	return false
 }
 
-// processBackfills advances each active backfill task until caught up or stopped.
-// A single Pebble iterator is kept open per task across multiple bbolt batches,
-// avoiding the overhead of repeated NewIter/First calls during catch-up.
+// backfillIndexName returns a human-readable name for a backfill index ID.
+func backfillIndexName(id indexID) string {
+	if id.transaction != nil {
+		switch txIdx := id.transaction.GetKind().(type) {
+		case *commonpb.TransactionIndex_Builtin:
+			return "tx:" + txIdx.Builtin.String()
+		case *commonpb.TransactionIndex_MetadataKey:
+			return "tx:metadata:" + txIdx.MetadataKey
+		}
+	}
+
+	if id.account != nil {
+		switch acctIdx := id.account.GetKind().(type) {
+		case *commonpb.AccountIndex_Builtin:
+			return "acct:" + acctIdx.Builtin.String()
+		case *commonpb.AccountIndex_MetadataKey:
+			return "acct:metadata:" + acctIdx.MetadataKey
+		}
+	}
+
+	if id.logBuiltin != nil {
+		return "log:" + id.logBuiltin.String()
+	}
+
+	return "unknown"
+}
+
+// processBackfills advances backfill tasks using round-robin scheduling with a
+// time budget. Each task gets an equal share of the budget per tick, preventing
+// starvation when multiple indexes are building concurrently.
 // When a backfill catches up to globalCursor, it proposes IndexReady (leader only).
 // If the proposal fails (not leader or Raft error), the task is kept and retried.
 func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
@@ -1362,26 +1400,38 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 		return
 	}
 
-	// Process each task (iterate backward for safe removal).
-	for i := len(b.backfillTasks) - 1; i >= 0; i-- {
+	deadline := time.Now().Add(b.backfillBudget)
+	perTaskBudget := b.backfillBudget / time.Duration(len(b.backfillTasks))
+	tasksProcessed := 0
+
+	for tasksProcessed < len(b.backfillTasks) && time.Now().Before(deadline) {
 		select {
 		case <-stop:
 			return
 		default:
 		}
 
-		task := b.backfillTasks[i]
+		// Wrap around.
+		if b.nextBackfillIdx >= len(b.backfillTasks) {
+			b.nextBackfillIdx = 0
+		}
+
+		task := b.backfillTasks[b.nextBackfillIdx]
 
 		if task.cursor >= globalCursor {
 			// Backfill is caught up — propose IndexReady.
 			if !b.proposeIndexReady(task) {
 				// Proposal failed (not leader or Raft error) — keep the task
 				// and retry on the next tick.
+				b.nextBackfillIdx++
+				tasksProcessed++
+
 				continue
 			}
 
 			b.logger.WithFields(map[string]any{
 				"ledger": task.ledger,
+				"index":  backfillIndexName(task.index),
 				"cursor": task.cursor,
 			}).Infof("Backfill complete, IndexReady proposed")
 
@@ -1390,32 +1440,74 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 				return b.readStore.DeleteBackfillProgress(tx, task.bbKey)
 			})
 
-			// Remove from slice.
-			b.backfillTasks[i] = b.backfillTasks[len(b.backfillTasks)-1]
+			// Remove from slice — the next task slides into this position,
+			// so don't increment nextBackfillIdx.
+			b.backfillTasks[b.nextBackfillIdx] = b.backfillTasks[len(b.backfillTasks)-1]
 			b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
 
 			continue
 		}
 
-		// Process all available batches with a single iterator.
-		if err := b.processBackfill(stop, task); err != nil {
+		// Process this task with its share of the budget.
+		taskDeadline := time.Now().Add(perTaskBudget)
+		for time.Now().Before(taskDeadline) {
+			progress, err := b.processBackfill(stop, task)
+			if err != nil {
+				b.logger.WithFields(map[string]any{
+					"ledger": task.ledger,
+					"index":  backfillIndexName(task.index),
+					"cursor": task.cursor,
+					"error":  err,
+				}).Errorf("Error processing backfill")
+
+				break
+			}
+
+			if !progress {
+				break // EOF or no more data
+			}
+		}
+
+		// Periodic progress logging.
+		now := time.Now()
+		if task.lastProgressLog.IsZero() || now.Sub(task.lastProgressLog) >= 10*time.Second {
+			elapsed := now.Sub(task.lastProgressLog).Seconds()
+
+			var rate float64
+			if !task.lastProgressLog.IsZero() && elapsed > 0 {
+				rate = float64(task.cursor-task.lastProgressSeq) / elapsed
+			}
+
+			var pct float64
+			if globalCursor > 0 {
+				pct = float64(task.cursor) / float64(globalCursor) * 100
+			}
+
 			b.logger.WithFields(map[string]any{
 				"ledger": task.ledger,
+				"index":  backfillIndexName(task.index),
 				"cursor": task.cursor,
-				"error":  err,
-			}).Errorf("Error processing backfill")
+				"target": globalCursor,
+				"pct":    fmt.Sprintf("%.1f%%", pct),
+				"rate":   fmt.Sprintf("%.0f entries/s", rate),
+			}).Infof("Backfill progress")
+
+			task.lastProgressLog = now
+			task.lastProgressSeq = task.cursor
 		}
+
+		b.nextBackfillIdx++
+		tasksProcessed++
 	}
 }
 
-// processBackfill reads logs from Pebble using a single iterator and indexes
-// them in batches of backfillBatchSize using only the backfilling index's
-// configuration. The iterator stays open across batches to avoid repeated
-// NewIter/First overhead during catch-up. Existence writes are skipped.
-func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) error {
+// processBackfill reads one batch of logs from Pebble and indexes them using
+// only the backfilling index's configuration. Returns true if progress was made
+// (more data may be available), false if EOF was reached or no data was found.
+func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) (bool, error) {
 	logsCursor, err := query.ReadLogsSince(context.Background(), b.pebbleStore, task.cursor, dal.WithReuse())
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	defer func() { _ = logsCursor.Close() }()
@@ -1433,76 +1525,71 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) erro
 		b.backfillMode = false
 	}()
 
-	for {
-		select {
-		case <-stop:
-			return nil
-		default:
-		}
-
-		var (
-			batchCount int
-			lastSeq    uint64
-			eof        bool
-		)
-
-		if err := b.readStore.Update(func(tx *bolt.Tx) error {
-			b.wb.Init(tx)
-
-			for batchCount < b.batchSize {
-				log, err := logsCursor.Next()
-				if err != nil {
-					if errors.Is(err, io.EOF) {
-						eof = true
-
-						break
-					}
-
-					return err
-				}
-
-				// Skip config-mutation log types during backfill.
-				if !isDataLog(log) {
-					lastSeq = log.GetSequence()
-					batchCount++
-
-					continue
-				}
-
-				if err := b.indexLogEntry(tx, log); err != nil {
-					return err
-				}
-
-				lastSeq = log.GetSequence()
-				batchCount++
-			}
-
-			// Persist backfill cursor.
-			if batchCount > 0 {
-				if err := b.wb.Flush(); err != nil {
-					return err
-				}
-
-				return b.readStore.WriteBackfillProgress(tx, task.bbKey, lastSeq)
-			}
-
-			return nil
-		}); err != nil {
-			return err
-		}
-
-		if batchCount == 0 {
-			break
-		}
-
-		task.cursor = lastSeq
-
-		if eof {
-			break
-		}
+	select {
+	case <-stop:
+		return false, nil
+	default:
 	}
 
-	return nil
+	var (
+		batchCount int
+		lastSeq    uint64
+		eof        bool
+	)
+
+	if err := b.readStore.Update(func(tx *bolt.Tx) error {
+		b.wb.Init(tx)
+
+		for batchCount < b.batchSize {
+			log, err := logsCursor.Next()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					eof = true
+
+					break
+				}
+
+				return err
+			}
+
+			// Skip config-mutation log types during backfill.
+			if !isDataLog(log) {
+				lastSeq = log.GetSequence()
+				batchCount++
+
+				continue
+			}
+
+			if err := b.indexLogEntry(tx, log); err != nil {
+				return err
+			}
+
+			lastSeq = log.GetSequence()
+			batchCount++
+		}
+
+		// Persist backfill cursor.
+		if batchCount > 0 {
+			if err := b.wb.Flush(); err != nil {
+				return err
+			}
+
+			return b.readStore.WriteBackfillProgress(tx, task.bbKey, lastSeq)
+		}
+
+		return nil
+	}); err != nil {
+		return false, err
+	}
+
+	if batchCount == 0 {
+		return false, nil
+	}
+
+	task.cursor = lastSeq
+
+	// Progress was made; more data available only if we didn't hit EOF.
+	return !eof, nil
 }
 
 // buildBackfillConfig creates a temporary indexConfig map containing only the
