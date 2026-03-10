@@ -6,7 +6,6 @@ metadata:
   namespace: ""
 runner:
   env:
-    ledgerUrl: "http://ledger-exp.ledger-exp.svc.cluster.local:9000"
     ledgerName: "ledger0"
     stages: ""
   otlp:

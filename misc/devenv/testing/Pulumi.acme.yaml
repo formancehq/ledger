@@ -5,12 +5,12 @@ config:
   ledger-testing:registry: ghcr.io
   ledger-testing:pull-registry: 760319359092.dkr.ecr.eu-west-1.amazonaws.com/ghcr
   ledger-testing:formance-dev-registry-username:
-    secure: FIXME
+    secure: AAABAIv6N8sYrZO3Cr3DbM8po4TrhrT7xY7YAxsTAToFiRRDcDI=
   ledger-testing:formance-dev-registry-password:
-    secure: FIXME
+    secure: AAABAJ3B2eAqD5EnvOguPxH6zQOBWNP6mtI2wsldW94lNCoP3kEHyfj635Aw6DgG4OZRfH8waV0VDqhimYiqVQGSs2E3u54g
   # Optional components
   ledger-testing:k6operator-enabled: "true"
-  ledger-testing:benchmarkOperator-enabled: "true"
+  ledger-testing:benchmarkOperator-enabled: "false"
   ledger-testing:k6operator:
     file: values/acme/k6operator.yaml
   ledger-testing:benchmarkOperator:

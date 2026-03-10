@@ -1,0 +1,73 @@
+---
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerService
+metadata:
+  name: benchmark0
+  namespace: ledger-v3
+spec:
+  defaultsRef: default
+  replicas: 1
+  resources:
+    requests:
+      cpu: "4"
+      memory: 12Gi
+    limits:
+      cpu: "4"
+      memory: 12Gi
+
+  config:
+    auth:
+      enabled: false
+    readIndex:
+      noFreelistSync: false
+      batchSize: 10000
+
+    pebble:
+      memTableSize: 268435456              # 256 MB (4× current 64 MB)
+      memTableStopWritesThreshold: 4       # up to 1 GB buffered before stall
+      l0CompactionThreshold: 4            # keep current — high threshold
+      l0StopWritesThreshold: 256           # keep current — very permissive
+      lBaseMaxBytes: 4294967296            # 4 GB (2× current)
+      cacheSize: 4294967296                # 4 GB block cache (was 512 MB)
+      targetFileSize: 268435456            # 256 MB (keep)
+      bytesPerSync: 4194304                # 4 MB (4× current — fewer syncs)
+      walBytesPerSync: 4194304             # 4 MB
+      maxConcurrentCompactions: 4          # 4 (2× current — use extra CPU)
+      walMinSyncInterval: "0"              # immediate sync (keep for durability)
+      disableWAL: false
+
+    raft:
+      snapshotThreshold: 5000              # 5× current — less frequent snapshots
+      compactionMargin: 5000               # match snapshotThreshold
+      proposeQueueCapacity: 4096           # 4× current — deep queue for burst
+      maxSizePerMsg: 4194304               # 4 MB (2× current)
+      maxInflightMsgs: 256                 # irrelevant with 1 replica
+      electionTick: 10
+      heartbeatTick: 1
+      tickInterval: 100ms
+
+    cache:
+      rotationThreshold: 5000              # 2.5× current — less rotation overhead
+
+    # monitoring: inherited from LedgerDefaults via defaultsRef
+
+  networkPolicy:
+    enabled: true
+    additionalEgress:
+      - to:
+          - ipBlock:
+              cidr: 10.70.6.90/32
+        ports:
+          - port: 5432
+            protocol: TCP
+
+  ingressGrpc:
+    enabled: true
+
+  persistence:
+    retentionPolicy:
+      whenDeleted: Delete
+    data:
+      size: 500Gi
+    wal:
+      size: 15Gi

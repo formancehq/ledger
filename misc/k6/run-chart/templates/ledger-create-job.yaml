@@ -21,7 +21,7 @@ spec:
           image: "{{ .Values.ledgerJob.image.repository }}:{{ .Values.ledgerJob.image.tag }}"
           env:
             - name: LEDGER_URL
-              value: {{ .Values.runner.env.ledgerUrl }}
+              value: {{ .Values.runner.env.LEDGER_URL }}
             - name: LEDGER_NAME
               value: {{ .Values.runner.env.ledgerName }}
           command:

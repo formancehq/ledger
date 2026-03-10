@@ -62,7 +62,7 @@ spec:
             - name: TESTRUN_NAME
               value: {{ include "k6-run.fullname" . }}
             - name: LEDGER_URL
-              value: {{ .Values.runner.env.ledgerUrl }}
+              value: {{ .Values.runner.env.LEDGER_URL }}
             - name: LEDGER_NAME
               value: {{ .Values.runner.env.ledgerName }}
             - name: POLL_INTERVAL

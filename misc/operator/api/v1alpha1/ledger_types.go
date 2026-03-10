@@ -292,7 +292,7 @@ type ReadIndexConfig struct {
 type AuthorizationConfig struct {
 	// Enabled enables authentication.
 	// +optional
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 
 	// Issuer is the OIDC token issuer URL.
 	// +optional

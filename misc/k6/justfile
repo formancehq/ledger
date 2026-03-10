@@ -51,8 +51,8 @@ k6-run SCRIPT VALUES_FILE:
         exit 1
     fi
     
-    # Extract namespace from values file (default to ledger-exp)
-    NAMESPACE=$(yq -r '.metadata.namespace // "ledger-exp"' "${VALUES_FILE}")
+    # Extract namespace from values file (default to ledger-v3)
+    NAMESPACE=$(yq -r '.metadata.namespace // "ledger-v3"' "${VALUES_FILE}")
     
     # Check if archive exists, create it if not
     if [ ! -f "${ARCHIVE_PATH}" ]; then

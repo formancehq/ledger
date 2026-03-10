@@ -1,0 +1,30 @@
+# ACME values for k6 TestRun
+# Usage: just k6-run <script>.js values.acme.yaml
+spec:
+  parallelism: 1
+  separate: true
+  arguments: "-o opentelemetry"
+metadata:
+  namespace: ledger-v3
+
+runner:
+  env:
+    LEDGER_URL: "http://benchmark0.ledger-v3.svc.cluster.local:9000"
+    LEDGER_NAME: "ledger0"
+    K6_STAGES: "1m:100,3m:100,1m:0"
+    BULK_SIZE: "50"
+    BULK_ATOMIC: "true"
+    # OTLP configuration
+    K6_OTEL_GRPC_EXPORTER_ENDPOINT: "opentelemetry-collector.monitoring.svc.cluster.local:4317"
+    K6_OTEL_GRPC_EXPORTER_INSECURE: "true"
+    K6_OTEL_METRICS_FLUSH_INTERVAL: "5s"
+    K6_OTEL_SERVICE_NAME: "k6-loadtest"
+    K6_OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+#  nodeSelector:
+#    formance.com/dedicated: benchmark
+#  tolerations:
+#    - effect: NoSchedule
+#      key: formance.com/dedicated
+#      operator: Equal
+#      value: benchmark
+#

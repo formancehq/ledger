@@ -107,8 +107,31 @@ func mergeDefaultsConfig(spec *ledgerv1alpha1.LedgerServiceConfig, defaults *led
 	if spec.Monitoring == nil {
 		spec.Monitoring = defaults.Monitoring
 	}
-	if spec.Auth == nil {
-		spec.Auth = defaults.Auth
+	mergeAuthConfig(&spec.Auth, defaults.Auth)
+}
+
+// mergeAuthConfig merges auth defaults at field level so that
+// a LedgerService that sets only "enabled: false" still inherits issuer/service from defaults.
+func mergeAuthConfig(spec **ledgerv1alpha1.AuthorizationConfig, defaults *ledgerv1alpha1.AuthorizationConfig) {
+	if *spec == nil {
+		*spec = defaults
+
+		return
+	}
+	if defaults == nil {
+		return
+	}
+	if (*spec).Enabled == nil {
+		(*spec).Enabled = defaults.Enabled
+	}
+	if (*spec).Issuer == "" {
+		(*spec).Issuer = defaults.Issuer
+	}
+	if (*spec).Service == "" {
+		(*spec).Service = defaults.Service
+	}
+	if (*spec).ScopeMapping == nil {
+		(*spec).ScopeMapping = defaults.ScopeMapping
 	}
 }
 
