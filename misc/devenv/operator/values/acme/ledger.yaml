@@ -26,7 +26,7 @@ config:
   monitoring:
     logs:
       enabled: true
-      endpoint: opentelemetry-collector.monitoring
+      endpoint: otel-opentelemetry-collector.ledger-v3
       exporter: otlp
       insecure: "true"
       mode: grpc
@@ -34,7 +34,7 @@ config:
     metrics:
       enabled: true
       runtime: true
-      endpoint: opentelemetry-collector.monitoring
+      endpoint: otel-opentelemetry-collector.ledger-v3
       exporter: otlp
       exporterPushInterval: 15s
       insecure: "true"
@@ -45,7 +45,7 @@ config:
     traces:
       batch: "true"
       enabled: true
-      endpoint: opentelemetry-collector.monitoring
+      endpoint: otel-opentelemetry-collector.ledger-v3
       exporter: otlp
       insecure: "true"
       mode: grpc
@@ -53,6 +53,10 @@ config:
       sampling:
         enabled: true
         successRatio: "0.1"  # Sampling ratio for successful traces (0.0-1.0)
+    pyroscope:
+      enabled: true
+      serverAddress: http://pyroscope.ledger-v3:4040
+      applicationName: ledger-v3
   auth:
     scopeMapping:
       "ledger:read":

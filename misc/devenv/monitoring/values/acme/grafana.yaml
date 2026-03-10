@@ -36,6 +36,12 @@ grafana.ini:
     external_enabled: false
 ingress:
   enabled: true
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: https-private
+    traefik.ingress.kubernetes.io/router.observability.tracing: "true"
+    traefik.ingress.kubernetes.io/router.tls: "true"
+  labels:
+    formance.com/ingress: traefik
   hosts:
     - grafana-ledger-v3.dev.acme.frmnc.net
   path: /

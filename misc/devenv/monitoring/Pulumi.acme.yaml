@@ -1,6 +1,6 @@
 config:
-  ledger-monitoring:k8s-context: staging-eu-west-1-hosting
-  ledger-monitoring:namespace: ledger-exp
+  ledger-monitoring:k8s-context: eks-acme-dev-euw1-01
+  ledger-monitoring:namespace: ledger-v3
   # Optional components
   ledger-monitoring:pyroscope-enabled: "true"
   ledger-monitoring:grafana:
@@ -29,3 +29,4 @@ config:
             value: "true"
           - name: aws/target-hosted-zone
             value: "same-zone"
+  aws:profile: customers-acme-FormanceOnCallAccess
