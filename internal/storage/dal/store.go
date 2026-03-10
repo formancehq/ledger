@@ -99,9 +99,9 @@ const (
 // Canonical key separators used inside attribute canonical keys
 // to delimit volume and metadata sub-keys.
 const (
-	CanonicalKeySepVolume       byte = 0x00
-	CanonicalKeySepMetadata     byte = 0x01
-	CanonicalKeySepTransaction  byte = 0x02
+	CanonicalKeySepVolume      byte = 0x00
+	CanonicalKeySepMetadata    byte = 0x01
+	CanonicalKeySepTransaction byte = 0x02
 )
 
 // MaxUint64Bytes is the big-endian representation of math.MaxUint64,
@@ -140,8 +140,8 @@ var (
 	AttributePrefixIdempotency = byte('I') // Idempotency
 	AttributePrefixReference   = byte('R') // Reference
 	AttributePrefixLedger      = byte('L') // Ledger
-	AttributePrefixBoundary     = byte('B') // Boundary — unchanged
-	AttributePrefixTransaction  = byte('T') // Transaction state
+	AttributePrefixBoundary    = byte('B') // Boundary — unchanged
+	AttributePrefixTransaction = byte('T') // Transaction state
 
 	// --- Global system zone [0xF2, 0xFF] ---.
 

@@ -511,10 +511,7 @@ message LedgerLogPayload {
     AddedAccountTypeLog added_account_type = 15;
     UpdatedAccountTypeLog updated_account_type = 16;
     RemovedAccountTypeLog removed_account_type = 17;
-    StartedMigrationLog started_migration = 18;
-    MigratedAccountBatchLog migrated_account_batch = 19;
-    CompletedMigrationLog completed_migration = 20;
-    CancelledMigrationLog cancelled_migration = 21;
+    // 18-21 reserved (removed account migration logs)
   }
 }
 
@@ -800,25 +797,16 @@ message SetChartEnforcementModeLog {
 message AccountType {
   string name = 1;                           // Unique identifier: "user-checking"
   string pattern = 2;                        // Address pattern: "users:{id}:checking"
-  AccountTypeStatus status = 3;              // ACTIVE, MIGRATING, DEPRECATED
+  AccountTypeStatus status = 3;              // ACTIVE, DEPRECATED
   ChartEnforcementMode enforcement_mode = 4; // Per-type enforcement
-  string superseded_by = 5;                  // If MIGRATING/DEPRECATED: target type name
-  MigrationProgress migration_progress = 6;  // If MIGRATING: progress tracking
+  // 5-6 reserved (removed migration fields)
 }
 
 // AccountTypeStatus represents the lifecycle state of an account type.
 enum AccountTypeStatus {
   ACCOUNT_TYPE_ACTIVE = 0;       // Accepts new accounts, validated normally
-  ACCOUNT_TYPE_MIGRATING = 1;    // Background worker actively rewriting accounts
+  // 1 reserved (removed MIGRATING)
   ACCOUNT_TYPE_DEPRECATED = 2;   // No new accounts; kept for backward compat
-}
-
-// MigrationProgress tracks the progress of an account type migration.
-message MigrationProgress {
-  uint64 total_accounts = 1;
-  uint64 migrated_accounts = 2;
-  Timestamp started_at = 3;
-  Timestamp completed_at = 4;
 }
 
 // AddedAccountTypeLog records the addition of an account type.
@@ -837,37 +825,6 @@ message RemovedAccountTypeLog {
   string name = 1;
 }
 
-// StartedMigrationLog records the start of a pattern migration.
-message StartedMigrationLog {
-  string source_type = 1;
-  string target_type = 2;
-  string source_pattern = 3;  // Denormalized for auditability
-  string target_pattern = 4;
-  uint64 total_accounts = 5;
-}
-
-// MigratedAccountBatchLog records a batch of migrated accounts.
-message MigratedAccountBatchLog {
-  string source_type = 1;
-  repeated MigratedAccount accounts = 2;
-  uint64 migrated_accounts_so_far = 3;
-}
-
-// MigratedAccount records a single account address rewrite.
-message MigratedAccount {
-  string old_address = 1;
-  string new_address = 2;
-}
-
-// CompletedMigrationLog records the completion of a migration.
-message CompletedMigrationLog {
-  string source_type = 1;
-}
-
-// CancelledMigrationLog records the cancellation of a migration.
-message CancelledMigrationLog {
-  string source_type = 1;
-}
 
 // ============================================================================
 // Prepared Queries — Filter Model

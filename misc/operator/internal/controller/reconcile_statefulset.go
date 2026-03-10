@@ -385,10 +385,11 @@ fi`, cfg.DataDir, bootstrap0)
   --response-signing-key "$RESPONSE_SIGNING_KEY"`
 	}
 	// Always pass --cluster-secret so inter-node calls carry the bearer token.
-	// --auth-ed25519-keys is only added when agents exist (enables auth requirement).
+	// --auth-ed25519-keys is only added when agents exist AND auth is not explicitly disabled.
 	extraFlags += ` \
   --cluster-secret "$CLUSTER_SECRET"`
-	if len(agents) > 0 {
+	authExplicitlyDisabled := cfg.Auth != nil && cfg.Auth.Enabled != nil && !*cfg.Auth.Enabled
+	if len(agents) > 0 && !authExplicitlyDisabled {
 		extraFlags += ` \
   --auth-ed25519-keys "/auth-keys/auth-keys.json"`
 	}

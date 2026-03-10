@@ -72,7 +72,7 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 		}
 
 		// Add metadata entries to the transaction state
-		if state.Metadata == nil {
+		if state.GetMetadata() == nil {
 			state.Metadata = &commonpb.MetadataSet{}
 		}
 
@@ -80,7 +80,7 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 			// Replace existing key or append
 			found := false
 
-			for i, existing := range state.Metadata.GetMetadata() {
+			for i, existing := range state.GetMetadata().GetMetadata() {
 				if existing.GetKey() == metadatum.GetKey() {
 					state.Metadata.Metadata[i] = metadatum
 					found = true
@@ -155,10 +155,10 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raft
 		}
 
 		// Remove the metadata key from the transaction state
-		if state.Metadata != nil {
-			filtered := make([]*commonpb.Metadata, 0, len(state.Metadata.GetMetadata()))
+		if state.GetMetadata() != nil {
+			filtered := make([]*commonpb.Metadata, 0, len(state.GetMetadata().GetMetadata()))
 
-			for _, md := range state.Metadata.GetMetadata() {
+			for _, md := range state.GetMetadata().GetMetadata() {
 				if md.GetKey() != order.GetKey() {
 					filtered = append(filtered, md)
 				}

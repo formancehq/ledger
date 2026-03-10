@@ -196,13 +196,13 @@ func (m *MetadataCond) toProto() (*commonpb.QueryFilter, error) {
 }
 
 type MetadataOp struct {
-	Eq  *Value    `parser:"  '==' @@"`
-	Ne  *Value    `parser:"| '!=' @@"`
-	Gte *Value    `parser:"| '>=' @@"`
-	Gt  *Value    `parser:"| '>' @@"`
-	Lte *Value    `parser:"| '<=' @@"`
-	Lt  *Value    `parser:"| '<' @@"`
-	In  []*Value  `parser:"| 'in' '(' @@ (',' @@)* ')'"`
+	Eq  *Value   `parser:"  '==' @@"`
+	Ne  *Value   `parser:"| '!=' @@"`
+	Gte *Value   `parser:"| '>=' @@"`
+	Gt  *Value   `parser:"| '>' @@"`
+	Lte *Value   `parser:"| '<=' @@"`
+	Lt  *Value   `parser:"| '<' @@"`
+	In  []*Value `parser:"| 'in' '(' @@ (',' @@)* ')'"`
 }
 
 func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, error) {

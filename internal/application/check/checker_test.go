@@ -77,22 +77,22 @@ func newTestEngine(t *testing.T) *testEngine {
 	require.NoError(t, err)
 
 	return &testEngine{
-		t:              t,
-		store:          store,
-		attrs:          attrs,
-		processor:      proc,
-		cache:          c,
-		nextSequenceID: 1,
-		ledgers:        make(map[string]*commonpb.LedgerInfo),
-		boundaries:     make(map[string]*raftcmdpb.LedgerBoundaries),
-		volumes:        make(map[string]*raftcmdpb.VolumePair),
-		metadata:       make(map[string]*commonpb.MetadataValue),
-		idempotency:    make(map[string]*commonpb.IdempotencyKeyValue),
+		t:                 t,
+		store:             store,
+		attrs:             attrs,
+		processor:         proc,
+		cache:             c,
+		nextSequenceID:    1,
+		ledgers:           make(map[string]*commonpb.LedgerInfo),
+		boundaries:        make(map[string]*raftcmdpb.LedgerBoundaries),
+		volumes:           make(map[string]*raftcmdpb.VolumePair),
+		metadata:          make(map[string]*commonpb.MetadataValue),
+		idempotency:       make(map[string]*commonpb.IdempotencyKeyValue),
 		references:        make(map[string]*commonpb.TransactionReferenceValue),
 		transactionStates: make(map[string]*commonpb.TransactionState),
 		nextPeriodID:      1,
-		hasher:         blake3.New(),
-		raftIndex:      1,
+		hasher:            blake3.New(),
+		raftIndex:         1,
 	}
 }
 
@@ -303,9 +303,7 @@ func (s *inMemoryStore) PutTransactionReference(key domain.TransactionReferenceK
 }
 
 func (s *inMemoryStore) GetTransactionState(key domain.TransactionKey) (*commonpb.TransactionState, error) {
-	k := string(key.Bytes())
-
-	return s.engine.transactionStates[k], nil
+	return s.engine.transactionStates[string(key.Bytes())], nil
 }
 
 func (s *inMemoryStore) PutTransactionState(key domain.TransactionKey, txState *commonpb.TransactionState) {

@@ -1278,13 +1278,13 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 	}
 
 	var (
-		baseIndex      uint64
-		volumeStore    kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
-		metadataStore  kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
-		ledgerStore    kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
-		boundaryStore  kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
-		referenceStore    kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
-		transactionStore  kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
+		baseIndex        uint64
+		volumeStore      kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
+		metadataStore    kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
+		ledgerStore      kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
+		boundaryStore    kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
+		referenceStore   kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
+		transactionStore kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
 	)
 
 	if genIndex == 0 {
@@ -1570,12 +1570,12 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 	}
 
 	var (
-		volumeStore    kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
-		metadataStore  kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
-		ledgerStore    kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
-		boundaryStore  kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
-		referenceStore    kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
-		transactionStore  kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
+		volumeStore      kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
+		metadataStore    kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
+		ledgerStore      kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
+		boundaryStore    kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
+		referenceStore   kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
+		transactionStore kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
 	)
 
 	if genIndex == 0 {

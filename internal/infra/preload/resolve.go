@@ -86,6 +86,7 @@ func resolveCustom[K interface {
 		// Wrap loadFn to match the (T, uint64, error) signature — baseIndex=0 for custom types.
 		wrappedFn := func() (T, uint64, error) {
 			v, err := loadFn()
+
 			return v, 0, err
 		}
 

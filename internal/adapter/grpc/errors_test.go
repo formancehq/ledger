@@ -342,7 +342,6 @@ func TestBusinessErrorToGRPCStatus_AccountNotMatchingType(t *testing.T) {
 	require.Equal(t, "invalid:addr:here", info.GetMetadata()["address"])
 }
 
-
 func TestBusinessErrorToGRPCStatus_UnknownError(t *testing.T) {
 	t.Parallel()
 

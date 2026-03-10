@@ -11,10 +11,10 @@ func TestParsePattern(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		pattern  string
-		want     []PatternSegment
-		wantErr  string
+		name    string
+		pattern string
+		want    []PatternSegment
+		wantErr string
 	}{
 		{
 			name:    "simple fixed",
@@ -125,6 +125,7 @@ func TestParsePattern(t *testing.T) {
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
+
 				return
 			}
 			require.NoError(t, err)
@@ -209,10 +210,10 @@ func TestMatchAddress(t *testing.T) {
 			wantBindings: map[string]string{"orgId": "acme", "deptId": "engineering"},
 		},
 		{
-			name:      "single fixed",
-			pattern:   "world",
-			address:   "world",
-			wantMatch: true,
+			name:         "single fixed",
+			pattern:      "world",
+			address:      "world",
+			wantMatch:    true,
 			wantBindings: map[string]string{},
 		},
 		{
@@ -315,6 +316,7 @@ func TestRewriteAddress(t *testing.T) {
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
+
 				return
 			}
 			require.NoError(t, err)
@@ -377,52 +379,6 @@ func TestValidatePattern(t *testing.T) {
 	assert.Error(t, ValidatePattern("users:{id}:{id}"))
 }
 
-func TestValidateMigration(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		source  string
-		target  string
-		wantErr string
-	}{
-		{
-			name:   "valid subset",
-			source: "users:{id}:checking",
-			target: "clients:{id}:courant",
-		},
-		{
-			name:   "fewer variables in target",
-			source: "org:{orgId}:dept:{deptId}",
-			target: "companies:{orgId}:main",
-		},
-		{
-			name:    "target has extra variable",
-			source:  "users:{id}:checking",
-			target:  "clients:{id}:{subtype}",
-			wantErr: "target variable \"subtype\" not found in source pattern",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			source, err := ParsePattern(tt.source)
-			require.NoError(t, err)
-			target, err := ParsePattern(tt.target)
-			require.NoError(t, err)
-
-			err = ValidateMigration(source, target)
-			if tt.wantErr != "" {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.wantErr)
-				return
-			}
-			require.NoError(t, err)
-		})
-	}
-}
-
 func TestDetectOverlaps(t *testing.T) {
 	t.Parallel()
 
@@ -434,9 +390,9 @@ func TestDetectOverlaps(t *testing.T) {
 	require.NoError(t, err)
 
 	existing := map[string][]PatternSegment{
-		"fees-card":       feesCard,
-		"fees-type":       feesType,
-		"users-checking":  usersChecking,
+		"fees-card":      feesCard,
+		"fees-type":      feesType,
+		"users-checking": usersChecking,
 	}
 
 	// fees:{category} overlaps with both fees:card and fees:{type}

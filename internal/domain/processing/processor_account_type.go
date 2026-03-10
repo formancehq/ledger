@@ -18,27 +18,27 @@ func (p *RequestProcessor) processAddAccountType(
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	at := order.AccountType
-	if at == nil || at.Name == "" {
+	at := order.GetAccountType()
+	if at == nil || at.GetName() == "" {
 		return nil, &domain.ErrInvalidPattern{Pattern: "", Details: "account type name is required"}
 	}
 
-	if err := accounttype.ValidatePattern(at.Pattern); err != nil {
-		return nil, &domain.ErrInvalidPattern{Pattern: at.Pattern, Details: err.Error()}
+	if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
+		return nil, &domain.ErrInvalidPattern{Pattern: at.GetPattern(), Details: err.Error()}
 	}
 
 	if info.AccountTypes == nil {
 		info.AccountTypes = make(map[string]*commonpb.AccountType)
 	}
 
-	if _, exists := info.AccountTypes[at.Name]; exists {
-		return nil, &domain.ErrAccountTypeAlreadyExists{Name: at.Name}
+	if _, exists := info.GetAccountTypes()[at.GetName()]; exists {
+		return nil, &domain.ErrAccountTypeAlreadyExists{Name: at.GetName()}
 	}
 
 	// Set default status to ACTIVE.
 	at.Status = commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE
 
-	info.AccountTypes[at.Name] = at
+	info.AccountTypes[at.GetName()] = at
 	s.PutLedger(ledgerName, info)
 
 	return &commonpb.LedgerLogPayload{
@@ -61,19 +61,19 @@ func (p *RequestProcessor) processUpdateAccountType(
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	at, exists := info.AccountTypes[order.Name]
+	at, exists := info.GetAccountTypes()[order.GetName()]
 	if !exists {
-		return nil, &domain.ErrAccountTypeNotFound{Name: order.Name}
+		return nil, &domain.ErrAccountTypeNotFound{Name: order.GetName()}
 	}
 
-	at.EnforcementMode = order.EnforcementMode
+	at.EnforcementMode = order.GetEnforcementMode()
 	s.PutLedger(ledgerName, info)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_UpdatedAccountType{
 			UpdatedAccountType: &commonpb.UpdatedAccountTypeLog{
-				Name:            order.Name,
-				EnforcementMode: order.EnforcementMode,
+				Name:            order.GetName(),
+				EnforcementMode: order.GetEnforcementMode(),
 			},
 		},
 	}, nil
@@ -91,17 +91,17 @@ func (p *RequestProcessor) processRemoveAccountType(
 		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	if _, exists := info.AccountTypes[order.Name]; !exists {
-		return nil, &domain.ErrAccountTypeNotFound{Name: order.Name}
+	if _, exists := info.GetAccountTypes()[order.GetName()]; !exists {
+		return nil, &domain.ErrAccountTypeNotFound{Name: order.GetName()}
 	}
 
-	delete(info.AccountTypes, order.Name)
+	delete(info.GetAccountTypes(), order.GetName())
 	s.PutLedger(ledgerName, info)
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RemovedAccountType{
 			RemovedAccountType: &commonpb.RemovedAccountTypeLog{
-				Name: order.Name,
+				Name: order.GetName(),
 			},
 		},
 	}, nil
@@ -123,7 +123,7 @@ func validatePostingsAgainstAccountTypes(
 	seen := make(map[string]struct{})
 	addresses := make([]string, 0, len(postings)*2)
 	for _, posting := range postings {
-		addresses = append(addresses, posting.Source, posting.Destination)
+		addresses = append(addresses, posting.GetSource(), posting.GetDestination())
 	}
 
 	for _, address := range addresses {
@@ -143,6 +143,7 @@ func validatePostingsAgainstAccountTypes(
 			}
 			// All types are AUDIT: record violation.
 			violations = append(violations, &commonpb.ChartViolation{Address: address})
+
 			continue
 		}
 
@@ -168,6 +169,7 @@ func validateAccountAgainstAccountTypes(
 		if hasStrictType(types) {
 			return nil, &domain.ErrAccountNotMatchingType{Address: address}
 		}
+
 		return []*commonpb.ChartViolation{{Address: address}}, nil
 	}
 
@@ -188,11 +190,11 @@ func matchAddressToType(
 	)
 
 	for _, at := range types {
-		if at.Status == commonpb.AccountTypeStatus_ACCOUNT_TYPE_DEPRECATED {
+		if at.GetStatus() == commonpb.AccountTypeStatus_ACCOUNT_TYPE_DEPRECATED {
 			continue
 		}
 
-		segments, err := accounttype.ParsePattern(at.Pattern)
+		segments, err := accounttype.ParsePattern(at.GetPattern())
 		if err != nil {
 			continue
 		}
@@ -214,18 +216,20 @@ func matchAddressToType(
 	if best == nil {
 		return nil, 0
 	}
-	return best, best.EnforcementMode
+
+	return best, best.GetEnforcementMode()
 }
 
 // hasStrictType returns true if any non-deprecated type uses STRICT enforcement.
 func hasStrictType(types map[string]*commonpb.AccountType) bool {
 	for _, at := range types {
-		if at.Status == commonpb.AccountTypeStatus_ACCOUNT_TYPE_DEPRECATED {
+		if at.GetStatus() == commonpb.AccountTypeStatus_ACCOUNT_TYPE_DEPRECATED {
 			continue
 		}
-		if at.EnforcementMode == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
+		if at.GetEnforcementMode() == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
 			return true
 		}
 	}
+
 	return false
 }

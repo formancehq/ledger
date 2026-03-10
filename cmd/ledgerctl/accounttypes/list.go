@@ -76,7 +76,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	sort.Strings(names)
 
 	tableData := pterm.TableData{
-		{"NAME", "PATTERN", "STATUS", "ENFORCEMENT", "SUPERSEDED BY"},
+		{"NAME", "PATTERN", "STATUS", "ENFORCEMENT"},
 	}
 
 	for _, n := range names {
@@ -86,7 +86,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 			at.GetPattern(),
 			formatStatus(at.GetStatus()),
 			formatEnforcementMode(at.GetEnforcementMode()),
-			at.GetSupersededBy(),
 		})
 	}
 
@@ -99,8 +98,6 @@ func formatStatus(s commonpb.AccountTypeStatus) string {
 	switch s {
 	case commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE:
 		return "ACTIVE"
-	case commonpb.AccountTypeStatus_ACCOUNT_TYPE_MIGRATING:
-		return "MIGRATING"
 	case commonpb.AccountTypeStatus_ACCOUNT_TYPE_DEPRECATED:
 		return "DEPRECATED"
 	default:

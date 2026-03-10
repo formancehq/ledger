@@ -33,8 +33,6 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		acctTypeExists    *domain.ErrAccountTypeAlreadyExists
 		invalidPattern    *domain.ErrInvalidPattern
 		acctTypeHasAccts  *domain.ErrAccountTypeHasAccounts
-		migrationActive   *domain.ErrMigrationAlreadyActive
-		migrationVarErr   *domain.ErrMigrationVariableMismatch
 	)
 
 	switch {
@@ -101,12 +99,6 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.As(err, &acctTypeHasAccts):
 		writeErrorResponse(w, http.StatusConflict, "ACCOUNT_TYPE_HAS_ACCOUNTS", err)
-
-	case errors.As(err, &migrationActive):
-		writeErrorResponse(w, http.StatusConflict, "MIGRATION_ALREADY_ACTIVE", err)
-
-	case errors.As(err, &migrationVarErr):
-		writeErrorResponse(w, http.StatusBadRequest, "MIGRATION_VARIABLE_MISMATCH", err)
 
 	case errors.Is(err, domain.ErrTargetRequired),
 		errors.Is(err, domain.ErrMetadataKeyRequired),

@@ -1,7 +1,6 @@
 package accounttype
 
 import (
-	"fmt"
 	"sort"
 )
 
@@ -9,28 +8,8 @@ import (
 // Returns an error if the pattern is syntactically invalid.
 func ValidatePattern(pattern string) error {
 	_, err := ParsePattern(pattern)
+
 	return err
-}
-
-// ValidateMigration checks that a migration from source to target pattern is valid.
-// All variables in the target pattern must appear in the source pattern (subset).
-func ValidateMigration(source, target []PatternSegment) error {
-	sourceVars := make(map[string]struct{})
-	for _, seg := range source {
-		if seg.Kind == SegmentVariable {
-			sourceVars[seg.Value] = struct{}{}
-		}
-	}
-
-	for _, seg := range target {
-		if seg.Kind == SegmentVariable {
-			if _, ok := sourceVars[seg.Value]; !ok {
-				return fmt.Errorf("target variable %q not found in source pattern", seg.Value)
-			}
-		}
-	}
-
-	return nil
 }
 
 // DetectOverlaps checks if a new pattern could match the same addresses as
@@ -44,6 +23,7 @@ func DetectOverlaps(newSegments []PatternSegment, existing map[string][]PatternS
 		}
 	}
 	sort.Strings(overlaps)
+
 	return overlaps
 }
 
@@ -62,5 +42,6 @@ func patternsOverlap(a, b []PatternSegment) bool {
 		}
 		// If either is variable, there exists some value that could match both.
 	}
+
 	return true
 }

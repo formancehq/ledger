@@ -808,13 +808,14 @@ func (it *PebbleTxRangeIterator) extractTxID(key []byte) []byte {
 
 // txAttributePrefix builds the Pebble key prefix for scanning transactions
 // in a ledger within the attributes zone.
-// Format: [0xF1][ledger\x00\x02]
+// Format: [0xF1][ledger\x00\x02].
 func txAttributePrefix(ledger string) []byte {
 	prefix := make([]byte, 1+len(ledger)+1+1)
 	prefix[0] = dal.KeyPrefixAttributes
 	copy(prefix[1:], ledger)
 	prefix[1+len(ledger)] = 0x00
 	prefix[1+len(ledger)+1] = dal.CanonicalKeySepTransaction
+
 	return prefix
 }
 

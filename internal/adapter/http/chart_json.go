@@ -91,6 +91,7 @@ func fromChartJSON(c *chartJSON) *commonpb.ChartOfAccounts {
 	for name, segment := range c.Roots {
 		roots[name] = fromSegmentJSON(segment)
 	}
+
 	return &commonpb.ChartOfAccounts{Roots: roots}
 }
 
@@ -110,6 +111,7 @@ func fromSegmentJSON(s *chartSegmentJSON) *commonpb.ChartSegment {
 	if s.Variable != nil {
 		result.Variable = fromVariableJSON(s.Variable)
 	}
+
 	return result
 }
 
@@ -131,5 +133,6 @@ func fromVariableJSON(v *chartVariableJSON) *commonpb.ChartVariable {
 	if v.Variable != nil {
 		result.Variable = fromVariableJSON(v.Variable)
 	}
+
 	return result
 }

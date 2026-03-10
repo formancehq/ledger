@@ -1256,7 +1256,7 @@ Get details of a specific account type.
 ledgerctl account-types get <name> [--ledger <ledger>]
 ```
 
-Shows name, pattern, status, enforcement mode, and migration progress (if applicable).
+Shows name, pattern, status, and enforcement mode.
 
 #### account-types update
 
@@ -1275,26 +1275,6 @@ ledgerctl account-types remove <name> --ledger <ledger>
 ```
 
 **Aliases:** `rm`, `delete`
-
-#### account-types migrate
-
-Start migrating accounts from one type to another.
-
-```bash
-ledgerctl account-types migrate <source-type> <target-type> --ledger <ledger> [--dry-run]
-```
-
-The source type transitions to MIGRATING status and a background worker rewrites account keys. Use `--dry-run` to preview without applying changes.
-
-#### account-types cancel-migration
-
-Cancel an in-progress migration.
-
-```bash
-ledgerctl account-types cancel-migration <source-type> --ledger <ledger>
-```
-
-The source type reverts from MIGRATING to ACTIVE status.
 
 ---
 
@@ -2907,7 +2887,7 @@ Enable JWT/OIDC authentication with scope-based authorization. See [Authenticati
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 | `--auth-read-key-set-max-retries` | int | `10` | Maximum retries when fetching the JWKS key set |
-| `--auth-ed25519-keys` | string | `""` | Path to JSON file with Ed25519 public keys and scopes (auto-enables auth) |
+| `--auth-ed25519-keys` | string | `""` | Path to JSON file with Ed25519 public keys and scopes (auto-enables auth unless `--auth-enabled=false` is explicit) |
 
 ```bash
 # Start server with OIDC authentication

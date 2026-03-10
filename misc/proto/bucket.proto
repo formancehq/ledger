@@ -196,8 +196,7 @@ message Request {
     AddAccountTypeLedgerRequest add_account_type = 31;
     UpdateAccountTypeLedgerRequest update_account_type = 32;
     RemoveAccountTypeLedgerRequest remove_account_type = 33;
-    MigrateAccountTypeLedgerRequest migrate_account_type = 34;
-    CancelMigrationLedgerRequest cancel_migration = 35;
+    // 34-35 reserved (removed account migration)
   }
   signature.RequestSignature signature = 5;
 }
@@ -468,20 +467,6 @@ message UpdateAccountTypeLedgerRequest {
 message RemoveAccountTypeLedgerRequest {
   string ledger = 1;
   string name = 2;
-}
-
-// MigrateAccountTypeLedgerRequest triggers a migration (top-level request).
-message MigrateAccountTypeLedgerRequest {
-  string ledger = 1;
-  string source_type = 2;
-  string target_type = 3;
-  bool dry_run = 4;
-}
-
-// CancelMigrationLedgerRequest cancels an in-progress migration (top-level request).
-message CancelMigrationLedgerRequest {
-  string ledger = 1;
-  string source_type = 2;
 }
 
 // ============================================================================

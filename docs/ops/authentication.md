@@ -96,7 +96,7 @@ ledgerctl auth generate-key ./keys
 ledger-v3-poc run --auth-ed25519-keys auth-keys.json --bootstrap --node-id 1 --cluster-id test
 ```
 
-Setting `--auth-ed25519-keys` automatically enables `--auth-enabled`.
+Setting `--auth-ed25519-keys` automatically enables `--auth-enabled` unless `--auth-enabled=false` is explicitly set.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|

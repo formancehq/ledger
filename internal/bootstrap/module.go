@@ -1065,11 +1065,11 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 
 		authCfg.KeySet = internalauth.NewCompositeKeySet(ed25519KeySet, oidcKeySet)
 		authCfg.Ed25519AllowedScopes = allowedScopes
-		authCfg.Enabled = true
 
 		logger.WithFields(map[string]any{
 			"keys_count": len(allowedScopes),
-		}).Infof("Ed25519 authentication enabled")
+			"enabled":    authCfg.Enabled,
+		}).Infof("Ed25519 keys loaded")
 	} else {
 		authCfg.KeySet = oidcKeySet
 	}

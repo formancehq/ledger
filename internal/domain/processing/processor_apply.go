@@ -58,14 +58,6 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 		logPayload, err = p.processUpdateAccountType(apply.GetLedger(), applyData.UpdateAccountType, s)
 	case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
 		logPayload, err = p.processRemoveAccountType(apply.GetLedger(), applyData.RemoveAccountType, s)
-	case *raftcmdpb.LedgerApplyOrder_MigrateAccountType:
-		logPayload, err = p.processMigrateAccountType(apply.GetLedger(), applyData.MigrateAccountType, s)
-	case *raftcmdpb.LedgerApplyOrder_MigrateAccountBatch:
-		logPayload, err = p.processMigrateAccountBatch(apply.GetLedger(), applyData.MigrateAccountBatch, s)
-	case *raftcmdpb.LedgerApplyOrder_CompleteMigration:
-		logPayload, err = p.processCompleteMigration(apply.GetLedger(), applyData.CompleteMigration, s)
-	case *raftcmdpb.LedgerApplyOrder_CancelMigration:
-		logPayload, err = p.processCancelMigration(apply.GetLedger(), applyData.CancelMigration, s)
 	default:
 		return nil, errors.New("invalid apply type")
 	}

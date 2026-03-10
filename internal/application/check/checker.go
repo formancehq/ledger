@@ -443,14 +443,14 @@ func replayLedgerLog(
 				txKey := string(domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}.Bytes())
 				txState := getOrCreateTxState(expectedTxStates, txKey)
 
-				if txState.state.Metadata == nil {
+				if txState.state.GetMetadata() == nil {
 					txState.state.Metadata = &commonpb.MetadataSet{}
 				}
 
 				for _, m := range p.SavedMetadata.GetMetadata().GetMetadata() {
 					found := false
 
-					for i, existing := range txState.state.Metadata.GetMetadata() {
+					for i, existing := range txState.state.GetMetadata().GetMetadata() {
 						if existing.GetKey() == m.GetKey() {
 							txState.state.Metadata.Metadata[i] = m
 							found = true
@@ -487,9 +487,9 @@ func replayLedgerLog(
 			txKey := string(domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}.Bytes())
 			txState := getOrCreateTxState(expectedTxStates, txKey)
 
-			if txState.state.Metadata != nil {
-				filtered := make([]*commonpb.Metadata, 0, len(txState.state.Metadata.GetMetadata()))
-				for _, m := range txState.state.Metadata.GetMetadata() {
+			if txState.state.GetMetadata() != nil {
+				filtered := make([]*commonpb.Metadata, 0, len(txState.state.GetMetadata().GetMetadata()))
+				for _, m := range txState.state.GetMetadata().GetMetadata() {
 					if m.GetKey() != p.DeletedMetadata.GetKey() {
 						filtered = append(filtered, m)
 					}

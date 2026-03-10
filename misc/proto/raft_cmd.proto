@@ -218,10 +218,7 @@ message LedgerApplyOrder {
     AddAccountTypeOrder add_account_type = 15;
     UpdateAccountTypeOrder update_account_type = 16;
     RemoveAccountTypeOrder remove_account_type = 17;
-    MigrateAccountTypeOrder migrate_account_type = 18;
-    MigrateAccountBatchOrder migrate_account_batch = 19;
-    CompleteMigrationOrder complete_migration = 20;
-    CancelMigrationOrder cancel_migration = 21;
+    // 18-21 reserved (removed account migration)
   }
 }
 
@@ -274,37 +271,6 @@ message UpdateAccountTypeOrder {
 // RemoveAccountTypeOrder removes an account type from the ledger.
 message RemoveAccountTypeOrder {
   string name = 1;
-}
-
-// MigrateAccountTypeOrder triggers migration from source type to target type.
-message MigrateAccountTypeOrder {
-  string source_type = 1;
-  string target_type = 2;
-  uint64 total_accounts = 3;
-}
-
-// MigrateAccountBatchOrder rewrites a batch of account keys.
-message MigrateAccountBatchOrder {
-  string source_type = 1;
-  repeated MigrateAccountEntry volume_entries = 2;
-  repeated MigrateAccountEntry metadata_entries = 3;
-  uint64 migrated_accounts_so_far = 4;
-}
-
-// MigrateAccountEntry represents a single key rewrite in a migration batch.
-message MigrateAccountEntry {
-  bytes old_canonical_key = 1;
-  bytes new_canonical_key = 2;
-}
-
-// CompleteMigrationOrder marks a migration as complete.
-message CompleteMigrationOrder {
-  string source_type = 1;
-}
-
-// CancelMigrationOrder cancels an in-progress migration.
-message CancelMigrationOrder {
-  string source_type = 1;
 }
 
 message ConvertMetadataBatchOrder {

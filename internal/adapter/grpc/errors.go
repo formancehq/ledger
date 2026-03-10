@@ -57,8 +57,6 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		accountTypeAlreadyExists      *domain.ErrAccountTypeAlreadyExists
 		invalidPattern                *domain.ErrInvalidPattern
 		accountTypeHasAccounts        *domain.ErrAccountTypeHasAccounts
-		migrationAlreadyActive        *domain.ErrMigrationAlreadyActive
-		migrationVariableMismatch     *domain.ErrMigrationVariableMismatch
 	)
 
 	switch {
@@ -271,16 +269,6 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		code = codes.FailedPrecondition
 		reason = domain.ErrReasonAccountTypeHasAccounts
 		metadata = map[string]string{"name": accountTypeHasAccounts.Name}
-
-	case errors.As(inner, &migrationAlreadyActive):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonMigrationAlreadyActive
-		metadata = map[string]string{"activeType": migrationAlreadyActive.ActiveType}
-
-	case errors.As(inner, &migrationVariableMismatch):
-		code = codes.InvalidArgument
-		reason = domain.ErrReasonMigrationVariableMismatch
-		metadata = map[string]string{"details": migrationVariableMismatch.Details}
 
 	default:
 		// Unknown business error — fall back to Internal

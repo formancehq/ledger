@@ -966,29 +966,6 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				},
 			},
 		}
-	case *servicepb.Request_MigrateAccountType:
-		order.Type = &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.MigrateAccountType.GetLedger(),
-				Data: &raftcmdpb.LedgerApplyOrder_MigrateAccountType{
-					MigrateAccountType: &raftcmdpb.MigrateAccountTypeOrder{
-						SourceType: reqType.MigrateAccountType.GetSourceType(),
-						TargetType: reqType.MigrateAccountType.GetTargetType(),
-					},
-				},
-			},
-		}
-	case *servicepb.Request_CancelMigration:
-		order.Type = &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.CancelMigration.GetLedger(),
-				Data: &raftcmdpb.LedgerApplyOrder_CancelMigration{
-					CancelMigration: &raftcmdpb.CancelMigrationOrder{
-						SourceType: reqType.CancelMigration.GetSourceType(),
-					},
-				},
-			},
-		}
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
 	}

@@ -196,7 +196,7 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - ✅ Variable segments with optional regex constraints (e.g., `{iban:^[A-Z]{2}[0-9]{14}$}`)
 - ✅ Per-type enforcement mode: STRICT (reject) or AUDIT (warnings)
 - ✅ Longest-match / highest-specificity resolution when multiple types match
-- ✅ Account type lifecycle: ACTIVE → MIGRATING → DEPRECATED
+- ✅ Account type lifecycle: ACTIVE → DEPRECATED
 - ✅ `world` account always passes validation
 - ✅ Account types can be set at ledger creation time or added later
 
@@ -697,8 +697,6 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Account type already exists | `ALREADY_EXISTS` | `ACCOUNT_TYPE_ALREADY_EXISTS` | `name` |
 | Invalid pattern | `INVALID_ARGUMENT` | `INVALID_PATTERN` | `pattern`, `details` |
 | Account type has accounts | `FAILED_PRECONDITION` | `ACCOUNT_TYPE_HAS_ACCOUNTS` | `name` |
-| Migration already active | `FAILED_PRECONDITION` | `MIGRATION_ALREADY_ACTIVE` | `name` |
-| Migration variable mismatch | `INVALID_ARGUMENT` | `MIGRATION_VARIABLE_MISMATCH` | `details` |
 
 **Client-side usage (Go):**
 ```go

@@ -15,7 +15,7 @@ type updateAccountTypeRequest struct {
 	EnforcementMode string `json:"enforcementMode"`
 }
 
-// handleUpdateAccountType handles PATCH /{ledgerName}/account-types/{typeName}
+// handleUpdateAccountType handles PATCH /{ledgerName}/account-types/{typeName}.
 func (s *Server) handleUpdateAccountType(w http.ResponseWriter, r *http.Request) {
 	ledgerName := chi.URLParam(r, "ledgerName")
 	if ledgerName == "" {
@@ -27,6 +27,7 @@ func (s *Server) handleUpdateAccountType(w http.ResponseWriter, r *http.Request)
 	typeName := chi.URLParam(r, "typeName")
 	if typeName == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("type name is required"))
+
 		return
 	}
 

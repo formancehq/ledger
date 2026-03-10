@@ -18,8 +18,6 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewGetCommand())
 	cmd.AddCommand(NewUpdateCommand())
 	cmd.AddCommand(NewRemoveCommand())
-	cmd.AddCommand(NewMigrateCommand())
-	cmd.AddCommand(NewCancelMigrationCommand())
 
 	return cmd
 }

@@ -196,14 +196,14 @@ func (p *RequestProcessor) processMirrorSavedMetadata(ledger string, _ *raftcmdp
 
 				state, _ := s.GetTransactionState(txKey)
 				if state != nil {
-					if state.Metadata == nil {
+					if state.GetMetadata() == nil {
 						state.Metadata = &commonpb.MetadataSet{}
 					}
 
 					for _, metadatum := range sm.GetMetadata().GetMetadata() {
 						found := false
 
-						for i, existing := range state.Metadata.GetMetadata() {
+						for i, existing := range state.GetMetadata().GetMetadata() {
 							if existing.GetKey() == metadatum.GetKey() {
 								state.Metadata.Metadata[i] = metadatum
 								found = true
@@ -246,10 +246,10 @@ func (p *RequestProcessor) processMirrorDeletedMetadata(ledger string, _ *raftcm
 			txKey := domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}
 
 			state, _ := s.GetTransactionState(txKey)
-			if state != nil && state.Metadata != nil {
-				filtered := make([]*commonpb.Metadata, 0, len(state.Metadata.GetMetadata()))
+			if state != nil && state.GetMetadata() != nil {
+				filtered := make([]*commonpb.Metadata, 0, len(state.GetMetadata().GetMetadata()))
 
-				for _, md := range state.Metadata.GetMetadata() {
+				for _, md := range state.GetMetadata().GetMetadata() {
 					if md.GetKey() != dm.GetKey() {
 						filtered = append(filtered, md)
 					}

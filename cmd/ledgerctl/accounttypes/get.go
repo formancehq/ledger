@@ -69,22 +69,5 @@ func runGet(cmd *cobra.Command, args []string) error {
 	pterm.Printf("Status:      %s\n", formatStatus(at.GetStatus()))
 	pterm.Printf("Enforcement: %s\n", formatEnforcementMode(at.GetEnforcementMode()))
 
-	if at.GetSupersededBy() != "" {
-		pterm.Printf("Superseded:  %s\n", at.GetSupersededBy())
-	}
-
-	if at.GetMigrationProgress() != nil {
-		pterm.Println()
-		pterm.DefaultSection.Println("Migration Progress")
-		pterm.Printf("Total:    %d\n", at.GetMigrationProgress().GetTotalAccounts())
-		pterm.Printf("Migrated: %d\n", at.GetMigrationProgress().GetMigratedAccounts())
-		if at.GetMigrationProgress().GetStartedAt() != nil {
-			pterm.Printf("Started:  %s\n", at.GetMigrationProgress().GetStartedAt().AsTime().Format("2006-01-02T15:04:05Z07:00"))
-		}
-		if at.GetMigrationProgress().GetCompletedAt() != nil {
-			pterm.Printf("Completed: %s\n", at.GetMigrationProgress().GetCompletedAt().AsTime().Format("2006-01-02T15:04:05Z07:00"))
-		}
-	}
-
 	return nil
 }

@@ -1,6 +1,7 @@
 package accounttype
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -32,7 +33,7 @@ var variableNameRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 // Colons inside braces are part of the variable regex, not segment delimiters.
 func ParsePattern(pattern string) ([]PatternSegment, error) {
 	if pattern == "" {
-		return nil, fmt.Errorf("pattern must not be empty")
+		return nil, errors.New("pattern must not be empty")
 	}
 
 	parts := splitPatternSegments(pattern)
@@ -41,7 +42,7 @@ func ParsePattern(pattern string) ([]PatternSegment, error) {
 
 	for _, part := range parts {
 		if part == "" {
-			return nil, fmt.Errorf("pattern contains empty segment")
+			return nil, errors.New("pattern contains empty segment")
 		}
 
 		seg, err := parseSegment(part)
@@ -84,6 +85,7 @@ func splitPatternSegments(pattern string) []string {
 		}
 	}
 	parts = append(parts, pattern[start:])
+
 	return parts
 }
 
@@ -93,6 +95,7 @@ func parseSegment(s string) (PatternSegment, error) {
 		if !segmentNameRe.MatchString(s) {
 			return PatternSegment{}, fmt.Errorf("invalid fixed segment %q: must match [a-zA-Z0-9_-]+", s)
 		}
+
 		return PatternSegment{Kind: SegmentFixed, Value: s}, nil
 	}
 
@@ -163,6 +166,7 @@ func Specificity(segments []PatternSegment) int {
 			count++
 		}
 	}
+
 	return count
 }
 
@@ -182,6 +186,7 @@ func RewriteAddress(bindings map[string]string, target []PatternSegment) (string
 			parts[i] = val
 		}
 	}
+
 	return strings.Join(parts, ":"), nil
 }
 
@@ -200,6 +205,7 @@ func PatternString(segments []PatternSegment) string {
 			}
 		}
 	}
+
 	return strings.Join(parts, ":")
 }
 
@@ -211,6 +217,7 @@ func VariableNames(segments []PatternSegment) []string {
 			names = append(names, seg.Value)
 		}
 	}
+
 	return names
 }
 
@@ -226,6 +233,7 @@ func SortBySpecificity(patterns [][]PatternSegment) {
 		if li != lj {
 			return li < lj
 		}
+
 		return PatternString(patterns[i]) < PatternString(patterns[j])
 	})
 }

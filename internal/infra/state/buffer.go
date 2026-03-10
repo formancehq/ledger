@@ -370,13 +370,13 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 
 func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 	return &Buffered{
-		fsm:                 fsm,
-		attrs:               fsm.Registry.Attrs,
-		Date:                at,
-		Derived:             NewDerivedRegistry(fsm.Registry),
-		NextSequenceID:      fsm.nextSequenceID,
-		LastLogHash:         fsm.lastLogHash,
-		periods: fsm.Periods.Clone(),
+		fsm:            fsm,
+		attrs:          fsm.Registry.Attrs,
+		Date:           at,
+		Derived:        NewDerivedRegistry(fsm.Registry),
+		NextSequenceID: fsm.nextSequenceID,
+		LastLogHash:    fsm.lastLogHash,
+		periods:        fsm.Periods.Clone(),
 	}
 }
 

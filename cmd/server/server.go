@@ -482,8 +482,9 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 		ScopeMappingFile: scopeMappingFile,
 		ScopeMappingJSON: scopeMappingJSON,
 	}
-	// Auto-enable auth when Ed25519 keys are configured.
-	if ed25519KeysFile != "" {
+	// Auto-enable auth when Ed25519 keys are configured,
+	// unless the user explicitly set auth-enabled to false.
+	if ed25519KeysFile != "" && !cmd.Flags().Changed(auth.AuthEnabledFlag) {
 		cfg.AuthConfig.Enabled = true
 	}
 

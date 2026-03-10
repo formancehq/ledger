@@ -48,8 +48,6 @@ const (
 	ErrReasonAccountTypeAlreadyExists      = "ACCOUNT_TYPE_ALREADY_EXISTS"
 	ErrReasonInvalidPattern                = "INVALID_PATTERN"
 	ErrReasonAccountTypeHasAccounts        = "ACCOUNT_TYPE_HAS_ACCOUNTS"
-	ErrReasonMigrationAlreadyActive        = "MIGRATION_ALREADY_ACTIVE"
-	ErrReasonMigrationVariableMismatch     = "MIGRATION_VARIABLE_MISMATCH"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -337,7 +335,7 @@ type ErrAccountNotMatchingType struct {
 }
 
 func (e *ErrAccountNotMatchingType) Error() string {
-	return fmt.Sprintf("account does not match any account type pattern: %s", e.Address)
+	return "account does not match any account type pattern: " + e.Address
 }
 
 // ErrAccountTypeNotFound is returned when a referenced account type does not exist.
@@ -346,7 +344,7 @@ type ErrAccountTypeNotFound struct {
 }
 
 func (e *ErrAccountTypeNotFound) Error() string {
-	return fmt.Sprintf("account type not found: %s", e.Name)
+	return "account type not found: " + e.Name
 }
 
 // ErrAccountTypeAlreadyExists is returned when creating an account type with a name that already exists.
@@ -355,7 +353,7 @@ type ErrAccountTypeAlreadyExists struct {
 }
 
 func (e *ErrAccountTypeAlreadyExists) Error() string {
-	return fmt.Sprintf("account type already exists: %s", e.Name)
+	return "account type already exists: " + e.Name
 }
 
 // ErrInvalidPattern is returned when an account type pattern is syntactically invalid.
@@ -375,22 +373,4 @@ type ErrAccountTypeHasAccounts struct {
 
 func (e *ErrAccountTypeHasAccounts) Error() string {
 	return fmt.Sprintf("account type %q still has matching accounts", e.Name)
-}
-
-// ErrMigrationAlreadyActive is returned when starting a migration while another is in progress.
-type ErrMigrationAlreadyActive struct {
-	ActiveType string
-}
-
-func (e *ErrMigrationAlreadyActive) Error() string {
-	return fmt.Sprintf("migration already active on type %q", e.ActiveType)
-}
-
-// ErrMigrationVariableMismatch is returned when target pattern variables are not a subset of source.
-type ErrMigrationVariableMismatch struct {
-	Details string
-}
-
-func (e *ErrMigrationVariableMismatch) Error() string {
-	return fmt.Sprintf("migration variable mismatch: %s", e.Details)
 }
