@@ -1,0 +1,83 @@
+config:
+  exporters:
+#    debug:
+#      verbosity: detailed
+    otlp/tempo:
+      endpoint: tempo:4317
+      tls:
+        insecure: true
+    otlphttp/logs:
+      endpoint: http://loki:3100/otlp
+      tls:
+        insecure: true
+    otlphttp/victoriametrics:
+      compression: gzip
+      encoding: proto
+      metrics_endpoint: http://vm-victoria-metrics-single-server:8428/opentelemetry/v1/metrics
+      tls:
+        insecure: true
+  processors:
+    batch: {}
+    filter/k6:
+      error_mode: ignore
+      metrics:
+        metric:
+          - 'resource.attributes["service.name"] != "k6-loadtest"'
+    filter/not_k6:
+      error_mode: ignore
+      metrics:
+        metric:
+          - 'resource.attributes["service.name"] == "k6-loadtest"'
+    metricstransform/k6_prefix:
+      transforms:
+        - include: '^(http_.*|vus.*|iterations|iteration_duration|data_(sent|received)|checks|group_duration.*)$'
+          match_type: regexp
+          action: update
+          new_name: 'k6_$${0}'
+  receivers:
+    otlp:
+      protocols:
+        grpc: {}
+        http: {}
+  service:
+    pipelines:
+      logs:
+        exporters:
+          - otlphttp/logs
+        processors:
+          - batch
+        receivers:
+          - otlp
+      metrics:
+        exporters:
+          - otlphttp/victoriametrics
+        processors:
+          - filter/not_k6
+          - metricstransform/k6_prefix
+          - batch
+        receivers:
+          - otlp
+      metrics/k6:
+        receivers:
+          - otlp
+        processors:
+          - filter/k6
+          - metricstransform/k6_prefix
+          - batch
+        exporters:
+          - otlphttp/victoriametrics
+      traces:
+        exporters:
+          - otlp/tempo
+        processors:
+          - batch
+        receivers:
+          - otlp
+image:
+  repository: otel/opentelemetry-collector-contrib
+mode: deployment
+ports:
+  otlp:
+    enabled: true
+  otlp-http:
+    enabled: true

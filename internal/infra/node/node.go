@@ -820,6 +820,11 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	// event manager) see the complete Pebble state at startup.
 	initialCommit := status.Commit
 	if initialCommit > 0 {
+		node.logger.WithFields(map[string]any{
+			"from": node.fsm.LastPersistedIndex(),
+			"to": initialCommit,
+		}).Infof("Replaying WAL...")
+
 		err := node.fsm.WaitForApplied(ctx, initialCommit)
 		if err != nil {
 			return fmt.Errorf("waiting for initial WAL replay: %w", err)

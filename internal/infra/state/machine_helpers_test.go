@@ -145,14 +145,12 @@ func TestMachineLastPersistedIndex(t *testing.T) {
 	machine, _, _ := newTestMachine(t)
 
 	// Initially 0
-	idx, err := machine.LastPersistedIndex()
-	require.NoError(t, err)
+	idx := machine.LastPersistedIndex()
 	require.Equal(t, uint64(0), idx)
 
 	// Set via atomic
 	machine.lastPersistedIndex.Store(42)
-	idx, err = machine.LastPersistedIndex()
-	require.NoError(t, err)
+	idx = machine.LastPersistedIndex()
 	require.Equal(t, uint64(42), idx)
 }
 
