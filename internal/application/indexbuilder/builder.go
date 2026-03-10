@@ -427,8 +427,8 @@ func (b *Builder) loop(stop <-chan struct{}) {
 
 	b.logger.WithFields(map[string]any{"cursor": cursor}).Infof("Index builder started")
 
-	// Initial catch-up
-	if cursor, err = b.processLogs(cursor); err != nil {
+	// Initial catch-up (unbounded — backfills haven't started yet).
+	if cursor, err = b.processLogs(cursor, time.Time{}); err != nil {
 		b.logger.Errorf("Error during initial catch-up: %v", err)
 	}
 
@@ -461,7 +461,14 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		// Fast path: skip Pebble iterator + bbolt transaction when the FSM
 		// hasn't advanced past our cursor.
 		if cached := b.notifications.LastSequence.Load(); cached == 0 || cached > cursor {
-			if cursor, err = b.processLogs(cursor); err != nil {
+			// When backfills are active, cap normal processing so backfills
+			// get their fair share of each tick.
+			var logDeadline time.Time
+			if len(b.backfillTasks) > 0 {
+				logDeadline = time.Now().Add(b.backfillBudget)
+			}
+
+			if cursor, err = b.processLogs(cursor, logDeadline); err != nil {
 				b.logger.Errorf("Error processing logs: %v", err)
 			}
 		}
@@ -474,7 +481,9 @@ func (b *Builder) loop(stop <-chan struct{}) {
 // indexes them in batches of indexBatchSize within a single bbolt
 // transaction to amortize fsync overhead. Logs are consumed on the fly
 // (no intermediate slice) so the proto object can be GC'd immediately.
-func (b *Builder) processLogs(cursor uint64) (uint64, error) {
+// When deadline is non-zero, processing stops after the deadline to yield
+// time to other work (e.g. backfills).
+func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error) {
 	logsCursor, err := query.ReadLogsSince(context.Background(), b.pebbleStore, cursor, dal.WithReuse())
 	if err != nil {
 		return cursor, err
@@ -571,6 +580,11 @@ func (b *Builder) processLogs(cursor uint64) (uint64, error) {
 		if eof {
 			break
 		}
+
+		// Yield to backfills when a deadline is set.
+		if !deadline.IsZero() && time.Now().After(deadline) {
+			break
+		}
 	}
 
 	return cursor, nil
@@ -580,7 +594,7 @@ func (b *Builder) processLogs(cursor uint64) (uint64, error) {
 // rebuilding the entire read index. This is intended for offline use
 // (CLI backfill). Returns the last processed log sequence.
 func (b *Builder) RebuildAll() (uint64, error) {
-	return b.processLogs(0)
+	return b.processLogs(0, time.Time{})
 }
 
 // indexLogEntry dispatches a single log entry to the appropriate index handler.
@@ -1450,22 +1464,13 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 
 		// Process this task with its share of the budget.
 		taskDeadline := time.Now().Add(perTaskBudget)
-		for time.Now().Before(taskDeadline) {
-			progress, err := b.processBackfill(stop, task)
-			if err != nil {
-				b.logger.WithFields(map[string]any{
-					"ledger": task.ledger,
-					"index":  backfillIndexName(task.index),
-					"cursor": task.cursor,
-					"error":  err,
-				}).Errorf("Error processing backfill")
-
-				break
-			}
-
-			if !progress {
-				break // EOF or no more data
-			}
+		if err := b.processBackfill(stop, task, taskDeadline); err != nil {
+			b.logger.WithFields(map[string]any{
+				"ledger": task.ledger,
+				"index":  backfillIndexName(task.index),
+				"cursor": task.cursor,
+				"error":  err,
+			}).Errorf("Error processing backfill")
 		}
 
 		// Periodic progress logging.
@@ -1501,13 +1506,15 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 	}
 }
 
-// processBackfill reads one batch of logs from Pebble and indexes them using
-// only the backfilling index's configuration. Returns true if progress was made
-// (more data may be available), false if EOF was reached or no data was found.
-func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) (bool, error) {
+// processBackfill reads logs from Pebble using a single iterator and indexes
+// them in batches using only the backfilling index's configuration.
+// The iterator stays open across batches to avoid repeated NewIter/First
+// overhead during catch-up. Processing continues until the deadline is reached
+// or EOF. Existence writes are skipped.
+func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, deadline time.Time) error {
 	logsCursor, err := query.ReadLogsSince(context.Background(), b.pebbleStore, task.cursor, dal.WithReuse())
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	defer func() { _ = logsCursor.Close() }()
@@ -1525,71 +1532,76 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask) (boo
 		b.backfillMode = false
 	}()
 
-	select {
-	case <-stop:
-		return false, nil
-	default:
-	}
+	for time.Now().Before(deadline) {
+		select {
+		case <-stop:
+			return nil
+		default:
+		}
 
-	var (
-		batchCount int
-		lastSeq    uint64
-		eof        bool
-	)
+		var (
+			batchCount int
+			lastSeq    uint64
+			eof        bool
+		)
 
-	if err := b.readStore.Update(func(tx *bolt.Tx) error {
-		b.wb.Init(tx)
+		if err := b.readStore.Update(func(tx *bolt.Tx) error {
+			b.wb.Init(tx)
 
-		for batchCount < b.batchSize {
-			log, err := logsCursor.Next()
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					eof = true
+			for batchCount < b.batchSize {
+				log, err := logsCursor.Next()
+				if err != nil {
+					if errors.Is(err, io.EOF) {
+						eof = true
 
-					break
+						break
+					}
+
+					return err
 				}
 
-				return err
-			}
+				// Skip config-mutation log types during backfill.
+				if !isDataLog(log) {
+					lastSeq = log.GetSequence()
+					batchCount++
 
-			// Skip config-mutation log types during backfill.
-			if !isDataLog(log) {
+					continue
+				}
+
+				if err := b.indexLogEntry(tx, log); err != nil {
+					return err
+				}
+
 				lastSeq = log.GetSequence()
 				batchCount++
-
-				continue
 			}
 
-			if err := b.indexLogEntry(tx, log); err != nil {
-				return err
+			// Persist backfill cursor.
+			if batchCount > 0 {
+				if err := b.wb.Flush(); err != nil {
+					return err
+				}
+
+				return b.readStore.WriteBackfillProgress(tx, task.bbKey, lastSeq)
 			}
 
-			lastSeq = log.GetSequence()
-			batchCount++
+			return nil
+		}); err != nil {
+			return err
 		}
 
-		// Persist backfill cursor.
-		if batchCount > 0 {
-			if err := b.wb.Flush(); err != nil {
-				return err
-			}
-
-			return b.readStore.WriteBackfillProgress(tx, task.bbKey, lastSeq)
+		if batchCount == 0 {
+			break
 		}
 
-		return nil
-	}); err != nil {
-		return false, err
+		task.cursor = lastSeq
+
+		if eof {
+			break
+		}
 	}
 
-	if batchCount == 0 {
-		return false, nil
-	}
-
-	task.cursor = lastSeq
-
-	// Progress was made; more data available only if we didn't hit EOF.
-	return !eof, nil
+	return nil
 }
 
 // buildBackfillConfig creates a temporary indexConfig map containing only the
