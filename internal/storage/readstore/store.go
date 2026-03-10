@@ -15,10 +15,7 @@ import (
 	"github.com/formancehq/go-libs/v3/logging"
 )
 
-var (
-	progressKey  = []byte("lastSeq")
-	raftIndexKey = []byte("lastRaftIdx")
-)
+var progressKey = []byte("lastSeq")
 
 // Store wraps a bbolt database for the read-side inverted indexes.
 // It is safe for concurrent use: bbolt supports one writer and many
@@ -256,39 +253,6 @@ func (s *Store) WriteProgress(tx *bolt.Tx, sequence uint64) error {
 	return b.Put(progressKey, buf[:])
 }
 
-// WriteRaftIndexProgress stores the last indexed raft index in the progress bucket.
-func (s *Store) WriteRaftIndexProgress(tx *bolt.Tx, raftIndex uint64) error {
-	b := tx.Bucket(BucketProgress)
-	if b == nil {
-		return errors.New("progress bucket not found")
-	}
-
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], raftIndex)
-
-	return b.Put(raftIndexKey, buf[:])
-}
-
-// ReadRaftIndexProgress returns the last indexed raft index from the progress bucket.
-// Returns 0 if no progress has been recorded.
-func (s *Store) ReadRaftIndexProgress(tx *bolt.Tx) (uint64, error) {
-	b := tx.Bucket(BucketProgress)
-	if b == nil {
-		return 0, nil
-	}
-
-	v := b.Get(raftIndexKey)
-	if v == nil {
-		return 0, nil
-	}
-
-	if len(v) != 8 {
-		return 0, fmt.Errorf("corrupt raft index progress value: expected 8 bytes, got %d", len(v))
-	}
-
-	return binary.BigEndian.Uint64(v), nil
-}
-
 // LastIndexedSequence returns the last indexed log sequence (read-only).
 func (s *Store) LastIndexedSequence() (uint64, error) {
 	var seq uint64
@@ -339,6 +303,37 @@ func (s *Store) ReadBackfillProgress(tx *bolt.Tx, key []byte) (uint64, bool) {
 	return binary.BigEndian.Uint64(v), true
 }
 
+// WriteBackfillCursor stores a variable-length cursor ([]byte) in the backfill bucket.
+// Used for schema rewrite tasks where the cursor is a reverse map key.
+func (s *Store) WriteBackfillCursor(tx *bolt.Tx, key, cursor []byte) error {
+	b := tx.Bucket(BucketBackfill)
+	if b == nil {
+		return errors.New("backfill bucket not found")
+	}
+
+	return b.Put(key, cursor)
+}
+
+// ReadBackfillCursor reads a variable-length cursor from the backfill bucket.
+// Returns (cursor, true) if found, (nil, false) if the key does not exist.
+func (s *Store) ReadBackfillCursor(tx *bolt.Tx, key []byte) ([]byte, bool) {
+	b := tx.Bucket(BucketBackfill)
+	if b == nil {
+		return nil, false
+	}
+
+	v := b.Get(key)
+	if v == nil {
+		return nil, false
+	}
+
+	// Return a copy — bbolt values are only valid within the transaction.
+	c := make([]byte, len(v))
+	copy(c, v)
+
+	return c, true
+}
+
 // DeleteBackfillProgress removes a backfill cursor from the backfill bucket.
 func (s *Store) DeleteBackfillProgress(tx *bolt.Tx, key []byte) error {
 	b := tx.Bucket(BucketBackfill)
@@ -368,6 +363,67 @@ func (s *Store) ReadAllBackfillProgress(tx *bolt.Tx) (map[string]uint64, error) 
 	}
 
 	return result, nil
+}
+
+// SchemaRewriteEntry is a decoded schema rewrite progress entry.
+type SchemaRewriteEntry struct {
+	Ledger     string
+	TargetType byte   // from key: [ledger\x00]S[targetType_byte][key]
+	Key        string // metadata field name
+	BBKey      []byte // full bbolt key
+	ToType     byte   // first byte of value
+	Cursor     []byte // remaining bytes of value (reverse map cursor)
+}
+
+// ReadAllSchemaRewriteProgress reads all schema rewrite entries from the backfill bucket.
+// Schema rewrite keys use BackfillKindSchemaRewrite ('S') and have variable-length values.
+func (s *Store) ReadAllSchemaRewriteProgress(tx *bolt.Tx) ([]SchemaRewriteEntry, error) {
+	b := tx.Bucket(BucketBackfill)
+	if b == nil {
+		return nil, nil
+	}
+
+	var entries []SchemaRewriteEntry
+
+	c := b.Cursor()
+	for k, v := c.First(); k != nil; k, v = c.Next() {
+		ledger, kind, details, ok := ParseBackfillKey(k)
+		if !ok || kind != BackfillKindSchemaRewrite {
+			continue
+		}
+
+		if len(details) < 1 {
+			continue
+		}
+
+		targetType := details[0]
+		metaKey := string(details[1:])
+
+		var toType byte
+		var cursor []byte
+
+		if len(v) >= 1 {
+			toType = v[0]
+			if len(v) > 1 {
+				cursor = make([]byte, len(v)-1)
+				copy(cursor, v[1:])
+			}
+		}
+
+		bbKey := make([]byte, len(k))
+		copy(bbKey, k)
+
+		entries = append(entries, SchemaRewriteEntry{
+			Ledger:     ledger,
+			TargetType: targetType,
+			Key:        metaKey,
+			BBKey:      bbKey,
+			ToType:     toType,
+			Cursor:     cursor,
+		})
+	}
+
+	return entries, nil
 }
 
 // BackfillEntry is a decoded backfill progress entry returned by ListBackfillProgress.

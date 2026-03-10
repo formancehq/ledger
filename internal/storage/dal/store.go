@@ -115,11 +115,6 @@ var (
 	KeyPrefixLog   byte = 0x01 // [KeyPrefixLog][sequence] -> Log
 	KeyPrefixAudit byte = 0x02 // [KeyPrefixAudit][sequence] -> AuditEntry
 
-	// KeyPrefixSeqToRaftIndex maps the first log sequence produced by a raft entry
-	// to the raft index that produced it. Written atomically in applyProposal.
-	// Key: [0x04][firstSequence BE 8B]  Value: [raftIndex BE 8B].
-	KeyPrefixSeqToRaftIndex byte = 0x04
-
 	// ColdSequencePrefixes lists cold-storable prefixes keyed by sequence number.
 	// These support efficient range scan and range delete by [prefix][startSeq]..[prefix][endSeq].
 	ColdSequencePrefixes = []byte{KeyPrefixLog, KeyPrefixAudit}

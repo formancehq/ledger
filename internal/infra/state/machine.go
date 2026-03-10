@@ -331,8 +331,8 @@ func (fsm *Machine) RecoverState() error {
 	return nil
 }
 
-func (fsm *Machine) LastPersistedIndex() (uint64, error) {
-	return fsm.lastPersistedIndex.Load(), nil
+func (fsm *Machine) LastPersistedIndex() uint64 {
+	return fsm.lastPersistedIndex.Load()
 }
 
 // WaitForApplied blocks until the FSM has applied entries up to (and including) targetIndex,
@@ -1095,10 +1095,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		}
 	}
 
-	// Capture the current sequence before processing so we can detect whether
-	// this raft entry produced logs and write a seq→raftIndex mapping.
-	initialNextSeq := fsm.nextSequenceID
-
 	// Create buffer for this proposal
 	buffer := NewBuffer(effectiveDate, fsm)
 
@@ -1153,14 +1149,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	if err := buffer.Merge(raftIndex, batch); err != nil {
 		return nil, err
-	}
-
-	// Write seq→raftIndex mapping so the index builder can correlate its
-	// sequence-based progress with Pebble attribute versions (raft-index-based).
-	if fsm.nextSequenceID > initialNextSeq {
-		if err := WriteSeqToRaftIndex(batch, initialNextSeq, raftIndex); err != nil {
-			return nil, fmt.Errorf("writing seq-to-raft-index mapping: %w", err)
-		}
 	}
 
 	auditAfter := fsm.sharedState.AuditEnabled()
