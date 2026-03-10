@@ -672,4 +672,156 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, "min_age", ic.GetParamMin())
 		assert.False(t, ic.GetMinExclusive())
 	})
+
+	// --- In operator tests ---
+
+	t.Run("metadata in with strings", func(t *testing.T) {
+		t.Parallel()
+
+		filter, err := Parse(`metadata[category] in (premium, gold, silver)`)
+		require.NoError(t, err)
+
+		orF := filter.GetOr()
+		require.NotNil(t, orF)
+		require.Len(t, orF.GetFilters(), 3)
+
+		for i, expected := range []string{"premium", "gold", "silver"} {
+			fc := orF.GetFilters()[i].GetField()
+			require.NotNil(t, fc)
+			assert.Equal(t, "category", fc.GetField().GetMetadata())
+			sc := fc.GetStringCond()
+			require.NotNil(t, sc)
+			assert.Equal(t, expected, sc.GetHardcoded())
+		}
+	})
+
+	t.Run("metadata in with quoted strings", func(t *testing.T) {
+		t.Parallel()
+
+		filter, err := Parse(`metadata[name] in ("hello world", "foo bar")`)
+		require.NoError(t, err)
+
+		orF := filter.GetOr()
+		require.NotNil(t, orF)
+		require.Len(t, orF.GetFilters(), 2)
+
+		sc0 := orF.GetFilters()[0].GetField().GetStringCond()
+		require.NotNil(t, sc0)
+		assert.Equal(t, "hello world", sc0.GetHardcoded())
+
+		sc1 := orF.GetFilters()[1].GetField().GetStringCond()
+		require.NotNil(t, sc1)
+		assert.Equal(t, "foo bar", sc1.GetHardcoded())
+	})
+
+	t.Run("metadata in with integers", func(t *testing.T) {
+		t.Parallel()
+
+		filter, err := Parse("metadata[age] in (18, 25, 30)")
+		require.NoError(t, err)
+
+		orF := filter.GetOr()
+		require.NotNil(t, orF)
+		require.Len(t, orF.GetFilters(), 3)
+
+		for i, expected := range []int64{18, 25, 30} {
+			ic := orF.GetFilters()[i].GetField().GetIntCond()
+			require.NotNil(t, ic)
+			assert.Equal(t, expected, ic.GetMin())
+			assert.Equal(t, expected, ic.GetMax())
+		}
+	})
+
+	t.Run("metadata in with single value collapses", func(t *testing.T) {
+		t.Parallel()
+
+		filter, err := Parse("metadata[category] in (premium)")
+		require.NoError(t, err)
+
+		// Single value: no OrFilter wrapper, direct field condition.
+		fc := filter.GetField()
+		require.NotNil(t, fc)
+		assert.Equal(t, "category", fc.GetField().GetMetadata())
+		sc := fc.GetStringCond()
+		require.NotNil(t, sc)
+		assert.Equal(t, "premium", sc.GetHardcoded())
+	})
+
+	t.Run("metadata in with params", func(t *testing.T) {
+		t.Parallel()
+
+		filter, err := Parse("metadata[category] in ($a, $b)")
+		require.NoError(t, err)
+
+		orF := filter.GetOr()
+		require.NotNil(t, orF)
+		require.Len(t, orF.GetFilters(), 2)
+
+		assert.Equal(t, "a", orF.GetFilters()[0].GetField().GetStringCond().GetParam())
+		assert.Equal(t, "b", orF.GetFilters()[1].GetField().GetStringCond().GetParam())
+	})
+
+	t.Run("address in", func(t *testing.T) {
+		t.Parallel()
+
+		filter, err := Parse(`address in ("users:alice", "users:bob")`)
+		require.NoError(t, err)
+
+		orF := filter.GetOr()
+		require.NotNil(t, orF)
+		require.Len(t, orF.GetFilters(), 2)
+
+		am0 := orF.GetFilters()[0].GetAddress()
+		require.NotNil(t, am0)
+		assert.Equal(t, "users:alice", am0.GetHardcodedExact())
+		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_ANY, am0.GetRole())
+
+		am1 := orF.GetFilters()[1].GetAddress()
+		require.NotNil(t, am1)
+		assert.Equal(t, "users:bob", am1.GetHardcodedExact())
+	})
+
+	t.Run("source in", func(t *testing.T) {
+		t.Parallel()
+
+		filter, err := Parse(`source in ("bank:main", "bank:secondary")`)
+		require.NoError(t, err)
+
+		orF := filter.GetOr()
+		require.NotNil(t, orF)
+		require.Len(t, orF.GetFilters(), 2)
+
+		am0 := orF.GetFilters()[0].GetAddress()
+		require.NotNil(t, am0)
+		assert.Equal(t, "bank:main", am0.GetHardcodedExact())
+		assert.Equal(t, commonpb.AddressRole_ADDRESS_ROLE_SOURCE, am0.GetRole())
+	})
+
+	t.Run("metadata in combined with AND", func(t *testing.T) {
+		t.Parallel()
+
+		filter, err := Parse("metadata[category] in (a, b) and metadata[status] == active")
+		require.NoError(t, err)
+
+		andF := filter.GetAnd()
+		require.NotNil(t, andF)
+		require.Len(t, andF.GetFilters(), 2)
+
+		// First operand is the desugared OR from "in"
+		orF := andF.GetFilters()[0].GetOr()
+		require.NotNil(t, orF)
+		require.Len(t, orF.GetFilters(), 2)
+
+		// Second operand is a simple field condition
+		fc := andF.GetFilters()[1].GetField()
+		require.NotNil(t, fc)
+		assert.Equal(t, "status", fc.GetField().GetMetadata())
+	})
+
+	t.Run("error: metadata in empty list", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := Parse("metadata[category] in ()")
+		require.Error(t, err)
+	})
 }

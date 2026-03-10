@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
@@ -943,6 +944,225 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.NotFound))
+		})
+	})
+
+	// ========================================================================
+	// Execute LIST mode — metadata in filter (desugared from "in" operator)
+	// ========================================================================
+	Context("Execute LIST mode — metadata in filter", Ordered, func() {
+		const ledgerName = "pq-exec-in"
+
+		BeforeAll(func() {
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "role",
+							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+						},
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "tier",
+							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+						},
+					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier"),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+
+			// alice(admin,gold), bob(user,silver), charlie(admin,bronze), diana(viewer,gold)
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "alice", big.NewInt(100), "USD"),
+					}, nil),
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "bob", big.NewInt(200), "USD"),
+					}, nil),
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "charlie", big.NewInt(300), "USD"),
+					}, nil),
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "diana", big.NewInt(400), "USD"),
+					}, nil),
+					saveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin", "tier": "gold"}),
+					saveAccountMetadataAction(ledgerName, "bob", map[string]string{"role": "user", "tier": "silver"}),
+					saveAccountMetadataAction(ledgerName, "charlie", map[string]string{"role": "admin", "tier": "bronze"}),
+					saveAccountMetadataAction(ledgerName, "diana", map[string]string{"role": "viewer", "tier": "gold"}),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should return accounts matching any role in the list", func() {
+			// metadata[role] in (admin, viewer) → alice, charlie, diana
+			filter, err := filterexpr.Parse(`metadata[role] in (admin, viewer)`)
+			Expect(err).To(Succeed())
+
+			_, err = client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
+				Query: &commonpb.PreparedQuery{
+					Name:   "roles-in",
+					Ledger: ledgerName,
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+					Filter: filter,
+				},
+			})
+			Expect(err).To(Succeed())
+
+			var result *servicepb.ExecutePreparedQueryResponse
+			Eventually(func(g Gomega) {
+				var execErr error
+				result, execErr = client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+					Ledger:    ledgerName,
+					QueryName: "roles-in",
+					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				})
+				g.Expect(execErr).To(Succeed())
+				g.Expect(result.GetCursor()).NotTo(BeNil())
+				g.Expect(result.GetCursor().AccountData).To(HaveLen(3))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			Expect(result.GetCursor().AccountData).To(ConsistOf("alice", "charlie", "diana"))
+		})
+
+		It("Should combine in filter with AND on different fields", func() {
+			// metadata[role] in (admin, viewer) and metadata[tier] in (gold) → alice, diana
+			filter, err := filterexpr.Parse(`metadata[role] in (admin, viewer) and metadata[tier] in (gold)`)
+			Expect(err).To(Succeed())
+
+			_, err = client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
+				Query: &commonpb.PreparedQuery{
+					Name:   "roles-in-and-tier-in",
+					Ledger: ledgerName,
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+					Filter: filter,
+				},
+			})
+			Expect(err).To(Succeed())
+
+			var result *servicepb.ExecutePreparedQueryResponse
+			Eventually(func(g Gomega) {
+				var execErr error
+				result, execErr = client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+					Ledger:    ledgerName,
+					QueryName: "roles-in-and-tier-in",
+					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				})
+				g.Expect(execErr).To(Succeed())
+				g.Expect(result.GetCursor()).NotTo(BeNil())
+				g.Expect(result.GetCursor().AccountData).To(HaveLen(2))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			Expect(result.GetCursor().AccountData).To(ConsistOf("alice", "diana"))
+		})
+
+		It("Should support in with quoted string values", func() {
+			// metadata[tier] in ("gold", "silver") → alice, bob, diana
+			filter, err := filterexpr.Parse(`metadata[tier] in ("gold", "silver")`)
+			Expect(err).To(Succeed())
+
+			_, err = client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
+				Query: &commonpb.PreparedQuery{
+					Name:   "tier-in-quoted",
+					Ledger: ledgerName,
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+					Filter: filter,
+				},
+			})
+			Expect(err).To(Succeed())
+
+			var result *servicepb.ExecutePreparedQueryResponse
+			Eventually(func(g Gomega) {
+				var execErr error
+				result, execErr = client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+					Ledger:    ledgerName,
+					QueryName: "tier-in-quoted",
+					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				})
+				g.Expect(execErr).To(Succeed())
+				g.Expect(result.GetCursor()).NotTo(BeNil())
+				g.Expect(result.GetCursor().AccountData).To(HaveLen(3))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			Expect(result.GetCursor().AccountData).To(ConsistOf("alice", "bob", "diana"))
+		})
+	})
+
+	// ========================================================================
+	// Execute LIST mode — address in filter on transactions
+	// ========================================================================
+	Context("Execute LIST mode — address in filter on transactions", Ordered, func() {
+		const ledgerName = "pq-exec-addr-in"
+
+		BeforeAll(func() {
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createLedgerAction(ledgerName, nil),
+					createAddressIndexAction(ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			waitForAddressIndexReady(ctx, client, ledgerName, commonpb.AddressRole_ADDRESS_ROLE_ANY)
+
+			// tx0: world→alice, tx1: world→bob, tx2: alice→charlie
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "alice", big.NewInt(100), "USD"),
+					}, nil),
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "bob", big.NewInt(200), "USD"),
+					}, nil),
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("alice", "charlie", big.NewInt(50), "USD"),
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should return transactions involving any address in the list", func() {
+			// address in ("alice", "charlie") → tx0 (world→alice), tx2 (alice→charlie)
+			filter, err := filterexpr.Parse(`address in ("alice", "charlie")`)
+			Expect(err).To(Succeed())
+
+			_, err = client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
+				Query: &commonpb.PreparedQuery{
+					Name:   "addr-in-txs",
+					Ledger: ledgerName,
+					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+					Filter: filter,
+				},
+			})
+			Expect(err).To(Succeed())
+
+			var result *servicepb.ExecutePreparedQueryResponse
+			Eventually(func(g Gomega) {
+				var execErr error
+				result, execErr = client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+					Ledger:    ledgerName,
+					QueryName: "addr-in-txs",
+					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				})
+				g.Expect(execErr).To(Succeed())
+				g.Expect(result.GetCursor()).NotTo(BeNil())
+				g.Expect(result.GetCursor().TransactionData).To(HaveLen(2))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
+			txIDs := result.GetCursor().TransactionData
+			sorted := make([]uint64, len(txIDs))
+			copy(sorted, txIDs)
+			sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+			Expect(sorted[0]).To(Equal(uint64(1))) // tx0: world→alice
+			Expect(sorted[1]).To(Equal(uint64(3))) // tx2: alice→charlie
 		})
 	})
 })

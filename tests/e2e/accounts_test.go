@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
@@ -724,6 +725,159 @@ var _ = Describe("Accounts", Ordered, func() {
 				g.Expect(addressesB).NotTo(HaveKey("alice"))
 				g.Expect(addressesB).NotTo(HaveKey("bob"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+	})
+
+	Context("When listing accounts with metadata in filter", Ordered, func() {
+		var ledgerName = "accounts-in-filter-ledger"
+
+		BeforeAll(func() {
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+						{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "role",
+							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+						},
+					}),
+					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			waitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+
+			// Create accounts with different roles
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "alice", big.NewInt(100), "USD"),
+					}, nil),
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "bob", big.NewInt(200), "USD"),
+					}, nil),
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "charlie", big.NewInt(300), "USD"),
+					}, nil),
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "dave", big.NewInt(400), "USD"),
+					}, nil),
+					saveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
+					saveAccountMetadataAction(ledgerName, "bob", map[string]string{"role": "user"}),
+					saveAccountMetadataAction(ledgerName, "charlie", map[string]string{"role": "admin"}),
+					saveAccountMetadataAction(ledgerName, "dave", map[string]string{"role": "viewer"}),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Wait for all accounts to appear
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(5)) // world + 4 users
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should filter accounts matching any value in the list", func() {
+			// metadata[role] in (admin, viewer) → alice, charlie, dave
+			filter, err := filterexpr.Parse(`metadata[role] in (admin, viewer)`)
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(3))
+				addresses := make([]string, len(accounts))
+				for i, a := range accounts {
+					addresses[i] = a.Address
+				}
+				g.Expect(addresses).To(ContainElements("alice", "charlie", "dave"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should filter accounts with single value in list", func() {
+			// metadata[role] in (user) → bob only
+			filter, err := filterexpr.Parse(`metadata[role] in (user)`)
+			Expect(err).To(Succeed())
+
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(HaveLen(1))
+			Expect(accounts[0].Address).To(Equal("bob"))
+		})
+
+		It("Should return empty when no values match", func() {
+			filter, err := filterexpr.Parse(`metadata[role] in (superadmin, moderator)`)
+			Expect(err).To(Succeed())
+
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(BeEmpty())
+		})
+
+		It("Should combine in filter with AND", func() {
+			// metadata[role] in (admin, user) and address ^= "a" → alice only
+			filter, err := filterexpr.Parse(`metadata[role] in (admin, user) and address ^= "a"`)
+			Expect(err).To(Succeed())
+
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(HaveLen(1))
+			Expect(accounts[0].Address).To(Equal("alice"))
+		})
+	})
+
+	Context("When listing accounts with address in filter", Ordered, func() {
+		var ledgerName = "accounts-addr-in-ledger"
+
+		BeforeAll(func() {
+			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{createLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "users:alice", big.NewInt(100), "USD"),
+					}, nil),
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "users:bob", big.NewInt(200), "USD"),
+					}, nil),
+					createForceTransactionAction(ledgerName, []*commonpb.Posting{
+						newPosting("world", "merchants:shop1", big.NewInt(300), "USD"),
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(4)) // world + 3
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should filter accounts by exact address list", func() {
+			// address in ("users:alice", "merchants:shop1") → 2 accounts
+			filter, err := filterexpr.Parse(`address in ("users:alice", "merchants:shop1")`)
+			Expect(err).To(Succeed())
+
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(HaveLen(2))
+			addresses := []string{accounts[0].Address, accounts[1].Address}
+			Expect(addresses).To(ContainElements("users:alice", "merchants:shop1"))
+		})
+
+		It("Should return empty when no addresses match", func() {
+			filter, err := filterexpr.Parse(`address in ("nonexistent:a", "nonexistent:b")`)
+			Expect(err).To(Succeed())
+
+			accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", filter)
+			Expect(err).To(Succeed())
+			Expect(accounts).To(BeEmpty())
 		})
 	})
 })

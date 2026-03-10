@@ -29,7 +29,8 @@ var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "RParen", Pattern: `\)`},
 	{Name: "Dollar", Pattern: `\$`},
 	{Name: "String", Pattern: `"[^"]*"|'[^']*'`},
-	{Name: "Keyword", Pattern: `\b(and|or|not|metadata|address|source|destination|ledger|exists|true|false)\b`},
+	{Name: "Comma", Pattern: `,`},
+	{Name: "Keyword", Pattern: `\b(and|or|not|in|metadata|address|source|destination|ledger|exists|true|false)\b`},
 	{Name: "Number", Pattern: `-?[0-9]+`},
 	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_:.\-/]*`},
 })
@@ -49,8 +50,8 @@ var filterParser = participle.MustBuild[OrExpr](
 //	unary_expr     := "not" unary_expr | primary
 //	:= "(" expression ")" | condition
 //	:= metadata_cond | address_cond | source_cond | destination_cond
-//	metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "exists")
-//	address_cond   := ("address" | "source" | "destination") ("==" VALUE | "^=" VALUE)
+//	metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "exists" | "in" "(" VALUE ("," VALUE)* ")")
+//	address_cond   := ("address" | "source" | "destination") ("==" VALUE | "^=" VALUE | "in" "(" VALUE ("," VALUE)* ")")
 //	value          := "$" Ident | "true" | "false" | String | Number | Ident
 func Parse(input string) (*commonpb.QueryFilter, error) {
 	ast, err := filterParser.ParseString("", input)
@@ -195,12 +196,13 @@ func (m *MetadataCond) toProto() (*commonpb.QueryFilter, error) {
 }
 
 type MetadataOp struct {
-	Eq  *Value `parser:"  '==' @@"`
-	Ne  *Value `parser:"| '!=' @@"`
-	Gte *Value `parser:"| '>=' @@"`
-	Gt  *Value `parser:"| '>' @@"`
-	Lte *Value `parser:"| '<=' @@"`
-	Lt  *Value `parser:"| '<' @@"`
+	Eq  *Value    `parser:"  '==' @@"`
+	Ne  *Value    `parser:"| '!=' @@"`
+	Gte *Value    `parser:"| '>=' @@"`
+	Gt  *Value    `parser:"| '>' @@"`
+	Lte *Value    `parser:"| '<=' @@"`
+	Lt  *Value    `parser:"| '<' @@"`
+	In  []*Value  `parser:"| 'in' '(' @@ (',' @@)* ')'"`
 }
 
 func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, error) {
@@ -226,6 +228,8 @@ func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, 
 		return metadataRangeToProto(field, op.Lt, "<")
 	case op.Lte != nil:
 		return metadataRangeToProto(field, op.Lte, "<=")
+	case len(op.In) > 0:
+		return metadataInToProto(field, op.In)
 	default:
 		return nil, errors.New("missing operator")
 	}
@@ -255,19 +259,17 @@ func (l *LedgerCond) toProto() (*commonpb.QueryFilter, error) {
 // --- Address conditions ---
 
 type AddressCond struct {
-	Keyword string `parser:"@('address' | 'source' | 'destination')"`
-	Exact   *Value `parser:"( '==' @@"`
-	Prefix  *Value `parser:"| '^=' @@ )"`
+	Keyword string   `parser:"@('address' | 'source' | 'destination')"`
+	Exact   *Value   `parser:"( '==' @@"`
+	Prefix  *Value   `parser:"| '^=' @@"`
+	In      []*Value `parser:"| 'in' '(' @@ (',' @@)* ')' )"`
 }
 
 func (a *AddressCond) toProto() (*commonpb.QueryFilter, error) {
-	role := commonpb.AddressRole_ADDRESS_ROLE_ANY
+	role := addressRole(a.Keyword)
 
-	switch a.Keyword {
-	case "source":
-		role = commonpb.AddressRole_ADDRESS_ROLE_SOURCE
-	case "destination":
-		role = commonpb.AddressRole_ADDRESS_ROLE_DESTINATION
+	if len(a.In) > 0 {
+		return addressInToProto(role, a.In)
 	}
 
 	am := &commonpb.AddressMatch{Role: role}
@@ -289,6 +291,17 @@ func (a *AddressCond) toProto() (*commonpb.QueryFilter, error) {
 	return &commonpb.QueryFilter{
 		Filter: &commonpb.QueryFilter_Address{Address: am},
 	}, nil
+}
+
+func addressRole(keyword string) commonpb.AddressRole {
+	switch keyword {
+	case "source":
+		return commonpb.AddressRole_ADDRESS_ROLE_SOURCE
+	case "destination":
+		return commonpb.AddressRole_ADDRESS_ROLE_DESTINATION
+	default:
+		return commonpb.AddressRole_ADDRESS_ROLE_ANY
+	}
 }
 
 // --- Value ---
@@ -429,6 +442,55 @@ func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*com
 			},
 		},
 	}, nil
+}
+
+// metadataInToProto desugars `metadata[key] in (v1, v2, ...)` into
+// an OrFilter of equality conditions, one per value.
+func metadataInToProto(field *commonpb.FieldRef, values []*Value) (*commonpb.QueryFilter, error) {
+	filters := make([]*commonpb.QueryFilter, len(values))
+	for i, v := range values {
+		f, err := metadataEqualityToProto(field, v)
+		if err != nil {
+			return nil, err
+		}
+
+		filters[i] = f
+	}
+
+	return wrapOrFilter(filters), nil
+}
+
+// addressInToProto desugars `address in (v1, v2, ...)` into
+// an OrFilter of exact address matches, one per value.
+func addressInToProto(role commonpb.AddressRole, values []*Value) (*commonpb.QueryFilter, error) {
+	filters := make([]*commonpb.QueryFilter, len(values))
+	for i, v := range values {
+		am := &commonpb.AddressMatch{Role: role}
+		if v.Param != "" {
+			am.Match = &commonpb.AddressMatch_ParamExact{ParamExact: v.Param}
+		} else {
+			am.Match = &commonpb.AddressMatch_HardcodedExact{HardcodedExact: v.resolve()}
+		}
+
+		filters[i] = &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Address{Address: am},
+		}
+	}
+
+	return wrapOrFilter(filters), nil
+}
+
+// wrapOrFilter returns the single filter if len==1, otherwise wraps in OrFilter.
+func wrapOrFilter(filters []*commonpb.QueryFilter) *commonpb.QueryFilter {
+	if len(filters) == 1 {
+		return filters[0]
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Or{
+			Or: &commonpb.OrFilter{Filters: filters},
+		},
+	}
 }
 
 func unquote(s string) string {
