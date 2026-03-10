@@ -563,6 +563,7 @@ message CreatedTransaction {
   uint64 period_id = 3;  // Period that was OPEN when this transaction was created
   PostCommitVolumes post_commit_volumes = 4;  // Opt-in: volumes after commit (only when expand_volumes is true)
   repeated ChartViolation warnings = 5;  // Chart of accounts violations (AUDIT mode only)
+  map<string, MetadataSet> previous_account_metadata = 6;  // previous account metadata values (for index replay)
 }
 
 message RevertedTransaction {
@@ -576,11 +577,13 @@ message SavedMetadata {
   Target target = 1;
   MetadataSet metadata = 2;
   repeated ChartViolation warnings = 3;  // Chart of accounts violations (AUDIT mode only)
+  map<string, MetadataValue> previous_values = 4;  // previous values keyed by metadata key (for index replay)
 }
 
 message DeletedMetadata {
   Target target = 1;
   string key = 2;                           // Metadata key to delete
+  MetadataValue previous_value = 3;         // previous value before deletion (populated in logs only)
 }
 
 // SetMetadataFieldTypeLog records a metadata field type declaration.

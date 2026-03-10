@@ -304,21 +304,8 @@ func (h *logHasher) hashCreatedTransaction(ct *commonpb.CreatedTransaction) {
 	h.writePresence(true)
 	h.hashTransaction(ct.GetTransaction())
 	// map<string, MetadataSet> — sorted iteration for determinism
-	h.writeUint32(uint32(len(ct.GetAccountMetadata())))
-
-	if len(ct.GetAccountMetadata()) > 0 {
-		keys := make([]string, 0, len(ct.GetAccountMetadata()))
-		for k := range ct.GetAccountMetadata() {
-			keys = append(keys, k)
-		}
-
-		sort.Strings(keys)
-
-		for _, k := range keys {
-			h.writeString(k)
-			h.hashMetadataSet(ct.GetAccountMetadata()[k])
-		}
-	}
+	h.hashMetadataSetMap(ct.GetAccountMetadata())
+	h.hashMetadataSetMap(ct.GetPreviousAccountMetadata())
 }
 
 func (h *logHasher) hashTransaction(tx *commonpb.Transaction) {
@@ -396,6 +383,7 @@ func (h *logHasher) hashSavedMetadata(sm *commonpb.SavedMetadata) {
 	h.writePresence(true)
 	h.hashTarget(sm.GetTarget())
 	h.hashMetadataSet(sm.GetMetadata())
+	h.hashMetadataValueMap(sm.GetPreviousValues())
 }
 
 func (h *logHasher) hashDeletedMetadata(dm *commonpb.DeletedMetadata) {
@@ -408,6 +396,7 @@ func (h *logHasher) hashDeletedMetadata(dm *commonpb.DeletedMetadata) {
 	h.writePresence(true)
 	h.hashTarget(dm.GetTarget())
 	h.writeString(dm.GetKey())
+	h.hashMetadataValue(dm.GetPreviousValue())
 }
 
 func (h *logHasher) hashSetMetadataFieldType(l *commonpb.SetMetadataFieldTypeLog) {
@@ -768,6 +757,42 @@ func (h *logHasher) hashMetadataSet(ms *commonpb.MetadataSet) {
 
 	for _, m := range ms.GetMetadata() {
 		h.hashMetadata(m)
+	}
+}
+
+func (h *logHasher) hashMetadataSetMap(m map[string]*commonpb.MetadataSet) {
+	h.writeUint32(uint32(len(m)))
+
+	if len(m) > 0 {
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+
+		sort.Strings(keys)
+
+		for _, k := range keys {
+			h.writeString(k)
+			h.hashMetadataSet(m[k])
+		}
+	}
+}
+
+func (h *logHasher) hashMetadataValueMap(m map[string]*commonpb.MetadataValue) {
+	h.writeUint32(uint32(len(m)))
+
+	if len(m) > 0 {
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+
+		sort.Strings(keys)
+
+		for _, k := range keys {
+			h.writeString(k)
+			h.hashMetadataValue(m[k])
+		}
 	}
 }
 

@@ -822,7 +822,7 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	if initialCommit > 0 {
 		node.logger.WithFields(map[string]any{
 			"from": node.fsm.LastPersistedIndex(),
-			"to": initialCommit,
+			"to":   initialCommit,
 		}).Infof("Replaying WAL...")
 
 		err := node.fsm.WaitForApplied(ctx, initialCommit)

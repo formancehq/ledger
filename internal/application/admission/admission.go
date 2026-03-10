@@ -575,6 +575,39 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 					Asset:      posting.GetAsset(),
 				}] = struct{}{}
 			}
+
+			// Preload account metadata for previous value capture in logs.
+			mi := orderType.MirrorIngest
+			if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
+				for account, ms := range ct.GetAccountMetadata() {
+					for _, md := range ms.GetMetadata() {
+						p.Metadata[domain.MetadataKey{
+							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: account},
+							Key:        md.GetKey(),
+						}] = struct{}{}
+					}
+				}
+			}
+
+			if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
+				if target, ok := sm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+					for _, entry := range sm.GetMetadata().GetMetadata() {
+						p.Metadata[domain.MetadataKey{
+							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.GetAddr()},
+							Key:        entry.GetKey(),
+						}] = struct{}{}
+					}
+				}
+			}
+
+			if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
+				if target, ok := dm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+					p.Metadata[domain.MetadataKey{
+						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.GetAddr()},
+						Key:        dm.GetKey(),
+					}] = struct{}{}
+				}
+			}
 		case *raftcmdpb.Order_PromoteLedger:
 			p.Ledgers[domain.LedgerKey{Name: orderType.PromoteLedger.GetLedger()}] = struct{}{}
 		case *raftcmdpb.Order_SaveNumscript:
@@ -653,6 +686,10 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 						for key := range discovered.Metadata {
 							p.Metadata[key] = struct{}{}
 						}
+
+						for key := range discovered.WrittenMetadata {
+							p.Metadata[key] = struct{}{}
+						}
 					}
 
 					continue
@@ -667,6 +704,16 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 						AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetDestination()},
 						Asset:      posting.GetAsset(),
 					}] = struct{}{}
+				}
+
+				// Preload account metadata for previous value capture.
+				for account, ms := range applyData.CreateTransaction.GetAccountMetadata() {
+					for _, md := range ms.GetMetadata() {
+						p.Metadata[domain.MetadataKey{
+							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: account},
+							Key:        md.GetKey(),
+						}] = struct{}{}
+					}
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
@@ -687,6 +734,15 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				}
 
 			case *raftcmdpb.LedgerApplyOrder_AddMetadata:
+				if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+					for _, entry := range applyData.AddMetadata.GetMetadata().GetMetadata() {
+						p.Metadata[domain.MetadataKey{
+							AccountKey: domain.AccountKey{Ledger: ledgerName, Account: target.Account.GetAddr()},
+							Key:        entry.GetKey(),
+						}] = struct{}{}
+					}
+				}
+
 				if target, ok := applyData.AddMetadata.GetTarget().GetTarget().(*commonpb.Target_Transaction); ok {
 					p.Transactions[domain.TransactionKey{
 						Ledger: ledgerName,
@@ -1025,13 +1081,14 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 
 		order.Data = &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 			CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-				Postings:      ct.GetPostings(),
-				Script:        script,
-				Timestamp:     ct.GetTimestamp(),
-				Reference:     ct.GetReference(),
-				Metadata:      ct.GetMetadata(),
-				Force:         ct.GetForce(),
-				ExpandVolumes: ct.GetExpandVolumes(),
+				Postings:        ct.GetPostings(),
+				Script:          script,
+				Timestamp:       ct.GetTimestamp(),
+				Reference:       ct.GetReference(),
+				Metadata:        ct.GetMetadata(),
+				AccountMetadata: ct.GetAccountMetadata(),
+				Force:           ct.GetForce(),
+				ExpandVolumes:   ct.GetExpandVolumes(),
 			},
 		}
 	case *servicepb.LedgerApplyRequest_AddMetadata:

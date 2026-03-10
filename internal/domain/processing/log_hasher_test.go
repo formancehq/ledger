@@ -84,7 +84,7 @@ func TestGoldenHashApplyCreatedTransaction(t *testing.T) {
 
 	h := blake3.New()
 	got := hex.EncodeToString(ComputeLogHash(h, nil, log))
-	require.Equal(t, "c6951d31dd41a28c1a15271e39eb1012866d8adfe391330189304b1888ab6d3a", got)
+	require.Equal(t, "2ef4d0537e9e3b8dd791fa6b35d18368f5e2f8bd5a4196cd4ca30185f983bbc5", got)
 }
 
 func TestGoldenHashRegisterSigningKey(t *testing.T) {

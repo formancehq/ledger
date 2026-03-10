@@ -44,16 +44,29 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 		enforceSchema(info.GetMetadataSchema(), targetType, order.GetMetadata().GetMetadata())
 	}
 
+	var previousValues map[string]*commonpb.MetadataValue
+
 	switch target := order.GetTarget().GetTarget().(type) {
 	case *commonpb.Target_Account:
 		for _, entry := range order.GetMetadata().GetMetadata() {
-			s.PutAccountMetadata(domain.MetadataKey{
+			metaKey := domain.MetadataKey{
 				AccountKey: domain.AccountKey{
 					Ledger:  ledger,
 					Account: target.Account.GetAddr(),
 				},
 				Key: entry.GetKey(),
-			}, entry.GetValue())
+			}
+
+			// Capture old value before overwriting (for log replay in indexbuilder).
+			if oldVal, err := s.GetAccountMetadata(metaKey); err == nil {
+				if previousValues == nil {
+					previousValues = make(map[string]*commonpb.MetadataValue)
+				}
+
+				previousValues[entry.GetKey()] = oldVal
+			}
+
+			s.PutAccountMetadata(metaKey, entry.GetValue())
 		}
 	case *commonpb.Target_Transaction:
 		if target.Transaction.GetId() >= boundaries.GetNextTransactionId() {
@@ -82,6 +95,12 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 
 			for i, existing := range state.GetMetadata().GetMetadata() {
 				if existing.GetKey() == metadatum.GetKey() {
+					// Capture old value before overwriting.
+					if previousValues == nil {
+						previousValues = make(map[string]*commonpb.MetadataValue)
+					}
+
+					previousValues[metadatum.GetKey()] = existing.GetValue()
 					state.Metadata.Metadata[i] = metadatum
 					found = true
 
@@ -100,9 +119,10 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_SavedMetadata{
 			SavedMetadata: &commonpb.SavedMetadata{
-				Target:   order.GetTarget(),
-				Metadata: order.GetMetadata(),
-				Warnings: warnings,
+				Target:         order.GetTarget(),
+				Metadata:       order.GetMetadata(),
+				Warnings:       warnings,
+				PreviousValues: previousValues,
 			},
 		},
 	}, nil
@@ -117,6 +137,8 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raft
 		return nil, domain.ErrMetadataKeyRequired
 	}
 
+	var previousValue *commonpb.MetadataValue
+
 	switch target := order.GetTarget().GetTarget().(type) {
 	case *commonpb.Target_Account:
 		metaKey := domain.MetadataKey{
@@ -126,7 +148,9 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raft
 			},
 			Key: order.GetKey(),
 		}
-		if _, err := s.GetAccountMetadata(metaKey); err != nil {
+
+		oldVal, err := s.GetAccountMetadata(metaKey)
+		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
 				return nil, &domain.ErrMetadataNotFound{
 					Target: target.Account.GetAddr(),
@@ -137,6 +161,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raft
 			return nil, fmt.Errorf("checking account metadata: %w", err)
 		}
 
+		previousValue = oldVal
 		s.DeleteAccountMetadata(metaKey)
 	case *commonpb.Target_Transaction:
 		if target.Transaction.GetId() >= boundaries.GetNextTransactionId() {
@@ -154,12 +179,14 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raft
 			return nil, fmt.Errorf("transaction state not found for tx %d", target.Transaction.GetId())
 		}
 
-		// Remove the metadata key from the transaction state
+		// Capture old value and remove the metadata key from the transaction state
 		if state.GetMetadata() != nil {
 			filtered := make([]*commonpb.Metadata, 0, len(state.GetMetadata().GetMetadata()))
 
 			for _, md := range state.GetMetadata().GetMetadata() {
-				if md.GetKey() != order.GetKey() {
+				if md.GetKey() == order.GetKey() {
+					previousValue = md.GetValue()
+				} else {
 					filtered = append(filtered, md)
 				}
 			}
@@ -173,8 +200,9 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raft
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
 			DeletedMetadata: &commonpb.DeletedMetadata{
-				Target: order.GetTarget(),
-				Key:    order.GetKey(),
+				Target:        order.GetTarget(),
+				Key:           order.GetKey(),
+				PreviousValue: previousValue,
 			},
 		},
 	}, nil

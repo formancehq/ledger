@@ -73,6 +73,7 @@ func TestProcessAddMetadata_WithSchema(t *testing.T) {
 
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(ledgerInfo, true).AnyTimes()
+	mockStore.EXPECT().GetAccountMetadata(gomock.Any()).Return(nil, domain.ErrNotFound)
 	mockStore.EXPECT().PutAccountMetadata(gomock.Any(), gomock.Any())
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())

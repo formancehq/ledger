@@ -89,11 +89,11 @@ const (
 
 // Backfill key kind bytes identify the index type in a bbolt backfill progress key.
 const (
-	BackfillKindTxBuiltin    = byte('b') // builtin transaction field index: [ledger\x00]b[builtin_byte]
-	BackfillKindTxMetadata   = byte('T') // transaction metadata index: [ledger\x00]T[key]
-	BackfillKindAcctBuiltin  = byte('A') // builtin account field index: [ledger\x00]A[builtin_byte]
-	BackfillKindAcctMetadata = byte('a') // account metadata index: [ledger\x00]a[key]
-	BackfillKindLogBuiltin     = byte('l') // builtin log field index: [ledger\x00]l[builtin_byte]
+	BackfillKindTxBuiltin     = byte('b') // builtin transaction field index: [ledger\x00]b[builtin_byte]
+	BackfillKindTxMetadata    = byte('T') // transaction metadata index: [ledger\x00]T[key]
+	BackfillKindAcctBuiltin   = byte('A') // builtin account field index: [ledger\x00]A[builtin_byte]
+	BackfillKindAcctMetadata  = byte('a') // account metadata index: [ledger\x00]a[key]
+	BackfillKindLogBuiltin    = byte('l') // builtin log field index: [ledger\x00]l[builtin_byte]
 	BackfillKindSchemaRewrite = byte('S') // schema rewrite task: [ledger\x00]S[targetType_byte][key]
 )
 

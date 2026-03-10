@@ -544,6 +544,38 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) *preload.Needs {
 				needs.Volumes[volKey] = struct{}{}
 			}
 		}
+
+		// Preload account metadata for previous value capture in logs.
+		if ct := mi.GetEntry().GetCreatedTransaction(); ct != nil {
+			for account, ms := range ct.GetAccountMetadata() {
+				for _, md := range ms.GetMetadata() {
+					needs.Metadata[domain.MetadataKey{
+						AccountKey: domain.AccountKey{Ledger: w.ledgerName, Account: account},
+						Key:        md.GetKey(),
+					}] = struct{}{}
+				}
+			}
+		}
+
+		if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
+			if target, ok := sm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+				for _, entry := range sm.GetMetadata().GetMetadata() {
+					needs.Metadata[domain.MetadataKey{
+						AccountKey: domain.AccountKey{Ledger: w.ledgerName, Account: target.Account.GetAddr()},
+						Key:        entry.GetKey(),
+					}] = struct{}{}
+				}
+			}
+		}
+
+		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
+			if target, ok := dm.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
+				needs.Metadata[domain.MetadataKey{
+					AccountKey: domain.AccountKey{Ledger: w.ledgerName, Account: target.Account.GetAddr()},
+					Key:        dm.GetKey(),
+				}] = struct{}{}
+			}
+		}
 	}
 
 	return needs

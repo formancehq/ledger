@@ -267,6 +267,40 @@ func (wb *WriteBatch) UpdateMetadataIndex(
 	wb.putReverseMap(reverseKey, newEncodedValue)
 }
 
+// ReplaceMetadataIndex replaces a metadata index entry using an explicit old value
+// from the log, avoiding a reverse map read from bbolt.
+func (wb *WriteBatch) ReplaceMetadataIndex(
+	kb *dal.KeyBuilder,
+	reverseKey []byte,
+	ledger, ns, metadataKey string,
+	newEncodedValue, oldEncodedValue, entityID []byte,
+) {
+	if oldEncodedValue != nil {
+		wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID)
+		wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID)
+	}
+
+	wb.WriteMetadataIndex(kb, ledger, ns, metadataKey, newEncodedValue, entityID)
+	wb.WriteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(newEncodedValue), entityID)
+	wb.putReverseMap(reverseKey, newEncodedValue)
+}
+
+// DeleteMetadataEntryWithPrevious removes both the forward index and reverse map entries
+// for a metadata key on a specific entity, using an explicit old value from the log.
+func (wb *WriteBatch) DeleteMetadataEntryWithPrevious(
+	kb *dal.KeyBuilder,
+	reverseKey []byte,
+	ledger, ns, metadataKey string,
+	oldEncodedValue, entityID []byte,
+) {
+	if oldEncodedValue != nil {
+		wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID)
+		wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID)
+	}
+
+	wb.deleteReverseMap(reverseKey)
+}
+
 // WriteTransactionReferenceIndex inserts an entry in the transaction reference index.
 func (wb *WriteBatch) WriteTransactionReferenceIndex(kb *dal.KeyBuilder, ledger, reference string, txID uint64) {
 	key := TransactionReferenceKey(kb, ledger, reference, txID)

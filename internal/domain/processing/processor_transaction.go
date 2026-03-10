@@ -106,7 +106,8 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 
 	s.PutTransactionState(txKey, txState)
 
-	// Convert account metadata to protobuf format (already typed from produceResult).
+	// Merge account metadata from script output and order.
+	// Order metadata takes precedence over script metadata (same key → order wins).
 	var accountMetadata map[string]*commonpb.MetadataSet
 	if len(result.AccountsMetadata) > 0 {
 		accountMetadata = make(map[string]*commonpb.MetadataSet, len(result.AccountsMetadata))
@@ -115,21 +116,65 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 		}
 	}
 
-	// Enforce schema on account metadata from script/order.
-	for account, ms := range accountMetadata {
-		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, ms.GetMetadata())
-		// Update buffer with schema-enforced values (numscript wrote string values)
-		for _, md := range ms.GetMetadata() {
-			s.PutAccountMetadata(domain.MetadataKey{
-				AccountKey: domain.AccountKey{Ledger: ledger, Account: account},
-				Key:        md.GetKey(),
-			}, md.GetValue())
+	for account, ms := range order.GetAccountMetadata() {
+		if accountMetadata == nil {
+			accountMetadata = make(map[string]*commonpb.MetadataSet)
+		}
+
+		existing := accountMetadata[account]
+		if existing == nil {
+			accountMetadata[account] = ms
+		} else {
+			// Order keys take precedence: build set of order keys, keep only
+			// script entries whose key is not overridden.
+			orderKeys := make(map[string]struct{}, len(ms.GetMetadata()))
+			for _, md := range ms.GetMetadata() {
+				orderKeys[md.GetKey()] = struct{}{}
+			}
+
+			merged := make([]*commonpb.Metadata, 0, len(existing.GetMetadata())+len(ms.GetMetadata()))
+			for _, md := range existing.GetMetadata() {
+				if _, overridden := orderKeys[md.GetKey()]; !overridden {
+					merged = append(merged, md)
+				}
+			}
+
+			merged = append(merged, ms.GetMetadata()...)
+			accountMetadata[account] = &commonpb.MetadataSet{Metadata: merged}
 		}
 	}
 
-	if order.AccountMetadata != nil {
-		for _, ms := range order.GetAccountMetadata() {
-			enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, ms.GetMetadata())
+	// Enforce schema, capture previous values, and write to buffer.
+	var previousAccountMetadata map[string]*commonpb.MetadataSet
+
+	for account, ms := range accountMetadata {
+		enforceSchema(schema, commonpb.TargetType_TARGET_TYPE_ACCOUNT, ms.GetMetadata())
+
+		for _, md := range ms.GetMetadata() {
+			metaKey := domain.MetadataKey{
+				AccountKey: domain.AccountKey{Ledger: ledger, Account: account},
+				Key:        md.GetKey(),
+			}
+
+			// Capture old value before overwriting (for log replay in indexbuilder).
+			if oldVal, err := s.GetAccountMetadata(metaKey); err == nil {
+				if previousAccountMetadata == nil {
+					previousAccountMetadata = make(map[string]*commonpb.MetadataSet)
+				}
+
+				prevSet := previousAccountMetadata[account]
+				if prevSet == nil {
+					prevSet = &commonpb.MetadataSet{}
+					previousAccountMetadata[account] = prevSet
+				}
+
+				prevSet.Metadata = append(prevSet.Metadata, &commonpb.Metadata{
+					Key:   md.GetKey(),
+					Value: oldVal,
+				})
+			}
+
+			s.PutAccountMetadata(metaKey, md.GetValue())
 		}
 	}
 
@@ -171,10 +216,11 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 					InsertedAt: s.GetDate(),
 					UpdatedAt:  s.GetDate(),
 				},
-				AccountMetadata:   accountMetadata,
-				PeriodId:          periodID,
-				PostCommitVolumes: postCommitVolumes,
-				Warnings:          warnings,
+				AccountMetadata:         accountMetadata,
+				PeriodId:                periodID,
+				PostCommitVolumes:       postCommitVolumes,
+				Warnings:                warnings,
+				PreviousAccountMetadata: previousAccountMetadata,
 			},
 		},
 	}, nil

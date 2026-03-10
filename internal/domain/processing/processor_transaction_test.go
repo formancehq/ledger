@@ -770,21 +770,21 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().PutTransactionState(domain.TransactionKey{Ledger: "test-ledger", ID: 1}, gomock.Any())
 
+	acctTypeKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:alice"},
+		Key:        "account_type",
+	}
+	createdByKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:alice"},
+		Key:        "created_by",
+	}
+
 	// Expect account metadata to be set (called from numscript adapter + re-pushed after enforceSchema)
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{
-			AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:alice"},
-			Key:        "account_type",
-		},
-		commonpb.NewStringValue("savings"),
-	).Times(2)
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{
-			AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:alice"},
-			Key:        "created_by",
-		},
-		commonpb.NewStringValue("numscript"),
-	).Times(2)
+	mockStore.EXPECT().PutAccountMetadata(acctTypeKey, commonpb.NewStringValue("savings")).Times(2)
+	mockStore.EXPECT().PutAccountMetadata(createdByKey, commonpb.NewStringValue("numscript")).Times(2)
+	// GetAccountMetadata called before each PutAccountMetadata in the enforceSchema path
+	mockStore.EXPECT().GetAccountMetadata(acctTypeKey).Return(commonpb.NewStringValue("savings"), nil)
+	mockStore.EXPECT().GetAccountMetadata(createdByKey).Return(commonpb.NewStringValue("numscript"), nil)
 
 	// Test set_account_meta
 	request := &servicepb.Request{

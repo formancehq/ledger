@@ -207,41 +207,46 @@ func (b *Builder) loadMetadataIndexes(
 	}
 }
 
-// isMetadataIndexed checks if a specific metadata index is enabled and ready.
-func (b *Builder) isMetadataIndexed(ledger string, target commonpb.TargetType, key string) bool {
-	cfg, ok := b.indexConfig[ledger]
-	if !ok {
+// isMetadataIndexed checks if a specific metadata index is enabled.
+// Returns false if the receiver is nil (unknown ledger).
+func (c *ledgerIndexConfig) isMetadataIndexed(target commonpb.TargetType, key string) bool {
+	if c == nil {
 		return false
 	}
 
 	switch target {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		return cfg.acctMetadataIndexed[key]
+		return c.acctMetadataIndexed[key]
 	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		return cfg.txMetadataIndexed[key]
+		return c.txMetadataIndexed[key]
 	default:
 		return false
 	}
 }
 
 // isBuiltinIndexed checks if a specific builtin index is enabled.
-func (b *Builder) isBuiltinIndexed(ledger string, index commonpb.TransactionBuiltinIndex) bool {
-	cfg, ok := b.indexConfig[ledger]
-	if !ok {
+// Returns false if the receiver is nil (unknown ledger).
+func (c *ledgerIndexConfig) isBuiltinIndexed(index commonpb.TransactionBuiltinIndex) bool {
+	if c == nil {
 		return false
 	}
 
-	return cfg.txBuiltinIndexed[index]
+	return c.txBuiltinIndexed[index]
 }
 
 // isLogBuiltinIndexed checks if a specific log builtin index is enabled.
-func (b *Builder) isLogBuiltinIndexed(ledger string, index commonpb.LogBuiltinIndex) bool {
-	cfg, ok := b.indexConfig[ledger]
-	if !ok {
+// Returns false if the receiver is nil (unknown ledger).
+func (c *ledgerIndexConfig) isLogBuiltinIndexed(index commonpb.LogBuiltinIndex) bool {
+	if c == nil {
 		return false
 	}
 
-	return cfg.logBuiltinIndexed[index]
+	return c.logBuiltinIndexed[index]
+}
+
+// ledgerConfig returns the index config for a ledger, or nil if unknown.
+func (b *Builder) ledgerConfig(ledger string) *ledgerIndexConfig {
+	return b.indexConfig[ledger]
 }
 
 // getOrCreateLedgerConfig returns the index config for a ledger, creating it if needed.

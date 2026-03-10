@@ -5385,14 +5385,15 @@ func (x *MetadataConversionCompleteLog) GetKey() string {
 }
 
 type CreatedTransaction struct {
-	state             protoimpl.MessageState  `protogen:"open.v1"`
-	Transaction       *Transaction            `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
-	AccountMetadata   map[string]*MetadataSet `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	PeriodId          uint64                  `protobuf:"varint,3,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`                             // Period that was OPEN when this transaction was created
-	PostCommitVolumes *PostCommitVolumes      `protobuf:"bytes,4,opt,name=post_commit_volumes,json=postCommitVolumes,proto3" json:"post_commit_volumes,omitempty"` // Opt-in: volumes after commit (only when expand_volumes is true)
-	Warnings          []*ChartViolation       `protobuf:"bytes,5,rep,name=warnings,proto3" json:"warnings,omitempty"`                                              // Chart of accounts violations (AUDIT mode only)
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                   protoimpl.MessageState  `protogen:"open.v1"`
+	Transaction             *Transaction            `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
+	AccountMetadata         map[string]*MetadataSet `protobuf:"bytes,2,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	PeriodId                uint64                  `protobuf:"varint,3,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`                                                                                                                         // Period that was OPEN when this transaction was created
+	PostCommitVolumes       *PostCommitVolumes      `protobuf:"bytes,4,opt,name=post_commit_volumes,json=postCommitVolumes,proto3" json:"post_commit_volumes,omitempty"`                                                                                             // Opt-in: volumes after commit (only when expand_volumes is true)
+	Warnings                []*ChartViolation       `protobuf:"bytes,5,rep,name=warnings,proto3" json:"warnings,omitempty"`                                                                                                                                          // Chart of accounts violations (AUDIT mode only)
+	PreviousAccountMetadata map[string]*MetadataSet `protobuf:"bytes,6,rep,name=previous_account_metadata,json=previousAccountMetadata,proto3" json:"previous_account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // previous account metadata values (for index replay)
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *CreatedTransaction) Reset() {
@@ -5456,6 +5457,13 @@ func (x *CreatedTransaction) GetPostCommitVolumes() *PostCommitVolumes {
 func (x *CreatedTransaction) GetWarnings() []*ChartViolation {
 	if x != nil {
 		return x.Warnings
+	}
+	return nil
+}
+
+func (x *CreatedTransaction) GetPreviousAccountMetadata() map[string]*MetadataSet {
+	if x != nil {
+		return x.PreviousAccountMetadata
 	}
 	return nil
 }
@@ -5529,12 +5537,13 @@ func (x *RevertedTransaction) GetWarnings() []*ChartViolation {
 }
 
 type SavedMetadata struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Target        *Target                `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
-	Metadata      *MetadataSet           `protobuf:"bytes,2,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	Warnings      []*ChartViolation      `protobuf:"bytes,3,rep,name=warnings,proto3" json:"warnings,omitempty"` // Chart of accounts violations (AUDIT mode only)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState    `protogen:"open.v1"`
+	Target         *Target                   `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
+	Metadata       *MetadataSet              `protobuf:"bytes,2,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	Warnings       []*ChartViolation         `protobuf:"bytes,3,rep,name=warnings,proto3" json:"warnings,omitempty"`                                                                                                             // Chart of accounts violations (AUDIT mode only)
+	PreviousValues map[string]*MetadataValue `protobuf:"bytes,4,rep,name=previous_values,json=previousValues,proto3" json:"previous_values,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // previous values keyed by metadata key (for index replay)
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *SavedMetadata) Reset() {
@@ -5588,10 +5597,18 @@ func (x *SavedMetadata) GetWarnings() []*ChartViolation {
 	return nil
 }
 
+func (x *SavedMetadata) GetPreviousValues() map[string]*MetadataValue {
+	if x != nil {
+		return x.PreviousValues
+	}
+	return nil
+}
+
 type DeletedMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Target        *Target                `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
-	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"` // Metadata key to delete
+	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`                                          // Metadata key to delete
+	PreviousValue *MetadataValue         `protobuf:"bytes,3,opt,name=previous_value,json=previousValue,proto3" json:"previous_value,omitempty"` // previous value before deletion (populated in logs only)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5638,6 +5655,13 @@ func (x *DeletedMetadata) GetKey() string {
 		return x.Key
 	}
 	return ""
+}
+
+func (x *DeletedMetadata) GetPreviousValue() *MetadataValue {
+	if x != nil {
+		return x.PreviousValue
+	}
+	return nil
 }
 
 // SetMetadataFieldTypeLog records a metadata field type declaration.
@@ -9270,28 +9294,37 @@ const file_common_proto_rawDesc = "" +
 	"\x1dMetadataConversionCompleteLog\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\x9c\x03\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xf2\x04\n" +
 	"\x12CreatedTransaction\x125\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\x12Z\n" +
 	"\x10account_metadata\x18\x02 \x03(\v2/.common.CreatedTransaction.AccountMetadataEntryR\x0faccountMetadata\x12\x1b\n" +
 	"\tperiod_id\x18\x03 \x01(\x04R\bperiodId\x12I\n" +
 	"\x13post_commit_volumes\x18\x04 \x01(\v2\x19.common.PostCommitVolumesR\x11postCommitVolumes\x122\n" +
-	"\bwarnings\x18\x05 \x03(\v2\x16.common.ChartViolationR\bwarnings\x1aW\n" +
+	"\bwarnings\x18\x05 \x03(\v2\x16.common.ChartViolationR\bwarnings\x12s\n" +
+	"\x19previous_account_metadata\x18\x06 \x03(\v27.common.CreatedTransaction.PreviousAccountMetadataEntryR\x17previousAccountMetadata\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataSetR\x05value:\x028\x01\x1a_\n" +
+	"\x1cPreviousAccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
 	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataSetR\x05value:\x028\x01\"\x90\x02\n" +
 	"\x13RevertedTransaction\x126\n" +
 	"\x17reverted_transaction_id\x18\x01 \x01(\x04R\x15revertedTransactionId\x12B\n" +
 	"\x12revert_transaction\x18\x02 \x01(\v2\x13.common.TransactionR\x11revertTransaction\x12I\n" +
 	"\x13post_commit_volumes\x18\x03 \x01(\v2\x19.common.PostCommitVolumesR\x11postCommitVolumes\x122\n" +
-	"\bwarnings\x18\x04 \x03(\v2\x16.common.ChartViolationR\bwarnings\"\x9c\x01\n" +
+	"\bwarnings\x18\x04 \x03(\v2\x16.common.ChartViolationR\bwarnings\"\xca\x02\n" +
 	"\rSavedMetadata\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12/\n" +
 	"\bmetadata\x18\x02 \x01(\v2\x13.common.MetadataSetR\bmetadata\x122\n" +
-	"\bwarnings\x18\x03 \x03(\v2\x16.common.ChartViolationR\bwarnings\"K\n" +
+	"\bwarnings\x18\x03 \x03(\v2\x16.common.ChartViolationR\bwarnings\x12R\n" +
+	"\x0fprevious_values\x18\x04 \x03(\v2).common.SavedMetadata.PreviousValuesEntryR\x0epreviousValues\x1aX\n" +
+	"\x13PreviousValuesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\x89\x01\n" +
 	"\x0fDeletedMetadata\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\x8a\x01\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\x12<\n" +
+	"\x0eprevious_value\x18\x03 \x01(\v2\x15.common.MetadataValueR\rpreviousValue\"\x8a\x01\n" +
 	"\x17SetMetadataFieldTypeLog\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
@@ -9609,7 +9642,7 @@ func file_common_proto_rawDescGZIP() []byte {
 }
 
 var file_common_proto_enumTypes = make([]protoimpl.EnumInfo, 16)
-var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 129)
+var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 131)
 var file_common_proto_goTypes = []any{
 	(TargetType)(0),                       // 0: common.TargetType
 	(MetadataType)(0),                     // 1: common.MetadataType
@@ -9752,12 +9785,14 @@ var file_common_proto_goTypes = []any{
 	nil,                                   // 138: common.MetadataSchema.AccountFieldsEntry
 	nil,                                   // 139: common.MetadataSchema.TransactionFieldsEntry
 	nil,                                   // 140: common.CreatedTransaction.AccountMetadataEntry
-	nil,                                   // 141: common.LedgerInfo.AccountTypesEntry
-	nil,                                   // 142: common.ChartOfAccounts.RootsEntry
-	nil,                                   // 143: common.ChartSegment.ChildrenEntry
-	nil,                                   // 144: common.ChartVariable.ChildrenEntry
-	(*signaturepb.RequestSignature)(nil),  // 145: signature.RequestSignature
-	(*signaturepb.ResponseSignature)(nil), // 146: signature.ResponseSignature
+	nil,                                   // 141: common.CreatedTransaction.PreviousAccountMetadataEntry
+	nil,                                   // 142: common.SavedMetadata.PreviousValuesEntry
+	nil,                                   // 143: common.LedgerInfo.AccountTypesEntry
+	nil,                                   // 144: common.ChartOfAccounts.RootsEntry
+	nil,                                   // 145: common.ChartSegment.ChildrenEntry
+	nil,                                   // 146: common.ChartVariable.ChildrenEntry
+	(*signaturepb.RequestSignature)(nil),  // 147: signature.RequestSignature
+	(*signaturepb.ResponseSignature)(nil), // 148: signature.ResponseSignature
 }
 var file_common_proto_depIdxs = []int32{
 	19,  // 0: common.Metadata.value:type_name -> common.MetadataValue
@@ -9798,8 +9833,8 @@ var file_common_proto_depIdxs = []int32{
 	3,   // 35: common.LogBuiltinIndexConfig.date_status:type_name -> common.IndexBuildStatus
 	43,  // 36: common.Log.payload:type_name -> common.LogPayload
 	40,  // 37: common.Log.idempotency:type_name -> common.Idempotency
-	145, // 38: common.Log.signature:type_name -> signature.RequestSignature
-	146, // 39: common.Log.response_signature:type_name -> signature.ResponseSignature
+	147, // 38: common.Log.signature:type_name -> signature.RequestSignature
+	148, // 39: common.Log.response_signature:type_name -> signature.ResponseSignature
 	68,  // 40: common.LogPayload.create_ledger:type_name -> common.CreateLedgerLog
 	69,  // 41: common.LogPayload.delete_ledger:type_name -> common.DeleteLedgerLog
 	70,  // 42: common.LogPayload.apply:type_name -> common.ApplyLedgerLog
@@ -9873,103 +9908,108 @@ var file_common_proto_depIdxs = []int32{
 	140, // 110: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
 	28,  // 111: common.CreatedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
 	105, // 112: common.CreatedTransaction.warnings:type_name -> common.ChartViolation
-	23,  // 113: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
-	28,  // 114: common.RevertedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
-	105, // 115: common.RevertedTransaction.warnings:type_name -> common.ChartViolation
-	32,  // 116: common.SavedMetadata.target:type_name -> common.Target
-	20,  // 117: common.SavedMetadata.metadata:type_name -> common.MetadataSet
-	105, // 118: common.SavedMetadata.warnings:type_name -> common.ChartViolation
-	32,  // 119: common.DeletedMetadata.target:type_name -> common.Target
-	0,   // 120: common.SetMetadataFieldTypeLog.target_type:type_name -> common.TargetType
-	1,   // 121: common.SetMetadataFieldTypeLog.type:type_name -> common.MetadataType
-	0,   // 122: common.RemovedMetadataFieldTypeLog.target_type:type_name -> common.TargetType
-	16,  // 123: common.Period.start:type_name -> common.Timestamp
-	16,  // 124: common.Period.end:type_name -> common.Timestamp
-	8,   // 125: common.Period.status:type_name -> common.PeriodStatus
-	85,  // 126: common.ClosePeriodLog.closed_period:type_name -> common.Period
-	85,  // 127: common.ClosePeriodLog.new_period:type_name -> common.Period
-	85,  // 128: common.SealPeriodLog.period:type_name -> common.Period
-	85,  // 129: common.ArchivePeriodLog.period:type_name -> common.Period
-	85,  // 130: common.ConfirmArchivePeriodLog.period:type_name -> common.Period
-	91,  // 131: common.MirrorSourceConfig.http:type_name -> common.HttpMirrorSourceConfig
-	93,  // 132: common.MirrorSourceConfig.postgres:type_name -> common.PostgresMirrorSourceConfig
-	92,  // 133: common.HttpMirrorSourceConfig.oauth2_client_credentials:type_name -> common.OAuth2ClientCredentials
-	16,  // 134: common.MirrorSyncError.occurred_at:type_name -> common.Timestamp
-	10,  // 135: common.MirrorSyncProgress.state:type_name -> common.MirrorSyncState
-	94,  // 136: common.MirrorSyncProgress.error:type_name -> common.MirrorSyncError
-	16,  // 137: common.LedgerInfo.created_at:type_name -> common.Timestamp
-	16,  // 138: common.LedgerInfo.deleted_at:type_name -> common.Timestamp
-	34,  // 139: common.LedgerInfo.metadata_schema:type_name -> common.MetadataSchema
-	9,   // 140: common.LedgerInfo.mode:type_name -> common.LedgerMode
-	90,  // 141: common.LedgerInfo.mirror_source:type_name -> common.MirrorSourceConfig
-	95,  // 142: common.LedgerInfo.mirror_sync_progress:type_name -> common.MirrorSyncProgress
-	102, // 143: common.LedgerInfo.chart_of_accounts:type_name -> common.ChartOfAccounts
-	11,  // 144: common.LedgerInfo.enforcement_mode:type_name -> common.ChartEnforcementMode
-	38,  // 145: common.LedgerInfo.builtin_indexes:type_name -> common.BuiltinIndexConfig
-	39,  // 146: common.LedgerInfo.log_builtin_indexes:type_name -> common.LogBuiltinIndexConfig
-	141, // 147: common.LedgerInfo.account_types:type_name -> common.LedgerInfo.AccountTypesEntry
-	32,  // 148: common.SaveMetadataCommand.target:type_name -> common.Target
-	20,  // 149: common.SaveMetadataCommand.metadata:type_name -> common.MetadataSet
-	32,  // 150: common.DeleteMetadataCommand.target:type_name -> common.Target
-	20,  // 151: common.TransactionState.metadata:type_name -> common.MetadataSet
-	142, // 152: common.ChartOfAccounts.roots:type_name -> common.ChartOfAccounts.RootsEntry
-	143, // 153: common.ChartSegment.children:type_name -> common.ChartSegment.ChildrenEntry
-	104, // 154: common.ChartSegment.variable:type_name -> common.ChartVariable
-	144, // 155: common.ChartVariable.children:type_name -> common.ChartVariable.ChildrenEntry
-	104, // 156: common.ChartVariable.variable:type_name -> common.ChartVariable
-	102, // 157: common.SetChartOfAccountsLog.chart_of_accounts:type_name -> common.ChartOfAccounts
-	11,  // 158: common.SetChartEnforcementModeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
-	12,  // 159: common.AccountType.status:type_name -> common.AccountTypeStatus
-	11,  // 160: common.AccountType.enforcement_mode:type_name -> common.ChartEnforcementMode
-	108, // 161: common.AddedAccountTypeLog.account_type:type_name -> common.AccountType
-	11,  // 162: common.UpdatedAccountTypeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
-	122, // 163: common.QueryFilter.field:type_name -> common.FieldCondition
-	128, // 164: common.QueryFilter.address:type_name -> common.AddressMatch
-	118, // 165: common.QueryFilter.and:type_name -> common.AndFilter
-	119, // 166: common.QueryFilter.or:type_name -> common.OrFilter
-	120, // 167: common.QueryFilter.not:type_name -> common.NotFilter
-	113, // 168: common.QueryFilter.reference:type_name -> common.ReferenceCondition
-	116, // 169: common.QueryFilter.builtin_uint:type_name -> common.BuiltinUintCondition
-	114, // 170: common.QueryFilter.ledger:type_name -> common.LedgerCondition
-	115, // 171: common.QueryFilter.log_id:type_name -> common.LogIdCondition
-	117, // 172: common.QueryFilter.log_builtin_uint:type_name -> common.LogBuiltinUintCondition
-	123, // 173: common.ReferenceCondition.cond:type_name -> common.StringCondition
-	123, // 174: common.LedgerCondition.cond:type_name -> common.StringCondition
-	125, // 175: common.LogIdCondition.cond:type_name -> common.UintCondition
-	4,   // 176: common.BuiltinUintCondition.field:type_name -> common.TransactionBuiltinIndex
-	125, // 177: common.BuiltinUintCondition.cond:type_name -> common.UintCondition
-	6,   // 178: common.LogBuiltinUintCondition.field:type_name -> common.LogBuiltinIndex
-	125, // 179: common.LogBuiltinUintCondition.cond:type_name -> common.UintCondition
-	112, // 180: common.AndFilter.filters:type_name -> common.QueryFilter
-	112, // 181: common.OrFilter.filters:type_name -> common.QueryFilter
-	112, // 182: common.NotFilter.filter:type_name -> common.QueryFilter
-	121, // 183: common.FieldCondition.field:type_name -> common.FieldRef
-	123, // 184: common.FieldCondition.string_cond:type_name -> common.StringCondition
-	124, // 185: common.FieldCondition.int_cond:type_name -> common.IntCondition
-	125, // 186: common.FieldCondition.uint_cond:type_name -> common.UintCondition
-	126, // 187: common.FieldCondition.bool_cond:type_name -> common.BoolCondition
-	127, // 188: common.FieldCondition.exists_cond:type_name -> common.ExistsCondition
-	13,  // 189: common.AddressMatch.role:type_name -> common.AddressRole
-	112, // 190: common.PreparedQuery.filter:type_name -> common.QueryFilter
-	14,  // 191: common.PreparedQuery.target:type_name -> common.QueryTarget
-	21,  // 192: common.AggregatedVolume.input:type_name -> common.Uint256
-	21,  // 193: common.AggregatedVolume.output:type_name -> common.Uint256
-	130, // 194: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
-	25,  // 195: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
-	27,  // 196: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	26,  // 197: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
-	33,  // 198: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	33,  // 199: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	20,  // 200: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataSet
-	108, // 201: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
-	103, // 202: common.ChartOfAccounts.RootsEntry.value:type_name -> common.ChartSegment
-	103, // 203: common.ChartSegment.ChildrenEntry.value:type_name -> common.ChartSegment
-	103, // 204: common.ChartVariable.ChildrenEntry.value:type_name -> common.ChartSegment
-	205, // [205:205] is the sub-list for method output_type
-	205, // [205:205] is the sub-list for method input_type
-	205, // [205:205] is the sub-list for extension type_name
-	205, // [205:205] is the sub-list for extension extendee
-	0,   // [0:205] is the sub-list for field type_name
+	141, // 113: common.CreatedTransaction.previous_account_metadata:type_name -> common.CreatedTransaction.PreviousAccountMetadataEntry
+	23,  // 114: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
+	28,  // 115: common.RevertedTransaction.post_commit_volumes:type_name -> common.PostCommitVolumes
+	105, // 116: common.RevertedTransaction.warnings:type_name -> common.ChartViolation
+	32,  // 117: common.SavedMetadata.target:type_name -> common.Target
+	20,  // 118: common.SavedMetadata.metadata:type_name -> common.MetadataSet
+	105, // 119: common.SavedMetadata.warnings:type_name -> common.ChartViolation
+	142, // 120: common.SavedMetadata.previous_values:type_name -> common.SavedMetadata.PreviousValuesEntry
+	32,  // 121: common.DeletedMetadata.target:type_name -> common.Target
+	19,  // 122: common.DeletedMetadata.previous_value:type_name -> common.MetadataValue
+	0,   // 123: common.SetMetadataFieldTypeLog.target_type:type_name -> common.TargetType
+	1,   // 124: common.SetMetadataFieldTypeLog.type:type_name -> common.MetadataType
+	0,   // 125: common.RemovedMetadataFieldTypeLog.target_type:type_name -> common.TargetType
+	16,  // 126: common.Period.start:type_name -> common.Timestamp
+	16,  // 127: common.Period.end:type_name -> common.Timestamp
+	8,   // 128: common.Period.status:type_name -> common.PeriodStatus
+	85,  // 129: common.ClosePeriodLog.closed_period:type_name -> common.Period
+	85,  // 130: common.ClosePeriodLog.new_period:type_name -> common.Period
+	85,  // 131: common.SealPeriodLog.period:type_name -> common.Period
+	85,  // 132: common.ArchivePeriodLog.period:type_name -> common.Period
+	85,  // 133: common.ConfirmArchivePeriodLog.period:type_name -> common.Period
+	91,  // 134: common.MirrorSourceConfig.http:type_name -> common.HttpMirrorSourceConfig
+	93,  // 135: common.MirrorSourceConfig.postgres:type_name -> common.PostgresMirrorSourceConfig
+	92,  // 136: common.HttpMirrorSourceConfig.oauth2_client_credentials:type_name -> common.OAuth2ClientCredentials
+	16,  // 137: common.MirrorSyncError.occurred_at:type_name -> common.Timestamp
+	10,  // 138: common.MirrorSyncProgress.state:type_name -> common.MirrorSyncState
+	94,  // 139: common.MirrorSyncProgress.error:type_name -> common.MirrorSyncError
+	16,  // 140: common.LedgerInfo.created_at:type_name -> common.Timestamp
+	16,  // 141: common.LedgerInfo.deleted_at:type_name -> common.Timestamp
+	34,  // 142: common.LedgerInfo.metadata_schema:type_name -> common.MetadataSchema
+	9,   // 143: common.LedgerInfo.mode:type_name -> common.LedgerMode
+	90,  // 144: common.LedgerInfo.mirror_source:type_name -> common.MirrorSourceConfig
+	95,  // 145: common.LedgerInfo.mirror_sync_progress:type_name -> common.MirrorSyncProgress
+	102, // 146: common.LedgerInfo.chart_of_accounts:type_name -> common.ChartOfAccounts
+	11,  // 147: common.LedgerInfo.enforcement_mode:type_name -> common.ChartEnforcementMode
+	38,  // 148: common.LedgerInfo.builtin_indexes:type_name -> common.BuiltinIndexConfig
+	39,  // 149: common.LedgerInfo.log_builtin_indexes:type_name -> common.LogBuiltinIndexConfig
+	143, // 150: common.LedgerInfo.account_types:type_name -> common.LedgerInfo.AccountTypesEntry
+	32,  // 151: common.SaveMetadataCommand.target:type_name -> common.Target
+	20,  // 152: common.SaveMetadataCommand.metadata:type_name -> common.MetadataSet
+	32,  // 153: common.DeleteMetadataCommand.target:type_name -> common.Target
+	20,  // 154: common.TransactionState.metadata:type_name -> common.MetadataSet
+	144, // 155: common.ChartOfAccounts.roots:type_name -> common.ChartOfAccounts.RootsEntry
+	145, // 156: common.ChartSegment.children:type_name -> common.ChartSegment.ChildrenEntry
+	104, // 157: common.ChartSegment.variable:type_name -> common.ChartVariable
+	146, // 158: common.ChartVariable.children:type_name -> common.ChartVariable.ChildrenEntry
+	104, // 159: common.ChartVariable.variable:type_name -> common.ChartVariable
+	102, // 160: common.SetChartOfAccountsLog.chart_of_accounts:type_name -> common.ChartOfAccounts
+	11,  // 161: common.SetChartEnforcementModeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
+	12,  // 162: common.AccountType.status:type_name -> common.AccountTypeStatus
+	11,  // 163: common.AccountType.enforcement_mode:type_name -> common.ChartEnforcementMode
+	108, // 164: common.AddedAccountTypeLog.account_type:type_name -> common.AccountType
+	11,  // 165: common.UpdatedAccountTypeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
+	122, // 166: common.QueryFilter.field:type_name -> common.FieldCondition
+	128, // 167: common.QueryFilter.address:type_name -> common.AddressMatch
+	118, // 168: common.QueryFilter.and:type_name -> common.AndFilter
+	119, // 169: common.QueryFilter.or:type_name -> common.OrFilter
+	120, // 170: common.QueryFilter.not:type_name -> common.NotFilter
+	113, // 171: common.QueryFilter.reference:type_name -> common.ReferenceCondition
+	116, // 172: common.QueryFilter.builtin_uint:type_name -> common.BuiltinUintCondition
+	114, // 173: common.QueryFilter.ledger:type_name -> common.LedgerCondition
+	115, // 174: common.QueryFilter.log_id:type_name -> common.LogIdCondition
+	117, // 175: common.QueryFilter.log_builtin_uint:type_name -> common.LogBuiltinUintCondition
+	123, // 176: common.ReferenceCondition.cond:type_name -> common.StringCondition
+	123, // 177: common.LedgerCondition.cond:type_name -> common.StringCondition
+	125, // 178: common.LogIdCondition.cond:type_name -> common.UintCondition
+	4,   // 179: common.BuiltinUintCondition.field:type_name -> common.TransactionBuiltinIndex
+	125, // 180: common.BuiltinUintCondition.cond:type_name -> common.UintCondition
+	6,   // 181: common.LogBuiltinUintCondition.field:type_name -> common.LogBuiltinIndex
+	125, // 182: common.LogBuiltinUintCondition.cond:type_name -> common.UintCondition
+	112, // 183: common.AndFilter.filters:type_name -> common.QueryFilter
+	112, // 184: common.OrFilter.filters:type_name -> common.QueryFilter
+	112, // 185: common.NotFilter.filter:type_name -> common.QueryFilter
+	121, // 186: common.FieldCondition.field:type_name -> common.FieldRef
+	123, // 187: common.FieldCondition.string_cond:type_name -> common.StringCondition
+	124, // 188: common.FieldCondition.int_cond:type_name -> common.IntCondition
+	125, // 189: common.FieldCondition.uint_cond:type_name -> common.UintCondition
+	126, // 190: common.FieldCondition.bool_cond:type_name -> common.BoolCondition
+	127, // 191: common.FieldCondition.exists_cond:type_name -> common.ExistsCondition
+	13,  // 192: common.AddressMatch.role:type_name -> common.AddressRole
+	112, // 193: common.PreparedQuery.filter:type_name -> common.QueryFilter
+	14,  // 194: common.PreparedQuery.target:type_name -> common.QueryTarget
+	21,  // 195: common.AggregatedVolume.input:type_name -> common.Uint256
+	21,  // 196: common.AggregatedVolume.output:type_name -> common.Uint256
+	130, // 197: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
+	25,  // 198: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
+	27,  // 199: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	26,  // 200: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
+	33,  // 201: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	33,  // 202: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	20,  // 203: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataSet
+	20,  // 204: common.CreatedTransaction.PreviousAccountMetadataEntry.value:type_name -> common.MetadataSet
+	19,  // 205: common.SavedMetadata.PreviousValuesEntry.value:type_name -> common.MetadataValue
+	108, // 206: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
+	103, // 207: common.ChartOfAccounts.RootsEntry.value:type_name -> common.ChartSegment
+	103, // 208: common.ChartSegment.ChildrenEntry.value:type_name -> common.ChartSegment
+	103, // 209: common.ChartVariable.ChildrenEntry.value:type_name -> common.ChartSegment
+	210, // [210:210] is the sub-list for method output_type
+	210, // [210:210] is the sub-list for method input_type
+	210, // [210:210] is the sub-list for extension type_name
+	210, // [210:210] is the sub-list for extension extendee
+	0,   // [0:210] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }
@@ -10105,7 +10145,7 @@ func file_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      16,
-			NumMessages:   129,
+			NumMessages:   131,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

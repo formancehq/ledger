@@ -135,15 +135,39 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledger string, bounda
 	}
 
 	// Store account metadata
-	var accountMetadata map[string]*commonpb.MetadataSet
+	var (
+		accountMetadata         map[string]*commonpb.MetadataSet
+		previousAccountMetadata map[string]*commonpb.MetadataSet
+	)
+
 	if len(ct.GetAccountMetadata()) > 0 {
 		accountMetadata = ct.GetAccountMetadata()
 		for account, ms := range ct.GetAccountMetadata() {
 			for _, md := range ms.GetMetadata() {
-				s.PutAccountMetadata(domain.MetadataKey{
+				metaKey := domain.MetadataKey{
 					AccountKey: domain.AccountKey{Ledger: ledger, Account: account},
 					Key:        md.GetKey(),
-				}, md.GetValue())
+				}
+
+				// Capture old value before overwriting (for log replay in indexbuilder).
+				if oldVal, err := s.GetAccountMetadata(metaKey); err == nil {
+					if previousAccountMetadata == nil {
+						previousAccountMetadata = make(map[string]*commonpb.MetadataSet)
+					}
+
+					prevSet := previousAccountMetadata[account]
+					if prevSet == nil {
+						prevSet = &commonpb.MetadataSet{}
+						previousAccountMetadata[account] = prevSet
+					}
+
+					prevSet.Metadata = append(prevSet.Metadata, &commonpb.Metadata{
+						Key:   md.GetKey(),
+						Value: oldVal,
+					})
+				}
+
+				s.PutAccountMetadata(metaKey, md.GetValue())
 			}
 		}
 	}
@@ -170,8 +194,9 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledger string, bounda
 					InsertedAt: s.GetDate(),
 					UpdatedAt:  s.GetDate(),
 				},
-				AccountMetadata: accountMetadata,
-				PeriodId:        periodID,
+				AccountMetadata:         accountMetadata,
+				PeriodId:                periodID,
+				PreviousAccountMetadata: previousAccountMetadata,
 			},
 		},
 	}, nil
@@ -179,15 +204,28 @@ func (p *RequestProcessor) processMirrorCreatedTransaction(ledger string, bounda
 
 // processMirrorSavedMetadata applies metadata from a v2 SET_METADATA log.
 func (p *RequestProcessor) processMirrorSavedMetadata(ledger string, _ *raftcmdpb.LedgerBoundaries, sm *raftcmdpb.MirrorSavedMetadata, s InMemoryStore) *commonpb.LedgerLogPayload {
+	var previousValues map[string]*commonpb.MetadataValue
+
 	if sm.GetTarget() != nil {
 		switch target := sm.GetTarget().GetTarget().(type) {
 		case *commonpb.Target_Account:
 			if sm.GetMetadata() != nil {
 				for _, entry := range sm.GetMetadata().GetMetadata() {
-					s.PutAccountMetadata(domain.MetadataKey{
+					metaKey := domain.MetadataKey{
 						AccountKey: domain.AccountKey{Ledger: ledger, Account: target.Account.GetAddr()},
 						Key:        entry.GetKey(),
-					}, entry.GetValue())
+					}
+
+					// Capture old value before overwriting.
+					if oldVal, err := s.GetAccountMetadata(metaKey); err == nil {
+						if previousValues == nil {
+							previousValues = make(map[string]*commonpb.MetadataValue)
+						}
+
+						previousValues[entry.GetKey()] = oldVal
+					}
+
+					s.PutAccountMetadata(metaKey, entry.GetValue())
 				}
 			}
 		case *commonpb.Target_Transaction:
@@ -205,6 +243,12 @@ func (p *RequestProcessor) processMirrorSavedMetadata(ledger string, _ *raftcmdp
 
 						for i, existing := range state.GetMetadata().GetMetadata() {
 							if existing.GetKey() == metadatum.GetKey() {
+								// Capture old value before overwriting.
+								if previousValues == nil {
+									previousValues = make(map[string]*commonpb.MetadataValue)
+								}
+
+								previousValues[metadatum.GetKey()] = existing.GetValue()
 								state.Metadata.Metadata[i] = metadatum
 								found = true
 
@@ -226,8 +270,9 @@ func (p *RequestProcessor) processMirrorSavedMetadata(ledger string, _ *raftcmdp
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_SavedMetadata{
 			SavedMetadata: &commonpb.SavedMetadata{
-				Target:   sm.GetTarget(),
-				Metadata: sm.GetMetadata(),
+				Target:         sm.GetTarget(),
+				Metadata:       sm.GetMetadata(),
+				PreviousValues: previousValues,
 			},
 		},
 	}
@@ -235,13 +280,21 @@ func (p *RequestProcessor) processMirrorSavedMetadata(ledger string, _ *raftcmdp
 
 // processMirrorDeletedMetadata applies metadata deletion from a v2 DELETE_METADATA log.
 func (p *RequestProcessor) processMirrorDeletedMetadata(ledger string, _ *raftcmdpb.LedgerBoundaries, dm *raftcmdpb.MirrorDeletedMetadata, s InMemoryStore) *commonpb.LedgerLogPayload {
+	var previousValue *commonpb.MetadataValue
+
 	if dm.GetTarget() != nil {
 		switch target := dm.GetTarget().GetTarget().(type) {
 		case *commonpb.Target_Account:
-			s.DeleteAccountMetadata(domain.MetadataKey{
+			metaKey := domain.MetadataKey{
 				AccountKey: domain.AccountKey{Ledger: ledger, Account: target.Account.GetAddr()},
 				Key:        dm.GetKey(),
-			})
+			}
+
+			if oldVal, err := s.GetAccountMetadata(metaKey); err == nil {
+				previousValue = oldVal
+			}
+
+			s.DeleteAccountMetadata(metaKey)
 		case *commonpb.Target_Transaction:
 			txKey := domain.TransactionKey{Ledger: ledger, ID: target.Transaction.GetId()}
 
@@ -250,7 +303,9 @@ func (p *RequestProcessor) processMirrorDeletedMetadata(ledger string, _ *raftcm
 				filtered := make([]*commonpb.Metadata, 0, len(state.GetMetadata().GetMetadata()))
 
 				for _, md := range state.GetMetadata().GetMetadata() {
-					if md.GetKey() != dm.GetKey() {
+					if md.GetKey() == dm.GetKey() {
+						previousValue = md.GetValue()
+					} else {
 						filtered = append(filtered, md)
 					}
 				}
@@ -264,8 +319,9 @@ func (p *RequestProcessor) processMirrorDeletedMetadata(ledger string, _ *raftcm
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
 			DeletedMetadata: &commonpb.DeletedMetadata{
-				Target: dm.GetTarget(),
-				Key:    dm.GetKey(),
+				Target:        dm.GetTarget(),
+				Key:           dm.GetKey(),
+				PreviousValue: previousValue,
 			},
 		},
 	}

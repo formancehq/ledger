@@ -58,10 +58,6 @@ type Builder struct {
 	// Active schema rewrite tasks for deferred SetMetadataFieldType processing.
 	schemaRewriteTasks []*schemaRewriteTask
 
-	// backfillMode is set to true during backfill log replay to skip
-	// existence writes (already written by normal processing).
-	backfillMode bool
-
 	// Batch size for normal index processing and backfill.
 	batchSize int
 

@@ -190,7 +190,7 @@ type schemaRewriteTask struct {
 }
 
 // schemaRewriteBBKey builds the bbolt key for persisting schema rewrite progress.
-// Format: [ledger\x00]S[targetType_byte][key]
+// Format: [ledger\x00]S[targetType_byte][key].
 func schemaRewriteBBKey(ledger string, targetType commonpb.TargetType, key string) []byte {
 	bbKey := make([]byte, 0, len(ledger)+3+len(key))
 	bbKey = append(bbKey, ledger...)
@@ -202,9 +202,9 @@ func schemaRewriteBBKey(ledger string, targetType commonpb.TargetType, key strin
 
 // addSchemaRewriteTask creates a deferred schema rewrite task for a SetMetadataFieldType
 // log entry, avoiding duplicates.
-func (b *Builder) addSchemaRewriteTask(ledger string, smft *commonpb.SetMetadataFieldTypeLog) {
+func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledger string, smft *commonpb.SetMetadataFieldTypeLog) {
 	// Only rewrite if this metadata key is indexed.
-	if !b.isMetadataIndexed(ledger, smft.GetTargetType(), smft.GetKey()) {
+	if !cfg.isMetadataIndexed(smft.GetTargetType(), smft.GetKey()) {
 		return
 	}
 
@@ -571,17 +571,7 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, dead
 	defer func() { _ = logsCursor.Close() }()
 
 	// Build a temporary index config with only the backfilling index enabled.
-	tmpConfig := b.buildBackfillConfig(task)
-
-	// Swap index config, enable backfill mode.
-	origConfig := b.indexConfig
-	b.indexConfig = tmpConfig
-	b.backfillMode = true
-
-	defer func() {
-		b.indexConfig = origConfig
-		b.backfillMode = false
-	}()
+	cfg := b.buildBackfillConfig(task)
 
 	for time.Now().Before(deadline) {
 		select {
@@ -619,7 +609,7 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, dead
 					continue
 				}
 
-				if err := b.indexLogEntry(tx, log); err != nil {
+				if err := b.indexLogEntry(tx, cfg, log); err != nil {
 					return err
 				}
 
@@ -655,9 +645,9 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, dead
 	return nil
 }
 
-// buildBackfillConfig creates a temporary indexConfig map containing only the
-// backfilling index's ledger config with only that index enabled.
-func (b *Builder) buildBackfillConfig(task *backfillTask) map[string]*ledgerIndexConfig {
+// buildBackfillConfig creates a temporary ledgerIndexConfig containing only
+// the backfilling index enabled.
+func (b *Builder) buildBackfillConfig(task *backfillTask) *ledgerIndexConfig {
 	cfg := newLedgerIndexConfig()
 
 	if task.index.transaction != nil {
@@ -682,7 +672,7 @@ func (b *Builder) buildBackfillConfig(task *backfillTask) map[string]*ledgerInde
 		cfg.logBuiltinIndexed[*task.index.logBuiltin] = true
 	}
 
-	return map[string]*ledgerIndexConfig{task.ledger: cfg}
+	return cfg
 }
 
 // isDataLog returns true if the log entry contains indexable data

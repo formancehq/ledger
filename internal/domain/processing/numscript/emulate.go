@@ -13,10 +13,12 @@ import (
 // DiscoveryResult holds the results of Numscript dependency discovery.
 // SourceVolumes contains accounts queried via GetBalances (posting sources).
 // DestinationVolumes contains accounts that only appear as posting destinations.
+// WrittenMetadata contains account metadata keys written via set_account_meta.
 type DiscoveryResult struct {
 	SourceVolumes      map[domain.VolumeKey]struct{}
 	DestinationVolumes map[domain.VolumeKey]struct{}
 	Metadata           map[domain.MetadataKey]struct{}
+	WrittenMetadata    map[domain.MetadataKey]struct{}
 }
 
 // discoveryStore implements numscript.Store to discover which accounts/assets
@@ -164,9 +166,24 @@ func DiscoverNumscriptDependencies(script string, vars map[string]string, ledger
 		metadata[key] = struct{}{}
 	}
 
+	// Collect account metadata keys written via set_account_meta.
+	var writtenMetadata map[domain.MetadataKey]struct{}
+	if len(execResult.AccountsMetadata) > 0 {
+		writtenMetadata = make(map[domain.MetadataKey]struct{})
+		for account, acctMeta := range execResult.AccountsMetadata {
+			for key := range acctMeta {
+				writtenMetadata[domain.MetadataKey{
+					AccountKey: domain.AccountKey{Ledger: ledger, Account: account},
+					Key:        key,
+				}] = struct{}{}
+			}
+		}
+	}
+
 	return &DiscoveryResult{
 		SourceVolumes:      sourceVolumes,
 		DestinationVolumes: destinationVolumes,
 		Metadata:           metadata,
+		WrittenMetadata:    writtenMetadata,
 	}, nil
 }

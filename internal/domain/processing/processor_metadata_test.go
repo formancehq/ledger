@@ -25,17 +25,17 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 	now := &commonpb.Timestamp{Data: 1234567890}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 
+	metaKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:123"},
+		Key:        "status",
+	}
+
 	mockStore.EXPECT().GetBoundaries("test-ledger").Return(boundaries, true)
 	mockStore.EXPECT().GetLedger("test-ledger").Return(nil, false).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutBoundaries("test-ledger", gomock.Any())
-	mockStore.EXPECT().PutAccountMetadata(
-		domain.MetadataKey{
-			AccountKey: domain.AccountKey{Ledger: "test-ledger", Account: "users:123"},
-			Key:        "status",
-		},
-		commonpb.NewStringValue("active"),
-	)
+	mockStore.EXPECT().GetAccountMetadata(metaKey).Return(nil, domain.ErrNotFound)
+	mockStore.EXPECT().PutAccountMetadata(metaKey, commonpb.NewStringValue("active"))
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{
@@ -69,6 +69,8 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 
 	savedMetadata := applyLog.GetLog().GetData().GetSavedMetadata()
 	require.NotNil(t, savedMetadata)
+	// No previous values since this is a first write
+	require.Empty(t, savedMetadata.GetPreviousValues())
 }
 
 func TestProcessAddMetadata_Transaction(t *testing.T) {
@@ -183,6 +185,7 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	deletedMetadata := applyLog.GetLog().GetData().GetDeletedMetadata()
 	require.NotNil(t, deletedMetadata)
 	require.Equal(t, "status", deletedMetadata.GetKey())
+	require.NotNil(t, deletedMetadata.GetPreviousValue())
 }
 
 func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
