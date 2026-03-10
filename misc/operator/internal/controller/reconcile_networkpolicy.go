@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"maps"
+	"net/url"
 	"slices"
 	"strconv"
 
@@ -150,6 +151,15 @@ func otelEgressRule(ledger *ledgerv1alpha1.LedgerService) *networkingv1.NetworkP
 		}
 	}
 
+	// Include Pyroscope port if enabled.
+	if mon.Pyroscope != nil && mon.Pyroscope.Enabled {
+		anyEnabled = true
+
+		if p := portFromServerAddress(mon.Pyroscope.ServerAddress); p > 0 {
+			ports[p] = struct{}{}
+		}
+	}
+
 	if !anyEnabled {
 		return nil
 	}
@@ -223,4 +233,28 @@ func portFromLogs(l *ledgerv1alpha1.LogsConfig) string {
 	}
 
 	return l.Port
+}
+
+// portFromServerAddress extracts the port from a URL like "http://host:4040".
+func portFromServerAddress(addr string) int32 {
+	if addr == "" {
+		return 0
+	}
+
+	u, err := url.Parse(addr)
+	if err != nil {
+		return 0
+	}
+
+	portStr := u.Port()
+	if portStr == "" {
+		return 0
+	}
+
+	p, err := strconv.ParseInt(portStr, 10, 32)
+	if err != nil {
+		return 0
+	}
+
+	return int32(p)
 }

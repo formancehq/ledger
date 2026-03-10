@@ -226,6 +226,55 @@ func TestBuildNetworkPolicySpec_AdditionalEgress(t *testing.T) {
 	assert.Equal(t, &tcp, additional.Ports[0].Protocol)
 }
 
+func TestBuildNetworkPolicySpec_PyroscopePort(t *testing.T) {
+	t.Parallel()
+
+	ls := newTestLedgerService("pyro", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls.Spec.Config.Monitoring = &ledgerv1alpha1.MonitoringConfig{
+		Pyroscope: &ledgerv1alpha1.PyroscopeConfig{
+			Enabled:       true,
+			ServerAddress: "http://pyroscope.ledger-v3:4040",
+		},
+	}
+	spec := buildNetworkPolicySpec(ls)
+
+	// 4 egress rules: inter-node, DNS, external, monitoring (pyroscope).
+	require.Len(t, spec.Egress, 4)
+
+	mon := spec.Egress[3]
+	tcp := corev1.ProtocolTCP
+	require.Len(t, mon.Ports, 1)
+	assert.Equal(t, int32(4040), mon.Ports[0].Port.IntVal)
+	assert.Equal(t, &tcp, mon.Ports[0].Protocol)
+}
+
+func TestBuildNetworkPolicySpec_PyroscopeAndOTELPorts(t *testing.T) {
+	t.Parallel()
+
+	ls := newTestLedgerService("pyro-otel", &ledgerv1alpha1.NetworkPolicySpec{Enabled: true})
+	ls.Spec.Config.Monitoring = &ledgerv1alpha1.MonitoringConfig{
+		Traces: &ledgerv1alpha1.TracesConfig{
+			Enabled: new(true),
+			Port:    "4317",
+		},
+		Pyroscope: &ledgerv1alpha1.PyroscopeConfig{
+			Enabled:       true,
+			ServerAddress: "http://pyroscope:4040",
+		},
+	}
+	spec := buildNetworkPolicySpec(ls)
+
+	require.Len(t, spec.Egress, 4)
+
+	mon := spec.Egress[3]
+	tcp := corev1.ProtocolTCP
+	require.Len(t, mon.Ports, 2)
+	assert.Equal(t, int32(4040), mon.Ports[0].Port.IntVal)
+	assert.Equal(t, &tcp, mon.Ports[0].Protocol)
+	assert.Equal(t, int32(4317), mon.Ports[1].Port.IntVal)
+	assert.Equal(t, &tcp, mon.Ports[1].Protocol)
+}
+
 func TestBuildNetworkPolicySpec_OTELFromDefaults(t *testing.T) {
 	t.Parallel()
 
