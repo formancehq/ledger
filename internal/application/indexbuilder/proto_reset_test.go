@@ -15,32 +15,32 @@ func TestResetLogForReuse_PreservesNestedAllocations(t *testing.T) {
 	log := buildTestLog()
 
 	// Capture pointers to nested objects that should be preserved.
-	payload := log.Payload
-	apply := log.Payload.Type.(*commonpb.LogPayload_Apply)
+	payload := log.GetPayload()
+	apply := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
 	applyLog := apply.Apply
-	ledgerLog := applyLog.Log
-	ledgerLogPayload := ledgerLog.Data
-	ct := ledgerLogPayload.Payload.(*commonpb.LedgerLogPayload_CreatedTransaction)
+	ledgerLog := applyLog.GetLog()
+	ledgerLogPayload := ledgerLog.GetData()
+	ct := ledgerLogPayload.GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
 	createdTx := ct.CreatedTransaction
-	txn := createdTx.Transaction
-	timestamp := txn.Timestamp
-	insertedAt := txn.InsertedAt
-	date := ledgerLog.Date
+	txn := createdTx.GetTransaction()
+	timestamp := txn.GetTimestamp()
+	insertedAt := txn.GetInsertedAt()
+	date := ledgerLog.GetDate()
 
 	resetLogForReuse(log)
 
 	// Verify the preserved chain is the SAME pointer (not reallocated).
-	assert.Same(t, payload, log.Payload, "Payload pointer should be preserved")
-	assert.Same(t, apply, log.Payload.Type.(*commonpb.LogPayload_Apply), "Apply wrapper preserved")
+	assert.Same(t, payload, log.GetPayload(), "Payload pointer should be preserved")
+	assert.Same(t, apply, log.GetPayload().GetType().(*commonpb.LogPayload_Apply), "Apply wrapper preserved")
 	assert.Same(t, applyLog, apply.Apply, "ApplyLedgerLog preserved")
-	assert.Same(t, ledgerLog, applyLog.Log, "LedgerLog preserved")
-	assert.Same(t, ledgerLogPayload, ledgerLog.Data, "LedgerLogPayload preserved")
-	assert.Same(t, ct, ledgerLogPayload.Payload.(*commonpb.LedgerLogPayload_CreatedTransaction), "CT wrapper preserved")
+	assert.Same(t, ledgerLog, applyLog.GetLog(), "LedgerLog preserved")
+	assert.Same(t, ledgerLogPayload, ledgerLog.GetData(), "LedgerLogPayload preserved")
+	assert.Same(t, ct, ledgerLogPayload.GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction), "CT wrapper preserved")
 	assert.Same(t, createdTx, ct.CreatedTransaction, "CreatedTransaction preserved")
-	assert.Same(t, txn, createdTx.Transaction, "Transaction preserved")
-	assert.Same(t, timestamp, txn.Timestamp, "Timestamp preserved")
-	assert.Same(t, insertedAt, txn.InsertedAt, "InsertedAt preserved")
-	assert.Same(t, date, ledgerLog.Date, "Date preserved")
+	assert.Same(t, txn, createdTx.GetTransaction(), "Transaction preserved")
+	assert.Same(t, timestamp, txn.GetTimestamp(), "Timestamp preserved")
+	assert.Same(t, insertedAt, txn.GetInsertedAt(), "InsertedAt preserved")
+	assert.Same(t, date, ledgerLog.GetDate(), "Date preserved")
 }
 
 func TestResetLogForReuse_ClearsStaleData(t *testing.T) {
@@ -51,35 +51,35 @@ func TestResetLogForReuse_ClearsStaleData(t *testing.T) {
 	resetLogForReuse(log)
 
 	// Scalar fields must be zeroed (proto3 omits defaults from wire).
-	assert.Equal(t, uint64(0), log.Sequence)
-	assert.Empty(t, log.Receipt)
+	assert.Equal(t, uint64(0), log.GetSequence())
+	assert.Empty(t, log.GetReceipt())
 
 	// Optional fields must be nil'd.
-	assert.Nil(t, log.Idempotency)
-	assert.Nil(t, log.Signature)
-	assert.Nil(t, log.ResponseSignature)
+	assert.Nil(t, log.GetIdempotency())
+	assert.Nil(t, log.GetSignature())
+	assert.Nil(t, log.GetResponseSignature())
 
-	apply := log.Payload.Type.(*commonpb.LogPayload_Apply)
-	assert.Empty(t, apply.Apply.LedgerName)
-	assert.Equal(t, uint64(0), apply.Apply.Log.Id)
+	apply := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+	assert.Empty(t, apply.Apply.GetLedgerName())
+	assert.Equal(t, uint64(0), apply.Apply.GetLog().GetId())
 
-	ct := apply.Apply.Log.Data.Payload.(*commonpb.LedgerLogPayload_CreatedTransaction)
+	ct := apply.Apply.GetLog().GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
 	createdTx := ct.CreatedTransaction
 
-	assert.Equal(t, uint64(0), createdTx.PeriodId)
-	assert.Nil(t, createdTx.PostCommitVolumes)
-	assert.Empty(t, createdTx.Warnings)
-	assert.Empty(t, createdTx.AccountMetadata)
-	assert.Empty(t, createdTx.PreviousAccountMetadata)
+	assert.Equal(t, uint64(0), createdTx.GetPeriodId())
+	assert.Nil(t, createdTx.GetPostCommitVolumes())
+	assert.Empty(t, createdTx.GetWarnings())
+	assert.Empty(t, createdTx.GetAccountMetadata())
+	assert.Empty(t, createdTx.GetPreviousAccountMetadata())
 
-	txn := createdTx.Transaction
-	assert.Equal(t, uint64(0), txn.Id)
-	assert.Empty(t, txn.Reference)
-	assert.False(t, txn.Reverted)
-	assert.Empty(t, txn.Postings)
-	assert.Nil(t, txn.Metadata)
-	assert.Nil(t, txn.UpdatedAt)
-	assert.Nil(t, txn.RevertedAt)
+	txn := createdTx.GetTransaction()
+	assert.Equal(t, uint64(0), txn.GetId())
+	assert.Empty(t, txn.GetReference())
+	assert.False(t, txn.GetReverted())
+	assert.Empty(t, txn.GetPostings())
+	assert.Nil(t, txn.GetMetadata())
+	assert.Nil(t, txn.GetUpdatedAt())
+	assert.Nil(t, txn.GetRevertedAt())
 }
 
 func TestResetLogForReuse_PreservesSliceCapacity(t *testing.T) {
@@ -87,17 +87,15 @@ func TestResetLogForReuse_PreservesSliceCapacity(t *testing.T) {
 
 	log := buildTestLog()
 
-	ct := log.Payload.Type.(*commonpb.LogPayload_Apply).Apply.Log.Data.
-		Payload.(*commonpb.LedgerLogPayload_CreatedTransaction).CreatedTransaction
-	postingsCap := cap(ct.Transaction.Postings)
+	ct := log.GetPayload().GetType().(*commonpb.LogPayload_Apply).Apply.GetLog().GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction).CreatedTransaction
+	postingsCap := cap(ct.GetTransaction().GetPostings())
 	require.Greater(t, postingsCap, 0)
 
 	resetLogForReuse(log)
 
-	ct2 := log.Payload.Type.(*commonpb.LogPayload_Apply).Apply.Log.Data.
-		Payload.(*commonpb.LedgerLogPayload_CreatedTransaction).CreatedTransaction
-	assert.Equal(t, 0, len(ct2.Transaction.Postings))
-	assert.Equal(t, postingsCap, cap(ct2.Transaction.Postings), "Postings capacity preserved")
+	ct2 := log.GetPayload().GetType().(*commonpb.LogPayload_Apply).Apply.GetLog().GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction).CreatedTransaction
+	assert.Equal(t, 0, len(ct2.GetTransaction().GetPostings()))
+	assert.Equal(t, postingsCap, cap(ct2.GetTransaction().GetPostings()), "Postings capacity preserved")
 }
 
 func TestResetLogForReuse_HandlesOneofTypeChange(t *testing.T) {
@@ -108,8 +106,7 @@ func TestResetLogForReuse_HandlesOneofTypeChange(t *testing.T) {
 	resetLogForReuse(log)
 
 	// The oneof wrapper should still be CreatedTransaction.
-	_, ok := log.Payload.Type.(*commonpb.LogPayload_Apply).Apply.Log.Data.
-		Payload.(*commonpb.LedgerLogPayload_CreatedTransaction)
+	_, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply).Apply.GetLog().GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
 	assert.True(t, ok, "CreatedTransaction wrapper preserved after reset")
 
 	// Simulate UnmarshalVT changing the type to SavedMetadata:
@@ -132,8 +129,8 @@ func TestResetLogForReuse_NonApplyLog(t *testing.T) {
 	resetLogForReuse(log)
 
 	// Non-Apply payload type should be nil'd.
-	assert.NotNil(t, log.Payload, "Payload pointer preserved")
-	assert.Nil(t, log.Payload.Type, "Non-Apply type nil'd")
+	assert.NotNil(t, log.GetPayload(), "Payload pointer preserved")
+	assert.Nil(t, log.GetPayload().GetType(), "Non-Apply type nil'd")
 }
 
 func TestResetLogForReuse_NilPayload(t *testing.T) {
@@ -142,8 +139,8 @@ func TestResetLogForReuse_NilPayload(t *testing.T) {
 	log := &commonpb.Log{Sequence: 42}
 	resetLogForReuse(log)
 
-	assert.Equal(t, uint64(0), log.Sequence)
-	assert.Nil(t, log.Payload)
+	assert.Equal(t, uint64(0), log.GetSequence())
+	assert.Nil(t, log.GetPayload())
 }
 
 func TestResetLogForReuse_RoundTrip(t *testing.T) {
@@ -188,19 +185,19 @@ func TestResetLogForReuse_RoundTrip(t *testing.T) {
 	// Unmarshal log1 into reusable message.
 	m := &commonpb.Log{}
 	require.NoError(t, m.UnmarshalVT(data1))
-	assert.Equal(t, uint64(12345), m.Sequence)
-	assert.Equal(t, "default", m.Payload.GetApply().GetLedgerName())
+	assert.Equal(t, uint64(12345), m.GetSequence())
+	assert.Equal(t, "default", m.GetPayload().GetApply().GetLedgerName())
 
 	// Reset for reuse and unmarshal log2.
 	resetLogForReuse(m)
 	require.NoError(t, m.UnmarshalVT(data2))
 
 	// Verify log2 values — no stale data from log1.
-	assert.Equal(t, uint64(99999), m.Sequence)
-	assert.Empty(t, m.Receipt, "Receipt should be empty (not stale)")
-	assert.Nil(t, m.Idempotency, "Idempotency should be nil (not stale)")
+	assert.Equal(t, uint64(99999), m.GetSequence())
+	assert.Empty(t, m.GetReceipt(), "Receipt should be empty (not stale)")
+	assert.Nil(t, m.GetIdempotency(), "Idempotency should be nil (not stale)")
 
-	apply := m.Payload.GetApply()
+	apply := m.GetPayload().GetApply()
 	assert.Equal(t, "other-ledger", apply.GetLedgerName())
 	assert.Equal(t, uint64(77), apply.GetLog().GetId())
 

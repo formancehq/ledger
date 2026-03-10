@@ -29,22 +29,22 @@ func resetLogForReuse(msg proto.Message) {
 
 	// Log-level fields.
 	m.Sequence = 0
-	m.Hash = m.Hash[:0]
+	m.Hash = m.GetHash()[:0]
 	m.Receipt = ""
 	m.Idempotency = nil
 	m.Signature = nil
 	m.ResponseSignature = nil
 
 	// Preserve m.Payload (always present in system logs).
-	if m.Payload == nil {
+	if m.GetPayload() == nil {
 		return
 	}
 
-	resetLogPayload(m.Payload)
+	resetLogPayload(m.GetPayload())
 }
 
 func resetLogPayload(p *commonpb.LogPayload) {
-	apply, ok := p.Type.(*commonpb.LogPayload_Apply)
+	apply, ok := p.GetType().(*commonpb.LogPayload_Apply)
 	if !ok {
 		// Non-Apply log type: nil the oneof to force reallocation.
 		// These are rare (CreateLedger, DeleteLedger, etc.).
@@ -62,11 +62,11 @@ func resetLogPayload(p *commonpb.LogPayload) {
 	a.LedgerName = ""
 
 	// Preserve a.Log (always present).
-	if a.Log == nil {
+	if a.GetLog() == nil {
 		return
 	}
 
-	resetLedgerLog(a.Log)
+	resetLedgerLog(a.GetLog())
 }
 
 func resetLedgerLog(ll *commonpb.LedgerLog) {
@@ -74,18 +74,18 @@ func resetLedgerLog(ll *commonpb.LedgerLog) {
 	// Preserve ll.Date (always present in apply logs).
 	// Preserve ll.Data (always present).
 
-	if ll.Data == nil {
+	if ll.GetData() == nil {
 		return
 	}
 
-	resetLedgerLogPayload(ll.Data)
+	resetLedgerLogPayload(ll.GetData())
 }
 
 func resetLedgerLogPayload(p *commonpb.LedgerLogPayload) {
 	// Handle each oneof variant. Preserve the wrapper and inner message
 	// for the common types (CreatedTransaction, RevertedTransaction) so
 	// UnmarshalVT reuses them when the next log is the same type.
-	switch v := p.Payload.(type) {
+	switch v := p.GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		resetCreatedTransaction(v.CreatedTransaction)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
@@ -108,11 +108,11 @@ func resetCreatedTransaction(ct *commonpb.CreatedTransaction) {
 
 	ct.PeriodId = 0
 	ct.PostCommitVolumes = nil
-	ct.Warnings = ct.Warnings[:0]
-	clear(ct.AccountMetadata)
-	clear(ct.PreviousAccountMetadata)
+	ct.Warnings = ct.GetWarnings()[:0]
+	clear(ct.GetAccountMetadata())
+	clear(ct.GetPreviousAccountMetadata())
 
-	resetTransaction(ct.Transaction)
+	resetTransaction(ct.GetTransaction())
 }
 
 func resetRevertedTransaction(rt *commonpb.RevertedTransaction) {
@@ -122,9 +122,9 @@ func resetRevertedTransaction(rt *commonpb.RevertedTransaction) {
 
 	rt.RevertedTransactionId = 0
 	rt.PostCommitVolumes = nil
-	rt.Warnings = rt.Warnings[:0]
+	rt.Warnings = rt.GetWarnings()[:0]
 
-	resetTransaction(rt.RevertTransaction)
+	resetTransaction(rt.GetRevertTransaction())
 }
 
 func resetTransaction(txn *commonpb.Transaction) {
@@ -135,7 +135,7 @@ func resetTransaction(txn *commonpb.Transaction) {
 	txn.Id = 0
 	txn.Reference = ""
 	txn.Reverted = false
-	txn.Postings = txn.Postings[:0]
+	txn.Postings = txn.GetPostings()[:0]
 	// Nil optional message fields that might be absent in the next log.
 	txn.Metadata = nil
 	txn.UpdatedAt = nil
@@ -149,11 +149,11 @@ func resetSavedMetadata(sm *commonpb.SavedMetadata) {
 	}
 
 	sm.Target = nil
-	sm.Warnings = sm.Warnings[:0]
-	clear(sm.PreviousValues)
+	sm.Warnings = sm.GetWarnings()[:0]
+	clear(sm.GetPreviousValues())
 
-	if sm.Metadata != nil {
-		sm.Metadata.Metadata = sm.Metadata.Metadata[:0]
+	if sm.GetMetadata() != nil {
+		sm.Metadata.Metadata = sm.GetMetadata().GetMetadata()[:0]
 	}
 }
 

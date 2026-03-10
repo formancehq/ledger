@@ -223,6 +223,36 @@ func ReadLedgerLogsSince(
 	return &ledgerLogCursor{pebble: pebbleReader, seqs: seqs}, nil
 }
 
+// ReadLogsSinceRaw returns a raw Pebble iterator for logs after the given
+// sequence. The caller receives raw key/value bytes without proto
+// deserialization and is responsible for closing the iterator.
+// The iterator is already positioned at the first valid entry (via First()).
+func ReadLogsSinceRaw(_ context.Context, reader dal.PebbleReader, afterSequence uint64) (*pebble.Iterator, error) {
+	kb := dal.NewKeyBuilder()
+	kb.PutByte(dal.KeyPrefixLog)
+
+	if afterSequence > 0 {
+		kb.PutUint64(afterSequence + 1)
+	}
+
+	lowerBound := kb.Build()
+
+	kb2 := dal.NewKeyBuilder()
+	kb2.PutByte(dal.KeyPrefixLog).
+		PutBytes(dal.MaxUint64Bytes)
+	upperBound := kb2.Build()
+
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating raw iterator for logs: %w", err)
+	}
+
+	return iter, nil
+}
+
 // ReadLogsSince returns a cursor over global log entries after the given sequence from the given reader.
 // Pass afterSequence=0 to return all log entries.
 func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence uint64, opts ...dal.ProtoCursorOption) (dal.Cursor[*commonpb.Log], error) {

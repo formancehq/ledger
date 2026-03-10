@@ -530,7 +530,15 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 
 		// Process this task with its share of the budget.
 		taskDeadline := time.Now().Add(perTaskBudget)
-		if err := b.processBackfill(stop, task, taskDeadline); err != nil {
+
+		var err error
+		if isPostingIndex(task.index) {
+			err = b.processBackfillPostings(stop, task, taskDeadline)
+		} else {
+			err = b.processBackfill(stop, task, taskDeadline)
+		}
+
+		if err != nil {
 			b.logger.WithFields(map[string]any{
 				"ledger": task.ledger,
 				"index":  backfillIndexName(task.index),
