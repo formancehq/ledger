@@ -79,13 +79,13 @@ func isAlphanumeric(s string) bool {
 
 // trieNode represents a single node in the address trie.
 type trieNode struct {
-	children     map[string]*trieNode
-	terminating  int      // number of accounts that terminate at this node
-	assets       []string // distinct assets for accounts terminating here
-	metadataKeys []string // distinct metadata keys for accounts terminating here
-	// Pre-computed normalization cache (set by precomputeNormalization).
-	varPlaceholder string    // e.g. "{id}" when this is a variable node; empty otherwise
-	mergedChild    *trieNode // merged children node for variable segment traversal
+	children       map[string]*trieNode
+	terminating    int       // number of accounts that terminate at this node
+	assets         []string  // distinct assets for accounts terminating here
+	metadataKeys   []string  // distinct metadata keys for accounts terminating here
+	mergedChild    *trieNode // overflow subtree (chart) or merged variable node (flow normalization)
+	overflowCount  int       // number of distinct children routed to mergedChild overflow
+	varPlaceholder string    // e.g. "{id}" — set by precomputeNormalization for flow discovery
 }
 
 func newTrieNode() *trieNode {
@@ -130,6 +130,9 @@ func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold 
 		variableThreshold = DefaultVariableThreshold
 	}
 
+	// Cap children per node: once reached, new unseen segments spill into mergedChild.
+	childCap := int(variableThreshold) * 2
+
 	root := newTrieNode()
 
 	var totalAccounts uint64
@@ -154,11 +157,27 @@ func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold 
 		node := root
 		for _, seg := range segments {
 			child, ok := node.children[seg]
-			if !ok {
-				child = newTrieNode()
-				node.children[seg] = child
+			if ok {
+				node = child
+
+				continue
 			}
 
+			// New segment: check if we've hit the cap.
+			if len(node.children) >= childCap {
+				// Route into the overflow subtree.
+				if node.mergedChild == nil {
+					node.mergedChild = newTrieNode()
+				}
+
+				node.overflowCount++
+				node = node.mergedChild
+
+				continue
+			}
+
+			child = newTrieNode()
+			node.children[seg] = child
 			node = child
 		}
 
@@ -173,12 +192,12 @@ func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold 
 		}, nil
 	}
 
-	// Convert trie to chart tree
-	roots, _ := classifyChildren(root, variableThreshold)
-
-	// Extract patterns
+	// Extract patterns first — classifyChildren mutates shared trie nodes via mergeTrieNodes.
 	var patterns []*servicepb.AccountPattern
 	extractPatterns(root, nil, nil, variableThreshold, &patterns)
+
+	// Convert trie to chart tree (may mutate trie nodes).
+	roots, _ := classifyChildren(root, variableThreshold)
 
 	return &servicepb.AnalyzeAccountsResponse{
 		SuggestedChart: &commonpb.ChartOfAccounts{
@@ -202,7 +221,7 @@ type childInfo struct {
 // into a single variable segment. When there's a mix of common fixed values and
 // many unique values, the common ones stay fixed and the rest become variable.
 func classifyChildren(node *trieNode, threshold uint32) (map[string]*commonpb.ChartSegment, *commonpb.ChartVariable) {
-	if len(node.children) == 0 {
+	if len(node.children) == 0 && node.mergedChild == nil {
 		return nil, nil
 	}
 
@@ -221,7 +240,10 @@ func classifyChildren(node *trieNode, threshold uint32) (map[string]*commonpb.Ch
 		return infos[i].key < infos[j].key
 	})
 
-	if uint32(len(infos)) <= threshold {
+	// Effective distinct children = stored children + overflow count.
+	effectiveCount := uint32(len(infos)) + uint32(node.overflowCount)
+
+	if effectiveCount <= threshold {
 		// All children are fixed
 		return buildFixedMap(infos, threshold), nil
 	}
@@ -232,6 +254,10 @@ func classifyChildren(node *trieNode, threshold uint32) (map[string]*commonpb.Ch
 	totalChildAccounts := 0
 	for _, info := range infos {
 		totalChildAccounts += info.count
+	}
+
+	if node.mergedChild != nil {
+		totalChildAccounts += countAccounts(node.mergedChild)
 	}
 
 	var (
@@ -251,11 +277,14 @@ func classifyChildren(node *trieNode, threshold uint32) (map[string]*commonpb.Ch
 		}
 	}
 
+	// Account for overflow children in the variable count.
+	effectiveVariableCount := uint32(len(variableInfos)) + uint32(node.overflowCount)
+
 	// If all would be variable, just make one variable segment
-	if len(fixedInfos) == 0 || uint32(len(variableInfos)) <= threshold {
+	if len(fixedInfos) == 0 || effectiveVariableCount <= threshold {
 		// Either all are clearly variable, or the "variable" set is small enough
 		// to actually all be fixed — reconsider
-		if uint32(len(variableInfos)) <= threshold && len(fixedInfos) > 0 {
+		if effectiveVariableCount <= threshold && len(fixedInfos) > 0 {
 			// The variable set is small, keep them all fixed
 			return buildFixedMap(infos, threshold), nil
 		}
@@ -268,6 +297,11 @@ func classifyChildren(node *trieNode, threshold uint32) (map[string]*commonpb.Ch
 	for _, info := range variableInfos {
 		variableKeys = append(variableKeys, info.key)
 		mergeTrieNodes(mergedVariableNode, info.node)
+	}
+
+	// Merge the overflow subtree into the variable node.
+	if node.mergedChild != nil {
+		mergeTrieNodes(mergedVariableNode, node.mergedChild)
 	}
 
 	varChildren, varVariable := classifyChildren(mergedVariableNode, threshold)
@@ -307,13 +341,22 @@ func buildFixedMap(infos []childInfo, threshold uint32) map[string]*commonpb.Cha
 func mergeTrieNodes(dst, src *trieNode) {
 	dst.terminating += src.terminating
 	dst.assets = mergeDistinct(dst.assets, src.assets)
-
 	dst.metadataKeys = mergeDistinct(dst.metadataKeys, src.metadataKeys)
+	dst.overflowCount += src.overflowCount
+
 	for key, srcChild := range src.children {
 		if dstChild, ok := dst.children[key]; ok {
 			mergeTrieNodes(dstChild, srcChild)
 		} else {
 			dst.children[key] = srcChild
+		}
+	}
+
+	if src.mergedChild != nil {
+		if dst.mergedChild == nil {
+			dst.mergedChild = src.mergedChild
+		} else {
+			mergeTrieNodes(dst.mergedChild, src.mergedChild)
 		}
 	}
 }
@@ -331,13 +374,16 @@ func extractPatterns(node *trieNode, pathParts []string, pathSegments []*service
 		})
 	}
 
-	if len(node.children) == 0 {
+	if len(node.children) == 0 && node.mergedChild == nil {
 		return
 	}
 
 	position := uint32(len(pathParts))
 
-	if uint32(len(node.children)) <= threshold {
+	// Effective distinct children = stored + overflow.
+	effectiveCount := uint32(len(node.children)) + uint32(node.overflowCount)
+
+	if effectiveCount <= threshold {
 		// All children are fixed
 		keys := sortedKeys(node.children)
 		for _, key := range keys {
@@ -358,7 +404,7 @@ func extractPatterns(node *trieNode, pathParts []string, pathSegments []*service
 		return
 	}
 
-	// Variable node: merge all children
+	// Variable node: merge all children + overflow
 	allKeys := sortedKeys(node.children)
 
 	examples := allKeys
@@ -374,13 +420,17 @@ func extractPatterns(node *trieNode, pathParts []string, pathSegments []*service
 		Type:            servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE,
 		VariableName:    varName,
 		InferredPattern: varPattern,
-		UniqueValues:    uint64(len(allKeys)),
+		UniqueValues:    uint64(effectiveCount),
 		Examples:        examples,
 	}
 
 	merged := newTrieNode()
 	for _, child := range node.children {
 		mergeTrieNodes(merged, child)
+	}
+
+	if node.mergedChild != nil {
+		mergeTrieNodes(merged, node.mergedChild)
 	}
 
 	extractPatterns(merged,
@@ -500,6 +550,10 @@ func countAccounts(node *trieNode) int {
 	total := node.terminating
 	for _, child := range node.children {
 		total += countAccounts(child)
+	}
+
+	if node.mergedChild != nil {
+		total += countAccounts(node.mergedChild)
 	}
 
 	return total

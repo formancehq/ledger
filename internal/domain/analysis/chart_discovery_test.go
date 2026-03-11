@@ -298,3 +298,68 @@ func TestInferVariableName(t *testing.T) {
 		})
 	}
 }
+
+func TestAnalyze_OverflowCapping(t *testing.T) {
+	t.Parallel()
+
+	// With threshold=5, childCap = 10. Create 100 UUIDs to force overflow.
+	var accounts []CompactAccount
+	for i := range 100 {
+		uuid := fmt.Sprintf("a0eebc99-9c0b-4ef8-bb6d-6bb9bd38%04x", i)
+		accounts = append(accounts, makeCompactAccount("users:"+uuid+":wallet"))
+	}
+
+	resp := Analyze(accounts, 5)
+
+	require.NotNil(t, resp)
+	assert.Equal(t, uint64(100), resp.GetTotalAccounts())
+
+	// Chart: "users" root with a variable child
+	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
+	usersSeg, ok := resp.GetSuggestedChart().GetRoots()["users"]
+	require.True(t, ok)
+	require.NotNil(t, usersSeg.GetVariable(), "expected variable child")
+	assert.Equal(t, "id", usersSeg.GetVariable().GetName())
+
+	// The variable should have a "wallet" child underneath
+	_, hasWallet := usersSeg.GetVariable().GetChildren()["wallet"]
+	assert.True(t, hasWallet, "expected 'wallet' child under the variable segment")
+
+	// Pattern: "users:{id}:wallet"
+	require.Len(t, resp.GetPatterns(), 1)
+	assert.Equal(t, "users:{id}:wallet", resp.GetPatterns()[0].GetPattern())
+	assert.Equal(t, uint64(100), resp.GetPatterns()[0].GetAccountCount())
+
+	// UniqueValues should reflect the full count including overflow
+	varSeg := resp.GetPatterns()[0].GetSegments()[1]
+	assert.Equal(t, uint64(100), varSeg.GetUniqueValues())
+}
+
+func TestAnalyze_OverflowMemoryBounded(t *testing.T) {
+	t.Parallel()
+
+	// Verify that with many unique segments, the trie doesn't grow unbounded.
+	// threshold=3, childCap=6. Create 1000 unique segments.
+	const threshold uint32 = 3
+	const numAccounts = 1000
+
+	var accounts []CompactAccount
+	for i := range numAccounts {
+		accounts = append(accounts, makeCompactAccount(fmt.Sprintf("users:%06d", i)))
+	}
+
+	resp := Analyze(accounts, threshold)
+
+	require.NotNil(t, resp)
+	assert.Equal(t, uint64(numAccounts), resp.GetTotalAccounts())
+
+	// Should still produce a valid variable pattern
+	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
+	usersSeg, ok := resp.GetSuggestedChart().GetRoots()["users"]
+	require.True(t, ok)
+	require.NotNil(t, usersSeg.GetVariable())
+
+	require.Len(t, resp.GetPatterns(), 1)
+	assert.Equal(t, "users:{number}", resp.GetPatterns()[0].GetPattern())
+	assert.Equal(t, uint64(numAccounts), resp.GetPatterns()[0].GetAccountCount())
+}
