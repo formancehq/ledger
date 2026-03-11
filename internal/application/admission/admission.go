@@ -286,7 +286,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	// Step 1: Extract all preload needs from orders in a single pass
 	needs := a.extractPreloadNeeds(ctx, orders)
 
-	// Step 2-4: Build preloads via shared Preloader
+	// Step 2-4: Build preloads via shared Preloader (no lock)
 	cmd := commands.NewCommand(orders...)
 
 	ctx, preloadSpan := tracer.Start(ctx, "admission.preload",
@@ -299,63 +299,53 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 			attribute.Int("preload.metadata", len(needs.Metadata)),
 		))
 
-	preloadSet, guard, err := a.preloader.BuildAndValidatePreloads(needs)
+	build, err := a.preloader.BuildPreloads(needs)
 	if err != nil {
 		preloadSpan.End()
-		if guard != nil {
-			guard.ReleaseLoaders()
-		}
+		build.ReleaseLoaders(a.preloader.Loaders())
 
 		return nil, fmt.Errorf("building preloads: %w", err)
 	}
 
-	cmd.Preload = preloadSet
+	cmd.Preload = build.PreloadSet
 	preloadSpan.End()
 
-	// Step 5: Propose command — the ProposalGuard holds the proposal lock,
-	// ensuring no concurrent preload can proceed until we release.
+	// Step 5: Marshal outside the proposal lock — the marshal is the slowest
+	// part (~µs) and has no dependency on the lock.
 	start := time.Now()
 
 	defer func() {
 		a.commandDurationHistogram.Record(ctx, time.Since(start).Microseconds())
 	}()
 
-	// Marshal into a pooled buffer to avoid repeated growth allocations.
-	// Copy to exact-size slice since Raft retains a reference to proposal data.
-	ctx, marshalSpan := tracer.Start(ctx, "admission.marshal")
-	bufp := marshalBufPool.Get().(*[]byte)
-	size := cmd.SizeVT()
-
-	buf := *bufp
-	if cap(buf) < size {
-		buf = make([]byte, size)
-	} else {
-		buf = buf[:size]
-	}
-
-	n, err := cmd.MarshalToVT(buf)
+	proposalData, err := a.marshalCommand(ctx, cmd)
 	if err != nil {
-		marshalSpan.End()
+		build.ReleaseLoaders(a.preloader.Loaders())
 
-		*bufp = buf
-		marshalBufPool.Put(bufp)
-		guard.ReleaseAll()
-
-		return nil, fmt.Errorf("marshaling command: %w", err)
+		return nil, err
 	}
 
-	cmdData := buf[:n]
+	// Step 6: Acquire proposal lock and validate boundary.
+	updatedPreloads, guard, err := a.preloader.AcquireProposalGuard(build, needs)
+	if err != nil {
+		if guard != nil {
+			guard.ReleaseAll()
+		}
 
-	// Record command size for monitoring memory usage
-	a.commandSizeHistogram.Record(ctx, int64(len(cmdData)))
+		return nil, fmt.Errorf("acquiring proposal guard: %w", err)
+	}
 
-	proposalData := make([]byte, len(cmdData))
-	copy(proposalData, cmdData)
+	// Rare: boundary shifted — re-marshal with updated preloads under lock.
+	if updatedPreloads != nil {
+		cmd.Preload = updatedPreloads
 
-	*bufp = buf // preserve grown capacity for future calls
-	marshalBufPool.Put(bufp)
-	marshalSpan.SetAttributes(attribute.Int("command.size_bytes", len(proposalData)))
-	marshalSpan.End()
+		proposalData, err = a.marshalCommand(ctx, cmd)
+		if err != nil {
+			guard.ReleaseAll()
+
+			return nil, err
+		}
+	}
 
 	proposal := node.NewProposal(cmd.GetId(), proposalData)
 
@@ -421,6 +411,44 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	return logs, err
+}
+
+// marshalCommand marshals a proposal command into a newly allocated byte slice
+// using a pooled buffer. The returned slice is safe for Raft retention.
+func (a *Admission) marshalCommand(ctx context.Context, cmd *raftcmdpb.Proposal) ([]byte, error) {
+	ctx, marshalSpan := tracer.Start(ctx, "admission.marshal")
+	bufp := marshalBufPool.Get().(*[]byte)
+	size := cmd.SizeVT()
+
+	buf := *bufp
+	if cap(buf) < size {
+		buf = make([]byte, size)
+	} else {
+		buf = buf[:size]
+	}
+
+	n, err := cmd.MarshalToVT(buf)
+	if err != nil {
+		marshalSpan.End()
+
+		*bufp = buf
+		marshalBufPool.Put(bufp)
+
+		return nil, fmt.Errorf("marshaling command: %w", err)
+	}
+
+	cmdData := buf[:n]
+	a.commandSizeHistogram.Record(ctx, int64(len(cmdData)))
+
+	proposalData := make([]byte, len(cmdData))
+	copy(proposalData, cmdData)
+
+	*bufp = buf
+	marshalBufPool.Put(bufp)
+	marshalSpan.SetAttributes(attribute.Int("command.size_bytes", len(proposalData)))
+	marshalSpan.End()
+
+	return proposalData, nil
 }
 
 // verifyAndResolveSignatures verifies signatures on requests and resolves signed payloads.

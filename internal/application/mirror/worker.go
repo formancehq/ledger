@@ -343,18 +343,14 @@ func (w *Worker) processBatch() (bool, error) {
 
 	needs := w.extractMirrorNeeds(cmd)
 
-	preloadSet, guard, err := w.preloader.BuildAndValidatePreloads(needs)
+	build, err := w.preloader.BuildPreloads(needs)
 	if err != nil {
-		if guard != nil {
-			guard.ReleaseLoaders()
-		}
+		build.ReleaseLoaders(w.preloader.Loaders())
 
 		return false, fmt.Errorf("building preloads: %w", err)
 	}
 
-	cmd.Preload = preloadSet
-	// Mirror doesn't need loader dedup through FSM — release immediately.
-	guard.ReleaseLoaders()
+	cmd.Preload = build.PreloadSet
 
 	w.preloadDuration.Record(ctx, time.Since(preloadStart).Microseconds(), attrs)
 
@@ -368,39 +364,43 @@ func (w *Worker) processBatch() (bool, error) {
 		SourceLogCount: w.sourceLogCount,
 	}}
 
-	// Marshal into a pooled buffer to avoid repeated growth allocations.
-	// Copy to exact-size slice since Raft retains a reference to proposal data.
-	bufp, ok := marshalBufPool.Get().(*[]byte)
-	if !ok {
-		panic("marshalBufPool: unexpected type from sync.Pool")
-	}
-	size := cmd.SizeVT()
-
-	buf := *bufp
-	if cap(buf) < size {
-		buf = make([]byte, size)
-	} else {
-		buf = buf[:size]
-	}
-
-	n, err := cmd.MarshalToVT(buf)
+	// Marshal outside the proposal lock — the marshal is the slowest part
+	// and has no dependency on the lock.
+	proposalData, err := marshalMirrorCommand(cmd)
 	if err != nil {
-		*bufp = buf
-		marshalBufPool.Put(bufp)
-		guard.Release()
+		build.ReleaseLoaders(w.preloader.Loaders())
 
 		return false, err
 	}
 
-	cmdData := buf[:n]
+	w.commandSize.Record(ctx, int64(len(proposalData)), attrs)
 
-	w.commandSize.Record(ctx, int64(len(cmdData)), attrs)
+	// Acquire proposal lock and validate boundary.
+	updatedPreloads, guard, err := w.preloader.AcquireProposalGuard(build, needs)
+	if err != nil {
+		if guard != nil {
+			guard.ReleaseAll()
+		}
 
-	proposalData := make([]byte, len(cmdData))
-	copy(proposalData, cmdData)
+		return false, fmt.Errorf("acquiring proposal guard: %w", err)
+	}
 
-	*bufp = buf
-	marshalBufPool.Put(bufp)
+	// Mirror doesn't need loader dedup through FSM — release immediately.
+	guard.ReleaseLoaders()
+
+	// Rare: boundary shifted — re-marshal with updated preloads under lock.
+	if updatedPreloads != nil {
+		cmd.Preload = updatedPreloads
+
+		proposalData, err = marshalMirrorCommand(cmd)
+		if err != nil {
+			guard.Release()
+
+			return false, err
+		}
+
+		w.commandSize.Record(ctx, int64(len(proposalData)), attrs)
+	}
 
 	proposeStart := time.Now()
 	proposal := node.NewProposal(cmd.GetId(), proposalData)
@@ -512,6 +512,42 @@ func (w *Worker) reportError(message string) {
 	}
 
 	_, _ = proposal.Wait()
+}
+
+// marshalMirrorCommand marshals a proposal command into a newly allocated byte
+// slice using a pooled buffer. The returned slice is safe for Raft retention.
+func marshalMirrorCommand(cmd *raftcmdpb.Proposal) ([]byte, error) {
+	bufp, ok := marshalBufPool.Get().(*[]byte)
+	if !ok {
+		panic("marshalBufPool: unexpected type from sync.Pool")
+	}
+
+	size := cmd.SizeVT()
+
+	buf := *bufp
+	if cap(buf) < size {
+		buf = make([]byte, size)
+	} else {
+		buf = buf[:size]
+	}
+
+	n, err := cmd.MarshalToVT(buf)
+	if err != nil {
+		*bufp = buf
+		marshalBufPool.Put(bufp)
+
+		return nil, err
+	}
+
+	cmdData := buf[:n]
+
+	proposalData := make([]byte, len(cmdData))
+	copy(proposalData, cmdData)
+
+	*bufp = buf
+	marshalBufPool.Put(bufp)
+
+	return proposalData, nil
 }
 
 // extractMirrorNeeds builds preload.Needs from a mirror proposal's orders.

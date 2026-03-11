@@ -29,8 +29,28 @@ type Preloader struct {
 	proposeMu sync.Mutex
 }
 
+// PreloadBuild carries the result of an optimistic BuildPreloads call.
+// The caller uses PreloadSet for marshalling outside the lock, then passes
+// the build to AcquireProposalGuard for boundary validation.
+type PreloadBuild struct {
+	PreloadSet *raftcmdpb.PreloadSet
+	token      *CleanupToken
+	nextIndex  uint64
+	generation uint64
+}
+
+// ReleaseLoaders releases the loader cleanup token from the build.
+// Use this on error paths when AcquireProposalGuard was never called.
+// Safe to call multiple times (idempotent via nil check).
+func (b *PreloadBuild) ReleaseLoaders(loaders *Loaders) {
+	if b.token != nil {
+		b.token.Release(loaders)
+		b.token = nil
+	}
+}
+
 // ProposalGuard holds the proposal lock and the cleanup token acquired by
-// BuildAndValidatePreloads. It unifies two concerns:
+// AcquireProposalGuard. It unifies two concerns:
 //   - proposal lock: serializes boundary validation → Propose
 //   - loader cleanup: tracks loaded keys for deduplication until the FSM applies
 //
@@ -78,51 +98,70 @@ func New(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.Attribute
 	}
 }
 
-// BuildAndValidatePreloads resolves all preload needs and acquires the proposal
-// lock with a validated generation boundary. The returned ProposalGuard holds
-// both the proposal lock and the loader cleanup token.
-//
-// Strategy: one optimistic build without the lock, then validate. If the cache
-// generation boundary shifted during the build (common under high throughput
-// near a rotation threshold), re-build once under the lock where the boundary
-// is guaranteed stable (no concurrent Propose can advance the tracker).
-//
-// On error, the caller must call guard.ReleaseLoaders() if guard is non-nil
-// (partial preload built before the error).
-func (p *Preloader) BuildAndValidatePreloads(needs *Needs) (*raftcmdpb.PreloadSet, *ProposalGuard, error) {
-	// --- Optimistic path (no lock) ---
-	nextIndexBefore := p.tracker.Next()
-	genBefore := p.cache.CurrentGeneration()
+// Loaders returns the shared Loaders instance, allowing callers to release
+// tokens from a PreloadBuild on error paths.
+func (p *Preloader) Loaders() *Loaders {
+	return p.loaders
+}
 
-	preloadSet, token, err := p.buildPreloadsAt(nextIndexBefore, needs)
+// BuildPreloads resolves all preload needs optimistically without holding the
+// proposal lock. The returned PreloadBuild contains the PreloadSet for
+// marshalling and internal state for boundary validation.
+//
+// On error, the caller must call build.ReleaseLoaders(preloader.Loaders()).
+func (p *Preloader) BuildPreloads(needs *Needs) (*PreloadBuild, error) {
+	nextIndex := p.tracker.Next()
+	gen := p.cache.CurrentGeneration()
+
+	preloadSet, token, err := p.buildPreloadsAt(nextIndex, needs)
 	if err != nil {
-		return nil, &ProposalGuard{p: p, token: token}, err
+		return &PreloadBuild{token: token, nextIndex: nextIndex, generation: gen}, err
 	}
 
+	return &PreloadBuild{
+		PreloadSet: preloadSet,
+		token:      token,
+		nextIndex:  nextIndex,
+		generation: gen,
+	}, nil
+}
+
+// AcquireProposalGuard acquires the proposal lock and validates that the cache
+// generation boundary has not shifted since the optimistic BuildPreloads call.
+//
+// Returns (updatedPreloadSet, guard, error):
+//   - updatedPreloadSet is nil when the boundary is stable (common case) — the
+//     caller should use the original build.PreloadSet.
+//   - updatedPreloadSet is non-nil when the boundary shifted (rare) — the caller
+//     must re-marshal the command with the new preload set while still holding
+//     the guard.
+//
+// On error, the caller must call guard.ReleaseAll() if guard is non-nil.
+func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*raftcmdpb.PreloadSet, *ProposalGuard, error) {
 	p.proposeMu.Lock()
 
 	nextIndexAfter := p.tracker.Next()
-	boundaryBefore := cache.BoundaryIndex(nextIndexBefore, p.cache.GenerationThreshold)
+	boundaryBefore := cache.BoundaryIndex(build.nextIndex, p.cache.GenerationThreshold)
 	boundaryAfter := cache.BoundaryIndex(nextIndexAfter, p.cache.GenerationThreshold)
 	genAfter := p.cache.CurrentGeneration()
 
-	if boundaryBefore == boundaryAfter && genBefore == genAfter {
-		return preloadSet, &ProposalGuard{p: p, token: token}, nil
+	if boundaryBefore == boundaryAfter && build.generation == genAfter {
+		return nil, &ProposalGuard{p: p, token: build.token}, nil
 	}
 
 	// --- Boundary shifted: re-build under lock ---
 	// Under proposeMu, no other preloader can advance the tracker via Propose,
 	// so the boundary is stable for the duration of the build.
-	token.Release(p.loaders)
+	build.token.Release(p.loaders)
 
 	p.logger.WithFields(map[string]any{
 		"boundary_before": boundaryBefore,
 		"boundary_after":  boundaryAfter,
-		"gen_before":      genBefore,
+		"gen_before":      build.generation,
 		"gen_after":       genAfter,
 	}).Debugf("Preload boundary shifted, rebuilding under lock")
 
-	preloadSet, token, err = p.buildPreloadsAt(p.tracker.Next(), needs)
+	preloadSet, token, err := p.buildPreloadsAt(p.tracker.Next(), needs)
 	if err != nil {
 		p.proposeMu.Unlock()
 
