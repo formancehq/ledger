@@ -53,18 +53,14 @@ spec:
     spec:
       serviceAccountName: {{ include "k6-run.fullname" . }}-cleanup
       restartPolicy: OnFailure
-      containers:
-        - name: cleanup
-          image: "{{ .Values.ledgerCleanup.image.repository }}:{{ .Values.ledgerCleanup.image.tag }}"
+      initContainers:
+        - name: watch-testrun
+          image: "{{ .Values.ledgerCleanup.watchImage.repository }}:{{ .Values.ledgerCleanup.watchImage.tag }}"
           env:
             - name: NAMESPACE
               value: {{ .Values.metadata.namespace | default .Release.Namespace }}
             - name: TESTRUN_NAME
               value: {{ include "k6-run.fullname" . }}
-            - name: LEDGER_URL
-              value: {{ .Values.runner.env.LEDGER_URL }}
-            - name: LEDGER_NAME
-              value: {{ .Values.runner.env.ledgerName }}
             - name: POLL_INTERVAL
               value: {{ .Values.ledgerCleanup.pollInterval | quote }}
           command:
@@ -77,17 +73,34 @@ spec:
               while true; do
                 stage=$(kubectl -n "$NAMESPACE" get testrun "$TESTRUN_NAME" -o jsonpath='{.status.stage}' 2>/dev/null || true)
                 if [ "$stage" = "finished" ] || [ "$stage" = "error" ] || [ "$stage" = "stopped" ]; then
+                  echo "TestRun reached stage: $stage"
                   break
                 fi
                 sleep "$POLL_INTERVAL"
               done
-              status=$(curl -sS -o /tmp/resp -w "%{http_code}" \
-                -X DELETE \
-                "$LEDGER_URL/$LEDGER_NAME" || true)
-              if [ "$status" = "204" ] || [ "$status" = "404" ]; then
-                echo "ledger deleted"
-              else
-                echo "failed to delete ledger: status=$status" >&2
-                cat /tmp/resp >&2
+      containers:
+        - name: delete-ledger
+          image: "{{ .Values.ledgerCleanup.grpcImage.repository }}:{{ .Values.ledgerCleanup.grpcImage.tag }}"
+          env:
+            - name: GRPC_ADDR
+              value: {{ .Values.runner.env.GRPC_ADDR }}
+            - name: LEDGER_NAME
+              value: {{ .Values.runner.env.LEDGER_NAME }}
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -euo pipefail
+              wget -qO- "https://github.com/fullstorydev/grpcurl/releases/download/v{{ .Values.grpcurl.version }}/grpcurl_{{ .Values.grpcurl.version }}_linux_{{ .Values.grpcurl.arch }}.tar.gz" | tar xz -C /usr/local/bin grpcurl
+              output=$(grpcurl -plaintext \
+                -d "{\"requests\":[{\"delete_ledger\":{\"name\":\"$LEDGER_NAME\"}}]}" \
+                "$GRPC_ADDR" ledger.BucketService/Apply 2>&1) && { echo "ledger deleted"; exit 0; }
+              # If NotFound (code 5), treat as success
+              if echo "$output" | grep -q "NotFound"; then
+                echo "ledger already deleted or not found"
+                exit 0
               fi
+              echo "failed to delete ledger:" >&2
+              echo "$output" >&2
 {{- end }}

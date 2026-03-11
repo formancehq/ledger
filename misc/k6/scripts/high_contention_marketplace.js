@@ -2,18 +2,19 @@
 // This test simulates a realistic marketplace with high contention on hot accounts
 //
 // Scenario:
-// - Multiple sellers deposit funds to a central @platform account (many → one)
-// - Platform pays out to multiple sellers from @platform account (one → many)  
+// - Multiple sellers deposit funds to a central @platform account (many -> one)
+// - Platform pays out to multiple sellers from @platform account (one -> many)
 // - Buyers pay sellers through escrow accounts with platform fees
 // - All operations contend on @platform and @fees accounts
 //
 // This creates realistic contention patterns seen in payment/marketplace systems.
 
-import { check, sleep } from 'k6';
+import { check } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
+import grpc from 'k6/net/grpc';
 import { config } from './shared/config.js';
 import { buildOptions } from './shared/options.js';
-import { bulkOperation } from './shared/utils.js';
+import { connectClient, apply, scriptRequest } from './shared/utils.js';
 import exec from 'k6/execution';
 
 // Configuration
@@ -32,6 +33,8 @@ const paymentsCreated = new Counter('payments_created');
 const contentionErrors = new Counter('contention_errors');
 
 export const options = buildOptions(config);
+
+let client;
 
 // Hot accounts that all VUs contend for
 const hotAccounts = {
@@ -55,15 +58,11 @@ function getHotAccount(id) {
   return `merchant:${id % HOT_ACCOUNT_COUNT}`;
 }
 
-// Scenario 1: Seller deposits to platform (many → one contention)
-// Simulates sellers adding funds to their platform wallet
+// Scenario 1: Seller deposits to platform (many -> one contention)
 function generateSellerDeposit(uniqueId) {
   const seller = getSellerAccount(uniqueId);
-  return {
-    action: 'CREATE_TRANSACTION',
-    data: {
-      script: {
-        plain: `vars {
+  return scriptRequest(config.ledgerName,
+    `vars {
             account $seller
             monetary $amount
         }
@@ -75,29 +74,17 @@ function generateSellerDeposit(uniqueId) {
             source = $seller allowing unbounded overdraft
             destination = @${hotAccounts.platform}
         )`,
-        vars: {
-          seller: seller,
-          amount: 'USD/2 1000', // $10.00 deposit
-        },
-      },
-      metadata: {
-        type: 'seller_deposit',
-        seller: seller,
-      },
-    },
-  };
+    { seller, amount: 'USD/2 1000' },
+    { type: 'seller_deposit', seller },
+  );
 }
 
-// Scenario 2: Platform pays out to seller (one → many contention)
-// Simulates platform paying out earnings to sellers
+// Scenario 2: Platform pays out to seller (one -> many contention)
 function generatePayout(uniqueId) {
   const seller = getSellerAccount(uniqueId);
-  const amount = 500 + Math.floor(Math.random() * 500); // $5.00-$10.00
-  return {
-    action: 'CREATE_TRANSACTION',
-    data: {
-      script: {
-        plain: `vars {
+  const amount = 500 + Math.floor(Math.random() * 500);
+  return scriptRequest(config.ledgerName,
+    `vars {
             account $seller
             monetary $amount
         }
@@ -105,33 +92,21 @@ function generatePayout(uniqueId) {
             source = @${hotAccounts.platform} allowing unbounded overdraft
             destination = $seller
         )`,
-        vars: {
-          seller: seller,
-          amount: `USD/2 ${amount}`,
-        },
-      },
-      metadata: {
-        type: 'seller_payout',
-        seller: seller,
-      },
-    },
-  };
+    { seller, amount: `USD/2 ${amount}` },
+    { type: 'seller_payout', seller },
+  );
 }
 
 // Scenario 3: Buyer payment with fees (complex multi-account contention)
-// Simulates a buyer paying a seller with platform fees
 function generatePaymentWithFees(uniqueId) {
   const buyer = getBuyerAccount(uniqueId);
   const seller = getSellerAccount(uniqueId);
   const merchant = getHotAccount(uniqueId);
-  const amount = 1000 + Math.floor(Math.random() * 9000); // $10.00-$100.00
-  const feePercent = 3; // 3% platform fee
+  const amount = 1000 + Math.floor(Math.random() * 9000);
+  const feePercent = 3;
 
-  return {
-    action: 'CREATE_TRANSACTION',
-    data: {
-      script: {
-        plain: `vars {
+  return scriptRequest(config.ledgerName,
+    `vars {
             account $buyer
             account $seller
             account $merchant
@@ -145,35 +120,25 @@ function generatePaymentWithFees(uniqueId) {
                 remaining to $merchant
             }
         )`,
-        vars: {
-          buyer: buyer,
-          seller: seller,
-          merchant: merchant,
-          amount: `USD/2 ${amount}`,
-          fee_percent: `${feePercent}/100`,
-        },
-      },
-      metadata: {
-        type: 'payment_with_fees',
-        buyer: buyer,
-        seller: seller,
-      },
+    {
+      buyer,
+      seller,
+      merchant,
+      amount: `USD/2 ${amount}`,
+      fee_percent: `${feePercent}/100`,
     },
-  };
+    { type: 'payment_with_fees', buyer, seller },
+  );
 }
 
 // Scenario 4: Escrow funding (high contention on escrow account)
-// Simulates buyers funding escrow for pending orders
 function generateEscrowFunding(uniqueId) {
   const buyer = getBuyerAccount(uniqueId);
   const orderId = uniqueId;
-  const amount = 2000 + Math.floor(Math.random() * 8000); // $20.00-$100.00
+  const amount = 2000 + Math.floor(Math.random() * 8000);
 
-  return {
-    action: 'CREATE_TRANSACTION',
-    data: {
-      script: {
-        plain: `vars {
+  return scriptRequest(config.ledgerName,
+    `vars {
             account $buyer
             string $order_id
             monetary $amount
@@ -182,31 +147,18 @@ function generateEscrowFunding(uniqueId) {
             source = $buyer allowing unbounded overdraft
             destination = @escrow:$order_id
         )`,
-        vars: {
-          buyer: buyer,
-          order_id: orderId.toString(),
-          amount: `USD/2 ${amount}`,
-        },
-      },
-      metadata: {
-        type: 'escrow_funding',
-        buyer: buyer,
-        order_id: orderId.toString(),
-      },
-    },
-  };
+    { buyer, order_id: orderId.toString(), amount: `USD/2 ${amount}` },
+    { type: 'escrow_funding', buyer, order_id: orderId.toString() },
+  );
 }
 
-// Scenario 5: Escrow release with fees (releases escrowed funds)
+// Scenario 5: Escrow release with fees
 function generateEscrowRelease(uniqueId) {
   const seller = getSellerAccount(uniqueId);
   const orderId = uniqueId;
 
-  return {
-    action: 'CREATE_TRANSACTION',
-    data: {
-      script: {
-        plain: `vars {
+  return scriptRequest(config.ledgerName,
+    `vars {
             account $seller
             string $order_id
             portion $fee_percent
@@ -218,33 +170,19 @@ function generateEscrowRelease(uniqueId) {
                 remaining to $seller
             }
         )`,
-        vars: {
-          seller: seller,
-          order_id: orderId.toString(),
-          fee_percent: '3/100',
-        },
-      },
-      metadata: {
-        type: 'escrow_release',
-        seller: seller,
-        order_id: orderId.toString(),
-      },
-    },
-  };
+    { seller, order_id: orderId.toString(), fee_percent: '3/100' },
+    { type: 'escrow_release', seller, order_id: orderId.toString() },
+  );
 }
 
 // Scenario 6: High-frequency micropayments to merchant (extreme contention)
-// Simulates many small payments to a single merchant
 function generateMicropayment(uniqueId) {
   const buyer = getBuyerAccount(uniqueId);
   const merchant = getHotAccount(0); // Always same merchant = maximum contention
-  const amount = 10 + Math.floor(Math.random() * 90); // $0.10-$1.00
+  const amount = 10 + Math.floor(Math.random() * 90);
 
-  return {
-    action: 'CREATE_TRANSACTION',
-    data: {
-      script: {
-        plain: `vars {
+  return scriptRequest(config.ledgerName,
+    `vars {
             account $buyer
             account $merchant
             monetary $amount
@@ -253,23 +191,12 @@ function generateMicropayment(uniqueId) {
             source = $buyer allowing unbounded overdraft
             destination = $merchant
         )`,
-        vars: {
-          buyer: buyer,
-          merchant: merchant,
-          amount: `USD/2 ${amount}`,
-        },
-      },
-      metadata: {
-        type: 'micropayment',
-        buyer: buyer,
-        merchant: merchant,
-      },
-    },
-  };
+    { buyer, merchant, amount: `USD/2 ${amount}` },
+    { type: 'micropayment', buyer, merchant },
+  );
 }
 
 // Distribution of scenarios (weighted random selection)
-// Adjust these weights to simulate different traffic patterns
 const scenarioWeights = {
   sellerDeposit: 15,      // 15% - Seller deposits
   payout: 10,             // 10% - Platform payouts
@@ -282,7 +209,7 @@ const scenarioWeights = {
 function selectScenario() {
   const total = Object.values(scenarioWeights).reduce((a, b) => a + b, 0);
   let random = Math.floor(Math.random() * total);
-  
+
   for (const [scenario, weight] of Object.entries(scenarioWeights)) {
     random -= weight;
     if (random < 0) {
@@ -294,7 +221,7 @@ function selectScenario() {
 
 function generateTransaction(uniqueId) {
   const scenario = selectScenario();
-  
+
   switch (scenario) {
     case 'sellerDeposit':
       depositsCreated.add(1);
@@ -317,33 +244,33 @@ function generateTransaction(uniqueId) {
   }
 }
 
-function generateBulkElements(iteration) {
-  const elements = [];
+function generateRequests(iteration) {
+  const requests = [];
   for (let i = 0; i < BULK_SIZE; i++) {
     const uniqueId = iteration * BULK_SIZE + i;
-    elements.push(generateTransaction(uniqueId));
+    requests.push(generateTransaction(uniqueId));
   }
-  return elements;
+  return requests;
 }
 
 export default function () {
-  const ledgerName = config.ledgerName;
-  const elements = generateBulkElements(exec.scenario.iterationInTest);
-  
+  if (!client) client = connectClient(config.grpcAddr);
+
+  const requests = generateRequests(exec.scenario.iterationInTest);
+
   const startTime = Date.now();
-  const response = bulkOperation(config, ledgerName, elements);
+  const response = apply(client, requests);
   const latency = Date.now() - startTime;
-  
+
   bulkLatency.add(latency);
-  
+
   const success = check(response, {
-    'bulk operation successful': (r) => r.status === 200,
+    'bulk operation successful': (r) => r && r.status === grpc.StatusOK,
   });
 
   if (!success) {
     errorRate.add(1);
-    // Check if it's a contention-related error
-    if (response.body && response.body.includes('conflict')) {
+    if (response && response.error && response.error.message && response.error.message.includes('conflict')) {
       contentionErrors.add(1);
     }
   } else {
@@ -354,72 +281,50 @@ export default function () {
 
 // Setup function to initialize platform accounts
 export function setup() {
-  const ledgerName = config.ledgerName;
-  
+  const setupClient = connectClient(config.grpcAddr);
+
   // Initialize platform accounts with initial balance from @world
-  const initElements = [
-    {
-      action: 'CREATE_TRANSACTION',
-      data: {
-        script: {
-          plain: `send [USD/2 10000000] (
+  const initRequests = [
+    scriptRequest(config.ledgerName,
+      `send [USD/2 10000000] (
               source = @world
               destination = @${hotAccounts.platform}
           )`,
-          vars: {},
-        },
-        metadata: {
-          type: 'platform_init',
-        },
-      },
-    },
-    {
-      action: 'CREATE_TRANSACTION',
-      data: {
-        script: {
-          plain: `send [USD/2 1000000] (
+      {},
+      { type: 'platform_init' },
+    ),
+    scriptRequest(config.ledgerName,
+      `send [USD/2 1000000] (
               source = @world
               destination = @${hotAccounts.escrow}
           )`,
-          vars: {},
-        },
-        metadata: {
-          type: 'escrow_init',
-        },
-      },
-    },
+      {},
+      { type: 'escrow_init' },
+    ),
   ];
-  
+
   // Initialize hot merchant accounts
   for (let i = 0; i < HOT_ACCOUNT_COUNT; i++) {
-    initElements.push({
-      action: 'CREATE_TRANSACTION',
-      data: {
-        script: {
-          plain: `vars {
+    initRequests.push(scriptRequest(config.ledgerName,
+      `vars {
               account $merchant
           }
           send [USD/2 1000000] (
               source = @world
               destination = $merchant
           )`,
-          vars: {
-            merchant: `merchant:${i}`,
-          },
-        },
-        metadata: {
-          type: 'merchant_init',
-          merchant_id: i.toString(),
-        },
-      },
-    });
+      { merchant: `merchant:${i}` },
+      { type: 'merchant_init', merchant_id: i.toString() },
+    ));
   }
-  
-  const response = bulkOperation(config, ledgerName, initElements);
+
+  const response = apply(setupClient, initRequests);
   check(response, {
-    'setup: platform accounts initialized': (r) => r.status === 200,
+    'setup: platform accounts initialized': (r) => r && r.status === grpc.StatusOK,
   });
-  
+
+  setupClient.close();
+
   console.log(`Setup complete: initialized ${HOT_ACCOUNT_COUNT} hot merchant accounts`);
   return { hotAccounts, merchantCount: HOT_ACCOUNT_COUNT };
 }
@@ -438,7 +343,7 @@ export function handleSummary(data) {
         p95_latency: data.metrics.bulk_latency?.values?.['p(95)'] || 0,
         p99_latency: data.metrics.bulk_latency?.values?.['p(99)'] || 0,
         avg_latency: data.metrics.bulk_latency?.values?.avg || 0,
-        rps: data.metrics.http_reqs?.values?.rate || 0,
+        rps: data.metrics.grpc_reqs?.values?.rate || 0,
       },
     }, null, 2),
   };

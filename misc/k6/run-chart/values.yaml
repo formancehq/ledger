@@ -6,7 +6,8 @@ metadata:
   namespace: ""
 runner:
   env:
-    ledgerName: "ledger0"
+    GRPC_ADDR: "ledger-exp.ledger-exp.svc.cluster.local:8888"
+    LEDGER_NAME: "ledger0"
     stages: ""
   otlp:
     endpoint: "otel-opentelemetry-collector.ledger-exp.svc.cluster.local:4317"
@@ -26,17 +27,24 @@ runner:
   tolerations: []
 archiveData: ""
 
+grpcurl:
+  version: "1.9.3"
+  arch: "x86_64"
+
 ledgerJob:
   enabled: true
   image:
-    repository: curlimages/curl
-    tag: "8.7.1"
+    repository: alpine
+    tag: "3.21"
   backoffLimit: 2
 
 ledgerCleanup:
   enabled: true
-  image:
+  watchImage:
     repository: alpine/kubectl
     tag: "1.35.0"
+  grpcImage:
+    repository: alpine
+    tag: "3.21"
   pollInterval: 5
   ttlSecondsAfterFinished: 300

@@ -3,10 +3,11 @@
 
 import { check } from 'k6';
 import { Rate, Trend } from 'k6/metrics';
+import grpc from 'k6/net/grpc';
 import { uuidv4 } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
 import { config } from './shared/config.js';
 import { buildOptions } from './shared/options.js';
-import { bulkOperation } from './shared/utils.js';
+import { connectClient, apply, scriptRequest } from './shared/utils.js';
 
 // Custom metrics
 const errorRate = new Rate('errors');
@@ -14,44 +15,35 @@ const bulkLatency = new Trend('bulk_latency', true);
 
 export const options = buildOptions(config);
 
-function generateTransaction(iteration) {
-  return {
-    action: 'CREATE_TRANSACTION',
-    data: {
-      script: {
-        plain: `vars {
+let client;
+
+function generateTransaction() {
+  return scriptRequest(config.ledgerName,
+    `vars {
             account $destination
         }
         send [USD/2 100] (
             source = @world
             destination = $destination
         )`,
-        vars: {
-          destination: `dst:${uuidv4()}`,
-        },
-      },
-    },
-  };
+    { destination: `dst:${uuidv4()}` },
+  );
 }
 
 export default function () {
-  const ledgerName = config.ledgerName;
-  const element = generateTransaction(__ITER);
-  
+  if (!client) client = connectClient(config.grpcAddr);
+
+  const request = generateTransaction();
+
   const startTime = Date.now();
-  const response = bulkOperation(config, ledgerName, [element]);
+  const response = apply(client, [request]);
   const latency = Date.now() - startTime;
-  
+
   bulkLatency.add(latency);
-  
+
   const success = check(response, {
-    'transaction created successfully': (r) => r.status === 200,
-    'response time < 500ms': (r) => r.timings.duration < 500,
+    'transaction created successfully': (r) => r && r.status === grpc.StatusOK,
   });
 
-  if (!success) {
-    errorRate.add(1);
-  } else {
-    errorRate.add(0);
-  }
+  errorRate.add(!success);
 }

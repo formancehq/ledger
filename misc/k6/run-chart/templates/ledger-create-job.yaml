@@ -20,25 +20,26 @@ spec:
         - name: create-ledger
           image: "{{ .Values.ledgerJob.image.repository }}:{{ .Values.ledgerJob.image.tag }}"
           env:
-            - name: LEDGER_URL
-              value: {{ .Values.runner.env.LEDGER_URL }}
+            - name: GRPC_ADDR
+              value: {{ .Values.runner.env.GRPC_ADDR }}
             - name: LEDGER_NAME
-              value: {{ .Values.runner.env.ledgerName }}
+              value: {{ .Values.runner.env.LEDGER_NAME }}
           command:
             - /bin/sh
             - -c
           args:
             - |
               set -euo pipefail
-              status=$(curl -sS -o /tmp/resp -w "%{http_code}" \
-                -X POST \
-                -H "Content-Type: application/json" \
-                --data "{}" \
-                "$LEDGER_URL/$LEDGER_NAME" || true)
-              if [ "$status" = "201" ] || [ "$status" = "409" ]; then
+              wget -qO- "https://github.com/fullstorydev/grpcurl/releases/download/v{{ .Values.grpcurl.version }}/grpcurl_{{ .Values.grpcurl.version }}_linux_{{ .Values.grpcurl.arch }}.tar.gz" | tar xz -C /usr/local/bin grpcurl
+              # Try to create the ledger via gRPC; AlreadyExists is acceptable
+              output=$(grpcurl -plaintext \
+                -d "{\"requests\":[{\"create_ledger\":{\"name\":\"$LEDGER_NAME\"}}]}" \
+                "$GRPC_ADDR" ledger.BucketService/Apply 2>&1) && exit 0
+              # If AlreadyExists (code 6), treat as success
+              if echo "$output" | grep -q "AlreadyExists"; then
                 exit 0
               fi
-              echo "failed to create ledger: status=$status" >&2
-              cat /tmp/resp >&2
+              echo "failed to create ledger:" >&2
+              echo "$output" >&2
               exit 1
 {{- end }}

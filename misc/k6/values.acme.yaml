@@ -1,5 +1,8 @@
 # ACME values for k6 TestRun
 # Usage: just k6-run <script>.js values.acme.yaml
+grpcurl:
+  arch: "arm64"
+
 spec:
   parallelism: 1
   separate: true
@@ -9,7 +12,7 @@ metadata:
 
 runner:
   env:
-    LEDGER_URL: "http://benchmark0.ledger-v3.svc.cluster.local:9000"
+    GRPC_ADDR: "benchmark0.ledger-v3.svc.cluster.local:8888"
     LEDGER_NAME: "ledger0"
     K6_STAGES: "1m:100,5m:100,1m:0"
     BULK_SIZE: "50"
