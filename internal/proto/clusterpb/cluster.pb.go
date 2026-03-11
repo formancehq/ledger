@@ -465,7 +465,7 @@ func (x *ClusterState) GetIndexProgress() *IndexProgress {
 // IndexProgress tracks the index builder's position relative to Pebble.
 type IndexProgress struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
-	LastIndexedSequence uint64                 `protobuf:"varint,1,opt,name=last_indexed_sequence,json=lastIndexedSequence,proto3" json:"last_indexed_sequence,omitempty"` // bbolt progress cursor
+	LastIndexedSequence uint64                 `protobuf:"varint,1,opt,name=last_indexed_sequence,json=lastIndexedSequence,proto3" json:"last_indexed_sequence,omitempty"` // Pebble progress cursor
 	PebbleLastSequence  uint64                 `protobuf:"varint,2,opt,name=pebble_last_sequence,json=pebbleLastSequence,proto3" json:"pebble_last_sequence,omitempty"`    // latest Pebble log sequence
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
@@ -799,7 +799,7 @@ type DiskUsage struct {
 	DataVolumeBytes      int64                  `protobuf:"varint,5,opt,name=data_volume_bytes,json=dataVolumeBytes,proto3" json:"data_volume_bytes,omitempty"`                  // Total data volume size in bytes
 	WalVolumeTotalBytes  int64                  `protobuf:"varint,6,opt,name=wal_volume_total_bytes,json=walVolumeTotalBytes,proto3" json:"wal_volume_total_bytes,omitempty"`    // Total capacity of the WAL filesystem in bytes
 	DataVolumeTotalBytes int64                  `protobuf:"varint,7,opt,name=data_volume_total_bytes,json=dataVolumeTotalBytes,proto3" json:"data_volume_total_bytes,omitempty"` // Total capacity of the data filesystem in bytes
-	ReadIndexBytes       int64                  `protobuf:"varint,8,opt,name=read_index_bytes,json=readIndexBytes,proto3" json:"read_index_bytes,omitempty"`                     // bbolt read index size in bytes
+	ReadIndexBytes       int64                  `protobuf:"varint,8,opt,name=read_index_bytes,json=readIndexBytes,proto3" json:"read_index_bytes,omitempty"`                     // Pebble read index size in bytes
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }

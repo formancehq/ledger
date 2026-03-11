@@ -1,12 +1,15 @@
 package readstore
 
-import bolt "go.etcd.io/bbolt"
+import (
+	"github.com/cockroachdb/pebble"
+
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+)
 
 // ReversePrefixIterator iterates over keys matching a prefix in descending
-// order within a bbolt bucket. It extracts entity IDs from the key suffix.
-// This is used for ListTransactions which returns newest-first (descending txID).
+// order within the read index. It extracts entity IDs from the key suffix.
 type ReversePrefixIterator struct {
-	cursor       *bolt.Cursor
+	iter         *pebble.Iterator
 	prefix       []byte
 	entityOffset int
 	entityLen    int
@@ -19,17 +22,27 @@ type ReversePrefixIterator struct {
 // given prefix in reverse order. entityOffset is the byte position where the
 // entity ID starts, entityLen is 0 for variable-length or 8 for fixed-length.
 func NewReversePrefixIterator(
-	cursor *bolt.Cursor,
+	reader dal.PebbleReader,
 	prefix []byte,
 	entityOffset int,
 	entityLen int,
-) *ReversePrefixIterator {
+) (*ReversePrefixIterator, error) {
+	upper := IncrementBytes(prefix)
+
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: prefix,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return &ReversePrefixIterator{
-		cursor:       cursor,
+		iter:         iter,
 		prefix:       prefix,
 		entityOffset: entityOffset,
 		entityLen:    entityLen,
-	}
+	}, nil
 }
 
 func (it *ReversePrefixIterator) Next() bool {
@@ -37,34 +50,29 @@ func (it *ReversePrefixIterator) Next() bool {
 		return false
 	}
 
-	var k []byte
-
 	if !it.started {
 		it.started = true
-		// Seek to the end of the prefix range, then step back
-		upper := IncrementBytes(it.prefix)
+		if !it.iter.Last() {
+			it.exhausted = true
 
-		k, _ = it.cursor.Seek(upper)
-		if k == nil {
-			// Past the end of the bucket — go to last key
-			k, _ = it.cursor.Last()
-		} else {
-			// Seek found a key >= upper, step back to last key in prefix range
-			k, _ = it.cursor.Prev()
+			return false
 		}
-	} else {
-		k, _ = it.cursor.Prev()
-	}
 
-	for k != nil && HasPrefix(k, it.prefix) {
-		entity := it.extractEntity(k)
+		entity := it.extractEntity(it.iter.Key())
 		if entity != nil {
 			it.current = entity
 
 			return true
 		}
+	}
 
-		k, _ = it.cursor.Prev()
+	for it.iter.Prev() {
+		entity := it.extractEntity(it.iter.Key())
+		if entity != nil {
+			it.current = entity
+
+			return true
+		}
 	}
 
 	it.exhausted = true
@@ -77,7 +85,6 @@ func (it *ReversePrefixIterator) Current() []byte {
 }
 
 // SeekLE positions the iterator at the first entity whose key is <= target.
-// Used for afterTxID pagination in descending order.
 func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
 	if it.exhausted {
 		return false
@@ -88,34 +95,43 @@ func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
 	seekKey = append(seekKey, it.prefix[:min(it.entityOffset, len(it.prefix))]...)
 	seekKey = append(seekKey, target...)
 
-	k, _ := it.cursor.Seek(seekKey)
 	it.started = true
 
-	// Seek positions at first key >= seekKey. If exact match, use it.
+	// SeekGE positions at first key >= seekKey. If exact match, check it.
 	// If past target, step back.
-	if k == nil {
-		// Past the end — go to last key in bucket
-		k, _ = it.cursor.Last()
-	} else {
-		entity := it.extractEntity(k)
-		if entity != nil && compareEntities(entity, target) <= 0 && HasPrefix(k, it.prefix) {
+	if it.iter.SeekGE(seekKey) {
+		entity := it.extractEntity(it.iter.Key())
+		if entity != nil && compareEntities(entity, target) <= 0 {
 			it.current = entity
 
 			return true
 		}
 		// Key is > target, step back
-		k, _ = it.cursor.Prev()
+		if !it.iter.Prev() {
+			it.exhausted = true
+
+			return false
+		}
+	} else {
+		// Past the end — go to last key
+		if !it.iter.Last() {
+			it.exhausted = true
+
+			return false
+		}
 	}
 
-	for k != nil && HasPrefix(k, it.prefix) {
-		entity := it.extractEntity(k)
+	for it.iter.Valid() {
+		entity := it.extractEntity(it.iter.Key())
 		if entity != nil && compareEntities(entity, target) <= 0 {
 			it.current = entity
 
 			return true
 		}
 
-		k, _ = it.cursor.Prev()
+		if !it.iter.Prev() {
+			break
+		}
 	}
 
 	it.exhausted = true
@@ -123,7 +139,11 @@ func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
 	return false
 }
 
-func (it *ReversePrefixIterator) Close() {}
+func (it *ReversePrefixIterator) Close() {
+	if it.iter != nil {
+		_ = it.iter.Close()
+	}
+}
 
 func (it *ReversePrefixIterator) extractEntity(key []byte) []byte {
 	if len(key) <= it.entityOffset {

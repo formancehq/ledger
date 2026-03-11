@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	bolt "go.etcd.io/bbolt"
+	"github.com/cockroachdb/pebble"
 
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
@@ -14,14 +14,11 @@ import (
 //  1. Scanning the existence index for matching account addresses
 //  2. For each matching account, scanning the account→tx mapping
 //  3. Merge-unioning all transaction ID sets into a single sorted output
-//
-// This is a lazy streaming implementation that does not materialize
-// intermediate sets.
 type AddressTxIterator struct {
-	tx          *bolt.Tx
+	reader      dal.PebbleReader
 	kb          *dal.KeyBuilder
 	ledger      string
-	bucket      []byte         // which account→tx bucket to scan
+	prefix      byte           // which account→tx prefix to scan
 	addrIter    EntityIterator // iterates over matching account addresses
 	current     []byte         // current txID (8 bytes)
 	exhausted   bool
@@ -31,19 +28,19 @@ type AddressTxIterator struct {
 
 // NewAddressTxIterator creates an iterator that, for each address matching
 // addrIter, looks up all associated transaction IDs in the specified
-// account→tx bucket and produces them in sorted order (merge-union).
+// account→tx prefix and produces them in sorted order (merge-union).
 func NewAddressTxIterator(
-	tx *bolt.Tx,
+	reader dal.PebbleReader,
 	kb *dal.KeyBuilder,
 	ledger string,
 	addrIter EntityIterator,
-	bucket []byte,
+	prefix byte,
 ) *AddressTxIterator {
 	return &AddressTxIterator{
-		tx:       tx,
+		reader:   reader,
 		kb:       kb,
 		ledger:   ledger,
-		bucket:   bucket,
+		prefix:   prefix,
 		addrIter: addrIter,
 		txSeen:   make(map[uint64]struct{}),
 	}
@@ -124,18 +121,21 @@ func (it *AddressTxIterator) Close() {
 // materialize collects all transaction IDs from all matching accounts,
 // deduplicates, and sorts them.
 func (it *AddressTxIterator) materialize() error {
-	b := it.tx.Bucket(it.bucket)
-	if b == nil {
-		return nil
-	}
-
-	c := b.Cursor()
-
 	for it.addrIter.Next() {
 		account := string(it.addrIter.Current())
-		prefix := AccountTxPrefix(it.kb, it.ledger, account)
+		prefix := AccountTxPrefix(it.kb, it.prefix, it.ledger, account)
+		upper := IncrementBytes(prefix)
 
-		for k, _ := c.Seek(prefix); k != nil && HasPrefix(k, prefix); k, _ = c.Next() {
+		iter, err := it.reader.NewIter(&pebble.IterOptions{
+			LowerBound: prefix,
+			UpperBound: upper,
+		})
+		if err != nil {
+			return err
+		}
+
+		for iter.First(); iter.Valid(); iter.Next() {
+			k := iter.Key()
 			// Extract txID from the suffix (last 8 bytes)
 			if len(k) < len(prefix)+8 {
 				continue
@@ -154,6 +154,8 @@ func (it *AddressTxIterator) materialize() error {
 			copy(txCopy, txIDBytes)
 			it.pendingTxns = insertSorted(it.pendingTxns, txCopy)
 		}
+
+		_ = iter.Close()
 	}
 
 	return nil

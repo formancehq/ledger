@@ -61,7 +61,7 @@ type ClusterServiceClient interface {
 	// CompactStore triggers a synchronous prefix-by-prefix compaction of the
 	// local Pebble store. Node-local operation (not forwarded to leader).
 	CompactStore(ctx context.Context, in *CompactStoreRequest, opts ...grpc.CallOption) (*CompactStoreResponse, error)
-	// CompactReadIndex triggers an online compaction of the local bbolt read index.
+	// CompactReadIndex triggers an online compaction of the local Pebble read index.
 	// Node-local operation (not forwarded to leader).
 	CompactReadIndex(ctx context.Context, in *CompactReadIndexRequest, opts ...grpc.CallOption) (*CompactReadIndexResponse, error)
 	// CreateCheckpoint creates a Pebble checkpoint of the current live database state.
@@ -225,7 +225,7 @@ type ClusterServiceServer interface {
 	// CompactStore triggers a synchronous prefix-by-prefix compaction of the
 	// local Pebble store. Node-local operation (not forwarded to leader).
 	CompactStore(context.Context, *CompactStoreRequest) (*CompactStoreResponse, error)
-	// CompactReadIndex triggers an online compaction of the local bbolt read index.
+	// CompactReadIndex triggers an online compaction of the local Pebble read index.
 	// Node-local operation (not forwarded to leader).
 	CompactReadIndex(context.Context, *CompactReadIndexRequest) (*CompactReadIndexResponse, error)
 	// CreateCheckpoint creates a Pebble checkpoint of the current live database state.

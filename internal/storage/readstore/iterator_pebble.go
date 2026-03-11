@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 
 	"github.com/cockroachdb/pebble"
-	bolt "go.etcd.io/bbolt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
@@ -36,8 +35,16 @@ func NewPebbleAccountIterator(reader dal.PebbleReader, ledger string) (*PebbleAc
 
 	upperBound := IncrementBytes(prefix)
 
+	// LowerBound skips past the transaction sub-zone: tx keys start with
+	// CanonicalKeySepTransaction (0x02) after the prefix. Account addresses
+	// are ASCII (>= 0x20), so starting at [prefix][0x03] avoids a linear
+	// scan through potentially millions of transaction attribute keys.
+	lowerBound := make([]byte, len(prefix)+1)
+	copy(lowerBound, prefix)
+	lowerBound[len(prefix)] = dal.CanonicalKeySepTransaction + 1
+
 	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: prefix,
+		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
 	if err != nil {
@@ -210,8 +217,13 @@ func NewPebbleReverseAccountIterator(reader dal.PebbleReader, ledger string) (*P
 
 	upperBound := IncrementBytes(prefix)
 
+	// Skip past the transaction sub-zone (same rationale as PebbleAccountIterator).
+	lowerBound := make([]byte, len(prefix)+1)
+	copy(lowerBound, prefix)
+	lowerBound[len(prefix)] = dal.CanonicalKeySepTransaction + 1
+
 	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: prefix,
+		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
 	if err != nil {
@@ -631,24 +643,22 @@ func (it *PebbleReverseTxIterator) extractTxID(key []byte) []byte {
 	return key[it.idOffset : it.idOffset+8]
 }
 
-// LedgerLogIterator iterates over log IDs from BucketLedgerLogs (bbolt).
-// Keys: [ledger\x00][logID_BE(8B)]. This replaces the existence bucket for logs.
+// LedgerLogIterator iterates over log IDs from the read index (Pebble).
+// Keys: [0x09][ledger\x00][logID_BE(8B)].
 type LedgerLogIterator struct {
 	inner *PrefixIterator
 }
 
 // NewLedgerLogIterator creates a forward iterator over logs in a ledger.
-func NewLedgerLogIterator(tx *bolt.Tx, kb *dal.KeyBuilder, ledger string) *LedgerLogIterator {
-	b := tx.Bucket(BucketLedgerLogs)
-	if b == nil {
-		return &LedgerLogIterator{inner: &PrefixIterator{exhausted: true}}
-	}
-
+func NewLedgerLogIterator(reader dal.PebbleReader, kb *dal.KeyBuilder, ledger string) (*LedgerLogIterator, error) {
 	prefix := LedgerLogPrefix(kb, ledger)
 
-	return &LedgerLogIterator{
-		inner: NewPrefixIterator(b.Cursor(), prefix, len(prefix), 8),
+	inner, err := NewPrefixIterator(reader, prefix, len(prefix), 8)
+	if err != nil {
+		return nil, err
 	}
+
+	return &LedgerLogIterator{inner: inner}, nil
 }
 
 func (it *LedgerLogIterator) Next() bool                { return it.inner.Next() }

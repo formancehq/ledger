@@ -5,7 +5,7 @@ import (
 )
 
 // EncodeMetadataValue encodes a MetadataValue into a sortable byte sequence
-// suitable for use as part of a bbolt key. The encoding includes a type tag
+// suitable for use as part of a Pebble key. The encoding includes a type tag
 // and a value encoding that preserves sort order within each type.
 func EncodeMetadataValue(dst []byte, v *commonpb.MetadataValue) []byte {
 	if v == nil {

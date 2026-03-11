@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"fmt"
 
-	bolt "go.etcd.io/bbolt"
-
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -26,7 +24,7 @@ type entityListParams[T interface{ ~string | ~uint64 }] struct {
 	logBuiltinCfg *commonpb.LogBuiltinIndexConfig
 	profile       *query.QueryProfile
 	pebbleReader  dal.PebbleReader
-	// afterToBytes converts the after cursor to a byte slice for bbolt pagination.
+	// afterToBytes converts the after cursor to a byte slice for pagination.
 	afterToBytes func(T) []byte
 }
 
@@ -45,27 +43,30 @@ func listEntities[T interface{ ~string | ~uint64 }](
 ) (entityListResult, error) {
 	var result entityListResult
 
-	err := readStore.View(func(tx *bolt.Tx) error {
-		if params.reverse {
-			if params.filter != nil {
-				return listDescFiltered(tx, params, &result.entityIDs)
-			}
+	snap := readStore.NewSnapshot()
+	defer snap.Close()
 
-			return listDescUnfiltered(tx, params, &result.entityIDs)
+	var err error
+
+	if params.reverse {
+		if params.filter != nil {
+			err = listDescFiltered(snap, params, &result.entityIDs)
+		} else {
+			err = listDescUnfiltered(snap, params, &result.entityIDs)
 		}
-
-		return listAscending(tx, params, &result.entityIDs)
-	})
+	} else {
+		err = listAscending(snap, params, &result.entityIDs)
+	}
 
 	return result, err
 }
 
 // listAscending returns entities in natural ascending order using the compiled iterator.
-func listAscending[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params entityListParams[T], out *[][]byte) error {
+func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
 	kb := dal.NewKeyBuilder()
 
 	iter, err := query.Compile(
-		tx, kb, params.filter,
+		indexReader, kb, params.filter,
 		params.target,
 		params.ledger, nil, params.schema, params.builtinCfg, params.logBuiltinCfg, params.profile,
 		params.pebbleReader,
@@ -88,8 +89,8 @@ func listAscending[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params entityL
 }
 
 // listDescUnfiltered uses reverse iteration on the Pebble source of truth
-// (accounts, transactions) or on bbolt BucketLedgerLogs (logs).
-func listDescUnfiltered[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params entityListParams[T], out *[][]byte) error {
+// (accounts, transactions, logs).
+func listDescUnfiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
 	var before []byte
 
 	var zero T
@@ -97,7 +98,7 @@ func listDescUnfiltered[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params en
 		before = params.afterToBytes(params.after)
 	}
 
-	iter, label, kind, bucket, err := newReverseIterator(tx, params)
+	iter, label, kind, bucket, err := newReverseIterator(indexReader, params)
 	if err != nil {
 		return err
 	}
@@ -107,7 +108,7 @@ func listDescUnfiltered[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params en
 		params.profile.Root = &query.IteratorStats{
 			Label:  label,
 			Kind:   kind,
-			Bucket: bucket,
+			Prefix: bucket,
 		}
 	}
 
@@ -126,7 +127,7 @@ type reverseCloser struct {
 func (r *reverseCloser) Close() { r.close() }
 
 // newReverseIterator creates the appropriate reverse iterator for the target type.
-func newReverseIterator[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params entityListParams[T]) (iter *reverseCloser, label, kind, bucket string, err error) {
+func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T]) (iter *reverseCloser, label, kind, bucket string, err error) {
 	switch params.target {
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		it, itErr := readstore.NewPebbleReverseTxIterator(params.pebbleReader, params.ledger)
@@ -152,13 +153,15 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params en
 		kb := dal.NewKeyBuilder()
 		prefix := readstore.LedgerLogPrefix(kb, params.ledger)
 		entityOffset := len(prefix)
-		b := tx.Bucket(readstore.BucketLedgerLogs)
-		cursor := b.Cursor()
-		it := readstore.NewReversePrefixIterator(cursor, prefix, entityOffset, 8)
 
-		return &reverseCloser{it, func() {}},
+		it, itErr := readstore.NewReversePrefixIterator(indexReader, prefix, entityOffset, 8)
+		if itErr != nil {
+			return nil, "", "", "", fmt.Errorf("creating reverse log iterator: %w", itErr)
+		}
+
+		return &reverseCloser{it, it.Close},
 			fmt.Sprintf("ReverseLedgerLogIterator(%s)", params.ledger),
-			"ReverseLedgerLog", "bbolt:llog", nil
+			"ReverseLedgerLog", "pebble:llog", nil
 
 	default:
 		return nil, "", "", "", fmt.Errorf("unsupported target for reverse: %v", params.target)
@@ -166,11 +169,11 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params en
 }
 
 // listDescFiltered collects all ascending results, reverses them, and paginates.
-func listDescFiltered[T interface{ ~string | ~uint64 }](tx *bolt.Tx, params entityListParams[T], out *[][]byte) error {
+func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
 	kb := dal.NewKeyBuilder()
 
 	iter, err := query.Compile(
-		tx, kb, params.filter,
+		indexReader, kb, params.filter,
 		params.target,
 		params.ledger, nil, params.schema, params.builtinCfg, params.logBuiltinCfg, params.profile,
 		params.pebbleReader,

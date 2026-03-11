@@ -5,8 +5,6 @@ import (
 	"errors"
 	"io"
 
-	bolt "go.etcd.io/bbolt"
-
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 )
@@ -40,7 +38,7 @@ func newLedgerIndexConfig() *ledgerIndexConfig {
 
 // initIndexConfig scans all ledgers from Pebble and populates the index config cache.
 // It also detects BUILDING indexes and creates backfill tasks, loading persisted
-// cursors from bbolt so backfills survive restarts.
+// cursors from Pebble so backfills survive restarts.
 func (b *Builder) initIndexConfig() {
 	handle := b.pebbleStore.NewReadHandle()
 
@@ -74,17 +72,13 @@ func (b *Builder) initIndexConfig() {
 		b.loadLedgerIndexConfig(info)
 	}
 
-	// Load persisted backfill progress from bbolt.
+	// Load persisted backfill progress from Pebble.
 	if len(b.backfillTasks) > 0 {
-		_ = b.readStore.View(func(tx *bolt.Tx) error {
-			for _, task := range b.backfillTasks {
-				if c, ok := b.readStore.ReadBackfillProgress(tx, task.bbKey); ok {
-					task.cursor = c
-				}
+		for _, task := range b.backfillTasks {
+			if c, ok := b.readStore.ReadBackfillProgress(task.bbKey); ok {
+				task.cursor = c
 			}
-
-			return nil
-		})
+		}
 		for _, task := range b.backfillTasks {
 			b.logger.WithFields(map[string]any{
 				"ledger": task.ledger,
@@ -94,15 +88,11 @@ func (b *Builder) initIndexConfig() {
 		}
 	}
 
-	// Recover schema rewrite tasks from bbolt.
-	_ = b.readStore.View(func(tx *bolt.Tx) error {
-		entries, err := b.readStore.ReadAllSchemaRewriteProgress(tx)
-		if err != nil {
-			b.logger.Errorf("Failed to read schema rewrite progress: %v", err)
-
-			return nil
-		}
-
+	// Recover schema rewrite tasks from Pebble.
+	entries, err := b.readStore.ReadAllSchemaRewriteProgress()
+	if err != nil {
+		b.logger.Errorf("Failed to read schema rewrite progress: %v", err)
+	} else {
 		for _, e := range entries {
 			b.schemaRewriteTasks = append(b.schemaRewriteTasks, &schemaRewriteTask{
 				ledger:     e.Ledger,
@@ -113,9 +103,7 @@ func (b *Builder) initIndexConfig() {
 				bbKey:      e.BBKey,
 			})
 		}
-
-		return nil
-	})
+	}
 
 	if len(b.schemaRewriteTasks) > 0 {
 		b.logger.WithFields(map[string]any{

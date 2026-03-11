@@ -237,8 +237,8 @@ func (IndexBuildStatus) EnumDescriptor() ([]byte, []int) {
 type TransactionBuiltinIndex int32
 
 const (
-	TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE      TransactionBuiltinIndex = 0 // requires bbolt "txref" index
-	TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP      TransactionBuiltinIndex = 1 // requires bbolt "tstmp" index
+	TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE      TransactionBuiltinIndex = 0 // requires Pebble "txref" index
+	TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP      TransactionBuiltinIndex = 1 // requires Pebble "tstmp" index
 	TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID             TransactionBuiltinIndex = 2 // range scan on existence bucket (no index)
 	TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS        TransactionBuiltinIndex = 3 // account→transaction mapping (any role)
 	TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS TransactionBuiltinIndex = 4 // source account→transaction mapping
@@ -340,8 +340,8 @@ func (AccountBuiltinIndex) EnumDescriptor() ([]byte, []int) {
 type LogBuiltinIndex int32
 
 const (
-	LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER LogBuiltinIndex = 0 // per-ledger log index (bbolt "llog")
-	LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE   LogBuiltinIndex = 1 // per-ledger log date index (bbolt "lldt")
+	LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER LogBuiltinIndex = 0 // per-ledger log index (Pebble "llog")
+	LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE   LogBuiltinIndex = 1 // per-ledger log date index (Pebble "lldt")
 )
 
 // Enum value maps for LogBuiltinIndex.

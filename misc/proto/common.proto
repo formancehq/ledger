@@ -189,8 +189,8 @@ message SetMetadataFieldTypeCommand {
 
 // TransactionBuiltinIndex identifies a built-in transaction field that can be indexed.
 enum TransactionBuiltinIndex {
-  TX_BUILTIN_INDEX_REFERENCE = 0;        // requires bbolt "txref" index
-  TX_BUILTIN_INDEX_TIMESTAMP = 1;        // requires bbolt "tstmp" index
+  TX_BUILTIN_INDEX_REFERENCE = 0;        // requires Pebble "txref" index
+  TX_BUILTIN_INDEX_TIMESTAMP = 1;        // requires Pebble "tstmp" index
   TX_BUILTIN_INDEX_ID = 2;               // range scan on existence bucket (no index)
   TX_BUILTIN_INDEX_ADDRESS = 3;          // account→transaction mapping (any role)
   TX_BUILTIN_INDEX_SOURCE_ADDRESS = 4;   // source account→transaction mapping
@@ -220,8 +220,8 @@ message AccountIndex {
 
 // LogBuiltinIndex identifies a built-in log field that can be indexed.
 enum LogBuiltinIndex {
-  LOG_BUILTIN_INDEX_LEDGER = 0;     // per-ledger log index (bbolt "llog")
-  LOG_BUILTIN_INDEX_DATE = 1;       // per-ledger log date index (bbolt "lldt")
+  LOG_BUILTIN_INDEX_LEDGER = 0;     // per-ledger log index (Pebble "llog")
+  LOG_BUILTIN_INDEX_DATE = 1;       // per-ledger log date index (Pebble "lldt")
 }
 
 // BuiltinIndexConfig tracks the status of built-in transaction field indexes.

@@ -80,7 +80,7 @@ func (va *volumeAggregator) result() *commonpb.AggregateResult {
 }
 
 // AggregateVolumes executes a cross-store merge-scan for filtered aggregation:
-// 1. Iterate matching accounts from bbolt (accountIter)
+// 1. Iterate matching accounts from Pebble (accountIter)
 // 2. For each account, scan volumes in Pebble via ForEachInPrefix
 // 3. Accumulate per-asset totals.
 func AggregateVolumes(

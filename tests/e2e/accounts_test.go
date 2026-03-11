@@ -98,7 +98,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should list all accounts", func() {
-			// The bbolt read index is populated asynchronously by the index builder,
+			// The Pebble read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
 				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
@@ -235,7 +235,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should filter accounts by prefix", func() {
-			// The bbolt read index is populated asynchronously by the index builder,
+			// The Pebble read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
 				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", prefixFilter("users:"))
@@ -311,7 +311,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should include source-only accounts (accounts with only outputs)", func() {
-			// The bbolt read index is populated asynchronously by the index builder,
+			// The Pebble read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
 				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
@@ -370,7 +370,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should not duplicate accounts with multiple assets", func() {
-			// The bbolt read index is populated asynchronously by the index builder,
+			// The Pebble read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
 				accounts, err := listAllAccounts(ctx, client, ledgerName, 0, "", nil)
@@ -696,7 +696,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should only return accounts from the requested ledger", func() {
-			// The bbolt read index is populated asynchronously by the index builder,
+			// The Pebble read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
 				accountsA, err := listAllAccounts(ctx, client, ledgerA, 0, "", nil)

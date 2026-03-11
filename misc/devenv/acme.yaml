@@ -121,9 +121,6 @@ spec:
   config:
     auth:
       enabled: true
-    readIndex:
-      noFreelistSync: false
-      batchSize: 10000
 
     pebble:
       memTableSize: 268435456              # 256 MB (4× current 64 MB)

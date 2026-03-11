@@ -51,7 +51,7 @@ func TestQueryProfile_ToProto(t *testing.T) {
 		Root: &query.IteratorStats{
 			Label:     "PrefixIterator(exist:ledger:a:)",
 			Kind:      "Prefix",
-			Bucket:    "exist",
+			Prefix:    "exist",
 			NextCalls: 100,
 			SeekCalls: 1,
 		},
@@ -103,14 +103,14 @@ func TestIteratorStats_ToProto_WithChildren(t *testing.T) {
 			{
 				Label:     "PrefixIterator(midx:ledger:a:role:admin)",
 				Kind:      "Prefix",
-				Bucket:    "midx",
+				Prefix:    "midx",
 				NextCalls: 10,
 				SeekCalls: 1,
 			},
 			{
 				Label:     "PrefixIterator(exist:ledger:a:)",
 				Kind:      "Prefix",
-				Bucket:    "exist",
+				Prefix:    "exist",
 				NextCalls: 20,
 				SeekCalls: 2,
 			},
@@ -144,7 +144,7 @@ func TestIteratorStats_String(t *testing.T) {
 			{
 				Label:     "PrefixIterator(midx:ledger:a:role:admin)",
 				Kind:      "Prefix",
-				Bucket:    "midx",
+				Prefix:    "midx",
 				NextCalls: 10,
 				SeekCalls: 1,
 			},

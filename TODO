@@ -29,14 +29,13 @@ Refactor:
 * Refactor Go-Libs
 * Clean protobuf
 * Prevent concurrent tests
-* Index tracking
 * Apply configuration schema
 * Stop lifecycle
-* bbolt fill percent
-* bbolt compact
 * configuration via command
 * reorganize storage keys
 * go-libs v4
+* store checks memory usage
+* estimate cache size
 
 Later:
 * Store

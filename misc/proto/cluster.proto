@@ -42,7 +42,7 @@ service ClusterService {
   // local Pebble store. Node-local operation (not forwarded to leader).
   rpc CompactStore(CompactStoreRequest) returns (CompactStoreResponse);
 
-  // CompactReadIndex triggers an online compaction of the local bbolt read index.
+  // CompactReadIndex triggers an online compaction of the local Pebble read index.
   // Node-local operation (not forwarded to leader).
   rpc CompactReadIndex(CompactReadIndexRequest) returns (CompactReadIndexResponse);
 
@@ -109,7 +109,7 @@ message ClusterState {
 
 // IndexProgress tracks the index builder's position relative to Pebble.
 message IndexProgress {
-  uint64 last_indexed_sequence = 1;  // bbolt progress cursor
+  uint64 last_indexed_sequence = 1;  // Pebble progress cursor
   uint64 pebble_last_sequence = 2;   // latest Pebble log sequence
 }
 
@@ -155,7 +155,7 @@ message DiskUsage {
   int64 data_volume_bytes = 5;        // Total data volume size in bytes
   int64 wal_volume_total_bytes = 6;   // Total capacity of the WAL filesystem in bytes
   int64 data_volume_total_bytes = 7;  // Total capacity of the data filesystem in bytes
-  int64 read_index_bytes = 8;         // bbolt read index size in bytes
+  int64 read_index_bytes = 8;         // Pebble read index size in bytes
 }
 
 // ============================================================================

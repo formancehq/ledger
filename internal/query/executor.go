@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	bolt "go.etcd.io/bbolt"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -32,7 +31,7 @@ func (e *ErrReadIndexNotCaughtUp) Error() string {
 	return fmt.Sprintf("read index has not caught up to sequence %d (current: %d)", e.Requested, e.Current)
 }
 
-// Execute runs a prepared query against the read index (bbolt) and, for
+// Execute runs a prepared query against the read index and, for
 // AGGREGATE_VOLUMES mode, crosses into Pebble for volume data.
 func Execute(
 	ctx context.Context,
@@ -90,68 +89,60 @@ func Execute(
 
 	schema := SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), pq.GetTarget())
 
-	// Take the Pebble snapshot BEFORE the bbolt View so that Pebble reads
-	// are frozen while we read bbolt's progress. Cross-store consistency
-	// is ensured by capping Pebble reads at bbolt's lastIndexedRaftIndex.
-	var (
-		resp   *servicepb.ExecutePreparedQueryResponse
-		handle *dal.ReadHandle
-	)
+	// Take a Pebble snapshot for the read index for consistent reads.
+	indexSnap := rs.NewSnapshot()
+	defer func() { _ = indexSnap.Close() }()
 
+	var handle *dal.ReadHandle
 	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES {
 		handle = pebbleStore.NewReadHandle()
 		defer func() { _ = handle.Close() }()
 	}
 
-	// Execute within a bbolt read-only transaction (MVCC snapshot)
-	err = rs.View(func(tx *bolt.Tx) error {
-		kb := dal.NewKeyBuilder()
+	kb := dal.NewKeyBuilder()
 
-		// Compile filter into iterator tree
-		// Use the handle if available (AGGREGATE_VOLUMES mode), otherwise create a temporary one.
-		var pebbleReader dal.PebbleReader
-		if handle != nil {
-			pebbleReader = handle
-		} else {
-			tmpHandle := pebbleStore.NewReadHandle()
-			defer func() { _ = tmpHandle.Close() }()
-			pebbleReader = tmpHandle
+	// Compile filter into iterator tree.
+	var pebbleReader dal.PebbleReader
+	if handle != nil {
+		pebbleReader = handle
+	} else {
+		tmpHandle := pebbleStore.NewReadHandle()
+		defer func() { _ = tmpHandle.Close() }()
+		pebbleReader = tmpHandle
+	}
+
+	iter, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), req.GetLedger(), req.GetParameters(), schema, ledgerInfo.GetBuiltinIndexes(), ledgerInfo.GetLogBuiltinIndexes(), profile, pebbleReader)
+	if compileErr != nil {
+		return nil, fmt.Errorf("compiling filter: %w", compileErr)
+	}
+	defer iter.Close()
+
+	var resp *servicepb.ExecutePreparedQueryResponse
+
+	switch req.GetMode() {
+	case commonpb.QueryMode_QUERY_MODE_LIST:
+		resp, err = executeList(iter, pq.GetTarget(), req, profile)
+		if err != nil {
+			return nil, err
 		}
 
-		iter, compileErr := Compile(tx, kb, pq.GetFilter(), pq.GetTarget(), req.GetLedger(), req.GetParameters(), schema, ledgerInfo.GetBuiltinIndexes(), ledgerInfo.GetLogBuiltinIndexes(), profile, pebbleReader)
-		if compileErr != nil {
-			return fmt.Errorf("compiling filter: %w", compileErr)
+	case commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
+		aggResult, aggErr := AggregateVolumes(handle, volumeAttr, req.GetLedger(), iter)
+		if aggErr != nil {
+			return nil, aggErr
 		}
-		defer iter.Close()
 
-		switch req.GetMode() {
-		case commonpb.QueryMode_QUERY_MODE_LIST:
-			var listErr error
-
-			resp, listErr = executeList(iter, pq.GetTarget(), req, profile)
-
-			return listErr
-
-		case commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
-			aggResult, aggErr := AggregateVolumes(handle, volumeAttr, req.GetLedger(), iter)
-			if aggErr != nil {
-				return aggErr
-			}
-
-			resp = &servicepb.ExecutePreparedQueryResponse{
-				Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
-					Aggregate: aggResult,
-				},
-			}
-
-			return nil
-
-		default:
-			return fmt.Errorf("unknown query mode: %v", req.GetMode())
+		resp = &servicepb.ExecutePreparedQueryResponse{
+			Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
+				Aggregate: aggResult,
+			},
 		}
-	})
 
-	return resp, err
+	default:
+		return nil, fmt.Errorf("unknown query mode: %v", req.GetMode())
+	}
+
+	return resp, nil
 }
 
 // executeList paginates entities from the iterator and returns a cursor response.

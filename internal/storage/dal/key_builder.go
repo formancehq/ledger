@@ -2,7 +2,7 @@ package dal
 
 import "encoding/binary"
 
-// KeyBuilder constructs Pebble and bbolt keys by appending typed components
+// KeyBuilder constructs Pebble and Pebble keys by appending typed components
 // into a reusable byte slice. All write methods return *KeyBuilder for chaining.
 type KeyBuilder struct {
 	buf []byte

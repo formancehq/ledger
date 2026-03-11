@@ -8,59 +8,57 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// RegisterMetrics registers bbolt internal metrics with the given meter.
-// The returned Registration must be unregistered when the store is closed
-// to avoid a metric callback referencing a closed database.
+// RegisterMetrics registers Pebble internal metrics with the given meter.
 func (s *Store) RegisterMetrics(m metric.Meter) (metric.Registration, error) {
-	freelistPages, err := m.Int64ObservableGauge(
-		"readindex.freelist.pages",
-		metric.WithDescription("Number of free and pending-free pages in the bbolt freelist"),
-		metric.WithUnit("{pages}"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating readindex.freelist.pages gauge: %w", err)
-	}
-
-	freelistBytes, err := m.Int64ObservableGauge(
-		"readindex.freelist.bytes",
-		metric.WithDescription("Total bytes allocated in free pages"),
+	levelBytes, err := m.Int64ObservableGauge(
+		"readindex.level.bytes",
+		metric.WithDescription("Total bytes in each Pebble level"),
 		metric.WithUnit("By"),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating readindex.freelist.bytes gauge: %w", err)
+		return nil, fmt.Errorf("creating readindex.level.bytes gauge: %w", err)
 	}
 
-	txPageReads, err := m.Int64ObservableGauge(
-		"readindex.tx.page_reads_total",
-		metric.WithDescription("Cumulative number of page reads across all transactions"),
-		metric.WithUnit("{pages}"),
+	memtableBytes, err := m.Int64ObservableGauge(
+		"readindex.memtable.bytes",
+		metric.WithDescription("Current memtable size in bytes"),
+		metric.WithUnit("By"),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating readindex.tx.page_reads_total gauge: %w", err)
+		return nil, fmt.Errorf("creating readindex.memtable.bytes gauge: %w", err)
 	}
 
-	txPageWrites, err := m.Int64ObservableGauge(
-		"readindex.tx.page_writes_total",
-		metric.WithDescription("Cumulative number of page writes across all transactions"),
-		metric.WithUnit("{pages}"),
+	cacheHits, err := m.Int64ObservableGauge(
+		"readindex.cache.hits",
+		metric.WithDescription("Block cache hits"),
+		metric.WithUnit("{hits}"),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating readindex.tx.page_writes_total gauge: %w", err)
+		return nil, fmt.Errorf("creating readindex.cache.hits gauge: %w", err)
+	}
+
+	cacheMisses, err := m.Int64ObservableGauge(
+		"readindex.cache.misses",
+		metric.WithDescription("Block cache misses"),
+		metric.WithUnit("{misses}"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating readindex.cache.misses gauge: %w", err)
 	}
 
 	return m.RegisterCallback(func(_ context.Context, o metric.Observer) error {
-		stats := s.db.Stats()
-		pageSize := int64(s.db.Info().PageSize)
+		metrics := s.db.Metrics()
 
-		o.ObserveInt64(freelistPages, int64(stats.FreePageN), metric.WithAttributes(attribute.String("type", "free")))
-		o.ObserveInt64(freelistPages, int64(stats.PendingPageN), metric.WithAttributes(attribute.String("type", "pending")))
-		o.ObserveInt64(freelistBytes, int64(stats.FreeAlloc))
-		o.ObserveInt64(txPageReads, stats.TxStats.PageCount)
-
-		if pageSize > 0 {
-			o.ObserveInt64(txPageWrites, stats.TxStats.PageAlloc/pageSize)
+		// Per-level sizes.
+		for i, level := range metrics.Levels {
+			o.ObserveInt64(levelBytes, level.Size,
+				metric.WithAttributes(attribute.Int("level", i)))
 		}
 
+		o.ObserveInt64(memtableBytes, int64(metrics.MemTable.Size))
+		o.ObserveInt64(cacheHits, metrics.BlockCache.Hits)
+		o.ObserveInt64(cacheMisses, metrics.BlockCache.Misses)
+
 		return nil
-	}, freelistPages, freelistBytes, txPageReads, txPageWrites)
+	}, levelBytes, memtableBytes, cacheHits, cacheMisses)
 }

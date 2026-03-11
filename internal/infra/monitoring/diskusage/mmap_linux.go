@@ -11,7 +11,7 @@ import (
 
 // mmapRSSBytes parses /proc/self/smaps and returns the total resident set size
 // (in bytes) of all memory mappings backed by filePath. This captures the
-// physical RAM consumed by bbolt's mmap, which is invisible to Go's runtime
+// physical RAM consumed by Pebble's mmap, which is invisible to Go's runtime
 // memory stats.
 func mmapRSSBytes(filePath string) (int64, error) {
 	f, err := os.Open("/proc/self/smaps")

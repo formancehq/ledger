@@ -29,6 +29,7 @@ const (
 	BucketService_ListAccounts_FullMethodName            = "/ledger.BucketService/ListAccounts"
 	BucketService_Apply_FullMethodName                   = "/ledger.BucketService/Apply"
 	BucketService_GetStoreMetrics_FullMethodName         = "/ledger.BucketService/GetStoreMetrics"
+	BucketService_GetReadIndexMetrics_FullMethodName     = "/ledger.BucketService/GetReadIndexMetrics"
 	BucketService_CheckStore_FullMethodName              = "/ledger.BucketService/CheckStore"
 	BucketService_ListAuditEntries_FullMethodName        = "/ledger.BucketService/ListAuditEntries"
 	BucketService_GetAuditEntry_FullMethodName           = "/ledger.BucketService/GetAuditEntry"
@@ -76,6 +77,8 @@ type BucketServiceClient interface {
 	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error)
 	// GetStoreMetrics returns metrics from the local store (Pebble only)
 	GetStoreMetrics(ctx context.Context, in *GetStoreMetricsRequest, opts ...grpc.CallOption) (*GetStoreMetricsResponse, error)
+	// GetReadIndexMetrics returns metrics from the read index Pebble store
+	GetReadIndexMetrics(ctx context.Context, in *GetReadIndexMetricsRequest, opts ...grpc.CallOption) (*GetReadIndexMetricsResponse, error)
 	// CheckStore verifies store integrity (hash chain and derived data consistency)
 	CheckStore(ctx context.Context, in *CheckStoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CheckStoreEvent], error)
 	// ListAuditEntries streams audit trail entries (success and failure)
@@ -233,6 +236,16 @@ func (c *bucketServiceClient) GetStoreMetrics(ctx context.Context, in *GetStoreM
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetStoreMetricsResponse)
 	err := c.cc.Invoke(ctx, BucketService_GetStoreMetrics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *bucketServiceClient) GetReadIndexMetrics(ctx context.Context, in *GetReadIndexMetricsRequest, opts ...grpc.CallOption) (*GetReadIndexMetricsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetReadIndexMetricsResponse)
+	err := c.cc.Invoke(ctx, BucketService_GetReadIndexMetrics_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -563,6 +576,8 @@ type BucketServiceServer interface {
 	Apply(context.Context, *ApplyRequest) (*ApplyResponse, error)
 	// GetStoreMetrics returns metrics from the local store (Pebble only)
 	GetStoreMetrics(context.Context, *GetStoreMetricsRequest) (*GetStoreMetricsResponse, error)
+	// GetReadIndexMetrics returns metrics from the read index Pebble store
+	GetReadIndexMetrics(context.Context, *GetReadIndexMetricsRequest) (*GetReadIndexMetricsResponse, error)
 	// CheckStore verifies store integrity (hash chain and derived data consistency)
 	CheckStore(*CheckStoreRequest, grpc.ServerStreamingServer[CheckStoreEvent]) error
 	// ListAuditEntries streams audit trail entries (success and failure)
@@ -642,6 +657,9 @@ func (UnimplementedBucketServiceServer) Apply(context.Context, *ApplyRequest) (*
 }
 func (UnimplementedBucketServiceServer) GetStoreMetrics(context.Context, *GetStoreMetricsRequest) (*GetStoreMetricsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetStoreMetrics not implemented")
+}
+func (UnimplementedBucketServiceServer) GetReadIndexMetrics(context.Context, *GetReadIndexMetricsRequest) (*GetReadIndexMetricsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetReadIndexMetrics not implemented")
 }
 func (UnimplementedBucketServiceServer) CheckStore(*CheckStoreRequest, grpc.ServerStreamingServer[CheckStoreEvent]) error {
 	return status.Error(codes.Unimplemented, "method CheckStore not implemented")
@@ -852,6 +870,24 @@ func _BucketService_GetStoreMetrics_Handler(srv interface{}, ctx context.Context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(BucketServiceServer).GetStoreMetrics(ctx, req.(*GetStoreMetricsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BucketService_GetReadIndexMetrics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetReadIndexMetricsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetReadIndexMetrics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetReadIndexMetrics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetReadIndexMetrics(ctx, req.(*GetReadIndexMetricsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1240,6 +1276,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetStoreMetrics",
 			Handler:    _BucketService_GetStoreMetrics_Handler,
+		},
+		{
+			MethodName: "GetReadIndexMetrics",
+			Handler:    _BucketService_GetReadIndexMetrics_Handler,
 		},
 		{
 			MethodName: "GetAuditEntry",

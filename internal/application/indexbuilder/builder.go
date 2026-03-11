@@ -5,7 +5,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	bolt "go.etcd.io/bbolt"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -18,8 +17,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 )
 
-// DefaultBatchSize is the default number of log entries per bbolt write
-// transaction. Can be overridden via --read-index-batch-size.
+// DefaultBatchSize is the default number of log entries per Pebble batch
+// commit. Can be overridden via --read-index-batch-size.
 const DefaultBatchSize = 1000
 
 // Proposer proposes Raft commands to the cluster.
@@ -28,9 +27,9 @@ type Proposer interface {
 	ProposeOrders(orders ...*raftcmdpb.Order) error
 }
 
-// Builder tails the system log and populates the bbolt read store indexes.
+// Builder tails the system log and populates the Pebble read store indexes.
 // It runs as a background goroutine on ALL nodes (not just the leader).
-// Progress is stored locally in bbolt (no Raft needed).
+// Progress is stored locally in Pebble (no Raft needed).
 //
 // When a new index is created, the builder also backfills historical data.
 // Only the leader proposes IndexReady through Raft when backfill completes.
@@ -74,7 +73,7 @@ type Builder struct {
 }
 
 // NewBuilder creates a new index builder.
-// batchSize controls how many log entries are buffered per bbolt write transaction.
+// batchSize controls how many log entries are buffered per Pebble batch commit.
 // Use 0 for the default (DefaultBatchSize).
 func NewBuilder(
 	pebbleStore *dal.Store,
@@ -146,7 +145,7 @@ func (b *Builder) PebbleLastSequence() uint64 {
 func (b *Builder) registerMetrics() (metric.Registration, error) {
 	lastIndexedGauge, err := b.meter.Int64ObservableGauge(
 		"index.builder.last_indexed_sequence",
-		metric.WithDescription("Last log sequence indexed in bbolt"),
+		metric.WithDescription("Last log sequence indexed in Pebble read store"),
 	)
 	if err != nil {
 		return nil, err
@@ -215,7 +214,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		b.pebbleLastSeq.Store(pebbleLast)
 	}
 
-	// Log both the bbolt cursor and the Pebble last sequence for diagnostics.
+	// Log both the read index cursor and the Pebble last sequence for diagnostics.
 	pebbleLast, _ := query.ReadLastSequence(b.pebbleStore)
 	b.logger.WithFields(map[string]any{
 		"cursor":     cursor,
@@ -227,7 +226,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 	// Initial catch-up (unbounded — backfills haven't started yet).
 	// Use a larger batch size to reduce fsync overhead, and strip BUILDING
 	// indexes from the config since their ranges will be covered by backfill
-	// tasks. This avoids millions of redundant bbolt writes.
+	// tasks. This avoids millions of redundant Pebble writes.
 	prevCursor := cursor
 	savedBatchSize := b.batchSize
 	b.batchSize = max(b.batchSize, 10_000)
@@ -263,7 +262,7 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		case <-ticker.C:
 		}
 
-		// Fast path: skip Pebble iterator + bbolt transaction when the FSM
+		// Fast path: skip Pebble iterator + batch commit when the FSM
 		// hasn't advanced past our cursor.
 		logsProcessed := false
 
@@ -293,10 +292,4 @@ func (b *Builder) loop(stop <-chan struct{}) {
 
 		b.processBackgroundTasks(stop, cursor)
 	}
-}
-
-// persistProgress writes the index builder's cursor to bbolt within an
-// existing write transaction.
-func (b *Builder) persistProgress(tx *bolt.Tx, seq uint64) error {
-	return b.readStore.WriteProgress(tx, seq)
 }

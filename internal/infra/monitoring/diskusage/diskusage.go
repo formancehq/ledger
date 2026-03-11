@@ -105,7 +105,7 @@ type Collector struct {
 
 // NewCollector creates a new Collector that will periodically compute disk usage
 // for the given directories at the specified interval. readIndexPath is the path
-// to the bbolt database file (e.g. "<dir>/readindex.db") used to measure mmap
+// to the Pebble database file (e.g. "<dir>/readindex.db") used to measure mmap
 // RSS on Linux. The meter is used to register OTEL observable gauges on Start
 // and unregister them on Stop.
 func NewCollector(walDir, dataDir, readIndexDir, readIndexPath string, interval time.Duration, meter metric.Meter) *Collector {
@@ -205,10 +205,10 @@ func (c *Collector) WALBytes() int64 { return c.walBytes.Load() }
 // DataBytes returns the last computed data directory size in bytes (excluding read index).
 func (c *Collector) DataBytes() int64 { return c.dataBytes.Load() }
 
-// ReadIndexBytes returns the last computed bbolt read index size in bytes.
+// ReadIndexBytes returns the last computed Pebble read index size in bytes.
 func (c *Collector) ReadIndexBytes() int64 { return c.readIndexBytes.Load() }
 
-// ReadIndexMmapRSSBytes returns the resident set size of the bbolt mmap in bytes.
+// ReadIndexMmapRSSBytes returns the resident set size of the Pebble mmap in bytes.
 // On non-Linux platforms this always returns 0.
 func (c *Collector) ReadIndexMmapRSSBytes() int64 { return c.readIndexMmapRSS.Load() }
 

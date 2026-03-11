@@ -9,7 +9,6 @@ import (
 	"math"
 	"time"
 
-	bolt "go.etcd.io/bbolt"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -285,7 +284,7 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 
 // ListAccounts returns a cursor over accounts for a ledger.
 // Default order (reverse=false) is ascending (A→Z); reverse=true gives reverse-alphabetical (Z→A).
-// Uses the bbolt read index for entity discovery and Pebble for enrichment.
+// Uses the Pebble read index for entity discovery and Pebble for enrichment.
 func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {
 	ctx, span := tracer.Start(ctx, "ctrl.list_accounts",
 		trace.WithAttributes(
@@ -387,7 +386,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 		return nil, err
 	}
 
-	// Single-entity lookup reads directly from Pebble without bbolt filtering,
+	// Single-entity lookup reads directly from Pebble without index filtering,
 	// so no cross-store consistency cap is needed. Use ^uint64(0) to read all entries.
 	handle := ctrl.store.NewReadHandle()
 
@@ -508,7 +507,7 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledg
 
 // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts.
 // Uses a direct Pebble key scan to extract account addresses, asset names, and
-// metadata key names without reading values or going through the bbolt read index.
+// metadata key names without reading values or going through the read index.
 func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
 	if _, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -679,7 +678,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 	defer func() { _ = handle.Close() }()
 
 	// Fast path: unfiltered aggregation scans Pebble volumes in a single pass.
-	// No bbolt interaction needed — Pebble snapshot is the source of truth.
+	// No index interaction needed — Pebble snapshot is the source of truth.
 	if filter == nil {
 		enrichStart := time.Now()
 
@@ -697,35 +696,32 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
-	var result *commonpb.AggregateResult
+	snap := ctrl.readStore.NewSnapshot()
+	defer snap.Close()
 
-	err = ctrl.readStore.View(func(tx *bolt.Tx) error {
-		kb := dal.NewKeyBuilder()
+	kb := dal.NewKeyBuilder()
 
-		indexStart := time.Now()
+	indexStart := time.Now()
 
-		iter, compileErr := query.Compile(tx, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo.GetBuiltinIndexes(), nil, profile, handle)
-		if compileErr != nil {
-			return fmt.Errorf("compiling filter: %w", compileErr)
-		}
-		defer iter.Close()
+	iter, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo.GetBuiltinIndexes(), nil, profile, handle)
+	if err != nil {
+		return nil, fmt.Errorf("compiling filter: %w", err)
+	}
+	defer iter.Close()
 
-		if profile != nil {
-			profile.IndexDuration = time.Since(indexStart)
-		}
+	if profile != nil {
+		profile.IndexDuration = time.Since(indexStart)
+	}
 
-		enrichStart := time.Now()
+	enrichStart := time.Now()
 
-		result, err = query.AggregateVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), iter)
-
-		if profile != nil {
-			profile.EnrichmentDuration = time.Since(enrichStart)
-		}
-
-		return err
-	})
+	result, err := query.AggregateVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), iter)
 	if err != nil {
 		return nil, fmt.Errorf("aggregating volumes: %w", err)
+	}
+
+	if profile != nil {
+		profile.EnrichmentDuration = time.Since(enrichStart)
 	}
 
 	return result, nil
@@ -757,40 +753,27 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint6
 			pageSize = math.MaxUint32
 		}
 
-		var logIDs [][]byte
+		snap := ctrl.readStore.NewSnapshot()
+		defer snap.Close()
 
-		err = ctrl.readStore.View(func(tx *bolt.Tx) error {
-			kb := dal.NewKeyBuilder()
+		kb := dal.NewKeyBuilder()
 
-			iter, compileErr := query.Compile(
-				tx, kb, remainingFilter,
-				commonpb.QueryTarget_QUERY_TARGET_LOGS,
-				ledgerInfo.GetName(), nil, nil,
-				nil, ledgerInfo.GetLogBuiltinIndexes(), nil, handle,
-			)
-			if compileErr != nil {
-				return fmt.Errorf("compiling log filter: %w", compileErr)
-			}
-			defer iter.Close()
-
-			logIDs, _ = readstore.PaginateForward(iter, pageSize, nil)
-
-			return nil
-		})
+		iter, err := query.Compile(
+			snap, kb, remainingFilter,
+			commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			ledgerInfo.GetName(), nil, nil,
+			nil, ledgerInfo.GetLogBuiltinIndexes(), nil, handle,
+		)
 		if err != nil {
 			_ = handle.Close()
 
-			return nil, fmt.Errorf("listing ledger logs: %w", err)
+			return nil, fmt.Errorf("compiling log filter: %w", err)
 		}
+		defer iter.Close()
 
-		var c dal.Cursor[*commonpb.Log]
+		logIDs, _ := readstore.PaginateForward(iter, pageSize, nil)
 
-		err = ctrl.readStore.View(func(tx *bolt.Tx) error {
-			var readErr error
-			c, readErr = query.ReadLedgerLogsCompiled(handle, tx, ledgerInfo.GetName(), logIDs)
-
-			return readErr
-		})
+		c, err := query.ReadLedgerLogsCompiled(handle, snap, ledgerInfo.GetName(), logIDs)
 		if err != nil {
 			_ = handle.Close()
 

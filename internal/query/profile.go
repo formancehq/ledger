@@ -31,7 +31,7 @@ type QueryProfile struct {
 type IteratorStats struct {
 	Label     string // e.g. "PrefixIterator(exist:myledger:a:)"
 	Kind      string // "Prefix", "Range", "And", "Or", "Not", "AddressTx", "Reverse", "Slice"
-	Bucket    string // bbolt bucket name (e.g. "exist", "midx")
+	Prefix    string // Pebble key prefix name (e.g. "exist", "midx")
 	NextCalls int64
 	SeekCalls int64
 	Children  []*IteratorStats
@@ -89,7 +89,7 @@ func (s *IteratorStats) ToProto() *servicepb.IteratorProfile {
 	pb := &servicepb.IteratorProfile{
 		Label:     s.Label,
 		Kind:      s.Kind,
-		Bucket:    s.Bucket,
+		Bucket:    s.Prefix,
 		NextCalls: s.NextCalls,
 		SeekCalls: s.SeekCalls,
 	}
@@ -158,8 +158,8 @@ func (s *IteratorStats) writeIndented(b *strings.Builder, depth int) {
 	indent := strings.Repeat("  ", depth)
 	fmt.Fprintf(b, "%s%s next=%d seek=%d", indent, s.Label, s.NextCalls, s.SeekCalls)
 
-	if s.Bucket != "" {
-		fmt.Fprintf(b, " bucket=%s", s.Bucket)
+	if s.Prefix != "" {
+		fmt.Fprintf(b, " prefix=%s", s.Prefix)
 	}
 
 	b.WriteByte('\n')

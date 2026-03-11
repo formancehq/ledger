@@ -9,7 +9,6 @@ import (
 	"io"
 
 	"github.com/cockroachdb/pebble"
-	bolt "go.etcd.io/bbolt"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
@@ -135,20 +134,14 @@ func (c *ledgerLogCursor) Close() error { return nil }
 
 // ReadLedgerLogsCompiled returns a cursor over log entries using pre-compiled
 // logID bytes from the Compile framework. It resolves logIDs → global sequences
-// via BucketLedgerLogs, then fetches the full Log from Pebble for each entry.
+// via the read index, then fetches the full Log from Pebble for each entry.
 func ReadLedgerLogsCompiled(
 	pebbleReader dal.PebbleReader,
-	tx *bolt.Tx,
+	indexReader dal.PebbleReader,
 	ledger string,
 	logIDs [][]byte,
 ) (dal.Cursor[*commonpb.Log], error) {
 	kb := dal.NewKeyBuilder()
-	bucket := tx.Bucket(readstore.BucketLedgerLogs)
-
-	if bucket == nil {
-		return &ledgerLogCursor{pebble: pebbleReader}, nil
-	}
-
 	seqs := make([]uint64, 0, len(logIDs))
 
 	for _, logIDBytes := range logIDs {
@@ -159,12 +152,16 @@ func ReadLedgerLogsCompiled(
 		logID := binary.BigEndian.Uint64(logIDBytes)
 		key := readstore.LedgerLogKey(kb, ledger, logID)
 
-		v := bucket.Get(key)
-		if v == nil || len(v) != 8 {
+		v, closer, err := indexReader.Get(key)
+		if err != nil {
 			continue
 		}
 
-		seqs = append(seqs, binary.BigEndian.Uint64(v))
+		if len(v) == 8 {
+			seqs = append(seqs, binary.BigEndian.Uint64(v))
+		}
+
+		_ = closer.Close()
 	}
 
 	return &ledgerLogCursor{pebble: pebbleReader, seqs: seqs}, nil
@@ -174,8 +171,8 @@ func ReadLedgerLogsCompiled(
 // ordered by ledger-local log ID (ascending). Pass afterLogID=0 to start from
 // the beginning. pageSize=0 means no limit.
 //
-// It reads the per-ledger index from bbolt (BucketLedgerLogs) to get global
-// sequences, then fetches the full Log from Pebble for each entry.
+// It reads the per-ledger index from the read index to get global sequences,
+// then fetches the full Log from Pebble for each entry.
 func ReadLedgerLogsSince(
 	_ context.Context,
 	pebbleReader dal.PebbleReader,
@@ -194,30 +191,42 @@ func ReadLedgerLogsSince(
 		startKey = prefix
 	}
 
-	var seqs []uint64
+	upper := readstore.IncrementBytes(prefix)
 
-	err := readStore.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(readstore.BucketLedgerLogs)
-		if b == nil {
-			return nil
-		}
+	snap := readStore.NewSnapshot()
+	defer func() { _ = snap.Close() }()
 
-		c := b.Cursor()
-		for k, v := c.Seek(startKey); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
-			if len(v) != 8 {
-				continue
-			}
-
-			seqs = append(seqs, binary.BigEndian.Uint64(v))
-			if pageSize > 0 && uint32(len(seqs)) >= pageSize {
-				break
-			}
-		}
-
-		return nil
+	iter, err := snap.NewIter(&pebble.IterOptions{
+		LowerBound: startKey,
+		UpperBound: upper,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("reading ledger log index: %w", err)
+		return nil, fmt.Errorf("creating ledger log iterator: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	var seqs []uint64
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		k := iter.Key()
+		if !bytes.HasPrefix(k, prefix) {
+			break
+		}
+
+		v, verr := iter.ValueAndErr()
+		if verr != nil {
+			return nil, verr
+		}
+
+		if len(v) != 8 {
+			continue
+		}
+
+		seqs = append(seqs, binary.BigEndian.Uint64(v))
+		if pageSize > 0 && uint32(len(seqs)) >= pageSize {
+			break
+		}
 	}
 
 	return &ledgerLogCursor{pebble: pebbleReader, seqs: seqs}, nil

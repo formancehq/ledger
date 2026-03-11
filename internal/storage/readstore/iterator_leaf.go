@@ -1,11 +1,15 @@
 package readstore
 
-import bolt "go.etcd.io/bbolt"
+import (
+	"github.com/cockroachdb/pebble"
 
-// PrefixIterator scans all keys in a bbolt bucket that share a given prefix,
-// extracting the entity ID from the suffix portion of each key.
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+)
+
+// PrefixIterator scans all keys in the read index Pebble database that share a
+// given prefix, extracting the entity ID from the suffix portion of each key.
 type PrefixIterator struct {
-	cursor       *bolt.Cursor
+	iter         *pebble.Iterator
 	prefix       []byte
 	entityOffset int // byte offset where the entity ID starts in each key
 	entityLen    int // fixed entity length (0 = variable, extends to end of key)
@@ -15,22 +19,31 @@ type PrefixIterator struct {
 }
 
 // NewPrefixIterator creates an iterator that scans all keys with the given
-// prefix in the specified bucket. entityOffset is the byte position where the
-// entity ID starts (typically len(prefix) for forward index keys where value
-// encoding is part of the prefix, or after value encoding for metadata index).
+// prefix. entityOffset is the byte position where the entity ID starts.
 // entityLen is 0 for variable-length entities (accounts) or 8 for fixed-length (txIDs).
+// The caller provides a PebbleReader (snapshot or DB).
 func NewPrefixIterator(
-	cursor *bolt.Cursor,
+	reader dal.PebbleReader,
 	prefix []byte,
 	entityOffset int,
 	entityLen int,
-) *PrefixIterator {
+) (*PrefixIterator, error) {
+	upper := IncrementBytes(prefix)
+
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: prefix,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return &PrefixIterator{
-		cursor:       cursor,
+		iter:         iter,
 		prefix:       prefix,
 		entityOffset: entityOffset,
 		entityLen:    entityLen,
-	}
+	}, nil
 }
 
 func (it *PrefixIterator) Next() bool {
@@ -38,23 +51,29 @@ func (it *PrefixIterator) Next() bool {
 		return false
 	}
 
-	var k []byte
 	if !it.started {
-		k, _ = it.cursor.Seek(it.prefix)
 		it.started = true
-	} else {
-		k, _ = it.cursor.Next()
-	}
+		if !it.iter.First() {
+			it.exhausted = true
 
-	for k != nil && HasPrefix(k, it.prefix) {
-		entity := it.extractEntity(k)
+			return false
+		}
+
+		entity := it.extractEntity(it.iter.Key())
 		if entity != nil {
 			it.current = entity
 
 			return true
 		}
+	}
 
-		k, _ = it.cursor.Next()
+	for it.iter.Next() {
+		entity := it.extractEntity(it.iter.Key())
+		if entity != nil {
+			it.current = entity
+
+			return true
+		}
 	}
 
 	it.exhausted = true
@@ -71,24 +90,31 @@ func (it *PrefixIterator) SeekGE(target []byte) bool {
 		return false
 	}
 
-	// Build a seek key: prefix + target (for metadata index keys where entity
-	// is the suffix). For existence index, the entity IS the suffix of the key.
+	// Build a seek key: prefix base + target entity.
 	seekKey := make([]byte, 0, it.entityOffset+len(target))
 	seekKey = append(seekKey, it.prefix[:min(it.entityOffset, len(it.prefix))]...)
 	seekKey = append(seekKey, target...)
 
-	k, _ := it.cursor.Seek(seekKey)
 	it.started = true
 
-	for k != nil && HasPrefix(k, it.prefix) {
-		entity := it.extractEntity(k)
+	if !it.iter.SeekGE(seekKey) {
+		it.exhausted = true
+
+		return false
+	}
+
+	// The Pebble iterator is bounded by UpperBound, so no need to check HasPrefix.
+	for it.iter.Valid() {
+		entity := it.extractEntity(it.iter.Key())
 		if entity != nil && compareEntities(entity, target) >= 0 {
 			it.current = entity
 
 			return true
 		}
 
-		k, _ = it.cursor.Next()
+		if !it.iter.Next() {
+			break
+		}
 	}
 
 	it.exhausted = true
@@ -96,7 +122,11 @@ func (it *PrefixIterator) SeekGE(target []byte) bool {
 	return false
 }
 
-func (it *PrefixIterator) Close() {}
+func (it *PrefixIterator) Close() {
+	if it.iter != nil {
+		_ = it.iter.Close()
+	}
+}
 
 func (it *PrefixIterator) extractEntity(key []byte) []byte {
 	if len(key) <= it.entityOffset {
@@ -115,12 +145,10 @@ func (it *PrefixIterator) extractEntity(key []byte) []byte {
 	return suffix
 }
 
-// RangeIterator scans keys between lower and upper bounds in a bbolt bucket,
+// RangeIterator scans keys between lower and upper bounds in the read index,
 // extracting entity IDs from each key.
 type RangeIterator struct {
-	cursor       *bolt.Cursor
-	lower        []byte
-	upper        []byte // exclusive upper bound
+	iter         *pebble.Iterator
 	entityOffset int
 	entityLen    int
 	current      []byte
@@ -130,18 +158,24 @@ type RangeIterator struct {
 
 // NewRangeIterator creates an iterator that scans keys in [lower, upper).
 func NewRangeIterator(
-	cursor *bolt.Cursor,
+	reader dal.PebbleReader,
 	lower, upper []byte,
 	entityOffset int,
 	entityLen int,
-) *RangeIterator {
+) (*RangeIterator, error) {
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return &RangeIterator{
-		cursor:       cursor,
-		lower:        lower,
-		upper:        upper,
+		iter:         iter,
 		entityOffset: entityOffset,
 		entityLen:    entityLen,
-	}
+	}, nil
 }
 
 func (it *RangeIterator) Next() bool {
@@ -149,27 +183,29 @@ func (it *RangeIterator) Next() bool {
 		return false
 	}
 
-	var k []byte
 	if !it.started {
-		k, _ = it.cursor.Seek(it.lower)
 		it.started = true
-	} else {
-		k, _ = it.cursor.Next()
-	}
+		if !it.iter.First() {
+			it.exhausted = true
 
-	for k != nil {
-		if it.upper != nil && compareEntities(k, it.upper) >= 0 {
-			break
+			return false
 		}
 
-		entity := it.extractEntity(k)
+		entity := it.extractEntity(it.iter.Key())
 		if entity != nil {
 			it.current = entity
 
 			return true
 		}
+	}
 
-		k, _ = it.cursor.Next()
+	for it.iter.Next() {
+		entity := it.extractEntity(it.iter.Key())
+		if entity != nil {
+			it.current = entity
+
+			return true
+		}
 	}
 
 	it.exhausted = true
@@ -187,25 +223,35 @@ func (it *RangeIterator) SeekGE(target []byte) bool {
 	}
 
 	seekKey := make([]byte, 0, it.entityOffset+len(target))
-	seekKey = append(seekKey, it.lower[:min(it.entityOffset, len(it.lower))]...)
-	seekKey = append(seekKey, target...)
+	// Use the current iterator key prefix if available, otherwise use lower bound.
+	if it.iter.Valid() {
+		k := it.iter.Key()
+		if len(k) >= it.entityOffset {
+			seekKey = append(seekKey, k[:it.entityOffset]...)
+		}
+	}
 
-	k, _ := it.cursor.Seek(seekKey)
+	seekKey = append(seekKey[:min(len(seekKey), it.entityOffset)], target...)
+
 	it.started = true
 
-	for k != nil {
-		if it.upper != nil && compareEntities(k, it.upper) >= 0 {
-			break
-		}
+	if !it.iter.SeekGE(seekKey) {
+		it.exhausted = true
 
-		entity := it.extractEntity(k)
+		return false
+	}
+
+	for it.iter.Valid() {
+		entity := it.extractEntity(it.iter.Key())
 		if entity != nil && compareEntities(entity, target) >= 0 {
 			it.current = entity
 
 			return true
 		}
 
-		k, _ = it.cursor.Next()
+		if !it.iter.Next() {
+			break
+		}
 	}
 
 	it.exhausted = true
@@ -213,7 +259,11 @@ func (it *RangeIterator) SeekGE(target []byte) bool {
 	return false
 }
 
-func (it *RangeIterator) Close() {}
+func (it *RangeIterator) Close() {
+	if it.iter != nil {
+		_ = it.iter.Close()
+	}
+}
 
 func (it *RangeIterator) extractEntity(key []byte) []byte {
 	if len(key) <= it.entityOffset {
