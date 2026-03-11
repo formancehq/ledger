@@ -335,6 +335,14 @@ func (fsm *Machine) LastPersistedIndex() uint64 {
 	return fsm.lastPersistedIndex.Load()
 }
 
+// LastAppliedIndex returns the last applied Raft index as read from the data
+// store at construction time. It is NOT updated during Apply — use
+// LastPersistedIndex for the live value. This is intended for raft.Config.Applied
+// so that the first Ready does not re-emit already-applied entries.
+func (fsm *Machine) LastAppliedIndex() uint64 {
+	return fsm.lastAppliedIndex
+}
+
 // WaitForApplied blocks until the FSM has applied entries up to (and including) targetIndex,
 // or the context is cancelled. Used by ReadIndex to ensure local state is fresh enough
 // for linearizable reads.

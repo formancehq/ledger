@@ -779,6 +779,11 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		Logger:                    NewLoggerAdapter(node.logger),
 		DisableProposalForwarding: true,
 		PreVote:                   true,
+		// Tell raft which entries the FSM has already applied so that the first
+		// Ready does not re-emit them in CommittedEntries. Without this, the
+		// IndexTracker double-counts non-proposal WAL entries (ConfChange, no-ops)
+		// because they are already accounted for by initialIndex(wal).
+		Applied: node.fsm.LastAppliedIndex(),
 	}
 
 	node.logger.WithFields(map[string]any{
