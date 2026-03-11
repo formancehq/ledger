@@ -18,7 +18,6 @@ runner:
     K6_OTEL_GRPC_EXPORTER_INSECURE: "true"
     K6_OTEL_METRICS_FLUSH_INTERVAL: "5s"
     K6_OTEL_SERVICE_NAME: "k6-loadtest"
-    K6_OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
   nodeSelector:
     formance.com/dedicated: benchmark
   tolerations:

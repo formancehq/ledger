@@ -30,7 +30,7 @@ config:
           - 'resource.attributes["service.name"] == "k6-loadtest"'
     metricstransform/k6_prefix:
       transforms:
-        - include: '^(http_.*|vus.*|iterations|iteration_duration|data_(sent|received)|checks|group_duration.*)$'
+        - include: '^(http_.*|grpc_.*|vus.*|iterations|iteration_duration|data_(sent|received)|checks|group_duration.*)$'
           match_type: regexp
           action: update
           new_name: 'k6_$${0}'
