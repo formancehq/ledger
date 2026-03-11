@@ -19,8 +19,8 @@ import (
 func NewRebuildIndexesCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rebuild-indexes",
-		Short: "Rebuild the bbolt read indexes from Pebble logs (offline)",
-		Long: `Replay all system logs from Pebble and rebuild the bbolt read index
+		Short: "Rebuild the Pebble read indexes from system logs (offline)",
+		Long: `Replay all system logs from Pebble and rebuild the read index
 from scratch. This is a purely offline operation — no server needed.
 
 Use this after restoring from a backup or when the read index becomes
@@ -30,8 +30,7 @@ corrupted or out of date.`,
 
 	cmd.Flags().String("data-dir", "", "Pebble data directory (required)")
 	cmd.Flags().String("read-index-dir", "", "Read index output directory (default: <data-dir>/read-indexes/)")
-	cmd.Flags().Bool("read-index-no-freelist-sync", false, "Skip bbolt freelist serialization (faster rebuild)")
-	cmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per bbolt write transaction (0 = default 1000)")
+	cmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per Pebble batch commit (0 = default 1000)")
 
 	_ = cmd.MarkFlagRequired("data-dir")
 
@@ -40,10 +39,9 @@ corrupted or out of date.`,
 
 func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	var (
-		dataDir, _        = cmd.Flags().GetString("data-dir")
-		readIndexDir, _   = cmd.Flags().GetString("read-index-dir")
-		noFreelistSync, _ = cmd.Flags().GetBool("read-index-no-freelist-sync")
-		batchSize, _      = cmd.Flags().GetInt("read-index-batch-size")
+		dataDir, _      = cmd.Flags().GetString("data-dir")
+		readIndexDir, _ = cmd.Flags().GetString("read-index-dir")
+		batchSize, _    = cmd.Flags().GetInt("read-index-batch-size")
 	)
 
 	if readIndexDir == "" {
@@ -66,10 +64,10 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success("Pebble store opened")
 
-	// Open or create bbolt read index.
+	// Open or create Pebble read index.
 	spinner, _ = pterm.DefaultSpinner.Start("Opening read index store...")
 
-	rs, err := readstore.New(readIndexDir, noFreelistSync, 0, logger)
+	rs, err := readstore.New(readIndexDir, logger, readstore.DefaultConfig())
 	if err != nil {
 		spinner.Fail("Failed to open read index store")
 
@@ -93,20 +91,6 @@ func runRebuildIndexes(cmd *cobra.Command, _ []string) error {
 	}
 
 	spinner.Success(fmt.Sprintf("Rebuild complete (last log sequence: %d)", lastSeq))
-
-	// Sync freelist to disk so the next Open() is fast.
-	if noFreelistSync {
-		spinner, _ = pterm.DefaultSpinner.Start("Syncing freelist to disk...")
-
-		err := rs.SyncFreelist()
-		if err != nil {
-			spinner.Fail("Failed to sync freelist")
-
-			return cmdutil.Displayed(fmt.Errorf("syncing freelist: %w", err))
-		}
-
-		spinner.Success("Freelist synced")
-	}
 
 	return nil
 }

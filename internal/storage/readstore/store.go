@@ -10,228 +10,126 @@ import (
 	"sync"
 	"time"
 
-	bolt "go.etcd.io/bbolt"
+	"github.com/cockroachdb/pebble"
 
 	"github.com/formancehq/go-libs/v3/logging"
 )
 
-var progressKey = []byte("lastSeq")
+var progressKey = ProgressKey()
 
-// Store wraps a bbolt database for the read-side inverted indexes.
-// It is safe for concurrent use: bbolt supports one writer and many
-// concurrent readers via MVCC snapshots.
+// Store wraps a Pebble database for the read-side inverted indexes.
+// It is safe for concurrent use: Pebble supports concurrent readers
+// and writers without a global write lock.
 type Store struct {
-	db     *bolt.DB
+	db     *pebble.DB
 	logger logging.Logger
-	path   string
-
-	// Options used to open the database, needed to reopen after compaction.
-	noFreelistSync  bool
-	initialMmapSize int
+	dir    string
 
 	// progressMu and progressCond allow callers to wait until the indexed
-	// sequence reaches a target value.  The index builder calls
+	// sequence reaches a target value. The index builder calls
 	// NotifyProgress after each WriteProgress to wake up waiters.
 	progressMu   sync.Mutex
 	progressCond *sync.Cond
 }
 
-// DefaultInitialMmapSize is the default initial mmap size for the bbolt database (1 GiB).
-// Pre-allocating virtual address space prevents mmap stalls as the DB grows.
-const DefaultInitialMmapSize = 1 << 30
-
-// New opens or creates a bbolt database at the given directory.
-// It creates all required buckets on first open.
-// When noFreelistSync is true, bbolt skips serializing the freelist on each
-// commit, which significantly reduces CPU during bulk writes. The freelist
-// is rebuilt from a full page scan on the next Open().
-// When initialMmapSize is 0, DefaultInitialMmapSize (1 GiB) is used.
-func New(dir string, noFreelistSync bool, initialMmapSize int, logger logging.Logger) (*Store, error) {
-	if initialMmapSize == 0 {
-		initialMmapSize = DefaultInitialMmapSize
-	}
-
+// New opens or creates a Pebble database at the given directory for the read index.
+func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("creating read store directory: %w", err)
 	}
 
-	dbPath := filepath.Join(dir, "readindex.db")
-	info, _ := os.Stat(dbPath)
+	dbPath := filepath.Join(dir, "readindex")
 
 	var fileSize int64
-	if info != nil {
+	if info, _ := os.Stat(dbPath); info != nil {
 		fileSize = info.Size()
 	}
 
 	logger.WithFields(map[string]any{
-		"path":            dbPath,
-		"fileSize":        fileSize,
-		"noFreelistSync":  noFreelistSync,
-		"initialMmapSize": initialMmapSize,
-	}).Infof("Opening bbolt read index")
+		"path":     dbPath,
+		"fileSize": fileSize,
+	}).Infof("Opening Pebble read index")
 
 	openStart := time.Now()
 
-	db, err := bolt.Open(dbPath, 0o600, &bolt.Options{
-		// The read index is a derived view rebuilt from Pebble (the Raft log
-		// is the source of truth). We can safely disable fsync: on crash the
-		// index builder simply replays from its last progress cursor.
-		NoSync: true,
-		// O(1) page alloc/dealloc instead of O(n) with the default array type.
-		FreelistType: bolt.FreelistMapType,
-		// When enabled, skip writing the freelist to disk on each commit.
-		// The freelist is rebuilt by scanning all pages on the next Open().
-		// This trades slower startup for faster bulk-write throughput.
-		NoFreelistSync: noFreelistSync,
-		// Pre-allocate virtual address space so mmap doesn't need to
-		// grow (and stall the writer) as the database file expands.
-		InitialMmapSize: initialMmapSize,
-	})
+	cache := pebble.NewCache(cfg.CacheSize)
+	defer cache.Unref()
+
+	opts := &pebble.Options{
+		// The read index is a derived view rebuilt from the Raft log.
+		// We can safely disable WAL: on crash the index builder simply
+		// replays from its last progress cursor.
+		DisableWAL:                  true,
+		MemTableSize:                cfg.MemTableSize,
+		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
+		L0CompactionThreshold:       cfg.L0CompactionThreshold,
+		L0StopWritesThreshold:       cfg.L0StopWritesThreshold,
+		LBaseMaxBytes:               cfg.LBaseMaxBytes,
+		BytesPerSync:                cfg.BytesPerSync,
+		MaxConcurrentCompactions:    func() int { return cfg.MaxConcurrentCompactions },
+		Cache:                       cache,
+		Levels: []pebble.LevelOptions{
+			{
+				Compression:    pebble.SnappyCompression,
+				TargetFileSize: cfg.TargetFileSize,
+			},
+		},
+	}
+
+	db, err := pebble.Open(dbPath, opts)
 	if err != nil {
-		return nil, fmt.Errorf("opening bbolt database: %w", err)
+		return nil, fmt.Errorf("opening Pebble read index: %w", err)
 	}
 
 	logger.WithFields(map[string]any{
 		"duration": time.Since(openStart).String(),
 		"fileSize": fileSize,
-	}).Infof("bbolt read index opened")
-
-	// Create all required buckets.
-	if err := db.Update(func(tx *bolt.Tx) error {
-		for _, bucket := range [][]byte{
-			BucketMetadataIndex,
-			BucketEntityExists,
-			BucketReverseMap,
-			BucketAccountTx,
-			BucketSourceAccountTx,
-			BucketDestAccountTx,
-			BucketProgress,
-			BucketBackfill,
-			BucketTransactionReference,
-			BucketTransactionTimestamp,
-			BucketLedgerLogs,
-			BucketLedgerLogDate,
-		} {
-			if _, err := tx.CreateBucketIfNotExists(bucket); err != nil {
-				return fmt.Errorf("creating bucket %q: %w", string(bucket), err)
-			}
-		}
-
-		return nil
-	}); err != nil {
-		_ = db.Close()
-
-		return nil, fmt.Errorf("initializing buckets: %w", err)
-	}
+	}).Infof("Pebble read index opened")
 
 	s := &Store{
-		db:              db,
-		logger:          logger.WithFields(map[string]any{"cmp": "read-store"}),
-		path:            dbPath,
-		noFreelistSync:  noFreelistSync,
-		initialMmapSize: initialMmapSize,
+		db:     db,
+		logger: logger.WithFields(map[string]any{"cmp": "read-store"}),
+		dir:    dir,
 	}
 	s.progressCond = sync.NewCond(&s.progressMu)
 
 	return s, nil
 }
 
-// SyncFreelist persists the in-memory freelist to disk so that the next
-// Open() can load it directly instead of scanning all pages (O(N) on the
-// number of database pages). This is useful after bulk writes with
-// NoFreelistSync=true: call SyncFreelist once before Close to avoid a
-// very slow page scan on the next startup.
-//
-// The method temporarily disables NoFreelistSync and performs a no-op
-// read-write transaction whose Commit() writes the freelist page.
-func (s *Store) SyncFreelist() error {
-	s.logger.Infof("Syncing bbolt freelist to disk (may take a moment for large databases)...")
-
-	start := time.Now()
-
-	// Temporarily enable freelist serialization for this single commit,
-	// then restore NoFreelistSync. bbolt serializes all writers so there
-	// is no concurrent access to this field while we hold the write lock.
-	s.db.NoFreelistSync = false
-	err := s.db.Update(func(_ *bolt.Tx) error { return nil })
-	s.db.NoFreelistSync = true
-
-	if err != nil {
-		s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to sync freelist")
-
-		return fmt.Errorf("syncing freelist: %w", err)
-	}
-
-	s.logger.WithFields(map[string]any{"duration": time.Since(start).String()}).Infof("Freelist synced to disk")
-
-	return nil
-}
-
-// RunPeriodicFreelistSync syncs the freelist to disk at the given interval.
-// This ensures that after a crash, the next Open() can load the freelist
-// directly instead of scanning all pages (which can take tens of minutes
-// on large databases). The goroutine exits when the context is cancelled.
-func (s *Store) RunPeriodicFreelistSync(ctx context.Context, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	s.logger.WithFields(map[string]any{
-		"interval": interval.String(),
-	}).Infof("Starting periodic freelist sync")
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			err := s.SyncFreelist()
-			if err != nil {
-				s.logger.WithFields(map[string]any{
-					"error": err.Error(),
-				}).Errorf("Periodic freelist sync failed")
-			}
-		}
-	}
-}
-
-// Close closes the underlying bbolt database.
+// Close closes the underlying Pebble database.
 func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// View opens a read-only transaction. All cursors opened within the callback
-// see the same consistent snapshot (bbolt MVCC).
-func (s *Store) View(fn func(tx *bolt.Tx) error) error {
-	return s.db.View(fn)
-}
-
-// Update opens a read-write transaction. Only one Update can run at a time.
-func (s *Store) Update(fn func(tx *bolt.Tx) error) error {
-	return s.db.Update(fn)
-}
-
-// DB returns the underlying bbolt database for advanced use cases.
-func (s *Store) DB() *bolt.DB {
+// DB returns the underlying Pebble database for creating batches.
+func (s *Store) DB() *pebble.DB {
 	return s.db
 }
 
-// Path returns the file path of the bbolt database.
-func (s *Store) Path() string {
-	return s.path
+// NewSnapshot returns a consistent snapshot for reads.
+// The caller must call snap.Close() when done.
+func (s *Store) NewSnapshot() *pebble.Snapshot {
+	return s.db.NewSnapshot()
 }
 
-// ReadProgress returns the last indexed log sequence from the progress bucket.
+// Path returns the directory of the read index.
+func (s *Store) Path() string {
+	return s.dir
+}
+
+// ReadProgress returns the last indexed log sequence from the progress key.
 // Returns 0 if no progress has been recorded.
-func (s *Store) ReadProgress(tx *bolt.Tx) (uint64, error) {
-	b := tx.Bucket(BucketProgress)
-	if b == nil {
-		return 0, nil
+func (s *Store) ReadProgress() (uint64, error) {
+	v, closer, err := s.db.Get(progressKey)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return 0, nil
+		}
+
+		return 0, fmt.Errorf("reading progress: %w", err)
 	}
 
-	v := b.Get(progressKey)
-	if v == nil {
-		return 0, nil
-	}
+	defer func() { _ = closer.Close() }()
 
 	if len(v) != 8 {
 		return 0, fmt.Errorf("corrupt progress value: expected 8 bytes, got %d", len(v))
@@ -240,32 +138,17 @@ func (s *Store) ReadProgress(tx *bolt.Tx) (uint64, error) {
 	return binary.BigEndian.Uint64(v), nil
 }
 
-// WriteProgress stores the last indexed log sequence in the progress bucket.
-func (s *Store) WriteProgress(tx *bolt.Tx, sequence uint64) error {
-	b := tx.Bucket(BucketProgress)
-	if b == nil {
-		return errors.New("progress bucket not found")
-	}
-
+// WriteProgress stores the last indexed log sequence.
+func (s *Store) WriteProgress(batch *pebble.Batch, sequence uint64) error {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], sequence)
 
-	return b.Put(progressKey, buf[:])
+	return batch.Set(progressKey, buf[:], pebble.NoSync)
 }
 
 // LastIndexedSequence returns the last indexed log sequence (read-only).
 func (s *Store) LastIndexedSequence() (uint64, error) {
-	var seq uint64
-
-	err := s.db.View(func(tx *bolt.Tx) error {
-		var readErr error
-
-		seq, readErr = s.ReadProgress(tx)
-
-		return readErr
-	})
-
-	return seq, err
+	return s.ReadProgress()
 }
 
 // NotifyProgress wakes all goroutines waiting in WaitForSequence.
@@ -274,92 +157,109 @@ func (s *Store) NotifyProgress() {
 	s.progressCond.Broadcast()
 }
 
-// WriteBackfillProgress stores a backfill cursor in the backfill bucket.
-func (s *Store) WriteBackfillProgress(tx *bolt.Tx, key []byte, cursor uint64) error {
-	b := tx.Bucket(BucketBackfill)
-	if b == nil {
-		return errors.New("backfill bucket not found")
-	}
+// WriteBackfillProgress stores a backfill cursor.
+func (s *Store) WriteBackfillProgress(batch *pebble.Batch, key []byte, cursor uint64) error {
+	fullKey := make([]byte, 1+len(key))
+	fullKey[0] = PrefixBackfill
+	copy(fullKey[1:], key)
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], cursor)
 
-	return b.Put(key, buf[:])
+	return batch.Set(fullKey, buf[:], pebble.NoSync)
 }
 
-// ReadBackfillProgress reads a backfill cursor from the backfill bucket.
+// ReadBackfillProgress reads a backfill cursor.
 // Returns (cursor, true) if found, (0, false) if the key does not exist.
-func (s *Store) ReadBackfillProgress(tx *bolt.Tx, key []byte) (uint64, bool) {
-	b := tx.Bucket(BucketBackfill)
-	if b == nil {
+func (s *Store) ReadBackfillProgress(key []byte) (uint64, bool) {
+	fullKey := make([]byte, 1+len(key))
+	fullKey[0] = PrefixBackfill
+	copy(fullKey[1:], key)
+
+	v, closer, err := s.db.Get(fullKey)
+	if err != nil {
 		return 0, false
 	}
 
-	v := b.Get(key)
-	if v == nil || len(v) != 8 {
+	defer func() { _ = closer.Close() }()
+
+	if len(v) != 8 {
 		return 0, false
 	}
 
 	return binary.BigEndian.Uint64(v), true
 }
 
-// WriteBackfillCursor stores a variable-length cursor ([]byte) in the backfill bucket.
-// Used for schema rewrite tasks where the cursor is a reverse map key.
-func (s *Store) WriteBackfillCursor(tx *bolt.Tx, key, cursor []byte) error {
-	b := tx.Bucket(BucketBackfill)
-	if b == nil {
-		return errors.New("backfill bucket not found")
-	}
+// WriteBackfillCursor stores a variable-length cursor ([]byte) for schema rewrite tasks.
+func (s *Store) WriteBackfillCursor(batch *pebble.Batch, key, cursor []byte) error {
+	fullKey := make([]byte, 1+len(key))
+	fullKey[0] = PrefixBackfill
+	copy(fullKey[1:], key)
 
-	return b.Put(key, cursor)
+	return batch.Set(fullKey, cursor, pebble.NoSync)
 }
 
-// ReadBackfillCursor reads a variable-length cursor from the backfill bucket.
+// ReadBackfillCursor reads a variable-length cursor.
 // Returns (cursor, true) if found, (nil, false) if the key does not exist.
-func (s *Store) ReadBackfillCursor(tx *bolt.Tx, key []byte) ([]byte, bool) {
-	b := tx.Bucket(BucketBackfill)
-	if b == nil {
+func (s *Store) ReadBackfillCursor(key []byte) ([]byte, bool) {
+	fullKey := make([]byte, 1+len(key))
+	fullKey[0] = PrefixBackfill
+	copy(fullKey[1:], key)
+
+	v, closer, err := s.db.Get(fullKey)
+	if err != nil {
 		return nil, false
 	}
 
-	v := b.Get(key)
-	if v == nil {
-		return nil, false
-	}
+	defer func() { _ = closer.Close() }()
 
-	// Return a copy — bbolt values are only valid within the transaction.
 	c := make([]byte, len(v))
 	copy(c, v)
 
 	return c, true
 }
 
-// DeleteBackfillProgress removes a backfill cursor from the backfill bucket.
-func (s *Store) DeleteBackfillProgress(tx *bolt.Tx, key []byte) error {
-	b := tx.Bucket(BucketBackfill)
-	if b == nil {
-		return nil
-	}
+// DeleteBackfillProgress removes a backfill cursor.
+func (s *Store) DeleteBackfillProgress(key []byte) error {
+	fullKey := make([]byte, 1+len(key))
+	fullKey[0] = PrefixBackfill
+	copy(fullKey[1:], key)
 
-	return b.Delete(key)
+	return s.db.Delete(fullKey, pebble.NoSync)
 }
 
 // ReadAllBackfillProgress returns all backfill cursors for startup recovery.
-func (s *Store) ReadAllBackfillProgress(tx *bolt.Tx) (map[string]uint64, error) {
-	b := tx.Bucket(BucketBackfill)
-	if b == nil {
-		return nil, nil
+func (s *Store) ReadAllBackfillProgress() (map[string]uint64, error) {
+	prefix := BackfillKeyPrefix()
+	upper := IncrementBytes(prefix)
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: prefix,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating backfill iterator: %w", err)
 	}
+
+	defer func() { _ = iter.Close() }()
 
 	result := make(map[string]uint64)
 
-	c := b.Cursor()
-	for k, v := c.First(); k != nil; k, v = c.Next() {
+	for iter.First(); iter.Valid(); iter.Next() {
+		v, verr := iter.ValueAndErr()
+		if verr != nil {
+			return nil, verr
+		}
+
 		if len(v) != 8 {
 			continue
 		}
 
-		result[string(k)] = binary.BigEndian.Uint64(v)
+		// Strip the prefix byte from the key for the map key.
+		k := iter.Key()
+		if len(k) > 1 {
+			result[string(k[1:])] = binary.BigEndian.Uint64(v)
+		}
 	}
 
 	return result, nil
@@ -370,30 +270,49 @@ type SchemaRewriteEntry struct {
 	Ledger     string
 	TargetType byte   // from key: [ledger\x00]S[targetType_byte][key]
 	Key        string // metadata field name
-	BBKey      []byte // full bbolt key
+	BBKey      []byte // key without the prefix byte (for backfill operations)
 	ToType     byte   // first byte of value
 	Cursor     []byte // remaining bytes of value (reverse map cursor)
 }
 
-// ReadAllSchemaRewriteProgress reads all schema rewrite entries from the backfill bucket.
-// Schema rewrite keys use BackfillKindSchemaRewrite ('S') and have variable-length values.
-func (s *Store) ReadAllSchemaRewriteProgress(tx *bolt.Tx) ([]SchemaRewriteEntry, error) {
-	b := tx.Bucket(BucketBackfill)
-	if b == nil {
-		return nil, nil
+// ReadAllSchemaRewriteProgress reads all schema rewrite entries from the backfill prefix.
+func (s *Store) ReadAllSchemaRewriteProgress() ([]SchemaRewriteEntry, error) {
+	prefix := BackfillKeyPrefix()
+	upper := IncrementBytes(prefix)
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: prefix,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating schema rewrite iterator: %w", err)
 	}
+
+	defer func() { _ = iter.Close() }()
 
 	var entries []SchemaRewriteEntry
 
-	c := b.Cursor()
-	for k, v := c.First(); k != nil; k, v = c.Next() {
-		ledger, kind, details, ok := ParseBackfillKey(k)
+	for iter.First(); iter.Valid(); iter.Next() {
+		k := iter.Key()
+		if len(k) < 2 {
+			continue
+		}
+
+		// Strip prefix byte.
+		innerKey := k[1:]
+		ledger, kind, details, ok := ParseBackfillKey(innerKey)
+
 		if !ok || kind != BackfillKindSchemaRewrite {
 			continue
 		}
 
 		if len(details) < 1 {
 			continue
+		}
+
+		v, verr := iter.ValueAndErr()
+		if verr != nil {
+			return nil, verr
 		}
 
 		targetType := details[0]
@@ -410,8 +329,8 @@ func (s *Store) ReadAllSchemaRewriteProgress(tx *bolt.Tx) ([]SchemaRewriteEntry,
 			}
 		}
 
-		bbKey := make([]byte, len(k))
-		copy(bbKey, k)
+		bbKey := make([]byte, len(innerKey))
+		copy(bbKey, innerKey)
 
 		entries = append(entries, SchemaRewriteEntry{
 			Ledger:     ledger,
@@ -429,45 +348,39 @@ func (s *Store) ReadAllSchemaRewriteProgress(tx *bolt.Tx) ([]SchemaRewriteEntry,
 // BackfillEntry is a decoded backfill progress entry returned by ListBackfillProgress.
 type BackfillEntry struct {
 	Ledger  string
-	Kind    byte   // BackfillKindTxBuiltin, BackfillKindTxMetadata, BackfillKindAcctBuiltin, BackfillKindAcctMetadata, or BackfillKindLogBuiltin
-	Details []byte // kind-specific payload: builtin byte, or metadata key string
+	Kind    byte   // BackfillKindTxBuiltin, etc.
+	Details []byte // kind-specific payload
 	Cursor  uint64
 }
 
-// ListBackfillProgress reads and decodes all backfill progress entries from bbolt.
-// Entries with unrecognised key formats are silently skipped.
+// ListBackfillProgress reads and decodes all backfill progress entries.
 func (s *Store) ListBackfillProgress() ([]BackfillEntry, error) {
+	all, err := s.ReadAllBackfillProgress()
+	if err != nil {
+		return nil, err
+	}
+
 	var entries []BackfillEntry
 
-	err := s.db.View(func(tx *bolt.Tx) error {
-		all, err := s.ReadAllBackfillProgress(tx)
-		if err != nil {
-			return err
+	for key, cursor := range all {
+		ledger, kind, details, ok := ParseBackfillKey([]byte(key))
+		if !ok {
+			continue
 		}
 
-		for key, cursor := range all {
-			ledger, kind, details, ok := ParseBackfillKey([]byte(key))
-			if !ok {
-				continue
-			}
+		entries = append(entries, BackfillEntry{
+			Ledger:  ledger,
+			Kind:    kind,
+			Details: details,
+			Cursor:  cursor,
+		})
+	}
 
-			entries = append(entries, BackfillEntry{
-				Ledger:  ledger,
-				Kind:    kind,
-				Details: details,
-				Cursor:  cursor,
-			})
-		}
-
-		return nil
-	})
-
-	return entries, err
+	return entries, nil
 }
 
 // WaitForSequence blocks until LastIndexedSequence >= minSeq or the context
-// is cancelled.  Returns nil when the target is reached, or ctx.Err() on
-// cancellation / timeout.
+// is cancelled.
 func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {
 	// Fast path: already caught up.
 	cur, err := s.LastIndexedSequence()

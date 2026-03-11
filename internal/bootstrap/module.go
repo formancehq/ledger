@@ -357,14 +357,14 @@ func Module() fx.Option {
 			func(n *node.Node) mirror.Proposer {
 				return n
 			},
-			// Read index store (bbolt) — always enabled
+			// Read index store (Pebble) — always enabled
 			func(cfg Config, logger logging.Logger) (*readstore.Store, error) {
 				dir := cfg.ReadIndexConfig.Dir
 				if dir == "" {
 					dir = filepath.Join(cfg.DataDir, "read-indexes")
 				}
 
-				return readstore.New(dir, cfg.ReadIndexConfig.NoFreelistSync, cfg.ReadIndexConfig.InitialMmapSize, logger)
+				return readstore.New(dir, logger, cfg.ReadIndexConfig.PebbleConfig)
 			},
 			// Index builder — tails the Raft log to populate the read index
 			func(store *dal.Store, rs *readstore.Store, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *indexbuilder.Builder {
@@ -595,49 +595,8 @@ func Module() fx.Option {
 						return runtime.Close()
 					},
 				})
-				// When NoFreelistSync is enabled, periodically sync the freelist
-				// to disk so that a crash doesn't require a full page scan on
-				// the next Open() (which can take tens of minutes on large DBs).
-				// Also sync once at shutdown for the common graceful-stop case.
-				if cfg.ReadIndexConfig.NoFreelistSync {
-					interval := cfg.ReadIndexConfig.FreelistSyncInterval
-					if interval == 0 {
-						interval = 5 * time.Minute
-					}
-
-					var (
-						cancel context.CancelFunc
-						wait   func()
-					)
-
-					lc.Append(fx.Hook{
-						OnStart: func(ctx context.Context) error {
-							ctx, cancel = context.WithCancel(context.WithoutCancel(ctx))
-							wait = otlplogs.GoWait(func() {
-								rs.RunPeriodicFreelistSync(ctx, interval)
-							}, logger)
-
-							return nil
-						},
-						OnStop: func(_ context.Context) error {
-							cancel()
-							wait()
-
-							return nil
-						},
-					})
-				}
-
 				lc.Append(fx.Hook{
 					OnStop: func(_ context.Context) error {
-						if cfg.ReadIndexConfig.NoFreelistSync {
-							err := rs.SyncFreelist()
-							if err != nil {
-								logger.Errorf("Failed to sync read index freelist: %v", err)
-								// Non-fatal: the index will just rebuild the freelist on next open.
-							}
-						}
-
 						return rs.Close()
 					},
 				})
@@ -974,7 +933,7 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, converter *state.MetadataConverter) {
 				lc.Append(worker.FxHook(converter))
 			},
-			// Register bbolt read index metrics and unregister on stop.
+			// Register Pebble read index metrics and unregister on stop.
 			func(lc fx.Lifecycle, rs *readstore.Store, meterProvider metric.MeterProvider) error {
 				reg, err := rs.RegisterMetrics(meterProvider.Meter("readindex"))
 				if err != nil {

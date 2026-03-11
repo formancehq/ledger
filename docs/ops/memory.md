@@ -12,13 +12,13 @@ At startup the server logs an estimated memory breakdown and warns if it exceeds
 |-----------|---------|-------------|----------|
 | [Pebble block cache](#pebble-block-cache) | 1 GiB | `--pebble-cache-size` | Yes |
 | [Pebble memtables](#pebble-memtables) | 1.5 GiB | `--pebble-memtable-size`, `--pebble-memtable-stop-writes-threshold` | Yes |
-| [bbolt read index mmap](#bbolt-read-index) | 1 GiB | `--read-index-initial-mmap-size` | Yes |
+| [Pebble read index](#pebble-read-index) | ~320 MiB | `--read-index-cache-size`, `--read-index-memtable-size` | Yes |
 | [Raft transport buffers](#raft-transport-buffers) | 10 MiB/peer | `--raft-transport-buffer-size` | Yes |
 | [FSM cache](#fsm-cache) | ~18 MiB | `--cache-rotation-threshold` | Yes |
 | [Numscript cache](#numscript-cache) | ~5 MiB | `--numscript-cache-size` | Yes |
 | [gRPC buffers](#grpc-buffers) | ~82 MiB/conn | -- | No (constants) |
 | [Go runtime](#go-runtime) | ~200 MiB | `GOMEMLIMIT` | Partially |
-| **Typical 3-node total** | **~3.8 GiB** | | |
+| **Typical 3-node total** | **~3.2 GiB** | | |
 
 ---
 
@@ -78,29 +78,40 @@ These have indirect or minor memory impact:
 
 ---
 
-## bbolt Read Index
+## Pebble Read Index
 
-**Flag:** `--read-index-initial-mmap-size`
-**Default:** `1073741824` (1 GiB)
-**Type:** bytes
+**Flags:**
+- `--read-index-cache-size` (default: `67108864` / 64 MiB)
+- `--read-index-memtable-size` (default: `67108864` / 64 MiB)
+- `--read-index-memtable-stop-writes-threshold` (default: `4`)
 
-The read index uses bbolt with a configurable `InitialMmapSize`. This is a **virtual address space reservation**, not physical RAM. The OS maps physical pages on demand as the database grows. In practice, RSS from bbolt tracks the actual database file size, but the virtual mapping appears in `VIRT`/`VSZ` metrics.
+**Worst-case memory:** `cache-size + memtable-size * stop-writes-threshold` = 64 MiB + 64 MiB * 4 = **320 MiB**
+
+The read index is a separate Pebble database (distinct from the main data store) that holds inverted indexes for listing and query operations. It is a **derived view** rebuilt from Raft logs, so its WAL is disabled — data loss on crash is safe because the index can be reconstructed.
+
+Pebble uses lockfree memtables for writes (no exclusive write lock) and supports online compaction without requiring a close/reopen cycle.
 
 **Impact of changing:**
 
 | Direction | Effect |
 |-----------|--------|
-| Increase | Larger pre-allocated virtual address space; avoids mmap grow stalls for very large databases |
-| Decrease | Smaller virtual footprint; bbolt may need to remap as the database grows, causing brief stalls |
+| Increase cache | More hot index data served from RAM; fewer disk reads for listings and queries |
+| Decrease cache | More disk I/O for read index lookups; saves memory |
+| Increase memtable | Fewer flushes during index building; more memory |
+| Decrease memtable | More frequent flushes; less memory per memtable |
 
-**Related flags:**
+**Additional flags:**
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--read-index-initial-mmap-size` | 1 GiB | Pre-allocated virtual address space for bbolt mmap |
-| `--read-index-no-freelist-sync` | false | Skip freelist serialization on commit. Faster bulk writes, slower reopen after crash |
-| `--read-index-batch-size` | 1000 | Log entries per bbolt write transaction. Larger = fewer transactions, more memory per batch |
-| `--read-index-freelist-sync-interval` | 5m | Periodic freelist sync when `no-freelist-sync` is enabled. Safety net for crash recovery |
+| `--read-index-dir` | `<data-dir>/read-indexes/` | Directory for the Pebble read index database |
+| `--read-index-batch-size` | 1000 | Log entries per write batch. Larger = fewer flushes, more memory per batch |
+| `--read-index-l0-compaction-threshold` | 4 | L0 files before triggering compaction |
+| `--read-index-l0-stop-writes-threshold` | 12 | L0 files before stalling writes |
+| `--read-index-lbase-max-bytes` | 512 MiB | L1 size cap |
+| `--read-index-target-file-size` | 64 MiB | SST file size target |
+| `--read-index-bytes-per-sync` | 512 KB | Bytes written before fsync |
+| `--read-index-max-concurrent-compactions` | 1 | Parallel compaction goroutines |
 
 ---
 
@@ -238,13 +249,13 @@ The server logs the current `GOMEMLIMIT` and `GOMAXPROCS` at startup. If estimat
 At boot, the server logs a line like:
 
 ```
-Memory estimate: pebbleCache=1024MiB memtables=1536MiB bboltMmap=1024MiB transport=20MiB fsmCache=18MiB goRuntime=200MiB total=3822MiB
+Memory estimate: pebbleCache=1024MiB memtables=1536MiB readIndexCache=64MiB readIndexMemtables=256MiB transport=20MiB fsmCache=18MiB goRuntime=200MiB total=3118MiB
 ```
 
 If `GOMEMLIMIT` is set and the estimate exceeds it:
 
 ```
-WARNING: estimated memory usage (3822MiB) exceeds GOMEMLIMIT (3072MiB) — risk of OOM. Consider increasing memory limits or reducing pebble-cache-size / pebble-memtable-size.
+WARNING: estimated memory usage (3118MiB) exceeds GOMEMLIMIT (2048MiB) — risk of OOM. Consider increasing memory limits or reducing pebble-cache-size / pebble-memtable-size.
 ```
 
 ### Sizing for Kubernetes
@@ -266,8 +277,6 @@ If you need to fit in a smaller memory envelope, reduce these parameters in orde
 2. **`--pebble-memtable-size`** — reduces worst-case memtable memory. Reduce to 128 MiB or 64 MiB.
 3. **`--pebble-memtable-stop-writes-threshold`** — reduce from 6 to 4. Increases write stall risk.
 4. **`--cache-rotation-threshold`** — reduce from 1000 to 500. Increases Pebble preload frequency.
-
-5. **`--read-index-initial-mmap-size`** — reduce to 512 MiB or 256 MiB (virtual, not RSS). May cause mmap grow stalls on large databases.
 
 The Go runtime overhead (~200 MiB) cannot be reduced via configuration.
 

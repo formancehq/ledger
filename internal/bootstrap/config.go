@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/pebblecfg"
 )
 
 // AuthFlagConfig captures the authentication flag values without runtime objects.
@@ -36,13 +37,11 @@ type HealthConfig struct {
 	ClockSkewThreshold time.Duration
 }
 
-// ReadIndexConfig holds configuration for the bbolt read index store.
+// ReadIndexConfig holds configuration for the Pebble read index store.
 type ReadIndexConfig struct {
-	Dir                  string        // empty = default (<data-dir>/read-indexes/)
-	NoFreelistSync       bool          // skip freelist serialization on commit (faster writes, slower open)
-	BatchSize            int           // log entries per bbolt write transaction (0 = default 1000)
-	FreelistSyncInterval time.Duration // periodic freelist sync interval (0 = disabled, default 5m)
-	InitialMmapSize      int           // bbolt initial mmap size in bytes (0 = default 1 GiB)
+	Dir          string           // empty = default (<data-dir>/read-indexes/)
+	BatchSize    int              // log entries per Pebble batch commit (0 = default 1000)
+	PebbleConfig pebblecfg.Config // Pebble tunables for the read index
 }
 
 type Config struct {
