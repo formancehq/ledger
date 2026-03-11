@@ -31,6 +31,8 @@ service BucketService {
   rpc Apply(ApplyRequest) returns (ApplyResponse);
   // GetStoreMetrics returns metrics from the local store (Pebble only)
   rpc GetStoreMetrics(GetStoreMetricsRequest) returns (GetStoreMetricsResponse);
+  // GetReadIndexMetrics returns metrics from the read index Pebble store
+  rpc GetReadIndexMetrics(GetReadIndexMetricsRequest) returns (GetReadIndexMetricsResponse);
   // CheckStore verifies store integrity (hash chain and derived data consistency)
   rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent);
   // ListAuditEntries streams audit trail entries (success and failure)
@@ -479,6 +481,15 @@ message GetStoreMetricsResponse {
   // available indicates if metrics are available (false for non-Pebble stores)
   bool available = 1;
   // metrics contains the Pebble metrics (only set if available is true)
+  PebbleMetrics metrics = 2;
+}
+
+message GetReadIndexMetricsRequest {}
+
+message GetReadIndexMetricsResponse {
+  // available indicates if the read index store is active
+  bool available = 1;
+  // metrics contains the read index Pebble metrics (only set if available is true)
   PebbleMetrics metrics = 2;
 }
 

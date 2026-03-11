@@ -4,8 +4,6 @@ import (
 	"context"
 	"time"
 
-	bolt "go.etcd.io/bbolt"
-
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
 )
@@ -54,68 +52,90 @@ func (b *Builder) processBackfillPostings(stop <-chan struct{}, task *backfillTa
 			eof        bool
 		)
 
-		if err := b.readStore.Update(func(tx *bolt.Tx) error {
-			b.wb.Init(tx)
+		batch := b.readStore.DB().NewIndexedBatch()
+		b.wb.Init(batch)
 
-			for batchCount < backfillBatchSize {
-				if !iterValid {
-					eof = true
+		for batchCount < backfillBatchSize {
+			if !iterValid {
+				eof = true
 
-					break
-				}
+				break
+			}
 
-				value, verr := iter.ValueAndErr()
-				if verr != nil {
-					return verr
-				}
+			value, verr := iter.ValueAndErr()
+			if verr != nil {
+				_ = batch.Close()
 
-				if err := parsePostingsFromLog(value, &parsed); err != nil {
-					return err
-				}
+				return verr
+			}
 
-				lastSeq = parsed.Sequence
-				batchCount++
+			if err := parsePostingsFromLog(value, &parsed); err != nil {
+				_ = batch.Close()
 
-				// Advance the iterator now (value was already consumed).
-				iterValid = iter.Next()
+				return err
+			}
 
-				// Skip non-transaction logs (config mutations, metadata-only, etc.)
-				if parsed.LogType == 0 {
-					continue
-				}
+			lastSeq = parsed.Sequence
+			batchCount++
 
-				kb := b.kb
-				wb := b.wb
+			// Advance the iterator now (value was already consumed).
+			iterValid = iter.Next()
 
-				for i := range parsed.Postings {
-					p := &parsed.Postings[i]
-					if indexAny {
-						wb.WriteAccountTxMapping(kb, parsed.Ledger, p.Source, parsed.TxID)
-						wb.WriteAccountTxMapping(kb, parsed.Ledger, p.Destination, parsed.TxID)
+			// Skip non-transaction logs (config mutations, metadata-only, etc.)
+			if parsed.LogType == 0 {
+				continue
+			}
+
+			kb := b.kb
+			wb := b.wb
+
+			for i := range parsed.Postings {
+				p := &parsed.Postings[i]
+				if indexAny {
+					if err := wb.WriteAccountTxMapping(kb, parsed.Ledger, p.Source, parsed.TxID); err != nil {
+						_ = batch.Close()
+
+						return err
 					}
 
-					if indexSrc {
-						wb.WriteSourceAccountTxMapping(kb, parsed.Ledger, p.Source, parsed.TxID)
-					}
+					if err := wb.WriteAccountTxMapping(kb, parsed.Ledger, p.Destination, parsed.TxID); err != nil {
+						_ = batch.Close()
 
-					if indexDst {
-						wb.WriteDestAccountTxMapping(kb, parsed.Ledger, p.Destination, parsed.TxID)
+						return err
+					}
+				}
+
+				if indexSrc {
+					if err := wb.WriteSourceAccountTxMapping(kb, parsed.Ledger, p.Source, parsed.TxID); err != nil {
+						_ = batch.Close()
+
+						return err
+					}
+				}
+
+				if indexDst {
+					if err := wb.WriteDestAccountTxMapping(kb, parsed.Ledger, p.Destination, parsed.TxID); err != nil {
+						_ = batch.Close()
+
+						return err
 					}
 				}
 			}
+		}
 
-			// Persist backfill cursor.
-			if batchCount > 0 {
-				if err := b.wb.Flush(); err != nil {
-					return err
-				}
+		// Persist backfill cursor and flush.
+		if batchCount > 0 {
+			if err := b.readStore.WriteBackfillProgress(batch, task.bbKey, lastSeq); err != nil {
+				_ = batch.Close()
 
-				return b.readStore.WriteBackfillProgress(tx, task.bbKey, lastSeq)
+				return err
 			}
 
-			return nil
-		}); err != nil {
-			return err
+			if err := b.wb.Flush(); err != nil {
+				return err
+			}
+		} else {
+			_ = batch.Close()
 		}
 
 		if batchCount == 0 {

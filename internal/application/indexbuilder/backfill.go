@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	bolt "go.etcd.io/bbolt"
+	"github.com/cockroachdb/pebble"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
@@ -20,8 +20,8 @@ import (
 type backfillTask struct {
 	ledger string
 	index  indexID
-	cursor uint64 // current position (persisted in bbolt)
-	bbKey  []byte // precomputed bbolt key for progress persistence
+	cursor uint64 // current position (persisted in Pebble)
+	bbKey  []byte // precomputed key for progress persistence
 
 	// Progress logging state.
 	lastProgressLog time.Time // last time a progress log was emitted
@@ -55,7 +55,7 @@ func backfillIndexName(id indexID) string {
 	return "unknown"
 }
 
-// backfillBBKey builds the bbolt key for persisting backfill progress.
+// backfillBBKey builds the key for persisting backfill progress.
 // Format:
 //
 //	TxBuiltin:    [ledger\x00]b[builtin_byte]
@@ -112,7 +112,7 @@ func backfillBBKey(ledger string, id indexID) []byte {
 }
 
 // addBackfillTask is a helper that creates a backfill task for the given indexID,
-// avoiding duplicates by checking the precomputed bbolt key.
+// avoiding duplicates by checking the precomputed progress key.
 func (b *Builder) addBackfillTask(ledger string, id indexID) {
 	bbKey := backfillBBKey(ledger, id)
 	for _, t := range b.backfillTasks {
@@ -156,14 +156,12 @@ func (b *Builder) addBackfillTaskForLogBuiltin(ledger string, index commonpb.Log
 }
 
 // removeBackfillTask removes a backfill task by index ID and deletes its
-// progress from bbolt.
+// persisted progress.
 func (b *Builder) removeBackfillTask(id indexID) {
 	for i, t := range b.backfillTasks {
 		if matchesBackfillIndex(t.index, id) {
 			// Delete persisted progress.
-			_ = b.readStore.Update(func(tx *bolt.Tx) error {
-				return b.readStore.DeleteBackfillProgress(tx, t.bbKey)
-			})
+			_ = b.readStore.DeleteBackfillProgress(t.bbKey)
 			// Remove from slice (order doesn't matter).
 			b.backfillTasks[i] = b.backfillTasks[len(b.backfillTasks)-1]
 			b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
@@ -183,13 +181,13 @@ type schemaRewriteTask struct {
 	key        string                // metadata field name
 	toType     commonpb.MetadataType // target type
 	rmapCursor []byte                // last reverse map key processed (nil = start)
-	bbKey      []byte                // precomputed bbolt key for persistence
+	bbKey      []byte                // precomputed key for persistence
 
 	lastProgressLog time.Time
 	processedCount  uint64
 }
 
-// schemaRewriteBBKey builds the bbolt key for persisting schema rewrite progress.
+// schemaRewriteBBKey builds the key for persisting schema rewrite progress.
 // Format: [ledger\x00]S[targetType_byte][key].
 func schemaRewriteBBKey(ledger string, targetType commonpb.TargetType, key string) []byte {
 	bbKey := make([]byte, 0, len(ledger)+3+len(key))
@@ -230,13 +228,11 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledger string, sm
 	})
 }
 
-// removeSchemaRewriteTask removes a schema rewrite task and deletes its progress from bbolt.
+// removeSchemaRewriteTask removes a schema rewrite task and deletes its persisted progress.
 func (b *Builder) removeSchemaRewriteTask(idx int) {
 	task := b.schemaRewriteTasks[idx]
 
-	_ = b.readStore.Update(func(tx *bolt.Tx) error {
-		return b.readStore.DeleteBackfillProgress(tx, task.bbKey)
-	})
+	_ = b.readStore.DeleteBackfillProgress(task.bbKey)
 
 	b.schemaRewriteTasks[idx] = b.schemaRewriteTasks[len(b.schemaRewriteTasks)-1]
 	b.schemaRewriteTasks = b.schemaRewriteTasks[:len(b.schemaRewriteTasks)-1]
@@ -258,129 +254,161 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) 
 
 	done := false
 
-	err := b.readStore.Update(func(tx *bolt.Tx) error {
-		midxBucket := tx.Bucket(readstore.BucketMetadataIndex)
-		eidxBucket := tx.Bucket(readstore.BucketEntityExists)
-		rmapBucket := tx.Bucket(readstore.BucketReverseMap)
+	kb := dal.NewKeyBuilder()
 
-		kb := dal.NewKeyBuilder()
+	rmapPrefix := readstore.ReverseMapPrefix(kb, task.ledger, ns)
+	upper := readstore.IncrementBytes(rmapPrefix)
 
-		rmapPrefix := kb.Reset().
-			PutLedgerName(task.ledger).
-			PutNamespace(ns).
-			Snapshot()
+	// Use a snapshot for the scan so it sees a consistent committed state.
+	snap := b.readStore.NewSnapshot()
+	defer func() { _ = snap.Close() }()
 
-		rc := rmapBucket.Cursor()
+	var lowerBound []byte
+	if len(task.rmapCursor) > 0 {
+		lowerBound = task.rmapCursor
+	} else {
+		lowerBound = rmapPrefix
+	}
 
-		var k, v []byte
-		if len(task.rmapCursor) > 0 {
-			// Seek to cursor position, then advance past it (we already processed it).
-			k, v = rc.Seek(task.rmapCursor)
-			if k != nil && string(k) == string(task.rmapCursor) {
-				k, v = rc.Next()
+	iter, err := snap.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	// If resuming from a cursor, seek past it.
+	if len(task.rmapCursor) > 0 {
+		if !iter.First() {
+			done = true
+
+			return done, nil
+		}
+		// If the first key equals the cursor, skip it (already processed).
+		if string(iter.Key()) == string(task.rmapCursor) {
+			if !iter.Next() {
+				done = true
+
+				return done, nil
 			}
-		} else {
-			k, v = rc.Seek(rmapPrefix)
+		}
+	} else {
+		if !iter.First() {
+			done = true
+
+			return done, nil
+		}
+	}
+
+	batch := b.readStore.DB().NewIndexedBatch()
+	defer func() { _ = batch.Close() }()
+
+	processed := 0
+	var lastKey []byte
+
+	for ; iter.Valid(); iter.Next() {
+		if processed >= maxEntries {
+			break
 		}
 
-		processed := 0
-		var lastKey []byte
+		k := iter.Key()
 
-		for ; k != nil && readstore.HasPrefix(k, rmapPrefix); k, v = rc.Next() {
-			if processed >= maxEntries {
-				break
-			}
+		// Strip the PrefixReverseMap byte for the extract helpers.
+		suffixAfterByte := k[1:]
+		metaKey := extractMetadataKeyFromReverseMap(suffixAfterByte, rmapPrefix[1:], ns)
 
-			metaKey := extractMetadataKeyFromReverseMap(k, rmapPrefix, ns)
-			if metaKey != task.key {
-				continue
-			}
+		if metaKey != task.key {
+			continue
+		}
 
-			entityID := extractEntityIDFromReverseMap(k, rmapPrefix, ns)
+		entityID := extractEntityIDFromReverseMap(suffixAfterByte, rmapPrefix[1:], ns)
 
-			// Decode old MetadataValue.
-			oldMV := &commonpb.MetadataValue{}
-			if err := oldMV.UnmarshalVT(v); err != nil {
-				// Skip corrupt entries.
-				processed++
-				lastKey = cloneBytes(k)
+		v, verr := iter.ValueAndErr()
+		if verr != nil {
+			return false, verr
+		}
 
-				continue
-			}
-
-			// Delete old forward index entry.
-			oldEncoded := readstore.EncodeMetadataValue(nil, oldMV)
-			oldKey := readstore.MetadataIndexKey(kb, task.ledger, ns, task.key, oldEncoded, entityID)
-
-			if err := midxBucket.Delete(oldKey); err != nil {
-				return err
-			}
-
-			// Convert to new type.
-			newMV := commonpb.ConvertMetadataValue(oldMV, task.toType)
-			newEncoded := readstore.EncodeMetadataValue(nil, newMV)
-
-			// Update eidx if null status changed.
-			oldIsNull := len(oldEncoded) > 0 && oldEncoded[0] == readstore.TypeTagNull
-			newIsNull := len(newEncoded) > 0 && newEncoded[0] == readstore.TypeTagNull
-
-			if oldIsNull != newIsNull {
-				oldEidxKey := readstore.EntityExistsKey(kb, task.ledger, ns, task.key, oldIsNull, entityID)
-				if err := eidxBucket.Delete(oldEidxKey); err != nil {
-					return err
-				}
-
-				newEidxKey := readstore.EntityExistsKey(kb, task.ledger, ns, task.key, newIsNull, entityID)
-				if err := eidxBucket.Put(newEidxKey, nil); err != nil {
-					return err
-				}
-			}
-
-			// Write new forward index entry.
-			newKey := readstore.MetadataIndexKey(kb, task.ledger, ns, task.key, newEncoded, entityID)
-			if err := midxBucket.Put(newKey, nil); err != nil {
-				return err
-			}
-
-			// Update reverse map with new value.
-			newMVBytes, err := newMV.MarshalVT()
-			if err != nil {
-				return err
-			}
-
-			if err := rmapBucket.Put(k, newMVBytes); err != nil {
-				return err
-			}
-
+		// Decode old MetadataValue.
+		oldMV := &commonpb.MetadataValue{}
+		if err := oldMV.UnmarshalVT(v); err != nil {
+			// Skip corrupt entries.
 			processed++
 			lastKey = cloneBytes(k)
+
+			continue
 		}
 
-		// Check if we've exhausted the prefix.
-		if k == nil || !readstore.HasPrefix(k, rmapPrefix) {
-			// Scan the remaining keys to see if there are any more matching entries.
-			// We might have skipped non-matching keys, so we only know we're done
-			// if we've scanned past the prefix.
-			done = true
+		oldEncoded := readstore.EncodeMetadataValue(nil, oldMV)
+
+		// Convert to new type.
+		newMV := commonpb.ConvertMetadataValue(oldMV, task.toType)
+		newEncoded := readstore.EncodeMetadataValue(nil, newMV)
+
+		// Delete old forward index entry.
+		oldFwdKey := readstore.MetadataIndexKey(kb, task.ledger, ns, task.key, oldEncoded, entityID)
+		if err := batch.Delete(oldFwdKey, pebble.NoSync); err != nil {
+			return false, fmt.Errorf("deleting old forward index: %w", err)
 		}
 
-		task.processedCount += uint64(processed)
+		// Update eidx if null status changed.
+		oldIsNull := len(oldEncoded) > 0 && oldEncoded[0] == readstore.TypeTagNull
+		newIsNull := len(newEncoded) > 0 && newEncoded[0] == readstore.TypeTagNull
 
-		// Persist cursor.
-		if lastKey != nil {
-			task.rmapCursor = lastKey
-			// Value format: [toType_byte][rmapCursor...]
-			val := make([]byte, 1+len(lastKey))
-			val[0] = byte(task.toType)
-			copy(val[1:], lastKey)
+		if oldIsNull != newIsNull {
+			oldEidxKey := readstore.EntityExistsKey(kb, task.ledger, ns, task.key, oldIsNull, entityID)
+			if err := batch.Delete(oldEidxKey, pebble.NoSync); err != nil {
+				return false, fmt.Errorf("deleting old eidx: %w", err)
+			}
 
-			return b.readStore.WriteBackfillCursor(tx, task.bbKey, val)
+			newEidxKey := readstore.EntityExistsKey(kb, task.ledger, ns, task.key, newIsNull, entityID)
+			if err := batch.Set(newEidxKey, nil, pebble.NoSync); err != nil {
+				return false, fmt.Errorf("setting new eidx: %w", err)
+			}
 		}
 
-		return nil
-	})
+		// Write new forward index entry.
+		newFwdKey := readstore.MetadataIndexKey(kb, task.ledger, ns, task.key, newEncoded, entityID)
+		if err := batch.Set(newFwdKey, nil, pebble.NoSync); err != nil {
+			return false, fmt.Errorf("setting new forward index: %w", err)
+		}
 
-	return done, err
+		// Update reverse map with new encoded value.
+		if err := batch.Set(cloneBytes(k), newEncoded, pebble.NoSync); err != nil {
+			return false, fmt.Errorf("updating reverse map: %w", err)
+		}
+
+		processed++
+		lastKey = cloneBytes(k)
+	}
+
+	// Check if we've exhausted the prefix.
+	if !iter.Valid() {
+		done = true
+	}
+
+	task.processedCount += uint64(processed)
+
+	// Persist cursor into the same batch.
+	if lastKey != nil {
+		task.rmapCursor = lastKey
+		// Value format: [toType_byte][rmapCursor...]
+		val := make([]byte, 1+len(lastKey))
+		val[0] = byte(task.toType)
+		copy(val[1:], lastKey)
+
+		if err := b.readStore.WriteBackfillCursor(batch, task.bbKey, val); err != nil {
+			return false, err
+		}
+	}
+
+	if err := batch.Commit(pebble.NoSync); err != nil {
+		return false, err
+	}
+
+	return done, nil
 }
 
 // processBackgroundTasks advances both backfill and schema rewrite tasks using
@@ -516,9 +544,7 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 			}).Infof("Backfill complete, IndexReady proposed")
 
 			// Delete persisted progress.
-			_ = b.readStore.Update(func(tx *bolt.Tx) error {
-				return b.readStore.DeleteBackfillProgress(tx, task.bbKey)
-			})
+			_ = b.readStore.DeleteBackfillProgress(task.bbKey)
 
 			// Remove from slice — the next task slides into this position,
 			// so don't increment nextBackfillIdx.
@@ -580,8 +606,8 @@ func (b *Builder) processBackfills(stop <-chan struct{}, globalCursor uint64) {
 	}
 }
 
-// backfillBatchSize is the number of log entries per bbolt write transaction
-// during backfill. Larger than DefaultBatchSize to amortize fsync overhead
+// backfillBatchSize is the number of log entries per Pebble batch commit
+// during backfill. Larger than DefaultBatchSize to amortize write overhead
 // while keeping memory bounded.
 const backfillBatchSize = 10_000
 
@@ -614,49 +640,54 @@ func (b *Builder) processBackfill(stop <-chan struct{}, task *backfillTask, dead
 			eof        bool
 		)
 
-		if err := b.readStore.Update(func(tx *bolt.Tx) error {
-			b.wb.Init(tx)
+		batch := b.readStore.DB().NewIndexedBatch()
+		b.wb.Init(batch)
 
-			for batchCount < backfillBatchSize {
-				log, err := logsCursor.Next()
-				if err != nil {
-					if errors.Is(err, io.EOF) {
-						eof = true
+		for batchCount < backfillBatchSize {
+			log, err := logsCursor.Next()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					eof = true
 
-						break
-					}
-
-					return err
+					break
 				}
 
-				// Skip config-mutation log types during backfill.
-				if !isDataLog(log) {
-					lastSeq = log.GetSequence()
-					batchCount++
+				_ = batch.Close()
 
-					continue
-				}
+				return err
+			}
 
-				if err := b.indexLogEntry(tx, cfg, log); err != nil {
-					return err
-				}
-
+			// Skip config-mutation log types during backfill.
+			if !isDataLog(log) {
 				lastSeq = log.GetSequence()
 				batchCount++
+
+				continue
 			}
 
-			// Persist backfill cursor.
-			if batchCount > 0 {
-				if err := b.wb.Flush(); err != nil {
-					return err
-				}
+			if err := b.indexLogEntry(cfg, log); err != nil {
+				_ = batch.Close()
 
-				return b.readStore.WriteBackfillProgress(tx, task.bbKey, lastSeq)
+				return err
 			}
 
-			return nil
-		}); err != nil {
-			return err
+			lastSeq = log.GetSequence()
+			batchCount++
+		}
+
+		// Persist backfill cursor and flush.
+		if batchCount > 0 {
+			if err := b.readStore.WriteBackfillProgress(batch, task.bbKey, lastSeq); err != nil {
+				_ = batch.Close()
+
+				return err
+			}
+
+			if err := b.wb.Flush(); err != nil {
+				return err
+			}
+		} else {
+			_ = batch.Close()
 		}
 
 		if batchCount == 0 {

@@ -1313,6 +1313,31 @@ ledgerctl store metrics
 ledgerctl store metrics --json
 ```
 
+#### store read-index-metrics
+
+Get metrics from the read index Pebble store.
+
+```bash
+ledgerctl store read-index-metrics [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+# Display formatted metrics
+ledgerctl store read-index-metrics
+
+# Output as JSON
+ledgerctl store read-index-metrics --json
+```
+
 #### store check
 
 Verify store integrity by checking the hash chain and derived data consistency.
@@ -1504,7 +1529,7 @@ ledgerctl store bootstrap -i backup.tar --data-dir ./fresh-data --yes
 
 ### store rebuild-indexes
 
-Rebuild the bbolt read indexes from Pebble system logs. This is a purely offline operation — no server needed. Use this after restoring from a backup or when the read index becomes corrupted or out of date.
+Rebuild the Pebble read indexes from system logs. This is a purely offline operation — no server needed. Use this after restoring from a backup or when the read index becomes corrupted or out of date.
 
 ```bash
 ledgerctl store rebuild-indexes --data-dir /path/to/data [flags]
@@ -1520,7 +1545,7 @@ ledgerctl store rebuild-indexes --data-dir /path/to/data [flags]
 **Behavior:**
 
 1. Opens the Pebble data directory in read-only mode
-2. Opens or creates the bbolt read index store
+2. Opens or creates the Pebble read index database
 3. Replays all system logs from scratch, rebuilding inverted indexes for metadata, account/transaction existence, and account-to-transaction mappings
 4. Reports the last processed log sequence on completion
 
@@ -2831,13 +2856,21 @@ Clients can also discover the server's public key via the `Discovery` RPC.
 
 ### Server Read Index Flags
 
-The bbolt-based read index store is always active. An index builder tails the system logs and populates inverted indexes in a bbolt database. The read index is used for prepared queries and listing operations (accounts, transactions).
+The Pebble-based read index store is always active. An index builder tails the system logs and populates inverted indexes in a separate Pebble database. The read index is used for prepared queries and listing operations (accounts, transactions). WAL is disabled because the index is a derived view that can be rebuilt from Raft logs.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--read-index-dir` | string | `""` | Directory for the bbolt read index database (default: `<data-dir>/read-indexes/`) |
-| `--read-index-no-freelist-sync` | bool | `false` | Skip freelist serialization on each bbolt commit. Faster bulk writes but slower reopen (freelist rebuilt by scanning). |
-| `--read-index-initial-mmap-size` | int | `0` | Initial mmap size for the bbolt read index in bytes. Pre-allocates virtual address space to avoid mmap grow stalls. `0` = default 1 GiB. |
+| `--read-index-dir` | string | `""` | Directory for the Pebble read index database (default: `<data-dir>/read-indexes/`) |
+| `--read-index-batch-size` | int | `1000` | Log entries per write batch. Larger batches reduce flush frequency but use more memory per batch. |
+| `--read-index-memtable-size` | uint64 | `67108864` (64 MB) | Read index memtable size in bytes |
+| `--read-index-memtable-stop-writes-threshold` | int | `4` | Read index memtable count before stopping writes |
+| `--read-index-cache-size` | int64 | `67108864` (64 MB) | Read index block cache size in bytes |
+| `--read-index-l0-compaction-threshold` | int | `4` | Read index L0 file count to trigger compaction |
+| `--read-index-l0-stop-writes-threshold` | int | `12` | Read index L0 file count before stopping writes |
+| `--read-index-lbase-max-bytes` | int64 | `536870912` (512 MB) | Read index L1 max size in bytes |
+| `--read-index-target-file-size` | int64 | `67108864` (64 MB) | Read index SST file target size in bytes |
+| `--read-index-bytes-per-sync` | int | `524288` (512 KB) | Read index bytes written before sync |
+| `--read-index-max-concurrent-compactions` | int | `1` | Read index max concurrent compactions |
 
 ```bash
 # Use default directory (<data-dir>/read-indexes/)
@@ -2845,9 +2878,12 @@ ledger-v3-poc run [other flags...]
 
 # Use custom directory
 ledger-v3-poc run --read-index-dir /ssd/read-indexes [other flags...]
+
+# Increase read index cache for better read performance
+ledger-v3-poc run --read-index-cache-size 134217728 [other flags...]
 ```
 
-The index builder runs on ALL nodes (not just the leader), so follower nodes can also serve prepared query reads. Listings are eventually consistent (the bbolt index may lag behind the latest Raft commits).
+The index builder runs on ALL nodes (not just the leader), so follower nodes can also serve prepared query reads. Listings are eventually consistent (the read index may lag behind the latest Raft commits).
 
 After restoring from a backup, use `ledgerctl store rebuild-indexes` to backfill the index from existing data.
 

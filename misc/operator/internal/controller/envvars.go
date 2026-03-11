@@ -150,14 +150,8 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 
 	// Pebble
 	if cfg.Pebble != nil {
-		envs = appendIfInt64(envs, "PEBBLE_MEMTABLE_SIZE", cfg.Pebble.MemTableSize)
-		envs = appendIfInt32(envs, "PEBBLE_MEMTABLE_STOP_WRITES_THRESHOLD", cfg.Pebble.MemTableStopWritesThreshold)
-		envs = appendIfInt32(envs, "PEBBLE_L0_COMPACTION_THRESHOLD", cfg.Pebble.L0CompactionThreshold)
-		envs = appendIfInt32(envs, "PEBBLE_L0_STOP_WRITES_THRESHOLD", cfg.Pebble.L0StopWritesThreshold)
-		envs = appendIfInt64(envs, "PEBBLE_LBASE_MAX_BYTES", cfg.Pebble.LBaseMaxBytes)
-		envs = appendIfInt64(envs, "PEBBLE_CACHE_SIZE", cfg.Pebble.CacheSize)
-		envs = appendIfInt64(envs, "PEBBLE_TARGET_FILE_SIZE", cfg.Pebble.TargetFileSize)
-		envs = appendIfInt64(envs, "PEBBLE_BYTES_PER_SYNC", cfg.Pebble.BytesPerSync)
+		envs = appendPebbleEnvVars(envs, "PEBBLE", cfg.Pebble)
+		// DAL-specific Pebble flags
 		envs = appendIfInt64(envs, "PEBBLE_WAL_BYTES_PER_SYNC", cfg.Pebble.WalBytesPerSync)
 		envs = appendIfInt32(envs, "PEBBLE_MAX_CONCURRENT_COMPACTIONS", cfg.Pebble.MaxConcurrentCompactions)
 		envs = appendIfStr(envs, "PEBBLE_WAL_MIN_SYNC_INTERVAL", cfg.Pebble.WalMinSyncInterval)
@@ -204,12 +198,10 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 
 	// Read index
 	if cfg.ReadIndex != nil {
-		envs = appendIfBool(envs, "READ_INDEX_NO_FREELIST_SYNC", cfg.ReadIndex.NoFreelistSync)
 		envs = appendIfInt32(envs, "READ_INDEX_BATCH_SIZE", cfg.ReadIndex.BatchSize)
-		if cfg.ReadIndex.FreelistSyncInterval != nil {
-			envs = appendIfStr(envs, "READ_INDEX_FREELIST_SYNC_INTERVAL", *cfg.ReadIndex.FreelistSyncInterval)
+		if cfg.ReadIndex.Pebble != nil {
+			envs = appendPebbleEnvVars(envs, "READ_INDEX", cfg.ReadIndex.Pebble)
 		}
-		envs = appendIfInt64(envs, "READ_INDEX_INITIAL_MMAP_SIZE", cfg.ReadIndex.InitialMmapSize)
 	}
 
 	// Response signing
@@ -302,6 +294,22 @@ func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.Monitorin
 		envs = appendIfInt32(envs, "PYROSCOPE_BLOCK_PROFILE_RATE", mon.Pyroscope.BlockProfileRate)
 		envs = appendIfBool(envs, "PYROSCOPE_DISABLE_GC_RUNS", mon.Pyroscope.DisableGCRuns)
 	}
+
+	return envs
+}
+
+// appendPebbleEnvVars appends the common Pebble env vars for the given prefix.
+// Prefix is "PEBBLE" or "READ_INDEX".
+func appendPebbleEnvVars(envs []corev1.EnvVar, prefix string, p *ledgerv1alpha1.PebbleConfig) []corev1.EnvVar {
+	envs = appendIfInt64(envs, prefix+"_MEMTABLE_SIZE", p.MemTableSize)
+	envs = appendIfInt32(envs, prefix+"_MEMTABLE_STOP_WRITES_THRESHOLD", p.MemTableStopWritesThreshold)
+	envs = appendIfInt32(envs, prefix+"_L0_COMPACTION_THRESHOLD", p.L0CompactionThreshold)
+	envs = appendIfInt32(envs, prefix+"_L0_STOP_WRITES_THRESHOLD", p.L0StopWritesThreshold)
+	envs = appendIfInt64(envs, prefix+"_LBASE_MAX_BYTES", p.LBaseMaxBytes)
+	envs = appendIfInt64(envs, prefix+"_CACHE_SIZE", p.CacheSize)
+	envs = appendIfInt64(envs, prefix+"_TARGET_FILE_SIZE", p.TargetFileSize)
+	envs = appendIfInt64(envs, prefix+"_BYTES_PER_SYNC", p.BytesPerSync)
+	envs = appendIfInt32(envs, prefix+"_MAX_CONCURRENT_COMPACTIONS", p.MaxConcurrentCompactions)
 
 	return envs
 }

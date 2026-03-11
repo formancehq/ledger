@@ -1554,35 +1554,84 @@ spec:
                         type: object
                     type: object
                   readIndex:
-                    description: ReadIndex configuration for the bbolt read index
+                    description: ReadIndex configuration for the Pebble read index
                       store.
                     properties:
                       batchSize:
                         description: |-
-                          BatchSize is the number of log entries per bbolt write transaction.
+                          BatchSize is the number of log entries per Pebble batch commit.
                           Higher values amortize commit overhead but use more memory.
                           Default: 1000.
                         format: int32
                         type: integer
-                      freelistSyncInterval:
+                      pebble:
                         description: |-
-                          FreelistSyncInterval is the periodic interval at which the freelist
-                          is synced to disk when NoFreelistSync is enabled. This limits data
-                          loss on crash to at most one interval of freelist rebuild time.
-                          Default: 5m. Set to "0" to disable periodic sync.
-                        type: string
-                      initialMmapSize:
-                        description: |-
-                          InitialMmapSize is the initial mmap size for the bbolt database in bytes.
-                          Pre-allocating virtual address space prevents mmap stalls as the DB grows.
-                          Default: 1073741824 (1 GiB).
-                        format: int64
-                        type: integer
-                      noFreelistSync:
-                        description: |-
-                          NoFreelistSync skips freelist serialization on commit.
-                          Enables faster writes at the cost of slower database reopen.
-                        type: boolean
+                          Pebble holds the common Pebble tunables for the read index.
+                          Uses the same knobs as the primary store (cache size, memtable, L0 thresholds, etc.).
+                        properties:
+                          bytesPerSync:
+                            description: BytesPerSync is bytes written before sync
+                              during flush/compaction.
+                            format: int64
+                            type: integer
+                          cacheSize:
+                            description: CacheSize is the block cache size in bytes.
+                            format: int64
+                            type: integer
+                          disableWAL:
+                            description: DisableWAL disables WAL entirely.
+                            type: boolean
+                          incrementalCompactThreshold:
+                            description: |-
+                              IncrementalCompactThreshold is the number of new log entries before
+                              triggering an incremental compaction of the new range.
+                              Default: 100000.
+                            format: int64
+                            type: integer
+                          l0CompactionThreshold:
+                            description: L0CompactionThreshold is the L0 file count
+                              to trigger compaction.
+                            format: int32
+                            type: integer
+                          l0StopWritesThreshold:
+                            description: L0StopWritesThreshold is the L0 file count
+                              before writes stop.
+                            format: int32
+                            type: integer
+                          lBaseMaxBytes:
+                            description: LBaseMaxBytes is the maximum size of L1 in
+                              bytes.
+                            format: int64
+                            type: integer
+                          maxConcurrentCompactions:
+                            description: MaxConcurrentCompactions is the maximum concurrent
+                              compactions.
+                            format: int32
+                            type: integer
+                          memTableSize:
+                            description: MemTableSize in bytes.
+                            format: int64
+                            type: integer
+                          memTableStopWritesThreshold:
+                            description: MemTableStopWritesThreshold is the number
+                              of memtables before writes stop.
+                            format: int32
+                            type: integer
+                          targetFileSize:
+                            description: TargetFileSize is the target SST file size
+                              in bytes.
+                            format: int64
+                            type: integer
+                          walBytesPerSync:
+                            description: WalBytesPerSync is WAL bytes written before
+                              sync.
+                            format: int64
+                            type: integer
+                          walMinSyncInterval:
+                            description: WalMinSyncInterval is the minimum interval
+                              between WAL syncs.
+                            type: string
+                        type: object
                     type: object
                   responseSigning:
                     description: ResponseSigning configuration (Ed25519).

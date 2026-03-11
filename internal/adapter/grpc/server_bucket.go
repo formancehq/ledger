@@ -214,7 +214,7 @@ func (impl *BucketServiceServerImpl) computeTransactionReceipt(ctx context.Conte
 	return impl.receiptSigner.Sign(ledger, txID, tx.GetPostings(), tx.GetTimestamp(), created.GetPeriodId())
 }
 
-// waitMinLogSequence blocks until the bbolt read index has processed at
+// waitMinLogSequence blocks until the Pebble read index has processed at
 // least the requested minimum log sequence, or the context is cancelled.
 func (impl *BucketServiceServerImpl) waitMinLogSequence(ctx context.Context, minLogSequence uint64) error {
 	if minLogSequence == 0 {
@@ -356,6 +356,23 @@ func (impl *BucketServiceServerImpl) GetStoreMetrics(ctx context.Context, _ *ser
 	}, nil
 }
 
+func (impl *BucketServiceServerImpl) GetReadIndexMetrics(ctx context.Context, _ *servicepb.GetReadIndexMetricsRequest) (*servicepb.GetReadIndexMetricsResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
+		return nil, err
+	}
+
+	if impl.readStore == nil {
+		return &servicepb.GetReadIndexMetricsResponse{
+			Available: false,
+		}, nil
+	}
+
+	return &servicepb.GetReadIndexMetricsResponse{
+		Available: true,
+		Metrics:   impl.readStore.GetMetrics(),
+	}, nil
+}
+
 func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
 		return nil, err
@@ -381,7 +398,7 @@ func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, _ *serv
 		fileSize = uint64(info.Size())
 	}
 
-	// Read per-index backfill progress from bbolt.
+	// Read per-index backfill progress from Pebble.
 	backfillEntries, err := impl.readStore.ListBackfillProgress()
 	if err != nil {
 		return nil, fmt.Errorf("reading backfill progress: %w", err)

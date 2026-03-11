@@ -256,36 +256,23 @@ type LedgerServiceConfig struct {
 	// +optional
 	Auth *AuthorizationConfig `json:"auth,omitempty"`
 
-	// ReadIndex configuration for the bbolt read index store.
+	// ReadIndex configuration for the Pebble read index store.
 	// +optional
 	ReadIndex *ReadIndexConfig `json:"readIndex,omitempty"`
 }
 
-// ReadIndexConfig holds bbolt read index configuration.
+// ReadIndexConfig holds Pebble read index configuration.
 type ReadIndexConfig struct {
-	// NoFreelistSync skips freelist serialization on commit.
-	// Enables faster writes at the cost of slower database reopen.
-	// +optional
-	NoFreelistSync *bool `json:"noFreelistSync,omitempty"`
-
-	// BatchSize is the number of log entries per bbolt write transaction.
+	// BatchSize is the number of log entries per Pebble batch commit.
 	// Higher values amortize commit overhead but use more memory.
 	// Default: 1000.
 	// +optional
 	BatchSize *int32 `json:"batchSize,omitempty"`
 
-	// FreelistSyncInterval is the periodic interval at which the freelist
-	// is synced to disk when NoFreelistSync is enabled. This limits data
-	// loss on crash to at most one interval of freelist rebuild time.
-	// Default: 5m. Set to "0" to disable periodic sync.
+	// Pebble holds the common Pebble tunables for the read index.
+	// Uses the same knobs as the primary store (cache size, memtable, L0 thresholds, etc.).
 	// +optional
-	FreelistSyncInterval *string `json:"freelistSyncInterval,omitempty"`
-
-	// InitialMmapSize is the initial mmap size for the bbolt database in bytes.
-	// Pre-allocating virtual address space prevents mmap stalls as the DB grows.
-	// Default: 1073741824 (1 GiB).
-	// +optional
-	InitialMmapSize *int64 `json:"initialMmapSize,omitempty"`
+	Pebble *PebbleConfig `json:"pebble,omitempty"`
 }
 
 // AuthorizationConfig holds authentication and authorization configuration.

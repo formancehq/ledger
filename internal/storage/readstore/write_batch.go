@@ -1,246 +1,159 @@
 package readstore
 
 import (
-	"bytes"
 	"encoding/binary"
-	"sort"
 
-	bolt "go.etcd.io/bbolt"
+	"github.com/cockroachdb/pebble"
 
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// Bucket indexes for WriteBatch. Each index corresponds to one bbolt bucket.
-const (
-	batchBucketMidx  = iota // BucketMetadataIndex
-	batchBucketEidx         // BucketEntityExists
-	batchBucketRmap         // BucketReverseMap
-	batchBucketAtxm         // BucketAccountTx
-	batchBucketSatx         // BucketSourceAccountTx
-	batchBucketDatx         // BucketDestAccountTx
-	batchBucketTxref        // BucketTransactionReference
-	batchBucketTstmp        // BucketTransactionTimestamp
-	batchBucketLlog         // BucketLedgerLogs
-	batchBucketLldt         // BucketLedgerLogDate
-	numBatchBuckets
-)
-
-// batchBucketNames maps bucket indexes to their bbolt bucket names.
-var batchBucketNames = [numBatchBuckets][]byte{
-	BucketMetadataIndex,
-	BucketEntityExists,
-	BucketReverseMap,
-	BucketAccountTx,
-	BucketSourceAccountTx,
-	BucketDestAccountTx,
-	BucketTransactionReference,
-	BucketTransactionTimestamp,
-	BucketLedgerLogs,
-	BucketLedgerLogDate,
-}
-
-// writeOp represents a buffered write or delete operation.
-type writeOp struct {
-	key    []byte
-	value  []byte // nil = empty value (existence entries); non-nil = actual value
-	delete bool
-}
-
-// WriteBatch buffers bbolt write operations and flushes them sorted by key
-// to minimize random B+ tree page access. This dramatically improves write
-// throughput when keys have high entropy (e.g. UUID-based account addresses).
-//
-// For the reverse map bucket, an in-memory overlay ensures that reads within
-// the same batch see previously buffered writes.
+// WriteBatch buffers Pebble write operations using an indexed batch.
+// An indexed batch allows reads to see previously buffered writes,
+// which is needed for the reverse map overlay pattern.
 type WriteBatch struct {
-	tx *bolt.Tx
-
-	// Per-bucket operation buffers. Key is string(key) for last-writer-wins dedup.
-	ops [numBatchBuckets]map[string]writeOp
-
-	// In-memory overlay for reverse map reads within the batch.
-	// A nil value means the entry was deleted in this batch.
-	// Absence from the map means "not written in this batch — read from bbolt".
-	rmapOverlay map[string][]byte
-	// rmapDeleted tracks keys explicitly deleted (since nil value in rmapOverlay
-	// is ambiguous with "not present"). We use a separate set.
-	rmapDeleted map[string]struct{}
+	batch *pebble.Batch
+	count int // number of operations buffered
 }
 
-// NewWriteBatch creates a new WriteBatch. Reuse across transactions by calling
-// Reset() between batches.
+// NewWriteBatch creates a new WriteBatch.
 func NewWriteBatch() *WriteBatch {
-	wb := &WriteBatch{
-		rmapOverlay: make(map[string][]byte, 256),
-		rmapDeleted: make(map[string]struct{}, 16),
-	}
-	for i := range wb.ops {
-		wb.ops[i] = make(map[string]writeOp, 256)
-	}
-
-	return wb
+	return &WriteBatch{}
 }
 
-// Init binds the batch to a bbolt transaction. Must be called at the start of
-// each db.Update() callback.
-func (wb *WriteBatch) Init(tx *bolt.Tx) {
-	wb.tx = tx
+// Init binds the batch to a Pebble indexed batch.
+func (wb *WriteBatch) Init(batch *pebble.Batch) {
+	wb.batch = batch
 }
 
 // Empty returns true if no operations have been buffered.
 func (wb *WriteBatch) Empty() bool {
-	for i := range wb.ops {
-		if len(wb.ops[i]) > 0 {
-			return false
-		}
-	}
-
-	return true
+	return wb.count == 0
 }
 
-// Reset clears all buffered operations and the overlay, keeping allocated maps.
+// Reset clears the batch state.
 func (wb *WriteBatch) Reset() {
-	for i := range wb.ops {
-		clear(wb.ops[i])
+	wb.batch = nil
+	wb.count = 0
+}
+
+// put sets a key-value pair in the batch.
+func (wb *WriteBatch) put(key, value []byte) error {
+	if err := wb.batch.Set(key, value, pebble.NoSync); err != nil {
+		return err
 	}
 
-	clear(wb.rmapOverlay)
-	clear(wb.rmapDeleted)
-	wb.tx = nil
-}
-
-// put buffers a Put operation for the given bucket.
-func (wb *WriteBatch) put(bucketIdx int, key, value []byte) {
-	wb.ops[bucketIdx][string(key)] = writeOp{key: key, value: value}
-}
-
-// del buffers a Delete operation for the given bucket.
-func (wb *WriteBatch) del(bucketIdx int, key []byte) {
-	wb.ops[bucketIdx][string(key)] = writeOp{key: key, delete: true}
-}
-
-// Flush sorts all buffered operations per bucket by key, then executes them
-// against bbolt. Operations on the same key are deduplicated (last writer wins).
-// After flushing, the batch is reset.
-func (wb *WriteBatch) Flush() error {
-	for i := range numBatchBuckets {
-		ops := wb.ops[i]
-		if len(ops) == 0 {
-			continue
-		}
-
-		bucket := wb.tx.Bucket(batchBucketNames[i])
-
-		// Collect into a sortable slice.
-		sorted := make([]writeOp, 0, len(ops))
-		for _, op := range ops {
-			sorted = append(sorted, op)
-		}
-
-		sort.Slice(sorted, func(a, b int) bool {
-			return bytes.Compare(sorted[a].key, sorted[b].key) < 0
-		})
-
-		// Execute in key order for maximum B+ tree locality.
-		for _, op := range sorted {
-			if op.delete {
-				err := bucket.Delete(op.key)
-				if err != nil {
-					return err
-				}
-			} else {
-				err := bucket.Put(op.key, op.value)
-				if err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	wb.Reset()
+	wb.count++
 
 	return nil
 }
 
-// --- Reverse map overlay ---
+// del deletes a key in the batch.
+func (wb *WriteBatch) del(key []byte) error {
+	if err := wb.batch.Delete(key, pebble.NoSync); err != nil {
+		return err
+	}
 
-// readReverseMap reads a reverse map value, checking the in-memory overlay first.
-func (wb *WriteBatch) readReverseMap(key []byte) []byte {
-	k := string(key)
-	// Check if deleted in this batch.
-	if _, deleted := wb.rmapDeleted[k]; deleted {
+	wb.count++
+
+	return nil
+}
+
+// Flush commits the batch and resets state.
+func (wb *WriteBatch) Flush() error {
+	if wb.batch == nil {
 		return nil
 	}
-	// Check overlay.
-	if v, ok := wb.rmapOverlay[k]; ok {
-		return v
+
+	err := wb.batch.Commit(pebble.NoSync)
+	wb.batch = nil
+	wb.count = 0
+
+	return err
+}
+
+// --- Reverse map reads via indexed batch ---
+
+// readReverseMap reads a reverse map value from the indexed batch,
+// which sees both committed data and uncommitted writes.
+func (wb *WriteBatch) readReverseMap(key []byte) []byte {
+	v, closer, err := wb.batch.Get(key)
+	if err != nil {
+		return nil
 	}
-	// Fall back to bbolt.
-	return wb.tx.Bucket(BucketReverseMap).Get(key)
+
+	// Copy value since it's only valid until closer is closed.
+	result := make([]byte, len(v))
+	copy(result, v)
+	_ = closer.Close() // closer.Close() on Pebble batch Get never returns an error
+
+	return result
 }
 
-// putReverseMap buffers a reverse map write and updates the overlay.
-func (wb *WriteBatch) putReverseMap(key, value []byte) {
-	k := string(key)
-	wb.rmapOverlay[k] = value
-	delete(wb.rmapDeleted, k)
-	wb.put(batchBucketRmap, key, value)
+// putReverseMap sets a reverse map entry. The indexed batch makes it
+// visible to subsequent readReverseMap calls in the same batch.
+func (wb *WriteBatch) putReverseMap(key, value []byte) error {
+	return wb.put(key, value)
 }
 
-// deleteReverseMap buffers a reverse map delete and updates the overlay.
-func (wb *WriteBatch) deleteReverseMap(key []byte) {
-	k := string(key)
-	wb.rmapDeleted[k] = struct{}{}
-	delete(wb.rmapOverlay, k)
-	wb.del(batchBucketRmap, key)
+// deleteReverseMap deletes a reverse map entry.
+func (wb *WriteBatch) deleteReverseMap(key []byte) error {
+	return wb.del(key)
 }
 
-// --- High-level write helpers (mirror the package-level Write* functions) ---
+// --- High-level write helpers ---
 
 // WriteAccountTxMapping records that a transaction involves an account (any role).
-func (wb *WriteBatch) WriteAccountTxMapping(kb *dal.KeyBuilder, ledger, account string, txID uint64) {
-	key := AccountTxKey(kb, ledger, account, txID)
-	wb.put(batchBucketAtxm, key, nil)
+func (wb *WriteBatch) WriteAccountTxMapping(kb *dal.KeyBuilder, ledger, account string, txID uint64) error {
+	key := AccountTxKey(kb, PrefixAccountTx, ledger, account, txID)
+
+	return wb.put(key, nil)
 }
 
 // WriteSourceAccountTxMapping records that an account is a source in a transaction.
-func (wb *WriteBatch) WriteSourceAccountTxMapping(kb *dal.KeyBuilder, ledger, account string, txID uint64) {
-	key := AccountTxKey(kb, ledger, account, txID)
-	wb.put(batchBucketSatx, key, nil)
+func (wb *WriteBatch) WriteSourceAccountTxMapping(kb *dal.KeyBuilder, ledger, account string, txID uint64) error {
+	key := AccountTxKey(kb, PrefixSourceAccountTx, ledger, account, txID)
+
+	return wb.put(key, nil)
 }
 
 // WriteDestAccountTxMapping records that an account is a destination in a transaction.
-func (wb *WriteBatch) WriteDestAccountTxMapping(kb *dal.KeyBuilder, ledger, account string, txID uint64) {
-	key := AccountTxKey(kb, ledger, account, txID)
-	wb.put(batchBucketDatx, key, nil)
+func (wb *WriteBatch) WriteDestAccountTxMapping(kb *dal.KeyBuilder, ledger, account string, txID uint64) error {
+	key := AccountTxKey(kb, PrefixDestAccountTx, ledger, account, txID)
+
+	return wb.put(key, nil)
 }
 
 // WriteMetadataIndex inserts a forward index entry in the metadata inverted index.
-func (wb *WriteBatch) WriteMetadataIndex(kb *dal.KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) {
+func (wb *WriteBatch) WriteMetadataIndex(kb *dal.KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) error {
 	key := MetadataIndexKey(kb, ledger, ns, metadataKey, encodedValue, entityID)
-	wb.put(batchBucketMidx, key, nil)
+
+	return wb.put(key, nil)
 }
 
 // DeleteMetadataIndex removes a forward index entry from the metadata inverted index.
-func (wb *WriteBatch) DeleteMetadataIndex(kb *dal.KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) {
+func (wb *WriteBatch) DeleteMetadataIndex(kb *dal.KeyBuilder, ledger, ns, metadataKey string, encodedValue, entityID []byte) error {
 	key := MetadataIndexKey(kb, ledger, ns, metadataKey, encodedValue, entityID)
-	wb.del(batchBucketMidx, key)
+
+	return wb.del(key)
 }
 
 // WriteEntityExists inserts an entry in the entity-ordered existence index.
-func (wb *WriteBatch) WriteEntityExists(kb *dal.KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) {
+func (wb *WriteBatch) WriteEntityExists(kb *dal.KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) error {
 	key := EntityExistsKey(kb, ledger, ns, metaKey, isNull, entityID)
-	wb.put(batchBucketEidx, key, nil)
+
+	return wb.put(key, nil)
 }
 
 // DeleteEntityExists removes an entry from the entity-ordered existence index.
-func (wb *WriteBatch) DeleteEntityExists(kb *dal.KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) {
+func (wb *WriteBatch) DeleteEntityExists(kb *dal.KeyBuilder, ledger, ns, metaKey string, isNull bool, entityID []byte) error {
 	key := EntityExistsKey(kb, ledger, ns, metaKey, isNull, entityID)
-	wb.del(batchBucketEidx, key)
+
+	return wb.del(key)
 }
 
 // UpdateMetadataIndex performs the atomic 4-step metadata index update:
-//  1. Read old value from reverse map (with overlay)
+//  1. Read old value from reverse map (via indexed batch)
 //  2. Delete old forward index + eidx entry (if exists)
 //  3. Insert new forward index + eidx entry
 //  4. Update reverse map with new value
@@ -249,40 +162,61 @@ func (wb *WriteBatch) UpdateMetadataIndex(
 	reverseKey []byte,
 	ledger, ns, metadataKey string,
 	newEncodedValue, entityID []byte,
-) {
-	// Step 1: Read old value from reverse map (overlay-aware).
+) error {
+	// Step 1: Read old value from reverse map (batch-aware).
 	oldEncodedValue := wb.readReverseMap(reverseKey)
 
 	// Step 2: Delete old forward index + eidx entry (if exists).
 	if oldEncodedValue != nil {
-		wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID)
-		wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID)
+		if err := wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID); err != nil {
+			return err
+		}
+
+		if err := wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
+			return err
+		}
 	}
 
 	// Step 3: Insert new forward index + eidx entry.
-	wb.WriteMetadataIndex(kb, ledger, ns, metadataKey, newEncodedValue, entityID)
-	wb.WriteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(newEncodedValue), entityID)
+	if err := wb.WriteMetadataIndex(kb, ledger, ns, metadataKey, newEncodedValue, entityID); err != nil {
+		return err
+	}
+
+	if err := wb.WriteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(newEncodedValue), entityID); err != nil {
+		return err
+	}
 
 	// Step 4: Update reverse map.
-	wb.putReverseMap(reverseKey, newEncodedValue)
+	return wb.putReverseMap(reverseKey, newEncodedValue)
 }
 
 // ReplaceMetadataIndex replaces a metadata index entry using an explicit old value
-// from the log, avoiding a reverse map read from bbolt.
+// from the log, avoiding a reverse map read.
 func (wb *WriteBatch) ReplaceMetadataIndex(
 	kb *dal.KeyBuilder,
 	reverseKey []byte,
 	ledger, ns, metadataKey string,
 	newEncodedValue, oldEncodedValue, entityID []byte,
-) {
+) error {
 	if oldEncodedValue != nil {
-		wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID)
-		wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID)
+		if err := wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID); err != nil {
+			return err
+		}
+
+		if err := wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
+			return err
+		}
 	}
 
-	wb.WriteMetadataIndex(kb, ledger, ns, metadataKey, newEncodedValue, entityID)
-	wb.WriteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(newEncodedValue), entityID)
-	wb.putReverseMap(reverseKey, newEncodedValue)
+	if err := wb.WriteMetadataIndex(kb, ledger, ns, metadataKey, newEncodedValue, entityID); err != nil {
+		return err
+	}
+
+	if err := wb.WriteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(newEncodedValue), entityID); err != nil {
+		return err
+	}
+
+	return wb.putReverseMap(reverseKey, newEncodedValue)
 }
 
 // DeleteMetadataEntryWithPrevious removes both the forward index and reverse map entries
@@ -292,41 +226,50 @@ func (wb *WriteBatch) DeleteMetadataEntryWithPrevious(
 	reverseKey []byte,
 	ledger, ns, metadataKey string,
 	oldEncodedValue, entityID []byte,
-) {
+) error {
 	if oldEncodedValue != nil {
-		wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID)
-		wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID)
+		if err := wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID); err != nil {
+			return err
+		}
+
+		if err := wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
+			return err
+		}
 	}
 
-	wb.deleteReverseMap(reverseKey)
+	return wb.deleteReverseMap(reverseKey)
 }
 
 // WriteTransactionReferenceIndex inserts an entry in the transaction reference index.
-func (wb *WriteBatch) WriteTransactionReferenceIndex(kb *dal.KeyBuilder, ledger, reference string, txID uint64) {
+func (wb *WriteBatch) WriteTransactionReferenceIndex(kb *dal.KeyBuilder, ledger, reference string, txID uint64) error {
 	key := TransactionReferenceKey(kb, ledger, reference, txID)
-	wb.put(batchBucketTxref, key, nil)
+
+	return wb.put(key, nil)
 }
 
 // WriteTransactionTimestampIndex inserts an entry in the transaction timestamp index.
-func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *dal.KeyBuilder, ledger string, timestamp, txID uint64) {
+func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *dal.KeyBuilder, ledger string, timestamp, txID uint64) error {
 	key := TransactionTimestampKey(kb, ledger, timestamp, txID)
-	wb.put(batchBucketTstmp, key, nil)
+
+	return wb.put(key, nil)
 }
 
 // WriteLedgerLogDateIndex inserts an entry in the per-ledger log date index.
-func (wb *WriteBatch) WriteLedgerLogDateIndex(kb *dal.KeyBuilder, ledger string, timestamp, logID uint64) {
+func (wb *WriteBatch) WriteLedgerLogDateIndex(kb *dal.KeyBuilder, ledger string, timestamp, logID uint64) error {
 	key := LedgerLogDateKey(kb, ledger, timestamp, logID)
-	wb.put(batchBucketLldt, key, nil)
+
+	return wb.put(key, nil)
 }
 
 // WriteLedgerLogIndex inserts an entry in the per-ledger log index.
 // The value is the global sequence, encoded as big-endian uint64.
-func (wb *WriteBatch) WriteLedgerLogIndex(kb *dal.KeyBuilder, ledger string, logID, globalSequence uint64) {
+func (wb *WriteBatch) WriteLedgerLogIndex(kb *dal.KeyBuilder, ledger string, logID, globalSequence uint64) error {
 	key := LedgerLogKey(kb, ledger, logID)
 
 	var val [8]byte
 	binary.BigEndian.PutUint64(val[:], globalSequence)
-	wb.put(batchBucketLlog, key, val[:])
+
+	return wb.put(key, val[:])
 }
 
 // DeleteMetadataEntry removes both the forward index and reverse map entries
@@ -336,16 +279,21 @@ func (wb *WriteBatch) DeleteMetadataEntry(
 	reverseKey []byte,
 	ledger, ns, metadataKey string,
 	entityID []byte,
-) {
-	// Read old value from reverse map (overlay-aware).
+) error {
+	// Read old value from reverse map (batch-aware).
 	oldEncodedValue := wb.readReverseMap(reverseKey)
 
 	// Delete forward index + eidx entry (if exists).
 	if oldEncodedValue != nil {
-		wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID)
-		wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID)
+		if err := wb.DeleteMetadataIndex(kb, ledger, ns, metadataKey, oldEncodedValue, entityID); err != nil {
+			return err
+		}
+
+		if err := wb.DeleteEntityExists(kb, ledger, ns, metadataKey, isNullEncoded(oldEncodedValue), entityID); err != nil {
+			return err
+		}
 	}
 
 	// Delete reverse map entry.
-	wb.deleteReverseMap(reverseKey)
+	return wb.deleteReverseMap(reverseKey)
 }

@@ -3,10 +3,11 @@ package indexbuilder
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"time"
 
-	bolt "go.etcd.io/bbolt"
+	"github.com/cockroachdb/pebble"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
@@ -21,12 +22,13 @@ import (
 // time to other work (e.g. backfills).
 //
 // Since index handlers now receive previous metadata values directly from
-// the log (no bbolt reads needed), processing uses a 2-pass design:
-//   - Pass 1 (no bbolt tx): iterate Pebble logs, dispatch to handlers that
-//     buffer writes into WriteBatch.
-//   - Pass 2 (bbolt tx, only if needed): Init(tx), Flush, persist progress.
+// the log (no Pebble reads needed), processing uses a 2-pass design:
+//   - Pass 1: iterate Pebble logs, dispatch to handlers that buffer writes
+//     into WriteBatch.
+//   - Pass 2 (only if needed): create an indexed batch, Init, write progress,
+//     then Flush (which commits the batch).
 //
-// When a batch produces no index writes, the bbolt transaction is skipped
+// When a batch produces no index writes, the Pebble batch is skipped
 // entirely. Progress is persisted once at the end, reducing fsyncs to O(1).
 func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error) {
 	logsCursor, err := query.ReadLogsSince(context.Background(), b.pebbleStore, cursor, dal.WithReuse(), dal.WithResetFunc(resetLogForReuse))
@@ -48,7 +50,11 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 			eof        bool
 		)
 
-		// Pass 1: iterate logs from Pebble and buffer index writes.
+		// Create an indexed batch up front so write methods have a valid target.
+		batch := b.readStore.DB().NewIndexedBatch()
+		b.wb.Init(batch)
+
+		// Iterate logs from Pebble and buffer index writes into the batch.
 		for batchCount < b.batchSize {
 			log, err := logsCursor.Next()
 			if err != nil {
@@ -57,6 +63,8 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 
 					break
 				}
+
+				_ = batch.Close()
 
 				return cursor, err
 			}
@@ -84,64 +92,57 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 
 			// Index ledger log for per-ledger listing (opt-in via log builtin index).
 			if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER) {
-				b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.GetId(), log.GetSequence())
+				if err := b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.GetId(), log.GetSequence()); err != nil {
+					_ = batch.Close()
+
+					return cursor, err
+				}
 			}
 
 			// Index log date for date range filtering (opt-in via log date builtin index).
 			if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
-				b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId())
+				if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
+					_ = batch.Close()
+
+					return cursor, err
+				}
 			}
 
-			switch p := ledgerLog.GetData().GetPayload().(type) {
-			case *commonpb.LedgerLogPayload_CreatedTransaction:
-				b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction)
-			case *commonpb.LedgerLogPayload_RevertedTransaction:
-				b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction)
-			case *commonpb.LedgerLogPayload_SavedMetadata:
-				b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
-			case *commonpb.LedgerLogPayload_DeletedMetadata:
-				b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
-			case *commonpb.LedgerLogPayload_SetMetadataFieldType:
-				// Defer the rewrite to a background task instead of scanning
-				// the reverse map inline during the hot path.
-				b.addSchemaRewriteTask(cfg, ledgerName, p.SetMetadataFieldType)
-			case *commonpb.LedgerLogPayload_CreateIndex:
-				b.handleCreateIndexLog(ledgerName, p.CreateIndex)
-			case *commonpb.LedgerLogPayload_DropIndex:
-				b.handleDropIndexLog(ledgerName, p.DropIndex)
-			case *commonpb.LedgerLogPayload_IndexReady:
-				b.handleIndexReadyLog(ledgerName, p.IndexReady)
+			if err := b.indexPayload(b.kb, cfg, ledgerName, ledgerLog.GetData().GetPayload()); err != nil {
+				_ = batch.Close()
+
+				return cursor, err
 			}
 		}
 
 		if batchCount == 0 {
+			_ = batch.Close()
+
 			break
 		}
 
-		// Pass 2: flush buffered writes to bbolt (only if there are index writes).
+		// Commit the batch if there are index writes; otherwise discard it.
 		if !b.wb.Empty() {
-			txErr := b.readStore.Update(func(tx *bolt.Tx) error {
-				b.wb.Init(tx)
+			// Write progress into the same batch before Flush commits it.
+			if err := b.readStore.WriteProgress(batch, lastSeq); err != nil {
+				_ = batch.Close()
 
-				if err := b.wb.Flush(); err != nil {
-					return err
-				}
+				return cursor, err
+			}
 
-				return b.persistProgress(tx, lastSeq)
-			})
-
-			if txErr != nil {
+			if err := b.wb.Flush(); err != nil {
 				b.logger.WithFields(map[string]any{
 					"batchSize": batchCount,
 					"lastSeq":   lastSeq,
-					"error":     txErr,
+					"error":     err,
 				}).Errorf("Error processing batch")
 
-				return cursor, txErr
+				return cursor, err
 			}
 
 			needsPersist = false
 		} else {
+			_ = batch.Close()
 			b.wb.Reset()
 			needsPersist = true
 		}
@@ -182,12 +183,51 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 	// Persist progress once if we advanced the cursor without any index writes.
 	// This reduces fsyncs from O(logs/batchSize) to O(1) when no indexes are active.
 	if needsPersist {
-		_ = b.readStore.Update(func(tx *bolt.Tx) error {
-			return b.persistProgress(tx, cursor)
-		})
+		batch := b.readStore.DB().NewIndexedBatch()
+		if err := b.readStore.WriteProgress(batch, cursor); err != nil {
+			_ = batch.Close()
+
+			return cursor, fmt.Errorf("writing progress: %w", err)
+		}
+
+		if err := batch.Commit(pebble.NoSync); err != nil {
+			_ = batch.Close()
+
+			return cursor, fmt.Errorf("committing progress: %w", err)
+		}
+
+		if err := batch.Close(); err != nil {
+			return cursor, fmt.Errorf("closing progress batch: %w", err)
+		}
 	}
 
 	return cursor, nil
+}
+
+// indexPayload dispatches a ledger log payload to the appropriate index handler.
+func (b *Builder) indexPayload(kb *dal.KeyBuilder, cfg *ledgerIndexConfig, ledgerName string, payload any) error {
+	switch p := payload.(type) {
+	case *commonpb.LedgerLogPayload_CreatedTransaction:
+		return b.indexCreatedTransaction(kb, cfg, ledgerName, p.CreatedTransaction)
+	case *commonpb.LedgerLogPayload_RevertedTransaction:
+		return b.indexRevertedTransaction(kb, cfg, ledgerName, p.RevertedTransaction)
+	case *commonpb.LedgerLogPayload_SavedMetadata:
+		return b.indexSavedMetadata(kb, cfg, ledgerName, p.SavedMetadata)
+	case *commonpb.LedgerLogPayload_DeletedMetadata:
+		return b.indexDeletedMetadata(kb, cfg, ledgerName, p.DeletedMetadata)
+	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+		// Defer the rewrite to a background task instead of scanning
+		// the reverse map inline during the hot path.
+		b.addSchemaRewriteTask(cfg, ledgerName, p.SetMetadataFieldType)
+	case *commonpb.LedgerLogPayload_CreateIndex:
+		b.handleCreateIndexLog(ledgerName, p.CreateIndex)
+	case *commonpb.LedgerLogPayload_DropIndex:
+		b.handleDropIndexLog(ledgerName, p.DropIndex)
+	case *commonpb.LedgerLogPayload_IndexReady:
+		b.handleIndexReadyLog(ledgerName, p.IndexReady)
+	}
+
+	return nil
 }
 
 // RebuildAll replays all system logs from scratch (starting at sequence 0),
@@ -201,7 +241,7 @@ func (b *Builder) RebuildAll() (uint64, error) {
 // It does NOT call WriteProgress — the caller batches that.
 // cfg is the index configuration to use for this log entry (may differ from
 // b.indexConfig during backfill, where a temporary config is used).
-func (b *Builder) indexLogEntry(tx *bolt.Tx, cfg *ledgerIndexConfig, log *commonpb.Log) error {
+func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log) error {
 	if log.GetPayload() == nil {
 		return nil
 	}
@@ -220,33 +260,39 @@ func (b *Builder) indexLogEntry(tx *bolt.Tx, cfg *ledgerIndexConfig, log *common
 
 	// Index ledger log for per-ledger listing (opt-in via log builtin index).
 	if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER) {
-		b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.GetId(), log.GetSequence())
+		if err := b.wb.WriteLedgerLogIndex(b.kb, ledgerName, ledgerLog.GetId(), log.GetSequence()); err != nil {
+			return err
+		}
 	}
 
 	// Index log date for date range filtering (opt-in via log date builtin index).
 	if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
-		b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId())
+		if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
+			return err
+		}
 	}
 
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction)
+		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction)
+		return b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
-		b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
+		return b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
-		b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
+		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
-		// Schema changes scan buckets directly with cursors — flush buffered
-		// writes first so the cursors see a consistent state.
+		// Schema changes scan the reverse map with iterators — flush buffered
+		// writes first so the iterators see a consistent state, then create a
+		// new indexed batch for the rewrite.
 		if err := b.wb.Flush(); err != nil {
 			return err
 		}
 
-		b.wb.Init(tx) // re-init after flush (Flush calls Reset)
+		batch := b.readStore.DB().NewIndexedBatch()
+		b.wb.Init(batch) // re-init with a new batch after flush
 
-		return b.indexSetMetadataFieldType(tx, cfg, b.kb, ledgerName, p.SetMetadataFieldType)
+		return b.indexSetMetadataFieldType(cfg, b.kb, ledgerName, p.SetMetadataFieldType)
 	case *commonpb.LedgerLogPayload_CreateIndex:
 		b.handleCreateIndexLog(ledgerName, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
@@ -269,9 +315,9 @@ func (b *Builder) indexCreatedTransaction(
 	cfg *ledgerIndexConfig,
 	ledger string,
 	ct *commonpb.CreatedTransaction,
-) {
+) error {
 	if ct.GetTransaction() == nil {
-		return
+		return nil
 	}
 
 	txn := ct.GetTransaction()
@@ -291,16 +337,25 @@ func (b *Builder) indexCreatedTransaction(
 
 		// Account→transaction mapping (any role)
 		if indexAny {
-			wb.WriteAccountTxMapping(kb, ledger, posting.GetSource(), txn.GetId())
-			wb.WriteAccountTxMapping(kb, ledger, posting.GetDestination(), txn.GetId())
+			if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetSource(), txn.GetId()); err != nil {
+				return err
+			}
+
+			if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetDestination(), txn.GetId()); err != nil {
+				return err
+			}
 		}
 		// Role-specific mappings
 		if indexSrc {
-			wb.WriteSourceAccountTxMapping(kb, ledger, posting.GetSource(), txn.GetId())
+			if err := wb.WriteSourceAccountTxMapping(kb, ledger, posting.GetSource(), txn.GetId()); err != nil {
+				return err
+			}
 		}
 
 		if indexDst {
-			wb.WriteDestAccountTxMapping(kb, ledger, posting.GetDestination(), txn.GetId())
+			if err := wb.WriteDestAccountTxMapping(kb, ledger, posting.GetDestination(), txn.GetId()); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -317,11 +372,14 @@ func (b *Builder) indexCreatedTransaction(
 				reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, md.GetKey())
 				newEncoded := readstore.EncodeMetadataValue(nil, md.GetValue())
 				oldEncoded := lookupPreviousAccountValue(prevAcctMeta, account, md.GetKey())
-				wb.ReplaceMetadataIndex(
+
+				if err := wb.ReplaceMetadataIndex(
 					kb, reverseKey,
 					ledger, readstore.NamespaceAccount, md.GetKey(),
 					newEncoded, oldEncoded, []byte(account),
-				)
+				); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -338,22 +396,31 @@ func (b *Builder) indexCreatedTransaction(
 
 			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txn.GetId(), md.GetKey())
 			newEncoded := readstore.EncodeMetadataValue(nil, md.GetValue())
-			wb.ReplaceMetadataIndex(
+
+			if err := wb.ReplaceMetadataIndex(
 				kb, reverseKey,
 				ledger, readstore.NamespaceTransaction, md.GetKey(),
 				newEncoded, nil, txIDBytes,
-			)
+			); err != nil {
+				return err
+			}
 		}
 	}
 
 	// Builtin indexes
 	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE) && txn.GetReference() != "" {
-		wb.WriteTransactionReferenceIndex(kb, ledger, txn.GetReference(), txn.GetId())
+		if err := wb.WriteTransactionReferenceIndex(kb, ledger, txn.GetReference(), txn.GetId()); err != nil {
+			return err
+		}
 	}
 
 	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && txn.GetTimestamp() != nil {
-		wb.WriteTransactionTimestampIndex(kb, ledger, txn.GetTimestamp().GetData(), txn.GetId())
+		if err := wb.WriteTransactionTimestampIndex(kb, ledger, txn.GetTimestamp().GetData(), txn.GetId()); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
 // indexRevertedTransaction handles RevertedTransaction logs by indexing:
@@ -365,9 +432,9 @@ func (b *Builder) indexRevertedTransaction(
 	cfg *ledgerIndexConfig,
 	ledger string,
 	rt *commonpb.RevertedTransaction,
-) {
+) error {
 	if rt.GetRevertTransaction() == nil {
-		return
+		return nil
 	}
 
 	revertTxn := rt.GetRevertTransaction()
@@ -385,16 +452,25 @@ func (b *Builder) indexRevertedTransaction(
 
 		b.accounts[posting.GetDestination()] = struct{}{}
 		if indexAny {
-			wb.WriteAccountTxMapping(kb, ledger, posting.GetSource(), revertTxn.GetId())
-			wb.WriteAccountTxMapping(kb, ledger, posting.GetDestination(), revertTxn.GetId())
+			if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetSource(), revertTxn.GetId()); err != nil {
+				return err
+			}
+
+			if err := wb.WriteAccountTxMapping(kb, ledger, posting.GetDestination(), revertTxn.GetId()); err != nil {
+				return err
+			}
 		}
 		// Role-specific mappings
 		if indexSrc {
-			wb.WriteSourceAccountTxMapping(kb, ledger, posting.GetSource(), revertTxn.GetId())
+			if err := wb.WriteSourceAccountTxMapping(kb, ledger, posting.GetSource(), revertTxn.GetId()); err != nil {
+				return err
+			}
 		}
 
 		if indexDst {
-			wb.WriteDestAccountTxMapping(kb, ledger, posting.GetDestination(), revertTxn.GetId())
+			if err := wb.WriteDestAccountTxMapping(kb, ledger, posting.GetDestination(), revertTxn.GetId()); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -410,18 +486,25 @@ func (b *Builder) indexRevertedTransaction(
 
 			reverseKey := readstore.TransactionReverseMapKey(kb, ledger, revertTxn.GetId(), md.GetKey())
 			newEncoded := readstore.EncodeMetadataValue(nil, md.GetValue())
-			wb.ReplaceMetadataIndex(
+
+			if err := wb.ReplaceMetadataIndex(
 				kb, reverseKey,
 				ledger, readstore.NamespaceTransaction, md.GetKey(),
 				newEncoded, nil, txIDBytes,
-			)
+			); err != nil {
+				return err
+			}
 		}
 	}
 
 	// Builtin indexes (no reference on revert transactions)
 	if cfg.isBuiltinIndexed(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP) && revertTxn.GetTimestamp() != nil {
-		wb.WriteTransactionTimestampIndex(kb, ledger, revertTxn.GetTimestamp().GetData(), revertTxn.GetId())
+		if err := wb.WriteTransactionTimestampIndex(kb, ledger, revertTxn.GetTimestamp().GetData(), revertTxn.GetId()); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
 // indexSavedMetadata handles SavedMetadata logs.
@@ -430,9 +513,9 @@ func (b *Builder) indexSavedMetadata(
 	cfg *ledgerIndexConfig,
 	ledger string,
 	sm *commonpb.SavedMetadata,
-) {
+) error {
 	if sm.GetTarget() == nil || sm.GetMetadata() == nil {
-		return
+		return nil
 	}
 
 	wb := b.wb
@@ -453,11 +536,14 @@ func (b *Builder) indexSavedMetadata(
 			if pv, ok := prevValues[md.GetKey()]; ok && pv != nil {
 				oldEncoded = readstore.EncodeMetadataValue(nil, pv)
 			}
-			wb.ReplaceMetadataIndex(
+
+			if err := wb.ReplaceMetadataIndex(
 				kb, reverseKey,
 				ledger, readstore.NamespaceAccount, md.GetKey(),
 				newEncoded, oldEncoded, []byte(account),
-			)
+			); err != nil {
+				return err
+			}
 		}
 	case *commonpb.Target_Transaction:
 		txID := t.Transaction.GetId()
@@ -475,13 +561,18 @@ func (b *Builder) indexSavedMetadata(
 			if pv, ok := prevValues[md.GetKey()]; ok && pv != nil {
 				oldEncoded = readstore.EncodeMetadataValue(nil, pv)
 			}
-			wb.ReplaceMetadataIndex(
+
+			if err := wb.ReplaceMetadataIndex(
 				kb, reverseKey,
 				ledger, readstore.NamespaceTransaction, md.GetKey(),
 				newEncoded, oldEncoded, txIDBytes,
-			)
+			); err != nil {
+				return err
+			}
 		}
 	}
+
+	return nil
 }
 
 // indexDeletedMetadata handles DeletedMetadata logs.
@@ -490,9 +581,9 @@ func (b *Builder) indexDeletedMetadata(
 	cfg *ledgerIndexConfig,
 	ledger string,
 	dm *commonpb.DeletedMetadata,
-) {
+) error {
 	if dm.GetTarget() == nil {
-		return
+		return nil
 	}
 
 	wb := b.wb
@@ -505,31 +596,35 @@ func (b *Builder) indexDeletedMetadata(
 	switch t := dm.GetTarget().GetTarget().(type) {
 	case *commonpb.Target_Account:
 		if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_ACCOUNT, dm.GetKey()) {
-			return
+			return nil
 		}
 
 		account := t.Account.GetAddr()
 		reverseKey := readstore.AccountReverseMapKey(kb, ledger, account, dm.GetKey())
-		wb.DeleteMetadataEntryWithPrevious(
+
+		return wb.DeleteMetadataEntryWithPrevious(
 			kb, reverseKey,
 			ledger, readstore.NamespaceAccount, dm.GetKey(),
 			oldEncoded, []byte(account),
 		)
 	case *commonpb.Target_Transaction:
 		if !cfg.isMetadataIndexed(commonpb.TargetType_TARGET_TYPE_TRANSACTION, dm.GetKey()) {
-			return
+			return nil
 		}
 
 		txID := t.Transaction.GetId()
 		txIDBytes := make([]byte, 0, 8)
 		txIDBytes = readstore.EncodeTxID(txIDBytes, txID)
 		reverseKey := readstore.TransactionReverseMapKey(kb, ledger, txID, dm.GetKey())
-		wb.DeleteMetadataEntryWithPrevious(
+
+		return wb.DeleteMetadataEntryWithPrevious(
 			kb, reverseKey,
 			ledger, readstore.NamespaceTransaction, dm.GetKey(),
 			oldEncoded, txIDBytes,
 		)
 	}
+
+	return nil
 }
 
 // indexSetMetadataFieldType handles schema change logs by re-encoding all
@@ -538,8 +633,10 @@ func (b *Builder) indexDeletedMetadata(
 // Strategy: iterate the reverse map to find all entities that have this metadata key,
 // then for each entity: delete the old forward index entry, convert the value,
 // insert the new forward index entry, and update the reverse map.
+//
+// The WriteBatch must already be initialised with an indexed batch before calling
+// this function. The caller is responsible for flushing the batch afterward.
 func (b *Builder) indexSetMetadataFieldType(
-	tx *bolt.Tx,
 	cfg *ledgerIndexConfig,
 	kb *dal.KeyBuilder,
 	ledger string,
@@ -561,15 +658,25 @@ func (b *Builder) indexSetMetadataFieldType(
 		return nil
 	}
 
-	midxBucket := tx.Bucket(readstore.BucketMetadataIndex)
-	eidxBucket := tx.Bucket(readstore.BucketEntityExists)
-	rmapBucket := tx.Bucket(readstore.BucketReverseMap)
+	// Build the reverse map prefix for scanning: [0x03][ledger\x00][ns:]
+	rmapPrefix := readstore.ReverseMapPrefix(kb, ledger, ns)
+	upper := readstore.IncrementBytes(rmapPrefix)
 
-	// Iterate the reverse map for this namespace to find all entities with the key.
-	rmapPrefix := kb.Reset().
-		PutLedgerName(ledger).
-		PutNamespace(ns).
-		Snapshot()
+	// Use a Pebble snapshot so the scan sees committed data (not the
+	// in-flight batch writes). The WriteBatch operates on an indexed batch,
+	// but iterators from the batch would see partially applied state.
+	snap := b.readStore.NewSnapshot()
+	defer func() { _ = snap.Close() }()
+
+	iter, err := snap.NewIter(&pebble.IterOptions{
+		LowerBound: rmapPrefix,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return err
+	}
+
+	defer func() { _ = iter.Close() }()
 
 	type rmapEntry struct {
 		rmapKey  []byte // full reverse map key
@@ -579,23 +686,34 @@ func (b *Builder) indexSetMetadataFieldType(
 
 	var entries []rmapEntry
 
-	rc := rmapBucket.Cursor()
-	for k, v := rc.Seek(rmapPrefix); k != nil && readstore.HasPrefix(k, rmapPrefix); k, v = rc.Next() {
-		metaKey := extractMetadataKeyFromReverseMap(k, rmapPrefix, ns)
+	for iter.First(); iter.Valid(); iter.Next() {
+		k := iter.Key()
+
+		// Strip the prefix byte (0x03) to get the portion after the prefix
+		// that the extract helpers expect.
+		suffixAfterByte := k[1:] // skip PrefixReverseMap byte
+		metaKey := extractMetadataKeyFromReverseMap(suffixAfterByte, rmapPrefix[1:], ns)
+
 		if metaKey != smft.GetKey() {
 			continue
 		}
 
+		v, verr := iter.ValueAndErr()
+		if verr != nil {
+			return verr
+		}
+
 		entries = append(entries, rmapEntry{
 			rmapKey:  cloneBytes(k),
-			entityID: extractEntityIDFromReverseMap(k, rmapPrefix, ns),
+			entityID: extractEntityIDFromReverseMap(suffixAfterByte, rmapPrefix[1:], ns),
 			oldValue: cloneBytes(v),
 		})
 	}
 
 	// For each entity: delete old forward index, convert, insert new forward index, update reverse map.
+	// ReplaceMetadataIndex handles all four steps atomically within the batch.
 	for _, e := range entries {
-		// Decode old MetadataValue
+		// Decode old MetadataValue.
 		oldMV := &commonpb.MetadataValue{}
 		if err := oldMV.UnmarshalVT(e.oldValue); err != nil {
 			b.logger.WithFields(map[string]any{
@@ -606,47 +724,19 @@ func (b *Builder) indexSetMetadataFieldType(
 			continue
 		}
 
-		// Delete old forward index entry
 		oldEncoded := readstore.EncodeMetadataValue(nil, oldMV)
 
-		oldKey := readstore.MetadataIndexKey(kb, ledger, ns, smft.GetKey(), oldEncoded, e.entityID)
-		if err := midxBucket.Delete(oldKey); err != nil {
-			return err
-		}
-
-		// Convert to new type
+		// Convert to new type.
 		newMV := commonpb.ConvertMetadataValue(oldMV, smft.GetType())
 		newEncoded := readstore.EncodeMetadataValue(nil, newMV)
 
-		// Update eidx if null status changed
-		oldIsNull := len(oldEncoded) > 0 && oldEncoded[0] == readstore.TypeTagNull
-
-		newIsNull := len(newEncoded) > 0 && newEncoded[0] == readstore.TypeTagNull
-		if oldIsNull != newIsNull {
-			oldEidxKey := readstore.EntityExistsKey(kb, ledger, ns, smft.GetKey(), oldIsNull, e.entityID)
-			if err := eidxBucket.Delete(oldEidxKey); err != nil {
-				return err
-			}
-
-			newEidxKey := readstore.EntityExistsKey(kb, ledger, ns, smft.GetKey(), newIsNull, e.entityID)
-			if err := eidxBucket.Put(newEidxKey, nil); err != nil {
-				return err
-			}
-		}
-
-		// Write new forward index entry
-		newKey := readstore.MetadataIndexKey(kb, ledger, ns, smft.GetKey(), newEncoded, e.entityID)
-		if err := midxBucket.Put(newKey, nil); err != nil {
-			return err
-		}
-
-		// Update reverse map with new value
-		newMVBytes, err := newMV.MarshalVT()
-		if err != nil {
-			return err
-		}
-
-		if err := rmapBucket.Put(e.rmapKey, newMVBytes); err != nil {
+		// ReplaceMetadataIndex deletes old midx+eidx, writes new midx+eidx,
+		// and updates the reverse map — all in one call.
+		if err := b.wb.ReplaceMetadataIndex(
+			kb, e.rmapKey,
+			ledger, ns, smft.GetKey(),
+			newEncoded, oldEncoded, e.entityID,
+		); err != nil {
 			return err
 		}
 	}

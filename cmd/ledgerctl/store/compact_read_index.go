@@ -14,8 +14,8 @@ import (
 func NewCompactReadIndexCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "compact-read-index",
-		Short: "Compact the bbolt read index",
-		Long:  "Trigger an online compaction of the local bbolt read index via gRPC",
+		Short: "Compact the Pebble read index",
+		Long:  "Trigger an online compaction of the local Pebble read index via gRPC",
 		RunE:  runCompactReadIndex,
 	}
 

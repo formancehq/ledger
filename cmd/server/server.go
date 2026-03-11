@@ -32,6 +32,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/pebblecfg"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 )
 
 var (
@@ -105,17 +107,10 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Int("raft-replay-batch-size", 0, "Number of entries per batch during spool replay (0 = use default 1000)")
 	runCmd.Flags().Bool("grpc-compression", false, "Enable gzip compression on gRPC calls")
 
-	// Pebble storage configuration flags
-	runCmd.Flags().Uint64("pebble-memtable-size", 0, "Pebble memtable size in bytes (default: 256MB)")
-	runCmd.Flags().Int("pebble-memtable-stop-writes-threshold", 0, "Pebble memtable count before stopping writes (default: 6)")
-	runCmd.Flags().Int("pebble-l0-compaction-threshold", 0, "Pebble L0 file count to trigger compaction (default: 4)")
-	runCmd.Flags().Int("pebble-l0-stop-writes-threshold", 0, "Pebble L0 file count before stopping writes (default: 16)")
-	runCmd.Flags().Int64("pebble-lbase-max-bytes", 0, "Pebble L1 max size in bytes (default: 2GB)")
-	runCmd.Flags().Int64("pebble-cache-size", 0, "Pebble block cache size in bytes (default: 1GB)")
-	runCmd.Flags().Int64("pebble-target-file-size", 0, "Pebble SST file target size in bytes (default: 256MB)")
-	runCmd.Flags().Int("pebble-bytes-per-sync", 0, "Pebble bytes written before sync during flush/compaction (default: 1MB)")
+	// Pebble storage configuration flags (common flags shared with read index)
+	registerPebbleFlags(runCmd, "pebble", dal.DefaultConfig().Config)
+	// DAL-specific Pebble flags
 	runCmd.Flags().Int("pebble-wal-bytes-per-sync", 0, "Pebble WAL bytes written before sync (default: 1MB)")
-	runCmd.Flags().Int("pebble-max-concurrent-compactions", 0, "Pebble max concurrent compactions (default: 2)")
 	runCmd.Flags().Duration("pebble-wal-min-sync-interval", 0, "Pebble minimum interval between WAL syncs (default: 0, immediate sync)")
 	runCmd.Flags().Bool("pebble-disable-wal", false, "Pebble disable WAL (WARNING: risks data loss)")
 	runCmd.Flags().Uint64("pebble-incremental-compact-threshold", 0, "New log entries before triggering incremental compaction (default: 100000)")
@@ -171,11 +166,9 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().Bool("unsafe-skip-config-validation", false, "Skip startup configuration safety checks (DANGEROUS: allows node-id/cluster-id changes)")
 
 	// Read index configuration
-	runCmd.Flags().String("read-index-dir", "", "Directory for the read index bbolt database (default: <data-dir>/read-indexes/)")
-	runCmd.Flags().Bool("read-index-no-freelist-sync", false, "Skip bbolt freelist serialization on commit (faster bulk writes, slower reopen)")
-	runCmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per bbolt write transaction (0 = default 1000)")
-	runCmd.Flags().Duration("read-index-freelist-sync-interval", 5*time.Minute, "Periodic freelist sync interval when no-freelist-sync is enabled (0 to disable)")
-	runCmd.Flags().Int("read-index-initial-mmap-size", 0, "Initial mmap size for the bbolt read index in bytes (0 = default 1 GiB)")
+	runCmd.Flags().String("read-index-dir", "", "Directory for the Pebble read index (default: <data-dir>/read-indexes/)")
+	runCmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per Pebble batch commit (0 = default 1000)")
+	registerPebbleFlags(runCmd, "read-index", readstore.DefaultConfig())
 
 	// Query profiling
 	runCmd.Flags().Duration("query-profile-threshold", 10*time.Millisecond, "Log and emit OTel attributes for queries exceeding this duration (0 to disable)")
@@ -493,11 +486,9 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 
 	// Read index configuration
 	cfg.ReadIndexConfig = bootstrap.ReadIndexConfig{
-		Dir:                  getString("read-index-dir", ""),
-		NoFreelistSync:       getBool("read-index-no-freelist-sync", false),
-		BatchSize:            getInt("read-index-batch-size", 0),
-		FreelistSyncInterval: getDuration("read-index-freelist-sync-interval", 5*time.Minute),
-		InitialMmapSize:      getInt("read-index-initial-mmap-size", 0),
+		Dir:          getString("read-index-dir", ""),
+		BatchSize:    getInt("read-index-batch-size", 0),
+		PebbleConfig: loadReadIndexPebbleConfig(cmd),
 	}
 
 	// Query profiling
@@ -640,10 +631,8 @@ func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit in
 	pebbleCache := cfg.PebbleConfig.CacheSize
 	memtables := int64(cfg.PebbleConfig.MemTableSize) * int64(cfg.PebbleConfig.MemTableStopWritesThreshold)
 
-	bboltMmapEstimate := int64(cfg.ReadIndexConfig.InitialMmapSize)
-	if bboltMmapEstimate == 0 {
-		bboltMmapEstimate = 1 << 30 // default 1 GiB
-	}
+	readIndexCache := cfg.ReadIndexConfig.PebbleConfig.CacheSize
+	readIndexMemtables := int64(cfg.ReadIndexConfig.PebbleConfig.MemTableSize) * int64(cfg.ReadIndexConfig.PebbleConfig.MemTableStopWritesThreshold)
 
 	transportBuf := int64(cfg.RaftConfig.TransportBufferSize)
 	if transportBuf == 0 {
@@ -664,11 +653,12 @@ func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit in
 
 	fsmCache := fsmCacheGenerations * rotationThreshold * fsmCacheKeysPerEntry * fsmCacheBytesPerKey
 
-	total := pebbleCache + memtables + bboltMmapEstimate + transportTotal + fsmCache + goRuntimeEstimate
+	total := pebbleCache + memtables + readIndexCache + readIndexMemtables + transportTotal + fsmCache + goRuntimeEstimate
 
 	logger.Infof(
-		"Memory estimate: pebbleCache=%dMiB memtables=%dMiB bboltMmap=%dMiB transport=%dMiB fsmCache=%dMiB goRuntime=%dMiB total=%dMiB",
-		mib(pebbleCache), mib(memtables), mib(bboltMmapEstimate),
+		"Memory estimate: pebbleCache=%dMiB memtables=%dMiB readIndexCache=%dMiB readIndexMemtables=%dMiB transport=%dMiB fsmCache=%dMiB goRuntime=%dMiB total=%dMiB",
+		mib(pebbleCache), mib(memtables),
+		mib(readIndexCache), mib(readIndexMemtables),
 		mib(transportTotal), mib(fsmCache), mib(goRuntimeEstimate), mib(total),
 	)
 
@@ -680,63 +670,103 @@ func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit in
 	}
 }
 
+// registerPebbleFlags registers the common Pebble flags with the given prefix.
+// Flag names are "{prefix}-memtable-size", "{prefix}-cache-size", etc.
+func registerPebbleFlags(cmd *cobra.Command, prefix string, defaults pebblecfg.Config) {
+	p := prefix + "-"
+	cmd.Flags().Uint64(p+"memtable-size", 0, fmt.Sprintf("Pebble memtable size in bytes (default: %dMB)", defaults.MemTableSize>>20))
+	cmd.Flags().Int(p+"memtable-stop-writes-threshold", 0, fmt.Sprintf("Pebble memtable count before stopping writes (default: %d)", defaults.MemTableStopWritesThreshold))
+	cmd.Flags().Int(p+"l0-compaction-threshold", 0, fmt.Sprintf("Pebble L0 file count to trigger compaction (default: %d)", defaults.L0CompactionThreshold))
+	cmd.Flags().Int(p+"l0-stop-writes-threshold", 0, fmt.Sprintf("Pebble L0 file count before stopping writes (default: %d)", defaults.L0StopWritesThreshold))
+	cmd.Flags().Int64(p+"lbase-max-bytes", 0, fmt.Sprintf("Pebble L1 max size in bytes (default: %dMB)", defaults.LBaseMaxBytes>>20))
+	cmd.Flags().Int64(p+"cache-size", 0, fmt.Sprintf("Pebble block cache size in bytes (default: %dMB)", defaults.CacheSize>>20))
+	cmd.Flags().Int64(p+"target-file-size", 0, fmt.Sprintf("Pebble SST file target size in bytes (default: %dMB)", defaults.TargetFileSize>>20))
+	cmd.Flags().Int(p+"bytes-per-sync", 0, fmt.Sprintf("Pebble bytes written before sync (default: %dKB)", defaults.BytesPerSync>>10))
+	cmd.Flags().Int(p+"max-concurrent-compactions", 0, fmt.Sprintf("Pebble max concurrent compactions (default: %d)", defaults.MaxConcurrentCompactions))
+}
+
+// loadBasePebbleConfig loads the common Pebble config from flags with the given prefix.
+func loadBasePebbleConfig(cmd *cobra.Command, prefix string, defaults pebblecfg.Config) pebblecfg.Config {
+	p := prefix + "-"
+
+	getUint64 := func(flag string, def uint64) uint64 {
+		if val, _ := cmd.Flags().GetUint64(flag); val != 0 {
+			return val
+		}
+
+		return def
+	}
+
+	getInt64 := func(flag string, def int64) int64 {
+		if val, _ := cmd.Flags().GetInt64(flag); val != 0 {
+			return val
+		}
+
+		return def
+	}
+
+	getInt := func(flag string, def int) int {
+		if val, _ := cmd.Flags().GetInt(flag); val != 0 {
+			return val
+		}
+
+		return def
+	}
+
+	return pebblecfg.Config{
+		MemTableSize:                getUint64(p+"memtable-size", defaults.MemTableSize),
+		MemTableStopWritesThreshold: getInt(p+"memtable-stop-writes-threshold", defaults.MemTableStopWritesThreshold),
+		L0CompactionThreshold:       getInt(p+"l0-compaction-threshold", defaults.L0CompactionThreshold),
+		L0StopWritesThreshold:       getInt(p+"l0-stop-writes-threshold", defaults.L0StopWritesThreshold),
+		LBaseMaxBytes:               getInt64(p+"lbase-max-bytes", defaults.LBaseMaxBytes),
+		CacheSize:                   getInt64(p+"cache-size", defaults.CacheSize),
+		TargetFileSize:              getInt64(p+"target-file-size", defaults.TargetFileSize),
+		BytesPerSync:                getInt(p+"bytes-per-sync", defaults.BytesPerSync),
+		MaxConcurrentCompactions:    getInt(p+"max-concurrent-compactions", defaults.MaxConcurrentCompactions),
+	}
+}
+
 // loadPebbleConfig loads Pebble configuration from command flags with defaults.
 func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 	cfg := dal.DefaultConfig()
+	cfg.Config = loadBasePebbleConfig(cmd, "pebble", cfg.Config)
 
-	// Helper to get uint64 with default
-	getUint64 := func(flagName string, defaultValue uint64) uint64 {
-		if val, _ := cmd.Flags().GetUint64(flagName); val != 0 {
+	getDuration := func(flag string, def time.Duration) time.Duration {
+		if val, _ := cmd.Flags().GetDuration(flag); val != 0 {
 			return val
 		}
 
-		return defaultValue
+		return def
 	}
 
-	// Helper to get int64 with default
-	getInt64 := func(flagName string, defaultValue int64) int64 {
-		if val, _ := cmd.Flags().GetInt64(flagName); val != 0 {
+	getInt := func(flag string, def int) int {
+		if val, _ := cmd.Flags().GetInt(flag); val != 0 {
 			return val
 		}
 
-		return defaultValue
+		return def
 	}
 
-	// Helper to get int with default
-	getInt := func(flagName string, defaultValue int) int {
-		if val, _ := cmd.Flags().GetInt(flagName); val != 0 {
+	getUint64 := func(flag string, def uint64) uint64 {
+		if val, _ := cmd.Flags().GetUint64(flag); val != 0 {
 			return val
 		}
 
-		return defaultValue
+		return def
 	}
 
-	// Helper to get duration with default
-	getDuration := func(flagName string, defaultValue time.Duration) time.Duration {
-		if val, _ := cmd.Flags().GetDuration(flagName); val != 0 {
-			return val
-		}
-
-		return defaultValue
-	}
-
-	cfg.MemTableSize = getUint64("pebble-memtable-size", cfg.MemTableSize)
-	cfg.MemTableStopWritesThreshold = getInt("pebble-memtable-stop-writes-threshold", cfg.MemTableStopWritesThreshold)
-	cfg.L0CompactionThreshold = getInt("pebble-l0-compaction-threshold", cfg.L0CompactionThreshold)
-	cfg.L0StopWritesThreshold = getInt("pebble-l0-stop-writes-threshold", cfg.L0StopWritesThreshold)
-	cfg.LBaseMaxBytes = getInt64("pebble-lbase-max-bytes", cfg.LBaseMaxBytes)
-	cfg.CacheSize = getInt64("pebble-cache-size", cfg.CacheSize)
-	cfg.TargetFileSize = getInt64("pebble-target-file-size", cfg.TargetFileSize)
-	cfg.BytesPerSync = getInt("pebble-bytes-per-sync", cfg.BytesPerSync)
 	cfg.WALBytesPerSync = getInt("pebble-wal-bytes-per-sync", cfg.WALBytesPerSync)
-	cfg.MaxConcurrentCompactions = getInt("pebble-max-concurrent-compactions", cfg.MaxConcurrentCompactions)
 	cfg.WALMinSyncInterval = getDuration("pebble-wal-min-sync-interval", cfg.WALMinSyncInterval)
 	cfg.IncrementalCompactThreshold = getUint64("pebble-incremental-compact-threshold", cfg.IncrementalCompactThreshold)
 
-	// Bool flag: explicitly check if set
 	if disableWAL, _ := cmd.Flags().GetBool("pebble-disable-wal"); disableWAL {
 		cfg.DisableWAL = true
 	}
 
 	return cfg
+}
+
+// loadReadIndexPebbleConfig loads Pebble configuration for the read index from command flags.
+func loadReadIndexPebbleConfig(cmd *cobra.Command) readstore.Config {
+	return loadBasePebbleConfig(cmd, "read-index", readstore.DefaultConfig())
 }
