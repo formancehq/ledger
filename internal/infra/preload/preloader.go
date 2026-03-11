@@ -1,7 +1,6 @@
 package preload
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/formancehq/go-libs/v3/logging"
@@ -133,172 +132,158 @@ func (p *Preloader) BuildAndValidatePreloads(needs *Needs) (*raftcmdpb.PreloadSe
 	return preloadSet, &ProposalGuard{p: p, token: token}, nil
 }
 
+// preloadResult holds the output of a single attribute-type resolution goroutine.
+type preloadResult struct {
+	preloads []*raftcmdpb.Preload
+	err      error
+}
+
 // buildPreloadsAt resolves all preload needs at the given nextIndex.
+// Each attribute type uses independent caches and loaders, so they are resolved
+// in parallel to reduce wall-clock time and shard lock hold duration.
 func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.PreloadSet, *CleanupToken, error) {
 	boundary := cache.BoundaryIndex(nextIndex, p.cache.GenerationThreshold)
 
 	token := &CleanupToken{}
+
+	// Each goroutine writes to a distinct results[slot] and a distinct token field.
+	const maxTypes = 10
+	results := make([]preloadResult, maxTypes)
+
+	var wg sync.WaitGroup
+
+	slot := 0
+
+	// launch spawns a resolve goroutine that writes to results[slot].
+	launch := func(fn func(i int)) {
+		i := slot
+		slot++
+
+		wg.Go(func() {
+			fn(i)
+		})
+	}
+
+	if len(needs.Ledgers) > 0 {
+		launch(func(i int) {
+			results[i].preloads, token.Ledgers, results[i].err = resolveStandard(
+				needs.Ledgers, nextIndex, boundary,
+				p.cache.Ledgers, p.loaders.Ledgers,
+				p.attrs.Ledger.ComputeValue, p.store,
+				buildLedgerPreload, false, nil,
+			)
+		})
+	}
+
+	if len(needs.Boundaries) > 0 {
+		launch(func(i int) {
+			results[i].preloads, token.Boundaries, results[i].err = resolveStandard(
+				needs.Boundaries, nextIndex, boundary,
+				p.cache.Boundaries, p.loaders.Boundaries,
+				p.attrs.Boundary.ComputeValue, p.store,
+				buildBoundaryPreload, false, nil,
+			)
+		})
+	}
+
+	if len(needs.Volumes) > 0 {
+		launch(func(i int) {
+			results[i].preloads, token.Volumes, results[i].err = resolveStandard(
+				needs.Volumes, nextIndex, boundary,
+				p.cache.Volumes, p.loaders.Volumes,
+				p.attrs.Volume.ComputeValue, p.store,
+				buildVolumePreload, true, nil,
+			)
+		})
+	}
+
+	if len(needs.IdempotencyKeys) > 0 {
+		launch(func(i int) {
+			results[i].preloads, token.IdempotencyKeys, results[i].err = resolveStandard(
+				needs.IdempotencyKeys, nextIndex, boundary,
+				p.cache.IdempotencyKeys, p.loaders.IdempotencyKeys,
+				p.attrs.IdempotencyKeys.ComputeValue, p.store,
+				buildIdempotencyKeyPreload, false, nil,
+			)
+		})
+	}
+
+	if len(needs.References) > 0 {
+		launch(func(i int) {
+			results[i].preloads, token.References, results[i].err = resolveStandard(
+				needs.References, nextIndex, boundary,
+				p.cache.References, p.loaders.References,
+				p.attrs.References.ComputeValue, p.store,
+				buildReferencePreload, false, nil,
+			)
+		})
+	}
+
+	if len(needs.SinkConfigs) > 0 {
+		launch(func(i int) {
+			results[i].preloads, token.SinkConfigs, results[i].err = resolveCustom(
+				needs.SinkConfigs, nextIndex, boundary,
+				p.cache.SinkConfigs, p.loaders.SinkConfigs,
+				buildSinkConfigPreload, false, nil,
+			)
+		})
+	}
+
+	if len(needs.NumscriptVersions) > 0 {
+		launch(func(i int) {
+			results[i].preloads, token.NumscriptVersions, results[i].err = resolveCustom(
+				needs.NumscriptVersions, nextIndex, boundary,
+				p.cache.NumscriptVersions, p.loaders.NumscriptVersions,
+				buildNumscriptVersionPreload, true, nil,
+			)
+		})
+	}
+
+	if len(needs.NumscriptEntries) > 0 {
+		launch(func(i int) {
+			results[i].preloads, token.NumscriptEntries, results[i].err = resolveCustom(
+				needs.NumscriptEntries, nextIndex, boundary,
+				p.cache.NumscriptEntries, p.loaders.NumscriptEntries,
+				buildNumscriptEntryPreload, true, nil,
+			)
+		})
+	}
+
+	if len(needs.Transactions) > 0 {
+		launch(func(i int) {
+			results[i].preloads, token.Transactions, results[i].err = resolveStandard(
+				needs.Transactions, nextIndex, boundary,
+				p.cache.Transactions, p.loaders.Transactions,
+				p.attrs.Transaction.ComputeValue, p.store,
+				buildTransactionStatePreload, false, nil,
+			)
+		})
+	}
+
+	if len(needs.Metadata) > 0 {
+		launch(func(i int) {
+			results[i].preloads, token.AccountMetadata, results[i].err = resolveStandard(
+				needs.Metadata, nextIndex, boundary,
+				p.cache.AccountMetadata, p.loaders.AccountMetadata,
+				p.attrs.Metadata.ComputeValue, p.store,
+				buildMetadataPreload, false, nil,
+			)
+		})
+	}
+
+	wg.Wait()
+
+	// Merge results, returning first error encountered.
 	preloadSet := &raftcmdpb.PreloadSet{
 		LastPersistedIndex: boundary,
 	}
 
-	var err error
-
-	// Ledgers
-	if len(needs.Ledgers) > 0 {
-		var preloads []*raftcmdpb.Preload
-		preloads, token.Ledgers, err = resolveStandard(
-			needs.Ledgers, nextIndex, boundary,
-			p.cache.Ledgers, p.loaders.Ledgers,
-			p.attrs.Ledger.ComputeValue, p.store,
-			buildLedgerPreload, false, token.Ledgers,
-		)
-		if err != nil {
-			return nil, token, fmt.Errorf("preloading ledgers: %w", err)
+	for i := range slot {
+		if results[i].err != nil {
+			return nil, token, results[i].err
 		}
 
-		preloadSet.Preloads = append(preloadSet.Preloads, preloads...)
-	}
-
-	// Boundaries
-	if len(needs.Boundaries) > 0 {
-		var preloads []*raftcmdpb.Preload
-		preloads, token.Boundaries, err = resolveStandard(
-			needs.Boundaries, nextIndex, boundary,
-			p.cache.Boundaries, p.loaders.Boundaries,
-			p.attrs.Boundary.ComputeValue, p.store,
-			buildBoundaryPreload, false, token.Boundaries,
-		)
-		if err != nil {
-			return nil, token, fmt.Errorf("preloading boundaries: %w", err)
-		}
-
-		preloadSet.Preloads = append(preloadSet.Preloads, preloads...)
-	}
-
-	// Volumes — always send (zero values for new accounts)
-	if len(needs.Volumes) > 0 {
-		var preloads []*raftcmdpb.Preload
-		preloads, token.Volumes, err = resolveStandard(
-			needs.Volumes, nextIndex, boundary,
-			p.cache.Volumes, p.loaders.Volumes,
-			p.attrs.Volume.ComputeValue, p.store,
-			buildVolumePreload, true, token.Volumes,
-		)
-		if err != nil {
-			return nil, token, fmt.Errorf("preloading volumes: %w", err)
-		}
-
-		preloadSet.Preloads = append(preloadSet.Preloads, preloads...)
-	}
-
-	// Idempotency keys — only send if found
-	if len(needs.IdempotencyKeys) > 0 {
-		var preloads []*raftcmdpb.Preload
-		preloads, token.IdempotencyKeys, err = resolveStandard(
-			needs.IdempotencyKeys, nextIndex, boundary,
-			p.cache.IdempotencyKeys, p.loaders.IdempotencyKeys,
-			p.attrs.IdempotencyKeys.ComputeValue, p.store,
-			buildIdempotencyKeyPreload, false, token.IdempotencyKeys,
-		)
-		if err != nil {
-			return nil, token, fmt.Errorf("preloading idempotency keys: %w", err)
-		}
-
-		preloadSet.Preloads = append(preloadSet.Preloads, preloads...)
-	}
-
-	// References — only send if found
-	if len(needs.References) > 0 {
-		var preloads []*raftcmdpb.Preload
-		preloads, token.References, err = resolveStandard(
-			needs.References, nextIndex, boundary,
-			p.cache.References, p.loaders.References,
-			p.attrs.References.ComputeValue, p.store,
-			buildReferencePreload, false, token.References,
-		)
-		if err != nil {
-			return nil, token, fmt.Errorf("preloading references: %w", err)
-		}
-
-		preloadSet.Preloads = append(preloadSet.Preloads, preloads...)
-	}
-
-	// Sink configs — custom loader, only send if found
-	if len(needs.SinkConfigs) > 0 {
-		var preloads []*raftcmdpb.Preload
-		preloads, token.SinkConfigs, err = resolveCustom(
-			needs.SinkConfigs, nextIndex, boundary,
-			p.cache.SinkConfigs, p.loaders.SinkConfigs,
-			buildSinkConfigPreload, false, token.SinkConfigs,
-		)
-		if err != nil {
-			return nil, token, fmt.Errorf("preloading sink configs: %w", err)
-		}
-
-		preloadSet.Preloads = append(preloadSet.Preloads, preloads...)
-	}
-
-	// Numscript versions — custom loader, always send (empty = "not found")
-	if len(needs.NumscriptVersions) > 0 {
-		var preloads []*raftcmdpb.Preload
-		preloads, token.NumscriptVersions, err = resolveCustom(
-			needs.NumscriptVersions, nextIndex, boundary,
-			p.cache.NumscriptVersions, p.loaders.NumscriptVersions,
-			buildNumscriptVersionPreload, true, token.NumscriptVersions,
-		)
-		if err != nil {
-			return nil, token, fmt.Errorf("preloading numscript versions: %w", err)
-		}
-
-		preloadSet.Preloads = append(preloadSet.Preloads, preloads...)
-	}
-
-	// Numscript entries — custom loader, always send (both true/false needed)
-	if len(needs.NumscriptEntries) > 0 {
-		var preloads []*raftcmdpb.Preload
-		preloads, token.NumscriptEntries, err = resolveCustom(
-			needs.NumscriptEntries, nextIndex, boundary,
-			p.cache.NumscriptEntries, p.loaders.NumscriptEntries,
-			buildNumscriptEntryPreload, true, token.NumscriptEntries,
-		)
-		if err != nil {
-			return nil, token, fmt.Errorf("preloading numscript entries: %w", err)
-		}
-
-		preloadSet.Preloads = append(preloadSet.Preloads, preloads...)
-	}
-
-	// Transactions — only send if found
-	if len(needs.Transactions) > 0 {
-		var preloads []*raftcmdpb.Preload
-		preloads, token.Transactions, err = resolveStandard(
-			needs.Transactions, nextIndex, boundary,
-			p.cache.Transactions, p.loaders.Transactions,
-			p.attrs.Transaction.ComputeValue, p.store,
-			buildTransactionStatePreload, false, token.Transactions,
-		)
-		if err != nil {
-			return nil, token, fmt.Errorf("preloading transactions: %w", err)
-		}
-
-		preloadSet.Preloads = append(preloadSet.Preloads, preloads...)
-	}
-
-	// Account metadata — only send if found
-	if len(needs.Metadata) > 0 {
-		var preloads []*raftcmdpb.Preload
-		preloads, token.AccountMetadata, err = resolveStandard(
-			needs.Metadata, nextIndex, boundary,
-			p.cache.AccountMetadata, p.loaders.AccountMetadata,
-			p.attrs.Metadata.ComputeValue, p.store,
-			buildMetadataPreload, false, token.AccountMetadata,
-		)
-		if err != nil {
-			return nil, token, fmt.Errorf("preloading account metadata: %w", err)
-		}
-
-		preloadSet.Preloads = append(preloadSet.Preloads, preloads...)
+		preloadSet.Preloads = append(preloadSet.Preloads, results[i].preloads...)
 	}
 
 	return preloadSet, token, nil

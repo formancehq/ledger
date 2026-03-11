@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/bloom"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 
@@ -183,7 +184,7 @@ func NewStore(
 
 		// 3) Table sizes: fewer small files => fewer compactions.
 		Levels: []pebble.LevelOptions{
-			{TargetFileSize: cfg.TargetFileSize},
+			{TargetFileSize: cfg.TargetFileSize, FilterPolicy: bloom.FilterPolicy(10)},
 		},
 
 		// 4) Smooth IO during flush/compactions.

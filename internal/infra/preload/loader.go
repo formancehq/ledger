@@ -8,6 +8,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
 
+const loaderShards = 256
+
 // loadedEntry stores a loaded attribute value with its boundary.
 type loadedEntry[T any] struct {
 	boundary  uint64
@@ -15,19 +17,23 @@ type loadedEntry[T any] struct {
 	baseIndex uint64 // Raft index of the Pebble entry (for point deletes)
 }
 
+// loaderShard is one of loaderShards independent partitions, each with its own
+// mutex and maps. Cache-line padding prevents false sharing between shards.
+type loaderShard[T any] struct {
+	mu      sync.RWMutex
+	loading map[attributes.U128]chan struct{}
+	loaded  map[attributes.U128]*loadedEntry[T]
+	_       [64]byte // cache-line padding
+}
+
 // AttributeLoader coordinates loading of attributes to prevent duplicate loads from store.
 // It uses per-key locks to ensure only one goroutine loads a given attribute at a time.
 // T is the type of the loaded value.
 //
-// Uses RWMutex for optimization:
-// - RLock for reading cached values (fast path, allows concurrent reads)
-// - Lock for modifications (adding to loading/loaded, deleting).
+// Internally sharded into 256 partitions keyed by U128.Lo() to reduce contention
+// on the RWMutex under high concurrency.
 type AttributeLoader[T any] struct {
-	mu sync.RWMutex
-	// loading tracks keys currently being loaded (value is a channel closed when done)
-	loading map[attributes.U128]chan struct{}
-	// loaded tracks keys that have been loaded with their boundary and value
-	loaded map[attributes.U128]*loadedEntry[T]
+	shards [loaderShards]loaderShard[T]
 }
 
 // LoadResult represents the result of loading an attribute.
@@ -39,10 +45,19 @@ type LoadResult[T any] struct {
 
 // NewAttributeLoader creates a new AttributeLoader for the given type.
 func NewAttributeLoader[T any]() *AttributeLoader[T] {
-	return &AttributeLoader[T]{
-		loading: make(map[attributes.U128]chan struct{}),
-		loaded:  make(map[attributes.U128]*loadedEntry[T]),
+	al := &AttributeLoader[T]{}
+	for i := range al.shards {
+		al.shards[i].loading = make(map[attributes.U128]chan struct{})
+		al.shards[i].loaded = make(map[attributes.U128]*loadedEntry[T])
 	}
+
+	return al
+}
+
+// shard returns the shard for the given key. U128 keys are BLAKE3 hashes,
+// so Lo() is uniformly distributed and a simple bit-mask suffices.
+func (al *AttributeLoader[T]) shard(key attributes.U128) *loaderShard[T] {
+	return &al.shards[key.Lo()&(loaderShards-1)]
 }
 
 // LoadOrWait loads an attribute value or waits for an ongoing load.
@@ -52,47 +67,49 @@ func NewAttributeLoader[T any]() *AttributeLoader[T] {
 // It returns (value, baseIndex, error) where baseIndex is the raft index of the
 // Pebble entry (used for point deletes instead of range tombstones).
 func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, loadFn func() (T, uint64, error)) (*LoadResult[T], error) {
-	// Fast path: check if already loaded using read lock
-	al.mu.RLock()
+	s := al.shard(key)
 
-	if cached, ok := al.loaded[key]; ok && cached.boundary >= boundary {
-		al.mu.RUnlock()
+	// Fast path: check if already loaded using read lock
+	s.mu.RLock()
+
+	if cached, ok := s.loaded[key]; ok && cached.boundary >= boundary {
+		s.mu.RUnlock()
 
 		return &LoadResult[T]{Value: cached.value, BaseIndex: cached.baseIndex, FromLoad: false}, nil
 	}
 	// Check if someone is already loading this key
-	waitCh, isLoading := al.loading[key]
-	al.mu.RUnlock()
+	waitCh, isLoading := s.loading[key]
+	s.mu.RUnlock()
 
 	if isLoading {
 		// Wait for the ongoing load to complete
 		<-waitCh
 		// Re-check with read lock
-		al.mu.RLock()
+		s.mu.RLock()
 
-		if cached, ok := al.loaded[key]; ok && cached.boundary >= boundary {
-			al.mu.RUnlock()
+		if cached, ok := s.loaded[key]; ok && cached.boundary >= boundary {
+			s.mu.RUnlock()
 
 			return &LoadResult[T]{Value: cached.value, BaseIndex: cached.baseIndex, FromLoad: false}, nil
 		}
 
-		al.mu.RUnlock()
+		s.mu.RUnlock()
 		// Load failed or boundary mismatch - fall through to try loading ourselves
 	}
 
 	// Slow path: need to load - acquire write lock
-	al.mu.Lock()
+	s.mu.Lock()
 
 	// Double-check after acquiring write lock (another goroutine might have loaded it)
-	if cached, ok := al.loaded[key]; ok && cached.boundary >= boundary {
-		al.mu.Unlock()
+	if cached, ok := s.loaded[key]; ok && cached.boundary >= boundary {
+		s.mu.Unlock()
 
 		return &LoadResult[T]{Value: cached.value, BaseIndex: cached.baseIndex, FromLoad: false}, nil
 	}
 
 	// Check again if someone started loading while we were waiting for the lock
-	if waitCh, ok := al.loading[key]; ok {
-		al.mu.Unlock()
+	if waitCh, ok := s.loading[key]; ok {
+		s.mu.Unlock()
 		// Wait and retry from the beginning
 		<-waitCh
 
@@ -101,22 +118,22 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 
 	// We're the one who will load - mark as loading
 	waitCh = make(chan struct{})
-	al.loading[key] = waitCh
-	al.mu.Unlock()
+	s.loading[key] = waitCh
+	s.mu.Unlock()
 
 	// Perform the actual load (outside of lock)
 	value, baseIndex, err := loadFn()
 
 	// Update state with write lock
-	al.mu.Lock()
-	delete(al.loading, key)
+	s.mu.Lock()
+	delete(s.loading, key)
 
 	if err == nil {
-		al.loaded[key] = &loadedEntry[T]{boundary: boundary, value: value, baseIndex: baseIndex}
+		s.loaded[key] = &loadedEntry[T]{boundary: boundary, value: value, baseIndex: baseIndex}
 	}
 
 	close(waitCh)
-	al.mu.Unlock()
+	s.mu.Unlock()
 
 	if err != nil {
 		var zero T
@@ -130,10 +147,12 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary uint64, l
 // Release removes the loaded entry for the given key.
 // This should be called after the command has been applied and the cache updated.
 func (al *AttributeLoader[T]) Release(key attributes.U128) {
-	al.mu.Lock()
-	defer al.mu.Unlock()
+	s := al.shard(key)
 
-	delete(al.loaded, key)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.loaded, key)
 }
 
 // Loaders groups all attribute loaders by type.

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/bloom"
 
 	"github.com/formancehq/go-libs/v3/logging"
 )
@@ -72,6 +73,7 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 			{
 				Compression:    pebble.SnappyCompression,
 				TargetFileSize: cfg.TargetFileSize,
+				FilterPolicy:   bloom.FilterPolicy(10),
 			},
 		},
 	}

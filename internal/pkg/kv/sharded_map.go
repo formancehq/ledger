@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 )
 
-const numShards = 64
+const numShards = 256
 
 // shard is a single partition of a ShardedMap, holding its own lock and map.
 type shard[K comparable, V any] struct {
