@@ -27,21 +27,6 @@ func (e *ErrInvalidEntryIndex) Error() string {
 	return fmt.Sprintf("invalid index, got %d, expected %d", e.ReceivedIndex, e.ExpectedIndex)
 }
 
-// ErrGenerationMismatch is returned when preloaded data targets a cache generation
-// that does not match either gen0 or gen1.
-type ErrGenerationMismatch struct {
-	LastPersistedIndex uint64
-	Gen0BaseIndex      uint64
-	Gen1BaseIndex      uint64
-}
-
-func (e *ErrGenerationMismatch) Error() string {
-	return fmt.Sprintf(
-		"invalid preload, generation mismatch: lastPersistedIndex=%d, gen0=%d, gen1=%d",
-		e.LastPersistedIndex, e.Gen0BaseIndex, e.Gen1BaseIndex,
-	)
-}
-
 // ErrDoubleEntryInvariantViolated is returned when the sum of input deltas
 // does not equal the sum of output deltas, indicating a broken accounting invariant.
 type ErrDoubleEntryInvariantViolated struct {

@@ -13,8 +13,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-const maxPreloadRetries = 3
-
 // Preloader manages the shared preload infrastructure used by both admission
 // and mirror. It uses the Node's IndexTracker for accurate Raft index prediction
 // and the Loaders for deduplication.
@@ -85,69 +83,51 @@ func New(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.Attribute
 // lock with a validated generation boundary. The returned ProposalGuard holds
 // both the proposal lock and the loader cleanup token.
 //
-// Preload building (the slow part: store reads, loader dedup) happens outside
-// the lock. Only the final boundary validation + lock acquisition is serialized,
-// keeping the critical section to the fast marshal→Propose path.
+// Strategy: one optimistic build without the lock, then validate. If the cache
+// generation boundary shifted during the build (common under high throughput
+// near a rotation threshold), re-build once under the lock where the boundary
+// is guaranteed stable (no concurrent Propose can advance the tracker).
 //
 // On error, the caller must call guard.ReleaseLoaders() if guard is non-nil
 // (partial preload built before the error).
 func (p *Preloader) BuildAndValidatePreloads(needs *Needs) (*raftcmdpb.PreloadSet, *ProposalGuard, error) {
-	for attempt := range maxPreloadRetries {
-		nextIndexBefore := p.tracker.Next()
-		genBefore := p.cache.CurrentGeneration()
+	// --- Optimistic path (no lock) ---
+	nextIndexBefore := p.tracker.Next()
+	genBefore := p.cache.CurrentGeneration()
 
-		preloadSet, token, err := p.buildPreloadsAt(nextIndexBefore, needs)
-		if err != nil {
-			guard := &ProposalGuard{p: p, token: token}
-
-			return nil, guard, err
-		}
-
-		// Acquire the proposal lock and re-validate the boundary.
-		// Under this lock, no other preloader can proceed to Propose.
-		// The IndexTracker may still advance from non-preloader proposals,
-		// but the boundary check below detects that.
-		p.proposeMu.Lock()
-
-		nextIndexAfter := p.tracker.Next()
-		boundaryBefore := cache.BoundaryIndex(nextIndexBefore, p.cache.GenerationThreshold)
-		boundaryAfter := cache.BoundaryIndex(nextIndexAfter, p.cache.GenerationThreshold)
-		genAfter := p.cache.CurrentGeneration()
-
-		// Validate both the predicted boundary and the actual cache generation.
-		// The IndexTracker now tracks all Raft consumers, so boundary shifts
-		// are rare but still possible during high concurrency.
-		if boundaryBefore == boundaryAfter && genBefore == genAfter {
-			return preloadSet, &ProposalGuard{p: p, token: token}, nil
-		}
-
-		// Generation changed — release lock and retry.
-		p.proposeMu.Unlock()
-		token.Release(p.loaders)
-		p.logger.WithFields(map[string]any{
-			"attempt":         attempt + 1,
-			"max_retries":     maxPreloadRetries,
-			"boundary_before": boundaryBefore,
-			"boundary_after":  boundaryAfter,
-			"gen_before":      genBefore,
-			"gen_after":       genAfter,
-		}).Infof("Preload validation failed: boundary or generation shifted, retrying")
+	preloadSet, token, err := p.buildPreloadsAt(nextIndexBefore, needs)
+	if err != nil {
+		return nil, &ProposalGuard{p: p, token: token}, err
 	}
-
-	// Exhausted retries — build under lock as last resort.
-	p.logger.WithFields(map[string]any{
-		"max_retries": maxPreloadRetries,
-	}).Errorf("Preload validation exhausted retries — GenerationThreshold may be too low for current load")
 
 	p.proposeMu.Lock()
 
-	preloadSet, token, err := p.buildPreloadsAt(p.tracker.Next(), needs)
+	nextIndexAfter := p.tracker.Next()
+	boundaryBefore := cache.BoundaryIndex(nextIndexBefore, p.cache.GenerationThreshold)
+	boundaryAfter := cache.BoundaryIndex(nextIndexAfter, p.cache.GenerationThreshold)
+	genAfter := p.cache.CurrentGeneration()
+
+	if boundaryBefore == boundaryAfter && genBefore == genAfter {
+		return preloadSet, &ProposalGuard{p: p, token: token}, nil
+	}
+
+	// --- Boundary shifted: re-build under lock ---
+	// Under proposeMu, no other preloader can advance the tracker via Propose,
+	// so the boundary is stable for the duration of the build.
+	token.Release(p.loaders)
+
+	p.logger.WithFields(map[string]any{
+		"boundary_before": boundaryBefore,
+		"boundary_after":  boundaryAfter,
+		"gen_before":      genBefore,
+		"gen_after":       genAfter,
+	}).Debugf("Preload boundary shifted, rebuilding under lock")
+
+	preloadSet, token, err = p.buildPreloadsAt(p.tracker.Next(), needs)
 	if err != nil {
 		p.proposeMu.Unlock()
 
-		guard := &ProposalGuard{p: p, token: token}
-
-		return nil, guard, err
+		return nil, &ProposalGuard{p: p, token: token}, err
 	}
 
 	return preloadSet, &ProposalGuard{p: p, token: token}, nil

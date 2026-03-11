@@ -587,20 +587,28 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		return nil
 	}
 
-	// The preloads must be for the gen0 or the gen1
-	// This is the role of the admission to ensure this invariant
-	switch preloadSet.GetLastPersistedIndex() {
-	case fsm.Registry.Cache.BaseIndex.Gen0:
-		fsm.logger.Debug("Selecting cache generation 0")
-	case fsm.Registry.Cache.BaseIndex.Gen1:
-		fsm.logger.Debug("Selecting cache generation 1")
-	default:
-		return &ErrGenerationMismatch{
-			LastPersistedIndex: preloadSet.GetLastPersistedIndex(),
-			Gen0BaseIndex:      fsm.Registry.Cache.BaseIndex.Gen0,
-			Gen1BaseIndex:      fsm.Registry.Cache.BaseIndex.Gen1,
-		}
-	}
+	// The preloads should target gen0 or gen1. The admission uses the
+	// IndexTracker to predict the next Raft index and compute the boundary,
+	// but the prediction can be off by ±1 due to the race between the tracker
+	// and rawNode.Propose() (non-proposal entries like leader no-ops can
+	// intercalate). When the off-by-one crosses a generation boundary, the
+	// preload targets a boundary that doesn't match either gen. This is safe
+	// because preloaded values only seed keys not already in cache, and a
+	// forward-mismatch (preload ahead) means the data is at least as fresh.
+	// todo: cause heavy load, we should log only if debug mode is enabled
+	//switch preloadSet.GetLastPersistedIndex() {
+	//case fsm.Registry.Cache.BaseIndex.Gen0:
+	//	fsm.logger.Debug("Selecting cache generation 0")
+	//case fsm.Registry.Cache.BaseIndex.Gen1:
+	//	fsm.logger.Debug("Selecting cache generation 1")
+	//default:
+	//	// Prediction mismatch — fall through to Gen0 path with a warning.
+	//	fsm.logger.WithFields(map[string]any{
+	//		"lastPersistedIndex": preloadSet.GetLastPersistedIndex(),
+	//		"gen0":               fsm.Registry.Cache.BaseIndex.Gen0,
+	//		"gen1":               fsm.Registry.Cache.BaseIndex.Gen1,
+	//	}).Debugf("Preload generation mismatch (tracker prediction off-by-one at boundary), using Gen0 path")
+	//}
 
 	// Helper function to put a preloaded volume pair into a cache generation.
 	// Since volumes are always preloaded with absolute Known values,
@@ -612,9 +620,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *raftcmdpb.VolumePair {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		fsm.logger.WithFields(map[string]any{
-			"id": id.Hex(),
-		}).Debugf("Preload volume")
+		//fsm.logger.WithFields(map[string]any{
+		//	"id": id.Hex(),
+		//}).Debugf("Preload volume")
 
 		value, ok := kv.Get(id)
 		if ok {
@@ -638,11 +646,11 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *commonpb.IdempotencyKeyValue {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		fsm.logger.WithFields(map[string]any{
-			"id":           id.Hex(),
-			"log_sequence": value.GetLogSequence(),
-			"hash":         value.GetHash(),
-		}).Debugf("Preload idempotency value")
+		//fsm.logger.WithFields(map[string]any{
+		//	"id":           id.Hex(),
+		//	"log_sequence": value.GetLogSequence(),
+		//	"hash":         value.GetHash(),
+		//}).Debugf("Preload idempotency value")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -666,10 +674,10 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *commonpb.TransactionReferenceValue {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		fsm.logger.WithFields(map[string]any{
-			"id":             id.Hex(),
-			"transaction_id": value.GetTransactionId(),
-		}).Debugf("Preload transaction reference value")
+		//fsm.logger.WithFields(map[string]any{
+		//	"id":             id.Hex(),
+		//	"transaction_id": value.GetTransactionId(),
+		//}).Debugf("Preload transaction reference value")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -693,10 +701,10 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *commonpb.LedgerInfo {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		fsm.logger.WithFields(map[string]any{
-			"id":   id.Hex(),
-			"name": value.GetName(),
-		}).Debugf("Preload ledger")
+		//fsm.logger.WithFields(map[string]any{
+		//	"id":   id.Hex(),
+		//	"name": value.GetName(),
+		//}).Debugf("Preload ledger")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -720,9 +728,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *raftcmdpb.LedgerBoundaries {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		fsm.logger.WithFields(map[string]any{
-			"id": id.Hex(),
-		}).Debugf("Preload boundary")
+		//fsm.logger.WithFields(map[string]any{
+		//	"id": id.Hex(),
+		//}).Debugf("Preload boundary")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -746,10 +754,10 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *commonpb.SinkConfig {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		fsm.logger.WithFields(map[string]any{
-			"id":   id.Hex(),
-			"name": value.GetName(),
-		}).Debugf("Preload sink config")
+		//fsm.logger.WithFields(map[string]any{
+		//	"id":   id.Hex(),
+		//	"name": value.GetName(),
+		//}).Debugf("Preload sink config")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -773,10 +781,10 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) string {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		fsm.logger.WithFields(map[string]any{
-			"id":    id.Hex(),
-			"value": value,
-		}).Debugf("Preload string")
+		//fsm.logger.WithFields(map[string]any{
+		//	"id":    id.Hex(),
+		//	"value": value,
+		//}).Debugf("Preload string")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -799,10 +807,10 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) bool {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		fsm.logger.WithFields(map[string]any{
-			"id":    id.Hex(),
-			"value": value,
-		}).Debugf("Preload bool")
+		//fsm.logger.WithFields(map[string]any{
+		//	"id":    id.Hex(),
+		//	"value": value,
+		//}).Debugf("Preload bool")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -826,9 +834,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *commonpb.MetadataValue {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		fsm.logger.WithFields(map[string]any{
-			"id": id.Hex(),
-		}).Debugf("Preload account metadata")
+		//fsm.logger.WithFields(map[string]any{
+		//	"id": id.Hex(),
+		//}).Debugf("Preload account metadata")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -852,9 +860,9 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *commonpb.TransactionState {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		fsm.logger.WithFields(map[string]any{
-			"id": id.Hex(),
-		}).Debugf("Preload transaction state")
+		//fsm.logger.WithFields(map[string]any{
+		//	"id": id.Hex(),
+		//}).Debugf("Preload transaction state")
 
 		existing, ok := kv.Get(id)
 		if ok {

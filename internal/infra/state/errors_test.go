@@ -32,21 +32,6 @@ func TestErrInvalidEntryIndex(t *testing.T) {
 	require.Contains(t, msg, "invalid index")
 }
 
-func TestErrGenerationMismatch(t *testing.T) {
-	t.Parallel()
-
-	err := &ErrGenerationMismatch{
-		LastPersistedIndex: 42,
-		Gen0BaseIndex:      10,
-		Gen1BaseIndex:      20,
-	}
-	msg := err.Error()
-	require.Contains(t, msg, "42")
-	require.Contains(t, msg, "10")
-	require.Contains(t, msg, "20")
-	require.Contains(t, msg, "generation mismatch")
-}
-
 func TestErrDoubleEntryInvariantViolated(t *testing.T) {
 	t.Parallel()
 
