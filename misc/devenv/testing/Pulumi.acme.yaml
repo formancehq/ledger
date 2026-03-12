@@ -10,7 +10,7 @@ config:
     secure: AAABAJ3B2eAqD5EnvOguPxH6zQOBWNP6mtI2wsldW94lNCoP3kEHyfj635Aw6DgG4OZRfH8waV0VDqhimYiqVQGSs2E3u54g
   # Optional components
   ledger-testing:k6operator-enabled: "true"
-  ledger-testing:benchmarkOperator-enabled: "false"
+  ledger-testing:benchmarkOperator-enabled: "true"
   ledger-testing:k6operator:
     file: values/acme/k6operator.yaml
   ledger-testing:benchmarkOperator:
