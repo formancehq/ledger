@@ -508,6 +508,7 @@ message GenerationSnapshot {
   repeated TransactionReferenceAttributeEntry references = 7;
   repeated TransactionStateAttributeEntry transactions = 8;
   repeated NumscriptParsedAttributeEntry numscript_parsed = 9;
+  repeated IdempotencyKeyAttributeEntry idempotency_keys = 10;
 }
 
 // NumscriptParsedAttributeEntry stores a numscript text in cache snapshots.
@@ -551,6 +552,12 @@ message TransactionReferenceAttributeEntry {
 message TransactionStateAttributeEntry {
   AttributeID id = 1;
   common.TransactionState state = 2;
+}
+
+// IdempotencyKeyAttributeEntry stores a single entry from KeyStore[*IdempotencyKeyValue]
+message IdempotencyKeyAttributeEntry {
+  AttributeID id = 1;
+  common.IdempotencyKeyValue value = 2;
 }
 
 // ReversionBitsetEntry stores a packed bitset of reverted transaction IDs for a single ledger.

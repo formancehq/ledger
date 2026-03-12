@@ -607,7 +607,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	// switch preloadSet.GetLastPersistedIndex() {
 	// case fsm.Registry.Cache.BaseIndex.Gen0:
 	//	fsm.logger.Debug("Selecting cache generation 0")
-	//case fsm.Registry.Cache.BaseIndex.Gen1:
+	// case fsm.Registry.Cache.BaseIndex.Gen1:
 	//	fsm.logger.Debug("Selecting cache generation 1")
 	//default:
 	//	// Prediction mismatch — fall through to Gen0 path with a warning.
@@ -1328,6 +1328,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		referenceStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
 		transactionStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
 		numscriptParsedStore kv.KV[attributes.U128, attributes.Entry[string]]
+		idempotencyStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.IdempotencyKeyValue]]
 	)
 
 	if genIndex == 0 {
@@ -1340,6 +1341,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		referenceStore = cache.References.Gen0()
 		transactionStore = cache.Transactions.Gen0()
 		numscriptParsedStore = cache.NumscriptParsed.Gen0()
+		idempotencyStore = cache.IdempotencyKeys.Gen0()
 	} else {
 		baseIndex = cache.BaseIndex.Gen1
 		volumeStore = cache.Volumes.Gen1()
@@ -1350,6 +1352,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		referenceStore = cache.References.Gen1()
 		transactionStore = cache.Transactions.Gen1()
 		numscriptParsedStore = cache.NumscriptParsed.Gen1()
+		idempotencyStore = cache.IdempotencyKeys.Gen1()
 	}
 
 	snapshot := &raftcmdpb.GenerationSnapshot{
@@ -1361,6 +1364,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		References:      make([]*raftcmdpb.TransactionReferenceAttributeEntry, 0, referenceStore.Size()),
 		Transactions:    make([]*raftcmdpb.TransactionStateAttributeEntry, 0, transactionStore.Size()),
 		NumscriptParsed: make([]*raftcmdpb.NumscriptParsedAttributeEntry, 0, numscriptParsedStore.Size()),
+		IdempotencyKeys: make([]*raftcmdpb.IdempotencyKeyAttributeEntry, 0, idempotencyStore.Size()),
 	}
 
 	// Serialize Volumes KeyStore
@@ -1449,6 +1453,18 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 			Plain: entry.Data,
 		}
 		snapshot.NumscriptParsed = append(snapshot.NumscriptParsed, ksEntry)
+	}
+
+	// Serialize IdempotencyKeys KeyStore
+	for u128, entry := range idempotencyStore.Iter() {
+		ksEntry := &raftcmdpb.IdempotencyKeyAttributeEntry{
+			Id: &raftcmdpb.AttributeID{
+				Id:  u128[:],
+				Tag: entry.Tag,
+			},
+			Value: entry.Data,
+		}
+		snapshot.IdempotencyKeys = append(snapshot.IdempotencyKeys, ksEntry)
 	}
 
 	return snapshot
@@ -1635,6 +1651,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		referenceStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
 		transactionStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
 		numscriptParsedStore kv.KV[attributes.U128, attributes.Entry[string]]
+		idempotencyStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.IdempotencyKeyValue]]
 	)
 
 	if genIndex == 0 {
@@ -1647,6 +1664,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		referenceStore = cache.References.Gen0()
 		transactionStore = cache.Transactions.Gen0()
 		numscriptParsedStore = cache.NumscriptParsed.Gen0()
+		idempotencyStore = cache.IdempotencyKeys.Gen0()
 	} else {
 		cache.BaseIndex.Gen1 = snapshot.GetBaseIndex()
 		volumeStore = cache.Volumes.Gen1()
@@ -1657,6 +1675,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		referenceStore = cache.References.Gen1()
 		transactionStore = cache.Transactions.Gen1()
 		numscriptParsedStore = cache.NumscriptParsed.Gen1()
+		idempotencyStore = cache.IdempotencyKeys.Gen1()
 	}
 
 	// Deserialize Volumes KeyStore
@@ -1723,6 +1742,15 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		numscriptParsedStore.Put(u128, attributes.Entry[string]{
 			Tag:  ksEntry.GetId().GetTag(),
 			Data: ksEntry.GetPlain(),
+		})
+	}
+
+	// Deserialize IdempotencyKeys KeyStore
+	for _, ksEntry := range snapshot.GetIdempotencyKeys() {
+		u128 := attributes.U128FromBytes(ksEntry.GetId().GetId())
+		idempotencyStore.Put(u128, attributes.Entry[*commonpb.IdempotencyKeyValue]{
+			Tag:  ksEntry.GetId().GetTag(),
+			Data: ksEntry.GetValue(),
 		})
 	}
 }
