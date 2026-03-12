@@ -166,6 +166,7 @@ type Loaders struct {
 	AccountMetadata   *AttributeLoader[*commonpb.MetadataValue]
 	NumscriptVersions *AttributeLoader[string]
 	NumscriptEntries  *AttributeLoader[bool]
+	NumscriptParsed   *AttributeLoader[string]
 	Transactions      *AttributeLoader[*commonpb.TransactionState]
 }
 
@@ -181,6 +182,7 @@ func NewLoaders() *Loaders {
 		AccountMetadata:   NewAttributeLoader[*commonpb.MetadataValue](),
 		NumscriptVersions: NewAttributeLoader[string](),
 		NumscriptEntries:  NewAttributeLoader[bool](),
+		NumscriptParsed:   NewAttributeLoader[string](),
 		Transactions:      NewAttributeLoader[*commonpb.TransactionState](),
 	}
 }
@@ -197,6 +199,7 @@ type CleanupToken struct {
 	AccountMetadata   []attributes.U128
 	NumscriptVersions []attributes.U128
 	NumscriptEntries  []attributes.U128
+	NumscriptParsed   []attributes.U128
 	Transactions      []attributes.U128
 }
 
@@ -236,6 +239,10 @@ func (t *CleanupToken) Release(loaders *Loaders) {
 
 	for _, key := range t.NumscriptEntries {
 		loaders.NumscriptEntries.Release(key)
+	}
+
+	for _, key := range t.NumscriptParsed {
+		loaders.NumscriptParsed.Release(key)
 	}
 
 	for _, key := range t.Transactions {

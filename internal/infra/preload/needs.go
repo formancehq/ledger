@@ -22,6 +22,7 @@ type Needs struct {
 	SinkConfigs       map[domain.SinkConfigKey]func() (*commonpb.SinkConfig, error)
 	NumscriptVersions map[domain.NumscriptVersionKey]func() (string, error)
 	NumscriptEntries  map[domain.NumscriptEntryKey]func() (bool, error)
+	NumscriptParsed   map[domain.NumscriptContentKey]func() (string, error)
 }
 
 // NewNeeds creates a Needs with all maps initialized.

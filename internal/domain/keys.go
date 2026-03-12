@@ -265,6 +265,15 @@ func (k NumscriptEntryKey) Bytes() []byte {
 	return ret
 }
 
+// NumscriptContentKey uniquely identifies a numscript by content hash for the dual-gen parse cache.
+type NumscriptContentKey struct {
+	Hash [32]byte
+}
+
+func (k NumscriptContentKey) Bytes() []byte {
+	return k.Hash[:]
+}
+
 const (
 	// NumscriptVersionTagSemver is the tag byte for semver-encoded numscript entries.
 	NumscriptVersionTagSemver byte = 0x00

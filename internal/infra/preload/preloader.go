@@ -186,7 +186,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 	token := &CleanupToken{}
 
 	// Each goroutine writes to a distinct results[slot] and a distinct token field.
-	const maxTypes = 10
+	const maxTypes = 11
 	results := make([]preloadResult, maxTypes)
 
 	var wg sync.WaitGroup
@@ -284,6 +284,16 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				needs.NumscriptEntries, nextIndex, boundary,
 				p.cache.NumscriptEntries, p.loaders.NumscriptEntries,
 				buildNumscriptEntryPreload, true, nil,
+			)
+		})
+	}
+
+	if len(needs.NumscriptParsed) > 0 {
+		launch(func(i int) {
+			results[i].preloads, token.NumscriptParsed, results[i].err = resolveCustom(
+				needs.NumscriptParsed, nextIndex, boundary,
+				p.cache.NumscriptParsed, p.loaders.NumscriptParsed,
+				buildNumscriptParsedPreload, true, nil,
 			)
 		})
 	}

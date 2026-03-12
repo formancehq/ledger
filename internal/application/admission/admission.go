@@ -694,9 +694,11 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				if applyData.CreateTransaction.GetScript() != nil &&
 					applyData.CreateTransaction.GetScript().GetPlain() != "" &&
 					len(applyData.CreateTransaction.GetPostings()) == 0 {
+					scriptText := applyData.CreateTransaction.GetScript().GetPlain()
+
 					discovered, err := numscript.DiscoverNumscriptDependencies(
 						a.numscriptCache,
-						applyData.CreateTransaction.GetScript().GetPlain(),
+						scriptText,
 						applyData.CreateTransaction.GetScript().GetVars(),
 						ledgerName,
 					)
@@ -723,6 +725,20 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 							p.Metadata[key] = struct{}{}
 						}
 					}
+
+					// Add script text to NumscriptParsed needs for dual-gen cache
+					scriptHash := numscript.HashScript(scriptText)
+					contentKey := domain.NumscriptContentKey{Hash: scriptHash}
+
+					if p.NumscriptParsed == nil {
+						p.NumscriptParsed = make(map[domain.NumscriptContentKey]func() (string, error))
+					}
+
+					p.NumscriptParsed[contentKey] = func() (string, error) { return scriptText, nil }
+
+					// Set content_hash and clear plain (FSM resolves from dual-gen cache)
+					applyData.CreateTransaction.GetScript().ContentHash = scriptHash[:]
+					applyData.CreateTransaction.GetScript().Plain = ""
 
 					continue
 				}

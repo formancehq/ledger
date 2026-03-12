@@ -72,6 +72,7 @@ message Transaction {
 message Script {
   string plain = 1;
   map<string, string> vars = 2;
+  bytes content_hash = 3;  // BLAKE3 hash of the script content (32 bytes)
 }
 
 // ============================================================================

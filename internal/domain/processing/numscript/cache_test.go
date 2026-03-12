@@ -115,16 +115,16 @@ func TestNumscriptCache_GetOrParse_ParseErrorCached(t *testing.T) {
 func TestHashScript_Deterministic(t *testing.T) {
 	t.Parallel()
 
-	h1 := hashScript("hello world")
-	h2 := hashScript("hello world")
+	h1 := HashScript("hello world")
+	h2 := HashScript("hello world")
 	require.Equal(t, h1, h2)
 }
 
 func TestHashScript_Different(t *testing.T) {
 	t.Parallel()
 
-	h1 := hashScript("hello")
-	h2 := hashScript("world")
+	h1 := HashScript("hello")
+	h2 := HashScript("world")
 	require.NotEqual(t, h1, h2)
 }
 

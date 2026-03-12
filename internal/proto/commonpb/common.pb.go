@@ -1398,6 +1398,7 @@ type Script struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Plain         string                 `protobuf:"bytes,1,opt,name=plain,proto3" json:"plain,omitempty"`
 	Vars          map[string]string      `protobuf:"bytes,2,rep,name=vars,proto3" json:"vars,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ContentHash   []byte                 `protobuf:"bytes,3,opt,name=content_hash,json=contentHash,proto3" json:"content_hash,omitempty"` // BLAKE3 hash of the script content (32 bytes)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1442,6 +1443,13 @@ func (x *Script) GetPlain() string {
 func (x *Script) GetVars() map[string]string {
 	if x != nil {
 		return x.Vars
+	}
+	return nil
+}
+
+func (x *Script) GetContentHash() []byte {
+	if x != nil {
+		return x.ContentHash
 	}
 	return nil
 }
@@ -9006,10 +9014,11 @@ const file_common_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\b \x01(\v2\x11.common.TimestampR\tupdatedAt\x122\n" +
 	"\vreverted_at\x18\t \x01(\v2\x11.common.TimestampR\n" +
-	"revertedAt\"\x85\x01\n" +
+	"revertedAt\"\xa8\x01\n" +
 	"\x06Script\x12\x14\n" +
 	"\x05plain\x18\x01 \x01(\tR\x05plain\x12,\n" +
-	"\x04vars\x18\x02 \x03(\v2\x18.common.Script.VarsEntryR\x04vars\x1a7\n" +
+	"\x04vars\x18\x02 \x03(\v2\x18.common.Script.VarsEntryR\x04vars\x12!\n" +
+	"\fcontent_hash\x18\x03 \x01(\fR\vcontentHash\x1a7\n" +
 	"\tVarsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"7\n" +

@@ -56,7 +56,7 @@ func NewNumscriptCache(maxSize int) *NumscriptCache {
 
 // hashScript computes the blake3 hash of the script content.
 // Lock-free: allocates a hasher per call (blake3.New is cheap).
-func hashScript(script string) [32]byte {
+func HashScript(script string) [32]byte {
 	h := blake3.New()
 	_, _ = h.WriteString(script)
 
@@ -72,7 +72,7 @@ func hashScript(script string) [32]byte {
 // On cache miss the script is parsed outside the lock, then inserted with a write lock.
 // LRU ordering is approximate: read hits do not reorder to avoid write contention.
 func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, error) {
-	hash := hashScript(script)
+	hash := HashScript(script)
 
 	// Fast path: read lock for cache hits (no contention between readers).
 	c.mu.RLock()

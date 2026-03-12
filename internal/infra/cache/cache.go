@@ -168,6 +168,7 @@ type Cache struct {
 	SinkConfigs         *AttributeCache[*commonpb.SinkConfig]
 	NumscriptVersions   *AttributeCache[string]
 	NumscriptEntries    *AttributeCache[bool]
+	NumscriptParsed     *AttributeCache[string]
 	BaseIndex           DualGen[uint64]
 	GenerationThreshold uint64
 
@@ -195,6 +196,7 @@ func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
 	c.SinkConfigs.Rotate()
 	c.NumscriptVersions.Rotate()
 	c.NumscriptEntries.Rotate()
+	c.NumscriptParsed.Rotate()
 	c.BaseIndex.Rotate(index)
 	c.currentGeneration.Store(newGeneration)
 
@@ -218,6 +220,7 @@ func (c *Cache) Reset() {
 	c.SinkConfigs.Reset()
 	c.NumscriptVersions.Reset()
 	c.NumscriptEntries.Reset()
+	c.NumscriptParsed.Reset()
 	c.BaseIndex = newDualGen[uint64](0, 0)
 	c.currentGeneration.Store(0)
 }
@@ -296,6 +299,8 @@ func (c *Cache) initMetrics(m metric.Meter) error {
 				metric.WithAttributes(attribute.String("type", "numscript_versions")))
 			o.ObserveInt64(sizeGauge, int64(c.NumscriptEntries.Size()),
 				metric.WithAttributes(attribute.String("type", "numscript_entries")))
+			o.ObserveInt64(sizeGauge, int64(c.NumscriptParsed.Size()),
+				metric.WithAttributes(attribute.String("type", "numscript_parsed")))
 
 			return nil
 		},
@@ -365,6 +370,7 @@ func New(generationThreshold uint64, m metric.Meter) (*Cache, error) {
 	ret.SinkConfigs = newAttributeCache[*commonpb.SinkConfig](ret, "sink_configs")
 	ret.NumscriptVersions = newAttributeCache[string](ret, "numscript_versions")
 	ret.NumscriptEntries = newAttributeCache[bool](ret, "numscript_entries")
+	ret.NumscriptParsed = newAttributeCache[string](ret, "numscript_parsed")
 
 	err := ret.initMetrics(m)
 	if err != nil {

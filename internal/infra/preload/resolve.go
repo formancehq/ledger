@@ -228,6 +228,17 @@ func buildMetadataPreload(id *raftcmdpb.AttributeID, value *commonpb.MetadataVal
 	}
 }
 
+func buildNumscriptParsedPreload(id *raftcmdpb.AttributeID, plain string) *raftcmdpb.Preload {
+	return &raftcmdpb.Preload{
+		Type: &raftcmdpb.Preload_NumscriptParsed{
+			NumscriptParsed: &raftcmdpb.PreloadNumscriptParsed{
+				Id:    id,
+				Plain: plain,
+			},
+		},
+	}
+}
+
 func buildTransactionStatePreload(id *raftcmdpb.AttributeID, value *commonpb.TransactionState) *raftcmdpb.Preload {
 	return &raftcmdpb.Preload{
 		Type: &raftcmdpb.Preload_TransactionState{

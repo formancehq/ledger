@@ -399,6 +399,7 @@ message Preload {
      PreloadNumscriptVersion numscript_version = 8;
      PreloadNumscriptEntry numscript_entry = 9;
      PreloadTransactionState transaction_state = 10;
+     PreloadNumscriptParsed numscript_parsed = 11;
   }
 }
 
@@ -454,6 +455,11 @@ message PreloadTransactionState {
   common.TransactionState state = 2;
 }
 
+message PreloadNumscriptParsed {
+  AttributeID id = 1;
+  string plain = 2;  // Full script text
+}
+
 // ============================================================================
 // Memory Snapshot (for Raft snapshots)
 // ============================================================================
@@ -501,6 +507,13 @@ message GenerationSnapshot {
   repeated BoundaryAttributeEntry boundaries = 6;
   repeated TransactionReferenceAttributeEntry references = 7;
   repeated TransactionStateAttributeEntry transactions = 8;
+  repeated NumscriptParsedAttributeEntry numscript_parsed = 9;
+}
+
+// NumscriptParsedAttributeEntry stores a numscript text in cache snapshots.
+message NumscriptParsedAttributeEntry {
+  AttributeID id = 1;
+  string plain = 2;
 }
 
 // VolumeAttributeSnapshotEntry stores a merged Input+Output volume pair in cache snapshots.

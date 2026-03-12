@@ -605,7 +605,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	// forward-mismatch (preload ahead) means the data is at least as fresh.
 	// todo: cause heavy load, we should log only if debug mode is enabled
 	// switch preloadSet.GetLastPersistedIndex() {
-	//case fsm.Registry.Cache.BaseIndex.Gen0:
+	// case fsm.Registry.Cache.BaseIndex.Gen0:
 	//	fsm.logger.Debug("Selecting cache generation 0")
 	//case fsm.Registry.Cache.BaseIndex.Gen1:
 	//	fsm.logger.Debug("Selecting cache generation 1")
@@ -630,7 +630,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 
 		// fsm.logger.WithFields(map[string]any{
 		//	"id": id.Hex(),
-		//}).Debugf("Preload volume")
+		// }).Debugf("Preload volume")
 
 		value, ok := kv.Get(id)
 		if ok {
@@ -658,7 +658,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		//	"id":           id.Hex(),
 		//	"log_sequence": value.GetLogSequence(),
 		//	"hash":         value.GetHash(),
-		//}).Debugf("Preload idempotency value")
+		// }).Debugf("Preload idempotency value")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -685,7 +685,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		// fsm.logger.WithFields(map[string]any{
 		//	"id":             id.Hex(),
 		//	"transaction_id": value.GetTransactionId(),
-		//}).Debugf("Preload transaction reference value")
+		// }).Debugf("Preload transaction reference value")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -712,7 +712,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		// fsm.logger.WithFields(map[string]any{
 		//	"id":   id.Hex(),
 		//	"name": value.GetName(),
-		//}).Debugf("Preload ledger")
+		// }).Debugf("Preload ledger")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -738,7 +738,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 
 		// fsm.logger.WithFields(map[string]any{
 		//	"id": id.Hex(),
-		//}).Debugf("Preload boundary")
+		// }).Debugf("Preload boundary")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -765,7 +765,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		// fsm.logger.WithFields(map[string]any{
 		//	"id":   id.Hex(),
 		//	"name": value.GetName(),
-		//}).Debugf("Preload sink config")
+		// }).Debugf("Preload sink config")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -792,7 +792,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		// fsm.logger.WithFields(map[string]any{
 		//	"id":    id.Hex(),
 		//	"value": value,
-		//}).Debugf("Preload string")
+		// }).Debugf("Preload string")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -818,7 +818,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		// fsm.logger.WithFields(map[string]any{
 		//	"id":    id.Hex(),
 		//	"value": value,
-		//}).Debugf("Preload bool")
+		// }).Debugf("Preload bool")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -844,7 +844,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 
 		// fsm.logger.WithFields(map[string]any{
 		//	"id": id.Hex(),
-		//}).Debugf("Preload account metadata")
+		// }).Debugf("Preload account metadata")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -870,7 +870,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 
 		// fsm.logger.WithFields(map[string]any{
 		//	"id": id.Hex(),
-		//}).Debugf("Preload transaction state")
+		// }).Debugf("Preload transaction state")
 
 		existing, ok := kv.Get(id)
 		if ok {
@@ -976,6 +976,14 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				putInCacheTransactionState(fsm.Registry.Cache.Transactions.Gen0(), preloadType.TransactionState.GetId(), value)
 			} else {
 				putInCacheTransactionState(fsm.Registry.Cache.Transactions.Gen0(), preloadType.TransactionState.GetId(), preloadType.TransactionState.GetState())
+			}
+
+		case *raftcmdpb.Preload_NumscriptParsed:
+			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
+				value := putInCacheString(fsm.Registry.Cache.NumscriptParsed.Gen1(), preloadType.NumscriptParsed.GetId(), preloadType.NumscriptParsed.GetPlain())
+				putInCacheString(fsm.Registry.Cache.NumscriptParsed.Gen0(), preloadType.NumscriptParsed.GetId(), value)
+			} else {
+				putInCacheString(fsm.Registry.Cache.NumscriptParsed.Gen0(), preloadType.NumscriptParsed.GetId(), preloadType.NumscriptParsed.GetPlain())
 			}
 		}
 	}
@@ -1108,6 +1116,24 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		err = StoreNextPeriodID(batch, fsm.Periods.NextPeriodID())
 		if err != nil {
 			return nil, fmt.Errorf("storing next period ID: %w", err)
+		}
+	}
+
+	// Resolve numscript text from dual-gen cache for hash-only scripts
+	for _, order := range proposal.GetOrders() {
+		if apply, ok := order.GetType().(*raftcmdpb.Order_Apply); ok {
+			if ct := apply.Apply.GetCreateTransaction(); ct != nil {
+				if script := ct.GetScript(); script != nil &&
+					len(script.GetContentHash()) > 0 && script.GetPlain() == "" {
+					id, _ := attributes.MakeKey(attributes.DefaultSeeds, script.GetContentHash())
+					entry, ok := fsm.Registry.Cache.NumscriptParsed.Get(id)
+					if !ok {
+						return nil, fmt.Errorf("numscript text not in cache for hash %x", script.GetContentHash())
+					}
+
+					script.Plain = entry.Data
+				}
+			}
 		}
 	}
 
@@ -1294,13 +1320,14 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 	}
 
 	var (
-		baseIndex        uint64
-		volumeStore      kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
-		metadataStore    kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
-		ledgerStore      kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
-		boundaryStore    kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
-		referenceStore   kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
-		transactionStore kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
+		baseIndex            uint64
+		volumeStore          kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
+		metadataStore        kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
+		ledgerStore          kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
+		boundaryStore        kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
+		referenceStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
+		transactionStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
+		numscriptParsedStore kv.KV[attributes.U128, attributes.Entry[string]]
 	)
 
 	if genIndex == 0 {
@@ -1312,6 +1339,7 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		boundaryStore = cache.Boundaries.Gen0()
 		referenceStore = cache.References.Gen0()
 		transactionStore = cache.Transactions.Gen0()
+		numscriptParsedStore = cache.NumscriptParsed.Gen0()
 	} else {
 		baseIndex = cache.BaseIndex.Gen1
 		volumeStore = cache.Volumes.Gen1()
@@ -1321,16 +1349,18 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 		boundaryStore = cache.Boundaries.Gen1()
 		referenceStore = cache.References.Gen1()
 		transactionStore = cache.Transactions.Gen1()
+		numscriptParsedStore = cache.NumscriptParsed.Gen1()
 	}
 
 	snapshot := &raftcmdpb.GenerationSnapshot{
-		BaseIndex:    baseIndex,
-		Volumes:      make([]*raftcmdpb.VolumeAttributeSnapshotEntry, 0, volumeStore.Size()),
-		Metadata:     make([]*raftcmdpb.MetadataAttributeEntry, 0, metadataStore.Size()),
-		Ledgers:      make([]*raftcmdpb.LedgerAttributeEntry, 0, ledgerStore.Size()),
-		Boundaries:   make([]*raftcmdpb.BoundaryAttributeEntry, 0, boundaryStore.Size()),
-		References:   make([]*raftcmdpb.TransactionReferenceAttributeEntry, 0, referenceStore.Size()),
-		Transactions: make([]*raftcmdpb.TransactionStateAttributeEntry, 0, transactionStore.Size()),
+		BaseIndex:       baseIndex,
+		Volumes:         make([]*raftcmdpb.VolumeAttributeSnapshotEntry, 0, volumeStore.Size()),
+		Metadata:        make([]*raftcmdpb.MetadataAttributeEntry, 0, metadataStore.Size()),
+		Ledgers:         make([]*raftcmdpb.LedgerAttributeEntry, 0, ledgerStore.Size()),
+		Boundaries:      make([]*raftcmdpb.BoundaryAttributeEntry, 0, boundaryStore.Size()),
+		References:      make([]*raftcmdpb.TransactionReferenceAttributeEntry, 0, referenceStore.Size()),
+		Transactions:    make([]*raftcmdpb.TransactionStateAttributeEntry, 0, transactionStore.Size()),
+		NumscriptParsed: make([]*raftcmdpb.NumscriptParsedAttributeEntry, 0, numscriptParsedStore.Size()),
 	}
 
 	// Serialize Volumes KeyStore
@@ -1407,6 +1437,18 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 			State: entry.Data,
 		}
 		snapshot.Transactions = append(snapshot.Transactions, ksEntry)
+	}
+
+	// Serialize NumscriptParsed KeyStore
+	for u128, entry := range numscriptParsedStore.Iter() {
+		ksEntry := &raftcmdpb.NumscriptParsedAttributeEntry{
+			Id: &raftcmdpb.AttributeID{
+				Id:  u128[:],
+				Tag: entry.Tag,
+			},
+			Plain: entry.Data,
+		}
+		snapshot.NumscriptParsed = append(snapshot.NumscriptParsed, ksEntry)
 	}
 
 	return snapshot
@@ -1586,12 +1628,13 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 	}
 
 	var (
-		volumeStore      kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
-		metadataStore    kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
-		ledgerStore      kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
-		boundaryStore    kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
-		referenceStore   kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
-		transactionStore kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
+		volumeStore          kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
+		metadataStore        kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
+		ledgerStore          kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
+		boundaryStore        kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
+		referenceStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
+		transactionStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
+		numscriptParsedStore kv.KV[attributes.U128, attributes.Entry[string]]
 	)
 
 	if genIndex == 0 {
@@ -1603,6 +1646,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		boundaryStore = cache.Boundaries.Gen0()
 		referenceStore = cache.References.Gen0()
 		transactionStore = cache.Transactions.Gen0()
+		numscriptParsedStore = cache.NumscriptParsed.Gen0()
 	} else {
 		cache.BaseIndex.Gen1 = snapshot.GetBaseIndex()
 		volumeStore = cache.Volumes.Gen1()
@@ -1612,6 +1656,7 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		boundaryStore = cache.Boundaries.Gen1()
 		referenceStore = cache.References.Gen1()
 		transactionStore = cache.Transactions.Gen1()
+		numscriptParsedStore = cache.NumscriptParsed.Gen1()
 	}
 
 	// Deserialize Volumes KeyStore
@@ -1669,6 +1714,15 @@ func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.Generati
 		transactionStore.Put(u128, attributes.Entry[*commonpb.TransactionState]{
 			Tag:  ksEntry.GetId().GetTag(),
 			Data: ksEntry.GetState(),
+		})
+	}
+
+	// Deserialize NumscriptParsed KeyStore
+	for _, ksEntry := range snapshot.GetNumscriptParsed() {
+		u128 := attributes.U128FromBytes(ksEntry.GetId().GetId())
+		numscriptParsedStore.Put(u128, attributes.Entry[string]{
+			Tag:  ksEntry.GetId().GetTag(),
+			Data: ksEntry.GetPlain(),
 		})
 	}
 }
