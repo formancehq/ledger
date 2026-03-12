@@ -82,11 +82,11 @@ test-integration:
 
 # Run end-to-end tests (light build)
 test-e2e:
-    go test ./... -tags e2e -timeout 20m
+    go test -tags e2e ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
 
 # Run end-to-end tests with all optional features
 test-e2e-full:
-    go test ./... -tags "e2e,{{all_tags}}" -timeout 20m
+    go test -tags "e2e,{{all_tags}}" ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
 
 # Release (official, triggered by tag)
 release:
