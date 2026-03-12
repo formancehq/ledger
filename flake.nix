@@ -37,7 +37,7 @@
           f { pkgs = pkgs; pkgs-unstable = pkgs-unstable; system = system; }
         );
 
-      speakeasyVersion = "1.563.0";
+      speakeasyVersion = "1.752.0";
       speakeasyPlatforms = {
         "x86_64-linux"   = "linux_amd64";
         "aarch64-linux"  = "linux_arm64";
@@ -45,10 +45,10 @@
         "aarch64-darwin" = "darwin_arm64";
       };
       speakeasyHashes = {
-        "x86_64-linux"   = "632559a6bdc765ef42b81b8404fd0a3e5023919a0bb70ff7e40a8cc259545afd";
-        "aarch64-linux"  = "c74c502df3a05a2d69e6b282886df23354a319d0510d2c1a21fcc124b7ad00ef";
-        "x86_64-darwin"  = "8814be1fdd4eaf6dcc7fb251ede5693e1d3d4c8e03986f8d37bfd59e049698b9";
-        "aarch64-darwin" = "12c20fa485de4725c9730cb2e8936cab4b0961d0a956e9f4c45534371f2a6148";
+        "x86_64-linux"   = "2f8c225f832da0e88ae890079447c544a783e734bbdca9de2322fe7bbf298039";
+        "aarch64-linux"  = "c252d06ad1d399181ebee719356d41415665ced2296b4b3a1e41a9f01f1c251e";
+        "x86_64-darwin"  = "b85f152a60ba92d1c71fcd805a8b6ff3b6d590bb47e28b9958a31d88cf44dd3f";
+        "aarch64-darwin" = "c5ea9025ffcbffd4fbf59864beb761e2098803b48871056881f7961b696d2928";
       };
 
     in
