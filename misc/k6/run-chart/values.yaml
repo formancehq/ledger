@@ -4,47 +4,18 @@ spec:
   parallelism: 1
 metadata:
   namespace: ""
+
+# Name of the ledger to create/delete via gRPC (optional).
+ledgerName: ""
+
+# LedgerService spec (passthrough to LedgerService CR).
+ledgerService: {}
+
 runner:
-  env:
-    GRPC_ADDR: "ledger-exp.ledger-exp.svc.cluster.local:8888"
-    LEDGER_NAME: "ledger0"
-    stages: ""
-  otlp:
-    endpoint: "otel-opentelemetry-collector.ledger-exp.svc.cluster.local:4317"
+  env: {}
   # nodeSelector applied to k6 runner pods
-  # Example:
-  #   nodeSelector:
-  #     kubernetes.io/os: linux
-  #     nodepool: k6-runners
   nodeSelector: {}
   # tolerations applied to k6 runner pods
-  # Example:
-  #   tolerations:
-  #     - effect: NoSchedule
-  #       key: dedicated
-  #       operator: Equal
-  #       value: k6-runners
   tolerations: []
+
 archiveData: ""
-
-grpcurl:
-  version: "1.9.3"
-  arch: "x86_64"
-
-ledgerJob:
-  enabled: true
-  image:
-    repository: alpine
-    tag: "3.21"
-  backoffLimit: 2
-
-ledgerCleanup:
-  enabled: true
-  watchImage:
-    repository: alpine/kubectl
-    tag: "1.35.0"
-  grpcImage:
-    repository: alpine
-    tag: "3.21"
-  pollInterval: 5
-  ttlSecondsAfterFinished: 300

@@ -1,11 +1,8 @@
-{{- if .Values.rbac.create }}
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "benchmark-operator.fullname" . }}
-  labels:
-    app.kubernetes.io/name: {{ include "benchmark-operator.name" . }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
+  name: benchmark-operator
 rules:
 - apiGroups:
   - ""
@@ -67,12 +64,3 @@ rules:
   - get
   - list
   - watch
-# -- Leader election
-- apiGroups: ["coordination.k8s.io"]
-  resources: ["leases"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-# -- Event recording
-- apiGroups: [""]
-  resources: ["events"]
-  verbs: ["create", "patch"]
-{{- end }}

@@ -1,4 +1,4 @@
-package operator
+package controller
 
 import (
 	"bytes"
@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -78,11 +77,9 @@ func (g *GrafanaClient) ProcessTestRun(ctx context.Context, obj *unstructured.Un
 		return SnapshotResult{}, errors.New("no dashboards found")
 	}
 
-	log.Printf("found %d dashboards for snapshot processing", len(dashboards))
-
 	datasourceUID, err := g.resolveDatasourceUID(ctx)
 	if err != nil {
-		log.Printf("warning: failed to resolve datasource uid: %v", err)
+		// Non-fatal: we can still create snapshots without per-node breakdown.
 	}
 
 	snapshotTime := time.Now().UTC().Format("20060102-150405")
@@ -107,26 +104,19 @@ func (g *GrafanaClient) ProcessTestRun(ctx context.Context, obj *unstructured.Un
 	}
 
 	for _, dash := range dashboards {
-		dashboard, title, err := g.fetchDashboard(ctx, dash.UID)
-		if err != nil {
-			log.Printf("failed to fetch dashboard %s: %v", dash.UID, err)
-
+		dashboard, title, fetchErr := g.fetchDashboard(ctx, dash.UID)
+		if fetchErr != nil {
 			continue
 		}
 
 		setDashboardTime(dashboard, from, to)
 
-		nodeValues := []string{}
+		var nodeValues []string
 		if datasourceUID != "" {
-			values, err := g.fetchNodeValues(ctx, datasourceUID)
-			if err != nil {
-				log.Printf("warning: failed to fetch node values: %v", err)
-			} else {
+			values, nodeErr := g.fetchNodeValues(ctx, datasourceUID)
+			if nodeErr == nil {
 				nodeValues = values
 			}
-		}
-		if len(nodeValues) > 0 {
-			log.Printf("node values detected: %s", strings.Join(nodeValues, ","))
 		}
 
 		if g.cfg.SnapshotPerNode && len(nodeValues) > 0 {
@@ -134,10 +124,8 @@ func (g *GrafanaClient) ProcessTestRun(ctx context.Context, obj *unstructured.Un
 				variantDashboard := cloneMap(dashboard)
 				updateNodeVariable(variantDashboard, nodeValues, node)
 				snapshotName := fmt.Sprintf("%s-%s-%s-node-%s-%s", prefix, name, sanitize(title), node, snapshotTime)
-				snapshot, err := g.createSnapshot(ctx, snapshotName, variantDashboard)
-				if err != nil {
-					log.Printf("failed to create snapshot for node %s: %v", node, err)
-
+				snapshot, snapErr := g.createSnapshot(ctx, snapshotName, variantDashboard)
+				if snapErr != nil {
 					continue
 				}
 				liveURL := g.liveDashboardURL(dash.UID, fromMs, toMs, node)
@@ -159,10 +147,8 @@ func (g *GrafanaClient) ProcessTestRun(ctx context.Context, obj *unstructured.Un
 			updateNodeVariable(dashboard, nodeValues, "")
 		}
 		snapshotName := fmt.Sprintf("%s-%s-%s-%s", prefix, name, sanitize(title), snapshotTime)
-		snapshot, err := g.createSnapshot(ctx, snapshotName, dashboard)
-		if err != nil {
-			log.Printf("failed to create snapshot for %s: %v", dash.UID, err)
-
+		snapshot, snapErr := g.createSnapshot(ctx, snapshotName, dashboard)
+		if snapErr != nil {
 			continue
 		}
 		liveURL := g.liveDashboardURL(dash.UID, fromMs, toMs, "")
@@ -435,7 +421,7 @@ func (g *GrafanaClient) createSnapshot(ctx context.Context, name string, dashboa
 }
 
 func (g *GrafanaClient) DeleteSnapshot(ctx context.Context, deleteURL, deleteKey, snapshotKey string) error {
-	candidates := []string{}
+	var candidates []string
 	if strings.TrimSpace(deleteURL) != "" {
 		candidates = append(candidates, g.resolveURL(deleteURL))
 	}
@@ -518,16 +504,11 @@ func (g *GrafanaClient) resolveURL(path string) string {
 
 func (g *GrafanaClient) doRequest(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
 	base := strings.TrimRight(g.cfg.GrafanaURL, "/")
-	url := base + path
+	reqURL := base + path
 
-	var reader *bytes.Reader
-	if body != nil {
-		reader = bytes.NewReader(body)
-	} else {
-		reader = bytes.NewReader(nil)
-	}
+	reader := bytes.NewReader(body)
 
-	req, err := http.NewRequestWithContext(ctx, method, url, reader)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, reader)
 	if err != nil {
 		return nil, err
 	}
@@ -558,7 +539,7 @@ func getCompletionTime(obj *unstructured.Unstructured) time.Time {
 				continue
 			}
 			if timestamp := getString(condition, "lastTransitionTime"); timestamp != "" {
-				if parsed, err := time.Parse(time.RFC3339, timestamp); err == nil {
+				if parsed, parseErr := time.Parse(time.RFC3339, timestamp); parseErr == nil {
 					return parsed
 				}
 			}
@@ -661,13 +642,13 @@ func sanitize(value string) string {
 }
 
 func cloneMap(source map[string]any) map[string]any {
-	bytes, err := json.Marshal(source)
+	data, err := json.Marshal(source)
 	if err != nil {
 		return source
 	}
 
 	var cloned map[string]any
-	if err := json.Unmarshal(bytes, &cloned); err != nil {
+	if err := json.Unmarshal(data, &cloned); err != nil {
 		return source
 	}
 

@@ -1,6 +1,6 @@
 apiVersion: v2
 name: k6-run
-description: A Helm chart for k6 TestRun resources
+description: A Helm chart for Benchmark resources (LedgerService + k6 TestRun)
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "1.0"

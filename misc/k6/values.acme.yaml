@@ -1,32 +1,82 @@
-# ACME values for k6 TestRun
-# Usage: just k6-run <script>.js values.acme.yaml
-grpcurl:
-  arch: "arm64"
+# ACME values for Benchmark CR via run-chart
+# Usage: helm install acme-world-to-bank ./run-chart -f values.acme.yaml
+
+script: world_to_bank
+
+metadata:
+  name: acme-world-to-bank
+  namespace: ledger-v3
+
+ledgerName: ledger0
 
 spec:
   parallelism: 1
   separate: true
   arguments: "-o opentelemetry"
-metadata:
-  namespace: ledger-v3
+
+ledgerService:
+  defaultsRef: default
+  replicas: 1
+  resources:
+    requests:
+      cpu: "4"
+      memory: 12Gi
+    limits:
+      cpu: "4"
+      memory: 12Gi
+  config:
+    auth:
+      enabled: false
+    pebble:
+      memTableSize: 268435456
+      memTableStopWritesThreshold: 4
+      l0CompactionThreshold: 4
+      l0StopWritesThreshold: 256
+      lBaseMaxBytes: 4294967296
+      cacheSize: 4294967296
+      targetFileSize: 268435456
+      bytesPerSync: 4194304
+      walBytesPerSync: 4194304
+      maxConcurrentCompactions: 4
+      walMinSyncInterval: "0"
+      disableWAL: false
+    raft:
+      snapshotThreshold: 5000
+      compactionMargin: 5000
+      proposeQueueCapacity: 4096
+      maxSizePerMsg: 4194304
+      maxInflightMsgs: 256
+      electionTick: 10
+      heartbeatTick: 1
+      tickInterval: 100ms
+    cache:
+      rotationThreshold: 5000
+  networkPolicy:
+    enabled: true
+    additionalEgress:
+      - to:
+          - ipBlock:
+              cidr: 10.70.6.90/32
+        ports:
+          - port: 5432
+            protocol: TCP
+  ingressGrpc:
+    enabled: true
+  persistence:
+    retentionPolicy:
+      whenDeleted: Delete
+    data:
+      size: 500Gi
+    wal:
+      size: 15Gi
 
 runner:
   env:
-    GRPC_ADDR: "benchmark0.ledger-v3.svc.cluster.local:8888"
     LEDGER_NAME: "ledger0"
     K6_STAGES: "1m:100,5m:100,1m:0"
     BULK_SIZE: "50"
     BULK_ATOMIC: "true"
-    # OTLP configuration
     K6_OTEL_GRPC_EXPORTER_ENDPOINT: "opentelemetry-collector.monitoring.svc.cluster.local:4317"
     K6_OTEL_GRPC_EXPORTER_INSECURE: "true"
     K6_OTEL_METRICS_FLUSH_INTERVAL: "5s"
     K6_OTEL_SERVICE_NAME: "k6-loadtest"
-#  nodeSelector:
-#    formance.com/dedicated: benchmark
-#  tolerations:
-#    - effect: NoSchedule
-#      key: formance.com/dedicated
-#      operator: Equal
-#      value: benchmark
-#

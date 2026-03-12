@@ -1,4 +1,4 @@
-package operator
+package controller
 
 import (
 	"os"
@@ -16,7 +16,6 @@ type Config struct {
 	GrafanaURL         string
 	GrafanaUser        string
 	GrafanaPassword    string
-	WatchNamespace     string
 	SnapshotPerNode    bool
 	NodeMetric         string
 	NodeLabel          string
@@ -25,19 +24,16 @@ type Config struct {
 }
 
 func LoadConfigFromEnv() Config {
-	cfg := Config{
+	return Config{
 		GrafanaURL:         strings.TrimSpace(os.Getenv("GRAFANA_URL")),
 		GrafanaUser:        strings.TrimSpace(os.Getenv("GRAFANA_USER")),
 		GrafanaPassword:    strings.TrimSpace(os.Getenv("GRAFANA_PASSWORD")),
-		WatchNamespace:     strings.TrimSpace(os.Getenv("WATCH_NAMESPACE")),
 		SnapshotPerNode:    parseBoolEnv("SNAPSHOT_PER_NODE", true),
 		NodeMetric:         envOrDefault("NODE_METRIC", defaultNodeMetric),
 		NodeLabel:          envOrDefault("NODE_LABEL", defaultNodeLabel),
 		DatasourceName:     envOrDefault("DATASOURCE_NAME", defaultDatasource),
 		SnapshotNamePrefix: strings.TrimSpace(os.Getenv("SNAPSHOT_NAME_PREFIX")),
 	}
-
-	return cfg
 }
 
 func parseBoolEnv(key string, fallback bool) bool {

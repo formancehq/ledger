@@ -1,0 +1,121 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: benchmarks.benchmark.formance.com
+spec:
+  group: benchmark.formance.com
+  names:
+    kind: Benchmark
+    listKind: BenchmarkList
+    plural: benchmarks
+    shortNames:
+    - bm
+    singular: benchmark
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - jsonPath: .status.message
+      name: Message
+      priority: 1
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Benchmark orchestrates a LedgerService deployment and k6 TestRun,
+          then captures Grafana snapshots.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: BenchmarkSpec defines the desired state of a Benchmark.
+            properties:
+              ledgerName:
+                description: |-
+                  LedgerName is the name of the ledger to create via gRPC before the test
+                  and delete after the test. If empty, no ledger lifecycle management is done.
+                type: string
+              ledgerService:
+                description: |-
+                  LedgerService is the inline spec for the LedgerService CR.
+                  Passed through without validation (the ledger operator validates).
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              testRun:
+                description: |-
+                  TestRun is the inline spec for the k6 TestRun CR.
+                  Passed through without validation (the k6 operator validates).
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+            required:
+            - ledgerService
+            - testRun
+            type: object
+          status:
+            description: BenchmarkStatus defines the observed state of a Benchmark.
+            properties:
+              completionTime:
+                description: CompletionTime is when the benchmark finished (completed
+                  or failed).
+                format: date-time
+                type: string
+              ledgerServiceName:
+                description: LedgerServiceName is the name of the managed LedgerService
+                  CR.
+                type: string
+              message:
+                description: Message contains human-readable status information (e.g.
+                  failure reason).
+                type: string
+              phase:
+                description: Phase is the current lifecycle phase.
+                enum:
+                - Pending
+                - CreatingCluster
+                - WaitingForCluster
+                - CreatingLedger
+                - Running
+                - Snapshotting
+                - Completed
+                - Failed
+                type: string
+              report:
+                description: Report is the JSON Grafana snapshot report.
+                type: string
+              startTime:
+                description: StartTime is when the benchmark TestRun was created.
+                format: date-time
+                type: string
+              testRunName:
+                description: TestRunName is the name of the managed k6 TestRun CR.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -1,0 +1,47 @@
+---
+apiVersion: benchmark.formance.com/v1alpha1
+kind: Benchmark
+metadata:
+  name: {{ include "k6-run.fullname" . }}
+  {{- if .Values.metadata.namespace }}
+  namespace: {{ .Values.metadata.namespace }}
+  {{- end }}
+spec:
+  {{- if .Values.ledgerName }}
+  ledgerName: {{ .Values.ledgerName }}
+  {{- end }}
+  {{- if .Values.ledgerService }}
+  ledgerService:
+    {{- toYaml .Values.ledgerService | nindent 4 }}
+  {{- end }}
+  testRun:
+    parallelism: {{ .Values.spec.parallelism }}
+    {{- if .Values.spec.arguments }}
+    arguments: {{ .Values.spec.arguments }}
+    {{- end }}
+    {{- if .Values.spec.separate }}
+    separate: {{ .Values.spec.separate }}
+    {{- end }}
+    {{- if .Values.spec.cleanup }}
+    cleanup: '{{ .Values.spec.cleanup }}'
+    {{- end }}
+    script:
+      configMap:
+        name: {{ include "k6-run.configmapName" . }}
+        file: {{ .Values.script }}.tar
+    runner:
+      {{- if .Values.runner.env }}
+      env:
+        {{- range $key, $value := .Values.runner.env }}
+      - name: {{ $key }}
+        value: {{ $value | quote }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.runner.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.runner.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .Values.runner.tolerations }}
+      tolerations:
+        {{- toYaml .Values.runner.tolerations | nindent 8 }}
+      {{- end }}
