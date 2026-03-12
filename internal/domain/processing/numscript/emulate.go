@@ -102,12 +102,10 @@ func (s *discoveryStore) GetAccountsMetadata(_ context.Context, query numscriptl
 // accounts were queried before the error occurred.
 //
 // Known limitation: with infinite balances, `oneof` may only query the first source.
-func DiscoverNumscriptDependencies(script string, vars map[string]string, ledger string) (*DiscoveryResult, error) {
-	parsed := numscriptlib.Parse(script)
-	if errs := parsed.GetParsingErrors(); len(errs) > 0 {
-		return nil, &domain.ErrNumscriptParse{
-			Details: numscriptlib.ParseErrorsToString(errs, parsed.GetSource()),
-		}
+func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars map[string]string, ledger string) (*DiscoveryResult, error) {
+	parsed, err := cache.GetOrParse(script)
+	if err != nil {
+		return nil, err
 	}
 
 	variablesMap := make(numscriptlib.VariablesMap, len(vars))

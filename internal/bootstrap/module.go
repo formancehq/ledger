@@ -29,6 +29,7 @@ import (
 	httpcompat "github.com/formancehq/ledger-v3-poc/internal/adapter/http"
 	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/application/events"
 	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"
 	"github.com/formancehq/ledger-v3-poc/internal/application/mirror"
@@ -409,6 +410,7 @@ func Module() fx.Option {
 					ks,
 					ss,
 					attrs,
+					numscript.NewNumscriptCache(cfg.NumscriptCacheSize),
 					opts...,
 				)
 			},

@@ -12,6 +12,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 	t.Parallel()
 
 	const ledgerID = "test-ledger"
+	testCache := NewNumscriptCache(0)
 
 	t.Run("simple transfer discovers source and destination", func(t *testing.T) {
 		t.Parallel()
@@ -23,7 +24,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 			)
 		`
 
-		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(testCache, script, nil, ledgerID)
 		require.NoError(t, err)
 		require.Len(t, result.SourceVolumes, 1)
 		require.Len(t, result.DestinationVolumes, 1)
@@ -51,7 +52,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 			)
 		`
 
-		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(testCache, script, nil, ledgerID)
 		require.NoError(t, err)
 		require.Len(t, result.SourceVolumes, 1)
 		require.Len(t, result.DestinationVolumes, 1)
@@ -88,7 +89,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 			"amount":   "USD/2 1000",
 		}
 
-		result, err := DiscoverNumscriptDependencies(script, vars, ledgerID)
+		result, err := DiscoverNumscriptDependencies(testCache, script, vars, ledgerID)
 		require.NoError(t, err)
 		require.Len(t, result.SourceVolumes, 1)
 		require.Len(t, result.DestinationVolumes, 1)
@@ -113,7 +114,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 			)
 		`
 
-		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(testCache, script, nil, ledgerID)
 		require.NoError(t, err)
 
 		_, hasChecking := result.SourceVolumes[domain.VolumeKey{
@@ -147,7 +148,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 			)
 		`
 
-		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(testCache, script, nil, ledgerID)
 		require.NoError(t, err)
 
 		_, hasAlice := result.DestinationVolumes[domain.VolumeKey{
@@ -168,7 +169,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 
 		script := `send [USD/2 invalid] ( source = @world destination = @users:alice )`
 
-		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(testCache, script, nil, ledgerID)
 		require.Error(t, err)
 		require.Nil(t, result)
 
@@ -192,7 +193,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 			)
 		`
 		// Don't provide the $amount variable — this will cause an execution error
-		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(testCache, script, nil, ledgerID)
 		require.NoError(t, err) // Parse succeeds, execution error is ignored
 		// Discovery may or may not have found accounts depending on when the error occurred,
 		// but the function should not return an error
@@ -209,7 +210,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 			)
 		`
 
-		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(testCache, script, nil, ledgerID)
 		require.NoError(t, err)
 
 		for key := range result.SourceVolumes {
@@ -243,7 +244,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		`
 		vars := map[string]string{"user": "users:alice"}
 
-		result, err := DiscoverNumscriptDependencies(script, vars, ledgerID)
+		result, err := DiscoverNumscriptDependencies(testCache, script, vars, ledgerID)
 
 		// The numscript interpreter may batch all balance queries in a single
 		// GetBalances call or call it multiple times depending on the script structure.
@@ -268,7 +269,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 			)
 		`
 
-		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(testCache, script, nil, ledgerID)
 		require.NoError(t, err, "single GetBalances call should be allowed")
 		require.NotEmpty(t, result.SourceVolumes)
 	})
@@ -286,7 +287,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 			)
 		`
 
-		result, err := DiscoverNumscriptDependencies(script, nil, ledgerID)
+		result, err := DiscoverNumscriptDependencies(testCache, script, nil, ledgerID)
 		require.NoError(t, err)
 		require.NotEmpty(t, result.Metadata, "should discover metadata dependencies")
 	})

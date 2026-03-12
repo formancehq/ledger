@@ -55,15 +55,16 @@ type Proposer interface {
 // Admission handles the admission of orders into the Raft cluster.
 // It is responsible for preloading volumes and proposing commands.
 type Admission struct {
-	store         *dal.Store
-	logger        logging.Logger
-	proposer      Proposer
-	healthChecker health.Checker
-	keyStore      *keystore.KeyStore
-	sharedState   *state.SharedState
-	receiptSigner *receipt.Signer
-	preloader     *preload.Preloader
-	attrs         *attributes.Attributes
+	store          *dal.Store
+	logger         logging.Logger
+	proposer       Proposer
+	healthChecker  health.Checker
+	keyStore       *keystore.KeyStore
+	sharedState    *state.SharedState
+	receiptSigner  *receipt.Signer
+	preloader      *preload.Preloader
+	attrs          *attributes.Attributes
+	numscriptCache *numscript.NumscriptCache
 
 	// Metrics (noop when metricsEnabled is false)
 	metricsEnabled            bool
@@ -106,17 +107,19 @@ func NewAdmission(
 	keyStore *keystore.KeyStore,
 	sharedState *state.SharedState,
 	attrs *attributes.Attributes,
+	numscriptCache *numscript.NumscriptCache,
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
-		store:         store,
-		logger:        logger,
-		proposer:      proposer,
-		preloader:     preloader,
-		healthChecker: healthChecker,
-		keyStore:      keyStore,
-		sharedState:   sharedState,
-		attrs:         attrs,
+		store:          store,
+		logger:         logger,
+		proposer:       proposer,
+		preloader:      preloader,
+		healthChecker:  healthChecker,
+		keyStore:       keyStore,
+		sharedState:    sharedState,
+		attrs:          attrs,
+		numscriptCache: numscriptCache,
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -692,6 +695,7 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 					applyData.CreateTransaction.GetScript().GetPlain() != "" &&
 					len(applyData.CreateTransaction.GetPostings()) == 0 {
 					discovered, err := numscript.DiscoverNumscriptDependencies(
+						a.numscriptCache,
 						applyData.CreateTransaction.GetScript().GetPlain(),
 						applyData.CreateTransaction.GetScript().GetVars(),
 						ledgerName,

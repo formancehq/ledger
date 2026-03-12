@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/go-libs/v3/time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
@@ -111,6 +112,7 @@ func createTestAdmission(t *testing.T, store *dal.Store) (*Admission, *attribute
 		ks,
 		ss,
 		attrs,
+		numscript.NewNumscriptCache(0),
 	), attrs
 }
 

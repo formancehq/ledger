@@ -15,15 +15,14 @@ import (
 
 // NumscriptCache stores parsed Numscript programs keyed by their content hash.
 // It uses an LRU eviction policy bounded by maxSize to prevent unbounded memory growth.
-// The cache is safe for concurrent use via a mutex on the hasher;
-// all other state is accessed single-threaded from the FSM apply path.
+// Thread-safe: an RWMutex allows concurrent cache hits without contention.
+// LRU reordering is approximate — read hits do not call MoveToFront to avoid
+// write-locking on the hot path.
 type NumscriptCache struct {
-	cache    map[[32]byte]*list.Element
-	order    *list.List
-	maxSize  int
-	hasher   *blake3.Hasher
-	hasherMu sync.Mutex
-	hashBuf  [32]byte // pre-allocated buffer for hash output
+	mu      sync.RWMutex
+	cache   map[[32]byte]*list.Element
+	order   *list.List
+	maxSize int
 
 	// Metrics (nil if not initialized)
 	sizeGauge metric.Int64Gauge
@@ -52,50 +51,59 @@ func NewNumscriptCache(maxSize int) *NumscriptCache {
 		cache:   make(map[[32]byte]*list.Element, maxSize),
 		order:   list.New(),
 		maxSize: maxSize,
-		hasher:  blake3.New(),
 	}
 }
 
-// computeHash computes the blake3 hash of the script content.
-// It reuses the internal hasher to avoid allocations.
-func (c *NumscriptCache) computeHash(script string) [32]byte {
-	c.hasherMu.Lock()
-	defer c.hasherMu.Unlock()
-
-	c.hasher.Reset()
-	_, _ = c.hasher.WriteString(script)
-	sum := c.hasher.Sum(c.hashBuf[:0])
+// hashScript computes the blake3 hash of the script content.
+// Lock-free: allocates a hasher per call (blake3.New is cheap).
+func hashScript(script string) [32]byte {
+	h := blake3.New()
+	_, _ = h.WriteString(script)
 
 	var result [32]byte
-	copy(result[:], sum)
+
+	h.Sum(result[:0])
 
 	return result
 }
 
 // GetOrParse retrieves a parsed script from the cache or parses it if not found.
-// On cache hit the entry is moved to the front (most recently used).
-// On cache miss the script is parsed, added to the front, and the least recently
-// used entry is evicted if the cache is at capacity.
+// On cache hit the lookup uses a read lock for zero contention under concurrent reads.
+// On cache miss the script is parsed outside the lock, then inserted with a write lock.
+// LRU ordering is approximate: read hits do not reorder to avoid write contention.
 func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, error) {
-	hash := c.computeHash(script)
+	hash := hashScript(script)
 
-	// Try to get from cache
+	// Fast path: read lock for cache hits (no contention between readers).
+	c.mu.RLock()
 	if elem, ok := c.cache[hash]; ok {
-		c.order.MoveToFront(elem)
 		entry, _ := elem.Value.(*lruEntry)
+		c.mu.RUnlock()
 
 		return entry.script.program, entry.script.err
 	}
 
-	// Parse the script
+	c.mu.RUnlock()
+
+	// Parse the script outside the lock — this is the expensive operation.
 	parsed := numscriptlib.Parse(script)
 
-	// Check for parsing errors
 	var parseErr error
 	if errs := parsed.GetParsingErrors(); len(errs) > 0 {
 		parseErr = &domain.ErrNumscriptParse{
 			Details: numscriptlib.ParseErrorsToString(errs, parsed.GetSource()),
 		}
+	}
+
+	// Acquire write lock to insert into cache.
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Double-check: another goroutine may have inserted this entry while we parsed.
+	if elem, ok := c.cache[hash]; ok {
+		entry, _ := elem.Value.(*lruEntry)
+
+		return entry.script.program, entry.script.err
 	}
 
 	// Evict least recently used if at capacity

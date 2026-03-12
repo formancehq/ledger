@@ -112,23 +112,19 @@ func TestNumscriptCache_GetOrParse_ParseErrorCached(t *testing.T) {
 	require.Error(t, err2)
 }
 
-func TestNumscriptCache_ComputeHash_Deterministic(t *testing.T) {
+func TestHashScript_Deterministic(t *testing.T) {
 	t.Parallel()
 
-	c := NewNumscriptCache(10)
-
-	h1 := c.computeHash("hello world")
-	h2 := c.computeHash("hello world")
+	h1 := hashScript("hello world")
+	h2 := hashScript("hello world")
 	require.Equal(t, h1, h2)
 }
 
-func TestNumscriptCache_ComputeHash_Different(t *testing.T) {
+func TestHashScript_Different(t *testing.T) {
 	t.Parallel()
 
-	c := NewNumscriptCache(10)
-
-	h1 := c.computeHash("hello")
-	h2 := c.computeHash("world")
+	h1 := hashScript("hello")
+	h2 := hashScript("world")
 	require.NotEqual(t, h1, h2)
 }
 
