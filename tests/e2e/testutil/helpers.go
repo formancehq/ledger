@@ -1,10 +1,14 @@
 package testutil
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"time"
@@ -14,7 +18,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
@@ -129,6 +136,48 @@ func CreateScriptTransactionAction(ledgerName string, script string, vars map[st
 						Metadata: commonpb.MetadataSetFromMap(metadata),
 					},
 				},
+			},
+		},
+	}
+}
+
+// AddAccountTypeAction creates an action for adding an account type to a ledger.
+func AddAccountTypeAction(ledgerName, name, pattern string, enforcement commonpb.ChartEnforcementMode) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_AddAccountType{
+			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+				Ledger: ledgerName,
+				AccountType: &commonpb.AccountType{
+					Name:            name,
+					Pattern:         pattern,
+					Status:          commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
+					EnforcementMode: enforcement,
+				},
+			},
+		},
+	}
+}
+
+// UpdateAccountTypeAction creates an action for updating an account type's enforcement mode.
+func UpdateAccountTypeAction(ledgerName, name string, enforcement commonpb.ChartEnforcementMode) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_UpdateAccountType{
+			UpdateAccountType: &servicepb.UpdateAccountTypeLedgerRequest{
+				Ledger:          ledgerName,
+				Name:            name,
+				EnforcementMode: enforcement,
+			},
+		},
+	}
+}
+
+// RemoveAccountTypeAction creates an action for removing an account type.
+func RemoveAccountTypeAction(ledgerName, name string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_RemoveAccountType{
+			RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{
+				Ledger: ledgerName,
+				Name:   name,
 			},
 		},
 	}
@@ -537,6 +586,846 @@ func FindMetadataValue(ms *commonpb.MetadataSet, key string) *commonpb.MetadataV
 		if md.GetKey() == key {
 			return md.GetValue()
 		}
+	}
+
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Period actions
+// ---------------------------------------------------------------------------
+
+// ClosePeriodAction creates a request to close the current accounting period.
+func ClosePeriodAction() *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_ClosePeriod{
+			ClosePeriod: &servicepb.ClosePeriodRequest{},
+		},
+	}
+}
+
+// SetMaintenanceModeAction creates a request to enable or disable maintenance mode.
+func SetMaintenanceModeAction(enabled bool) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_SetMaintenanceMode{
+			SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{
+				Enabled: enabled,
+			},
+		},
+	}
+}
+
+// SetAuditConfigAction creates a request to enable or disable audit logging.
+func SetAuditConfigAction(enabled bool) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_SetAuditConfig{
+			SetAuditConfig: &servicepb.SetAuditConfigRequest{
+				Enabled: enabled,
+			},
+		},
+	}
+}
+
+// SetPeriodScheduleAction creates a request to set the period schedule cron expression.
+func SetPeriodScheduleAction(cron string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_SetPeriodSchedule{
+			SetPeriodSchedule: &servicepb.SetPeriodScheduleRequest{
+				Cron: cron,
+			},
+		},
+	}
+}
+
+// DeletePeriodScheduleAction creates a request to remove the period schedule.
+func DeletePeriodScheduleAction() *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_DeletePeriodSchedule{
+			DeletePeriodSchedule: &servicepb.DeletePeriodScheduleRequest{},
+		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Read helpers (streaming RPCs)
+// ---------------------------------------------------------------------------
+
+// ListAllAccounts collects all accounts for a ledger from the streaming RPC.
+func ListAllAccounts(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) ([]*commonpb.Account, error) {
+	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
+		Ledger: ledgerName,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var accounts []*commonpb.Account
+	for {
+		account, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, account)
+	}
+
+	return accounts, nil
+}
+
+// ListAllTransactions collects all transactions for a ledger from the streaming RPC.
+func ListAllTransactions(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) ([]*commonpb.Transaction, error) {
+	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
+		Ledger: ledgerName,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var transactions []*commonpb.Transaction
+	for {
+		tx, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		transactions = append(transactions, tx)
+	}
+
+	return transactions, nil
+}
+
+// ListAllLogs collects all system logs from the streaming RPC.
+func ListAllLogs(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.Log, error) {
+	stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	var logs []*commonpb.Log
+	for {
+		log, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		logs = append(logs, log)
+	}
+
+	return logs, nil
+}
+
+// ListAllPeriods collects all periods from the streaming RPC.
+func ListAllPeriods(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.Period, error) {
+	stream, err := client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	var periods []*commonpb.Period
+	for {
+		period, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		periods = append(periods, period)
+	}
+
+	return periods, nil
+}
+
+// GetAccount retrieves a single account by address.
+func GetAccount(ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address string) (*commonpb.Account, error) {
+	return client.GetAccount(ctx, &servicepb.GetAccountRequest{
+		Ledger:  ledgerName,
+		Address: address,
+	})
+}
+
+// GetTransaction retrieves a single transaction by ID.
+func GetTransaction(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, txID uint64) (*servicepb.GetTransactionResponse, error) {
+	return client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+		Ledger:        ledgerName,
+		TransactionId: txID,
+	})
+}
+
+// GetLedger retrieves ledger info by name.
+func GetLedger(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) (*commonpb.LedgerInfo, error) {
+	return client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+		Ledger: ledgerName,
+	})
+}
+
+// GetLedgerStats retrieves transaction and account counts for a ledger.
+func GetLedgerStats(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) (*commonpb.LedgerStats, error) {
+	return client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{
+		Ledger: ledgerName,
+	})
+}
+
+// GetNumscript retrieves a numscript by name and optional version ("" = latest).
+func GetNumscript(ctx context.Context, client servicepb.BucketServiceClient, name, version string) (*commonpb.NumscriptInfo, error) {
+	return client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+		Name:    name,
+		Version: version,
+	})
+}
+
+// AggregateVolumes returns aggregated volumes for a ledger.
+func AggregateVolumes(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) (*commonpb.AggregateResult, error) {
+	return client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
+		Ledger: ledgerName,
+	})
+}
+
+// ListAuditEntries collects all audit entries from the streaming RPC.
+func ListAuditEntries(ctx context.Context, client servicepb.BucketServiceClient, failuresOnly bool) ([]*auditpb.AuditEntry, error) {
+	stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
+		FailuresOnly: failuresOnly,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []*auditpb.AuditEntry
+	for {
+		entry, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, nil
+}
+
+// GetMetadataSchemaStatus retrieves the metadata schema conversion status for a ledger.
+func GetMetadataSchemaStatus(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
+	return client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{
+		Ledger: ledgerName,
+	})
+}
+
+// GetPeriodSchedule retrieves the current period schedule cron expression.
+func GetPeriodSchedule(ctx context.Context, client servicepb.BucketServiceClient) (string, error) {
+	resp, err := client.GetPeriodSchedule(ctx, &servicepb.GetPeriodScheduleRequest{})
+	if err != nil {
+		return "", err
+	}
+
+	return resp.GetCron(), nil
+}
+
+// ---------------------------------------------------------------------------
+// Store integrity & backup helpers
+// ---------------------------------------------------------------------------
+
+// CheckStoreResult holds the errors and progress events from a CheckStore RPC call.
+type CheckStoreResult struct {
+	Errors   []*servicepb.CheckStoreError
+	Progress []*servicepb.CheckStoreProgress
+}
+
+// CollectCheckStoreEvents runs the CheckStore RPC and returns all errors and progress events.
+func CollectCheckStoreEvents(ctx context.Context, client servicepb.BucketServiceClient) (*CheckStoreResult, error) {
+	stream, err := client.CheckStore(ctx, &servicepb.CheckStoreRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	result := &CheckStoreResult{}
+	for {
+		event, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		switch t := event.GetType().(type) {
+		case *servicepb.CheckStoreEvent_Error:
+			result.Errors = append(result.Errors, t.Error)
+		case *servicepb.CheckStoreEvent_Progress:
+			result.Progress = append(result.Progress, t.Progress)
+		}
+	}
+
+	return result, nil
+}
+
+// StreamBackup runs the Backup RPC and writes the tar archive to the provided writer.
+// Returns the total bytes written and the content SHA-256 reported by the server.
+func StreamBackup(ctx context.Context, client clusterpb.ClusterServiceClient, w io.Writer) (uint64, string, error) {
+	stream, err := client.Backup(ctx, &clusterpb.BackupRequest{})
+	if err != nil {
+		return 0, "", err
+	}
+
+	var (
+		totalBytes    uint64
+		contentSha256 string
+	)
+	for {
+		resp, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return 0, "", err
+		}
+
+		if len(resp.GetData()) > 0 {
+			if _, err := w.Write(resp.GetData()); err != nil {
+				return 0, "", err
+			}
+			totalBytes += uint64(len(resp.GetData()))
+		}
+
+		if resp.GetEof() {
+			contentSha256 = resp.GetContentSha256()
+
+			break
+		}
+	}
+
+	return totalBytes, contentSha256, nil
+}
+
+// BackupData holds the raw backup archive and its SHA-256 hash.
+type BackupData struct {
+	Data []byte
+	Hash string
+}
+
+// BackupToBuffer runs the Backup RPC and captures the full tar archive in memory.
+// It verifies the SHA-256 hash matches the server-reported value.
+func BackupToBuffer(ctx context.Context, client clusterpb.ClusterServiceClient) (*BackupData, error) {
+	stream, err := client.Backup(ctx, &clusterpb.BackupRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("backup RPC: %w", err)
+	}
+
+	var buf bytes.Buffer
+	hash := sha256.New()
+
+	var contentSha256 string
+	for {
+		resp, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("backup recv: %w", err)
+		}
+
+		if len(resp.GetData()) > 0 {
+			buf.Write(resp.GetData())
+			_, _ = hash.Write(resp.GetData())
+		}
+
+		if resp.GetEof() {
+			contentSha256 = resp.GetContentSha256()
+
+			break
+		}
+	}
+
+	actualHash := hex.EncodeToString(hash.Sum(nil))
+	if actualHash != contentSha256 {
+		return nil, fmt.Errorf("backup hash mismatch: got %s, server reported %s", actualHash, contentSha256)
+	}
+
+	return &BackupData{Data: buf.Bytes(), Hash: contentSha256}, nil
+}
+
+// ---------------------------------------------------------------------------
+// Prepared Query actions (via gRPC direct)
+// ---------------------------------------------------------------------------
+
+// CreatePreparedQuery creates a prepared query via the gRPC API.
+func CreatePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, name, ledger string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) error {
+	_, err := client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
+		Query: &commonpb.PreparedQuery{
+			Name:   name,
+			Ledger: ledger,
+			Target: target,
+			Filter: filter,
+		},
+	})
+
+	return err
+}
+
+// UpdatePreparedQuery updates the filter of an existing prepared query.
+func UpdatePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, ledger, name string, filter *commonpb.QueryFilter) error {
+	_, err := client.UpdatePreparedQuery(ctx, &servicepb.UpdatePreparedQueryRequest{
+		Ledger: ledger,
+		Name:   name,
+		Filter: filter,
+	})
+
+	return err
+}
+
+// DeletePreparedQuery deletes a prepared query.
+func DeletePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, ledger, name string) error {
+	_, err := client.DeletePreparedQuery(ctx, &servicepb.DeletePreparedQueryRequest{
+		Ledger: ledger,
+		Name:   name,
+	})
+
+	return err
+}
+
+// ListPreparedQueries lists all prepared queries for a ledger.
+func ListPreparedQueries(ctx context.Context, client servicepb.BucketServiceClient, ledger string) ([]*commonpb.PreparedQuery, error) {
+	resp, err := client.ListPreparedQueries(ctx, &servicepb.ListPreparedQueriesRequest{
+		Ledger: ledger,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.GetQueries(), nil
+}
+
+// ExecutePreparedQuery executes a prepared query and returns the response.
+func ExecutePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, ledger, queryName string, mode commonpb.QueryMode, pageSize uint32) (*servicepb.ExecutePreparedQueryResponse, error) {
+	return client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+		Ledger:    ledger,
+		QueryName: queryName,
+		Mode:      mode,
+		PageSize:  pageSize,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Index actions (via Apply)
+// ---------------------------------------------------------------------------
+
+// CreateBuiltinTxIndexAction creates an action for creating a builtin transaction index.
+func CreateBuiltinTxIndexAction(ledger string, idx commonpb.TransactionBuiltinIndex) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_CreateIndex{
+			CreateIndex: &servicepb.CreateIndexRequest{
+				Ledger: ledger,
+				Index: &servicepb.CreateIndexRequest_Transaction{
+					Transaction: &commonpb.TransactionIndex{
+						Kind: &commonpb.TransactionIndex_Builtin{
+							Builtin: idx,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// DropBuiltinTxIndexAction creates an action for dropping a builtin transaction index.
+func DropBuiltinTxIndexAction(ledger string, idx commonpb.TransactionBuiltinIndex) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_DropIndex{
+			DropIndex: &servicepb.DropIndexRequest{
+				Ledger: ledger,
+				Index: &servicepb.DropIndexRequest_Transaction{
+					Transaction: &commonpb.TransactionIndex{
+						Kind: &commonpb.TransactionIndex_Builtin{
+							Builtin: idx,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// CreateAccountMetadataIndexAction creates an action for creating an account metadata index.
+func CreateAccountMetadataIndexAction(ledger, metadataKey string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_CreateIndex{
+			CreateIndex: &servicepb.CreateIndexRequest{
+				Ledger: ledger,
+				Index: &servicepb.CreateIndexRequest_Account{
+					Account: &commonpb.AccountIndex{
+						Kind: &commonpb.AccountIndex_MetadataKey{
+							MetadataKey: metadataKey,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// DropAccountMetadataIndexAction creates an action for dropping an account metadata index.
+func DropAccountMetadataIndexAction(ledger, metadataKey string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_DropIndex{
+			DropIndex: &servicepb.DropIndexRequest{
+				Ledger: ledger,
+				Index: &servicepb.DropIndexRequest_Account{
+					Account: &commonpb.AccountIndex{
+						Kind: &commonpb.AccountIndex_MetadataKey{
+							MetadataKey: metadataKey,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Archive action (via Apply)
+// ---------------------------------------------------------------------------
+
+// ArchivePeriodAction creates an action for archiving a closed period.
+func ArchivePeriodAction(periodID uint64) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_ArchivePeriod{
+			ArchivePeriod: &servicepb.ArchivePeriodRequest{
+				PeriodId: periodID,
+			},
+		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Analytics (streaming RPCs)
+// ---------------------------------------------------------------------------
+
+// AnalyzeAccounts runs the AnalyzeAccounts streaming RPC and returns the final result.
+func AnalyzeAccounts(ctx context.Context, client servicepb.BucketServiceClient, ledger string, variableThreshold uint32) (*servicepb.AnalyzeAccountsResponse, error) {
+	stream, err := client.AnalyzeAccounts(ctx, &servicepb.AnalyzeAccountsRequest{
+		Ledger:            ledger,
+		VariableThreshold: variableThreshold,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result *servicepb.AnalyzeAccountsResponse
+	for {
+		event, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if r := event.GetResult(); r != nil {
+			result = r
+		}
+	}
+
+	return result, nil
+}
+
+// AnalyzeTransactions runs the AnalyzeTransactions streaming RPC and returns the final result.
+func AnalyzeTransactions(ctx context.Context, client servicepb.BucketServiceClient, ledger string) (*servicepb.AnalyzeTransactionsResponse, error) {
+	stream, err := client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
+		Ledger: ledger,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var result *servicepb.AnalyzeTransactionsResponse
+	for {
+		event, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if r := event.GetResult(); r != nil {
+			result = r
+		}
+	}
+
+	return result, nil
+}
+
+// ---------------------------------------------------------------------------
+// Single entity reads
+// ---------------------------------------------------------------------------
+
+// GetLog retrieves a single log entry by sequence number.
+func GetLog(ctx context.Context, client servicepb.BucketServiceClient, sequence uint64) (*commonpb.Log, error) {
+	return client.GetLog(ctx, &servicepb.GetLogRequest{
+		Sequence: sequence,
+	})
+}
+
+// GetAuditEntry retrieves a single audit entry by sequence number.
+func GetAuditEntry(ctx context.Context, client servicepb.BucketServiceClient, sequence uint64) (*auditpb.AuditEntry, error) {
+	return client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{
+		Sequence: sequence,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Monitoring / Discovery
+// ---------------------------------------------------------------------------
+
+// Discovery calls the Discovery RPC.
+func Discovery(ctx context.Context, client servicepb.BucketServiceClient) (*servicepb.DiscoveryResponse, error) {
+	return client.Discovery(ctx, &servicepb.DiscoveryRequest{})
+}
+
+// GetStoreMetrics calls the GetStoreMetrics RPC.
+func GetStoreMetrics(ctx context.Context, client servicepb.BucketServiceClient) (*servicepb.GetStoreMetricsResponse, error) {
+	return client.GetStoreMetrics(ctx, &servicepb.GetStoreMetricsRequest{})
+}
+
+// GetReadIndexMetrics calls the GetReadIndexMetrics RPC.
+func GetReadIndexMetrics(ctx context.Context, client servicepb.BucketServiceClient) (*servicepb.GetReadIndexMetricsResponse, error) {
+	return client.GetReadIndexMetrics(ctx, &servicepb.GetReadIndexMetricsRequest{})
+}
+
+// GetIndexStatus calls the GetIndexStatus RPC.
+func GetIndexStatus(ctx context.Context, client servicepb.BucketServiceClient) (*servicepb.GetIndexStatusResponse, error) {
+	return client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{})
+}
+
+// ---------------------------------------------------------------------------
+// List with filters (uses streaming RPCs with params)
+// ---------------------------------------------------------------------------
+
+// ListAccountsFiltered collects accounts with pagination and filter params.
+func ListAccountsFiltered(ctx context.Context, client servicepb.BucketServiceClient, ledger string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter) ([]*commonpb.Account, error) {
+	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
+		Ledger:       ledger,
+		PageSize:     pageSize,
+		AfterAddress: afterAddress,
+		Filter:       filter,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var accounts []*commonpb.Account
+	for {
+		account, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, account)
+	}
+
+	return accounts, nil
+}
+
+// ListTransactionsFiltered collects transactions with pagination and filter params.
+func ListTransactionsFiltered(ctx context.Context, client servicepb.BucketServiceClient, ledger string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter) ([]*commonpb.Transaction, error) {
+	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
+		Ledger:    ledger,
+		PageSize:  pageSize,
+		AfterTxId: afterTxID,
+		Filter:    filter,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var transactions []*commonpb.Transaction
+	for {
+		tx, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		transactions = append(transactions, tx)
+	}
+
+	return transactions, nil
+}
+
+// ---------------------------------------------------------------------------
+// Query filter builders
+// ---------------------------------------------------------------------------
+
+// StringMetadataFilter creates a filter matching a metadata string field with an exact value.
+func StringMetadataFilter(key, value string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field: &commonpb.FieldRef{Metadata: key},
+				Condition: &commonpb.FieldCondition_StringCond{
+					StringCond: &commonpb.StringCondition{
+						Value: &commonpb.StringCondition_Hardcoded{
+							Hardcoded: value,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// AddressPrefixFilter creates a filter matching accounts by address prefix.
+func AddressPrefixFilter(prefix string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Address{
+			Address: &commonpb.AddressMatch{
+				Match: &commonpb.AddressMatch_HardcodedPrefix{
+					HardcodedPrefix: prefix,
+				},
+			},
+		},
+	}
+}
+
+// AddressExactFilter creates a filter matching accounts by exact address.
+func AddressExactFilter(addr string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Address{
+			Address: &commonpb.AddressMatch{
+				Match: &commonpb.AddressMatch_HardcodedExact{
+					HardcodedExact: addr,
+				},
+			},
+		},
+	}
+}
+
+// ReferenceFilter creates a filter matching transactions by reference (exact match).
+func ReferenceFilter(ref string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Reference{
+			Reference: &commonpb.ReferenceCondition{
+				Cond: &commonpb.StringCondition{
+					Value: &commonpb.StringCondition_Hardcoded{
+						Hardcoded: ref,
+					},
+				},
+			},
+		},
+	}
+}
+
+// AndFilter creates a logical AND filter combining multiple filters.
+func AndFilter(filters ...*commonpb.QueryFilter) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: filters},
+		},
+	}
+}
+
+// OrFilter creates a logical OR filter combining multiple filters.
+func OrFilter(filters ...*commonpb.QueryFilter) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Or{
+			Or: &commonpb.OrFilter{Filters: filters},
+		},
+	}
+}
+
+// NotFilter creates a logical NOT filter.
+func NotFilter(f *commonpb.QueryFilter) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Not{
+			Not: &commonpb.NotFilter{Filter: f},
+		},
+	}
+}
+
+// LedgerFilter creates a filter matching entries by ledger name.
+func LedgerFilter(ledger string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Ledger{
+			Ledger: &commonpb.LedgerCondition{
+				Cond: &commonpb.StringCondition{
+					Value: &commonpb.StringCondition_Hardcoded{
+						Hardcoded: ledger,
+					},
+				},
+			},
+		},
+	}
+}
+
+// UploadAndFinalizeRestore uploads a backup to a restore-mode server, validates it,
+// and finalizes the restore. The caller must start the server with --restore before
+// calling this, and restart it normally after.
+func UploadAndFinalizeRestore(ctx context.Context, restoreClient restorepb.RestoreServiceClient, backup *BackupData) error {
+	// Upload in 64KB chunks.
+	stream, err := restoreClient.UploadBackup(ctx)
+	if err != nil {
+		return fmt.Errorf("upload backup: %w", err)
+	}
+
+	const chunkSize = 64 * 1024
+	for offset := 0; offset < len(backup.Data); offset += chunkSize {
+		end := min(offset+chunkSize, len(backup.Data))
+		if err := stream.Send(&restorepb.UploadBackupRequest{
+			Data: backup.Data[offset:end],
+		}); err != nil {
+			return fmt.Errorf("upload send chunk: %w", err)
+		}
+	}
+
+	if err := stream.Send(&restorepb.UploadBackupRequest{
+		Eof:           true,
+		ContentSha256: backup.Hash,
+	}); err != nil {
+		return fmt.Errorf("upload send EOF: %w", err)
+	}
+
+	resp, err := stream.CloseAndRecv()
+	if err != nil {
+		return fmt.Errorf("upload close: %w", err)
+	}
+	if resp.GetSha256() != backup.Hash {
+		return fmt.Errorf("upload hash mismatch: got %s, expected %s", resp.GetSha256(), backup.Hash)
+	}
+
+	// Validate.
+	valStream, err := restoreClient.ValidateRestore(ctx, &restorepb.ValidateRestoreRequest{})
+	if err != nil {
+		return fmt.Errorf("validate restore: %w", err)
+	}
+
+	var validationErrors []string
+	for {
+		event, err := valStream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("validate recv: %w", err)
+		}
+		if e := event.GetError(); e != nil {
+			validationErrors = append(validationErrors, e.GetMessage())
+		}
+	}
+	if len(validationErrors) > 0 {
+		return fmt.Errorf("validation errors: %v", validationErrors)
+	}
+
+	// Finalize.
+	if _, err := restoreClient.FinalizeRestore(ctx, &restorepb.FinalizeRestoreRequest{}); err != nil {
+		return fmt.Errorf("finalize restore: %w", err)
 	}
 
 	return nil
