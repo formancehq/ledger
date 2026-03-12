@@ -115,6 +115,7 @@ func (a *Attribute[V]) Set(batch *dal.Batch, index uint64, canonicalKey []byte, 
 // [AttrType(1)][RaftIndex(8)] = 9 bytes.
 const SuffixLen = 9
 
+
 // ComputeValue computes the final value for the given canonical key at the specified raft index.
 // It finds the most recent entry with index <= maxIndex.
 // Returns the value, the raft index of the latest Pebble entry (0 if no entry found),

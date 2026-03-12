@@ -604,7 +604,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	// because preloaded values only seed keys not already in cache, and a
 	// forward-mismatch (preload ahead) means the data is at least as fresh.
 	// todo: cause heavy load, we should log only if debug mode is enabled
-	//switch preloadSet.GetLastPersistedIndex() {
+	// switch preloadSet.GetLastPersistedIndex() {
 	//case fsm.Registry.Cache.BaseIndex.Gen0:
 	//	fsm.logger.Debug("Selecting cache generation 0")
 	//case fsm.Registry.Cache.BaseIndex.Gen1:
@@ -628,7 +628,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *raftcmdpb.VolumePair {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		//fsm.logger.WithFields(map[string]any{
+		// fsm.logger.WithFields(map[string]any{
 		//	"id": id.Hex(),
 		//}).Debugf("Preload volume")
 
@@ -654,7 +654,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *commonpb.IdempotencyKeyValue {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		//fsm.logger.WithFields(map[string]any{
+		// fsm.logger.WithFields(map[string]any{
 		//	"id":           id.Hex(),
 		//	"log_sequence": value.GetLogSequence(),
 		//	"hash":         value.GetHash(),
@@ -682,7 +682,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *commonpb.TransactionReferenceValue {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		//fsm.logger.WithFields(map[string]any{
+		// fsm.logger.WithFields(map[string]any{
 		//	"id":             id.Hex(),
 		//	"transaction_id": value.GetTransactionId(),
 		//}).Debugf("Preload transaction reference value")
@@ -709,7 +709,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *commonpb.LedgerInfo {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		//fsm.logger.WithFields(map[string]any{
+		// fsm.logger.WithFields(map[string]any{
 		//	"id":   id.Hex(),
 		//	"name": value.GetName(),
 		//}).Debugf("Preload ledger")
@@ -736,7 +736,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *raftcmdpb.LedgerBoundaries {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		//fsm.logger.WithFields(map[string]any{
+		// fsm.logger.WithFields(map[string]any{
 		//	"id": id.Hex(),
 		//}).Debugf("Preload boundary")
 
@@ -762,7 +762,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *commonpb.SinkConfig {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		//fsm.logger.WithFields(map[string]any{
+		// fsm.logger.WithFields(map[string]any{
 		//	"id":   id.Hex(),
 		//	"name": value.GetName(),
 		//}).Debugf("Preload sink config")
@@ -789,7 +789,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) string {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		//fsm.logger.WithFields(map[string]any{
+		// fsm.logger.WithFields(map[string]any{
 		//	"id":    id.Hex(),
 		//	"value": value,
 		//}).Debugf("Preload string")
@@ -815,7 +815,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) bool {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		//fsm.logger.WithFields(map[string]any{
+		// fsm.logger.WithFields(map[string]any{
 		//	"id":    id.Hex(),
 		//	"value": value,
 		//}).Debugf("Preload bool")
@@ -842,7 +842,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *commonpb.MetadataValue {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		//fsm.logger.WithFields(map[string]any{
+		// fsm.logger.WithFields(map[string]any{
 		//	"id": id.Hex(),
 		//}).Debugf("Preload account metadata")
 
@@ -868,7 +868,7 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *commonpb.TransactionState {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		//fsm.logger.WithFields(map[string]any{
+		// fsm.logger.WithFields(map[string]any{
 		//	"id": id.Hex(),
 		//}).Debugf("Preload transaction state")
 

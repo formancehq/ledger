@@ -154,10 +154,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		hasher           = blake3.New()
 		lastHash         []byte
 		expectedInputs   = make(map[string]*big.Int) // volumeKey -> cumulative input
-		expectedOutputs  = make(map[string]*big.Int)  // volumeKey -> cumulative output
-		expectedMetadata = make(map[string]string)    // metadataKey -> value
-		deletedMetadata  = make(map[string]struct{})  // metadataKey -> deleted
-		knownLedgers     = make(map[string]struct{})  // ledgerName -> exists
+		expectedOutputs  = make(map[string]*big.Int) // volumeKey -> cumulative output
+		expectedMetadata = make(map[string]string)   // metadataKey -> value
+		deletedMetadata  = make(map[string]struct{}) // metadataKey -> deleted
+		knownLedgers     = make(map[string]struct{}) // ledgerName -> exists
 		// Per-ledger reversion tracking using bitsets (1 bit per tx ID)
 		ledgerKnownTxIDs    = make(map[string]*domain.ReversionBitset) // ledger -> bitset of created tx IDs
 		ledgerRevertedTxIDs = make(map[string]*domain.ReversionBitset) // ledger -> bitset of already-reverted tx IDs
