@@ -320,15 +320,14 @@ send $amount (
 
 	// --- BUG: CreateAccountMetadataIndex fails under cache pressure ---
 	// After ~200 Apply calls (4+ cache rotations with threshold=50), the
-	// preloader fails to resolve ledger boundaries for the Apply wrapping
-	// CreateAccountMetadataIndexAction, returning "ledger does not exist".
-	// The same ledger works for all previous operations.
-	t.Run("BUG_CreateAccountMetadataIndexUnderLoad", func(t *testing.T) {
+	// CreateAccountMetadataIndex after high cache pressure (200+ Apply calls, 4+ rotations).
+	// Regression test: LedgerInfo must be preloaded for Apply orders to survive cache eviction.
+	t.Run("CreateAccountMetadataIndexUnderLoad", func(t *testing.T) {
 		applyActions(t, ctx, client,
 			testutil.CreateAccountMetadataIndexAction(ledger, "subscriber_plan"),
 		)
 
-		// If we get here, cleanup
+		// Cleanup
 		applyActions(t, ctx, client,
 			testutil.DropAccountMetadataIndexAction(ledger, "subscriber_plan"),
 		)

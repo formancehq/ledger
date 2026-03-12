@@ -677,7 +677,9 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				return query.ReadNumscriptLatestVersion(ctx, a.store, nsKey.Name)
 			}
 		case *raftcmdpb.Order_Apply:
-			p.Boundaries[domain.LedgerKey{Name: orderType.Apply.GetLedger()}] = struct{}{}
+			ledgerKey := domain.LedgerKey{Name: orderType.Apply.GetLedger()}
+			p.Boundaries[ledgerKey] = struct{}{}
+			p.Ledgers[ledgerKey] = struct{}{}
 
 			ledgerName := orderType.Apply.GetLedger()
 

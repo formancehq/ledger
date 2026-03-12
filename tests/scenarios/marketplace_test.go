@@ -482,12 +482,8 @@ send $amount (
 		require.Error(t, err, "expected idempotency key conflict")
 	})
 
-	// --- BUG: Idempotency replay balance drift after restart ---
-	// The idempotent replay Raft entry's preloaded data doesn't contain the
-	// original key. After restart, the FSM replays the entry as a NEW
-	// transaction, creating a duplicate +200 deposit on customer:1.
-	// This test captures the expected balance BEFORE restart so we can verify
-	// the invariant breaks after restart.
+	// Capture expected balance for customer:1 before restart to verify
+	// idempotency key survives snapshot restore (regression test).
 	expectedCustomer1BeforeRestart := new(big.Int).Set(customerBalance[1])
 
 	// --- Phase 11: DeleteNumscript ---
@@ -642,10 +638,7 @@ send $amount (
 				fmt.Sprintf("merchant:%d", i), "USD/2", big.NewInt(0))
 		}
 
-		// BUG: Idempotency replay creates duplicate transaction after restart.
-		// After restart/restore, the FSM replays the idempotent replay Raft entry
-		// as a NEW transaction because its preloaded data doesn't contain the
-		// original idempotency key. This adds +200 to customer:1.
+		// Regression: idempotency key must survive snapshot restore.
 		checkAccountBalance(t, ctx, client, ledger,
 			"customer:1", "USD/2", expectedCustomer1BeforeRestart)
 
