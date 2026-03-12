@@ -1,3 +1,4 @@
+!.claude/rules/
 cover.out
 go.work*
 *.jar
