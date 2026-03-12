@@ -1093,6 +1093,16 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, err
 	}
 
+	// Promote frequently-read ledger data from gen1→gen0 to prevent eviction.
+	// This avoids unnecessary Pebble reloads via the preload system.
+	for _, order := range proposal.GetOrders() {
+		if apply, ok := order.GetType().(*raftcmdpb.Order_Apply); ok {
+			ledgerKey := domain.LedgerKey{Name: apply.Apply.GetLedger()}
+			fsm.Registry.Ledgers.Touch(ledgerKey.Bytes())
+			fsm.Registry.Boundaries.Touch(ledgerKey.Bytes())
+		}
+	}
+
 	// Compute the effective date using the HLC to guarantee monotonicity
 	effectiveDate := fsm.hlcTimestamp(proposal.GetDate())
 

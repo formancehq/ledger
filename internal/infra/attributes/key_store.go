@@ -141,6 +141,18 @@ func (s *KeyStore[K, T]) Get(canonical []byte) (value T, id U128, err error) {
 	return entry.Data, id, nil
 }
 
+// Touch promotes a cache entry from gen1 to gen0 if present.
+// Called from the FSM goroutine to keep frequently-read data warm and
+// prevent unnecessary Pebble reloads via the preload system.
+// No-op if the key is not in cache.
+func (s *KeyStore[K, T]) Touch(canonical []byte) {
+	id, _ := s.hasher.MakeKey(canonical)
+
+	if v, ok := s.M.Get(id); ok {
+		s.M.Put(id, v)
+	}
+}
+
 // Delete removes the entry for canonical key.
 // If U128 exists but tag mismatches, collision is detected locally.
 func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, err error) {
