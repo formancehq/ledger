@@ -364,7 +364,7 @@ Idempotency-Key: string
         "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
         "expand": "string",
         "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
+        "sort": "id:desc",
         "resource": "accounts"
       },
       "vars": {
@@ -387,7 +387,7 @@ Idempotency-Key: string
         "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
         "expand": "string",
         "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
+        "sort": "id:desc",
         "resource": "accounts"
       },
       "vars": {
@@ -504,7 +504,7 @@ Accept: application/json
           "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
           "expand": "string",
           "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
+          "sort": "id:desc",
           "resource": "accounts"
         },
         "vars": {
@@ -527,7 +527,7 @@ Accept: application/json
           "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
           "expand": "string",
           "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
+          "sort": "id:desc",
           "resource": "accounts"
         },
         "vars": {
@@ -631,7 +631,7 @@ Accept: application/json
               "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
               "expand": "string",
               "pit": "2019-08-24T14:15:22Z",
-              "sort": {},
+              "sort": "id:desc",
               "resource": "accounts"
             },
             "vars": {
@@ -654,7 +654,7 @@ Accept: application/json
               "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
               "expand": "string",
               "pit": "2019-08-24T14:15:22Z",
-              "sort": {},
+              "sort": "id:desc",
               "resource": "accounts"
             },
             "vars": {
@@ -2603,7 +2603,7 @@ Run a query template on a ledger
     "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
     "expand": "string",
     "pit": "2019-08-24T14:15:22Z",
-    "sort": {},
+    "sort": "id:desc",
     "resource": "accounts"
   },
   "vars": {
@@ -5014,7 +5014,7 @@ continued
           "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
           "expand": "string",
           "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
+          "sort": "id:desc",
           "resource": "accounts"
         },
         "vars": {
@@ -5037,7 +5037,7 @@ continued
           "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
           "expand": "string",
           "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
+          "sort": "id:desc",
           "resource": "accounts"
         },
         "vars": {
@@ -6862,7 +6862,7 @@ Transaction templates
   "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
   "expand": "string",
   "pit": "2019-08-24T14:15:22Z",
-  "sort": {},
+  "sort": "id:desc",
   "resource": "accounts"
 }
 
@@ -6933,7 +6933,7 @@ xor
     "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
     "expand": "string",
     "pit": "2019-08-24T14:15:22Z",
-    "sort": {},
+    "sort": "id:desc",
     "resource": "accounts"
   },
   "vars": {
@@ -6979,7 +6979,7 @@ xor
       "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
       "expand": "string",
       "pit": "2019-08-24T14:15:22Z",
-      "sort": {},
+      "sort": "id:desc",
       "resource": "accounts"
     },
     "vars": {
@@ -7002,7 +7002,7 @@ xor
       "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
       "expand": "string",
       "pit": "2019-08-24T14:15:22Z",
-      "sort": {},
+      "sort": "id:desc",
       "resource": "accounts"
     },
     "vars": {
@@ -7066,7 +7066,7 @@ Query templates
         "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
         "expand": "string",
         "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
+        "sort": "id:desc",
         "resource": "accounts"
       },
       "vars": {
@@ -7089,7 +7089,7 @@ Query templates
         "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
         "expand": "string",
         "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
+        "sort": "id:desc",
         "resource": "accounts"
       },
       "vars": {
@@ -7158,7 +7158,7 @@ Schema data structure for ledger schemas
         "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
         "expand": "string",
         "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
+        "sort": "id:desc",
         "resource": "accounts"
       },
       "vars": {
@@ -7181,7 +7181,7 @@ Schema data structure for ledger schemas
         "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
         "expand": "string",
         "pit": "2019-08-24T14:15:22Z",
-        "sort": {},
+        "sort": "id:desc",
         "resource": "accounts"
       },
       "vars": {
@@ -7259,7 +7259,7 @@ and
           "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
           "expand": "string",
           "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
+          "sort": "id:desc",
           "resource": "accounts"
         },
         "vars": {
@@ -7282,7 +7282,7 @@ and
           "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
           "expand": "string",
           "pit": "2019-08-24T14:15:22Z",
-          "sort": {},
+          "sort": "id:desc",
           "resource": "accounts"
         },
         "vars": {
@@ -7351,7 +7351,7 @@ and
               "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
               "expand": "string",
               "pit": "2019-08-24T14:15:22Z",
-              "sort": {},
+              "sort": "id:desc",
               "resource": "accounts"
             },
             "vars": {
@@ -7374,7 +7374,7 @@ and
               "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
               "expand": "string",
               "pit": "2019-08-24T14:15:22Z",
-              "sort": {},
+              "sort": "id:desc",
               "resource": "accounts"
             },
             "vars": {
@@ -7448,7 +7448,7 @@ and
             "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
             "expand": "string",
             "pit": "2019-08-24T14:15:22Z",
-            "sort": {},
+            "sort": "id:desc",
             "resource": "accounts"
           },
           "vars": {
@@ -7471,7 +7471,7 @@ and
             "cursor": "aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ==",
             "expand": "string",
             "pit": "2019-08-24T14:15:22Z",
-            "sort": {},
+            "sort": "id:desc",
             "resource": "accounts"
           },
           "vars": {
