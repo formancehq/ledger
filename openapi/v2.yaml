@@ -3205,7 +3205,11 @@ components:
           type: string
           format: date-time
         sort:
-          $ref: "#/components/parameters/sort"
+          type: string
+          description: |
+            Sort results using a field name and order (ascending or descending).
+            Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+          example: id:desc
       oneOf:
         - x-speakeasy-name-override: QueryTemplateAccountParams
           properties:
