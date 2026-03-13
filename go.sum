@@ -201,8 +201,6 @@ github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/formancehq/go-libs/v3 v3.6.0 h1:sRPrpPPxBP0Q/bFWSxbuOtkLt3zrVsowQ3oNVoNHaYY=
 github.com/formancehq/go-libs/v3 v3.6.0/go.mod h1:zWgFos2lhuunwk6YqXscMEokOKvEeH6Et5VjTyaF9mM=
-github.com/formancehq/ledger v0.0.0-20251204132242-3d438e4b28ef h1:r4bB+NC8XYnxFjH3GihN5w82IWI9gWrw99T7SY7Almg=
-github.com/formancehq/ledger v0.0.0-20251204132242-3d438e4b28ef/go.mod h1:PA0uBeBH1cx/FwwmAoH6f51S2sol+ubnSSlPFEuJECQ=
 github.com/formancehq/numscript v0.0.24 h1:YBiDZ9zLVxTZVhtQ+taRcb6q2jArAvznWMfoWRVYGT0=
 github.com/formancehq/numscript v0.0.24/go.mod h1:hC/VY5Vg04F5QkgdPPc6z/YsS/vh8V1qVJVa1VWnYMA=
 github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=

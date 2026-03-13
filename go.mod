@@ -13,7 +13,6 @@ require (
 	github.com/bytedance/sonic v1.15.0
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/formancehq/go-libs/v3 v3.6.0
-	github.com/formancehq/ledger v0.0.0-20251204132242-3d438e4b28ef
 	github.com/formancehq/numscript v0.0.24
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-jose/go-jose/v4 v4.1.3
@@ -208,6 +207,7 @@ require (
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
+	github.com/ory/dockertest/v3 v3.12.0 // indirect
 	github.com/paulmach/orb v0.12.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.25 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

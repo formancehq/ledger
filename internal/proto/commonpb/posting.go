@@ -4,10 +4,8 @@ import (
 	"errors"
 	"math/big"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/holiman/uint256"
-
-	"github.com/formancehq/ledger/pkg/accounts"
-	"github.com/formancehq/ledger/pkg/assets"
 )
 
 // Postings is a slice of Posting pointers.
@@ -48,15 +46,15 @@ func (p Postings) Validate() (int, error) {
 			return i, errors.New("no amount defined")
 		}
 
-		if !accounts.ValidateAddress(posting.GetSource()) {
+		if !domain.ValidateAccountAddress(posting.GetSource()) {
 			return i, errors.New("invalid source address")
 		}
 
-		if !accounts.ValidateAddress(posting.GetDestination()) {
+		if !domain.ValidateAccountAddress(posting.GetDestination()) {
 			return i, errors.New("invalid destination address")
 		}
 
-		if !assets.IsValid(posting.GetAsset()) {
+		if !domain.ValidateAsset(posting.GetAsset()) {
 			return i, errors.New("invalid asset")
 		}
 	}
