@@ -65,6 +65,8 @@ func (h ledgersResourceHandler) ResolveFilter(_ common.ResourceQuery[ListLedgers
 		return "metadata -> ? is not null", []any{value}, nil
 	case property == "name":
 		return "name " + common.ConvertOperatorToSQL(operator) + " ?", []any{value}, nil
+	case property == "id":
+		return "id " + common.ConvertOperatorToSQL(operator) + " ?", []any{value}, nil
 	default:
 		return "", nil, common.NewErrInvalidQuery("invalid filter property %s", property)
 	}
