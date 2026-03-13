@@ -2634,7 +2634,7 @@ Run a query template on a ledger
 |»» cursor|body|string|false|Parameter used in pagination requests. Maximum page size is set to 15.|
 |»» expand|body|string|false|none|
 |»» pit|body|string(date-time)|false|none|
-|»» sort|body|object|false|Sort results using a field name and order (ascending or descending).|
+|»» sort|body|string|false|Sort results using a field name and order (ascending or descending).|
 |»» *anonymous*|body|object|false|none|
 |»»» resource|body|string|false|none|
 |»» *anonymous*|body|object|false|none|
@@ -6876,7 +6876,7 @@ Transaction templates
 |cursor|string|false|none|Parameter used in pagination requests. Maximum page size is set to 15.<br>Set to the value of next for the next page of results.<br>Set to the value of previous for the previous page of results.<br>No other parameters can be set when this parameter is set.|
 |expand|string|false|none|none|
 |pit|string(date-time)|false|none|none|
-|sort|[#/components/parameters/sort](#schema#/components/parameters/sort)|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
+|sort|string|false|none|Sort results using a field name and order (ascending or descending).<br>Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.|
 
 oneOf
 
