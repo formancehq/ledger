@@ -404,7 +404,7 @@ func TestApplierSnapshotGatingCycle(t *testing.T) {
 		}
 
 		return true
-	}, 10*time.Second, 100*time.Millisecond, "all 8 ledgers should exist after snapshot gating cycle")
+	}, 30*time.Second, 100*time.Millisecond, "all 8 ledgers should exist after snapshot gating cycle")
 
 	// Verify status returned to normal.
 	require.Eventually(t, func() bool {

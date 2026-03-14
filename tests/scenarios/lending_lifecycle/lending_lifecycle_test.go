@@ -1,6 +1,6 @@
 //go:build scenario
 
-package scenarios
+package lendinglifecycle
 
 import (
 	"fmt"
@@ -12,6 +12,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
 )
 
 // TestLendingLifecycle models a consumer lending operation:
@@ -42,8 +44,8 @@ func TestLendingLifecycle(t *testing.T) {
 		monthlyRate  = 2       // 2% monthly interest (simplified)
 	)
 
-	sc := setupSingleNode(t, scenarioHTTPPort+5, scenarioGRPCPort+5)
-	ctx, client := sc.ctx, sc.Client
+	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+5, scenariotest.GRPCPort+5)
+	ctx, client := sc.Ctx(), sc.Client
 
 	// Expected balances tracking
 	fundingBalance := new(big.Int)
@@ -65,7 +67,7 @@ func TestLendingLifecycle(t *testing.T) {
 
 	// --- Phase 1: Setup ---
 	t.Run("Setup", func(t *testing.T) {
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateLedgerAction(ledger, nil),
 			// Account types
 			testutil.AddAccountTypeAction(ledger, "funding", "funding:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
@@ -140,7 +142,7 @@ send $amount (
 		)
 
 		// Fund the lending pool
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateScriptRefTransactionAction(ledger, "fund_pool", "1.0.0", map[string]string{
 				"amount": fmt.Sprintf("USD/2 %d", loanAmount*numBorrowers),
 			}, nil),
@@ -164,10 +166,10 @@ send $amount (
 			borrowerLoanBalance[i].SetInt64(loanAmount)
 			borrowerWalletBalance[i].SetInt64(loanAmount)
 		}
-		applyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, actions...)
 
 		// Verify funding pool is depleted
-		checkAccountBalance(t, ctx, client, ledger, "funding:pool", "USD/2", fundingBalance)
+		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "funding:pool", "USD/2", fundingBalance)
 	})
 
 	// --- Phase 3: Monthly Repayment Cycles ---
@@ -282,11 +284,11 @@ send $amount (
 				}
 
 				if len(actions) > 0 {
-					applyActions(t, ctx, client, actions...)
+					scenariotest.ApplyActions(t, ctx, client, actions...)
 				}
 
 				// Close period each month
-				closePeriodAndWait(t, ctx, client, "period close month %d", month)
+				scenariotest.ClosePeriodAndWait(t, ctx, client, "period close month %d", month)
 			})
 		}
 	})
@@ -310,7 +312,7 @@ send $amount (
 			}
 		}
 		if len(actions) > 0 {
-			applyActions(t, ctx, client, actions...)
+			scenariotest.ApplyActions(t, ctx, client, actions...)
 		}
 	})
 
@@ -333,7 +335,7 @@ send $amount (
 			}
 		}
 		if len(actions) > 0 {
-			applyActions(t, ctx, client, actions...)
+			scenariotest.ApplyActions(t, ctx, client, actions...)
 		}
 	})
 
@@ -341,24 +343,24 @@ send $amount (
 	t.Run("Metadata", func(t *testing.T) {
 		// Tag defaulted borrowers
 		for id := range defaulters {
-			applyActions(t, ctx, client,
+			scenariotest.ApplyActions(t, ctx, client,
 				testutil.SaveAccountMetadataAction(ledger, fmt.Sprintf("borrower:%d:loan", id), map[string]string{
 					"status": "written-off",
 				}),
 			)
 		}
 		// Tag early repayer
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.SaveAccountMetadataAction(ledger, fmt.Sprintf("borrower:%d:loan", earlyRepayer), map[string]string{
 				"status": "repaid-early",
 			}),
 		)
 	})
 
-	// --- Phase 7: Verify Prepared Query on Defaulters ---
+	// --- Phase 7: Prepared Queries with typed parameters ---
 	t.Run("PreparedQueries", func(t *testing.T) {
 		// Create a metadata index on "status" before querying
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateAccountMetadataIndexAction(ledger, "status"),
 		)
 
@@ -371,47 +373,96 @@ send $amount (
 			return indexStatus.GetLag() == 0 && len(indexStatus.GetBackfillProgress()) == 0
 		}, 15*time.Second, 200*time.Millisecond, "index backfill should complete")
 
-		err := testutil.CreatePreparedQuery(ctx, client, "defaulted-loans", ledger,
+		// 1. Parameterized string metadata — query by loan status at runtime
+		err := testutil.CreatePreparedQuery(ctx, client, "loans-by-status", ledger,
 			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.StringMetadataFilter("status", "written-off"),
+			testutil.ParamStringMetadataFilter("status", "status_value"),
 		)
-		require.NoError(t, err, "CreatePreparedQuery failed")
+		require.NoError(t, err, "CreatePreparedQuery(loans-by-status) failed")
 
-		resp, err := testutil.ExecutePreparedQuery(ctx, client, ledger, "defaulted-loans",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100)
-		require.NoError(t, err, "ExecutePreparedQuery failed")
+		// Query for written-off loans — should find exactly the defaulters
+		resp, err := testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "loans-by-status",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*commonpb.ParameterValue{"status_value": testutil.StringParam("written-off")},
+		)
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(written-off) failed")
 		cursor := resp.GetCursor()
 		require.NotNil(t, cursor, "expected cursor result from prepared query")
 		require.Equal(t, len(defaulters), len(cursor.GetAccountData()),
 			"should find exactly %d defaulted loan accounts", len(defaulters))
 
+		// Query for early-repaid loans — should find exactly 1 (borrower 5)
+		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "loans-by-status",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*commonpb.ParameterValue{"status_value": testutil.StringParam("repaid-early")},
+		)
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(repaid-early) failed")
+		require.Equal(t, 1, len(resp.GetCursor().GetAccountData()),
+			"should find exactly 1 early-repaid loan account")
+
+		// Query for a status nobody has — should return 0
+		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "loans-by-status",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*commonpb.ParameterValue{"status_value": testutil.StringParam("active")},
+		)
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(active) failed")
+		require.Empty(t, resp.GetCursor().GetAccountData(),
+			"no loans should have status=active")
+
+		// 2. Parameterized address prefix — filter borrower accounts by prefix
+		err = testutil.CreatePreparedQuery(ctx, client, "accounts-by-prefix", ledger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			testutil.ParamAddressPrefixFilter("prefix"),
+		)
+		require.NoError(t, err, "CreatePreparedQuery(accounts-by-prefix) failed")
+
+		// Query for all borrower loan accounts
+		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("borrower:")},
+		)
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(borrower:) failed")
+		// 10 borrowers × 2 accounts each (loan + wallet) = 20
+		require.Equal(t, numBorrowers*2, len(resp.GetCursor().GetAccountData()),
+			"should find all borrower accounts (loan + wallet)")
+
+		// Query for funding accounts only
+		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("funding:")},
+		)
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(funding:) failed")
+		require.Equal(t, 1, len(resp.GetCursor().GetAccountData()),
+			"should find exactly 1 funding account")
+
 		// Cleanup
-		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "defaulted-loans"))
+		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "loans-by-status"))
+		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "accounts-by-prefix"))
 	})
 
 	// --- Phase 8: Final Invariants ---
 	t.Run("FinalInvariants", func(t *testing.T) {
-		checkDoubleEntryBalance(t, ctx, client, ledger)
-		checkNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
+		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
+		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
 
 		// Verify interest revenue is positive
-		checkPositiveBalance(t, ctx, client, ledger, "revenue:interest", "USD/2")
+		scenariotest.CheckPositiveBalance(t, ctx, client, ledger, "revenue:interest", "USD/2")
 
 		// Verify all non-defaulted, non-early borrower loans are zero
 		for i := 1; i <= numBorrowers; i++ {
 			if defaulters[i] || i == earlyRepayer {
 				continue
 			}
-			checkAccountBalance(t, ctx, client, ledger, fmt.Sprintf("borrower:%d:loan", i), "USD/2", borrowerLoanBalance[i])
+			scenariotest.CheckAccountBalance(t, ctx, client, ledger, fmt.Sprintf("borrower:%d:loan", i), "USD/2", borrowerLoanBalance[i])
 		}
 
 		// Verify written-off loans are zero
 		for id := range defaulters {
-			checkAccountBalance(t, ctx, client, ledger, fmt.Sprintf("borrower:%d:loan", id), "USD/2", big.NewInt(0))
+			scenariotest.CheckAccountBalance(t, ctx, client, ledger, fmt.Sprintf("borrower:%d:loan", id), "USD/2", big.NewInt(0))
 		}
 
 		// Verify recovery pool got the write-offs
-		checkPositiveBalance(t, ctx, client, ledger, "recovery:pool", "USD/2")
+		scenariotest.CheckPositiveBalance(t, ctx, client, ledger, "recovery:pool", "USD/2")
 
 		// Stats
 		stats, err := testutil.GetLedgerStats(ctx, client, ledger)
@@ -421,8 +472,8 @@ send $amount (
 	})
 
 	// --- Tail phases ---
-	runPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
-		checkDoubleEntryBalance(t, ctx, client, ledger)
-		checkNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
+		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
+		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
 	})
 }

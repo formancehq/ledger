@@ -1,6 +1,6 @@
 //go:build scenario
 
-package scenarios
+package marketplace
 
 import (
 	"fmt"
@@ -12,6 +12,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
 )
 
 // TestMarketplaceLifecycle models a high-volume e-commerce marketplace:
@@ -29,8 +31,8 @@ func TestMarketplaceLifecycle(t *testing.T) {
 		feePercent   = 3
 	)
 
-	sc := setupSingleNode(t, scenarioHTTPPort, scenarioGRPCPort)
-	ctx, client := sc.ctx, sc.Client
+	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort, scenariotest.GRPCPort)
+	ctx, client := sc.Ctx(), sc.Client
 
 	// Track expected balances
 	customerBalance := make(map[int]*big.Int, numCustomers)
@@ -56,7 +58,7 @@ func TestMarketplaceLifecycle(t *testing.T) {
 
 	// --- Phase 1: Setup & Numscript Library ---
 	t.Run("Setup", func(t *testing.T) {
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateLedgerAction(ledger, nil),
 			// Account types: enforce address patterns
 			testutil.AddAccountTypeAction(ledger, "customer", "customer:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
@@ -126,7 +128,7 @@ send $amount (
 		require.Len(t, ledgerInfo.GetAccountTypes(), 4, "should have 4 account types")
 
 		// Add a temporary type
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.AddAccountTypeAction(ledger, "temp-type", "temp:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		)
 
@@ -136,7 +138,7 @@ send $amount (
 		require.Len(t, ledgers[ledger].GetAccountTypes(), 5, "should have 5 account types after add")
 
 		// Update enforcement mode to AUDIT
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.UpdateAccountTypeAction(ledger, "temp-type", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT),
 		)
 
@@ -148,7 +150,7 @@ send $amount (
 		require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, tempType.GetEnforcementMode())
 
 		// Remove the type
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.RemoveAccountTypeAction(ledger, "temp-type"),
 		)
 
@@ -159,7 +161,7 @@ send $amount (
 
 		// Account type violation: using an address that doesn't match any registered type
 		// should fail when enforcement is STRICT
-		violationErr := applyActionsExpectError(ctx, client,
+		violationErr := scenariotest.ApplyActionsExpectError(ctx, client,
 			testutil.CreateTransactionAction(ledger, []*commonpb.Posting{
 				testutil.NewPosting("world", "unknown:address", big.NewInt(100), "USD/2"),
 			}, nil, nil),
@@ -176,7 +178,7 @@ send $amount (
 				"amount":   fmt.Sprintf("USD/2 %d", depositAmt),
 			}, nil))
 		}
-		applyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, actions...)
 	})
 
 	// --- Phase 3: Purchases with Fees (200 iterations, with periodic closes and reads) ---
@@ -186,14 +188,14 @@ send $amount (
 			merchant := 1 + i%numMerchants
 			amount := int64(1000 + i*100)
 
-			resp := applyActions(t, ctx, client,
+			resp := scenariotest.ApplyActions(t, ctx, client,
 				testutil.CreateScriptRefTransactionAction(ledger, "purchase", "1.0.0", map[string]string{
 					"customer": fmt.Sprintf("customer:%d", customer),
 					"merchant": fmt.Sprintf("merchant:%d", merchant),
 					"amount":   fmt.Sprintf("USD/2 %d", amount),
 				}, nil),
 			)
-			txID := getCreatedTransactionID(t, resp)
+			txID := scenariotest.GetCreatedTransactionID(t, resp)
 			purchaseTxIDs = append(purchaseTxIDs, txID)
 			purchaseRecords = append(purchaseRecords, purchaseRecord{
 				customer: customer,
@@ -209,8 +211,8 @@ send $amount (
 
 			// Every 60 transactions: close period + check double-entry
 			if (i+1)%60 == 0 {
-				closePeriodAndWait(t, ctx, client, "period close timed out at purchase %d", i)
-				checkDoubleEntryBalance(t, ctx, client, ledger)
+				scenariotest.ClosePeriodAndWait(t, ctx, client, "period close timed out at purchase %d", i)
+				scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 			}
 
 			// Every 20 transactions: read a "cold" account (not recently touched)
@@ -222,7 +224,7 @@ send $amount (
 		}
 
 		// Spot-check platform fees
-		checkAccountBalance(t, ctx, client, ledger, "platform:fees", "USD/2", totalFees)
+		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "platform:fees", "USD/2", totalFees)
 
 		// GetTransaction: verify a purchase transaction has correct structure
 		txResp, err := testutil.GetTransaction(ctx, client, ledger, purchaseTxIDs[0])
@@ -240,7 +242,7 @@ send $amount (
 		pastTime1 := time.Now().Add(-24 * time.Hour)
 		pastTime2 := time.Now().Add(-48 * time.Hour)
 
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.WithTimestamp(
 				testutil.CreateForceTransactionAction(ledger, []*commonpb.Posting{
 					testutil.NewPosting("world", "platform:payouts", big.NewInt(100), "USD/2"),
@@ -249,7 +251,7 @@ send $amount (
 			),
 		)
 
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.WithTimestamp(
 				testutil.CreateForceTransactionAction(ledger, []*commonpb.Posting{
 					testutil.NewPosting("world", "platform:payouts", big.NewInt(200), "USD/2"),
@@ -259,7 +261,7 @@ send $amount (
 		)
 
 		// WithExpandVolumes: verify the response contains volumes
-		expandResp := applyActions(t, ctx, client,
+		expandResp := scenariotest.ApplyActions(t, ctx, client,
 			testutil.WithExpandVolumes(
 				testutil.CreateForceTransactionAction(ledger, []*commonpb.Posting{
 					testutil.NewPosting("world", "platform:payouts", big.NewInt(50), "USD/2"),
@@ -286,7 +288,7 @@ send $amount (
 			}
 			p := purchaseRecords[idx]
 
-			applyActions(t, ctx, client,
+			scenariotest.ApplyActions(t, ctx, client,
 				testutil.RevertTransactionAction(ledger, purchaseTxIDs[idx], true, false, nil),
 			)
 			purchaseRecords[idx].reverted = true
@@ -298,12 +300,12 @@ send $amount (
 			totalFees.Sub(totalFees, big.NewInt(fee))
 		}
 
-		checkAccountBalance(t, ctx, client, ledger, "platform:fees", "USD/2", totalFees)
+		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "platform:fees", "USD/2", totalFees)
 	})
 
 	// --- Phase 5: Final Period Close ---
 	t.Run("FinalPeriodClose", func(t *testing.T) {
-		closePeriodAndWait(t, ctx, client, "final period close timed out")
+		scenariotest.ClosePeriodAndWait(t, ctx, client, "final period close timed out")
 	})
 
 	// --- Phase 6: Merchant Payouts ---
@@ -313,7 +315,7 @@ send $amount (
 			if bal.Sign() <= 0 {
 				continue
 			}
-			applyActions(t, ctx, client,
+			scenariotest.ApplyActions(t, ctx, client,
 				testutil.CreateScriptRefTransactionAction(ledger, "payout", "1.0.0", map[string]string{
 					"merchant": fmt.Sprintf("merchant:%d", i),
 					"amount":   fmt.Sprintf("USD/2 %d", bal.Int64()),
@@ -322,7 +324,7 @@ send $amount (
 		}
 
 		for i := 1; i <= numMerchants; i++ {
-			checkAccountBalance(t, ctx, client, ledger,
+			scenariotest.CheckAccountBalance(t, ctx, client, ledger,
 				fmt.Sprintf("merchant:%d", i), "USD/2", big.NewInt(0))
 		}
 	})
@@ -330,7 +332,7 @@ send $amount (
 	// --- Phase 7: Metadata Operations ---
 	t.Run("MetadataOperations", func(t *testing.T) {
 		// Add account metadata
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.SaveAccountMetadataAction(ledger, "customer:1", map[string]string{
 				"tier": "gold",
 				"kyc":  "verified",
@@ -347,7 +349,7 @@ send $amount (
 		require.NotNil(t, tier, "tier metadata should exist")
 
 		// Add transaction metadata
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.SaveTransactionMetadataAction(ledger, purchaseTxIDs[0], map[string]string{
 				"flagged": "true",
 				"reason":  "review",
@@ -355,7 +357,7 @@ send $amount (
 		)
 
 		// Delete account metadata
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.DeleteAccountMetadataAction(ledger, "customer:1", "kyc"),
 		)
 		acct, err = testutil.GetAccount(ctx, client, ledger, "customer:1")
@@ -364,7 +366,7 @@ send $amount (
 		require.NotNil(t, testutil.FindMetadataValue(acct.Metadata, "tier"), "tier should remain")
 
 		// Delete transaction metadata
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.DeleteTransactionMetadataAction(ledger, purchaseTxIDs[0], "reason"),
 		)
 	})
@@ -372,7 +374,7 @@ send $amount (
 	// --- Phase 8: Inline Numscript & Raw Postings ---
 	t.Run("InlineNumscriptAndRawPostings", func(t *testing.T) {
 		// Inline Numscript (not ScriptReference)
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateScriptTransactionAction(ledger, `vars {
   account $src
   account $dst
@@ -391,7 +393,7 @@ send $amount (
 		customerBalance[2].Add(customerBalance[2], big.NewInt(100))
 
 		// Raw postings (balance-checked, non-force)
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateTransactionAction(ledger, []*commonpb.Posting{
 				testutil.NewPosting("customer:2", "customer:3", big.NewInt(50), "USD/2"),
 			}, nil, nil),
@@ -400,7 +402,7 @@ send $amount (
 		customerBalance[3].Add(customerBalance[3], big.NewInt(50))
 
 		// Raw postings insufficient funds — should fail
-		err := applyActionsExpectError(ctx, client,
+		err := scenariotest.ApplyActionsExpectError(ctx, client,
 			testutil.CreateTransactionAction(ledger, []*commonpb.Posting{
 				testutil.NewPosting("customer:50", "customer:49", big.NewInt(999_999_999), "USD/2"),
 			}, nil, nil),
@@ -412,23 +414,23 @@ send $amount (
 	t.Run("RevertBalanceChecked", func(t *testing.T) {
 		// Create a small transaction, then revert it with force=false.
 		// This should succeed because customer:3 has enough balance.
-		resp := applyActions(t, ctx, client,
+		resp := scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 				"customer": "customer:3",
 				"amount":   "USD/2 500",
 			}, nil),
 		)
-		depositTxID := getCreatedTransactionID(t, resp)
+		depositTxID := scenariotest.GetCreatedTransactionID(t, resp)
 		customerBalance[3].Add(customerBalance[3], big.NewInt(500))
 
 		// Revert with force=false — world will receive back, no balance issue
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.RevertTransactionAction(ledger, depositTxID, false, false, nil),
 		)
 		customerBalance[3].Sub(customerBalance[3], big.NewInt(500))
 
 		// Try to revert the same transaction again — should fail (already reverted)
-		err := applyActionsExpectError(ctx, client,
+		err := scenariotest.ApplyActionsExpectError(ctx, client,
 			testutil.RevertTransactionAction(ledger, depositTxID, false, false, nil),
 		)
 		require.Error(t, err, "expected already-reverted error")
@@ -442,7 +444,7 @@ send $amount (
 			"amount":   "USD/2 100",
 		}, nil)
 		refAction.GetApply().GetCreateTransaction().Reference = "unique-ref-001"
-		applyActions(t, ctx, client, refAction)
+		scenariotest.ApplyActions(t, ctx, client, refAction)
 		customerBalance[1].Add(customerBalance[1], big.NewInt(100))
 
 		// Duplicate reference — should fail
@@ -451,7 +453,7 @@ send $amount (
 			"amount":   "USD/2 100",
 		}, nil)
 		refAction2.GetApply().GetCreateTransaction().Reference = "unique-ref-001"
-		err := applyActionsExpectError(ctx, client, refAction2)
+		err := scenariotest.ApplyActionsExpectError(ctx, client, refAction2)
 		require.Error(t, err, "expected reference conflict error")
 
 		// Idempotency: create a transaction with an idempotency key
@@ -460,7 +462,7 @@ send $amount (
 			"amount":   "USD/2 200",
 		}, nil)
 		ikAction.IdempotencyKey = "ik-deposit-001"
-		applyActions(t, ctx, client, ikAction)
+		scenariotest.ApplyActions(t, ctx, client, ikAction)
 		customerBalance[1].Add(customerBalance[1], big.NewInt(200))
 
 		// Idempotency replay: same key + same content → should succeed (return original result)
@@ -469,7 +471,7 @@ send $amount (
 			"amount":   "USD/2 200",
 		}, nil)
 		ikReplay.IdempotencyKey = "ik-deposit-001"
-		applyActions(t, ctx, client, ikReplay)
+		scenariotest.ApplyActions(t, ctx, client, ikReplay)
 		// No balance change — idempotent replay returns the original log
 
 		// Idempotency conflict: same key + different content
@@ -478,7 +480,7 @@ send $amount (
 			"amount":   "USD/2 999",
 		}, nil)
 		ikConflict.IdempotencyKey = "ik-deposit-001"
-		err = applyActionsExpectError(ctx, client, ikConflict)
+		err = scenariotest.ApplyActionsExpectError(ctx, client, ikConflict)
 		require.Error(t, err, "expected idempotency key conflict")
 	})
 
@@ -489,7 +491,7 @@ send $amount (
 	// --- Phase 11: DeleteNumscript ---
 	t.Run("DeleteNumscript", func(t *testing.T) {
 		// Save a temporary script, then delete it
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.SaveNumscriptWithVersionAction("temp_script", `vars {
   monetary $amount
 }
@@ -498,7 +500,7 @@ send $amount (
   destination = @customer:1
 )`, "1.0.0"),
 		)
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.DeleteNumscriptAction("temp_script"),
 		)
 	})
@@ -537,7 +539,7 @@ send $amount (
 
 		// Execute with prefix=customer: → should return all customers
 		resp, err := testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100, map[string]string{"prefix": "customer:"})
+			commonpb.QueryMode_QUERY_MODE_LIST, 100, map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("customer:")})
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(customer:) failed")
 		cursor := resp.GetCursor()
 		require.NotNil(t, cursor, "expected cursor result")
@@ -546,7 +548,7 @@ send $amount (
 
 		// Execute same query with prefix=merchant: → should return all merchants
 		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100, map[string]string{"prefix": "merchant:"})
+			commonpb.QueryMode_QUERY_MODE_LIST, 100, map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("merchant:")})
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(merchant:) failed")
 		cursor = resp.GetCursor()
 		require.NotNil(t, cursor, "expected cursor result for merchants")
@@ -555,7 +557,7 @@ send $amount (
 
 		// Execute with prefix=platform: → should return platform accounts
 		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100, map[string]string{"prefix": "platform:"})
+			commonpb.QueryMode_QUERY_MODE_LIST, 100, map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("platform:")})
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(platform:) failed")
 		cursor = resp.GetCursor()
 		require.NotNil(t, cursor, "expected cursor result for platform")
@@ -584,12 +586,12 @@ send $amount (
 
 	// --- Phase 12: Final Invariants ---
 	t.Run("FinalInvariants", func(t *testing.T) {
-		checkDoubleEntryBalance(t, ctx, client, ledger)
-		checkNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
-		checkAccountBalance(t, ctx, client, ledger, "platform:fees", "USD/2", totalFees)
+		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
+		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
+		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "platform:fees", "USD/2", totalFees)
 
 		for i := 1; i <= numCustomers; i++ {
-			checkAccountBalance(t, ctx, client, ledger,
+			scenariotest.CheckAccountBalance(t, ctx, client, ledger,
 				fmt.Sprintf("customer:%d", i), "USD/2", customerBalance[i])
 		}
 
@@ -649,36 +651,36 @@ send $amount (
 	numTimestampTxs := 3 // 2 backdated + 1 expand volumes
 	numExtraTxs := 3     // inline numscript + raw posting + deposit in RevertBalanceChecked + ref deposit + ik deposit
 	t.Run("AuditTrail", func(t *testing.T) {
-		checkAuditTrail(t, ctx, client, []auditExpectation{{
-			ledger:           ledger,
-			minTransactions:  numCustomers + numPurchases + numReverts + numExtraReverts + numExtraTxs + numTimestampTxs,
-			expectedReverted: numReverts + numExtraReverts,
+		scenariotest.CheckAuditTrail(t, ctx, client, []scenariotest.AuditExpectation{{
+			Ledger:           ledger,
+			MinTransactions:  numCustomers + numPurchases + numReverts + numExtraReverts + numExtraTxs + numTimestampTxs,
+			ExpectedReverted: numReverts + numExtraReverts,
 		}})
 	})
 
 	// --- Tail phases: StoreCheck, Backup, Restart+Verify, BackupRestore+Verify ---
-	runPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
-		checkDoubleEntryBalance(t, ctx, client, ledger)
-		checkNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
-		checkAccountBalance(t, ctx, client, ledger, "platform:fees", "USD/2", totalFees)
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
+		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
+		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
+		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "platform:fees", "USD/2", totalFees)
 
 		for i := 1; i <= numCustomers; i++ {
-			checkAccountBalance(t, ctx, client, ledger,
+			scenariotest.CheckAccountBalance(t, ctx, client, ledger,
 				fmt.Sprintf("customer:%d", i), "USD/2", customerBalance[i])
 		}
 		for i := 1; i <= numMerchants; i++ {
-			checkAccountBalance(t, ctx, client, ledger,
+			scenariotest.CheckAccountBalance(t, ctx, client, ledger,
 				fmt.Sprintf("merchant:%d", i), "USD/2", big.NewInt(0))
 		}
 
 		// Regression: idempotency key must survive snapshot restore.
-		checkAccountBalance(t, ctx, client, ledger,
+		scenariotest.CheckAccountBalance(t, ctx, client, ledger,
 			"customer:1", "USD/2", expectedCustomer1BeforeRestart)
 
-		checkAuditTrail(t, ctx, client, []auditExpectation{{
-			ledger:           ledger,
-			minTransactions:  numCustomers + numPurchases + numReverts + numExtraReverts + numExtraTxs + numTimestampTxs,
-			expectedReverted: numReverts + numExtraReverts,
+		scenariotest.CheckAuditTrail(t, ctx, client, []scenariotest.AuditExpectation{{
+			Ledger:           ledger,
+			MinTransactions:  numCustomers + numPurchases + numReverts + numExtraReverts + numExtraTxs + numTimestampTxs,
+			ExpectedReverted: numReverts + numExtraReverts,
 		}})
 	})
 }

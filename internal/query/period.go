@@ -31,7 +31,6 @@ func ReadPeriods(ctx context.Context, reader dal.PebbleReader) (dal.Cursor[*comm
 	return dal.NewProtoCursor[*commonpb.Period](iter), nil
 }
 
-
 // ReadNextPeriodID returns the next period ID from the given reader.
 // Returns 1 if not found (default starting value).
 func ReadNextPeriodID(reader dal.PebbleReader) (uint64, error) {

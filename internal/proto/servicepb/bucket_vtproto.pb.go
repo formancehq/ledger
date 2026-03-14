@@ -2642,9 +2642,9 @@ func (m *ExecutePreparedQueryRequest) CloneVT() *ExecutePreparedQueryRequest {
 	r.MinLogSequence = m.MinLogSequence
 	r.Mode = m.Mode
 	if rhs := m.Parameters; rhs != nil {
-		tmpContainer := make(map[string]string, len(rhs))
+		tmpContainer := make(map[string]*commonpb.ParameterValue, len(rhs))
 		for k, v := range rhs {
-			tmpContainer[k] = v
+			tmpContainer[k] = v.CloneVT()
 		}
 		r.Parameters = tmpContainer
 	}
@@ -7037,8 +7037,16 @@ func (this *ExecutePreparedQueryRequest) EqualVT(that *ExecutePreparedQueryReque
 		if !ok {
 			return false
 		}
-		if vx != vy {
-			return false
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &commonpb.ParameterValue{}
+			}
+			if q == nil {
+				q = &commonpb.ParameterValue{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
 		}
 	}
 	if this.PageSize != that.PageSize {
@@ -13950,9 +13958,12 @@ func (m *ExecutePreparedQueryRequest) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		for k := range m.Parameters {
 			v := m.Parameters[k]
 			baseI := i
-			i -= len(v)
-			copy(dAtA[i:], v)
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(v)))
+			size, err := v.MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
 			dAtA[i] = 0x12
 			i -= len(k)
@@ -17213,7 +17224,12 @@ func (m *ExecutePreparedQueryRequest) SizeVT() (n int) {
 		for k, v := range m.Parameters {
 			_ = k
 			_ = v
-			mapEntrySize := 1 + len(k) + protohelpers.SizeOfVarint(uint64(len(k))) + 1 + len(v) + protohelpers.SizeOfVarint(uint64(len(v)))
+			l = 0
+			if v != nil {
+				l = v.SizeVT()
+			}
+			l += 1 + protohelpers.SizeOfVarint(uint64(l))
+			mapEntrySize := 1 + len(k) + protohelpers.SizeOfVarint(uint64(len(k))) + l
 			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
 		}
 	}
@@ -32397,10 +32413,10 @@ func (m *ExecutePreparedQueryRequest) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Parameters == nil {
-				m.Parameters = make(map[string]string)
+				m.Parameters = make(map[string]*commonpb.ParameterValue)
 			}
 			var mapkey string
-			var mapvalue string
+			var mapvalue *commonpb.ParameterValue
 			for iNdEx < postIndex {
 				entryPreIndex := iNdEx
 				var wire uint64
@@ -32449,7 +32465,7 @@ func (m *ExecutePreparedQueryRequest) UnmarshalVT(dAtA []byte) error {
 					mapkey = string(dAtA[iNdEx:postStringIndexmapkey])
 					iNdEx = postStringIndexmapkey
 				} else if fieldNum == 2 {
-					var stringLenmapvalue uint64
+					var mapmsglen int
 					for shift := uint(0); ; shift += 7 {
 						if shift >= 64 {
 							return protohelpers.ErrIntOverflow
@@ -32459,24 +32475,26 @@ func (m *ExecutePreparedQueryRequest) UnmarshalVT(dAtA []byte) error {
 						}
 						b := dAtA[iNdEx]
 						iNdEx++
-						stringLenmapvalue |= uint64(b&0x7F) << shift
+						mapmsglen |= int(b&0x7F) << shift
 						if b < 0x80 {
 							break
 						}
 					}
-					intStringLenmapvalue := int(stringLenmapvalue)
-					if intStringLenmapvalue < 0 {
+					if mapmsglen < 0 {
 						return protohelpers.ErrInvalidLength
 					}
-					postStringIndexmapvalue := iNdEx + intStringLenmapvalue
-					if postStringIndexmapvalue < 0 {
+					postmsgIndex := iNdEx + mapmsglen
+					if postmsgIndex < 0 {
 						return protohelpers.ErrInvalidLength
 					}
-					if postStringIndexmapvalue > l {
+					if postmsgIndex > l {
 						return io.ErrUnexpectedEOF
 					}
-					mapvalue = string(dAtA[iNdEx:postStringIndexmapvalue])
-					iNdEx = postStringIndexmapvalue
+					mapvalue = &commonpb.ParameterValue{}
+					if err := mapvalue.UnmarshalVT(dAtA[iNdEx:postmsgIndex]); err != nil {
+						return err
+					}
+					iNdEx = postmsgIndex
 				} else {
 					iNdEx = entryPreIndex
 					skippy, err := protohelpers.Skip(dAtA[iNdEx:])

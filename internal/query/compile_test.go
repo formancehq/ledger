@@ -304,7 +304,7 @@ func TestResolveIntBounds(t *testing.T) {
 	tests := []struct {
 		name       string
 		cond       *commonpb.IntCondition
-		params     map[string]string
+		params     map[string]*commonpb.ParameterValue
 		wantMin    int64
 		wantMax    int64
 		wantHasMin bool
@@ -383,7 +383,7 @@ func TestResolveIntBounds(t *testing.T) {
 		{
 			name:       "param equality: same param for min and max",
 			cond:       &commonpb.IntCondition{ParamMin: "val", ParamMax: "val"},
-			params:     map[string]string{"val": "42"},
+			params:     map[string]*commonpb.ParameterValue{"val": {Value: &commonpb.ParameterValue_Int64Value{Int64Value: 42}}},
 			wantMin:    42,
 			wantMax:    43,
 			wantHasMin: true,
@@ -431,7 +431,7 @@ func TestResolveUintBounds(t *testing.T) {
 	tests := []struct {
 		name       string
 		cond       *commonpb.UintCondition
-		params     map[string]string
+		params     map[string]*commonpb.ParameterValue
 		wantMin    uint64
 		wantMax    uint64
 		wantHasMin bool
@@ -493,7 +493,7 @@ func TestResolveUintBounds(t *testing.T) {
 		{
 			name:       "param equality",
 			cond:       &commonpb.UintCondition{ParamMin: "v", ParamMax: "v"},
-			params:     map[string]string{"v": "100"},
+			params:     map[string]*commonpb.ParameterValue{"v": {Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: 100}}},
 			wantMin:    100,
 			wantMax:    101,
 			wantHasMin: true,

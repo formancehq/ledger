@@ -1,6 +1,6 @@
 //go:build scenario
 
-package scenarios
+package scenariotest
 
 import (
 	"context"
@@ -28,13 +28,13 @@ import (
 // Port constants for scenario tests.
 // Using 16xxx range to avoid conflicts with e2e tests (15xxx).
 const (
-	scenarioGRPCPort = 16100
-	scenarioHTTPPort = 16200
+	GRPCPort = 16100
+	HTTPPort = 16200
 )
 
-// scenarioCluster holds the state for a single-node scenario test cluster.
+// ScenarioCluster holds the state for a single-node scenario test cluster.
 // It supports restart (stop + start with same WAL/data dirs) to test WAL replay.
-type scenarioCluster struct {
+type ScenarioCluster struct {
 	t       *testing.T
 	ctx     context.Context
 	server  *testservice.Service
@@ -51,9 +51,14 @@ type scenarioCluster struct {
 	bootstrap bool // true on first boot, false on restart
 }
 
+// Ctx returns the cluster's context.
+func (sc *ScenarioCluster) Ctx() context.Context {
+	return sc.ctx
+}
+
 // Restart stops the server and starts it again with the same WAL/data dirs.
 // After restart, Client and Cluster fields point to fresh connections.
-func (sc *scenarioCluster) Restart() {
+func (sc *ScenarioCluster) Restart() {
 	sc.t.Helper()
 
 	// Close old gRPC connection first to avoid in-flight requests racing with shutdown.
@@ -72,7 +77,7 @@ func (sc *scenarioCluster) Restart() {
 // BackupAndRestore takes a backup, restores it to fresh directories, and
 // restarts the server on the restored data. After this call, Client and Cluster
 // point to the restored server and sc.walDir/sc.dataDir have been updated.
-func (sc *scenarioCluster) BackupAndRestore() {
+func (sc *ScenarioCluster) BackupAndRestore() {
 	sc.t.Helper()
 
 	// 1. Take backup to memory.
@@ -134,7 +139,7 @@ func (sc *scenarioCluster) BackupAndRestore() {
 	sc.t.Logf("Backup-restore complete: server running on restored data")
 }
 
-func (sc *scenarioCluster) startServer() {
+func (sc *ScenarioCluster) startServer() {
 	sc.t.Helper()
 
 	raftPort := sc.grpcPort - 1000
@@ -186,13 +191,13 @@ func (sc *scenarioCluster) startServer() {
 	}, 10*time.Second, 100*time.Millisecond, "leader election timed out")
 }
 
-// setupSingleNode creates a single-node cluster for scenario tests.
-// Returns the scenarioCluster which holds ctx, clients, and supports Restart().
+// SetupSingleNode creates a single-node cluster for scenario tests.
+// Returns the ScenarioCluster which holds ctx, clients, and supports Restart().
 // Cleanup is handled via t.Cleanup.
-func setupSingleNode(t *testing.T, httpPort, grpcPort int, extra ...testservice.Instrumentation) *scenarioCluster {
+func SetupSingleNode(t *testing.T, httpPort, grpcPort int, extra ...testservice.Instrumentation) *ScenarioCluster {
 	t.Helper()
 
-	sc := &scenarioCluster{
+	sc := &ScenarioCluster{
 		t:         t,
 		ctx:       logging.TestingContext(),
 		httpPort:  httpPort,
@@ -219,8 +224,8 @@ func setupSingleNode(t *testing.T, httpPort, grpcPort int, extra ...testservice.
 // Store integrity & backup checks
 // ---------------------------------------------------------------------------
 
-// checkStoreIntegrity runs CheckStore and requires no integrity errors.
-func checkStoreIntegrity(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient) {
+// CheckStoreIntegrity runs CheckStore and requires no integrity errors.
+func CheckStoreIntegrity(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient) {
 	t.Helper()
 
 	result, err := testutil.CollectCheckStoreEvents(ctx, client)
@@ -234,8 +239,8 @@ func checkStoreIntegrity(t *testing.T, ctx context.Context, client servicepb.Buc
 	require.NotEmpty(t, result.Progress, "should emit at least one progress event")
 }
 
-// performBackup runs the Backup RPC and verifies it produces a non-empty tar archive.
-func performBackup(t *testing.T, ctx context.Context, clusterClient clusterpb.ClusterServiceClient) {
+// PerformBackup runs the Backup RPC and verifies it produces a non-empty tar archive.
+func PerformBackup(t *testing.T, ctx context.Context, clusterClient clusterpb.ClusterServiceClient) {
 	t.Helper()
 
 	totalBytes, sha256, err := testutil.StreamBackup(ctx, clusterClient, io.Discard)
@@ -245,32 +250,32 @@ func performBackup(t *testing.T, ctx context.Context, clusterClient clusterpb.Cl
 	t.Logf("Backup complete: %d bytes, SHA-256=%s", totalBytes, sha256)
 }
 
-// runPostTestPhases runs the standard tail phases common to all scenario tests:
-// StoreCheck → Backup → RestartAndVerify → BackupRestoreAndVerify.
+// RunPostTestPhases runs the standard tail phases common to all scenario tests:
+// StoreCheck -> Backup -> RestartAndVerify -> BackupRestoreAndVerify.
 // The verifyFn callback runs the scenario-specific invariant checks; it receives
 // the current client (which may change after restart/restore).
-func runPostTestPhases(t *testing.T, sc *scenarioCluster, verifyFn func(t *testing.T, client servicepb.BucketServiceClient)) {
+func RunPostTestPhases(t *testing.T, sc *ScenarioCluster, verifyFn func(t *testing.T, client servicepb.BucketServiceClient)) {
 	t.Helper()
 
 	ctx := sc.ctx
 
 	t.Run("StoreCheck", func(t *testing.T) {
-		checkStoreIntegrity(t, ctx, sc.Client)
+		CheckStoreIntegrity(t, ctx, sc.Client)
 	})
 
 	t.Run("Backup", func(t *testing.T) {
-		performBackup(t, ctx, sc.Cluster)
+		PerformBackup(t, ctx, sc.Cluster)
 	})
 
 	t.Run("RestartAndVerify", func(t *testing.T) {
 		sc.Restart()
-		checkStoreIntegrity(t, ctx, sc.Client)
+		CheckStoreIntegrity(t, ctx, sc.Client)
 		verifyFn(t, sc.Client)
 	})
 
 	t.Run("BackupRestoreAndVerify", func(t *testing.T) {
 		sc.BackupAndRestore()
-		checkStoreIntegrity(t, ctx, sc.Client)
+		CheckStoreIntegrity(t, ctx, sc.Client)
 		verifyFn(t, sc.Client)
 	})
 }
@@ -279,11 +284,11 @@ func runPostTestPhases(t *testing.T, sc *scenarioCluster, verifyFn func(t *testi
 // Period close helper
 // ---------------------------------------------------------------------------
 
-// closePeriodAndWait closes the current period and waits for a new OPEN period to appear.
-func closePeriodAndWait(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, msgAndArgs ...interface{}) {
+// ClosePeriodAndWait closes the current period and waits for a new OPEN period to appear.
+func ClosePeriodAndWait(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, msgAndArgs ...interface{}) {
 	t.Helper()
 
-	applyActions(t, ctx, client, testutil.ClosePeriodAction())
+	ApplyActions(t, ctx, client, testutil.ClosePeriodAction())
 	require.Eventually(t, func() bool {
 		periods, err := testutil.ListAllPeriods(ctx, client)
 		if err != nil {
@@ -297,8 +302,8 @@ func closePeriodAndWait(t *testing.T, ctx context.Context, client servicepb.Buck
 // Invariant checks (Antithesis-ready)
 // ---------------------------------------------------------------------------
 
-// checkPositiveBalance verifies that an account has a strictly positive balance for a given asset.
-func checkPositiveBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address, asset string) {
+// CheckPositiveBalance verifies that an account has a strictly positive balance for a given asset.
+func CheckPositiveBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address, asset string) {
 	t.Helper()
 
 	acct, err := testutil.GetAccount(ctx, client, ledgerName, address)
@@ -313,17 +318,15 @@ func checkPositiveBalance(t *testing.T, ctx context.Context, client servicepb.Bu
 		"account %s asset %s: expected positive balance, got %s", address, asset, balance.String())
 }
 
-// ---------------------------------------------------------------------------
-
-// checkDoubleEntryBalance verifies that for every asset in the ledger,
+// CheckDoubleEntryBalance verifies that for every asset in the ledger,
 // the sum of all account balances equals zero (double-entry invariant).
-func checkDoubleEntryBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) {
+func CheckDoubleEntryBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) {
 	t.Helper()
 
 	accounts, err := testutil.ListAllAccounts(ctx, client, ledgerName)
 	require.NoError(t, err, "failed to list accounts for double-entry check")
 
-	sums := make(map[string]*big.Int) // asset → sum of balances
+	sums := make(map[string]*big.Int) // asset -> sum of balances
 	for _, acct := range accounts {
 		for asset, vol := range acct.Volumes {
 			balance, ok := new(big.Int).SetString(vol.Balance, 10)
@@ -342,8 +345,8 @@ func checkDoubleEntryBalance(t *testing.T, ctx context.Context, client servicepb
 	}
 }
 
-// checkAccountBalance verifies that a specific account has the expected balance for a given asset.
-func checkAccountBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address, asset string, expected *big.Int) {
+// CheckAccountBalance verifies that a specific account has the expected balance for a given asset.
+func CheckAccountBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address, asset string, expected *big.Int) {
 	t.Helper()
 
 	acct, err := testutil.GetAccount(ctx, client, ledgerName, address)
@@ -359,9 +362,9 @@ func checkAccountBalance(t *testing.T, ctx context.Context, client servicepb.Buc
 		"account %s asset %s: expected balance %s, got %s", address, asset, expected.String(), balance.String())
 }
 
-// checkNoNegativeBalances verifies no account has a negative balance,
+// CheckNoNegativeBalances verifies no account has a negative balance,
 // except for explicitly listed exceptions (e.g., @world, overdraft accounts).
-func checkNoNegativeBalances(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, exceptions []string) {
+func CheckNoNegativeBalances(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, exceptions []string) {
 	t.Helper()
 
 	exceptionSet := make(map[string]bool, len(exceptions))
@@ -389,20 +392,15 @@ func checkNoNegativeBalances(t *testing.T, ctx context.Context, client servicepb
 // Audit trail checks
 // ---------------------------------------------------------------------------
 
-// auditExpectation describes expected transaction counts for a ledger.
-type auditExpectation struct {
-	ledger           string
-	minTransactions  int // minimum expected total transactions (created + reverts)
-	expectedReverted int // exact number of reverted original transactions
+// AuditExpectation describes expected transaction counts for a ledger.
+type AuditExpectation struct {
+	Ledger           string
+	MinTransactions  int // minimum expected total transactions (created + reverts)
+	ExpectedReverted int // exact number of reverted original transactions
 }
 
-// checkAuditTrail verifies the integrity of the log chain and transaction audit trail.
-// It checks:
-// - Log sequences are strictly increasing with no gaps
-// - All logs have non-empty hashes
-// - Transaction counts match expectations per ledger
-// - Reverted transactions are properly flagged
-func checkAuditTrail(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, expectations []auditExpectation) {
+// CheckAuditTrail verifies the integrity of the log chain and transaction audit trail.
+func CheckAuditTrail(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, expectations []AuditExpectation) {
 	t.Helper()
 
 	// 1. Verify global log chain integrity.
@@ -424,19 +422,19 @@ func checkAuditTrail(t *testing.T, ctx context.Context, client servicepb.BucketS
 
 	// 2. Verify transactions per ledger.
 	for _, exp := range expectations {
-		txs, err := testutil.ListAllTransactions(ctx, client, exp.ledger)
-		require.NoError(t, err, "ListAllTransactions failed for ledger %s", exp.ledger)
-		require.GreaterOrEqual(t, len(txs), exp.minTransactions,
+		txs, err := testutil.ListAllTransactions(ctx, client, exp.Ledger)
+		require.NoError(t, err, "ListAllTransactions failed for ledger %s", exp.Ledger)
+		require.GreaterOrEqual(t, len(txs), exp.MinTransactions,
 			"ledger %s: expected at least %d transactions, got %d",
-			exp.ledger, exp.minTransactions, len(txs))
+			exp.Ledger, exp.MinTransactions, len(txs))
 
 		// Check transaction IDs are unique and positive.
 		seenIDs := make(map[uint64]bool, len(txs))
 		var revertedCount int
 		for _, tx := range txs {
-			require.NotZero(t, tx.Id, "transaction has zero ID in ledger %s", exp.ledger)
+			require.NotZero(t, tx.Id, "transaction has zero ID in ledger %s", exp.Ledger)
 			require.False(t, seenIDs[tx.Id],
-				"duplicate transaction ID %d in ledger %s", tx.Id, exp.ledger)
+				"duplicate transaction ID %d in ledger %s", tx.Id, exp.Ledger)
 			seenIDs[tx.Id] = true
 
 			if tx.Reverted {
@@ -444,12 +442,12 @@ func checkAuditTrail(t *testing.T, ctx context.Context, client servicepb.BucketS
 			}
 		}
 
-		require.Equal(t, exp.expectedReverted, revertedCount,
+		require.Equal(t, exp.ExpectedReverted, revertedCount,
 			"ledger %s: expected %d reverted transactions, got %d",
-			exp.ledger, exp.expectedReverted, revertedCount)
+			exp.Ledger, exp.ExpectedReverted, revertedCount)
 
 		t.Logf("Audit OK for ledger %q: %d transactions (%d reverted)",
-			exp.ledger, len(txs), revertedCount)
+			exp.Ledger, len(txs), revertedCount)
 	}
 }
 
@@ -457,8 +455,8 @@ func checkAuditTrail(t *testing.T, ctx context.Context, client servicepb.BucketS
 // Apply helpers
 // ---------------------------------------------------------------------------
 
-// applyActions is a helper to apply a batch of actions and require success.
-func applyActions(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, actions ...*servicepb.Request) *servicepb.ApplyResponse {
+// ApplyActions is a helper to apply a batch of actions and require success.
+func ApplyActions(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, actions ...*servicepb.Request) *servicepb.ApplyResponse {
 	t.Helper()
 
 	resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
@@ -468,16 +466,16 @@ func applyActions(t *testing.T, ctx context.Context, client servicepb.BucketServ
 	return resp
 }
 
-// applyActionsExpectError applies actions and returns the error (nil if success).
-func applyActionsExpectError(ctx context.Context, client servicepb.BucketServiceClient, actions ...*servicepb.Request) error {
+// ApplyActionsExpectError applies actions and returns the error (nil if success).
+func ApplyActionsExpectError(ctx context.Context, client servicepb.BucketServiceClient, actions ...*servicepb.Request) error {
 	_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 		Requests: actions,
 	})
 	return err
 }
 
-// getCreatedTransactionID extracts the transaction ID from the first log entry of an Apply response.
-func getCreatedTransactionID(t *testing.T, resp *servicepb.ApplyResponse) uint64 {
+// GetCreatedTransactionID extracts the transaction ID from the first log entry of an Apply response.
+func GetCreatedTransactionID(t *testing.T, resp *servicepb.ApplyResponse) uint64 {
 	t.Helper()
 	require.NotEmpty(t, resp.Logs, "expected at least one log entry")
 	applyLog := resp.Logs[0].Payload.GetApply()

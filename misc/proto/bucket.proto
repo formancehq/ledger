@@ -867,7 +867,7 @@ message ListPreparedQueriesResponse {
 message ExecutePreparedQueryRequest {
   string ledger = 1;
   string query_name = 2;
-  map<string, string> parameters = 3;
+  map<string, common.ParameterValue> parameters = 3;
   uint32 page_size = 4;
   string cursor = 5;
   uint64 min_log_sequence = 6;

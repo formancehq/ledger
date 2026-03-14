@@ -652,7 +652,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 					Ledger:     ledgerName,
 					QueryName:  "by-role",
 					Mode:       commonpb.QueryMode_QUERY_MODE_LIST,
-					Parameters: map[string]string{"role_value": "admin"},
+					Parameters: map[string]*commonpb.ParameterValue{"role_value": testutil.StringParam("admin")},
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(result.GetCursor()).NotTo(BeNil())
@@ -670,7 +670,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 					Ledger:     ledgerName,
 					QueryName:  "by-role",
 					Mode:       commonpb.QueryMode_QUERY_MODE_LIST,
-					Parameters: map[string]string{"role_value": "user"},
+					Parameters: map[string]*commonpb.ParameterValue{"role_value": testutil.StringParam("user")},
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(result.GetCursor()).NotTo(BeNil())

@@ -5,8 +5,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
-	"strconv"
 
 	"github.com/cockroachdb/pebble"
 
@@ -25,7 +25,7 @@ type compileCtx struct {
 	indexReader   dal.PebbleReader
 	target        commonpb.QueryTarget
 	ledger        string
-	params        map[string]string
+	params        map[string]*commonpb.ParameterValue
 	schema        map[string]*commonpb.MetadataFieldSchema
 	builtinCfg    *commonpb.BuiltinIndexConfig
 	logBuiltinCfg *commonpb.LogBuiltinIndexConfig
@@ -57,7 +57,7 @@ func Compile(
 	filter *commonpb.QueryFilter,
 	target commonpb.QueryTarget,
 	ledger string,
-	params map[string]string,
+	params map[string]*commonpb.ParameterValue,
 	schema map[string]*commonpb.MetadataFieldSchema,
 	builtinCfg *commonpb.BuiltinIndexConfig,
 	logBuiltinCfg *commonpb.LogBuiltinIndexConfig,
@@ -365,7 +365,7 @@ func (b resolvedIntBounds) isEquality() bool {
 
 // resolveIntBounds resolves an IntCondition's bounds from hardcoded values or parameters,
 // applying exclusivity adjustments. The returned bounds define a half-open range [min, max).
-func resolveIntBounds(cond *commonpb.IntCondition, params map[string]string) (resolvedIntBounds, error) {
+func resolveIntBounds(cond *commonpb.IntCondition, params map[string]*commonpb.ParameterValue) (resolvedIntBounds, error) {
 	var b resolvedIntBounds
 
 	if cond.GetParamMin() != "" {
@@ -492,7 +492,7 @@ func (b resolvedUintBounds) isEquality() bool {
 
 // resolveUintBounds resolves a UintCondition's bounds from hardcoded values or parameters,
 // applying exclusivity adjustments. The returned bounds define a half-open range [min, max).
-func resolveUintBounds(cond *commonpb.UintCondition, params map[string]string) (resolvedUintBounds, error) {
+func resolveUintBounds(cond *commonpb.UintCondition, params map[string]*commonpb.ParameterValue) (resolvedUintBounds, error) {
 	var b resolvedUintBounds
 
 	if cond.GetParamMin() != "" {
@@ -730,16 +730,16 @@ func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.
 	case *commonpb.AddressMatch_HardcodedExact:
 		return compileAddressExact(ctx, m.HardcodedExact, role)
 	case *commonpb.AddressMatch_ParamPrefix:
-		value, ok := ctx.params[m.ParamPrefix]
-		if !ok {
-			return nil, fmt.Errorf("parameter %q not provided", m.ParamPrefix)
+		value, err := extractString(ctx.params, m.ParamPrefix)
+		if err != nil {
+			return nil, err
 		}
 
 		return compileAddressPrefix(ctx, value, role)
 	case *commonpb.AddressMatch_ParamExact:
-		value, ok := ctx.params[m.ParamExact]
-		if !ok {
-			return nil, fmt.Errorf("parameter %q not provided", m.ParamExact)
+		value, err := extractString(ctx.params, m.ParamExact)
+		if err != nil {
+			return nil, err
 		}
 
 		return compileAddressExact(ctx, value, role)
@@ -1284,59 +1284,138 @@ func targetNamespaceAndLen(target commonpb.QueryTarget) (string, int) {
 	}
 }
 
-func resolveString(cond *commonpb.StringCondition, params map[string]string) (string, error) {
+func resolveString(cond *commonpb.StringCondition, params map[string]*commonpb.ParameterValue) (string, error) {
 	switch v := cond.GetValue().(type) {
 	case *commonpb.StringCondition_Hardcoded:
 		return v.Hardcoded, nil
 	case *commonpb.StringCondition_Param:
-		val, ok := params[v.Param]
-		if !ok {
-			return "", fmt.Errorf("parameter %q not provided", v.Param)
-		}
-
-		return val, nil
+		return extractString(params, v.Param)
 	default:
 		return "", errors.New("string condition has no value")
 	}
 }
 
-func resolveBool(cond *commonpb.BoolCondition, params map[string]string) (bool, error) {
+func resolveBool(cond *commonpb.BoolCondition, params map[string]*commonpb.ParameterValue) (bool, error) {
 	switch v := cond.GetValue().(type) {
 	case *commonpb.BoolCondition_Hardcoded:
 		return v.Hardcoded, nil
 	case *commonpb.BoolCondition_Param:
-		val, ok := params[v.Param]
-		if !ok {
-			return false, fmt.Errorf("parameter %q not provided", v.Param)
-		}
-
-		b, err := strconv.ParseBool(val)
-		if err != nil {
-			return false, fmt.Errorf("parameter %q is not a valid boolean: %w", v.Param, err)
-		}
-
-		return b, nil
+		return extractBool(params, v.Param)
 	default:
 		return false, errors.New("bool condition has no value")
 	}
 }
 
-func resolveParamInt64(params map[string]string, name string) (int64, error) {
-	val, ok := params[name]
-	if !ok {
-		return 0, fmt.Errorf("parameter %q not provided", name)
-	}
-
-	return strconv.ParseInt(val, 10, 64)
+func resolveParamInt64(params map[string]*commonpb.ParameterValue, name string) (int64, error) {
+	return extractInt64(params, name)
 }
 
-func resolveParamUint64(params map[string]string, name string) (uint64, error) {
+func resolveParamUint64(params map[string]*commonpb.ParameterValue, name string) (uint64, error) {
+	return extractUint64(params, name)
+}
+
+// extractString extracts a string parameter, returning a clear error on type mismatch or nil value.
+func extractString(params map[string]*commonpb.ParameterValue, name string) (string, error) {
+	val, ok := params[name]
+	if !ok {
+		return "", fmt.Errorf("parameter %q not provided", name)
+	}
+
+	if val == nil || val.GetValue() == nil {
+		return "", fmt.Errorf("parameter %q has a nil value, expected string", name)
+	}
+
+	switch v := val.GetValue().(type) {
+	case *commonpb.ParameterValue_StringValue:
+		return v.StringValue, nil
+	default:
+		return "", fmt.Errorf("parameter %q: expected string value, got %s", name, paramTypeName(val))
+	}
+}
+
+// extractBool extracts a bool parameter, returning a clear error on type mismatch or nil value.
+func extractBool(params map[string]*commonpb.ParameterValue, name string) (bool, error) {
+	val, ok := params[name]
+	if !ok {
+		return false, fmt.Errorf("parameter %q not provided", name)
+	}
+
+	if val == nil || val.GetValue() == nil {
+		return false, fmt.Errorf("parameter %q has a nil value, expected bool", name)
+	}
+
+	switch v := val.GetValue().(type) {
+	case *commonpb.ParameterValue_BoolValue:
+		return v.BoolValue, nil
+	default:
+		return false, fmt.Errorf("parameter %q: expected bool value, got %s", name, paramTypeName(val))
+	}
+}
+
+// extractInt64 extracts an int64 parameter. It also accepts uint64 values that fit in int64.
+func extractInt64(params map[string]*commonpb.ParameterValue, name string) (int64, error) {
 	val, ok := params[name]
 	if !ok {
 		return 0, fmt.Errorf("parameter %q not provided", name)
 	}
 
-	return strconv.ParseUint(val, 10, 64)
+	if val == nil || val.GetValue() == nil {
+		return 0, fmt.Errorf("parameter %q has a nil value, expected int64", name)
+	}
+
+	switch v := val.GetValue().(type) {
+	case *commonpb.ParameterValue_Int64Value:
+		return v.Int64Value, nil
+	case *commonpb.ParameterValue_Uint64Value:
+		if v.Uint64Value > math.MaxInt64 {
+			return 0, fmt.Errorf("parameter %q: uint64 value %d overflows int64", name, v.Uint64Value)
+		}
+
+		return int64(v.Uint64Value), nil
+	default:
+		return 0, fmt.Errorf("parameter %q: expected int64 value, got %s", name, paramTypeName(val))
+	}
+}
+
+// extractUint64 extracts a uint64 parameter. It also accepts non-negative int64 values.
+func extractUint64(params map[string]*commonpb.ParameterValue, name string) (uint64, error) {
+	val, ok := params[name]
+	if !ok {
+		return 0, fmt.Errorf("parameter %q not provided", name)
+	}
+
+	if val == nil || val.GetValue() == nil {
+		return 0, fmt.Errorf("parameter %q has a nil value, expected uint64", name)
+	}
+
+	switch v := val.GetValue().(type) {
+	case *commonpb.ParameterValue_Uint64Value:
+		return v.Uint64Value, nil
+	case *commonpb.ParameterValue_Int64Value:
+		if v.Int64Value < 0 {
+			return 0, fmt.Errorf("parameter %q: negative int64 value %d cannot be used as uint64", name, v.Int64Value)
+		}
+
+		return uint64(v.Int64Value), nil
+	default:
+		return 0, fmt.Errorf("parameter %q: expected uint64 value, got %s", name, paramTypeName(val))
+	}
+}
+
+// paramTypeName returns a human-readable name for the type of a ParameterValue.
+func paramTypeName(pv *commonpb.ParameterValue) string {
+	switch pv.GetValue().(type) {
+	case *commonpb.ParameterValue_StringValue:
+		return "string"
+	case *commonpb.ParameterValue_Int64Value:
+		return "int64"
+	case *commonpb.ParameterValue_Uint64Value:
+		return "uint64"
+	case *commonpb.ParameterValue_BoolValue:
+		return "bool"
+	default:
+		return "unknown"
+	}
 }
 
 // materializeIterator drains a Pebble EntityIterator into a sorted SliceIterator.

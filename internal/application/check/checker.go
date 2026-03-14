@@ -8,9 +8,10 @@ import (
 	"math/big"
 
 	"github.com/cockroachdb/pebble"
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/zeebo/blake3"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/go-libs/v3/logging"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"

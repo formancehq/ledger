@@ -1414,8 +1414,85 @@ func ParamStringMetadataFilter(key, paramName string) *commonpb.QueryFilter {
 	}
 }
 
+// ParamBoolMetadataFilter creates a filter matching a metadata bool field with a parameterized value.
+func ParamBoolMetadataFilter(key, paramName string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field: &commonpb.FieldRef{Metadata: key},
+				Condition: &commonpb.FieldCondition_BoolCond{
+					BoolCond: &commonpb.BoolCondition{
+						Value: &commonpb.BoolCondition_Param{
+							Param: paramName,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// ParamInt64RangeMetadataFilter creates a filter matching a metadata int64 field
+// with parameterized min/max bounds.
+func ParamInt64RangeMetadataFilter(key, paramMin, paramMax string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field: &commonpb.FieldRef{Metadata: key},
+				Condition: &commonpb.FieldCondition_IntCond{
+					IntCond: &commonpb.IntCondition{
+						ParamMin: paramMin,
+						ParamMax: paramMax,
+					},
+				},
+			},
+		},
+	}
+}
+
+// Int64RangeMetadataFilter creates a filter matching a metadata int64 field
+// with hardcoded min/max bounds.
+func Int64RangeMetadataFilter(key string, minVal, maxVal *int64) *commonpb.QueryFilter {
+	cond := &commonpb.IntCondition{}
+	if minVal != nil {
+		cond.Min = minVal
+	}
+	if maxVal != nil {
+		cond.Max = maxVal
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field: &commonpb.FieldRef{Metadata: key},
+				Condition: &commonpb.FieldCondition_IntCond{
+					IntCond: cond,
+				},
+			},
+		},
+	}
+}
+
+// BoolMetadataFilter creates a filter matching a metadata bool field with a hardcoded value.
+func BoolMetadataFilter(key string, val bool) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field: &commonpb.FieldRef{Metadata: key},
+				Condition: &commonpb.FieldCondition_BoolCond{
+					BoolCond: &commonpb.BoolCondition{
+						Value: &commonpb.BoolCondition_Hardcoded{
+							Hardcoded: val,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 // ExecutePreparedQueryWithParams executes a prepared query with runtime parameters.
-func ExecutePreparedQueryWithParams(ctx context.Context, client servicepb.BucketServiceClient, ledger, queryName string, mode commonpb.QueryMode, pageSize uint32, params map[string]string) (*servicepb.ExecutePreparedQueryResponse, error) {
+func ExecutePreparedQueryWithParams(ctx context.Context, client servicepb.BucketServiceClient, ledger, queryName string, mode commonpb.QueryMode, pageSize uint32, params map[string]*commonpb.ParameterValue) (*servicepb.ExecutePreparedQueryResponse, error) {
 	return client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
 		Ledger:     ledger,
 		QueryName:  queryName,
@@ -1423,6 +1500,26 @@ func ExecutePreparedQueryWithParams(ctx context.Context, client servicepb.Bucket
 		PageSize:   pageSize,
 		Parameters: params,
 	})
+}
+
+// StringParam creates a ParameterValue with a string value.
+func StringParam(s string) *commonpb.ParameterValue {
+	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_StringValue{StringValue: s}}
+}
+
+// Int64Param creates a ParameterValue with an int64 value.
+func Int64Param(v int64) *commonpb.ParameterValue {
+	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: v}}
+}
+
+// Uint64Param creates a ParameterValue with a uint64 value.
+func Uint64Param(v uint64) *commonpb.ParameterValue {
+	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: v}}
+}
+
+// BoolParam creates a ParameterValue with a bool value.
+func BoolParam(v bool) *commonpb.ParameterValue {
+	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_BoolValue{BoolValue: v}}
 }
 
 // UploadAndFinalizeRestore uploads a backup to a restore-mode server, validates it,

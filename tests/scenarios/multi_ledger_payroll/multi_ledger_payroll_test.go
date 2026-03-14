@@ -1,6 +1,6 @@
 //go:build scenario
 
-package scenarios
+package multiledgerpayroll
 
 import (
 	"fmt"
@@ -11,6 +11,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
 )
 
 // TestMultiLedgerPayroll models a company with 3 departments, each with its own ledger.
@@ -46,8 +48,8 @@ func TestMultiLedgerPayroll(t *testing.T) {
 		{name: "operations", ledger: "dept-ops", employees: 5},
 	}
 
-	sc := setupSingleNode(t, scenarioHTTPPort+6, scenarioGRPCPort+6)
-	ctx, client := sc.ctx, sc.Client
+	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+6, scenariotest.GRPCPort+6)
+	ctx, client := sc.Ctx(), sc.Client
 
 	// Balance tracking per ledger
 	type ledgerBalances struct {
@@ -83,10 +85,10 @@ func TestMultiLedgerPayroll(t *testing.T) {
 				balances[dept.ledger].employees[i] = new(big.Int)
 			}
 		}
-		applyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, actions...)
 
 		// Save shared numscripts (global, not per-ledger)
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.SaveNumscriptWithVersionAction("fund_clearing", `vars {
   monetary $amount
 }
@@ -142,7 +144,7 @@ send $amount (
 				for _, dept := range departments {
 					totalNeeded += int64(dept.employees) * baseSalary
 				}
-				applyActions(t, ctx, client,
+				scenariotest.ApplyActions(t, ctx, client,
 					testutil.CreateScriptRefTransactionAction("clearing", "fund_clearing", "1.0.0", map[string]string{
 						"amount": fmt.Sprintf("USD/2 %d", totalNeeded),
 					}, map[string]string{"month": fmt.Sprintf("%d", month)}),
@@ -160,7 +162,7 @@ send $amount (
 						}, map[string]string{"month": fmt.Sprintf("%d", month)}),
 					)
 				}
-				applyActions(t, ctx, client, deptActions...)
+				scenariotest.ApplyActions(t, ctx, client, deptActions...)
 
 				// Step 3: Fund department payroll pools (from @world, mirroring clearing allocation)
 				var payrollActions []*servicepb.Request
@@ -173,7 +175,7 @@ send $amount (
 					)
 					balances[dept.ledger].payrollPool.Add(balances[dept.ledger].payrollPool, big.NewInt(amount))
 				}
-				applyActions(t, ctx, client, payrollActions...)
+				scenariotest.ApplyActions(t, ctx, client, payrollActions...)
 
 				// Step 4: Pay employees in each department
 				for _, dept := range departments {
@@ -191,11 +193,11 @@ send $amount (
 						balances[dept.ledger].payrollPool.Sub(balances[dept.ledger].payrollPool, big.NewInt(baseSalary))
 						balances[dept.ledger].employees[emp].Add(balances[dept.ledger].employees[emp], big.NewInt(baseSalary))
 					}
-					applyActions(t, ctx, client, salaryActions...)
+					scenariotest.ApplyActions(t, ctx, client, salaryActions...)
 				}
 
 				// Close period after each cycle
-				closePeriodAndWait(t, ctx, client, "period close month %d", month)
+				scenariotest.ClosePeriodAndWait(t, ctx, client, "period close month %d", month)
 			})
 		}
 	})
@@ -208,7 +210,7 @@ send $amount (
 
 		// Fund bonus pool
 		totalBonus := bonusAmount * int64(dept.employees)
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateScriptRefTransactionAction(dept.ledger, "fund_payroll", "1.0.0", map[string]string{
 				"amount": fmt.Sprintf("USD/2 %d", totalBonus),
 			}, map[string]string{"type": "bonus-funding"}),
@@ -226,7 +228,7 @@ send $amount (
 			balances[dept.ledger].payrollPool.Sub(balances[dept.ledger].payrollPool, big.NewInt(bonusAmount))
 			balances[dept.ledger].employees[emp].Add(balances[dept.ledger].employees[emp], big.NewInt(bonusAmount))
 		}
-		applyActions(t, ctx, client, bonusActions...)
+		scenariotest.ApplyActions(t, ctx, client, bonusActions...)
 	})
 
 	// --- Phase 4: Inter-department Cost Allocation ---
@@ -254,7 +256,7 @@ send $amount (
 				}, map[string]string{"reason": alloc.reason}),
 			)
 		}
-		applyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, actions...)
 	})
 
 	// --- Phase 5: Verify Ledger Isolation ---
@@ -291,7 +293,7 @@ send $amount (
 	// --- Phase 6: Numscript Versioning ---
 	t.Run("NumscriptVersioning", func(t *testing.T) {
 		// Save a v2 of pay_salary with a bonus metadata field
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.SaveNumscriptWithVersionAction("pay_salary", `vars {
   account $employee
   monetary $amount
@@ -313,7 +315,7 @@ send $amount (
 
 		// Use v2 for one more payment
 		dept := departments[1] // sales
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateScriptRefTransactionAction(dept.ledger, "fund_payroll", "1.0.0", map[string]string{
 				"amount": "USD/2 50000",
 			}, nil),
@@ -325,7 +327,7 @@ send $amount (
 		balances[dept.ledger].employees[1].Add(balances[dept.ledger].employees[1], big.NewInt(50_000))
 
 		// Duplicate semver should fail
-		err = applyActionsExpectError(ctx, client,
+		err = scenariotest.ApplyActionsExpectError(ctx, client,
 			testutil.SaveNumscriptWithVersionAction("pay_salary", `send [USD/2 1] (source = @world destination = @world)`, "1.0.0"),
 		)
 		require.Error(t, err, "duplicate semver version should fail")
@@ -335,24 +337,24 @@ send $amount (
 	t.Run("FinalInvariants", func(t *testing.T) {
 		// Double-entry must hold in every ledger
 		for _, dept := range departments {
-			checkDoubleEntryBalance(t, ctx, client, dept.ledger)
-			checkNoNegativeBalances(t, ctx, client, dept.ledger, []string{"world"})
+			scenariotest.CheckDoubleEntryBalance(t, ctx, client, dept.ledger)
+			scenariotest.CheckNoNegativeBalances(t, ctx, client, dept.ledger, []string{"world"})
 		}
-		checkDoubleEntryBalance(t, ctx, client, "clearing")
-		checkNoNegativeBalances(t, ctx, client, "clearing", []string{"world"})
+		scenariotest.CheckDoubleEntryBalance(t, ctx, client, "clearing")
+		scenariotest.CheckNoNegativeBalances(t, ctx, client, "clearing", []string{"world"})
 
 		// Verify employee balances in each department
 		for _, dept := range departments {
 			for emp := 1; emp <= dept.employees; emp++ {
 				expected := balances[dept.ledger].employees[emp]
-				checkAccountBalance(t, ctx, client, dept.ledger,
+				scenariotest.CheckAccountBalance(t, ctx, client, dept.ledger,
 					fmt.Sprintf("employee:%d", emp), "USD/2", expected)
 			}
 		}
 
 		// Verify payroll pools are zero (all paid out)
 		for _, dept := range departments {
-			checkAccountBalance(t, ctx, client, dept.ledger, "payroll:pool", "USD/2", balances[dept.ledger].payrollPool)
+			scenariotest.CheckAccountBalance(t, ctx, client, dept.ledger, "payroll:pool", "USD/2", balances[dept.ledger].payrollPool)
 		}
 
 		// Stats per ledger
@@ -365,11 +367,11 @@ send $amount (
 	})
 
 	// --- Tail phases ---
-	runPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
 		for _, dept := range departments {
-			checkDoubleEntryBalance(t, ctx, client, dept.ledger)
-			checkNoNegativeBalances(t, ctx, client, dept.ledger, []string{"world"})
+			scenariotest.CheckDoubleEntryBalance(t, ctx, client, dept.ledger)
+			scenariotest.CheckNoNegativeBalances(t, ctx, client, dept.ledger, []string{"world"})
 		}
-		checkDoubleEntryBalance(t, ctx, client, "clearing")
+		scenariotest.CheckDoubleEntryBalance(t, ctx, client, "clearing")
 	})
 }

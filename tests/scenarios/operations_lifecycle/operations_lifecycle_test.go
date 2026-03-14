@@ -1,6 +1,6 @@
 //go:build scenario
 
-package scenarios
+package operationslifecycle
 
 import (
 	"context"
@@ -18,6 +18,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
 )
 
 // TestOperationsLifecycle covers admin/ops operations:
@@ -29,12 +31,12 @@ func TestOperationsLifecycle(t *testing.T) {
 		numDeposits = 5
 	)
 
-	sc := setupSingleNode(t, scenarioHTTPPort+4, scenarioGRPCPort+4)
-	ctx, client := sc.ctx, sc.Client
+	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+4, scenariotest.GRPCPort+4)
+	ctx, client := sc.Ctx(), sc.Client
 
 	// --- Phase 1: Setup ---
 	t.Run("Setup", func(t *testing.T) {
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateLedgerAction(ledger, nil),
 			testutil.AddAccountTypeAction(ledger, "ops-account", "ops:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 			testutil.SaveNumscriptWithVersionAction("deposit", `vars {
@@ -55,16 +57,16 @@ send $amount (
 				"amount":  "USD/2 10000",
 			}, nil))
 		}
-		applyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, actions...)
 	})
 
 	// --- Phase 2: Maintenance Mode ---
 	t.Run("MaintenanceMode", func(t *testing.T) {
 		// Enable maintenance mode
-		applyActions(t, ctx, client, testutil.SetMaintenanceModeAction(true))
+		scenariotest.ApplyActions(t, ctx, client, testutil.SetMaintenanceModeAction(true))
 
 		// Transaction should fail during maintenance
-		err := applyActionsExpectError(ctx, client,
+		err := scenariotest.ApplyActionsExpectError(ctx, client,
 			testutil.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 				"account": "ops:1",
 				"amount":  "USD/2 100",
@@ -73,10 +75,10 @@ send $amount (
 		require.Error(t, err, "expected error during maintenance mode")
 
 		// Disable maintenance mode
-		applyActions(t, ctx, client, testutil.SetMaintenanceModeAction(false))
+		scenariotest.ApplyActions(t, ctx, client, testutil.SetMaintenanceModeAction(false))
 
 		// Transaction should succeed after disabling maintenance
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 				"account": "ops:1",
 				"amount":  "USD/2 100",
@@ -87,11 +89,11 @@ send $amount (
 	// --- Phase 3: Audit Config ---
 	t.Run("AuditConfig", func(t *testing.T) {
 		// Enable audit logging
-		applyActions(t, ctx, client, testutil.SetAuditConfigAction(true))
+		scenariotest.ApplyActions(t, ctx, client, testutil.SetAuditConfigAction(true))
 
 		// 3 successful transactions
 		for i := 1; i <= 3; i++ {
-			applyActions(t, ctx, client,
+			scenariotest.ApplyActions(t, ctx, client,
 				testutil.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 					"account": fmt.Sprintf("ops:%d", i),
 					"amount":  "USD/2 50",
@@ -100,7 +102,7 @@ send $amount (
 		}
 
 		// 1 failing transaction (insufficient funds: ops:1 sending more than it has to ops:2)
-		_ = applyActionsExpectError(ctx, client,
+		_ = scenariotest.ApplyActionsExpectError(ctx, client,
 			testutil.CreateTransactionAction(ledger, []*commonpb.Posting{
 				testutil.NewPosting("ops:1", "ops:2", big.NewInt(999_999_999), "USD/2"),
 			}, nil, nil),
@@ -124,7 +126,7 @@ send $amount (
 		}
 
 		// Disable audit logging
-		applyActions(t, ctx, client, testutil.SetAuditConfigAction(false))
+		scenariotest.ApplyActions(t, ctx, client, testutil.SetAuditConfigAction(false))
 	})
 
 	// --- Phase 3b: GetAuditEntry ---
@@ -152,7 +154,7 @@ send $amount (
 	t.Run("ArchivePeriodCheckStore", func(t *testing.T) {
 		// Create a few transactions to have content in the current period
 		for i := 1; i <= 3; i++ {
-			applyActions(t, ctx, client,
+			scenariotest.ApplyActions(t, ctx, client,
 				testutil.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 					"account": fmt.Sprintf("ops:%d", i),
 					"amount":  "USD/2 25",
@@ -161,7 +163,7 @@ send $amount (
 		}
 
 		// Close the period → creates a CLOSING period
-		closePeriodAndWait(t, ctx, client, "period close timed out for archive test")
+		scenariotest.ClosePeriodAndWait(t, ctx, client, "period close timed out for archive test")
 
 		// Find the CLOSED period (the one just sealed)
 		var closedPeriodID uint64
@@ -183,7 +185,7 @@ send $amount (
 		require.NotZero(t, closedPeriodID, "should have found a closed period ID")
 
 		// Archive the closed period
-		applyActions(t, ctx, client, testutil.ArchivePeriodAction(closedPeriodID))
+		scenariotest.ApplyActions(t, ctx, client, testutil.ArchivePeriodAction(closedPeriodID))
 
 		// Wait for the period to become ARCHIVED
 		require.Eventually(t, func() bool {
@@ -225,7 +227,7 @@ send $amount (
 	// --- Phase 4: Period Schedule ---
 	t.Run("PeriodSchedule", func(t *testing.T) {
 		// Set a period schedule
-		applyActions(t, ctx, client, testutil.SetPeriodScheduleAction("0 0 * * *"))
+		scenariotest.ApplyActions(t, ctx, client, testutil.SetPeriodScheduleAction("0 0 * * *"))
 
 		// Verify cron was set
 		cron, err := testutil.GetPeriodSchedule(ctx, client)
@@ -233,7 +235,7 @@ send $amount (
 		require.Equal(t, "0 0 * * *", cron, "cron should match")
 
 		// Delete period schedule
-		applyActions(t, ctx, client, testutil.DeletePeriodScheduleAction())
+		scenariotest.ApplyActions(t, ctx, client, testutil.DeletePeriodScheduleAction())
 
 		// Verify cron is empty
 		cron, err = testutil.GetPeriodSchedule(ctx, client)
@@ -250,7 +252,7 @@ send $amount (
 		require.NoError(t, err, "failed to generate Ed25519 keypair 2")
 
 		// Register first key (bootstrap: unsigned when no keys exist)
-		applyActions(t, ctx, client, testutil.RegisterSigningKeyAction("key-1", pubKey1))
+		scenariotest.ApplyActions(t, ctx, client, testutil.RegisterSigningKeyAction("key-1", pubKey1))
 
 		// Verify the key is registered
 		keys := listSigningKeys(t, ctx, client)
@@ -259,7 +261,7 @@ send $amount (
 		// Register second key (must be signed by existing key)
 		regReq := testutil.RegisterSigningKeyAction("key-2", pubKey2)
 		require.NoError(t, signing.Sign(regReq, "key-1", privKey1))
-		applyActions(t, ctx, client, regReq)
+		scenariotest.ApplyActions(t, ctx, client, regReq)
 
 		// Verify both keys are registered
 		keys = listSigningKeys(t, ctx, client)
@@ -274,7 +276,7 @@ send $amount (
 		// Revoke key-2 (must be signed since keys exist)
 		revokeReq := testutil.RevokeSigningKeyAction("key-2", false)
 		require.NoError(t, signing.Sign(revokeReq, "key-1", privKey1))
-		applyActions(t, ctx, client, revokeReq)
+		scenariotest.ApplyActions(t, ctx, client, revokeReq)
 
 		// Verify key-2 is removed
 		keys = listSigningKeys(t, ctx, client)
@@ -287,7 +289,7 @@ send $amount (
 			testutil.NewPosting("world", "ops:1", big.NewInt(10), "USD/2"),
 		}, nil, nil)
 		require.NoError(t, signing.Sign(signedTxReq, "key-1", privKey1))
-		txResp := applyActions(t, ctx, client, signedTxReq)
+		txResp := scenariotest.ApplyActions(t, ctx, client, signedTxReq)
 		require.NotEmpty(t, txResp.Logs)
 		require.NotNil(t, txResp.Logs[0].Signature, "signed transaction should have signature in log")
 		require.Equal(t, "key-1", txResp.Logs[0].Signature.GetKeyId())
@@ -296,7 +298,7 @@ send $amount (
 	// --- Phase 6: Delete Ledger ---
 	t.Run("DeleteLedger", func(t *testing.T) {
 		// Create a temporary ledger
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateLedgerAction("temp-ledger", nil),
 		)
 
@@ -306,14 +308,14 @@ send $amount (
 		require.Contains(t, ledgers, "temp-ledger", "temp-ledger should exist")
 
 		// Make 1 transaction
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateForceTransactionAction("temp-ledger", []*commonpb.Posting{
 				testutil.NewPosting("world", "user:1", big.NewInt(1000), "USD/2"),
 			}, nil),
 		)
 
 		// Delete the ledger
-		applyActions(t, ctx, client, testutil.DeleteLedgerAction("temp-ledger"))
+		scenariotest.ApplyActions(t, ctx, client, testutil.DeleteLedgerAction("temp-ledger"))
 
 		// Verify it's gone from the active list
 		ledgers, err = testutil.ListLedgers(ctx, client)
@@ -326,8 +328,8 @@ send $amount (
 
 	// --- Phase 7: Final Invariants ---
 	t.Run("FinalInvariants", func(t *testing.T) {
-		checkDoubleEntryBalance(t, ctx, client, ledger)
-		checkNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
+		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
+		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
 
 		// Verify stats
 		stats, err := testutil.GetLedgerStats(ctx, client, ledger)
@@ -339,9 +341,9 @@ send $amount (
 	})
 
 	// --- Tail phases: StoreCheck, Backup, Restart+Verify, BackupRestore+Verify ---
-	runPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
-		checkDoubleEntryBalance(t, ctx, client, ledger)
-		checkNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
+		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
+		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
 	})
 }
 

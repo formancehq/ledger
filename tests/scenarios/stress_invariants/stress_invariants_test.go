@@ -1,6 +1,6 @@
 //go:build scenario
 
-package scenarios
+package stressinvariants
 
 import (
 	"fmt"
@@ -11,6 +11,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
 )
 
 // TestStressInvariants is a pure stress test focusing on cache eviction and
@@ -25,8 +27,8 @@ func TestStressInvariants(t *testing.T) {
 		depositAmt  = 1_000_000 // USD/2 per account
 	)
 
-	sc := setupSingleNode(t, scenarioHTTPPort+3, scenarioGRPCPort+3)
-	ctx, client := sc.ctx, sc.Client
+	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+3, scenariotest.GRPCPort+3)
+	ctx, client := sc.Ctx(), sc.Client
 
 	// Track reverted trade indices to avoid double-revert
 	tradeTxIDs := make([]uint64, 0, numTrades)
@@ -34,7 +36,7 @@ func TestStressInvariants(t *testing.T) {
 
 	// --- Phase 1: Setup ---
 	t.Run("Setup", func(t *testing.T) {
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateLedgerAction(ledger, nil),
 			// Account types: enforce address patterns
 			testutil.AddAccountTypeAction(ledger, "trader", "trader:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
@@ -80,11 +82,11 @@ send $amount (
 				"amount":  fmt.Sprintf("USD/2 %d", depositAmt),
 			}, nil))
 		}
-		applyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, actions...)
 
 		// Spot check a few accounts
 		for _, i := range []int{1, 25, 50, 75, 100} {
-			checkAccountBalance(t, ctx, client, ledger,
+			scenariotest.CheckAccountBalance(t, ctx, client, ledger,
 				fmt.Sprintf("trader:%d", i), "USD/2", big.NewInt(depositAmt))
 		}
 	})
@@ -99,14 +101,14 @@ send $amount (
 			}
 			amount := int64(100 + (i%50)*10)
 
-			resp := applyActions(t, ctx, client,
+			resp := scenariotest.ApplyActions(t, ctx, client,
 				testutil.CreateScriptRefTransactionAction(ledger, "trade", "1.0.0", map[string]string{
 					"buyer":  fmt.Sprintf("trader:%d", buyer),
 					"seller": fmt.Sprintf("trader:%d", seller),
 					"amount": fmt.Sprintf("USD/2 %d", amount),
 				}, nil),
 			)
-			tradeTxIDs = append(tradeTxIDs, getCreatedTransactionID(t, resp))
+			tradeTxIDs = append(tradeTxIDs, scenariotest.GetCreatedTransactionID(t, resp))
 
 			// Every 20 trades: read 5 random-ish accounts (cache hit/miss exercise)
 			if (i+1)%20 == 0 {
@@ -121,7 +123,7 @@ send $amount (
 			if (i+1)%40 == 0 && len(tradeTxIDs) > 10 {
 				revertIdx := len(tradeTxIDs) - 10
 				if !revertedTrades[revertIdx] {
-					applyActions(t, ctx, client,
+					scenariotest.ApplyActions(t, ctx, client,
 						testutil.RevertTransactionAction(ledger, tradeTxIDs[revertIdx], true, false, nil),
 					)
 					revertedTrades[revertIdx] = true
@@ -130,8 +132,8 @@ send $amount (
 
 			// Every 80 trades: close period + check double-entry
 			if (i+1)%80 == 0 {
-				closePeriodAndWait(t, ctx, client, "period close timed out at trade %d", i)
-				checkDoubleEntryBalance(t, ctx, client, ledger)
+				scenariotest.ClosePeriodAndWait(t, ctx, client, "period close timed out at trade %d", i)
+				scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 			}
 		}
 	})
@@ -147,9 +149,9 @@ send $amount (
 
 	// --- Phase 4: Final Invariants ---
 	t.Run("FinalInvariants", func(t *testing.T) {
-		checkDoubleEntryBalance(t, ctx, client, ledger)
-		checkNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
-		checkPositiveBalance(t, ctx, client, ledger, "exchange:fees", "USD/2")
+		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
+		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
+		scenariotest.CheckPositiveBalance(t, ctx, client, ledger, "exchange:fees", "USD/2")
 
 		// GetLedgerStats: verify counts
 		stats, err := testutil.GetLedgerStats(ctx, client, ledger)
@@ -197,23 +199,23 @@ send $amount (
 	numRevertedTrades := len(revertedTrades)
 	t.Run("AuditTrail", func(t *testing.T) {
 		// 100 deposits + 400 trades + revert txs
-		checkAuditTrail(t, ctx, client, []auditExpectation{{
-			ledger:           ledger,
-			minTransactions:  numAccounts + numTrades + numRevertedTrades,
-			expectedReverted: numRevertedTrades,
+		scenariotest.CheckAuditTrail(t, ctx, client, []scenariotest.AuditExpectation{{
+			Ledger:           ledger,
+			MinTransactions:  numAccounts + numTrades + numRevertedTrades,
+			ExpectedReverted: numRevertedTrades,
 		}})
 	})
 
 	// --- Tail phases: StoreCheck, Backup, Restart+Verify, BackupRestore+Verify ---
-	runPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
-		checkDoubleEntryBalance(t, ctx, client, ledger)
-		checkNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
-		checkPositiveBalance(t, ctx, client, ledger, "exchange:fees", "USD/2")
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
+		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
+		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
+		scenariotest.CheckPositiveBalance(t, ctx, client, ledger, "exchange:fees", "USD/2")
 
-		checkAuditTrail(t, ctx, client, []auditExpectation{{
-			ledger:           ledger,
-			minTransactions:  numAccounts + numTrades + numRevertedTrades,
-			expectedReverted: numRevertedTrades,
+		scenariotest.CheckAuditTrail(t, ctx, client, []scenariotest.AuditExpectation{{
+			Ledger:           ledger,
+			MinTransactions:  numAccounts + numTrades + numRevertedTrades,
+			ExpectedReverted: numRevertedTrades,
 		}})
 	})
 }

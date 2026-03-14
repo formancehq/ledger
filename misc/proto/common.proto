@@ -41,6 +41,16 @@ message MetadataSet {
   repeated Metadata metadata = 1;
 }
 
+// ParameterValue represents a typed parameter value for prepared query execution.
+message ParameterValue {
+  oneof value {
+    string string_value = 1;
+    int64 int64_value = 2;
+    uint64 uint64_value = 3;
+    bool bool_value = 4;
+  }
+}
+
 message Uint256 {
   fixed64 v0 = 1;  // least significant limb
   fixed64 v1 = 2;

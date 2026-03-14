@@ -3,6 +3,8 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -25,11 +27,11 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	}
 
 	var body struct {
-		Parameters     map[string]string `json:"parameters"`
-		PageSize       uint32            `json:"pageSize"`
-		Cursor         string            `json:"cursor"`
-		MinLogSequence uint64            `json:"minLogSequence"`
-		Mode           string            `json:"mode"`
+		Parameters     map[string]json.RawMessage `json:"parameters"`
+		PageSize       uint32                     `json:"pageSize"`
+		Cursor         string                     `json:"cursor"`
+		MinLogSequence uint64                     `json:"minLogSequence"`
+		Mode           string                     `json:"mode"`
 	}
 	if r.Body != nil && r.ContentLength > 0 {
 		err := json.NewDecoder(r.Body).Decode(&body)
@@ -56,10 +58,17 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		mode = commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES
 	}
 
+	params, err := convertJSONParameters(body.Parameters)
+	if err != nil {
+		writeBadRequest(w, "INVALID_PARAMETERS", err)
+
+		return
+	}
+
 	req := &servicepb.ExecutePreparedQueryRequest{
 		Ledger:         ledgerName,
 		QueryName:      queryName,
-		Parameters:     body.Parameters,
+		Parameters:     params,
 		PageSize:       body.PageSize,
 		Cursor:         body.Cursor,
 		MinLogSequence: body.MinLogSequence,
@@ -80,4 +89,56 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	}
 
 	writeJSONResponse(w, http.StatusOK, resp)
+}
+
+// convertJSONParameters converts raw JSON values into typed ParameterValue messages.
+// Strings → StringValue, booleans → BoolValue, integers → Int64Value or Uint64Value.
+func convertJSONParameters(raw map[string]json.RawMessage) (map[string]*commonpb.ParameterValue, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+
+	params := make(map[string]*commonpb.ParameterValue, len(raw))
+
+	for k, v := range raw {
+		pv, err := jsonToParameterValue(v)
+		if err != nil {
+			return nil, fmt.Errorf("parameter %q: %w", k, err)
+		}
+
+		params[k] = pv
+	}
+
+	return params, nil
+}
+
+func jsonToParameterValue(raw json.RawMessage) (*commonpb.ParameterValue, error) {
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_StringValue{StringValue: s}}, nil
+	}
+
+	var b bool
+	if err := json.Unmarshal(raw, &b); err == nil {
+		// Distinguish from number 0/1: raw must be "true" or "false"
+		trimmed := string(raw)
+		if trimmed == "true" || trimmed == "false" {
+			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_BoolValue{BoolValue: b}}, nil
+		}
+	}
+
+	var f float64
+	if err := json.Unmarshal(raw, &f); err == nil {
+		if f != math.Trunc(f) {
+			return nil, fmt.Errorf("floating-point values are not supported, got %v", f)
+		}
+
+		if f < 0 {
+			return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Int64Value{Int64Value: int64(f)}}, nil
+		}
+
+		return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_Uint64Value{Uint64Value: uint64(f)}}, nil
+	}
+
+	return nil, fmt.Errorf("unsupported value type: %s", string(raw))
 }

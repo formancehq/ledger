@@ -2,6 +2,7 @@ package check
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -204,7 +205,7 @@ var replayMerger = &pebble.Merger{
 	Name: "checker-replay",
 	Merge: func(key, value []byte) (pebble.ValueMerger, error) {
 		if len(key) == 0 {
-			return nil, fmt.Errorf("empty key in merge")
+			return nil, errors.New("empty key in merge")
 		}
 
 		switch key[0] {
@@ -330,13 +331,13 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 				return nil, nil, fmt.Errorf("unmarshaling set-meta op: %w", err)
 			}
 
-			if state.Metadata == nil {
+			if state.GetMetadata() == nil {
 				state.Metadata = &commonpb.MetadataSet{}
 			}
 
 			found := false
 
-			for i, existing := range state.Metadata.GetMetadata() {
+			for i, existing := range state.GetMetadata().GetMetadata() {
 				if existing.GetKey() == entry.GetKey() {
 					state.Metadata.Metadata[i] = entry
 					found = true
@@ -352,10 +353,10 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 		case txOpDeleteMeta:
 			metaKey := string(op[1:])
 
-			if state.Metadata != nil {
-				filtered := make([]*commonpb.Metadata, 0, len(state.Metadata.GetMetadata()))
+			if state.GetMetadata() != nil {
+				filtered := make([]*commonpb.Metadata, 0, len(state.GetMetadata().GetMetadata()))
 
-				for _, existing := range state.Metadata.GetMetadata() {
+				for _, existing := range state.GetMetadata().GetMetadata() {
 					if existing.GetKey() != metaKey {
 						filtered = append(filtered, existing)
 					}

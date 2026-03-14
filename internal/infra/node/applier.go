@@ -150,6 +150,8 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 			a.unspoolDurationHistogram.Record(context.Background(), float64(time.Since(unspoolStart).Microseconds()))
 			a.gatingTerminated = nil
 		case <-stop:
+			a.taskExecutor.interrupt()
+
 			return nil
 		}
 	}
@@ -556,10 +558,7 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 	}
 
 	for i := 0; i < len(entries); i += a.replayBatchSize {
-		end := i + a.replayBatchSize
-		if end > len(entries) {
-			end = len(entries)
-		}
+		end := min(i+a.replayBatchSize, len(entries))
 
 		result, err := a.applyEntriesAndResolveCommands(ctx, entries[i:end]...)
 		if err != nil {

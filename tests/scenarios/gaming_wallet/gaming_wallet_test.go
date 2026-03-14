@@ -1,16 +1,19 @@
 //go:build scenario
 
-package scenarios
+package gamingwallet
 
 import (
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
 )
 
 // TestGamingWalletLifecycle models a gaming platform with virtual currency:
@@ -53,8 +56,8 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		promoCoins = 500 // free coins per promo
 	)
 
-	sc := setupSingleNode(t, scenarioHTTPPort+7, scenarioGRPCPort+7)
-	ctx, client := sc.ctx, sc.Client
+	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+7, scenariotest.GRPCPort+7)
+	ctx, client := sc.Ctx(), sc.Client
 
 	// Balance tracking
 	playerCoins := make(map[int]*big.Int, numPlayers)
@@ -78,7 +81,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 	// --- Phase 1: Setup ---
 	t.Run("Setup", func(t *testing.T) {
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateLedgerAction(ledger, nil),
 
 			// Account types - STRICT for player accounts, AUDIT for platform
@@ -154,10 +157,10 @@ send $amount (
 			playerCoins[i].Add(playerCoins[i], big.NewInt(topUpCoins))
 			revenueUSD.Add(revenueUSD, big.NewInt(topUpUSD))
 		}
-		applyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, actions...)
 
 		// Verify revenue
-		checkAccountBalance(t, ctx, client, ledger, "platform:revenue", "USD/2", revenueUSD)
+		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "platform:revenue", "USD/2", revenueUSD)
 	})
 
 	// --- Phase 3: Promotional Credits (force transactions from @world) ---
@@ -176,9 +179,9 @@ send $amount (
 			playerCoins[i].Add(playerCoins[i], big.NewInt(promoCoins))
 			promoTotal.Add(promoTotal, big.NewInt(promoCoins))
 		}
-		applyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, actions...)
 
-		closePeriodAndWait(t, ctx, client, "post-promotion period close")
+		scenariotest.ClosePeriodAndWait(t, ctx, client, "post-promotion period close")
 	})
 
 	// --- Phase 4: Item Purchases ---
@@ -205,7 +208,7 @@ send $amount (
 				playerCoins[i].Sub(playerCoins[i], big.NewInt(cost))
 				shopCoins.Add(shopCoins, big.NewInt(cost))
 			}
-			resp := applyActions(t, ctx, client, actions...)
+			resp := scenariotest.ApplyActions(t, ctx, client, actions...)
 
 			// Track some purchases for revert tests
 			for j, log := range resp.Logs {
@@ -233,7 +236,7 @@ send $amount (
 			}
 		}
 
-		closePeriodAndWait(t, ctx, client, "post-purchases period close")
+		scenariotest.ClosePeriodAndWait(t, ctx, client, "post-purchases period close")
 	})
 
 	// --- Phase 5: Peer-to-Peer Trades ---
@@ -266,7 +269,7 @@ send $amount (
 			playerCoins[to].Add(playerCoins[to], big.NewInt(amount))
 		}
 		if len(actions) > 0 {
-			applyActions(t, ctx, client, actions...)
+			scenariotest.ApplyActions(t, ctx, client, actions...)
 		}
 	})
 
@@ -278,7 +281,7 @@ send $amount (
 
 		// Revert first purchase (force=false — balance-checked)
 		p := &itemPurchases[0]
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.RevertTransactionAction(ledger, p.txID, false, false, map[string]string{"reason": "refund"}),
 		)
 		playerCoins[p.player].Add(playerCoins[p.player], big.NewInt(p.coins))
@@ -287,7 +290,7 @@ send $amount (
 
 		// Revert second purchase with force=true
 		p2 := &itemPurchases[1]
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.RevertTransactionAction(ledger, p2.txID, true, false, map[string]string{"reason": "admin-refund"}),
 		)
 		playerCoins[p2.player].Add(playerCoins[p2.player], big.NewInt(p2.coins))
@@ -295,7 +298,7 @@ send $amount (
 		p2.reverted = true
 
 		// Double-revert should fail
-		err := applyActionsExpectError(ctx, client,
+		err := scenariotest.ApplyActionsExpectError(ctx, client,
 			testutil.RevertTransactionAction(ledger, p.txID, false, false, nil),
 		)
 		require.Error(t, err, "double revert should fail")
@@ -305,7 +308,7 @@ send $amount (
 			p3 := &itemPurchases[2]
 			action := testutil.RevertTransactionAction(ledger, p3.txID, false, false, nil)
 			testutil.WithExpandVolumes(action)
-			resp := applyActions(t, ctx, client, action)
+			resp := scenariotest.ApplyActions(t, ctx, client, action)
 			require.NotEmpty(t, resp.Logs, "revert with expand volumes should return logs")
 			playerCoins[p3.player].Add(playerCoins[p3.player], big.NewInt(p3.coins))
 			shopCoins.Sub(shopCoins, big.NewInt(p3.coins))
@@ -316,7 +319,7 @@ send $amount (
 	// --- Phase 7: Insufficient Funds ---
 	t.Run("InsufficientFunds", func(t *testing.T) {
 		// Try to buy an item the player can't afford
-		err := applyActionsExpectError(ctx, client,
+		err := scenariotest.ApplyActionsExpectError(ctx, client,
 			testutil.CreateScriptRefTransactionAction(ledger, "buy_item", "1.0.0", map[string]string{
 				"player_coins": fmt.Sprintf("player:%d:coins", numPlayers),
 				"amount":       "COINS 999999999",
@@ -352,16 +355,16 @@ send $amount (
 			playerCoins[i].Sub(playerCoins[i], clawAmount)
 		}
 		if len(actions) > 0 {
-			applyActions(t, ctx, client, actions...)
+			scenariotest.ApplyActions(t, ctx, client, actions...)
 		}
 
-		closePeriodAndWait(t, ctx, client, "post-clawback period close")
+		scenariotest.ClosePeriodAndWait(t, ctx, client, "post-clawback period close")
 	})
 
 	// --- Phase 9: Metadata Lifecycle ---
 	t.Run("MetadataLifecycle", func(t *testing.T) {
 		// Add metadata to player 1
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.SaveAccountMetadataAction(ledger, "player:1:coins", map[string]string{
 				"vip":    "true",
 				"tier":   "gold",
@@ -370,7 +373,7 @@ send $amount (
 		)
 
 		// Update metadata
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.SaveAccountMetadataAction(ledger, "player:1:coins", map[string]string{
 				"tier": "platinum",
 			}),
@@ -384,7 +387,7 @@ send $amount (
 		require.Equal(t, "platinum", tier.GetStringValue(), "tier should be updated to platinum")
 
 		// Delete metadata key
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.DeleteAccountMetadataAction(ledger, "player:1:coins", "joined"),
 		)
 
@@ -398,7 +401,7 @@ send $amount (
 	// --- Phase 10: Account Type Enforcement ---
 	t.Run("AccountTypeEnforcement", func(t *testing.T) {
 		// STRICT mode: transaction to non-matching address should fail
-		err := applyActionsExpectError(ctx, client,
+		err := scenariotest.ApplyActionsExpectError(ctx, client,
 			testutil.CreateTransactionAction(ledger, []*commonpb.Posting{
 				testutil.NewPosting("world", "invalid-address", big.NewInt(1), "COINS"),
 			}, nil, nil),
@@ -406,39 +409,143 @@ send $amount (
 		require.Error(t, err, "STRICT mode should reject non-matching address")
 
 		// Switch platform type to STRICT and test
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.UpdateAccountTypeAction(ledger, "platform", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		)
 
 		// Valid platform address should still work
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateForceTransactionAction(ledger, []*commonpb.Posting{
 				testutil.NewPosting("world", "platform:test", big.NewInt(1), "COINS"),
 			}, nil),
 		)
 
 		// Revert back to AUDIT for platform
-		applyActions(t, ctx, client,
+		scenariotest.ApplyActions(t, ctx, client,
 			testutil.UpdateAccountTypeAction(ledger, "platform", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT),
 		)
 	})
 
-	// --- Phase 11: Final Invariants ---
+	// --- Phase 11: Prepared Queries with typed parameters ---
+	t.Run("PreparedQueries", func(t *testing.T) {
+		// 1. Parameterized address prefix — filter by account type at runtime
+		err := testutil.CreatePreparedQuery(ctx, client, "accounts-by-prefix", ledger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			testutil.ParamAddressPrefixFilter("prefix"),
+		)
+		require.NoError(t, err, "CreatePreparedQuery(accounts-by-prefix) failed")
+
+		// Query for all player coin accounts
+		resp, err := testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("player:")},
+		)
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(player:) failed")
+		// 20 players × 2 accounts each (usd + coins) = 40
+		require.Equal(t, numPlayers*2, len(resp.GetCursor().GetAccountData()),
+			"should find all player accounts (usd + coins)")
+
+		// Query for shop accounts only
+		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("shop:")},
+		)
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(shop:) failed")
+		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 1,
+			"should find at least 1 shop account")
+
+		// Query for escrow accounts
+		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("escrow:")},
+		)
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(escrow:) failed")
+		// escrow:p2p exists even if not used, depending on the flow
+		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 0)
+
+		// 2. Parameterized exact address — find a specific account
+		err = testutil.CreatePreparedQuery(ctx, client, "account-exact", ledger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			testutil.ParamAddressExactFilter("addr"),
+		)
+		require.NoError(t, err, "CreatePreparedQuery(account-exact) failed")
+
+		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*commonpb.ParameterValue{"addr": testutil.StringParam("platform:revenue")},
+		)
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(platform:revenue) failed")
+		require.Equal(t, 1, len(resp.GetCursor().GetAccountData()),
+			"exact match should return exactly 1 account")
+
+		// Non-existent exact address — should return 0
+		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*commonpb.ParameterValue{"addr": testutil.StringParam("nonexistent:account")},
+		)
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(nonexistent) failed")
+		require.Empty(t, resp.GetCursor().GetAccountData(),
+			"nonexistent account should return 0 results")
+
+		// 3. Parameterized string metadata — filter by tier
+		// First, index the "tier" metadata field
+		scenariotest.ApplyActions(t, ctx, client,
+			testutil.CreateAccountMetadataIndexAction(ledger, "tier"),
+		)
+		require.Eventually(t, func() bool {
+			indexStatus, err := testutil.GetIndexStatus(ctx, client)
+			if err != nil {
+				return false
+			}
+			return indexStatus.GetLag() == 0 && len(indexStatus.GetBackfillProgress()) == 0
+		}, 15*time.Second, 200*time.Millisecond, "tier index backfill should complete")
+
+		err = testutil.CreatePreparedQuery(ctx, client, "by-tier", ledger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			testutil.ParamStringMetadataFilter("tier", "tier_value"),
+		)
+		require.NoError(t, err, "CreatePreparedQuery(by-tier) failed")
+
+		// Query for "platinum" tier — player:1:coins was updated to platinum
+		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-tier",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*commonpb.ParameterValue{"tier_value": testutil.StringParam("platinum")},
+		)
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(tier=platinum) failed")
+		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 1,
+			"should find at least 1 account with tier=platinum")
+
+		// Query for "gold" tier — was overwritten to platinum, so should be 0
+		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-tier",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100,
+			map[string]*commonpb.ParameterValue{"tier_value": testutil.StringParam("gold")},
+		)
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(tier=gold) failed")
+		require.Empty(t, resp.GetCursor().GetAccountData(),
+			"gold tier was overwritten, should return 0")
+
+		// Cleanup
+		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "accounts-by-prefix"))
+		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "account-exact"))
+		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "by-tier"))
+	})
+
+	// --- Phase 12: Final Invariants ---
 	t.Run("FinalInvariants", func(t *testing.T) {
-		checkDoubleEntryBalance(t, ctx, client, ledger)
-		checkNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
+		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
+		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
 
 		// Verify player coin balances
 		for i := 1; i <= numPlayers; i++ {
-			checkAccountBalance(t, ctx, client, ledger,
+			scenariotest.CheckAccountBalance(t, ctx, client, ledger,
 				fmt.Sprintf("player:%d:coins", i), "COINS", playerCoins[i])
 		}
 
 		// Verify shop revenue
-		checkAccountBalance(t, ctx, client, ledger, "shop:items", "COINS", shopCoins)
+		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "shop:items", "COINS", shopCoins)
 
 		// Verify platform revenue
-		checkAccountBalance(t, ctx, client, ledger, "platform:revenue", "USD/2", revenueUSD)
+		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "platform:revenue", "USD/2", revenueUSD)
 
 		// Stats
 		stats, err := testutil.GetLedgerStats(ctx, client, ledger)
@@ -448,11 +555,11 @@ send $amount (
 			stats.GetAccountCount(), stats.GetTransactionCount())
 
 		// Audit trail
-		checkAuditTrail(t, ctx, client, []auditExpectation{
+		scenariotest.CheckAuditTrail(t, ctx, client, []scenariotest.AuditExpectation{
 			{
-				ledger:          ledger,
-				minTransactions: 100,
-				expectedReverted: func() int {
+				Ledger:          ledger,
+				MinTransactions: 100,
+				ExpectedReverted: func() int {
 					count := 0
 					for _, p := range itemPurchases {
 						if p.reverted {
@@ -466,8 +573,8 @@ send $amount (
 	})
 
 	// --- Tail phases ---
-	runPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
-		checkDoubleEntryBalance(t, ctx, client, ledger)
-		checkNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
+		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
+		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
 	})
 }
