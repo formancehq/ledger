@@ -648,6 +648,20 @@ func NewNode(
 
 		replayStart := time.Now()
 
+		// Replay WAL entries that were applied to the live Pebble DB but not
+		// captured in the last Raft snapshot checkpoint. At startup the store
+		// is restored from the checkpoint, so entries between the checkpoint
+		// index and the spool start may be missing. The WAL always has them.
+		if err := applier.replayWAL(context.Background(), storeLastAppliedIndex); err != nil {
+			return nil, fmt.Errorf("replaying WAL: %w", err)
+		}
+
+		// Re-read after WAL replay — it may have advanced the index.
+		storeLastAppliedIndex, err = query.ReadLastAppliedIndex(store)
+		if err != nil {
+			return nil, fmt.Errorf("getting store last applied index after WAL replay: %w", err)
+		}
+
 		logger.WithFields(map[string]any{
 			"fromIndex": storeLastAppliedIndex,
 		}).Infof("Starting spool replay")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -517,6 +518,61 @@ func (a *Applier) unspoolAndResume(ctx context.Context) error {
 	}
 
 	a.logger.Infof("Unspooling operation terminated, resuming...")
+
+	return nil
+}
+
+// replayWAL replays committed Raft WAL entries from afterIndex+1 up to the WAL
+// tip. This bridges the gap between the Pebble checkpoint (restored at startup)
+// and the spool start, since entries applied after the last Raft snapshot but
+// before a maintenance window are in the WAL but not in the spool.
+func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
+	walLastIndex, err := a.wal.LastIndex()
+	if err != nil {
+		return fmt.Errorf("reading WAL last index: %w", err)
+	}
+
+	if walLastIndex <= afterIndex {
+		return nil
+	}
+
+	lo := afterIndex + 1
+
+	a.logger.WithFields(map[string]any{
+		"from": lo,
+		"to":   walLastIndex,
+	}).Infof("Replaying WAL entries before spool")
+
+	entries, err := a.wal.Entries(lo, walLastIndex+1, math.MaxUint64)
+	if err != nil {
+		return fmt.Errorf("reading WAL entries [%d, %d): %w", lo, walLastIndex+1, err)
+	}
+
+	if len(entries) == 0 {
+		return nil
+	}
+
+	for i := 0; i < len(entries); i += a.replayBatchSize {
+		end := i + a.replayBatchSize
+		if end > len(entries) {
+			end = len(entries)
+		}
+
+		result, err := a.applyEntriesAndResolveCommands(ctx, entries[i:end]...)
+		if err != nil {
+			return fmt.Errorf("applying WAL entries: %w", err)
+		}
+
+		if result.CheckpointRequired {
+			if err := a.handleCheckpointDuringReplay(ctx, result); err != nil {
+				return fmt.Errorf("handling checkpoint during WAL replay: %w", err)
+			}
+		}
+	}
+
+	a.logger.WithFields(map[string]any{
+		"count": len(entries),
+	}).Infof("WAL replay complete")
 
 	return nil
 }
