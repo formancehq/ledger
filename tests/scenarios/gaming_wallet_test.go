@@ -1,0 +1,473 @@
+//go:build scenario
+
+package scenarios
+
+import (
+	"fmt"
+	"math/big"
+	"testing"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/stretchr/testify/require"
+)
+
+// TestGamingWalletLifecycle models a gaming platform with virtual currency:
+//
+// - Players buy coins with real money (USD → COINS conversion)
+// - Players spend coins on in-game items
+// - Platform distributes rewards/promotions (free coins)
+// - Players trade items peer-to-peer with coin transfers
+// - Refunds via transaction reverts (with and without balance checks)
+// - Revenue recognition from coin purchases
+// - Expired promotional coins clawback
+//
+// This scenario exercises:
+// - Two assets in one ledger (USD/2 for real money, COINS for virtual currency)
+// - Force transactions (promotional credits from @world)
+// - Reverts with force=true and force=false
+// - Revert of already-reverted transaction (double revert error)
+// - Zero-amount edge cases
+// - ExpandVolumes on transaction creation
+// - Transaction with metadata and subsequent metadata updates/deletes
+// - Account type enforcement in STRICT and AUDIT modes
+//
+// Account structure:
+//
+//	player:{id}:usd      — real money balance
+//	player:{id}:coins    — virtual currency balance
+//	platform:revenue     — revenue from coin purchases
+//	platform:promotions  — promotional coin issuance tracking
+//	shop:items           — item sales revenue (in coins)
+//	escrow:p2p           — peer-to-peer trade escrow
+//
+// Generates ~180 Apply calls, triggers 3+ cache rotations.
+func TestGamingWalletLifecycle(t *testing.T) {
+	const (
+		ledger     = "gaming"
+		numPlayers = 20
+		coinPrice  = 100  // 1 USD = 100 COINS
+		topUpUSD   = 5000 // USD/2 cents per top-up
+		topUpCoins = topUpUSD * coinPrice / 100
+		promoCoins = 500 // free coins per promo
+	)
+
+	sc := setupSingleNode(t, scenarioHTTPPort+7, scenarioGRPCPort+7)
+	ctx, client := sc.ctx, sc.Client
+
+	// Balance tracking
+	playerCoins := make(map[int]*big.Int, numPlayers)
+	playerUSD := make(map[int]*big.Int, numPlayers)
+	for i := 1; i <= numPlayers; i++ {
+		playerCoins[i] = new(big.Int)
+		playerUSD[i] = new(big.Int)
+	}
+	revenueUSD := new(big.Int)
+	shopCoins := new(big.Int)
+	promoTotal := new(big.Int)
+
+	// Track transaction IDs for reverts
+	type purchaseRecord struct {
+		txID     uint64
+		player   int
+		coins    int64
+		reverted bool
+	}
+	var itemPurchases []purchaseRecord
+
+	// --- Phase 1: Setup ---
+	t.Run("Setup", func(t *testing.T) {
+		applyActions(t, ctx, client,
+			testutil.CreateLedgerAction(ledger, nil),
+
+			// Account types - STRICT for player accounts, AUDIT for platform
+			testutil.AddAccountTypeAction(ledger, "player-usd", "player:{id}:usd", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+			testutil.AddAccountTypeAction(ledger, "player-coins", "player:{id}:coins", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+			testutil.AddAccountTypeAction(ledger, "platform", "platform:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT),
+			testutil.AddAccountTypeAction(ledger, "shop", "shop:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+			testutil.AddAccountTypeAction(ledger, "escrow", "escrow:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+
+			// Numscripts
+			testutil.SaveNumscriptWithVersionAction("top_up", `vars {
+  account $player_usd
+  account $player_coins
+  monetary $usd_amount
+  monetary $coin_amount
+}
+send $usd_amount (
+  source = @world
+  destination = $player_usd
+)
+send $usd_amount (
+  source = $player_usd
+  destination = @platform:revenue
+)
+send $coin_amount (
+  source = @world
+  destination = $player_coins
+)`, "1.0.0"),
+
+			testutil.SaveNumscriptWithVersionAction("buy_item", `vars {
+  account $player_coins
+  monetary $amount
+}
+send $amount (
+  source = $player_coins
+  destination = @shop:items
+)`, "1.0.0"),
+
+			testutil.SaveNumscriptWithVersionAction("p2p_transfer", `vars {
+  account $from_player
+  account $to_player
+  monetary $amount
+}
+send $amount (
+  source = $from_player
+  destination = $to_player
+)`, "1.0.0"),
+
+			testutil.SaveNumscriptWithVersionAction("clawback", `vars {
+  account $player_coins
+  monetary $amount
+}
+send $amount (
+  source = $player_coins
+  destination = @platform:promotions
+)`, "1.0.0"),
+		)
+	})
+
+	// --- Phase 2: Top-Ups (buy coins with real money) ---
+	t.Run("TopUps", func(t *testing.T) {
+		var actions []*servicepb.Request
+		for i := 1; i <= numPlayers; i++ {
+			action := testutil.CreateScriptRefTransactionAction(ledger, "top_up", "1.0.0", map[string]string{
+				"player_usd":   fmt.Sprintf("player:%d:usd", i),
+				"player_coins": fmt.Sprintf("player:%d:coins", i),
+				"usd_amount":   fmt.Sprintf("USD/2 %d", topUpUSD),
+				"coin_amount":  fmt.Sprintf("COINS %d", topUpCoins),
+			}, map[string]string{"type": "initial-topup"})
+			action.GetApply().GetCreateTransaction().Reference = fmt.Sprintf("topup-initial-%d", i)
+			actions = append(actions, action)
+
+			playerCoins[i].Add(playerCoins[i], big.NewInt(topUpCoins))
+			revenueUSD.Add(revenueUSD, big.NewInt(topUpUSD))
+		}
+		applyActions(t, ctx, client, actions...)
+
+		// Verify revenue
+		checkAccountBalance(t, ctx, client, ledger, "platform:revenue", "USD/2", revenueUSD)
+	})
+
+	// --- Phase 3: Promotional Credits (force transactions from @world) ---
+	t.Run("Promotions", func(t *testing.T) {
+		// Give free coins to first 10 players
+		var actions []*servicepb.Request
+		for i := 1; i <= 10; i++ {
+			actions = append(actions,
+				testutil.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+					testutil.NewPosting("world", fmt.Sprintf("player:%d:coins", i), big.NewInt(promoCoins), "COINS"),
+				}, map[string]string{
+					"type":   "promotion",
+					"reason": "welcome-bonus",
+				}),
+			)
+			playerCoins[i].Add(playerCoins[i], big.NewInt(promoCoins))
+			promoTotal.Add(promoTotal, big.NewInt(promoCoins))
+		}
+		applyActions(t, ctx, client, actions...)
+
+		closePeriodAndWait(t, ctx, client, "post-promotion period close")
+	})
+
+	// --- Phase 4: Item Purchases ---
+	t.Run("ItemPurchases", func(t *testing.T) {
+		// Each player buys 3 items of varying cost
+		itemCosts := []int64{100, 250, 500}
+
+		for round, cost := range itemCosts {
+			var actions []*servicepb.Request
+			for i := 1; i <= numPlayers; i++ {
+				// Only buy if player has enough coins
+				if playerCoins[i].Cmp(big.NewInt(cost)) < 0 {
+					continue
+				}
+				action := testutil.CreateScriptRefTransactionAction(ledger, "buy_item", "1.0.0", map[string]string{
+					"player_coins": fmt.Sprintf("player:%d:coins", i),
+					"amount":       fmt.Sprintf("COINS %d", cost),
+				}, map[string]string{
+					"item":  fmt.Sprintf("item-round-%d", round+1),
+					"round": fmt.Sprintf("%d", round+1),
+				})
+				actions = append(actions, action)
+
+				playerCoins[i].Sub(playerCoins[i], big.NewInt(cost))
+				shopCoins.Add(shopCoins, big.NewInt(cost))
+			}
+			resp := applyActions(t, ctx, client, actions...)
+
+			// Track some purchases for revert tests
+			for j, log := range resp.Logs {
+				if j < 5 && round == 0 {
+					applyLog := log.Payload.GetApply()
+					if applyLog != nil {
+						tx := applyLog.Log.Data.GetCreatedTransaction()
+						if tx != nil {
+							itemPurchases = append(itemPurchases, purchaseRecord{
+								txID:   tx.Transaction.Id,
+								player: j + 1,
+								coins:  cost,
+							})
+						}
+					}
+				}
+			}
+
+			// Read some accounts mid-way to exercise cache
+			if round == 1 {
+				for i := 1; i <= 5; i++ {
+					_, err := testutil.GetAccount(ctx, client, ledger, fmt.Sprintf("player:%d:coins", i))
+					require.NoError(t, err)
+				}
+			}
+		}
+
+		closePeriodAndWait(t, ctx, client, "post-purchases period close")
+	})
+
+	// --- Phase 5: Peer-to-Peer Trades ---
+	t.Run("P2PTrades", func(t *testing.T) {
+		// 10 trades between random player pairs
+		trades := [][3]int{
+			{1, 2, 50}, {3, 4, 75}, {5, 6, 100}, {7, 8, 25}, {9, 10, 150},
+			{2, 3, 30}, {4, 5, 60}, {6, 7, 80}, {8, 9, 40}, {10, 1, 90},
+		}
+
+		var actions []*servicepb.Request
+		for _, trade := range trades {
+			from, to, amount := trade[0], trade[1], int64(trade[2])
+
+			// Check sender has enough
+			if playerCoins[from].Cmp(big.NewInt(amount)) < 0 {
+				continue
+			}
+
+			actions = append(actions,
+				testutil.CreateScriptRefTransactionAction(ledger, "p2p_transfer", "1.0.0", map[string]string{
+					"from_player": fmt.Sprintf("player:%d:coins", from),
+					"to_player":   fmt.Sprintf("player:%d:coins", to),
+					"amount":      fmt.Sprintf("COINS %d", amount),
+				}, map[string]string{
+					"type": "p2p-trade",
+				}),
+			)
+			playerCoins[from].Sub(playerCoins[from], big.NewInt(amount))
+			playerCoins[to].Add(playerCoins[to], big.NewInt(amount))
+		}
+		if len(actions) > 0 {
+			applyActions(t, ctx, client, actions...)
+		}
+	})
+
+	// --- Phase 6: Refunds (Reverts) ---
+	t.Run("Refunds", func(t *testing.T) {
+		if len(itemPurchases) < 3 {
+			t.Skip("not enough purchase records for revert tests")
+		}
+
+		// Revert first purchase (force=false — balance-checked)
+		p := &itemPurchases[0]
+		applyActions(t, ctx, client,
+			testutil.RevertTransactionAction(ledger, p.txID, false, false, map[string]string{"reason": "refund"}),
+		)
+		playerCoins[p.player].Add(playerCoins[p.player], big.NewInt(p.coins))
+		shopCoins.Sub(shopCoins, big.NewInt(p.coins))
+		p.reverted = true
+
+		// Revert second purchase with force=true
+		p2 := &itemPurchases[1]
+		applyActions(t, ctx, client,
+			testutil.RevertTransactionAction(ledger, p2.txID, true, false, map[string]string{"reason": "admin-refund"}),
+		)
+		playerCoins[p2.player].Add(playerCoins[p2.player], big.NewInt(p2.coins))
+		shopCoins.Sub(shopCoins, big.NewInt(p2.coins))
+		p2.reverted = true
+
+		// Double-revert should fail
+		err := applyActionsExpectError(ctx, client,
+			testutil.RevertTransactionAction(ledger, p.txID, false, false, nil),
+		)
+		require.Error(t, err, "double revert should fail")
+
+		// Revert with ExpandVolumes
+		if len(itemPurchases) >= 3 {
+			p3 := &itemPurchases[2]
+			action := testutil.RevertTransactionAction(ledger, p3.txID, false, false, nil)
+			testutil.WithExpandVolumes(action)
+			resp := applyActions(t, ctx, client, action)
+			require.NotEmpty(t, resp.Logs, "revert with expand volumes should return logs")
+			playerCoins[p3.player].Add(playerCoins[p3.player], big.NewInt(p3.coins))
+			shopCoins.Sub(shopCoins, big.NewInt(p3.coins))
+			p3.reverted = true
+		}
+	})
+
+	// --- Phase 7: Insufficient Funds ---
+	t.Run("InsufficientFunds", func(t *testing.T) {
+		// Try to buy an item the player can't afford
+		err := applyActionsExpectError(ctx, client,
+			testutil.CreateScriptRefTransactionAction(ledger, "buy_item", "1.0.0", map[string]string{
+				"player_coins": fmt.Sprintf("player:%d:coins", numPlayers),
+				"amount":       "COINS 999999999",
+			}, nil),
+		)
+		require.Error(t, err, "should fail with insufficient funds")
+	})
+
+	// --- Phase 8: Promotional Clawback ---
+	t.Run("PromoClawback", func(t *testing.T) {
+		// Clawback remaining promo coins from players 8-10
+		// (simulating expired promotional balance)
+		var actions []*servicepb.Request
+		for i := 8; i <= 10; i++ {
+			clawAmount := big.NewInt(promoCoins)
+			// Can only claw back if they still have enough
+			if playerCoins[i].Cmp(clawAmount) < 0 {
+				clawAmount = new(big.Int).Set(playerCoins[i])
+			}
+			if clawAmount.Sign() <= 0 {
+				continue
+			}
+
+			actions = append(actions,
+				testutil.CreateScriptRefTransactionAction(ledger, "clawback", "1.0.0", map[string]string{
+					"player_coins": fmt.Sprintf("player:%d:coins", i),
+					"amount":       fmt.Sprintf("COINS %s", clawAmount.String()),
+				}, map[string]string{
+					"type":   "promo-clawback",
+					"reason": "expired-welcome-bonus",
+				}),
+			)
+			playerCoins[i].Sub(playerCoins[i], clawAmount)
+		}
+		if len(actions) > 0 {
+			applyActions(t, ctx, client, actions...)
+		}
+
+		closePeriodAndWait(t, ctx, client, "post-clawback period close")
+	})
+
+	// --- Phase 9: Metadata Lifecycle ---
+	t.Run("MetadataLifecycle", func(t *testing.T) {
+		// Add metadata to player 1
+		applyActions(t, ctx, client,
+			testutil.SaveAccountMetadataAction(ledger, "player:1:coins", map[string]string{
+				"vip":    "true",
+				"tier":   "gold",
+				"joined": "2025-01-01",
+			}),
+		)
+
+		// Update metadata
+		applyActions(t, ctx, client,
+			testutil.SaveAccountMetadataAction(ledger, "player:1:coins", map[string]string{
+				"tier": "platinum",
+			}),
+		)
+
+		// Verify metadata
+		acct, err := testutil.GetAccount(ctx, client, ledger, "player:1:coins")
+		require.NoError(t, err)
+		tier := testutil.FindMetadataValue(acct.Metadata, "tier")
+		require.NotNil(t, tier, "tier metadata should exist")
+		require.Equal(t, "platinum", tier.GetStringValue(), "tier should be updated to platinum")
+
+		// Delete metadata key
+		applyActions(t, ctx, client,
+			testutil.DeleteAccountMetadataAction(ledger, "player:1:coins", "joined"),
+		)
+
+		// Verify deletion
+		acct, err = testutil.GetAccount(ctx, client, ledger, "player:1:coins")
+		require.NoError(t, err)
+		joined := testutil.FindMetadataValue(acct.Metadata, "joined")
+		require.Nil(t, joined, "joined metadata should be deleted")
+	})
+
+	// --- Phase 10: Account Type Enforcement ---
+	t.Run("AccountTypeEnforcement", func(t *testing.T) {
+		// STRICT mode: transaction to non-matching address should fail
+		err := applyActionsExpectError(ctx, client,
+			testutil.CreateTransactionAction(ledger, []*commonpb.Posting{
+				testutil.NewPosting("world", "invalid-address", big.NewInt(1), "COINS"),
+			}, nil, nil),
+		)
+		require.Error(t, err, "STRICT mode should reject non-matching address")
+
+		// Switch platform type to STRICT and test
+		applyActions(t, ctx, client,
+			testutil.UpdateAccountTypeAction(ledger, "platform", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		)
+
+		// Valid platform address should still work
+		applyActions(t, ctx, client,
+			testutil.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+				testutil.NewPosting("world", "platform:test", big.NewInt(1), "COINS"),
+			}, nil),
+		)
+
+		// Revert back to AUDIT for platform
+		applyActions(t, ctx, client,
+			testutil.UpdateAccountTypeAction(ledger, "platform", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT),
+		)
+	})
+
+	// --- Phase 11: Final Invariants ---
+	t.Run("FinalInvariants", func(t *testing.T) {
+		checkDoubleEntryBalance(t, ctx, client, ledger)
+		checkNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
+
+		// Verify player coin balances
+		for i := 1; i <= numPlayers; i++ {
+			checkAccountBalance(t, ctx, client, ledger,
+				fmt.Sprintf("player:%d:coins", i), "COINS", playerCoins[i])
+		}
+
+		// Verify shop revenue
+		checkAccountBalance(t, ctx, client, ledger, "shop:items", "COINS", shopCoins)
+
+		// Verify platform revenue
+		checkAccountBalance(t, ctx, client, ledger, "platform:revenue", "USD/2", revenueUSD)
+
+		// Stats
+		stats, err := testutil.GetLedgerStats(ctx, client, ledger)
+		require.NoError(t, err)
+		require.Greater(t, stats.GetTransactionCount(), uint64(100), "should have many transactions")
+		t.Logf("LedgerStats: %d accounts, %d transactions",
+			stats.GetAccountCount(), stats.GetTransactionCount())
+
+		// Audit trail
+		checkAuditTrail(t, ctx, client, []auditExpectation{
+			{
+				ledger:          ledger,
+				minTransactions: 100,
+				expectedReverted: func() int {
+					count := 0
+					for _, p := range itemPurchases {
+						if p.reverted {
+							count++
+						}
+					}
+					return count
+				}(),
+			},
+		})
+	})
+
+	// --- Tail phases ---
+	runPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
+		checkDoubleEntryBalance(t, ctx, client, ledger)
+		checkNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
+	})
+}

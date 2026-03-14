@@ -1365,6 +1365,66 @@ func LedgerFilter(ledger string) *commonpb.QueryFilter {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Parameterized filter builders (for prepared queries with runtime parameters)
+// ---------------------------------------------------------------------------
+
+// ParamAddressPrefixFilter creates a filter matching accounts by a parameterized address prefix.
+// The actual prefix value is supplied at execution time via parameters map.
+func ParamAddressPrefixFilter(paramName string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Address{
+			Address: &commonpb.AddressMatch{
+				Match: &commonpb.AddressMatch_ParamPrefix{
+					ParamPrefix: paramName,
+				},
+			},
+		},
+	}
+}
+
+// ParamAddressExactFilter creates a filter matching accounts by a parameterized exact address.
+func ParamAddressExactFilter(paramName string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Address{
+			Address: &commonpb.AddressMatch{
+				Match: &commonpb.AddressMatch_ParamExact{
+					ParamExact: paramName,
+				},
+			},
+		},
+	}
+}
+
+// ParamStringMetadataFilter creates a filter matching a metadata string field with a parameterized value.
+func ParamStringMetadataFilter(key, paramName string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field: &commonpb.FieldRef{Metadata: key},
+				Condition: &commonpb.FieldCondition_StringCond{
+					StringCond: &commonpb.StringCondition{
+						Value: &commonpb.StringCondition_Param{
+							Param: paramName,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// ExecutePreparedQueryWithParams executes a prepared query with runtime parameters.
+func ExecutePreparedQueryWithParams(ctx context.Context, client servicepb.BucketServiceClient, ledger, queryName string, mode commonpb.QueryMode, pageSize uint32, params map[string]string) (*servicepb.ExecutePreparedQueryResponse, error) {
+	return client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+		Ledger:     ledger,
+		QueryName:  queryName,
+		Mode:       mode,
+		PageSize:   pageSize,
+		Parameters: params,
+	})
+}
+
 // UploadAndFinalizeRestore uploads a backup to a restore-mode server, validates it,
 // and finalizes the restore. The caller must start the server with --restore before
 // calling this, and restart it normally after.

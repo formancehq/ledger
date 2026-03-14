@@ -505,15 +505,13 @@ send $amount (
 
 	// --- Phase 11b: Prepared Queries ---
 	t.Run("PreparedQueries", func(t *testing.T) {
-		// Create a prepared query filtering accounts by address prefix
-		// (QUERY_TARGET_ACCOUNTS + AddressPrefixFilter works without explicit index creation)
+		// 1. Hardcoded filter (existing test — address prefix)
 		err := testutil.CreatePreparedQuery(ctx, client, "customer-query", ledger,
 			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			testutil.AddressPrefixFilter("customer:"),
 		)
 		require.NoError(t, err, "CreatePreparedQuery failed")
 
-		// List prepared queries: verify it exists
 		queries, err := testutil.ListPreparedQueries(ctx, client, ledger)
 		require.NoError(t, err, "ListPreparedQueries failed")
 		require.GreaterOrEqual(t, len(queries), 1, "should have at least 1 prepared query")
@@ -525,27 +523,62 @@ send $amount (
 		}
 		require.True(t, found, "customer-query should be in the list")
 
-		// Execute the prepared query
 		execResp, err := testutil.ExecutePreparedQuery(ctx, client, ledger, "customer-query",
 			commonpb.QueryMode_QUERY_MODE_LIST, 10)
 		require.NoError(t, err, "ExecutePreparedQuery failed")
 		require.NotNil(t, execResp, "execute response should not be nil")
 
-		// Update the prepared query with a different filter
+		// 2. Parameterized address prefix — reusable query, different prefixes at runtime
+		err = testutil.CreatePreparedQuery(ctx, client, "accounts-by-prefix", ledger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			testutil.ParamAddressPrefixFilter("prefix"),
+		)
+		require.NoError(t, err, "CreatePreparedQuery(accounts-by-prefix) failed")
+
+		// Execute with prefix=customer: → should return all customers
+		resp, err := testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100, map[string]string{"prefix": "customer:"})
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(customer:) failed")
+		cursor := resp.GetCursor()
+		require.NotNil(t, cursor, "expected cursor result")
+		require.Equal(t, numCustomers, len(cursor.GetAccountData()),
+			"parameterized query with prefix=customer: should return %d accounts", numCustomers)
+
+		// Execute same query with prefix=merchant: → should return all merchants
+		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100, map[string]string{"prefix": "merchant:"})
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(merchant:) failed")
+		cursor = resp.GetCursor()
+		require.NotNil(t, cursor, "expected cursor result for merchants")
+		require.Equal(t, numMerchants, len(cursor.GetAccountData()),
+			"parameterized query with prefix=merchant: should return %d accounts", numMerchants)
+
+		// Execute with prefix=platform: → should return platform accounts
+		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+			commonpb.QueryMode_QUERY_MODE_LIST, 100, map[string]string{"prefix": "platform:"})
+		require.NoError(t, err, "ExecutePreparedQueryWithParams(platform:) failed")
+		cursor = resp.GetCursor()
+		require.NotNil(t, cursor, "expected cursor result for platform")
+		require.GreaterOrEqual(t, len(cursor.GetAccountData()), 1,
+			"parameterized query with prefix=platform: should return at least 1 account")
+
+		// 3. Update the hardcoded query, then delete both
 		err = testutil.UpdatePreparedQuery(ctx, client, ledger, "customer-query",
 			testutil.AddressPrefixFilter("merchant:"),
 		)
 		require.NoError(t, err, "UpdatePreparedQuery failed")
 
-		// Delete the prepared query
 		err = testutil.DeletePreparedQuery(ctx, client, ledger, "customer-query")
-		require.NoError(t, err, "DeletePreparedQuery failed")
+		require.NoError(t, err, "DeletePreparedQuery(customer-query) failed")
+		err = testutil.DeletePreparedQuery(ctx, client, ledger, "accounts-by-prefix")
+		require.NoError(t, err, "DeletePreparedQuery(accounts-by-prefix) failed")
 
-		// Verify it's gone
+		// Verify both are gone
 		queries, err = testutil.ListPreparedQueries(ctx, client, ledger)
 		require.NoError(t, err, "ListPreparedQueries after delete failed")
 		for _, q := range queries {
 			require.NotEqual(t, "customer-query", q.GetName(), "customer-query should be deleted")
+			require.NotEqual(t, "accounts-by-prefix", q.GetName(), "accounts-by-prefix should be deleted")
 		}
 	})
 
