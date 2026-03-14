@@ -522,17 +522,20 @@ func (a *Applier) unspoolAndResume(ctx context.Context) error {
 	return nil
 }
 
-// replayWAL replays committed Raft WAL entries from afterIndex+1 up to the WAL
-// tip. This bridges the gap between the Pebble checkpoint (restored at startup)
-// and the spool start, since entries applied after the last Raft snapshot but
-// before a maintenance window are in the WAL but not in the spool.
+// replayWAL replays committed Raft WAL entries from afterIndex+1 up to the
+// HardState commit index. This bridges the gap between the Pebble checkpoint
+// (restored at startup) and the spool start, since entries applied after the
+// last Raft snapshot but before a maintenance window are in the WAL but not
+// in the spool. We cap at HardState.Commit (not WAL LastIndex) to avoid
+// advancing applied past committed, which would cause raft.NewRawNode to panic.
 func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
-	walLastIndex, err := a.wal.LastIndex()
+	hardState, _, err := a.wal.InitialState()
 	if err != nil {
-		return fmt.Errorf("reading WAL last index: %w", err)
+		return fmt.Errorf("reading WAL initial state: %w", err)
 	}
 
-	if walLastIndex <= afterIndex {
+	commitIndex := hardState.Commit
+	if commitIndex <= afterIndex {
 		return nil
 	}
 
@@ -540,12 +543,12 @@ func (a *Applier) replayWAL(ctx context.Context, afterIndex uint64) error {
 
 	a.logger.WithFields(map[string]any{
 		"from": lo,
-		"to":   walLastIndex,
+		"to":   commitIndex,
 	}).Infof("Replaying WAL entries before spool")
 
-	entries, err := a.wal.Entries(lo, walLastIndex+1, math.MaxUint64)
+	entries, err := a.wal.Entries(lo, commitIndex+1, math.MaxUint64)
 	if err != nil {
-		return fmt.Errorf("reading WAL entries [%d, %d): %w", lo, walLastIndex+1, err)
+		return fmt.Errorf("reading WAL entries [%d, %d): %w", lo, commitIndex+1, err)
 	}
 
 	if len(entries) == 0 {
