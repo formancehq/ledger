@@ -38,6 +38,7 @@ Refactor:
 * estimate cache size
 * period overlap
 * delete attributes on ledger deletion
+* Simplify machine by allowing some commands to be in a single batch
 
 Later:
 * Store

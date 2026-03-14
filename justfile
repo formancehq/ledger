@@ -86,7 +86,7 @@ test-e2e-full:
 
 # Run financial scenario tests
 test-scenarios:
-    go test -tags scenario ./tests/scenarios/... -timeout 300s -v
+    go test -tags scenario ./tests/scenarios/... -timeout 300s
 
 # Release (official, triggered by tag)
 release:
