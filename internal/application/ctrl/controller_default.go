@@ -697,7 +697,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
 	snap := ctrl.readStore.NewSnapshot()
-	defer snap.Close()
+	defer func() { _ = snap.Close() }()
 
 	kb := dal.NewKeyBuilder()
 
@@ -754,7 +754,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, afterSequence uint6
 		}
 
 		snap := ctrl.readStore.NewSnapshot()
-		defer snap.Close()
+		defer func() { _ = snap.Close() }()
 
 		kb := dal.NewKeyBuilder()
 

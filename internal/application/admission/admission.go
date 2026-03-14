@@ -900,6 +900,7 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 			SealPeriod: &raftcmdpb.SealPeriodOrder{
 				PeriodId:    reqType.SealPeriod.GetPeriodId(),
 				SealingHash: reqType.SealPeriod.GetSealingHash(),
+				StateHash:   reqType.SealPeriod.GetStateHash(),
 			},
 		}
 	case *servicepb.Request_ArchivePeriod:

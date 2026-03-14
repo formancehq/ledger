@@ -4,8 +4,9 @@ import (
 	"errors"
 	"math/big"
 
-	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/holiman/uint256"
+
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 )
 
 // Postings is a slice of Posting pointers.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -45,6 +46,7 @@ func (r *TestRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if kerrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
+
 		return ctrl.Result{}, err
 	}
 
@@ -133,6 +135,7 @@ func (r *TestRunReconciler) cleanupReport(ctx context.Context, log logr.Logger, 
 		if kerrors.IsNotFound(err) {
 			return nil
 		}
+
 		return err
 	}
 
@@ -160,7 +163,7 @@ func (r *TestRunReconciler) deleteSnapshots(ctx context.Context, report string) 
 	}
 
 	for _, entry := range parsed.Entries {
-		_ = r.Grafana.DeleteSnapshot(ctx, entry.DeleteURL, entry.DeleteKey, entry.SnapshotKey) //nolint:errcheck // best-effort
+		_ = r.Grafana.DeleteSnapshot(ctx, entry.DeleteURL, entry.DeleteKey, entry.SnapshotKey)
 	}
 
 	return nil
@@ -182,6 +185,7 @@ func (r *TestRunReconciler) ensureReportConfigMap(ctx context.Context, namespace
 		cm.Data = map[string]string{
 			"report.json": report,
 		}
+
 		return nil
 	})
 
@@ -189,13 +193,7 @@ func (r *TestRunReconciler) ensureReportConfigMap(ctx context.Context, namespace
 }
 
 func hasTestRunFinalizer(obj *unstructured.Unstructured) bool {
-	for _, f := range obj.GetFinalizers() {
-		if f == testRunFinalizer {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(obj.GetFinalizers(), testRunFinalizer)
 }
 
 // SetupWithManager registers the TestRunReconciler with a dynamic informer
@@ -226,6 +224,7 @@ func (r *TestRunReconciler) SetupWithManager(mgr manager.Manager) error {
 	// Start the informer when the manager starts.
 	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 		informer.Run(ctx.Done())
+
 		return nil
 	})); err != nil {
 		return err

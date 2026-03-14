@@ -1366,24 +1366,6 @@ func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile) *
 	return &SliceIterator{entities: entities}
 }
 
-// extractEntityAtOffset extracts entity from a key at a known byte offset.
-func extractEntityAtOffset(key []byte, entityOffset, entityLen int) []byte {
-	if len(key) <= entityOffset {
-		return nil
-	}
-
-	suffix := key[entityOffset:]
-	if entityLen > 0 {
-		if len(suffix) < entityLen {
-			return nil
-		}
-
-		return suffix[:entityLen]
-	}
-
-	return suffix
-}
-
 func sortEntities(entities [][]byte) {
 	sort.Slice(entities, func(i, j int) bool {
 		return bytes.Compare(entities[i], entities[j]) < 0

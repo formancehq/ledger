@@ -293,6 +293,8 @@ func TestCheckClosePeriod(t *testing.T) {
 		CloseSequence: 42,
 		LastLogHash:   []byte("hash"),
 	}
+	// Set the closing period on the machine so checkClosePeriod can find it.
+	machine.Periods.SetClosingPeriod(closedPeriod)
 	resultWithClose := &ApplyResult{
 		Logs: []*raftcmdpb.CreatedLogOrReference{
 			{Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{

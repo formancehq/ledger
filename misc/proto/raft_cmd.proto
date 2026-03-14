@@ -99,6 +99,7 @@ message ClosePeriodOrder {}
 message SealPeriodOrder {
   uint64 period_id = 1;
   bytes sealing_hash = 2;
+  bytes state_hash = 3;
 }
 
 message ArchivePeriodOrder {

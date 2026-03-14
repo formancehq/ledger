@@ -44,7 +44,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 	var result entityListResult
 
 	snap := readStore.NewSnapshot()
-	defer snap.Close()
+	defer func() { _ = snap.Close() }()
 
 	var err error
 

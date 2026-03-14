@@ -77,10 +77,8 @@ func (g *GrafanaClient) ProcessTestRun(ctx context.Context, obj *unstructured.Un
 		return SnapshotResult{}, errors.New("no dashboards found")
 	}
 
-	datasourceUID, err := g.resolveDatasourceUID(ctx)
-	if err != nil {
-		// Non-fatal: we can still create snapshots without per-node breakdown.
-	}
+	// Non-fatal: we can still create snapshots without per-node breakdown.
+	datasourceUID, _ := g.resolveDatasourceUID(ctx)
 
 	snapshotTime := time.Now().UTC().Format("20060102-150405")
 	prefix := g.cfg.SnapshotNamePrefix

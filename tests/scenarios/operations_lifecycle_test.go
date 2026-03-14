@@ -145,11 +145,11 @@ send $amount (
 			"audit entry should have an outcome")
 	})
 
-	// --- BUG: ArchivePeriod + CheckStore incompatibility ---
-	// After archiving a period, CheckStore reports SEQUENCE_GAP errors for the
-	// archived logs and HASH_MISMATCH at the boundary. CheckStore should account
-	// for archived periods and skip their log ranges.
-	t.Run("BUG_ArchivePeriodBreaksCheckStore", func(t *testing.T) {
+	// --- Regression: ArchivePeriod + CheckStore ---
+	// After archiving a period, CheckStore must account for purged logs by
+	// reading archived period metadata (start_sequence, close_sequence, last_log_hash)
+	// and resuming the hash chain from the correct boundary.
+	t.Run("ArchivePeriodCheckStore", func(t *testing.T) {
 		// Create a few transactions to have content in the current period
 		for i := 1; i <= 3; i++ {
 			applyActions(t, ctx, client,
@@ -202,9 +202,8 @@ send $amount (
 
 		t.Logf("Period %d successfully archived", closedPeriodID)
 
-		// BUG: CheckStore should pass after archiving, but it doesn't.
-		// It reports SEQUENCE_GAP for logs 1..N (the archived logs) and
-		// HASH_MISMATCH at the boundary sequence.
+		// CheckStore must pass after archiving: it reads archived period metadata
+		// to skip purged log ranges and resume the hash chain correctly.
 		stream, err := client.CheckStore(ctx, &servicepb.CheckStoreRequest{})
 		require.NoError(t, err, "CheckStore RPC failed")
 
@@ -219,7 +218,7 @@ send $amount (
 			}
 		}
 		require.Empty(t, storeErrors,
-			"CheckStore should report no errors after archiving, but got %d errors (sequence gaps + hash mismatch for archived period logs)",
+			"CheckStore should report no errors after archiving, got %d errors",
 			len(storeErrors))
 	})
 

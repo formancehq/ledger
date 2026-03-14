@@ -65,7 +65,7 @@ test-full:
     go test -tags "{{all_tags}}" ./... -timeout 20m
 
 # Run all tests across all modules (unit + integration + e2e)
-test-all: test test-submodules test-integration test-e2e
+test-all: test test-submodules test-e2e test-scenarios
 
 # Run unit tests for all sub-modules
 test-submodules:
@@ -76,17 +76,17 @@ test-submodules:
         (cd "$dir" && go test ./...)
     done
 
-# Run integration tests (operator envtest, requires KUBEBUILDER_ASSETS)
-test-integration:
-    cd misc/operator && go test -tags integration ./internal/controller/... -timeout 2m
-
 # Run end-to-end tests (light build)
 test-e2e:
-    go test -tags e2e ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
+    go test -tags e2e -p 1 ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
 
 # Run end-to-end tests with all optional features
 test-e2e-full:
-    go test -tags "e2e,{{all_tags}}" ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
+    go test -tags "e2e,{{all_tags}}" -p 1 ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
+
+# Run financial scenario tests
+test-scenarios:
+    go test -tags scenario ./tests/scenarios/... -timeout 300s -v
 
 # Release (official, triggered by tag)
 release:

@@ -8,6 +8,7 @@ import (
 	"github.com/zeebo/blake3"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
@@ -95,6 +96,16 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 		log.Hash = ComputeLogHash(p.logHasher, s.GetLastLogHash(), log)
 		s.SetLastLogHash(log.GetHash())
 
+		// After a ClosePeriod log, update the closing period's LastLogHash to
+		// include this log's hash. The log payload holds a cloned snapshot, so
+		// this mutation only affects the FSM state (persisted to Pebble).
+		// CheckStore uses this to resume the hash chain after purged logs.
+		if _, ok := payload.GetType().(*commonpb.LogPayload_ClosePeriod); ok {
+			if closingPeriod, hasClosing := s.GetClosingPeriod(); hasClosing {
+				closingPeriod.LastLogHash = log.GetHash()
+			}
+		}
+
 		logs[i] = &raftcmdpb.CreatedLogOrReference{
 			Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{
 				CreatedLog: log,
@@ -118,6 +129,13 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 	return logs, nil
 }
 
+// deterministicMarshalOpts serializes protobuf messages with sorted map keys,
+// ensuring the same Order always produces the same bytes regardless of Go map
+// iteration order. Required for idempotency hash correctness because Order
+// contains map fields (Script.vars, CreateTransactionOrder.account_metadata,
+// CreateLedgerOrder.account_types, MirrorCreatedTransaction.account_metadata).
+var deterministicMarshalOpts = proto.MarshalOptions{Deterministic: true}
+
 // computeOrderHash computes a blake3 hash of the order content (excluding
 // idempotency) for idempotency checking. It reuses p.orderHashBuf across calls
 // to avoid allocations. Safe because ProcessOrders is single-threaded.
@@ -127,21 +145,15 @@ func (p *RequestProcessor) computeOrderHash(order *raftcmdpb.Order) []byte {
 	saved := order.GetIdempotency()
 	order.Idempotency = nil
 
-	size := order.SizeVT()
-	if cap(p.orderHashBuf) < size {
-		p.orderHashBuf = make([]byte, size)
-	} else {
-		p.orderHashBuf = p.orderHashBuf[:size]
-	}
-
-	n, err := order.MarshalToVT(p.orderHashBuf)
+	var err error
+	p.orderHashBuf, err = deterministicMarshalOpts.MarshalAppend(p.orderHashBuf[:0], order)
 	order.Idempotency = saved
 
 	if err != nil {
 		panic(fmt.Sprintf("failed to marshal order: %v", err))
 	}
 
-	hash := blake3.Sum256(p.orderHashBuf[:n])
+	hash := blake3.Sum256(p.orderHashBuf)
 
 	return hash[:]
 }

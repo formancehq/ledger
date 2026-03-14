@@ -272,3 +272,11 @@ func WithAuthEd25519Keys(path string) testservice.InstrumentationFunc {
 		return nil
 	}
 }
+
+func WithCacheRotationThreshold(threshold uint64) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--cache-rotation-threshold", strconv.FormatUint(threshold, 10))
+
+		return nil
+	}
+}

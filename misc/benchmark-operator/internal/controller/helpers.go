@@ -73,16 +73,6 @@ func getString(obj map[string]any, path ...string) string {
 	return ""
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-
-	return ""
-}
-
 func isProcessed(obj *unstructured.Unstructured) bool {
 	annotations := obj.GetAnnotations()
 	if annotations == nil {
@@ -115,7 +105,7 @@ func buildLedgerService(bm *benchmarkv1alpha1.Benchmark) *unstructured.Unstructu
 
 	var spec map[string]any
 	if len(bm.Spec.LedgerService.Raw) > 0 {
-		_ = json.Unmarshal(bm.Spec.LedgerService.Raw, &spec) //nolint:errcheck // best-effort
+		_ = json.Unmarshal(bm.Spec.LedgerService.Raw, &spec)
 	}
 	if spec == nil {
 		spec = map[string]any{}
@@ -142,7 +132,7 @@ func buildTestRun(bm *benchmarkv1alpha1.Benchmark, grpcEndpoint string) *unstruc
 
 	var spec map[string]any
 	if len(bm.Spec.TestRun.Raw) > 0 {
-		_ = json.Unmarshal(bm.Spec.TestRun.Raw, &spec) //nolint:errcheck // best-effort
+		_ = json.Unmarshal(bm.Spec.TestRun.Raw, &spec)
 	}
 	if spec == nil {
 		spec = map[string]any{}
@@ -181,6 +171,7 @@ func injectRunnerEnv(spec map[string]any, name, value string) {
 		if m, ok := item.(map[string]any); ok {
 			if m["name"] == name {
 				m["value"] = value
+
 				return
 			}
 		}

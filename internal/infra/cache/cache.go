@@ -185,7 +185,18 @@ type Cache struct {
 
 // rotateLocked performs the actual rotation of all cache generations.
 // Must be called with c.mu held.
+//
+// IMPORTANT: currentGeneration must be updated BEFORE rotating the cache
+// structures. IsGuaranteedInCache reads currentGeneration atomically (without
+// the mutex) to decide whether data will survive until a future Raft index.
+// If we rotated first and updated the generation counter second, a concurrent
+// IsGuaranteedInCache call could see the old generation number but the
+// already-rotated cache — leading it to believe data is "guaranteed" when it
+// has in fact moved to Gen1 and will be evicted on the next rotation.
+// By storing the new generation first, concurrent readers see the higher
+// generation and conservatively include the preload, which is always safe.
 func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
+	c.currentGeneration.Store(newGeneration)
 	c.Volumes.Rotate()
 	c.AccountMetadata.Rotate()
 	c.IdempotencyKeys.Rotate()
@@ -198,7 +209,6 @@ func (c *Cache) rotateLocked(index uint64, newGeneration uint64) {
 	c.NumscriptEntries.Rotate()
 	c.NumscriptParsed.Rotate()
 	c.BaseIndex.Rotate(index)
-	c.currentGeneration.Store(newGeneration)
 
 	c.recordRotation()
 	c.recordGeneration(int64(newGeneration))

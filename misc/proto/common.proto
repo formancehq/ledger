@@ -621,6 +621,7 @@ message Period {
   bytes sealing_hash = 6;
   bytes last_log_hash = 7;   // Log chain hash at the time the period was closed (for crash recovery)
   uint64 start_sequence = 8; // First log sequence in this period (previous close_sequence + 1, or 1 for the first period)
+  bytes state_hash = 9;      // BLAKE3 hash of computed attributes (V+M+T) at seal time
 }
 
 message ClosePeriodLog {

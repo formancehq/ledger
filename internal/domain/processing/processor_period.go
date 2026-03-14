@@ -35,10 +35,15 @@ func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s I
 	}
 	s.SetCurrentOpenPeriod(newPeriod)
 
+	// Clone the period for the log payload so the log's snapshot is immutable.
+	// processOrders will then update the FSM state's LastLogHash to the
+	// ClosePeriod log's hash (needed for CheckStore after archive purge).
+	closedPeriodSnapshot := currentPeriod.CloneVT()
+
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_ClosePeriod{
 			ClosePeriod: &commonpb.ClosePeriodLog{
-				ClosedPeriod: currentPeriod,
+				ClosedPeriod: closedPeriodSnapshot,
 				NewPeriod:    newPeriod,
 			},
 		},
@@ -60,6 +65,7 @@ func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s
 	// Transition to CLOSED and persist via ClearClosingPeriod
 	closingPeriod.Status = commonpb.PeriodStatus_PERIOD_CLOSED
 	closingPeriod.SealingHash = order.GetSealingHash()
+	closingPeriod.StateHash = order.GetStateHash()
 
 	s.ClearClosingPeriod()
 

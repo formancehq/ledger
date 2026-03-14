@@ -417,16 +417,18 @@ func Module() fx.Option {
 			func(
 				logger logging.Logger,
 				store *dal.Store,
+				attrs *attributes.Attributes,
 				machine *state.Machine,
 				admissionHandler ctrl.Admission,
 				raftNode *node.Node,
 			) *state.Sealer {
-				return state.NewSealer(logger, store, machine.SealRequestCh(), func(periodID uint64, sealingHash []byte) {
+				return state.NewSealer(logger, store, attrs, machine.SealRequestCh(), func(periodID uint64, sealingHash, stateHash []byte) {
 					_, _ = admissionHandler.Admit(context.Background(), &servicepb.Request{
 						Type: &servicepb.Request_SealPeriod{
 							SealPeriod: &servicepb.SealPeriodRequest{
 								PeriodId:    periodID,
 								SealingHash: sealingHash,
+								StateHash:   stateHash,
 							},
 						},
 					})

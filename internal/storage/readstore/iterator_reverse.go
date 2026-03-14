@@ -112,13 +112,11 @@ func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
 
 			return false
 		}
-	} else {
+	} else if !it.iter.Last() {
 		// Past the end — go to last key
-		if !it.iter.Last() {
-			it.exhausted = true
+		it.exhausted = true
 
-			return false
-		}
+		return false
 	}
 
 	for it.iter.Valid() {

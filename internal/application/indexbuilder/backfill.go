@@ -295,12 +295,10 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int) 
 				return done, nil
 			}
 		}
-	} else {
-		if !iter.First() {
-			done = true
+	} else if !iter.First() {
+		done = true
 
-			return done, nil
-		}
+		return done, nil
 	}
 
 	batch := b.readStore.DB().NewIndexedBatch()

@@ -1799,6 +1799,7 @@ type SealPeriodRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PeriodId      uint64                 `protobuf:"varint,1,opt,name=period_id,json=periodId,proto3" json:"period_id,omitempty"`
 	SealingHash   []byte                 `protobuf:"bytes,2,opt,name=sealing_hash,json=sealingHash,proto3" json:"sealing_hash,omitempty"`
+	StateHash     []byte                 `protobuf:"bytes,3,opt,name=state_hash,json=stateHash,proto3" json:"state_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1843,6 +1844,13 @@ func (x *SealPeriodRequest) GetPeriodId() uint64 {
 func (x *SealPeriodRequest) GetSealingHash() []byte {
 	if x != nil {
 		return x.SealingHash
+	}
+	return nil
+}
+
+func (x *SealPeriodRequest) GetStateHash() []byte {
+	if x != nil {
+		return x.StateHash
 	}
 	return nil
 }
@@ -7865,10 +7873,12 @@ const file_bucket_proto_rawDesc = "" +
 	"\x17SetSigningConfigRequest\x12-\n" +
 	"\x12require_signatures\x18\x01 \x01(\bR\x11requireSignatures\"\x18\n" +
 	"\x16ListSigningKeysRequest\"\x14\n" +
-	"\x12ClosePeriodRequest\"S\n" +
+	"\x12ClosePeriodRequest\"r\n" +
 	"\x11SealPeriodRequest\x12\x1b\n" +
 	"\tperiod_id\x18\x01 \x01(\x04R\bperiodId\x12!\n" +
-	"\fsealing_hash\x18\x02 \x01(\fR\vsealingHash\"3\n" +
+	"\fsealing_hash\x18\x02 \x01(\fR\vsealingHash\x12\x1d\n" +
+	"\n" +
+	"state_hash\x18\x03 \x01(\fR\tstateHash\"3\n" +
 	"\x14ArchivePeriodRequest\x12\x1b\n" +
 	"\tperiod_id\x18\x01 \x01(\x04R\bperiodId\":\n" +
 	"\x1bConfirmArchivePeriodRequest\x12\x1b\n" +

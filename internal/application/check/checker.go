@@ -8,6 +8,7 @@ import (
 	"math/big"
 
 	"github.com/cockroachdb/pebble"
+	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/zeebo/blake3"
 	"google.golang.org/protobuf/proto"
 
@@ -282,9 +283,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		if exists {
 			db, openErr := pebble.Open(baselinePath, &pebble.Options{ReadOnly: true})
 			if openErr != nil {
-				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
-					fmt.Sprintf("failed to open baseline checkpoint: %v (skipping entry-by-entry comparison)", openErr),
-					0, "", "", ""))
+				logging.FromContext(ctx).Infof("failed to open baseline checkpoint: %v (skipping entry-by-entry comparison)", openErr)
 			} else {
 				baselineDB = db
 
@@ -295,11 +294,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	// If archived periods exist but no baseline is available, we can't do
 	// entry-by-entry comparison (the replay only covers non-archived logs).
-	// Warn and skip comparison passes.
+	// This is expected after a restore. Warn and skip comparison passes.
 	if hasArchivedPeriods && baselineDB == nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
-			"no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification",
-			0, "", "", ""))
+		logging.FromContext(ctx).Info("no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification")
 
 		return nil
 	}

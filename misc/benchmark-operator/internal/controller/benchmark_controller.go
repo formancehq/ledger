@@ -33,6 +33,7 @@ const requeueDelay = 5 * time.Second
 // BenchmarkReconciler reconciles a Benchmark object.
 type BenchmarkReconciler struct {
 	client.Client
+
 	Scheme  *runtime.Scheme
 	Dynamic dynamic.Interface
 	Grafana *GrafanaClient
@@ -58,6 +59,7 @@ func (r *BenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if err := r.Update(ctx, &bm); err != nil {
 			return ctrl.Result{}, err
 		}
+
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -78,6 +80,7 @@ func (r *BenchmarkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	default:
 		log.Info("unknown phase", "phase", bm.Status.Phase)
+
 		return ctrl.Result{}, nil
 	}
 }
@@ -108,8 +111,10 @@ func (r *BenchmarkReconciler) transitionWaitingCluster(ctx context.Context, log 
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			log.Info("LedgerService not found yet, requeuing", "name", lsName)
+
 			return ctrl.Result{RequeueAfter: requeueDelay}, nil
 		}
+
 		return ctrl.Result{}, err
 	}
 
@@ -132,6 +137,7 @@ func (r *BenchmarkReconciler) checkClusterReady(ctx context.Context, log logr.Lo
 	lsPhase := getString(ls.Object, "status", "phase")
 	if lsPhase != "Running" {
 		log.Info("LedgerService not ready", "name", lsName, "phase", lsPhase)
+
 		return ctrl.Result{RequeueAfter: requeueDelay}, nil
 	}
 
@@ -347,6 +353,7 @@ func (r *BenchmarkReconciler) ensureReportConfigMap(ctx context.Context, namespa
 		cm.Data = map[string]string{
 			"report.json": report,
 		}
+
 		return nil
 	})
 
@@ -359,6 +366,7 @@ func (r *BenchmarkReconciler) cleanupReport(ctx context.Context, log logr.Logger
 		if kerrors.IsNotFound(err) {
 			return nil
 		}
+
 		return err
 	}
 
@@ -386,7 +394,7 @@ func (r *BenchmarkReconciler) deleteSnapshots(ctx context.Context, report string
 	}
 
 	for _, entry := range parsed.Entries {
-		_ = r.Grafana.DeleteSnapshot(ctx, entry.DeleteURL, entry.DeleteKey, entry.SnapshotKey) //nolint:errcheck // best-effort
+		_ = r.Grafana.DeleteSnapshot(ctx, entry.DeleteURL, entry.DeleteKey, entry.SnapshotKey)
 	}
 
 	return nil

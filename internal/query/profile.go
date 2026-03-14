@@ -159,7 +159,7 @@ func (s *IteratorStats) writeIndented(b *strings.Builder, depth int) {
 	fmt.Fprintf(b, "%s%s next=%d seek=%d", indent, s.Label, s.NextCalls, s.SeekCalls)
 
 	if s.Prefix != "" {
-		fmt.Fprintf(b, " prefix=%s", s.Prefix)
+		fmt.Fprintf(b, " bucket=%s", s.Prefix)
 	}
 
 	b.WriteByte('\n')
