@@ -36,6 +36,8 @@ Refactor:
 * go-libs v4
 * store checks memory usage
 * estimate cache size
+* period overlap
+* delete attributes on ledger deletion
 
 Later:
 * Store

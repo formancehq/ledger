@@ -70,6 +70,8 @@
             protoc-gen-go-vtproto
             golangci-lint
             setup-envtest
+            pulumi
+            pulumiPackages.pulumi-language-go
           ];
           otherPackages = [
             pkgs.nur.repos.goreleaser.goreleaser-pro

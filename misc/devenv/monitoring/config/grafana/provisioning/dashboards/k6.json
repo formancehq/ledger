@@ -50,7 +50,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
       "id": 1,
       "options": {
         "colorMode": "value",
@@ -76,7 +76,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
       "id": 2,
       "options": {
         "colorMode": "value",
@@ -102,33 +102,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 1 },
-      "id": 3,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "targets": [
-        { "expr": "sum(k6_http_reqs{service.name=~\"$service\"})", "instant": false, "range": true, "refId": "A" }
-      ],
-      "title": "HTTP Requests",
-      "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
       "id": 7,
       "options": {
         "colorMode": "value",
@@ -154,7 +128,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 3, "x": 12, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
       "id": 4,
       "options": {
         "colorMode": "value",
@@ -165,7 +139,7 @@
         "textMode": "auto"
       },
       "targets": [
-        { "expr": "sum(irate(k6_http_reqs{service.name=~\"$service\"}[$__rate_interval])) or sum(irate(k6_grpc_reqs{service.name=~\"$service\"}[$__rate_interval]))", "instant": false, "range": true, "refId": "A" }
+        { "expr": "sum(irate(k6_grpc_reqs{service.name=~\"$service\"}[$__rate_interval]))", "instant": false, "range": true, "refId": "A" }
       ],
       "title": "Peak RPS",
       "type": "stat"
@@ -180,7 +154,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 3, "x": 15, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
       "id": 5,
       "options": {
         "colorMode": "value",
@@ -206,33 +180,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 3, "x": 18, "y": 1 },
-      "id": 6,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "targets": [
-        { "expr": "histogram_quantile(0.95, sum by(le) (rate(k6_http_req_waiting_bucket{service.name=~\"$service\"}[$__rate_interval])))", "instant": false, "range": true, "refId": "A" }
-      ],
-      "title": "HTTP TTFB p95",
-      "type": "stat"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "ms"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 4, "w": 3, "x": 21, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
       "id": 8,
       "options": {
         "colorMode": "value",
@@ -305,10 +253,8 @@
       },
       "targets": [
         { "editorMode": "code", "expr": "sum(k6_vus{service.name=~\"$service\"})", "legendFormat": "vus", "range": true, "refId": "A" },
-        { "editorMode": "code", "expr": "sum(irate(k6_http_reqs{service.name=~\"$service\"}[$__rate_interval]))", "legendFormat": "http_req_s", "range": true, "refId": "B" },
-        { "editorMode": "code", "expr": "sum(irate(k6_grpc_reqs{service.name=~\"$service\"}[$__rate_interval]))", "legendFormat": "grpc_req_s", "range": true, "refId": "D" },
-        { "editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(k6_http_req_waiting_bucket{service.name=~\"$service\"}[$__rate_interval])))", "legendFormat": "p95", "range": true, "refId": "C" },
-        { "editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(k6_grpc_req_duration_bucket{service.name=~\"$service\"}[$__rate_interval])))", "legendFormat": "grpc_p95", "range": true, "refId": "E" }
+        { "editorMode": "code", "expr": "sum(irate(k6_grpc_reqs{service.name=~\"$service\"}[$__rate_interval]))", "legendFormat": "grpc_req_s", "range": true, "refId": "B" },
+        { "editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(k6_grpc_req_duration_bucket{service.name=~\"$service\"}[$__rate_interval])))", "legendFormat": "grpc_p95", "range": true, "refId": "C" }
       ],
       "title": "Performance Overview",
       "type": "timeseries"
@@ -316,110 +262,6 @@
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
-      "id": 101,
-      "panels": [],
-      "title": "HTTP Latency (TTFB - Time To First Byte)",
-      "type": "row"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
-      "description": "k6_http_req_waiting - Time spent waiting for response (TTFB)",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "ms"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
-      "id": 20,
-      "options": {
-        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "single", "sort": "none" }
-      },
-      "targets": [
-        { "editorMode": "code", "expr": "histogram_quantile(0.50, sum(rate(k6_http_req_waiting_bucket{service.name=~\"$service\"}[$__rate_interval])) by (le))", "legendFormat": "p50", "range": true, "refId": "A" },
-        { "editorMode": "code", "expr": "histogram_quantile(0.90, sum(rate(k6_http_req_waiting_bucket{service.name=~\"$service\"}[$__rate_interval])) by (le))", "legendFormat": "p90", "range": true, "refId": "B" },
-        { "editorMode": "code", "expr": "histogram_quantile(0.95, sum(rate(k6_http_req_waiting_bucket{service.name=~\"$service\"}[$__rate_interval])) by (le))", "legendFormat": "p95", "range": true, "refId": "C" },
-        { "editorMode": "code", "expr": "histogram_quantile(0.99, sum(rate(k6_http_req_waiting_bucket{service.name=~\"$service\"}[$__rate_interval])) by (le))", "legendFormat": "p99", "range": true, "refId": "D" }
-      ],
-      "title": "HTTP TTFB (p50 / p90 / p95 / p99)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
-      "description": "HTTP request timing breakdown (p95)",
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "ms"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
-      "id": 21,
-      "options": {
-        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "single", "sort": "none" }
-      },
-      "targets": [
-        { "editorMode": "code", "expr": "histogram_quantile(0.95, sum by(le) (rate(k6_http_req_blocked_bucket{service.name=~\"$service\"}[$__rate_interval])))", "legendFormat": "blocked", "range": true, "refId": "A" },
-        { "editorMode": "code", "expr": "histogram_quantile(0.95, sum by(le) (rate(k6_http_req_connecting_bucket{service.name=~\"$service\"}[$__rate_interval])))", "legendFormat": "connecting", "range": true, "refId": "B" },
-        { "editorMode": "code", "expr": "histogram_quantile(0.95, sum by(le) (rate(k6_http_req_tls_handshaking_bucket{service.name=~\"$service\"}[$__rate_interval])))", "legendFormat": "tls_handshaking", "range": true, "refId": "C" },
-        { "editorMode": "code", "expr": "histogram_quantile(0.95, sum by(le) (rate(k6_http_req_sending_bucket{service.name=~\"$service\"}[$__rate_interval])))", "legendFormat": "sending", "range": true, "refId": "D" },
-        { "editorMode": "code", "expr": "histogram_quantile(0.95, sum by(le) (rate(k6_http_req_waiting_bucket{service.name=~\"$service\"}[$__rate_interval])))", "legendFormat": "waiting (TTFB)", "range": true, "refId": "E" },
-        { "editorMode": "code", "expr": "histogram_quantile(0.95, sum by(le) (rate(k6_http_req_receiving_bucket{service.name=~\"$service\"}[$__rate_interval])))", "legendFormat": "receiving", "range": true, "refId": "F" }
-      ],
-      "title": "HTTP Latency Breakdown (p95)",
-      "type": "timeseries"
-    },
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
       "id": 104,
       "panels": [],
       "title": "gRPC Latency",
@@ -457,7 +299,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
       "id": 50,
       "options": {
         "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
@@ -504,7 +346,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
       "id": 51,
       "options": {
         "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
@@ -518,7 +360,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
       "id": 102,
       "panels": [],
       "title": "Throughput",
@@ -526,50 +368,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "reqps"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 },
-      "id": 30,
-      "options": {
-        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "single", "sort": "none" }
-      },
-      "targets": [
-        { "editorMode": "code", "expr": "sum(irate(k6_http_reqs{service.name=~\"$service\"}[$__rate_interval]))", "legendFormat": "requests/s", "range": true, "refId": "A" }
-      ],
-      "title": "HTTP Request Rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
-      "description": "Average latency calculated from histogram sum/count",
+      "description": "Average gRPC latency calculated from histogram sum/count",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -599,26 +398,21 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 34 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 25 },
       "id": 31,
       "options": {
         "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "single", "sort": "none" }
       },
       "targets": [
-        { "editorMode": "code", "expr": "sum(rate(k6_http_req_blocked_sum{service.name=~\"$service\"}[$__rate_interval])) / sum(rate(k6_http_req_blocked_count{service.name=~\"$service\"}[$__rate_interval]))", "legendFormat": "avg_blocked", "range": true, "refId": "A" },
-        { "editorMode": "code", "expr": "sum(rate(k6_http_req_connecting_sum{service.name=~\"$service\"}[$__rate_interval])) / sum(rate(k6_http_req_connecting_count{service.name=~\"$service\"}[$__rate_interval]))", "legendFormat": "avg_connecting", "range": true, "refId": "B" },
-        { "editorMode": "code", "expr": "sum(rate(k6_http_req_tls_handshaking_sum{service.name=~\"$service\"}[$__rate_interval])) / sum(rate(k6_http_req_tls_handshaking_count{service.name=~\"$service\"}[$__rate_interval]))", "legendFormat": "avg_tls_handshaking", "range": true, "refId": "C" },
-        { "editorMode": "code", "expr": "sum(rate(k6_http_req_waiting_sum{service.name=~\"$service\"}[$__rate_interval])) / sum(rate(k6_http_req_waiting_count{service.name=~\"$service\"}[$__rate_interval]))", "legendFormat": "avg_waiting", "range": true, "refId": "D" },
-        { "editorMode": "code", "expr": "sum(rate(k6_http_req_sending_sum{service.name=~\"$service\"}[$__rate_interval])) / sum(rate(k6_http_req_sending_count{service.name=~\"$service\"}[$__rate_interval]))", "legendFormat": "avg_sending", "range": true, "refId": "E" },
-        { "editorMode": "code", "expr": "sum(rate(k6_http_req_receiving_sum{service.name=~\"$service\"}[$__rate_interval])) / sum(rate(k6_http_req_receiving_count{service.name=~\"$service\"}[$__rate_interval]))", "legendFormat": "avg_receiving", "range": true, "refId": "F" }
+        { "editorMode": "code", "expr": "sum(rate(k6_grpc_req_duration_sum{service.name=~\"$service\"}[$__rate_interval])) / sum(rate(k6_grpc_req_duration_count{service.name=~\"$service\"}[$__rate_interval]))", "legendFormat": "avg_duration", "range": true, "refId": "A" }
       ],
-      "title": "Average Latency (from sum/count)",
+      "title": "gRPC Average Latency (from sum/count)",
       "type": "timeseries"
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
       "id": 103,
       "panels": [],
       "title": "Iterations & VUs",
@@ -655,7 +449,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 43 },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 34 },
       "id": 40,
       "options": {
         "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
@@ -699,7 +493,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 43 },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 34 },
       "id": 41,
       "options": {
         "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
@@ -743,7 +537,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 43 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 34 },
       "id": 42,
       "options": {
         "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
