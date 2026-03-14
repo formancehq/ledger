@@ -1377,12 +1377,6 @@ func (node *Node) handleTransferLeader(transferee uint64) error {
 	return nil
 }
 
-// CreateBackupCheckpoint creates a Pebble checkpoint directly (no Raft consensus).
-// Boundaries are always up-to-date in Pebble, so the checkpoint is consistent.
-func (node *Node) CreateBackupCheckpoint() (string, error) {
-	return node.applier.store.CreateTemporaryCheckpoint("checkpoint")
-}
-
 // TransferLeader initiates a leadership transfer to the given node.
 // It dispatches the request to the orchestrate loop (since rawNode is not thread-safe)
 // and then polls lastSoftState to confirm the leader has changed.

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
+	"sync"
 	"time"
 
 	ggrpc "google.golang.org/grpc"
@@ -39,6 +41,7 @@ type ClusterServiceServerImpl struct {
 	localRaftAddr    string // This node's own Raft advertise address
 	localServiceAddr string // This node's own gRPC service address
 	authCfg          internalauth.AuthConfig
+	backupMu         sync.Mutex
 }
 
 func NewClusterServiceServer(
@@ -311,6 +314,9 @@ func (impl *ClusterServiceServerImpl) Backup(req *clusterpb.BackupRequest, strea
 }
 
 func (impl *ClusterServiceServerImpl) backupLocal(stream ggrpc.ServerStreamingServer[clusterpb.BackupResponse]) error {
+	impl.backupMu.Lock()
+	defer impl.backupMu.Unlock()
+
 	impl.logger.Infof("Creating backup checkpoint")
 
 	if err := stream.Send(&clusterpb.BackupResponse{StatusMessage: "Creating checkpoint..."}); err != nil {
@@ -319,7 +325,7 @@ func (impl *ClusterServiceServerImpl) backupLocal(stream ggrpc.ServerStreamingSe
 
 	// Create a direct Pebble checkpoint (no Raft consensus needed).
 	// Boundaries are always up-to-date in Pebble since they are written on every commit.
-	backupPath, err := impl.node.CreateBackupCheckpoint()
+	backupPath, err := impl.store.CreateTemporaryCheckpoint("checkpoint")
 	if err != nil {
 		return fmt.Errorf("creating backup checkpoint: %w", err)
 	}
@@ -355,6 +361,17 @@ func (impl *ClusterServiceServerImpl) backupLocal(stream ggrpc.ServerStreamingSe
 
 	if err := compactStore.Close(); err != nil {
 		return fmt.Errorf("closing compacted backup: %w", err)
+	}
+
+	// Include baseline checkpoint in the backup so integrity checks work after restore.
+	baselinePath, hasBaseline := impl.store.BaselineCheckpointPath()
+	if hasBaseline {
+		baselineDst := filepath.Join(backupPath, "_baseline")
+		if err := dal.HardLink(baselinePath, baselineDst); err != nil {
+			impl.logger.WithFields(map[string]any{
+				"error": err,
+			}).Errorf("Failed to include baseline checkpoint in backup (non-fatal)")
+		}
 	}
 
 	impl.logger.Infof("Streaming backup checkpoint")

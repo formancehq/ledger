@@ -348,6 +348,23 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 		return nil, fmt.Errorf("writing restored marker: %w", err)
 	}
 
+	// Extract baseline checkpoint from staging if present.
+	baselineSrc := filepath.Join(stagingDir, "_baseline")
+	if info, err := os.Stat(baselineSrc); err == nil && info.IsDir() {
+		baselineDst := filepath.Join(s.dataDir, "baseline", "checker")
+		if err := os.MkdirAll(filepath.Dir(baselineDst), 0755); err != nil {
+			return nil, fmt.Errorf("creating baseline directory: %w", err)
+		}
+
+		_ = os.RemoveAll(baselineDst)
+
+		if err := os.Rename(baselineSrc, baselineDst); err != nil {
+			return nil, fmt.Errorf("moving baseline checkpoint: %w", err)
+		}
+
+		s.logger.Infof("Restored baseline checkpoint for integrity verification")
+	}
+
 	// Move staging to checkpoint 0
 	checkpointsDir := filepath.Join(s.dataDir, "checkpoints")
 	if err := os.MkdirAll(checkpointsDir, 0755); err != nil {
