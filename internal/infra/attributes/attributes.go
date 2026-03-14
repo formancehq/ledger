@@ -276,95 +276,26 @@ func (a *Attribute[V]) ScanEntries(reader dal.PebbleReader, canonicalKey []byte)
 	return result, nil
 }
 
-// ForEachInPrefix streams computed entries for all canonical keys sharing the
-// given prefix. Instead of accumulating results in memory, it calls fn for each
-// computed entry at canonical key boundaries. This is O(1) memory (excluding
-// the callback's own allocations) vs O(N) for ComputeAllForPrefix.
-// Thread-safe: allocates its own buffer for concurrent access.
-func (a *Attribute[V]) ForEachInPrefix(
-	reader dal.PebbleReader,
-	canonicalPrefix []byte,
-	fn func(entry ComputedEntry[V]) error,
-) error {
-	lowerBound := make([]byte, 1+len(canonicalPrefix))
-	lowerBound[0] = dal.KeyPrefixAttributes
-	copy(lowerBound[1:], canonicalPrefix)
-
-	var upperBound []byte
-	if incPrefix := IncrementBytes(canonicalPrefix); incPrefix != nil {
-		upperBound = make([]byte, 1+len(incPrefix))
-		upperBound[0] = dal.KeyPrefixAttributes
-		copy(upperBound[1:], incPrefix)
-	} else {
-		upperBound = []byte{dal.KeyPrefixAttributes + 1}
-	}
-
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
-	if err != nil {
-		return fmt.Errorf("creating iterator for prefix scan: %w", err)
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	ab := accumulatorBase[V]{attr: a}
-	minKeyLen := 1 + SuffixLen
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		key := iter.Key()
-		if len(key) <= minKeyLen {
-			continue
-		}
-
-		valueBytes, err := iter.ValueAndErr()
-		if err != nil {
-			return fmt.Errorf("reading value: %w", err)
-		}
-
-		_, prev, err := ab.feed(key, valueBytes)
-		if err != nil {
-			return err
-		}
-
-		if prev != nil {
-			err := fn(*prev)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	if err := iter.Error(); err != nil {
-		return err
-	}
-
-	// Flush the last canonical key.
-	if entry := ab.flush(); entry != nil {
-		err := fn(*entry)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // ComputeAllForPrefix computes the final value for all canonical keys sharing the
-// given prefix. It performs a single forward scan using ForEachInPrefix internally.
+// given prefix. It performs a single forward scan using NewStreamingIter internally.
 // This is more efficient than List + ComputeValue per key, as it uses one iterator
 // scoped to just the prefix range instead of the entire attribute space.
 // Thread-safe: allocates its own buffer for concurrent access.
 func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
+	si, err := a.NewStreamingIter(reader, canonicalPrefix)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = si.Close() }()
+
 	var results []ComputedEntry[V]
 
-	err := a.ForEachInPrefix(reader, canonicalPrefix, func(entry ComputedEntry[V]) error {
-		results = append(results, entry)
+	for si.Next() {
+		results = append(results, si.Entry())
+	}
 
-		return nil
-	})
-	if err != nil {
+	if err := si.Err(); err != nil {
 		return nil, err
 	}
 

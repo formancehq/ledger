@@ -14,6 +14,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
@@ -350,6 +351,12 @@ func (a *Applier) handleCheckpointRequired(
 			applyResult.OnCheckpointDone(path)
 		}
 
+		// Create compact baseline snapshot for the checker (non-fatal on error).
+		if err := a.createBaselineSnapshot(); err != nil {
+			a.logger.WithFields(map[string]any{"error": err}).
+				Errorf("Failed to create baseline snapshot (checker will degrade gracefully)")
+		}
+
 		if deferredFuture != nil {
 			deferredResult.CheckpointPath = path
 			deferredFuture.Resolve(*deferredResult, nil)
@@ -605,6 +612,12 @@ func (a *Applier) handleCheckpointDuringReplay(ctx context.Context, applyResult 
 		applyResult.OnCheckpointDone(checkpointPath)
 	}
 
+	// Create compact baseline snapshot for the checker (non-fatal on error).
+	if err := a.createBaselineSnapshot(); err != nil {
+		a.logger.WithFields(map[string]any{"error": err}).
+			Errorf("Failed to create baseline snapshot during replay (checker will degrade gracefully)")
+	}
+
 	// Resolve the deferred future for the checkpoint-triggering entry.
 	// During replay, applyEntriesAndResolveCommands skips this future
 	// (resolveCount-- when CheckpointRequired is true).
@@ -626,4 +639,16 @@ func (a *Applier) handleCheckpointDuringReplay(ctx context.Context, applyResult 
 	}
 
 	return nil
+}
+
+// createBaselineSnapshot creates a compact attribute-only snapshot for the checker.
+// Unlike a full Pebble checkpoint, this contains only computed attribute values
+// (volumes, metadata, transactions), making it orders of magnitude smaller.
+func (a *Applier) createBaselineSnapshot() error {
+	destPath, err := a.store.BaselineSnapshotDir()
+	if err != nil {
+		return err
+	}
+
+	return attributes.CreateBaselineSnapshot(a.store, a.fsm.Registry.Attrs, destPath)
 }

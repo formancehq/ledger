@@ -9,6 +9,7 @@ import (
 
 	"github.com/formancehq/go-libs/v3/logging"
 
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -23,7 +24,7 @@ type SealRequest struct {
 }
 
 // SealProposer is a callback to propose a SealPeriod order back into Raft.
-type SealProposer func(periodID uint64, sealingHash []byte)
+type SealProposer func(periodID uint64, sealingHash, stateHash []byte)
 
 // SealerPeriodState provides the Sealer with read access to the current period
 // state. Implemented by *Machine.
@@ -39,6 +40,7 @@ type SealerPeriodState interface {
 type Sealer struct {
 	logger        logging.Logger
 	dataStore     *dal.Store
+	attrs         *attributes.Attributes
 	sealRequestCh chan SealRequest
 	proposeFn     SealProposer
 	isLeader      func() bool
@@ -50,6 +52,7 @@ type Sealer struct {
 func NewSealer(
 	logger logging.Logger,
 	dataStore *dal.Store,
+	attrs *attributes.Attributes,
 	sealRequestCh chan SealRequest,
 	proposeFn SealProposer,
 	isLeader func() bool,
@@ -58,6 +61,7 @@ func NewSealer(
 	return &Sealer{
 		logger:        logger.WithFields(map[string]any{"cmp": "sealer"}),
 		dataStore:     dataStore,
+		attrs:         attrs,
 		sealRequestCh: sealRequestCh,
 		proposeFn:     proposeFn,
 		isLeader:      isLeader,
@@ -152,8 +156,8 @@ func (s *Sealer) seal(req SealRequest) error {
 		return fmt.Errorf("opening seal checkpoint: %w", err)
 	}
 
-	// Compute state hash by iterating all attribute entries in the checkpoint
-	stateHash, err := computeStateHash(db)
+	// Compute state hash by iterating computed attribute values in the checkpoint
+	stateHash, err := computeStateHash(db, s.attrs)
 	// Close the DB before cleanup — must happen regardless of hash computation result
 	_ = db.Close()
 
@@ -189,50 +193,113 @@ func (s *Sealer) seal(req SealRequest) error {
 	}).Infof("Period sealing complete, proposing SealPeriod")
 
 	// Propose the SealPeriod order back into Raft
-	s.proposeFn(req.PeriodID, sealingHash)
+	s.proposeFn(req.PeriodID, sealingHash, stateHash)
 
 	return nil
 }
 
-// iteratorSource abstracts anything that can create a Pebble iterator.
-type iteratorSource interface {
-	NewIter(o *pebble.IterOptions) (*pebble.Iterator, error)
-}
-
-// computeStateHash iterates all raw attribute entries in [0xF1, 0xF2)
-// and hashes every key+value pair.
+// ComputeStateHash hashes computed attribute values (last value per canonical key)
+// for Volumes, Metadata, and TransactionState.
 //
 // The checkpoint is frozen at the exact ClosePeriod point, so all entries
 // in it belong to the period being sealed — no filtering is needed.
 //
 // This is deterministic because Pebble iteration order is deterministic
 // and compaction is 100% deterministic via Raft.
-func computeStateHash(src iteratorSource) ([]byte, error) {
+//
+// Exported so the checker can reuse the same algorithm to verify state_hash.
+func ComputeStateHash(reader dal.PebbleReader, attrs *attributes.Attributes) ([]byte, error) {
+	return computeStateHash(reader, attrs)
+}
+
+func computeStateHash(reader dal.PebbleReader, attrs *attributes.Attributes) ([]byte, error) {
 	hasher := blake3.New()
 
-	iter, err := src.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{dal.ZoneAttributesStart},
-		UpperBound: []byte{dal.ZoneAttributesEnd},
-	})
+	// Hash volumes (deterministic Pebble key order)
+	volIter, err := attrs.Volume.NewStreamingIter(reader, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating iterator for state hash: %w", err)
+		return nil, fmt.Errorf("creating volume iterator: %w", err)
 	}
 
-	defer func() { _ = iter.Close() }()
+	for volIter.Next() {
+		e := volIter.Entry()
 
-	for iter.First(); iter.Valid(); iter.Next() {
-		_, _ = hasher.Write(iter.Key())
+		_, _ = hasher.Write(e.CanonicalKey)
 
-		value, err := iter.ValueAndErr()
-		if err != nil {
-			return nil, fmt.Errorf("reading attribute value: %w", err)
+		data, marshalErr := e.Value.MarshalVT()
+		if marshalErr != nil {
+			_ = volIter.Close()
+
+			return nil, fmt.Errorf("marshaling volume: %w", marshalErr)
 		}
 
-		_, _ = hasher.Write(value)
+		_, _ = hasher.Write(data)
 	}
 
-	if err := iter.Error(); err != nil {
-		return nil, fmt.Errorf("iterating attributes: %w", err)
+	if closeErr := volIter.Close(); closeErr != nil {
+		return nil, fmt.Errorf("closing volume iterator: %w", closeErr)
+	}
+
+	if err := volIter.Err(); err != nil {
+		return nil, fmt.Errorf("hashing volumes: %w", err)
+	}
+
+	// Hash metadata
+	metaIter, err := attrs.Metadata.NewStreamingIter(reader, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating metadata iterator: %w", err)
+	}
+
+	for metaIter.Next() {
+		e := metaIter.Entry()
+
+		_, _ = hasher.Write(e.CanonicalKey)
+
+		data, marshalErr := e.Value.MarshalVT()
+		if marshalErr != nil {
+			_ = metaIter.Close()
+
+			return nil, fmt.Errorf("marshaling metadata: %w", marshalErr)
+		}
+
+		_, _ = hasher.Write(data)
+	}
+
+	if closeErr := metaIter.Close(); closeErr != nil {
+		return nil, fmt.Errorf("closing metadata iterator: %w", closeErr)
+	}
+
+	if err := metaIter.Err(); err != nil {
+		return nil, fmt.Errorf("hashing metadata: %w", err)
+	}
+
+	// Hash transaction states
+	txIter, err := attrs.Transaction.NewStreamingIter(reader, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating transaction iterator: %w", err)
+	}
+
+	for txIter.Next() {
+		e := txIter.Entry()
+
+		_, _ = hasher.Write(e.CanonicalKey)
+
+		data, marshalErr := e.Value.MarshalVT()
+		if marshalErr != nil {
+			_ = txIter.Close()
+
+			return nil, fmt.Errorf("marshaling transaction state: %w", marshalErr)
+		}
+
+		_, _ = hasher.Write(data)
+	}
+
+	if closeErr := txIter.Close(); closeErr != nil {
+		return nil, fmt.Errorf("closing transaction iterator: %w", closeErr)
+	}
+
+	if err := txIter.Err(); err != nil {
+		return nil, fmt.Errorf("hashing transaction states: %w", err)
 	}
 
 	return hasher.Sum(nil), nil

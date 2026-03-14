@@ -15,6 +15,15 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
+func collectAllPeriods(reader dal.PebbleReader) ([]*commonpb.Period, error) {
+	cursor, err := query.ReadPeriods(context.Background(), reader)
+	if err != nil {
+		return nil, err
+	}
+
+	return dal.Collect(cursor)
+}
+
 func TestReadPeriods(t *testing.T) {
 	t.Parallel()
 
@@ -29,7 +38,7 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s.Close() })
 
-		periods, err := query.ReadAllPeriods(context.Background(), s)
+		periods, err := collectAllPeriods(s)
 		require.NoError(t, err)
 		require.Nil(t, periods)
 
@@ -54,7 +63,7 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, state.StoreNextPeriodID(batch, 2))
 		require.NoError(t, batch.Commit())
 
-		periods, err := query.ReadAllPeriods(context.Background(), s)
+		periods, err := collectAllPeriods(s)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
 		require.Equal(t, uint64(1), periods[0].GetId())
@@ -98,7 +107,7 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		// Verify periods are returned ordered by ID
-		periods, err := query.ReadAllPeriods(context.Background(), s)
+		periods, err := collectAllPeriods(s)
 		require.NoError(t, err)
 		require.Len(t, periods, 3)
 		require.Equal(t, uint64(1), periods[0].GetId())
@@ -146,7 +155,7 @@ func TestReadPeriods(t *testing.T) {
 		}))
 		require.NoError(t, batch.Commit())
 
-		periods, err := query.ReadAllPeriods(context.Background(), s)
+		periods, err := collectAllPeriods(s)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
 		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, periods[0].GetStatus())
@@ -187,7 +196,7 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = s2.Close() })
 
-		periods, err := query.ReadAllPeriods(context.Background(), s2)
+		periods, err := collectAllPeriods(s2)
 		require.NoError(t, err)
 		require.Len(t, periods, 2)
 		require.Equal(t, uint64(1), periods[0].GetId())
@@ -245,7 +254,7 @@ func TestReadPeriods(t *testing.T) {
 		require.NoError(t, batch.Commit())
 
 		// Verify all data was written atomically
-		periods, err := query.ReadAllPeriods(context.Background(), s)
+		periods, err := collectAllPeriods(s)
 		require.NoError(t, err)
 		require.Len(t, periods, 1)
 

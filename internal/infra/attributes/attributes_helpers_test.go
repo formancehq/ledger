@@ -200,15 +200,18 @@ func TestAccumulator(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	// Use ForEachInPrefix to iterate and verify results
+	// Use StreamingIter to iterate and verify results
 	var results []ComputedEntry[*raftcmdpb.VolumePair]
 
-	err := attrs.Volume.ForEachInPrefix(store, []byte("ledger\x00"), func(entry ComputedEntry[*raftcmdpb.VolumePair]) error {
-		results = append(results, entry)
-
-		return nil
-	})
+	iter, err := attrs.Volume.NewStreamingIter(store, []byte("ledger\x00"))
 	require.NoError(t, err)
+
+	for iter.Next() {
+		results = append(results, iter.Entry())
+	}
+
+	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Err())
 	require.Len(t, results, 2)
 }
 
@@ -314,7 +317,7 @@ func TestComputeValueMaxIndex(t *testing.T) {
 	require.Equal(t, int64(0), result.GetInput().ToBigInt().Int64())
 }
 
-func TestForEachInPrefixMaxIndex(t *testing.T) {
+func TestComputeAllForPrefixMaxIndex(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
@@ -335,15 +338,18 @@ func TestForEachInPrefixMaxIndex(t *testing.T) {
 	}))
 	require.NoError(t, batch.Commit())
 
-	// ForEachInPrefix scans all entries and groups by canonical key.
+	// StreamingIter scans all entries and groups by canonical key.
 	var results []ComputedEntry[*raftcmdpb.VolumePair]
 
-	err := attrs.Volume.ForEachInPrefix(store, []byte("test\x00"), func(entry ComputedEntry[*raftcmdpb.VolumePair]) error {
-		results = append(results, entry)
-
-		return nil
-	})
+	iter, err := attrs.Volume.NewStreamingIter(store, []byte("test\x00"))
 	require.NoError(t, err)
+
+	for iter.Next() {
+		results = append(results, iter.Entry())
+	}
+
+	require.NoError(t, iter.Close())
+	require.NoError(t, iter.Err())
 	require.Len(t, results, 2)
 
 	// keyA has two entries (index 5 and 50); the accumulator picks the latest (500).

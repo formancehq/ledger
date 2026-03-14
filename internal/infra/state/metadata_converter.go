@@ -2,7 +2,6 @@ package state
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -18,11 +17,6 @@ import (
 )
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source=metadata_converter.go -destination=metadata_converter_generated_test.go -package=state -mock_names=Proposer=MockProposer
-
-// errConversionAborted is returned from the streaming callback when the field
-// is no longer in CONVERTING state mid-batch. It signals an early exit from the
-// ForEachInPrefix iteration without being treated as a real error.
-var errConversionAborted = errors.New("conversion aborted: field no longer converting")
 
 // Proposer proposes Raft commands to the cluster.
 // Implemented by a thin adapter around *node.Node that serializes orders into a
@@ -260,7 +254,7 @@ func (mc *MetadataConverter) proposeComplete(
 // matching the declared key, converts values that do not match the expected
 // type, and proposes batches of converted entries back through Raft.
 //
-// Uses two streaming Pebble passes (via ForEachInPrefix) instead of loading all
+// Uses two streaming Pebble passes (via StreamingIter) instead of loading all
 // entries into memory:
 //   - Pass 1: count matching keys for progress tracking (O(1) memory)
 //   - Pass 2: convert and propose in batches (O(batch_size) memory)
@@ -319,23 +313,30 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 	// Pass 1: count matching keys for progress tracking (O(1) memory).
 	var totalMatchingKeys uint64
 
-	err = mc.attrs.Metadata.ForEachInPrefix(reader, ledgerPrefix,
-		func(entry attributes.ComputedEntry[*commonpb.MetadataValue]) error {
-			var mk domain.MetadataKey
-
-			err := mk.Unmarshal(entry.CanonicalKey)
-			if err != nil {
-				return nil // skip unparseable keys
-			}
-
-			if mk.Key == req.Key {
-				totalMatchingKeys++
-			}
-
-			return nil
-		},
-	)
+	countIter, err := mc.attrs.Metadata.NewStreamingIter(reader, ledgerPrefix)
 	if err != nil {
+		return fmt.Errorf("creating count iterator for ledger %s: %w", req.LedgerName, err)
+	}
+
+	for countIter.Next() {
+		entry := countIter.Entry()
+
+		var mk domain.MetadataKey
+
+		if mkErr := mk.Unmarshal(entry.CanonicalKey); mkErr != nil {
+			continue // skip unparseable keys
+		}
+
+		if mk.Key == req.Key {
+			totalMatchingKeys++
+		}
+	}
+
+	if err := countIter.Close(); err != nil {
+		return fmt.Errorf("closing count iterator for ledger %s: %w", req.LedgerName, err)
+	}
+
+	if err := countIter.Err(); err != nil {
 		return fmt.Errorf("counting metadata keys for ledger %s: %w", req.LedgerName, err)
 	}
 
@@ -350,57 +351,68 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 
 	var convertedSoFar uint64
 
-	err = mc.attrs.Metadata.ForEachInPrefix(reader, ledgerPrefix,
-		func(entry attributes.ComputedEntry[*commonpb.MetadataValue]) error {
-			var mk domain.MetadataKey
-
-			err := mk.Unmarshal(entry.CanonicalKey)
-			if err != nil {
-				mc.logger.Errorf("Failed to unmarshal metadata key %x: %v", entry.CanonicalKey, err)
-
-				return nil // skip unparseable keys
-			}
-
-			if mk.Key != req.Key {
-				return nil
-			}
-
-			// Check if the value already matches the expected type.
-			if commonpb.TypeMatches(entry.Value, req.Type) {
-				convertedSoFar++
-
-				return nil
-			}
-
-			// Convert the value to the expected type.
-			convertedValue := commonpb.ConvertMetadataValue(entry.Value, req.Type)
-
-			batch = append(batch, &raftcmdpb.ConvertMetadataEntry{
-				CanonicalKey:   append([]byte(nil), entry.CanonicalKey...),
-				ConvertedValue: convertedValue,
-			})
-
-			if len(batch) >= mc.batchSize {
-				// Check staleness before proposing each batch.
-				if !mc.isFieldStillConverting(req.LedgerName, req.TargetType, req.Key, req.Type) {
-					mc.logger.WithFields(logFields).Infof("Field no longer converting mid-batch, aborting")
-
-					return errConversionAborted
-				}
-
-				convertedSoFar += uint64(len(batch))
-				mc.proposeBatch(req.LedgerName, req.TargetType, req.Key, req.Type, batch, totalMatchingKeys, convertedSoFar)
-				batch = make([]*raftcmdpb.ConvertMetadataEntry, 0, mc.batchSize)
-			}
-
-			return nil
-		},
-	)
+	convertIter, err := mc.attrs.Metadata.NewStreamingIter(reader, ledgerPrefix)
 	if err != nil {
-		if errors.Is(err, errConversionAborted) {
-			return nil
+		return fmt.Errorf("creating convert iterator for ledger %s: %w", req.LedgerName, err)
+	}
+
+	aborted := false
+
+	for convertIter.Next() {
+		entry := convertIter.Entry()
+
+		var mk domain.MetadataKey
+
+		if mkErr := mk.Unmarshal(entry.CanonicalKey); mkErr != nil {
+			mc.logger.Errorf("Failed to unmarshal metadata key %x: %v", entry.CanonicalKey, mkErr)
+
+			continue // skip unparseable keys
 		}
 
+		if mk.Key != req.Key {
+			continue
+		}
+
+		// Check if the value already matches the expected type.
+		if commonpb.TypeMatches(entry.Value, req.Type) {
+			convertedSoFar++
+
+			continue
+		}
+
+		// Convert the value to the expected type.
+		convertedValue := commonpb.ConvertMetadataValue(entry.Value, req.Type)
+
+		batch = append(batch, &raftcmdpb.ConvertMetadataEntry{
+			CanonicalKey:   append([]byte(nil), entry.CanonicalKey...),
+			ConvertedValue: convertedValue,
+		})
+
+		if len(batch) >= mc.batchSize {
+			// Check staleness before proposing each batch.
+			if !mc.isFieldStillConverting(req.LedgerName, req.TargetType, req.Key, req.Type) {
+				mc.logger.WithFields(logFields).Infof("Field no longer converting mid-batch, aborting")
+
+				aborted = true
+
+				break
+			}
+
+			convertedSoFar += uint64(len(batch))
+			mc.proposeBatch(req.LedgerName, req.TargetType, req.Key, req.Type, batch, totalMatchingKeys, convertedSoFar)
+			batch = make([]*raftcmdpb.ConvertMetadataEntry, 0, mc.batchSize)
+		}
+	}
+
+	if err := convertIter.Close(); err != nil {
+		return fmt.Errorf("closing convert iterator for ledger %s: %w", req.LedgerName, err)
+	}
+
+	if aborted {
+		return nil
+	}
+
+	if err := convertIter.Err(); err != nil {
 		return fmt.Errorf("converting metadata for ledger %s: %w", req.LedgerName, err)
 	}
 

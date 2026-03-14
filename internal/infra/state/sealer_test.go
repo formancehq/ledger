@@ -35,6 +35,7 @@ func createSealerTestStore(t *testing.T) *dal.Store {
 type testSealerResult struct {
 	periodID    uint64
 	sealingHash []byte
+	stateHash   []byte
 }
 
 // fixedPeriodState returns a fixed closing period for testing.
@@ -54,9 +55,10 @@ func newTestSealer(t *testing.T, store *dal.Store, closingPeriodID uint64) (*Sea
 
 	result := &testSealerResult{}
 	ps := &fixedPeriodState{period: &commonpb.Period{Id: closingPeriodID}}
-	sealer := NewSealer(logger, store, make(chan SealRequest, 1), func(periodID uint64, sealingHash []byte) {
+	sealer := NewSealer(logger, store, attributes.New(), make(chan SealRequest, 1), func(periodID uint64, sealingHash, stateHash []byte) {
 		result.periodID = periodID
 		result.sealingHash = sealingHash
+		result.stateHash = stateHash
 	}, func() bool { return true }, ps)
 
 	return sealer, result
@@ -196,7 +198,7 @@ func TestSealerRetryOnFailure(t *testing.T) {
 	logger := logging.FromContext(ctx)
 	sealRequestCh := make(chan SealRequest, 1)
 	ps := &fixedPeriodState{period: &commonpb.Period{Id: 7}}
-	sealer := NewSealer(logger, store, sealRequestCh, func(periodID uint64, sealingHash []byte) {
+	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(periodID uint64, sealingHash, stateHash []byte) {
 		proposeCalled.Add(1)
 	}, func() bool { return true }, ps)
 

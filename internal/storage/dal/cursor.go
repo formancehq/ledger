@@ -1,6 +1,7 @@
 package dal
 
 import (
+	"errors"
 	"io"
 
 	"google.golang.org/grpc"
@@ -145,4 +146,24 @@ var _ Cursor[any] = (*LimitedCursor[any])(nil)
 // NewLimitedCursor creates a new cursor that returns at most limit items.
 func NewLimitedCursor[T any](inner Cursor[T], limit uint32) Cursor[T] {
 	return &LimitedCursor[T]{inner: inner, limit: limit}
+}
+
+// Collect drains a cursor into a slice and closes it.
+func Collect[T any](cursor Cursor[T]) ([]T, error) {
+	defer func() { _ = cursor.Close() }()
+
+	var items []T
+
+	for {
+		item, err := cursor.Next()
+		if errors.Is(err, io.EOF) {
+			return items, nil
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		items = append(items, item)
+	}
 }

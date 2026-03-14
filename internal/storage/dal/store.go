@@ -30,6 +30,7 @@ const (
 	currentCheckpointFile   = "CURRENT_CHECKPOINT"
 	checkpointsDir          = "checkpoints"
 	temporaryCheckpointsDir = "tmp"
+	baselineCheckpointsDir  = "baseline"
 )
 
 // Store is a Pebble implementation of dal.Store
@@ -618,6 +619,29 @@ func (s *Store) RemoveTemporaryCheckpoint(name string) error {
 // TemporaryCheckpointPath returns the path to a temporary checkpoint and whether it exists.
 func (s *Store) TemporaryCheckpointPath(name string) (string, bool) {
 	path := filepath.Join(s.dataDir, temporaryCheckpointsDir, name)
+	if _, err := os.Stat(path); err != nil {
+		return "", false
+	}
+
+	return path, true
+}
+
+// BaselineSnapshotDir returns the path where the baseline attribute snapshot
+// should be written and ensures its parent directory exists.
+// Callers (e.g. the applier) use this path with attributes.CreateBaselineSnapshot.
+func (s *Store) BaselineSnapshotDir() (string, error) {
+	path := filepath.Join(s.dataDir, baselineCheckpointsDir, "checker")
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return "", fmt.Errorf("creating baseline snapshot directory: %w", err)
+	}
+
+	return path, nil
+}
+
+// BaselineCheckpointPath returns the path to the baseline checker checkpoint and whether it exists.
+func (s *Store) BaselineCheckpointPath() (string, bool) {
+	path := filepath.Join(s.dataDir, baselineCheckpointsDir, "checker")
 	if _, err := os.Stat(path); err != nil {
 		return "", false
 	}

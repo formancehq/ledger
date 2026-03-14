@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/cockroachdb/pebble"
 
@@ -32,36 +31,6 @@ func ReadPeriods(ctx context.Context, reader dal.PebbleReader) (dal.Cursor[*comm
 	return dal.NewProtoCursor[*commonpb.Period](iter), nil
 }
 
-// ReadAllPeriods returns all periods stored in Pebble, ordered by period ID.
-// Returns nil if no periods have been persisted yet.
-func ReadAllPeriods(ctx context.Context, reader dal.PebbleReader) ([]*commonpb.Period, error) {
-	_, span := queryTracer.Start(ctx, "query.list_all_periods")
-	defer span.End()
-
-	cursor, err := ReadPeriods(ctx, reader)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() { _ = cursor.Close() }()
-
-	var periods []*commonpb.Period
-
-	for {
-		p, err := cursor.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			return nil, err
-		}
-
-		periods = append(periods, p)
-	}
-
-	return periods, nil
-}
 
 // ReadNextPeriodID returns the next period ID from the given reader.
 // Returns 1 if not found (default starting value).

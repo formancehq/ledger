@@ -20,7 +20,18 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
+	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
+
+// collectAllPeriods is a test helper that reads all periods as a slice.
+func collectAllPeriods(reader dal.PebbleReader) ([]*commonpb.Period, error) {
+	cursor, err := query.ReadPeriods(context.Background(), reader)
+	if err != nil {
+		return nil, err
+	}
+
+	return dal.Collect(cursor)
+}
 
 // buildVolumePreloads extracts all unique (ledger, account, asset) tuples from postings
 // and creates zero-value volume preloads for them.
@@ -149,7 +160,7 @@ func startClusterSealers(t *testing.T, cluster *Cluster) func() {
 		logger := logging.Testing().WithFields(map[string]any{"node": clusterNode.ID, "cmp": "sealer"})
 		node := clusterNode.Node
 
-		sealers[i] = state.NewSealer(logger, clusterNode.Store, node.fsm.SealRequestCh(), func(periodID uint64, sealingHash []byte) {
+		sealers[i] = state.NewSealer(logger, clusterNode.Store, node.fsm.Registry.Attrs, node.fsm.SealRequestCh(), func(periodID uint64, sealingHash, stateHash []byte) {
 			// Propose SealPeriod back through Raft
 			proposal := &raftcmdpb.Proposal{
 				Id:   generateProposalID(),
@@ -159,6 +170,7 @@ func startClusterSealers(t *testing.T, cluster *Cluster) func() {
 						SealPeriod: &raftcmdpb.SealPeriodOrder{
 							PeriodId:    periodID,
 							SealingHash: sealingHash,
+							StateHash:   stateHash,
 						},
 					},
 				}},
@@ -262,7 +274,7 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 
 		// Wait for the period to be sealed (CLOSED status with sealing hash)
 		require.Eventually(t, func() bool {
-			periods, err := query.ReadAllPeriods(context.Background(), leader.Store)
+			periods, err := collectAllPeriods(leader.Store)
 			if err != nil {
 				return false
 			}
@@ -277,7 +289,7 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 		}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on leader", closedPeriodID)
 
 		// Get the sealed period from leader
-		leaderPeriods, err := query.ReadAllPeriods(context.Background(), leader.Store)
+		leaderPeriods, err := collectAllPeriods(leader.Store)
 		require.NoError(t, err)
 
 		var leaderSealedPeriod *commonpb.Period
@@ -302,7 +314,7 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 			}
 
 			require.Eventually(t, func() bool {
-				periods, err := query.ReadAllPeriods(context.Background(), clusterNode.Store)
+				periods, err := collectAllPeriods(clusterNode.Store)
 				if err != nil {
 					return false
 				}
@@ -316,7 +328,7 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 				return false
 			}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on node %d", closedPeriodID, clusterNode.ID)
 
-			followerPeriods, err := query.ReadAllPeriods(context.Background(), clusterNode.Store)
+			followerPeriods, err := collectAllPeriods(clusterNode.Store)
 			require.NoError(t, err)
 
 			var followerSealedPeriod *commonpb.Period
@@ -345,7 +357,7 @@ func TestPeriodSealHashConsistency(t *testing.T) {
 	var expectedPeriods []*commonpb.Period
 
 	for _, clusterNode := range cluster.nodes {
-		periods, err := query.ReadAllPeriods(context.Background(), clusterNode.Store)
+		periods, err := collectAllPeriods(clusterNode.Store)
 		require.NoError(t, err)
 
 		if expectedPeriods == nil {
@@ -437,7 +449,7 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 	// This means the maintenance task has created the checkpoint, the sealer has computed
 	// the hash, and the SealPeriod order has been applied.
 	require.Eventually(t, func() bool {
-		periods, err := query.ReadAllPeriods(context.Background(), leader.Store)
+		periods, err := collectAllPeriods(leader.Store)
 		if err != nil {
 			return false
 		}
@@ -452,7 +464,7 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 	}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on leader", closedPeriodID)
 
 	// Record the expected sealing hash from the leader
-	leaderPeriods, err := query.ReadAllPeriods(context.Background(), leader.Store)
+	leaderPeriods, err := collectAllPeriods(leader.Store)
 	require.NoError(t, err)
 
 	var expectedSealingHash []byte
@@ -504,7 +516,7 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 
 	// Wait for the period to be sealed on the restarted node
 	require.Eventually(t, func() bool {
-		periods, err := query.ReadAllPeriods(context.Background(), restartedNode.Store)
+		periods, err := collectAllPeriods(restartedNode.Store)
 		if err != nil {
 			return false
 		}
@@ -519,7 +531,7 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 	}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on restarted node", closedPeriodID)
 
 	// Verify the sealing hash matches the expected hash
-	restartedPeriods, err := query.ReadAllPeriods(context.Background(), restartedNode.Store)
+	restartedPeriods, err := collectAllPeriods(restartedNode.Store)
 	require.NoError(t, err)
 
 	var recoveredSealingHash []byte
@@ -540,7 +552,7 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 	// Verify all nodes agree on the sealing hash
 	for _, clusterNode := range cluster.nodes {
 		require.Eventually(t, func() bool {
-			periods, err := query.ReadAllPeriods(context.Background(), clusterNode.Store)
+			periods, err := collectAllPeriods(clusterNode.Store)
 			if err != nil {
 				return false
 			}
@@ -554,7 +566,7 @@ func TestPeriodSealCrashRecoveryNoCheckpoint(t *testing.T) {
 			return false
 		}, 15*time.Second, 200*time.Millisecond, "period %d should be sealed on node %d", closedPeriodID, clusterNode.ID)
 
-		periods, err := query.ReadAllPeriods(context.Background(), clusterNode.Store)
+		periods, err := collectAllPeriods(clusterNode.Store)
 		require.NoError(t, err)
 
 		for _, p := range periods {

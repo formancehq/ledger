@@ -81,7 +81,7 @@ func (va *volumeAggregator) result() *commonpb.AggregateResult {
 
 // AggregateVolumes executes a cross-store merge-scan for filtered aggregation:
 // 1. Iterate matching accounts from Pebble (accountIter)
-// 2. For each account, scan volumes in Pebble via ForEachInPrefix
+// 2. For each account, scan volumes in Pebble via StreamingIter
 // 3. Accumulate per-asset totals.
 func AggregateVolumes(
 	pebbleReader dal.PebbleReader,
@@ -103,8 +103,24 @@ func AggregateVolumes(
 		n += copy(canonicalPrefix[n:], account)
 		canonicalPrefix[n] = 0x00
 
-		err := volumeAttr.ForEachInPrefix(pebbleReader, canonicalPrefix, va.accumulate)
+		iter, err := volumeAttr.NewStreamingIter(pebbleReader, canonicalPrefix)
 		if err != nil {
+			return nil, fmt.Errorf("creating volume iterator for account %q: %w", account, err)
+		}
+
+		for iter.Next() {
+			if err := va.accumulate(iter.Entry()); err != nil {
+				_ = iter.Close()
+
+				return nil, fmt.Errorf("accumulating volumes for account %q: %w", account, err)
+			}
+		}
+
+		if err := iter.Close(); err != nil {
+			return nil, fmt.Errorf("closing volume iterator for account %q: %w", account, err)
+		}
+
+		if err := iter.Err(); err != nil {
 			return nil, fmt.Errorf("scanning volumes for account %q: %w", account, err)
 		}
 	}
@@ -114,7 +130,7 @@ func AggregateVolumes(
 
 // AggregateAllVolumes performs unfiltered volume aggregation in a single Pebble
 // scan. Instead of enumerating accounts then scanning volumes per account (N+1
-// iterators, N SeekGE hops), it calls ForEachInPrefix once with the ledger
+// iterators, N SeekGE hops), it calls StreamingIter once with the ledger
 // prefix, yielding all volume entries in a single sequential pass.
 //
 // This is significantly faster for unfiltered aggregation because:
@@ -129,13 +145,29 @@ func AggregateAllVolumes(
 	va := newVolumeAggregator()
 
 	// Single-pass: scan [ledger\x00] prefix which covers all accounts.
-	// ForEachInPrefix on volumeAttr skips non-volume entries (metadata).
+	// StreamingIter on volumeAttr skips non-volume entries (metadata).
 	ledgerPrefix := make([]byte, len(ledger)+1)
 	copy(ledgerPrefix, ledger)
 	ledgerPrefix[len(ledger)] = 0x00
 
-	err := volumeAttr.ForEachInPrefix(pebbleReader, ledgerPrefix, va.accumulate)
+	iter, err := volumeAttr.NewStreamingIter(pebbleReader, ledgerPrefix)
 	if err != nil {
+		return nil, fmt.Errorf("creating volume iterator: %w", err)
+	}
+
+	for iter.Next() {
+		if err := va.accumulate(iter.Entry()); err != nil {
+			_ = iter.Close()
+
+			return nil, fmt.Errorf("accumulating volumes: %w", err)
+		}
+	}
+
+	if err := iter.Close(); err != nil {
+		return nil, fmt.Errorf("closing volume iterator: %w", err)
+	}
+
+	if err := iter.Err(); err != nil {
 		return nil, fmt.Errorf("scanning all volumes: %w", err)
 	}
 

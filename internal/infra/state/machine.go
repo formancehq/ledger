@@ -169,12 +169,17 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 
 	stepStart = time.Now()
 
-	periodsFromStore, err := query.ReadAllPeriods(context.Background(), dataStore)
+	periodsCursor, err := query.ReadPeriods(context.Background(), dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading periods from store: %w", err)
 	}
 
-	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String(), "count": len(periodsFromStore)}).Infof("FSM: ReadAllPeriods done")
+	periodsFromStore, err := dal.Collect(periodsCursor)
+	if err != nil {
+		return nil, fmt.Errorf("collecting periods: %w", err)
+	}
+
+	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String(), "count": len(periodsFromStore)}).Infof("FSM: ReadPeriods done")
 
 	allPeriods := make(map[uint64]*commonpb.Period, len(periodsFromStore))
 
@@ -182,6 +187,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 
 	for _, p := range periodsFromStore {
 		allPeriods[p.GetId()] = p
+
 		switch p.GetStatus() {
 		case commonpb.PeriodStatus_PERIOD_OPEN:
 			currentOpenPeriod = p
@@ -1967,6 +1973,12 @@ func (fsm *Machine) ScheduleChanged() signal.Signal {
 // and returns a SealRequest if the sealer should be triggered.
 // Only created logs are checked since reference sequences are idempotent
 // responses that already triggered sealing when first applied.
+//
+// Uses the FSM state's closing period (not the log payload snapshot) because
+// processor.go updates closingPeriod.LastLogHash to include the ClosePeriod
+// log's own hash after creating the log. The Pebble-stored period also has
+// this updated hash, so the sealer must use the same value for the sealing
+// hash to be verifiable by the checker.
 func (fsm *Machine) checkClosePeriod(result *ApplyResult) *SealRequest {
 	if result == nil {
 		return nil
@@ -1974,8 +1986,13 @@ func (fsm *Machine) checkClosePeriod(result *ApplyResult) *SealRequest {
 
 	for _, logOrRef := range result.Logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
-			if closePeriodLog := created.GetPayload().GetClosePeriod(); closePeriodLog != nil {
-				return SealRequestFromPeriod(closePeriodLog.GetClosedPeriod())
+			if created.GetPayload().GetClosePeriod() != nil {
+				// Use the FSM state's closing period which has LastLogHash
+				// updated to include the ClosePeriod log's hash.
+				closingPeriod := fsm.Periods.ClosingPeriod()
+				if closingPeriod != nil {
+					return SealRequestFromPeriod(closingPeriod)
+				}
 			}
 		}
 	}
