@@ -1018,7 +1018,7 @@ ledgerctl auth login ${profileFlags} --bundle ${info.agentName ?? "agent"}-bundl
 ledgerctl profile create my-cluster ${profileFlags} --use
 
 # Create a ledger
-ledgerctl ledgers create my-ledger
+ledgerctl ledgers create --name my-ledger
 
 # List ledgers
 ledgerctl ledgers list`}
