@@ -356,6 +356,7 @@ func NewNode(
 		walScanStart := time.Now()
 		firstIdx, firstErr := wal.FirstIndex()
 
+		// Todo: is it safe if the wal was compacted?
 		lastIdx, lastErr := wal.LastIndex()
 		if firstErr == nil && lastErr == nil && firstIdx <= lastIdx {
 			logger.WithFields(map[string]any{
@@ -388,6 +389,7 @@ func NewNode(
 	initialStatus := atomic.Int32{}
 	initialStatus.Store(statusNormal)
 
+	// todo: put outside?
 	applier := &Applier{
 		fsm:                     fsm,
 		spool:                   spool,
@@ -2054,15 +2056,6 @@ func (node *Node) PeerAddresses() map[uint64]ConfChangeContext {
 	return node.peerAddresses
 }
 
-// MemorySnapshotFetcher is an optional interface that transports can implement
-// to support fetching large memory snapshots via streaming RPC.
-// DefaultTransport implements this; ChannelTransport (used in tests) does not.
-type MemorySnapshotFetcher interface {
-	// FetchRemoteMemorySnapshot fetches the full snapshot data from the leader
-	// via the FetchMemorySnapshot streaming RPC.
-	FetchRemoteMemorySnapshot(leaderID uint64, index, term uint64) ([]byte, error)
-}
-
 // fetchRemoteSnapshot fetches the full snapshot data from the leader.
 // It uses the transport's MemorySnapshotFetcher capability if available.
 func (node *Node) fetchRemoteSnapshot(index, term uint64) ([]byte, error) {
@@ -2097,51 +2090,4 @@ func (node *Node) wrapSnapshot(fsmData []byte) ([]byte, error) {
 	}
 
 	return ns.MarshalVT()
-}
-
-// snapshotUnwrapResult holds the result of unwrapping a NodeSnapshot.
-type snapshotUnwrapResult struct {
-	fsmData       []byte
-	peerAddresses []*raftcmdpb.PeerAddress
-	isReference   bool
-	sizeHint      uint64
-}
-
-// unwrapSnapshot extracts FSM snapshot data and peer addresses from a NodeSnapshot.
-// When isReference is true, fsmData is empty and the caller must fetch the full
-// snapshot via FetchMemorySnapshot RPC.
-func unwrapSnapshot(data []byte) (*snapshotUnwrapResult, error) {
-	ns := &raftcmdpb.NodeSnapshot{}
-
-	err := ns.UnmarshalVT(data)
-	if err != nil {
-		return nil, err
-	}
-
-	return &snapshotUnwrapResult{
-		fsmData:       ns.GetFsmSnapshot(),
-		peerAddresses: ns.GetPeerAddresses(),
-		isReference:   ns.GetIsReference(),
-		sizeHint:      ns.GetSizeHint(),
-	}, nil
-}
-
-type Proposal struct {
-	*futures.Future[any]
-
-	commandID uint64
-	data      []byte
-}
-
-func NewProposal(commandID uint64, data []byte) *Proposal {
-	return &Proposal{
-		commandID: commandID,
-		data:      data,
-		Future:    futures.New[any](),
-	}
-}
-
-// Data returns the serialized proposal data.
-func (p *Proposal) Data() []byte {
-	return p.data
 }

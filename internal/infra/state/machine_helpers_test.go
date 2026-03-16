@@ -24,7 +24,7 @@ func TestAllOrdersAreMaintenanceMode(t *testing.T) {
 			{Type: &raftcmdpb.Order_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{Enabled: true}}},
 			{Type: &raftcmdpb.Order_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{Enabled: false}}},
 		}
-		require.True(t, allOrdersAreMaintenanceMode(orders))
+		require.True(t, authorizedInMaintenanceMode(orders))
 	})
 
 	t.Run("mixed orders", func(t *testing.T) {
@@ -34,7 +34,7 @@ func TestAllOrdersAreMaintenanceMode(t *testing.T) {
 			{Type: &raftcmdpb.Order_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{Enabled: true}}},
 			{Type: &raftcmdpb.Order_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "test"}}},
 		}
-		require.False(t, allOrdersAreMaintenanceMode(orders))
+		require.False(t, authorizedInMaintenanceMode(orders))
 	})
 
 	t.Run("no maintenance mode orders", func(t *testing.T) {
@@ -43,13 +43,13 @@ func TestAllOrdersAreMaintenanceMode(t *testing.T) {
 		orders := []*raftcmdpb.Order{
 			{Type: &raftcmdpb.Order_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{Name: "a"}}},
 		}
-		require.False(t, allOrdersAreMaintenanceMode(orders))
+		require.False(t, authorizedInMaintenanceMode(orders))
 	})
 
 	t.Run("empty orders", func(t *testing.T) {
 		t.Parallel()
-		require.True(t, allOrdersAreMaintenanceMode(nil))
-		require.True(t, allOrdersAreMaintenanceMode([]*raftcmdpb.Order{}))
+		require.True(t, authorizedInMaintenanceMode(nil))
+		require.True(t, authorizedInMaintenanceMode([]*raftcmdpb.Order{}))
 	})
 }
 

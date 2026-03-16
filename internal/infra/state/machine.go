@@ -1011,8 +1011,8 @@ func (fsm *Machine) hlcTimestamp(proposalDate *commonpb.Timestamp) *commonpb.Tim
 	return &commonpb.Timestamp{Data: fsm.lastAppliedTimestamp}
 }
 
-// allOrdersAreMaintenanceMode returns true if every order in the batch is a SetMaintenanceMode order.
-func allOrdersAreMaintenanceMode(orders []*raftcmdpb.Order) bool {
+// authorizedInMaintenanceMode returns true if every order in the batch is a SetMaintenanceMode order.
+func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 	for _, order := range orders {
 		if _, ok := order.GetType().(*raftcmdpb.Order_SetMaintenanceMode); !ok {
 			return false
@@ -1088,7 +1088,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// FSM-level maintenance mode check: reject proposals containing non-maintenance
 	// orders that were admitted before maintenance mode was enabled but batched into
 	// a Raft entry applied after the maintenance mode flag was set.
-	if fsm.sharedState.MaintenanceMode() && !allOrdersAreMaintenanceMode(proposal.GetOrders()) {
+	if fsm.sharedState.MaintenanceMode() && !authorizedInMaintenanceMode(proposal.GetOrders()) {
 		return &ApplyResult{
 			ProposalID: proposal.GetId(),
 			Error:      &domain.BusinessError{Err: domain.ErrMaintenanceMode},
@@ -1101,6 +1101,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Promote frequently-read ledger data from gen1→gen0 to prevent eviction.
 	// This avoids unnecessary Pebble reloads via the preload system.
+	// TODO: this is costly on the fsm path, we should be able to promote on generation switch?
 	for _, order := range proposal.GetOrders() {
 		if apply, ok := order.GetType().(*raftcmdpb.Order_Apply); ok {
 			ledgerKey := domain.LedgerKey{Name: apply.Apply.GetLedger()}
@@ -1113,6 +1114,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	effectiveDate := fsm.hlcTimestamp(proposal.GetDate())
 
 	// Auto-bootstrap first period deterministically at first proposal
+	// TODO: Move at initialization maybe?
 	if fsm.Periods.CurrentOpenPeriod() == nil {
 		p := &commonpb.Period{
 			Id:            1,
@@ -1136,6 +1138,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	// Resolve numscript text from dual-gen cache for hash-only scripts
+	// TODO: let the processor do that, needs to add the required accessor
 	for _, order := range proposal.GetOrders() {
 		if apply, ok := order.GetType().(*raftcmdpb.Order_Apply); ok {
 			if ct := apply.Apply.GetCreateTransaction(); ct != nil {
@@ -1195,6 +1198,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	// Add only created logs to buffer and merge
+	// TODO: buffer does not need to have PendingLogs property
 	buffer.PendingLogs = append(buffer.PendingLogs, createdLogs...)
 	configChanged := buffer.HasPendingSinkChanges()
 	mirrorConfigChanged := hasMirrorConfigChange(proposal)
