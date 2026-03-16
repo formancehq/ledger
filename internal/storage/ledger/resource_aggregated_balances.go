@@ -22,19 +22,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) Schema() common.EntitySchem
 
 func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.RepositoryHandlerBuildContext[GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
-	var allAddresses []string
-	var needAddressSegments bool
-	// Use a callback that always returns false to avoid short-circuiting,
-	// ensuring ALL address filter values are visited (important for $or queries
-	// mixing exact and partial addresses).
-	query.UseFilter("address", func(value any) bool {
-		addr := value.(string)
-		allAddresses = append(allAddresses, addr)
-		if isPartialAddress(addr) {
-			needAddressSegments = true
-		}
-		return false
-	})
+	allAddresses, needAddressSegments := collectAddressFilters(query)
 
 	if query.UsePIT() {
 		ret := h.store.newScopedSelect().
@@ -65,11 +53,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 				Column("address_array").
 				Where("accounts.address = accounts_address")
 
-			// Push address filter into lateral join for GIN index usage.
-			// Skip when query contains $not to avoid incorrectly excluding rows.
-			if len(allAddresses) > 0 && canPushAddressFilterToLateral(query.Builder) {
-				subQuery = subQuery.Where(buildAddressFilterForLateral(allAddresses))
-			}
+			subQuery = applyLateralAddressFilter(subQuery, allAddresses, query.Builder)
 
 			ret = ret.
 				ColumnExpr("accounts.address_array as accounts_address_array").
@@ -105,11 +89,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 			if query.UseFilter("address") {
 				subQuery = subQuery.ColumnExpr("address_array as accounts_address_array")
 				ret = ret.Column("accounts_address_array")
-				// Push address filter into lateral join for GIN index usage.
-				// Skip when query contains $not to avoid incorrectly excluding rows.
-				if len(allAddresses) > 0 && canPushAddressFilterToLateral(query.Builder) {
-					subQuery = subQuery.Where(buildAddressFilterForLateral(allAddresses))
-				}
+				subQuery = applyLateralAddressFilter(subQuery, allAddresses, query.Builder)
 			}
 			if query.UseFilter("metadata") {
 				subQuery = subQuery.ColumnExpr("metadata")

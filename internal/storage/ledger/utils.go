@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/formancehq/go-libs/v3/query"
+	"github.com/uptrace/bun"
 	"strings"
 )
 
@@ -42,6 +43,31 @@ func filterAccountAddress(address, key string) string {
 	}
 
 	return strings.Join(parts, " and ")
+}
+
+// collectAddressFilters visits all address filter values (without short-circuiting)
+// and returns the collected addresses and whether any partial address was found.
+func collectAddressFilters(q interface{ UseFilter(string, ...func(any) bool) bool }) ([]string, bool) {
+	var addresses []string
+	var needSegments bool
+	q.UseFilter("address", func(value any) bool {
+		addr := value.(string)
+		addresses = append(addresses, addr)
+		if isPartialAddress(addr) {
+			needSegments = true
+		}
+		return false
+	})
+	return addresses, needSegments
+}
+
+// applyLateralAddressFilter conditionally pushes the address filter into a
+// LATERAL join subquery when it is safe to do so.
+func applyLateralAddressFilter(subQuery *bun.SelectQuery, addresses []string, builder query.Builder) *bun.SelectQuery {
+	if len(addresses) > 0 && canPushAddressFilterToLateral(builder) {
+		subQuery = subQuery.Where(buildAddressFilterForLateral(addresses))
+	}
+	return subQuery
 }
 
 // canPushAddressFilterToLateral checks whether it is safe to push the address
