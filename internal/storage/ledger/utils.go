@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/formancehq/go-libs/v3/query"
 	"strings"
@@ -43,17 +44,19 @@ func filterAccountAddress(address, key string) string {
 	return strings.Join(parts, " and ")
 }
 
-// queryHasNegation detects if a query builder contains any $not clauses.
-// When $not is present, pushing a positive address filter into the LATERAL join
-// would be incorrect (the lateral keeps only matching rows, but $not excludes them).
+// queryHasNegation detects if a query builder contains any $not clauses
+// by inspecting its JSON representation. When $not is present, pushing a
+// positive address filter into the LATERAL join would be incorrect (the
+// lateral keeps only matching rows, but $not excludes them).
 func queryHasNegation(builder query.Builder) bool {
 	if builder == nil {
 		return false
 	}
-	sql, _, _ := builder.Build(query.ContextFn(func(key, operator string, value any) (string, []any, error) {
-		return "true", nil, nil
-	}))
-	return strings.Contains(sql, "not (")
+	data, err := json.Marshal(builder)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), `"$not":`)
 }
 
 // buildAddressFilterForLateral builds an OR condition of all address filters
