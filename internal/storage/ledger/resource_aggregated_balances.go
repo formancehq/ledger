@@ -65,8 +65,9 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 				Column("address_array").
 				Where("accounts.address = accounts_address")
 
-			// Push address filter into lateral join for GIN index usage
-			if len(allAddresses) > 0 {
+			// Push address filter into lateral join for GIN index usage.
+			// Skip when query contains $not to avoid incorrectly excluding rows.
+			if len(allAddresses) > 0 && !queryHasNegation(query.Builder) {
 				subQuery = subQuery.Where(buildAddressFilterForLateral(allAddresses))
 			}
 
