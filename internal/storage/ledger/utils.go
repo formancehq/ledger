@@ -51,10 +51,15 @@ func collectAddressFilters(q interface{ UseFilter(string, ...func(any) bool) boo
 	var addresses []string
 	var needSegments bool
 	q.UseFilter("address", func(value any) bool {
-		addr := value.(string)
-		addresses = append(addresses, addr)
-		if isPartialAddress(addr) {
-			needSegments = true
+		switch v := value.(type) {
+		case string:
+			addresses = append(addresses, v)
+			if isPartialAddress(v) {
+				needSegments = true
+			}
+		default:
+			// $in operator passes arrays — these are always exact addresses,
+			// not partial, so we skip them (no GIN index optimization possible).
 		}
 		return false
 	})
@@ -116,14 +121,4 @@ func explodeAddress(address string) map[string]any {
 	ret[fmt.Sprint(len(parts))] = nil
 
 	return ret
-}
-
-func isFilteringOnPartialAddress(value any) bool {
-	switch value := value.(type) {
-	case string:
-		return isPartialAddress(value)
-	default:
-		// If an array is passed, addresses must be full
-		return false
-	}
 }
