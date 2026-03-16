@@ -3,13 +3,9 @@ API:
 * Clean HTTP layer / GRPC proxy
 
 Business:
-* Progression of metadata type changes
-* Add aggregations
-* Query validations against types
 * accounts migration
 * Checkpoint when promoting ledger to be able to shutdown the mirrored ledger properly
 * Databricks sinks
-* Index effective date
 
 Docs:
 * Clean relying parties distinctions
@@ -24,22 +20,16 @@ Tests:
 * Fetch all the production
 
 Refactor:
-* Simplify processor
-* Split admission
 * Check all commands match a log type payload
 * Refactor Go-Libs
 * Clean protobuf
 * Prevent concurrent tests
-* Apply configuration schema
-* Stop lifecycle
 * configuration via command
-* reorganize storage keys
 * go-libs v4
 * store checks memory usage
 * estimate cache size
-* period overlap
 * delete attributes on ledger deletion
-* Simplify machine by allowing some commands to be in a single batch
+* Simplify machine by allowing some commands to be in a single batch?
 
 Later:
 * Store

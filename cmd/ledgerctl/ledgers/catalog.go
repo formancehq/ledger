@@ -29,6 +29,7 @@ Examples:
 		RunE: runCatalog,
 	}
 
+	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Bool("expand", false, "Show full content of numscripts and prepared query filters")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -84,6 +85,14 @@ func runCatalog(cmd *cobra.Command, args []string) error {
 	}
 
 	_ = spinner.Stop()
+
+	if handled, err := cmdutil.EncodeStructured(cmd, map[string]any{
+		"ledger":          ledger,
+		"preparedQueries": pqResp.Queries,
+		"numscripts":      numscripts,
+	}); handled || err != nil {
+		return err
+	}
 
 	// Header
 	pterm.Println()
@@ -185,30 +194,30 @@ func renderCatalogIndexes(ledger *commonpb.LedgerInfo) {
 	pterm.DefaultSection.Println("Indexes")
 
 	table := pterm.TableData{
-		{"TYPE", "TARGET", "KEY", "STATUS"},
+		{"TYPE", "TARGET", "KEY"},
 	}
 
 	if bi := ledger.BuiltinIndexes; bi != nil {
 		if bi.Reference {
-			table = append(table, []string{"reference", "-", "-", indexBuildStatusString(bi.ReferenceStatus)})
+			table = append(table, []string{"reference", "-", "-"})
 		}
 		if bi.Timestamp {
-			table = append(table, []string{"timestamp", "-", "-", indexBuildStatusString(bi.TimestampStatus)})
+			table = append(table, []string{"timestamp", "-", "-"})
 		}
 		if bi.Address {
-			table = append(table, []string{"address", "-", "-", indexBuildStatusString(bi.AddressStatus)})
+			table = append(table, []string{"address", "-", "-"})
 		}
 		if bi.SourceAddress {
-			table = append(table, []string{"source-address", "-", "-", indexBuildStatusString(bi.SourceAddressStatus)})
+			table = append(table, []string{"source-address", "-", "-"})
 		}
 		if bi.DestAddress {
-			table = append(table, []string{"dest-address", "-", "-", indexBuildStatusString(bi.DestAddressStatus)})
+			table = append(table, []string{"dest-address", "-", "-"})
 		}
 	}
 
 	if schema := ledger.MetadataSchema; schema != nil {
-		addMetadataIndexRowsWithProgress(&table, "account", schema.AccountFields, nil, 0, commonpb.TargetType_TARGET_TYPE_ACCOUNT)
-		addMetadataIndexRowsWithProgress(&table, "transaction", schema.TransactionFields, nil, 0, commonpb.TargetType_TARGET_TYPE_TRANSACTION)
+		addMetadataIndexRows(&table, "account", schema.AccountFields)
+		addMetadataIndexRows(&table, "transaction", schema.TransactionFields)
 	}
 
 	if len(table) == 1 {
@@ -217,6 +226,22 @@ func renderCatalogIndexes(ledger *commonpb.LedgerInfo) {
 	}
 
 	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
+}
+
+// addMetadataIndexRows appends rows for indexed metadata fields (config only, no status).
+func addMetadataIndexRows(table *pterm.TableData, targetName string, fields map[string]*commonpb.MetadataFieldSchema) {
+	keys := make([]string, 0, len(fields))
+	for k, f := range fields {
+		if f.GetIndexed() {
+			keys = append(keys, k)
+		}
+	}
+
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		*table = append(*table, []string{"metadata", targetName, key})
+	}
 }
 
 func renderCatalogPreparedQueries(queries []*commonpb.PreparedQuery, expand bool) {
