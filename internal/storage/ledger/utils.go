@@ -1,8 +1,13 @@
 package ledger
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/uptrace/bun"
+
+	"github.com/formancehq/go-libs/v4/query"
 )
 
 func isPartialAddress(address string) bool {
@@ -42,6 +47,75 @@ func filterAccountAddress(address, key string) string {
 	return strings.Join(parts, " and ")
 }
 
+// collectAddressFilters visits all address filter values (without short-circuiting)
+// and returns the collected addresses and whether any partial address was found.
+func collectAddressFilters(q interface {
+	UseFilter(string, ...func(any) bool) bool
+}) ([]string, bool) {
+	var addresses []string
+	var needSegments bool
+	q.UseFilter("address", func(value any) bool {
+		switch v := value.(type) {
+		case string:
+			addresses = append(addresses, v)
+			if isPartialAddress(v) {
+				needSegments = true
+			}
+		default:
+			// $in operator passes arrays — these are always exact addresses,
+			// not partial, so we skip them (no GIN index optimization possible).
+		}
+		return false
+	})
+	return addresses, needSegments
+}
+
+// applyLateralAddressFilter conditionally pushes the address filter into a
+// LATERAL join subquery when it is safe to do so.
+func applyLateralAddressFilter(subQuery *bun.SelectQuery, addresses []string, builder query.Builder) *bun.SelectQuery {
+	if len(addresses) > 0 && canPushAddressFilterToLateral(builder) {
+		subQuery = subQuery.Where(buildAddressFilterForLateral(addresses))
+	}
+	return subQuery
+}
+
+// canPushAddressFilterToLateral checks whether it is safe to push the address
+// filter into the LATERAL join by inspecting the query builder's JSON AST.
+//
+// The optimization is UNSAFE when:
+//   - $not is present: the lateral keeps matching rows, but the outer WHERE
+//     negates them → 0 results.
+//   - $or is present: the lateral excludes rows that don't match the address
+//     filter, but those rows might match another branch of the $or (e.g.
+//     a balance or metadata condition) → missing results.
+//
+// With pure $and queries, the optimization is safe because all conditions
+// must be true, so pre-filtering by address is a valid subset operation.
+func canPushAddressFilterToLateral(builder query.Builder) bool {
+	if builder == nil {
+		return true
+	}
+	data, err := json.Marshal(builder)
+	if err != nil {
+		return false
+	}
+	s := string(data)
+	return !strings.Contains(s, `"$not":`) && !strings.Contains(s, `"$or":`)
+}
+
+// buildAddressFilterForLateral builds an OR condition of all address filters
+// to push into a LATERAL join, allowing Postgres to use the GIN index on address_array.
+func buildAddressFilterForLateral(addresses []string) string {
+	if len(addresses) == 1 {
+		return filterAccountAddress(addresses[0], "address")
+	}
+	conditions := make([]string, len(addresses))
+	for i, addr := range addresses {
+		conditions[i] = "(" + filterAccountAddress(addr, "address") + ")"
+	}
+	return strings.Join(conditions, " OR ")
+}
+
 func explodeAddress(address string) map[string]any {
 	parts := strings.Split(address, ":")
 	ret := make(map[string]any, len(parts)+1)
@@ -51,14 +125,4 @@ func explodeAddress(address string) map[string]any {
 	ret[fmt.Sprint(len(parts))] = nil
 
 	return ret
-}
-
-func isFilteringOnPartialAddress(value any) bool {
-	switch value := value.(type) {
-	case string:
-		return isPartialAddress(value)
-	default:
-		// If an array is passed, addresses must be full
-		return false
-	}
 }

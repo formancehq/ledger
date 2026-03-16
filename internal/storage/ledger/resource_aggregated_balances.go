@@ -21,6 +21,8 @@ func (h aggregatedBalancesResourceRepositoryHandler) Schema() queries.EntitySche
 
 func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.RepositoryHandlerBuildContext[ledger.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
+	allAddresses, needAddressSegments := collectAddressFilters(query)
+
 	if query.UsePIT() {
 		ret := h.store.newScopedSelect().
 			ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
@@ -44,11 +46,13 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 				Where("effective_date <= ?", query.PIT)
 		}
 
-		if query.UseFilter("address", isFilteringOnPartialAddress) {
+		if needAddressSegments {
 			subQuery := h.store.newScopedSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address_array").
 				Where("accounts.address = accounts_address")
+
+			subQuery = applyLateralAddressFilter(subQuery, allAddresses, query.Builder)
 
 			ret = ret.
 				ColumnExpr("accounts.address_array as accounts_address_array").
@@ -75,7 +79,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 			Column("asset", "accounts_address").
 			ColumnExpr("(input, output)::" + h.store.GetPrefixedRelationName("volumes") + " as volumes")
 
-		if query.UseFilter("metadata") || query.UseFilter("address", isFilteringOnPartialAddress) {
+		if query.UseFilter("metadata") || needAddressSegments {
 			subQuery := h.store.newScopedSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address").
@@ -84,6 +88,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 			if query.UseFilter("address") {
 				subQuery = subQuery.ColumnExpr("address_array as accounts_address_array")
 				ret = ret.Column("accounts_address_array")
+				subQuery = applyLateralAddressFilter(subQuery, allAddresses, query.Builder)
 			}
 			if query.UseFilter("metadata") {
 				subQuery = subQuery.ColumnExpr("metadata")
