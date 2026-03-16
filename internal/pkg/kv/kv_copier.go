@@ -129,10 +129,6 @@ func (o *Optional[T]) Value() T {
 	return o.value
 }
 
-func (o *Optional[T]) SetValue(v T) {
-	o.value = v
-}
-
 func (o *Optional[T]) IsDefined() bool {
 	return o.isDefined
 }

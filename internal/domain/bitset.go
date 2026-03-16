@@ -57,11 +57,6 @@ func (b *ReversionBitset) grow(txID uint64) {
 	b.words = newWords
 }
 
-// Words returns the underlying word slice for serialization.
-func (b *ReversionBitset) Words() []uint64 {
-	return b.words
-}
-
 // MarshalWords serializes the words as a packed little-endian byte slice.
 func (b *ReversionBitset) MarshalWords() []byte {
 	buf := make([]byte, len(b.words)*8)
@@ -70,18 +65,6 @@ func (b *ReversionBitset) MarshalWords() []byte {
 	}
 
 	return buf
-}
-
-// Clone returns a deep copy of the bitset.
-func (b *ReversionBitset) Clone() *ReversionBitset {
-	if b == nil {
-		return nil
-	}
-
-	words := make([]uint64, len(b.words))
-	copy(words, b.words)
-
-	return &ReversionBitset{words: words}
 }
 
 // ReversionBitsetFromWords creates a bitset from a packed little-endian byte slice.

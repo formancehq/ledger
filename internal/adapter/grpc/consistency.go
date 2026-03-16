@@ -38,16 +38,6 @@ func ConsistencyFromContext(ctx context.Context) string {
 	return ConsistencyLinearizable
 }
 
-// IsStaleRead returns true if the context carries a stale consistency level.
-func IsStaleRead(ctx context.Context) bool {
-	return ConsistencyFromContext(ctx) == ConsistencyStale
-}
-
-// IsLeaderRead returns true if the context carries a leader consistency level.
-func IsLeaderRead(ctx context.Context) bool {
-	return ConsistencyFromContext(ctx) == ConsistencyLeader
-}
-
 // consistencyInterceptor reads x-consistency from incoming gRPC metadata
 // and stores the value in context for downstream handlers.
 func consistencyInterceptor() ggrpc.UnaryServerInterceptor {

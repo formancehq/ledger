@@ -39,12 +39,6 @@ func EncodeInt64(dst []byte, v int64) []byte {
 	return dst
 }
 
-// DecodeInt64 decodes a signed int64 from a sortable encoding.
-// The input must be exactly 8 bytes (without the type tag).
-func DecodeInt64(b []byte) int64 {
-	return int64(binary.BigEndian.Uint64(b) ^ 0x8000000000000000)
-}
-
 // EncodeUint64 encodes an unsigned uint64 for use in sortable Pebble keys.
 // Big-endian encoding naturally produces the correct sort order.
 func EncodeUint64(dst []byte, v uint64) []byte {
@@ -55,12 +49,6 @@ func EncodeUint64(dst []byte, v uint64) []byte {
 	dst = append(dst, buf[:]...)
 
 	return dst
-}
-
-// DecodeUint64 decodes an unsigned uint64 from a sortable encoding.
-// The input must be exactly 8 bytes (without the type tag).
-func DecodeUint64(b []byte) uint64 {
-	return binary.BigEndian.Uint64(b)
 }
 
 // EncodeBool encodes a boolean value for use in Pebble keys.
@@ -93,7 +81,3 @@ func EncodeTxID(dst []byte, txID uint64) []byte {
 	return append(dst, buf[:]...)
 }
 
-// DecodeTxID decodes a transaction ID from 8 big-endian bytes.
-func DecodeTxID(b []byte) uint64 {
-	return binary.BigEndian.Uint64(b)
-}
