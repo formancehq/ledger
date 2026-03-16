@@ -67,6 +67,197 @@ type Applier struct {
 	maintenanceReplaySpoolHistogram metric.Float64Histogram
 }
 
+// NewApplier creates a new Applier with all metrics registered on the provided meter.
+func NewApplier(
+	fsm *state.Machine,
+	spool spool.Spool,
+	store *dal.Store,
+	wal wal.WAL,
+	logger logging.Logger,
+	meter metric.Meter,
+	snapshotThreshold uint64,
+	compactionMargin uint64,
+	replayBatchSize int,
+	snapshotFetcherProvider state.SnapshotFetcherProvider,
+) (*Applier, error) {
+	initialStatus := atomic.Int32{}
+	initialStatus.Store(statusNormal)
+
+	a := &Applier{
+		fsm:                     fsm,
+		spool:                   spool,
+		store:                   store,
+		wal:                     wal,
+		futures:                 &SyncMap[uint64, *futures.Future[state.ApplyResult]]{},
+		taskExecutor:            newSingleTaskExecutor(logger),
+		logger:                  logger,
+		snapshotThreshold:       snapshotThreshold,
+		compactionMargin:        compactionMargin,
+		replayBatchSize:         replayBatchSize,
+		snapshotFetcherProvider: snapshotFetcherProvider,
+		status:                  &initialStatus,
+		ch:                      make(chan applyWork, 1),
+	}
+
+	var err error
+
+	a.applyEntriesHistogram, err = meter.Int64Histogram("raft.apply_entries.duration",
+		metric.WithDescription("Time spent applying entries to Machine"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 5000, 10000, 20000, 50000, 100000, 150000, 200000, 300000, 500000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating apply_entries histogram: %w", err)
+	}
+
+	a.applyEntriesBatchSizeCounter, err = meter.Int64Counter("raft.apply_entries.batch_size",
+		metric.WithDescription("Size of batches passed to ApplyEntries"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating batch_size counter: %w", err)
+	}
+
+	a.applyEntriesBatchSizeHistogram, err = meter.Int64Histogram("raft.apply_entries.batch_size_distribution",
+		metric.WithDescription("Distribution of batch sizes passed to ApplyEntries"),
+		metric.WithUnit("1"),
+		metric.WithExplicitBucketBoundaries(
+			1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000, 2000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating batch_size_distribution histogram: %w", err)
+	}
+
+	a.createSnapshotHistogram, err = meter.Float64Histogram("raft.syncer.create_snapshot.duration",
+		metric.WithDescription("Time spent creating snapshot in syncer"),
+		metric.WithUnit("ms"),
+		metric.WithExplicitBucketBoundaries(
+			0, 5, 10, 25, 50, 100, 250, 500, 1000, 5000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating create_snapshot histogram: %w", err)
+	}
+
+	a.snapshotTriggeredCounter, err = meter.Int64Counter("raft.snapshot.triggered",
+		metric.WithDescription("Number of snapshots triggered"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating snapshot_triggered counter: %w", err)
+	}
+
+	a.unspoolDurationHistogram, err = meter.Float64Histogram(
+		"raft.node.unspool.duration",
+		metric.WithDescription("Time spent in unspoolAndResume after a maintenance task (snapshot/checkpoint)"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 5000, 10000, 20000, 50000, 100000, 250000, 500000, 1000000, 2000000, 5000000, 10000000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating unspool_duration histogram: %w", err)
+	}
+
+	a.gatingWaitDurationHistogram, err = meter.Int64Histogram(
+		"raft.node.gating.wait_duration",
+		metric.WithDescription("Time spent waiting for gatingTerminated (maintenance task completion)"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating gating_wait_duration histogram: %w", err)
+	}
+
+	a.readiesDuringGatingHistogram, err = meter.Int64Histogram(
+		"raft.node.gating.readies_processed",
+		metric.WithDescription("Number of Readies processed during each gating period"),
+		metric.WithUnit("1"),
+		metric.WithExplicitBucketBoundaries(
+			0, 1, 2, 3, 5, 10, 20, 50, 100, 200,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating readies_processed histogram: %w", err)
+	}
+
+	a.maintenanceSnapshotHistogram, err = meter.Float64Histogram(
+		"raft.node.maintenance.snapshot_creation.duration",
+		metric.WithDescription("Time spent creating the snapshot during a maintenance task (excluding replay spool)"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 5000000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating maintenance_snapshot histogram: %w", err)
+	}
+
+	a.maintenanceReplaySpoolHistogram, err = meter.Float64Histogram(
+		"raft.node.maintenance.replay_spool.duration",
+		metric.WithDescription("Time spent replaying spooled entries after snapshot creation in a maintenance task"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 5000000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating maintenance_replay_spool histogram: %w", err)
+	}
+
+	return a, nil
+}
+
+// SnapshotThreshold returns the configured snapshot threshold.
+func (a *Applier) SnapshotThreshold() uint64 {
+	return a.snapshotThreshold
+}
+
+// CompactionMargin returns the configured compaction margin.
+func (a *Applier) CompactionMargin() uint64 {
+	return a.compactionMargin
+}
+
+// Store returns the underlying DAL store.
+func (a *Applier) Store() *dal.Store {
+	return a.store
+}
+
+// StoreFuture registers a future for a given command ID.
+func (a *Applier) StoreFuture(commandID uint64, future *futures.Future[state.ApplyResult]) {
+	a.futures.Store(commandID, future)
+}
+
+// DeleteFuture removes the future for a given command ID.
+func (a *Applier) DeleteFuture(commandID uint64) {
+	a.futures.Delete(commandID)
+}
+
+// Interrupt interrupts any running maintenance task.
+func (a *Applier) Interrupt() {
+	a.taskExecutor.interrupt()
+}
+
+// TaskError returns the channel on which task executor errors are reported.
+func (a *Applier) TaskError() <-chan error {
+	return a.taskExecutor.error()
+}
+
+// SetSnapshotWrapper sets the function used to wrap FSM snapshots with cluster metadata.
+func (a *Applier) SetSnapshotWrapper(fn func([]byte) ([]byte, error)) {
+	a.snapshotWrapper = fn
+}
+
+// SetOutOfSync transitions the applier to the out-of-sync status.
+func (a *Applier) SetOutOfSync() {
+	a.status.Store(statusOutOfSync)
+}
+
 // Submit sends committed entries to the Applier goroutine for asynchronous
 // FSM application (or spooling if the node is in a non-normal state).
 func (a *Applier) Submit(entries []raftpb.Entry, confState *raftpb.ConfState, stop chan struct{}) {

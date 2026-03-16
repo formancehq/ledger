@@ -10,7 +10,6 @@ import (
 	"go.etcd.io/etcd/raft/v3"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/futures"
@@ -146,18 +145,3 @@ func (node *Node) failAllPendingReads(err error) {
 	})
 }
 
-// initReadIndexMetric initializes the ReadIndex duration histogram.
-func (node *Node) initReadIndexMetric(meter metric.Meter) error {
-	var err error
-
-	node.readIndexDurationHistogram, err = meter.Int64Histogram(
-		"raft.read_index.duration",
-		metric.WithDescription("Time spent in ReadIndex+WaitForApplied for linearizable reads"),
-		metric.WithUnit("us"),
-		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000,
-		),
-	)
-
-	return err
-}

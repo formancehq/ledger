@@ -320,15 +320,22 @@ func NewCluster(t *testing.T, numNodes int, config ClusterConfig) *Cluster {
 		)
 		require.NoError(t, err)
 
+		nodeLogger := logger.WithFields(map[string]any{"node": nodeID})
+
+		applier, err := NewApplier(
+			fsm, spoolInterceptor, pebbleStore, walInterceptor, nodeLogger, meter,
+			nodeConfig.SnapshotThreshold, nodeConfig.CompactionMargin, nodeConfig.ReplayBatchSize,
+			snapshotFetcherProvider,
+		)
+		require.NoError(t, err)
+
 		node, err := NewNode(
 			nodeConfig,
 			transports[i],
-			pebbleStore,
-			logger.WithFields(map[string]any{"node": nodeID}),
+			applier,
+			nodeLogger,
 			meter,
-			spoolInterceptor,
 			walInterceptor,
-			snapshotFetcherProvider,
 			fsm,
 		)
 		require.NoError(t, err)
@@ -652,15 +659,24 @@ func (c *Cluster) RestartNode(ctx context.Context, nodeID uint64, config Cluster
 		return nil, fmt.Errorf("creating machine: %w", err)
 	}
 
+	restartLogger := c.logger.WithFields(map[string]any{"node": nodeID})
+
+	applier, err := NewApplier(
+		fsm, spoolInterceptor, newStore, walInterceptor, restartLogger, noop.Meter{},
+		nodeConfig.SnapshotThreshold, nodeConfig.CompactionMargin, nodeConfig.ReplayBatchSize,
+		snapshotFetcherProvider,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating applier: %w", err)
+	}
+
 	node, err := NewNode(
 		nodeConfig,
 		clusterNode.Transport,
-		newStore,
-		c.logger.WithFields(map[string]any{"node": nodeID}),
+		applier,
+		restartLogger,
 		noop.Meter{},
-		spoolInterceptor,
 		walInterceptor,
-		snapshotFetcherProvider,
 		fsm,
 	)
 	if err != nil {

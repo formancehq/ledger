@@ -137,6 +137,29 @@ func Module() fx.Option {
 				})
 			},
 			ctrl.GRPCSnapshotFetcherProvider,
+			func(
+				cfg node.NodeConfig,
+				logger logging.Logger,
+				store *dal.Store,
+				meterProvider metric.MeterProvider,
+				sp *spool.Default,
+				w *wal.DefaultWAL,
+				snapshotFetcherProvider state.SnapshotFetcherProvider,
+				machine *state.Machine,
+			) (*node.Applier, error) {
+				return node.NewApplier(
+					machine,
+					sp,
+					store,
+					w,
+					logger,
+					meterProvider.Meter("raft.node"),
+					cfg.SnapshotThreshold,
+					cfg.CompactionMargin,
+					cfg.ReplayBatchSize,
+					snapshotFetcherProvider,
+				)
+			},
 			// Provide events.Proposer from the Raft node (used by event emitter to replicate cursor)
 			func(n *node.Node) events.Proposer {
 				return n
@@ -190,15 +213,13 @@ func Module() fx.Option {
 				params struct {
 					fx.In
 
-					NodeConfig              node.NodeConfig
-					Logger                  logging.Logger
-					Transport               *node.DefaultTransport
-					MeterProvider           metric.MeterProvider
-					Store                   *dal.Store
-					WAL                     *wal.DefaultWAL
-					Spool                   *spool.Default
-					SnapshotFetcherProvider state.SnapshotFetcherProvider
-					Machine                 *state.Machine
+					NodeConfig    node.NodeConfig
+					Logger        logging.Logger
+					Transport     *node.DefaultTransport
+					MeterProvider metric.MeterProvider
+					WAL           *wal.DefaultWAL
+					Applier       *node.Applier
+					Machine       *state.Machine
 				},
 			) (nodeProvideResult, error) {
 				// Check WAL emptiness before NewNode writes the initial snapshot.
@@ -219,12 +240,10 @@ func Module() fx.Option {
 				n, err := node.NewNode(
 					params.NodeConfig,
 					params.Transport,
-					params.Store,
+					params.Applier,
 					params.Logger,
 					params.MeterProvider.Meter("raft.node"),
-					params.Spool,
 					params.WAL,
-					params.SnapshotFetcherProvider,
 					params.Machine,
 				)
 				if err != nil {

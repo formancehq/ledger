@@ -23,8 +23,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
-	"github.com/formancehq/ledger-v3-poc/internal/storage/spool"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/wal"
 )
 
@@ -149,12 +147,10 @@ type Node struct {
 func NewNode(
 	cfg NodeConfig,
 	transport Transport,
-	store *dal.Store,
+	applier *Applier,
 	logger logging.Logger,
 	meter metric.Meter,
-	spool spool.Spool,
 	wal wal.WAL,
-	snapshotFetcherProvider state.SnapshotFetcherProvider,
 	fsm *state.Machine,
 ) (*Node, error) {
 	cfg.SetDefaults()
@@ -386,26 +382,6 @@ func NewNode(
 		}).Infof("WAL peer address scan complete")
 	}
 
-	initialStatus := atomic.Int32{}
-	initialStatus.Store(statusNormal)
-
-	// todo: put outside?
-	applier := &Applier{
-		fsm:                     fsm,
-		spool:                   spool,
-		store:                   store,
-		wal:                     wal,
-		futures:                 &SyncMap[uint64, *futures.Future[state.ApplyResult]]{},
-		taskExecutor:            newSingleTaskExecutor(logger),
-		logger:                  logger,
-		snapshotThreshold:       cfg.SnapshotThreshold,
-		compactionMargin:        cfg.CompactionMargin,
-		replayBatchSize:         cfg.ReplayBatchSize,
-		snapshotFetcherProvider: snapshotFetcherProvider,
-		status:                  &initialStatus,
-		ch:                      make(chan applyWork, 1),
-	}
-
 	node := &Node{
 		logger:           logger,
 		wal:              wal,
@@ -434,39 +410,9 @@ func NewNode(
 	}
 
 	// Wire the snapshot wrapper so the Applier wraps FSM snapshots with peer addresses.
-	applier.snapshotWrapper = node.wrapSnapshot
+	applier.SetSnapshotWrapper(node.wrapSnapshot)
 
-	// Initialize applier metrics
-	applier.applyEntriesHistogram, err = meter.Int64Histogram("raft.apply_entries.duration",
-		metric.WithDescription("Time spent applying entries to Machine"),
-		metric.WithUnit("us"),
-		metric.WithExplicitBucketBoundaries(
-			0, 5000, 10000, 20000, 50000, 100000, 150000, 200000, 300000, 500000,
-		),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	applier.applyEntriesBatchSizeCounter, err = meter.Int64Counter("raft.apply_entries.batch_size",
-		metric.WithDescription("Size of batches passed to ApplyEntries"),
-		metric.WithUnit("1"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	applier.applyEntriesBatchSizeHistogram, err = meter.Int64Histogram("raft.apply_entries.batch_size_distribution",
-		metric.WithDescription("Distribution of batch sizes passed to ApplyEntries"),
-		metric.WithUnit("1"),
-		metric.WithExplicitBucketBoundaries(
-			1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 500, 1000, 2000,
-		),
-	)
-	if err != nil {
-		panic(err)
-	}
-
+	// Initialize node metrics
 	node.appendEntriesHistogram, err = meter.Int64Histogram("raft.append_entries",
 		metric.WithDescription("Time spending appending entries to wal"),
 		metric.WithUnit("us"),
@@ -505,25 +451,6 @@ func NewNode(
 		panic(err)
 	}
 
-	applier.createSnapshotHistogram, err = meter.Float64Histogram("raft.syncer.create_snapshot.duration",
-		metric.WithDescription("Time spent creating snapshot in syncer"),
-		metric.WithUnit("ms"),
-		metric.WithExplicitBucketBoundaries(
-			0, 5, 10, 25, 50, 100, 250, 500, 1000, 5000,
-		),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	applier.snapshotTriggeredCounter, err = meter.Int64Counter("raft.snapshot.triggered",
-		metric.WithDescription("Number of snapshots triggered"),
-		metric.WithUnit("1"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
 	node.readyWaitDurationHistogram, err = meter.Int64Histogram(
 		"raft.node.ready.wait_duration",
 		metric.WithDescription("Time spent waiting for a Ready from Raft"),
@@ -548,67 +475,15 @@ func NewNode(
 		panic(err)
 	}
 
-	applier.unspoolDurationHistogram, err = meter.Float64Histogram(
-		"raft.node.unspool.duration",
-		metric.WithDescription("Time spent in unspoolAndResume after a maintenance task (snapshot/checkpoint)"),
+	node.readIndexDurationHistogram, err = meter.Int64Histogram(
+		"raft.read_index.duration",
+		metric.WithDescription("Time spent in ReadIndex+WaitForApplied for linearizable reads"),
 		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
-			0, 5000, 10000, 20000, 50000, 100000, 250000, 500000, 1000000, 2000000, 5000000, 10000000,
+			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000,
 		),
 	)
 	if err != nil {
-		panic(err)
-	}
-
-	applier.gatingWaitDurationHistogram, err = meter.Int64Histogram(
-		"raft.node.gating.wait_duration",
-		metric.WithDescription("Time spent waiting for gatingTerminated (maintenance task completion)"),
-		metric.WithUnit("us"),
-		metric.WithExplicitBucketBoundaries(
-			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000,
-		),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	applier.readiesDuringGatingHistogram, err = meter.Int64Histogram(
-		"raft.node.gating.readies_processed",
-		metric.WithDescription("Number of Readies processed during each gating period"),
-		metric.WithUnit("1"),
-		metric.WithExplicitBucketBoundaries(
-			0, 1, 2, 3, 5, 10, 20, 50, 100, 200,
-		),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	applier.maintenanceSnapshotHistogram, err = meter.Float64Histogram(
-		"raft.node.maintenance.snapshot_creation.duration",
-		metric.WithDescription("Time spent creating the snapshot during a maintenance task (excluding replay spool)"),
-		metric.WithUnit("us"),
-		metric.WithExplicitBucketBoundaries(
-			0, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 5000000,
-		),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	applier.maintenanceReplaySpoolHistogram, err = meter.Float64Histogram(
-		"raft.node.maintenance.replay_spool.duration",
-		metric.WithDescription("Time spent replaying spooled entries after snapshot creation in a maintenance task"),
-		metric.WithUnit("us"),
-		metric.WithExplicitBucketBoundaries(
-			0, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 5000000,
-		),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	if err := node.initReadIndexMetric(meter); err != nil {
 		panic(err)
 	}
 
@@ -620,16 +495,17 @@ func NewNode(
 
 	if !isStoreUpToDate {
 		logger.Infof("Store is not up to date, resuming from snapshot and tagging node as out of sync")
-		applier.status.Store(statusOutOfSync)
+		applier.SetOutOfSync()
 	} else {
 		// Recovery: if a period is in CLOSING state but no seal checkpoint exists,
 		// the node crashed after ClosePeriod batch.Commit() but before checkpoint creation.
 		// Pebble state is exactly at the ClosePeriod boundary right now (spool replay hasn't run).
+		// todo: not the right place for that (move in fsm directly?)
 		if period := fsm.ClosingPeriod(); period != nil {
-			if _, exists := store.TemporaryCheckpointPath("seal"); !exists {
+			if _, exists := applier.Store().TemporaryCheckpointPath("seal"); !exists {
 				logger.Infof("Recovering: creating seal checkpoint for closing period %d", period.GetId())
 
-				checkpointPath, err := store.CreateTemporaryCheckpoint("seal")
+				checkpointPath, err := applier.Store().CreateTemporaryCheckpoint("seal")
 				if err != nil {
 					return nil, fmt.Errorf("creating recovery seal checkpoint: %w", err)
 				}
@@ -644,7 +520,7 @@ func NewNode(
 			}
 		}
 
-		storeLastAppliedIndex, err := query.ReadLastAppliedIndex(store)
+		storeLastAppliedIndex, err := query.ReadLastAppliedIndex(applier.Store())
 		if err != nil {
 			return nil, fmt.Errorf("getting store last applied index: %w", err)
 		}
@@ -660,7 +536,7 @@ func NewNode(
 		}
 
 		// Re-read after WAL replay — it may have advanced the index.
-		storeLastAppliedIndex, err = query.ReadLastAppliedIndex(store)
+		storeLastAppliedIndex, err = query.ReadLastAppliedIndex(applier.Store())
 		if err != nil {
 			return nil, fmt.Errorf("getting store last applied index after WAL replay: %w", err)
 		}
@@ -669,6 +545,8 @@ func NewNode(
 			"fromIndex": storeLastAppliedIndex,
 		}).Infof("Starting spool replay")
 
+		// todo: is it necessary to replay spool since we re read from the wal?
+		// why don't we just need to replay the wal then clear the spool?
 		if err := applier.replaySpool(context.Background(), storeLastAppliedIndex); err != nil {
 			return nil, fmt.Errorf("replaying spool: %w", err)
 		}
@@ -712,11 +590,11 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 		return fmt.Errorf("reading WAL last index: %w", err)
 	}
 
-	if walLastIdx <= lastSnap.Metadata.Index+node.applier.snapshotThreshold {
+	if walLastIdx <= lastSnap.Metadata.Index+node.applier.SnapshotThreshold() {
 		return nil
 	}
 
-	appliedIndex, err := query.ReadLastAppliedIndex(node.applier.store)
+	appliedIndex, err := query.ReadLastAppliedIndex(node.applier.Store())
 	if err != nil {
 		return fmt.Errorf("reading applied index: %w", err)
 	}
@@ -763,8 +641,8 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 		"appliedIndex": appliedIndex,
 	}).Infof("Saved snapshot to WAL")
 
-	if appliedIndex > node.applier.compactionMargin {
-		compactIdx := appliedIndex - node.applier.compactionMargin
+	if appliedIndex > node.applier.CompactionMargin() {
+		compactIdx := appliedIndex - node.applier.CompactionMargin()
 		compactStart := time.Now()
 
 		err := node.wal.Compact(compactIdx)
@@ -1297,7 +1175,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					node.readies <- node.rawNode.Ready()
 				case <-stop:
 					node.logger.Infof("Stopping readyLoop as context was cancelled")
-					node.applier.taskExecutor.interrupt()
+					node.applier.Interrupt()
 
 					return nil
 				case nodeID := <-node.transport.Unreachable():
@@ -1327,7 +1205,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					p.Resolve(nil, node.rawNode.Propose(p.data))
 				case cmd := <-node.clusterCommandCh:
 					cmd.errCh <- cmd.fn()
-				case err := <-node.applier.taskExecutor.error():
+				case err := <-node.applier.TaskError():
 					return fmt.Errorf("task executor error: %w", err)
 				}
 			}
@@ -1404,7 +1282,7 @@ func (node *Node) Propose(proposal *Proposal) (*futures.Future[state.ApplyResult
 	// The proposal's embedded Future is for Raft consensus (resolved by rawNode.Propose).
 	// The fsmFuture is for Machine processing (resolved when entry is applied).
 	fsmFuture := futures.New[state.ApplyResult]()
-	node.applier.futures.Store(proposal.commandID, fsmFuture)
+	node.applier.StoreFuture(proposal.commandID, fsmFuture)
 
 	select {
 	case node.proposeCh <- proposal:
@@ -1412,7 +1290,7 @@ func (node *Node) Propose(proposal *Proposal) (*futures.Future[state.ApplyResult
 
 		return fsmFuture, nil
 	default:
-		node.applier.futures.Delete(proposal.commandID)
+		node.applier.DeleteFuture(proposal.commandID)
 
 		return nil, ErrProposalQueueFull
 	}

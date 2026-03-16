@@ -3,7 +3,6 @@ package node
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -79,39 +78,15 @@ func newTestApplierSetup(t *testing.T, snapshotThreshold uint64) *testApplierSet
 	require.NoError(t, err)
 	require.NoError(t, w.CreateSnapshot(0, &confState, snapshotData))
 
-	initialStatus := atomic.Int32{}
-	initialStatus.Store(statusNormal)
-
 	if snapshotThreshold == 0 {
 		snapshotThreshold = 1000
 	}
 
-	applier := &Applier{
-		fsm:               fsm,
-		spool:             defaultSpool,
-		store:             pebbleStore,
-		wal:               w,
-		futures:           &SyncMap[uint64, *futures.Future[state.ApplyResult]]{},
-		taskExecutor:      newSingleTaskExecutor(logger),
-		logger:            logger,
-		snapshotThreshold: snapshotThreshold,
-		compactionMargin:  0,
-		replayBatchSize:   1000,
-		status:            &initialStatus,
-		ch:                make(chan applyWork, 1),
-	}
-
-	// Initialize all metric instruments with noop meter.
-	applier.applyEntriesHistogram, _ = meter.Int64Histogram("test.apply_entries")
-	applier.applyEntriesBatchSizeCounter, _ = meter.Int64Counter("test.batch_size")
-	applier.applyEntriesBatchSizeHistogram, _ = meter.Int64Histogram("test.batch_size_dist")
-	applier.createSnapshotHistogram, _ = meter.Float64Histogram("test.create_snapshot")
-	applier.snapshotTriggeredCounter, _ = meter.Int64Counter("test.snapshot_triggered")
-	applier.unspoolDurationHistogram, _ = meter.Float64Histogram("test.unspool")
-	applier.gatingWaitDurationHistogram, _ = meter.Int64Histogram("test.gating_wait")
-	applier.readiesDuringGatingHistogram, _ = meter.Int64Histogram("test.readies_during_gating")
-	applier.maintenanceSnapshotHistogram, _ = meter.Float64Histogram("test.maintenance_snapshot")
-	applier.maintenanceReplaySpoolHistogram, _ = meter.Float64Histogram("test.maintenance_replay")
+	applier, err := NewApplier(
+		fsm, defaultSpool, pebbleStore, w, logger, meter,
+		snapshotThreshold, 0, 1000, nil,
+	)
+	require.NoError(t, err)
 
 	stop := make(chan struct{})
 
@@ -202,7 +177,7 @@ func TestApplierRunSpoolsWhenNotNormal(t *testing.T) {
 	setup := newTestApplierSetup(t, 0)
 
 	// Set status to syncing before starting.
-	setup.applier.status.Store(statusSyncing)
+	setup.applier.SetOutOfSync() // Set to non-normal status for spooling test
 
 	// Start the Run goroutine.
 	runDone := make(chan error, 1)
@@ -326,7 +301,7 @@ func TestApplierFutureResolution(t *testing.T) {
 	// Create entry and register a future for the proposal ID.
 	entry, proposalID := makeCreateLedgerEntry(t, 1, "future-ledger")
 	future := futures.New[state.ApplyResult]()
-	setup.applier.futures.Store(proposalID, future)
+	setup.applier.StoreFuture(proposalID, future)
 
 	// Start the Run goroutine.
 	runDone := make(chan error, 1)
