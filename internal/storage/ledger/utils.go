@@ -3,9 +3,11 @@ package ledger
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/formancehq/go-libs/v4/query"
-	"github.com/uptrace/bun"
 	"strings"
+
+	"github.com/uptrace/bun"
+
+	"github.com/formancehq/go-libs/v4/query"
 )
 
 func isPartialAddress(address string) bool {
@@ -47,7 +49,9 @@ func filterAccountAddress(address, key string) string {
 
 // collectAddressFilters visits all address filter values (without short-circuiting)
 // and returns the collected addresses and whether any partial address was found.
-func collectAddressFilters(q interface{ UseFilter(string, ...func(any) bool) bool }) ([]string, bool) {
+func collectAddressFilters(q interface {
+	UseFilter(string, ...func(any) bool) bool
+}) ([]string, bool) {
 	var addresses []string
 	var needSegments bool
 	q.UseFilter("address", func(value any) bool {
