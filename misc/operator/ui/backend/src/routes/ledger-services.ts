@@ -264,7 +264,7 @@ async function ensureLedgerAgentForUser(
       },
     },
     spec: {
-      scopes: ["read", "write"],
+      scopes: ["ledger:read", "ledger:write", "ledger:admin"],
       selector: {
         matchLabels: {
           "ledger.formance.com/owner": ownerLabel,

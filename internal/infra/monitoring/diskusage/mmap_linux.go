@@ -13,6 +13,7 @@ import (
 // (in bytes) of all memory mappings backed by filePath. This captures the
 // physical RAM consumed by Pebble's mmap, which is invisible to Go's runtime
 // memory stats.
+// todo: deadcode, it was used for bbolt
 func mmapRSSBytes(filePath string) (int64, error) {
 	f, err := os.Open("/proc/self/smaps")
 	if err != nil {

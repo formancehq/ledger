@@ -847,18 +847,24 @@ function CodeBlock({
   );
 }
 
-const RELEASES_URL = "https://github.com/formancehq/ledger/releases";
+const RELEASES_URL = "https://github.com/formancehq/ledger-v3-poc/releases";
 
 const INSTALL_SCRIPT_GH = `# Install via GitHub CLI (recommended for private repos)
 ARCH=$(uname -m); [ "$ARCH" = "x86_64" ] && ARCH="amd64"
-gh release download --repo formancehq/ledger -p "ledger_$(uname -s | tr '[:upper:]' '[:lower:]')-$ARCH.tar.gz" -O - | tar xz
-xattr -d com.apple.quarantine ledgerctl 2>/dev/null  # macOS only: remove Gatekeeper quarantine
-sudo mv ledgerctl /usr/local/bin/`;
+gh release download --repo formancehq/ledger-v3-poc -p "ledger-v3_$(uname -s | tr '[:upper:]' '[:lower:]')-$ARCH.tar.gz" -D /tmp/ledgerctl-install
+tar xzf /tmp/ledgerctl-install/ledger-v3_*.tar.gz -C /tmp/ledgerctl-install
+xattr -d com.apple.quarantine /tmp/ledgerctl-install/ledgerctl 2>/dev/null  # macOS only: remove Gatekeeper quarantine
+sudo mv /tmp/ledgerctl-install/ledgerctl /usr/local/bin/
+rm -rf /tmp/ledgerctl-install`;
 
 const INSTALL_SCRIPT_CURL = `# Or via curl (requires a GitHub token for private repos)
 ARCH=$(uname -m); [ "$ARCH" = "x86_64" ] && ARCH="amd64"
-curl -sSfL -H "Authorization: token \${GITHUB_TOKEN}" \\
-  "https://github.com/formancehq/ledger/releases/latest/download/ledger_$(uname -s | tr '[:upper:]' '[:lower:]')-$ARCH.tar.gz" | tar xz
+ASSET="ledger-v3_$(uname -s | tr '[:upper:]' '[:lower:]')-$ARCH.tar.gz"
+RELEASE=$(curl -sSf -H "Authorization: token \${GITHUB_TOKEN}" \\
+  "https://api.github.com/repos/formancehq/ledger-v3-poc/releases/latest")
+ASSET_ID=$(echo "$RELEASE" | grep -B3 "\\"name\\": \\"$ASSET\\"" | grep '"id":' | head -1 | tr -dc '0-9')
+curl -sSfL -H "Authorization: token \${GITHUB_TOKEN}" -H "Accept: application/octet-stream" \\
+  "https://api.github.com/repos/formancehq/ledger-v3-poc/releases/assets/$ASSET_ID" | tar xz
 xattr -d com.apple.quarantine ledgerctl 2>/dev/null  # macOS only: remove Gatekeeper quarantine
 sudo mv ledgerctl /usr/local/bin/`;
 
