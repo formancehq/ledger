@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cockroachdb/pebble"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
 
@@ -1266,8 +1267,22 @@ func hasMirrorConfigChange(proposal *raftcmdpb.Proposal) bool {
 }
 
 // CreateSnapshot creates a snapshot of the Machine state.
+// Cache data is persisted to Pebble under the 0xFF prefix before creating the
+// checkpoint so that the checkpoint includes it. The MemorySnapshot itself is
+// lightweight (no cache data).
 func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	totalStart := time.Now()
+
+	// Persist cache into Pebble so it's included in the checkpoint
+	persistStart := time.Now()
+
+	if err := fsm.persistCacheToStore(); err != nil {
+		return nil, fmt.Errorf("persisting cache to store: %w", err)
+	}
+
+	fsm.logger.WithFields(map[string]any{
+		"duration": time.Since(persistStart).String(),
+	}).Infof("Persisted cache to Pebble")
 
 	checkpointID, err := fsm.dataStore.CreateSnapshot()
 	if err != nil {
@@ -1296,8 +1311,6 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	snapshot := &raftcmdpb.MemorySnapshot{
 		NextSequenceId:       fsm.nextSequenceID,
 		LastLogHash:          fsm.lastLogHash,
-		Gen0:                 serializeCacheGeneration(fsm.Registry.Cache, 0),
-		Gen1:                 serializeCacheGeneration(fsm.Registry.Cache, 1),
 		CheckpointId:         checkpointID,
 		CurrentGeneration:    fsm.Registry.Cache.CurrentGeneration(),
 		LastAppliedTimestamp: fsm.lastAppliedTimestamp,
@@ -1326,18 +1339,53 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		"serializeDuration": time.Since(serializeStart).String(),
 		"snapshotSize":      n,
 		"checkpointId":      checkpointID,
-		"gen0Volumes":       countGenVolumes(snapshot.GetGen0()),
-		"gen1Volumes":       countGenVolumes(snapshot.GetGen1()),
 	}).Infof("Created MemorySnapshot")
 
 	return fsm.snapshotBuf[:n], nil
 }
 
-// serializeCacheGeneration serializes either Gen0 (genIndex=0) or Gen1 (genIndex=1) from the cache.
-func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.GenerationSnapshot {
-	if cache == nil {
-		return nil
+// persistCacheToStore writes all cache data into Pebble under the 0xFF prefix.
+// This is called before creating a checkpoint so the checkpoint includes the cache.
+func (fsm *Machine) persistCacheToStore() error {
+	batch := fsm.dataStore.NewBatch()
+	defer func() { _ = batch.Cancel() }()
+
+	// Clear previous cache snapshot data: delete range [0xFF, 0xFF 0xFF 0x01)
+	// This covers all per-gen data and gen metadata but stops before the cache meta key.
+	// Then we re-write everything fresh.
+	if err := batch.DeleteRangeNoSync(
+		[]byte{dal.KeyPrefixCacheSnapshot},
+		[]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey, 0x01},
+	); err != nil {
+		return fmt.Errorf("clearing cache snapshot range: %w", err)
 	}
+
+	// Persist both generations
+	for genIndex := range 2 {
+		genByte := byte(genIndex)
+
+		if err := fsm.persistCacheGeneration(batch, genByte); err != nil {
+			return fmt.Errorf("persisting cache gen%d: %w", genIndex, err)
+		}
+	}
+
+	// Write cache-level metadata
+	if err := batch.SetProto(
+		[]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey},
+		&raftcmdpb.CacheSnapshotMeta{
+			CurrentGeneration: fsm.Registry.Cache.CurrentGeneration(),
+		},
+	); err != nil {
+		return fmt.Errorf("writing cache snapshot meta: %w", err)
+	}
+
+	return batch.Commit()
+}
+
+// persistCacheGeneration writes a single cache generation to Pebble.
+func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error {
+	c := fsm.Registry.Cache
+	genIndex := int(genByte)
 
 	var (
 		baseIndex            uint64
@@ -1352,142 +1400,386 @@ func serializeCacheGeneration(cache *cache.Cache, genIndex int) *raftcmdpb.Gener
 	)
 
 	if genIndex == 0 {
-		baseIndex = cache.BaseIndex.Gen0
-		volumeStore = cache.Volumes.Gen0()
-		metadataStore = cache.AccountMetadata.Gen0()
-
-		ledgerStore = cache.Ledgers.Gen0()
-		boundaryStore = cache.Boundaries.Gen0()
-		referenceStore = cache.References.Gen0()
-		transactionStore = cache.Transactions.Gen0()
-		numscriptParsedStore = cache.NumscriptParsed.Gen0()
-		idempotencyStore = cache.IdempotencyKeys.Gen0()
+		baseIndex = c.BaseIndex.Gen0
+		volumeStore = c.Volumes.Gen0()
+		metadataStore = c.AccountMetadata.Gen0()
+		ledgerStore = c.Ledgers.Gen0()
+		boundaryStore = c.Boundaries.Gen0()
+		referenceStore = c.References.Gen0()
+		transactionStore = c.Transactions.Gen0()
+		numscriptParsedStore = c.NumscriptParsed.Gen0()
+		idempotencyStore = c.IdempotencyKeys.Gen0()
 	} else {
-		baseIndex = cache.BaseIndex.Gen1
-		volumeStore = cache.Volumes.Gen1()
-		metadataStore = cache.AccountMetadata.Gen1()
-
-		ledgerStore = cache.Ledgers.Gen1()
-		boundaryStore = cache.Boundaries.Gen1()
-		referenceStore = cache.References.Gen1()
-		transactionStore = cache.Transactions.Gen1()
-		numscriptParsedStore = cache.NumscriptParsed.Gen1()
-		idempotencyStore = cache.IdempotencyKeys.Gen1()
+		baseIndex = c.BaseIndex.Gen1
+		volumeStore = c.Volumes.Gen1()
+		metadataStore = c.AccountMetadata.Gen1()
+		ledgerStore = c.Ledgers.Gen1()
+		boundaryStore = c.Boundaries.Gen1()
+		referenceStore = c.References.Gen1()
+		transactionStore = c.Transactions.Gen1()
+		numscriptParsedStore = c.NumscriptParsed.Gen1()
+		idempotencyStore = c.IdempotencyKeys.Gen1()
 	}
 
-	snapshot := &raftcmdpb.GenerationSnapshot{
-		BaseIndex:       baseIndex,
-		Volumes:         make([]*raftcmdpb.VolumeAttributeSnapshotEntry, 0, volumeStore.Size()),
-		Metadata:        make([]*raftcmdpb.MetadataAttributeEntry, 0, metadataStore.Size()),
-		Ledgers:         make([]*raftcmdpb.LedgerAttributeEntry, 0, ledgerStore.Size()),
-		Boundaries:      make([]*raftcmdpb.BoundaryAttributeEntry, 0, boundaryStore.Size()),
-		References:      make([]*raftcmdpb.TransactionReferenceAttributeEntry, 0, referenceStore.Size()),
-		Transactions:    make([]*raftcmdpb.TransactionStateAttributeEntry, 0, transactionStore.Size()),
-		NumscriptParsed: make([]*raftcmdpb.NumscriptParsedAttributeEntry, 0, numscriptParsedStore.Size()),
-		IdempotencyKeys: make([]*raftcmdpb.IdempotencyKeyAttributeEntry, 0, idempotencyStore.Size()),
+	// Write generation metadata
+	if err := batch.SetProto(
+		[]byte{dal.KeyPrefixCacheSnapshot, genByte, dal.CacheGenMeta},
+		&raftcmdpb.CacheGenerationMeta{BaseIndex: baseIndex},
+	); err != nil {
+		return fmt.Errorf("writing gen meta: %w", err)
 	}
 
-	// Serialize Volumes KeyStore
+	// Helper to build a cache key: [0xFF][gen][type][16-byte U128]
+	makeKey := func(cacheType byte, u128 attributes.U128) []byte {
+		key := make([]byte, 3+16)
+		key[0] = dal.KeyPrefixCacheSnapshot
+		key[1] = genByte
+		key[2] = cacheType
+		copy(key[3:], u128[:])
+
+		return key
+	}
+
+	// Volumes
 	for u128, entry := range volumeStore.Iter() {
-		ksEntry := &raftcmdpb.VolumeAttributeSnapshotEntry{
-			Id: &raftcmdpb.AttributeID{
-				Id:  u128[:],
-				Tag: entry.Tag,
-			},
+		e := &raftcmdpb.VolumeAttributeSnapshotEntry{
+			Id: &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 		}
 		if entry.Data != nil {
-			ksEntry.Input = entry.Data.GetInput()
-			ksEntry.Output = entry.Data.GetOutput()
+			e.Input = entry.Data.GetInput()
+			e.Output = entry.Data.GetOutput()
 		}
 
-		snapshot.Volumes = append(snapshot.Volumes, ksEntry)
+		if err := batch.SetProto(makeKey(dal.CacheTypeVolumes, u128), e); err != nil {
+			return err
+		}
 	}
 
-	// Serialize Metadata KeyStore
+	// Metadata
 	for u128, entry := range metadataStore.Iter() {
-		ksEntry := &raftcmdpb.MetadataAttributeEntry{
-			Id: &raftcmdpb.AttributeID{
-				Id:  u128[:],
-				Tag: entry.Tag,
-			},
+		e := &raftcmdpb.MetadataAttributeEntry{
+			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			Value: entry.Data,
 		}
-		snapshot.Metadata = append(snapshot.Metadata, ksEntry)
+		if err := batch.SetProto(makeKey(dal.CacheTypeMetadata, u128), e); err != nil {
+			return err
+		}
 	}
 
-	// Serialize Ledgers KeyStore
+	// Ledgers
 	for u128, entry := range ledgerStore.Iter() {
-		ksEntry := &raftcmdpb.LedgerAttributeEntry{
-			Id: &raftcmdpb.AttributeID{
-				Id:  u128[:],
-				Tag: entry.Tag,
-			},
+		e := &raftcmdpb.LedgerAttributeEntry{
+			Id:   &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			Info: entry.Data,
 		}
-		snapshot.Ledgers = append(snapshot.Ledgers, ksEntry)
+		if err := batch.SetProto(makeKey(dal.CacheTypeLedgers, u128), e); err != nil {
+			return err
+		}
 	}
 
-	// Serialize Boundaries KeyStore
+	// Boundaries
 	for u128, entry := range boundaryStore.Iter() {
-		ksEntry := &raftcmdpb.BoundaryAttributeEntry{
-			Id: &raftcmdpb.AttributeID{
-				Id:  u128[:],
-				Tag: entry.Tag,
-			},
+		e := &raftcmdpb.BoundaryAttributeEntry{
+			Id:         &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			Boundaries: entry.Data,
 		}
-		snapshot.Boundaries = append(snapshot.Boundaries, ksEntry)
+		if err := batch.SetProto(makeKey(dal.CacheTypeBoundaries, u128), e); err != nil {
+			return err
+		}
 	}
 
-	// Serialize References KeyStore
+	// References
 	for u128, entry := range referenceStore.Iter() {
-		ksEntry := &raftcmdpb.TransactionReferenceAttributeEntry{
-			Id: &raftcmdpb.AttributeID{
-				Id:  u128[:],
-				Tag: entry.Tag,
-			},
+		e := &raftcmdpb.TransactionReferenceAttributeEntry{
+			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			Value: entry.Data,
 		}
-		snapshot.References = append(snapshot.References, ksEntry)
+		if err := batch.SetProto(makeKey(dal.CacheTypeReferences, u128), e); err != nil {
+			return err
+		}
 	}
 
-	// Serialize Transactions KeyStore
+	// Transactions
 	for u128, entry := range transactionStore.Iter() {
-		ksEntry := &raftcmdpb.TransactionStateAttributeEntry{
-			Id: &raftcmdpb.AttributeID{
-				Id:  u128[:],
-				Tag: entry.Tag,
-			},
+		e := &raftcmdpb.TransactionStateAttributeEntry{
+			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			State: entry.Data,
 		}
-		snapshot.Transactions = append(snapshot.Transactions, ksEntry)
+		if err := batch.SetProto(makeKey(dal.CacheTypeTransactions, u128), e); err != nil {
+			return err
+		}
 	}
 
-	// Serialize NumscriptParsed KeyStore
+	// NumscriptParsed
 	for u128, entry := range numscriptParsedStore.Iter() {
-		ksEntry := &raftcmdpb.NumscriptParsedAttributeEntry{
-			Id: &raftcmdpb.AttributeID{
-				Id:  u128[:],
-				Tag: entry.Tag,
-			},
+		e := &raftcmdpb.NumscriptParsedAttributeEntry{
+			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			Plain: entry.Data,
 		}
-		snapshot.NumscriptParsed = append(snapshot.NumscriptParsed, ksEntry)
+		if err := batch.SetProto(makeKey(dal.CacheTypeNumscript, u128), e); err != nil {
+			return err
+		}
 	}
 
-	// Serialize IdempotencyKeys KeyStore
+	// IdempotencyKeys
 	for u128, entry := range idempotencyStore.Iter() {
-		ksEntry := &raftcmdpb.IdempotencyKeyAttributeEntry{
-			Id: &raftcmdpb.AttributeID{
-				Id:  u128[:],
-				Tag: entry.Tag,
-			},
+		e := &raftcmdpb.IdempotencyKeyAttributeEntry{
+			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
 			Value: entry.Data,
 		}
-		snapshot.IdempotencyKeys = append(snapshot.IdempotencyKeys, ksEntry)
+		if err := batch.SetProto(makeKey(dal.CacheTypeIdempotency, u128), e); err != nil {
+			return err
+		}
 	}
 
-	return snapshot
+	return nil
+}
+
+// RestoreCacheFromStore rebuilds the in-memory cache from Pebble (0xFF prefix).
+// Called on restart (when store is up to date) and after follower sync.
+func (fsm *Machine) RestoreCacheFromStore() error {
+	restoreStart := time.Now()
+
+	// Read cache-level metadata
+	metaVal, closer, err := fsm.dataStore.Get([]byte{dal.KeyPrefixCacheSnapshot, dal.CacheMetaKey})
+	if err != nil {
+		// No cache data in Pebble — leave cache empty (fresh node)
+		fsm.logger.Infof("No cache snapshot found in Pebble, starting with empty cache")
+
+		return nil
+	}
+
+	meta := &raftcmdpb.CacheSnapshotMeta{}
+	if err := meta.UnmarshalVT(metaVal); err != nil {
+		_ = closer.Close()
+
+		return fmt.Errorf("unmarshaling cache snapshot meta: %w", err)
+	}
+
+	_ = closer.Close()
+
+	fsm.Registry.Cache.Reset()
+
+	// Restore both generations
+	for genIndex := range 2 {
+		genByte := byte(genIndex)
+
+		if err := fsm.restoreCacheGeneration(genByte); err != nil {
+			return fmt.Errorf("restoring cache gen%d: %w", genIndex, err)
+		}
+	}
+
+	fsm.Registry.Cache.SetCurrentGeneration(meta.GetCurrentGeneration())
+
+	fsm.logger.WithFields(map[string]any{
+		"duration":          time.Since(restoreStart).String(),
+		"currentGeneration": meta.GetCurrentGeneration(),
+	}).Infof("Restored cache from Pebble")
+
+	return nil
+}
+
+// restoreCacheGeneration restores a single cache generation from Pebble.
+func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
+	genIndex := int(genByte)
+
+	// Read generation metadata
+	genMetaKey := []byte{dal.KeyPrefixCacheSnapshot, genByte, dal.CacheGenMeta}
+
+	genMetaVal, closer, err := fsm.dataStore.Get(genMetaKey)
+	if err != nil {
+		return nil // No data for this generation
+	}
+
+	genMeta := &raftcmdpb.CacheGenerationMeta{}
+	if err := genMeta.UnmarshalVT(genMetaVal); err != nil {
+		_ = closer.Close()
+
+		return fmt.Errorf("unmarshaling gen meta: %w", err)
+	}
+
+	_ = closer.Close()
+
+	if genIndex == 0 {
+		fsm.Registry.Cache.BaseIndex.Gen0 = genMeta.GetBaseIndex()
+	} else {
+		fsm.Registry.Cache.BaseIndex.Gen1 = genMeta.GetBaseIndex()
+	}
+
+	var (
+		volumeStore          kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
+		metadataStore        kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
+		ledgerStore          kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
+		boundaryStore        kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
+		referenceStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
+		transactionStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
+		numscriptParsedStore kv.KV[attributes.U128, attributes.Entry[string]]
+		idempotencyStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.IdempotencyKeyValue]]
+	)
+
+	if genIndex == 0 {
+		volumeStore = fsm.Registry.Cache.Volumes.Gen0()
+		metadataStore = fsm.Registry.Cache.AccountMetadata.Gen0()
+		ledgerStore = fsm.Registry.Cache.Ledgers.Gen0()
+		boundaryStore = fsm.Registry.Cache.Boundaries.Gen0()
+		referenceStore = fsm.Registry.Cache.References.Gen0()
+		transactionStore = fsm.Registry.Cache.Transactions.Gen0()
+		numscriptParsedStore = fsm.Registry.Cache.NumscriptParsed.Gen0()
+		idempotencyStore = fsm.Registry.Cache.IdempotencyKeys.Gen0()
+	} else {
+		volumeStore = fsm.Registry.Cache.Volumes.Gen1()
+		metadataStore = fsm.Registry.Cache.AccountMetadata.Gen1()
+		ledgerStore = fsm.Registry.Cache.Ledgers.Gen1()
+		boundaryStore = fsm.Registry.Cache.Boundaries.Gen1()
+		referenceStore = fsm.Registry.Cache.References.Gen1()
+		transactionStore = fsm.Registry.Cache.Transactions.Gen1()
+		numscriptParsedStore = fsm.Registry.Cache.NumscriptParsed.Gen1()
+		idempotencyStore = fsm.Registry.Cache.IdempotencyKeys.Gen1()
+	}
+
+	// Restore each cache type by iterating over its prefix
+	type restoreSpec struct {
+		cacheType byte
+		restore   func(u128 attributes.U128, value []byte) error
+	}
+
+	specs := []restoreSpec{
+		{dal.CacheTypeVolumes, func(u128 attributes.U128, value []byte) error {
+			e := &raftcmdpb.VolumeAttributeSnapshotEntry{}
+			if err := e.UnmarshalVT(value); err != nil {
+				return err
+			}
+			pair := &raftcmdpb.VolumePair{Input: e.GetInput(), Output: e.GetOutput()}
+			volumeStore.Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
+				Tag: e.GetId().GetTag(), Data: pair,
+			})
+
+			return nil
+		}},
+		{dal.CacheTypeMetadata, func(u128 attributes.U128, value []byte) error {
+			e := &raftcmdpb.MetadataAttributeEntry{}
+			if err := e.UnmarshalVT(value); err != nil {
+				return err
+			}
+			metadataStore.Put(u128, attributes.Entry[*commonpb.MetadataValue]{
+				Tag: e.GetId().GetTag(), Data: e.GetValue(),
+			})
+
+			return nil
+		}},
+		{dal.CacheTypeLedgers, func(u128 attributes.U128, value []byte) error {
+			e := &raftcmdpb.LedgerAttributeEntry{}
+			if err := e.UnmarshalVT(value); err != nil {
+				return err
+			}
+			ledgerStore.Put(u128, attributes.Entry[*commonpb.LedgerInfo]{
+				Tag: e.GetId().GetTag(), Data: e.GetInfo(),
+			})
+
+			return nil
+		}},
+		{dal.CacheTypeBoundaries, func(u128 attributes.U128, value []byte) error {
+			e := &raftcmdpb.BoundaryAttributeEntry{}
+			if err := e.UnmarshalVT(value); err != nil {
+				return err
+			}
+			boundaryStore.Put(u128, attributes.Entry[*raftcmdpb.LedgerBoundaries]{
+				Tag: e.GetId().GetTag(), Data: e.GetBoundaries(),
+			})
+
+			return nil
+		}},
+		{dal.CacheTypeReferences, func(u128 attributes.U128, value []byte) error {
+			e := &raftcmdpb.TransactionReferenceAttributeEntry{}
+			if err := e.UnmarshalVT(value); err != nil {
+				return err
+			}
+			referenceStore.Put(u128, attributes.Entry[*commonpb.TransactionReferenceValue]{
+				Tag: e.GetId().GetTag(), Data: e.GetValue(),
+			})
+
+			return nil
+		}},
+		{dal.CacheTypeTransactions, func(u128 attributes.U128, value []byte) error {
+			e := &raftcmdpb.TransactionStateAttributeEntry{}
+			if err := e.UnmarshalVT(value); err != nil {
+				return err
+			}
+			transactionStore.Put(u128, attributes.Entry[*commonpb.TransactionState]{
+				Tag: e.GetId().GetTag(), Data: e.GetState(),
+			})
+
+			return nil
+		}},
+		{dal.CacheTypeNumscript, func(u128 attributes.U128, value []byte) error {
+			e := &raftcmdpb.NumscriptParsedAttributeEntry{}
+			if err := e.UnmarshalVT(value); err != nil {
+				return err
+			}
+			numscriptParsedStore.Put(u128, attributes.Entry[string]{
+				Tag: e.GetId().GetTag(), Data: e.GetPlain(),
+			})
+
+			return nil
+		}},
+		{dal.CacheTypeIdempotency, func(u128 attributes.U128, value []byte) error {
+			e := &raftcmdpb.IdempotencyKeyAttributeEntry{}
+			if err := e.UnmarshalVT(value); err != nil {
+				return err
+			}
+			idempotencyStore.Put(u128, attributes.Entry[*commonpb.IdempotencyKeyValue]{
+				Tag: e.GetId().GetTag(), Data: e.GetValue(),
+			})
+
+			return nil
+		}},
+	}
+
+	for _, spec := range specs {
+		lower := []byte{dal.KeyPrefixCacheSnapshot, genByte, spec.cacheType}
+		upper := []byte{dal.KeyPrefixCacheSnapshot, genByte, spec.cacheType + 1}
+
+		iter, err := fsm.dataStore.NewIter(&pebble.IterOptions{
+			LowerBound: lower,
+			UpperBound: upper,
+		})
+		if err != nil {
+			return fmt.Errorf("creating cache iter for type 0x%02x: %w", spec.cacheType, err)
+		}
+
+		for iter.First(); iter.Valid(); iter.Next() {
+			key := iter.Key()
+			// Key format: [0xFF][gen][type][16-byte U128]
+			if len(key) < 3+16 {
+				continue
+			}
+
+			u128 := attributes.U128FromBytes(key[3:19])
+
+			value, err := iter.ValueAndErr()
+			if err != nil {
+				_ = iter.Close()
+
+				return fmt.Errorf("reading cache value: %w", err)
+			}
+
+			if err := spec.restore(u128, value); err != nil {
+				_ = iter.Close()
+
+				return fmt.Errorf("restoring cache entry: %w", err)
+			}
+		}
+
+		if err := iter.Error(); err != nil {
+			_ = iter.Close()
+
+			return fmt.Errorf("cache iter error: %w", err)
+		}
+
+		_ = iter.Close()
+	}
+
+	return nil
 }
 
 func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapshot) error {
@@ -1531,23 +1823,11 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 
 	fsm.Periods.Reset(allPeriods, memSnapshot.GetOpenPeriod(), memSnapshot.GetClosingPeriod(), memSnapshot.GetNextPeriodId())
 
-	// Reset the cache and deserialize both generations into it
-	// Ledger info and boundaries are restored via deserializeCacheGeneration (from cache generations)
-	cacheStart := time.Now()
-
+	// Reset the cache — it will be restored from Pebble later:
+	// - On restart: after InstallSnapshot, via RestoreCacheFromStore
+	// - On follower sync: after restoreCheckpoint, via RestoreCacheFromStore
 	fsm.Registry.Cache.Reset()
-	deserializeCacheGeneration(fsm.Registry.Cache, memSnapshot.GetGen0(), 0)
-	deserializeCacheGeneration(fsm.Registry.Cache, memSnapshot.GetGen1(), 1)
-	fsm.logger.WithFields(map[string]any{
-		"duration":       time.Since(cacheStart).String(),
-		"gen0Volumes":    countGenVolumes(memSnapshot.GetGen0()),
-		"gen1Volumes":    countGenVolumes(memSnapshot.GetGen1()),
-		"gen0Metadata":   countGenMetadata(memSnapshot.GetGen0()),
-		"gen1Metadata":   countGenMetadata(memSnapshot.GetGen1()),
-		"gen0Ledgers":    countGenLedgers(memSnapshot.GetGen0()),
-		"gen0Boundaries": countGenBoundaries(memSnapshot.GetGen0()),
-		"gen0References": countGenReferences(memSnapshot.GetGen0()),
-	}).Infof("Restored cache from snapshot")
+	fsm.Registry.Cache.SetCurrentGeneration(memSnapshot.GetCurrentGeneration())
 
 	// Restore reversion bitsets from snapshot
 	fsm.Registry.ResetReversions()
@@ -1556,63 +1836,12 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 		fsm.Registry.Reversions[entry.GetLedger()] = domain.ReversionBitsetFromWords(entry.GetWords())
 	}
 
-	// Update currentGeneration to match the snapshot
-	fsm.Registry.Cache.SetCurrentGeneration(memSnapshot.GetCurrentGeneration())
-
-	// Signing keys are not in the memory snapshot — they live in Pebble.
-	// They will be reloaded from Pebble after SynchronizeWithLeader restores the checkpoint.
-
 	fsm.logger.WithFields(map[string]any{
 		"totalDuration": time.Since(totalStart).String(),
 		"snapshotIndex": snapshot.Metadata.Index,
 	}).Infof("InstallSnapshot complete")
 
 	return nil
-}
-
-// countGenVolumes returns the number of volume entries in a generation snapshot, or 0 if nil.
-func countGenVolumes(gen *raftcmdpb.GenerationSnapshot) int {
-	if gen == nil {
-		return 0
-	}
-
-	return len(gen.GetVolumes())
-}
-
-// countGenMetadata returns the number of metadata entries in a generation snapshot, or 0 if nil.
-func countGenMetadata(gen *raftcmdpb.GenerationSnapshot) int {
-	if gen == nil {
-		return 0
-	}
-
-	return len(gen.GetMetadata()) + len(gen.GetLedgerMetadata())
-}
-
-// countGenLedgers returns the number of ledger entries in a generation snapshot, or 0 if nil.
-func countGenLedgers(gen *raftcmdpb.GenerationSnapshot) int {
-	if gen == nil {
-		return 0
-	}
-
-	return len(gen.GetLedgers())
-}
-
-// countGenBoundaries returns the number of boundary entries in a generation snapshot, or 0 if nil.
-func countGenBoundaries(gen *raftcmdpb.GenerationSnapshot) int {
-	if gen == nil {
-		return 0
-	}
-
-	return len(gen.GetBoundaries())
-}
-
-// countGenReferences returns the number of reference entries in a generation snapshot, or 0 if nil.
-func countGenReferences(gen *raftcmdpb.GenerationSnapshot) int {
-	if gen == nil {
-		return 0
-	}
-
-	return len(gen.GetReferences())
 }
 
 // reloadStateFromStore reloads signing keys and shared runtime flags from Pebble.
@@ -1657,124 +1886,6 @@ func (fsm *Machine) reloadStateFromStore() error {
 	return nil
 }
 
-// deserializeCacheGeneration deserializes a GenerationSnapshot into either Gen0 (genIndex=0) or Gen1 (genIndex=1).
-func deserializeCacheGeneration(cache *cache.Cache, snapshot *raftcmdpb.GenerationSnapshot, genIndex int) {
-	if snapshot == nil || cache == nil {
-		return
-	}
-
-	var (
-		volumeStore          kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.VolumePair]]
-		metadataStore        kv.KV[attributes.U128, attributes.Entry[*commonpb.MetadataValue]]
-		ledgerStore          kv.KV[attributes.U128, attributes.Entry[*commonpb.LedgerInfo]]
-		boundaryStore        kv.KV[attributes.U128, attributes.Entry[*raftcmdpb.LedgerBoundaries]]
-		referenceStore       kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionReferenceValue]]
-		transactionStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.TransactionState]]
-		numscriptParsedStore kv.KV[attributes.U128, attributes.Entry[string]]
-		idempotencyStore     kv.KV[attributes.U128, attributes.Entry[*commonpb.IdempotencyKeyValue]]
-	)
-
-	if genIndex == 0 {
-		cache.BaseIndex.Gen0 = snapshot.GetBaseIndex()
-		volumeStore = cache.Volumes.Gen0()
-		metadataStore = cache.AccountMetadata.Gen0()
-
-		ledgerStore = cache.Ledgers.Gen0()
-		boundaryStore = cache.Boundaries.Gen0()
-		referenceStore = cache.References.Gen0()
-		transactionStore = cache.Transactions.Gen0()
-		numscriptParsedStore = cache.NumscriptParsed.Gen0()
-		idempotencyStore = cache.IdempotencyKeys.Gen0()
-	} else {
-		cache.BaseIndex.Gen1 = snapshot.GetBaseIndex()
-		volumeStore = cache.Volumes.Gen1()
-		metadataStore = cache.AccountMetadata.Gen1()
-
-		ledgerStore = cache.Ledgers.Gen1()
-		boundaryStore = cache.Boundaries.Gen1()
-		referenceStore = cache.References.Gen1()
-		transactionStore = cache.Transactions.Gen1()
-		numscriptParsedStore = cache.NumscriptParsed.Gen1()
-		idempotencyStore = cache.IdempotencyKeys.Gen1()
-	}
-
-	// Deserialize Volumes KeyStore
-	for _, ksEntry := range snapshot.GetVolumes() {
-		u128 := attributes.U128FromBytes(ksEntry.GetId().GetId())
-		pair := &raftcmdpb.VolumePair{
-			Input:  ksEntry.GetInput(),
-			Output: ksEntry.GetOutput(),
-		}
-		volumeStore.Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
-			Tag:  ksEntry.GetId().GetTag(),
-			Data: pair,
-		})
-	}
-
-	// Deserialize Metadata KeyStore
-	for _, ksEntry := range snapshot.GetMetadata() {
-		u128 := attributes.U128FromBytes(ksEntry.GetId().GetId())
-		metadataStore.Put(u128, attributes.Entry[*commonpb.MetadataValue]{
-			Tag:  ksEntry.GetId().GetTag(),
-			Data: ksEntry.GetValue(),
-		})
-	}
-
-	// Deserialize Ledgers KeyStore
-	for _, ksEntry := range snapshot.GetLedgers() {
-		u128 := attributes.U128FromBytes(ksEntry.GetId().GetId())
-		ledgerStore.Put(u128, attributes.Entry[*commonpb.LedgerInfo]{
-			Tag:  ksEntry.GetId().GetTag(),
-			Data: ksEntry.GetInfo(),
-		})
-	}
-
-	// Deserialize Boundaries KeyStore
-	for _, ksEntry := range snapshot.GetBoundaries() {
-		u128 := attributes.U128FromBytes(ksEntry.GetId().GetId())
-		boundaryStore.Put(u128, attributes.Entry[*raftcmdpb.LedgerBoundaries]{
-			Tag:  ksEntry.GetId().GetTag(),
-			Data: ksEntry.GetBoundaries(),
-		})
-	}
-
-	// Deserialize References KeyStore
-	for _, ksEntry := range snapshot.GetReferences() {
-		u128 := attributes.U128FromBytes(ksEntry.GetId().GetId())
-		referenceStore.Put(u128, attributes.Entry[*commonpb.TransactionReferenceValue]{
-			Tag:  ksEntry.GetId().GetTag(),
-			Data: ksEntry.GetValue(),
-		})
-	}
-
-	// Deserialize Transactions KeyStore
-	for _, ksEntry := range snapshot.GetTransactions() {
-		u128 := attributes.U128FromBytes(ksEntry.GetId().GetId())
-		transactionStore.Put(u128, attributes.Entry[*commonpb.TransactionState]{
-			Tag:  ksEntry.GetId().GetTag(),
-			Data: ksEntry.GetState(),
-		})
-	}
-
-	// Deserialize NumscriptParsed KeyStore
-	for _, ksEntry := range snapshot.GetNumscriptParsed() {
-		u128 := attributes.U128FromBytes(ksEntry.GetId().GetId())
-		numscriptParsedStore.Put(u128, attributes.Entry[string]{
-			Tag:  ksEntry.GetId().GetTag(),
-			Data: ksEntry.GetPlain(),
-		})
-	}
-
-	// Deserialize IdempotencyKeys KeyStore
-	for _, ksEntry := range snapshot.GetIdempotencyKeys() {
-		u128 := attributes.U128FromBytes(ksEntry.GetId().GetId())
-		idempotencyStore.Put(u128, attributes.Entry[*commonpb.IdempotencyKeyValue]{
-			Tag:  ksEntry.GetId().GetTag(),
-			Data: ksEntry.GetValue(),
-		})
-	}
-}
-
 func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) (uint64, error) {
 	// Restore checkpoint from the leader if needed
 	// The checkpoint ID is stored in the Machine state from the snapshot
@@ -1786,6 +1897,11 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 				return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
 			}
 		}
+	}
+
+	// Restore cache from Pebble (the checkpoint contains the leader's cache data)
+	if err := fsm.RestoreCacheFromStore(); err != nil {
+		return 0, fmt.Errorf("restoring cache after sync: %w", err)
 	}
 
 	// Reload signing keys from Pebble (the checkpoint contains the leader's keys)

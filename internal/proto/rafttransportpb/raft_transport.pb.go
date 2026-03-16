@@ -477,121 +477,6 @@ func (*SendMessageResponse_Raft) isSendMessageResponse_Message() {}
 
 func (*SendMessageResponse_Pong) isSendMessageResponse_Message() {}
 
-// FetchMemorySnapshotRequest identifies which snapshot to fetch.
-// The follower sends this after receiving a reference-only NodeSnapshot via Raft.
-type FetchMemorySnapshotRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SnapshotIndex uint64                 `protobuf:"varint,1,opt,name=snapshot_index,json=snapshotIndex,proto3" json:"snapshot_index,omitempty"` // Raft index of the snapshot
-	SnapshotTerm  uint64                 `protobuf:"varint,2,opt,name=snapshot_term,json=snapshotTerm,proto3" json:"snapshot_term,omitempty"`    // Raft term of the snapshot
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *FetchMemorySnapshotRequest) Reset() {
-	*x = FetchMemorySnapshotRequest{}
-	mi := &file_raft_transport_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *FetchMemorySnapshotRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*FetchMemorySnapshotRequest) ProtoMessage() {}
-
-func (x *FetchMemorySnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_transport_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use FetchMemorySnapshotRequest.ProtoReflect.Descriptor instead.
-func (*FetchMemorySnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_raft_transport_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *FetchMemorySnapshotRequest) GetSnapshotIndex() uint64 {
-	if x != nil {
-		return x.SnapshotIndex
-	}
-	return 0
-}
-
-func (x *FetchMemorySnapshotRequest) GetSnapshotTerm() uint64 {
-	if x != nil {
-		return x.SnapshotTerm
-	}
-	return 0
-}
-
-// FetchMemorySnapshotResponse is a chunk of the snapshot data.
-type FetchMemorySnapshotResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`                             // Chunk payload
-	TotalSize     uint64                 `protobuf:"varint,2,opt,name=total_size,json=totalSize,proto3" json:"total_size,omitempty"` // Total snapshot size (set on every chunk for progress tracking)
-	Eof           bool                   `protobuf:"varint,3,opt,name=eof,proto3" json:"eof,omitempty"`                              // True on the last chunk
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *FetchMemorySnapshotResponse) Reset() {
-	*x = FetchMemorySnapshotResponse{}
-	mi := &file_raft_transport_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *FetchMemorySnapshotResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*FetchMemorySnapshotResponse) ProtoMessage() {}
-
-func (x *FetchMemorySnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_transport_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use FetchMemorySnapshotResponse.ProtoReflect.Descriptor instead.
-func (*FetchMemorySnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_raft_transport_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *FetchMemorySnapshotResponse) GetData() []byte {
-	if x != nil {
-		return x.Data
-	}
-	return nil
-}
-
-func (x *FetchMemorySnapshotResponse) GetTotalSize() uint64 {
-	if x != nil {
-		return x.TotalSize
-	}
-	return 0
-}
-
-func (x *FetchMemorySnapshotResponse) GetEof() bool {
-	if x != nil {
-		return x.Eof
-	}
-	return false
-}
-
 var File_raft_transport_proto protoreflect.FileDescriptor
 
 const file_raft_transport_proto_rawDesc = "" +
@@ -620,18 +505,9 @@ const file_raft_transport_proto_rawDesc = "" +
 	"\x13SendMessageResponse\x127\n" +
 	"\x04raft\x18\x01 \x01(\v2!.raft_transport.RaftResponseBatchH\x00R\x04raft\x122\n" +
 	"\x04pong\x18\x02 \x01(\v2\x1c.raft_transport.PongResponseH\x00R\x04pongB\t\n" +
-	"\amessage\"h\n" +
-	"\x1aFetchMemorySnapshotRequest\x12%\n" +
-	"\x0esnapshot_index\x18\x01 \x01(\x04R\rsnapshotIndex\x12#\n" +
-	"\rsnapshot_term\x18\x02 \x01(\x04R\fsnapshotTerm\"b\n" +
-	"\x1bFetchMemorySnapshotResponse\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1d\n" +
-	"\n" +
-	"total_size\x18\x02 \x01(\x04R\ttotalSize\x12\x10\n" +
-	"\x03eof\x18\x03 \x01(\bR\x03eof2\xe7\x01\n" +
+	"\amessage2u\n" +
 	"\x14RaftTransportService\x12]\n" +
-	"\x0eStreamMessages\x12\".raft_transport.SendMessageRequest\x1a#.raft_transport.SendMessageResponse(\x010\x01\x12p\n" +
-	"\x13FetchMemorySnapshot\x12*.raft_transport.FetchMemorySnapshotRequest\x1a+.raft_transport.FetchMemorySnapshotResponse0\x01BDZBgithub.com/formancehq/ledger-v3-poc/internal/proto/rafttransportpbb\x06proto3"
+	"\x0eStreamMessages\x12\".raft_transport.SendMessageRequest\x1a#.raft_transport.SendMessageResponse(\x010\x01BDZBgithub.com/formancehq/ledger-v3-poc/internal/proto/rafttransportpbb\x06proto3"
 
 var (
 	file_raft_transport_proto_rawDescOnce sync.Once
@@ -645,18 +521,16 @@ func file_raft_transport_proto_rawDescGZIP() []byte {
 	return file_raft_transport_proto_rawDescData
 }
 
-var file_raft_transport_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_raft_transport_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_raft_transport_proto_goTypes = []any{
-	(*RaftRequestMessage)(nil),          // 0: raft_transport.RaftRequestMessage
-	(*RaftRequestBatch)(nil),            // 1: raft_transport.RaftRequestBatch
-	(*RaftResponseMessage)(nil),         // 2: raft_transport.RaftResponseMessage
-	(*RaftResponseBatch)(nil),           // 3: raft_transport.RaftResponseBatch
-	(*PingMessage)(nil),                 // 4: raft_transport.PingMessage
-	(*PongResponse)(nil),                // 5: raft_transport.PongResponse
-	(*SendMessageRequest)(nil),          // 6: raft_transport.SendMessageRequest
-	(*SendMessageResponse)(nil),         // 7: raft_transport.SendMessageResponse
-	(*FetchMemorySnapshotRequest)(nil),  // 8: raft_transport.FetchMemorySnapshotRequest
-	(*FetchMemorySnapshotResponse)(nil), // 9: raft_transport.FetchMemorySnapshotResponse
+	(*RaftRequestMessage)(nil),  // 0: raft_transport.RaftRequestMessage
+	(*RaftRequestBatch)(nil),    // 1: raft_transport.RaftRequestBatch
+	(*RaftResponseMessage)(nil), // 2: raft_transport.RaftResponseMessage
+	(*RaftResponseBatch)(nil),   // 3: raft_transport.RaftResponseBatch
+	(*PingMessage)(nil),         // 4: raft_transport.PingMessage
+	(*PongResponse)(nil),        // 5: raft_transport.PongResponse
+	(*SendMessageRequest)(nil),  // 6: raft_transport.SendMessageRequest
+	(*SendMessageResponse)(nil), // 7: raft_transport.SendMessageResponse
 }
 var file_raft_transport_proto_depIdxs = []int32{
 	0, // 0: raft_transport.RaftRequestBatch.messages:type_name -> raft_transport.RaftRequestMessage
@@ -666,11 +540,9 @@ var file_raft_transport_proto_depIdxs = []int32{
 	3, // 4: raft_transport.SendMessageResponse.raft:type_name -> raft_transport.RaftResponseBatch
 	5, // 5: raft_transport.SendMessageResponse.pong:type_name -> raft_transport.PongResponse
 	6, // 6: raft_transport.RaftTransportService.StreamMessages:input_type -> raft_transport.SendMessageRequest
-	8, // 7: raft_transport.RaftTransportService.FetchMemorySnapshot:input_type -> raft_transport.FetchMemorySnapshotRequest
-	7, // 8: raft_transport.RaftTransportService.StreamMessages:output_type -> raft_transport.SendMessageResponse
-	9, // 9: raft_transport.RaftTransportService.FetchMemorySnapshot:output_type -> raft_transport.FetchMemorySnapshotResponse
-	8, // [8:10] is the sub-list for method output_type
-	6, // [6:8] is the sub-list for method input_type
+	7, // 7: raft_transport.RaftTransportService.StreamMessages:output_type -> raft_transport.SendMessageResponse
+	7, // [7:8] is the sub-list for method output_type
+	6, // [6:7] is the sub-list for method input_type
 	6, // [6:6] is the sub-list for extension type_name
 	6, // [6:6] is the sub-list for extension extendee
 	0, // [0:6] is the sub-list for field type_name
@@ -695,7 +567,7 @@ func file_raft_transport_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_raft_transport_proto_rawDesc), len(file_raft_transport_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

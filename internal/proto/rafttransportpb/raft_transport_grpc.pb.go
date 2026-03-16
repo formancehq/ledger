@@ -19,8 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RaftTransportService_StreamMessages_FullMethodName      = "/raft_transport.RaftTransportService/StreamMessages"
-	RaftTransportService_FetchMemorySnapshot_FullMethodName = "/raft_transport.RaftTransportService/FetchMemorySnapshot"
+	RaftTransportService_StreamMessages_FullMethodName = "/raft_transport.RaftTransportService/StreamMessages"
 )
 
 // RaftTransportServiceClient is the client API for RaftTransportService service.
@@ -32,10 +31,6 @@ type RaftTransportServiceClient interface {
 	// StreamMessages establishes a client streaming connection for sending Raft messages
 	// This avoids frequent reconnections by maintaining a persistent connection
 	StreamMessages(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[SendMessageRequest, SendMessageResponse], error)
-	// FetchMemorySnapshot streams a large memory snapshot in chunks.
-	// Used when the snapshot exceeds the inline gRPC message size threshold.
-	// The leader stores the snapshot data locally and the follower pulls it via this RPC.
-	FetchMemorySnapshot(ctx context.Context, in *FetchMemorySnapshotRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FetchMemorySnapshotResponse], error)
 }
 
 type raftTransportServiceClient struct {
@@ -59,25 +54,6 @@ func (c *raftTransportServiceClient) StreamMessages(ctx context.Context, opts ..
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type RaftTransportService_StreamMessagesClient = grpc.BidiStreamingClient[SendMessageRequest, SendMessageResponse]
 
-func (c *raftTransportServiceClient) FetchMemorySnapshot(ctx context.Context, in *FetchMemorySnapshotRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FetchMemorySnapshotResponse], error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &RaftTransportService_ServiceDesc.Streams[1], RaftTransportService_FetchMemorySnapshot_FullMethodName, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &grpc.GenericClientStream[FetchMemorySnapshotRequest, FetchMemorySnapshotResponse]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type RaftTransportService_FetchMemorySnapshotClient = grpc.ServerStreamingClient[FetchMemorySnapshotResponse]
-
 // RaftTransportServiceServer is the server API for RaftTransportService service.
 // All implementations must embed UnimplementedRaftTransportServiceServer
 // for forward compatibility.
@@ -87,10 +63,6 @@ type RaftTransportServiceServer interface {
 	// StreamMessages establishes a client streaming connection for sending Raft messages
 	// This avoids frequent reconnections by maintaining a persistent connection
 	StreamMessages(grpc.BidiStreamingServer[SendMessageRequest, SendMessageResponse]) error
-	// FetchMemorySnapshot streams a large memory snapshot in chunks.
-	// Used when the snapshot exceeds the inline gRPC message size threshold.
-	// The leader stores the snapshot data locally and the follower pulls it via this RPC.
-	FetchMemorySnapshot(*FetchMemorySnapshotRequest, grpc.ServerStreamingServer[FetchMemorySnapshotResponse]) error
 	mustEmbedUnimplementedRaftTransportServiceServer()
 }
 
@@ -103,9 +75,6 @@ type UnimplementedRaftTransportServiceServer struct{}
 
 func (UnimplementedRaftTransportServiceServer) StreamMessages(grpc.BidiStreamingServer[SendMessageRequest, SendMessageResponse]) error {
 	return status.Error(codes.Unimplemented, "method StreamMessages not implemented")
-}
-func (UnimplementedRaftTransportServiceServer) FetchMemorySnapshot(*FetchMemorySnapshotRequest, grpc.ServerStreamingServer[FetchMemorySnapshotResponse]) error {
-	return status.Error(codes.Unimplemented, "method FetchMemorySnapshot not implemented")
 }
 func (UnimplementedRaftTransportServiceServer) mustEmbedUnimplementedRaftTransportServiceServer() {}
 func (UnimplementedRaftTransportServiceServer) testEmbeddedByValue()                              {}
@@ -135,17 +104,6 @@ func _RaftTransportService_StreamMessages_Handler(srv interface{}, stream grpc.S
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type RaftTransportService_StreamMessagesServer = grpc.BidiStreamingServer[SendMessageRequest, SendMessageResponse]
 
-func _RaftTransportService_FetchMemorySnapshot_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(FetchMemorySnapshotRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(RaftTransportServiceServer).FetchMemorySnapshot(m, &grpc.GenericServerStream[FetchMemorySnapshotRequest, FetchMemorySnapshotResponse]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type RaftTransportService_FetchMemorySnapshotServer = grpc.ServerStreamingServer[FetchMemorySnapshotResponse]
-
 // RaftTransportService_ServiceDesc is the grpc.ServiceDesc for RaftTransportService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -159,11 +117,6 @@ var RaftTransportService_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _RaftTransportService_StreamMessages_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
-		},
-		{
-			StreamName:    "FetchMemorySnapshot",
-			Handler:       _RaftTransportService_FetchMemorySnapshot_Handler,
-			ServerStreams: true,
 		},
 	},
 	Metadata: "raft_transport.proto",

@@ -79,14 +79,15 @@ func (s *Store) IsWriteStalled() bool {
 	return s.stallState.IsStalled()
 }
 
-// Key prefixes for Pebble storage, organized into four zones:
+// Key prefixes for Pebble storage, organized into five zones:
 //
 //	Cold zone            [0x01, 0x04) — archived to cold storage then purged per period.
 //	Per-ledger system    [0xE0, 0xF1) — per-ledger data persisted forever (prepared queries, numscript, mirror, audit config, period schedule).
 //	Attributes zone      [0xF1, 0xF2) — derived data hashed during seal, stays in hot storage.
-//	Global system zone   [0xF2, 0xFF] — cluster-wide metadata persisted forever.
+//	Global system zone   [0xF2, 0xFF) — cluster-wide metadata persisted forever.
+//	Cache snapshot zone  [0xFF, ...)  — cache snapshot data (written before Pebble checkpoints).
 
-// Zone boundary constants define the four contiguous key ranges.
+// Zone boundary constants define the contiguous key ranges.
 const (
 	ZoneColdStart         byte = 0x01
 	ZoneColdEnd           byte = 0x04
@@ -95,7 +96,7 @@ const (
 	ZoneAttributesStart   byte = 0xF1
 	ZoneAttributesEnd     byte = 0xF2
 	ZoneGlobalSysStart    byte = 0xF2
-	ZoneGlobalSysEnd      byte = 0xFF
+	ZoneGlobalSysEnd      byte = 0xFF // exclusive: 0xFF is cache snapshot zone
 )
 
 // Canonical key separators used inside attribute canonical keys
@@ -160,6 +161,28 @@ var (
 	KeyPrefixSinkStatus           byte = 0xFC // [KeyPrefixSinkStatus][name] -> SinkStatus protobuf
 	KeyPrefixMaintenanceMode      byte = 0xFD // [KeyPrefixMaintenanceMode] -> maintenance mode byte (0x00=false, 0x01=true)
 	KeyPrefixPersistedConfig      byte = 0xFE // [KeyPrefixPersistedConfig] -> PersistedConfig JSON (startup safety checks)
+	KeyPrefixCacheSnapshot        byte = 0xFF // [KeyPrefixCacheSnapshot][sub...] -> cache snapshot data
+)
+
+// Cache snapshot sub-prefixes within the 0xFF zone.
+// Key format:
+//
+//	[0xFF][gen: 0x00|0x01][type][16-byte U128 key] → proto value (attribute entry)
+//	[0xFF][gen: 0x00|0x01][0x00]                   → CacheGenerationMeta (baseIndex)
+//	[0xFF][0xFF]                                   → CacheSnapshotMeta (currentGeneration)
+const (
+	CacheGenMeta byte = 0x00 // Generation metadata sub-key (under [0xFF][gen])
+
+	CacheTypeVolumes      byte = 0x01
+	CacheTypeMetadata     byte = 0x02
+	CacheTypeLedgers      byte = 0x03
+	CacheTypeBoundaries   byte = 0x04
+	CacheTypeReferences   byte = 0x05
+	CacheTypeTransactions byte = 0x06
+	CacheTypeNumscript    byte = 0x07
+	CacheTypeIdempotency  byte = 0x08
+
+	CacheMetaKey byte = 0xFF // [0xFF][0xFF] → CacheSnapshotMeta
 )
 
 // NewStore creates a new Store instance.

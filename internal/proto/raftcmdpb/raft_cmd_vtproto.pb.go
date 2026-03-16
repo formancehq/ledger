@@ -1998,8 +1998,6 @@ func (m *MemorySnapshot) CloneVT() *MemorySnapshot {
 	}
 	r := new(MemorySnapshot)
 	r.NextSequenceId = m.NextSequenceId
-	r.Gen0 = m.Gen0.CloneVT()
-	r.Gen1 = m.Gen1.CloneVT()
 	r.CheckpointId = m.CheckpointId
 	r.CurrentGeneration = m.CurrentGeneration
 	r.LastAppliedTimestamp = m.LastAppliedTimestamp
@@ -2042,8 +2040,6 @@ func (m *NodeSnapshot) CloneVT() *NodeSnapshot {
 		return (*NodeSnapshot)(nil)
 	}
 	r := new(NodeSnapshot)
-	r.IsReference = m.IsReference
-	r.SizeHint = m.SizeHint
 	if rhs := m.FsmSnapshot; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -2064,6 +2060,40 @@ func (m *NodeSnapshot) CloneVT() *NodeSnapshot {
 }
 
 func (m *NodeSnapshot) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *CacheGenerationMeta) CloneVT() *CacheGenerationMeta {
+	if m == nil {
+		return (*CacheGenerationMeta)(nil)
+	}
+	r := new(CacheGenerationMeta)
+	r.BaseIndex = m.BaseIndex
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *CacheGenerationMeta) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *CacheSnapshotMeta) CloneVT() *CacheSnapshotMeta {
+	if m == nil {
+		return (*CacheSnapshotMeta)(nil)
+	}
+	r := new(CacheSnapshotMeta)
+	r.CurrentGeneration = m.CurrentGeneration
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *CacheSnapshotMeta) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -5824,12 +5854,6 @@ func (this *MemorySnapshot) EqualVT(that *MemorySnapshot) bool {
 	if string(this.LastLogHash) != string(that.LastLogHash) {
 		return false
 	}
-	if !this.Gen0.EqualVT(that.Gen0) {
-		return false
-	}
-	if !this.Gen1.EqualVT(that.Gen1) {
-		return false
-	}
 	if this.CheckpointId != that.CheckpointId {
 		return false
 	}
@@ -5921,17 +5945,49 @@ func (this *NodeSnapshot) EqualVT(that *NodeSnapshot) bool {
 			}
 		}
 	}
-	if this.IsReference != that.IsReference {
-		return false
-	}
-	if this.SizeHint != that.SizeHint {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
 func (this *NodeSnapshot) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*NodeSnapshot)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *CacheGenerationMeta) EqualVT(that *CacheGenerationMeta) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.BaseIndex != that.BaseIndex {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *CacheGenerationMeta) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*CacheGenerationMeta)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *CacheSnapshotMeta) EqualVT(that *CacheSnapshotMeta) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.CurrentGeneration != that.CurrentGeneration {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *CacheSnapshotMeta) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*CacheSnapshotMeta)
 	if !ok {
 		return false
 	}
@@ -11302,26 +11358,6 @@ func (m *MemorySnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x28
 	}
-	if m.Gen1 != nil {
-		size, err := m.Gen1.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x22
-	}
-	if m.Gen0 != nil {
-		size, err := m.Gen0.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1a
-	}
 	if len(m.LastLogHash) > 0 {
 		i -= len(m.LastLogHash)
 		copy(dAtA[i:], m.LastLogHash)
@@ -11367,21 +11403,6 @@ func (m *NodeSnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.SizeHint != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SizeHint))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.IsReference {
-		i--
-		if m.IsReference {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x18
-	}
 	if len(m.PeerAddresses) > 0 {
 		for iNdEx := len(m.PeerAddresses) - 1; iNdEx >= 0; iNdEx-- {
 			size, err := m.PeerAddresses[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
@@ -11400,6 +11421,82 @@ func (m *NodeSnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.FsmSnapshot)))
 		i--
 		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *CacheGenerationMeta) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CacheGenerationMeta) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CacheGenerationMeta) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.BaseIndex != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BaseIndex))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *CacheSnapshotMeta) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CacheSnapshotMeta) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CacheSnapshotMeta) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.CurrentGeneration != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CurrentGeneration))
+		i--
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -14233,14 +14330,6 @@ func (m *MemorySnapshot) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.Gen0 != nil {
-		l = m.Gen0.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Gen1 != nil {
-		l = m.Gen1.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if m.CheckpointId != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.CheckpointId))
 	}
@@ -14296,11 +14385,31 @@ func (m *NodeSnapshot) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
-	if m.IsReference {
-		n += 2
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *CacheGenerationMeta) SizeVT() (n int) {
+	if m == nil {
+		return 0
 	}
-	if m.SizeHint != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.SizeHint))
+	var l int
+	_ = l
+	if m.BaseIndex != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.BaseIndex))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *CacheSnapshotMeta) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.CurrentGeneration != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.CurrentGeneration))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -25564,78 +25673,6 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 				m.LastLogHash = []byte{}
 			}
 			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Gen0", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Gen0 == nil {
-				m.Gen0 = &GenerationSnapshot{}
-			}
-			if err := m.Gen0.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Gen1", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Gen1 == nil {
-				m.Gen1 = &GenerationSnapshot{}
-			}
-			if err := m.Gen1.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
 		case 5:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
@@ -25990,11 +26027,62 @@ func (m *NodeSnapshot) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IsReference", wireType)
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
 			}
-			var v int
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CacheGenerationMeta) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CacheGenerationMeta: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CacheGenerationMeta: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BaseIndex", wireType)
+			}
+			m.BaseIndex = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -26004,17 +26092,67 @@ func (m *NodeSnapshot) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= int(b&0x7F) << shift
+				m.BaseIndex |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.IsReference = bool(v != 0)
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SizeHint", wireType)
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
 			}
-			m.SizeHint = 0
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CacheSnapshotMeta) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CacheSnapshotMeta: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CacheSnapshotMeta: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CurrentGeneration", wireType)
+			}
+			m.CurrentGeneration = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -26024,7 +26162,7 @@ func (m *NodeSnapshot) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.SizeHint |= uint64(b&0x7F) << shift
+				m.CurrentGeneration |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

@@ -468,8 +468,6 @@ message PreloadNumscriptParsed {
 message MemorySnapshot {
   uint64 next_sequence_id = 1;
   bytes last_log_hash = 2;
-  GenerationSnapshot gen0 = 3;
-  GenerationSnapshot gen1 = 4;  // May be nil
   uint64 checkpoint_id = 5;
   uint64 current_generation = 6;
   uint64 last_applied_timestamp = 7;  // HLC timestamp (microseconds since epoch)
@@ -488,8 +486,16 @@ message MemorySnapshot {
 message NodeSnapshot {
   bytes fsm_snapshot = 1;
   repeated PeerAddress peer_addresses = 2;
-  bool is_reference = 3;    // When true, fsm_snapshot is empty — fetch via FetchMemorySnapshot RPC
-  uint64 size_hint = 4;     // Approximate size of the full snapshot (only set when is_reference=true)
+}
+
+// CacheGenerationMeta stores per-generation metadata in Pebble.
+message CacheGenerationMeta {
+  uint64 base_index = 1;
+}
+
+// CacheSnapshotMeta stores cache-level metadata in Pebble.
+message CacheSnapshotMeta {
+  uint64 current_generation = 1;
 }
 
 // PeerAddress stores a peer's raft and service addresses in snapshots.

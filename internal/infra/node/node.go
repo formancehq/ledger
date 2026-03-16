@@ -497,6 +497,11 @@ func NewNode(
 		logger.Infof("Store is not up to date, resuming from snapshot and tagging node as out of sync")
 		applier.SetOutOfSync()
 	} else {
+		// Restore cache from Pebble (store is up to date, checkpoint has cache data)
+		if err := fsm.RestoreCacheFromStore(); err != nil {
+			return nil, fmt.Errorf("restoring cache from store on restart: %w", err)
+		}
+
 		// Recovery: if a period is in CLOSING state but no seal checkpoint exists,
 		// the node crashed after ClosePeriod batch.Commit() but before checkpoint creation.
 		// Pebble state is exactly at the ClosePeriod boundary right now (spool replay hasn't run).
@@ -890,38 +895,6 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		result, err := unwrapSnapshot(rd.Snapshot.Data)
 		if err != nil {
 			return fmt.Errorf("unwrapping snapshot: %w", err)
-		}
-
-		// If the snapshot is a reference, fetch the full data from the leader
-		if result.isReference {
-			node.logger.WithFields(map[string]any{
-				"duration": time.Since(unwrapStart).String(),
-				"sizeHint": result.sizeHint,
-				"index":    rd.Snapshot.Metadata.Index,
-				"term":     rd.Snapshot.Metadata.Term,
-			}).Infof("Received snapshot reference, fetching full data from leader")
-
-			fullData, err := node.fetchRemoteSnapshot(
-				rd.Snapshot.Metadata.Index,
-				rd.Snapshot.Metadata.Term,
-			)
-			if err != nil {
-				return fmt.Errorf("fetching remote snapshot: %w", err)
-			}
-
-			// Re-unwrap the full snapshot data
-			result, err = unwrapSnapshot(fullData)
-			if err != nil {
-				return fmt.Errorf("unwrapping fetched snapshot: %w", err)
-			}
-
-			// Update the rd.Snapshot.Data with full data so WAL has the complete snapshot
-			rd.Snapshot.Data = fullData
-
-			// Re-apply the full snapshot to WAL (overwrite the reference)
-			if err := node.wal.ApplySnapshot(rd.Snapshot); err != nil {
-				return fmt.Errorf("re-applying full snapshot to storage: %w", err)
-			}
 		}
 
 		node.logger.WithFields(map[string]any{
@@ -1892,22 +1865,6 @@ func (node *Node) RemovePeerAddress(nodeID uint64) {
 // PeerAddresses returns the current peer address map.
 func (node *Node) PeerAddresses() map[uint64]ConfChangeContext {
 	return node.peerAddresses
-}
-
-// fetchRemoteSnapshot fetches the full snapshot data from the leader.
-// It uses the transport's MemorySnapshotFetcher capability if available.
-func (node *Node) fetchRemoteSnapshot(index, term uint64) ([]byte, error) {
-	fetcher, ok := node.transport.(MemorySnapshotFetcher)
-	if !ok {
-		return nil, errors.New("transport does not support remote snapshot fetching")
-	}
-
-	ss := node.lastSoftState.Load()
-	if ss == nil || ss.Lead == 0 {
-		return nil, errors.New("no leader known for snapshot fetch")
-	}
-
-	return fetcher.FetchRemoteMemorySnapshot(ss.Lead, index, term)
 }
 
 // wrapSnapshot wraps FSM snapshot data with cluster-level metadata (peer addresses)
