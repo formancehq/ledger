@@ -850,12 +850,14 @@ function CodeBlock({
 const RELEASES_URL = "https://github.com/formancehq/ledger/releases";
 
 const INSTALL_SCRIPT_GH = `# Install via GitHub CLI (recommended for private repos)
-gh release download --repo formancehq/ledger -p "ledgerctl_*_$(uname -s)_$(uname -m).tar.gz" -O - | tar xz
+ARCH=$(uname -m); [ "$ARCH" = "x86_64" ] && ARCH="amd64"
+gh release download --repo formancehq/ledger -p "ledger_$(uname -s | tr '[:upper:]' '[:lower:]')-$ARCH.tar.gz" -O - | tar xz
 sudo mv ledgerctl /usr/local/bin/`;
 
 const INSTALL_SCRIPT_CURL = `# Or via curl (requires a GitHub token for private repos)
+ARCH=$(uname -m); [ "$ARCH" = "x86_64" ] && ARCH="amd64"
 curl -sSfL -H "Authorization: token \${GITHUB_TOKEN}" \\
-  "https://github.com/formancehq/ledger/releases/latest/download/ledgerctl_$(uname -s)_$(uname -m).tar.gz" | tar xz
+  "https://github.com/formancehq/ledger/releases/latest/download/ledger_$(uname -s | tr '[:upper:]' '[:lower:]')-$ARCH.tar.gz" | tar xz
 sudo mv ledgerctl /usr/local/bin/`;
 
 function ConnectPanel({
