@@ -487,79 +487,12 @@ func NewNode(
 		panic(err)
 	}
 
-	// Check if store is up to date and replay spool if needed
-	isStoreUpToDate, err := fsm.IsStoreUpToDate(context.Background())
+	storeUpToDate, err := applier.RecoverAndReplay(context.Background())
 	if err != nil {
-		return nil, fmt.Errorf("checking if store is up to date: %w", err)
+		return nil, err
 	}
 
-	if !isStoreUpToDate {
-		logger.Infof("Store is not up to date, resuming from snapshot and tagging node as out of sync")
-		applier.SetOutOfSync()
-	} else {
-		// Restore cache from Pebble (store is up to date, checkpoint has cache data)
-		if err := fsm.RestoreCacheFromStore(); err != nil {
-			return nil, fmt.Errorf("restoring cache from store on restart: %w", err)
-		}
-
-		// Recovery: if a period is in CLOSING state but no seal checkpoint exists,
-		// the node crashed after ClosePeriod batch.Commit() but before checkpoint creation.
-		// Pebble state is exactly at the ClosePeriod boundary right now (spool replay hasn't run).
-		// todo: not the right place for that (move in fsm directly?)
-		if period := fsm.ClosingPeriod(); period != nil {
-			if _, exists := applier.Store().TemporaryCheckpointPath("seal"); !exists {
-				logger.Infof("Recovering: creating seal checkpoint for closing period %d", period.GetId())
-
-				checkpointPath, err := applier.Store().CreateTemporaryCheckpoint("seal")
-				if err != nil {
-					return nil, fmt.Errorf("creating recovery seal checkpoint: %w", err)
-				}
-
-				req := state.SealRequestFromPeriod(period)
-
-				req.CheckpointPath = checkpointPath
-				select {
-				case fsm.SealRequestCh() <- *req:
-				default:
-				}
-			}
-		}
-
-		storeLastAppliedIndex, err := query.ReadLastAppliedIndex(applier.Store())
-		if err != nil {
-			return nil, fmt.Errorf("getting store last applied index: %w", err)
-		}
-
-		replayStart := time.Now()
-
-		// Replay WAL entries that were applied to the live Pebble DB but not
-		// captured in the last Raft snapshot checkpoint. At startup the store
-		// is restored from the checkpoint, so entries between the checkpoint
-		// index and the spool start may be missing. The WAL always has them.
-		if err := applier.replayWAL(context.Background(), storeLastAppliedIndex); err != nil {
-			return nil, fmt.Errorf("replaying WAL: %w", err)
-		}
-
-		// Re-read after WAL replay — it may have advanced the index.
-		storeLastAppliedIndex, err = query.ReadLastAppliedIndex(applier.Store())
-		if err != nil {
-			return nil, fmt.Errorf("getting store last applied index after WAL replay: %w", err)
-		}
-
-		logger.WithFields(map[string]any{
-			"fromIndex": storeLastAppliedIndex,
-		}).Infof("Starting spool replay")
-
-		// todo: is it necessary to replay spool since we re read from the wal?
-		// why don't we just need to replay the wal then clear the spool?
-		if err := applier.replaySpool(context.Background(), storeLastAppliedIndex); err != nil {
-			return nil, fmt.Errorf("replaying spool: %w", err)
-		}
-
-		logger.WithFields(map[string]any{
-			"duration": time.Since(replayStart).String(),
-		}).Infof("Spool replay complete")
-
+	if storeUpToDate {
 		// Early compaction: if the WAL has accumulated far more entries than the
 		// snapshot threshold, create a snapshot and compact now to release memory
 		// before the Raft node starts. Without this, the leader would try to
@@ -1673,6 +1606,7 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 // The caller must ensure the removed node will never rejoin with stale state.
 //
 // Must be called on the leader.
+// todo: add a blacklist to prevent staled node reconnection
 func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 	node.confChangeMu.Lock()
 	defer node.confChangeMu.Unlock()

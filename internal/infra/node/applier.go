@@ -258,6 +258,90 @@ func (a *Applier) SetOutOfSync() {
 	a.status.Store(statusOutOfSync)
 }
 
+// RecoverAndReplay checks whether the store is up to date with the FSM and,
+// if so, recovers any incomplete seal checkpoint, replays WAL entries and
+// spooled entries to bring the store fully up to date. When the store is not
+// up to date (snapshot was installed), it marks the applier as out-of-sync.
+// Returns true when the store was up to date and replay succeeded.
+func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
+	isStoreUpToDate, err := a.fsm.IsStoreUpToDate(ctx)
+	if err != nil {
+		return false, fmt.Errorf("checking if store is up to date: %w", err)
+	}
+
+	if !isStoreUpToDate {
+		a.logger.Infof("Store is not up to date, resuming from snapshot and tagging node as out of sync")
+		a.SetOutOfSync()
+
+		return false, nil
+	}
+
+	// Restore cache from Pebble (store is up to date, checkpoint has cache data)
+	if err := a.fsm.RestoreCacheFromStore(); err != nil {
+		return false, fmt.Errorf("restoring cache from store on restart: %w", err)
+	}
+
+	// Recovery: if a period is in CLOSING state but no seal checkpoint exists,
+	// the node crashed after ClosePeriod batch.Commit() but before checkpoint creation.
+	// Pebble state is exactly at the ClosePeriod boundary right now (spool replay hasn't run).
+	// todo: not the right place for that (move in fsm directly?)
+	if period := a.fsm.ClosingPeriod(); period != nil {
+		if _, exists := a.store.TemporaryCheckpointPath("seal"); !exists {
+			a.logger.Infof("Recovering: creating seal checkpoint for closing period %d", period.GetId())
+
+			checkpointPath, err := a.store.CreateTemporaryCheckpoint("seal")
+			if err != nil {
+				return false, fmt.Errorf("creating recovery seal checkpoint: %w", err)
+			}
+
+			req := state.SealRequestFromPeriod(period)
+
+			req.CheckpointPath = checkpointPath
+			select {
+			case a.fsm.SealRequestCh() <- *req:
+			default:
+			}
+		}
+	}
+
+	storeLastAppliedIndex, err := query.ReadLastAppliedIndex(a.store)
+	if err != nil {
+		return false, fmt.Errorf("getting store last applied index: %w", err)
+	}
+
+	replayStart := time.Now()
+
+	// Replay WAL entries that were applied to the live Pebble DB but not
+	// captured in the last Raft snapshot checkpoint. At startup the store
+	// is restored from the checkpoint, so entries between the checkpoint
+	// index and the spool start may be missing. The WAL always has them.
+	if err := a.replayWAL(ctx, storeLastAppliedIndex); err != nil {
+		return false, fmt.Errorf("replaying WAL: %w", err)
+	}
+
+	// Re-read after WAL replay — it may have advanced the index.
+	storeLastAppliedIndex, err = query.ReadLastAppliedIndex(a.store)
+	if err != nil {
+		return false, fmt.Errorf("getting store last applied index after WAL replay: %w", err)
+	}
+
+	a.logger.WithFields(map[string]any{
+		"fromIndex": storeLastAppliedIndex,
+	}).Infof("Starting spool replay")
+
+	// todo: is it necessary to replay spool since we re read from the wal?
+	// why don't we just need to replay the wal then clear the spool?
+	if err := a.replaySpool(ctx, storeLastAppliedIndex); err != nil {
+		return false, fmt.Errorf("replaying spool: %w", err)
+	}
+
+	a.logger.WithFields(map[string]any{
+		"duration": time.Since(replayStart).String(),
+	}).Infof("Spool replay complete")
+
+	return true, nil
+}
+
 // Submit sends committed entries to the Applier goroutine for asynchronous
 // FSM application (or spooling if the node is in a non-normal state).
 func (a *Applier) Submit(entries []raftpb.Entry, confState *raftpb.ConfState, stop chan struct{}) {
