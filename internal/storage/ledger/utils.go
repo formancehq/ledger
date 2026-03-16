@@ -42,6 +42,19 @@ func filterAccountAddress(address, key string) string {
 	return strings.Join(parts, " and ")
 }
 
+// buildAddressFilterForLateral builds an OR condition of all address filters
+// to push into a LATERAL join, allowing Postgres to use the GIN index on address_array.
+func buildAddressFilterForLateral(addresses []string) string {
+	if len(addresses) == 1 {
+		return filterAccountAddress(addresses[0], "address")
+	}
+	conditions := make([]string, len(addresses))
+	for i, addr := range addresses {
+		conditions[i] = "(" + filterAccountAddress(addr, "address") + ")"
+	}
+	return strings.Join(conditions, " OR ")
+}
+
 func explodeAddress(address string) map[string]any {
 	parts := strings.Split(address, ":")
 	ret := make(map[string]any, len(parts)+1)

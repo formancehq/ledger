@@ -30,8 +30,18 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 
 	var selectVolumes *bun.SelectQuery
 
-	needAddressSegments := query.UseFilter("address", func(value any) bool {
-		return isPartialAddress(value.(string))
+	var allAddresses []string
+	var needAddressSegments bool
+	// Use a callback that always returns false to avoid short-circuiting,
+	// ensuring ALL address filter values are visited (important for $or queries
+	// mixing exact and partial addresses).
+	query.UseFilter("address", func(value any) bool {
+		addr := value.(string)
+		allAddresses = append(allAddresses, addr)
+		if isPartialAddress(addr) {
+			needAddressSegments = true
+		}
+		return false
 	})
 	if !query.UsePIT() && !query.UseOOT() {
 		selectVolumes = h.store.newScopedSelect().
@@ -50,6 +60,10 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 			if needAddressSegments {
 				accountsQuery = accountsQuery.ColumnExpr("address_array as account_array")
 				selectVolumes = selectVolumes.Column("account_array")
+				// Push address filter into lateral join for GIN index usage
+				if len(allAddresses) > 0 {
+					accountsQuery = accountsQuery.Where(buildAddressFilterForLateral(allAddresses))
+				}
 			}
 			if query.UseFilter("metadata") {
 				accountsQuery = accountsQuery.ColumnExpr("metadata")
@@ -99,6 +113,10 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 			if needAddressSegments {
 				accountsQuery = accountsQuery.ColumnExpr("address_array")
 				selectVolumes = selectVolumes.ColumnExpr("(array_agg(accounts.address_array))[1] as account_array")
+				// Push address filter into lateral join for GIN index usage
+				if len(allAddresses) > 0 {
+					accountsQuery = accountsQuery.Where(buildAddressFilterForLateral(allAddresses))
+				}
 			}
 			if query.UseFilter("first_usage") {
 				accountsQuery = accountsQuery.ColumnExpr("first_usage")

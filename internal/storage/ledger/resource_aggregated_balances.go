@@ -22,6 +22,20 @@ func (h aggregatedBalancesResourceRepositoryHandler) Schema() common.EntitySchem
 
 func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.RepositoryHandlerBuildContext[GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
+	var allAddresses []string
+	var needAddressSegments bool
+	// Use a callback that always returns false to avoid short-circuiting,
+	// ensuring ALL address filter values are visited (important for $or queries
+	// mixing exact and partial addresses).
+	query.UseFilter("address", func(value any) bool {
+		addr := value.(string)
+		allAddresses = append(allAddresses, addr)
+		if isPartialAddress(addr) {
+			needAddressSegments = true
+		}
+		return false
+	})
+
 	if query.UsePIT() {
 		ret := h.store.newScopedSelect().
 			ModelTableExpr(h.store.GetPrefixedRelationName("moves")).
@@ -45,13 +59,16 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 				Where("effective_date <= ?", query.PIT)
 		}
 
-		if query.UseFilter("address", func(value any) bool {
-			return isPartialAddress(value.(string))
-		}) {
+		if needAddressSegments {
 			subQuery := h.store.newScopedSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address_array").
 				Where("accounts.address = accounts_address")
+
+			// Push address filter into lateral join for GIN index usage
+			if len(allAddresses) > 0 {
+				subQuery = subQuery.Where(buildAddressFilterForLateral(allAddresses))
+			}
 
 			ret = ret.
 				ColumnExpr("accounts.address_array as accounts_address_array").
@@ -78,9 +95,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 			Column("asset", "accounts_address").
 			ColumnExpr("(input, output)::"+h.store.GetPrefixedRelationName("volumes")+" as volumes")
 
-		if query.UseFilter("metadata") || query.UseFilter("address", func(value any) bool {
-			return isPartialAddress(value.(string))
-		}) {
+		if query.UseFilter("metadata") || needAddressSegments {
 			subQuery := h.store.newScopedSelect().
 				TableExpr(h.store.GetPrefixedRelationName("accounts")).
 				Column("address").
@@ -89,6 +104,10 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 			if query.UseFilter("address") {
 				subQuery = subQuery.ColumnExpr("address_array as accounts_address_array")
 				ret = ret.Column("accounts_address_array")
+				// Push address filter into lateral join for GIN index usage
+				if len(allAddresses) > 0 {
+					subQuery = subQuery.Where(buildAddressFilterForLateral(allAddresses))
+				}
 			}
 			if query.UseFilter("metadata") {
 				subQuery = subQuery.ColumnExpr("metadata")
