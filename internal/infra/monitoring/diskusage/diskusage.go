@@ -81,19 +81,17 @@ var (
 // Collector periodically computes directory sizes in the background and
 // exposes cached values to OTEL observable gauge callbacks.
 type Collector struct {
-	walDir        string
-	dataDir       string
-	spoolDir      string
-	readIndexDir  string
-	readIndexPath string
-	interval      time.Duration
-	meter         metric.Meter
+	walDir       string
+	dataDir      string
+	spoolDir     string
+	readIndexDir string
+	interval     time.Duration
+	meter        metric.Meter
 
 	spoolBytes           atomic.Int64
 	walBytes             atomic.Int64
 	dataBytes            atomic.Int64
 	readIndexBytes       atomic.Int64
-	readIndexMmapRSS     atomic.Int64
 	walVolumeBytes       atomic.Int64
 	dataVolumeBytes      atomic.Int64
 	walVolumeTotalBytes  atomic.Int64
@@ -104,20 +102,17 @@ type Collector struct {
 }
 
 // NewCollector creates a new Collector that will periodically compute disk usage
-// for the given directories at the specified interval. readIndexPath is the path
-// to the Pebble database file (e.g. "<dir>/readindex.db") used to measure mmap
-// RSS on Linux. The meter is used to register OTEL observable gauges on Start
-// and unregister them on Stop.
-func NewCollector(walDir, dataDir, readIndexDir, readIndexPath string, interval time.Duration, meter metric.Meter) *Collector {
+// for the given directories at the specified interval. The meter is used to
+// register OTEL observable gauges on Start and unregister them on Stop.
+func NewCollector(walDir, dataDir, readIndexDir string, interval time.Duration, meter metric.Meter) *Collector {
 	return &Collector{
-		walDir:        walDir,
-		dataDir:       dataDir,
-		spoolDir:      filepath.Join(walDir, "spool"),
-		readIndexDir:  readIndexDir,
-		readIndexPath: readIndexPath,
-		interval:      interval,
-		meter:         meter,
-		w:             worker.New(),
+		walDir:       walDir,
+		dataDir:      dataDir,
+		spoolDir:     filepath.Join(walDir, "spool"),
+		readIndexDir: readIndexDir,
+		interval:     interval,
+		meter:        meter,
+		w:            worker.New(),
 	}
 }
 
@@ -157,10 +152,6 @@ func (c *Collector) collect() {
 
 	if size, err := DirSize(c.readIndexDir); err == nil {
 		c.readIndexBytes.Store(size)
-	}
-
-	if rss, err := mmapRSSBytes(c.readIndexPath); err == nil {
-		c.readIndexMmapRSS.Store(rss)
 	}
 
 	if size, err := dirSizeExcluding(c.dataDir, c.readIndexDir); err == nil {
@@ -208,10 +199,6 @@ func (c *Collector) DataBytes() int64 { return c.dataBytes.Load() }
 // ReadIndexBytes returns the last computed Pebble read index size in bytes.
 func (c *Collector) ReadIndexBytes() int64 { return c.readIndexBytes.Load() }
 
-// ReadIndexMmapRSSBytes returns the resident set size of the Pebble mmap in bytes.
-// On non-Linux platforms this always returns 0.
-func (c *Collector) ReadIndexMmapRSSBytes() int64 { return c.readIndexMmapRSS.Load() }
-
 // WALVolumeBytes returns the last computed total WAL volume size in bytes.
 func (c *Collector) WALVolumeBytes() int64 { return c.walVolumeBytes.Load() }
 
@@ -245,15 +232,6 @@ func (c *Collector) registerMetrics() (metric.Registration, error) {
 		return nil, fmt.Errorf("creating volume gauge: %w", err)
 	}
 
-	mmapRSSGauge, err := c.meter.Int64ObservableGauge(
-		"storage.mmap.rss.bytes",
-		metric.WithDescription("Resident set size of memory-mapped storage files"),
-		metric.WithUnit("By"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating mmap RSS gauge: %w", err)
-	}
-
 	return c.meter.RegisterCallback(
 		func(_ context.Context, o metric.Observer) error {
 			o.ObserveInt64(componentGauge, c.spoolBytes.Load(),
@@ -270,13 +248,9 @@ func (c *Collector) registerMetrics() (metric.Registration, error) {
 			o.ObserveInt64(volumeGauge, c.dataVolumeBytes.Load(),
 				metric.WithAttributes(volumeKey.String("data")))
 
-			o.ObserveInt64(mmapRSSGauge, c.readIndexMmapRSS.Load(),
-				metric.WithAttributes(componentKey.String("readindex")))
-
 			return nil
 		},
 		componentGauge,
 		volumeGauge,
-		mmapRSSGauge,
 	)
 }

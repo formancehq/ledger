@@ -92,8 +92,7 @@ func TestCollector_StartAndStop(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(readIndexDir, "readindex.db"), []byte("index data"), 0644))
 
 	provider := sdkmetric.NewMeterProvider(newTestMeter())
-	readIndexPath := filepath.Join(readIndexDir, "readindex.db")
-	c := NewCollector(walDir, dataDir, readIndexDir, readIndexPath, 100*time.Millisecond, provider.Meter("test"))
+	c := NewCollector(walDir, dataDir, readIndexDir, 100*time.Millisecond, provider.Meter("test"))
 	c.Start()
 
 	// After Start, collect should have run once synchronously
@@ -123,7 +122,7 @@ func TestCollector_RegisterMetrics(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 
-	c := NewCollector(walDir, dataDir, readIndexDir, filepath.Join(readIndexDir, "readindex.db"), time.Hour, provider.Meter("test"))
+	c := NewCollector(walDir, dataDir, readIndexDir, time.Hour, provider.Meter("test"))
 	c.collect()
 
 	// Start registers metrics internally
@@ -149,7 +148,7 @@ func TestCollector_AtomicReads(t *testing.T) {
 	require.NoError(t, os.MkdirAll(readIndexDir, 0755))
 
 	provider := sdkmetric.NewMeterProvider(newTestMeter())
-	c := NewCollector(walDir, dataDir, readIndexDir, filepath.Join(readIndexDir, "readindex.db"), time.Hour, provider.Meter("test")) // long interval - we'll call collect manually
+	c := NewCollector(walDir, dataDir, readIndexDir, time.Hour, provider.Meter("test")) // long interval - we'll call collect manually
 
 	// Before collect, everything should be 0
 	require.Equal(t, int64(0), c.SpoolBytes())

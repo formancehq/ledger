@@ -342,7 +342,6 @@ func Module() fx.Option {
 					cfg.RaftConfig.WalDir,
 					cfg.DataDir,
 					readIndexDir,
-					filepath.Join(readIndexDir, "readindex.db"),
 					10*time.Second,
 					meterProvider.Meter("storage"),
 				)
