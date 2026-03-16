@@ -32,6 +32,11 @@ func NewObserver(handler EventHandler) *Observer {
 	return &Observer{handler: handler}
 }
 
+// NewNoOpObserver creates an Observer that silently discards all events.
+func NewNoOpObserver() *Observer {
+	return &Observer{handler: func(any) {}}
+}
+
 // Emit invokes the handler synchronously with the given event.
 func (o *Observer) Emit(event any) {
 	o.handler(event)

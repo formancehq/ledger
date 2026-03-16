@@ -425,6 +425,7 @@ func NewNode(
 		peerAddresses:    recoveredPeers,
 		lastAutoPromote:  make(map[uint64]time.Time),
 		indexTracker:     NewIndexTracker(initialIndex(wal)),
+		observer:         NewNoOpObserver(),
 	}
 
 	// Ensure peerAddresses is never nil (bootstrap path has no recoveredPeers).
@@ -949,18 +950,12 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			// leadership loss
 			if wasLeader && !isLeader {
 				logger.Infof("Leadership lost")
-
-				if node.observer != nil {
-					node.observer.Emit(LeadershipChangeEvent{IsLeader: false})
-				}
+				node.observer.Emit(LeadershipChangeEvent{IsLeader: false})
 			}
 			// acquire leadership
 			if !wasLeader && isLeader {
 				logger.Infof("Leadership gained")
-
-				if node.observer != nil {
-					node.observer.Emit(LeadershipChangeEvent{IsLeader: true})
-				}
+				node.observer.Emit(LeadershipChangeEvent{IsLeader: true})
 
 				node.applier.Drain(stop)
 				node.fsm.OnLeadershipAcquired()
@@ -1098,26 +1093,12 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	var pendingFutures []*futures.Future[struct{}]
 
 	for _, entry := range rd.CommittedEntries {
-		var cc raftpb.ConfChangeV2
+		cc, ok, err := unmarshalConfChangeV2(entry)
+		if err != nil {
+			return err
+		}
 
-		switch entry.Type {
-		case raftpb.EntryConfChange:
-			var ccV1 raftpb.ConfChange
-
-			err := ccV1.Unmarshal(entry.Data)
-			if err != nil {
-				return fmt.Errorf("unmarshaling ConfChange: %w", err)
-			}
-
-			cc = ccV1.AsV2()
-			// V1->V2 conversion does not copy Context; propagate it manually.
-			cc.Context = ccV1.Context
-		case raftpb.EntryConfChangeV2:
-			err := cc.Unmarshal(entry.Data)
-			if err != nil {
-				return fmt.Errorf("unmarshaling ConfChangeV2: %w", err)
-			}
-		default:
+		if !ok {
 			continue
 		}
 
@@ -1146,14 +1127,12 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 
 		// Notify observers about configuration changes
-		if node.observer != nil {
-			for _, change := range cc.Changes {
-				node.observer.Emit(ConfChangeEvent{
-					NodeID:     change.NodeID,
-					ChangeType: change.Type,
-					Context:    cc.Context,
-				})
-			}
+		for _, change := range cc.Changes {
+			node.observer.Emit(ConfChangeEvent{
+				NodeID:     change.NodeID,
+				ChangeType: change.Type,
+				Context:    cc.Context,
+			})
 		}
 	}
 
@@ -1886,12 +1865,10 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		}).Infof("Force-removed node (bypassed consensus)")
 
 		// Notify observers so bootstrap can clean up transport/service pool.
-		if node.observer != nil {
-			node.observer.Emit(ConfChangeEvent{
-				NodeID:     nodeID,
-				ChangeType: raftpb.ConfChangeRemoveNode,
-			})
-		}
+		node.observer.Emit(ConfChangeEvent{
+			NodeID:     nodeID,
+			ChangeType: raftpb.ConfChangeRemoveNode,
+		})
 
 		return nil
 	})
@@ -1985,25 +1962,8 @@ func ExtractPeerAddressesFromEntries(entries []raftpb.Entry) map[uint64]ConfChan
 	peers := make(map[uint64]ConfChangeContext)
 
 	for _, entry := range entries {
-		var cc raftpb.ConfChangeV2
-
-		switch entry.Type {
-		case raftpb.EntryConfChange:
-			var ccV1 raftpb.ConfChange
-
-			err := ccV1.Unmarshal(entry.Data)
-			if err != nil {
-				continue
-			}
-
-			cc = ccV1.AsV2()
-			cc.Context = ccV1.Context
-		case raftpb.EntryConfChangeV2:
-			err := cc.Unmarshal(entry.Data)
-			if err != nil {
-				continue
-			}
-		default:
+		cc, ok, err := unmarshalConfChangeV2(entry)
+		if err != nil || !ok {
 			continue
 		}
 

@@ -3,6 +3,8 @@ package node
 import (
 	"encoding/json"
 	"fmt"
+
+	"go.etcd.io/etcd/raft/v3/raftpb"
 )
 
 // ConfChangeContext carries peer addresses alongside a Raft ConfChange so that
@@ -35,4 +37,33 @@ func UnmarshalConfChangeContext(data []byte) (ConfChangeContext, error) {
 	}
 
 	return ctx, nil
+}
+
+// unmarshalConfChangeV2 decodes a ConfChange or ConfChangeV2 entry into a
+// unified ConfChangeV2. Returns false for entries that are not conf-changes.
+func unmarshalConfChangeV2(entry raftpb.Entry) (raftpb.ConfChangeV2, bool, error) {
+	var cc raftpb.ConfChangeV2
+
+	switch entry.Type {
+	case raftpb.EntryConfChange:
+		var ccV1 raftpb.ConfChange
+
+		err := ccV1.Unmarshal(entry.Data)
+		if err != nil {
+			return cc, false, fmt.Errorf("unmarshaling ConfChange: %w", err)
+		}
+
+		cc = ccV1.AsV2()
+		// V1->V2 conversion does not copy Context; propagate it manually.
+		cc.Context = ccV1.Context
+	case raftpb.EntryConfChangeV2:
+		err := cc.Unmarshal(entry.Data)
+		if err != nil {
+			return cc, false, fmt.Errorf("unmarshaling ConfChangeV2: %w", err)
+		}
+	default:
+		return cc, false, nil
+	}
+
+	return cc, true, nil
 }
