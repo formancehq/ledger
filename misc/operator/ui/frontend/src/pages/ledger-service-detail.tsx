@@ -998,7 +998,21 @@ ledgerctl auth login ${profileFlags} --bundle ${info.agentName ?? "agent"}-bundl
         </Card>
       )}
 
-      {/* Step 3: Endpoints */}
+      {/* Step 3: Endpoints — only shown when Ingress is ready */}
+      {!isExternal ? (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            {authEnabled ? "3" : "2"}. Connect to your cluster
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Waiting for Ingress to be ready. Configure an Ingress on the LedgerService for external access.
+          </p>
+        </CardContent>
+      </Card>
+      ) : (
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
@@ -1011,7 +1025,7 @@ ledgerctl auth login ${profileFlags} --bundle ${info.agentName ?? "agent"}-bundl
               <dt className="text-muted-foreground">gRPC endpoint</dt>
               <dd className="font-mono text-xs flex items-center gap-1">
                 {grpcEndpoint}
-                {isExternal && <Badge variant="secondary" className="ml-1 text-[10px]">ingress</Badge>}
+                <Badge variant="secondary" className="ml-1 text-[10px]">ingress</Badge>
                 <CopyButton field="grpc-ep" text={grpcEndpoint} copiedField={copiedField} onCopy={onCopy} />
               </dd>
             </div>
@@ -1019,17 +1033,11 @@ ledgerctl auth login ${profileFlags} --bundle ${info.agentName ?? "agent"}-bundl
               <dt className="text-muted-foreground">HTTP endpoint</dt>
               <dd className="font-mono text-xs flex items-center gap-1">
                 {httpEndpoint}
-                {isExternal && <Badge variant="secondary" className="ml-1 text-[10px]">ingress</Badge>}
+                <Badge variant="secondary" className="ml-1 text-[10px]">ingress</Badge>
                 <CopyButton field="http-ep" text={httpEndpoint} copiedField={copiedField} onCopy={onCopy} />
               </dd>
             </div>
           </div>
-          {!isExternal && (
-            <p className="text-xs text-muted-foreground">
-              These are in-cluster addresses. Configure an Ingress on the LedgerService
-              for external access.
-            </p>
-          )}
 
           <p className="text-sm text-muted-foreground mt-3">
             Use <code>ledgerctl</code> to interact with the cluster:
@@ -1075,6 +1083,7 @@ curl -X POST ${httpEndpoint}/v2/my-ledger/transactions \\
           />
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
