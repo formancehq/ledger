@@ -855,7 +855,15 @@ gh release download --repo formancehq/ledger-v3-poc -p "ledger-v3_$(uname -s | t
 tar xzf /tmp/ledgerctl-install/ledger-v3_*.tar.gz -C /tmp/ledgerctl-install
 xattr -d com.apple.quarantine /tmp/ledgerctl-install/ledgerctl 2>/dev/null  # macOS only: remove Gatekeeper quarantine
 sudo mv /tmp/ledgerctl-install/ledgerctl /usr/local/bin/
-rm -rf /tmp/ledgerctl-install`;
+rm -rf /tmp/ledgerctl-install
+
+# Enable shell completion
+SHELL_NAME=$(basename "$SHELL")
+if [ "$SHELL_NAME" = "zsh" ]; then
+  echo 'source <(ledgerctl completion zsh)' >> ~/.zshrc
+elif [ "$SHELL_NAME" = "bash" ]; then
+  echo 'source <(ledgerctl completion bash)' >> ~/.bashrc
+fi`;
 
 const INSTALL_SCRIPT_CURL = `# Or via curl (requires a GitHub token for private repos)
 ARCH=$(uname -m); [ "$ARCH" = "x86_64" ] && ARCH="amd64"
@@ -866,7 +874,15 @@ ASSET_ID=$(echo "$RELEASE" | grep -B3 "\\"name\\": \\"$ASSET\\"" | grep '"id":' 
 curl -sSfL -H "Authorization: token \${GITHUB_TOKEN}" -H "Accept: application/octet-stream" \\
   "https://api.github.com/repos/formancehq/ledger-v3-poc/releases/assets/$ASSET_ID" | tar xz
 xattr -d com.apple.quarantine ledgerctl 2>/dev/null  # macOS only: remove Gatekeeper quarantine
-sudo mv ledgerctl /usr/local/bin/`;
+sudo mv ledgerctl /usr/local/bin/
+
+# Enable shell completion
+SHELL_NAME=$(basename "$SHELL")
+if [ "$SHELL_NAME" = "zsh" ]; then
+  echo 'source <(ledgerctl completion zsh)' >> ~/.zshrc
+elif [ "$SHELL_NAME" = "bash" ]; then
+  echo 'source <(ledgerctl completion bash)' >> ~/.bashrc
+fi`;
 
 function ConnectPanel({
   connectQuery,
