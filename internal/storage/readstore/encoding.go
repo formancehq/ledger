@@ -80,4 +80,3 @@ func EncodeTxID(dst []byte, txID uint64) []byte {
 
 	return append(dst, buf[:]...)
 }
-
