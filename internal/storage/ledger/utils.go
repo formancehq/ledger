@@ -44,19 +44,28 @@ func filterAccountAddress(address, key string) string {
 	return strings.Join(parts, " and ")
 }
 
-// queryHasNegation detects if a query builder contains any $not clauses
-// by inspecting its JSON representation. When $not is present, pushing a
-// positive address filter into the LATERAL join would be incorrect (the
-// lateral keeps only matching rows, but $not excludes them).
-func queryHasNegation(builder query.Builder) bool {
+// canPushAddressFilterToLateral checks whether it is safe to push the address
+// filter into the LATERAL join by inspecting the query builder's JSON AST.
+//
+// The optimization is UNSAFE when:
+//   - $not is present: the lateral keeps matching rows, but the outer WHERE
+//     negates them → 0 results.
+//   - $or is present: the lateral excludes rows that don't match the address
+//     filter, but those rows might match another branch of the $or (e.g.
+//     a balance or metadata condition) → missing results.
+//
+// With pure $and queries, the optimization is safe because all conditions
+// must be true, so pre-filtering by address is a valid subset operation.
+func canPushAddressFilterToLateral(builder query.Builder) bool {
 	if builder == nil {
-		return false
+		return true
 	}
 	data, err := json.Marshal(builder)
 	if err != nil {
 		return false
 	}
-	return strings.Contains(string(data), `"$not":`)
+	s := string(data)
+	return !strings.Contains(s, `"$not":`) && !strings.Contains(s, `"$or":`)
 }
 
 // buildAddressFilterForLateral builds an OR condition of all address filters

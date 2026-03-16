@@ -62,7 +62,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 				selectVolumes = selectVolumes.Column("account_array")
 				// Push address filter into lateral join for GIN index usage.
 				// Skip when query contains $not to avoid incorrectly excluding rows.
-				if len(allAddresses) > 0 && !queryHasNegation(query.Builder) {
+				if len(allAddresses) > 0 && canPushAddressFilterToLateral(query.Builder) {
 					accountsQuery = accountsQuery.Where(buildAddressFilterForLateral(allAddresses))
 				}
 			}
@@ -116,7 +116,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 				selectVolumes = selectVolumes.ColumnExpr("(array_agg(accounts.address_array))[1] as account_array")
 				// Push address filter into lateral join for GIN index usage.
 				// Skip when query contains $not to avoid incorrectly excluding rows.
-				if len(allAddresses) > 0 && !queryHasNegation(query.Builder) {
+				if len(allAddresses) > 0 && canPushAddressFilterToLateral(query.Builder) {
 					accountsQuery = accountsQuery.Where(buildAddressFilterForLateral(allAddresses))
 				}
 			}
