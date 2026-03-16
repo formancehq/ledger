@@ -852,12 +852,14 @@ const RELEASES_URL = "https://github.com/formancehq/ledger/releases";
 const INSTALL_SCRIPT_GH = `# Install via GitHub CLI (recommended for private repos)
 ARCH=$(uname -m); [ "$ARCH" = "x86_64" ] && ARCH="amd64"
 gh release download --repo formancehq/ledger -p "ledger_$(uname -s | tr '[:upper:]' '[:lower:]')-$ARCH.tar.gz" -O - | tar xz
+xattr -d com.apple.quarantine ledgerctl 2>/dev/null  # macOS only: remove Gatekeeper quarantine
 sudo mv ledgerctl /usr/local/bin/`;
 
 const INSTALL_SCRIPT_CURL = `# Or via curl (requires a GitHub token for private repos)
 ARCH=$(uname -m); [ "$ARCH" = "x86_64" ] && ARCH="amd64"
 curl -sSfL -H "Authorization: token \${GITHUB_TOKEN}" \\
   "https://github.com/formancehq/ledger/releases/latest/download/ledger_$(uname -s | tr '[:upper:]' '[:lower:]')-$ARCH.tar.gz" | tar xz
+xattr -d com.apple.quarantine ledgerctl 2>/dev/null  # macOS only: remove Gatekeeper quarantine
 sudo mv ledgerctl /usr/local/bin/`;
 
 function ConnectPanel({
