@@ -284,7 +284,6 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	// Recovery: if a period is in CLOSING state but no seal checkpoint exists,
 	// the node crashed after ClosePeriod batch.Commit() but before checkpoint creation.
 	// Pebble state is exactly at the ClosePeriod boundary right now (spool replay hasn't run).
-	// todo: not the right place for that (move in fsm directly?)
 	if period := a.fsm.ClosingPeriod(); period != nil {
 		if _, exists := a.store.TemporaryCheckpointPath("seal"); !exists {
 			a.logger.Infof("Recovering: creating seal checkpoint for closing period %d", period.GetId())
