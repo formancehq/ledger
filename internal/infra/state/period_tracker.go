@@ -13,7 +13,7 @@ import (
 type PeriodTracker struct {
 	allPeriods        map[uint64]*commonpb.Period
 	currentOpenPeriod *commonpb.Period
-	closingPeriod     *commonpb.Period
+	closingPeriods    []*commonpb.Period
 	nextPeriodID      uint64
 
 	// schedule is the cron expression for automatic period rotation (empty = disabled).
@@ -26,14 +26,14 @@ type PeriodTracker struct {
 func NewPeriodTracker(
 	allPeriods map[uint64]*commonpb.Period,
 	currentOpenPeriod *commonpb.Period,
-	closingPeriod *commonpb.Period,
+	closingPeriods []*commonpb.Period,
 	nextPeriodID uint64,
 	schedule string,
 ) *PeriodTracker {
 	return &PeriodTracker{
 		allPeriods:        allPeriods,
 		currentOpenPeriod: currentOpenPeriod,
-		closingPeriod:     closingPeriod,
+		closingPeriods:    closingPeriods,
 		nextPeriodID:      nextPeriodID,
 		schedule:          schedule,
 		scheduleChanged:   signal.New(),
@@ -63,19 +63,50 @@ func (pt *PeriodTracker) SetCurrentOpenPeriod(p *commonpb.Period) {
 	}
 }
 
-// ClosingPeriod returns the period currently in CLOSING state, or nil.
-func (pt *PeriodTracker) ClosingPeriod() *commonpb.Period {
-	return pt.closingPeriod
+// ClosingPeriods returns all periods currently in CLOSING state.
+func (pt *PeriodTracker) ClosingPeriods() []*commonpb.Period {
+	return pt.closingPeriods
 }
 
-// SetClosingPeriod sets the closing period.
-func (pt *PeriodTracker) SetClosingPeriod(p *commonpb.Period) {
-	pt.closingPeriod = p
+// ClosingPeriodByID returns the closing period with the given ID, if any.
+func (pt *PeriodTracker) ClosingPeriodByID(id uint64) (*commonpb.Period, bool) {
+	for _, p := range pt.closingPeriods {
+		if p.GetId() == id {
+			return p, true
+		}
+	}
+
+	return nil, false
 }
 
-// ClearClosingPeriod removes the closing period reference.
-func (pt *PeriodTracker) ClearClosingPeriod() {
-	pt.closingPeriod = nil
+// LatestClosingPeriod returns the most recently added closing period, or nil.
+func (pt *PeriodTracker) LatestClosingPeriod() *commonpb.Period {
+	if len(pt.closingPeriods) == 0 {
+		return nil
+	}
+
+	return pt.closingPeriods[len(pt.closingPeriods)-1]
+}
+
+// AddClosingPeriod appends a period to the closing periods list.
+func (pt *PeriodTracker) AddClosingPeriod(p *commonpb.Period) {
+	pt.closingPeriods = append(pt.closingPeriods, p)
+}
+
+// RemoveClosingPeriod removes the closing period with the given ID.
+func (pt *PeriodTracker) RemoveClosingPeriod(id uint64) {
+	for i, p := range pt.closingPeriods {
+		if p.GetId() == id {
+			pt.closingPeriods = append(pt.closingPeriods[:i], pt.closingPeriods[i+1:]...)
+
+			return
+		}
+	}
+}
+
+// SetClosingPeriods replaces the entire closing periods slice (used during Commit).
+func (pt *PeriodTracker) SetClosingPeriods(periods []*commonpb.Period) {
+	pt.closingPeriods = periods
 }
 
 // GetPeriodByID looks up a period by ID.
@@ -125,12 +156,12 @@ func (pt *PeriodTracker) ScheduleChanged() signal.Signal {
 func (pt *PeriodTracker) Reset(
 	allPeriods map[uint64]*commonpb.Period,
 	currentOpenPeriod *commonpb.Period,
-	closingPeriod *commonpb.Period,
+	closingPeriods []*commonpb.Period,
 	nextPeriodID uint64,
 ) {
 	pt.allPeriods = allPeriods
 	pt.currentOpenPeriod = currentOpenPeriod
-	pt.closingPeriod = closingPeriod
+	pt.closingPeriods = closingPeriods
 	pt.nextPeriodID = nextPeriodID
 }
 
@@ -143,19 +174,20 @@ func (pt *PeriodTracker) Clone() *PeriodTracker {
 		clonedAll[id] = proto.CloneOf(p)
 	}
 
-	var clonedOpen, clonedClosing *commonpb.Period
+	var clonedOpen *commonpb.Period
 	if pt.currentOpenPeriod != nil {
 		clonedOpen = clonedAll[pt.currentOpenPeriod.GetId()]
 	}
 
-	if pt.closingPeriod != nil {
-		clonedClosing = clonedAll[pt.closingPeriod.GetId()]
+	var clonedClosing []*commonpb.Period
+	for _, cp := range pt.closingPeriods {
+		clonedClosing = append(clonedClosing, clonedAll[cp.GetId()])
 	}
 
 	return &PeriodTracker{
 		allPeriods:        clonedAll,
 		currentOpenPeriod: clonedOpen,
-		closingPeriod:     clonedClosing,
+		closingPeriods:    clonedClosing,
 		nextPeriodID:      pt.nextPeriodID,
 	}
 }

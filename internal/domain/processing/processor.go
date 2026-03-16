@@ -100,8 +100,8 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, s InMemorySt
 		// include this log's hash. The log payload holds a cloned snapshot, so
 		// this mutation only affects the FSM state (persisted to Pebble).
 		// CheckStore uses this to resume the hash chain after purged logs.
-		if _, ok := payload.GetType().(*commonpb.LogPayload_ClosePeriod); ok {
-			if closingPeriod, hasClosing := s.GetClosingPeriod(); hasClosing {
+		if cpLog, ok := payload.GetType().(*commonpb.LogPayload_ClosePeriod); ok {
+			if closingPeriod, hasClosing := s.GetClosingPeriodByID(cpLog.ClosePeriod.GetClosedPeriod().GetId()); hasClosing {
 				closingPeriod.LastLogHash = log.GetHash()
 			}
 		}

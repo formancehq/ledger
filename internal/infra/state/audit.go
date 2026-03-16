@@ -118,9 +118,6 @@ func buildAuditFailure(err error) *auditpb.AuditFailure {
 	case errors.Is(err, domain.ErrNoPeriodOpen):
 		failure.ErrorType = domain.ErrReasonNoPeriodOpen
 
-	case errors.Is(err, domain.ErrPeriodAlreadyClosing):
-		failure.ErrorType = domain.ErrReasonPeriodAlreadyClosing
-
 	case errors.As(err, &periodNotFound):
 		failure.ErrorType = domain.ErrReasonPeriodNotFound
 		failure.Context["periodId"] = strconv.FormatUint(periodNotFound.PeriodID, 10)

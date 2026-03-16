@@ -187,10 +187,6 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		code = codes.FailedPrecondition
 		reason = domain.ErrReasonNoPeriodOpen
 
-	case errors.Is(inner, domain.ErrPeriodAlreadyClosing):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonPeriodAlreadyClosing
-
 	case errors.As(inner, &periodNotFound):
 		code = codes.NotFound
 		reason = domain.ErrReasonPeriodNotFound

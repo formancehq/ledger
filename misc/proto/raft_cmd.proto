@@ -475,7 +475,7 @@ message MemorySnapshot {
   // Signing keys are persisted in Pebble, not in the memory snapshot.
   // They are reloaded from Pebble after SynchronizeWithLeader restores the checkpoint.
   common.Period open_period = 9;      // Current open period (may be nil before first proposal)
-  common.Period closing_period = 10;  // Period being sealed (nil when no period is closing)
+  repeated common.Period closing_periods = 10;  // Periods being sealed (empty when no period is closing)
   uint64 next_period_id = 11;
   repeated common.Period closed_periods = 12;  // CLOSED + ARCHIVED periods (non-purged)
   repeated ReversionBitsetEntry reversions = 13;  // Per-ledger reversion bitsets

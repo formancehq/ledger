@@ -286,10 +286,8 @@ func TestBufferedPeriodOperations(t *testing.T) {
 	require.False(t, ok)
 	require.Nil(t, p)
 
-	// No closing period
-	p, ok = buf.GetClosingPeriod()
-	require.False(t, ok)
-	require.Nil(t, p)
+	// No closing periods
+	require.Empty(t, buf.GetClosingPeriods())
 
 	// Set current open period
 	openPeriod := &commonpb.Period{Id: 1, Status: commonpb.PeriodStatus_PERIOD_OPEN}
@@ -298,18 +296,74 @@ func TestBufferedPeriodOperations(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, uint64(1), p.GetId())
 
-	// Set closing period
+	// Add closing period
 	closingPeriod := &commonpb.Period{Id: 2, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
-	buf.SetClosingPeriod(closingPeriod)
-	p, ok = buf.GetClosingPeriod()
+	buf.AddClosingPeriod(closingPeriod)
+	cp, ok := buf.GetClosingPeriodByID(2)
 	require.True(t, ok)
-	require.Equal(t, uint64(2), p.GetId())
+	require.Equal(t, uint64(2), cp.GetId())
+	require.Len(t, buf.GetClosingPeriods(), 1)
 
-	// Clear closing period
-	buf.ClearClosingPeriod()
-	p, ok = buf.GetClosingPeriod()
+	// Add a second closing period
+	closingPeriod2 := &commonpb.Period{Id: 3, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+	buf.AddClosingPeriod(closingPeriod2)
+	require.Len(t, buf.GetClosingPeriods(), 2)
+
+	// Remove first closing period
+	buf.RemoveClosingPeriod(2)
+	_, ok = buf.GetClosingPeriodByID(2)
 	require.False(t, ok)
-	require.Nil(t, p)
+	require.Len(t, buf.GetClosingPeriods(), 1)
+
+	// Remove second closing period
+	buf.RemoveClosingPeriod(3)
+	require.Empty(t, buf.GetClosingPeriods())
+}
+
+func TestBufferedRemoveClosingPeriodRecordsChange(t *testing.T) {
+	t.Parallel()
+	buf, _ := newTestBuffer(t)
+
+	closingPeriod := &commonpb.Period{Id: 7, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+	buf.AddClosingPeriod(closingPeriod)
+	initialChanges := len(buf.changedPeriods)
+
+	buf.RemoveClosingPeriod(7)
+
+	// RemoveClosingPeriod should record the removed period's final state
+	require.Greater(t, len(buf.changedPeriods), initialChanges)
+	found := false
+	for _, p := range buf.changedPeriods {
+		if p.GetId() == 7 {
+			found = true
+
+			break
+		}
+	}
+	require.True(t, found, "removed closing period should be in changedPeriods")
+}
+
+func TestBufferedMultipleClosingPeriodsAfterMerge(t *testing.T) {
+	t.Parallel()
+	buf, machine := newTestBuffer(t)
+
+	// Add two closing periods
+	p1 := &commonpb.Period{Id: 10, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+	p2 := &commonpb.Period{Id: 11, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+	buf.AddClosingPeriod(p1)
+	buf.AddClosingPeriod(p2)
+
+	// After Merge, the machine should have both closing periods
+	batch := machine.dataStore.NewBatch()
+	err := buf.Merge(1, batch)
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	require.Len(t, machine.Periods.ClosingPeriods(), 2)
+	_, ok := machine.Periods.ClosingPeriodByID(10)
+	require.True(t, ok)
+	_, ok = machine.Periods.ClosingPeriodByID(11)
+	require.True(t, ok)
 }
 
 func TestBufferedGetNextPeriodIDAndIncrement(t *testing.T) {

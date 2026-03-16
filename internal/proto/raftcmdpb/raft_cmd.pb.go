@@ -4845,13 +4845,13 @@ type MemorySnapshot struct {
 	NextAuditSequenceId  uint64                 `protobuf:"varint,8,opt,name=next_audit_sequence_id,json=nextAuditSequenceId,proto3" json:"next_audit_sequence_id,omitempty"`  // Next audit log sequence ID
 	// Signing keys are persisted in Pebble, not in the memory snapshot.
 	// They are reloaded from Pebble after SynchronizeWithLeader restores the checkpoint.
-	OpenPeriod    *commonpb.Period        `protobuf:"bytes,9,opt,name=open_period,json=openPeriod,proto3" json:"open_period,omitempty"`           // Current open period (may be nil before first proposal)
-	ClosingPeriod *commonpb.Period        `protobuf:"bytes,10,opt,name=closing_period,json=closingPeriod,proto3" json:"closing_period,omitempty"` // Period being sealed (nil when no period is closing)
-	NextPeriodId  uint64                  `protobuf:"varint,11,opt,name=next_period_id,json=nextPeriodId,proto3" json:"next_period_id,omitempty"`
-	ClosedPeriods []*commonpb.Period      `protobuf:"bytes,12,rep,name=closed_periods,json=closedPeriods,proto3" json:"closed_periods,omitempty"` // CLOSED + ARCHIVED periods (non-purged)
-	Reversions    []*ReversionBitsetEntry `protobuf:"bytes,13,rep,name=reversions,proto3" json:"reversions,omitempty"`                            // Per-ledger reversion bitsets
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	OpenPeriod     *commonpb.Period        `protobuf:"bytes,9,opt,name=open_period,json=openPeriod,proto3" json:"open_period,omitempty"`              // Current open period (may be nil before first proposal)
+	ClosingPeriods []*commonpb.Period      `protobuf:"bytes,10,rep,name=closing_periods,json=closingPeriods,proto3" json:"closing_periods,omitempty"` // Periods being sealed (empty when no period is closing)
+	NextPeriodId   uint64                  `protobuf:"varint,11,opt,name=next_period_id,json=nextPeriodId,proto3" json:"next_period_id,omitempty"`
+	ClosedPeriods  []*commonpb.Period      `protobuf:"bytes,12,rep,name=closed_periods,json=closedPeriods,proto3" json:"closed_periods,omitempty"` // CLOSED + ARCHIVED periods (non-purged)
+	Reversions     []*ReversionBitsetEntry `protobuf:"bytes,13,rep,name=reversions,proto3" json:"reversions,omitempty"`                            // Per-ledger reversion bitsets
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *MemorySnapshot) Reset() {
@@ -4933,9 +4933,9 @@ func (x *MemorySnapshot) GetOpenPeriod() *commonpb.Period {
 	return nil
 }
 
-func (x *MemorySnapshot) GetClosingPeriod() *commonpb.Period {
+func (x *MemorySnapshot) GetClosingPeriods() []*commonpb.Period {
 	if x != nil {
-		return x.ClosingPeriod
+		return x.ClosingPeriods
 	}
 	return nil
 }
@@ -6161,7 +6161,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x05state\x18\x02 \x01(\v2\x18.common.TransactionStateR\x05state\"Q\n" +
 	"\x16PreloadNumscriptParsed\x12!\n" +
 	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12\x14\n" +
-	"\x05plain\x18\x02 \x01(\tR\x05plain\"\x9e\x04\n" +
+	"\x05plain\x18\x02 \x01(\tR\x05plain\"\xa0\x04\n" +
 	"\x0eMemorySnapshot\x12(\n" +
 	"\x10next_sequence_id\x18\x01 \x01(\x04R\x0enextSequenceId\x12\"\n" +
 	"\rlast_log_hash\x18\x02 \x01(\fR\vlastLogHash\x12#\n" +
@@ -6170,9 +6170,9 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x16last_applied_timestamp\x18\a \x01(\x04R\x14lastAppliedTimestamp\x123\n" +
 	"\x16next_audit_sequence_id\x18\b \x01(\x04R\x13nextAuditSequenceId\x12/\n" +
 	"\vopen_period\x18\t \x01(\v2\x0e.common.PeriodR\n" +
-	"openPeriod\x125\n" +
-	"\x0eclosing_period\x18\n" +
-	" \x01(\v2\x0e.common.PeriodR\rclosingPeriod\x12$\n" +
+	"openPeriod\x127\n" +
+	"\x0fclosing_periods\x18\n" +
+	" \x03(\v2\x0e.common.PeriodR\x0eclosingPeriods\x12$\n" +
 	"\x0enext_period_id\x18\v \x01(\x04R\fnextPeriodId\x125\n" +
 	"\x0eclosed_periods\x18\f \x03(\v2\x0e.common.PeriodR\rclosedPeriods\x12:\n" +
 	"\n" +
@@ -6519,7 +6519,7 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	115, // 138: raft.PreloadTransactionState.state:type_name -> common.TransactionState
 	83,  // 139: raft.PreloadNumscriptParsed.id:type_name -> raft.AttributeID
 	116, // 140: raft.MemorySnapshot.open_period:type_name -> common.Period
-	116, // 141: raft.MemorySnapshot.closing_period:type_name -> common.Period
+	116, // 141: raft.MemorySnapshot.closing_periods:type_name -> common.Period
 	116, // 142: raft.MemorySnapshot.closed_periods:type_name -> common.Period
 	82,  // 143: raft.MemorySnapshot.reversions:type_name -> raft.ReversionBitsetEntry
 	72,  // 144: raft.NodeSnapshot.peer_addresses:type_name -> raft.PeerAddress

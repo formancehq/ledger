@@ -43,8 +43,39 @@ type fixedPeriodState struct {
 	period *commonpb.Period
 }
 
-func (f *fixedPeriodState) ClosingPeriod() *commonpb.Period {
-	return f.period
+func (f *fixedPeriodState) ClosingPeriods() []*commonpb.Period {
+	if f.period == nil {
+		return nil
+	}
+
+	return []*commonpb.Period{f.period}
+}
+
+func (f *fixedPeriodState) ClosingPeriodByID(id uint64) (*commonpb.Period, bool) {
+	if f.period != nil && f.period.GetId() == id {
+		return f.period, true
+	}
+
+	return nil, false
+}
+
+// multiPeriodState holds multiple closing periods for testing.
+type multiPeriodState struct {
+	periods []*commonpb.Period
+}
+
+func (m *multiPeriodState) ClosingPeriods() []*commonpb.Period {
+	return m.periods
+}
+
+func (m *multiPeriodState) ClosingPeriodByID(id uint64) (*commonpb.Period, bool) {
+	for _, p := range m.periods {
+		if p.GetId() == id {
+			return p, true
+		}
+	}
+
+	return nil, false
 }
 
 func newTestSealer(t *testing.T, store *dal.Store, closingPeriodID uint64) (*Sealer, *testSealerResult) {
@@ -66,12 +97,13 @@ func newTestSealer(t *testing.T, store *dal.Store, closingPeriodID uint64) (*Sea
 
 // createSealCheckpoint creates a seal checkpoint from the store and returns its path.
 // The checkpoint is automatically cleaned up when the test finishes.
-func createSealCheckpoint(t *testing.T, store *dal.Store) string {
+func createSealCheckpoint(t *testing.T, store *dal.Store, periodID uint64) string {
 	t.Helper()
 
-	checkpointPath, err := store.CreateTemporaryCheckpoint("seal")
+	name := SealCheckpointName(periodID)
+	checkpointPath, err := store.CreateTemporaryCheckpoint(name)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = store.RemoveTemporaryCheckpoint("seal") })
+	t.Cleanup(func() { _ = store.RemoveTemporaryCheckpoint(name) })
 
 	return checkpointPath
 }
@@ -93,7 +125,7 @@ func TestSealerDeterministic(t *testing.T) {
 		require.NoError(t, attrs.Metadata.Set(batch, 1, []byte("l\x00a\x00key"), commonpb.NewStringValue("val")))
 		require.NoError(t, batch.Commit())
 
-		checkpointPath := createSealCheckpoint(t, store)
+		checkpointPath := createSealCheckpoint(t, store, 42)
 
 		sealer, result := newTestSealer(t, store, 42)
 		err := sealer.seal(SealRequest{
@@ -124,7 +156,7 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Create checkpoint BEFORE writing more data
-	checkpointPath := createSealCheckpoint(t, store)
+	checkpointPath := createSealCheckpoint(t, store, 42)
 
 	sealer, result := newTestSealer(t, store, 1)
 	err := sealer.seal(SealRequest{
@@ -145,7 +177,7 @@ func TestSealerCheckpointIsolation(t *testing.T) {
 	require.NoError(t, batch2.Commit())
 
 	// Create a NEW checkpoint that includes the index-20 data
-	checkpointPath2 := createSealCheckpoint(t, store)
+	checkpointPath2 := createSealCheckpoint(t, store, 42)
 
 	sealer2, result2 := newTestSealer(t, store, 1)
 	err = sealer2.seal(SealRequest{
@@ -168,7 +200,7 @@ func TestSealerEmptyStore(t *testing.T) {
 
 	store := createSealerTestStore(t)
 
-	checkpointPath := createSealCheckpoint(t, store)
+	checkpointPath := createSealCheckpoint(t, store, 42)
 
 	sealer, result := newTestSealer(t, store, 1)
 
@@ -188,7 +220,7 @@ func TestSealerRetryOnFailure(t *testing.T) {
 	store := createSealerTestStore(t)
 
 	// Create a real checkpoint, then hide it so the first attempt fails
-	realPath := createSealCheckpoint(t, store)
+	realPath := createSealCheckpoint(t, store, 7)
 	hiddenPath := realPath + ".hidden"
 	require.NoError(t, os.Rename(realPath, hiddenPath))
 
@@ -221,4 +253,123 @@ func TestSealerRetryOnFailure(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return proposeCalled.Load() == 1
 	}, 10*time.Second, 50*time.Millisecond, "propose should be called exactly once after retry succeeds")
+}
+
+func TestSealCheckpointName(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "seal-1", SealCheckpointName(1))
+	require.Equal(t, "seal-42", SealCheckpointName(42))
+	require.Equal(t, "seal-0", SealCheckpointName(0))
+
+	// Different IDs produce different names
+	require.NotEqual(t, SealCheckpointName(1), SealCheckpointName(2))
+}
+
+func TestSealerRecoverPendingSealMultiplePeriods(t *testing.T) {
+	t.Parallel()
+
+	store := createSealerTestStore(t)
+
+	p1 := &commonpb.Period{Id: 5, CloseSequence: 100, LastLogHash: []byte("h1"), Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+	p2 := &commonpb.Period{Id: 8, CloseSequence: 200, LastLogHash: []byte("h2"), Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+
+	// Create seal checkpoints for both periods
+	_, err := store.CreateTemporaryCheckpoint(SealCheckpointName(5))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.RemoveTemporaryCheckpoint(SealCheckpointName(5)) })
+
+	_, err = store.CreateTemporaryCheckpoint(SealCheckpointName(8))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.RemoveTemporaryCheckpoint(SealCheckpointName(8)) })
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	sealRequestCh := make(chan SealRequest, 10)
+	ps := &multiPeriodState{periods: []*commonpb.Period{p1, p2}}
+
+	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(uint64, []byte, []byte) {}, func() bool { return true }, ps)
+
+	sealer.recoverPendingSeal()
+
+	// Both periods should have been enqueued
+	var received []uint64
+	for len(received) < 2 {
+		select {
+		case req := <-sealRequestCh:
+			received = append(received, req.PeriodID)
+		default:
+			t.Fatal("expected 2 seal requests")
+		}
+	}
+
+	require.Contains(t, received, uint64(5))
+	require.Contains(t, received, uint64(8))
+}
+
+func TestSealerRecoverPendingSealSkipsMissingCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	store := createSealerTestStore(t)
+
+	p1 := &commonpb.Period{Id: 5, Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+	p2 := &commonpb.Period{Id: 8, CloseSequence: 200, LastLogHash: []byte("h2"), Status: commonpb.PeriodStatus_PERIOD_CLOSING}
+
+	// Only create a checkpoint for period 8, not period 5
+	_, err := store.CreateTemporaryCheckpoint(SealCheckpointName(8))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.RemoveTemporaryCheckpoint(SealCheckpointName(8)) })
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	sealRequestCh := make(chan SealRequest, 10)
+	ps := &multiPeriodState{periods: []*commonpb.Period{p1, p2}}
+
+	sealer := NewSealer(logger, store, attributes.New(), sealRequestCh, func(uint64, []byte, []byte) {}, func() bool { return true }, ps)
+
+	sealer.recoverPendingSeal()
+
+	// Only period 8 should be enqueued (period 5 has no checkpoint)
+	select {
+	case req := <-sealRequestCh:
+		require.Equal(t, uint64(8), req.PeriodID)
+	default:
+		t.Fatal("expected 1 seal request for period 8")
+	}
+
+	// No more requests
+	select {
+	case req := <-sealRequestCh:
+		t.Fatalf("unexpected seal request: %+v", req)
+	default:
+	}
+}
+
+func TestSealerSkipsAlreadySealedPeriod(t *testing.T) {
+	t.Parallel()
+
+	store := createSealerTestStore(t)
+	checkpointPath := createSealCheckpoint(t, store, 42)
+
+	// Period state says no closing periods (period was already sealed)
+	ps := &fixedPeriodState{period: nil}
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	var proposeCalled bool
+
+	sealer := NewSealer(logger, store, attributes.New(), make(chan SealRequest, 1), func(uint64, []byte, []byte) {
+		proposeCalled = true
+	}, func() bool { return true }, ps)
+
+	err := sealer.seal(SealRequest{
+		PeriodID:       42,
+		CloseSequence:  10,
+		CheckpointPath: checkpointPath,
+	})
+	require.NoError(t, err)
+	require.False(t, proposeCalled, "should not propose when period is no longer closing")
 }

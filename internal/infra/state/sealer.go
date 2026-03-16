@@ -29,7 +29,13 @@ type SealProposer func(periodID uint64, sealingHash, stateHash []byte)
 // SealerPeriodState provides the Sealer with read access to the current period
 // state. Implemented by *Machine.
 type SealerPeriodState interface {
-	ClosingPeriod() *commonpb.Period
+	ClosingPeriods() []*commonpb.Period
+	ClosingPeriodByID(id uint64) (*commonpb.Period, bool)
+}
+
+// SealCheckpointName returns the checkpoint name for a given period ID.
+func SealCheckpointName(periodID uint64) string {
+	return fmt.Sprintf("seal-%d", periodID)
 }
 
 // Sealer runs in the background to compute sealing hashes for closing periods.
@@ -84,29 +90,28 @@ func (s *Sealer) Start() {
 	s.recoverPendingSeal()
 }
 
-// recoverPendingSeal checks for a pending seal from a previous crash and
-// re-enqueues it if a seal checkpoint exists on disk.
+// recoverPendingSeal checks for pending seals from a previous crash and
+// re-enqueues them if seal checkpoints exist on disk.
 func (s *Sealer) recoverPendingSeal() {
-	closingPeriod := s.periodState.ClosingPeriod()
-	if closingPeriod == nil {
-		return
-	}
+	for _, cp := range s.periodState.ClosingPeriods() {
+		name := SealCheckpointName(cp.GetId())
 
-	checkpointPath, exists := s.dataStore.TemporaryCheckpointPath("seal")
-	if !exists {
-		return
-	}
+		checkpointPath, exists := s.dataStore.TemporaryCheckpointPath(name)
+		if !exists {
+			continue
+		}
 
-	req := SealRequestFromPeriod(closingPeriod)
-	req.CheckpointPath = checkpointPath
-	s.logger.WithFields(map[string]any{
-		"periodId":      req.PeriodID,
-		"closeSequence": req.CloseSequence,
-	}).Infof("Recovering pending period seal after restart")
+		req := SealRequestFromPeriod(cp)
+		req.CheckpointPath = checkpointPath
+		s.logger.WithFields(map[string]any{
+			"periodId":      req.PeriodID,
+			"closeSequence": req.CloseSequence,
+		}).Infof("Recovering pending period seal after restart")
 
-	select {
-	case s.sealRequestCh <- *req:
-	default:
+		select {
+		case s.sealRequestCh <- *req:
+		default:
+		}
 	}
 }
 
@@ -132,13 +137,14 @@ func (s *Sealer) seal(req SealRequest) error {
 		"closeSequence": req.CloseSequence,
 	}
 
+	checkpointName := SealCheckpointName(req.PeriodID)
+
 	// Check if the period is still CLOSING — if not, the leader already sealed
 	// it and the SealPeriod was applied through Raft. Followers can exit.
-	cp := s.periodState.ClosingPeriod()
-	if cp == nil || cp.GetId() != req.PeriodID {
+	if _, ok := s.periodState.ClosingPeriodByID(req.PeriodID); !ok {
 		s.logger.WithFields(logFields).Infof("Period no longer closing (sealed by leader), done")
 		// Clean up the seal checkpoint if it exists on this node
-		_ = s.dataStore.RemoveTemporaryCheckpoint("seal")
+		_ = s.dataStore.RemoveTemporaryCheckpoint(checkpointName)
 
 		return nil
 	}
@@ -167,7 +173,7 @@ func (s *Sealer) seal(req SealRequest) error {
 
 	// Clean up the seal checkpoint now that the hash has been computed.
 	// On crash recovery, the checkpoint will be re-created from WAL replay.
-	_ = s.dataStore.RemoveTemporaryCheckpoint("seal")
+	_ = s.dataStore.RemoveTemporaryCheckpoint(checkpointName)
 
 	// Compute sealing hash
 	hasher := blake3.New()

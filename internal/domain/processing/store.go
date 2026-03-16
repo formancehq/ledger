@@ -76,10 +76,11 @@ type InMemoryStore interface {
 
 	// Period operations
 	GetCurrentOpenPeriod() (*commonpb.Period, bool)
-	GetClosingPeriod() (*commonpb.Period, bool)
+	GetClosingPeriods() []*commonpb.Period
+	GetClosingPeriodByID(periodID uint64) (*commonpb.Period, bool)
 	SetCurrentOpenPeriod(period *commonpb.Period)
-	SetClosingPeriod(period *commonpb.Period)
-	ClearClosingPeriod()
+	AddClosingPeriod(period *commonpb.Period)
+	RemoveClosingPeriod(periodID uint64)
 	GetNextPeriodID() uint64
 	IncrementNextPeriodID() uint64
 

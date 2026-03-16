@@ -2003,12 +2003,18 @@ func (m *MemorySnapshot) CloneVT() *MemorySnapshot {
 	r.LastAppliedTimestamp = m.LastAppliedTimestamp
 	r.NextAuditSequenceId = m.NextAuditSequenceId
 	r.OpenPeriod = m.OpenPeriod.CloneVT()
-	r.ClosingPeriod = m.ClosingPeriod.CloneVT()
 	r.NextPeriodId = m.NextPeriodId
 	if rhs := m.LastLogHash; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
 		r.LastLogHash = tmpBytes
+	}
+	if rhs := m.ClosingPeriods; rhs != nil {
+		tmpContainer := make([]*commonpb.Period, len(rhs))
+		for k, v := range rhs {
+			tmpContainer[k] = v.CloneVT()
+		}
+		r.ClosingPeriods = tmpContainer
 	}
 	if rhs := m.ClosedPeriods; rhs != nil {
 		tmpContainer := make([]*commonpb.Period, len(rhs))
@@ -5869,8 +5875,22 @@ func (this *MemorySnapshot) EqualVT(that *MemorySnapshot) bool {
 	if !this.OpenPeriod.EqualVT(that.OpenPeriod) {
 		return false
 	}
-	if !this.ClosingPeriod.EqualVT(that.ClosingPeriod) {
+	if len(this.ClosingPeriods) != len(that.ClosingPeriods) {
 		return false
+	}
+	for i, vx := range this.ClosingPeriods {
+		vy := that.ClosingPeriods[i]
+		if p, q := vx, vy; p != q {
+			if p == nil {
+				p = &commonpb.Period{}
+			}
+			if q == nil {
+				q = &commonpb.Period{}
+			}
+			if !p.EqualVT(q) {
+				return false
+			}
+		}
 	}
 	if this.NextPeriodId != that.NextPeriodId {
 		return false
@@ -11318,15 +11338,17 @@ func (m *MemorySnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x58
 	}
-	if m.ClosingPeriod != nil {
-		size, err := m.ClosingPeriod.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
+	if len(m.ClosingPeriods) > 0 {
+		for iNdEx := len(m.ClosingPeriods) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.ClosingPeriods[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x52
 		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x52
 	}
 	if m.OpenPeriod != nil {
 		size, err := m.OpenPeriod.MarshalToSizedBufferVT(dAtA[:i])
@@ -14346,9 +14368,11 @@ func (m *MemorySnapshot) SizeVT() (n int) {
 		l = m.OpenPeriod.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.ClosingPeriod != nil {
-		l = m.ClosingPeriod.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if len(m.ClosingPeriods) > 0 {
+		for _, e := range m.ClosingPeriods {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
 	}
 	if m.NextPeriodId != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.NextPeriodId))
@@ -25787,7 +25811,7 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 10:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ClosingPeriod", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ClosingPeriods", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -25814,10 +25838,8 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.ClosingPeriod == nil {
-				m.ClosingPeriod = &commonpb.Period{}
-			}
-			if err := m.ClosingPeriod.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			m.ClosingPeriods = append(m.ClosingPeriods, &commonpb.Period{})
+			if err := m.ClosingPeriods[len(m.ClosingPeriods)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

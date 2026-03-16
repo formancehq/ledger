@@ -57,7 +57,7 @@ type testEngine struct {
 	references        map[string]*commonpb.TransactionReferenceValue
 	transactionStates map[string]*commonpb.TransactionState
 	currentOpenPeriod *commonpb.Period
-	closingPeriod     *commonpb.Period
+	closingPeriods    []*commonpb.Period
 	nextPeriodID      uint64
 	hasher            *blake3.Hasher
 	raftIndex         uint64
@@ -355,9 +355,15 @@ func (s *inMemoryStore) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
 	return nil, false
 }
 
-func (s *inMemoryStore) GetClosingPeriod() (*commonpb.Period, bool) {
-	if s.engine.closingPeriod != nil {
-		return s.engine.closingPeriod, true
+func (s *inMemoryStore) GetClosingPeriods() []*commonpb.Period {
+	return s.engine.closingPeriods
+}
+
+func (s *inMemoryStore) GetClosingPeriodByID(periodID uint64) (*commonpb.Period, bool) {
+	for _, p := range s.engine.closingPeriods {
+		if p.GetId() == periodID {
+			return p, true
+		}
 	}
 
 	return nil, false
@@ -367,12 +373,18 @@ func (s *inMemoryStore) SetCurrentOpenPeriod(period *commonpb.Period) {
 	s.engine.currentOpenPeriod = period
 }
 
-func (s *inMemoryStore) SetClosingPeriod(period *commonpb.Period) {
-	s.engine.closingPeriod = period
+func (s *inMemoryStore) AddClosingPeriod(period *commonpb.Period) {
+	s.engine.closingPeriods = append(s.engine.closingPeriods, period)
 }
 
-func (s *inMemoryStore) ClearClosingPeriod() {
-	s.engine.closingPeriod = nil
+func (s *inMemoryStore) RemoveClosingPeriod(periodID uint64) {
+	for i, p := range s.engine.closingPeriods {
+		if p.GetId() == periodID {
+			s.engine.closingPeriods = append(s.engine.closingPeriods[:i], s.engine.closingPeriods[i+1:]...)
+
+			return
+		}
+	}
 }
 
 func (s *inMemoryStore) GetNextPeriodID() uint64 {

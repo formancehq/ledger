@@ -105,8 +105,8 @@ var _ = Describe("Periods", Ordered, func() {
 		})
 	})
 
-	Context("Cannot close while closing", Ordered, func() {
-		It("Should reject closing when a period is already in CLOSING state", func() {
+	Context("Multiple simultaneous closing periods", Ordered, func() {
+		It("Should allow closing while another period is already in CLOSING state", func() {
 			// Wait until there's no CLOSING period (previous seal completed)
 			Eventually(func(g Gomega) {
 				periods, err := listAllPeriods(sharedCtx, sharedClient)
@@ -116,60 +116,29 @@ var _ = Describe("Periods", Ordered, func() {
 				}
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			// The sealer runs asynchronously and may seal the period before
-			// the second close request arrives. Try multiple close+close cycles
-			// to catch the CLOSING state at least once.
-			var gotExpectedError bool
-			for i := 0; i < 10 && !gotExpectedError; i++ {
-				// Create a transaction to have some data
-				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
-						testutil.CreateForceTransactionAction("period-test", []*commonpb.Posting{
-							testutil.NewPosting("world", "user:alice", big.NewInt(100), "USD"),
-						}, nil),
-					},
-				})
-				Expect(err).To(Succeed())
+			// Close the period twice in quick succession — both should succeed
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					{Type: &servicepb.Request_ClosePeriod{ClosePeriod: &servicepb.ClosePeriodRequest{}}},
+				},
+			})
+			Expect(err).To(Succeed())
 
-				// Wait for any previous seal to complete
-				Eventually(func(g Gomega) {
-					periods, err := listAllPeriods(sharedCtx, sharedClient)
-					g.Expect(err).To(Succeed())
-					for _, p := range periods {
-						g.Expect(p.Status).NotTo(Equal(commonpb.PeriodStatus_PERIOD_CLOSING))
-					}
-				}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					{Type: &servicepb.Request_ClosePeriod{ClosePeriod: &servicepb.ClosePeriodRequest{}}},
+				},
+			})
+			Expect(err).To(Succeed())
 
-				// Close the period
-				_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
-						{Type: &servicepb.Request_ClosePeriod{ClosePeriod: &servicepb.ClosePeriodRequest{}}},
-					},
-				})
-				Expect(err).To(Succeed())
-
-				// Immediately try to close again
-				_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
-						{Type: &servicepb.Request_ClosePeriod{ClosePeriod: &servicepb.ClosePeriodRequest{}}},
-					},
-				})
-				if err != nil {
-					st, ok := status.FromError(err)
-					Expect(ok).To(BeTrue())
-					Expect(st.Code()).To(Equal(codes.FailedPrecondition))
-
-					info := testutil.ExtractGRPCErrorInfo(err)
-					Expect(info).NotTo(BeNil())
-					Expect(info.Reason).To(Equal(domain.ErrReasonPeriodAlreadyClosing))
-					gotExpectedError = true
+			// Wait for all periods to be sealed
+			Eventually(func(g Gomega) {
+				periods, err := listAllPeriods(sharedCtx, sharedClient)
+				g.Expect(err).To(Succeed())
+				for _, p := range periods {
+					g.Expect(p.Status).NotTo(Equal(commonpb.PeriodStatus_PERIOD_CLOSING))
 				}
-				// If no error, the sealer was faster — try again
-			}
-
-			if !gotExpectedError {
-				Skip("Sealer completed too quickly to catch CLOSING state in e2e — covered by unit test TestProcessClosePeriod_AlreadyClosing")
-			}
+			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 })

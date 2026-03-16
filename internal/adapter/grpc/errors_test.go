@@ -247,18 +247,6 @@ func TestBusinessErrorToGRPCStatus_NoPeriodOpen(t *testing.T) {
 	require.Equal(t, domain.ErrReasonNoPeriodOpen, info.GetReason())
 }
 
-func TestBusinessErrorToGRPCStatus_PeriodAlreadyClosing(t *testing.T) {
-	t.Parallel()
-
-	bizErr := &domain.BusinessError{Err: domain.ErrPeriodAlreadyClosing}
-	st := businessErrorToGRPCStatus(bizErr)
-
-	require.Equal(t, codes.FailedPrecondition, st.Code())
-
-	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonPeriodAlreadyClosing, info.GetReason())
-}
-
 func TestBusinessErrorToGRPCStatus_PeriodNotFound(t *testing.T) {
 	t.Parallel()
 

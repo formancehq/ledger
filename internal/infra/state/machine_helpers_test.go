@@ -84,18 +84,30 @@ func TestMachineAllPeriods(t *testing.T) {
 	require.Len(t, periods, 2)
 }
 
-func TestMachineClosingPeriod(t *testing.T) {
+func TestMachineClosingPeriods(t *testing.T) {
 	t.Parallel()
 
 	machine, _, _ := newTestMachine(t)
 
-	// Initially nil
-	require.Nil(t, machine.ClosingPeriod())
+	// Initially empty
+	require.Empty(t, machine.ClosingPeriods())
 
-	// Set closing period
-	machine.Periods.SetClosingPeriod(&commonpb.Period{Id: 3, Status: commonpb.PeriodStatus_PERIOD_CLOSING})
-	require.NotNil(t, machine.ClosingPeriod())
-	require.Equal(t, uint64(3), machine.ClosingPeriod().GetId())
+	// Add closing period
+	machine.Periods.AddClosingPeriod(&commonpb.Period{Id: 3, Status: commonpb.PeriodStatus_PERIOD_CLOSING})
+	require.Len(t, machine.ClosingPeriods(), 1)
+	cp, ok := machine.ClosingPeriodByID(3)
+	require.True(t, ok)
+	require.Equal(t, uint64(3), cp.GetId())
+
+	// Add a second closing period
+	machine.Periods.AddClosingPeriod(&commonpb.Period{Id: 4, Status: commonpb.PeriodStatus_PERIOD_CLOSING})
+	require.Len(t, machine.ClosingPeriods(), 2)
+
+	// Remove first
+	machine.Periods.RemoveClosingPeriod(3)
+	require.Len(t, machine.ClosingPeriods(), 1)
+	_, ok = machine.ClosingPeriodByID(3)
+	require.False(t, ok)
 }
 
 func TestMachinePeriodSchedule(t *testing.T) {
@@ -293,8 +305,8 @@ func TestCheckClosePeriod(t *testing.T) {
 		CloseSequence: 42,
 		LastLogHash:   []byte("hash"),
 	}
-	// Set the closing period on the machine so checkClosePeriod can find it.
-	machine.Periods.SetClosingPeriod(closedPeriod)
+	// Add the closing period on the machine so checkClosePeriod can find it.
+	machine.Periods.AddClosingPeriod(closedPeriod)
 	resultWithClose := &ApplyResult{
 		Logs: []*raftcmdpb.CreatedLogOrReference{
 			{Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{
@@ -314,4 +326,46 @@ func TestCheckClosePeriod(t *testing.T) {
 	require.Equal(t, uint64(5), sealReq.PeriodID)
 	require.Equal(t, uint64(42), sealReq.CloseSequence)
 	require.Equal(t, []byte("hash"), sealReq.LastLogHash)
+}
+
+func TestCheckClosePeriodReturnsLatestWhenMultiple(t *testing.T) {
+	t.Parallel()
+
+	machine, _, _ := newTestMachine(t)
+
+	// Add two closing periods — checkClosePeriod should return the latest
+	firstPeriod := &commonpb.Period{
+		Id:            3,
+		CloseSequence: 30,
+		LastLogHash:   []byte("old-hash"),
+	}
+	latestPeriod := &commonpb.Period{
+		Id:            7,
+		CloseSequence: 70,
+		LastLogHash:   []byte("new-hash"),
+	}
+	machine.Periods.AddClosingPeriod(firstPeriod)
+	machine.Periods.AddClosingPeriod(latestPeriod)
+
+	resultWithClose := &ApplyResult{
+		Logs: []*raftcmdpb.CreatedLogOrReference{
+			{Type: &raftcmdpb.CreatedLogOrReference_CreatedLog{
+				CreatedLog: &commonpb.Log{
+					Sequence: 10,
+					Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_ClosePeriod{
+						ClosePeriod: &commonpb.ClosePeriodLog{
+							ClosedPeriod: latestPeriod,
+						},
+					}},
+				},
+			}},
+		},
+	}
+
+	sealReq := machine.checkClosePeriod(resultWithClose)
+	require.NotNil(t, sealReq)
+	// Should return the latest closing period (period 7), not the first one
+	require.Equal(t, uint64(7), sealReq.PeriodID)
+	require.Equal(t, uint64(70), sealReq.CloseSequence)
+	require.Equal(t, []byte("new-hash"), sealReq.LastLogHash)
 }

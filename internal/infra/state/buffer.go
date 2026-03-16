@@ -362,7 +362,7 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	}
 
 	b.fsm.Periods.SetCurrentOpenPeriod(b.periods.CurrentOpenPeriod())
-	b.fsm.Periods.SetClosingPeriod(b.periods.ClosingPeriod())
+	b.fsm.Periods.SetClosingPeriods(b.periods.ClosingPeriods())
 	b.fsm.Periods.SetNextPeriodID(b.periods.NextPeriodID())
 
 	return nil
@@ -647,13 +647,12 @@ func (b *Buffered) GetCurrentOpenPeriod() (*commonpb.Period, bool) {
 	return nil, false
 }
 
-func (b *Buffered) GetClosingPeriod() (*commonpb.Period, bool) {
-	p := b.periods.ClosingPeriod()
-	if p != nil {
-		return p, true
-	}
+func (b *Buffered) GetClosingPeriods() []*commonpb.Period {
+	return b.periods.ClosingPeriods()
+}
 
-	return nil, false
+func (b *Buffered) GetClosingPeriodByID(periodID uint64) (*commonpb.Period, bool) {
+	return b.periods.ClosingPeriodByID(periodID)
 }
 
 func (b *Buffered) SetCurrentOpenPeriod(period *commonpb.Period) {
@@ -661,18 +660,18 @@ func (b *Buffered) SetCurrentOpenPeriod(period *commonpb.Period) {
 	b.changedPeriods = append(b.changedPeriods, period)
 }
 
-func (b *Buffered) SetClosingPeriod(period *commonpb.Period) {
-	b.periods.SetClosingPeriod(period)
+func (b *Buffered) AddClosingPeriod(period *commonpb.Period) {
+	b.periods.AddClosingPeriod(period)
 	b.changedPeriods = append(b.changedPeriods, period)
 }
 
-// ClearClosingPeriod persists the closing period's final state and removes it from in-memory tracking.
-func (b *Buffered) ClearClosingPeriod() {
-	if closing := b.periods.ClosingPeriod(); closing != nil {
+// RemoveClosingPeriod persists the closing period's final state and removes it from in-memory tracking.
+func (b *Buffered) RemoveClosingPeriod(periodID uint64) {
+	if closing, ok := b.periods.ClosingPeriodByID(periodID); ok {
 		b.changedPeriods = append(b.changedPeriods, closing)
 	}
 
-	b.periods.ClearClosingPeriod()
+	b.periods.RemoveClosingPeriod(periodID)
 }
 
 func (b *Buffered) GetNextPeriodID() uint64 {

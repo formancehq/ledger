@@ -14,16 +14,12 @@ func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s I
 		return nil, domain.ErrNoPeriodOpen
 	}
 
-	if _, hasClosing := s.GetClosingPeriod(); hasClosing {
-		return nil, domain.ErrPeriodAlreadyClosing
-	}
-
 	// Transition current period to CLOSING
 	currentPeriod.Status = commonpb.PeriodStatus_PERIOD_CLOSING
 	currentPeriod.CloseSequence = s.GetNextSequenceID()
 	currentPeriod.End = s.GetDate()
 	currentPeriod.LastLogHash = s.GetLastLogHash()
-	s.SetClosingPeriod(currentPeriod)
+	s.AddClosingPeriod(currentPeriod)
 
 	// Create new OPEN period
 	// StartSequence is the next sequence after the close boundary (close_sequence is the ClosePeriod log itself)
@@ -53,8 +49,8 @@ func (p *RequestProcessor) processClosePeriod(_ *raftcmdpb.ClosePeriodOrder, s I
 // processSealPeriod handles the SealPeriod order.
 // It transitions a CLOSING period to CLOSED and sets the sealing hash.
 func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	closingPeriod, ok := s.GetClosingPeriod()
-	if !ok || closingPeriod.GetId() != order.GetPeriodId() {
+	closingPeriod, ok := s.GetClosingPeriodByID(order.GetPeriodId())
+	if !ok {
 		return nil, &domain.ErrPeriodNotFound{PeriodID: order.GetPeriodId()}
 	}
 
@@ -62,12 +58,12 @@ func (p *RequestProcessor) processSealPeriod(order *raftcmdpb.SealPeriodOrder, s
 		return nil, &domain.ErrPeriodNotClosing{PeriodID: order.GetPeriodId()}
 	}
 
-	// Transition to CLOSED and persist via ClearClosingPeriod
+	// Transition to CLOSED and remove from closing periods
 	closingPeriod.Status = commonpb.PeriodStatus_PERIOD_CLOSED
 	closingPeriod.SealingHash = order.GetSealingHash()
 	closingPeriod.StateHash = order.GetStateHash()
 
-	s.ClearClosingPeriod()
+	s.RemoveClosingPeriod(order.GetPeriodId())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_SealPeriod{

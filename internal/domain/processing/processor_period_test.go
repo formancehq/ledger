@@ -31,13 +31,12 @@ func TestProcessClosePeriod_Success(t *testing.T) {
 	lastLogHash := []byte("test-log-hash")
 
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(openPeriod, true)
-	mockStore.EXPECT().GetClosingPeriod().Return(nil, false)
 	// GetNextSequenceID is called twice: once for CloseSequence, once for StartSequence
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(42)).Times(2)
 	mockStore.EXPECT().GetDate().Return(now).Times(2)
 	mockStore.EXPECT().GetLastLogHash().Return(lastLogHash)
 	mockStore.EXPECT().IncrementNextPeriodID().Return(uint64(2))
-	mockStore.EXPECT().SetClosingPeriod(gomock.Any()).Do(func(period *commonpb.Period) {
+	mockStore.EXPECT().AddClosingPeriod(gomock.Any()).Do(func(period *commonpb.Period) {
 		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSING, period.GetStatus())
 		require.Equal(t, uint64(42), period.GetCloseSequence())
 		require.Equal(t, lastLogHash, period.GetLastLogHash())
@@ -77,7 +76,7 @@ func TestProcessClosePeriod_NoPeriodOpen(t *testing.T) {
 	require.Nil(t, payload)
 }
 
-func TestProcessClosePeriod_AlreadyClosing(t *testing.T) {
+func TestProcessClosePeriod_SucceedsWhileAnotherPeriodIsClosing(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -87,21 +86,74 @@ func TestProcessClosePeriod_AlreadyClosing(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
+	now := &commonpb.Timestamp{Data: 1700000000}
 	openPeriod := &commonpb.Period{
 		Id:     2,
+		Start:  &commonpb.Timestamp{Data: 1699500000},
 		Status: commonpb.PeriodStatus_PERIOD_OPEN,
 	}
-	closingPeriod := &commonpb.Period{
-		Id:     1,
-		Status: commonpb.PeriodStatus_PERIOD_CLOSING,
-	}
 
+	lastLogHash := []byte("hash-2")
+
+	// Another period is already closing — this should NOT prevent the new close
 	mockStore.EXPECT().GetCurrentOpenPeriod().Return(openPeriod, true)
-	mockStore.EXPECT().GetClosingPeriod().Return(closingPeriod, true)
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100)).Times(2)
+	mockStore.EXPECT().GetDate().Return(now).Times(2)
+	mockStore.EXPECT().GetLastLogHash().Return(lastLogHash)
+	mockStore.EXPECT().IncrementNextPeriodID().Return(uint64(3))
+	mockStore.EXPECT().AddClosingPeriod(gomock.Any()).Do(func(period *commonpb.Period) {
+		require.Equal(t, uint64(2), period.GetId())
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSING, period.GetStatus())
+	})
+	mockStore.EXPECT().SetCurrentOpenPeriod(gomock.Any()).Do(func(period *commonpb.Period) {
+		require.Equal(t, uint64(3), period.GetId())
+		require.Equal(t, commonpb.PeriodStatus_PERIOD_OPEN, period.GetStatus())
+	})
 
 	payload, err := processor.processClosePeriod(&raftcmdpb.ClosePeriodOrder{}, mockStore)
-	require.ErrorIs(t, err, domain.ErrPeriodAlreadyClosing)
-	require.Nil(t, payload)
+	require.NoError(t, err)
+	require.NotNil(t, payload)
+
+	closePeriodLog := payload.GetClosePeriod()
+	require.NotNil(t, closePeriodLog)
+	require.Equal(t, uint64(2), closePeriodLog.GetClosedPeriod().GetId())
+	require.Equal(t, uint64(3), closePeriodLog.GetNewPeriod().GetId())
+}
+
+func TestProcessSealPeriod_SealsOneWhileOthersRemain(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockInMemoryStore(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	// Two periods are closing; we seal the first one
+	targetPeriod := &commonpb.Period{
+		Id:            1,
+		Status:        commonpb.PeriodStatus_PERIOD_CLOSING,
+		CloseSequence: 42,
+	}
+
+	mockStore.EXPECT().GetClosingPeriodByID(uint64(1)).Return(targetPeriod, true)
+	mockStore.EXPECT().RemoveClosingPeriod(uint64(1))
+
+	order := &raftcmdpb.SealPeriodOrder{
+		PeriodId:    1,
+		SealingHash: []byte("seal-hash-1"),
+		StateHash:   []byte("state-hash-1"),
+	}
+
+	payload, err := processor.processSealPeriod(order, mockStore)
+	require.NoError(t, err)
+	require.NotNil(t, payload)
+
+	sealLog := payload.GetSealPeriod()
+	require.NotNil(t, sealLog)
+	require.Equal(t, uint64(1), sealLog.GetPeriod().GetId())
+	require.Equal(t, commonpb.PeriodStatus_PERIOD_CLOSED, sealLog.GetPeriod().GetStatus())
 }
 
 func TestProcessSealPeriod_Success(t *testing.T) {
@@ -120,8 +172,8 @@ func TestProcessSealPeriod_Success(t *testing.T) {
 		CloseSequence: 42,
 	}
 
-	mockStore.EXPECT().GetClosingPeriod().Return(closingPeriod, true)
-	mockStore.EXPECT().ClearClosingPeriod()
+	mockStore.EXPECT().GetClosingPeriodByID(uint64(1)).Return(closingPeriod, true)
+	mockStore.EXPECT().RemoveClosingPeriod(uint64(1))
 
 	order := &raftcmdpb.SealPeriodOrder{
 		PeriodId:    1,
@@ -149,8 +201,8 @@ func TestProcessSealPeriod_PeriodNotFound(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	// No closing period
-	mockStore.EXPECT().GetClosingPeriod().Return(nil, false)
+	// No closing period with this ID
+	mockStore.EXPECT().GetClosingPeriodByID(uint64(99)).Return(nil, false)
 
 	order := &raftcmdpb.SealPeriodOrder{
 		PeriodId:    99,
@@ -176,13 +228,8 @@ func TestProcessSealPeriod_PeriodNotClosing(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	// The closing period exists but has wrong ID
-	closingPeriod := &commonpb.Period{
-		Id:     2,
-		Status: commonpb.PeriodStatus_PERIOD_CLOSING,
-	}
-
-	mockStore.EXPECT().GetClosingPeriod().Return(closingPeriod, true)
+	// The closing period exists but has wrong ID — use GetClosingPeriodByID which returns not found
+	mockStore.EXPECT().GetClosingPeriodByID(uint64(1)).Return(nil, false)
 
 	order := &raftcmdpb.SealPeriodOrder{
 		PeriodId:    1,

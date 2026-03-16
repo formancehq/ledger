@@ -281,14 +281,15 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("restoring cache from store on restart: %w", err)
 	}
 
-	// Recovery: if a period is in CLOSING state but no seal checkpoint exists,
+	// Recovery: if periods are in CLOSING state but no seal checkpoint exists,
 	// the node crashed after ClosePeriod batch.Commit() but before checkpoint creation.
 	// Pebble state is exactly at the ClosePeriod boundary right now (spool replay hasn't run).
-	if period := a.fsm.ClosingPeriod(); period != nil {
-		if _, exists := a.store.TemporaryCheckpointPath("seal"); !exists {
+	for _, period := range a.fsm.ClosingPeriods() {
+		name := state.SealCheckpointName(period.GetId())
+		if _, exists := a.store.TemporaryCheckpointPath(name); !exists {
 			a.logger.Infof("Recovering: creating seal checkpoint for closing period %d", period.GetId())
 
-			checkpointPath, err := a.store.CreateTemporaryCheckpoint("seal")
+			checkpointPath, err := a.store.CreateTemporaryCheckpoint(name)
 			if err != nil {
 				return false, fmt.Errorf("creating recovery seal checkpoint: %w", err)
 			}
@@ -615,7 +616,7 @@ func (a *Applier) handleCheckpointRequired(
 	}
 
 	a.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
-		path, err := a.store.CreateTemporaryCheckpoint("checkpoint")
+		path, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("checkpoint-%d", applyResult.CheckpointPeriodID))
 		if err != nil {
 			if deferredFuture != nil {
 				deferredFuture.Resolve(state.ApplyResult{}, err)
@@ -935,7 +936,7 @@ func (a *Applier) replaySpool(ctx context.Context, fromIndex uint64) error {
 // checkpoint is created synchronously (acceptable since we're already off
 // the hot path) and remaining entries are applied directly.
 func (a *Applier) handleCheckpointDuringReplay(ctx context.Context, applyResult *state.ApplyEntriesResult) error {
-	checkpointPath, err := a.store.CreateTemporaryCheckpoint("replay")
+	checkpointPath, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("replay-%d", applyResult.CheckpointPeriodID))
 	if err != nil {
 		return fmt.Errorf("creating checkpoint during replay: %w", err)
 	}

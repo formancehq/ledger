@@ -184,7 +184,9 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 
 	allPeriods := make(map[uint64]*commonpb.Period, len(periodsFromStore))
 
-	var currentOpenPeriod, closingPeriod *commonpb.Period
+	var currentOpenPeriod *commonpb.Period
+
+	var closingPeriods []*commonpb.Period
 
 	for _, p := range periodsFromStore {
 		allPeriods[p.GetId()] = p
@@ -193,7 +195,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		case commonpb.PeriodStatus_PERIOD_OPEN:
 			currentOpenPeriod = p
 		case commonpb.PeriodStatus_PERIOD_CLOSING:
-			closingPeriod = p
+			closingPeriods = append(closingPeriods, p)
 		}
 	}
 
@@ -281,10 +283,10 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		keyStore:                    ks,
 		sharedState:                 sharedState,
 		Registry:                    NewStateRegistry(cache, attrs),
-		Periods:                     NewPeriodTracker(allPeriods, currentOpenPeriod, closingPeriod, nextPeriodID, periodSchedule),
+		Periods:                     NewPeriodTracker(allPeriods, currentOpenPeriod, closingPeriods, nextPeriodID, periodSchedule),
 		nextSequenceID:              1,
 		nextAuditSequenceID:         1,
-		sealRequestCh:               make(chan SealRequest, 1),
+		sealRequestCh:               make(chan SealRequest, 10),
 		archiveRequestCh:            make(chan ArchiveRequest, 1),
 		metadataConvertRequestCh:    make(chan MetadataConvertRequest, 16),
 		coldCompactionCh:            make(chan struct{}, 1),
@@ -483,7 +485,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		// Commit the batch so the ClosePeriod state is persisted,
 		// then signal the caller to create a Pebble checkpoint.
 		if sealReqBase := fsm.checkClosePeriod(result); sealReqBase != nil {
-			return fsm.commitAndRequestCheckpoint(batch, ret, entries[i+1:], needsArchiveDispatch, func(checkpointPath string) {
+			return fsm.commitAndRequestCheckpoint(batch, ret, entries[i+1:], needsArchiveDispatch, sealReqBase.PeriodID, func(checkpointPath string) {
 				sealReqBase.CheckpointPath = checkpointPath
 				select {
 				case fsm.sealRequestCh <- *sealReqBase:
@@ -561,6 +563,7 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 	ret *ApplyEntriesResult,
 	remaining []raftpb.Entry,
 	needsArchiveDispatch bool,
+	checkpointPeriodID uint64,
 	onCheckpointDone func(checkpointPath string),
 ) (*ApplyEntriesResult, error) {
 	err := SetAppliedIndex(batch, fsm.lastAppliedIndex)
@@ -586,6 +589,8 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 	}
 
 	ret.CheckpointRequired = true
+	ret.CheckpointPeriodID = checkpointPeriodID
+
 	if len(remaining) > 0 {
 		ret.RemainingEntries = make([]raftpb.Entry, len(remaining))
 		copy(ret.RemainingEntries, remaining)
@@ -1316,7 +1321,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		LastAppliedTimestamp: fsm.lastAppliedTimestamp,
 		NextAuditSequenceId:  fsm.nextAuditSequenceID,
 		OpenPeriod:           fsm.Periods.CurrentOpenPeriod(),
-		ClosingPeriod:        fsm.Periods.ClosingPeriod(),
+		ClosingPeriods:       fsm.Periods.ClosingPeriods(),
 		NextPeriodId:         fsm.Periods.NextPeriodID(),
 		ClosedPeriods:        closedPeriods,
 		Reversions:           reversions,
@@ -1813,15 +1818,15 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 		allPeriods[memSnapshot.GetOpenPeriod().GetId()] = memSnapshot.GetOpenPeriod()
 	}
 
-	if memSnapshot.GetClosingPeriod() != nil {
-		allPeriods[memSnapshot.GetClosingPeriod().GetId()] = memSnapshot.GetClosingPeriod()
+	for _, cp := range memSnapshot.GetClosingPeriods() {
+		allPeriods[cp.GetId()] = cp
 	}
 
 	for _, p := range memSnapshot.GetClosedPeriods() {
 		allPeriods[p.GetId()] = p
 	}
 
-	fsm.Periods.Reset(allPeriods, memSnapshot.GetOpenPeriod(), memSnapshot.GetClosingPeriod(), memSnapshot.GetNextPeriodId())
+	fsm.Periods.Reset(allPeriods, memSnapshot.GetOpenPeriod(), memSnapshot.GetClosingPeriods(), memSnapshot.GetNextPeriodId())
 
 	// Reset the cache — it will be restored from Pebble later:
 	// - On restart: after InstallSnapshot, via RestoreCacheFromStore
@@ -2072,10 +2077,15 @@ func (fsm *Machine) AllPeriods() []*commonpb.Period {
 	return fsm.Periods.AllPeriods()
 }
 
-// ClosingPeriod returns the period currently in CLOSING state, or nil.
+// ClosingPeriods returns all periods currently in CLOSING state.
 // Used for crash recovery on startup.
-func (fsm *Machine) ClosingPeriod() *commonpb.Period {
-	return fsm.Periods.ClosingPeriod()
+func (fsm *Machine) ClosingPeriods() []*commonpb.Period {
+	return fsm.Periods.ClosingPeriods()
+}
+
+// ClosingPeriodByID returns the closing period with the given ID, if any.
+func (fsm *Machine) ClosingPeriodByID(id uint64) (*commonpb.Period, bool) {
+	return fsm.Periods.ClosingPeriodByID(id)
 }
 
 // PeriodSchedule returns the current period schedule cron expression.
@@ -2107,9 +2117,9 @@ func (fsm *Machine) checkClosePeriod(result *ApplyResult) *SealRequest {
 	for _, logOrRef := range result.Logs {
 		if created := logOrRef.GetCreatedLog(); created != nil {
 			if created.GetPayload().GetClosePeriod() != nil {
-				// Use the FSM state's closing period which has LastLogHash
+				// Use the FSM state's latest closing period which has LastLogHash
 				// updated to include the ClosePeriod log's hash.
-				closingPeriod := fsm.Periods.ClosingPeriod()
+				closingPeriod := fsm.Periods.LatestClosingPeriod()
 				if closingPeriod != nil {
 					return SealRequestFromPeriod(closingPeriod)
 				}
@@ -2151,6 +2161,10 @@ type ApplyEntriesResult struct {
 	// CheckpointRequired is true when the caller must create a Pebble checkpoint
 	// before resuming entry processing (e.g. after a ClosePeriod).
 	CheckpointRequired bool
+
+	// CheckpointPeriodID is the period ID that triggered the checkpoint.
+	// Used by the Applier to name the checkpoint uniquely per period.
+	CheckpointPeriodID uint64
 
 	// OnCheckpointDone is called by Node once the Pebble checkpoint has been created.
 	// It forges a SealRequest and sends it to the sealer.  Nil when CheckpointRequired is false.

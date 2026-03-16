@@ -25,7 +25,6 @@ const (
 	ErrReasonSinkAlreadyExists             = "SINK_ALREADY_EXISTS"
 	ErrReasonSinkNotFound                  = "SINK_NOT_FOUND"
 	ErrReasonNoPeriodOpen                  = "NO_PERIOD_OPEN"
-	ErrReasonPeriodAlreadyClosing          = "PERIOD_ALREADY_CLOSING"
 	ErrReasonPeriodNotFound                = "PERIOD_NOT_FOUND"
 	ErrReasonPeriodNotClosing              = "PERIOD_NOT_CLOSING"
 	ErrReasonPeriodNotClosed               = "PERIOD_NOT_CLOSED"
@@ -187,8 +186,7 @@ func (e *ErrSinkNotFound) Error() string {
 
 // Period-related sentinel errors.
 var (
-	ErrNoPeriodOpen         = errors.New("no open period exists")
-	ErrPeriodAlreadyClosing = errors.New("a period is already in CLOSING state")
+	ErrNoPeriodOpen = errors.New("no open period exists")
 )
 
 // ErrPeriodNotFound is returned when a period ID does not match any known period.
