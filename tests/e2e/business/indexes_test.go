@@ -83,6 +83,8 @@ func waitForBuiltinIndexReady(ctx context.Context, client servicepb.BucketServic
 			g.Expect(info.BuiltinIndexes.SourceAddressStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
 		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
 			g.Expect(info.BuiltinIndexes.DestAddressStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+			g.Expect(info.BuiltinIndexes.InsertedAtStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
 		}
 	}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 }
@@ -606,6 +608,144 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 			Expect(info.BuiltinIndexes).NotTo(BeNil())
 			Expect(info.BuiltinIndexes.Timestamp).To(BeTrue())
 			Expect(info.BuiltinIndexes.TimestampStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
+		})
+	})
+
+	// ========================================================================
+	// InsertedAt builtin index lifecycle
+	// ========================================================================
+	Context("InsertedAt index lifecycle", Ordered, func() {
+		const ledgerName = "idx-builtin-iat"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should reject inserted_at filter queries when index does not exist", func() {
+			// Use a wide range that covers any possible insertion time.
+			minTs, maxTs := uint64(0), uint64(time.Now().Add(time.Hour).UnixMicro())
+			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Query: &commonpb.PreparedQuery{
+					Name:   "by-inserted-at",
+					Ledger: ledgerName,
+					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+					Filter: insertedAtRangeFilter(minTs, maxTs),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+				Ledger:    ledgerName,
+				QueryName: "by-inserted-at",
+				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+			})
+			Expect(err).To(HaveOccurred())
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
+			Expect(testutil.ExtractGRPCErrorInfo(err).Reason).To(Equal("INDEX_NOT_FOUND"))
+		})
+
+		It("Should create inserted_at index and query transactions by creation time range", func() {
+			// Record time before creating transactions.
+			beforeCreate := time.Now()
+
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					createBuiltinIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			// Create transactions — their inserted_at will be ~now (wall clock).
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{testutil.NewPosting("world", "a", big.NewInt(10), "USD")}, nil),
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{testutil.NewPosting("world", "b", big.NewInt(20), "USD")}, nil),
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{testutil.NewPosting("world", "c", big.NewInt(30), "USD")}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			waitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)
+
+			// Query all transactions created between beforeCreate and now+1h.
+			minTs := uint64(beforeCreate.UnixMicro())
+			maxTs := uint64(time.Now().Add(time.Hour).UnixMicro())
+			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Query: &commonpb.PreparedQuery{
+					Name:   "by-inserted-at-all",
+					Ledger: ledgerName,
+					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+					Filter: insertedAtRangeFilter(minTs, maxTs),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+					Ledger:    ledgerName,
+					QueryName: "by-inserted-at-all",
+					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(result.GetCursor().TransactionData).To(HaveLen(3))
+			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should return no results for a past time range (before any transaction was created)", func() {
+			// A range far in the past should match nothing.
+			pastMin := uint64(time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).UnixMicro())
+			pastMax := uint64(time.Date(2000, 1, 2, 0, 0, 0, 0, time.UTC).UnixMicro())
+			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
+				Query: &commonpb.PreparedQuery{
+					Name:   "by-inserted-at-past",
+					Ledger: ledgerName,
+					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+					Filter: insertedAtRangeFilter(pastMin, pastMax),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			result, err := sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+				Ledger:    ledgerName,
+				QueryName: "by-inserted-at-past",
+				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+			})
+			Expect(err).To(Succeed())
+			Expect(result.GetCursor().TransactionData).To(BeEmpty())
+		})
+
+		It("Should show inserted_at index as READY in GetLedger", func() {
+			info, err := sharedClient.GetLedger(sharedCtx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+			Expect(err).To(Succeed())
+			Expect(info.BuiltinIndexes).NotTo(BeNil())
+			Expect(info.BuiltinIndexes.InsertedAt).To(BeTrue())
+			Expect(info.BuiltinIndexes.InsertedAtStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
+		})
+
+		It("Should reject inserted_at filter queries after dropping the index", func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					dropBuiltinIndexAction(ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				_, err := sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
+					Ledger:    ledgerName,
+					QueryName: "by-inserted-at",
+					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+				})
+				g.Expect(err).To(HaveOccurred())
+				st, ok := status.FromError(err)
+				g.Expect(ok).To(BeTrue())
+				g.Expect(st.Code()).To(Equal(codes.FailedPrecondition))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 

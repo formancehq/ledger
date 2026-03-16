@@ -254,6 +254,13 @@ func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *dal.KeyBuilder, ledger 
 	return wb.put(key, nil)
 }
 
+// WriteTransactionInsertedAtIndex inserts an entry in the transaction inserted_at index.
+func (wb *WriteBatch) WriteTransactionInsertedAtIndex(kb *dal.KeyBuilder, ledger string, timestamp, txID uint64) error {
+	key := TransactionInsertedAtKey(kb, ledger, timestamp, txID)
+
+	return wb.put(key, nil)
+}
+
 // WriteLedgerLogDateIndex inserts an entry in the per-ledger log date index.
 func (wb *WriteBatch) WriteLedgerLogDateIndex(kb *dal.KeyBuilder, ledger string, timestamp, logID uint64) error {
 	key := LedgerLogDateKey(kb, ledger, timestamp, logID)

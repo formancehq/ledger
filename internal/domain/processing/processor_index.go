@@ -263,6 +263,8 @@ func isBuiltinIndexedAndReady(cfg *commonpb.BuiltinIndexConfig, builtin commonpb
 		return cfg.GetSourceAddress() && cfg.GetSourceAddressStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
 		return cfg.GetDestAddress() && cfg.GetDestAddressStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		return cfg.GetInsertedAt() && cfg.GetInsertedAtStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
 	}
 
 	return false
@@ -285,6 +287,9 @@ func setBuiltinIndexed(cfg *commonpb.BuiltinIndexConfig, builtin commonpb.Transa
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
 		cfg.DestAddress = enabled
 		cfg.DestAddressStatus = status
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		cfg.InsertedAt = enabled
+		cfg.InsertedAtStatus = status
 	}
 }
 
@@ -300,6 +305,8 @@ func setBuiltinStatus(cfg *commonpb.BuiltinIndexConfig, builtin commonpb.Transac
 		cfg.SourceAddressStatus = status
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS:
 		cfg.DestAddressStatus = status
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		cfg.InsertedAtStatus = status
 	}
 }
 

@@ -136,6 +136,7 @@ func (b *Builder) loadLedgerIndexConfig(info *commonpb.LedgerInfo) {
 			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS, bi.GetAddress(), bi.GetAddressStatus()},
 			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS, bi.GetSourceAddress(), bi.GetSourceAddressStatus()},
 			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DEST_ADDRESS, bi.GetDestAddress(), bi.GetDestAddressStatus()},
+			{commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT, bi.GetInsertedAt(), bi.GetInsertedAtStatus()},
 		} {
 			if !entry.enabled {
 				continue

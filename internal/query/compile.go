@@ -864,6 +864,8 @@ func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCond
 		return compileTxIDCondition(ctx, cond.GetCond())
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 		return compileTimestampCondition(ctx, cond.GetCond())
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		return compileInsertedAtCondition(ctx, cond.GetCond())
 	default:
 		return nil, fmt.Errorf("unsupported builtin uint field: %v", cond.GetField())
 	}
@@ -934,6 +936,17 @@ func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (r
 
 	return compileTimestampRangeCondition(ctx, cond,
 		readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledger), "tstmp")
+}
+
+// compileInsertedAtCondition filters transactions by inserted_at using the transaction inserted_at index.
+// Requires the inserted_at builtin index to be READY.
+func compileInsertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
+	if err := checkBuiltinIndexed(ctx.builtinCfg, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT); err != nil {
+		return nil, err
+	}
+
+	return compileTimestampRangeCondition(ctx, cond,
+		readstore.TransactionInsertedAtRangePrefix(ctx.kb, ctx.ledger), "txiat")
 }
 
 // compileTimestampRangeCondition is the shared logic for timestamp-based range scans.
@@ -1145,6 +1158,12 @@ func checkBuiltinIndexed(cfg *commonpb.BuiltinIndexConfig, index commonpb.Transa
 
 		if cfg != nil {
 			enabled, status = cfg.GetTimestamp(), cfg.GetTimestampStatus()
+		}
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		label = "inserted_at"
+
+		if cfg != nil {
+			enabled, status = cfg.GetInsertedAt(), cfg.GetInsertedAtStatus()
 		}
 	default:
 		return nil

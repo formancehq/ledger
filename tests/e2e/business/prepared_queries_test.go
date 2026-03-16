@@ -126,6 +126,20 @@ func timestampRangeFilter(minTs, maxTs uint64) *commonpb.QueryFilter {
 	}
 }
 
+// insertedAtRangeFilter creates a QueryFilter for filtering transactions by inserted_at range (inclusive).
+// Requires the inserted_at builtin index to be READY on the ledger.
+func insertedAtRangeFilter(minTs, maxTs uint64) *commonpb.QueryFilter {
+	cond := &commonpb.UintCondition{Min: &minTs, Max: &maxTs}
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &commonpb.BuiltinUintCondition{
+				Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+				Cond:  cond,
+			},
+		},
+	}
+}
+
 // txIDRangeFilter creates a QueryFilter for filtering transactions by ID range (inclusive).
 // Does not require any index.
 func txIDRangeFilter(minID, maxID uint64) *commonpb.QueryFilter {

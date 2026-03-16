@@ -5,18 +5,19 @@ import "github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 // Pebble key prefix bytes for the separate read index database.
 // Each prefix replaces a former Pebble bucket.
 const (
-	PrefixMetadataIndex        byte = 0x01 // midx — inverted index for metadata
-	PrefixEntityExists         byte = 0x02 // eidx — entity-ordered existence index
-	PrefixReverseMap           byte = 0x03 // rmap — reverse metadata map
-	PrefixAccountTx            byte = 0x04 // atxm — account→tx (any role)
-	PrefixSourceAccountTx      byte = 0x05 // satx — source account→tx
-	PrefixDestAccountTx        byte = 0x06 // datx — dest account→tx
-	PrefixTransactionReference byte = 0x07 // txref — transaction reference
-	PrefixTransactionTimestamp byte = 0x08 // tstmp — transaction timestamp
-	PrefixLedgerLogs           byte = 0x09 // llog — ledger log mapping
-	PrefixLedgerLogDate        byte = 0x0A // lldt — ledger log date
-	PrefixProgress             byte = 0xF0 // prog — progress (single key)
-	PrefixBackfill             byte = 0xF1 // bfil — backfill cursors
+	PrefixMetadataIndex         byte = 0x01 // midx — inverted index for metadata
+	PrefixEntityExists          byte = 0x02 // eidx — entity-ordered existence index
+	PrefixReverseMap            byte = 0x03 // rmap — reverse metadata map
+	PrefixAccountTx             byte = 0x04 // atxm — account→tx (any role)
+	PrefixSourceAccountTx       byte = 0x05 // satx — source account→tx
+	PrefixDestAccountTx         byte = 0x06 // datx — dest account→tx
+	PrefixTransactionReference  byte = 0x07 // txref — transaction reference
+	PrefixTransactionTimestamp  byte = 0x08 // tstmp — transaction timestamp
+	PrefixLedgerLogs            byte = 0x09 // llog — ledger log mapping
+	PrefixLedgerLogDate         byte = 0x0A // lldt — ledger log date
+	PrefixTransactionInsertedAt byte = 0x0B // txiat — transaction inserted_at
+	PrefixProgress              byte = 0xF0 // prog — progress (single key)
+	PrefixBackfill              byte = 0xF1 // bfil — backfill cursors
 )
 
 // Namespace prefixes to distinguish accounts, transactions, and logs in shared buckets.
@@ -232,6 +233,28 @@ func TransactionTimestampKey(kb *dal.KeyBuilder, ledger string, timestamp, txID 
 func TransactionTimestampRangePrefix(kb *dal.KeyBuilder, ledger string) []byte {
 	return kb.Reset().
 		PutByte(PrefixTransactionTimestamp).
+		PutLedgerName(ledger).
+		Snapshot()
+}
+
+// TransactionInsertedAtKey builds a full key in the transaction inserted_at index.
+//
+//	[0x0B][ledger\x00][timestamp_BE(8B)][txID_BE(8B)]
+func TransactionInsertedAtKey(kb *dal.KeyBuilder, ledger string, timestamp, txID uint64) []byte {
+	return kb.Reset().
+		PutByte(PrefixTransactionInsertedAt).
+		PutLedgerName(ledger).
+		PutUint64(timestamp).
+		PutUint64(txID).
+		Build()
+}
+
+// TransactionInsertedAtRangePrefix returns the ledger prefix for range scans in the inserted_at index.
+//
+//	[0x0B][ledger\x00]
+func TransactionInsertedAtRangePrefix(kb *dal.KeyBuilder, ledger string) []byte {
+	return kb.Reset().
+		PutByte(PrefixTransactionInsertedAt).
 		PutLedgerName(ledger).
 		Snapshot()
 }

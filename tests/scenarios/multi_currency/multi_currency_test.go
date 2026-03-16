@@ -244,6 +244,26 @@ send $amount (
 		scenariotest.ApplyActions(t, ctx, client,
 			testutil.DropBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
 		)
+
+		// Create a builtin transaction index (inserted_at / creation date)
+		scenariotest.ApplyActions(t, ctx, client,
+			testutil.CreateBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+		)
+
+		// Wait for the index to become READY
+		require.Eventually(t, func() bool {
+			info, err := testutil.GetLedger(ctx, client, ledger)
+			if err != nil {
+				return false
+			}
+			bi := info.GetBuiltinIndexes()
+			return bi != nil && bi.GetInsertedAtStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+		}, 30*time.Second, 200*time.Millisecond, "inserted_at index should become READY")
+
+		// Drop the index
+		scenariotest.ApplyActions(t, ctx, client,
+			testutil.DropBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+		)
 	})
 
 	// --- Phase 3: Vendor Payments (50 Apply calls) ---

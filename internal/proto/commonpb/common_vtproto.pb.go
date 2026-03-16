@@ -659,6 +659,8 @@ func (m *BuiltinIndexConfig) CloneVT() *BuiltinIndexConfig {
 	r.SourceAddressStatus = m.SourceAddressStatus
 	r.DestAddress = m.DestAddress
 	r.DestAddressStatus = m.DestAddressStatus
+	r.InsertedAt = m.InsertedAt
+	r.InsertedAtStatus = m.InsertedAtStatus
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4300,6 +4302,12 @@ func (this *BuiltinIndexConfig) EqualVT(that *BuiltinIndexConfig) bool {
 		return false
 	}
 	if this.DestAddressStatus != that.DestAddressStatus {
+		return false
+	}
+	if this.InsertedAt != that.InsertedAt {
+		return false
+	}
+	if this.InsertedAtStatus != that.InsertedAtStatus {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -10208,6 +10216,21 @@ func (m *BuiltinIndexConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.InsertedAtStatus != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.InsertedAtStatus))
+		i--
+		dAtA[i] = 0x60
+	}
+	if m.InsertedAt {
+		i--
+		if m.InsertedAt {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x58
 	}
 	if m.DestAddressStatus != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DestAddressStatus))
@@ -17418,6 +17441,12 @@ func (m *BuiltinIndexConfig) SizeVT() (n int) {
 	if m.DestAddressStatus != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.DestAddressStatus))
 	}
+	if m.InsertedAt {
+		n += 2
+	}
+	if m.InsertedAtStatus != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.InsertedAtStatus))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -24012,6 +24041,45 @@ func (m *BuiltinIndexConfig) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.DestAddressStatus |= IndexBuildStatus(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field InsertedAt", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.InsertedAt = bool(v != 0)
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field InsertedAtStatus", wireType)
+			}
+			m.InsertedAtStatus = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.InsertedAtStatus |= IndexBuildStatus(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

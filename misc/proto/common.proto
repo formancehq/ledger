@@ -206,6 +206,7 @@ enum TransactionBuiltinIndex {
   TX_BUILTIN_INDEX_ADDRESS = 3;          // account→transaction mapping (any role)
   TX_BUILTIN_INDEX_SOURCE_ADDRESS = 4;   // source account→transaction mapping
   TX_BUILTIN_INDEX_DEST_ADDRESS = 5;     // destination account→transaction mapping
+  TX_BUILTIN_INDEX_INSERTED_AT = 6;     // requires Pebble "txiat" index (inserted_at date)
 }
 
 // AccountBuiltinIndex identifies a built-in account field that can be indexed.
@@ -247,6 +248,8 @@ message BuiltinIndexConfig {
   IndexBuildStatus source_address_status = 8;
   bool dest_address = 9;
   IndexBuildStatus dest_address_status = 10;
+  bool inserted_at = 11;
+  IndexBuildStatus inserted_at_status = 12;
 }
 
 // LogBuiltinIndexConfig tracks the status of built-in log field indexes.
@@ -875,7 +878,7 @@ message LogIdCondition {
   UintCondition cond = 1;
 }
 
-// BuiltinUintCondition filters transactions by a built-in uint64 field (id or timestamp).
+// BuiltinUintCondition filters transactions by a built-in uint64 field (id, timestamp, or inserted_at).
 message BuiltinUintCondition {
   TransactionBuiltinIndex field = 1;
   UintCondition cond = 2;

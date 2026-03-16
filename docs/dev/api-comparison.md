@@ -95,7 +95,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Execute prepared query (list) | ✅ | ❌ | Returns matching entities with cursor pagination; validates filters against metadata schema |
 | Execute prepared query (aggregate) | ✅ | ❌ | Returns aggregated volumes per asset; validates filters against metadata schema |
 | **User-Configurable Indexes** |
-| Create index | ✅ | ❌ | Opt-in address, metadata, reference, or timestamp indexes per ledger |
+| Create index | ✅ | ❌ | Opt-in address, metadata, reference, timestamp, or inserted-at indexes per ledger |
 | Drop index | ✅ | ❌ | Remove an index from a ledger |
 | List indexes | ✅ | ❌ | View all indexes with build status and backfill progress (via GetLedger) |
 | **Volumes (responses)** |
@@ -354,7 +354,8 @@ Prepared queries are reusable, named filter queries stored per-ledger. They can 
 | `AddressMatch` — prefix or exact address match | accounts | no |
 | `AndFilter` / `OrFilter` / `NotFilter` | — | depends on sub-filters |
 | `ReferenceCondition` — transaction reference exact match | transactions | yes (`reference` builtin index) |
-| `BuiltinUintCondition` with `TIMESTAMP` — time range | transactions | yes (`timestamp` builtin index) |
+| `BuiltinUintCondition` with `TIMESTAMP` — effective date range | transactions | yes (`timestamp` builtin index) |
+| `BuiltinUintCondition` with `INSERTED_AT` — creation date range | transactions | yes (`inserted_at` builtin index) |
 | `BuiltinUintCondition` with `ID` — transaction ID range or equality | transactions | no (direct range scan) |
 
 **User-configurable indexes** control which filters are available. Each index has a lifecycle: BUILDING (backfill in progress) → READY (queries enabled).
@@ -367,6 +368,7 @@ Prepared queries are reusable, named filter queries stored per-ledger. They can 
 | `metadata` | `--type metadata --target … --key …` | `FieldCondition` on the specified field |
 | `reference` | `--type reference` | `ReferenceCondition` |
 | `timestamp` | `--type timestamp` | `BuiltinUintCondition(TIMESTAMP)` |
+| `inserted-at` | `--type inserted-at` | `BuiltinUintCondition(INSERTED_AT)` |
 
 > Filtering by transaction ID (`BuiltinUintCondition(ID)`) is always available with no index required.
 

@@ -60,7 +60,7 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 	indexType, _ := cmd.Flags().GetString("type")
 	if indexType == "" {
 		result, err := pterm.DefaultInteractiveSelect.
-			WithOptions([]string{"address", "source-address", "dest-address", "metadata", "reference", "timestamp", "log-ledger"}).
+			WithOptions([]string{"address", "source-address", "dest-address", "metadata", "reference", "timestamp", "inserted-at", "log-ledger"}).
 			WithDefaultText("Select index type to drop").
 			Show()
 		if err != nil {
@@ -144,13 +144,22 @@ func runDropIndex(cmd *cobra.Command, _ []string) error {
 			},
 		}
 		indexDesc = "timestamp"
+	case "inserted-at":
+		req.Index = &servicepb.DropIndexRequest_Transaction{
+			Transaction: &commonpb.TransactionIndex{
+				Kind: &commonpb.TransactionIndex_Builtin{
+					Builtin: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+				},
+			},
+		}
+		indexDesc = "inserted-at"
 	case "log-ledger":
 		req.Index = &servicepb.DropIndexRequest_LogBuiltin{
 			LogBuiltin: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER,
 		}
 		indexDesc = "log-ledger"
 	default:
-		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, metadata, reference, timestamp, or log-ledger", indexType)
+		return fmt.Errorf("invalid index type %q: must be address, source-address, dest-address, metadata, reference, timestamp, inserted-at, or log-ledger", indexType)
 	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)

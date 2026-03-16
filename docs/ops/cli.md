@@ -426,7 +426,7 @@ ledgerctl ledgers create-index [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp` |
+| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp`, `inserted-at` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
 | `--timeout` | `10s` | Request timeout |
@@ -440,7 +440,8 @@ ledgerctl ledgers create-index [flags]
 | `dest-address` | Destination account-to-transaction mapping |
 | `metadata` | Metadata field index (requires `--target` and `--key`) |
 | `reference` | Transaction reference exact-match index |
-| `timestamp` | Transaction timestamp range-scan index |
+| `timestamp` | Transaction timestamp (effective date) range-scan index |
+| `inserted-at` | Transaction creation date (`inserted_at`) range-scan index |
 
 > **Note:** Filtering by transaction ID (`id`) does not require any index — it is always available via a direct range scan.
 
@@ -464,8 +465,11 @@ ledgerctl ledgers create-index --ledger my-ledger --type metadata --target accou
 # Create reference index (enables filtering transactions by reference)
 ledgerctl ledgers create-index --ledger my-ledger --type reference
 
-# Create timestamp index (enables filtering transactions by time range)
+# Create timestamp index (enables filtering transactions by effective date range)
 ledgerctl ledgers create-index --ledger my-ledger --type timestamp
+
+# Create inserted-at index (enables filtering transactions by creation date range)
+ledgerctl ledgers create-index --ledger my-ledger --type inserted-at
 
 # Interactive mode
 ledgerctl ledgers create-index
@@ -486,7 +490,7 @@ ledgerctl ledgers drop-index [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp` |
+| `--type` | | Index type: `address`, `source-address`, `dest-address`, `metadata`, `reference`, `timestamp`, `inserted-at` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
 | `--timeout` | `10s` | Request timeout |
