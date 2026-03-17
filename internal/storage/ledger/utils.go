@@ -71,9 +71,9 @@ func collectAddressFilters(q interface {
 }
 
 // applyLateralAddressFilter conditionally pushes the address filter into a
-// LATERAL join subquery when it is safe to do so.
-func applyLateralAddressFilter(subQuery *bun.SelectQuery, addresses []string, builder query.Builder) *bun.SelectQuery {
-	if len(addresses) > 0 && canPushAddressFilterToLateral(builder) {
+// LATERAL join subquery when canPush is true and there are addresses to filter.
+func applyLateralAddressFilter(subQuery *bun.SelectQuery, addresses []string, canPush bool) *bun.SelectQuery {
+	if len(addresses) > 0 && canPush {
 		subQuery = subQuery.Where(buildAddressFilterForLateral(addresses))
 	}
 	return subQuery
@@ -83,14 +83,16 @@ func applyLateralAddressFilter(subQuery *bun.SelectQuery, addresses []string, bu
 // filter into the LATERAL join by inspecting the query builder's JSON AST.
 //
 // The optimization is UNSAFE when:
-//   - $not is present: the lateral keeps matching rows, but the outer WHERE
-//     negates them → 0 results.
-//   - $or is present: the lateral excludes rows that don't match the address
-//     filter, but those rows might match another branch of the $or (e.g.
-//     a balance or metadata condition) → missing results.
+//   - An address filter is inside a $not (at any depth): the lateral keeps
+//     matching rows, but the outer WHERE negates them → 0 results.
+//   - An address filter is inside a $or that also has branches without address
+//     filters: the lateral excludes rows matching the non-address branch → missing results.
 //
-// With pure $and queries, the optimization is safe because all conditions
-// must be true, so pre-filtering by address is a valid subset operation.
+// The optimization is SAFE when:
+//   - $not only wraps non-address filters (e.g. metadata)
+//   - $or wraps a single item (no-op wrapper)
+//   - $or branches all contain address filters
+//   - Pure $and at any depth
 func canPushAddressFilterToLateral(builder query.Builder) bool {
 	if builder == nil {
 		return true
@@ -99,8 +101,149 @@ func canPushAddressFilterToLateral(builder query.Builder) bool {
 	if err != nil {
 		return false
 	}
-	s := string(data)
-	return !strings.Contains(s, `"$not":`) && !strings.Contains(s, `"$or":`)
+	var node map[string]any
+	if err := json.Unmarshal(data, &node); err != nil {
+		return false
+	}
+	return isNodeSafeForLateral(node, false)
+}
+
+// isAddressKey returns true if the key refers to an address/account field.
+func isAddressKey(key string) bool {
+	return key == "address" || key == "account"
+}
+
+// isLeafOperator returns true for query leaf operators ($match, $gt, etc).
+// Must match leaf operators in go-libs/v3/query/expression.go (mapMapToExpression).
+func isLeafOperator(op string) bool {
+	switch op {
+	case "$match", "$gt", "$gte", "$lt", "$lte", "$like", "$exists", "$in":
+		return true
+	}
+	return false
+}
+
+// nodeContainsAddressFilter checks whether a JSON AST subtree contains
+// any filter on an address/account field.
+func nodeContainsAddressFilter(node map[string]any) bool {
+	for op, value := range node {
+		switch {
+		case isLeafOperator(op):
+			if m, ok := value.(map[string]any); ok {
+				for key := range m {
+					if isAddressKey(key) {
+						return true
+					}
+				}
+			}
+		case op == "$not":
+			if child, ok := value.(map[string]any); ok {
+				if nodeContainsAddressFilter(child) {
+					return true
+				}
+			}
+		case op == "$and" || op == "$or":
+			if items, ok := value.([]any); ok {
+				for _, item := range items {
+					if child, ok := item.(map[string]any); ok {
+						if nodeContainsAddressFilter(child) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// isNodeSafeForLateral walks the JSON AST and checks whether pushing the
+// address filter into the LATERAL join would produce correct results.
+// insideNot tracks whether we are inside a $not ancestor.
+func isNodeSafeForLateral(node map[string]any, insideNot bool) bool {
+	for op, value := range node {
+		switch {
+		case isLeafOperator(op):
+			// Address filter inside $not → unsafe
+			if insideNot {
+				if m, ok := value.(map[string]any); ok {
+					for key := range m {
+						if isAddressKey(key) {
+							return false
+						}
+					}
+				}
+			}
+
+		case op == "$not":
+			if child, ok := value.(map[string]any); ok {
+				if !isNodeSafeForLateral(child, true) {
+					return false
+				}
+			}
+
+		case op == "$and":
+			if items, ok := value.([]any); ok {
+				for _, item := range items {
+					if child, ok := item.(map[string]any); ok {
+						if !isNodeSafeForLateral(child, insideNot) {
+							return false
+						}
+					}
+				}
+			}
+
+		case op == "$or":
+			items, ok := value.([]any)
+			if !ok {
+				continue
+			}
+
+			if insideNot {
+				// NOT(A OR B) = NOT A AND NOT B — if any branch contains
+				// an address filter, that becomes a negated address → unsafe.
+				// nodeContainsAddressFilter already checks the full subtree,
+				// so no further recursion is needed.
+				for _, item := range items {
+					if child, ok := item.(map[string]any); ok {
+						if nodeContainsAddressFilter(child) {
+							return false
+						}
+					}
+				}
+				continue
+			}
+
+			if len(items) > 1 {
+				// $or with multiple branches: unsafe if it mixes branches
+				// that contain address filters with branches that don't.
+				hasAddr := false
+				hasNonAddr := false
+				for _, item := range items {
+					if child, ok := item.(map[string]any); ok {
+						if nodeContainsAddressFilter(child) {
+							hasAddr = true
+						} else {
+							hasNonAddr = true
+						}
+					}
+				}
+				if hasAddr && hasNonAddr {
+					return false
+				}
+			}
+
+			// Recurse into children for nested issues
+			for _, item := range items {
+				if child, ok := item.(map[string]any); ok {
+					if !isNodeSafeForLateral(child, insideNot) {
+						return false
+					}
+				}
+			}
+		}
+	}
+	return true
 }
 
 // buildAddressFilterForLateral builds an OR condition of all address filters
