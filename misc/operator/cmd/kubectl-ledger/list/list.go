@@ -72,7 +72,7 @@ func runList(cmd *cobra.Command, opts *cmdutil.Options, f *listFlags) error {
 }
 
 func renderTable(ledgers *ledgerv1alpha1.LedgerServiceList, showNamespace bool) error {
-	header := []string{"NAME", "REPLICAS", "PHASE", "IMAGE", "AGE"}
+	header := []string{"NAME", "REPLICAS", "PHASE", "IMAGE", "URL", "AGE"}
 	if showNamespace {
 		header = append([]string{"NAMESPACE"}, header...)
 	}
@@ -84,8 +84,9 @@ func renderTable(ledgers *ledgerv1alpha1.LedgerServiceList, showNamespace bool) 
 		age := cmdutil.FormatAge(time.Since(l.CreationTimestamp.Time))
 		ready := cmdutil.FormatReadyReplicas(l.Status.ReadyReplicas, l.Spec.Replicas)
 		phase := cmdutil.PhaseColor(l.Status.Phase)
+		url := formatURL(l)
 
-		row := []string{pterm.Cyan(l.Name), ready, phase, image, age}
+		row := []string{pterm.Cyan(l.Name), ready, phase, image, url, age}
 		if showNamespace {
 			row = append([]string{l.Namespace}, row...)
 		}
@@ -103,4 +104,15 @@ func renderTable(ledgers *ledgerv1alpha1.LedgerServiceList, showNamespace bool) 
 	cmdutil.RenderTable(header, rows)
 
 	return nil
+}
+
+func formatURL(l *ledgerv1alpha1.LedgerService) string {
+	if l.Status.Endpoints == nil {
+		return ""
+	}
+	if l.Status.Endpoints.GRPC != "" {
+		return l.Status.Endpoints.GRPC
+	}
+
+	return l.Status.Endpoints.HTTP
 }
