@@ -23,6 +23,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/logs"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/periods"
 	profilecmd "github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/profile"
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/provision"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/restore"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/signing"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/store"
@@ -75,7 +76,7 @@ func newRootCommand() *cobra.Command {
 			}
 
 			name, p := cmdutil.GetActiveProfile(cfg, profileName)
-			if profileExplicit && p == nil {
+			if profileExplicit && p == nil && !isProfileBootstrapCommand(cmd) {
 				return fmt.Errorf("profile %q not found", name)
 			}
 
@@ -128,6 +129,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(profilecmd.NewCommand())
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(upgrade.NewCommand(version))
+	rootCmd.AddCommand(provision.NewCommand())
 
 	return rootCmd
 }
@@ -149,6 +151,21 @@ func resolveFlag(cmd *cobra.Command, flagName, envVar, profileValue string) {
 	if profileValue != "" {
 		_ = cmd.Flags().Set(flagName, profileValue)
 	}
+}
+
+// isProfileBootstrapCommand returns true for commands that should work even
+// when the referenced --profile does not exist yet (e.g. auth login, profile create).
+func isProfileBootstrapCommand(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		switch c.Name() {
+		case "login", "create":
+			if p := c.Parent(); p != nil && (p.Name() == "auth" || p.Name() == "profile") {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func newVersionCommand() *cobra.Command {
