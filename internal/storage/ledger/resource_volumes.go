@@ -31,6 +31,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 	var selectVolumes *bun.SelectQuery
 
 	allAddresses, needAddressSegments := collectAddressFilters(query)
+	canPushLateral := canPushAddressFilterToLateral(query.Builder)
 	if !query.UsePIT() && !query.UseOOT() {
 		selectVolumes = h.store.newScopedSelect().
 			Column("asset", "input", "output").
@@ -48,7 +49,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 			if needAddressSegments {
 				accountsQuery = accountsQuery.ColumnExpr("address_array as account_array")
 				selectVolumes = selectVolumes.Column("account_array")
-				accountsQuery = applyLateralAddressFilter(accountsQuery, allAddresses, query.Builder)
+				accountsQuery = applyLateralAddressFilter(accountsQuery, allAddresses, canPushLateral)
 			}
 			if query.UseFilter("metadata") {
 				accountsQuery = accountsQuery.ColumnExpr("metadata")
@@ -98,7 +99,7 @@ func (h volumesResourceHandler) BuildDataset(query common.RepositoryHandlerBuild
 			if needAddressSegments {
 				accountsQuery = accountsQuery.ColumnExpr("address_array")
 				selectVolumes = selectVolumes.ColumnExpr("(array_agg(accounts.address_array))[1] as account_array")
-				accountsQuery = applyLateralAddressFilter(accountsQuery, allAddresses, query.Builder)
+				accountsQuery = applyLateralAddressFilter(accountsQuery, allAddresses, canPushLateral)
 			}
 			if query.UseFilter("first_usage") {
 				accountsQuery = accountsQuery.ColumnExpr("first_usage")
