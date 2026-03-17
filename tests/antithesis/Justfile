@@ -1,7 +1,7 @@
 run duration description='ledger-v3 manual run': push-images
 	curl --fail \
 		--user "formance:$ANTITHESIS_PASSWORD" \
-		-X POST https://formance.antithesis.nope/api/v1/launch_experiment/formance-k8s -d '{ \
+		-X POST https://formance.antithesis.com/api/v1/launch_experiment/formance-k8s -d '{ \
 			"params": { \
 				"custom.duration": "{{duration}}", \
 				"custom.containers_to_exclude_from_network_faults":"etcd-0 etcd-1 etcd-2 workload", \
