@@ -21,6 +21,8 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 // newTestRootCommand builds a root command tree identical to ledgerctl's main.go
@@ -111,6 +113,9 @@ func runCLIJSON(grpcPort int, dest any, args ...string) error {
 		return fmt.Errorf("command failed: %w\nstdout: %s\nstderr: %s", err, string(captured), errBuf.String())
 	}
 
+	if msg, ok := dest.(proto.Message); ok {
+		return protojson.Unmarshal(captured, msg)
+	}
 	return json.Unmarshal(captured, dest)
 }
 

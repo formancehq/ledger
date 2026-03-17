@@ -87,9 +87,9 @@ func TestMultiLedgerPayroll(t *testing.T) {
 		}
 		scenariotest.ApplyActions(t, ctx, client, actions...)
 
-		// Save shared numscripts (global, not per-ledger)
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.SaveNumscriptWithVersionAction("fund_clearing", `vars {
+		// Save numscripts scoped per ledger
+		clearingScripts := []*servicepb.Request{
+			testutil.SaveNumscriptWithVersionAction("clearing", "fund_clearing", `vars {
   monetary $amount
 }
 send $amount (
@@ -97,7 +97,7 @@ send $amount (
   destination = @company:treasury
 )`, "1.0.0"),
 
-			testutil.SaveNumscriptWithVersionAction("fund_dept", `vars {
+			testutil.SaveNumscriptWithVersionAction("clearing", "fund_dept", `vars {
   account $dept_account
   monetary $amount
 }
@@ -106,24 +106,7 @@ send $amount (
   destination = $dept_account
 )`, "1.0.0"),
 
-			testutil.SaveNumscriptWithVersionAction("fund_payroll", `vars {
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = @payroll:pool
-)`, "1.0.0"),
-
-			testutil.SaveNumscriptWithVersionAction("pay_salary", `vars {
-  account $employee
-  monetary $amount
-}
-send $amount (
-  source = @payroll:pool
-  destination = $employee
-)`, "1.0.0"),
-
-			testutil.SaveNumscriptWithVersionAction("cost_allocation", `vars {
+			testutil.SaveNumscriptWithVersionAction("clearing", "cost_allocation", `vars {
   account $from_dept
   account $to_dept
   monetary $amount
@@ -132,7 +115,30 @@ send $amount (
   source = $from_dept
   destination = $to_dept
 )`, "1.0.0"),
-		)
+		}
+		scenariotest.ApplyActions(t, ctx, client, clearingScripts...)
+
+		// Save department-scoped numscripts
+		for _, dept := range departments {
+			scenariotest.ApplyActions(t, ctx, client,
+				testutil.SaveNumscriptWithVersionAction(dept.ledger, "fund_payroll", `vars {
+  monetary $amount
+}
+send $amount (
+  source = @world
+  destination = @payroll:pool
+)`, "1.0.0"),
+
+				testutil.SaveNumscriptWithVersionAction(dept.ledger, "pay_salary", `vars {
+  account $employee
+  monetary $amount
+}
+send $amount (
+  source = @payroll:pool
+  destination = $employee
+)`, "1.0.0"),
+			)
+		}
 	})
 
 	// --- Phase 2: Monthly Payroll Cycles ---
@@ -293,8 +299,9 @@ send $amount (
 	// --- Phase 6: Numscript Versioning ---
 	t.Run("NumscriptVersioning", func(t *testing.T) {
 		// Save a v2 of pay_salary with a bonus metadata field
+		dept := departments[1] // sales
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.SaveNumscriptWithVersionAction("pay_salary", `vars {
+			testutil.SaveNumscriptWithVersionAction(dept.ledger, "pay_salary", `vars {
   account $employee
   monetary $amount
 }
@@ -305,16 +312,15 @@ send $amount (
 		)
 
 		// Verify both versions exist
-		v1, err := testutil.GetNumscript(ctx, client, "pay_salary", "1.0.0")
+		v1, err := testutil.GetNumscript(ctx, client, dept.ledger, "pay_salary", "1.0.0")
 		require.NoError(t, err, "should find pay_salary v1.0.0")
 		require.Equal(t, "1.0.0", v1.GetVersion())
 
-		v2, err := testutil.GetNumscript(ctx, client, "pay_salary", "2.0.0")
+		v2, err := testutil.GetNumscript(ctx, client, dept.ledger, "pay_salary", "2.0.0")
 		require.NoError(t, err, "should find pay_salary v2.0.0")
 		require.Equal(t, "2.0.0", v2.GetVersion())
 
 		// Use v2 for one more payment
-		dept := departments[1] // sales
 		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateScriptRefTransactionAction(dept.ledger, "fund_payroll", "1.0.0", map[string]string{
 				"amount": "USD/2 50000",
@@ -328,7 +334,7 @@ send $amount (
 
 		// Duplicate semver should fail
 		err = scenariotest.ApplyActionsExpectError(ctx, client,
-			testutil.SaveNumscriptWithVersionAction("pay_salary", `send [USD/2 1] (source = @world destination = @world)`, "1.0.0"),
+			testutil.SaveNumscriptWithVersionAction(dept.ledger, "pay_salary", `send [USD/2 1] (source = @world destination = @world)`, "1.0.0"),
 		)
 		require.Error(t, err, "duplicate semver version should fail")
 	})

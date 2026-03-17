@@ -78,7 +78,7 @@ func TestLendingLifecycle(t *testing.T) {
 			testutil.AddAccountTypeAction(ledger, "recovery", "recovery:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 
 			// Numscripts
-			testutil.SaveNumscriptWithVersionAction("fund_pool", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "fund_pool", `vars {
   monetary $amount
 }
 send $amount (
@@ -86,7 +86,7 @@ send $amount (
   destination = @funding:pool
 )`, "1.0.0"),
 
-			testutil.SaveNumscriptWithVersionAction("disburse_loan", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "disburse_loan", `vars {
   account $borrower_loan
   account $borrower_wallet
   monetary $amount
@@ -100,7 +100,7 @@ send $amount (
   destination = $borrower_wallet
 )`, "1.0.0"),
 
-			testutil.SaveNumscriptWithVersionAction("repay_principal", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "repay_principal", `vars {
   account $borrower_wallet
   account $borrower_loan
   monetary $amount
@@ -114,7 +114,7 @@ send $amount (
   destination = @funding:pool
 )`, "1.0.0"),
 
-			testutil.SaveNumscriptWithVersionAction("accrue_interest", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "accrue_interest", `vars {
   account $borrower_wallet
   monetary $amount
 }
@@ -123,7 +123,7 @@ send $amount (
   destination = @revenue:interest
 )`, "1.0.0"),
 
-			testutil.SaveNumscriptWithVersionAction("provision", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "provision", `vars {
   monetary $amount
 }
 send $amount (
@@ -131,7 +131,7 @@ send $amount (
   destination = @expense:provision
 )`, "1.0.0"),
 
-			testutil.SaveNumscriptWithVersionAction("write_off", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "write_off", `vars {
   account $borrower_loan
   monetary $amount
 }

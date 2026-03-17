@@ -123,7 +123,7 @@ func TestMultiCurrencyTreasury(t *testing.T) {
 			testutil.AddAccountTypeAction(ledger, "treasury", "treasury:{currency}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 			testutil.AddAccountTypeAction(ledger, "fx-clearing", "fx:clearing", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 			testutil.AddAccountTypeAction(ledger, "vendor", "vendor:{name}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.SaveNumscriptWithVersionAction("fund_account", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "fund_account", `vars {
   account $account
   monetary $amount
 }
@@ -131,7 +131,7 @@ send $amount (
   source = @world
   destination = $account
 )`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction("fx_convert", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "fx_convert", `vars {
   account $source_account
   account $clearing_account
   monetary $amount
@@ -140,7 +140,7 @@ send $amount (
   source = $source_account
   destination = $clearing_account
 )`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction("vendor_payment", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "vendor_payment", `vars {
   account $treasury
   account $vendor
   monetary $amount

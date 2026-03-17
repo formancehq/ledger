@@ -65,7 +65,7 @@ func TestMarketplaceLifecycle(t *testing.T) {
 			testutil.AddAccountTypeAction(ledger, "merchant", "merchant:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 			testutil.AddAccountTypeAction(ledger, "platform-fees", "platform:fees", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 			testutil.AddAccountTypeAction(ledger, "platform-payouts", "platform:payouts", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.SaveNumscriptWithVersionAction("deposit", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "deposit", `vars {
   account $customer
   monetary $amount
 }
@@ -73,7 +73,7 @@ send $amount (
   source = @world
   destination = $customer
 )`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction("purchase", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "purchase", `vars {
   account $customer
   account $merchant
   monetary $amount
@@ -85,7 +85,7 @@ send $amount (
     remaining to $merchant
   }
 )`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction("payout", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "payout", `vars {
   account $merchant
   monetary $amount
 }
@@ -105,12 +105,12 @@ send $amount (
 		require.Len(t, ledgerInfo.GetAccountTypes(), 4, "should have 4 account types after setup")
 
 		// ListNumscripts + GetNumscript: verify 3 scripts registered
-		scripts, err := testutil.ListNumscripts(ctx, client)
+		scripts, err := testutil.ListNumscripts(ctx, client, ledger)
 		require.NoError(t, err)
 		require.Len(t, scripts, 3, "should have 3 numscripts (deposit, purchase, payout)")
 
 		for _, name := range []string{"deposit", "purchase", "payout"} {
-			info, err := testutil.GetNumscript(ctx, client, name, "1.0.0")
+			info, err := testutil.GetNumscript(ctx, client, ledger, name, "1.0.0")
 			require.NoError(t, err, "GetNumscript(%s) failed", name)
 			require.Equal(t, name, info.GetName())
 			require.Equal(t, "1.0.0", info.GetVersion())
@@ -492,7 +492,7 @@ send $amount (
 	t.Run("DeleteNumscript", func(t *testing.T) {
 		// Save a temporary script, then delete it
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.SaveNumscriptWithVersionAction("temp_script", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "temp_script", `vars {
   monetary $amount
 }
 send $amount (
@@ -501,7 +501,7 @@ send $amount (
 )`, "1.0.0"),
 		)
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.DeleteNumscriptAction("temp_script"),
+			testutil.DeleteNumscriptAction(ledger, "temp_script"),
 		)
 	})
 

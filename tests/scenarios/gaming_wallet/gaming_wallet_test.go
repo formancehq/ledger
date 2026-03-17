@@ -92,7 +92,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 			testutil.AddAccountTypeAction(ledger, "escrow", "escrow:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 
 			// Numscripts
-			testutil.SaveNumscriptWithVersionAction("top_up", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "top_up", `vars {
   account $player_usd
   account $player_coins
   monetary $usd_amount
@@ -111,7 +111,7 @@ send $coin_amount (
   destination = $player_coins
 )`, "1.0.0"),
 
-			testutil.SaveNumscriptWithVersionAction("buy_item", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "buy_item", `vars {
   account $player_coins
   monetary $amount
 }
@@ -120,7 +120,7 @@ send $amount (
   destination = @shop:items
 )`, "1.0.0"),
 
-			testutil.SaveNumscriptWithVersionAction("p2p_transfer", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "p2p_transfer", `vars {
   account $from_player
   account $to_player
   monetary $amount
@@ -130,7 +130,7 @@ send $amount (
   destination = $to_player
 )`, "1.0.0"),
 
-			testutil.SaveNumscriptWithVersionAction("clawback", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "clawback", `vars {
   account $player_coins
   monetary $amount
 }

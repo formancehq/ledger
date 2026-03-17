@@ -42,7 +42,7 @@ func TestStressInvariants(t *testing.T) {
 			testutil.AddAccountTypeAction(ledger, "trader", "trader:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 			testutil.AddAccountTypeAction(ledger, "exchange-fees", "exchange:fees", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 			testutil.AddAccountTypeAction(ledger, "exchange-withdrawals", "exchange:withdrawals", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.SaveNumscriptWithVersionAction("deposit", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "deposit", `vars {
   account $account
   monetary $amount
 }
@@ -50,7 +50,7 @@ send $amount (
   source = @world
   destination = $account
 )`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction("trade", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "trade", `vars {
   account $buyer
   account $seller
   monetary $amount
@@ -62,7 +62,7 @@ send $amount (
     remaining to $seller
   }
 )`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction("withdraw", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "withdraw", `vars {
   account $account
   monetary $amount
 }

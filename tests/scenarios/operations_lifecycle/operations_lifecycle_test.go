@@ -39,7 +39,7 @@ func TestOperationsLifecycle(t *testing.T) {
 		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateLedgerAction(ledger, nil),
 			testutil.AddAccountTypeAction(ledger, "ops-account", "ops:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.SaveNumscriptWithVersionAction("deposit", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "deposit", `vars {
   account $account
   monetary $amount
 }

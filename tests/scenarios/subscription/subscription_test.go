@@ -91,7 +91,7 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 			testutil.AddAccountTypeAction(ledger, "revenue-deferred", "revenue:deferred", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 			testutil.AddAccountTypeAction(ledger, "revenue-recognized", "revenue:recognized", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 			testutil.AddAccountTypeAction(ledger, "revenue-adjustment", "revenue:adjustment", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.SaveNumscriptWithVersionAction("fund_wallet", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "fund_wallet", `vars {
   account $subscriber
   monetary $amount
 }
@@ -99,7 +99,7 @@ send $amount (
   source = @world
   destination = $subscriber
 )`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction("charge_subscription", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "charge_subscription", `vars {
   account $subscriber
   monetary $amount
 }
@@ -107,7 +107,7 @@ send $amount (
   source = $subscriber
   destination = @revenue:deferred
 )`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction("issue_credit", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "issue_credit", `vars {
   account $subscriber
   monetary $amount
 }
@@ -115,14 +115,14 @@ send $amount (
   source = @world
   destination = $subscriber
 )`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction("recognize_revenue", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "recognize_revenue", `vars {
   monetary $amount
 }
 send $amount (
   source = @revenue:deferred allowing unbounded overdraft
   destination = @revenue:recognized
 )`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction("adjust_revenue", `vars {
+			testutil.SaveNumscriptWithVersionAction(ledger, "adjust_revenue", `vars {
   monetary $amount
 }
 send $amount (
