@@ -22,6 +22,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) Schema() queries.EntitySche
 func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.RepositoryHandlerBuildContext[ledger.GetAggregatedVolumesOptions]) (*bun.SelectQuery, error) {
 
 	allAddresses, needAddressSegments := collectAddressFilters(query)
+	canPushLateral := canPushAddressFilterToLateral(query.Builder)
 
 	if query.UsePIT() {
 		ret := h.store.newScopedSelect().
@@ -52,7 +53,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 				Column("address_array").
 				Where("accounts.address = accounts_address")
 
-			subQuery = applyLateralAddressFilter(subQuery, allAddresses, query.Builder)
+			subQuery = applyLateralAddressFilter(subQuery, allAddresses, canPushLateral)
 
 			ret = ret.
 				ColumnExpr("accounts.address_array as accounts_address_array").
@@ -88,7 +89,7 @@ func (h aggregatedBalancesResourceRepositoryHandler) BuildDataset(query common.R
 			if query.UseFilter("address") {
 				subQuery = subQuery.ColumnExpr("address_array as accounts_address_array")
 				ret = ret.Column("accounts_address_array")
-				subQuery = applyLateralAddressFilter(subQuery, allAddresses, query.Builder)
+				subQuery = applyLateralAddressFilter(subQuery, allAddresses, canPushLateral)
 			}
 			if query.UseFilter("metadata") {
 				subQuery = subQuery.ColumnExpr("metadata")
