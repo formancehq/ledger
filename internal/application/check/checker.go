@@ -791,9 +791,8 @@ func (c *Checker) compareTransactions(ctx context.Context, baselineDB *pebble.DB
 
 		if !proto.Equal(expected, actualState) {
 			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
-				fmt.Sprintf("transaction state mismatch for tx %d: expected created_by_log=%d got %d, expected reverted_by=%d got %d",
-					tk.ID, expected.GetCreatedByLog(), actualState.GetCreatedByLog(),
-					expected.GetRevertedByTransaction(), actualState.GetRevertedByTransaction()),
+				fmt.Sprintf("transaction state mismatch for tx %d: expected %s, got %s",
+					tk.ID, expected.String(), actualState.String()),
 				tk.Ledger, tk.ID))
 
 			errorCount++
