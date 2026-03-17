@@ -6,7 +6,7 @@ run duration description='ledger-v3 manual run': push-images
 				"custom.duration": "{{duration}}", \
 				"custom.containers_to_exclude_from_network_faults":"etcd-0 etcd-1 etcd-2 workload", \
 				"antithesis.report.recipients": "'"$ANTITHESIS_REPORT_RECIPIENT"'", \
-				"antithesis.config_image": "antithesis-config-ledger-v3:$RUN_TAG", \
+				"antithesis.config_image": "'"antithesis-config-ledger-v3:$RUN_TAG"'", \
 				"antithesis.description": "{{description}}", \
 				"antithesis.images": "'"workload-ledger-v3:$RUN_TAG;ledger-operator:$RUN_TAG;ledger-v3-poc:$RUN_TAG;docker.io/bitnami/kubectl:latest"'" \
 			} \
