@@ -108,7 +108,7 @@ func TestGetBalances_NotPreloaded(t *testing.T) {
 	require.Contains(t, err.Error(), "not preloaded")
 }
 
-func TestGetBalances_VolumeNotFound_CreatesZero(t *testing.T) {
+func TestGetBalances_VolumeNotFound_ReturnsError(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -127,17 +127,20 @@ func TestGetBalances_VolumeNotFound_CreatesZero(t *testing.T) {
 		Asset:      "USD",
 	}
 
-	// Volume not found — the adapter creates a zero VolumePair (Numscript dynamic resolution)
+	// Volume not found — the adapter returns ErrBalanceNotPreloaded
 	mockStore.EXPECT().GetVolume(volumeKey).Return(nil, domain.ErrNotFound)
-	mockStore.EXPECT().PutVolume(volumeKey, gomock.Any())
 
 	query := numscriptlib.BalanceQuery{
 		"bank": {"USD"},
 	}
 
-	balances, err := adapter.GetBalances(context.Background(), query)
-	require.NoError(t, err)
-	require.Equal(t, int64(0), balances["bank"]["USD"].Int64())
+	_, err := adapter.GetBalances(context.Background(), query)
+	require.Error(t, err)
+
+	var preloadErr *domain.ErrBalanceNotPreloaded
+	require.ErrorAs(t, err, &preloadErr)
+	require.Equal(t, "bank", preloadErr.Account)
+	require.Equal(t, "USD", preloadErr.Asset)
 }
 
 func TestGetAccountsMetadata_Basic(t *testing.T) {

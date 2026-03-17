@@ -86,18 +86,11 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 
 		sourceVol, err := s.GetVolume(sourceKey)
 		if err != nil {
-			if !errors.Is(err, domain.ErrNotFound) {
-				return nil, fmt.Errorf("source volume %s/%s: %w", posting.Source, posting.Asset, err)
+			if errors.Is(err, domain.ErrNotFound) {
+				return nil, &domain.ErrBalanceNotPreloaded{Account: posting.Source, Asset: posting.Asset}
 			}
 
-			// Numscript scripts may resolve accounts dynamically via meta(), making it
-			// impossible for the admission layer to discover all volumes at preload time.
-			// Create a zero VolumePair for accounts that couldn't be preloaded.
-			sourceVol = &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(0),
-				Output: commonpb.NewUint256FromUint64(0),
-			}
-			s.PutVolume(sourceKey, sourceVol)
+			return nil, fmt.Errorf("source volume %s/%s: %w", posting.Source, posting.Asset, err)
 		}
 		if sourceVol.GetInput() == nil || sourceVol.GetOutput() == nil {
 			return nil, fmt.Errorf("source volume %s/%s not fully materialized", posting.Source, posting.Asset)
@@ -119,15 +112,11 @@ func (p *numscriptPostingProducer) produce(s InMemoryStore, ledger string, order
 
 		destVol, err := s.GetVolume(destKey)
 		if err != nil {
-			if !errors.Is(err, domain.ErrNotFound) {
-				return nil, fmt.Errorf("destination volume %s/%s: %w", posting.Destination, posting.Asset, err)
+			if errors.Is(err, domain.ErrNotFound) {
+				return nil, &domain.ErrBalanceNotPreloaded{Account: posting.Destination, Asset: posting.Asset}
 			}
 
-			destVol = &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(0),
-				Output: commonpb.NewUint256FromUint64(0),
-			}
-			s.PutVolume(destKey, destVol)
+			return nil, fmt.Errorf("destination volume %s/%s: %w", posting.Destination, posting.Asset, err)
 		}
 		if destVol.GetInput() == nil || destVol.GetOutput() == nil {
 			return nil, fmt.Errorf("destination volume %s/%s not fully materialized", posting.Destination, posting.Asset)
@@ -216,18 +205,11 @@ func (s *numscriptStoreAdapter) GetBalances(_ context.Context, query numscriptli
 
 			vol, err := s.store.GetVolume(volumeKey)
 			if err != nil {
-				if !errors.Is(err, domain.ErrNotFound) {
-					return nil, err
+				if errors.Is(err, domain.ErrNotFound) {
+					return nil, &domain.ErrBalanceNotPreloaded{Account: account, Asset: asset}
 				}
 
-				// Numscript scripts may resolve accounts dynamically via meta(),
-				// making it impossible for the admission layer to discover all volumes.
-				// Treat missing volumes as zero (new account).
-				vol = &raftcmdpb.VolumePair{
-					Input:  commonpb.NewUint256FromUint64(0),
-					Output: commonpb.NewUint256FromUint64(0),
-				}
-				s.store.PutVolume(volumeKey, vol)
+				return nil, err
 			}
 
 			if vol.GetInput() == nil || vol.GetOutput() == nil {
