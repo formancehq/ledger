@@ -345,11 +345,11 @@ func main() {
 		defaultsDeps := append([]pulumi.Resource{ledgerOperator}, ledgerCRDs...)
 		defaultsDeps = append(defaultsDeps, coldStorageDeps...)
 
-		_, err = apiextensions.NewCustomResource(ctx, "ledger-defaults", &apiextensions.CustomResourceArgs{
+		_, err = apiextensions.NewCustomResource(ctx, "ledger-defaults-dev", &apiextensions.CustomResourceArgs{
 			ApiVersion: pulumi.String("ledger.formance.com/v1alpha1"),
 			Kind:       pulumi.String("LedgerDefaults"),
 			Metadata: &metav1.ObjectMetaArgs{
-				Name: pulumi.String("default"),
+				Name: pulumi.String("dev"),
 				Annotations: pulumi.StringMap{
 					"pulumi.com/patchForce": pulumi.String("true"),
 				},
