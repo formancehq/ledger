@@ -2246,6 +2246,58 @@ ledgerctl --server prod:8888 auth status
 ledgerctl auth whoami
 ```
 
+### provision
+
+Run pre-built provisioning scenarios against a cluster. Scenarios create ledgers, account types, numscripts, and sample transactions to bootstrap a realistic environment.
+
+#### provision list
+
+List all available provisioning scenarios.
+
+**Aliases:** `ls`
+
+```bash
+ledgerctl provision list
+```
+
+#### provision run
+
+Run a named provisioning scenario against the connected cluster.
+
+```bash
+ledgerctl provision run <scenario-name> [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `120s` | Request timeout (longer default for provisioning) |
+
+**Available scenarios:**
+
+| Name | Description |
+|------|-------------|
+| `gaming-wallet` | Gaming platform with virtual currency, 20 players, coin purchases, promotions, P2P trades |
+| `lending-lifecycle` | Consumer lending with 10 loans, 6-month repayment, defaults, write-offs |
+| `marketplace` | E-commerce marketplace with 50 customers, 10 merchants, 200 purchases with fees |
+| `multi-currency` | Corporate treasury with FX operations across USD, EUR, GBP |
+| `multi-ledger-payroll` | Multi-ledger payroll with 3 departments, clearing ledger, cost allocations |
+| `subscription` | SaaS billing with 50 subscribers, 3 monthly cycles, revenue recognition |
+
+**Example:**
+
+```bash
+# List available scenarios
+ledgerctl provision list
+
+# Run a scenario
+ledgerctl provision run gaming-wallet --server localhost:8888 --insecure
+
+# Run with custom timeout
+ledgerctl provision run marketplace --timeout 300s
+```
+
 ### profile
 
 Manage named connection profiles. Each profile stores a server address and TLS settings. Auth tokens in the OS keychain are keyed by server address, so switching profiles automatically switches auth context.

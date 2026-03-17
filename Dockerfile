@@ -13,6 +13,7 @@ ENV GOOS=linux
 COPY main.go .
 COPY internal internal
 COPY cmd cmd
+COPY pkg pkg
 
 FROM base AS build-server
 ARG TARGETARCH
