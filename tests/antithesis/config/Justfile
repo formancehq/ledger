@@ -2,7 +2,7 @@ build-manifest output:
 	rm -f -- '{{output}}'
 	helm dependency update
 	helm dependency build
-	helm template . --include-crds > '{{output}}'
+	helm template . --include-crds --set "ledger-operator.image.tag=$RUN_TAG" --set "run_tag=$RUN_TAG" > '{{output}}'
 
 push:
 	#!/usr/bin/env bash
@@ -13,5 +13,5 @@ push:
 
 	just build-manifest "$tmpdir/resources.yaml"
 
-	docker build -f Dockerfile.config -t $ANTITHESIS_REPOSITORY/antithesis-config:ledger_v3 $tmpdir
-	docker push $ANTITHESIS_REPOSITORY/antithesis-config:ledger_v3
+	docker build -f Dockerfile.config -t $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:$RUN_TAG $tmpdir
+	docker push $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:$RUN_TAG

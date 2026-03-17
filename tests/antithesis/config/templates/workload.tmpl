@@ -8,7 +8,7 @@ metadata:
 spec:
   containers:
     - name: workload
-      image: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/workload:ledger_v3
+      image: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/workload-ledger-v3:{{ .Values.run_tag }}
       imagePullPolicy: IfNotPresent
       env:
         - name: LEDGER_GRPC_ADDR

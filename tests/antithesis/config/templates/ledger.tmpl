@@ -7,7 +7,7 @@ spec:
   replicas: 3
   image:
     repository: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-v3-poc
-    tag: antithesis
+    tag: {{ .Values.run_tag }}
   config:
     bindAddr: "0.0.0.0:7777"
     grpcPort: 8888
