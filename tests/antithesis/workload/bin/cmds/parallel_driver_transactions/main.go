@@ -78,7 +78,7 @@ func createRandomPostingsTransaction(ctx context.Context, client servicepb.Bucke
 
 	details := internal.Details{
 		"ledger": ledger,
-		"error":  internal.ErrStr(err),
+		"error":  err,
 	}
 
 	assert.Sometimes(err == nil, "should be able to create a postings transaction", details)
@@ -152,7 +152,7 @@ func createRandomNumscriptTransaction(ctx context.Context, client servicepb.Buck
 
 	details := internal.Details{
 		"ledger": ledger,
-		"error":  internal.ErrStr(err),
+		"error":  err,
 	}
 
 	assert.Sometimes(err == nil, "should be able to create a numscript transaction", details)

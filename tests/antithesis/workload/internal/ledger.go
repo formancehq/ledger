@@ -21,14 +21,14 @@ func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, nam
 			},
 		}},
 	})
-	assert.Sometimes(err == nil, "should be able to create ledger", details.With(Details{"error": ErrStr(err)}))
+	assert.Sometimes(err == nil, "should be able to create ledger", details.With(Details{"error": err}))
 	if err != nil {
 		return err
 	}
 
 	// Verify it's readable
 	_, err = client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: name})
-	assert.Sometimes(err == nil, "should always be able to get created ledger", details.With(Details{"error": ErrStr(err)}))
+	assert.Sometimes(err == nil, "should always be able to get created ledger", details.With(Details{"error": err}))
 	return nil
 }
 
@@ -55,7 +55,7 @@ func ListLedgers(ctx context.Context, client servicepb.BucketServiceClient) ([]s
 // GetRandomLedger returns a random ledger name from the existing ledgers.
 func GetRandomLedger(ctx context.Context, client servicepb.BucketServiceClient) (string, error) {
 	ledgers, err := ListLedgers(ctx, client)
-	assert.Sometimes(err == nil, "should be able to get a random ledger", Details{"error": ErrStr(err)})
+	assert.Sometimes(err == nil, "should be able to get a random ledger", Details{"error": err})
 	if err != nil {
 		return "", err
 	}
@@ -121,10 +121,3 @@ func GetLastTransactionID(ctx context.Context, client servicepb.BucketServiceCli
 	return int64(txs[0].Id), nil
 }
 
-// ErrStr returns the error string or empty if nil.
-func ErrStr(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
-}

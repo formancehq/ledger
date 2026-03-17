@@ -78,7 +78,7 @@ func setTransactionMetadata(
 	})
 	assert.Sometimes(err == nil, "should be able to get existing transaction before metadata change", internal.Details{
 		"ledger": ledger,
-		"error":  internal.ErrStr(err),
+		"error": err,
 	})
 	if err != nil {
 		return
@@ -107,7 +107,7 @@ func setTransactionMetadata(
 	})
 	assert.Sometimes(err == nil, "should be able to set metadata on transaction", internal.Details{
 		"ledger": ledger,
-		"error":  internal.ErrStr(err),
+		"error": err,
 	})
 	if err != nil {
 		return
@@ -120,7 +120,7 @@ func setTransactionMetadata(
 	})
 	assert.Sometimes(err == nil, "should be able to get existing transaction after metadata change", internal.Details{
 		"ledger": ledger,
-		"error":  internal.ErrStr(err),
+		"error":  err,
 	})
 	if err != nil {
 		return

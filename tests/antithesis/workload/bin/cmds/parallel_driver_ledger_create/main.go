@@ -25,7 +25,7 @@ func main() {
 	ledger := fmt.Sprintf("ledger-%d", id)
 
 	err = internal.CreateLedger(ctx, client, ledger)
-	assert.Sometimes(err == nil, "ledger should have been created properly", internal.Details{"error": internal.ErrStr(err)})
+	assert.Sometimes(err == nil, "ledger should have been created properly", internal.Details{"error": err})
 
 	log.Println("composer: parallel_driver_ledger_create: done")
 }

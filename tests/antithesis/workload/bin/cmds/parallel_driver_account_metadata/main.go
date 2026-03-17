@@ -78,7 +78,7 @@ func setAccountMetadata(
 	})
 	assert.Sometimes(err == nil, "should be able to get existing account before metadata change", internal.Details{
 		"ledger": ledger,
-		"error":  internal.ErrStr(err),
+		"error":  err,
 	})
 	if err != nil {
 		return
@@ -107,7 +107,7 @@ func setAccountMetadata(
 	})
 	assert.Sometimes(err == nil, "should be able to set metadata on account", internal.Details{
 		"ledger": ledger,
-		"error":  internal.ErrStr(err),
+		"error":  err,
 	})
 	if err != nil {
 		return
@@ -120,7 +120,7 @@ func setAccountMetadata(
 	})
 	assert.Sometimes(err == nil, "should be able to get existing account after metadata change", internal.Details{
 		"ledger": ledger,
-		"error":  internal.ErrStr(err),
+		"error":  err,
 	})
 	if err != nil {
 		return
