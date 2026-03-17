@@ -410,6 +410,7 @@ func NewNode(
 	}
 
 	// Wire the snapshot wrapper so the Applier wraps FSM snapshots with peer addresses.
+	// todo: clean that
 	applier.SetSnapshotWrapper(node.wrapSnapshot)
 
 	// Initialize node metrics
