@@ -1,7 +1,7 @@
 .git
 build/
 misc/
-tests/
+!tests/antithesis/workload/
 docs/
 *.md
 .claude/

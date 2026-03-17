@@ -1,0 +1,24 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: LedgerService
+metadata:
+  name: stack0-ledger
+  namespace: stack0
+spec:
+  replicas: 3
+  image:
+    repository: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-v3-poc
+    tag: antithesis
+  config:
+    bindAddr: "0.0.0.0:7777"
+    grpcPort: 8888
+    httpPort: 9000
+    dataDir: "/data/app"
+    walDir: "/data/raft"
+    raft:
+      snapshotThreshold: 5000
+      snapshotInterval: "30s"
+      electionTick: 10
+      heartbeatTick: 1
+      maxSizePerMsg: 1048576
+      maxInflightMsgs: 256
+      tickInterval: "100ms"

@@ -1,0 +1,6 @@
+dependencies:
+- name: ledger-operator
+  repository: file://../../../misc/operator/chart
+  version: 0.1.0
+digest: sha256:521494b02818ec283f2ff661de011b4f32a78b7fe06879ea5990637fb193ceb9
+generated: "2026-03-10T16:20:17.750623519+01:00"

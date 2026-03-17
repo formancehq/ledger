@@ -66,7 +66,8 @@ spec:
         runAsNonRoot: true
       containers:
       - name: strip-finalizers
-        image: bitnami/kubectl:latest
+        image: docker.io/bitnami/kubectl:latest
+        imagePullPolicy: IfNotPresent
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

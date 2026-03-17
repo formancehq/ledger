@@ -1,0 +1,5 @@
+build:
+	docker build -f Dockerfile --progress=plain -t "$ANTITHESIS_REPOSITORY/workload:ledger_v3" ../../../
+
+push: build
+	docker push "$ANTITHESIS_REPOSITORY/workload:ledger_v3"

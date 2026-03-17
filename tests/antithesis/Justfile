@@ -1,0 +1,49 @@
+run duration description='ledger-v3 manual run': push-images
+	curl --fail \
+		--user "formance:$ANTITHESIS_PASSWORD" \
+		-X POST https://formance.antithesis.com/api/v1/launch_experiment/formance-k8s -d '{ \
+			"params": { \
+				"custom.duration": "{{duration}}", \
+				"custom.containers_to_exclude_from_network_faults":"etcd-0 etcd-1 etcd-2 workload", \
+				"antithesis.report.recipients": "'"$ANTITHESIS_REPORT_RECIPIENT"'", \
+				"antithesis.config_image": "antithesis-config:ledger_v3", \
+				"antithesis.description": "{{description}}", \
+				"antithesis.images": "'"workload:ledger_v3;ledger-operator:antithesis;ledger-v3-poc:antithesis;docker.io/bitnami/kubectl:latest"'" \
+			} \
+		}'
+
+build-images:
+	# operator
+	docker build -f ../../misc/operator/Dockerfile --progress=plain -t "$ANTITHESIS_REPOSITORY/ledger-operator:antithesis" ../../misc/operator/
+	# ledger
+	docker build -f ../../Dockerfile --progress=plain -t "$ANTITHESIS_REPOSITORY/ledger-v3-poc:antithesis" ../../
+
+push-images: build-images
+	just config/push
+	just workload/push
+	docker push $ANTITHESIS_REPOSITORY/ledger-operator:antithesis
+	docker push $ANTITHESIS_REPOSITORY/ledger-v3-poc:antithesis
+
+deploy-local: build-images
+	#!/usr/bin/env bash
+
+	set -euo pipefail
+	tmpdir=$(mktemp -d)
+	trap 'kill 0; rm -rf $tmpdir' EXIT SIGINT SIGTERM
+
+	kapp delete -y -a formance-dst
+
+	minikube image load us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-operator:antithesis
+
+	minikube image load us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-v3-poc:antithesis
+
+	just workload/build
+	minikube image load us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/workload:ledger_v3
+
+
+	just config/build-manifest "$tmpdir/resources.yaml"
+	minikube image load us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/antithesis-config:ledger_v3
+	kapp deploy -y -a formance-dst -f "$tmpdir" --diff-changes
+	kubectl port-forward -n stack0 $(kubectl get pod -n stack0 -l app.kubernetes.io/name=gateway -o jsonpath="{.items[0].metadata.name}") 8080:8080 &
+
+	wait
