@@ -14,10 +14,8 @@ import (
 
 // createLedgerBody holds optional fields for ledger creation.
 type createLedgerBody struct {
-	Mode            string            `json:"mode,omitempty"`
-	MirrorSource    *mirrorSourceBody `json:"mirrorSource,omitempty"`
-	ChartOfAccounts *chartJSON        `json:"chartOfAccounts,omitempty"`
-	EnforcementMode string            `json:"enforcementMode,omitempty"`
+	Mode         string            `json:"mode,omitempty"`
+	MirrorSource *mirrorSourceBody `json:"mirrorSource,omitempty"`
 }
 
 // mirrorSourceBody holds the mirror source configuration.
@@ -46,7 +44,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		Name: ledgerName,
 	}
 
-	// Parse optional body for mirror mode and chart of accounts fields
+	// Parse optional body for mirror mode
 	if r.ContentLength > 0 {
 		var body createLedgerBody
 
@@ -70,21 +68,6 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 
 				createReq.MirrorSource = cfg
 			}
-		}
-
-		if body.ChartOfAccounts != nil {
-			createReq.ChartOfAccounts = fromChartJSON(body.ChartOfAccounts)
-		}
-
-		if body.EnforcementMode != "" {
-			mode, err := parseEnforcementMode(body.EnforcementMode)
-			if err != nil {
-				writeBadRequest(w, "INVALID_REQUEST", err)
-
-				return
-			}
-
-			createReq.EnforcementMode = mode
 		}
 	}
 

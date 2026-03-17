@@ -53,16 +53,16 @@ func RunMultiLedgerPayroll(r *Runner) error {
 		}
 	}
 
-	// Save shared numscripts
-	if _, err := r.Step("Setup/Numscripts",
-		actions.SaveNumscriptWithVersionAction("fund_clearing", `vars {
+	// Save clearing-ledger numscripts
+	if _, err := r.Step("Setup/ClearingNumscripts",
+		actions.SaveNumscriptWithVersionAction("clearing", "fund_clearing", `vars {
   monetary $amount
 }
 send $amount (
   source = @world
   destination = @company:treasury
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("fund_dept", `vars {
+		actions.SaveNumscriptWithVersionAction("clearing", "fund_dept", `vars {
   account $dept_account
   monetary $amount
 }
@@ -70,22 +70,7 @@ send $amount (
   source = @company:treasury
   destination = $dept_account
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("fund_payroll", `vars {
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = @payroll:pool
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("pay_salary", `vars {
-  account $employee
-  monetary $amount
-}
-send $amount (
-  source = @payroll:pool
-  destination = $employee
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("cost_allocation", `vars {
+		actions.SaveNumscriptWithVersionAction("clearing", "cost_allocation", `vars {
   account $from_dept
   account $to_dept
   monetary $amount
@@ -96,6 +81,29 @@ send $amount (
 )`, "1.0.0"),
 	); err != nil {
 		return err
+	}
+
+	// Save department-scoped numscripts
+	for _, dept := range departments {
+		if _, err := r.Step(fmt.Sprintf("Setup/Numscripts/%s", dept.name),
+			actions.SaveNumscriptWithVersionAction(dept.ledger, "fund_payroll", `vars {
+  monetary $amount
+}
+send $amount (
+  source = @world
+  destination = @payroll:pool
+)`, "1.0.0"),
+			actions.SaveNumscriptWithVersionAction(dept.ledger, "pay_salary", `vars {
+  account $employee
+  monetary $amount
+}
+send $amount (
+  source = @payroll:pool
+  destination = $employee
+)`, "1.0.0"),
+		); err != nil {
+			return err
+		}
 	}
 
 	// --- Monthly Payroll Cycles ---

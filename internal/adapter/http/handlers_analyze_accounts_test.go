@@ -27,13 +27,6 @@ func TestHandleAnalyzeAccounts_Success(t *testing.T) {
 
 			return &servicepb.AnalyzeAccountsResponse{
 				TotalAccounts: 42,
-				SuggestedChart: &commonpb.ChartOfAccounts{
-					Roots: map[string]*commonpb.ChartSegment{
-						"users": {
-							Variable: &commonpb.ChartVariable{Name: "user_id", Pattern: "^[a-f0-9-]+$", Account: true},
-						},
-					},
-				},
 				Patterns: []*servicepb.AccountPattern{
 					{
 						Pattern:      "users:{user_id}",
@@ -63,12 +56,6 @@ func TestHandleAnalyzeAccounts_Success(t *testing.T) {
 	wrapper := decodeResponse[BaseResponse[analyzeAccountsResponseJSON]](t, w)
 	resp := wrapper.Data
 	require.Equal(t, uint64(42), resp.TotalAccounts)
-	require.NotNil(t, resp.SuggestedChart)
-	require.Len(t, resp.SuggestedChart.Roots, 1)
-	usersSeg, ok := resp.SuggestedChart.Roots["users"]
-	require.True(t, ok, "expected 'users' root")
-	require.NotNil(t, usersSeg.Variable)
-	require.Equal(t, "user_id", usersSeg.Variable.Name)
 
 	require.Len(t, resp.Patterns, 1)
 	require.Equal(t, "users:{user_id}", resp.Patterns[0].Pattern)

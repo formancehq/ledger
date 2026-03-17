@@ -82,7 +82,7 @@ func RunMultiCurrency(r *Runner) error {
 		actions.AddAccountTypeAction(ledger, "treasury", "treasury:{currency}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		actions.AddAccountTypeAction(ledger, "fx-clearing", "fx:clearing", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		actions.AddAccountTypeAction(ledger, "vendor", "vendor:{name}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.SaveNumscriptWithVersionAction("fund_account", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "fund_account", `vars {
   account $account
   monetary $amount
 }
@@ -90,7 +90,7 @@ send $amount (
   source = @world
   destination = $account
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("fx_convert", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "fx_convert", `vars {
   account $source_account
   account $clearing_account
   monetary $amount
@@ -99,7 +99,7 @@ send $amount (
   source = $source_account
   destination = $clearing_account
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("vendor_payment", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "vendor_payment", `vars {
   account $treasury
   account $vendor
   monetary $amount

@@ -494,10 +494,11 @@ func SaveTypedTransactionMetadataAction(ledgerName string, txID uint64, metadata
 }
 
 // SaveNumscriptAction creates an action for saving a numscript to the library.
-func SaveNumscriptAction(name, content string) *servicepb.Request {
+func SaveNumscriptAction(ledger, name, content string) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_SaveNumscript{
 			SaveNumscript: &servicepb.SaveNumscriptRequest{
+				Ledger:  ledger,
 				Name:    name,
 				Content: content,
 			},
@@ -506,10 +507,11 @@ func SaveNumscriptAction(name, content string) *servicepb.Request {
 }
 
 // SaveNumscriptWithVersionAction creates an action for saving a numscript with a specific version.
-func SaveNumscriptWithVersionAction(name, content, version string) *servicepb.Request {
+func SaveNumscriptWithVersionAction(ledger, name, content, version string) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_SaveNumscript{
 			SaveNumscript: &servicepb.SaveNumscriptRequest{
+				Ledger:  ledger,
 				Name:    name,
 				Content: content,
 				Version: version,
@@ -519,11 +521,12 @@ func SaveNumscriptWithVersionAction(name, content, version string) *servicepb.Re
 }
 
 // DeleteNumscriptAction creates an action for deleting a numscript from the library.
-func DeleteNumscriptAction(name string) *servicepb.Request {
+func DeleteNumscriptAction(ledger, name string) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_DeleteNumscript{
 			DeleteNumscript: &servicepb.DeleteNumscriptRequest{
-				Name: name,
+				Ledger: ledger,
+				Name:   name,
 			},
 		},
 	}

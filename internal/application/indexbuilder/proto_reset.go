@@ -108,7 +108,6 @@ func resetCreatedTransaction(ct *commonpb.CreatedTransaction) {
 
 	ct.PeriodId = 0
 	ct.PostCommitVolumes = nil
-	ct.Warnings = ct.GetWarnings()[:0]
 	clear(ct.GetAccountMetadata())
 	clear(ct.GetPreviousAccountMetadata())
 
@@ -122,7 +121,6 @@ func resetRevertedTransaction(rt *commonpb.RevertedTransaction) {
 
 	rt.RevertedTransactionId = 0
 	rt.PostCommitVolumes = nil
-	rt.Warnings = rt.GetWarnings()[:0]
 
 	resetTransaction(rt.GetRevertTransaction())
 }
@@ -149,7 +147,6 @@ func resetSavedMetadata(sm *commonpb.SavedMetadata) {
 	}
 
 	sm.Target = nil
-	sm.Warnings = sm.GetWarnings()[:0]
 	clear(sm.GetPreviousValues())
 
 	if sm.GetMetadata() != nil {

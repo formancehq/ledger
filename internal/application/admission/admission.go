@@ -829,13 +829,11 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_CreateLedger:
 		order.Type = &raftcmdpb.Order_CreateLedger{
 			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name:            reqType.CreateLedger.GetName(),
-				InitialSchema:   reqType.CreateLedger.GetInitialSchema(),
-				Mode:            reqType.CreateLedger.GetMode(),
-				MirrorSource:    reqType.CreateLedger.GetMirrorSource(),
-				ChartOfAccounts: reqType.CreateLedger.GetChartOfAccounts(),
-				EnforcementMode: reqType.CreateLedger.GetEnforcementMode(),
-				AccountTypes:    reqType.CreateLedger.GetAccountTypes(),
+				Name:          reqType.CreateLedger.GetName(),
+				InitialSchema: reqType.CreateLedger.GetInitialSchema(),
+				Mode:          reqType.CreateLedger.GetMode(),
+				MirrorSource:  reqType.CreateLedger.GetMirrorSource(),
+				AccountTypes:  reqType.CreateLedger.GetAccountTypes(),
 			},
 		}
 	case *servicepb.Request_DeleteLedger:

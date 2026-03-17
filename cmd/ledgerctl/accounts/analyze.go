@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -13,7 +12,6 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/analysis"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
@@ -22,10 +20,10 @@ func NewAnalyzeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "analyze",
 		Aliases: []string{"analyse"},
-		Short:   "Analyze accounts and suggest a Chart of Accounts",
-		Long: `Scans all accounts in a ledger, discovers address patterns, and outputs
-a draft Chart of Accounts. Useful after a mirror import (v2 → v3) to
-understand account structure before defining enforcement rules.
+		Short:   "Analyze accounts and suggest account types",
+		Long: `Scans all accounts in a ledger, discovers address patterns, and suggests
+account types. Useful after a mirror import (v2 → v3) to understand
+account structure before defining enforcement rules.
 
 Examples:
   ledgerctl accounts analyze --ledger my-ledger
@@ -139,20 +137,6 @@ func renderAnalysisResult(resp *servicepb.AnalyzeAccountsResponse) {
 		pterm.Println()
 	}
 
-	// Chart tree
-	if resp.GetSuggestedChart() != nil && len(resp.GetSuggestedChart().GetRoots()) > 0 {
-		pterm.DefaultSection.Println("Suggested Chart of Accounts")
-
-		tree := pterm.TreeNode{Text: "root"}
-
-		keys := sortedMapKeys(resp.GetSuggestedChart().GetRoots())
-		for _, key := range keys {
-			tree.Children = append(tree.Children, buildSegmentTreeNode(key, resp.GetSuggestedChart().GetRoots()[key]))
-		}
-
-		_ = pterm.DefaultTree.WithRoot(tree).Render()
-	}
-
 	// Suggested account types
 	suggestedTypes := analysis.SuggestAccountTypes(resp)
 	if len(suggestedTypes) > 0 {
@@ -174,59 +158,3 @@ func renderAnalysisResult(resp *servicepb.AnalyzeAccountsResponse) {
 	}
 }
 
-func buildSegmentTreeNode(name string, seg *commonpb.ChartSegment) pterm.TreeNode {
-	label := name
-	if seg.GetAccount() {
-		label += pterm.Gray(" [account]")
-	}
-
-	node := pterm.TreeNode{Text: label}
-
-	// Add fixed children (sorted)
-	for _, key := range sortedMapKeys(seg.GetChildren()) {
-		node.Children = append(node.Children, buildSegmentTreeNode(key, seg.GetChildren()[key]))
-	}
-
-	// Add variable child
-	if seg.GetVariable() != nil {
-		node.Children = append(node.Children, buildVariableTreeNode(seg.GetVariable()))
-	}
-
-	return node
-}
-
-func buildVariableTreeNode(v *commonpb.ChartVariable) pterm.TreeNode {
-	label := fmt.Sprintf("{%s}", v.GetName())
-	if v.GetPattern() != "" {
-		label += pterm.Gray(" ~ " + v.GetPattern())
-	}
-
-	if v.GetAccount() {
-		label += pterm.Gray(" [account]")
-	}
-
-	node := pterm.TreeNode{Text: label}
-
-	// Add fixed children
-	for _, key := range sortedMapKeys(v.GetChildren()) {
-		node.Children = append(node.Children, buildSegmentTreeNode(key, v.GetChildren()[key]))
-	}
-
-	// Add nested variable
-	if v.GetVariable() != nil {
-		node.Children = append(node.Children, buildVariableTreeNode(v.GetVariable()))
-	}
-
-	return node
-}
-
-func sortedMapKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	sort.Strings(keys)
-
-	return keys
-}

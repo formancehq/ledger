@@ -76,7 +76,7 @@ func RunSubscription(r *Runner) error {
 		actions.AddAccountTypeAction(ledger, "revenue-deferred", "revenue:deferred", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		actions.AddAccountTypeAction(ledger, "revenue-recognized", "revenue:recognized", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		actions.AddAccountTypeAction(ledger, "revenue-adjustment", "revenue:adjustment", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.SaveNumscriptWithVersionAction("fund_wallet", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "fund_wallet", `vars {
   account $subscriber
   monetary $amount
 }
@@ -84,7 +84,7 @@ send $amount (
   source = @world
   destination = $subscriber
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("charge_subscription", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "charge_subscription", `vars {
   account $subscriber
   monetary $amount
 }
@@ -92,7 +92,7 @@ send $amount (
   source = $subscriber
   destination = @revenue:deferred
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("issue_credit", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "issue_credit", `vars {
   account $subscriber
   monetary $amount
 }
@@ -100,14 +100,14 @@ send $amount (
   source = @world
   destination = $subscriber
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("recognize_revenue", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "recognize_revenue", `vars {
   monetary $amount
 }
 send $amount (
   source = @revenue:deferred allowing unbounded overdraft
   destination = @revenue:recognized
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("adjust_revenue", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "adjust_revenue", `vars {
   monetary $amount
 }
 send $amount (

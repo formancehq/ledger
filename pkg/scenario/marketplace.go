@@ -49,7 +49,7 @@ func RunMarketplace(r *Runner) error {
 		actions.AddAccountTypeAction(ledger, "merchant", "merchant:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		actions.AddAccountTypeAction(ledger, "platform-fees", "platform:fees", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		actions.AddAccountTypeAction(ledger, "platform-payouts", "platform:payouts", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.SaveNumscriptWithVersionAction("deposit", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "deposit", `vars {
   account $customer
   monetary $amount
 }
@@ -57,7 +57,7 @@ send $amount (
   source = @world
   destination = $customer
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("purchase", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "purchase", `vars {
   account $customer
   account $merchant
   monetary $amount
@@ -69,7 +69,7 @@ send $amount (
     remaining to $merchant
   }
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("payout", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "payout", `vars {
   account $merchant
   monetary $amount
 }
@@ -231,7 +231,7 @@ send $amount (
 
 	// --- DeleteNumscript ---
 	if _, err := r.Step("SaveTempNumscript",
-		actions.SaveNumscriptWithVersionAction("temp_script", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "temp_script", `vars {
   monetary $amount
 }
 send $amount (
@@ -242,7 +242,7 @@ send $amount (
 		return err
 	}
 	if _, err := r.Step("DeleteNumscript",
-		actions.DeleteNumscriptAction("temp_script"),
+		actions.DeleteNumscriptAction(ledger, "temp_script"),
 	); err != nil {
 		return err
 	}

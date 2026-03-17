@@ -14,19 +14,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewCatalogCommand creates the ledgers catalog command.
-func NewCatalogCommand() *cobra.Command {
+// NewConfigurationCommand creates the ledgers configuration command.
+func NewConfigurationCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "catalog <name>",
-		Aliases: []string{"cat"},
-		Short:   "Show a ledger's full configuration catalog",
-		Long: `Display all configuration for a ledger: chart of accounts, indexes,
-prepared queries, and numscript library.
+		Use:     "configuration <name>",
+		Aliases: []string{"config", "conf"},
+		Short:   "Show a ledger's full configuration",
+		Long: `Display all configuration for a ledger: indexes, prepared queries,
+and numscript library.
 
 Examples:
-  ledgerctl ledgers catalog myledger`,
+  ledgerctl ledgers configuration myledger`,
 		Args: cobra.ExactArgs(1),
-		RunE: runCatalog,
+		RunE: runConfiguration,
 	}
 
 	cmdutil.AddOutputFlags(cmd)
@@ -36,7 +36,7 @@ Examples:
 	return cmd
 }
 
-func runCatalog(cmd *cobra.Command, args []string) error {
+func runConfiguration(cmd *cobra.Command, args []string) error {
 	ledgerName := args[0]
 
 	client, conn, err := cmdutil.GetClient(cmd)
@@ -48,9 +48,9 @@ func runCatalog(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching catalog for %s...", ledgerName))
+	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching configuration for %s...", ledgerName))
 
-	// Fetch ledger info (chart of accounts, indexes, metadata schema)
+	// Fetch ledger info (indexes, metadata schema)
 	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 	if err != nil {
 		spinner.Fail("Failed to get ledger")
@@ -96,100 +96,24 @@ func runCatalog(cmd *cobra.Command, args []string) error {
 
 	// Header
 	pterm.Println()
-	pterm.Printf("Catalog for ledger: %s\n", pterm.Cyan(ledgerName))
+	pterm.Printf("Configuration for ledger: %s\n", pterm.Cyan(ledgerName))
 	pterm.Println(pterm.Gray("═════════════════════════════════════"))
 
-	// 1. Chart of Accounts
-	renderCatalogChart(ledger)
-
-	// 2. Indexes
-	renderCatalogIndexes(ledger)
+	// 1. Indexes
+	renderConfigurationIndexes(ledger)
 
 	expand, _ := cmd.Flags().GetBool("expand")
 
-	// 3. Prepared Queries
-	renderCatalogPreparedQueries(pqResp.Queries, expand)
+	// 2. Prepared Queries
+	renderConfigurationPreparedQueries(pqResp.Queries, expand)
 
-	// 4. Numscript Library
-	renderCatalogNumscripts(numscripts, expand)
+	// 3. Numscript Library
+	renderConfigurationNumscripts(numscripts, expand)
 
 	return nil
 }
 
-func renderCatalogChart(ledger *commonpb.LedgerInfo) {
-	pterm.Println()
-	mode := chartEnforcementModeString(ledger.EnforcementMode)
-	pterm.DefaultSection.Println("Chart of Accounts (" + mode + ")")
-
-	if ledger.ChartOfAccounts == nil || len(ledger.ChartOfAccounts.Roots) == 0 {
-		pterm.Println(pterm.Gray("  (none)"))
-		return
-	}
-
-	renderChartTree(ledger.ChartOfAccounts.Roots, "  ")
-}
-
-func chartEnforcementModeString(mode commonpb.ChartEnforcementMode) string {
-	switch mode {
-	case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT:
-		return "STRICT"
-	case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT:
-		return "AUDIT"
-	default:
-		return "OFF"
-	}
-}
-
-// renderChartTree recursively renders the chart of accounts as an indented tree.
-func renderChartTree(segments map[string]*commonpb.ChartSegment, indent string) {
-	keys := make([]string, 0, len(segments))
-	for k := range segments {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, name := range keys {
-		seg := segments[name]
-		label := name
-		if seg.Account {
-			label += pterm.Gray("  (account)")
-		}
-		pterm.Println(indent + label)
-
-		// Render variable child if present
-		if seg.Variable != nil {
-			renderChartVariable(seg.Variable, indent+"  ")
-		}
-
-		// Render fixed children
-		if len(seg.Children) > 0 {
-			renderChartTree(seg.Children, indent+"  ")
-		}
-	}
-}
-
-// renderChartVariable renders a variable segment.
-func renderChartVariable(v *commonpb.ChartVariable, indent string) {
-	var parts []string
-	parts = append(parts, ":"+v.Name)
-	if v.Pattern != "" {
-		parts = append(parts, pterm.Gray(v.Pattern))
-	}
-	if v.Account {
-		parts = append(parts, pterm.Gray("(account)"))
-	}
-	pterm.Println(indent + strings.Join(parts, " "))
-
-	// Recurse into variable's children
-	if v.Variable != nil {
-		renderChartVariable(v.Variable, indent+"  ")
-	}
-	if len(v.Children) > 0 {
-		renderChartTree(v.Children, indent+"  ")
-	}
-}
-
-func renderCatalogIndexes(ledger *commonpb.LedgerInfo) {
+func renderConfigurationIndexes(ledger *commonpb.LedgerInfo) {
 	pterm.Println()
 	pterm.DefaultSection.Println("Indexes")
 
@@ -244,7 +168,7 @@ func addMetadataIndexRows(table *pterm.TableData, targetName string, fields map[
 	}
 }
 
-func renderCatalogPreparedQueries(queries []*commonpb.PreparedQuery, expand bool) {
+func renderConfigurationPreparedQueries(queries []*commonpb.PreparedQuery, expand bool) {
 	pterm.Println()
 	pterm.DefaultSection.Printf("Prepared Queries (%d)\n", len(queries))
 
@@ -295,7 +219,7 @@ func queryTargetString(target commonpb.QueryTarget) string {
 	}
 }
 
-func renderCatalogNumscripts(numscripts []*commonpb.NumscriptInfo, expand bool) {
+func renderConfigurationNumscripts(numscripts []*commonpb.NumscriptInfo, expand bool) {
 	pterm.Println()
 	pterm.DefaultSection.Printf("Numscript Library (%d)\n", len(numscripts))
 

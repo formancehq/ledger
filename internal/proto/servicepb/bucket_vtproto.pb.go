@@ -129,8 +129,6 @@ func (m *CreateLedgerRequest) CloneVT() *CreateLedgerRequest {
 	r.Name = m.Name
 	r.Mode = m.Mode
 	r.MirrorSource = m.MirrorSource.CloneVT()
-	r.ChartOfAccounts = m.ChartOfAccounts.CloneVT()
-	r.EnforcementMode = m.EnforcementMode
 	if rhs := m.InitialSchema; rhs != nil {
 		tmpContainer := make([]*commonpb.SetMetadataFieldTypeCommand, len(rhs))
 		for k, v := range rhs {
@@ -521,24 +519,6 @@ func (m *Request_DeleteNumscript) CloneVT() isRequest_Type {
 	}
 	r := new(Request_DeleteNumscript)
 	r.DeleteNumscript = m.DeleteNumscript.CloneVT()
-	return r
-}
-
-func (m *Request_SetChartOfAccounts) CloneVT() isRequest_Type {
-	if m == nil {
-		return (*Request_SetChartOfAccounts)(nil)
-	}
-	r := new(Request_SetChartOfAccounts)
-	r.SetChartOfAccounts = m.SetChartOfAccounts.CloneVT()
-	return r
-}
-
-func (m *Request_SetChartEnforcementMode) CloneVT() isRequest_Type {
-	if m == nil {
-		return (*Request_SetChartEnforcementMode)(nil)
-	}
-	r := new(Request_SetChartEnforcementMode)
-	r.SetChartEnforcementMode = m.SetChartEnforcementMode.CloneVT()
 	return r
 }
 
@@ -1295,24 +1275,6 @@ func (m *LedgerApplyRequest_DeleteMetadata) CloneVT() isLedgerApplyRequest_Data 
 	return r
 }
 
-func (m *LedgerApplyRequest_SetChartOfAccounts) CloneVT() isLedgerApplyRequest_Data {
-	if m == nil {
-		return (*LedgerApplyRequest_SetChartOfAccounts)(nil)
-	}
-	r := new(LedgerApplyRequest_SetChartOfAccounts)
-	r.SetChartOfAccounts = m.SetChartOfAccounts.CloneVT()
-	return r
-}
-
-func (m *LedgerApplyRequest_SetChartEnforcementMode) CloneVT() isLedgerApplyRequest_Data {
-	if m == nil {
-		return (*LedgerApplyRequest_SetChartEnforcementMode)(nil)
-	}
-	r := new(LedgerApplyRequest_SetChartEnforcementMode)
-	r.SetChartEnforcementMode = m.SetChartEnforcementMode.CloneVT()
-	return r
-}
-
 func (m *LedgerApplyRequest_AddAccountType) CloneVT() isLedgerApplyRequest_Data {
 	if m == nil {
 		return (*LedgerApplyRequest_AddAccountType)(nil)
@@ -1338,76 +1300,6 @@ func (m *LedgerApplyRequest_RemoveAccountType) CloneVT() isLedgerApplyRequest_Da
 	r := new(LedgerApplyRequest_RemoveAccountType)
 	r.RemoveAccountType = m.RemoveAccountType.CloneVT()
 	return r
-}
-
-func (m *SetChartOfAccountsRequest) CloneVT() *SetChartOfAccountsRequest {
-	if m == nil {
-		return (*SetChartOfAccountsRequest)(nil)
-	}
-	r := new(SetChartOfAccountsRequest)
-	r.ChartOfAccounts = m.ChartOfAccounts.CloneVT()
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *SetChartOfAccountsRequest) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *SetChartEnforcementModeRequest) CloneVT() *SetChartEnforcementModeRequest {
-	if m == nil {
-		return (*SetChartEnforcementModeRequest)(nil)
-	}
-	r := new(SetChartEnforcementModeRequest)
-	r.EnforcementMode = m.EnforcementMode
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *SetChartEnforcementModeRequest) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *SetChartOfAccountsLedgerRequest) CloneVT() *SetChartOfAccountsLedgerRequest {
-	if m == nil {
-		return (*SetChartOfAccountsLedgerRequest)(nil)
-	}
-	r := new(SetChartOfAccountsLedgerRequest)
-	r.Ledger = m.Ledger
-	r.ChartOfAccounts = m.ChartOfAccounts.CloneVT()
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *SetChartOfAccountsLedgerRequest) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *SetChartEnforcementModeLedgerRequest) CloneVT() *SetChartEnforcementModeLedgerRequest {
-	if m == nil {
-		return (*SetChartEnforcementModeLedgerRequest)(nil)
-	}
-	r := new(SetChartEnforcementModeLedgerRequest)
-	r.Ledger = m.Ledger
-	r.EnforcementMode = m.EnforcementMode
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *SetChartEnforcementModeLedgerRequest) CloneMessageVT() proto.Message {
-	return m.CloneVT()
 }
 
 func (m *AddAccountTypeRequest) CloneVT() *AddAccountTypeRequest {
@@ -2146,7 +2038,6 @@ func (m *AnalyzeAccountsResponse) CloneVT() *AnalyzeAccountsResponse {
 		return (*AnalyzeAccountsResponse)(nil)
 	}
 	r := new(AnalyzeAccountsResponse)
-	r.SuggestedChart = m.SuggestedChart.CloneVT()
 	r.TotalAccounts = m.TotalAccounts
 	if rhs := m.Patterns; rhs != nil {
 		tmpContainer := make([]*AccountPattern, len(rhs))
@@ -3048,12 +2939,6 @@ func (this *CreateLedgerRequest) EqualVT(that *CreateLedgerRequest) bool {
 	if !this.MirrorSource.EqualVT(that.MirrorSource) {
 		return false
 	}
-	if !this.ChartOfAccounts.EqualVT(that.ChartOfAccounts) {
-		return false
-	}
-	if this.EnforcementMode != that.EnforcementMode {
-		return false
-	}
 	if len(this.AccountTypes) != len(that.AccountTypes) {
 		return false
 	}
@@ -3897,56 +3782,6 @@ func (this *Request_DeleteNumscript) EqualVT(thatIface isRequest_Type) bool {
 		}
 		if q == nil {
 			q = &DeleteNumscriptRequest{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Request_SetChartOfAccounts) EqualVT(thatIface isRequest_Type) bool {
-	that, ok := thatIface.(*Request_SetChartOfAccounts)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.SetChartOfAccounts, that.SetChartOfAccounts; p != q {
-		if p == nil {
-			p = &SetChartOfAccountsLedgerRequest{}
-		}
-		if q == nil {
-			q = &SetChartOfAccountsLedgerRequest{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *Request_SetChartEnforcementMode) EqualVT(thatIface isRequest_Type) bool {
-	that, ok := thatIface.(*Request_SetChartEnforcementMode)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.SetChartEnforcementMode, that.SetChartEnforcementMode; p != q {
-		if p == nil {
-			p = &SetChartEnforcementModeLedgerRequest{}
-		}
-		if q == nil {
-			q = &SetChartEnforcementModeLedgerRequest{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -5045,56 +4880,6 @@ func (this *LedgerApplyRequest_DeleteMetadata) EqualVT(thatIface isLedgerApplyRe
 	return true
 }
 
-func (this *LedgerApplyRequest_SetChartOfAccounts) EqualVT(thatIface isLedgerApplyRequest_Data) bool {
-	that, ok := thatIface.(*LedgerApplyRequest_SetChartOfAccounts)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.SetChartOfAccounts, that.SetChartOfAccounts; p != q {
-		if p == nil {
-			p = &SetChartOfAccountsRequest{}
-		}
-		if q == nil {
-			q = &SetChartOfAccountsRequest{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *LedgerApplyRequest_SetChartEnforcementMode) EqualVT(thatIface isLedgerApplyRequest_Data) bool {
-	that, ok := thatIface.(*LedgerApplyRequest_SetChartEnforcementMode)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.SetChartEnforcementMode, that.SetChartEnforcementMode; p != q {
-		if p == nil {
-			p = &SetChartEnforcementModeRequest{}
-		}
-		if q == nil {
-			q = &SetChartEnforcementModeRequest{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
 func (this *LedgerApplyRequest_AddAccountType) EqualVT(thatIface isLedgerApplyRequest_Data) bool {
 	that, ok := thatIface.(*LedgerApplyRequest_AddAccountType)
 	if !ok {
@@ -5170,88 +4955,6 @@ func (this *LedgerApplyRequest_RemoveAccountType) EqualVT(thatIface isLedgerAppl
 	return true
 }
 
-func (this *SetChartOfAccountsRequest) EqualVT(that *SetChartOfAccountsRequest) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if !this.ChartOfAccounts.EqualVT(that.ChartOfAccounts) {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *SetChartOfAccountsRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SetChartOfAccountsRequest)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *SetChartEnforcementModeRequest) EqualVT(that *SetChartEnforcementModeRequest) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.EnforcementMode != that.EnforcementMode {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *SetChartEnforcementModeRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SetChartEnforcementModeRequest)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *SetChartOfAccountsLedgerRequest) EqualVT(that *SetChartOfAccountsLedgerRequest) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Ledger != that.Ledger {
-		return false
-	}
-	if !this.ChartOfAccounts.EqualVT(that.ChartOfAccounts) {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *SetChartOfAccountsLedgerRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SetChartOfAccountsLedgerRequest)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *SetChartEnforcementModeLedgerRequest) EqualVT(that *SetChartEnforcementModeLedgerRequest) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Ledger != that.Ledger {
-		return false
-	}
-	if this.EnforcementMode != that.EnforcementMode {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *SetChartEnforcementModeLedgerRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SetChartEnforcementModeLedgerRequest)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
 func (this *AddAccountTypeRequest) EqualVT(that *AddAccountTypeRequest) bool {
 	if this == that {
 		return true
@@ -6296,9 +5999,6 @@ func (this *AnalyzeAccountsResponse) EqualVT(that *AnalyzeAccountsResponse) bool
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
-		return false
-	}
-	if !this.SuggestedChart.EqualVT(that.SuggestedChart) {
 		return false
 	}
 	if len(this.Patterns) != len(that.Patterns) {
@@ -7799,23 +7499,8 @@ func (m *CreateLedgerRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			dAtA[i] = 0xa
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(baseI-i))
 			i--
-			dAtA[i] = 0x3a
+			dAtA[i] = 0x2a
 		}
-	}
-	if m.EnforcementMode != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.EnforcementMode))
-		i--
-		dAtA[i] = 0x30
-	}
-	if m.ChartOfAccounts != nil {
-		size, err := m.ChartOfAccounts.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x2a
 	}
 	if m.MirrorSource != nil {
 		size, err := m.MirrorSource.MarshalToSizedBufferVT(dAtA[:i])
@@ -8674,48 +8359,6 @@ func (m *Request_DeleteNumscript) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Request_SetChartOfAccounts) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Request_SetChartOfAccounts) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.SetChartOfAccounts != nil {
-		size, err := m.SetChartOfAccounts.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xea
-	}
-	return len(dAtA) - i, nil
-}
-func (m *Request_SetChartEnforcementMode) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Request_SetChartEnforcementMode) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.SetChartEnforcementMode != nil {
-		size, err := m.SetChartEnforcementMode.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xf2
-	}
-	return len(dAtA) - i, nil
-}
 func (m *Request_AddAccountType) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -8733,7 +8376,7 @@ func (m *Request_AddAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xfa
+		dAtA[i] = 0xea
 	}
 	return len(dAtA) - i, nil
 }
@@ -8752,9 +8395,9 @@ func (m *Request_UpdateAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2
+		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0xf2
 	}
 	return len(dAtA) - i, nil
 }
@@ -8773,9 +8416,9 @@ func (m *Request_RemoveAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2
+		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0xfa
 	}
 	return len(dAtA) - i, nil
 }
@@ -10548,44 +10191,6 @@ func (m *LedgerApplyRequest_DeleteMetadata) MarshalToSizedBufferVT(dAtA []byte) 
 	}
 	return len(dAtA) - i, nil
 }
-func (m *LedgerApplyRequest_SetChartOfAccounts) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LedgerApplyRequest_SetChartOfAccounts) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.SetChartOfAccounts != nil {
-		size, err := m.SetChartOfAccounts.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x32
-	}
-	return len(dAtA) - i, nil
-}
-func (m *LedgerApplyRequest_SetChartEnforcementMode) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LedgerApplyRequest_SetChartEnforcementMode) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.SetChartEnforcementMode != nil {
-		size, err := m.SetChartEnforcementMode.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x3a
-	}
-	return len(dAtA) - i, nil
-}
 func (m *LedgerApplyRequest_AddAccountType) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -10601,7 +10206,7 @@ func (m *LedgerApplyRequest_AddAccountType) MarshalToSizedBufferVT(dAtA []byte) 
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x42
+		dAtA[i] = 0x32
 	}
 	return len(dAtA) - i, nil
 }
@@ -10620,7 +10225,7 @@ func (m *LedgerApplyRequest_UpdateAccountType) MarshalToSizedBufferVT(dAtA []byt
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x4a
+		dAtA[i] = 0x3a
 	}
 	return len(dAtA) - i, nil
 }
@@ -10639,186 +10244,10 @@ func (m *LedgerApplyRequest_RemoveAccountType) MarshalToSizedBufferVT(dAtA []byt
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x52
+		dAtA[i] = 0x42
 	}
 	return len(dAtA) - i, nil
 }
-func (m *SetChartOfAccountsRequest) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *SetChartOfAccountsRequest) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *SetChartOfAccountsRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.ChartOfAccounts != nil {
-		size, err := m.ChartOfAccounts.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *SetChartEnforcementModeRequest) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *SetChartEnforcementModeRequest) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *SetChartEnforcementModeRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.EnforcementMode != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.EnforcementMode))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *SetChartOfAccountsLedgerRequest) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *SetChartOfAccountsLedgerRequest) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *SetChartOfAccountsLedgerRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.ChartOfAccounts != nil {
-		size, err := m.ChartOfAccounts.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *SetChartEnforcementModeLedgerRequest) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *SetChartEnforcementModeLedgerRequest) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *SetChartEnforcementModeLedgerRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.EnforcementMode != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.EnforcementMode))
-		i--
-		dAtA[i] = 0x10
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *AddAccountTypeRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -12791,7 +12220,7 @@ func (m *AnalyzeAccountsResponse) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	if m.TotalAccounts != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TotalAccounts))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x10
 	}
 	if len(m.Patterns) > 0 {
 		for iNdEx := len(m.Patterns) - 1; iNdEx >= 0; iNdEx-- {
@@ -12802,18 +12231,8 @@ func (m *AnalyzeAccountsResponse) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x12
+			dAtA[i] = 0xa
 		}
-	}
-	if m.SuggestedChart != nil {
-		size, err := m.SuggestedChart.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -14700,13 +14119,6 @@ func (m *CreateLedgerRequest) SizeVT() (n int) {
 		l = m.MirrorSource.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.ChartOfAccounts != nil {
-		l = m.ChartOfAccounts.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.EnforcementMode != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.EnforcementMode))
-	}
 	if len(m.AccountTypes) > 0 {
 		for k, v := range m.AccountTypes {
 			_ = k
@@ -15136,30 +14548,6 @@ func (m *Request_DeleteNumscript) SizeVT() (n int) {
 	_ = l
 	if m.DeleteNumscript != nil {
 		l = m.DeleteNumscript.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *Request_SetChartOfAccounts) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.SetChartOfAccounts != nil {
-		l = m.SetChartOfAccounts.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *Request_SetChartEnforcementMode) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.SetChartEnforcementMode != nil {
-		l = m.SetChartEnforcementMode.SizeVT()
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -15887,30 +15275,6 @@ func (m *LedgerApplyRequest_DeleteMetadata) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *LedgerApplyRequest_SetChartOfAccounts) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.SetChartOfAccounts != nil {
-		l = m.SetChartOfAccounts.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *LedgerApplyRequest_SetChartEnforcementMode) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.SetChartEnforcementMode != nil {
-		l = m.SetChartEnforcementMode.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
 func (m *LedgerApplyRequest_AddAccountType) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -15947,68 +15311,6 @@ func (m *LedgerApplyRequest_RemoveAccountType) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *SetChartOfAccountsRequest) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.ChartOfAccounts != nil {
-		l = m.ChartOfAccounts.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *SetChartEnforcementModeRequest) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.EnforcementMode != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.EnforcementMode))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *SetChartOfAccountsLedgerRequest) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.ChartOfAccounts != nil {
-		l = m.ChartOfAccounts.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *SetChartEnforcementModeLedgerRequest) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.EnforcementMode != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.EnforcementMode))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
 func (m *AddAccountTypeRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -16790,10 +16092,6 @@ func (m *AnalyzeAccountsResponse) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.SuggestedChart != nil {
-		l = m.SuggestedChart.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if len(m.Patterns) > 0 {
 		for _, e := range m.Patterns {
 			l = e.SizeVT()
@@ -18431,61 +17729,6 @@ func (m *CreateLedgerRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 5:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ChartOfAccounts", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.ChartOfAccounts == nil {
-				m.ChartOfAccounts = &commonpb.ChartOfAccounts{}
-			}
-			if err := m.ChartOfAccounts.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EnforcementMode", wireType)
-			}
-			m.EnforcementMode = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.EnforcementMode |= commonpb.ChartEnforcementMode(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AccountTypes", wireType)
 			}
@@ -20258,88 +19501,6 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 29:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SetChartOfAccounts", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Request_SetChartOfAccounts); ok {
-				if err := oneof.SetChartOfAccounts.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SetChartOfAccountsLedgerRequest{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Request_SetChartOfAccounts{SetChartOfAccounts: v}
-			}
-			iNdEx = postIndex
-		case 30:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SetChartEnforcementMode", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Request_SetChartEnforcementMode); ok {
-				if err := oneof.SetChartEnforcementMode.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SetChartEnforcementModeLedgerRequest{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Request_SetChartEnforcementMode{SetChartEnforcementMode: v}
-			}
-			iNdEx = postIndex
-		case 31:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AddAccountType", wireType)
 			}
 			var msglen int
@@ -20379,7 +19540,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_AddAccountType{AddAccountType: v}
 			}
 			iNdEx = postIndex
-		case 32:
+		case 30:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field UpdateAccountType", wireType)
 			}
@@ -20420,7 +19581,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_UpdateAccountType{UpdateAccountType: v}
 			}
 			iNdEx = postIndex
-		case 33:
+		case 31:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RemoveAccountType", wireType)
 			}
@@ -24420,88 +23581,6 @@ func (m *LedgerApplyRequest) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 6:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SetChartOfAccounts", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Data.(*LedgerApplyRequest_SetChartOfAccounts); ok {
-				if err := oneof.SetChartOfAccounts.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SetChartOfAccountsRequest{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Data = &LedgerApplyRequest_SetChartOfAccounts{SetChartOfAccounts: v}
-			}
-			iNdEx = postIndex
-		case 7:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SetChartEnforcementMode", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Data.(*LedgerApplyRequest_SetChartEnforcementMode); ok {
-				if err := oneof.SetChartEnforcementMode.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SetChartEnforcementModeRequest{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Data = &LedgerApplyRequest_SetChartEnforcementMode{SetChartEnforcementMode: v}
-			}
-			iNdEx = postIndex
-		case 8:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AddAccountType", wireType)
 			}
 			var msglen int
@@ -24541,7 +23620,7 @@ func (m *LedgerApplyRequest) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyRequest_AddAccountType{AddAccountType: v}
 			}
 			iNdEx = postIndex
-		case 9:
+		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field UpdateAccountType", wireType)
 			}
@@ -24582,7 +23661,7 @@ func (m *LedgerApplyRequest) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyRequest_UpdateAccountType{UpdateAccountType: v}
 			}
 			iNdEx = postIndex
-		case 10:
+		case 8:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RemoveAccountType", wireType)
 			}
@@ -24623,384 +23702,6 @@ func (m *LedgerApplyRequest) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyRequest_RemoveAccountType{RemoveAccountType: v}
 			}
 			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *SetChartOfAccountsRequest) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: SetChartOfAccountsRequest: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SetChartOfAccountsRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ChartOfAccounts", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.ChartOfAccounts == nil {
-				m.ChartOfAccounts = &commonpb.ChartOfAccounts{}
-			}
-			if err := m.ChartOfAccounts.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *SetChartEnforcementModeRequest) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: SetChartEnforcementModeRequest: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SetChartEnforcementModeRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EnforcementMode", wireType)
-			}
-			m.EnforcementMode = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.EnforcementMode |= commonpb.ChartEnforcementMode(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *SetChartOfAccountsLedgerRequest) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: SetChartOfAccountsLedgerRequest: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SetChartOfAccountsLedgerRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ChartOfAccounts", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.ChartOfAccounts == nil {
-				m.ChartOfAccounts = &commonpb.ChartOfAccounts{}
-			}
-			if err := m.ChartOfAccounts.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *SetChartEnforcementModeLedgerRequest) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: SetChartEnforcementModeLedgerRequest: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SetChartEnforcementModeLedgerRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EnforcementMode", wireType)
-			}
-			m.EnforcementMode = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.EnforcementMode |= commonpb.ChartEnforcementMode(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -29756,42 +28457,6 @@ func (m *AnalyzeAccountsResponse) UnmarshalVT(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SuggestedChart", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.SuggestedChart == nil {
-				m.SuggestedChart = &commonpb.ChartOfAccounts{}
-			}
-			if err := m.SuggestedChart.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Patterns", wireType)
 			}
 			var msglen int
@@ -29824,7 +28489,7 @@ func (m *AnalyzeAccountsResponse) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 3:
+		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TotalAccounts", wireType)
 			}

@@ -789,82 +789,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /{ledgerName}/chart-of-accounts:
-    get:
-      summary: Get chart of accounts
-      description: Returns the chart of accounts and enforcement mode for a ledger.
-      operationId: getChartOfAccounts
-      tags:
-        - Chart of Accounts
-      parameters:
-        - $ref: '#/components/parameters/LedgerName'
-      responses:
-        '200':
-          description: Chart of accounts retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GetChartOfAccountsResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-    put:
-      summary: Set chart of accounts
-      description: |
-        Sets the chart of accounts for a ledger. The chart defines a declarative tree structure
-        that validates account addresses against fixed and variable segments.
-      operationId: setChartOfAccounts
-      tags:
-        - Chart of Accounts
-      parameters:
-        - $ref: '#/components/parameters/LedgerName'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ChartOfAccounts'
-      responses:
-        '204':
-          description: Chart of accounts set successfully
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /{ledgerName}/chart-of-accounts/enforcement-mode:
-    put:
-      summary: Set chart enforcement mode
-      description: |
-        Sets the enforcement mode for chart of accounts validation.
-        STRICT mode rejects transactions with invalid account addresses.
-        AUDIT mode logs warnings but allows transactions through.
-      operationId: setChartEnforcementMode
-      tags:
-        - Chart of Accounts
-      parameters:
-        - $ref: '#/components/parameters/LedgerName'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SetChartEnforcementModeRequest'
-      responses:
-        '204':
-          description: Enforcement mode set successfully
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /{ledgerName}/numscripts:
     get:
       summary: List all numscripts
@@ -1228,12 +1152,6 @@ components:
           description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source.
         mirrorSource:
           $ref: '#/components/schemas/MirrorSourceConfig'
-        chartOfAccounts:
-          $ref: '#/components/schemas/ChartOfAccounts'
-          description: Optional chart of accounts to set at creation time
-        enforcementMode:
-          $ref: '#/components/schemas/ChartEnforcementMode'
-          description: Optional enforcement mode (defaults to STRICT)
 
     CreateLedgerResponse:
       type: object
@@ -2178,53 +2096,6 @@ components:
           type: integer
           format: int64
 
-    ChartOfAccounts:
-      type: object
-      properties:
-        roots:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/ChartSegment'
-          description: Root segments of the chart (keyed by segment name)
-
-    ChartSegment:
-      type: object
-      properties:
-        account:
-          type: boolean
-          description: Whether this node represents a valid terminal account
-        children:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/ChartSegment'
-          description: Fixed child segments (keyed by segment name)
-        variable:
-          $ref: '#/components/schemas/ChartVariable'
-          description: Variable child segment (matches dynamic segments)
-
-    ChartVariable:
-      type: object
-      required:
-        - name
-      properties:
-        name:
-          type: string
-          description: Variable name (for documentation purposes)
-        pattern:
-          type: string
-          description: Optional regex pattern to constrain variable values
-        account:
-          type: boolean
-          description: Whether this variable node represents a valid terminal account
-        children:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/ChartSegment'
-          description: Fixed child segments after the variable
-        variable:
-          $ref: '#/components/schemas/ChartVariable'
-          description: Nested variable child
-
     AccountPattern:
       type: object
       properties:
@@ -2365,51 +2236,6 @@ components:
         transactionCount:
           type: integer
           format: int64
-
-    ChartEnforcementMode:
-      type: string
-      enum:
-        - STRICT
-        - AUDIT
-      description: |
-        Enforcement mode for chart of accounts validation.
-        STRICT rejects transactions with invalid account addresses.
-        AUDIT returns warnings but allows transactions through.
-
-    ChartViolation:
-      type: object
-      required:
-        - address
-      properties:
-        address:
-          type: string
-          description: Account address that does not match the chart of accounts
-
-    GetChartOfAccountsResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          type: object
-          required:
-            - enforcementMode
-          properties:
-            chartOfAccounts:
-              $ref: '#/components/schemas/ChartOfAccounts'
-              description: The chart of accounts (null if not set)
-            enforcementMode:
-              $ref: '#/components/schemas/ChartEnforcementMode'
-              description: Current enforcement mode
-
-    SetChartEnforcementModeRequest:
-      type: object
-      required:
-        - mode
-      properties:
-        mode:
-          $ref: '#/components/schemas/ChartEnforcementMode'
-          description: Enforcement mode to set
 
     CreatePreparedQueryRequest:
       type: object

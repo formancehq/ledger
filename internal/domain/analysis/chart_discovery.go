@@ -187,154 +187,17 @@ func AnalyzeFromIterator(next func() (CompactAccount, error), variableThreshold 
 	}
 
 	if totalAccounts == 0 {
-		return &servicepb.AnalyzeAccountsResponse{
-			SuggestedChart: &commonpb.ChartOfAccounts{},
-		}, nil
+		return &servicepb.AnalyzeAccountsResponse{}, nil
 	}
 
-	// Extract patterns first — classifyChildren mutates shared trie nodes via mergeTrieNodes.
+	// Extract patterns from the trie.
 	var patterns []*servicepb.AccountPattern
 	extractPatterns(root, nil, nil, variableThreshold, &patterns)
 
-	// Convert trie to chart tree (may mutate trie nodes).
-	roots, _ := classifyChildren(root, variableThreshold)
-
 	return &servicepb.AnalyzeAccountsResponse{
-		SuggestedChart: &commonpb.ChartOfAccounts{
-			Roots: roots,
-		},
 		Patterns:      patterns,
 		TotalAccounts: totalAccounts,
 	}, nil
-}
-
-// childInfo holds information about a trie node's child during classification.
-type childInfo struct {
-	key   string
-	node  *trieNode
-	count int
-}
-
-// classifyChildren converts a trie node's children into a map of fixed ChartSegments
-// and an optional ChartVariable for the variable portion.
-// If the number of distinct children exceeds the threshold, children are merged
-// into a single variable segment. When there's a mix of common fixed values and
-// many unique values, the common ones stay fixed and the rest become variable.
-func classifyChildren(node *trieNode, threshold uint32) (map[string]*commonpb.ChartSegment, *commonpb.ChartVariable) {
-	if len(node.children) == 0 && node.mergedChild == nil {
-		return nil, nil
-	}
-
-	// Count total accounts under each child (recursive)
-	var infos []childInfo
-	for key, child := range node.children {
-		infos = append(infos, childInfo{key: key, node: child, count: countAccounts(child)})
-	}
-
-	// Sort by count descending for deterministic ordering
-	sort.Slice(infos, func(i, j int) bool {
-		if infos[i].count != infos[j].count {
-			return infos[i].count > infos[j].count
-		}
-
-		return infos[i].key < infos[j].key
-	})
-
-	// Effective distinct children = stored children + overflow count.
-	effectiveCount := uint32(len(infos)) + uint32(node.overflowCount)
-
-	if effectiveCount <= threshold {
-		// All children are fixed
-		return buildFixedMap(infos, threshold), nil
-	}
-
-	// Too many children: check for mixed case
-	// Heuristic: children appearing more than once or matching a "common" pattern
-	// stay as fixed; the rest become variable.
-	totalChildAccounts := 0
-	for _, info := range infos {
-		totalChildAccounts += info.count
-	}
-
-	if node.mergedChild != nil {
-		totalChildAccounts += countAccounts(node.mergedChild)
-	}
-
-	var (
-		fixedInfos    []childInfo
-		variableInfos []childInfo
-	)
-
-	// Threshold for considering a child "common enough" to be fixed in mixed mode:
-	// it must have at least 2% of accounts or appear with further sub-structure.
-	mixedThreshold := max(totalChildAccounts/50, 1)
-
-	for _, info := range infos {
-		if info.count >= mixedThreshold && isLikelyFixedName(info.key) {
-			fixedInfos = append(fixedInfos, info)
-		} else {
-			variableInfos = append(variableInfos, info)
-		}
-	}
-
-	// Account for overflow children in the variable count.
-	effectiveVariableCount := uint32(len(variableInfos)) + uint32(node.overflowCount)
-
-	// If all would be variable, just make one variable segment
-	if len(fixedInfos) == 0 || effectiveVariableCount <= threshold {
-		// Either all are clearly variable, or the "variable" set is small enough
-		// to actually all be fixed — reconsider
-		if effectiveVariableCount <= threshold && len(fixedInfos) > 0 {
-			// The variable set is small, keep them all fixed
-			return buildFixedMap(infos, threshold), nil
-		}
-	}
-
-	// Build merged variable node: merge all variable children's sub-trees
-	mergedVariableNode := newTrieNode()
-
-	variableKeys := make([]string, 0, len(variableInfos))
-	for _, info := range variableInfos {
-		variableKeys = append(variableKeys, info.key)
-		mergeTrieNodes(mergedVariableNode, info.node)
-	}
-
-	// Merge the overflow subtree into the variable node.
-	if node.mergedChild != nil {
-		mergeTrieNodes(mergedVariableNode, node.mergedChild)
-	}
-
-	varChildren, varVariable := classifyChildren(mergedVariableNode, threshold)
-	chartVar := &commonpb.ChartVariable{
-		Name:     inferVariableName(variableKeys),
-		Pattern:  inferPattern(variableKeys),
-		Account:  mergedVariableNode.terminating > 0,
-		Children: varChildren,
-		Variable: varVariable,
-	}
-
-	// Add fixed segments
-	var fixedMap map[string]*commonpb.ChartSegment
-	if len(fixedInfos) > 0 {
-		fixedMap = buildFixedMap(fixedInfos, threshold)
-	}
-
-	return fixedMap, chartVar
-}
-
-// buildFixedMap creates a map of fixed ChartSegments from classified child nodes.
-func buildFixedMap(infos []childInfo, threshold uint32) map[string]*commonpb.ChartSegment {
-	m := make(map[string]*commonpb.ChartSegment, len(infos))
-	for _, info := range infos {
-		children, variable := classifyChildren(info.node, threshold)
-		m[info.key] = &commonpb.ChartSegment{
-			Account:  info.node.terminating > 0,
-			Children: children,
-			Variable: variable,
-		}
-	}
-
-	return m
 }
 
 // mergeTrieNodes merges src's children into dst.
@@ -519,44 +382,6 @@ func inferVariableName(values []string) string {
 	}
 
 	return "value"
-}
-
-// isLikelyFixedName returns true if the key looks like a human-written label
-// (all lowercase letters, underscores, hyphens — not a UUID or numeric ID).
-func isLikelyFixedName(key string) bool {
-	if len(key) == 0 {
-		return false
-	}
-	// UUIDs and long numeric strings are not fixed names
-	if isUUID(key) {
-		return false
-	}
-
-	if isNumeric(key) && len(key) > 3 {
-		return false
-	}
-	// Must start with a letter
-	if key[0] < 'a' || key[0] > 'z' {
-		if key[0] < 'A' || key[0] > 'Z' {
-			return false
-		}
-	}
-
-	return true
-}
-
-// countAccounts returns the total number of terminating accounts in the subtree.
-func countAccounts(node *trieNode) int {
-	total := node.terminating
-	for _, child := range node.children {
-		total += countAccounts(child)
-	}
-
-	if node.mergedChild != nil {
-		total += countAccounts(node.mergedChild)
-	}
-
-	return total
 }
 
 // collectAssets extracts distinct asset names from an account's volumes.

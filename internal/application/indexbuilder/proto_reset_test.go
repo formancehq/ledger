@@ -68,7 +68,6 @@ func TestResetLogForReuse_ClearsStaleData(t *testing.T) {
 
 	assert.Equal(t, uint64(0), createdTx.GetPeriodId())
 	assert.Nil(t, createdTx.GetPostCommitVolumes())
-	assert.Empty(t, createdTx.GetWarnings())
 	assert.Empty(t, createdTx.GetAccountMetadata())
 	assert.Empty(t, createdTx.GetPreviousAccountMetadata())
 

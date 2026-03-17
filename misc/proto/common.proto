@@ -522,12 +522,9 @@ message LedgerLogPayload {
     CreateIndexLog create_index = 10;
     DropIndexLog drop_index = 11;
     IndexReadyLog index_ready = 12;
-    SetChartOfAccountsLog set_chart_of_accounts = 13;        // DEPRECATED
-    SetChartEnforcementModeLog set_chart_enforcement_mode = 14; // DEPRECATED
-    AddedAccountTypeLog added_account_type = 15;
-    UpdatedAccountTypeLog updated_account_type = 16;
-    RemovedAccountTypeLog removed_account_type = 17;
-    // 18-21 reserved (removed account migration logs)
+    AddedAccountTypeLog added_account_type = 13;
+    UpdatedAccountTypeLog updated_account_type = 14;
+    RemovedAccountTypeLog removed_account_type = 15;
   }
 }
 
@@ -578,22 +575,19 @@ message CreatedTransaction {
   map<string, MetadataSet> account_metadata = 2;
   uint64 period_id = 3;  // Period that was OPEN when this transaction was created
   PostCommitVolumes post_commit_volumes = 4;  // Opt-in: volumes after commit (only when expand_volumes is true)
-  repeated ChartViolation warnings = 5;  // Chart of accounts violations (AUDIT mode only)
-  map<string, MetadataSet> previous_account_metadata = 6;  // previous account metadata values (for index replay)
+  map<string, MetadataSet> previous_account_metadata = 5;  // previous account metadata values (for index replay)
 }
 
 message RevertedTransaction {
   uint64 reverted_transaction_id = 1;
   Transaction revert_transaction = 2;
   PostCommitVolumes post_commit_volumes = 3;  // Opt-in: volumes after commit (only when expand_volumes is true)
-  repeated ChartViolation warnings = 4;  // Chart of accounts violations (AUDIT mode only)
 }
 
 message SavedMetadata {
   Target target = 1;
   MetadataSet metadata = 2;
-  repeated ChartViolation warnings = 3;  // Chart of accounts violations (AUDIT mode only)
-  map<string, MetadataValue> previous_values = 4;  // previous values keyed by metadata key (for index replay)
+  map<string, MetadataValue> previous_values = 3;  // previous values keyed by metadata key (for index replay)
 }
 
 message DeletedMetadata {
@@ -721,11 +715,9 @@ message LedgerInfo {
   LedgerMode mode = 5;                      // Normal or mirror mode
   MirrorSourceConfig mirror_source = 6;     // Mirror source config (set when mode=MIRROR)
   MirrorSyncProgress mirror_sync_progress = 7;  // Populated at read time for MIRROR ledgers
-  ChartOfAccounts chart_of_accounts = 8;    // DEPRECATED: replaced by account_types
-  ChartEnforcementMode enforcement_mode = 9; // DEPRECATED: replaced by per-type enforcement
-  BuiltinIndexConfig builtin_indexes = 10;  // Built-in transaction field index config
-  LogBuiltinIndexConfig log_builtin_indexes = 11;  // Built-in log field index config
-  map<string, AccountType> account_types = 12; // Per-type account address validation
+  BuiltinIndexConfig builtin_indexes = 8;  // Built-in transaction field index config
+  LogBuiltinIndexConfig log_builtin_indexes = 9;  // Built-in log field index config
+  map<string, AccountType> account_types = 10; // Per-type account address validation
 }
 
 // ============================================================================
@@ -762,51 +754,10 @@ message TransactionReferenceValue {
   uint64 transaction_id = 1;
 }
 
-// ============================================================================
-// Chart of Accounts
-// ============================================================================
-
-// ChartOfAccounts defines the account address structure for a ledger.
-message ChartOfAccounts {
-  map<string, ChartSegment> roots = 1;
-}
-
-// ChartSegment represents a node in the chart of accounts tree.
-message ChartSegment {
-  bool account = 1;
-  map<string, ChartSegment> children = 2;
-  ChartVariable variable = 3;
-}
-
-// ChartVariable represents a variable child segment with an optional regex constraint.
-message ChartVariable {
-  string name = 1;
-  string pattern = 2;
-  bool account = 3;
-  map<string, ChartSegment> children = 4;
-  ChartVariable variable = 5;
-}
-
-// ChartViolation represents an account address that does not match the chart of accounts.
-// Returned as warnings in AUDIT mode.
-message ChartViolation {
-  string address = 1;
-}
-
 // ChartEnforcementMode controls how chart violations are handled.
 enum ChartEnforcementMode {
   CHART_ENFORCEMENT_STRICT = 0;  // Reject transactions with invalid addresses (default)
   CHART_ENFORCEMENT_AUDIT = 1;   // Log warning but allow the transaction
-}
-
-// SetChartOfAccountsLog records a chart of accounts change.
-message SetChartOfAccountsLog {
-  ChartOfAccounts chart_of_accounts = 1;
-}
-
-// SetChartEnforcementModeLog records an enforcement mode change.
-message SetChartEnforcementModeLog {
-  ChartEnforcementMode enforcement_mode = 1;
 }
 
 // ============================================================================
@@ -819,14 +770,12 @@ message AccountType {
   string pattern = 2;                        // Address pattern: "users:{id}:checking"
   AccountTypeStatus status = 3;              // ACTIVE, DEPRECATED
   ChartEnforcementMode enforcement_mode = 4; // Per-type enforcement
-  // 5-6 reserved (removed migration fields)
 }
 
 // AccountTypeStatus represents the lifecycle state of an account type.
 enum AccountTypeStatus {
   ACCOUNT_TYPE_ACTIVE = 0;       // Accepts new accounts, validated normally
-  // 1 reserved (removed MIGRATING)
-  ACCOUNT_TYPE_DEPRECATED = 2;   // No new accounts; kept for backward compat
+  ACCOUNT_TYPE_DEPRECATED = 1;   // No new accounts; kept for backward compat
 }
 
 // AddedAccountTypeLog records the addition of an account type.

@@ -136,9 +136,7 @@ message CreateLedgerRequest {
   repeated common.SetMetadataFieldTypeCommand initial_schema = 2;
   common.LedgerMode mode = 3;
   common.MirrorSourceConfig mirror_source = 4;
-  common.ChartOfAccounts chart_of_accounts = 5;      // DEPRECATED
-  common.ChartEnforcementMode enforcement_mode = 6;   // DEPRECATED
-  map<string, common.AccountType> account_types = 7;  // Initial account types
+  map<string, common.AccountType> account_types = 5;  // Initial account types
 }
 
 message DeleteLedgerRequest {
@@ -193,12 +191,9 @@ message Request {
     DropIndexRequest drop_index = 26;
     SaveNumscriptRequest save_numscript = 27;
     DeleteNumscriptRequest delete_numscript = 28;
-    SetChartOfAccountsLedgerRequest set_chart_of_accounts = 29;       // DEPRECATED
-    SetChartEnforcementModeLedgerRequest set_chart_enforcement_mode = 30; // DEPRECATED
-    AddAccountTypeLedgerRequest add_account_type = 31;
-    UpdateAccountTypeLedgerRequest update_account_type = 32;
-    RemoveAccountTypeLedgerRequest remove_account_type = 33;
-    // 34-35 reserved (removed account migration)
+    AddAccountTypeLedgerRequest add_account_type = 29;
+    UpdateAccountTypeLedgerRequest update_account_type = 30;
+    RemoveAccountTypeLedgerRequest remove_account_type = 31;
   }
   signature.RequestSignature signature = 5;
 }
@@ -416,30 +411,10 @@ message LedgerApplyRequest {
     common.SaveMetadataCommand add_metadata = 3;
     RevertTransactionPayload revert_transaction = 4;
     common.DeleteMetadataCommand delete_metadata = 5;
-    SetChartOfAccountsRequest set_chart_of_accounts = 6;       // DEPRECATED
-    SetChartEnforcementModeRequest set_chart_enforcement_mode = 7; // DEPRECATED
-    AddAccountTypeRequest add_account_type = 8;
-    UpdateAccountTypeRequest update_account_type = 9;
-    RemoveAccountTypeRequest remove_account_type = 10;
+    AddAccountTypeRequest add_account_type = 6;
+    UpdateAccountTypeRequest update_account_type = 7;
+    RemoveAccountTypeRequest remove_account_type = 8;
   }
-}
-
-message SetChartOfAccountsRequest {
-  common.ChartOfAccounts chart_of_accounts = 1;
-}
-
-message SetChartEnforcementModeRequest {
-  common.ChartEnforcementMode enforcement_mode = 1;
-}
-
-message SetChartOfAccountsLedgerRequest {
-  string ledger = 1;
-  common.ChartOfAccounts chart_of_accounts = 2;
-}
-
-message SetChartEnforcementModeLedgerRequest {
-  string ledger = 1;
-  common.ChartEnforcementMode enforcement_mode = 2;
 }
 
 // AddAccountTypeRequest adds an account type within a LedgerApplyRequest.
@@ -722,9 +697,8 @@ message AnalyzeAccountsRequest {
 }
 
 message AnalyzeAccountsResponse {
-  common.ChartOfAccounts suggested_chart = 1;
-  repeated AccountPattern patterns = 2;
-  uint64 total_accounts = 3;
+  repeated AccountPattern patterns = 1;
+  uint64 total_accounts = 2;
 }
 
 // AnalyzeProgress reports scan progress for long-running analysis operations.

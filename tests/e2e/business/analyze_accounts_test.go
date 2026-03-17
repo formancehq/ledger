@@ -107,20 +107,13 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 			}).Should(Succeed())
 		})
 
-		It("Should suggest a chart with fixed segments", func() {
+		It("Should discover patterns for fixed segments", func() {
 			Eventually(func(g Gomega) {
 				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
-				g.Expect(resp.SuggestedChart).NotTo(BeNil())
-				g.Expect(resp.SuggestedChart.Roots).NotTo(BeEmpty())
-
-				// Find the "bank" segment in the chart
-				bankSeg, ok := resp.SuggestedChart.Roots["bank"]
-				g.Expect(ok).To(BeTrue(), "expected 'bank' root in chart")
-				// bank should have children (main, fees)
-				g.Expect(bankSeg.Children).NotTo(BeEmpty())
+				g.Expect(resp.Patterns).NotTo(BeEmpty())
 			}).Should(Succeed())
 		})
 	})
@@ -158,11 +151,17 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 				// 15 user accounts + world = 16
 				g.Expect(resp.TotalAccounts).To(Equal(uint64(16)))
 
-				// Chart should have a "users" root with a variable child
-				g.Expect(resp.SuggestedChart).NotTo(BeNil())
-				usersSeg, ok := resp.SuggestedChart.Roots["users"]
-				g.Expect(ok).To(BeTrue(), "expected 'users' root in chart")
-				g.Expect(usersSeg.Variable).NotTo(BeNil(), "expected variable child under 'users'")
+				// Should have a pattern with variable segments
+				var hasVariable bool
+				for _, p := range resp.Patterns {
+					for _, s := range p.Segments {
+						if s.Type == servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
+							hasVariable = true
+							break
+						}
+					}
+				}
+				g.Expect(hasVariable).To(BeTrue(), "expected a pattern with variable segments")
 			}).Should(Succeed())
 		})
 
@@ -223,13 +222,9 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 				})
 				g.Expect(err).To(Succeed())
 
-				// 5 children < 10 threshold, so they should be fixed
-				g.Expect(resp.SuggestedChart).NotTo(BeNil())
-				deptSeg, ok := resp.SuggestedChart.Roots["dept"]
-				g.Expect(ok).To(BeTrue(), "expected 'dept' root")
-				// All children should be fixed (no variable)
-				g.Expect(deptSeg.Variable).To(BeNil(), "expected no variable with default threshold")
-				g.Expect(deptSeg.Children).NotTo(BeEmpty(), "expected fixed children")
+				// 5 children < 10 threshold: each "dept:XXXX" should be its own fixed pattern
+				// (5 dept patterns + 1 world pattern = 6)
+				g.Expect(len(resp.Patterns)).To(BeNumerically(">=", 5))
 			}).Should(Succeed())
 		})
 
@@ -237,15 +232,21 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 			Eventually(func(g Gomega) {
 				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
 					Ledger:            ledgerName,
-					VariableThreshold: 3, // 5 children > 3 threshold → variable
+					VariableThreshold: 3, // 5 children > 3 threshold -> variable
 				})
 				g.Expect(err).To(Succeed())
 
-				g.Expect(resp.SuggestedChart).NotTo(BeNil())
-				deptSeg, ok := resp.SuggestedChart.Roots["dept"]
-				g.Expect(ok).To(BeTrue(), "expected 'dept' root")
 				// With threshold=3, 5 children should be classified as variable
-				g.Expect(deptSeg.Variable).NotTo(BeNil(), "expected variable child with low threshold")
+				var hasVariable bool
+				for _, p := range resp.Patterns {
+					for _, s := range p.Segments {
+						if s.Type == servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
+							hasVariable = true
+							break
+						}
+					}
+				}
+				g.Expect(hasVariable).To(BeTrue(), "expected variable patterns with low threshold")
 			}).Should(Succeed())
 		})
 	})
@@ -384,34 +385,48 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 			}).Should(Succeed())
 		})
 
-		It("Should produce a chart with both fixed and variable segments", func() {
+		It("Should produce patterns covering bank, users, and world", func() {
 			Eventually(func(g Gomega) {
 				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
-				g.Expect(resp.SuggestedChart).NotTo(BeNil())
+				g.Expect(resp.Patterns).NotTo(BeEmpty())
 
-				// Should have "bank", "users", and "world" top-level roots
-				g.Expect(resp.SuggestedChart.Roots).To(HaveKey("bank"))
-				g.Expect(resp.SuggestedChart.Roots).To(HaveKey("users"))
-				g.Expect(resp.SuggestedChart.Roots).To(HaveKey("world"))
+				// Collect top-level prefixes from patterns
+				prefixes := make(map[string]bool)
+				for _, p := range resp.Patterns {
+					if len(p.Segments) > 0 && p.Segments[0].FixedValue != "" {
+						prefixes[p.Segments[0].FixedValue] = true
+					}
+					if p.Pattern == "world" {
+						prefixes["world"] = true
+					}
+				}
+				g.Expect(prefixes).To(HaveKey("bank"))
+				g.Expect(prefixes).To(HaveKey("users"))
+				g.Expect(prefixes).To(HaveKey("world"))
 			}).Should(Succeed())
 		})
 
-		It("Should detect variable user IDs under users segment", func() {
+		It("Should detect variable user IDs in patterns", func() {
 			Eventually(func(g Gomega) {
 				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
 
-				usersSeg, ok := resp.SuggestedChart.Roots["users"]
-				g.Expect(ok).To(BeTrue(), "expected 'users' root")
-				// users should have a variable child (the user ID)
-				g.Expect(usersSeg.Variable).NotTo(BeNil())
-				// Under the variable user ID, there should be fixed children: main, savings
-				g.Expect(usersSeg.Variable.Children).NotTo(BeEmpty())
+				// Find user patterns with variable segments
+				var hasVariableUser bool
+				for _, p := range resp.Patterns {
+					if len(p.Segments) >= 2 &&
+						p.Segments[0].FixedValue == "users" &&
+						p.Segments[1].Type == servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
+						hasVariableUser = true
+						break
+					}
+				}
+				g.Expect(hasVariableUser).To(BeTrue(), "expected variable user ID in patterns")
 			}).Should(Succeed())
 		})
 	})

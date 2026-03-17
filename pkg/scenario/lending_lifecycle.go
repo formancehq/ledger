@@ -45,14 +45,14 @@ func RunLendingLifecycle(r *Runner) error {
 		actions.AddAccountTypeAction(ledger, "revenue", "revenue:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		actions.AddAccountTypeAction(ledger, "expense", "expense:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		actions.AddAccountTypeAction(ledger, "recovery", "recovery:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.SaveNumscriptWithVersionAction("fund_pool", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "fund_pool", `vars {
   monetary $amount
 }
 send $amount (
   source = @world
   destination = @funding:pool
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("disburse_loan", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "disburse_loan", `vars {
   account $borrower_loan
   account $borrower_wallet
   monetary $amount
@@ -65,7 +65,7 @@ send $amount (
   source = @world
   destination = $borrower_wallet
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("repay_principal", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "repay_principal", `vars {
   account $borrower_wallet
   account $borrower_loan
   monetary $amount
@@ -78,7 +78,7 @@ send $amount (
   source = $borrower_loan
   destination = @funding:pool
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("accrue_interest", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "accrue_interest", `vars {
   account $borrower_wallet
   monetary $amount
 }
@@ -86,14 +86,14 @@ send $amount (
   source = $borrower_wallet
   destination = @revenue:interest
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("provision", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "provision", `vars {
   monetary $amount
 }
 send $amount (
   source = @world
   destination = @expense:provision
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("write_off", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "write_off", `vars {
   account $borrower_loan
   monetary $amount
 }

@@ -33,8 +33,8 @@ func ListLedgers(ctx context.Context, client servicepb.BucketServiceClient) (map
 }
 
 // ListNumscripts collects all numscripts from the streaming RPC.
-func ListNumscripts(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.NumscriptInfo, error) {
-	stream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{})
+func ListNumscripts(ctx context.Context, client servicepb.BucketServiceClient, ledger string) ([]*commonpb.NumscriptInfo, error) {
+	stream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{Ledger: ledger})
 	if err != nil {
 		return nil, err
 	}
@@ -177,8 +177,9 @@ func GetLedgerStats(ctx context.Context, client servicepb.BucketServiceClient, l
 }
 
 // GetNumscript retrieves a numscript by name and optional version ("" = latest).
-func GetNumscript(ctx context.Context, client servicepb.BucketServiceClient, name, version string) (*commonpb.NumscriptInfo, error) {
+func GetNumscript(ctx context.Context, client servicepb.BucketServiceClient, ledger, name, version string) (*commonpb.NumscriptInfo, error) {
 	return client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+		Ledger:  ledger,
 		Name:    name,
 		Version: version,
 	})

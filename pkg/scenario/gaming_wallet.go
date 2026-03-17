@@ -39,7 +39,7 @@ func RunGamingWallet(r *Runner) error {
 		actions.AddAccountTypeAction(ledger, "platform", "platform:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT),
 		actions.AddAccountTypeAction(ledger, "shop", "shop:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		actions.AddAccountTypeAction(ledger, "escrow", "escrow:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.SaveNumscriptWithVersionAction("top_up", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "top_up", `vars {
   account $player_usd
   account $player_coins
   monetary $usd_amount
@@ -57,7 +57,7 @@ send $coin_amount (
   source = @world
   destination = $player_coins
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("buy_item", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "buy_item", `vars {
   account $player_coins
   monetary $amount
 }
@@ -65,7 +65,7 @@ send $amount (
   source = $player_coins
   destination = @shop:items
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("p2p_transfer", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "p2p_transfer", `vars {
   account $from_player
   account $to_player
   monetary $amount
@@ -74,7 +74,7 @@ send $amount (
   source = $from_player
   destination = $to_player
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction("clawback", `vars {
+		actions.SaveNumscriptWithVersionAction(ledger, "clawback", `vars {
   account $player_coins
   monetary $amount
 }

@@ -13,9 +13,7 @@ func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 	case *servicepb.Request_CreateLedger:
 		order.Type = &raftcmdpb.Order_CreateLedger{
 			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name:            reqType.CreateLedger.GetName(),
-				ChartOfAccounts: reqType.CreateLedger.GetChartOfAccounts(),
-				EnforcementMode: reqType.CreateLedger.GetEnforcementMode(),
+				Name: reqType.CreateLedger.GetName(),
 			},
 		}
 	case *servicepb.Request_DeleteLedger:
@@ -61,18 +59,6 @@ func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 					Force:           data.RevertTransaction.GetForce(),
 					AtEffectiveDate: data.RevertTransaction.GetAtEffectiveDate(),
 					Metadata:        data.RevertTransaction.GetMetadata(),
-				},
-			}
-		case *servicepb.LedgerApplyRequest_SetChartOfAccounts:
-			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_SetChartOfAccounts{
-				SetChartOfAccounts: &raftcmdpb.SetChartOfAccountsOrder{
-					ChartOfAccounts: data.SetChartOfAccounts.GetChartOfAccounts(),
-				},
-			}
-		case *servicepb.LedgerApplyRequest_SetChartEnforcementMode:
-			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_SetChartEnforcementMode{
-				SetChartEnforcementMode: &raftcmdpb.SetChartEnforcementModeOrder{
-					EnforcementMode: data.SetChartEnforcementMode.GetEnforcementMode(),
 				},
 			}
 		}

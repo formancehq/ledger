@@ -60,13 +60,8 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 	}
 
 	// Validate postings against account types.
-	var warnings []*commonpb.ChartViolation
-
 	if info != nil && len(info.GetAccountTypes()) > 0 {
-		var typeErr error
-
-		warnings, typeErr = validatePostingsAgainstAccountTypes(result.Postings, info.GetAccountTypes())
-		if typeErr != nil {
+		if typeErr := validatePostingsAgainstAccountTypes(result.Postings, info.GetAccountTypes()); typeErr != nil {
 			return nil, typeErr
 		}
 	}
@@ -219,7 +214,6 @@ func (p *RequestProcessor) processCreateTransaction(ledger string, boundaries *r
 				AccountMetadata:         accountMetadata,
 				PeriodId:                periodID,
 				PostCommitVolumes:       postCommitVolumes,
-				Warnings:                warnings,
 				PreviousAccountMetadata: previousAccountMetadata,
 			},
 		},

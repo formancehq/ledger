@@ -389,15 +389,17 @@ send $amount (
 		)
 		require.NoError(t, err, "CreatePreparedQuery(high-retention) failed")
 
-		// Query score >= 90 (subscriber:7 has 92)
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "high-retention",
-			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{
-				"min_score": testutil.Int64Param(90),
-				"max_score": testutil.Int64Param(100),
-			},
-		)
-		require.NoError(t, err, "ExecutePreparedQueryWithParams(score 90-100) failed")
+		// Query score >= 90 (subscriber:7 has 92) — retry until index is ready
+		require.Eventually(t, func() bool {
+			resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "high-retention",
+				commonpb.QueryMode_QUERY_MODE_LIST, 100,
+				map[string]*commonpb.ParameterValue{
+					"min_score": testutil.Int64Param(90),
+					"max_score": testutil.Int64Param(100),
+				},
+			)
+			return err == nil
+		}, 15*time.Second, 200*time.Millisecond, "ExecutePreparedQueryWithParams(score 90-100) should succeed once index is ready")
 		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 1,
 			"should find at least 1 high-retention subscriber (score >= 90)")
 

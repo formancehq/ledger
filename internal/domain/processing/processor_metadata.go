@@ -21,14 +21,9 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 	}
 
 	// Validate account address against account types.
-	var warnings []*commonpb.ChartViolation
-
 	if acct, isAcct := order.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct && info != nil {
 		if len(info.GetAccountTypes()) > 0 {
-			var typeErr error
-
-			warnings, typeErr = validateAccountAgainstAccountTypes(acct.Account.GetAddr(), info.GetAccountTypes())
-			if typeErr != nil {
+			if typeErr := validateAccountAgainstAccountTypes(acct.Account.GetAddr(), info.GetAccountTypes()); typeErr != nil {
 				return nil, typeErr
 			}
 		}
@@ -121,7 +116,6 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 			SavedMetadata: &commonpb.SavedMetadata{
 				Target:         order.GetTarget(),
 				Metadata:       order.GetMetadata(),
-				Warnings:       warnings,
 				PreviousValues: previousValues,
 			},
 		},

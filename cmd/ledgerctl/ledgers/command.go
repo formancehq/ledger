@@ -25,7 +25,7 @@ func NewCommand() *cobra.Command {
 	cmd.AddCommand(NewCreateIndexCommand())
 	cmd.AddCommand(NewDropIndexCommand())
 	cmd.AddCommand(NewListIndexesCommand())
-	cmd.AddCommand(NewCatalogCommand())
+	cmd.AddCommand(NewConfigurationCommand())
 
 	return cmd
 }

@@ -110,16 +110,15 @@ func (p *RequestProcessor) processRemoveAccountType(
 // validatePostingsAgainstAccountTypes validates postings against account types.
 // Uses longest-match (highest specificity) to find the best matching type.
 // In STRICT mode, returns an error on the first non-matching address.
-// In AUDIT mode, collects violations as warnings.
+// In AUDIT mode, non-matching addresses are silently ignored.
 func validatePostingsAgainstAccountTypes(
 	postings []*commonpb.Posting,
 	types map[string]*commonpb.AccountType,
-) ([]*commonpb.ChartViolation, error) {
+) error {
 	if len(types) == 0 {
-		return nil, nil
+		return nil
 	}
 
-	var violations []*commonpb.ChartViolation
 	seen := make(map[string]struct{})
 	addresses := make([]string, 0, len(postings)*2)
 	for _, posting := range postings {
@@ -135,45 +134,37 @@ func validatePostingsAgainstAccountTypes(
 		}
 		seen[address] = struct{}{}
 
-		matched, mode := matchAddressToType(address, types)
+		matched, _ := matchAddressToType(address, types)
 		if matched == nil {
 			// No type matched — check if any type is STRICT.
 			if hasStrictType(types) {
-				return nil, &domain.ErrAccountNotMatchingType{Address: address}
+				return &domain.ErrAccountNotMatchingType{Address: address}
 			}
-			// All types are AUDIT: record violation.
-			violations = append(violations, &commonpb.ChartViolation{Address: address})
 
 			continue
 		}
-
-		// Matched but check if it's a non-match in STRICT mode.
-		// A match was found, so no violation for this address.
-		_ = mode // The matched type's enforcement mode is used for reporting.
 	}
 
-	return violations, nil
+	return nil
 }
 
 // validateAccountAgainstAccountTypes validates a single account address.
 func validateAccountAgainstAccountTypes(
 	address string,
 	types map[string]*commonpb.AccountType,
-) ([]*commonpb.ChartViolation, error) {
+) error {
 	if len(types) == 0 || address == "world" {
-		return nil, nil
+		return nil
 	}
 
 	matched, _ := matchAddressToType(address, types)
 	if matched == nil {
 		if hasStrictType(types) {
-			return nil, &domain.ErrAccountNotMatchingType{Address: address}
+			return &domain.ErrAccountNotMatchingType{Address: address}
 		}
-
-		return []*commonpb.ChartViolation{{Address: address}}, nil
 	}
 
-	return nil, nil
+	return nil
 }
 
 // matchAddressToType finds the best matching account type for an address using

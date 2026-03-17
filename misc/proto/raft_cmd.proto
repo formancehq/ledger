@@ -142,9 +142,7 @@ message CreateLedgerOrder {
   repeated common.SetMetadataFieldTypeCommand initial_schema = 2;
   common.LedgerMode mode = 3;
   common.MirrorSourceConfig mirror_source = 4;
-  common.ChartOfAccounts chart_of_accounts = 5;      // DEPRECATED
-  common.ChartEnforcementMode enforcement_mode = 6;   // DEPRECATED
-  map<string, common.AccountType> account_types = 7;  // Initial account types
+  map<string, common.AccountType> account_types = 5;  // Initial account types
 }
 
 message MirrorIngestOrder {
@@ -216,12 +214,9 @@ message LedgerApplyOrder {
     CreateIndexOrder create_index = 10;
     DropIndexOrder drop_index = 11;
     IndexReadyOrder index_ready = 12;
-    SetChartOfAccountsOrder set_chart_of_accounts = 13;              // DEPRECATED
-    SetChartEnforcementModeOrder set_chart_enforcement_mode = 14;    // DEPRECATED
-    AddAccountTypeOrder add_account_type = 15;
-    UpdateAccountTypeOrder update_account_type = 16;
-    RemoveAccountTypeOrder remove_account_type = 17;
-    // 18-21 reserved (removed account migration)
+    AddAccountTypeOrder add_account_type = 13;
+    UpdateAccountTypeOrder update_account_type = 14;
+    RemoveAccountTypeOrder remove_account_type = 15;
   }
 }
 
@@ -250,14 +245,6 @@ message IndexReadyOrder {
     common.TransactionIndex transaction = 2;
     common.AccountIndex account = 3;
   }
-}
-
-message SetChartOfAccountsOrder {
-  common.ChartOfAccounts chart_of_accounts = 1;
-}
-
-message SetChartEnforcementModeOrder {
-  common.ChartEnforcementMode enforcement_mode = 1;
 }
 
 // AddAccountTypeOrder adds a new account type to the ledger.

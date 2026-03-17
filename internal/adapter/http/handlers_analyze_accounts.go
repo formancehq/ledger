@@ -12,9 +12,8 @@ import (
 
 // analyzeAccountsResponseJSON is the camelCase JSON DTO for AnalyzeAccountsResponse.
 type analyzeAccountsResponseJSON struct {
-	SuggestedChart *chartJSON            `json:"suggestedChart"`
-	Patterns       []*accountPatternJSON `json:"patterns"`
-	TotalAccounts  uint64                `json:"totalAccounts"`
+	Patterns      []*accountPatternJSON `json:"patterns"`
+	TotalAccounts uint64                `json:"totalAccounts"`
 }
 
 type accountPatternJSON struct {
@@ -38,10 +37,6 @@ type patternSegmentJSON struct {
 func toAnalyzeAccountsJSON(resp *servicepb.AnalyzeAccountsResponse) *analyzeAccountsResponseJSON {
 	result := &analyzeAccountsResponseJSON{
 		TotalAccounts: resp.GetTotalAccounts(),
-	}
-
-	if resp.GetSuggestedChart() != nil {
-		result.SuggestedChart = toChartJSON(resp.GetSuggestedChart())
 	}
 
 	result.Patterns = make([]*accountPatternJSON, 0, len(resp.GetPatterns()))

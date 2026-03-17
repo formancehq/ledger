@@ -27,8 +27,6 @@ func TestAnalyze_EmptyAccounts(t *testing.T) {
 
 	resp := Analyze(nil, 0)
 	require.NotNil(t, resp)
-	require.NotNil(t, resp.GetSuggestedChart())
-	assert.Empty(t, resp.GetSuggestedChart().GetRoots())
 	assert.Empty(t, resp.GetPatterns())
 	assert.Equal(t, uint64(0), resp.GetTotalAccounts())
 }
@@ -40,12 +38,6 @@ func TestAnalyze_SingleAccount(t *testing.T) {
 
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(1), resp.GetTotalAccounts())
-
-	// Chart: single root "world" segment
-	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
-	worldSeg, ok := resp.GetSuggestedChart().GetRoots()["world"]
-	require.True(t, ok, "expected 'world' root")
-	assert.True(t, worldSeg.GetAccount())
 
 	// Pattern: "world"
 	require.Len(t, resp.GetPatterns(), 1)
@@ -67,20 +59,6 @@ func TestAnalyze_SimpleFixedHierarchy(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(3), resp.GetTotalAccounts())
 
-	// Chart should have 2 top-level roots: "bank" and "world"
-	require.Len(t, resp.GetSuggestedChart().GetRoots(), 2)
-
-	// Check bank segment
-	bankSeg, ok := resp.GetSuggestedChart().GetRoots()["bank"]
-	require.True(t, ok, "expected 'bank' root")
-	require.Len(t, bankSeg.GetChildren(), 2) // fees, main
-
-	_, hasFees := bankSeg.GetChildren()["fees"]
-	_, hasMain := bankSeg.GetChildren()["main"]
-
-	assert.True(t, hasFees, "expected 'fees' child")
-	assert.True(t, hasMain, "expected 'main' child")
-
 	// Patterns should include "bank:main", "bank:fees", "world"
 	assert.Len(t, resp.GetPatterns(), 3)
 }
@@ -100,14 +78,6 @@ func TestAnalyze_VariableDetection(t *testing.T) {
 
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(15), resp.GetTotalAccounts())
-
-	// Chart: one root "users" segment with a variable child
-	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
-	usersSeg, ok := resp.GetSuggestedChart().GetRoots()["users"]
-	require.True(t, ok, "expected 'users' root")
-	require.NotNil(t, usersSeg.GetVariable(), "expected variable child")
-	assert.Equal(t, "id", usersSeg.GetVariable().GetName())
-	assert.Equal(t, uuidPattern, usersSeg.GetVariable().GetPattern())
 
 	// Pattern: "users:{id}"
 	require.Len(t, resp.GetPatterns(), 1)
@@ -129,12 +99,8 @@ func TestAnalyze_NumericPattern(t *testing.T) {
 
 	resp := Analyze(accounts, 0)
 
-	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
-	ordersSeg, ok := resp.GetSuggestedChart().GetRoots()["orders"]
-	require.True(t, ok, "expected 'orders' root")
-	require.NotNil(t, ordersSeg.GetVariable(), "expected variable child")
-	assert.Equal(t, "number", ordersSeg.GetVariable().GetName())
-	assert.Equal(t, numericPattern, ordersSeg.GetVariable().GetPattern())
+	require.Len(t, resp.GetPatterns(), 1)
+	assert.Equal(t, "orders:{number}", resp.GetPatterns()[0].GetPattern())
 }
 
 func TestAnalyze_DeepNestedHierarchy(t *testing.T) {
@@ -150,11 +116,7 @@ func TestAnalyze_DeepNestedHierarchy(t *testing.T) {
 
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(3), resp.GetTotalAccounts())
-
-	// Should have a nested structure: platform -> region -> (eu, us) -> (main, fees)
-	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
-	_, ok := resp.GetSuggestedChart().GetRoots()["platform"]
-	assert.True(t, ok, "expected 'platform' root")
+	assert.NotEmpty(t, resp.GetPatterns())
 }
 
 func TestAnalyze_AssetsAggregation(t *testing.T) {
@@ -213,20 +175,14 @@ func TestAnalyze_ThresholdConfigurability(t *testing.T) {
 		accounts = append(accounts, makeCompactAccount(fmt.Sprintf("users:%d", 1000+i)))
 	}
 
-	// With default threshold (10), should be fixed
+	// With default threshold (10), should be fixed — 5 patterns
 	resp := Analyze(accounts, 0)
-	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
-	usersSeg, ok := resp.GetSuggestedChart().GetRoots()["users"]
-	require.True(t, ok)
-	require.Len(t, usersSeg.GetChildren(), 5)
-	assert.Nil(t, usersSeg.GetVariable(), "expected no variable with default threshold")
+	require.Len(t, resp.GetPatterns(), 5)
 
 	// With threshold=3, should become variable (5 numeric IDs > threshold 3)
 	resp2 := Analyze(accounts, 3)
-	require.Len(t, resp2.GetSuggestedChart().GetRoots(), 1)
-	usersSeg2, ok := resp2.GetSuggestedChart().GetRoots()["users"]
-	require.True(t, ok)
-	assert.NotNil(t, usersSeg2.GetVariable(), "expected variable child with threshold=3")
+	require.Len(t, resp2.GetPatterns(), 1)
+	assert.Equal(t, "users:{number}", resp2.GetPatterns()[0].GetPattern())
 }
 
 func TestAnalyze_WorldAndUsersPattern(t *testing.T) {
@@ -249,9 +205,7 @@ func TestAnalyze_WorldAndUsersPattern(t *testing.T) {
 
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(33), resp.GetTotalAccounts())
-
-	// Chart should have top-level roots: bank, users, world
-	require.Len(t, resp.GetSuggestedChart().GetRoots(), 3)
+	assert.NotEmpty(t, resp.GetPatterns())
 }
 
 func TestInferPattern(t *testing.T) {
@@ -314,17 +268,6 @@ func TestAnalyze_OverflowCapping(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(100), resp.GetTotalAccounts())
 
-	// Chart: "users" root with a variable child
-	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
-	usersSeg, ok := resp.GetSuggestedChart().GetRoots()["users"]
-	require.True(t, ok)
-	require.NotNil(t, usersSeg.GetVariable(), "expected variable child")
-	assert.Equal(t, "id", usersSeg.GetVariable().GetName())
-
-	// The variable should have a "wallet" child underneath
-	_, hasWallet := usersSeg.GetVariable().GetChildren()["wallet"]
-	assert.True(t, hasWallet, "expected 'wallet' child under the variable segment")
-
 	// Pattern: "users:{id}:wallet"
 	require.Len(t, resp.GetPatterns(), 1)
 	assert.Equal(t, "users:{id}:wallet", resp.GetPatterns()[0].GetPattern())
@@ -352,12 +295,6 @@ func TestAnalyze_OverflowMemoryBounded(t *testing.T) {
 
 	require.NotNil(t, resp)
 	assert.Equal(t, uint64(numAccounts), resp.GetTotalAccounts())
-
-	// Should still produce a valid variable pattern
-	require.Len(t, resp.GetSuggestedChart().GetRoots(), 1)
-	usersSeg, ok := resp.GetSuggestedChart().GetRoots()["users"]
-	require.True(t, ok)
-	require.NotNil(t, usersSeg.GetVariable())
 
 	require.Len(t, resp.GetPatterns(), 1)
 	assert.Equal(t, "users:{number}", resp.GetPatterns()[0].GetPattern())

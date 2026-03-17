@@ -43,14 +43,9 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 	}
 
 	// Validate reversed postings against account types.
-	var warnings []*commonpb.ChartViolation
-
 	if info, ok := s.GetLedger(ledger); ok {
 		if len(info.GetAccountTypes()) > 0 {
-			var typeErr error
-
-			warnings, typeErr = validatePostingsAgainstAccountTypes(revertPostings, info.GetAccountTypes())
-			if typeErr != nil {
+			if typeErr := validatePostingsAgainstAccountTypes(revertPostings, info.GetAccountTypes()); typeErr != nil {
 				return nil, typeErr
 			}
 		}
@@ -109,7 +104,6 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 					UpdatedAt:  s.GetDate(),
 				},
 				PostCommitVolumes: postCommitVolumes,
-				Warnings:          warnings,
 			},
 		},
 	}, nil
