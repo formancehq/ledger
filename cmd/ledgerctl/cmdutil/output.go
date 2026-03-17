@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	protoMessageType = reflect.TypeOf((*proto.Message)(nil)).Elem()
+	protoMessageType = reflect.TypeFor[proto.Message]()
 	protoJSONOpts    = protojson.MarshalOptions{
 		Multiline:       true,
 		Indent:          "  ",
@@ -39,6 +39,7 @@ func EncodeStructured(cmd *cobra.Command, data any) (bool, error) {
 			return true, err
 		}
 		_, err = os.Stdout.Write(append(b, '\n'))
+
 		return true, err
 	}
 
@@ -82,6 +83,7 @@ func marshalJSON(data any) ([]byte, error) {
 		if isNilProto(msg) {
 			return []byte("null"), nil
 		}
+
 		return protoJSONOpts.Marshal(msg)
 	}
 
@@ -116,6 +118,7 @@ func marshalProtoSlice(rv reflect.Value) ([]byte, error) {
 		msg, ok := elem.Interface().(proto.Message)
 		if !ok || isNilProto(msg) {
 			items[i] = nil
+
 			continue
 		}
 		v, err := protoToAny(msg)
@@ -124,6 +127,7 @@ func marshalProtoSlice(rv reflect.Value) ([]byte, error) {
 		}
 		items[i] = v
 	}
+
 	return json.MarshalIndent(items, "", "  ")
 }
 
@@ -134,6 +138,7 @@ func marshalProtoMap(rv reflect.Value) ([]byte, error) {
 		msg, ok := rv.MapIndex(key).Interface().(proto.Message)
 		if !ok || isNilProto(msg) {
 			result[key.String()] = nil
+
 			continue
 		}
 		v, err := protoToAny(msg)
@@ -142,6 +147,7 @@ func marshalProtoMap(rv reflect.Value) ([]byte, error) {
 		}
 		result[key.String()] = v
 	}
+
 	return json.MarshalIndent(result, "", "  ")
 }
 
@@ -157,6 +163,7 @@ func marshalMapStringAny(rv reflect.Value) ([]byte, error) {
 		}
 		result[key.String()] = converted
 	}
+
 	return json.MarshalIndent(result, "", "  ")
 }
 
@@ -174,6 +181,7 @@ func convertAnyValue(rv reflect.Value) (any, error) {
 		if isNilProto(msg) {
 			return nil, nil
 		}
+
 		return protoToAny(msg)
 	}
 
@@ -184,6 +192,7 @@ func convertAnyValue(rv reflect.Value) (any, error) {
 			msg, ok := rv.Index(i).Interface().(proto.Message)
 			if !ok || isNilProto(msg) {
 				items[i] = nil
+
 				continue
 			}
 			v, err := protoToAny(msg)
@@ -192,6 +201,7 @@ func convertAnyValue(rv reflect.Value) (any, error) {
 			}
 			items[i] = v
 		}
+
 		return items, nil
 	}
 
@@ -209,12 +219,14 @@ func protoToAny(msg proto.Message) (any, error) {
 	if err := json.Unmarshal(b, &v); err != nil {
 		return nil, err
 	}
+
 	return v, nil
 }
 
 // isNilProto returns true if the proto.Message is a nil pointer.
 func isNilProto(msg proto.Message) bool {
 	rv := reflect.ValueOf(msg)
+
 	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }
 
