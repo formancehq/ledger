@@ -3,9 +3,10 @@ package filterexpr
 import (
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 func TestFormat(t *testing.T) {

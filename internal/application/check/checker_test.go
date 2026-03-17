@@ -414,12 +414,12 @@ func (s *inMemoryStore) AddMetadataConvertRequest(_ string, _ commonpb.TargetTyp
 func (s *inMemoryStore) GetPreparedQuery(_, _ string) (*commonpb.PreparedQuery, error) {
 	return nil, nil
 }
-func (s *inMemoryStore) PutPreparedQuery(_ *commonpb.PreparedQuery)                {}
-func (s *inMemoryStore) DeletePreparedQuery(_, _ string)                           {}
-func (s *inMemoryStore) GetNumscriptLatestVersion(_, _ string) (string, error)     { return "", nil }
-func (s *inMemoryStore) NumscriptVersionExists(_, _, _ string) (bool, error)       { return false, nil }
-func (s *inMemoryStore) PutNumscript(_ *commonpb.NumscriptInfo)                    {}
-func (s *inMemoryStore) DeleteNumscriptLatest(_, _ string)                         {}
+func (s *inMemoryStore) PutPreparedQuery(_ *commonpb.PreparedQuery)            {}
+func (s *inMemoryStore) DeletePreparedQuery(_, _ string)                       {}
+func (s *inMemoryStore) GetNumscriptLatestVersion(_, _ string) (string, error) { return "", nil }
+func (s *inMemoryStore) NumscriptVersionExists(_, _, _ string) (bool, error)   { return false, nil }
+func (s *inMemoryStore) PutNumscript(_ *commonpb.NumscriptInfo)                {}
+func (s *inMemoryStore) DeleteNumscriptLatest(_, _ string)                     {}
 
 // Helper functions for building orders
 

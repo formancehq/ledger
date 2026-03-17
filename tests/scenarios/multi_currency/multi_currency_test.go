@@ -225,42 +225,22 @@ send $amount (
 		adjustBalance("fx:clearing", "USD/2", -1)
 		adjustBalance("treasury:usd", "USD/2", 1)
 
-		// Create a builtin transaction index (timestamp)
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
-		)
-
-		// Wait for the index to become READY
+		// Verify builtin indexes (created by shared scenario) become READY
 		require.Eventually(t, func() bool {
 			info, err := testutil.GetLedger(ctx, client, ledger)
 			if err != nil {
 				return false
 			}
 			bi := info.GetBuiltinIndexes()
-			return bi != nil && bi.GetTimestampStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
-		}, 30*time.Second, 200*time.Millisecond, "timestamp index should become READY")
+			return bi != nil &&
+				bi.GetTimestampStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY &&
+				bi.GetInsertedAtStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
+		}, 30*time.Second, 200*time.Millisecond, "builtin indexes should become READY")
 
-		// Drop the index
+		// Drop and re-create to test index lifecycle
 		scenariotest.ApplyActions(t, ctx, client,
 			testutil.DropBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
 		)
-
-		// Create a builtin transaction index (inserted_at / creation date)
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
-		)
-
-		// Wait for the index to become READY
-		require.Eventually(t, func() bool {
-			info, err := testutil.GetLedger(ctx, client, ledger)
-			if err != nil {
-				return false
-			}
-			bi := info.GetBuiltinIndexes()
-			return bi != nil && bi.GetInsertedAtStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
-		}, 30*time.Second, 200*time.Millisecond, "inserted_at index should become READY")
-
-		// Drop the index
 		scenariotest.ApplyActions(t, ctx, client,
 			testutil.DropBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
 		)
@@ -307,15 +287,9 @@ send $amount (
 			txResult.GetTotalTransactions(), len(txResult.GetFlowPatterns()))
 	})
 
-	// --- Phase 3c: Prepared Queries with typed parameters ---
+	// --- Phase 3c: Prepared Queries (created by shared scenario) ---
 	t.Run("PreparedQueries", func(t *testing.T) {
 		// 1. Parameterized address prefix — reusable query for different account types
-		err := testutil.CreatePreparedQuery(ctx, client, "accounts-by-prefix", ledger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.ParamAddressPrefixFilter("prefix"),
-		)
-		require.NoError(t, err, "CreatePreparedQuery(accounts-by-prefix) failed")
-
 		// Query for all treasury accounts
 		resp, err := testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
@@ -345,12 +319,6 @@ send $amount (
 			"should find exactly 1 fx account (fx:clearing)")
 
 		// 2. Parameterized exact address — find specific accounts
-		err = testutil.CreatePreparedQuery(ctx, client, "account-exact", ledger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.ParamAddressExactFilter("addr"),
-		)
-		require.NoError(t, err, "CreatePreparedQuery(account-exact) failed")
-
 		// Query for a specific vendor
 		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
@@ -370,12 +338,6 @@ send $amount (
 			"nonexistent vendor should return 0 results")
 
 		// 3. Aggregate volumes with parameterized prefix — verify per-account-type volumes
-		err = testutil.CreatePreparedQuery(ctx, client, "volumes-by-prefix", ledger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.ParamAddressPrefixFilter("prefix"),
-		)
-		require.NoError(t, err, "CreatePreparedQuery(volumes-by-prefix) failed")
-
 		// Aggregate volumes for treasury accounts
 		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "volumes-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, 0,

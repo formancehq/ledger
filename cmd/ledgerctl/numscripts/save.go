@@ -116,6 +116,7 @@ func runSave(cmd *cobra.Command, args []string) error {
 			pterm.Printf("Ledger:  %s\n", pterm.Cyan(ledgerName))
 			pterm.Printf("Name:    %s\n", pterm.Cyan(saved.GetInfo().GetName()))
 			pterm.Printf("Version: %s\n", saved.GetInfo().GetVersion())
+
 			return nil
 		}
 	}

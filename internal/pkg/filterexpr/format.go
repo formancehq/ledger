@@ -23,21 +23,22 @@ func Format(f *commonpb.QueryFilter) string {
 		return ""
 	}
 	s, _ := formatFilter(f)
+
 	return s
 }
 
 // formatFilter returns the formatted string and the precedence level of the
 // expression, so callers can decide whether to wrap in parentheses.
 func formatFilter(f *commonpb.QueryFilter) (string, int) {
-	switch v := f.Filter.(type) {
+	switch v := f.GetFilter().(type) {
 	case *commonpb.QueryFilter_Field:
 		return formatFieldCondition(v.Field), precLeaf
 	case *commonpb.QueryFilter_Address:
 		return formatAddressMatch(v.Address), precLeaf
 	case *commonpb.QueryFilter_And:
-		return formatBinaryOp(v.And.Filters, "and", precAnd), precAnd
+		return formatBinaryOp(v.And.GetFilters(), "and", precAnd), precAnd
 	case *commonpb.QueryFilter_Or:
-		return formatBinaryOp(v.Or.Filters, "or", precOr), precOr
+		return formatBinaryOp(v.Or.GetFilters(), "or", precOr), precOr
 	case *commonpb.QueryFilter_Not:
 		return formatNot(v.Not)
 	default:
@@ -52,6 +53,7 @@ func formatWithPrec(f *commonpb.QueryFilter, parentPrec int) string {
 	if prec < parentPrec {
 		return "(" + s + ")"
 	}
+
 	return s
 }
 
@@ -60,24 +62,26 @@ func formatBinaryOp(filters []*commonpb.QueryFilter, op string, prec int) string
 	for i, f := range filters {
 		parts[i] = formatWithPrec(f, prec)
 	}
+
 	return strings.Join(parts, " "+op+" ")
 }
 
 func formatNot(n *commonpb.NotFilter) (string, int) {
 	// Sugar: not(field == val) → metadata[key] != val
-	if fc := n.Filter.GetField(); fc != nil {
+	if fc := n.GetFilter().GetField(); fc != nil {
 		if ne := formatAsNotEqual(fc); ne != "" {
 			return ne, precLeaf
 		}
 	}
-	return "not " + formatWithPrec(n.Filter, precNot), precNot
+
+	return "not " + formatWithPrec(n.GetFilter(), precNot), precNot
 }
 
 // formatAsNotEqual tries to render a FieldCondition wrapped in NOT as a != expression.
 // Returns empty string if the condition is not a simple equality.
 func formatAsNotEqual(fc *commonpb.FieldCondition) string {
-	key := fc.Field.GetMetadata()
-	switch cond := fc.Condition.(type) {
+	key := fc.GetField().GetMetadata()
+	switch cond := fc.GetCondition().(type) {
 	case *commonpb.FieldCondition_StringCond:
 		return fmt.Sprintf("metadata[%s] != %s", key, formatStringCondValue(cond.StringCond))
 	case *commonpb.FieldCondition_IntCond:
@@ -87,13 +91,14 @@ func formatAsNotEqual(fc *commonpb.FieldCondition) string {
 	case *commonpb.FieldCondition_BoolCond:
 		return fmt.Sprintf("metadata[%s] != %s", key, formatBoolCondValue(cond.BoolCond))
 	}
+
 	return ""
 }
 
 func formatFieldCondition(fc *commonpb.FieldCondition) string {
-	key := fc.Field.GetMetadata()
+	key := fc.GetField().GetMetadata()
 
-	switch cond := fc.Condition.(type) {
+	switch cond := fc.GetCondition().(type) {
 	case *commonpb.FieldCondition_StringCond:
 		return fmt.Sprintf("metadata[%s] == %s", key, formatStringCondValue(cond.StringCond))
 	case *commonpb.FieldCondition_IntCond:
@@ -110,7 +115,7 @@ func formatFieldCondition(fc *commonpb.FieldCondition) string {
 }
 
 func formatStringCondValue(sc *commonpb.StringCondition) string {
-	switch v := sc.Value.(type) {
+	switch v := sc.GetValue().(type) {
 	case *commonpb.StringCondition_Param:
 		return "$" + v.Param
 	case *commonpb.StringCondition_Hardcoded:
@@ -121,13 +126,14 @@ func formatStringCondValue(sc *commonpb.StringCondition) string {
 }
 
 func formatBoolCondValue(bc *commonpb.BoolCondition) string {
-	switch v := bc.Value.(type) {
+	switch v := bc.GetValue().(type) {
 	case *commonpb.BoolCondition_Param:
 		return "$" + v.Param
 	case *commonpb.BoolCondition_Hardcoded:
 		if v.Hardcoded {
 			return "true"
 		}
+
 		return "false"
 	default:
 		return "false"
@@ -137,9 +143,10 @@ func formatBoolCondValue(bc *commonpb.BoolCondition) string {
 // formatIntCondAsEquality returns the value string if the IntCondition represents
 // an exact equality (min == max, both non-nil, no exclusion). Returns "" otherwise.
 func formatIntCondAsEquality(ic *commonpb.IntCondition) string {
-	if ic.Min != nil && ic.Max != nil && *ic.Min == *ic.Max && !ic.MinExclusive && !ic.MaxExclusive {
-		return strconv.FormatInt(*ic.Min, 10)
+	if ic.Min != nil && ic.Max != nil && ic.GetMin() == ic.GetMax() && !ic.GetMinExclusive() && !ic.GetMaxExclusive() {
+		return strconv.FormatInt(ic.GetMin(), 10)
 	}
+
 	return ""
 }
 
@@ -150,35 +157,39 @@ func formatIntCondition(key string, ic *commonpb.IntCondition) string {
 	}
 
 	// Parameterized range
-	if ic.ParamMin != "" {
+	if ic.GetParamMin() != "" {
 		op := ">="
-		if ic.MinExclusive {
+		if ic.GetMinExclusive() {
 			op = ">"
 		}
-		return fmt.Sprintf("metadata[%s] %s $%s", key, op, ic.ParamMin)
+
+		return fmt.Sprintf("metadata[%s] %s $%s", key, op, ic.GetParamMin())
 	}
-	if ic.ParamMax != "" {
+	if ic.GetParamMax() != "" {
 		op := "<="
-		if ic.MaxExclusive {
+		if ic.GetMaxExclusive() {
 			op = "<"
 		}
-		return fmt.Sprintf("metadata[%s] %s $%s", key, op, ic.ParamMax)
+
+		return fmt.Sprintf("metadata[%s] %s $%s", key, op, ic.GetParamMax())
 	}
 
 	// Hardcoded range
 	if ic.Min != nil {
 		op := ">="
-		if ic.MinExclusive {
+		if ic.GetMinExclusive() {
 			op = ">"
 		}
-		return fmt.Sprintf("metadata[%s] %s %d", key, op, *ic.Min)
+
+		return fmt.Sprintf("metadata[%s] %s %d", key, op, ic.GetMin())
 	}
 	if ic.Max != nil {
 		op := "<="
-		if ic.MaxExclusive {
+		if ic.GetMaxExclusive() {
 			op = "<"
 		}
-		return fmt.Sprintf("metadata[%s] %s %d", key, op, *ic.Max)
+
+		return fmt.Sprintf("metadata[%s] %s %d", key, op, ic.GetMax())
 	}
 
 	return fmt.Sprintf("metadata[%s] <int?>", key)
@@ -186,38 +197,42 @@ func formatIntCondition(key string, ic *commonpb.IntCondition) string {
 
 func formatUintCondition(key string, uc *commonpb.UintCondition) string {
 	// Equality
-	if uc.Min != nil && uc.Max != nil && *uc.Min == *uc.Max && !uc.MinExclusive && !uc.MaxExclusive {
-		return fmt.Sprintf("metadata[%s] == %d", key, *uc.Min)
+	if uc.Min != nil && uc.Max != nil && uc.GetMin() == uc.GetMax() && !uc.GetMinExclusive() && !uc.GetMaxExclusive() {
+		return fmt.Sprintf("metadata[%s] == %d", key, uc.GetMin())
 	}
 
-	if uc.ParamMin != "" {
+	if uc.GetParamMin() != "" {
 		op := ">="
-		if uc.MinExclusive {
+		if uc.GetMinExclusive() {
 			op = ">"
 		}
-		return fmt.Sprintf("metadata[%s] %s $%s", key, op, uc.ParamMin)
+
+		return fmt.Sprintf("metadata[%s] %s $%s", key, op, uc.GetParamMin())
 	}
-	if uc.ParamMax != "" {
+	if uc.GetParamMax() != "" {
 		op := "<="
-		if uc.MaxExclusive {
+		if uc.GetMaxExclusive() {
 			op = "<"
 		}
-		return fmt.Sprintf("metadata[%s] %s $%s", key, op, uc.ParamMax)
+
+		return fmt.Sprintf("metadata[%s] %s $%s", key, op, uc.GetParamMax())
 	}
 
 	if uc.Min != nil {
 		op := ">="
-		if uc.MinExclusive {
+		if uc.GetMinExclusive() {
 			op = ">"
 		}
-		return fmt.Sprintf("metadata[%s] %s %d", key, op, *uc.Min)
+
+		return fmt.Sprintf("metadata[%s] %s %d", key, op, uc.GetMin())
 	}
 	if uc.Max != nil {
 		op := "<="
-		if uc.MaxExclusive {
+		if uc.GetMaxExclusive() {
 			op = "<"
 		}
-		return fmt.Sprintf("metadata[%s] %s %d", key, op, *uc.Max)
+
+		return fmt.Sprintf("metadata[%s] %s %d", key, op, uc.GetMax())
 	}
 
 	return fmt.Sprintf("metadata[%s] <uint?>", key)
@@ -225,14 +240,14 @@ func formatUintCondition(key string, uc *commonpb.UintCondition) string {
 
 func formatAddressMatch(am *commonpb.AddressMatch) string {
 	keyword := "address"
-	switch am.Role {
+	switch am.GetRole() {
 	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
 		keyword = "source"
 	case commonpb.AddressRole_ADDRESS_ROLE_DESTINATION:
 		keyword = "destination"
 	}
 
-	switch v := am.Match.(type) {
+	switch v := am.GetMatch().(type) {
 	case *commonpb.AddressMatch_HardcodedExact:
 		return fmt.Sprintf("%s == %s", keyword, quoteIfNeeded(v.HardcodedExact))
 	case *commonpb.AddressMatch_HardcodedPrefix:
@@ -255,6 +270,7 @@ func quoteIfNeeded(s string) string {
 	if needsQuoting(s) {
 		return `"` + s + `"`
 	}
+
 	return s
 }
 
@@ -274,5 +290,6 @@ func needsQuoting(s string) bool {
 			return true
 		}
 	}
+
 	return false
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -83,11 +84,44 @@ func runGet(cmd *cobra.Command, args []string) error {
 		renderMirrorSyncProgress(ledger.GetMirrorSyncProgress())
 	}
 
+	if len(ledger.GetAccountTypes()) > 0 {
+		renderAccountTypes(ledger.GetAccountTypes())
+	}
+
 	if ledger.GetMetadataSchema() != nil {
 		renderLedgerSchema(ledger.GetMetadataSchema())
 	}
 
 	return nil
+}
+
+func renderAccountTypes(types map[string]*commonpb.AccountType) {
+	pterm.Println()
+	pterm.Println("Account Types:")
+	pterm.Println(pterm.Gray("─────────────────────────────────"))
+
+	names := make([]string, 0, len(types))
+	for n := range types {
+		names = append(names, n)
+	}
+
+	sort.Strings(names)
+
+	tableData := pterm.TableData{
+		{"  NAME", "PATTERN", "STATUS", "ENFORCEMENT"},
+	}
+
+	for _, n := range names {
+		at := types[n]
+		tableData = append(tableData, []string{
+			"  " + at.GetName(),
+			at.GetPattern(),
+			accounttypes.FormatStatus(at.GetStatus()),
+			accounttypes.FormatEnforcementMode(at.GetEnforcementMode()),
+		})
+	}
+
+	_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }
 
 func renderLedgerSchema(schema *commonpb.MetadataSchema) {

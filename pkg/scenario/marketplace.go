@@ -247,5 +247,19 @@ send $amount (
 		return err
 	}
 
+	// --- Prepared Queries ---
+	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "customer-query", ledger,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		actions.AddressPrefixFilter("customer:"),
+	); err != nil {
+		return fmt.Errorf("create prepared query customer-query: %w", err)
+	}
+	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "accounts-by-prefix", ledger,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		actions.ParamAddressPrefixFilter("prefix"),
+	); err != nil {
+		return fmt.Errorf("create prepared query accounts-by-prefix: %w", err)
+	}
+
 	return nil
 }

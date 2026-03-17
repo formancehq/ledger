@@ -177,5 +177,37 @@ send $amount (
 		}
 	}
 
+	// --- Indexes ---
+	if _, err := r.Step("Indexes/Timestamp",
+		actions.CreateBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+	); err != nil {
+		return err
+	}
+	if _, err := r.Step("Indexes/InsertedAt",
+		actions.CreateBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+	); err != nil {
+		return err
+	}
+
+	// --- Prepared Queries ---
+	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "accounts-by-prefix", ledger,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		actions.ParamAddressPrefixFilter("prefix"),
+	); err != nil {
+		return fmt.Errorf("create prepared query accounts-by-prefix: %w", err)
+	}
+	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "account-exact", ledger,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		actions.ParamAddressExactFilter("addr"),
+	); err != nil {
+		return fmt.Errorf("create prepared query account-exact: %w", err)
+	}
+	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "volumes-by-prefix", ledger,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		actions.ParamAddressPrefixFilter("prefix"),
+	); err != nil {
+		return fmt.Errorf("create prepared query volumes-by-prefix: %w", err)
+	}
+
 	return nil
 }

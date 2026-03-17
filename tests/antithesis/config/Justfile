@@ -13,5 +13,5 @@ push:
 
 	just build-manifest "$tmpdir/resources.yaml"
 
-	docker build -f Dockerfile.config -t $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:$RUN_TAG $tmpdir
+	docker build --platform linux/amd64 -f Dockerfile.config -t $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:$RUN_TAG $tmpdir
 	docker push $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:$RUN_TAG

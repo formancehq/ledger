@@ -426,15 +426,18 @@ send $amount (
 		)
 	})
 
-	// --- Phase 11: Prepared Queries with typed parameters ---
+	// --- Phase 11: Prepared Queries (created by shared scenario) ---
 	t.Run("PreparedQueries", func(t *testing.T) {
-		// 1. Parameterized address prefix — filter by account type at runtime
-		err := testutil.CreatePreparedQuery(ctx, client, "accounts-by-prefix", ledger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.ParamAddressPrefixFilter("prefix"),
-		)
-		require.NoError(t, err, "CreatePreparedQuery(accounts-by-prefix) failed")
+		// Wait for tier index backfill to complete
+		require.Eventually(t, func() bool {
+			indexStatus, err := testutil.GetIndexStatus(ctx, client)
+			if err != nil {
+				return false
+			}
+			return indexStatus.GetLag() == 0 && len(indexStatus.GetBackfillProgress()) == 0
+		}, 15*time.Second, 200*time.Millisecond, "tier index backfill should complete")
 
+		// 1. Parameterized address prefix — filter by account type at runtime
 		// Query for all player coin accounts
 		resp, err := testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
@@ -464,12 +467,6 @@ send $amount (
 		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 0)
 
 		// 2. Parameterized exact address — find a specific account
-		err = testutil.CreatePreparedQuery(ctx, client, "account-exact", ledger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.ParamAddressExactFilter("addr"),
-		)
-		require.NoError(t, err, "CreatePreparedQuery(account-exact) failed")
-
 		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
 			map[string]*commonpb.ParameterValue{"addr": testutil.StringParam("platform:revenue")},
@@ -488,24 +485,6 @@ send $amount (
 			"nonexistent account should return 0 results")
 
 		// 3. Parameterized string metadata — filter by tier
-		// First, index the "tier" metadata field
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateAccountMetadataIndexAction(ledger, "tier"),
-		)
-		require.Eventually(t, func() bool {
-			indexStatus, err := testutil.GetIndexStatus(ctx, client)
-			if err != nil {
-				return false
-			}
-			return indexStatus.GetLag() == 0 && len(indexStatus.GetBackfillProgress()) == 0
-		}, 15*time.Second, 200*time.Millisecond, "tier index backfill should complete")
-
-		err = testutil.CreatePreparedQuery(ctx, client, "by-tier", ledger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.ParamStringMetadataFilter("tier", "tier_value"),
-		)
-		require.NoError(t, err, "CreatePreparedQuery(by-tier) failed")
-
 		// Query for "platinum" tier — player:1:coins was updated to platinum
 		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-tier",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,

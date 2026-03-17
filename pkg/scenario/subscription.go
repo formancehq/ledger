@@ -71,6 +71,11 @@ func RunSubscription(r *Runner) error {
 				Key:        "billing_cycle",
 				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 			},
+			{
+				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				Key:        "retention_score",
+				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+			},
 		}),
 		actions.AddAccountTypeAction(ledger, "subscriber", "subscriber:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		actions.AddAccountTypeAction(ledger, "revenue-deferred", "revenue:deferred", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
@@ -201,6 +206,34 @@ send $amount (
 			return err
 		}
 		totalDeferred.Sub(totalDeferred, recognizeAmt)
+	}
+
+	// --- Indexes ---
+	if _, err := r.Step("Indexes",
+		actions.CreateAccountMetadataIndexAction(ledger, "subscriber_plan"),
+		actions.CreateAccountMetadataIndexAction(ledger, "retention_score"),
+	); err != nil {
+		return err
+	}
+
+	// --- Prepared Queries ---
+	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "accounts-by-prefix", ledger,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		actions.ParamAddressPrefixFilter("prefix"),
+	); err != nil {
+		return fmt.Errorf("create prepared query accounts-by-prefix: %w", err)
+	}
+	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "by-plan", ledger,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		actions.ParamStringMetadataFilter("subscriber_plan", "plan_value"),
+	); err != nil {
+		return fmt.Errorf("create prepared query by-plan: %w", err)
+	}
+	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "high-retention", ledger,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		actions.ParamInt64RangeMetadataFilter("retention_score", "min_score", "max_score"),
+	); err != nil {
+		return fmt.Errorf("create prepared query high-retention: %w", err)
 	}
 
 	return nil

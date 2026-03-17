@@ -357,13 +357,8 @@ send $amount (
 		)
 	})
 
-	// --- Phase 7: Prepared Queries with typed parameters ---
+	// --- Phase 7: Prepared Queries (created by shared scenario) ---
 	t.Run("PreparedQueries", func(t *testing.T) {
-		// Create a metadata index on "status" before querying
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateAccountMetadataIndexAction(ledger, "status"),
-		)
-
 		// Wait for index backfill to complete (lag=0 and no backfill in progress)
 		require.Eventually(t, func() bool {
 			indexStatus, err := testutil.GetIndexStatus(ctx, client)
@@ -374,12 +369,6 @@ send $amount (
 		}, 15*time.Second, 200*time.Millisecond, "index backfill should complete")
 
 		// 1. Parameterized string metadata — query by loan status at runtime
-		err := testutil.CreatePreparedQuery(ctx, client, "loans-by-status", ledger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.ParamStringMetadataFilter("status", "status_value"),
-		)
-		require.NoError(t, err, "CreatePreparedQuery(loans-by-status) failed")
-
 		// Query for written-off loans — should find exactly the defaulters
 		resp, err := testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "loans-by-status",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
@@ -410,12 +399,6 @@ send $amount (
 			"no loans should have status=active")
 
 		// 2. Parameterized address prefix — filter borrower accounts by prefix
-		err = testutil.CreatePreparedQuery(ctx, client, "accounts-by-prefix", ledger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.ParamAddressPrefixFilter("prefix"),
-		)
-		require.NoError(t, err, "CreatePreparedQuery(accounts-by-prefix) failed")
-
 		// Query for all borrower loan accounts
 		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,

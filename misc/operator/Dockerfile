@@ -1,5 +1,6 @@
-FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
-ARG TARGETARCH
+FROM golang:1.26 AS builder
+ARG GOARCH
+ARG GOOS
 
 WORKDIR /workspace
 
@@ -8,7 +9,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o build/operator ./cmd/operator
+RUN CGO_ENABLED=0 go build -o build/operator ./cmd/operator
 
 FROM gcr.io/distroless/static:nonroot
 

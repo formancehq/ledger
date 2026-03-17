@@ -505,15 +505,9 @@ send $amount (
 		)
 	})
 
-	// --- Phase 11b: Prepared Queries ---
+	// --- Phase 11b: Prepared Queries (created by shared scenario) ---
 	t.Run("PreparedQueries", func(t *testing.T) {
-		// 1. Hardcoded filter (existing test — address prefix)
-		err := testutil.CreatePreparedQuery(ctx, client, "customer-query", ledger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.AddressPrefixFilter("customer:"),
-		)
-		require.NoError(t, err, "CreatePreparedQuery failed")
-
+		// 1. Hardcoded filter — verify customer-query exists and works
 		queries, err := testutil.ListPreparedQueries(ctx, client, ledger)
 		require.NoError(t, err, "ListPreparedQueries failed")
 		require.GreaterOrEqual(t, len(queries), 1, "should have at least 1 prepared query")
@@ -531,12 +525,6 @@ send $amount (
 		require.NotNil(t, execResp, "execute response should not be nil")
 
 		// 2. Parameterized address prefix — reusable query, different prefixes at runtime
-		err = testutil.CreatePreparedQuery(ctx, client, "accounts-by-prefix", ledger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.ParamAddressPrefixFilter("prefix"),
-		)
-		require.NoError(t, err, "CreatePreparedQuery(accounts-by-prefix) failed")
-
 		// Execute with prefix=customer: → should return all customers
 		resp, err := testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100, map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("customer:")})

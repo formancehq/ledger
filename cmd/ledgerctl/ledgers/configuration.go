@@ -1,17 +1,20 @@
 package ledgers
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sort"
 	"strings"
 
+	"github.com/pterm/pterm"
+	"github.com/spf13/cobra"
+
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/pterm/pterm"
-	"github.com/spf13/cobra"
 )
 
 // NewConfigurationCommand creates the ledgers configuration command.
@@ -54,6 +57,7 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 	if err != nil {
 		spinner.Fail("Failed to get ledger")
+
 		return cmdutil.FormatGRPCError("failed to get ledger", err)
 	}
 
@@ -61,6 +65,7 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	pqResp, err := client.ListPreparedQueries(ctx, &servicepb.ListPreparedQueriesRequest{Ledger: ledgerName})
 	if err != nil {
 		spinner.Fail("Failed to list prepared queries")
+
 		return cmdutil.FormatGRPCError("failed to list prepared queries", err)
 	}
 
@@ -68,17 +73,19 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	nsStream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{Ledger: ledgerName})
 	if err != nil {
 		spinner.Fail("Failed to list numscripts")
+
 		return cmdutil.FormatGRPCError("failed to list numscripts", err)
 	}
 
 	var numscripts []*commonpb.NumscriptInfo
 	for {
 		info, err := nsStream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
 			spinner.Fail("Failed to receive numscripts")
+
 			return cmdutil.FormatGRPCError("failed to receive numscripts", err)
 		}
 		numscripts = append(numscripts, info)
@@ -88,7 +95,7 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 
 	if handled, err := cmdutil.EncodeStructured(cmd, map[string]any{
 		"ledger":          ledger,
-		"preparedQueries": pqResp.Queries,
+		"preparedQueries": pqResp.GetQueries(),
 		"numscripts":      numscripts,
 	}); handled || err != nil {
 		return err
@@ -99,18 +106,55 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	pterm.Printf("Configuration for ledger: %s\n", pterm.Cyan(ledgerName))
 	pterm.Println(pterm.Gray("═════════════════════════════════════"))
 
-	// 1. Indexes
+	// 1. Account Types
+	renderConfigurationAccountTypes(ledger)
+
+	// 2. Indexes
 	renderConfigurationIndexes(ledger)
 
 	expand, _ := cmd.Flags().GetBool("expand")
 
-	// 2. Prepared Queries
-	renderConfigurationPreparedQueries(pqResp.Queries, expand)
+	// 3. Prepared Queries
+	renderConfigurationPreparedQueries(pqResp.GetQueries(), expand)
 
-	// 3. Numscript Library
+	// 4. Numscript Library
 	renderConfigurationNumscripts(numscripts, expand)
 
 	return nil
+}
+
+func renderConfigurationAccountTypes(ledger *commonpb.LedgerInfo) {
+	pterm.Println()
+	pterm.DefaultSection.Printf("Account Types (%d)\n", len(ledger.GetAccountTypes()))
+
+	if len(ledger.GetAccountTypes()) == 0 {
+		pterm.Println(pterm.Gray("  (none)"))
+
+		return
+	}
+
+	names := make([]string, 0, len(ledger.GetAccountTypes()))
+	for n := range ledger.GetAccountTypes() {
+		names = append(names, n)
+	}
+
+	sort.Strings(names)
+
+	table := pterm.TableData{
+		{"NAME", "PATTERN", "STATUS", "ENFORCEMENT"},
+	}
+
+	for _, n := range names {
+		at := ledger.GetAccountTypes()[n]
+		table = append(table, []string{
+			at.GetName(),
+			at.GetPattern(),
+			accounttypes.FormatStatus(at.GetStatus()),
+			accounttypes.FormatEnforcementMode(at.GetEnforcementMode()),
+		})
+	}
+
+	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
 }
 
 func renderConfigurationIndexes(ledger *commonpb.LedgerInfo) {
@@ -121,31 +165,32 @@ func renderConfigurationIndexes(ledger *commonpb.LedgerInfo) {
 		{"TYPE", "TARGET", "KEY"},
 	}
 
-	if bi := ledger.BuiltinIndexes; bi != nil {
-		if bi.Reference {
+	if bi := ledger.GetBuiltinIndexes(); bi != nil {
+		if bi.GetReference() {
 			table = append(table, []string{"reference", "-", "-"})
 		}
-		if bi.Timestamp {
+		if bi.GetTimestamp() {
 			table = append(table, []string{"timestamp", "-", "-"})
 		}
-		if bi.Address {
+		if bi.GetAddress() {
 			table = append(table, []string{"address", "-", "-"})
 		}
-		if bi.SourceAddress {
+		if bi.GetSourceAddress() {
 			table = append(table, []string{"source-address", "-", "-"})
 		}
-		if bi.DestAddress {
+		if bi.GetDestAddress() {
 			table = append(table, []string{"dest-address", "-", "-"})
 		}
 	}
 
-	if schema := ledger.MetadataSchema; schema != nil {
-		addMetadataIndexRows(&table, "account", schema.AccountFields)
-		addMetadataIndexRows(&table, "transaction", schema.TransactionFields)
+	if schema := ledger.GetMetadataSchema(); schema != nil {
+		addMetadataIndexRows(&table, "account", schema.GetAccountFields())
+		addMetadataIndexRows(&table, "transaction", schema.GetTransactionFields())
 	}
 
 	if len(table) == 1 {
 		pterm.Println(pterm.Gray("  (none)"))
+
 		return
 	}
 
@@ -174,6 +219,7 @@ func renderConfigurationPreparedQueries(queries []*commonpb.PreparedQuery, expan
 
 	if len(queries) == 0 {
 		pterm.Println(pterm.Gray("  (none)"))
+
 		return
 	}
 
@@ -183,11 +229,12 @@ func renderConfigurationPreparedQueries(queries []*commonpb.PreparedQuery, expan
 		}
 		for _, q := range queries {
 			table = append(table, []string{
-				q.Name,
-				queryTargetString(q.Target),
+				q.GetName(),
+				queryTargetString(q.GetTarget()),
 			})
 		}
 		_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
+
 		return
 	}
 
@@ -195,13 +242,13 @@ func renderConfigurationPreparedQueries(queries []*commonpb.PreparedQuery, expan
 		if i > 0 {
 			pterm.Println()
 		}
-		pterm.Printf("  %s %s\n", pterm.Cyan(q.Name), pterm.Gray("─────────────────────────"))
-		pterm.Printf("    Name:   %s\n", q.Name)
-		pterm.Printf("    Target: %s\n", queryTargetString(q.Target))
-		pterm.Printf("    Ledger: %s\n", q.Ledger)
+		pterm.Printf("  %s %s\n", pterm.Cyan(q.GetName()), pterm.Gray("─────────────────────────"))
+		pterm.Printf("    Name:   %s\n", q.GetName())
+		pterm.Printf("    Target: %s\n", queryTargetString(q.GetTarget()))
+		pterm.Printf("    Ledger: %s\n", q.GetLedger())
 
-		if q.Filter != nil {
-			pterm.Printf("    Filter: %s\n", filterexpr.Format(q.Filter))
+		if q.GetFilter() != nil {
+			pterm.Printf("    Filter: %s\n", filterexpr.Format(q.GetFilter()))
 		} else {
 			pterm.Printf("    Filter: %s\n", pterm.Gray("(none)"))
 		}
@@ -225,6 +272,7 @@ func renderConfigurationNumscripts(numscripts []*commonpb.NumscriptInfo, expand 
 
 	if len(numscripts) == 0 {
 		pterm.Println(pterm.Gray("  (none)"))
+
 		return
 	}
 
@@ -234,16 +282,17 @@ func renderConfigurationNumscripts(numscripts []*commonpb.NumscriptInfo, expand 
 		}
 		for _, ns := range numscripts {
 			createdAt := ""
-			if ns.CreatedAt != nil {
-				createdAt = ns.CreatedAt.AsTime().Format("2006-01-02T15:04:05Z07:00")
+			if ns.GetCreatedAt() != nil {
+				createdAt = ns.GetCreatedAt().AsTime().Format("2006-01-02T15:04:05Z07:00")
 			}
 			table = append(table, []string{
-				ns.Name,
-				ns.Version,
+				ns.GetName(),
+				ns.GetVersion(),
 				createdAt,
 			})
 		}
 		_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
+
 		return
 	}
 
@@ -251,15 +300,15 @@ func renderConfigurationNumscripts(numscripts []*commonpb.NumscriptInfo, expand 
 		if i > 0 {
 			pterm.Println()
 		}
-		pterm.Printf("  %s %s\n", pterm.Cyan(ns.Name), pterm.Gray("─────────────────────────"))
-		pterm.Printf("    Name:       %s\n", ns.Name)
-		pterm.Printf("    Version:    %s\n", ns.Version)
-		pterm.Printf("    Ledger:     %s\n", ns.Ledger)
-		if ns.CreatedAt != nil {
-			pterm.Printf("    Created At: %s\n", ns.CreatedAt.AsTime().Format("2006-01-02T15:04:05Z07:00"))
+		pterm.Printf("  %s %s\n", pterm.Cyan(ns.GetName()), pterm.Gray("─────────────────────────"))
+		pterm.Printf("    Name:       %s\n", ns.GetName())
+		pterm.Printf("    Version:    %s\n", ns.GetVersion())
+		pterm.Printf("    Ledger:     %s\n", ns.GetLedger())
+		if ns.GetCreatedAt() != nil {
+			pterm.Printf("    Created At: %s\n", ns.GetCreatedAt().AsTime().Format("2006-01-02T15:04:05Z07:00"))
 		}
 		pterm.Printf("    Content:\n")
-		for _, line := range strings.Split(strings.TrimSpace(ns.Content), "\n") {
+		for line := range strings.SplitSeq(strings.TrimSpace(ns.GetContent()), "\n") {
 			pterm.Printf("      %s\n", pterm.Gray(line))
 		}
 	}

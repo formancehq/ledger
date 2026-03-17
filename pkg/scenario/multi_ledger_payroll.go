@@ -85,7 +85,7 @@ send $amount (
 
 	// Save department-scoped numscripts
 	for _, dept := range departments {
-		if _, err := r.Step(fmt.Sprintf("Setup/Numscripts/%s", dept.name),
+		if _, err := r.Step("Setup/Numscripts/"+dept.name,
 			actions.SaveNumscriptWithVersionAction(dept.ledger, "fund_payroll", `vars {
   monetary $amount
 }

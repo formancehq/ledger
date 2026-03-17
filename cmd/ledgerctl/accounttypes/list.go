@@ -84,8 +84,8 @@ func runList(cmd *cobra.Command, _ []string) error {
 		tableData = append(tableData, []string{
 			at.GetName(),
 			at.GetPattern(),
-			formatStatus(at.GetStatus()),
-			formatEnforcementMode(at.GetEnforcementMode()),
+			FormatStatus(at.GetStatus()),
+			FormatEnforcementMode(at.GetEnforcementMode()),
 		})
 	}
 
@@ -94,7 +94,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 }
 
-func formatStatus(s commonpb.AccountTypeStatus) string {
+func FormatStatus(s commonpb.AccountTypeStatus) string {
 	switch s {
 	case commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE:
 		return "ACTIVE"
@@ -105,7 +105,7 @@ func formatStatus(s commonpb.AccountTypeStatus) string {
 	}
 }
 
-func formatEnforcementMode(m commonpb.ChartEnforcementMode) string {
+func FormatEnforcementMode(m commonpb.ChartEnforcementMode) string {
 	switch m {
 	case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT:
 		return "STRICT"

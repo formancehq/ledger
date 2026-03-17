@@ -228,5 +228,32 @@ send $amount (
 		return err
 	}
 
+	// --- Indexes ---
+	if _, err := r.Step("Indexes",
+		actions.CreateAccountMetadataIndexAction(ledger, "tier"),
+	); err != nil {
+		return err
+	}
+
+	// --- Prepared Queries ---
+	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "accounts-by-prefix", ledger,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		actions.ParamAddressPrefixFilter("prefix"),
+	); err != nil {
+		return fmt.Errorf("create prepared query accounts-by-prefix: %w", err)
+	}
+	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "account-exact", ledger,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		actions.ParamAddressExactFilter("addr"),
+	); err != nil {
+		return fmt.Errorf("create prepared query account-exact: %w", err)
+	}
+	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "by-tier", ledger,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		actions.ParamStringMetadataFilter("tier", "tier_value"),
+	); err != nil {
+		return fmt.Errorf("create prepared query by-tier: %w", err)
+	}
+
 	return nil
 }

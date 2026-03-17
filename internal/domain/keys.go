@@ -253,6 +253,7 @@ func (k NumscriptVersionKey) Bytes() []byte {
 	ret[n] = 0x00
 	n++
 	copy(ret[n:], k.Name)
+
 	return ret
 }
 
@@ -272,6 +273,7 @@ func (k NumscriptEntryKey) Bytes() []byte {
 	ret[n] = 0x00
 	n++
 	copy(ret[n:], k.Version)
+
 	return ret
 }
 

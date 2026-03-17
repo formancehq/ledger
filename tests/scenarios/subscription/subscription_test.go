@@ -132,12 +132,7 @@ send $amount (
 		)
 	})
 
-	// --- Phase 1b: Add extra metadata field type ---
-	t.Run("SetupExtraSchema", func(t *testing.T) {
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.SetMetadataFieldTypeAction(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "retention_score", commonpb.MetadataType_METADATA_TYPE_INT64),
-		)
-	})
+	// retention_score schema is now declared in the shared scenario's initial schema
 
 	// --- Billing Cycles ---
 	for cycle := 1; cycle <= numCycles; cycle++ {
@@ -300,15 +295,18 @@ send $amount (
 		t.Logf("MetadataSchema: %d account fields declared", len(acctFields))
 	})
 
-	// --- Prepared Queries with typed parameters ---
+	// --- Prepared Queries (created by shared scenario) ---
 	t.Run("PreparedQueries", func(t *testing.T) {
-		// 1. Parameterized address prefix — reusable across different prefixes
-		err := testutil.CreatePreparedQuery(ctx, client, "accounts-by-prefix", ledger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.ParamAddressPrefixFilter("prefix"),
-		)
-		require.NoError(t, err, "CreatePreparedQuery(accounts-by-prefix) failed")
+		// Wait for index backfill to complete
+		require.Eventually(t, func() bool {
+			indexStatus, err := testutil.GetIndexStatus(ctx, client)
+			if err != nil {
+				return false
+			}
+			return indexStatus.GetLag() == 0 && len(indexStatus.GetBackfillProgress()) == 0
+		}, 15*time.Second, 200*time.Millisecond, "index backfill should complete")
 
+		// 1. Parameterized address prefix — reusable across different prefixes
 		resp, err := testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
 			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("subscriber:")},
@@ -326,24 +324,6 @@ send $amount (
 			"prefix=revenue: should return deferred + recognized + adjustment")
 
 		// 2. Parameterized string metadata — filter by subscriber plan
-		// (requires metadata index)
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateAccountMetadataIndexAction(ledger, "subscriber_plan"),
-		)
-		require.Eventually(t, func() bool {
-			indexStatus, err := testutil.GetIndexStatus(ctx, client)
-			if err != nil {
-				return false
-			}
-			return indexStatus.GetLag() == 0 && len(indexStatus.GetBackfillProgress()) == 0
-		}, 15*time.Second, 200*time.Millisecond, "subscriber_plan index backfill should complete")
-
-		err = testutil.CreatePreparedQuery(ctx, client, "by-plan", ledger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.ParamStringMetadataFilter("subscriber_plan", "plan_value"),
-		)
-		require.NoError(t, err, "CreatePreparedQuery(by-plan) failed")
-
 		// Query for "pro" subscribers — subscriber:6 was tagged with plan=pro
 		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-plan",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
@@ -372,23 +352,6 @@ send $amount (
 			"nonexistent plan should return 0 accounts")
 
 		// 3. Parameterized int64 range metadata — filter by retention_score range
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateAccountMetadataIndexAction(ledger, "retention_score"),
-		)
-		require.Eventually(t, func() bool {
-			indexStatus, err := testutil.GetIndexStatus(ctx, client)
-			if err != nil {
-				return false
-			}
-			return indexStatus.GetLag() == 0 && len(indexStatus.GetBackfillProgress()) == 0
-		}, 15*time.Second, 200*time.Millisecond, "retention_score index backfill should complete")
-
-		err = testutil.CreatePreparedQuery(ctx, client, "high-retention", ledger,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			testutil.ParamInt64RangeMetadataFilter("retention_score", "min_score", "max_score"),
-		)
-		require.NoError(t, err, "CreatePreparedQuery(high-retention) failed")
-
 		// Query score >= 90 (subscriber:7 has 92) — retry until index is ready
 		require.Eventually(t, func() bool {
 			resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "high-retention",
@@ -438,6 +401,10 @@ send $amount (
 	// CreateAccountMetadataIndex after high cache pressure (200+ Apply calls, 4+ rotations).
 	// Regression test: LedgerInfo must be preloaded for Apply orders to survive cache eviction.
 	t.Run("CreateAccountMetadataIndexUnderLoad", func(t *testing.T) {
+		// Drop the index created by the shared scenario, then re-create under load
+		scenariotest.ApplyActions(t, ctx, client,
+			testutil.DropAccountMetadataIndexAction(ledger, "subscriber_plan"),
+		)
 		scenariotest.ApplyActions(t, ctx, client,
 			testutil.CreateAccountMetadataIndexAction(ledger, "subscriber_plan"),
 		)

@@ -122,7 +122,7 @@ func readNumscriptFromKey(reader dal.PebbleReader, key []byte, name, version str
 
 // resolvePartialVersion performs a range scan to find the highest matching semver.
 // depth=1: scan [major.0.0, major+1.0.0)
-// depth=2: scan [major.minor.0, major.minor+1.0)
+// depth=2: scan [major.minor.0, major.minor+1.0).
 func resolvePartialVersion(reader dal.PebbleReader, ledger, name string, major, minor uint32, depth int) (*commonpb.NumscriptInfo, error) {
 	kb := dal.NewKeyBuilder()
 

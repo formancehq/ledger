@@ -1,5 +1,5 @@
 build:
-	docker build -f Dockerfile --progress=plain -t "$ANTITHESIS_REPOSITORY/workload-ledger-v3:$RUN_TAG" ../../../
+	docker build --platform linux/amd64 --build-arg GOARCH=amd64 --build-arg GOOS=linux -f Dockerfile --progress=plain -t "$ANTITHESIS_REPOSITORY/workload-ledger-v3:$RUN_TAG" ../../../
 
 push: build
 	docker push "$ANTITHESIS_REPOSITORY/workload-ledger-v3:$RUN_TAG"

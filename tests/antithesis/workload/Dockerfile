@@ -1,5 +1,7 @@
 # Compiler
 FROM golang:1.26-trixie AS compiler
+ARG GOARCH
+ARG GOOS
 
 RUN apt-get update && apt-get install -y bash git gcc
 

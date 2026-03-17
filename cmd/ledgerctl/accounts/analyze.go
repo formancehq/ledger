@@ -157,4 +157,3 @@ func renderAnalysisResult(resp *servicepb.AnalyzeAccountsResponse) {
 		pterm.FgCyan.Println("  ledgerctl account-types add <name> <pattern> --ledger <ledger>")
 	}
 }
-

@@ -305,5 +305,26 @@ send $amount (
 		}
 	}
 
+	// --- Indexes ---
+	if _, err := r.Step("Indexes",
+		actions.CreateAccountMetadataIndexAction(ledger, "status"),
+	); err != nil {
+		return err
+	}
+
+	// --- Prepared Queries ---
+	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "loans-by-status", ledger,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		actions.ParamStringMetadataFilter("status", "status_value"),
+	); err != nil {
+		return fmt.Errorf("create prepared query loans-by-status: %w", err)
+	}
+	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "accounts-by-prefix", ledger,
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		actions.ParamAddressPrefixFilter("prefix"),
+	); err != nil {
+		return fmt.Errorf("create prepared query accounts-by-prefix: %w", err)
+	}
+
 	return nil
 }
