@@ -66,16 +66,16 @@ send $amount (
 // 50 customers, 10 merchants, 200 purchases with fees, reverts, payouts,
 // metadata operations, inline numscript, raw postings, and numscript deletion.
 func RunMarketplace(r *Runner) error {
-	var (
-		numCustomers = r.Iterations(50)
-		numMerchants = r.Iterations(10)
-		numPurchases = r.Iterations(200)
-		numReverts   = r.Iterations(10)
+	const (
+		numCustomers = 50
+		numMerchants = 10
+		depositAmt   = 1_000_000
+		feePercent   = 3
 	)
 
-	const (
-		depositAmt = 1_000_000
-		feePercent = 3
+	var (
+		numPurchases = r.Iterations(200)
+		numReverts   = r.Iterations(10)
 	)
 
 	// Balance tracking for merchant payouts

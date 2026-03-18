@@ -88,9 +88,8 @@ send $amount (
 // players buy coins, spend on items, trade peer-to-peer, receive promotions,
 // and have expired promo coins clawed back.
 func RunGamingWallet(r *Runner) error {
-	numPlayers := r.Iterations(20)
-
 	const (
+		numPlayers = 20
 		coinPrice  = 100
 		topUpUSD   = 5000
 		topUpCoins = topUpUSD * coinPrice / 100
@@ -129,11 +128,10 @@ func RunGamingWallet(r *Runner) error {
 		}
 	}
 
-	// --- Promotions (free coins to first half of players) ---
-	numPromoPlayers := numPlayers / 2
+	// --- Promotions (free coins to first 10 players) ---
 	{
 		var reqs []*servicepb.Request
-		for i := 1; i <= numPromoPlayers; i++ {
+		for i := 1; i <= 10; i++ {
 			reqs = append(reqs,
 				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("player:%d:coins", i), big.NewInt(promoCoins), "COINS"),
@@ -199,11 +197,10 @@ func RunGamingWallet(r *Runner) error {
 		}
 	}
 
-	// --- Promo Clawback (last 3 promo players) ---
+	// --- Promo Clawback (players 8-10) ---
 	{
-		clawbackStart := max(numPromoPlayers-2, 1)
 		var reqs []*servicepb.Request
-		for i := clawbackStart; i <= numPromoPlayers; i++ {
+		for i := 8; i <= 10; i++ {
 			clawAmount := big.NewInt(promoCoins)
 			if playerCoins[i].Cmp(clawAmount) < 0 {
 				clawAmount = new(big.Int).Set(playerCoins[i])

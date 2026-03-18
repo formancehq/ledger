@@ -97,11 +97,12 @@ send $amount (
 // RunSubscription provisions a SaaS billing scenario with 50 subscribers
 // over 3 monthly cycles, with credits, revenue adjustments, and recognition.
 func RunSubscription(r *Runner) error {
-	var (
-		numSubscribers = r.Iterations(50)
-		numCycles      = r.Iterations(3)
-		numUnderFunded = r.Iterations(5)
+	const (
+		numSubscribers = 50
+		numUnderFunded = 5
 	)
+
+	numCycles := r.Iterations(3)
 
 	type subscriber struct {
 		id       int

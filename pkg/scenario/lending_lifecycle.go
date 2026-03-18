@@ -98,15 +98,13 @@ send $amount (
 // 10 loan disbursements, 6 months of repayments (with early repayer and defaulters),
 // provisions for doubtful debts, write-offs, and metadata enrichment.
 func RunLendingLifecycle(r *Runner) error {
-	var (
-		numBorrowers = r.Iterations(10)
-		numMonths    = r.Iterations(6)
+	const (
+		numBorrowers = 10
+		loanAmount   = 100_000
+		monthlyRate  = 2
 	)
 
-	const (
-		loanAmount  = 100_000
-		monthlyRate = 2
-	)
+	numMonths := r.Iterations(6)
 
 	ledger := LendingLifecycleLedger
 
@@ -119,14 +117,8 @@ func RunLendingLifecycle(r *Runner) error {
 		borrowerWalletBalance[i] = new(big.Int)
 	}
 
-	defaulters := map[int]bool{}
-	if numBorrowers >= 3 {
-		defaulters[numBorrowers*3/10] = true // ~30% mark
-	}
-	if numBorrowers >= 7 {
-		defaulters[numBorrowers*7/10] = true // ~70% mark
-	}
-	earlyRepayer := numBorrowers / 2
+	defaulters := map[int]bool{3: true, 7: true}
+	earlyRepayer := 5
 
 	// --- Setup ---
 	if _, err := r.Step("Setup", LendingLifecycleSetupActions()...); err != nil {
