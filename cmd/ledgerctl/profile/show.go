@@ -72,11 +72,29 @@ func runShow(cmd *cobra.Command, args []string) error {
 		authStatus = pterm.Green("token stored in keychain")
 	}
 
+	signingKey := "(none)"
+	if p.SigningKey != "" {
+		signingKey = p.SigningKey
+	}
+
+	signingKeyID := "(none)"
+	if p.SigningKeyID != "" {
+		signingKeyID = p.SigningKeyID
+	}
+
+	responseVerifyKey := "(none)"
+	if p.ResponseVerifyKey != "" {
+		responseVerifyKey = p.ResponseVerifyKey
+	}
+
 	data := pterm.TableData{
 		{"Field", "Value"},
 		{"Server", p.Server},
 		{"Insecure", insecure},
 		{"TLS CA Cert", tlsCaCert},
+		{"Signing Key", signingKey},
+		{"Signing Key ID", signingKeyID},
+		{"Response Verify Key", responseVerifyKey},
 		{"Auth Status", authStatus},
 	}
 

@@ -86,6 +86,9 @@ func newRootCommand() *cobra.Command {
 			resolveFlag(cmd, "tls-ca-cert", "TLS_CA_CERT", cmdutil.ProfileFlagValue(p, "tls-ca-cert"))
 			resolveFlag(cmd, "consistency", "CONSISTENCY", "")
 			resolveFlag(cmd, "auth-token", "AUTH_TOKEN", "")
+			resolveFlag(cmd, "signing-key", "SIGNING_KEY", cmdutil.ProfileFlagValue(p, "signing-key"))
+			resolveFlag(cmd, "signing-key-id", "SIGNING_KEY_ID", cmdutil.ProfileFlagValue(p, "signing-key-id"))
+			resolveFlag(cmd, "response-verify-key", "RESPONSE_VERIFY_KEY", cmdutil.ProfileFlagValue(p, "response-verify-key"))
 
 			return nil
 		},
@@ -100,11 +103,11 @@ func newRootCommand() *cobra.Command {
 	rootCmd.PersistentFlags().String("tls-ca-cert", "", "Path to CA certificate file (PEM) for server verification (env: TLS_CA_CERT)")
 
 	// Add persistent flags for request signing.
-	rootCmd.PersistentFlags().String("signing-key", "", "Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded)")
-	rootCmd.PersistentFlags().String("signing-key-id", "", "Key ID for request signatures (default: \"default\")")
+	rootCmd.PersistentFlags().String("signing-key", "", "Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded) (env: SIGNING_KEY)")
+	rootCmd.PersistentFlags().String("signing-key-id", "", "Key ID for request signatures (default: \"default\") (env: SIGNING_KEY_ID)")
 
 	// Add persistent flag for response signature verification.
-	rootCmd.PersistentFlags().String("response-verify-key", "", "Path to Ed25519 seed file for verifying server response signatures")
+	rootCmd.PersistentFlags().String("response-verify-key", "", "Path to Ed25519 seed file for verifying server response signatures (env: RESPONSE_VERIFY_KEY)")
 
 	// Add persistent flag for read consistency level.
 	rootCmd.PersistentFlags().String("consistency", "", "Read consistency level: stale, leader, or linearizable (default) (env: CONSISTENCY)")

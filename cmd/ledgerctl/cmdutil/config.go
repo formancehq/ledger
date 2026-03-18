@@ -12,9 +12,12 @@ import (
 
 // Profile holds connection settings for a named server environment.
 type Profile struct {
-	Server    string `json:"server"`
-	Insecure  bool   `json:"insecure,omitempty"`
-	TLSCaCert string `json:"tlsCaCert,omitempty"`
+	Server            string `json:"server"`
+	Insecure          bool   `json:"insecure,omitempty"`
+	TLSCaCert         string `json:"tlsCaCert,omitempty"`
+	SigningKey        string `json:"signingKey,omitempty"`
+	SigningKeyID      string `json:"signingKeyId,omitempty"`
+	ResponseVerifyKey string `json:"responseVerifyKey,omitempty"`
 }
 
 // Config is the top-level configuration file for ledgerctl.
@@ -134,6 +137,12 @@ func ProfileFlagValue(p *Profile, flagName string) string {
 		return ""
 	case "tls-ca-cert":
 		return p.TLSCaCert
+	case "signing-key":
+		return p.SigningKey
+	case "signing-key-id":
+		return p.SigningKeyID
+	case "response-verify-key":
+		return p.ResponseVerifyKey
 	default:
 		return ""
 	}

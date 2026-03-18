@@ -26,8 +26,14 @@ func NewConfigurationCommand() *cobra.Command {
 		Long: `Display all configuration for a ledger: indexes, prepared queries,
 and numscript library.
 
+Subcommands:
+  export    Export editable configuration as JSON/YAML
+  apply     Apply a configuration file (diff-based)
+
 Examples:
-  ledgerctl ledgers configuration myledger`,
+  ledgerctl ledgers configuration myledger
+  ledgerctl ledgers configuration export myledger --yaml > config.yaml
+  ledgerctl ledgers configuration apply myledger -f config.yaml`,
 		Args: cobra.ExactArgs(1),
 		RunE: runConfiguration,
 	}
@@ -35,6 +41,9 @@ Examples:
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Bool("expand", false, "Show full content of numscripts and prepared query filters")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
+
+	cmd.AddCommand(NewConfigurationExportCommand())
+	cmd.AddCommand(NewConfigurationApplyCommand())
 
 	return cmd
 }

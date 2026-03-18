@@ -122,7 +122,7 @@ app.post("/namespaces/:ns/ledger-services/:name/restart", async (c) => {
   return c.json(result);
 });
 
-// Connect info — key bundle + endpoints for the current user
+// Connect info — key bundle + endpoints for the owner of the LedgerService
 app.get("/namespaces/:ns/ledger-services/:name/connect", async (c) => {
   const { ns, name } = c.req.param();
   const session = c.get("session");
@@ -138,10 +138,19 @@ app.get("/namespaces/:ns/ledger-services/:name/connect", async (c) => {
     });
   }
 
-  const ownerLabel = sanitizeK8sLabelValue(session.userId);
+  // Look up the agent of the user who created this LedgerService (owner label).
+  const ownerLabel = svc.metadata?.labels?.["ledger.formance.com/owner"];
+  if (!ownerLabel) {
+    return c.json({
+      available: false,
+      reason: "This LedgerService has no owner label — no agent can be resolved.",
+      endpoints,
+    });
+  }
+
   const agentName = sanitizeK8sName(`user-${ownerLabel}`);
   if (!agentName) {
-    return c.json({ available: false, reason: "Cannot derive agent name from user ID.", endpoints });
+    return c.json({ available: false, reason: "Cannot derive agent name from owner label.", endpoints });
   }
 
   const agent = await getLedgerAgent(ns, agentName);
@@ -149,7 +158,7 @@ app.get("/namespaces/:ns/ledger-services/:name/connect", async (c) => {
   if (!agent) {
     return c.json({
       available: false,
-      reason: "No LedgerAgent found for your user. Create a LedgerService first.",
+      reason: `No LedgerAgent "${agentName}" found for the owner of this LedgerService.`,
       endpoints,
     });
   }

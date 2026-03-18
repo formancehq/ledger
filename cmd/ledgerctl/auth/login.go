@@ -73,20 +73,39 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 }
 
 // resolveLoginParams builds tokenParams from a bundle (file, stdin pipe) and/or flags.
-// Explicit flags always override bundle values.
+// Flags explicitly passed on the command line override bundle values. Flags set
+// only via environment variables (BindEnvToCommand) do NOT override the bundle;
+// we use cmd.Flags().Changed() to distinguish explicitly-passed flags from
+// env-var-derived ones.
 func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 	bundle, err := readBundle(cmd)
 	if err != nil {
 		return tokenParams{}, err
 	}
 
-	signingKeyPath, _ := cmd.Flags().GetString("signing-key")
-	keyID, _ := cmd.Flags().GetString("key-id")
-	subject, _ := cmd.Flags().GetString("subject")
-	scopes, _ := cmd.Flags().GetStringSlice("scopes")
 	expiration, _ := cmd.Flags().GetDuration("expiration")
 
 	var seed []byte
+
+	// Start with flag values only if explicitly passed on the command line.
+	var keyID, subject, signingKeyPath string
+	var scopes []string
+
+	if cmd.Flags().Changed("key-id") {
+		keyID, _ = cmd.Flags().GetString("key-id")
+	}
+
+	if cmd.Flags().Changed("subject") {
+		subject, _ = cmd.Flags().GetString("subject")
+	}
+
+	if cmd.Flags().Changed("scopes") {
+		scopes, _ = cmd.Flags().GetStringSlice("scopes")
+	}
+
+	if cmd.Flags().Changed("signing-key") {
+		signingKeyPath, _ = cmd.Flags().GetString("signing-key")
+	}
 
 	if bundle != nil {
 		// Decode the hex seed from the bundle.
@@ -97,7 +116,7 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 
 		seed = decoded
 
-		// Use bundle values as defaults; explicit flags override.
+		// Bundle values fill in anything not explicitly set on the command line.
 		if keyID == "" {
 			keyID = bundle.KeyID
 		}

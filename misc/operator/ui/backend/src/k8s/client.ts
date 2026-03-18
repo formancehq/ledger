@@ -18,3 +18,4 @@ export const CRD_VERSION = "v1alpha1";
 export const LEDGER_SERVICE_PLURAL = "ledgerservices";
 export const LEDGER_DEFAULTS_PLURAL = "ledgerdefaults";
 export const LEDGER_AGENT_PLURAL = "ledgeragents";
+export const LEDGER_CLUSTER_AGENT_PLURAL = "ledgerclusteragents";
