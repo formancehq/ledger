@@ -93,8 +93,9 @@ send $amount (
 // a central clearing ledger and 3 department ledgers (engineering, sales, operations).
 // Runs 3 monthly cycles, engineering bonuses, and inter-department cost allocations.
 func RunMultiLedgerPayroll(r *Runner) error {
+	numMonths := r.Iterations(3)
+
 	const (
-		numMonths    = 3
 		baseSalary   = 500_000
 		bonusPercent = 10
 	)

@@ -22,12 +22,14 @@ Use 'provision list' to see available scenarios.
 
 Examples:
   ledgerctl provision run gaming-wallet --server localhost:8888 --insecure
-  ledgerctl provision run marketplace`,
+  ledgerctl provision run marketplace
+  ledgerctl provision run marketplace --scale 2.0`,
 		Args: cobra.ExactArgs(1),
 		RunE: runProvision,
 	}
 
 	cmd.Flags().Duration("timeout", 120*time.Second, "Request timeout (default 120s for provisioning)")
+	cmd.Flags().Float64("scale", 1.0, "Scale factor for iteration counts (e.g. 2.0 doubles, 0.5 halves)")
 
 	return cmd
 }
@@ -51,11 +53,15 @@ func runProvision(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
+	scale, _ := cmd.Flags().GetFloat64("scale")
+
 	spinner, _ := pterm.DefaultSpinner.Start("Running scenario: " + name)
 
-	runner := scenario.NewRunner(ctx, client).WithLogger(func(step string) {
-		spinner.UpdateText(step)
-	})
+	runner := scenario.NewRunner(ctx, client).
+		WithScale(scale).
+		WithLogger(func(step string) {
+			spinner.UpdateText(step)
+		})
 
 	if err := fn(runner); err != nil {
 		spinner.Fail("Scenario failed: " + err.Error())

@@ -109,9 +109,12 @@ func RunMultiCurrency(r *Runner) error {
 		amount   int64
 	}
 
+	numEURPayments := r.Iterations(30)
+	numGBPPayments := r.Iterations(20)
+
 	eurVendors := []string{"vendor:acme", "vendor:globex", "vendor:initech", "vendor:umbrella", "vendor:stark"}
 	var eurPayments []vendorPayment
-	for i := range 30 {
+	for i := range numEURPayments {
 		eurPayments = append(eurPayments, vendorPayment{
 			treasury: "treasury:eur",
 			vendor:   eurVendors[i%len(eurVendors)],
@@ -122,7 +125,7 @@ func RunMultiCurrency(r *Runner) error {
 
 	gbpVendors := []string{"vendor:brit-co", "vendor:london-ltd", "vendor:windsor", "vendor:thames"}
 	var gbpPayments []vendorPayment
-	for i := range 20 {
+	for i := range numGBPPayments {
 		gbpPayments = append(gbpPayments, vendorPayment{
 			treasury: "treasury:gbp",
 			vendor:   gbpVendors[i%len(gbpVendors)],
@@ -154,8 +157,9 @@ func RunMultiCurrency(r *Runner) error {
 		return err
 	}
 
-	// --- FX Operations (20 ops = 40 Apply calls) ---
-	for i, fx := range fxOps {
+	// --- FX Operations ---
+	numFXOps := min(r.Iterations(len(fxOps)), len(fxOps))
+	for i, fx := range fxOps[:numFXOps] {
 		// Leg 1: source -> fx:clearing (balance-checked)
 		if _, err := r.Step(fmt.Sprintf("FX/%d/Leg1", i),
 			actions.CreateScriptRefTransactionAction(ledger, "fx_convert", "1.0.0", map[string]string{
