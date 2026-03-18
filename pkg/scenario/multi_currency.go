@@ -5,15 +5,70 @@ import (
 	"math/big"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/scenario/actions"
 )
 
 func init() { Register("multi-currency", RunMultiCurrency) }
 
+// MultiCurrencyLedger is the ledger name used by the multi-currency scenario.
+const MultiCurrencyLedger = "treasury"
+
+// MultiCurrencySetupActions returns the Apply requests that create the ledger,
+// account types, and numscript library for the multi-currency scenario.
+func MultiCurrencySetupActions() []*servicepb.Request {
+	return []*servicepb.Request{
+		actions.CreateLedgerAction(MultiCurrencyLedger, nil),
+		actions.AddAccountTypeAction(MultiCurrencyLedger, "treasury", "treasury:{currency}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(MultiCurrencyLedger, "fx-clearing", "fx:clearing", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(MultiCurrencyLedger, "vendor", "vendor:{name}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.SaveNumscriptWithVersionAction(MultiCurrencyLedger, "fund_account", `vars {
+  account $account
+  monetary $amount
+}
+send $amount (
+  source = @world
+  destination = $account
+)`, "1.0.0"),
+		actions.SaveNumscriptWithVersionAction(MultiCurrencyLedger, "fx_convert", `vars {
+  account $source_account
+  account $clearing_account
+  monetary $amount
+}
+send $amount (
+  source = $source_account
+  destination = $clearing_account
+)`, "1.0.0"),
+		actions.SaveNumscriptWithVersionAction(MultiCurrencyLedger, "vendor_payment", `vars {
+  account $treasury
+  account $vendor
+  monetary $amount
+}
+send $amount (
+  source = $treasury
+  destination = $vendor
+)`, "1.0.0"),
+		actions.CreateBuiltinTxIndexAction(MultiCurrencyLedger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+		actions.CreateBuiltinTxIndexAction(MultiCurrencyLedger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+		actions.CreatePreparedQueryAction("accounts-by-prefix", MultiCurrencyLedger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			actions.ParamAddressPrefixFilter("prefix"),
+		),
+		actions.CreatePreparedQueryAction("account-exact", MultiCurrencyLedger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			actions.ParamAddressExactFilter("addr"),
+		),
+		actions.CreatePreparedQueryAction("volumes-by-prefix", MultiCurrencyLedger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			actions.ParamAddressPrefixFilter("prefix"),
+		),
+	}
+}
+
 // RunMultiCurrency provisions a corporate treasury scenario with multiple currencies
 // and FX operations through a clearing account, plus vendor payments.
 func RunMultiCurrency(r *Runner) error {
-	const ledger = "treasury"
+	ledger := MultiCurrencyLedger
 
 	type fxOp struct {
 		sourceAccount string
@@ -77,38 +132,7 @@ func RunMultiCurrency(r *Runner) error {
 	}
 
 	// --- Setup ---
-	if _, err := r.Step("Setup",
-		actions.CreateLedgerAction(ledger, nil),
-		actions.AddAccountTypeAction(ledger, "treasury", "treasury:{currency}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "fx-clearing", "fx:clearing", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "vendor", "vendor:{name}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.SaveNumscriptWithVersionAction(ledger, "fund_account", `vars {
-  account $account
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = $account
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "fx_convert", `vars {
-  account $source_account
-  account $clearing_account
-  monetary $amount
-}
-send $amount (
-  source = $source_account
-  destination = $clearing_account
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "vendor_payment", `vars {
-  account $treasury
-  account $vendor
-  monetary $amount
-}
-send $amount (
-  source = $treasury
-  destination = $vendor
-)`, "1.0.0"),
-	); err != nil {
+	if _, err := r.Step("Setup", MultiCurrencySetupActions()...); err != nil {
 		return err
 	}
 
@@ -175,38 +199,6 @@ send $amount (
 		); err != nil {
 			return err
 		}
-	}
-
-	// --- Indexes ---
-	if _, err := r.Step("Indexes/Timestamp",
-		actions.CreateBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
-	); err != nil {
-		return err
-	}
-	if _, err := r.Step("Indexes/InsertedAt",
-		actions.CreateBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
-	); err != nil {
-		return err
-	}
-
-	// --- Prepared Queries ---
-	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "accounts-by-prefix", ledger,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		actions.ParamAddressPrefixFilter("prefix"),
-	); err != nil {
-		return fmt.Errorf("create prepared query accounts-by-prefix: %w", err)
-	}
-	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "account-exact", ledger,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		actions.ParamAddressExactFilter("addr"),
-	); err != nil {
-		return fmt.Errorf("create prepared query account-exact: %w", err)
-	}
-	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "volumes-by-prefix", ledger,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		actions.ParamAddressPrefixFilter("prefix"),
-	); err != nil {
-		return fmt.Errorf("create prepared query volumes-by-prefix: %w", err)
 	}
 
 	return nil

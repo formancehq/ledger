@@ -11,12 +11,62 @@ import (
 
 func init() { Register("marketplace", RunMarketplace) }
 
+// MarketplaceLedger is the ledger name used by the marketplace scenario.
+const MarketplaceLedger = "marketplace"
+
+// MarketplaceSetupActions returns the Apply requests that create the ledger,
+// account types, and numscript library for the marketplace scenario.
+func MarketplaceSetupActions() []*servicepb.Request {
+	return []*servicepb.Request{
+		actions.CreateLedgerAction(MarketplaceLedger, nil),
+		actions.AddAccountTypeAction(MarketplaceLedger, "customer", "customer:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(MarketplaceLedger, "merchant", "merchant:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(MarketplaceLedger, "platform-fees", "platform:fees", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(MarketplaceLedger, "platform-payouts", "platform:payouts", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.SaveNumscriptWithVersionAction(MarketplaceLedger, "deposit", `vars {
+  account $customer
+  monetary $amount
+}
+send $amount (
+  source = @world
+  destination = $customer
+)`, "1.0.0"),
+		actions.SaveNumscriptWithVersionAction(MarketplaceLedger, "purchase", `vars {
+  account $customer
+  account $merchant
+  monetary $amount
+}
+send $amount (
+  source = $customer
+  destination = {
+    3/100 to @platform:fees
+    remaining to $merchant
+  }
+)`, "1.0.0"),
+		actions.SaveNumscriptWithVersionAction(MarketplaceLedger, "payout", `vars {
+  account $merchant
+  monetary $amount
+}
+send $amount (
+  source = $merchant
+  destination = @platform:payouts
+)`, "1.0.0"),
+		actions.CreatePreparedQueryAction("customer-query", MarketplaceLedger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			actions.AddressPrefixFilter("customer:"),
+		),
+		actions.CreatePreparedQueryAction("accounts-by-prefix", MarketplaceLedger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			actions.ParamAddressPrefixFilter("prefix"),
+		),
+	}
+}
+
 // RunMarketplace provisions a high-volume e-commerce marketplace scenario:
 // 50 customers, 10 merchants, 200 purchases with fees, reverts, payouts,
 // metadata operations, inline numscript, raw postings, and numscript deletion.
 func RunMarketplace(r *Runner) error {
 	const (
-		ledger       = "marketplace"
 		numCustomers = 50
 		numMerchants = 10
 		numPurchases = 200
@@ -43,41 +93,7 @@ func RunMarketplace(r *Runner) error {
 	purchaseRecords := make([]purchaseRecord, 0, numPurchases)
 
 	// --- Setup ---
-	if _, err := r.Step("Setup",
-		actions.CreateLedgerAction(ledger, nil),
-		actions.AddAccountTypeAction(ledger, "customer", "customer:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "merchant", "merchant:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "platform-fees", "platform:fees", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "platform-payouts", "platform:payouts", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.SaveNumscriptWithVersionAction(ledger, "deposit", `vars {
-  account $customer
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = $customer
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "purchase", `vars {
-  account $customer
-  account $merchant
-  monetary $amount
-}
-send $amount (
-  source = $customer
-  destination = {
-    3/100 to @platform:fees
-    remaining to $merchant
-  }
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "payout", `vars {
-  account $merchant
-  monetary $amount
-}
-send $amount (
-  source = $merchant
-  destination = @platform:payouts
-)`, "1.0.0"),
-	); err != nil {
+	if _, err := r.Step("Setup", MarketplaceSetupActions()...); err != nil {
 		return err
 	}
 
@@ -85,7 +101,7 @@ send $amount (
 	{
 		reqs := make([]*servicepb.Request, 0, numCustomers)
 		for i := 1; i <= numCustomers; i++ {
-			reqs = append(reqs, actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
+			reqs = append(reqs, actions.CreateScriptRefTransactionAction(MarketplaceLedger, "deposit", "1.0.0", map[string]string{
 				"customer": fmt.Sprintf("customer:%d", i),
 				"amount":   fmt.Sprintf("USD/2 %d", depositAmt),
 			}, nil))
@@ -102,7 +118,7 @@ send $amount (
 		amount := int64(1000 + i*100)
 
 		resp, err := r.Step(fmt.Sprintf("Purchase/%d", i),
-			actions.CreateScriptRefTransactionAction(ledger, "purchase", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(MarketplaceLedger, "purchase", "1.0.0", map[string]string{
 				"customer": fmt.Sprintf("customer:%d", customer),
 				"merchant": fmt.Sprintf("merchant:%d", merchant),
 				"amount":   fmt.Sprintf("USD/2 %d", amount),
@@ -138,7 +154,7 @@ send $amount (
 		p := purchaseRecords[idx]
 
 		if _, err := r.Step(fmt.Sprintf("Revert/%d", idx),
-			actions.RevertTransactionAction(ledger, purchaseTxIDs[idx], true, false, nil),
+			actions.RevertTransactionAction(MarketplaceLedger, purchaseTxIDs[idx], true, false, nil),
 		); err != nil {
 			return err
 		}
@@ -157,7 +173,7 @@ send $amount (
 			continue
 		}
 		if _, err := r.Step(fmt.Sprintf("Payout/merchant:%d", i),
-			actions.CreateScriptRefTransactionAction(ledger, "payout", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(MarketplaceLedger, "payout", "1.0.0", map[string]string{
 				"merchant": fmt.Sprintf("merchant:%d", i),
 				"amount":   fmt.Sprintf("USD/2 %d", bal.Int64()),
 			}, nil),
@@ -168,11 +184,11 @@ send $amount (
 
 	// --- Metadata Operations ---
 	if _, err := r.Step("Metadata/Save",
-		actions.SaveAccountMetadataAction(ledger, "customer:1", map[string]string{
+		actions.SaveAccountMetadataAction(MarketplaceLedger, "customer:1", map[string]string{
 			"tier": "gold",
 			"kyc":  "verified",
 		}),
-		actions.SaveAccountMetadataAction(ledger, "merchant:1", map[string]string{
+		actions.SaveAccountMetadataAction(MarketplaceLedger, "merchant:1", map[string]string{
 			"category": "electronics",
 		}),
 	); err != nil {
@@ -180,7 +196,7 @@ send $amount (
 	}
 	if len(purchaseTxIDs) > 0 {
 		if _, err := r.Step("Metadata/Transaction",
-			actions.SaveTransactionMetadataAction(ledger, purchaseTxIDs[0], map[string]string{
+			actions.SaveTransactionMetadataAction(MarketplaceLedger, purchaseTxIDs[0], map[string]string{
 				"flagged": "true",
 				"reason":  "review",
 			}),
@@ -189,13 +205,13 @@ send $amount (
 		}
 	}
 	if _, err := r.Step("Metadata/DeleteAccount",
-		actions.DeleteAccountMetadataAction(ledger, "customer:1", "kyc"),
+		actions.DeleteAccountMetadataAction(MarketplaceLedger, "customer:1", "kyc"),
 	); err != nil {
 		return err
 	}
 	if len(purchaseTxIDs) > 0 {
 		if _, err := r.Step("Metadata/DeleteTransaction",
-			actions.DeleteTransactionMetadataAction(ledger, purchaseTxIDs[0], "reason"),
+			actions.DeleteTransactionMetadataAction(MarketplaceLedger, purchaseTxIDs[0], "reason"),
 		); err != nil {
 			return err
 		}
@@ -203,7 +219,7 @@ send $amount (
 
 	// --- Inline Numscript ---
 	if _, err := r.Step("InlineNumscript",
-		actions.CreateScriptTransactionAction(ledger, `vars {
+		actions.CreateScriptTransactionAction(MarketplaceLedger, `vars {
   account $src
   account $dst
   monetary $amount
@@ -222,7 +238,7 @@ send $amount (
 
 	// --- Raw Postings ---
 	if _, err := r.Step("RawPostings",
-		actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+		actions.CreateTransactionAction(MarketplaceLedger, []*commonpb.Posting{
 			actions.NewPosting("customer:2", "customer:3", big.NewInt(50), "USD/2"),
 		}, nil, nil),
 	); err != nil {
@@ -231,7 +247,7 @@ send $amount (
 
 	// --- DeleteNumscript ---
 	if _, err := r.Step("SaveTempNumscript",
-		actions.SaveNumscriptWithVersionAction(ledger, "temp_script", `vars {
+		actions.SaveNumscriptWithVersionAction(MarketplaceLedger, "temp_script", `vars {
   monetary $amount
 }
 send $amount (
@@ -242,23 +258,9 @@ send $amount (
 		return err
 	}
 	if _, err := r.Step("DeleteNumscript",
-		actions.DeleteNumscriptAction(ledger, "temp_script"),
+		actions.DeleteNumscriptAction(MarketplaceLedger, "temp_script"),
 	); err != nil {
 		return err
-	}
-
-	// --- Prepared Queries ---
-	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "customer-query", ledger,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		actions.AddressPrefixFilter("customer:"),
-	); err != nil {
-		return fmt.Errorf("create prepared query customer-query: %w", err)
-	}
-	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "accounts-by-prefix", ledger,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		actions.ParamAddressPrefixFilter("prefix"),
-	); err != nil {
-		return fmt.Errorf("create prepared query accounts-by-prefix: %w", err)
 	}
 
 	return nil

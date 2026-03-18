@@ -10,6 +10,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
 
@@ -21,7 +22,7 @@ import (
 // 20 FX ops across 5 currency pairs, 50 vendor payments, 2 intercalated period closes.
 // Generates ~100 Apply calls to trigger ~2 cache rotations (threshold=50).
 func TestMultiCurrencyTreasury(t *testing.T) {
-	const ledger = "treasury"
+	const ledger = scenario.MultiCurrencyLedger
 
 	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+1, scenariotest.GRPCPort+1)
 	ctx, client := sc.Ctx(), sc.Client
@@ -117,39 +118,7 @@ func TestMultiCurrencyTreasury(t *testing.T) {
 
 	// --- Phase 1: Setup & Numscript Library ---
 	t.Run("Setup", func(t *testing.T) {
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateLedgerAction(ledger, nil),
-			// Account types: enforce address patterns
-			testutil.AddAccountTypeAction(ledger, "treasury", "treasury:{currency}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "fx-clearing", "fx:clearing", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "vendor", "vendor:{name}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.SaveNumscriptWithVersionAction(ledger, "fund_account", `vars {
-  account $account
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = $account
-)`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction(ledger, "fx_convert", `vars {
-  account $source_account
-  account $clearing_account
-  monetary $amount
-}
-send $amount (
-  source = $source_account
-  destination = $clearing_account
-)`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction(ledger, "vendor_payment", `vars {
-  account $treasury
-  account $vendor
-  monetary $amount
-}
-send $amount (
-  source = $treasury
-  destination = $vendor
-)`, "1.0.0"),
-		)
+		scenariotest.ApplyActions(t, ctx, client, scenario.MultiCurrencySetupActions()...)
 
 		// Fund treasury accounts
 		scenariotest.ApplyActions(t, ctx, client,
@@ -167,6 +136,7 @@ send $amount (
 			}, nil),
 		)
 	})
+
 
 	// --- Phase 2: FX Operations (20 ops = 40 Apply calls) ---
 	t.Run("FXOperations", func(t *testing.T) {

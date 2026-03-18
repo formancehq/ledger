@@ -12,17 +12,100 @@ import (
 
 func init() { Register("lending-lifecycle", RunLendingLifecycle) }
 
+// LendingLifecycleLedger is the ledger name used by the lending lifecycle scenario.
+const LendingLifecycleLedger = "lending"
+
+// LendingLifecycleSetupActions returns the Apply requests that create the ledger,
+// account types, and numscript library for the lending lifecycle scenario.
+func LendingLifecycleSetupActions() []*servicepb.Request {
+	return []*servicepb.Request{
+		actions.CreateLedgerAction(LendingLifecycleLedger, nil),
+		actions.AddAccountTypeAction(LendingLifecycleLedger, "funding", "funding:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(LendingLifecycleLedger, "borrower-loan", "borrower:{id}:loan", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(LendingLifecycleLedger, "borrower-wallet", "borrower:{id}:wallet", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(LendingLifecycleLedger, "revenue", "revenue:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(LendingLifecycleLedger, "expense", "expense:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(LendingLifecycleLedger, "recovery", "recovery:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.SaveNumscriptWithVersionAction(LendingLifecycleLedger, "fund_pool", `vars {
+  monetary $amount
+}
+send $amount (
+  source = @world
+  destination = @funding:pool
+)`, "1.0.0"),
+		actions.SaveNumscriptWithVersionAction(LendingLifecycleLedger, "disburse_loan", `vars {
+  account $borrower_loan
+  account $borrower_wallet
+  monetary $amount
+}
+send $amount (
+  source = @funding:pool
+  destination = $borrower_loan
+)
+send $amount (
+  source = @world
+  destination = $borrower_wallet
+)`, "1.0.0"),
+		actions.SaveNumscriptWithVersionAction(LendingLifecycleLedger, "repay_principal", `vars {
+  account $borrower_wallet
+  account $borrower_loan
+  monetary $amount
+}
+send $amount (
+  source = $borrower_wallet
+  destination = @world
+)
+send $amount (
+  source = $borrower_loan
+  destination = @funding:pool
+)`, "1.0.0"),
+		actions.SaveNumscriptWithVersionAction(LendingLifecycleLedger, "accrue_interest", `vars {
+  account $borrower_wallet
+  monetary $amount
+}
+send $amount (
+  source = $borrower_wallet
+  destination = @revenue:interest
+)`, "1.0.0"),
+		actions.SaveNumscriptWithVersionAction(LendingLifecycleLedger, "provision", `vars {
+  monetary $amount
+}
+send $amount (
+  source = @world
+  destination = @expense:provision
+)`, "1.0.0"),
+		actions.SaveNumscriptWithVersionAction(LendingLifecycleLedger, "write_off", `vars {
+  account $borrower_loan
+  monetary $amount
+}
+send $amount (
+  source = $borrower_loan
+  destination = @recovery:pool
+)`, "1.0.0"),
+		actions.CreateAccountMetadataIndexAction(LendingLifecycleLedger, "status"),
+		actions.CreatePreparedQueryAction("loans-by-status", LendingLifecycleLedger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			actions.ParamStringMetadataFilter("status", "status_value"),
+		),
+		actions.CreatePreparedQueryAction("accounts-by-prefix", LendingLifecycleLedger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			actions.ParamAddressPrefixFilter("prefix"),
+		),
+	}
+}
+
 // RunLendingLifecycle provisions a consumer lending scenario:
 // 10 loan disbursements, 6 months of repayments (with early repayer and defaulters),
 // provisions for doubtful debts, write-offs, and metadata enrichment.
 func RunLendingLifecycle(r *Runner) error {
 	const (
-		ledger       = "lending"
 		numBorrowers = 10
 		numMonths    = 6
 		loanAmount   = 100_000
 		monthlyRate  = 2
 	)
+
+	ledger := LendingLifecycleLedger
 
 	// Balance tracking (needed for repayment logic)
 	fundingBalance := new(big.Int)
@@ -37,71 +120,7 @@ func RunLendingLifecycle(r *Runner) error {
 	earlyRepayer := 5
 
 	// --- Setup ---
-	if _, err := r.Step("Setup",
-		actions.CreateLedgerAction(ledger, nil),
-		actions.AddAccountTypeAction(ledger, "funding", "funding:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "borrower-loan", "borrower:{id}:loan", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "borrower-wallet", "borrower:{id}:wallet", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "revenue", "revenue:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "expense", "expense:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "recovery", "recovery:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.SaveNumscriptWithVersionAction(ledger, "fund_pool", `vars {
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = @funding:pool
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "disburse_loan", `vars {
-  account $borrower_loan
-  account $borrower_wallet
-  monetary $amount
-}
-send $amount (
-  source = @funding:pool
-  destination = $borrower_loan
-)
-send $amount (
-  source = @world
-  destination = $borrower_wallet
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "repay_principal", `vars {
-  account $borrower_wallet
-  account $borrower_loan
-  monetary $amount
-}
-send $amount (
-  source = $borrower_wallet
-  destination = @world
-)
-send $amount (
-  source = $borrower_loan
-  destination = @funding:pool
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "accrue_interest", `vars {
-  account $borrower_wallet
-  monetary $amount
-}
-send $amount (
-  source = $borrower_wallet
-  destination = @revenue:interest
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "provision", `vars {
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = @expense:provision
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "write_off", `vars {
-  account $borrower_loan
-  monetary $amount
-}
-send $amount (
-  source = $borrower_loan
-  destination = @recovery:pool
-)`, "1.0.0"),
-	); err != nil {
+	if _, err := r.Step("Setup", LendingLifecycleSetupActions()...); err != nil {
 		return err
 	}
 
@@ -303,27 +322,6 @@ send $amount (
 		if _, err := r.Step("Metadata", metaReqs...); err != nil {
 			return err
 		}
-	}
-
-	// --- Indexes ---
-	if _, err := r.Step("Indexes",
-		actions.CreateAccountMetadataIndexAction(ledger, "status"),
-	); err != nil {
-		return err
-	}
-
-	// --- Prepared Queries ---
-	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "loans-by-status", ledger,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		actions.ParamStringMetadataFilter("status", "status_value"),
-	); err != nil {
-		return fmt.Errorf("create prepared query loans-by-status: %w", err)
-	}
-	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "accounts-by-prefix", ledger,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		actions.ParamAddressPrefixFilter("prefix"),
-	); err != nil {
-		return fmt.Errorf("create prepared query accounts-by-prefix: %w", err)
 	}
 
 	return nil

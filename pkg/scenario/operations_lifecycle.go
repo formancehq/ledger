@@ -1,0 +1,27 @@
+package scenario
+
+import (
+	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/scenario/actions"
+)
+
+// OperationsLifecycleLedger is the ledger name used by the operations lifecycle scenario.
+const OperationsLifecycleLedger = "ops-test"
+
+// OperationsLifecycleSetupActions returns the Apply requests that create the ledger,
+// account types, and numscript library for the operations lifecycle scenario.
+func OperationsLifecycleSetupActions() []*servicepb.Request {
+	return []*servicepb.Request{
+		actions.CreateLedgerAction(OperationsLifecycleLedger, nil),
+		actions.AddAccountTypeAction(OperationsLifecycleLedger, "ops-account", "ops:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.SaveNumscriptWithVersionAction(OperationsLifecycleLedger, "deposit", `vars {
+  account $account
+  monetary $amount
+}
+send $amount (
+  source = @world
+  destination = $account
+)`, "1.0.0"),
+	}
+}

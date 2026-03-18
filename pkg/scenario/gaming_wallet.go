@@ -12,34 +12,20 @@ import (
 
 func init() { Register("gaming-wallet", RunGamingWallet) }
 
-// RunGamingWallet provisions a gaming platform scenario with virtual currency:
-// players buy coins, spend on items, trade peer-to-peer, receive promotions,
-// and have expired promo coins clawed back.
-func RunGamingWallet(r *Runner) error {
-	const (
-		ledger     = "gaming"
-		numPlayers = 20
-		coinPrice  = 100
-		topUpUSD   = 5000
-		topUpCoins = topUpUSD * coinPrice / 100
-		promoCoins = 500
-	)
+// GamingWalletLedger is the ledger name used by the gaming wallet scenario.
+const GamingWalletLedger = "gaming"
 
-	// Balance tracking (needed for conditional logic)
-	playerCoins := make(map[int]*big.Int, numPlayers)
-	for i := 1; i <= numPlayers; i++ {
-		playerCoins[i] = new(big.Int)
-	}
-
-	// --- Setup ---
-	if _, err := r.Step("Setup",
-		actions.CreateLedgerAction(ledger, nil),
-		actions.AddAccountTypeAction(ledger, "player-usd", "player:{id}:usd", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "player-coins", "player:{id}:coins", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "platform", "platform:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT),
-		actions.AddAccountTypeAction(ledger, "shop", "shop:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "escrow", "escrow:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.SaveNumscriptWithVersionAction(ledger, "top_up", `vars {
+// GamingWalletSetupActions returns the Apply requests that create the ledger,
+// account types, and numscript library for the gaming wallet scenario.
+func GamingWalletSetupActions() []*servicepb.Request {
+	return []*servicepb.Request{
+		actions.CreateLedgerAction(GamingWalletLedger, nil),
+		actions.AddAccountTypeAction(GamingWalletLedger, "player-usd", "player:{id}:usd", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(GamingWalletLedger, "player-coins", "player:{id}:coins", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(GamingWalletLedger, "platform", "platform:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT),
+		actions.AddAccountTypeAction(GamingWalletLedger, "shop", "shop:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(GamingWalletLedger, "escrow", "escrow:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.SaveNumscriptWithVersionAction(GamingWalletLedger, "top_up", `vars {
   account $player_usd
   account $player_coins
   monetary $usd_amount
@@ -57,7 +43,7 @@ send $coin_amount (
   source = @world
   destination = $player_coins
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "buy_item", `vars {
+		actions.SaveNumscriptWithVersionAction(GamingWalletLedger, "buy_item", `vars {
   account $player_coins
   monetary $amount
 }
@@ -65,7 +51,7 @@ send $amount (
   source = $player_coins
   destination = @shop:items
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "p2p_transfer", `vars {
+		actions.SaveNumscriptWithVersionAction(GamingWalletLedger, "p2p_transfer", `vars {
   account $from_player
   account $to_player
   monetary $amount
@@ -74,7 +60,7 @@ send $amount (
   source = $from_player
   destination = $to_player
 )`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "clawback", `vars {
+		actions.SaveNumscriptWithVersionAction(GamingWalletLedger, "clawback", `vars {
   account $player_coins
   monetary $amount
 }
@@ -82,7 +68,44 @@ send $amount (
   source = $player_coins
   destination = @platform:promotions
 )`, "1.0.0"),
-	); err != nil {
+		actions.CreateAccountMetadataIndexAction(GamingWalletLedger, "tier"),
+		actions.CreatePreparedQueryAction("accounts-by-prefix", GamingWalletLedger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			actions.ParamAddressPrefixFilter("prefix"),
+		),
+		actions.CreatePreparedQueryAction("account-exact", GamingWalletLedger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			actions.ParamAddressExactFilter("addr"),
+		),
+		actions.CreatePreparedQueryAction("by-tier", GamingWalletLedger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			actions.ParamStringMetadataFilter("tier", "tier_value"),
+		),
+	}
+}
+
+// RunGamingWallet provisions a gaming platform scenario with virtual currency:
+// players buy coins, spend on items, trade peer-to-peer, receive promotions,
+// and have expired promo coins clawed back.
+func RunGamingWallet(r *Runner) error {
+	const (
+		numPlayers = 20
+		coinPrice  = 100
+		topUpUSD   = 5000
+		topUpCoins = topUpUSD * coinPrice / 100
+		promoCoins = 500
+	)
+
+	ledger := GamingWalletLedger
+
+	// Balance tracking (needed for conditional logic)
+	playerCoins := make(map[int]*big.Int, numPlayers)
+	for i := 1; i <= numPlayers; i++ {
+		playerCoins[i] = new(big.Int)
+	}
+
+	// --- Setup ---
+	if _, err := r.Step("Setup", GamingWalletSetupActions()...); err != nil {
 		return err
 	}
 
@@ -226,33 +249,6 @@ send $amount (
 		actions.DeleteAccountMetadataAction(ledger, "player:1:coins", "joined"),
 	); err != nil {
 		return err
-	}
-
-	// --- Indexes ---
-	if _, err := r.Step("Indexes",
-		actions.CreateAccountMetadataIndexAction(ledger, "tier"),
-	); err != nil {
-		return err
-	}
-
-	// --- Prepared Queries ---
-	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "accounts-by-prefix", ledger,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		actions.ParamAddressPrefixFilter("prefix"),
-	); err != nil {
-		return fmt.Errorf("create prepared query accounts-by-prefix: %w", err)
-	}
-	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "account-exact", ledger,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		actions.ParamAddressExactFilter("addr"),
-	); err != nil {
-		return fmt.Errorf("create prepared query account-exact: %w", err)
-	}
-	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "by-tier", ledger,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		actions.ParamStringMetadataFilter("tier", "tier_value"),
-	); err != nil {
-		return fmt.Errorf("create prepared query by-tier: %w", err)
 	}
 
 	return nil

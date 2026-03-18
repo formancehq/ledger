@@ -625,6 +625,22 @@ func DropAccountMetadataIndexAction(ledger, metadataKey string) *servicepb.Reque
 	}
 }
 
+// CreatePreparedQueryAction creates an action for creating a prepared query.
+func CreatePreparedQueryAction(name, ledger string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_CreatePreparedQuery{
+			CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+				Query: &commonpb.PreparedQuery{
+					Name:   name,
+					Ledger: ledger,
+					Target: target,
+					Filter: filter,
+				},
+			},
+		},
+	}
+}
+
 // ArchivePeriodAction creates an action for archiving a closed period.
 func ArchivePeriodAction(periodID uint64) *servicepb.Request {
 	return &servicepb.Request{

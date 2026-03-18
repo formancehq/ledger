@@ -208,7 +208,9 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+		volumes := needs.Volumes
 
 		// Should have 2 volume keys: both source (world) and destination (user:alice) are preloaded
 		require.Len(t, volumes, 2)
@@ -259,7 +261,9 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+		volumes := needs.Volumes
 
 		// Should have 2 volume keys: both the new source (alice) and new destination (world) are preloaded
 		require.Len(t, volumes, 2)
@@ -313,7 +317,9 @@ func TestExtractNeededVolumes(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+		volumes := needs.Volumes
 
 		// Should have 3 volume keys: alice, bob (original destinations become sources in revert)
 		// AND world (original source becomes destination in revert) - all volumes preloaded
@@ -451,7 +457,9 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+		volumes := needs.Volumes
 
 		// Should have 2 volume keys: both source and destination are always preloaded
 		require.Len(t, volumes, 2, "force=true should still extract all volumes")
@@ -499,7 +507,9 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+		volumes := needs.Volumes
 
 		// Should have 2 volume keys: both source and destination are always preloaded
 		require.Len(t, volumes, 2, "force=false should extract all volumes")
@@ -569,7 +579,9 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+		volumes := needs.Volumes
 
 		// Should have 4 volume keys: source+dest from both orders
 		require.Len(t, volumes, 4)
@@ -633,7 +645,9 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+		volumes := needs.Volumes
 
 		// Revert reverses postings: alice->world. Both source (alice) and destination (world) preloaded.
 		require.Len(t, volumes, 2, "revert with force=true should still extract all volumes")
@@ -784,7 +798,9 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+		volumes := needs.Volumes
 
 		// Both source and destination volumes are preloaded from numscript
 		require.Len(t, volumes, 2, "numscript emulation should discover all volumes")
@@ -833,7 +849,9 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+		volumes := needs.Volumes
 
 		// Force=true no longer skips volume extraction - all volumes are preloaded
 		require.Len(t, volumes, 2, "force=true should still extract numscript volumes")
@@ -884,7 +902,9 @@ func TestExtractNeededVolumes_Numscript(t *testing.T) {
 			},
 		}
 
-		volumes := admission.extractPreloadNeeds(context.Background(), orders).Volumes
+		needs, err := admission.extractPreloadNeeds(context.Background(), orders)
+		require.NoError(t, err)
+		volumes := needs.Volumes
 
 		// Should use explicit postings, not numscript emulation; both source and destination preloaded
 		require.Len(t, volumes, 2)

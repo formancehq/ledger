@@ -789,6 +789,12 @@ func (c *Checker) compareTransactions(ctx context.Context, baselineDB *pebble.DB
 			continue
 		}
 
+		// Normalize empty MetadataSet to nil so that proto.Equal does not
+		// treat nil vs &MetadataSet{} as a mismatch.
+		// todo: this should be handled at source
+		normalizeTransactionState(expected)
+		normalizeTransactionState(actualState)
+
 		if !proto.Equal(expected, actualState) {
 			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
 				fmt.Sprintf("transaction state mismatch for tx %d: expected %s, got %s",
@@ -1085,6 +1091,14 @@ func checkReversionInvariants(
 		if p.RevertedTransaction.GetRevertTransaction() != nil {
 			trackTxID(knownTxIDs, ledger, p.RevertedTransaction.GetRevertTransaction().GetId())
 		}
+	}
+}
+
+// normalizeTransactionState replaces an empty MetadataSet with nil so that
+// proto.Equal treats both representations as equivalent.
+func normalizeTransactionState(s *commonpb.TransactionState) {
+	if s.GetMetadata() != nil && len(s.GetMetadata().GetMetadata()) == 0 {
+		s.Metadata = nil
 	}
 }
 

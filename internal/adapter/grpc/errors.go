@@ -10,6 +10,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 )
 
 const errorDomain = "ledger"
@@ -214,7 +215,8 @@ func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
 		errors.Is(inner, admission.ErrIdempotencyKeyTooLong),
 		errors.Is(inner, domain.ErrNumscriptNameRequired),
 		errors.Is(inner, domain.ErrNumscriptContentRequired),
-		errors.Is(inner, domain.ErrScriptAndReferenceConflict):
+		errors.Is(inner, domain.ErrScriptAndReferenceConflict),
+		errors.Is(inner, numscript.ErrMetaNotSupported):
 		code = codes.InvalidArgument
 		reason = domain.ErrReasonValidation
 

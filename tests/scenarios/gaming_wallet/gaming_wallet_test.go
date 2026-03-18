@@ -10,6 +10,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
 
@@ -48,7 +49,7 @@ import (
 // Generates ~180 Apply calls, triggers 3+ cache rotations.
 func TestGamingWalletLifecycle(t *testing.T) {
 	const (
-		ledger     = "gaming"
+		ledger     = scenario.GamingWalletLedger
 		numPlayers = 20
 		coinPrice  = 100  // 1 USD = 100 COINS
 		topUpUSD   = 5000 // USD/2 cents per top-up
@@ -81,65 +82,9 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 	// --- Phase 1: Setup ---
 	t.Run("Setup", func(t *testing.T) {
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateLedgerAction(ledger, nil),
-
-			// Account types - STRICT for player accounts, AUDIT for platform
-			testutil.AddAccountTypeAction(ledger, "player-usd", "player:{id}:usd", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "player-coins", "player:{id}:coins", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "platform", "platform:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT),
-			testutil.AddAccountTypeAction(ledger, "shop", "shop:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "escrow", "escrow:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-
-			// Numscripts
-			testutil.SaveNumscriptWithVersionAction(ledger, "top_up", `vars {
-  account $player_usd
-  account $player_coins
-  monetary $usd_amount
-  monetary $coin_amount
-}
-send $usd_amount (
-  source = @world
-  destination = $player_usd
-)
-send $usd_amount (
-  source = $player_usd
-  destination = @platform:revenue
-)
-send $coin_amount (
-  source = @world
-  destination = $player_coins
-)`, "1.0.0"),
-
-			testutil.SaveNumscriptWithVersionAction(ledger, "buy_item", `vars {
-  account $player_coins
-  monetary $amount
-}
-send $amount (
-  source = $player_coins
-  destination = @shop:items
-)`, "1.0.0"),
-
-			testutil.SaveNumscriptWithVersionAction(ledger, "p2p_transfer", `vars {
-  account $from_player
-  account $to_player
-  monetary $amount
-}
-send $amount (
-  source = $from_player
-  destination = $to_player
-)`, "1.0.0"),
-
-			testutil.SaveNumscriptWithVersionAction(ledger, "clawback", `vars {
-  account $player_coins
-  monetary $amount
-}
-send $amount (
-  source = $player_coins
-  destination = @platform:promotions
-)`, "1.0.0"),
-		)
+		scenariotest.ApplyActions(t, ctx, client, scenario.GamingWalletSetupActions()...)
 	})
+
 
 	// --- Phase 2: Top-Ups (buy coins with real money) ---
 	t.Run("TopUps", func(t *testing.T) {

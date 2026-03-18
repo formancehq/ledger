@@ -11,11 +11,93 @@ import (
 
 func init() { Register("subscription", RunSubscription) }
 
+// SubscriptionLedger is the ledger name used by the subscription scenario.
+const SubscriptionLedger = "billing"
+
+// SubscriptionSetupActions returns the Apply requests that create the ledger,
+// schema, account types, and numscript library for the subscription scenario.
+func SubscriptionSetupActions() []*servicepb.Request {
+	return []*servicepb.Request{
+		actions.CreateLedgerWithSchemaAction(SubscriptionLedger, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			{
+				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				Key:        "subscriber_plan",
+				Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+			},
+			{
+				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				Key:        "billing_cycle",
+				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+			},
+			{
+				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				Key:        "retention_score",
+				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+			},
+		}),
+		actions.AddAccountTypeAction(SubscriptionLedger, "subscriber", "subscriber:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(SubscriptionLedger, "revenue-deferred", "revenue:deferred", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(SubscriptionLedger, "revenue-recognized", "revenue:recognized", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(SubscriptionLedger, "revenue-adjustment", "revenue:adjustment", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.SaveNumscriptWithVersionAction(SubscriptionLedger, "fund_wallet", `vars {
+  account $subscriber
+  monetary $amount
+}
+send $amount (
+  source = @world
+  destination = $subscriber
+)`, "1.0.0"),
+		actions.SaveNumscriptWithVersionAction(SubscriptionLedger, "charge_subscription", `vars {
+  account $subscriber
+  monetary $amount
+}
+send $amount (
+  source = $subscriber
+  destination = @revenue:deferred
+)`, "1.0.0"),
+		actions.SaveNumscriptWithVersionAction(SubscriptionLedger, "issue_credit", `vars {
+  account $subscriber
+  monetary $amount
+}
+send $amount (
+  source = @world
+  destination = $subscriber
+)`, "1.0.0"),
+		actions.SaveNumscriptWithVersionAction(SubscriptionLedger, "recognize_revenue", `vars {
+  monetary $amount
+}
+send $amount (
+  source = @revenue:deferred allowing unbounded overdraft
+  destination = @revenue:recognized
+)`, "1.0.0"),
+		actions.SaveNumscriptWithVersionAction(SubscriptionLedger, "adjust_revenue", `vars {
+  monetary $amount
+}
+send $amount (
+  source = @revenue:deferred allowing unbounded overdraft
+  destination = @revenue:adjustment
+)`, "1.0.0"),
+		actions.CreateAccountMetadataIndexAction(SubscriptionLedger, "subscriber_plan"),
+		actions.CreateAccountMetadataIndexAction(SubscriptionLedger, "retention_score"),
+		actions.CreatePreparedQueryAction("accounts-by-prefix", SubscriptionLedger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			actions.ParamAddressPrefixFilter("prefix"),
+		),
+		actions.CreatePreparedQueryAction("by-plan", SubscriptionLedger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			actions.ParamStringMetadataFilter("subscriber_plan", "plan_value"),
+		),
+		actions.CreatePreparedQueryAction("high-retention", SubscriptionLedger,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			actions.ParamInt64RangeMetadataFilter("retention_score", "min_score", "max_score"),
+		),
+	}
+}
+
 // RunSubscription provisions a SaaS billing scenario with 50 subscribers
 // over 3 monthly cycles, with credits, revenue adjustments, and recognition.
 func RunSubscription(r *Runner) error {
 	const (
-		ledger         = "billing"
 		numSubscribers = 50
 		numCycles      = 3
 		numUnderFunded = 5
@@ -59,67 +141,7 @@ func RunSubscription(r *Runner) error {
 	)
 
 	// --- Setup ---
-	if _, err := r.Step("Setup",
-		actions.CreateLedgerWithSchemaAction(ledger, nil, []*commonpb.SetMetadataFieldTypeCommand{
-			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-				Key:        "subscriber_plan",
-				Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
-			},
-			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-				Key:        "billing_cycle",
-				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-			},
-			{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-				Key:        "retention_score",
-				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-			},
-		}),
-		actions.AddAccountTypeAction(ledger, "subscriber", "subscriber:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "revenue-deferred", "revenue:deferred", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "revenue-recognized", "revenue:recognized", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(ledger, "revenue-adjustment", "revenue:adjustment", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.SaveNumscriptWithVersionAction(ledger, "fund_wallet", `vars {
-  account $subscriber
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = $subscriber
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "charge_subscription", `vars {
-  account $subscriber
-  monetary $amount
-}
-send $amount (
-  source = $subscriber
-  destination = @revenue:deferred
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "issue_credit", `vars {
-  account $subscriber
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = $subscriber
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "recognize_revenue", `vars {
-  monetary $amount
-}
-send $amount (
-  source = @revenue:deferred allowing unbounded overdraft
-  destination = @revenue:recognized
-)`, "1.0.0"),
-		actions.SaveNumscriptWithVersionAction(ledger, "adjust_revenue", `vars {
-  monetary $amount
-}
-send $amount (
-  source = @revenue:deferred allowing unbounded overdraft
-  destination = @revenue:adjustment
-)`, "1.0.0"),
-	); err != nil {
+	if _, err := r.Step("Setup", SubscriptionSetupActions()...); err != nil {
 		return err
 	}
 
@@ -128,7 +150,7 @@ send $amount (
 		// Fund wallets
 		fundReqs := make([]*servicepb.Request, 0, numSubscribers)
 		for _, sub := range subscribers {
-			fundReqs = append(fundReqs, actions.CreateScriptRefTransactionAction(ledger, "fund_wallet", "1.0.0", map[string]string{
+			fundReqs = append(fundReqs, actions.CreateScriptRefTransactionAction(SubscriptionLedger, "fund_wallet", "1.0.0", map[string]string{
 				"subscriber": fmt.Sprintf("subscriber:%d", sub.id),
 				"amount":     fmt.Sprintf("USD/2 %d", sub.fundedAt),
 			}, nil))
@@ -143,7 +165,7 @@ send $amount (
 			if sub.fundedAt < sub.amount {
 				continue // skip under-funded
 			}
-			billingReqs = append(billingReqs, actions.CreateScriptRefTransactionAction(ledger, "charge_subscription", "1.0.0", map[string]string{
+			billingReqs = append(billingReqs, actions.CreateScriptRefTransactionAction(SubscriptionLedger, "charge_subscription", "1.0.0", map[string]string{
 				"subscriber": fmt.Sprintf("subscriber:%d", sub.id),
 				"amount":     fmt.Sprintf("USD/2 %d", sub.amount),
 			}, nil))
@@ -155,11 +177,11 @@ send $amount (
 
 		// Credits to 2 subscribers
 		if _, err := r.Step(fmt.Sprintf("Cycle%d/Credits", cycle),
-			actions.CreateScriptRefTransactionAction(ledger, "issue_credit", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(SubscriptionLedger, "issue_credit", "1.0.0", map[string]string{
 				"subscriber": fmt.Sprintf("subscriber:%d", 6+cycle),
 				"amount":     "USD/2 200",
 			}, nil),
-			actions.CreateScriptRefTransactionAction(ledger, "issue_credit", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(SubscriptionLedger, "issue_credit", "1.0.0", map[string]string{
 				"subscriber": fmt.Sprintf("subscriber:%d", 10+cycle),
 				"amount":     "USD/2 300",
 			}, nil),
@@ -170,13 +192,13 @@ send $amount (
 		// Typed metadata on first cycle
 		if cycle == 1 {
 			if _, err := r.Step("Cycle1/TypedMetadata",
-				actions.SaveTypedAccountMetadataAction(ledger, "subscriber:6", &commonpb.MetadataSet{
+				actions.SaveTypedAccountMetadataAction(SubscriptionLedger, "subscriber:6", &commonpb.MetadataSet{
 					Metadata: []*commonpb.Metadata{
 						{Key: "subscriber_plan", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "pro"}}},
 						{Key: "billing_cycle", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: 1}}},
 					},
 				}),
-				actions.SaveTypedAccountMetadataAction(ledger, "subscriber:7", &commonpb.MetadataSet{
+				actions.SaveTypedAccountMetadataAction(SubscriptionLedger, "subscriber:7", &commonpb.MetadataSet{
 					Metadata: []*commonpb.Metadata{
 						{Key: "subscriber_plan", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "enterprise"}}},
 					},
@@ -188,7 +210,7 @@ send $amount (
 
 		// Revenue adjustment
 		if _, err := r.Step(fmt.Sprintf("Cycle%d/Adjustment", cycle),
-			actions.CreateScriptRefTransactionAction(ledger, "adjust_revenue", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(SubscriptionLedger, "adjust_revenue", "1.0.0", map[string]string{
 				"amount": fmt.Sprintf("USD/2 %d", adjustmentAmount.Int64()),
 			}, nil),
 		); err != nil {
@@ -199,41 +221,13 @@ send $amount (
 		// Revenue recognition
 		recognizeAmt := new(big.Int).Set(totalDeferred)
 		if _, err := r.Step(fmt.Sprintf("Cycle%d/RevenueRecognition", cycle),
-			actions.CreateScriptRefTransactionAction(ledger, "recognize_revenue", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(SubscriptionLedger, "recognize_revenue", "1.0.0", map[string]string{
 				"amount": fmt.Sprintf("USD/2 %d", recognizeAmt.Int64()),
 			}, nil),
 		); err != nil {
 			return err
 		}
 		totalDeferred.Sub(totalDeferred, recognizeAmt)
-	}
-
-	// --- Indexes ---
-	if _, err := r.Step("Indexes",
-		actions.CreateAccountMetadataIndexAction(ledger, "subscriber_plan"),
-		actions.CreateAccountMetadataIndexAction(ledger, "retention_score"),
-	); err != nil {
-		return err
-	}
-
-	// --- Prepared Queries ---
-	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "accounts-by-prefix", ledger,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		actions.ParamAddressPrefixFilter("prefix"),
-	); err != nil {
-		return fmt.Errorf("create prepared query accounts-by-prefix: %w", err)
-	}
-	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "by-plan", ledger,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		actions.ParamStringMetadataFilter("subscriber_plan", "plan_value"),
-	); err != nil {
-		return fmt.Errorf("create prepared query by-plan: %w", err)
-	}
-	if err := actions.CreatePreparedQuery(r.Ctx(), r.Client(), "high-retention", ledger,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-		actions.ParamInt64RangeMetadataFilter("retention_score", "min_score", "max_score"),
-	); err != nil {
-		return fmt.Errorf("create prepared query high-retention: %w", err)
 	}
 
 	return nil

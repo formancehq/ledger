@@ -10,6 +10,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
 
@@ -22,7 +23,7 @@ import (
 // Generates ~200 Apply calls to trigger ~4 cache rotations (threshold=50).
 func TestSubscriptionBillingCycle(t *testing.T) {
 	const (
-		ledger         = "billing"
+		ledger         = scenario.SubscriptionLedger
 		numSubscribers = 50
 		numCycles      = 3
 		numUnderFunded = 5
@@ -73,66 +74,8 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 
 	// --- Phase 1: Setup & Numscript Library ---
 	t.Run("Setup", func(t *testing.T) {
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateLedgerWithSchemaAction(ledger, nil, []*commonpb.SetMetadataFieldTypeCommand{
-				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-					Key:        "subscriber_plan",
-					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
-				},
-				{
-					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-					Key:        "billing_cycle",
-					Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
-				},
-			}),
-			// Account types: enforce address patterns
-			testutil.AddAccountTypeAction(ledger, "subscriber", "subscriber:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "revenue-deferred", "revenue:deferred", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "revenue-recognized", "revenue:recognized", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "revenue-adjustment", "revenue:adjustment", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.SaveNumscriptWithVersionAction(ledger, "fund_wallet", `vars {
-  account $subscriber
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = $subscriber
-)`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction(ledger, "charge_subscription", `vars {
-  account $subscriber
-  monetary $amount
-}
-send $amount (
-  source = $subscriber
-  destination = @revenue:deferred
-)`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction(ledger, "issue_credit", `vars {
-  account $subscriber
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = $subscriber
-)`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction(ledger, "recognize_revenue", `vars {
-  monetary $amount
-}
-send $amount (
-  source = @revenue:deferred allowing unbounded overdraft
-  destination = @revenue:recognized
-)`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction(ledger, "adjust_revenue", `vars {
-  monetary $amount
-}
-send $amount (
-  source = @revenue:deferred allowing unbounded overdraft
-  destination = @revenue:adjustment
-)`, "1.0.0"),
-		)
+		scenariotest.ApplyActions(t, ctx, client, scenario.SubscriptionSetupActions()...)
 	})
-
-	// retention_score schema is now declared in the shared scenario's initial schema
 
 	// --- Billing Cycles ---
 	for cycle := 1; cycle <= numCycles; cycle++ {
@@ -295,7 +238,7 @@ send $amount (
 		t.Logf("MetadataSchema: %d account fields declared", len(acctFields))
 	})
 
-	// --- Prepared Queries (created by shared scenario) ---
+	// --- Prepared Queries ---
 	t.Run("PreparedQueries", func(t *testing.T) {
 		// Wait for index backfill to complete
 		require.Eventually(t, func() bool {
@@ -401,7 +344,7 @@ send $amount (
 	// CreateAccountMetadataIndex after high cache pressure (200+ Apply calls, 4+ rotations).
 	// Regression test: LedgerInfo must be preloaded for Apply orders to survive cache eviction.
 	t.Run("CreateAccountMetadataIndexUnderLoad", func(t *testing.T) {
-		// Drop the index created by the shared scenario, then re-create under load
+		// Drop the index created in SetupQueriesAndIndexes, then re-create under load
 		scenariotest.ApplyActions(t, ctx, client,
 			testutil.DropAccountMetadataIndexAction(ledger, "subscriber_plan"),
 		)

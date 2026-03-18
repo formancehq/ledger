@@ -274,7 +274,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		require.NotEmpty(t, result.SourceVolumes)
 	})
 
-	t.Run("discovers metadata dependencies", func(t *testing.T) {
+	t.Run("rejects scripts using meta()", func(t *testing.T) {
 		t.Parallel()
 
 		script := `
@@ -288,7 +288,7 @@ func TestDiscoverNumscriptDependencies(t *testing.T) {
 		`
 
 		result, err := DiscoverNumscriptDependencies(testCache, script, nil, ledgerID)
-		require.NoError(t, err)
-		require.NotEmpty(t, result.Metadata, "should discover metadata dependencies")
+		require.ErrorIs(t, err, ErrMetaNotSupported)
+		require.Nil(t, result)
 	})
 }

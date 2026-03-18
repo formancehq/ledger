@@ -30,6 +30,9 @@ Refactor:
 * estimate cache size
 * delete attributes on ledger deletion
 * Simplify machine by allowing some commands to be in a single batch?
+* https://go.dev/blog/flight-recorder
+* Store Numscript usage
+* Account types global enforcement
 
 Later:
 * Store

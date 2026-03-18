@@ -11,50 +11,31 @@ import (
 
 func init() { Register("multi-ledger-payroll", RunMultiLedgerPayroll) }
 
-// RunMultiLedgerPayroll provisions a company payroll scenario across 4 ledgers:
-// a central clearing ledger and 3 department ledgers (engineering, sales, operations).
-// Runs 3 monthly cycles, engineering bonuses, and inter-department cost allocations.
-func RunMultiLedgerPayroll(r *Runner) error {
-	const (
-		numMonths    = 3
-		baseSalary   = 500_000
-		bonusPercent = 10
-	)
+// MultiLedgerPayrollDepartment describes a department in the payroll scenario.
+type MultiLedgerPayrollDepartment struct {
+	Name      string
+	Ledger    string
+	Employees int
+}
 
-	type department struct {
-		name      string
-		ledger    string
-		employees int
+// MultiLedgerPayrollDepartments returns the department definitions.
+func MultiLedgerPayrollDepartments() []MultiLedgerPayrollDepartment {
+	return []MultiLedgerPayrollDepartment{
+		{Name: "engineering", Ledger: "dept-eng", Employees: 15},
+		{Name: "sales", Ledger: "dept-sales", Employees: 10},
+		{Name: "operations", Ledger: "dept-ops", Employees: 5},
 	}
+}
 
-	departments := []department{
-		{name: "engineering", ledger: "dept-eng", employees: 15},
-		{name: "sales", ledger: "dept-sales", employees: 10},
-		{name: "operations", ledger: "dept-ops", employees: 5},
-	}
+// MultiLedgerPayrollSetupActions returns all setup requests for the multi-ledger payroll scenario:
+// clearing ledger + department ledgers, account types, and numscripts.
+func MultiLedgerPayrollSetupActions() []*servicepb.Request {
+	departments := MultiLedgerPayrollDepartments()
 
-	// --- Setup All Ledgers ---
-	{
-		setupReqs := []*servicepb.Request{
-			actions.CreateLedgerAction("clearing", nil),
-			actions.AddAccountTypeAction("clearing", "company", "company:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			actions.AddAccountTypeAction("clearing", "dept", "dept:{name}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		}
-		for _, dept := range departments {
-			setupReqs = append(setupReqs,
-				actions.CreateLedgerAction(dept.ledger, nil),
-				actions.AddAccountTypeAction(dept.ledger, "payroll", "payroll:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-				actions.AddAccountTypeAction(dept.ledger, "employee", "employee:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-				actions.AddAccountTypeAction(dept.ledger, "expense", "expense:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			)
-		}
-		if _, err := r.Step("Setup/Ledgers", setupReqs...); err != nil {
-			return err
-		}
-	}
-
-	// Save clearing-ledger numscripts
-	if _, err := r.Step("Setup/ClearingNumscripts",
+	reqs := []*servicepb.Request{
+		actions.CreateLedgerAction("clearing", nil),
+		actions.AddAccountTypeAction("clearing", "company", "company:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction("clearing", "dept", "dept:{name}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		actions.SaveNumscriptWithVersionAction("clearing", "fund_clearing", `vars {
   monetary $amount
 }
@@ -79,21 +60,22 @@ send $amount (
   source = $from_dept
   destination = $to_dept
 )`, "1.0.0"),
-	); err != nil {
-		return err
 	}
 
-	// Save department-scoped numscripts
 	for _, dept := range departments {
-		if _, err := r.Step("Setup/Numscripts/"+dept.name,
-			actions.SaveNumscriptWithVersionAction(dept.ledger, "fund_payroll", `vars {
+		reqs = append(reqs,
+			actions.CreateLedgerAction(dept.Ledger, nil),
+			actions.AddAccountTypeAction(dept.Ledger, "payroll", "payroll:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+			actions.AddAccountTypeAction(dept.Ledger, "employee", "employee:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+			actions.AddAccountTypeAction(dept.Ledger, "expense", "expense:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+			actions.SaveNumscriptWithVersionAction(dept.Ledger, "fund_payroll", `vars {
   monetary $amount
 }
 send $amount (
   source = @world
   destination = @payroll:pool
 )`, "1.0.0"),
-			actions.SaveNumscriptWithVersionAction(dept.ledger, "pay_salary", `vars {
+			actions.SaveNumscriptWithVersionAction(dept.Ledger, "pay_salary", `vars {
   account $employee
   monetary $amount
 }
@@ -101,9 +83,27 @@ send $amount (
   source = @payroll:pool
   destination = $employee
 )`, "1.0.0"),
-		); err != nil {
-			return err
-		}
+		)
+	}
+
+	return reqs
+}
+
+// RunMultiLedgerPayroll provisions a company payroll scenario across 4 ledgers:
+// a central clearing ledger and 3 department ledgers (engineering, sales, operations).
+// Runs 3 monthly cycles, engineering bonuses, and inter-department cost allocations.
+func RunMultiLedgerPayroll(r *Runner) error {
+	const (
+		numMonths    = 3
+		baseSalary   = 500_000
+		bonusPercent = 10
+	)
+
+	departments := MultiLedgerPayrollDepartments()
+
+	// --- Setup ---
+	if _, err := r.Step("Setup", MultiLedgerPayrollSetupActions()...); err != nil {
+		return err
 	}
 
 	// --- Monthly Payroll Cycles ---
@@ -111,7 +111,7 @@ send $amount (
 		// Step 1: Fund clearing ledger
 		totalNeeded := int64(0)
 		for _, dept := range departments {
-			totalNeeded += int64(dept.employees) * baseSalary
+			totalNeeded += int64(dept.Employees) * baseSalary
 		}
 		if _, err := r.Step(fmt.Sprintf("Month%d/FundClearing", month),
 			actions.CreateScriptRefTransactionAction("clearing", "fund_clearing", "1.0.0", map[string]string{
@@ -124,10 +124,10 @@ send $amount (
 		// Step 2: Distribute to department accounts in clearing ledger
 		var deptReqs []*servicepb.Request
 		for _, dept := range departments {
-			amount := int64(dept.employees) * baseSalary
+			amount := int64(dept.Employees) * baseSalary
 			deptReqs = append(deptReqs,
 				actions.CreateScriptRefTransactionAction("clearing", "fund_dept", "1.0.0", map[string]string{
-					"dept_account": "dept:" + dept.name,
+					"dept_account": "dept:" + dept.Name,
 					"amount":       fmt.Sprintf("USD/2 %d", amount),
 				}, map[string]string{"month": strconv.Itoa(month)}),
 			)
@@ -139,9 +139,9 @@ send $amount (
 		// Step 3: Fund department payroll pools
 		var payrollReqs []*servicepb.Request
 		for _, dept := range departments {
-			amount := int64(dept.employees) * baseSalary
+			amount := int64(dept.Employees) * baseSalary
 			payrollReqs = append(payrollReqs,
-				actions.CreateScriptRefTransactionAction(dept.ledger, "fund_payroll", "1.0.0", map[string]string{
+				actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
 					"amount": fmt.Sprintf("USD/2 %d", amount),
 				}, map[string]string{"month": strconv.Itoa(month)}),
 			)
@@ -153,9 +153,9 @@ send $amount (
 		// Step 4: Pay employees in each department
 		for _, dept := range departments {
 			var salaryReqs []*servicepb.Request
-			for emp := 1; emp <= dept.employees; emp++ {
+			for emp := 1; emp <= dept.Employees; emp++ {
 				salaryReqs = append(salaryReqs,
-					actions.CreateScriptRefTransactionAction(dept.ledger, "pay_salary", "1.0.0", map[string]string{
+					actions.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "1.0.0", map[string]string{
 						"employee": fmt.Sprintf("employee:%d", emp),
 						"amount":   fmt.Sprintf("USD/2 %d", baseSalary),
 					}, map[string]string{
@@ -164,7 +164,7 @@ send $amount (
 					}),
 				)
 			}
-			if _, err := r.Step(fmt.Sprintf("Month%d/PayEmployees/%s", month, dept.name), salaryReqs...); err != nil {
+			if _, err := r.Step(fmt.Sprintf("Month%d/PayEmployees/%s", month, dept.Name), salaryReqs...); err != nil {
 				return err
 			}
 		}
@@ -174,10 +174,10 @@ send $amount (
 	{
 		dept := departments[0]
 		bonusAmount := int64(baseSalary * bonusPercent / 100)
-		totalBonus := bonusAmount * int64(dept.employees)
+		totalBonus := bonusAmount * int64(dept.Employees)
 
 		if _, err := r.Step("Bonuses/FundPool",
-			actions.CreateScriptRefTransactionAction(dept.ledger, "fund_payroll", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
 				"amount": fmt.Sprintf("USD/2 %d", totalBonus),
 			}, map[string]string{"type": "bonus-funding"}),
 		); err != nil {
@@ -185,9 +185,9 @@ send $amount (
 		}
 
 		var bonusReqs []*servicepb.Request
-		for emp := 1; emp <= dept.employees; emp++ {
+		for emp := 1; emp <= dept.Employees; emp++ {
 			bonusReqs = append(bonusReqs,
-				actions.CreateScriptRefTransactionAction(dept.ledger, "pay_salary", "1.0.0", map[string]string{
+				actions.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "1.0.0", map[string]string{
 					"employee": fmt.Sprintf("employee:%d", emp),
 					"amount":   fmt.Sprintf("USD/2 %d", bonusAmount),
 				}, map[string]string{"type": "bonus"}),

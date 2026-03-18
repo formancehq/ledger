@@ -7,8 +7,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
 
@@ -21,7 +21,7 @@ import (
 // With cache-rotation-threshold=50: ~10 rotations, ~53 snapshots (threshold=10).
 func TestStressInvariants(t *testing.T) {
 	const (
-		ledger      = "stress"
+		ledger      = scenario.StressInvariantsLedger
 		numAccounts = 100
 		numTrades   = 400
 		depositAmt  = 1_000_000 // USD/2 per account
@@ -36,41 +36,7 @@ func TestStressInvariants(t *testing.T) {
 
 	// --- Phase 1: Setup ---
 	t.Run("Setup", func(t *testing.T) {
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateLedgerAction(ledger, nil),
-			// Account types: enforce address patterns
-			testutil.AddAccountTypeAction(ledger, "trader", "trader:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "exchange-fees", "exchange:fees", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "exchange-withdrawals", "exchange:withdrawals", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.SaveNumscriptWithVersionAction(ledger, "deposit", `vars {
-  account $account
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = $account
-)`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction(ledger, "trade", `vars {
-  account $buyer
-  account $seller
-  monetary $amount
-}
-send $amount (
-  source = $buyer
-  destination = {
-    1/100 to @exchange:fees
-    remaining to $seller
-  }
-)`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction(ledger, "withdraw", `vars {
-  account $account
-  monetary $amount
-}
-send $amount (
-  source = $account
-  destination = @exchange:withdrawals
-)`, "1.0.0"),
-		)
+		scenariotest.ApplyActions(t, ctx, client, scenario.StressInvariantsSetupActions()...)
 	})
 
 	// --- Phase 2: Bulk Deposits (100 Apply calls) ---

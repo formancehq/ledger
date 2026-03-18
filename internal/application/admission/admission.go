@@ -287,7 +287,10 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	// Step 1: Extract all preload needs from orders in a single pass
-	needs := a.extractPreloadNeeds(ctx, orders)
+	needs, err := a.extractPreloadNeeds(ctx, orders)
+	if err != nil {
+		return nil, err
+	}
 
 	// Step 2-4: Build preloads via shared Preloader (no lock)
 	cmd := commands.NewCommand(orders...)
@@ -551,7 +554,7 @@ func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {
 }
 
 // extractPreloadNeeds extracts all preload keys from orders in a single pass.
-func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order) *preload.Needs {
+func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order) (*preload.Needs, error) {
 	p := preload.NewNeeds()
 
 	for _, order := range orders {
@@ -705,6 +708,10 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 						ledgerName,
 					)
 					if err != nil {
+						if errors.Is(err, numscript.ErrMetaNotSupported) {
+							return nil, &domain.BusinessError{Err: numscript.ErrMetaNotSupported}
+						}
+
 						a.logger.WithFields(map[string]any{
 							"error": err.Error(),
 						}).Info("Numscript emulation failed during dependency discovery, skipping preload")
@@ -717,10 +724,6 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 
 						for key := range discovered.DestinationVolumes {
 							p.Volumes[key] = struct{}{}
-						}
-
-						for key := range discovered.Metadata {
-							p.Metadata[key] = struct{}{}
 						}
 
 						for key := range discovered.WrittenMetadata {
@@ -818,7 +821,7 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 		}
 	}
 
-	return p
+	return p, nil
 }
 
 // requestToOrder converts a servicepb.Request to a raftcmdpb.Order.

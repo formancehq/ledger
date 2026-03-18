@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -615,20 +616,14 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	// preload targets a boundary that doesn't match either gen. This is safe
 	// because preloaded values only seed keys not already in cache, and a
 	// forward-mismatch (preload ahead) means the data is at least as fresh.
-	// todo: cause heavy load, we should log only if debug mode is enabled
-	// switch preloadSet.GetLastPersistedIndex() {
-	// case fsm.Registry.Cache.BaseIndex.Gen0:
-	//	fsm.logger.Debug("Selecting cache generation 0")
-	// case fsm.Registry.Cache.BaseIndex.Gen1:
-	//	fsm.logger.Debug("Selecting cache generation 1")
-	//default:
-	//	// Prediction mismatch — fall through to Gen0 path with a warning.
-	//	fsm.logger.WithFields(map[string]any{
-	//		"lastPersistedIndex": preloadSet.GetLastPersistedIndex(),
-	//		"gen0":               fsm.Registry.Cache.BaseIndex.Gen0,
-	//		"gen1":               fsm.Registry.Cache.BaseIndex.Gen1,
-	//	}).Debugf("Preload generation mismatch (tracker prediction off-by-one at boundary), using Gen0 path")
-	//}
+	switch preloadSet.GetLastPersistedIndex() {
+	case fsm.Registry.Cache.BaseIndex.Gen0:
+		fsm.logger.Debug("Selecting cache generation 0")
+	case fsm.Registry.Cache.BaseIndex.Gen1:
+		fsm.logger.Debug("Selecting cache generation 1")
+	default:
+		return errors.New("preloading preloaded index is invalid")
+	}
 
 	// Helper function to put a preloaded volume pair into a cache generation.
 	// Since volumes are always preloaded with absolute Known values,

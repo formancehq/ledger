@@ -25,19 +25,20 @@ type DiscoveryResult struct {
 // a Numscript script queries. It returns infinite balances so the script
 // executes fully, and records every account/asset pair queried via GetBalances.
 //
-// Determinism constraint: GetBalances and GetAccountsMetadata may each be called
-// at most once. A second call indicates a non-deterministic script (e.g., mid-script
-// balance queries) which cannot be reliably preloaded. The violation is recorded
-// in the nonDeterministic field and checked after execution.
+// Determinism constraint: GetBalances may be called at most once. A second call
+// indicates a non-deterministic script (e.g., mid-script balance queries) which
+// cannot be reliably preloaded. The violation is recorded in the
+// nonDeterministic field and checked after execution.
+//
+// meta() calls are forbidden: GetAccountsMetadata returns ErrMetaNotSupported.
 //
 // This is a temporary workaround until the Numscript library implements static
 // analysis of required inputs (see docs/drafts/numscript/numscript-static-inputs-rfc.md).
 type discoveryStore struct {
 	queriedVolumes   map[domain.VolumeKey]struct{}
-	queriedMetadata  map[domain.MetadataKey]struct{}
 	balancesCalled   bool
-	metadataCalled   bool
 	nonDeterministic *ErrNonDeterministicScript
+	metaCalled       bool
 }
 
 func (s *discoveryStore) GetBalances(_ context.Context, query numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
@@ -66,36 +67,21 @@ func (s *discoveryStore) GetBalances(_ context.Context, query numscriptlib.Balan
 	return balances, nil
 }
 
-func (s *discoveryStore) GetAccountsMetadata(_ context.Context, query numscriptlib.MetadataQuery) (numscriptlib.AccountsMetadata, error) {
-	if s.metadataCalled {
-		s.nonDeterministic = &ErrNonDeterministicScript{Method: "GetAccountsMetadata"}
+func (s *discoveryStore) GetAccountsMetadata(_ context.Context, _ numscriptlib.MetadataQuery) (numscriptlib.AccountsMetadata, error) {
+	s.metaCalled = true
 
-		return nil, s.nonDeterministic
-	}
-
-	s.metadataCalled = true
-
-	result := make(numscriptlib.AccountsMetadata, len(query))
-	for account, keys := range query {
-		result[account] = make(numscriptlib.AccountMetadata)
-		for _, key := range keys {
-			s.queriedMetadata[domain.MetadataKey{
-				AccountKey: domain.AccountKey{Account: account},
-				Key:        key,
-			}] = struct{}{}
-		}
-	}
-
-	return result, nil
+	return nil, ErrMetaNotSupported
 }
 
 // DiscoverNumscriptDependencies runs a Numscript script with a discovery store that
-// returns infinite balances, solely to discover which accounts/assets and metadata keys
-// the script queries. The returned keys have their Ledger set to the provided value.
+// returns infinite balances, solely to discover which accounts/assets the script
+// queries. The returned keys have their Ledger set to the provided value.
 //
-// Scripts must be deterministic: GetBalances and GetAccountsMetadata may each be
-// called at most once. If a script calls either more than once (e.g., via mid-script
-// balance queries), ErrNonDeterministicScript is returned.
+// Scripts must be deterministic: GetBalances may be called at most once. If a
+// script calls it more than once (e.g., via mid-script balance queries),
+// ErrNonDeterministicScript is returned.
+//
+// Scripts using meta() are rejected with ErrMetaNotSupported.
 //
 // Other execution errors are ignored: the discovery store returns infinite balances
 // which may cause the script to follow different code paths. We collect whatever
@@ -112,14 +98,18 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 	maps.Copy(variablesMap, vars)
 
 	store := &discoveryStore{
-		queriedVolumes:  make(map[domain.VolumeKey]struct{}),
-		queriedMetadata: make(map[domain.MetadataKey]struct{}),
+		queriedVolumes: make(map[domain.VolumeKey]struct{}),
 	}
 
 	// Run the script. The discovery store captures source accounts via GetBalances
 	// and we extract destinations from the resulting postings.
 	// Experimental features are declared directly in scripts via #![feature "..."].
 	execResult, _ := parsed.Run(context.Background(), variablesMap, store)
+
+	// Reject scripts that use meta() — cannot preload dynamic accounts.
+	if store.metaCalled {
+		return nil, ErrMetaNotSupported
+	}
 
 	// Propagate determinism violations — these are not transient errors.
 	// We check the store directly because the numscript interpreter wraps store
@@ -157,13 +147,6 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 		}
 	}
 
-	// Collect metadata keys with the real ledger name
-	metadata := make(map[domain.MetadataKey]struct{}, len(store.queriedMetadata))
-	for key := range store.queriedMetadata {
-		key.Ledger = ledger
-		metadata[key] = struct{}{}
-	}
-
 	// Collect account metadata keys written via set_account_meta.
 	var writtenMetadata map[domain.MetadataKey]struct{}
 	if len(execResult.AccountsMetadata) > 0 {
@@ -181,7 +164,6 @@ func DiscoverNumscriptDependencies(cache *NumscriptCache, script string, vars ma
 	return &DiscoveryResult{
 		SourceVolumes:      sourceVolumes,
 		DestinationVolumes: destinationVolumes,
-		Metadata:           metadata,
 		WrittenMetadata:    writtenMetadata,
 	}, nil
 }

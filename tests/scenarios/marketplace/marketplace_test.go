@@ -10,6 +10,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
 
@@ -22,7 +23,7 @@ import (
 // Generates ~270 Apply calls to trigger ~5 cache rotations (threshold=50).
 func TestMarketplaceLifecycle(t *testing.T) {
 	const (
-		ledger       = "marketplace"
+		ledger       = scenario.MarketplaceLedger
 		numCustomers = 50
 		numMerchants = 10
 		numPurchases = 200
@@ -58,42 +59,7 @@ func TestMarketplaceLifecycle(t *testing.T) {
 
 	// --- Phase 1: Setup & Numscript Library ---
 	t.Run("Setup", func(t *testing.T) {
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateLedgerAction(ledger, nil),
-			// Account types: enforce address patterns
-			testutil.AddAccountTypeAction(ledger, "customer", "customer:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "merchant", "merchant:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "platform-fees", "platform:fees", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "platform-payouts", "platform:payouts", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.SaveNumscriptWithVersionAction(ledger, "deposit", `vars {
-  account $customer
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = $customer
-)`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction(ledger, "purchase", `vars {
-  account $customer
-  account $merchant
-  monetary $amount
-}
-send $amount (
-  source = $customer
-  destination = {
-    3/100 to @platform:fees
-    remaining to $merchant
-  }
-)`, "1.0.0"),
-			testutil.SaveNumscriptWithVersionAction(ledger, "payout", `vars {
-  account $merchant
-  monetary $amount
-}
-send $amount (
-  source = $merchant
-  destination = @platform:payouts
-)`, "1.0.0"),
-		)
+		scenariotest.ApplyActions(t, ctx, client, scenario.MarketplaceSetupActions()...)
 	})
 
 	// --- Phase 1a: Verify Setup via Reads ---

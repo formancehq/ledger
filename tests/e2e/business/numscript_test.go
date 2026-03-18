@@ -3,13 +3,12 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"fmt"
-	"math/big"
 	"time"
 
+	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -630,30 +629,15 @@ send $amount (
 		})
 	})
 
-	// Tests for Numscript metadata preload: scripts that read account metadata
-	// via meta() must have that metadata preloaded into the cache by the admission layer.
-	Context("When using Numscript with metadata queries (meta())", Ordered, func() {
-		var ledgerName = "numscript-meta-ledger"
-
-		BeforeAll(func() {
+	// meta() is not supported — scripts must use static account references.
+	Context("When using Numscript with meta() calls", func() {
+		It("Should reject scripts that use meta() to resolve variables", func() {
+			ledgerName := "numscript-meta-rejected"
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
-		})
 
-		It("Should route funds using meta() to read destination from account metadata", func() {
-			// Step 1: Set metadata on a routing account to define where funds should go
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "routing:orders", map[string]string{
-						"destination": "merchant:shop1",
-					}),
-				},
-			})
-			Expect(err).To(Succeed())
-
-			// Step 2: Execute a Numscript that reads the destination from metadata
 			script := `
 vars {
   account $dest = meta(@routing:orders, "destination")
@@ -665,230 +649,15 @@ send $amount (
   destination = $dest
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"amount": "USD/2 5000",
 					}, nil),
 				},
 			})
-			Expect(err).To(Succeed())
-			Expect(resp.Logs).To(HaveLen(1))
-
-			// Verify the posting was routed to the metadata-specified destination
-			log := resp.Logs[0]
-			createdTx := log.Payload.GetApply().Log.Data.GetCreatedTransaction()
-			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
-			Expect(createdTx.Transaction.Postings[0].Source).To(Equal("world"))
-			Expect(createdTx.Transaction.Postings[0].Destination).To(Equal("merchant:shop1"))
-			Expect(createdTx.Transaction.Postings[0].Asset).To(Equal("USD/2"))
-			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("5000"))
-		})
-
-		It("Should chain meta() calls to resolve nested metadata-driven routing", func() {
-			// Step 1: Set up a chain: sale account → seller account → commission rate
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "sale:order-42", map[string]string{
-						"seller": "sellers:acme",
-					}),
-					testutil.SaveAccountMetadataAction(ledgerName, "sellers:acme", map[string]string{
-						"commission": "15/100",
-					}),
-				},
-			})
-			Expect(err).To(Succeed())
-
-			// Step 2: Execute a script that reads seller from sale metadata,
-			// then reads commission from seller metadata
-			script := `
-vars {
-  account $sale
-  account $seller = meta($sale, "seller")
-  portion $commission = meta($seller, "commission")
-}
-
-send [USD/2 10000] (
-  source = @world
-  destination = {
-    $commission to @platform:fees
-    remaining to $seller
-  }
-)
-`
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
-						"sale": "sale:order-42",
-					}, nil),
-				},
-			})
-			Expect(err).To(Succeed())
-			Expect(resp.Logs).To(HaveLen(1))
-
-			// Verify the split: 15% to platform, 85% to seller
-			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
-			Expect(createdTx.Transaction.Postings).To(HaveLen(2))
-
-			// Find the posting to platform:fees (commission)
-			var platformPosting, sellerPosting *commonpb.Posting
-			for _, p := range createdTx.Transaction.Postings {
-				switch p.Destination {
-				case "platform:fees":
-					platformPosting = p
-				case "sellers:acme":
-					sellerPosting = p
-				}
-			}
-			Expect(platformPosting).NotTo(BeNil(), "should have a posting to platform:fees")
-			Expect(sellerPosting).NotTo(BeNil(), "should have a posting to sellers:acme")
-
-			// 15% of 10000 = 1500
-			Expect(platformPosting.Amount.ToBigInt().Cmp(big.NewInt(1500))).To(Equal(0))
-			// 85% of 10000 = 8500
-			Expect(sellerPosting.Amount.ToBigInt().Cmp(big.NewInt(8500))).To(Equal(0))
-		})
-
-		It("Should handle meta() when metadata was set by a previous Numscript execution", func() {
-			// Step 1: Use set_account_meta in a first Numscript to write metadata
-			setupScript := `
-set_account_meta(@config:treasury, "target", "treasury:main")
-
-send [EUR/2 1000] (
-  source = @world
-  destination = @config:treasury
-)
-`
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, setupScript, nil, nil),
-				},
-			})
-			Expect(err).To(Succeed())
-
-			// Step 2: Use meta() in a second Numscript to read the metadata written above
-			routeScript := `
-vars {
-  account $dest = meta(@config:treasury, "target")
-  monetary $amount
-}
-
-send $amount (
-  source = @world
-  destination = $dest
-)
-`
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, routeScript, map[string]string{
-						"amount": "EUR/2 2000",
-					}, nil),
-				},
-			})
-			Expect(err).To(Succeed())
-			Expect(resp.Logs).To(HaveLen(1))
-
-			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
-			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
-			Expect(createdTx.Transaction.Postings[0].Destination).To(Equal("treasury:main"))
-		})
-
-		It("Should preload metadata correctly after many transactions (cache pressure)", func() {
-			// Step 1: Set metadata on an account
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "routing:pressure-test", map[string]string{
-						"target": "vault:pressure",
-					}),
-				},
-			})
-			Expect(err).To(Succeed())
-
-			// Step 2: Generate many transactions to increase the Raft index and potentially
-			// trigger cache generation rotations, which would evict the metadata from cache
-			for i := range 50 {
-				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", fmt.Sprintf("pressure:account%d", i), big.NewInt(100), "USD/2"),
-						}, nil, nil),
-					},
-				})
-				Expect(err).To(Succeed())
-			}
-
-			// Step 3: Now execute a Numscript that reads the metadata set in step 1.
-			// Without the metadata preload fix, this would see empty metadata because
-			// the cache generation containing the metadata may have been rotated out.
-			script := `
-vars {
-  account $dest = meta(@routing:pressure-test, "target")
-}
-
-send [USD/2 999] (
-  source = @world
-  destination = $dest
-)
-`
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, nil, nil),
-				},
-			})
-			Expect(err).To(Succeed())
-			Expect(resp.Logs).To(HaveLen(1))
-
-			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
-			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
-			Expect(createdTx.Transaction.Postings[0].Destination).To(Equal("vault:pressure"),
-				"metadata should be correctly preloaded even after many transactions")
-			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().String()).To(Equal("999"))
-		})
-
-		It("Should handle updated metadata correctly with meta()", func() {
-			// Step 1: Set initial routing metadata
-			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "routing:mutable", map[string]string{
-						"destination": "old:target",
-					}),
-				},
-			})
-			Expect(err).To(Succeed())
-
-			// Step 2: Update the metadata to point elsewhere
-			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "routing:mutable", map[string]string{
-						"destination": "new:target",
-					}),
-				},
-			})
-			Expect(err).To(Succeed())
-
-			// Step 3: Numscript should see the updated metadata
-			script := `
-vars {
-  account $dest = meta(@routing:mutable, "destination")
-}
-
-send [GBP/2 3000] (
-  source = @world
-  destination = $dest
-)
-`
-			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, nil, nil),
-				},
-			})
-			Expect(err).To(Succeed())
-			Expect(resp.Logs).To(HaveLen(1))
-
-			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
-			Expect(createdTx.Transaction.Postings).To(HaveLen(1))
-			Expect(createdTx.Transaction.Postings[0].Destination).To(Equal("new:target"),
-				"should see updated metadata, not stale value")
+			Expect(err).To(HaveOccurred())
+			Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
 		})
 	})
 })

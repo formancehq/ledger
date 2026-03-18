@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
 
@@ -27,7 +28,7 @@ import (
 // Generates ~30 Apply calls with moderate operational complexity.
 func TestOperationsLifecycle(t *testing.T) {
 	const (
-		ledger    = "ops-test"
+		ledger    = scenario.OperationsLifecycleLedger
 		numDeposits = 5
 	)
 
@@ -36,18 +37,7 @@ func TestOperationsLifecycle(t *testing.T) {
 
 	// --- Phase 1: Setup ---
 	t.Run("Setup", func(t *testing.T) {
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateLedgerAction(ledger, nil),
-			testutil.AddAccountTypeAction(ledger, "ops-account", "ops:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.SaveNumscriptWithVersionAction(ledger, "deposit", `vars {
-  account $account
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = $account
-)`, "1.0.0"),
-		)
+		scenariotest.ApplyActions(t, ctx, client, scenario.OperationsLifecycleSetupActions()...)
 
 		// Create a few transactions
 		actions := make([]*servicepb.Request, 0, numDeposits)

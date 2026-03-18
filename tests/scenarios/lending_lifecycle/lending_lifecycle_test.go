@@ -10,6 +10,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
 
@@ -37,7 +38,7 @@ import (
 // Generates ~130 Apply calls, triggers 2+ cache rotations.
 func TestLendingLifecycle(t *testing.T) {
 	const (
-		ledger       = "lending"
+		ledger       = scenario.LendingLifecycleLedger
 		numBorrowers = 10
 		numMonths    = 6
 		loanAmount   = 100_000 // USD/2 cents
@@ -67,79 +68,7 @@ func TestLendingLifecycle(t *testing.T) {
 
 	// --- Phase 1: Setup ---
 	t.Run("Setup", func(t *testing.T) {
-		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateLedgerAction(ledger, nil),
-			// Account types
-			testutil.AddAccountTypeAction(ledger, "funding", "funding:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "borrower-loan", "borrower:{id}:loan", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "borrower-wallet", "borrower:{id}:wallet", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "revenue", "revenue:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "expense", "expense:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			testutil.AddAccountTypeAction(ledger, "recovery", "recovery:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-
-			// Numscripts
-			testutil.SaveNumscriptWithVersionAction(ledger, "fund_pool", `vars {
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = @funding:pool
-)`, "1.0.0"),
-
-			testutil.SaveNumscriptWithVersionAction(ledger, "disburse_loan", `vars {
-  account $borrower_loan
-  account $borrower_wallet
-  monetary $amount
-}
-send $amount (
-  source = @funding:pool
-  destination = $borrower_loan
-)
-send $amount (
-  source = @world
-  destination = $borrower_wallet
-)`, "1.0.0"),
-
-			testutil.SaveNumscriptWithVersionAction(ledger, "repay_principal", `vars {
-  account $borrower_wallet
-  account $borrower_loan
-  monetary $amount
-}
-send $amount (
-  source = $borrower_wallet
-  destination = @world
-)
-send $amount (
-  source = $borrower_loan
-  destination = @funding:pool
-)`, "1.0.0"),
-
-			testutil.SaveNumscriptWithVersionAction(ledger, "accrue_interest", `vars {
-  account $borrower_wallet
-  monetary $amount
-}
-send $amount (
-  source = $borrower_wallet
-  destination = @revenue:interest
-)`, "1.0.0"),
-
-			testutil.SaveNumscriptWithVersionAction(ledger, "provision", `vars {
-  monetary $amount
-}
-send $amount (
-  source = @world
-  destination = @expense:provision
-)`, "1.0.0"),
-
-			testutil.SaveNumscriptWithVersionAction(ledger, "write_off", `vars {
-  account $borrower_loan
-  monetary $amount
-}
-send $amount (
-  source = $borrower_loan
-  destination = @recovery:pool
-)`, "1.0.0"),
-		)
+		scenariotest.ApplyActions(t, ctx, client, scenario.LendingLifecycleSetupActions()...)
 
 		// Fund the lending pool
 		scenariotest.ApplyActions(t, ctx, client,
@@ -149,6 +78,7 @@ send $amount (
 		)
 		fundingBalance.SetInt64(int64(loanAmount * numBorrowers))
 	})
+
 
 	// --- Phase 2: Loan Disbursements ---
 	t.Run("Disbursements", func(t *testing.T) {
