@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v3/oidc"
+	"github.com/formancehq/go-libs/v4/oidc"
 )
 
 func ed25519KeyPair(t *testing.T) (ed25519.PrivateKey, oidc.KeySet) {

@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	libtime "github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/go-libs/v4/logging"
+	libtime "github.com/formancehq/go-libs/v4/time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/state"

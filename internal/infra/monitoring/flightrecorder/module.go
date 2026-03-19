@@ -3,7 +3,7 @@ package flightrecorder
 import (
 	"go.uber.org/fx"
 
-	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v4/logging"
 
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 )

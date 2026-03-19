@@ -18,12 +18,12 @@ import (
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v3"
 
-	"github.com/formancehq/go-libs/v3/auth"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/otlp"
-	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/v3/otlp/otlptraces"
-	"github.com/formancehq/go-libs/v3/service"
+	"github.com/formancehq/go-libs/v4/auth"
+	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v4/otlp"
+	"github.com/formancehq/go-libs/v4/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v4/otlp/otlptraces"
+	"github.com/formancehq/go-libs/v4/service"
 
 	"github.com/formancehq/ledger-v3-poc/internal/bootstrap"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/flightrecorder"

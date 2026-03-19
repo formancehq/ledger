@@ -8,7 +8,7 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v4/logging"
 
 	v2 "github.com/formancehq/ledger-v3-poc/internal/adapter/v2"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"

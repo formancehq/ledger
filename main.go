@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/formancehq/go-libs/v3/service"
+	"github.com/formancehq/go-libs/v4/service"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/server"
 )

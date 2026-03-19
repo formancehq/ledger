@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 
-	"github.com/formancehq/go-libs/v3/collectionutils"
+	"github.com/formancehq/go-libs/v4/collectionutils"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/pyroscope"
 )

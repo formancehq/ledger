@@ -9,8 +9,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/formancehq/go-libs/v3/logging"
-	libtime "github.com/formancehq/go-libs/v3/time"
+	"github.com/formancehq/go-libs/v4/logging"
+	libtime "github.com/formancehq/go-libs/v4/time"
 
 	v2 "github.com/formancehq/ledger-v3-poc/internal/adapter/v2"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"

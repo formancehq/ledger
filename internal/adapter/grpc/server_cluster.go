@@ -11,7 +11,7 @@ import (
 
 	ggrpc "google.golang.org/grpc"
 
-	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v4/logging"
 
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"

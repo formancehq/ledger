@@ -19,10 +19,10 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 
-	"github.com/formancehq/go-libs/v3/httpserver"
-	"github.com/formancehq/go-libs/v3/logging"
-	"github.com/formancehq/go-libs/v3/oidc"
-	"github.com/formancehq/go-libs/v3/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v4/httpserver"
+	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v4/oidc"
+	"github.com/formancehq/go-libs/v4/otlp/otlpmetrics"
 
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"

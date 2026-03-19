@@ -5,7 +5,7 @@ import (
 
 	"go.etcd.io/etcd/raft/v3"
 
-	"github.com/formancehq/go-libs/v3/logging"
+	"github.com/formancehq/go-libs/v4/logging"
 )
 
 // loggerAdapter adapts the application logger to etcd/raft's Logger interface.

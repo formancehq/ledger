@@ -8,7 +8,7 @@ import (
 
 	jose "github.com/go-jose/go-jose/v4"
 
-	"github.com/formancehq/go-libs/v3/oidc"
+	"github.com/formancehq/go-libs/v4/oidc"
 
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 )

@@ -10,7 +10,7 @@ import (
 	"github.com/pterm/pterm/putils"
 	"github.com/spf13/cobra"
 
-	"github.com/formancehq/go-libs/v3/service"
+	"github.com/formancehq/go-libs/v4/service"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/accounts"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/accounttypes"
