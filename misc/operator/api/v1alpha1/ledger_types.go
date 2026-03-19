@@ -539,6 +539,10 @@ type MonitoringConfig struct {
 	// Pyroscope continuous profiling configuration.
 	// +optional
 	Pyroscope *PyroscopeConfig `json:"pyroscope,omitempty"`
+
+	// FlightRecorder configuration for runtime execution trace buffering.
+	// +optional
+	FlightRecorder *FlightRecorderConfig `json:"flightRecorder,omitempty"`
 }
 
 // TracesConfig holds trace configuration.
@@ -714,6 +718,21 @@ type PyroscopeConfig struct {
 	// DisableGCRuns disables GC runs.
 	// +optional
 	DisableGCRuns *bool `json:"disableGCRuns,omitempty"`
+}
+
+// FlightRecorderConfig holds runtime flight recorder configuration.
+type FlightRecorderConfig struct {
+	// Enabled enables the runtime flight recorder.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// MinAge is the minimum duration of trace data retained in the buffer.
+	// +optional
+	MinAge string `json:"minAge,omitempty"`
+
+	// MaxBytes is the maximum memory for the flight recorder buffer in bytes.
+	// +optional
+	MaxBytes *int64 `json:"maxBytes,omitempty"`
 }
 
 // ServiceSpec defines the ClusterIP service configuration.

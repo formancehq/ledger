@@ -1225,6 +1225,23 @@ spec:
                       attributes:
                         description: Attributes are additional OTEL resource attributes.
                         type: string
+                      flightRecorder:
+                        description: FlightRecorder configuration for runtime execution
+                          trace buffering.
+                        properties:
+                          enabled:
+                            description: Enabled enables the runtime flight recorder.
+                            type: boolean
+                          maxBytes:
+                            description: MaxBytes is the maximum memory for the flight
+                              recorder buffer in bytes.
+                            format: int64
+                            type: integer
+                          minAge:
+                            description: MinAge is the minimum duration of trace data
+                              retained in the buffer.
+                            type: string
+                        type: object
                       logs:
                         description: Logs configuration.
                         properties:

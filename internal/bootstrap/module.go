@@ -38,6 +38,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 	clusterhealth "github.com/formancehq/ledger-v3-poc/internal/infra/health"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/flightrecorder"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/preload"
@@ -578,25 +579,24 @@ func Module() fx.Option {
 			params struct {
 				fx.In
 
-				Handler       http.Handler
-				MeterProvider *sdkmetric.MeterProvider      `optional:"true"`
-				Exporter      *otlpmetrics.InMemoryExporter `optional:"true"`
+				Handler        http.Handler
+				MeterProvider  *sdkmetric.MeterProvider      `optional:"true"`
+				Exporter       *otlpmetrics.InMemoryExporter `optional:"true"`
+				FlightRecorder *flightrecorder.Recorder      `optional:"true"`
 			},
 		) http.Handler {
-			// If InMemoryExporter is available, wrap handler to add metrics endpoint
+			mux := http.NewServeMux()
+			mux.Handle("/", params.Handler)
+
 			if params.Exporter != nil && params.MeterProvider != nil {
-				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if r.URL.Path == "/metrics" {
-						otlpmetrics.NewInMemoryExporterHandler(params.MeterProvider, params.Exporter)(w, r)
-
-						return
-					}
-
-					params.Handler.ServeHTTP(w, r)
-				})
+				mux.Handle("/metrics", otlpmetrics.NewInMemoryExporterHandler(params.MeterProvider, params.Exporter))
 			}
 
-			return params.Handler
+			if params.FlightRecorder != nil {
+				mux.Handle("/debug/flight-recorder", flightrecorder.SnapshotHandler(params.FlightRecorder))
+			}
+
+			return mux
 		}),
 		fx.Invoke(
 			func(

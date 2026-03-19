@@ -296,6 +296,13 @@ func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.Monitorin
 		envs = appendIfBool(envs, "PYROSCOPE_DISABLE_GC_RUNS", mon.Pyroscope.DisableGCRuns)
 	}
 
+	// Flight recorder
+	if mon.FlightRecorder != nil && mon.FlightRecorder.Enabled {
+		envs = append(envs, boolEnv("FLIGHT_RECORDER_ENABLED", true))
+		envs = appendIfStr(envs, "FLIGHT_RECORDER_MIN_AGE", mon.FlightRecorder.MinAge)
+		envs = appendIfInt64(envs, "FLIGHT_RECORDER_MAX_BYTES", mon.FlightRecorder.MaxBytes)
+	}
+
 	return envs
 }
 

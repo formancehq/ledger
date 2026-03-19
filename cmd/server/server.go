@@ -26,6 +26,7 @@ import (
 	"github.com/formancehq/go-libs/v3/service"
 
 	"github.com/formancehq/ledger-v3-poc/internal/bootstrap"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/flightrecorder"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/pyroscope"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/tracesampling"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
@@ -179,6 +180,11 @@ func NewRunCommand() *cobra.Command {
 	// gRPC slow threshold
 	runCmd.Flags().Duration("grpc-slow-threshold", time.Second, "Duration above which a gRPC call is logged as slow")
 
+	// Flight recorder flags
+	runCmd.Flags().Bool("flight-recorder-enabled", false, "Enable the runtime flight recorder (continuous trace buffering)")
+	runCmd.Flags().Duration("flight-recorder-min-age", 5*time.Second, "Minimum duration of trace data retained in the flight recorder buffer")
+	runCmd.Flags().Int("flight-recorder-max-bytes", 10<<20, "Maximum memory for the flight recorder buffer in bytes (default: 10MiB)")
+
 	return runCmd
 }
 
@@ -246,6 +252,16 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	// Configure trace sampling
 	traceSamplingCfg := traceSamplingConfigFromFlags(cmd)
 
+	// Configure flight recorder
+	frEnabled, _ := cmd.Flags().GetBool("flight-recorder-enabled")
+	frMinAge, _ := cmd.Flags().GetDuration("flight-recorder-min-age")
+	frMaxBytes, _ := cmd.Flags().GetInt("flight-recorder-max-bytes")
+	flightRecorderCfg := flightrecorder.Config{
+		Enabled:  frEnabled,
+		MinAge:   frMinAge,
+		MaxBytes: frMaxBytes,
+	}
+
 	// Select the application module based on mode
 	var appModule fx.Option
 	if cfg.Restore {
@@ -280,6 +296,8 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		tracesampling.Module(traceSamplingCfg),
 		// Add Pyroscope profiling module
 		pyroscope.Module(pyroscopeCfg),
+		// Add flight recorder module
+		flightrecorder.Module(flightRecorderCfg),
 		// Provide application module
 		appModule,
 	}

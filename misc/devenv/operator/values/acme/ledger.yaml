@@ -57,6 +57,10 @@ config:
       enabled: true
       serverAddress: http://pyroscope.ledger-v3:4040
       applicationName: ledger-v3
+    flightRecorder:
+      enabled: true
+      minAge: "10s"
+      maxBytes: 10485760  # 10 MiB
   auth:
     scopeMapping:
       "ledger:read":
