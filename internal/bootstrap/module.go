@@ -198,6 +198,7 @@ func Module() fx.Option {
 					mirrorNotifications,
 					indexNotifications,
 					cfg.NumscriptCacheSize,
+					cfg.VolumeAssertions,
 				)
 				if err != nil {
 					return nil, err

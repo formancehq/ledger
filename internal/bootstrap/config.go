@@ -66,6 +66,7 @@ type Config struct {
 	NumscriptCacheSize         int
 	MirrorMaxBatchSize         int
 	UnsafeSkipConfigValidation bool
+	VolumeAssertions           bool
 	ReadIndexConfig            ReadIndexConfig
 	QueryProfileThreshold      time.Duration
 	GRPCSlowThreshold          time.Duration

@@ -165,6 +165,9 @@ func NewRunCommand() *cobra.Command {
 	// Configuration safety
 	runCmd.Flags().Bool("unsafe-skip-config-validation", false, "Skip startup configuration safety checks (DANGEROUS: allows node-id/cluster-id changes)")
 
+	// Volume assertions (runtime consistency checks)
+	runCmd.Flags().Bool("volume-assertions", false, "Enable runtime volume consistency assertions (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification)")
+
 	// Read index configuration
 	runCmd.Flags().String("read-index-dir", "", "Directory for the Pebble read index (default: <data-dir>/read-indexes/)")
 	runCmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per Pebble batch commit (0 = default 1000)")
@@ -483,6 +486,9 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 
 	// Configuration safety
 	cfg.UnsafeSkipConfigValidation = getBool("unsafe-skip-config-validation", false)
+
+	// Volume assertions
+	cfg.VolumeAssertions = getBool("volume-assertions", false)
 
 	// Read index configuration
 	cfg.ReadIndexConfig = bootstrap.ReadIndexConfig{

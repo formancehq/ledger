@@ -127,6 +127,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 		envs = appendIfBool(envs, "AUDIT_ENABLED", cfg.Audit.Enabled)
 	}
 	envs = appendIfBool(envs, "ADMISSION_METRICS", cfg.AdmissionMetrics)
+	envs = appendIfBool(envs, "VOLUME_ASSERTIONS", cfg.VolumeAssertions)
 
 	// Cold storage
 	if cfg.ColdStorage != nil {

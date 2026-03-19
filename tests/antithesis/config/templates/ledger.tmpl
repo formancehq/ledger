@@ -4,7 +4,7 @@ metadata:
   name: stack0-ledger
   namespace: stack0
 spec:
-  replicas: 3
+  replicas: 1
   image:
     repository: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-v3-poc
     tag: {{ .Values.run_tag }}
@@ -14,6 +14,7 @@ spec:
     httpPort: 9000
     dataDir: "/data/app"
     walDir: "/data/raft"
+    volumeAssertions: true
     raft:
       snapshotThreshold: 5000
       snapshotInterval: "30s"

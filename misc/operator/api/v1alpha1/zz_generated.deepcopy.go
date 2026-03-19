@@ -957,6 +957,11 @@ func (in *LedgerServiceConfig) DeepCopyInto(out *LedgerServiceConfig) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.VolumeAssertions != nil {
+		in, out := &in.VolumeAssertions, &out.VolumeAssertions
+		*out = new(bool)
+		**out = **in
+	}
 	if in.ColdStorage != nil {
 		in, out := &in.ColdStorage, &out.ColdStorage
 		*out = new(ColdStorageConfig)

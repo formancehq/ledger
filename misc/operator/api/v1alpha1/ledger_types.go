@@ -236,6 +236,11 @@ type LedgerServiceConfig struct {
 	// +optional
 	AdmissionMetrics *bool `json:"admissionMetrics,omitempty"`
 
+	// VolumeAssertions enables runtime volume consistency assertions
+	// (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
+	// +optional
+	VolumeAssertions *bool `json:"volumeAssertions,omitempty"`
+
 	// ColdStorage configuration for period archival.
 	// +optional
 	ColdStorage *ColdStorageConfig `json:"coldStorage,omitempty"`

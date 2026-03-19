@@ -1667,6 +1667,11 @@ spec:
                           TLS certificate and key.
                         type: string
                     type: object
+                  volumeAssertions:
+                    description: |-
+                      VolumeAssertions enables runtime volume consistency assertions
+                      (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
+                    type: boolean
                   walDir:
                     default: /data/raft
                     description: WalDir is the WAL data directory.

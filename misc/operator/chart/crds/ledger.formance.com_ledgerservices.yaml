@@ -1570,8 +1570,8 @@ spec:
                           Uses the same knobs as the primary store (cache size, memtable, L0 thresholds, etc.).
                         properties:
                           bytesPerSync:
-                            description: BytesPerSync is bytes written before sync during
-                              flush/compaction.
+                            description: BytesPerSync is bytes written before sync
+                              during flush/compaction.
                             format: int64
                             type: integer
                           cacheSize:
@@ -1589,17 +1589,18 @@ spec:
                             format: int64
                             type: integer
                           l0CompactionThreshold:
-                            description: L0CompactionThreshold is the L0 file count to
-                              trigger compaction.
+                            description: L0CompactionThreshold is the L0 file count
+                              to trigger compaction.
                             format: int32
                             type: integer
                           l0StopWritesThreshold:
-                            description: L0StopWritesThreshold is the L0 file count before
-                              writes stop.
+                            description: L0StopWritesThreshold is the L0 file count
+                              before writes stop.
                             format: int32
                             type: integer
                           lBaseMaxBytes:
-                            description: LBaseMaxBytes is the maximum size of L1 in bytes.
+                            description: LBaseMaxBytes is the maximum size of L1 in
+                              bytes.
                             format: int64
                             type: integer
                           maxConcurrentCompactions:
@@ -1612,22 +1613,23 @@ spec:
                             format: int64
                             type: integer
                           memTableStopWritesThreshold:
-                            description: MemTableStopWritesThreshold is the number of
-                              memtables before writes stop.
+                            description: MemTableStopWritesThreshold is the number
+                              of memtables before writes stop.
                             format: int32
                             type: integer
                           targetFileSize:
-                            description: TargetFileSize is the target SST file size in
-                              bytes.
+                            description: TargetFileSize is the target SST file size
+                              in bytes.
                             format: int64
                             type: integer
                           walBytesPerSync:
-                            description: WalBytesPerSync is WAL bytes written before sync.
+                            description: WalBytesPerSync is WAL bytes written before
+                              sync.
                             format: int64
                             type: integer
                           walMinSyncInterval:
-                            description: WalMinSyncInterval is the minimum interval between
-                              WAL syncs.
+                            description: WalMinSyncInterval is the minimum interval
+                              between WAL syncs.
                             type: string
                         type: object
                     type: object
@@ -1665,6 +1667,11 @@ spec:
                           TLS certificate and key.
                         type: string
                     type: object
+                  volumeAssertions:
+                    description: |-
+                      VolumeAssertions enables runtime volume consistency assertions
+                      (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
+                    type: boolean
                   walDir:
                     default: /data/raft
                     description: WalDir is the WAL data directory.
