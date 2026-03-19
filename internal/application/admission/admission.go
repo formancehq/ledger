@@ -1271,17 +1271,35 @@ func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint
 
 	applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
 	if !ok || applyLog.Apply == nil || applyLog.Apply.GetLog() == nil {
-		return nil, errors.New("log does not contain an apply log")
+		return nil, fmt.Errorf(
+			"log at sequence %d for ledger %s txID %d does not contain an apply payload (got %T)",
+			log.GetSequence(), ledgerName, transactionID, log.GetPayload().GetType(),
+		)
 	}
 
 	switch payload := applyLog.Apply.GetLog().GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		if payload.CreatedTransaction == nil || payload.CreatedTransaction.GetTransaction() == nil {
-			return nil, errors.New("invalid log payload: missing transaction")
+			return nil, fmt.Errorf(
+				"log at sequence %d for ledger %s txID %d has a CreatedTransaction payload but the transaction is nil",
+				log.GetSequence(), ledgerName, transactionID,
+			)
 		}
 
 		return payload.CreatedTransaction.GetTransaction().GetPostings(), nil
+	case *commonpb.LedgerLogPayload_RevertedTransaction:
+		if payload.RevertedTransaction == nil || payload.RevertedTransaction.GetRevertTransaction() == nil {
+			return nil, fmt.Errorf(
+				"log at sequence %d for ledger %s txID %d has a RevertedTransaction payload but the revert transaction is nil",
+				log.GetSequence(), ledgerName, transactionID,
+			)
+		}
+
+		return payload.RevertedTransaction.GetRevertTransaction().GetPostings(), nil
 	default:
-		return nil, errors.New("log does not contain a created transaction")
+		return nil, fmt.Errorf(
+			"log at sequence %d for ledger %s txID %d has unexpected payload type %T (expected CreatedTransaction or RevertedTransaction)",
+			log.GetSequence(), ledgerName, transactionID, applyLog.Apply.GetLog().GetData().GetPayload(),
+		)
 	}
 }
