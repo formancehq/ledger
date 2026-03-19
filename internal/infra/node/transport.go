@@ -479,7 +479,7 @@ func (t *DefaultTransport) pushUnreachable(peerID uint64) bool {
 	select {
 	case t.unreachableCh <- peerID:
 		t.unreachableLoadHistogram.Record(context.Background(), int64(t.unreachableInflight.Add(1)))
-		assert.Sometimes(true, "peer became unreachable", map[string]any{
+		assert.Reachable("peer became unreachable", map[string]any{
 			"peerID": peerID,
 		})
 

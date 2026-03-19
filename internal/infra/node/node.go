@@ -924,7 +924,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 
 		// Notify observers about configuration changes
 		for _, change := range cc.Changes {
-			assert.Sometimes(true, "conf change applied", map[string]any{
+			assert.Reachable("conf change applied", map[string]any{
 				"nodeID":     change.NodeID,
 				"changeType": change.Type.String(),
 			})

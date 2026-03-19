@@ -1877,7 +1877,7 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 		fsm.Registry.Reversions[entry.GetLedger()] = domain.ReversionBitsetFromWords(entry.GetWords())
 	}
 
-	assert.Sometimes(true, "snapshot installed", map[string]any{
+	assert.Reachable("snapshot installed", map[string]any{
 		"snapshotIndex": snapshot.Metadata.Index,
 	})
 	fsm.logger.WithFields(map[string]any{
@@ -1959,7 +1959,7 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 
 	fsm.lastAppliedIndex = fsm.snapshotIndex
 
-	assert.Sometimes(true, "synchronized with leader", map[string]any{
+	assert.Reachable("synchronized with leader", map[string]any{
 		"snapshotIndex": fsm.snapshotIndex,
 	})
 
