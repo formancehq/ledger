@@ -75,10 +75,7 @@ func multiCurrencyFX(ctx context.Context, client servicepb.BucketServiceClient, 
 		return nil, ErrSkip
 	}
 
-	srcAmount := int64(5000) + RandInt64N(r, bal.Int64()-4999)
-	if srcAmount > 50_000 {
-		srcAmount = 50_000
-	}
+	srcAmount := min(int64(5000)+RandInt64N(r, bal.Int64()-4999), 50_000)
 	dstAmount := srcAmount * 92 / 100
 
 	// Leg 1: source -> fx:clearing.

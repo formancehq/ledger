@@ -14,7 +14,7 @@ func init() { Register("subscription", RunSubscription) }
 
 const (
 	// SubscriptionLedger is the ledger name used by the subscription scenario.
-	SubscriptionLedger        = "billing"
+	SubscriptionLedger         = "billing"
 	SubscriptionNumSubscribers = 50
 )
 

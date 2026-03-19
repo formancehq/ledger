@@ -478,6 +478,7 @@ func (t *DefaultTransport) pushUnreachable(peerID uint64) bool {
 	select {
 	case t.unreachableCh <- peerID:
 		t.unreachableLoadHistogram.Record(context.Background(), int64(t.unreachableInflight.Add(1)))
+
 		return true
 	default:
 		t.logger.WithFields(map[string]any{

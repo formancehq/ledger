@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"strconv"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -58,10 +59,7 @@ func marketplacePurchase(ctx context.Context, client servicepb.BucketServiceClie
 		return nil, ErrSkip
 	}
 
-	maxAmt := bal.Int64()
-	if maxAmt > 50_000 {
-		maxAmt = 50_000
-	}
+	maxAmt := min(bal.Int64(), 50_000)
 	amount := int64(1000) + RandInt64N(r, maxAmt-1000+1)
 
 	return ApplyActions(ctx, client,
@@ -80,7 +78,7 @@ func marketplaceRevert(ctx context.Context, client servicepb.BucketServiceClient
 	}
 
 	return ApplyActions(ctx, client,
-		actions.RevertTransactionAction(MarketplaceLedger, tx.Id, true, false, nil),
+		actions.RevertTransactionAction(MarketplaceLedger, tx.GetId(), true, false, nil),
 	)
 }
 
@@ -112,7 +110,7 @@ func marketplaceMetadata(ctx context.Context, client servicepb.BucketServiceClie
 	resp, err := ApplyActions(ctx, client,
 		actions.SaveAccountMetadataAction(MarketplaceLedger, address, map[string]string{
 			"tier":      fmt.Sprintf("tier-%d", RandIntN(r, 5)),
-			"last_seen": fmt.Sprintf("%d", r()),
+			"last_seen": strconv.FormatUint(r(), 10),
 		}),
 	)
 	if err != nil {

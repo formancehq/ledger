@@ -54,6 +54,7 @@ func BlockScenario(name string) string {
 			return name[:i]
 		}
 	}
+
 	return name
 }
 
@@ -69,7 +70,7 @@ func GetAccountBalance(ctx context.Context, client servicepb.BucketServiceClient
 	if err != nil {
 		return big.NewInt(0), false
 	}
-	vol, ok := acct.Volumes[asset]
+	vol, ok := acct.GetVolumes()[asset]
 	if !ok {
 		return big.NewInt(0), false
 	}
@@ -77,6 +78,7 @@ func GetAccountBalance(ctx context.Context, client servicepb.BucketServiceClient
 	if !ok {
 		return big.NewInt(0), false
 	}
+
 	return balance, true
 }
 
@@ -96,13 +98,14 @@ func GetNonRevertedTransaction(ctx context.Context, client servicepb.BucketServi
 		if err != nil {
 			break
 		}
-		if !tx.Reverted {
+		if !tx.GetReverted() {
 			candidates = append(candidates, tx)
 		}
 	}
 	if len(candidates) == 0 {
 		return nil, false
 	}
+
 	return candidates[RandIntN(randFn, len(candidates))], true
 }
 
@@ -110,4 +113,3 @@ func GetNonRevertedTransaction(ctx context.Context, client servicepb.BucketServi
 func ApplyActions(ctx context.Context, client servicepb.BucketServiceClient, reqs ...*servicepb.Request) (*servicepb.ApplyResponse, error) {
 	return client.Apply(ctx, &servicepb.ApplyRequest{Requests: reqs})
 }
-

@@ -15,7 +15,7 @@ func init() { Register("lending-lifecycle", RunLendingLifecycle) }
 
 const (
 	// LendingLifecycleLedger is the ledger name used by the lending lifecycle scenario.
-	LendingLifecycleLedger      = "lending"
+	LendingLifecycleLedger       = "lending"
 	LendingLifecycleNumBorrowers = 10
 	LendingLifecycleLoanAmount   = 100_000
 )
