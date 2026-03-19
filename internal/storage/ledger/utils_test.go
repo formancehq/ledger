@@ -3,9 +3,10 @@ package ledger
 import (
 	"testing"
 
-	"github.com/formancehq/go-libs/v4/query"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v4/query"
 )
 
 func TestCanPushAddressFilterToLateral(t *testing.T) {
