@@ -58,6 +58,8 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 		logPayload, err = p.processUpdateAccountType(apply.GetLedger(), applyData.UpdateAccountType, s)
 	case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
 		logPayload, err = p.processRemoveAccountType(apply.GetLedger(), applyData.RemoveAccountType, s)
+	case *raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode:
+		logPayload, err = p.processUpdateDefaultEnforcementMode(apply.GetLedger(), applyData.UpdateDefaultEnforcementMode, s)
 	default:
 		return nil, errors.New("invalid apply type")
 	}
@@ -100,7 +102,8 @@ func isMirrorSafeApply(apply *raftcmdpb.LedgerApplyOrder) bool {
 		*raftcmdpb.LedgerApplyOrder_IndexReady,
 		*raftcmdpb.LedgerApplyOrder_AddAccountType,
 		*raftcmdpb.LedgerApplyOrder_UpdateAccountType,
-		*raftcmdpb.LedgerApplyOrder_RemoveAccountType:
+		*raftcmdpb.LedgerApplyOrder_RemoveAccountType,
+		*raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode:
 		return true
 	default:
 		return false

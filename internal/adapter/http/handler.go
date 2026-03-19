@@ -124,6 +124,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Post("/{ledgerName}/account-types", server.handleAddAccountType)
 				r.Patch("/{ledgerName}/account-types/{typeName}", server.handleUpdateAccountType)
 				r.Delete("/{ledgerName}/account-types/{typeName}", server.handleRemoveAccountType)
+				r.Put("/{ledgerName}/account-types/default-enforcement-mode", server.handleSetDefaultEnforcementMode)
 			})
 
 			// Bulk endpoints: per-element scope check handled inside the handler

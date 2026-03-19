@@ -525,6 +525,7 @@ message LedgerLogPayload {
     AddedAccountTypeLog added_account_type = 13;
     UpdatedAccountTypeLog updated_account_type = 14;
     RemovedAccountTypeLog removed_account_type = 15;
+    UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 16;
   }
 }
 
@@ -718,6 +719,7 @@ message LedgerInfo {
   BuiltinIndexConfig builtin_indexes = 8;  // Built-in transaction field index config
   LogBuiltinIndexConfig log_builtin_indexes = 9;  // Built-in log field index config
   map<string, AccountType> account_types = 10; // Per-type account address validation
+  ChartEnforcementMode default_enforcement_mode = 11; // Default enforcement for unmatched accounts
 }
 
 // ============================================================================
@@ -792,6 +794,11 @@ message UpdatedAccountTypeLog {
 // RemovedAccountTypeLog records the removal of an account type.
 message RemovedAccountTypeLog {
   string name = 1;
+}
+
+// UpdatedDefaultEnforcementModeLog records a change to the ledger's default enforcement mode.
+message UpdatedDefaultEnforcementModeLog {
+  ChartEnforcementMode enforcement_mode = 1;
 }
 
 

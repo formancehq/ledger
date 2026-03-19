@@ -17,11 +17,12 @@ import (
 // EditableConfig represents the editable (declarative) configuration of a ledger.
 // Read-only status fields (build status, conversion status, etc.) are excluded.
 type EditableConfig struct {
-	AccountTypes    map[string]EditableAccountType          `json:"accountTypes,omitempty"    yaml:"accountTypes,omitempty"`
-	MetadataSchema  map[string]map[string]EditableMetaField `json:"metadataSchema,omitempty"  yaml:"metadataSchema,omitempty"`
-	Indexes         EditableIndexes                         `json:"indexes"                   yaml:"indexes"`
-	PreparedQueries map[string]EditablePreparedQuery        `json:"preparedQueries,omitempty" yaml:"preparedQueries,omitempty"`
-	Numscripts      map[string]EditableNumscript            `json:"numscripts,omitempty"      yaml:"numscripts,omitempty"`
+	DefaultEnforcementMode string                                  `json:"defaultEnforcementMode,omitempty" yaml:"defaultEnforcementMode,omitempty"`
+	AccountTypes           map[string]EditableAccountType          `json:"accountTypes,omitempty"           yaml:"accountTypes,omitempty"`
+	MetadataSchema         map[string]map[string]EditableMetaField `json:"metadataSchema,omitempty"         yaml:"metadataSchema,omitempty"`
+	Indexes                EditableIndexes                         `json:"indexes"                          yaml:"indexes"`
+	PreparedQueries        map[string]EditablePreparedQuery        `json:"preparedQueries,omitempty"        yaml:"preparedQueries,omitempty"`
+	Numscripts             map[string]EditableNumscript            `json:"numscripts,omitempty"             yaml:"numscripts,omitempty"`
 }
 
 // EditableAccountType is the editable subset of an account type.
@@ -66,10 +67,11 @@ func ConfigFromProto(
 	numscripts []*commonpb.NumscriptInfo,
 ) *EditableConfig {
 	cfg := &EditableConfig{
-		AccountTypes:    make(map[string]EditableAccountType),
-		MetadataSchema:  make(map[string]map[string]EditableMetaField),
-		PreparedQueries: make(map[string]EditablePreparedQuery),
-		Numscripts:      make(map[string]EditableNumscript),
+		DefaultEnforcementMode: strings.ToLower(ledger.GetDefaultEnforcementMode().String()),
+		AccountTypes:           make(map[string]EditableAccountType),
+		MetadataSchema:         make(map[string]map[string]EditableMetaField),
+		PreparedQueries:        make(map[string]EditablePreparedQuery),
+		Numscripts:             make(map[string]EditableNumscript),
 	}
 
 	// Account types
@@ -199,6 +201,7 @@ type DiffAction struct {
 func ComputeDiff(ledgerName string, current, desired *EditableConfig) ([]DiffAction, error) {
 	var actions []DiffAction
 
+	actions = append(actions, diffDefaultEnforcementMode(ledgerName, current, desired)...)
 	actions = append(actions, diffAccountTypes(ledgerName, current, desired)...)
 
 	mdActions, err := diffMetadataSchema(ledgerName, current, desired)
@@ -218,6 +221,30 @@ func ComputeDiff(ledgerName string, current, desired *EditableConfig) ([]DiffAct
 	actions = append(actions, diffNumscripts(ledgerName, current, desired)...)
 
 	return actions, nil
+}
+
+func diffDefaultEnforcementMode(ledgerName string, current, desired *EditableConfig) []DiffAction {
+	if strings.EqualFold(current.DefaultEnforcementMode, desired.DefaultEnforcementMode) {
+		return nil
+	}
+
+	mode := parseEnforcementModeProto(desired.DefaultEnforcementMode)
+
+	return []DiffAction{
+		{
+			Section:     "defaultEnforcementMode",
+			Operation:   "update",
+			Description: fmt.Sprintf("Update default enforcement mode: %s -> %s", current.DefaultEnforcementMode, desired.DefaultEnforcementMode),
+			Request: &servicepb.Request{
+				Type: &servicepb.Request_SetDefaultEnforcementMode{
+					SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+						Ledger:          ledgerName,
+						EnforcementMode: mode,
+					},
+				},
+			},
+		},
+	}
 }
 
 func diffAccountTypes(ledgerName string, current, desired *EditableConfig) []DiffAction {
@@ -714,6 +741,18 @@ func parseEnforcementModeProto(s string) commonpb.ChartEnforcementMode {
 		return commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT
 	default:
 		return commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
+	}
+}
+
+// parseEnforcementModeProtoStrict parses an enforcement mode string with validation.
+func parseEnforcementModeProtoStrict(s string) (commonpb.ChartEnforcementMode, error) {
+	switch strings.ToUpper(s) {
+	case "STRICT":
+		return commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT, nil
+	case "AUDIT":
+		return commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, nil
+	default:
+		return 0, fmt.Errorf("invalid enforcement mode %q: must be STRICT or AUDIT", s)
 	}
 }
 

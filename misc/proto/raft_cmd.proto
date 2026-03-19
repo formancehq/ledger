@@ -143,6 +143,7 @@ message CreateLedgerOrder {
   common.LedgerMode mode = 3;
   common.MirrorSourceConfig mirror_source = 4;
   map<string, common.AccountType> account_types = 5;  // Initial account types
+  common.ChartEnforcementMode default_enforcement_mode = 6;  // Default enforcement for unmatched accounts
 }
 
 message MirrorIngestOrder {
@@ -217,6 +218,7 @@ message LedgerApplyOrder {
     AddAccountTypeOrder add_account_type = 13;
     UpdateAccountTypeOrder update_account_type = 14;
     RemoveAccountTypeOrder remove_account_type = 15;
+    UpdateDefaultEnforcementModeOrder update_default_enforcement_mode = 16;
   }
 }
 
@@ -261,6 +263,11 @@ message UpdateAccountTypeOrder {
 // RemoveAccountTypeOrder removes an account type from the ledger.
 message RemoveAccountTypeOrder {
   string name = 1;
+}
+
+// UpdateDefaultEnforcementModeOrder updates the ledger's default enforcement mode for unmatched accounts.
+message UpdateDefaultEnforcementModeOrder {
+  common.ChartEnforcementMode enforcement_mode = 1;
 }
 
 message ConvertMetadataBatchOrder {

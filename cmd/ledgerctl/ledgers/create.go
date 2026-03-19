@@ -31,6 +31,9 @@ func NewCreateCommand() *cobra.Command {
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
+	// Account type enforcement
+	cmd.Flags().String("default-enforcement-mode", "", "Default enforcement mode for unmatched accounts: STRICT or AUDIT (default: STRICT)")
+
 	// Mirror mode flags
 	cmd.Flags().String("mode", "normal", "Ledger mode: normal or mirror")
 	cmd.Flags().String("mirror-source-type", "http", "Mirror source type: http or postgres")
@@ -82,6 +85,15 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	// Parse default enforcement mode
+	var defaultEnforcementMode commonpb.ChartEnforcementMode
+	if enforcementStr, _ := cmd.Flags().GetString("default-enforcement-mode"); enforcementStr != "" {
+		defaultEnforcementMode, err = parseEnforcementModeProtoStrict(enforcementStr)
+		if err != nil {
+			return err
+		}
+	}
+
 	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
 		return err
@@ -103,10 +115,11 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		{
 			Type: &servicepb.Request_CreateLedger{
 				CreateLedger: &servicepb.CreateLedgerRequest{
-					Name:          name,
-					InitialSchema: initialSchema,
-					Mode:          mode,
-					MirrorSource:  mirrorSource,
+					Name:                   name,
+					InitialSchema:          initialSchema,
+					Mode:                   mode,
+					MirrorSource:           mirrorSource,
+					DefaultEnforcementMode: defaultEnforcementMode,
 				},
 			},
 		},

@@ -45,7 +45,7 @@ func (p *RequestProcessor) processRevertTransaction(ledger string, boundaries *r
 	// Validate reversed postings against account types.
 	if info, ok := s.GetLedger(ledger); ok {
 		if len(info.GetAccountTypes()) > 0 {
-			if typeErr := validatePostingsAgainstAccountTypes(revertPostings, info.GetAccountTypes()); typeErr != nil {
+			if typeErr := validatePostingsAgainstAccountTypes(revertPostings, info.GetAccountTypes(), info.GetDefaultEnforcementMode()); typeErr != nil {
 				return nil, typeErr
 			}
 		}

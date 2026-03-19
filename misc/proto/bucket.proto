@@ -137,6 +137,7 @@ message CreateLedgerRequest {
   common.LedgerMode mode = 3;
   common.MirrorSourceConfig mirror_source = 4;
   map<string, common.AccountType> account_types = 5;  // Initial account types
+  common.ChartEnforcementMode default_enforcement_mode = 6;  // Default enforcement for unmatched accounts
 }
 
 message DeleteLedgerRequest {
@@ -194,6 +195,7 @@ message Request {
     AddAccountTypeLedgerRequest add_account_type = 29;
     UpdateAccountTypeLedgerRequest update_account_type = 30;
     RemoveAccountTypeLedgerRequest remove_account_type = 31;
+    SetDefaultEnforcementModeLedgerRequest set_default_enforcement_mode = 32;
   }
   signature.RequestSignature signature = 5;
 }
@@ -414,6 +416,7 @@ message LedgerApplyRequest {
     AddAccountTypeRequest add_account_type = 6;
     UpdateAccountTypeRequest update_account_type = 7;
     RemoveAccountTypeRequest remove_account_type = 8;
+    SetDefaultEnforcementModeRequest set_default_enforcement_mode = 9;
   }
 }
 
@@ -431,6 +434,17 @@ message UpdateAccountTypeRequest {
 // RemoveAccountTypeRequest removes an account type within a LedgerApplyRequest.
 message RemoveAccountTypeRequest {
   string name = 1;
+}
+
+// SetDefaultEnforcementModeRequest sets the default enforcement mode within a LedgerApplyRequest.
+message SetDefaultEnforcementModeRequest {
+  common.ChartEnforcementMode enforcement_mode = 1;
+}
+
+// SetDefaultEnforcementModeLedgerRequest sets the default enforcement mode (top-level request).
+message SetDefaultEnforcementModeLedgerRequest {
+  string ledger = 1;
+  common.ChartEnforcementMode enforcement_mode = 2;
 }
 
 // AddAccountTypeLedgerRequest adds an account type (top-level request).

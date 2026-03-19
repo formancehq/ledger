@@ -109,11 +109,12 @@ func (p *RequestProcessor) processRemoveAccountType(
 
 // validatePostingsAgainstAccountTypes validates postings against account types.
 // Uses longest-match (highest specificity) to find the best matching type.
-// In STRICT mode, returns an error on the first non-matching address.
-// In AUDIT mode, non-matching addresses are silently ignored.
+// When an address doesn't match any type, defaultMode controls the behavior:
+// STRICT rejects the transaction, AUDIT silently allows it.
 func validatePostingsAgainstAccountTypes(
 	postings []*commonpb.Posting,
 	types map[string]*commonpb.AccountType,
+	defaultMode commonpb.ChartEnforcementMode,
 ) error {
 	if len(types) == 0 {
 		return nil
@@ -136,8 +137,7 @@ func validatePostingsAgainstAccountTypes(
 
 		matched, _ := matchAddressToType(address, types)
 		if matched == nil {
-			// No type matched — check if any type is STRICT.
-			if hasStrictType(types) {
+			if defaultMode == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
 				return &domain.ErrAccountNotMatchingType{Address: address}
 			}
 
@@ -149,9 +149,11 @@ func validatePostingsAgainstAccountTypes(
 }
 
 // validateAccountAgainstAccountTypes validates a single account address.
+// When the address doesn't match any type, defaultMode controls the behavior.
 func validateAccountAgainstAccountTypes(
 	address string,
 	types map[string]*commonpb.AccountType,
+	defaultMode commonpb.ChartEnforcementMode,
 ) error {
 	if len(types) == 0 || address == "world" {
 		return nil
@@ -159,7 +161,7 @@ func validateAccountAgainstAccountTypes(
 
 	matched, _ := matchAddressToType(address, types)
 	if matched == nil {
-		if hasStrictType(types) {
+		if defaultMode == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
 			return &domain.ErrAccountNotMatchingType{Address: address}
 		}
 	}
@@ -211,16 +213,25 @@ func matchAddressToType(
 	return best, best.GetEnforcementMode()
 }
 
-// hasStrictType returns true if any non-deprecated type uses STRICT enforcement.
-func hasStrictType(types map[string]*commonpb.AccountType) bool {
-	for _, at := range types {
-		if at.GetStatus() == commonpb.AccountTypeStatus_ACCOUNT_TYPE_DEPRECATED {
-			continue
-		}
-		if at.GetEnforcementMode() == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
-			return true
-		}
+// processUpdateDefaultEnforcementMode updates the ledger's default enforcement mode.
+func (p *RequestProcessor) processUpdateDefaultEnforcementMode(
+	ledgerName string,
+	order *raftcmdpb.UpdateDefaultEnforcementModeOrder,
+	s InMemoryStore,
+) (*commonpb.LedgerLogPayload, error) {
+	info, ok := s.GetLedger(ledgerName)
+	if !ok {
+		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 	}
 
-	return false
+	info.DefaultEnforcementMode = order.GetEnforcementMode()
+	s.PutLedger(ledgerName, info)
+
+	return &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode{
+			UpdatedDefaultEnforcementMode: &commonpb.UpdatedDefaultEnforcementModeLog{
+				EnforcementMode: order.GetEnforcementMode(),
+			},
+		},
+	}, nil
 }

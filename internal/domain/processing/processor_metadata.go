@@ -23,7 +23,7 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 	// Validate account address against account types.
 	if acct, isAcct := order.GetTarget().GetTarget().(*commonpb.Target_Account); isAcct && info != nil {
 		if len(info.GetAccountTypes()) > 0 {
-			if typeErr := validateAccountAgainstAccountTypes(acct.Account.GetAddr(), info.GetAccountTypes()); typeErr != nil {
+			if typeErr := validateAccountAgainstAccountTypes(acct.Account.GetAddr(), info.GetAccountTypes(), info.GetDefaultEnforcementMode()); typeErr != nil {
 				return nil, typeErr
 			}
 		}

@@ -7,7 +7,6 @@ import (
 	"net"
 	"runtime/debug"
 	"strconv"
-	"strings"
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -223,10 +222,8 @@ func loggingInterceptor(logger logging.Logger, slowThreshold time.Duration) ggrp
 		case duration > slowThreshold:
 			fields["slow"] = true
 			logger.WithFields(fields).Infof("gRPC call slow")
-		case strings.HasPrefix(info.FullMethod, "/grpc.health.v1.Health/"):
-			logger.WithFields(fields).Debugf("gRPC call")
 		default:
-			logger.WithFields(fields).Infof("gRPC call")
+			logger.WithFields(fields).Debugf("gRPC call")
 		}
 
 		return resp, err
@@ -253,7 +250,7 @@ func loggingStreamInterceptor(logger logging.Logger, slowThreshold time.Duration
 			fields["slow"] = true
 			logger.WithFields(fields).Infof("gRPC stream slow")
 		default:
-			logger.WithFields(fields).Infof("gRPC stream")
+			logger.WithFields(fields).Debugf("gRPC stream")
 		}
 
 		return err

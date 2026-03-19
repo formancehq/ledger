@@ -23,12 +23,13 @@ func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrde
 	}
 
 	info := &commonpb.LedgerInfo{
-		Name:           order.GetName(),
-		CreatedAt:      s.GetDate(),
-		MetadataSchema: populateInitialSchema(order.GetInitialSchema()),
-		Mode:           order.GetMode(),
-		MirrorSource:   order.GetMirrorSource(),
-		AccountTypes:   order.GetAccountTypes(),
+		Name:                   order.GetName(),
+		CreatedAt:              s.GetDate(),
+		MetadataSchema:         populateInitialSchema(order.GetInitialSchema()),
+		Mode:                   order.GetMode(),
+		MirrorSource:           order.GetMirrorSource(),
+		AccountTypes:           order.GetAccountTypes(),
+		DefaultEnforcementMode: order.GetDefaultEnforcementMode(),
 	}
 	s.PutLedger(order.GetName(), info)
 	s.PutBoundaries(order.GetName(), &raftcmdpb.LedgerBoundaries{

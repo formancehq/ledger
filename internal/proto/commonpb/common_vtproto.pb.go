@@ -1697,6 +1697,15 @@ func (m *LedgerLogPayload_RemovedAccountType) CloneVT() isLedgerLogPayload_Paylo
 	return r
 }
 
+func (m *LedgerLogPayload_UpdatedDefaultEnforcementMode) CloneVT() isLedgerLogPayload_Payload {
+	if m == nil {
+		return (*LedgerLogPayload_UpdatedDefaultEnforcementMode)(nil)
+	}
+	r := new(LedgerLogPayload_UpdatedDefaultEnforcementMode)
+	r.UpdatedDefaultEnforcementMode = m.UpdatedDefaultEnforcementMode.CloneVT()
+	return r
+}
+
 func (m *CreateIndexLog) CloneVT() *CreateIndexLog {
 	if m == nil {
 		return (*CreateIndexLog)(nil)
@@ -2281,6 +2290,7 @@ func (m *LedgerInfo) CloneVT() *LedgerInfo {
 	r.MirrorSyncProgress = m.MirrorSyncProgress.CloneVT()
 	r.BuiltinIndexes = m.BuiltinIndexes.CloneVT()
 	r.LogBuiltinIndexes = m.LogBuiltinIndexes.CloneVT()
+	r.DefaultEnforcementMode = m.DefaultEnforcementMode
 	if rhs := m.AccountTypes; rhs != nil {
 		tmpContainer := make(map[string]*AccountType, len(rhs))
 		for k, v := range rhs {
@@ -2462,6 +2472,23 @@ func (m *RemovedAccountTypeLog) CloneVT() *RemovedAccountTypeLog {
 }
 
 func (m *RemovedAccountTypeLog) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *UpdatedDefaultEnforcementModeLog) CloneVT() *UpdatedDefaultEnforcementModeLog {
+	if m == nil {
+		return (*UpdatedDefaultEnforcementModeLog)(nil)
+	}
+	r := new(UpdatedDefaultEnforcementModeLog)
+	r.EnforcementMode = m.EnforcementMode
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *UpdatedDefaultEnforcementModeLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -5993,6 +6020,31 @@ func (this *LedgerLogPayload_RemovedAccountType) EqualVT(thatIface isLedgerLogPa
 	return true
 }
 
+func (this *LedgerLogPayload_UpdatedDefaultEnforcementMode) EqualVT(thatIface isLedgerLogPayload_Payload) bool {
+	that, ok := thatIface.(*LedgerLogPayload_UpdatedDefaultEnforcementMode)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.UpdatedDefaultEnforcementMode, that.UpdatedDefaultEnforcementMode; p != q {
+		if p == nil {
+			p = &UpdatedDefaultEnforcementModeLog{}
+		}
+		if q == nil {
+			q = &UpdatedDefaultEnforcementModeLog{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *CreateIndexLog) EqualVT(that *CreateIndexLog) bool {
 	if this == that {
 		return true
@@ -6935,6 +6987,9 @@ func (this *LedgerInfo) EqualVT(that *LedgerInfo) bool {
 			}
 		}
 	}
+	if this.DefaultEnforcementMode != that.DefaultEnforcementMode {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -7138,6 +7193,25 @@ func (this *RemovedAccountTypeLog) EqualVT(that *RemovedAccountTypeLog) bool {
 
 func (this *RemovedAccountTypeLog) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*RemovedAccountTypeLog)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *UpdatedDefaultEnforcementModeLog) EqualVT(that *UpdatedDefaultEnforcementModeLog) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.EnforcementMode != that.EnforcementMode {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *UpdatedDefaultEnforcementModeLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*UpdatedDefaultEnforcementModeLog)
 	if !ok {
 		return false
 	}
@@ -12388,6 +12462,27 @@ func (m *LedgerLogPayload_RemovedAccountType) MarshalToSizedBufferVT(dAtA []byte
 	}
 	return len(dAtA) - i, nil
 }
+func (m *LedgerLogPayload_UpdatedDefaultEnforcementMode) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LedgerLogPayload_UpdatedDefaultEnforcementMode) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.UpdatedDefaultEnforcementMode != nil {
+		size, err := m.UpdatedDefaultEnforcementMode.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x82
+	}
+	return len(dAtA) - i, nil
+}
 func (m *CreateIndexLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -13851,6 +13946,11 @@ func (m *LedgerInfo) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.DefaultEnforcementMode != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DefaultEnforcementMode))
+		i--
+		dAtA[i] = 0x58
+	}
 	if len(m.AccountTypes) > 0 {
 		for k := range m.AccountTypes {
 			v := m.AccountTypes[k]
@@ -14378,6 +14478,44 @@ func (m *RemovedAccountTypeLog) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
 		i--
 		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *UpdatedDefaultEnforcementModeLog) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *UpdatedDefaultEnforcementModeLog) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *UpdatedDefaultEnforcementModeLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.EnforcementMode != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.EnforcementMode))
+		i--
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -17709,6 +17847,18 @@ func (m *LedgerLogPayload_RemovedAccountType) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *LedgerLogPayload_UpdatedDefaultEnforcementMode) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.UpdatedDefaultEnforcementMode != nil {
+		l = m.UpdatedDefaultEnforcementMode.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *CreateIndexLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -18359,6 +18509,9 @@ func (m *LedgerInfo) SizeVT() (n int) {
 			n += mapEntrySize + 1 + protohelpers.SizeOfVarint(uint64(mapEntrySize))
 		}
 	}
+	if m.DefaultEnforcementMode != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.DefaultEnforcementMode))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -18513,6 +18666,19 @@ func (m *RemovedAccountTypeLog) SizeVT() (n int) {
 	l = len(m.Name)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *UpdatedDefaultEnforcementModeLog) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.EnforcementMode != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.EnforcementMode))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -28735,6 +28901,47 @@ func (m *LedgerLogPayload) UnmarshalVT(dAtA []byte) error {
 				m.Payload = &LedgerLogPayload_RemovedAccountType{RemovedAccountType: v}
 			}
 			iNdEx = postIndex
+		case 16:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UpdatedDefaultEnforcementMode", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*LedgerLogPayload_UpdatedDefaultEnforcementMode); ok {
+				if err := oneof.UpdatedDefaultEnforcementMode.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &UpdatedDefaultEnforcementModeLog{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &LedgerLogPayload_UpdatedDefaultEnforcementMode{UpdatedDefaultEnforcementMode: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -32674,6 +32881,25 @@ func (m *LedgerInfo) UnmarshalVT(dAtA []byte) error {
 			}
 			m.AccountTypes[mapkey] = mapvalue
 			iNdEx = postIndex
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DefaultEnforcementMode", wireType)
+			}
+			m.DefaultEnforcementMode = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DefaultEnforcementMode |= ChartEnforcementMode(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -33640,6 +33866,76 @@ func (m *RemovedAccountTypeLog) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Name = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *UpdatedDefaultEnforcementModeLog) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: UpdatedDefaultEnforcementModeLog: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: UpdatedDefaultEnforcementModeLog: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field EnforcementMode", wireType)
+			}
+			m.EnforcementMode = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.EnforcementMode |= ChartEnforcementMode(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

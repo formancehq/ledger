@@ -832,11 +832,12 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	case *servicepb.Request_CreateLedger:
 		order.Type = &raftcmdpb.Order_CreateLedger{
 			CreateLedger: &raftcmdpb.CreateLedgerOrder{
-				Name:          reqType.CreateLedger.GetName(),
-				InitialSchema: reqType.CreateLedger.GetInitialSchema(),
-				Mode:          reqType.CreateLedger.GetMode(),
-				MirrorSource:  reqType.CreateLedger.GetMirrorSource(),
-				AccountTypes:  reqType.CreateLedger.GetAccountTypes(),
+				Name:                   reqType.CreateLedger.GetName(),
+				InitialSchema:          reqType.CreateLedger.GetInitialSchema(),
+				Mode:                   reqType.CreateLedger.GetMode(),
+				MirrorSource:           reqType.CreateLedger.GetMirrorSource(),
+				AccountTypes:           reqType.CreateLedger.GetAccountTypes(),
+				DefaultEnforcementMode: reqType.CreateLedger.GetDefaultEnforcementMode(),
 			},
 		}
 	case *servicepb.Request_DeleteLedger:
@@ -1076,6 +1077,17 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				},
 			},
 		}
+	case *servicepb.Request_SetDefaultEnforcementMode:
+		order.Type = &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: reqType.SetDefaultEnforcementMode.GetLedger(),
+				Data: &raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode{
+					UpdateDefaultEnforcementMode: &raftcmdpb.UpdateDefaultEnforcementModeOrder{
+						EnforcementMode: reqType.SetDefaultEnforcementMode.GetEnforcementMode(),
+					},
+				},
+			},
+		}
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
 	}
@@ -1176,6 +1188,12 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 		order.Data = &raftcmdpb.LedgerApplyOrder_RemoveAccountType{
 			RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{
 				Name: data.RemoveAccountType.GetName(),
+			},
+		}
+	case *servicepb.LedgerApplyRequest_SetDefaultEnforcementMode:
+		order.Data = &raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode{
+			UpdateDefaultEnforcementMode: &raftcmdpb.UpdateDefaultEnforcementModeOrder{
+				EnforcementMode: data.SetDefaultEnforcementMode.GetEnforcementMode(),
 			},
 		}
 	case *servicepb.LedgerApplyRequest_RevertTransaction:
