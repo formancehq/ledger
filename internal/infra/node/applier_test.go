@@ -69,7 +69,7 @@ func newTestApplierSetup(t *testing.T, snapshotThreshold uint64) *testApplierSet
 
 	fsm, err := state.NewMachine(
 		logger, pebbleStore, meter, nodeCache, nodeAttrs,
-		1000, nil, state.NewSharedState(), state.NoopNotifier{}, state.NoopNotifier{}, state.NoopNotifier{}, 0,
+		1000, nil, state.NewSharedState(), state.NoopNotifier{}, state.NoopNotifier{}, state.NoopNotifier{}, 0, false,
 	)
 	require.NoError(t, err)
 

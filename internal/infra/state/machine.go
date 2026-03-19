@@ -94,6 +94,10 @@ type Machine struct {
 	batchCommitHistogram      metric.Int64Histogram
 	lastPersistedIndex        atomic.Uint64
 
+	// volumeAssertions enables runtime volume consistency checks
+	// (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
+	volumeAssertions bool
+
 	// eventNotifier is notified after new logs are committed and when events
 	// config changes. Used by the event Manager.
 	eventNotifier Notifier
@@ -117,7 +121,7 @@ type Machine struct {
 	snapshotBuf []byte
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, numscriptCacheSize int) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, numscriptCacheSize int, volumeAssertions bool) (*Machine, error) {
 	stepStart := time.Now()
 
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(dataStore)
@@ -274,6 +278,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		lastAppliedIndex:            lastAppliedIndex,
 		lastAppliedTimestamp:        lastAppliedTimestamp,
 		generationRotationThreshold: generationRotationThreshold,
+		volumeAssertions:            volumeAssertions,
 		logsAppendedCounter:         logsAppendedCounter,
 		rotationDurationHistogram:   rotationDurationHistogram,
 		batchCommitHistogram:        batchCommitHistogram,
@@ -515,6 +520,24 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 
 	fsm.batchCommitHistogram.Record(context.Background(), time.Since(commitStart).Microseconds())
 
+	// Post-commit assertion: verify cache/Pebble volume consistency.
+	// This catches bugs where the cache diverges from Pebble (stale preloads,
+	// lost updates, snapshot issues). Runs only when there are volume updates.
+	if fsm.volumeAssertions {
+		for _, r := range ret.Results {
+			if len(r.volumeUpdates) > 0 {
+				if err := verifyPostCommitVolumes(
+					fsm.dataStore, fsm.Registry.Attrs.Volume,
+					fsm.Registry, r.volumeUpdates, fsm.lastAppliedIndex,
+				); err != nil {
+					fsm.logger.Errorf("POST-COMMIT VOLUME ASSERTION FAILED: %v", err)
+
+					return nil, fmt.Errorf("post-commit volume assertion failed: %w", err)
+				}
+			}
+		}
+	}
+
 	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
 	fsm.appliedCond.Broadcast()
 
@@ -635,12 +658,29 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 	) *raftcmdpb.VolumePair {
 		id := attributes.U128FromBytes(attrID.GetId())
 
-		// fsm.logger.WithFields(map[string]any{
-		//	"id": id.Hex(),
-		// }).Debugf("Preload volume")
-
 		value, ok := kv.Get(id)
 		if ok {
+			// Assertion: the preloaded value should never be greater than the
+			// cached value. If it is, something went wrong with the preload
+			// (the admission layer loaded a value that's ahead of the cache).
+			// The reverse (preload < cache) is expected: the cache was updated
+			// by a later proposal after this preload was computed at admission.
+			cacheInput := value.Data.GetInput().ToBigInt()
+			cacheOutput := value.Data.GetOutput().ToBigInt()
+			preloadInput := pair.GetInput().ToBigInt()
+			preloadOutput := pair.GetOutput().ToBigInt()
+
+			if preloadInput.Cmp(cacheInput) > 0 || preloadOutput.Cmp(cacheOutput) > 0 {
+				// Todo: return a true error
+				fsm.logger.WithFields(map[string]any{
+					"id":             id.Hex(),
+					"cache_input":    cacheInput.String(),
+					"cache_output":   cacheOutput.String(),
+					"preload_input":  preloadInput.String(),
+					"preload_output": preloadOutput.String(),
+				}).Errorf("PRELOAD AHEAD OF CACHE: preloaded volume is greater than cached value — this should not happen")
+			}
+
 			return value.Data
 		}
 
@@ -899,99 +939,60 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 				Input:  preloadType.Volume.GetInput(),
 				Output: preloadType.Volume.GetOutput(),
 			}
-			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
-				aggregated := putInCacheVolumePair(fsm.Registry.Cache.Volumes.Gen1(), preloadType.Volume.GetId(), pair)
-				putInCacheVolumePair(fsm.Registry.Cache.Volumes.Gen0(), preloadType.Volume.GetId(), aggregated)
-			} else {
-				putInCacheVolumePair(fsm.Registry.Cache.Volumes.Gen0(), preloadType.Volume.GetId(), pair)
-			}
+			// Always check Gen1 first: after rotation, Gen1 holds the previous Gen0's
+			// data which may be more recent than the preload (read from committed Pebble,
+			// which lags behind uncommitted batch writes). If Gen1 already has the key,
+			// putInCacheVolumePair returns the existing (fresher) value; that value is then
+			// propagated to Gen0, preventing a stale preload from shadowing it.
+			aggregated := putInCacheVolumePair(fsm.Registry.Cache.Volumes.Gen1(), preloadType.Volume.GetId(), pair)
+			putInCacheVolumePair(fsm.Registry.Cache.Volumes.Gen0(), preloadType.Volume.GetId(), aggregated)
 
 		case *raftcmdpb.Preload_IdempotencyKey:
 			idempotencyValue := &commonpb.IdempotencyKeyValue{
 				LogSequence: preloadType.IdempotencyKey.GetLogSequence(),
 				Hash:        preloadType.IdempotencyKey.GetHash(),
 			}
-			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
-				value := putInCacheIdempotencyValue(fsm.Registry.Cache.IdempotencyKeys.Gen1(), preloadType.IdempotencyKey.GetId(), idempotencyValue)
-				putInCacheIdempotencyValue(fsm.Registry.Cache.IdempotencyKeys.Gen0(), preloadType.IdempotencyKey.GetId(), value)
-			} else {
-				putInCacheIdempotencyValue(fsm.Registry.Cache.IdempotencyKeys.Gen0(), preloadType.IdempotencyKey.GetId(), idempotencyValue)
-			}
+			value := putInCacheIdempotencyValue(fsm.Registry.Cache.IdempotencyKeys.Gen1(), preloadType.IdempotencyKey.GetId(), idempotencyValue)
+			putInCacheIdempotencyValue(fsm.Registry.Cache.IdempotencyKeys.Gen0(), preloadType.IdempotencyKey.GetId(), value)
 
 		case *raftcmdpb.Preload_Ledger:
-			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
-				value := putInCacheLedger(fsm.Registry.Cache.Ledgers.Gen1(), preloadType.Ledger.GetId(), preloadType.Ledger.GetInfo())
-				putInCacheLedger(fsm.Registry.Cache.Ledgers.Gen0(), preloadType.Ledger.GetId(), value)
-			} else {
-				putInCacheLedger(fsm.Registry.Cache.Ledgers.Gen0(), preloadType.Ledger.GetId(), preloadType.Ledger.GetInfo())
-			}
+			value := putInCacheLedger(fsm.Registry.Cache.Ledgers.Gen1(), preloadType.Ledger.GetId(), preloadType.Ledger.GetInfo())
+			putInCacheLedger(fsm.Registry.Cache.Ledgers.Gen0(), preloadType.Ledger.GetId(), value)
 
 		case *raftcmdpb.Preload_Boundary:
-			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
-				value := putInCacheBoundary(fsm.Registry.Cache.Boundaries.Gen1(), preloadType.Boundary.GetId(), preloadType.Boundary.GetBoundaries())
-				putInCacheBoundary(fsm.Registry.Cache.Boundaries.Gen0(), preloadType.Boundary.GetId(), value)
-			} else {
-				putInCacheBoundary(fsm.Registry.Cache.Boundaries.Gen0(), preloadType.Boundary.GetId(), preloadType.Boundary.GetBoundaries())
-			}
+			value := putInCacheBoundary(fsm.Registry.Cache.Boundaries.Gen1(), preloadType.Boundary.GetId(), preloadType.Boundary.GetBoundaries())
+			putInCacheBoundary(fsm.Registry.Cache.Boundaries.Gen0(), preloadType.Boundary.GetId(), value)
 
 		case *raftcmdpb.Preload_TransactionReference:
 			referenceValue := &commonpb.TransactionReferenceValue{
 				TransactionId: preloadType.TransactionReference.GetTransactionId(),
 			}
-			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
-				value := putInCacheReferenceValue(fsm.Registry.Cache.References.Gen1(), preloadType.TransactionReference.GetId(), referenceValue)
-				putInCacheReferenceValue(fsm.Registry.Cache.References.Gen0(), preloadType.TransactionReference.GetId(), value)
-			} else {
-				putInCacheReferenceValue(fsm.Registry.Cache.References.Gen0(), preloadType.TransactionReference.GetId(), referenceValue)
-			}
+			value := putInCacheReferenceValue(fsm.Registry.Cache.References.Gen1(), preloadType.TransactionReference.GetId(), referenceValue)
+			putInCacheReferenceValue(fsm.Registry.Cache.References.Gen0(), preloadType.TransactionReference.GetId(), value)
 
 		case *raftcmdpb.Preload_SinkConfig:
-			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
-				value := putInCacheSinkConfig(fsm.Registry.Cache.SinkConfigs.Gen1(), preloadType.SinkConfig.GetId(), preloadType.SinkConfig.GetConfig())
-				putInCacheSinkConfig(fsm.Registry.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.GetId(), value)
-			} else {
-				putInCacheSinkConfig(fsm.Registry.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.GetId(), preloadType.SinkConfig.GetConfig())
-			}
+			value := putInCacheSinkConfig(fsm.Registry.Cache.SinkConfigs.Gen1(), preloadType.SinkConfig.GetId(), preloadType.SinkConfig.GetConfig())
+			putInCacheSinkConfig(fsm.Registry.Cache.SinkConfigs.Gen0(), preloadType.SinkConfig.GetId(), value)
 
 		case *raftcmdpb.Preload_AccountMetadata:
-			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
-				value := putInCacheMetadataValue(fsm.Registry.Cache.AccountMetadata.Gen1(), preloadType.AccountMetadata.GetId(), preloadType.AccountMetadata.GetValue())
-				putInCacheMetadataValue(fsm.Registry.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.GetId(), value)
-			} else {
-				putInCacheMetadataValue(fsm.Registry.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.GetId(), preloadType.AccountMetadata.GetValue())
-			}
+			value := putInCacheMetadataValue(fsm.Registry.Cache.AccountMetadata.Gen1(), preloadType.AccountMetadata.GetId(), preloadType.AccountMetadata.GetValue())
+			putInCacheMetadataValue(fsm.Registry.Cache.AccountMetadata.Gen0(), preloadType.AccountMetadata.GetId(), value)
 
 		case *raftcmdpb.Preload_NumscriptVersion:
-			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
-				value := putInCacheString(fsm.Registry.Cache.NumscriptVersions.Gen1(), preloadType.NumscriptVersion.GetId(), preloadType.NumscriptVersion.GetVersion())
-				putInCacheString(fsm.Registry.Cache.NumscriptVersions.Gen0(), preloadType.NumscriptVersion.GetId(), value)
-			} else {
-				putInCacheString(fsm.Registry.Cache.NumscriptVersions.Gen0(), preloadType.NumscriptVersion.GetId(), preloadType.NumscriptVersion.GetVersion())
-			}
+			value := putInCacheString(fsm.Registry.Cache.NumscriptVersions.Gen1(), preloadType.NumscriptVersion.GetId(), preloadType.NumscriptVersion.GetVersion())
+			putInCacheString(fsm.Registry.Cache.NumscriptVersions.Gen0(), preloadType.NumscriptVersion.GetId(), value)
 
 		case *raftcmdpb.Preload_NumscriptEntry:
-			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
-				value := putInCacheBool(fsm.Registry.Cache.NumscriptEntries.Gen1(), preloadType.NumscriptEntry.GetId(), preloadType.NumscriptEntry.GetExists())
-				putInCacheBool(fsm.Registry.Cache.NumscriptEntries.Gen0(), preloadType.NumscriptEntry.GetId(), value)
-			} else {
-				putInCacheBool(fsm.Registry.Cache.NumscriptEntries.Gen0(), preloadType.NumscriptEntry.GetId(), preloadType.NumscriptEntry.GetExists())
-			}
+			value := putInCacheBool(fsm.Registry.Cache.NumscriptEntries.Gen1(), preloadType.NumscriptEntry.GetId(), preloadType.NumscriptEntry.GetExists())
+			putInCacheBool(fsm.Registry.Cache.NumscriptEntries.Gen0(), preloadType.NumscriptEntry.GetId(), value)
 
 		case *raftcmdpb.Preload_TransactionState:
-			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
-				value := putInCacheTransactionState(fsm.Registry.Cache.Transactions.Gen1(), preloadType.TransactionState.GetId(), preloadType.TransactionState.GetState())
-				putInCacheTransactionState(fsm.Registry.Cache.Transactions.Gen0(), preloadType.TransactionState.GetId(), value)
-			} else {
-				putInCacheTransactionState(fsm.Registry.Cache.Transactions.Gen0(), preloadType.TransactionState.GetId(), preloadType.TransactionState.GetState())
-			}
+			value := putInCacheTransactionState(fsm.Registry.Cache.Transactions.Gen1(), preloadType.TransactionState.GetId(), preloadType.TransactionState.GetState())
+			putInCacheTransactionState(fsm.Registry.Cache.Transactions.Gen0(), preloadType.TransactionState.GetId(), value)
 
 		case *raftcmdpb.Preload_NumscriptParsed:
-			if preloadSet.GetLastPersistedIndex() == fsm.Registry.Cache.BaseIndex.Gen1 {
-				value := putInCacheString(fsm.Registry.Cache.NumscriptParsed.Gen1(), preloadType.NumscriptParsed.GetId(), preloadType.NumscriptParsed.GetPlain())
-				putInCacheString(fsm.Registry.Cache.NumscriptParsed.Gen0(), preloadType.NumscriptParsed.GetId(), value)
-			} else {
-				putInCacheString(fsm.Registry.Cache.NumscriptParsed.Gen0(), preloadType.NumscriptParsed.GetId(), preloadType.NumscriptParsed.GetPlain())
-			}
+			value := putInCacheString(fsm.Registry.Cache.NumscriptParsed.Gen1(), preloadType.NumscriptParsed.GetId(), preloadType.NumscriptParsed.GetPlain())
+			putInCacheString(fsm.Registry.Cache.NumscriptParsed.Gen0(), preloadType.NumscriptParsed.GetId(), value)
 		}
 	}
 
@@ -1214,6 +1215,26 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, err
 	}
 
+	// Cross-check: volume deltas must match postings in the committed logs.
+	if fsm.volumeAssertions {
+		if err := verifyVolumeDeltasMatchPostings(buffer.VolumeUpdates(), createdLogs); err != nil {
+			return nil, fmt.Errorf("volume delta/posting cross-check failed at raft index %d: %w", raftIndex, err)
+		}
+
+		// Global check: aggregated volumes must be balanced (input == output per asset).
+		ledgerNames := collectLedgerNames(proposal.GetOrders())
+		if len(ledgerNames) > 0 {
+			fsm.logger.Infof("Verifying aggregated volume balance for %d ledgers at raft index %d", len(ledgerNames), raftIndex)
+			if err := verifyAggregatedVolumesBalanced(
+				fsm.dataStore, fsm.Registry.Attrs.Volume, ledgerNames, raftIndex,
+			); err != nil {
+				fsm.logger.Errorf("AGGREGATED VOLUME BALANCE CHECK FAILED: %v", err)
+
+				return nil, fmt.Errorf("aggregated volume balance check failed: %w", err)
+			}
+		}
+	}
+
 	auditAfter := fsm.sharedState.AuditEnabled()
 
 	// SUCCESS: write audit entry
@@ -1247,6 +1268,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		HasArchiveRequests:      hasArchiveRequests,
 		HasPurges:               hasPurges,
 		MetadataConvertRequests: buffer.MetadataConvertRequests(),
+		volumeUpdates:           buffer.VolumeUpdates(),
+		createdLogs:             createdLogs,
 	}, nil
 }
 
@@ -2143,6 +2166,11 @@ type ApplyResult struct {
 	HasArchiveRequests      bool   // True when there are pending archive requests
 	HasPurges               bool   // True when cold zone data was purged (triggers cold compaction)
 	MetadataConvertRequests []MetadataConvertRequest
+
+	// volumeUpdates and createdLogs are captured for post-commit verification.
+	// Not exported because they are only used internally by ApplyEntries.
+	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+	createdLogs   []*commonpb.Log
 }
 
 // ApplyEntriesResult is the structured return value of ApplyEntries.

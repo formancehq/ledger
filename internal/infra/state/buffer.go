@@ -95,6 +95,9 @@ type Buffered struct {
 	pendingPreparedQueries  map[domain.PreparedQueryKey]*commonpb.PreparedQuery
 	pendingNumscriptWrites  []*commonpb.NumscriptInfo
 	pendingNumscriptDeletes []numscriptDeleteEntry
+
+	// volumeUpdates is populated during Merge for post-commit verification.
+	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 }
 
 // numscriptDeleteEntry identifies a numscript to soft-delete, scoped to a ledger.
@@ -152,6 +155,16 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	if err := checkDoubleEntryInvariant(volumeUpdates); err != nil {
 		return err
 	}
+
+	// Defensive check: volumes must never decrease (stale base detection).
+	if b.fsm.volumeAssertions {
+		if err := verifyVolumeUpdateMonotonicity(volumeUpdates); err != nil {
+			return err
+		}
+	}
+
+	// Store volume updates for post-commit verification.
+	b.volumeUpdates = volumeUpdates
 
 	accountMetadataUpdates, accountMetadataDeletions, err := b.Derived.AccountMetadata.Merge(index)
 	if err != nil {
@@ -565,6 +578,12 @@ func (b *Buffered) RemoveSinkConfig(name string) {
 
 func (b *Buffered) HasPendingSinkChanges() bool {
 	return b.sinkConfigChanged
+}
+
+// VolumeUpdates returns the volume updates captured during Merge.
+// Used for post-commit verification.
+func (b *Buffered) VolumeUpdates() []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
+	return b.volumeUpdates
 }
 
 func (b *Buffered) GetNextSequenceID() uint64 {
