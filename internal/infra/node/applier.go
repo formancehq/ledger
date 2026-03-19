@@ -26,11 +26,12 @@ import (
 )
 
 // applyWork represents a unit of work for the Applier goroutine.
-// Either entries are non-nil (normal work) or barrier is non-nil (drain request).
+// Exactly one of (entries, barrier, syncLeader) is set per work item.
 type applyWork struct {
-	entries   []raftpb.Entry
-	confState *raftpb.ConfState
-	barrier   chan struct{} // non-nil = drain; closed when processed
+	entries    []raftpb.Entry
+	confState  *raftpb.ConfState
+	barrier    chan struct{} // non-nil = drain; closed when processed
+	syncLeader uint64       // non-zero = trigger SyncSnapshot from Run goroutine
 }
 
 // Applier owns all FSM application logic and gating/spool lifecycle.
@@ -96,8 +97,8 @@ func NewApplier(
 		compactionMargin:        compactionMargin,
 		replayBatchSize:         replayBatchSize,
 		snapshotFetcherProvider: snapshotFetcherProvider,
-		status:                  &initialStatus,
-		ch:                      make(chan applyWork, 1),
+		status: &initialStatus,
+		ch:     make(chan applyWork, 1),
 	}
 
 	var err error
@@ -392,6 +393,12 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 				continue
 			}
 
+			if work.syncLeader != 0 {
+				a.startSyncSnapshot(ctx, work.syncLeader)
+
+				continue
+			}
+
 			if a.gatingTerminated != nil && gatingStart.IsZero() {
 				gatingStart = time.Now()
 			}
@@ -436,22 +443,30 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 	}
 }
 
-// SyncSnapshot starts a background synchronization with the leader.
-// On failure the node transitions to statusOutOfSync so that new entries
-// are spooled and a retry is triggered when a leader reappears in SoftState.
-func (a *Applier) SyncSnapshot(ctx context.Context, leader uint64) {
+// SyncSnapshot enqueues a snapshot synchronization with the leader for
+// processing by the Run goroutine. This ensures that gatingTerminated is
+// always assigned from Run, avoiding data races.
+func (a *Applier) SyncSnapshot(leader uint64, stop chan struct{}) {
+	a.status.Store(statusSyncing)
+
+	select {
+	case a.ch <- applyWork{syncLeader: leader}:
+	case <-stop:
+	}
+}
+
+// startSyncSnapshot is called from Run to perform the actual sync.
+func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
 	a.logger.
 		WithFields(map[string]any{
 			"leader": leader,
 		}).
 		Infof("Syncing snapshot from leader")
 
-	a.status.Store(statusSyncing)
-
 	progress := state.NewSyncProgress()
 	a.syncProgress.Store(progress)
 
-	a.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
+	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
 		snapshotFetcher, err := a.snapshotFetcherProvider.GetForPeer(leader)
 		if err != nil {
 			a.logger.WithFields(map[string]any{
@@ -464,7 +479,8 @@ func (a *Applier) SyncSnapshot(ctx context.Context, leader uint64) {
 			return 0, nil
 		}
 
-		if _, err := a.fsm.SynchronizeWithLeader(ctx, snapshotFetcher, progress); err != nil {
+		syncedIndex, err := a.fsm.SynchronizeWithLeader(ctx, snapshotFetcher, progress)
+		if err != nil {
 			a.logger.WithFields(map[string]any{
 				"leader": leader,
 				"error":  err,
@@ -477,7 +493,7 @@ func (a *Applier) SyncSnapshot(ctx context.Context, leader uint64) {
 
 		a.syncProgress.Store(nil)
 
-		return 0, nil
+		return syncedIndex, nil
 	}, nil)
 }
 
@@ -624,7 +640,8 @@ func (a *Applier) handleCheckpointRequired(
 		}
 	}
 
-	a.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
+	// Called from Run goroutine — assign gating directly.
+	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
 		path, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("checkpoint-%d", applyResult.CheckpointPeriodID))
 		if err != nil {
 			if deferredFuture != nil {
@@ -690,7 +707,8 @@ func (a *Applier) triggerSnapshot(ctx context.Context, confState *raftpb.ConfSta
 	a.snapshotTriggeredCounter.Add(ctx, 1)
 	a.status.Store(statusSnapshotting)
 
-	a.runMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
+	// Called from Run goroutine — assign gating directly.
+	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
 		a.logger.WithFields(map[string]any{
 			"applied":           lastEntryIndex,
 			"lastSnapshotIndex": lastSnapshotIndex,
@@ -735,13 +753,16 @@ func (a *Applier) triggerSnapshot(ctx context.Context, confState *raftpb.ConfSta
 	})
 }
 
-func (a *Applier) runMaintenanceTask(
+// startMaintenanceTask creates a gating channel and runs the maintenance task
+// in the background. Returns the gating channel so the caller can deliver it
+// to Run — either by direct assignment (when called from Run itself) or via
+// a.gatingCh (when called from another goroutine like processReadies).
+func (a *Applier) startMaintenanceTask(
 	ctx context.Context,
 	task func(ctx context.Context) (uint64, error),
 	postGating func(ctx context.Context),
-) {
+) chan struct{} {
 	gatingTerminated := make(chan struct{})
-	a.gatingTerminated = gatingTerminated
 
 	a.taskExecutor.interrupt()
 	a.taskExecutor.run(ctx, func(ctx context.Context) error {
@@ -778,6 +799,8 @@ func (a *Applier) runMaintenanceTask(
 
 		return nil
 	})
+
+	return gatingTerminated
 }
 
 func (a *Applier) unspoolAndResume(ctx context.Context) error {

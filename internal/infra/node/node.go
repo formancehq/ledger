@@ -740,7 +740,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		// task that is immediately interrupted by the second syncSnapshot call,
 		// which corrupts the spool read cache (entries read but never applied).
 		if ss.Lead != 0 && node.applier.Status() == statusOutOfSync && raft.IsEmptySnap(rd.Snapshot) {
-			node.applier.SyncSnapshot(ctx, ss.Lead)
+			node.applier.SyncSnapshot(ss.Lead, stop)
 		}
 
 		actualNodeLastSoftState := node.lastSoftState.Load()
@@ -875,7 +875,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		// fails (network issue, leader unavailable, etc.), the node transitions to
 		// statusOutOfSync and will retry automatically when a leader is detected
 		// via SoftState or on restart (isStoreUpToDate check).
-		node.applier.SyncSnapshot(ctx, node.lastSoftState.Load().Lead)
+		node.applier.SyncSnapshot(node.lastSoftState.Load().Lead, stop)
 	}
 
 	// Send messages via transport
