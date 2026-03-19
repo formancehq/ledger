@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -82,6 +84,17 @@ func verifyPostCommitVolumes(
 		expectedOutput := update.New.GetOutput().ToBigInt()
 
 		if pebbleInput.Cmp(expectedInput) != 0 || pebbleOutput.Cmp(expectedOutput) != 0 {
+			assert.Unreachable("cache pebble volume divergence", map[string]any{
+				"ledger":         update.Key.Ledger,
+				"account":        update.Key.Account,
+				"asset":          update.Key.Asset,
+				"expectedInput":  expectedInput.String(),
+				"expectedOutput": expectedOutput.String(),
+				"pebbleInput":    pebbleInput.String(),
+				"pebbleOutput":   pebbleOutput.String(),
+				"raftIndex":      raftIndex,
+			})
+
 			return &ErrVolumeCachePebbleDivergence{
 				Key:          update.Key,
 				CacheInput:   expectedInput.String(),
@@ -124,6 +137,14 @@ func verifyVolumeUpdateMonotonicity(
 		newOutput := update.New.GetOutput().ToBigInt()
 
 		if newInput.Cmp(oldInput) < 0 {
+			assert.Unreachable("volume input decreased", map[string]any{
+				"ledger":   update.Key.Ledger,
+				"account":  update.Key.Account,
+				"asset":    update.Key.Asset,
+				"oldInput": oldInput.String(),
+				"newInput": newInput.String(),
+			})
+
 			return fmt.Errorf(
 				"volume input decreased for %s/%s/%s: old=%s, new=%s (stale base value suspected)",
 				update.Key.Ledger, update.Key.Account, update.Key.Asset,
@@ -132,6 +153,14 @@ func verifyVolumeUpdateMonotonicity(
 		}
 
 		if newOutput.Cmp(oldOutput) < 0 {
+			assert.Unreachable("volume output decreased", map[string]any{
+				"ledger":    update.Key.Ledger,
+				"account":   update.Key.Account,
+				"asset":     update.Key.Asset,
+				"oldOutput": oldOutput.String(),
+				"newOutput": newOutput.String(),
+			})
+
 			return fmt.Errorf(
 				"volume output decreased for %s/%s/%s: old=%s, new=%s (stale base value suspected)",
 				update.Key.Ledger, update.Key.Account, update.Key.Asset,
@@ -304,6 +333,14 @@ func verifyAggregatedVolumesBalanced(
 			outputVal := vol.GetOutput().ToBigInt()
 
 			if inputVal.Cmp(outputVal) != 0 {
+				assert.Unreachable("aggregated volume imbalance", map[string]any{
+					"ledger":    ledger,
+					"asset":     vol.GetAsset(),
+					"raftIndex": raftIndex,
+					"input":     inputVal.String(),
+					"output":    outputVal.String(),
+				})
+
 				return fmt.Errorf(
 					"aggregated volume imbalance for ledger %s asset %s at raft index %d: input=%s output=%s",
 					ledger, vol.GetAsset(), raftIndex, inputVal.String(), outputVal.String(),

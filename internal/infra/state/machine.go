@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
@@ -399,6 +400,11 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	defer fsm.mu.Unlock()
 
 	if fsm.snapshotIndex > fsm.lastAppliedIndex {
+		assert.Unreachable("node out of sync during apply", map[string]any{
+			"snapshotIndex":    fsm.snapshotIndex,
+			"lastAppliedIndex": fsm.lastAppliedIndex,
+		})
+
 		return nil, &ErrNodeOutOfSync{
 			SnapshotIndex:    fsm.snapshotIndex,
 			LastAppliedIndex: fsm.lastAppliedIndex,
@@ -430,6 +436,11 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		}
 
 		if entry.Index > fsm.lastAppliedIndex+1 {
+			assert.Unreachable("entry index gap detected", map[string]any{
+				"receivedIndex": entry.Index,
+				"expectedIndex": fsm.lastAppliedIndex + 1,
+			})
+
 			return nil, &ErrInvalidEntryIndex{
 				ReceivedIndex: entry.Index,
 				ExpectedIndex: fsm.lastAppliedIndex + 1,
@@ -437,6 +448,9 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		}
 
 		if rotated, _ := fsm.Registry.Cache.CheckRotationNeeded(entry.Index); rotated {
+			assert.Sometimes(true, "cache generation rotated", map[string]any{
+				"entryIndex": entry.Index,
+			})
 			rotationStart := time.Now()
 			fsm.rotationDurationHistogram.Record(context.Background(), time.Since(rotationStart).Microseconds())
 		}
@@ -1357,6 +1371,10 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		return nil, fmt.Errorf("marshaling snapshot: %w", err)
 	}
 
+	assert.Sometimes(true, "snapshot created", map[string]any{
+		"checkpointId": checkpointID,
+		"snapshotSize": n,
+	})
 	fsm.logger.WithFields(map[string]any{
 		"totalDuration":     time.Since(totalStart).String(),
 		"serializeDuration": time.Since(serializeStart).String(),
@@ -1859,6 +1877,9 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 		fsm.Registry.Reversions[entry.GetLedger()] = domain.ReversionBitsetFromWords(entry.GetWords())
 	}
 
+	assert.Sometimes(true, "snapshot installed", map[string]any{
+		"snapshotIndex": snapshot.Metadata.Index,
+	})
 	fsm.logger.WithFields(map[string]any{
 		"totalDuration": time.Since(totalStart).String(),
 		"snapshotIndex": snapshot.Metadata.Index,
@@ -1937,6 +1958,10 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 	// and will be preloaded on demand by the admission layer.
 
 	fsm.lastAppliedIndex = fsm.snapshotIndex
+
+	assert.Sometimes(true, "synchronized with leader", map[string]any{
+		"snapshotIndex": fsm.snapshotIndex,
+	})
 
 	return fsm.snapshotIndex, nil
 }

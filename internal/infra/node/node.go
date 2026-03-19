@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/raft/v3/tracker"
@@ -767,11 +768,21 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			// leadership loss
 			if wasLeader && !isLeader {
 				logger.Infof("Leadership lost")
+				assert.Sometimes(true, "leadership lost", map[string]any{
+					"nodeID": node.config.NodeID,
+					"lead":   ss.Lead,
+					"term":   status.Term,
+				})
 				node.observer.Emit(LeadershipChangeEvent{IsLeader: false})
 			}
 			// acquire leadership
 			if !wasLeader && isLeader {
 				logger.Infof("Leadership gained")
+				assert.Sometimes(true, "leadership gained", map[string]any{
+					"nodeID": node.config.NodeID,
+					"lead":   ss.Lead,
+					"term":   status.Term,
+				})
 				node.observer.Emit(LeadershipChangeEvent{IsLeader: true})
 
 				node.applier.Drain(stop)
@@ -913,6 +924,10 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 
 		// Notify observers about configuration changes
 		for _, change := range cc.Changes {
+			assert.Sometimes(true, "conf change applied", map[string]any{
+				"nodeID":     change.NodeID,
+				"changeType": change.Type.String(),
+			})
 			node.observer.Emit(ConfChangeEvent{
 				NodeID:     change.NodeID,
 				ChangeType: change.Type,

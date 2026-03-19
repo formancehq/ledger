@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
@@ -335,6 +336,9 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("replaying spool: %w", err)
 	}
 
+	assert.Reachable("startup recovery completed", map[string]any{
+		"duration": time.Since(replayStart).String(),
+	})
 	a.logger.WithFields(map[string]any{
 		"duration": time.Since(replayStart).String(),
 	}).Infof("Spool replay complete")
@@ -567,6 +571,11 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		!confStatesEqual(confState, &lastSnapshot.Metadata.ConfState)
 
 	if thresholdReached || confStateChanged {
+		assert.Sometimes(true, "snapshot triggered", map[string]any{
+			"lastEntryIndex":   lastEntryIndex,
+			"thresholdReached": thresholdReached,
+			"confStateChanged": confStateChanged,
+		})
 		a.triggerSnapshot(ctx, confState, lastEntryIndex, lastSnapshot.Metadata.Index)
 	}
 
@@ -794,6 +803,7 @@ func (a *Applier) unspoolAndResume(ctx context.Context) error {
 		return fmt.Errorf("pruning spool: %w", err)
 	}
 
+	assert.Sometimes(true, "spool replay completed", nil)
 	a.logger.Infof("Unspooling operation terminated, resuming...")
 
 	return nil
