@@ -15,8 +15,8 @@ run duration description='ledger-v3 manual run': push-images
 build-images:
 	# operator
 	docker build --platform linux/amd64 --build-arg GOARCH=amd64 --build-arg GOOS=linux -f ../../misc/operator/Dockerfile --progress=plain -t "$ANTITHESIS_REPOSITORY/ledger-operator:$RUN_TAG" ../../misc/operator/
-	# ledger
-	docker build --platform linux/amd64 --build-arg GOARCH=amd64 --build-arg GOOS=linux -f ../../Dockerfile --progress=plain -t "$ANTITHESIS_REPOSITORY/ledger-v3-poc:$RUN_TAG" ../../
+	# ledger (instrumented for Antithesis)
+	docker build --platform linux/amd64 -f ../../Dockerfile.antithesis --progress=plain -t "$ANTITHESIS_REPOSITORY/ledger-v3-poc:$RUN_TAG" ../../
 
 push-images: build-images
 	just config/push
