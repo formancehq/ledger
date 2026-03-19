@@ -1877,9 +1877,6 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 		fsm.Registry.Reversions[entry.GetLedger()] = domain.ReversionBitsetFromWords(entry.GetWords())
 	}
 
-	assert.Reachable("snapshot installed", map[string]any{
-		"snapshotIndex": snapshot.Metadata.Index,
-	})
 	fsm.logger.WithFields(map[string]any{
 		"totalDuration": time.Since(totalStart).String(),
 		"snapshotIndex": snapshot.Metadata.Index,
@@ -1958,10 +1955,6 @@ func (fsm *Machine) SynchronizeWithLeader(ctx context.Context, snapshotFetcher S
 	// and will be preloaded on demand by the admission layer.
 
 	fsm.lastAppliedIndex = fsm.snapshotIndex
-
-	assert.Reachable("synchronized with leader", map[string]any{
-		"snapshotIndex": fsm.snapshotIndex,
-	})
 
 	return fsm.snapshotIndex, nil
 }

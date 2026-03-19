@@ -54,7 +54,6 @@ misc/k6/
 │   ├── any_bounded_to_any.js             # Bounded overdraft transactions
 │   ├── any_unbounded_to_any.js           # Unbounded overdraft transactions
 │   ├── any_force_to_any.js               # Force mode transactions
-│   ├── high_contention_marketplace.js    # Realistic marketplace with hot accounts
 │   └── single_hot_account.js             # Extreme single account contention
 ├── archives/                             # Generated k6 archives (gitignored)
 └── README.md
@@ -116,8 +115,7 @@ The following test scenarios are available:
 
 ### High Contention Scenarios
 
-7. **high_contention_marketplace.js**: Realistic marketplace simulation with high contention on platform accounts (deposits, payouts, payments with fees, escrow operations)
-8. **single_hot_account.js**: Extreme contention test where ALL virtual users target a single account simultaneously
+7. **single_hot_account.js**: Extreme contention test where ALL virtual users target a single account simultaneously
 
 ## Usage
 
@@ -362,37 +360,6 @@ If error rates are high:
 ## High Contention Tests
 
 These tests are designed to stress test the system's ability to handle concurrent operations on shared accounts.
-
-### high_contention_marketplace.js
-
-Simulates a realistic marketplace with multiple types of operations creating contention on platform accounts:
-
-**Scenarios:**
-- **Seller deposits** (15%): Sellers deposit funds to the platform account (many → one)
-- **Platform payouts** (10%): Platform pays out earnings to sellers (one → many)
-- **Payments with fees** (25%): Buyers pay merchants with 3% platform fee split
-- **Escrow funding** (15%): Buyers fund escrow accounts for pending orders
-- **Escrow releases** (10%): Release escrowed funds to sellers with fees
-- **Micropayments** (25%): High-frequency small payments to merchants
-
-**Environment variables:**
-- `HOT_ACCOUNT_COUNT`: Number of hot merchant accounts (default: 3)
-- `SELLER_POOL_SIZE`: Pool of seller accounts (default: 100)
-- `BUYER_POOL_SIZE`: Pool of buyer accounts (default: 100)
-- `BULK_SIZE`: Transactions per request (default: 1)
-
-**Usage:**
-```bash
-# Basic run
-k6 run scripts/high_contention_marketplace.js
-
-# With configuration
-HOT_ACCOUNT_COUNT=5 \
-SELLER_POOL_SIZE=200 \
-VUS=50 \
-DURATION=5m \
-k6 run scripts/high_contention_marketplace.js
-```
 
 ### single_hot_account.js
 

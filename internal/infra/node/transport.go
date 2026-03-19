@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -479,9 +478,6 @@ func (t *DefaultTransport) pushUnreachable(peerID uint64) bool {
 	select {
 	case t.unreachableCh <- peerID:
 		t.unreachableLoadHistogram.Record(context.Background(), int64(t.unreachableInflight.Add(1)))
-		assert.Reachable("peer became unreachable", map[string]any{
-			"peerID": peerID,
-		})
 
 		return true
 	default:
