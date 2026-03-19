@@ -40,14 +40,13 @@ func newTestMachineWithAudit(t *testing.T, auditEnabled bool) (*Machine, *dal.St
 	c, err := cache.New(1000, meter)
 	require.NoError(t, err)
 
-	// Persist audit config before creating the machine (NewMachine reads from Pebble)
-	if auditEnabled {
-		batch := dataStore.NewBatch()
-		require.NoError(t, SaveAuditConfig(batch, true))
-		require.NoError(t, batch.Commit())
-	}
+	// Persist audit config before creating the machine (NewMachine reads from Pebble).
+	// Must always write explicitly since the default (no key) is now enabled.
+	batch := dataStore.NewBatch()
+	require.NoError(t, SaveAuditConfig(batch, auditEnabled))
+	require.NoError(t, batch.Commit())
 
-	machine, err := NewMachine(logger, dataStore, meter, c, attrs, 1000, keystore.NewKeyStore(), NewSharedState(), NoopNotifier{}, NoopNotifier{}, NoopNotifier{}, 0)
+	machine, err := NewMachine(logger, dataStore, meter, c, attrs, 1000, keystore.NewKeyStore(), NewSharedState(), NoopNotifier{}, NoopNotifier{}, NoopNotifier{}, 0, false)
 	require.NoError(t, err)
 
 	return machine, dataStore, attrs
