@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v3/logging"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v3/logging"
 )
 
 // NOTE: these tests are NOT parallel because only one flight recorder

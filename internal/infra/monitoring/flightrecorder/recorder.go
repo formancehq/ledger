@@ -1,6 +1,7 @@
 package flightrecorder
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"runtime/trace"
@@ -70,7 +71,7 @@ func (r *Recorder) Snapshot(w io.Writer) error {
 	defer r.mu.Unlock()
 
 	if !r.started {
-		return fmt.Errorf("flight recorder is not running")
+		return errors.New("flight recorder is not running")
 	}
 
 	_, err := r.fr.WriteTo(w)
