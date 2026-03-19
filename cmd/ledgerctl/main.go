@@ -58,6 +58,13 @@ func newRootCommand() *cobra.Command {
 		Long:         "Command-line client for interacting with Ledger v3 servers via gRPC",
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			// Skip profile/env resolution for profile management commands —
+			// they define local flags with the same names and must not be
+			// contaminated by the active profile or environment variables.
+			if isProfileCommand(cmd) {
+				return nil
+			}
+
 			// Load config and resolve the active profile.
 			cfg, err := cmdutil.LoadConfig()
 			if err != nil {
@@ -135,6 +142,20 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(provision.NewCommand())
 
 	return rootCmd
+}
+
+// isProfileCommand returns true when cmd is a subcommand of "profile".
+// Profile management commands define local flags that overlap with the
+// persistent connection flags (--server, --insecure, --tls-ca-cert) and
+// must not inherit values from the active profile or environment.
+func isProfileCommand(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Name() == "profile" {
+			return true
+		}
+	}
+
+	return false
 }
 
 // resolveFlag sets a cobra flag's value using the first available source:
