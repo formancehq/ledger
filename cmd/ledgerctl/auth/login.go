@@ -66,10 +66,39 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("storing token in keychain: %w", err)
 	}
 
+	// If --server was explicitly passed and a profile is active, update the
+	// profile's server address so that subsequent commands use the same address
+	// (and find the keychain token keyed by the full address including port).
+	if cmd.Flags().Changed("server") {
+		if err := updateProfileServer(cmd, server); err != nil {
+			pterm.Warning.Printfln("Could not update profile server: %v", err)
+		}
+	}
+
 	pterm.Success.Printfln("Logged in to %s", pterm.Bold.Sprint(server))
 	printTokenSummary(token)
 
 	return nil
+}
+
+// updateProfileServer updates the active profile's server address if a profile is in use.
+func updateProfileServer(cmd *cobra.Command, server string) error {
+	cfg, err := cmdutil.LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	profileName, _ := cmd.Flags().GetString("profile")
+
+	name, profile := cmdutil.GetActiveProfile(cfg, profileName)
+	if profile == nil || profile.Server == server {
+		return nil
+	}
+
+	profile.Server = server
+	cfg.Profiles[name] = *profile
+
+	return cmdutil.SaveConfig(cfg)
 }
 
 // resolveLoginParams builds tokenParams from a bundle (file, stdin pipe) and/or flags.
