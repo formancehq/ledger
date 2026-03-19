@@ -45,14 +45,14 @@ require (
 	go.opentelemetry.io/otel/trace v1.40.0
 	go.uber.org/fx v1.24.0
 	go.uber.org/mock v0.5.2
-	golang.org/x/oauth2 v0.31.0
+	golang.org/x/oauth2 v0.34.0
 	golang.org/x/sync v0.19.0
 )
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.37.2
 	github.com/formancehq/go-libs/v4 v4.0.0
-	github.com/go-jose/go-jose/v4 v4.0.5
+	github.com/go-jose/go-jose/v4 v4.1.3
 	github.com/iancoleman/strcase v0.3.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/olivere/elastic/v7 v7.0.32
@@ -244,8 +244,8 @@ require (
 	golang.org/x/text v0.33.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.40.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822 // indirect
-	google.golang.org/grpc v1.74.2
-	google.golang.org/protobuf v1.36.8
+	google.golang.org/genproto/googleapis/api v0.0.0-20251202230838-ff82c1b0f217 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
+	google.golang.org/grpc v1.79.3
+	google.golang.org/protobuf v1.36.10
 )
