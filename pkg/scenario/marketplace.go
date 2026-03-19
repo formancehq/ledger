@@ -1,6 +1,7 @@
 package scenario
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 
@@ -11,8 +12,121 @@ import (
 
 func init() { Register("marketplace", RunMarketplace) }
 
-// MarketplaceLedger is the ledger name used by the marketplace scenario.
-const MarketplaceLedger = "marketplace"
+const (
+	// MarketplaceLedger is the ledger name used by the marketplace scenario.
+	MarketplaceLedger       = "marketplace"
+	MarketplaceNumCustomers = 50
+	MarketplaceNumMerchants = 10
+	MarketplaceDepositAmt   = 1_000_000
+)
+
+// MarketplaceBlocks returns the atomic blocks for the marketplace scenario.
+func MarketplaceBlocks() *BlockGroup {
+	return &BlockGroup{
+		Setup: MarketplaceSetupActions,
+		Blocks: []*Block{
+			{Name: "marketplace/deposit", Run: marketplaceDeposit},
+			{Name: "marketplace/purchase", Run: marketplacePurchase},
+			{Name: "marketplace/revert", Run: marketplaceRevert},
+			{Name: "marketplace/payout", Run: marketplacePayout},
+			{Name: "marketplace/metadata", Run: marketplaceMetadata},
+		},
+	}
+}
+
+func marketplaceDeposit(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	customerID := 1 + RandIntN(r, MarketplaceNumCustomers)
+	address := fmt.Sprintf("customer:%d", customerID)
+	amount := int64(100_000) + RandInt64N(r, int64(MarketplaceDepositAmt))
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(MarketplaceLedger, "deposit", "1.0.0", map[string]string{
+			"customer": address,
+			"amount":   fmt.Sprintf("USD/2 %d", amount),
+		}, nil),
+	)
+}
+
+func marketplacePurchase(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	customerID := 1 + RandIntN(r, MarketplaceNumCustomers)
+	merchantID := 1 + RandIntN(r, MarketplaceNumMerchants)
+	customer := fmt.Sprintf("customer:%d", customerID)
+	merchant := fmt.Sprintf("merchant:%d", merchantID)
+
+	bal, ok := GetAccountBalance(ctx, client, MarketplaceLedger, customer, "USD/2")
+	if !ok || bal.Cmp(big.NewInt(1000)) < 0 {
+		return nil, ErrSkip
+	}
+
+	maxAmt := bal.Int64()
+	if maxAmt > 50_000 {
+		maxAmt = 50_000
+	}
+	amount := int64(1000) + RandInt64N(r, maxAmt-1000+1)
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(MarketplaceLedger, "purchase", "1.0.0", map[string]string{
+			"customer": customer,
+			"merchant": merchant,
+			"amount":   fmt.Sprintf("USD/2 %d", amount),
+		}, nil),
+	)
+}
+
+func marketplaceRevert(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	tx, ok := GetNonRevertedTransaction(ctx, client, MarketplaceLedger, r)
+	if !ok {
+		return nil, ErrSkip
+	}
+
+	return ApplyActions(ctx, client,
+		actions.RevertTransactionAction(MarketplaceLedger, tx.Id, true, false, nil),
+	)
+}
+
+func marketplacePayout(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	merchantID := 1 + RandIntN(r, MarketplaceNumMerchants)
+	merchant := fmt.Sprintf("merchant:%d", merchantID)
+
+	bal, ok := GetAccountBalance(ctx, client, MarketplaceLedger, merchant, "USD/2")
+	if !ok || bal.Sign() <= 0 {
+		return nil, ErrSkip
+	}
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(MarketplaceLedger, "payout", "1.0.0", map[string]string{
+			"merchant": merchant,
+			"amount":   fmt.Sprintf("USD/2 %d", bal.Int64()),
+		}, nil),
+	)
+}
+
+func marketplaceMetadata(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	var address string
+	if RandIntN(r, 2) == 0 {
+		address = fmt.Sprintf("customer:%d", 1+RandIntN(r, MarketplaceNumCustomers))
+	} else {
+		address = fmt.Sprintf("merchant:%d", 1+RandIntN(r, MarketplaceNumMerchants))
+	}
+
+	resp, err := ApplyActions(ctx, client,
+		actions.SaveAccountMetadataAction(MarketplaceLedger, address, map[string]string{
+			"tier":      fmt.Sprintf("tier-%d", RandIntN(r, 5)),
+			"last_seen": fmt.Sprintf("%d", r()),
+		}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if RandIntN(r, 3) == 0 {
+		resp, err = ApplyActions(ctx, client,
+			actions.DeleteAccountMetadataAction(MarketplaceLedger, address, "last_seen"),
+		)
+	}
+
+	return resp, err
+}
 
 // MarketplaceSetupActions returns the Apply requests that create the ledger,
 // account types, and numscript library for the marketplace scenario.

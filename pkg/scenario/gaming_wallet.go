@@ -1,6 +1,7 @@
 package scenario
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -12,8 +13,123 @@ import (
 
 func init() { Register("gaming-wallet", RunGamingWallet) }
 
-// GamingWalletLedger is the ledger name used by the gaming wallet scenario.
-const GamingWalletLedger = "gaming"
+const (
+	// GamingWalletLedger is the ledger name used by the gaming wallet scenario.
+	GamingWalletLedger     = "gaming"
+	GamingWalletNumPlayers = 20
+)
+
+// GamingWalletBlocks returns the atomic blocks for the gaming wallet scenario.
+func GamingWalletBlocks() *BlockGroup {
+	return &BlockGroup{
+		Setup: GamingWalletSetupActions,
+		Blocks: []*Block{
+			{Name: "gaming/topup", Run: gamingTopUp},
+			{Name: "gaming/buy_item", Run: gamingBuyItem},
+			{Name: "gaming/p2p_trade", Run: gamingP2PTrade},
+			{Name: "gaming/promotion", Run: gamingPromotion},
+			{Name: "gaming/clawback", Run: gamingClawback},
+		},
+	}
+}
+
+func gamingTopUp(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	playerID := 1 + RandIntN(r, GamingWalletNumPlayers)
+	usdAmount := int64(1000 + RandIntN(r, 10000))
+	coinAmount := usdAmount
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(GamingWalletLedger, "top_up", "1.0.0", map[string]string{
+			"player_usd":   fmt.Sprintf("player:%d:usd", playerID),
+			"player_coins": fmt.Sprintf("player:%d:coins", playerID),
+			"usd_amount":   fmt.Sprintf("USD/2 %d", usdAmount),
+			"coin_amount":  fmt.Sprintf("COINS %d", coinAmount),
+		}, map[string]string{"type": "topup"}),
+	)
+}
+
+func gamingBuyItem(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	playerID := 1 + RandIntN(r, GamingWalletNumPlayers)
+	playerCoins := fmt.Sprintf("player:%d:coins", playerID)
+
+	bal, ok := GetAccountBalance(ctx, client, GamingWalletLedger, playerCoins, "COINS")
+	if !ok || bal.Cmp(big.NewInt(100)) < 0 {
+		return nil, ErrSkip
+	}
+
+	costs := []int64{100, 250, 500}
+	cost := costs[RandIntN(r, len(costs))]
+	if bal.Cmp(big.NewInt(cost)) < 0 {
+		cost = 100
+		if bal.Cmp(big.NewInt(cost)) < 0 {
+			return nil, ErrSkip
+		}
+	}
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(GamingWalletLedger, "buy_item", "1.0.0", map[string]string{
+			"player_coins": playerCoins,
+			"amount":       fmt.Sprintf("COINS %d", cost),
+		}, map[string]string{"item": fmt.Sprintf("item-%d", RandIntN(r, 100))}),
+	)
+}
+
+func gamingP2PTrade(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	fromID := 1 + RandIntN(r, GamingWalletNumPlayers)
+	toID := 1 + RandIntN(r, GamingWalletNumPlayers)
+	if fromID == toID {
+		toID = 1 + fromID%GamingWalletNumPlayers
+	}
+
+	fromCoins := fmt.Sprintf("player:%d:coins", fromID)
+	toCoins := fmt.Sprintf("player:%d:coins", toID)
+
+	bal, ok := GetAccountBalance(ctx, client, GamingWalletLedger, fromCoins, "COINS")
+	if !ok || bal.Cmp(big.NewInt(10)) < 0 {
+		return nil, ErrSkip
+	}
+
+	amount := int64(10) + RandInt64N(r, bal.Int64()-9)
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(GamingWalletLedger, "p2p_transfer", "1.0.0", map[string]string{
+			"from_player": fromCoins,
+			"to_player":   toCoins,
+			"amount":      fmt.Sprintf("COINS %d", amount),
+		}, map[string]string{"type": "p2p-trade"}),
+	)
+}
+
+func gamingPromotion(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	playerID := 1 + RandIntN(r, GamingWalletNumPlayers)
+	promoCoins := int64(100 + RandIntN(r, 1000))
+	playerAddr := fmt.Sprintf("player:%d:coins", playerID)
+
+	return ApplyActions(ctx, client,
+		actions.CreateForceTransactionAction(GamingWalletLedger, []*commonpb.Posting{
+			actions.NewPosting("world", playerAddr, big.NewInt(promoCoins), "COINS"),
+		}, map[string]string{"type": "promotion", "reason": "bonus"}),
+	)
+}
+
+func gamingClawback(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	playerID := 1 + RandIntN(r, GamingWalletNumPlayers)
+	playerCoins := fmt.Sprintf("player:%d:coins", playerID)
+
+	bal, ok := GetAccountBalance(ctx, client, GamingWalletLedger, playerCoins, "COINS")
+	if !ok || bal.Cmp(big.NewInt(50)) < 0 {
+		return nil, ErrSkip
+	}
+
+	amount := int64(50) + RandInt64N(r, bal.Int64()-49)
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(GamingWalletLedger, "clawback", "1.0.0", map[string]string{
+			"player_coins": playerCoins,
+			"amount":       fmt.Sprintf("COINS %d", amount),
+		}, map[string]string{"type": "clawback"}),
+	)
+}
 
 // GamingWalletSetupActions returns the Apply requests that create the ledger,
 // account types, and numscript library for the gaming wallet scenario.

@@ -1,6 +1,7 @@
 package scenario
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 
@@ -11,8 +12,106 @@ import (
 
 func init() { Register("subscription", RunSubscription) }
 
-// SubscriptionLedger is the ledger name used by the subscription scenario.
-const SubscriptionLedger = "billing"
+const (
+	// SubscriptionLedger is the ledger name used by the subscription scenario.
+	SubscriptionLedger        = "billing"
+	SubscriptionNumSubscribers = 50
+)
+
+// SubscriptionTier describes a subscription tier with its pricing.
+type SubscriptionTier struct {
+	Name   string
+	Amount int64
+	Fund   int64
+}
+
+// SubscriptionTiers returns the available subscription tiers.
+func SubscriptionTiers() []SubscriptionTier {
+	return []SubscriptionTier{
+		{"basic", 1000, 5000},
+		{"pro", 2500, 10000},
+		{"enterprise", 5000, 20000},
+	}
+}
+
+// SubscriptionBlocks returns the atomic blocks for the subscription scenario.
+func SubscriptionBlocks() *BlockGroup {
+	return &BlockGroup{
+		Setup: SubscriptionSetupActions,
+		Blocks: []*Block{
+			{Name: "subscription/fund", Run: subscriptionFund},
+			{Name: "subscription/charge", Run: subscriptionCharge},
+			{Name: "subscription/recognize", Run: subscriptionRecognize},
+			{Name: "subscription/credit", Run: subscriptionCredit},
+		},
+	}
+}
+
+func subscriptionFund(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	subID := 1 + RandIntN(r, SubscriptionNumSubscribers)
+	tiers := SubscriptionTiers()
+	tier := tiers[RandIntN(r, len(tiers))]
+	address := fmt.Sprintf("subscriber:%d", subID)
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(SubscriptionLedger, "fund_wallet", "1.0.0", map[string]string{
+			"subscriber": address,
+			"amount":     fmt.Sprintf("USD/2 %d", tier.Fund),
+		}, nil),
+	)
+}
+
+func subscriptionCharge(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	subID := 1 + RandIntN(r, SubscriptionNumSubscribers)
+	tiers := SubscriptionTiers()
+	tier := tiers[(subID-1)%len(tiers)]
+	address := fmt.Sprintf("subscriber:%d", subID)
+
+	bal, ok := GetAccountBalance(ctx, client, SubscriptionLedger, address, "USD/2")
+	if !ok || bal.Cmp(big.NewInt(tier.Amount)) < 0 {
+		return nil, ErrSkip
+	}
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(SubscriptionLedger, "charge_subscription", "1.0.0", map[string]string{
+			"subscriber": address,
+			"amount":     fmt.Sprintf("USD/2 %d", tier.Amount),
+		}, nil),
+	)
+}
+
+func subscriptionRecognize(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	bal, ok := GetAccountBalance(ctx, client, SubscriptionLedger, "revenue:deferred", "USD/2")
+	if !ok || bal.Sign() <= 0 {
+		return nil, ErrSkip
+	}
+
+	portion := int64(25 + RandIntN(r, 76))
+	amount := new(big.Int).Mul(bal, big.NewInt(portion))
+	amount.Div(amount, big.NewInt(100))
+	if amount.Sign() <= 0 {
+		return nil, ErrSkip
+	}
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(SubscriptionLedger, "recognize_revenue", "1.0.0", map[string]string{
+			"amount": fmt.Sprintf("USD/2 %d", amount.Int64()),
+		}, nil),
+	)
+}
+
+func subscriptionCredit(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	subID := 1 + RandIntN(r, SubscriptionNumSubscribers)
+	amount := int64(100 + RandIntN(r, 500))
+	address := fmt.Sprintf("subscriber:%d", subID)
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(SubscriptionLedger, "issue_credit", "1.0.0", map[string]string{
+			"subscriber": address,
+			"amount":     fmt.Sprintf("USD/2 %d", amount),
+		}, nil),
+	)
+}
 
 // SubscriptionSetupActions returns the Apply requests that create the ledger,
 // schema, account types, and numscript library for the subscription scenario.

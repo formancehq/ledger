@@ -1,7 +1,9 @@
 package scenario
 
 import (
+	"context"
 	"fmt"
+	"math/big"
 	"strconv"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -10,6 +12,110 @@ import (
 )
 
 func init() { Register("multi-ledger-payroll", RunMultiLedgerPayroll) }
+
+const MultiLedgerPayrollBaseSalary = 500_000
+
+// MultiLedgerPayrollBlocks returns the atomic blocks for the multi-ledger payroll scenario.
+func MultiLedgerPayrollBlocks() *BlockGroup {
+	return &BlockGroup{
+		Setup: MultiLedgerPayrollSetupActions,
+		Blocks: []*Block{
+			{Name: "payroll/fund_clearing", Run: payrollFundClearing},
+			{Name: "payroll/distribute", Run: payrollDistribute},
+			{Name: "payroll/pay_salary", Run: payrollPaySalary},
+			{Name: "payroll/cost_alloc", Run: payrollCostAlloc},
+		},
+	}
+}
+
+func payrollFundClearing(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	departments := MultiLedgerPayrollDepartments()
+	var totalNeeded int64
+	for _, dept := range departments {
+		totalNeeded += int64(dept.Employees) * MultiLedgerPayrollBaseSalary
+	}
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction("clearing", "fund_clearing", "1.0.0", map[string]string{
+			"amount": fmt.Sprintf("USD/2 %d", totalNeeded),
+		}, nil),
+	)
+}
+
+func payrollDistribute(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	departments := MultiLedgerPayrollDepartments()
+	dept := departments[RandIntN(r, len(departments))]
+	amount := int64(dept.Employees) * MultiLedgerPayrollBaseSalary
+
+	bal, ok := GetAccountBalance(ctx, client, "clearing", "company:treasury", "USD/2")
+	if !ok || bal.Cmp(big.NewInt(amount)) < 0 {
+		return nil, ErrSkip
+	}
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction("clearing", "fund_dept", "1.0.0", map[string]string{
+			"dept_account": "dept:" + dept.Name,
+			"amount":       fmt.Sprintf("USD/2 %d", amount),
+		}, nil),
+	)
+}
+
+func payrollPaySalary(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	departments := MultiLedgerPayrollDepartments()
+	dept := departments[RandIntN(r, len(departments))]
+
+	// Ensure payroll pool is funded.
+	poolBal, ok := GetAccountBalance(ctx, client, dept.Ledger, "payroll:pool", "USD/2")
+	if !ok || poolBal.Cmp(big.NewInt(MultiLedgerPayrollBaseSalary)) < 0 {
+		// Try to fund the pool first.
+		_, err := ApplyActions(ctx, client,
+			actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
+				"amount": fmt.Sprintf("USD/2 %d", int64(dept.Employees)*MultiLedgerPayrollBaseSalary),
+			}, nil),
+		)
+		if err != nil {
+			return nil, ErrSkip
+		}
+	}
+
+	empID := 1 + RandIntN(r, dept.Employees)
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "1.0.0", map[string]string{
+			"employee": fmt.Sprintf("employee:%d", empID),
+			"amount":   fmt.Sprintf("USD/2 %d", MultiLedgerPayrollBaseSalary),
+		}, map[string]string{"type": "salary"}),
+	)
+}
+
+func payrollCostAlloc(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	type allocation struct {
+		from   string
+		to     string
+		amount int64
+		reason string
+	}
+	allocations := []allocation{
+		{"dept:operations", "dept:engineering", 50_000, "cloud-hosting"},
+		{"dept:engineering", "dept:sales", 30_000, "lead-generation"},
+		{"dept:sales", "dept:operations", 20_000, "office-supplies"},
+	}
+
+	alloc := allocations[RandIntN(r, len(allocations))]
+
+	bal, ok := GetAccountBalance(ctx, client, "clearing", alloc.from, "USD/2")
+	if !ok || bal.Cmp(big.NewInt(alloc.amount)) < 0 {
+		return nil, ErrSkip
+	}
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction("clearing", "cost_allocation", "1.0.0", map[string]string{
+			"from_dept": alloc.from,
+			"to_dept":   alloc.to,
+			"amount":    fmt.Sprintf("USD/2 %d", alloc.amount),
+		}, map[string]string{"reason": alloc.reason}),
+	)
+}
 
 // MultiLedgerPayrollDepartment describes a department in the payroll scenario.
 type MultiLedgerPayrollDepartment struct {

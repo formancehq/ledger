@@ -1,6 +1,7 @@
 package scenario
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -12,8 +13,136 @@ import (
 
 func init() { Register("lending-lifecycle", RunLendingLifecycle) }
 
-// LendingLifecycleLedger is the ledger name used by the lending lifecycle scenario.
-const LendingLifecycleLedger = "lending"
+const (
+	// LendingLifecycleLedger is the ledger name used by the lending lifecycle scenario.
+	LendingLifecycleLedger      = "lending"
+	LendingLifecycleNumBorrowers = 10
+	LendingLifecycleLoanAmount   = 100_000
+)
+
+// LendingLifecycleBlocks returns the atomic blocks for the lending lifecycle scenario.
+func LendingLifecycleBlocks() *BlockGroup {
+	return &BlockGroup{
+		Setup: LendingLifecycleSetupActions,
+		Blocks: []*Block{
+			{Name: "lending/fund_pool", Run: lendingFundPool},
+			{Name: "lending/disburse", Run: lendingDisburse},
+			{Name: "lending/repay", Run: lendingRepay},
+			{Name: "lending/provision", Run: lendingProvision},
+			{Name: "lending/write_off", Run: lendingWriteOff},
+		},
+	}
+}
+
+func lendingFundPool(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	amount := int64(LendingLifecycleLoanAmount) * (1 + RandInt64N(r, 5))
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(LendingLifecycleLedger, "fund_pool", "1.0.0", map[string]string{
+			"amount": fmt.Sprintf("USD/2 %d", amount),
+		}, nil),
+	)
+}
+
+func lendingDisburse(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	poolBal, ok := GetAccountBalance(ctx, client, LendingLifecycleLedger, "funding:pool", "USD/2")
+	if !ok || poolBal.Cmp(big.NewInt(LendingLifecycleLoanAmount)) < 0 {
+		return nil, ErrSkip
+	}
+
+	borrowerID := 1 + RandIntN(r, LendingLifecycleNumBorrowers)
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(LendingLifecycleLedger, "disburse_loan", "1.0.0", map[string]string{
+			"borrower_loan":   fmt.Sprintf("borrower:%d:loan", borrowerID),
+			"borrower_wallet": fmt.Sprintf("borrower:%d:wallet", borrowerID),
+			"amount":          fmt.Sprintf("USD/2 %d", LendingLifecycleLoanAmount),
+		}, nil),
+	)
+}
+
+func lendingRepay(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	borrowerID := 1 + RandIntN(r, LendingLifecycleNumBorrowers)
+	loanAddr := fmt.Sprintf("borrower:%d:loan", borrowerID)
+	walletAddr := fmt.Sprintf("borrower:%d:wallet", borrowerID)
+
+	loanBal, ok := GetAccountBalance(ctx, client, LendingLifecycleLedger, loanAddr, "USD/2")
+	if !ok || loanBal.Sign() <= 0 {
+		return nil, ErrSkip
+	}
+	walletBal, ok := GetAccountBalance(ctx, client, LendingLifecycleLedger, walletAddr, "USD/2")
+	if !ok || walletBal.Sign() <= 0 {
+		return nil, ErrSkip
+	}
+
+	// Interest: 2% of outstanding.
+	interest := new(big.Int).Mul(loanBal, big.NewInt(2))
+	interest.Div(interest, big.NewInt(100))
+	if interest.Cmp(walletBal) > 0 {
+		return nil, ErrSkip
+	}
+
+	// Principal: min(outstanding, wallet-interest, loanAmount/6).
+	remaining := new(big.Int).Sub(walletBal, interest)
+	principal := new(big.Int).Div(big.NewInt(LendingLifecycleLoanAmount), big.NewInt(6))
+	if principal.Cmp(remaining) > 0 {
+		principal.Set(remaining)
+	}
+	if principal.Cmp(loanBal) > 0 {
+		principal.Set(loanBal)
+	}
+	if principal.Sign() <= 0 {
+		return nil, ErrSkip
+	}
+
+	var reqs []*servicepb.Request
+	if interest.Sign() > 0 {
+		reqs = append(reqs, actions.CreateScriptRefTransactionAction(LendingLifecycleLedger, "accrue_interest", "1.0.0", map[string]string{
+			"borrower_wallet": walletAddr,
+			"amount":          "USD/2 " + interest.String(),
+		}, map[string]string{"type": "interest"}))
+	}
+	reqs = append(reqs, actions.CreateScriptRefTransactionAction(LendingLifecycleLedger, "repay_principal", "1.0.0", map[string]string{
+		"borrower_wallet": walletAddr,
+		"borrower_loan":   loanAddr,
+		"amount":          "USD/2 " + principal.String(),
+	}, map[string]string{"type": "principal"}))
+
+	return ApplyActions(ctx, client, reqs...)
+}
+
+func lendingProvision(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	borrowerID := 1 + RandIntN(r, LendingLifecycleNumBorrowers)
+	loanAddr := fmt.Sprintf("borrower:%d:loan", borrowerID)
+
+	loanBal, ok := GetAccountBalance(ctx, client, LendingLifecycleLedger, loanAddr, "USD/2")
+	if !ok || loanBal.Sign() <= 0 {
+		return nil, ErrSkip
+	}
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(LendingLifecycleLedger, "provision", "1.0.0", map[string]string{
+			"amount": "USD/2 " + loanBal.String(),
+		}, map[string]string{"borrower": fmt.Sprintf("borrower:%d", borrowerID), "reason": "default"}),
+	)
+}
+
+func lendingWriteOff(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	borrowerID := 1 + RandIntN(r, LendingLifecycleNumBorrowers)
+	loanAddr := fmt.Sprintf("borrower:%d:loan", borrowerID)
+
+	loanBal, ok := GetAccountBalance(ctx, client, LendingLifecycleLedger, loanAddr, "USD/2")
+	if !ok || loanBal.Sign() <= 0 {
+		return nil, ErrSkip
+	}
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(LendingLifecycleLedger, "write_off", "1.0.0", map[string]string{
+			"borrower_loan": loanAddr,
+			"amount":        "USD/2 " + loanBal.String(),
+		}, map[string]string{"reason": "write-off"}),
+	)
+}
 
 // LendingLifecycleSetupActions returns the Apply requests that create the ledger,
 // account types, and numscript library for the lending lifecycle scenario.

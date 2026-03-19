@@ -9,13 +9,14 @@ RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-ins
 
 COPY go.* /src/
 COPY internal /src/internal
+COPY pkg /src/pkg
 COPY tests/antithesis/workload/go.* /src/tests/antithesis/workload/
 COPY tests/antithesis/workload/bin /src/tests/antithesis/workload/bin
 COPY tests/antithesis/workload/internal /src/tests/antithesis/workload/internal
 
 # The instrumentor outputs to /instrumented/customer/ and runs go mod tidy there.
 # The replace directive (../../../) resolves to / from that path, so place the root module at /.
-RUN cp /src/go.* / && cp -r /src/internal /internal
+RUN cp /src/go.* / && cp -r /src/internal /internal && cp -r /src/pkg /pkg
 
 RUN mkdir /instrumented
 WORKDIR /src/tests/antithesis/workload

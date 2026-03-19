@@ -1,6 +1,7 @@
 package scenario
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 
@@ -13,6 +14,114 @@ func init() { Register("multi-currency", RunMultiCurrency) }
 
 // MultiCurrencyLedger is the ledger name used by the multi-currency scenario.
 const MultiCurrencyLedger = "treasury"
+
+// MultiCurrencyCurrency describes a currency and its treasury account.
+type MultiCurrencyCurrency struct {
+	Asset    string
+	Treasury string
+}
+
+// MultiCurrencyCurrencies returns the available currencies.
+func MultiCurrencyCurrencies() []MultiCurrencyCurrency {
+	return []MultiCurrencyCurrency{
+		{"USD/2", "treasury:usd"},
+		{"EUR/2", "treasury:eur"},
+		{"GBP/2", "treasury:gbp"},
+	}
+}
+
+// MultiCurrencyVendors returns the available vendors.
+func MultiCurrencyVendors() []string {
+	return []string{
+		"vendor:acme", "vendor:globex", "vendor:initech",
+		"vendor:umbrella", "vendor:stark", "vendor:brit-co",
+	}
+}
+
+// MultiCurrencyBlocks returns the atomic blocks for the multi-currency scenario.
+func MultiCurrencyBlocks() *BlockGroup {
+	return &BlockGroup{
+		Setup: MultiCurrencySetupActions,
+		Blocks: []*Block{
+			{Name: "multicurrency/fund", Run: multiCurrencyFund},
+			{Name: "multicurrency/fx", Run: multiCurrencyFX},
+			{Name: "multicurrency/vendor_pay", Run: multiCurrencyVendorPay},
+		},
+	}
+}
+
+func multiCurrencyFund(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	currencies := MultiCurrencyCurrencies()
+	cur := currencies[RandIntN(r, len(currencies))]
+	amount := int64(100_000 + RandIntN(r, 900_000))
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(MultiCurrencyLedger, "fund_account", "1.0.0", map[string]string{
+			"account": cur.Treasury,
+			"amount":  fmt.Sprintf("%s %d", cur.Asset, amount),
+		}, nil),
+	)
+}
+
+func multiCurrencyFX(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	currencies := MultiCurrencyCurrencies()
+	srcIdx := RandIntN(r, len(currencies))
+	dstIdx := (srcIdx + 1 + RandIntN(r, len(currencies)-1)) % len(currencies)
+	src := currencies[srcIdx]
+	dst := currencies[dstIdx]
+
+	bal, ok := GetAccountBalance(ctx, client, MultiCurrencyLedger, src.Treasury, src.Asset)
+	if !ok || bal.Cmp(big.NewInt(5000)) < 0 {
+		return nil, ErrSkip
+	}
+
+	srcAmount := int64(5000) + RandInt64N(r, bal.Int64()-4999)
+	if srcAmount > 50_000 {
+		srcAmount = 50_000
+	}
+	dstAmount := srcAmount * 92 / 100
+
+	// Leg 1: source -> fx:clearing.
+	_, err := ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(MultiCurrencyLedger, "fx_convert", "1.0.0", map[string]string{
+			"source_account":   src.Treasury,
+			"clearing_account": "fx:clearing",
+			"amount":           fmt.Sprintf("%s %d", src.Asset, srcAmount),
+		}, nil),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Leg 2: fx:clearing -> target (force, different currency).
+	return ApplyActions(ctx, client,
+		actions.CreateForceTransactionAction(MultiCurrencyLedger, []*commonpb.Posting{
+			actions.NewPosting("fx:clearing", dst.Treasury, big.NewInt(dstAmount), dst.Asset),
+		}, nil),
+	)
+}
+
+func multiCurrencyVendorPay(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+	currencies := MultiCurrencyCurrencies()
+	vendors := MultiCurrencyVendors()
+	cur := currencies[RandIntN(r, len(currencies))]
+	vendor := vendors[RandIntN(r, len(vendors))]
+
+	bal, ok := GetAccountBalance(ctx, client, MultiCurrencyLedger, cur.Treasury, cur.Asset)
+	if !ok || bal.Cmp(big.NewInt(400)) < 0 {
+		return nil, ErrSkip
+	}
+
+	amount := int64(400) + RandInt64N(r, min(bal.Int64()-399, 10_000))
+
+	return ApplyActions(ctx, client,
+		actions.CreateScriptRefTransactionAction(MultiCurrencyLedger, "vendor_payment", "1.0.0", map[string]string{
+			"treasury": cur.Treasury,
+			"vendor":   vendor,
+			"amount":   fmt.Sprintf("%s %d", cur.Asset, amount),
+		}, nil),
+	)
+}
 
 // MultiCurrencySetupActions returns the Apply requests that create the ledger,
 // account types, and numscript library for the multi-currency scenario.
