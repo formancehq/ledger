@@ -50,13 +50,16 @@ func (e *ErrVolumeCachePebbleDivergence) Error() string {
 }
 
 // verifyPostCommitVolumes reads back volumes from Pebble after batch commit
-// and compares them with the cache to detect any divergence.
-// This is a defensive assertion that catches bugs where the cache goes out of
-// sync with Pebble (e.g., stale preloads, lost cache updates, snapshot issues).
+// and compares them with the expected values from the Merge (update.New).
+// This catches bugs where Pebble diverges from what the FSM intended to write.
+//
+// We use update.New (the value written during Merge) instead of reading from
+// the cache because cache generation rotations during a batch can evict entries
+// before this verification runs (e.g., during replay of large batches spanning
+// multiple generation thresholds).
 func verifyPostCommitVolumes(
 	store *dal.Store,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
-	registry *StateRegistry,
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	raftIndex uint64,
 ) error {
@@ -72,28 +75,17 @@ func verifyPostCommitVolumes(
 				update.Key.Ledger, update.Key.Account, update.Key.Asset, raftIndex)
 		}
 
-		// Read from cache
-		cacheValue, _, cacheErr := registry.Volumes.Get(update.CanonicalKey)
-		if cacheErr != nil {
-			return fmt.Errorf("reading volume from cache for verification: %w", cacheErr)
-		}
-
-		if cacheValue == nil {
-			return fmt.Errorf("volume missing from cache after commit for %s/%s/%s at raft index %d",
-				update.Key.Ledger, update.Key.Account, update.Key.Asset, raftIndex)
-		}
-
-		// Compare
+		// Compare Pebble value with the expected value from Merge
 		pebbleInput := pebbleValue.GetInput().ToBigInt()
 		pebbleOutput := pebbleValue.GetOutput().ToBigInt()
-		cacheInput := cacheValue.GetInput().ToBigInt()
-		cacheOutput := cacheValue.GetOutput().ToBigInt()
+		expectedInput := update.New.GetInput().ToBigInt()
+		expectedOutput := update.New.GetOutput().ToBigInt()
 
-		if pebbleInput.Cmp(cacheInput) != 0 || pebbleOutput.Cmp(cacheOutput) != 0 {
+		if pebbleInput.Cmp(expectedInput) != 0 || pebbleOutput.Cmp(expectedOutput) != 0 {
 			return &ErrVolumeCachePebbleDivergence{
 				Key:          update.Key,
-				CacheInput:   cacheInput.String(),
-				CacheOutput:  cacheOutput.String(),
+				CacheInput:   expectedInput.String(),
+				CacheOutput:  expectedOutput.String(),
 				PebbleInput:  pebbleInput.String(),
 				PebbleOutput: pebbleOutput.String(),
 				RaftIndex:    raftIndex,

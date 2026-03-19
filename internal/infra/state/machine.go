@@ -528,7 +528,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			if len(r.volumeUpdates) > 0 {
 				if err := verifyPostCommitVolumes(
 					fsm.dataStore, fsm.Registry.Attrs.Volume,
-					fsm.Registry, r.volumeUpdates, fsm.lastAppliedIndex,
+					r.volumeUpdates, fsm.lastAppliedIndex,
 				); err != nil {
 					fsm.logger.Errorf("POST-COMMIT VOLUME ASSERTION FAILED: %v", err)
 
@@ -1224,7 +1224,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		// Global check: aggregated volumes must be balanced (input == output per asset).
 		ledgerNames := collectLedgerNames(proposal.GetOrders())
 		if len(ledgerNames) > 0 {
-			fsm.logger.Infof("Verifying aggregated volume balance for %d ledgers at raft index %d", len(ledgerNames), raftIndex)
+			fsm.logger.Debugf("Verifying aggregated volume balance for %d ledgers at raft index %d", len(ledgerNames), raftIndex)
 			if err := verifyAggregatedVolumesBalanced(
 				fsm.dataStore, fsm.Registry.Attrs.Volume, ledgerNames, raftIndex,
 			); err != nil {
