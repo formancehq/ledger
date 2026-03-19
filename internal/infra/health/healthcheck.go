@@ -234,9 +234,21 @@ func (hc *HealthChecker) exceedsClockSkew(baseCtx context.Context, client cluste
 	}
 
 	afterCall := time.Now()
+	rtt := afterCall.Sub(beforeCall)
+
+	// If the RTT is too high (e.g. during reconnection), the midpoint estimate
+	// is unreliable and would produce a spurious skew. Discard the sample.
+	if rtt > hc.clockSkewThreshold/2 {
+		hc.logger.WithFields(map[string]any{
+			"node_id": nodeID,
+			"rtt":     rtt.String(),
+		}).Debugf("Clock skew check discarded: RTT too high for reliable measurement")
+
+		return false
+	}
 
 	// Use the midpoint of the request as the local reference time to account for network RTT
-	localTime := beforeCall.Add(afterCall.Sub(beforeCall) / 2)
+	localTime := beforeCall.Add(rtt / 2)
 	remoteTime := time.UnixMicro(int64(resp.GetTimestampUs()))
 
 	skew := localTime.Sub(remoteTime)
@@ -248,6 +260,7 @@ func (hc *HealthChecker) exceedsClockSkew(baseCtx context.Context, client cluste
 		hc.logger.WithFields(map[string]any{
 			"node_id": nodeID,
 			"skew":    skew.String(),
+			"rtt":     rtt.String(),
 		}).Errorf("Clock skew exceeds threshold (%s)", hc.clockSkewThreshold)
 
 		return true
