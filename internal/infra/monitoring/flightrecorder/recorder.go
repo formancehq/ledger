@@ -7,7 +7,7 @@ import (
 	"runtime/trace"
 	"sync"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
 // Recorder wraps a runtime/trace.FlightRecorder and exposes lifecycle methods

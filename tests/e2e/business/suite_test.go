@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"

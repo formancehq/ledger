@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"

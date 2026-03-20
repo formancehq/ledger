@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
 // ErrNotLeader is returned by worker functions when the current node is not the

@@ -19,7 +19,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/protoadapt"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"

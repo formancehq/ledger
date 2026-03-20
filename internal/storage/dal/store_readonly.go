@@ -5,7 +5,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
 // OpenReadOnly opens a Pebble database at dirPath in read-only mode.

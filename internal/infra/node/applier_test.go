@@ -10,7 +10,7 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"

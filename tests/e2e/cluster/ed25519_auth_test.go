@@ -13,9 +13,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/oidc"
-	"github.com/formancehq/go-libs/v4/testing/testservice"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	jose "github.com/go-jose/go-jose/v4"
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"

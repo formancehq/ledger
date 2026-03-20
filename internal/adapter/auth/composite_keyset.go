@@ -5,7 +5,7 @@ import (
 
 	jose "github.com/go-jose/go-jose/v4"
 
-	"github.com/formancehq/go-libs/v4/oidc"
+	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 )
 
 // compositeKeySet tries multiple KeySets in order until one succeeds.

@@ -11,8 +11,9 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/formancehq/go-libs/v4/httpserver"
-	"github.com/formancehq/go-libs/v4/logging"
+	"github.com/formancehq/go-libs/v5/pkg/fx/transportfx"
+	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"
@@ -99,9 +100,9 @@ func RestoreModule() fx.Option {
 					w.WriteHeader(http.StatusOK)
 					_, _ = w.Write([]byte(`{"status":"restore_mode"}`))
 				})
-				lc.Append(httpserver.NewHook(mux,
+				lc.Append(transportfx.FXHook(httpserver.NewHook(mux,
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
-				))
+				)))
 			},
 		),
 	)

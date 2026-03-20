@@ -16,8 +16,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/otlp"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	otlp "github.com/formancehq/go-libs/v5/pkg/observe"
 )
 
 const (

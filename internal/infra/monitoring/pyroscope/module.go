@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/pyroscope-go"
 	"go.uber.org/fx"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
 // Module returns an fx.Option that provides Pyroscope profiling.

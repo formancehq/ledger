@@ -3,7 +3,7 @@ package events
 import (
 	"testing"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
 func TestEmitter_StopIdempotent(t *testing.T) {

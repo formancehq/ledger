@@ -10,8 +10,8 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	libtime "github.com/formancehq/go-libs/v4/time"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"

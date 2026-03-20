@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"

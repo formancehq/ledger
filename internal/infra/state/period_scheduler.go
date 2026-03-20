@@ -3,7 +3,7 @@ package state
 import (
 	"time"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/signal"

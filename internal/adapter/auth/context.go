@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/v4/oidc"
+	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 )
 
 type contextKey struct{}

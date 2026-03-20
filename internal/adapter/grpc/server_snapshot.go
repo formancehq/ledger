@@ -8,7 +8,7 @@ import (
 
 	ggrpc "google.golang.org/grpc"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/snapshotpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"

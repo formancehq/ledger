@@ -13,8 +13,8 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v4/logging"
-	libtime "github.com/formancehq/go-libs/v4/time"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/events"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"

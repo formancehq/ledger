@@ -19,10 +19,11 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 
-	"github.com/formancehq/go-libs/v4/httpserver"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/oidc"
-	"github.com/formancehq/go-libs/v4/otlp/otlpmetrics"
+	"github.com/formancehq/go-libs/v5/pkg/fx/transportfx"
+	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
+	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
 
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
@@ -922,9 +923,9 @@ func Module() fx.Option {
 				})
 			}, fx.ParamTags(``, ``, ``, `name:"service"`, ``)),
 			func(lc fx.Lifecycle, cfg Config, handler http.Handler) {
-				lc.Append(httpserver.NewHook(handler,
+				lc.Append(transportfx.FXHook(httpserver.NewHook(handler,
 					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
-				))
+				)))
 			},
 			func(lc fx.Lifecycle, collector *diskusage.Collector) {
 				lc.Append(worker.FxHook(collector))

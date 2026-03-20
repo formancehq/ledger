@@ -12,7 +12,7 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
-	"github.com/formancehq/go-libs/v4/oidc"
+	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"

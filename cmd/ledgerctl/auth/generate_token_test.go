@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v4/oidc"
+	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 )

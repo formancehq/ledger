@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v4/oidc"
+	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 )
 
 func TestWithClaimsAndClaimsFromContext(t *testing.T) {

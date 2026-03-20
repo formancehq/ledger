@@ -12,7 +12,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/tarutil"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"

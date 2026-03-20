@@ -18,7 +18,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
 // ErrStoreClosed is returned when a store operation is attempted after the

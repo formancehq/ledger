@@ -18,12 +18,14 @@ import (
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v3"
 
-	"github.com/formancehq/go-libs/v4/auth"
-	"github.com/formancehq/go-libs/v4/logging"
-	"github.com/formancehq/go-libs/v4/otlp"
-	"github.com/formancehq/go-libs/v4/otlp/otlpmetrics"
-	"github.com/formancehq/go-libs/v4/otlp/otlptraces"
-	"github.com/formancehq/go-libs/v4/service"
+	auth "github.com/formancehq/go-libs/v5/pkg/authn/jwt"
+	"github.com/formancehq/go-libs/v5/pkg/fx/authnfx"
+	"github.com/formancehq/go-libs/v5/pkg/fx/observefx"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	otlp "github.com/formancehq/go-libs/v5/pkg/observe"
+	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
+	otlptraces "github.com/formancehq/go-libs/v5/pkg/observe/traces"
+	"github.com/formancehq/go-libs/v5/pkg/service"
 
 	"github.com/formancehq/ledger-v3-poc/internal/bootstrap"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/flightrecorder"
@@ -277,7 +279,7 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	// buildAuthConfig is optional).
 	var authModule fx.Option
 	if cfg.AuthConfig.Issuer != "" {
-		authModule = auth.FXModuleFromFlags(cmd)
+		authModule = authnfx.JWTModuleFromFlags(cmd)
 	} else {
 		authModule = fx.Module("auth")
 	}
@@ -289,9 +291,9 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		// Add authentication module (OIDC discovery when issuer is configured)
 		authModule,
 		// Add OpenTelemetry modules from go-libs (using flags)
-		otlp.FXModuleFromFlags(cmd, otlp.WithServiceVersion(fmt.Sprintf("%s-%s", version, commit))),
-		otlptraces.FXModuleFromFlags(cmd),
-		otlpmetrics.FXModuleFromFlags(cmd),
+		observefx.ResourceModuleFromFlags(cmd, otlp.WithServiceVersion(fmt.Sprintf("%s-%s", version, commit))),
+		observefx.TracesModuleFromFlags(cmd),
+		observefx.MetricsModuleFromFlags(cmd),
 		// Add trace sampling module (wraps exporter with error-aware sampling)
 		tracesampling.Module(traceSamplingCfg),
 		// Add Pyroscope profiling module

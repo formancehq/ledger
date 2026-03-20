@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"runtime/debug"
 
-	"github.com/formancehq/go-libs/v4/collectionutils"
+	collectionutils "github.com/formancehq/go-libs/v5/pkg/types/collections"
 )
 
 type task struct {

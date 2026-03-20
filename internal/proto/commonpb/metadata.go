@@ -5,7 +5,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/formancehq/go-libs/v4/metadata"
+	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 
 	jsonPkg "github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 )

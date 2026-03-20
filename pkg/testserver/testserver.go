@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/formancehq/go-libs/v4/testing/testservice"
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 )
 
 // Option functions

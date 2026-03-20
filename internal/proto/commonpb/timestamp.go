@@ -4,7 +4,7 @@ import (
 	"fmt"
 	libtime "time"
 
-	"github.com/formancehq/go-libs/v4/time"
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 )

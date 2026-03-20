@@ -3,7 +3,7 @@ package http
 import (
 	"context"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/health"

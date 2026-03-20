@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/formancehq/go-libs/v4/logging"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
 // HTTPAuthMiddleware returns an HTTP middleware that validates JWT tokens,
