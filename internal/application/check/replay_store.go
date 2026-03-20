@@ -105,6 +105,37 @@ func (s *replayStore) addVolumeDelta(canonicalKey []byte, inputDelta, outputDelt
 	return s.db.Merge(key, data, pebble.NoSync)
 }
 
+// getVolume reads the current accumulated volume for a canonical key.
+// Returns nil if the key does not exist.
+func (s *replayStore) getVolume(canonicalKey []byte) (*raftcmdpb.VolumePair, error) {
+	key := replayKey(replayPrefixVolume, canonicalKey)
+
+	val, closer, err := s.db.Get(key)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf("reading volume: %w", err)
+	}
+
+	defer closer.Close()
+
+	pair := &raftcmdpb.VolumePair{}
+	if err := pair.UnmarshalVT(val); err != nil {
+		return nil, fmt.Errorf("unmarshaling volume: %w", err)
+	}
+
+	return pair, nil
+}
+
+// deleteVolume removes a volume entry from the replay store.
+func (s *replayStore) deleteVolume(canonicalKey []byte) error {
+	key := replayKey(replayPrefixVolume, canonicalKey)
+
+	return s.db.Delete(key, pebble.NoSync)
+}
+
 // setMetadata stores a metadata value in the replay store (pure write).
 func (s *replayStore) setMetadata(canonicalKey []byte, value string) error {
 	key := replayKey(replayPrefixMetadata, canonicalKey)

@@ -6974,6 +6974,7 @@ type AccountType struct {
 	Pattern         string                 `protobuf:"bytes,2,opt,name=pattern,proto3" json:"pattern,omitempty"`                                                                          // Address pattern: "users:{id}:checking"
 	Status          AccountTypeStatus      `protobuf:"varint,3,opt,name=status,proto3,enum=common.AccountTypeStatus" json:"status,omitempty"`                                             // ACTIVE, DEPRECATED
 	EnforcementMode ChartEnforcementMode   `protobuf:"varint,4,opt,name=enforcement_mode,json=enforcementMode,proto3,enum=common.ChartEnforcementMode" json:"enforcement_mode,omitempty"` // Per-type enforcement
+	Ephemeral       bool                   `protobuf:"varint,5,opt,name=ephemeral,proto3" json:"ephemeral,omitempty"`                                                                     // Purge volumes when input == output (zero balance)
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -7034,6 +7035,13 @@ func (x *AccountType) GetEnforcementMode() ChartEnforcementMode {
 		return x.EnforcementMode
 	}
 	return ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
+}
+
+func (x *AccountType) GetEphemeral() bool {
+	if x != nil {
+		return x.Ephemeral
+	}
+	return false
 }
 
 // AddedAccountTypeLog records the addition of an account type.
@@ -9269,12 +9277,13 @@ const file_common_proto_rawDesc = "" +
 	"\flog_sequence\x18\x01 \x01(\x04R\vlogSequence\x12\x12\n" +
 	"\x04hash\x18\x02 \x01(\fR\x04hash\"B\n" +
 	"\x19TransactionReferenceValue\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\"\xb7\x01\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\"\xd5\x01\n" +
 	"\vAccountType\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\apattern\x18\x02 \x01(\tR\apattern\x121\n" +
 	"\x06status\x18\x03 \x01(\x0e2\x19.common.AccountTypeStatusR\x06status\x12G\n" +
-	"\x10enforcement_mode\x18\x04 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\"M\n" +
+	"\x10enforcement_mode\x18\x04 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x0fenforcementMode\x12\x1c\n" +
+	"\tephemeral\x18\x05 \x01(\bR\tephemeral\"M\n" +
 	"\x13AddedAccountTypeLog\x126\n" +
 	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType\"t\n" +
 	"\x15UpdatedAccountTypeLog\x12\x12\n" +

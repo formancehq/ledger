@@ -31,6 +31,7 @@ Examples:
 
 	cmd.Flags().String("ledger", "", "Name of the ledger (required)")
 	cmd.Flags().String("enforcement-mode", "STRICT", "Enforcement mode: STRICT or AUDIT")
+	cmd.Flags().Bool("ephemeral", false, "Purge volumes when account reaches zero balance (input == output)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	_ = cmd.MarkFlagRequired("ledger")
 
@@ -43,6 +44,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	ledgerName, _ := cmd.Flags().GetString("ledger")
 	modeStr, _ := cmd.Flags().GetString("enforcement-mode")
+	ephemeral, _ := cmd.Flags().GetBool("ephemeral")
 
 	mode, err := parseEnforcementMode(modeStr)
 	if err != nil {
@@ -69,6 +71,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 						Name:            name,
 						Pattern:         pattern,
 						EnforcementMode: mode,
+						Ephemeral:       ephemeral,
 					},
 				},
 			},
@@ -94,6 +97,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	pterm.Printf("Name:        %s\n", pterm.Cyan(name))
 	pterm.Printf("Pattern:     %s\n", pattern)
 	pterm.Printf("Enforcement: %s\n", modeStr)
+	pterm.Printf("Ephemeral:   %s\n", FormatEphemeral(ephemeral))
 	pterm.Printf("Ledger:      %s\n", pterm.Gray(ledgerName))
 
 	return nil

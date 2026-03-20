@@ -143,6 +143,25 @@ func AddAccountTypeAction(ledgerName, name, pattern string, enforcement commonpb
 	}
 }
 
+// AddEphemeralAccountTypeAction creates an action for adding an ephemeral account type to a ledger.
+// Ephemeral accounts have their volumes purged when input == output (zero balance).
+func AddEphemeralAccountTypeAction(ledgerName, name, pattern string, enforcement commonpb.ChartEnforcementMode) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_AddAccountType{
+			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+				Ledger: ledgerName,
+				AccountType: &commonpb.AccountType{
+					Name:            name,
+					Pattern:         pattern,
+					Status:          commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
+					EnforcementMode: enforcement,
+					Ephemeral:       true,
+				},
+			},
+		},
+	}
+}
+
 // UpdateAccountTypeAction creates an action for updating an account type's enforcement mode.
 func UpdateAccountTypeAction(ledgerName, name string, enforcement commonpb.ChartEnforcementMode) *servicepb.Request {
 	return &servicepb.Request{

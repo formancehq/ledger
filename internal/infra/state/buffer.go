@@ -156,11 +156,18 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		return fmt.Errorf("failed to merge volumes: %w", err)
 	}
 
-	if err := mergeSimple(b.attrs.Volume, batch, index, volumeUpdates); err != nil {
+	// Partition: purge zero-balance volumes on ephemeral account types.
+	purgeResult := b.partitionEphemeralVolumes(volumeUpdates)
+
+	if err := mergeSimple(b.attrs.Volume, batch, index, purgeResult.kept); err != nil {
 		return fmt.Errorf("failed merging volume attributes: %w", err)
 	}
 
-	// Defensive check: double-entry invariant.
+	if err := b.applyEphemeralPurge(batch, purgeResult.purged); err != nil {
+		return fmt.Errorf("failed purging ephemeral volumes: %w", err)
+	}
+
+	// Defensive check: double-entry invariant (on all updates, including purged).
 	if err := checkDoubleEntryInvariant(volumeUpdates); err != nil {
 		return err
 	}
@@ -172,8 +179,8 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		}
 	}
 
-	// Store volume updates for post-commit verification.
-	b.volumeUpdates = volumeUpdates
+	// Store volume updates for post-commit verification (kept only).
+	b.volumeUpdates = purgeResult.kept
 
 	accountMetadataUpdates, accountMetadataDeletions, err := b.Derived.AccountMetadata.Merge(index)
 	if err != nil {

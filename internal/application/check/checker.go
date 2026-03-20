@@ -14,6 +14,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -120,6 +121,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// Per-ledger reversion tracking using bitsets (1 bit per tx ID)
 		ledgerKnownTxIDs    = make(map[string]*domain.ReversionBitset)
 		ledgerRevertedTxIDs = make(map[string]*domain.ReversionBitset)
+		// Per-ledger account types for ephemeral purge simulation
+		ledgerAccountTypes = make(map[string]map[string]*commonpb.AccountType)
 	)
 
 	// If periods were archived, pre-populate knownLedgers from Pebble
@@ -138,6 +141,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		for _, info := range ledgers {
 			if info.GetDeletedAt() == nil {
 				knownLedgers[info.GetName()] = struct{}{}
+
+				if types := info.GetAccountTypes(); len(types) > 0 {
+					ledgerAccountTypes[info.GetName()] = types
+				}
 			}
 		}
 
@@ -251,7 +258,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
-						if err := replayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), replay); err != nil {
+						if err := replayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, ledgerAccountTypes); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
@@ -838,13 +845,43 @@ func verifySealingHash(p *commonpb.Period, callback func(*servicepb.CheckStoreEv
 }
 
 // replayLedgerLog updates expected state in the replay store based on a ledger log payload.
+// ledgerAccountTypes tracks account types per ledger for ephemeral purge simulation.
 func replayLedgerLog(
 	ledger string,
 	seq uint64,
 	payload *commonpb.LedgerLogPayload,
 	replay *replayStore,
+	ledgerAccountTypes map[string]map[string]*commonpb.AccountType,
 ) error {
 	switch p := payload.GetPayload().(type) {
+	case *commonpb.LedgerLogPayload_AddedAccountType:
+		if p.AddedAccountType != nil && p.AddedAccountType.GetAccountType() != nil {
+			at := p.AddedAccountType.GetAccountType()
+			types := ledgerAccountTypes[ledger]
+			if types == nil {
+				types = make(map[string]*commonpb.AccountType)
+				ledgerAccountTypes[ledger] = types
+			}
+
+			types[at.GetName()] = at
+		}
+
+	case *commonpb.LedgerLogPayload_RemovedAccountType:
+		if p.RemovedAccountType != nil {
+			if types := ledgerAccountTypes[ledger]; types != nil {
+				delete(types, p.RemovedAccountType.GetName())
+			}
+		}
+
+	case *commonpb.LedgerLogPayload_UpdatedAccountType:
+		if p.UpdatedAccountType != nil {
+			if types := ledgerAccountTypes[ledger]; types != nil {
+				if at, ok := types[p.UpdatedAccountType.GetName()]; ok {
+					at.EnforcementMode = p.UpdatedAccountType.GetEnforcementMode()
+				}
+			}
+		}
+
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		if p.CreatedTransaction == nil || p.CreatedTransaction.GetTransaction() == nil {
 			return nil
@@ -852,6 +889,11 @@ func replayLedgerLog(
 
 		tx := p.CreatedTransaction.GetTransaction()
 		if err := applyPostings(ledger, tx.GetPostings(), replay); err != nil {
+			return err
+		}
+
+		// Simulate ephemeral purge: delete volumes that reached zero balance on ephemeral accounts.
+		if err := simulateEphemeralPurge(ledger, tx.GetPostings(), replay, ledgerAccountTypes); err != nil {
 			return err
 		}
 
@@ -890,6 +932,11 @@ func replayLedgerLog(
 
 		revertTx := p.RevertedTransaction.GetRevertTransaction()
 		if err := applyPostings(ledger, revertTx.GetPostings(), replay); err != nil {
+			return err
+		}
+
+		// Simulate ephemeral purge after revert postings.
+		if err := simulateEphemeralPurge(ledger, revertTx.GetPostings(), replay, ledgerAccountTypes); err != nil {
 			return err
 		}
 
@@ -975,6 +1022,78 @@ func replayLedgerLog(
 		// Background conversion — no state to track for integrity checks
 	case *commonpb.LedgerLogPayload_MetadataConversionComplete:
 		// Background conversion — no state to track for integrity checks
+	}
+
+	return nil
+}
+
+// simulateEphemeralPurge checks if any account volumes affected by the postings
+// have reached zero balance (input == output) on an ephemeral account type.
+// If so, it deletes the volume from the replay store, mirroring the real purge
+// that happens during Buffered.Merge().
+func simulateEphemeralPurge(
+	ledger string,
+	postings []*commonpb.Posting,
+	replay *replayStore,
+	ledgerAccountTypes map[string]map[string]*commonpb.AccountType,
+) error {
+	types := ledgerAccountTypes[ledger]
+	if len(types) == 0 {
+		return nil
+	}
+
+	// Collect unique accounts affected by these postings.
+	seen := make(map[string]struct{})
+
+	for _, posting := range postings {
+		for _, addr := range []string{posting.GetSource(), posting.GetDestination()} {
+			if addr == "world" {
+				continue
+			}
+
+			if _, ok := seen[addr]; ok {
+				continue
+			}
+
+			seen[addr] = struct{}{}
+
+			matched := accounttype.FindMatchingType(addr, types)
+			if matched == nil || !matched.GetEphemeral() {
+				continue
+			}
+
+			// Check all assets for this account by reading the volume.
+			// We only know which assets were affected by the postings, so check those.
+			for _, p := range postings {
+				if p.GetSource() != addr && p.GetDestination() != addr {
+					continue
+				}
+
+				vk := domain.VolumeKey{
+					AccountKey: domain.AccountKey{Ledger: ledger, Account: addr},
+					Asset:      p.GetAsset(),
+				}
+
+				pair, err := replay.getVolume(vk.Bytes())
+				if err != nil {
+					return fmt.Errorf("reading volume for ephemeral check: %w", err)
+				}
+
+				if pair == nil {
+					continue
+				}
+
+				// Check if input == output (zero balance).
+				inBig := pair.GetInput().ToBigInt()
+				outBig := pair.GetOutput().ToBigInt()
+
+				if inBig.Cmp(outBig) == 0 {
+					if err := replay.deleteVolume(vk.Bytes()); err != nil {
+						return fmt.Errorf("deleting ephemeral volume: %w", err)
+					}
+				}
+			}
+		}
 	}
 
 	return nil

@@ -135,8 +135,7 @@ func validatePostingsAgainstAccountTypes(
 		}
 		seen[address] = struct{}{}
 
-		matched, _ := matchAddressToType(address, types)
-		if matched == nil {
+		if accounttype.FindMatchingType(address, types) == nil {
 			if defaultMode == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
 				return &domain.ErrAccountNotMatchingType{Address: address}
 			}
@@ -159,58 +158,13 @@ func validateAccountAgainstAccountTypes(
 		return nil
 	}
 
-	matched, _ := matchAddressToType(address, types)
-	if matched == nil {
+	if accounttype.FindMatchingType(address, types) == nil {
 		if defaultMode == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
 			return &domain.ErrAccountNotMatchingType{Address: address}
 		}
 	}
 
 	return nil
-}
-
-// matchAddressToType finds the best matching account type for an address using
-// longest-match (highest specificity). Returns nil if no type matches.
-// Deprecated types are skipped.
-func matchAddressToType(
-	address string,
-	types map[string]*commonpb.AccountType,
-) (*commonpb.AccountType, commonpb.ChartEnforcementMode) {
-	var (
-		best     *commonpb.AccountType
-		bestSpec = -1
-		bestLen  = 0
-	)
-
-	for _, at := range types {
-		if at.GetStatus() == commonpb.AccountTypeStatus_ACCOUNT_TYPE_DEPRECATED {
-			continue
-		}
-
-		segments, err := accounttype.ParsePattern(at.GetPattern())
-		if err != nil {
-			continue
-		}
-
-		if _, ok := accounttype.MatchAddress(address, segments); !ok {
-			continue
-		}
-
-		spec := accounttype.Specificity(segments)
-		segLen := len(segments)
-
-		if spec > bestSpec || (spec == bestSpec && segLen < bestLen) {
-			best = at
-			bestSpec = spec
-			bestLen = segLen
-		}
-	}
-
-	if best == nil {
-		return nil, 0
-	}
-
-	return best, best.GetEnforcementMode()
 }
 
 // processUpdateDefaultEnforcementMode updates the ledger's default enforcement mode.
