@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
@@ -149,6 +150,11 @@ func (p *ConnectionPool) AddPeer(id uint64, addr string) error {
 	p.peers[id] = addr
 	p.connections[id] = conn
 
+	lifecycle.SendEvent("grpc_connection_created", map[string]any{
+		"peerID":  id,
+		"address": addr,
+	})
+
 	return nil
 }
 
@@ -219,6 +225,10 @@ func (p *ConnectionPool) RemovePeer(id uint64) error {
 
 	delete(p.connections, id)
 	delete(p.peers, id)
+
+	lifecycle.SendEvent("grpc_connection_closed", map[string]any{
+		"peerID": id,
+	})
 
 	return err
 }
