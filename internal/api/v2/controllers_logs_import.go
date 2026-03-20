@@ -39,19 +39,14 @@ func importLogs(w http.ResponseWriter, r *http.Request) {
 		if err := dec.Decode(&l); err != nil {
 			if errors.Is(err, io.EOF) {
 				close(stream)
-				// Wait for the import goroutine to finish.
-				select {
-				case err := <-errChan:
-					if err != nil {
-						handleError(err)
-						return
-					}
-					api.NoContent(w)
-					return
-				case <-r.Context().Done():
-					common.InternalServerError(w, r, fmt.Errorf("request context done: %w", r.Context().Err()))
+				// Block on the import goroutine's result — it is
+				// authoritative once the stream is closed.
+				if err := <-errChan; err != nil {
+					handleError(err)
 					return
 				}
+				api.NoContent(w)
+				return
 			} else {
 				common.InternalServerError(w, r, fmt.Errorf("reading input stream: %w", err))
 				return
