@@ -1,17 +1,22 @@
-build-manifest output:
+tag := "antithesis"
+
+build-manifest output *ARGS:
 	rm -f -- '{{output}}'
 	helm dependency update
 	helm dependency build
-	helm template . --include-crds --set "ledger-operator.image.tag=$RUN_TAG" --set "run_tag=$RUN_TAG" > '{{output}}'
+	helm template . \
+	    --values values.yaml \
+	    --set run_tag={{tag}} \
+	    --include-crds {{ARGS}} > '{{output}}'
 
-push:
+push *ARGS:
 	#!/usr/bin/env bash
 
 	set -euxo pipefail
 	tmpdir=$(mktemp -d)
 	trap 'rm -rf $tmpdir' EXIT
 
-	just build-manifest "$tmpdir/resources.yaml"
+	just build-manifest "$tmpdir/resources.yaml" {{ARGS}}
 
-	docker build --platform linux/amd64 -f Dockerfile.config -t $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:$RUN_TAG $tmpdir
-	docker push $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:$RUN_TAG
+	docker build --platform linux/amd64 -f Dockerfile.config -t $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:{{tag}} $tmpdir
+	docker push $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:{{tag}}

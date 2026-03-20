@@ -14,7 +14,7 @@ spec:
         - name: LEDGER_GRPC_ADDR
           value: "stack0-ledger.stack0.svc.cluster.local:8888"
         - name: EXPECTED_VOTERS
-          value: "3"
+          value: "{{ .Values.replicas }}"
       readinessProbe:
         # grpc:
         #   port: 8888
