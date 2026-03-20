@@ -190,3 +190,9 @@ require (
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	lukechampine.com/frand v1.5.1 // indirect
 )
+
+replace (
+	github.com/charmbracelet/bubbles/v2 => charm.land/bubbles/v2 v2.0.0
+	github.com/charmbracelet/bubbletea/v2 => charm.land/bubbletea/v2 v2.0.2
+	github.com/charmbracelet/lipgloss/v2 => charm.land/lipgloss/v2 v2.0.2
+)
