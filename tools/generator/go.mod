@@ -10,7 +10,7 @@ replace github.com/formancehq/ledger/pkg/client => ../../pkg/client
 
 require (
 	github.com/formancehq/go-libs/v4 v4.0.0
-	github.com/formancehq/ledger v0.0.0-00010101000000-000000000000
+	github.com/formancehq/ledger v1.12.0
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
@@ -35,7 +35,7 @@ require (
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/formancehq/numscript v0.0.24 // indirect
-	github.com/go-chi/chi/v5 v5.2.4 // indirect
+	github.com/go-chi/chi/v5 v5.2.5 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
