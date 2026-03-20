@@ -8819,7 +8819,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(admission.preload.total{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+              "expr": "sum(rate(admission.preload.keys_needed{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) - sum(rate(admission.preload.cache_hits{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
               "interval": "1s",
               "legendFormat": "store reads - Node {{service.node_id}}",
               "range": true,

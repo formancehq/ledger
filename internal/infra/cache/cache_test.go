@@ -32,7 +32,7 @@ func TestGen(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := gen(tt.index, tt.k)
+			result := Gen(tt.index, tt.k)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

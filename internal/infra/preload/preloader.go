@@ -31,12 +31,12 @@ type Preloader struct {
 
 // PreloadBuild carries the result of an optimistic BuildPreloads call.
 // The caller uses PreloadSet for marshalling outside the lock, then passes
-// the build to AcquireProposalGuard for boundary validation.
+// the build to AcquireProposalGuard for generation validation.
 type PreloadBuild struct {
-	PreloadSet *raftcmdpb.PreloadSet
-	token      *CleanupToken
-	nextIndex  uint64
-	generation uint64
+	PreloadSet   *raftcmdpb.PreloadSet
+	token        *CleanupToken
+	nextIndex    uint64
+	nextIndexGen uint64 // gen(nextIndex, threshold) — the future generation used by CheckCache
 }
 
 // ReleaseLoaders releases the loader cleanup token from the build.
@@ -111,55 +111,57 @@ func (p *Preloader) Loaders() *Loaders {
 // On error, the caller must call build.ReleaseLoaders(preloader.Loaders()).
 func (p *Preloader) BuildPreloads(needs *Needs) (*PreloadBuild, error) {
 	nextIndex := p.tracker.Next()
-	gen := p.cache.CurrentGeneration()
+	nextIndexGen := cache.Gen(nextIndex, p.cache.GenerationThreshold)
 
 	preloadSet, token, err := p.buildPreloadsAt(nextIndex, needs)
 	if err != nil {
-		return &PreloadBuild{token: token, nextIndex: nextIndex, generation: gen}, err
+		return &PreloadBuild{token: token, nextIndex: nextIndex, nextIndexGen: nextIndexGen}, err
 	}
 
 	return &PreloadBuild{
-		PreloadSet: preloadSet,
-		token:      token,
-		nextIndex:  nextIndex,
-		generation: gen,
+		PreloadSet:   preloadSet,
+		token:        token,
+		nextIndex:    nextIndex,
+		nextIndexGen: nextIndexGen,
 	}, nil
 }
 
-// AcquireProposalGuard acquires the proposal lock and validates that the cache
-// generation boundary has not shifted since the optimistic BuildPreloads call.
+// AcquireProposalGuard acquires the proposal lock and validates that
+// gen(nextIndex) has not changed since the optimistic BuildPreloads call.
+//
+// CheckCache uses gen(nextIndex) as the future generation to decide whether
+// cached data will survive. Under the proposal lock, nextIndex is stable
+// (no other goroutine can Propose), so gen(nextIndex) is deterministic.
+// The cache's currentGeneration (FSM side) is NOT checked here — it can
+// advance at any time and is read atomically by CheckCache itself.
 //
 // Returns (updatedPreloadSet, guard, error):
-//   - updatedPreloadSet is nil when the boundary is stable (common case) — the
-//     caller should use the original build.PreloadSet.
-//   - updatedPreloadSet is non-nil when the boundary shifted (rare) — the caller
-//     must re-marshal the command with the new preload set while still holding
-//     the guard.
+//   - updatedPreloadSet is nil when stable (common case) — use build.PreloadSet.
+//   - updatedPreloadSet is non-nil when stale (rare) — re-marshal with it.
 //
 // On error, the caller must call guard.ReleaseAll() if guard is non-nil.
 func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*raftcmdpb.PreloadSet, *ProposalGuard, error) {
 	p.proposeMu.Lock()
 
 	nextIndexAfter := p.tracker.Next()
-	boundaryBefore := cache.BoundaryIndex(build.nextIndex, p.cache.GenerationThreshold)
-	boundaryAfter := cache.BoundaryIndex(nextIndexAfter, p.cache.GenerationThreshold)
-	genAfter := p.cache.CurrentGeneration()
+	nextIndexGenAfter := cache.Gen(nextIndexAfter, p.cache.GenerationThreshold)
 
-	if boundaryBefore == boundaryAfter && build.generation == genAfter {
+	if build.nextIndexGen == nextIndexGenAfter {
 		return nil, &ProposalGuard{p: p, token: build.token}, nil
 	}
 
-	// --- Boundary shifted: re-build under lock ---
-	// Under proposeMu, no other preloader can advance the tracker via Propose,
-	// so the boundary is stable for the duration of the build.
+	// --- Stale: re-build under lock ---
+	// nextIndex crossed a generation boundary since BuildPreloads, so the
+	// CheckCache decisions (hit/miss/touch) may be wrong. Under proposeMu,
+	// nextIndex is stable for the duration of the rebuild.
 	build.token.Release(p.loaders)
 
 	p.logger.WithFields(map[string]any{
-		"boundary_before": boundaryBefore,
-		"boundary_after":  boundaryAfter,
-		"gen_before":      build.generation,
-		"gen_after":       genAfter,
-	}).Debugf("Preload boundary shifted, rebuilding under lock")
+		"nextIndex_before":    build.nextIndex,
+		"nextIndex_after":     nextIndexAfter,
+		"nextIndexGen_before": build.nextIndexGen,
+		"nextIndexGen_after":  nextIndexGenAfter,
+	}).Infof("nextIndex generation changed, rebuilding preloads under lock")
 
 	preloadSet, token, err := p.buildPreloadsAt(p.tracker.Next(), needs)
 	if err != nil {

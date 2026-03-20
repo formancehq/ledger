@@ -135,7 +135,7 @@ func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus
 	}
 
 	actualGeneration := a.Cache.currentGeneration.Load()
-	futureGeneration := gen(at, threshold)
+	futureGeneration := Gen(at, threshold)
 
 	switch futureGeneration - actualGeneration {
 	case 0:
@@ -284,7 +284,7 @@ func (c *Cache) CheckRotationNeeded(index uint64) (rotated bool, oldGen1BaseInde
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if g := gen(index, c.GenerationThreshold); g != c.currentGeneration.Load() {
+	if g := Gen(index, c.GenerationThreshold); g != c.currentGeneration.Load() {
 		oldGen1BaseIndex = c.BaseIndex.Gen1
 		// Use canonical boundary (end of previous generation) instead of raw index.
 		// This must match BoundaryIndex(nextIndex, K) used by admission when building preloads.

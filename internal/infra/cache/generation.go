@@ -1,6 +1,7 @@
 package cache
 
-func gen(i, k uint64) uint64 {
+// Gen returns the generation number for a given Raft index and threshold.
+func Gen(i, k uint64) uint64 {
 	// Raft indexes start at 1
 	if i == 0 {
 		return 0
@@ -15,7 +16,7 @@ func genEndIndex(g, k uint64) uint64 { return (g + 1) * k }
 
 // Canonical boundary B(i) = end(gen(i)-1) for g>=1 else 0.
 func BoundaryIndex(i, k uint64) uint64 {
-	g := gen(i, k)
+	g := Gen(i, k)
 	if g == 0 {
 		return 0
 	}
