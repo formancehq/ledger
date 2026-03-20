@@ -1,8 +1,6 @@
 module github.com/formancehq/ledger/tools/provisioner
 
-go 1.24.4
-
-toolchain go1.25.4
+go 1.26.0
 
 replace (
 	github.com/formancehq/ledger => ../..
@@ -80,7 +78,6 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/emicklei/go-restful/v3 v3.12.2 // indirect
-	github.com/ericlagergren/decimal v0.0.0-20240411145413-00de7ca16731 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/formancehq/numscript v0.0.24 // indirect
