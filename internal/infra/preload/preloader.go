@@ -210,6 +210,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.Ledgers, p.loaders.Ledgers,
 				p.attrs.Ledger.ComputeValue, p.store,
 				buildLedgerPreload, false, nil,
+				p.logger, "ledgers",
 			)
 		})
 	}
@@ -221,6 +222,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.Boundaries, p.loaders.Boundaries,
 				p.attrs.Boundary.ComputeValue, p.store,
 				buildBoundaryPreload, false, nil,
+				p.logger, "boundaries",
 			)
 		})
 	}
@@ -232,6 +234,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.Volumes, p.loaders.Volumes,
 				p.attrs.Volume.ComputeValue, p.store,
 				buildVolumePreload, true, nil,
+				p.logger, "volumes",
 			)
 		})
 	}
@@ -243,6 +246,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.IdempotencyKeys, p.loaders.IdempotencyKeys,
 				p.attrs.IdempotencyKeys.ComputeValue, p.store,
 				buildIdempotencyKeyPreload, false, nil,
+				p.logger, "idempotency_keys",
 			)
 		})
 	}
@@ -254,6 +258,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.References, p.loaders.References,
 				p.attrs.References.ComputeValue, p.store,
 				buildReferencePreload, false, nil,
+				p.logger, "references",
 			)
 		})
 	}
@@ -264,6 +269,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				needs.SinkConfigs, nextIndex, boundary,
 				p.cache.SinkConfigs, p.loaders.SinkConfigs,
 				buildSinkConfigPreload, false, nil,
+				p.logger, "sink_configs",
 			)
 		})
 	}
@@ -274,6 +280,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				needs.NumscriptVersions, nextIndex, boundary,
 				p.cache.NumscriptVersions, p.loaders.NumscriptVersions,
 				buildNumscriptVersionPreload, true, nil,
+				p.logger, "numscript_versions",
 			)
 		})
 	}
@@ -284,6 +291,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				needs.NumscriptEntries, nextIndex, boundary,
 				p.cache.NumscriptEntries, p.loaders.NumscriptEntries,
 				buildNumscriptEntryPreload, true, nil,
+				p.logger, "numscript_entries",
 			)
 		})
 	}
@@ -294,6 +302,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				needs.NumscriptParsed, nextIndex, boundary,
 				p.cache.NumscriptParsed, p.loaders.NumscriptParsed,
 				buildNumscriptParsedPreload, true, nil,
+				p.logger, "numscript_parsed",
 			)
 		})
 	}
@@ -305,6 +314,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.Transactions, p.loaders.Transactions,
 				p.attrs.Transaction.ComputeValue, p.store,
 				buildTransactionStatePreload, false, nil,
+				p.logger, "transactions",
 			)
 		})
 	}
@@ -316,6 +326,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 				p.cache.AccountMetadata, p.loaders.AccountMetadata,
 				p.attrs.Metadata.ComputeValue, p.store,
 				buildMetadataPreload, false, nil,
+				p.logger, "metadata",
 			)
 		})
 	}

@@ -68,18 +68,20 @@ type Admission struct {
 	coldStorageEnabled bool
 
 	// Metrics (noop when metricsEnabled is false)
-	metricsEnabled            bool
-	commandDurationHistogram  metric.Int64Histogram
-	commandSizeHistogram      metric.Int64Histogram
-	proposeQueueLoadHistogram metric.Int64Histogram
-	proposeQueueInflight      atomic.Int32
-	proposeQueueFullCounter   metric.Float64Counter
-	proposeDurationHistogram  metric.Int64Histogram
-	fsmFutureWaitHistogram    metric.Int64Histogram
-	preloadDurationHistogram  metric.Int64Histogram
-	preloadCounter            metric.Int64Counter
-	preloadKeysNeededCounter  metric.Int64Counter
-	preloadCacheHitsCounter   metric.Int64Counter
+	metricsEnabled                 bool
+	commandDurationHistogram       metric.Int64Histogram
+	commandSizeHistogram           metric.Int64Histogram
+	proposeQueueLoadHistogram      metric.Int64Histogram
+	proposeQueueInflight           atomic.Int32
+	proposeQueueFullCounter        metric.Float64Counter
+	proposeDurationHistogram       metric.Int64Histogram
+	fsmFutureWaitHistogram         metric.Int64Histogram
+	proposalGuardDurationHistogram metric.Int64Histogram
+	proposalGuardRebuildCounter    metric.Int64Counter
+	preloadDurationHistogram       metric.Int64Histogram
+	preloadCounter                 metric.Int64Counter
+	preloadKeysNeededCounter       metric.Int64Counter
+	preloadCacheHitsCounter        metric.Int64Counter
 }
 
 // NewAdmission creates a new Admission handler.
@@ -208,6 +210,27 @@ func NewAdmission(
 		panic(err)
 	}
 
+	proposalGuardDurationHistogram, err := meter.Int64Histogram(
+		"admission.proposal_guard.duration",
+		metric.WithDescription("Time spent waiting to acquire the proposal guard lock"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
+		),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	proposalGuardRebuildCounter, err := meter.Int64Counter(
+		"admission.proposal_guard.rebuild",
+		metric.WithDescription("Number of times the proposal guard had to rebuild preloads due to boundary shift"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	preloadDurationHistogram, err := meter.Int64Histogram(
 		"admission.preload.duration",
 		metric.WithDescription("Time spent loading preload values from store"),
@@ -253,6 +276,8 @@ func NewAdmission(
 	a.proposeQueueFullCounter = proposeQueueFullCounter
 	a.proposeDurationHistogram = proposeDurationHistogram
 	a.fsmFutureWaitHistogram = fsmFutureWaitHistogram
+	a.proposalGuardDurationHistogram = proposalGuardDurationHistogram
+	a.proposalGuardRebuildCounter = proposalGuardRebuildCounter
 	a.preloadDurationHistogram = preloadDurationHistogram
 	a.preloadCounter = preloadCounter
 	a.preloadKeysNeededCounter = preloadKeysNeededCounter
@@ -313,13 +338,23 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 			attribute.Int("preload.metadata", len(needs.Metadata)),
 		))
 
+	preloadStart := time.Now()
 	build, err := a.preloader.BuildPreloads(needs)
+	a.preloadDurationHistogram.Record(ctx, time.Since(preloadStart).Microseconds())
 	if err != nil {
 		preloadSpan.End()
 		build.ReleaseLoaders(a.preloader.Loaders())
 
 		return nil, fmt.Errorf("building preloads: %w", err)
 	}
+
+	totalKeys := int64(needs.TotalKeys())
+	storeReads := int64(len(build.PreloadSet.GetPreloads()))
+	cacheHits := totalKeys - storeReads
+
+	a.preloadCounter.Add(ctx, 1)
+	a.preloadKeysNeededCounter.Add(ctx, totalKeys)
+	a.preloadCacheHitsCounter.Add(ctx, cacheHits)
 
 	cmd.Preload = build.PreloadSet
 	preloadSpan.End()
@@ -340,9 +375,11 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	// Step 6: Acquire proposal lock and validate boundary.
+	guardStart := time.Now()
 	updatedPreloads, guard, err := a.preloader.AcquireProposalGuard(build, needs)
 	if err != nil {
 		if guard != nil {
+			a.proposalGuardDurationHistogram.Record(ctx, time.Since(guardStart).Microseconds())
 			guard.ReleaseAll()
 		}
 
@@ -351,6 +388,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 
 	// Rare: boundary shifted — re-marshal with updated preloads under lock.
 	if updatedPreloads != nil {
+		a.proposalGuardRebuildCounter.Add(ctx, 1)
 		cmd.Preload = updatedPreloads
 
 		proposalData, err = a.marshalCommand(ctx, cmd)
@@ -379,6 +417,7 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	}
 
 	guard.Release()
+	a.proposalGuardDurationHistogram.Record(ctx, time.Since(guardStart).Microseconds())
 	a.proposeQueueLoadHistogram.Record(context.Background(), int64(a.proposeQueueInflight.Add(1)))
 
 	if _, err := proposal.Wait(); err != nil {

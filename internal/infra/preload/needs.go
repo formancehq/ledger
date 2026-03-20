@@ -25,6 +25,14 @@ type Needs struct {
 	NumscriptParsed   map[domain.NumscriptContentKey]func() (string, error)
 }
 
+// TotalKeys returns the total number of keys across all need types.
+func (n *Needs) TotalKeys() int {
+	return len(n.Ledgers) + len(n.Boundaries) + len(n.Volumes) +
+		len(n.IdempotencyKeys) + len(n.References) + len(n.Metadata) +
+		len(n.Transactions) + len(n.SinkConfigs) + len(n.NumscriptVersions) +
+		len(n.NumscriptEntries) + len(n.NumscriptParsed)
+}
+
 // NewNeeds creates a Needs with all maps initialized.
 func NewNeeds() *Needs {
 	return &Needs{

@@ -1,6 +1,10 @@
 package preload
 
 import (
+	"encoding/hex"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/cache"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -24,6 +28,8 @@ func resolveStandard[K interface {
 	buildPreload func(id *raftcmdpb.AttributeID, value T) *raftcmdpb.Preload,
 	alwaysSend bool,
 	tracker []attributes.U128,
+	logger logging.Logger,
+	typeName string,
 ) ([]*raftcmdpb.Preload, []attributes.U128, error) {
 	var preloads []*raftcmdpb.Preload
 
@@ -34,6 +40,13 @@ func resolveStandard[K interface {
 		if attrCache.IsGuaranteedInCache(nextIndex, id) {
 			continue
 		}
+
+		logger.WithFields(map[string]any{
+			"type":      typeName,
+			"key":       hex.EncodeToString(canonicalKey),
+			"nextIndex": nextIndex,
+			"boundary":  boundary,
+		}).Infof("Cache miss: key not guaranteed in cache, loading from store")
 
 		result, err := loader.LoadOrWait(id, boundary, func() (T, uint64, error) {
 			return computeValue(store, boundary, canonicalKey)
@@ -72,6 +85,8 @@ func resolveCustom[K interface {
 	buildPreload func(id *raftcmdpb.AttributeID, value T) *raftcmdpb.Preload,
 	alwaysSend bool,
 	tracker []attributes.U128,
+	logger logging.Logger,
+	typeName string,
 ) ([]*raftcmdpb.Preload, []attributes.U128, error) {
 	var preloads []*raftcmdpb.Preload
 
@@ -82,6 +97,13 @@ func resolveCustom[K interface {
 		if attrCache.IsGuaranteedInCache(nextIndex, id) {
 			continue
 		}
+
+		logger.WithFields(map[string]any{
+			"type":      typeName,
+			"key":       hex.EncodeToString(canonicalKey),
+			"nextIndex": nextIndex,
+			"boundary":  boundary,
+		}).Infof("Cache miss: key not guaranteed in cache, loading from store")
 
 		// Wrap loadFn to match the (T, uint64, error) signature — baseIndex=0 for custom types.
 		wrappedFn := func() (T, uint64, error) {

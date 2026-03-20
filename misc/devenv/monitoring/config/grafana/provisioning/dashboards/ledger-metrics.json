@@ -7488,7 +7488,7 @@
                   }
                 ]
               },
-              "unit": "s"
+              "unit": "ms"
             },
             "overrides": []
           },
@@ -7516,28 +7516,28 @@
           "targets": [
             {
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.seconds_bucket\"}[$__rate_interval])))",
+              "expr": "histogram_quantile(0.50, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.milliseconds_bucket\"}[$__rate_interval])))",
               "legendFormat": "p50 {{db}}",
               "range": true,
               "refId": "A"
             },
             {
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.seconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
+              "expr": "histogram_quantile(0.95, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
               "legendFormat": "p95 {{db}}",
               "range": true,
               "refId": "B"
             },
             {
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.seconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
+              "expr": "histogram_quantile(0.99, sum by (le, db) (rate({__name__=\"pebble.write_stall.duration.milliseconds_bucket\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
               "legendFormat": "p99 {{db}}",
               "range": true,
               "refId": "C"
             },
             {
               "editorMode": "code",
-              "expr": "sum by (db) (rate({__name__=\"pebble.write_stall.duration.seconds_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])) / sum by (db) (rate({__name__=\"pebble.write_stall.duration.seconds_count\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
+              "expr": "sum by (db) (rate({__name__=\"pebble.write_stall.duration.milliseconds_sum\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval])) / sum by (db) (rate({__name__=\"pebble.write_stall.duration.milliseconds_count\", \"scope.name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
               "hide": true,
               "legendFormat": "mean {{db}}",
               "range": true,
@@ -8403,7 +8403,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum(rate(admission.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type, le))",
+              "expr": "histogram_quantile(0.50, sum(rate(admission.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, type))",
               "interval": "1s",
               "legendFormat": "p50 - {{type}}",
               "range": true,
@@ -8415,7 +8415,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum(rate(admission.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type, le))",
+              "expr": "histogram_quantile(0.95, sum(rate(admission.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, type))",
               "interval": "1s",
               "legendFormat": "p95 - {{type}}",
               "range": true,
@@ -8427,7 +8427,7 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum(rate(admission.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type, le))",
+              "expr": "histogram_quantile(0.99, sum(rate(admission.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, type))",
               "interval": "1s",
               "legendFormat": "p99 - {{type}}",
               "range": true,
@@ -8525,9 +8525,9 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(admission.preload.total{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
+              "expr": "sum(rate(admission.preload.total{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
               "interval": "1s",
-              "legendFormat": "{{type}}",
+              "legendFormat": "Node {{service.node_id}}",
               "range": true,
               "refId": "A"
             }
@@ -8623,9 +8623,9 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(admission.preload.keys_needed{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
+              "expr": "sum(rate(admission.preload.keys_needed{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
               "interval": "1s",
-              "legendFormat": "{{type}}",
+              "legendFormat": "Node {{service.node_id}}",
               "range": true,
               "refId": "A"
             }
@@ -8721,9 +8721,9 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(admission.preload.cache_hits{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type) / sum(rate(admission.preload.keys_needed{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type) * 100",
+              "expr": "sum(rate(admission.preload.cache_hits{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(admission.preload.keys_needed{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) * 100",
               "interval": "1s",
-              "legendFormat": "{{type}}",
+              "legendFormat": "Node {{service.node_id}}",
               "range": true,
               "refId": "A"
             }
@@ -8819,9 +8819,9 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(admission.preload.total{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
+              "expr": "sum(rate(admission.preload.total{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
               "interval": "1s",
-              "legendFormat": "store reads - {{type}}",
+              "legendFormat": "store reads - Node {{service.node_id}}",
               "range": true,
               "refId": "A"
             },
@@ -8831,9 +8831,9 @@
                 "uid": "VictoriaMetrics"
               },
               "editorMode": "code",
-              "expr": "sum(rate(admission.preload.cache_hits{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
+              "expr": "sum(rate(admission.preload.cache_hits{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
               "interval": "1s",
-              "legendFormat": "cache hits - {{type}}",
+              "legendFormat": "cache hits - Node {{service.node_id}}",
               "range": true,
               "refId": "B"
             }
@@ -9637,6 +9637,238 @@
           ],
           "title": "FSM Future Wait Duration (p50, p95, p99)",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "Time spent waiting to acquire the proposal guard lock. High values indicate contention on the proposal mutex, which serializes boundary validation and Propose calls.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  }
+                ]
+              },
+              "unit": "\u00b5s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 108
+          },
+          "id": 415,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.50, sum(rate(admission.proposal_guard.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
+              "interval": "1s",
+              "legendFormat": "p50 - Node {{service.node_id}}",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum(rate(admission.proposal_guard.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
+              "interval": "1s",
+              "legendFormat": "p95 - Node {{service.node_id}}",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.99, sum(rate(admission.proposal_guard.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
+              "interval": "1s",
+              "legendFormat": "p99 - Node {{service.node_id}}",
+              "range": true,
+              "refId": "C"
+            }
+          ],
+          "title": "Proposal Guard Duration (p50, p95, p99)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "description": "Rate of proposal guard rebuilds (boundary shifted) vs total proposals. A high ratio means the cache generation boundary is frequently shifting between optimistic preload and proposal, causing expensive re-builds under lock.",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green"
+                  }
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 116
+          },
+          "id": 416,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(admission.proposal_guard.rebuild{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(admission.command.duration_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+              "interval": "1s",
+              "legendFormat": "Rebuild ratio - Node {{service.node_id}}",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "sum(rate(admission.proposal_guard.rebuild{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+              "interval": "1s",
+              "legendFormat": "Rebuilds/s - Node {{service.node_id}}",
+              "range": true,
+              "refId": "B"
+            }
+          ],
+          "title": "Proposal Guard Rebuild Rate & Ratio",
+          "type": "timeseries"
         }
       ],
       "title": "Admission",
@@ -10121,104 +10353,6 @@
             "type": "prometheus",
             "uid": "VictoriaMetrics"
           },
-          "description": "Rate of Pebble reads needed because the cache did not contain the required attribute, broken down by type (ledger/boundary).",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
-              },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
-                "axisColorMode": "text",
-                "axisLabel": "",
-                "axisPlacement": "auto",
-                "barAlignment": 0,
-                "barWidthFactor": 0.6,
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "gradientMode": "none",
-                "hideFrom": {
-                  "legend": false,
-                  "tooltip": false,
-                  "viz": false
-                },
-                "insertNulls": false,
-                "lineInterpolation": "linear",
-                "lineWidth": 1,
-                "pointSize": 5,
-                "scaleDistribution": {
-                  "type": "linear"
-                },
-                "showPoints": "never",
-                "spanNulls": false,
-                "stacking": {
-                  "group": "A",
-                  "mode": "normal"
-                },
-                "thresholdsStyle": {
-                  "mode": "off"
-                }
-              },
-              "mappings": [],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green"
-                  }
-                ]
-              },
-              "unit": "ops"
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 123
-          },
-          "id": 393,
-          "options": {
-            "legend": {
-              "calcs": [
-                "mean",
-                "max"
-              ],
-              "displayMode": "table",
-              "placement": "right",
-              "showLegend": true
-            },
-            "tooltip": {
-              "hideZeros": false,
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "pluginVersion": "12.3.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "VictoriaMetrics"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(mirror.preload.cache_miss{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (type)",
-              "interval": "1s",
-              "legendFormat": "{{type}}",
-              "range": true,
-              "refId": "A"
-            }
-          ],
-          "title": "Preload Cache Misses/s",
-          "type": "timeseries"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
           "description": "Size of the marshalled Raft proposal in bytes. Large commands increase WAL write amplification.",
           "fieldConfig": {
             "defaults": {
@@ -10659,7 +10793,7 @@
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "index_builder_lag{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
+              "expr": "index.builder.lag{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
               "refId": "A"
             }
           ],
@@ -10742,7 +10876,7 @@
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "rate(index_builder_logs_indexed_total{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[1m])",
+              "expr": "rate(index.builder.logs_indexed_total{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[1m])",
               "legendFormat": "{{service_node_id}}",
               "refId": "A"
             }
@@ -10825,7 +10959,7 @@
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "index_builder_last_indexed_sequence{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
+              "expr": "index.builder.last_indexed_sequence{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
               "legendFormat": "Last Indexed ({{service_node_id}})",
               "refId": "A"
             },
@@ -10834,7 +10968,7 @@
                 "type": "prometheus",
                 "uid": "VictoriaMetrics"
               },
-              "expr": "index_builder_pebble_last_sequence{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
+              "expr": "index.builder.pebble_last_sequence{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
               "legendFormat": "Pebble Last ({{service_node_id}})",
               "refId": "B"
             }
