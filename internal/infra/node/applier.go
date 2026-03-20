@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
@@ -457,11 +458,11 @@ func (a *Applier) SyncSnapshot(leader uint64, stop chan struct{}) {
 
 // startSyncSnapshot is called from Run to perform the actual sync.
 func (a *Applier) startSyncSnapshot(ctx context.Context, leader uint64) {
-	a.logger.
-		WithFields(map[string]any{
-			"leader": leader,
-		}).
-		Infof("Syncing snapshot from leader")
+	syncDetails := map[string]any{
+		"leader": leader,
+	}
+	a.logger.WithFields(syncDetails).Infof("Syncing snapshot from leader")
+	lifecycle.SendEvent("sync_snapshot_started", syncDetails)
 
 	progress := state.NewSyncProgress()
 	a.syncProgress.Store(progress)
@@ -587,11 +588,13 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		!confStatesEqual(confState, &lastSnapshot.Metadata.ConfState)
 
 	if thresholdReached || confStateChanged {
-		assert.Sometimes(true, "snapshot triggered", map[string]any{
+		details := map[string]any{
 			"lastEntryIndex":   lastEntryIndex,
 			"thresholdReached": thresholdReached,
 			"confStateChanged": confStateChanged,
-		})
+		}
+		assert.Sometimes(true, "snapshot triggered", details)
+		lifecycle.SendEvent("snapshot_triggered", details)
 		a.triggerSnapshot(ctx, confState, lastEntryIndex, lastSnapshot.Metadata.Index)
 	}
 

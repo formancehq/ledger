@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/raft/v3/tracker"
@@ -768,21 +769,25 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			// leadership loss
 			if wasLeader && !isLeader {
 				logger.Infof("Leadership lost")
-				assert.Sometimes(true, "leadership lost", map[string]any{
+				details := map[string]any{
 					"nodeID": node.config.NodeID,
 					"lead":   ss.Lead,
 					"term":   status.Term,
-				})
+				}
+				assert.Sometimes(true, "leadership lost", details)
+				lifecycle.SendEvent("leadership_lost", details)
 				node.observer.Emit(LeadershipChangeEvent{IsLeader: false})
 			}
 			// acquire leadership
 			if !wasLeader && isLeader {
 				logger.Infof("Leadership gained")
-				assert.Sometimes(true, "leadership gained", map[string]any{
+				details := map[string]any{
 					"nodeID": node.config.NodeID,
 					"lead":   ss.Lead,
 					"term":   status.Term,
-				})
+				}
+				assert.Sometimes(true, "leadership gained", details)
+				lifecycle.SendEvent("leadership_gained", details)
 				node.observer.Emit(LeadershipChangeEvent{IsLeader: true})
 
 				node.applier.Drain(stop)
@@ -823,10 +828,13 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	if !raft.IsEmptySnap(rd.Snapshot) {
 		snapshotStart := time.Now()
 
-		node.logger.WithFields(map[string]any{
+		snapshotDetails := map[string]any{
+			"nodeID":       node.config.NodeID,
 			"index":        rd.Snapshot.Metadata.Index,
 			"snapshotSize": len(rd.Snapshot.Data),
-		}).Infof("Applying snapshot sent by leader")
+		}
+		node.logger.WithFields(snapshotDetails).Infof("Applying snapshot sent by leader")
+		lifecycle.SendEvent("snapshot_received", snapshotDetails)
 
 		node.applier.Drain(stop)
 
@@ -924,6 +932,11 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 
 		// Notify observers about configuration changes
 		for _, change := range cc.Changes {
+			lifecycle.SendEvent("conf_change_committed", map[string]any{
+				"nodeID":     node.config.NodeID,
+				"targetNode": change.NodeID,
+				"changeType": change.Type.String(),
+			})
 			node.observer.Emit(ConfChangeEvent{
 				NodeID:     change.NodeID,
 				ChangeType: change.Type,
