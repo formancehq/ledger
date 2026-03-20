@@ -5861,7 +5861,7 @@ func (s *V2) ExportLogs(ctx context.Context, request operations.V2ExportLogsRequ
 
 	switch {
 	case httpRes.StatusCode == 200:
-		utils.DrainBody(httpRes)
+		// Do not drain the body — it is the streaming payload for export.
 	default:
 		rawBody, err := utils.ConsumeRawBody(httpRes)
 		if err != nil {
