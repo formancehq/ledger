@@ -28,32 +28,24 @@ ledgerService:
     auth:
       enabled: false
     pebble:
-      memTableSize: 268435456
       memTableStopWritesThreshold: 4
-      l0CompactionThreshold: 4
       l0StopWritesThreshold: 256
       lBaseMaxBytes: 4294967296
       cacheSize: 4294967296
-      targetFileSize: 268435456
       bytesPerSync: 4194304
       walBytesPerSync: 4194304
       maxConcurrentCompactions: 4
-      walMinSyncInterval: "0"
-      disableWAL: false
     raft:
-      snapshotThreshold: 5000
       compactionMargin: 5000
       proposeQueueCapacity: 4096
       maxSizePerMsg: 4194304
-      maxInflightMsgs: 256
-      electionTick: 10
-      heartbeatTick: 1
-      tickInterval: 100ms
     cache:
       rotationThreshold: 5000
+
   networkPolicy:
     enabled: true
     additionalEgress:
+      # Join RDS to allow mirror
       - to:
           - ipBlock:
               cidr: 10.70.6.90/32
