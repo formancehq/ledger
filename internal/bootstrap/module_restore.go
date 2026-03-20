@@ -12,8 +12,8 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/formancehq/go-libs/v5/pkg/fx/transportfx"
-	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
 
 	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"

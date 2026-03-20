@@ -5,6 +5,7 @@ package events_test
 import (
 	"context"
 	"math/big"
+	"os"
 	"testing"
 	"time"
 
@@ -28,11 +29,17 @@ import (
 func startTestNATSServer(t *testing.T) *server.Server {
 	t.Helper()
 
+	// Use os.MkdirTemp instead of t.TempDir() to control cleanup ordering.
+	// t.TempDir() registers its own cleanup that can race with JetStream
+	// file handles not yet released after WaitForShutdown() on macOS.
+	storeDir, err := os.MkdirTemp("", t.Name()) //nolint:usetesting // intentional: t.TempDir() cleanup races with JetStream file handles
+	require.NoError(t, err)
+
 	opts := &server.Options{
 		Host:               "127.0.0.1",
 		Port:               -1, // random port
 		JetStream:          true,
-		StoreDir:           t.TempDir(),
+		StoreDir:           storeDir,
 		JetStreamMaxMemory: 64 * 1024 * 1024,  // 64 MB
 		JetStreamMaxStore:  128 * 1024 * 1024, // 128 MB
 	}
@@ -46,6 +53,7 @@ func startTestNATSServer(t *testing.T) *server.Server {
 	t.Cleanup(func() {
 		ns.Shutdown()
 		ns.WaitForShutdown()
+		_ = os.RemoveAll(storeDir)
 	})
 
 	return ns

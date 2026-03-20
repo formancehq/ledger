@@ -183,6 +183,15 @@ func mergePersistence(spec *ledgerv1alpha1.PersistenceSpec, defaults *ledgerv1al
 	if spec.Data.Size.IsZero() {
 		spec.Data.Size = defaults.Data.Size
 	}
+	if spec.ColdCache.StorageClass == "" {
+		spec.ColdCache.StorageClass = defaults.ColdCache.StorageClass
+	}
+	if spec.ColdCache.AccessMode == "" {
+		spec.ColdCache.AccessMode = defaults.ColdCache.AccessMode
+	}
+	if spec.ColdCache.Size.IsZero() {
+		spec.ColdCache.Size = defaults.ColdCache.Size
+	}
 }
 
 // mergeResources merges default resource requirements into spec.

@@ -31,7 +31,7 @@ type applyWork struct {
 	entries    []raftpb.Entry
 	confState  *raftpb.ConfState
 	barrier    chan struct{} // non-nil = drain; closed when processed
-	syncLeader uint64       // non-zero = trigger SyncSnapshot from Run goroutine
+	syncLeader uint64        // non-zero = trigger SyncSnapshot from Run goroutine
 }
 
 // Applier owns all FSM application logic and gating/spool lifecycle.
@@ -97,8 +97,8 @@ func NewApplier(
 		compactionMargin:        compactionMargin,
 		replayBatchSize:         replayBatchSize,
 		snapshotFetcherProvider: snapshotFetcherProvider,
-		status: &initialStatus,
-		ch:     make(chan applyWork, 1),
+		status:                  &initialStatus,
+		ch:                      make(chan applyWork, 1),
 	}
 
 	var err error

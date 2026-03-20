@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
@@ -291,4 +292,77 @@ func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence u
 	}
 
 	return dal.NewProtoCursor[*commonpb.Log](iter, opts...), nil
+}
+
+// ReadLogBySequenceWithCold tries hot storage first, then falls back to cold storage
+// by finding the archived period that contains the given sequence.
+func ReadLogBySequenceWithCold(
+	ctx context.Context,
+	hotReader dal.PebbleReader,
+	coldReader *coldstorage.ColdReader,
+	sequence uint64,
+) (*commonpb.Log, error) {
+	// Try hot storage first
+	log, err := ReadLogBySequence(ctx, hotReader, sequence)
+	if err != nil {
+		return nil, err
+	}
+
+	if log != nil {
+		return log, nil
+	}
+
+	// Hot miss — if no cold reader, return nil
+	if coldReader == nil {
+		return nil, nil
+	}
+
+	// Find the archived period containing this sequence
+	periodID, err := findArchivedPeriodForSequence(ctx, hotReader, sequence)
+	if err != nil {
+		return nil, fmt.Errorf("finding archived period for sequence %d: %w", sequence, err)
+	}
+
+	if periodID == 0 {
+		return nil, nil // not in any archived period
+	}
+
+	// Read from cold storage
+	coldPebble, err := coldReader.GetReader(ctx, periodID)
+	if err != nil {
+		return nil, fmt.Errorf("getting cold reader for period %d: %w", periodID, err)
+	}
+
+	return ReadLogBySequence(ctx, coldPebble, sequence)
+}
+
+// findArchivedPeriodForSequence iterates periods to find an archived one containing the given sequence.
+func findArchivedPeriodForSequence(ctx context.Context, reader dal.PebbleReader, sequence uint64) (uint64, error) {
+	cursor, err := ReadPeriods(ctx, reader)
+	if err != nil {
+		return 0, err
+	}
+
+	defer func() { _ = cursor.Close() }()
+
+	for {
+		period, err := cursor.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		if err != nil {
+			return 0, err
+		}
+
+		if period.GetStatus() != commonpb.PeriodStatus_PERIOD_ARCHIVED {
+			continue
+		}
+
+		if sequence >= period.GetStartSequence() && sequence <= period.GetCloseSequence() {
+			return period.GetId(), nil
+		}
+	}
+
+	return 0, nil
 }

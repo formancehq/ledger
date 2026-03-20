@@ -21,7 +21,7 @@ func NewFilesystemStorage(basePath string) *FilesystemStorage {
 }
 
 func (f *FilesystemStorage) archivePath(bucketID string, periodID uint64) string {
-	return filepath.Join(f.basePath, bucketID, "periods", strconv.FormatUint(periodID, 10), "archive.tar.gz")
+	return filepath.Join(f.basePath, bucketID, "periods", strconv.FormatUint(periodID, 10), "archive.sst")
 }
 
 func (f *FilesystemStorage) Archive(_ context.Context, bucketID string, periodID uint64, data io.Reader) error {
@@ -57,6 +57,17 @@ func (f *FilesystemStorage) Exists(_ context.Context, bucketID string, periodID 
 	}
 
 	return true, nil
+}
+
+func (f *FilesystemStorage) Fetch(_ context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {
+	path := f.archivePath(bucketID, periodID)
+
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("opening archive file: %w", err)
+	}
+
+	return file, nil
 }
 
 // Ensure FilesystemStorage implements ColdStorage.

@@ -1403,6 +1403,7 @@ func (in *PersistenceSpec) DeepCopyInto(out *PersistenceSpec) {
 	*out = *in
 	in.WAL.DeepCopyInto(&out.WAL)
 	in.Data.DeepCopyInto(&out.Data)
+	in.ColdCache.DeepCopyInto(&out.ColdCache)
 	if in.RetentionPolicy != nil {
 		in, out := &in.RetentionPolicy, &out.RetentionPolicy
 		*out = new(RetentionPolicySpec)

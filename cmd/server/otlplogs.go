@@ -4,8 +4,8 @@ import (
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	otlp "github.com/formancehq/go-libs/v5/pkg/observe"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/service"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/otlplogs"

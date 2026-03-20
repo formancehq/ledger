@@ -364,6 +364,21 @@ func convertToGRPCError(err error) error {
 		return st.Err()
 	}
 
+	// Convert ErrColdStorageDisabled to FailedPrecondition with ErrorInfo
+	if errors.Is(err, domain.ErrColdStorageDisabled) {
+		st := status.New(codes.FailedPrecondition, err.Error())
+
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: domain.ErrReasonColdStorageDisabled,
+			Domain: "ledger",
+		})
+		if detailErr == nil {
+			return detailed.Err()
+		}
+
+		return st.Err()
+	}
+
 	// Convert ErrReadIndexNotCaughtUp to FailedPrecondition with details
 	var notCaughtUp *query.ErrReadIndexNotCaughtUp
 	if errors.As(err, &notCaughtUp) {

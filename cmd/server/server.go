@@ -21,8 +21,8 @@ import (
 	auth "github.com/formancehq/go-libs/v5/pkg/authn/jwt"
 	"github.com/formancehq/go-libs/v5/pkg/fx/authnfx"
 	"github.com/formancehq/go-libs/v5/pkg/fx/observefx"
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	otlp "github.com/formancehq/go-libs/v5/pkg/observe"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
 	otlptraces "github.com/formancehq/go-libs/v5/pkg/observe/traces"
 	"github.com/formancehq/go-libs/v5/pkg/service"
@@ -138,12 +138,13 @@ func NewRunCommand() *cobra.Command {
 	runCmd.Flags().String("response-signing-key", "", "Path to Ed25519 seed file for response signing (empty = disabled)")
 
 	// Cold storage configuration
-	runCmd.Flags().String("cold-storage-driver", "filesystem", "Cold storage driver for period archival (filesystem, s3)")
+	runCmd.Flags().String("cold-storage-driver", "none", "Cold storage driver for period archival (none, filesystem, s3)")
 	runCmd.Flags().String("cold-storage-path", "", "Base path for cold storage (default: <data-dir>/cold-storage)")
 	runCmd.Flags().String("cold-storage-bucket-id", "", "Shared namespace prefix for archives (default: cluster-id)")
 	runCmd.Flags().String("cold-storage-s3-bucket", "", "S3 bucket name (required when driver=s3)")
 	runCmd.Flags().String("cold-storage-s3-region", "", "AWS region for S3")
 	runCmd.Flags().String("cold-storage-s3-endpoint", "", "Custom S3 endpoint (for MinIO)")
+	runCmd.Flags().String("cold-cache-dir", "", "Directory for cold storage read cache (default: <data-dir>/cold-cache). Use a separate volume to avoid filling the data disk.")
 
 	// TLS configuration flags
 	runCmd.Flags().String("tls-cert-file", "", "Path to TLS certificate file (PEM)")
@@ -302,6 +303,8 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		flightrecorder.Module(flightRecorderCfg),
 		// Provide application module
 		appModule,
+		// Cold storage module (conditional on driver)
+		bootstrap.ColdStorageModule(cfg.ColdStorageConfig.Driver),
 	}
 
 	defer func() {
@@ -457,12 +460,13 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 	cfg.ResponseSigningKeyFile = getString("response-signing-key", "")
 
 	// Cold storage configuration
-	cfg.ColdStorageConfig.Driver = getString("cold-storage-driver", "filesystem")
+	cfg.ColdStorageConfig.Driver = getString("cold-storage-driver", "none")
 	cfg.ColdStorageConfig.BasePath = getString("cold-storage-path", "")
 	cfg.ColdStorageConfig.BucketID = getString("cold-storage-bucket-id", "")
 	cfg.ColdStorageConfig.S3Bucket = getString("cold-storage-s3-bucket", "")
 	cfg.ColdStorageConfig.S3Region = getString("cold-storage-s3-region", "")
 	cfg.ColdStorageConfig.S3Endpoint = getString("cold-storage-s3-endpoint", "")
+	cfg.ColdStorageConfig.CacheDir = getString("cold-cache-dir", "")
 
 	// TLS configuration
 	tlsCert := getString("tls-cert-file", "")

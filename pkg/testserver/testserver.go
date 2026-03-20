@@ -273,6 +273,37 @@ func WithAuthEd25519Keys(path string) testservice.InstrumentationFunc {
 	}
 }
 
+func WithColdStorageDriver(driver string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--cold-storage-driver", driver)
+
+		return nil
+	}
+}
+
+func WithColdStorageS3(bucket, region, endpoint string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--cold-storage-driver", "s3")
+		cfg.AppendArgs("--cold-storage-s3-bucket", bucket)
+		if region != "" {
+			cfg.AppendArgs("--cold-storage-s3-region", region)
+		}
+		if endpoint != "" {
+			cfg.AppendArgs("--cold-storage-s3-endpoint", endpoint)
+		}
+
+		return nil
+	}
+}
+
+func WithColdCacheDir(dir string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--cold-cache-dir", dir)
+
+		return nil
+	}
+}
+
 func WithCacheRotationThreshold(threshold uint64) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--cache-rotation-threshold", strconv.FormatUint(threshold, 10))

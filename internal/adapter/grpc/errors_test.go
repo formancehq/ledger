@@ -443,6 +443,15 @@ func TestConvertToGRPCError_PeriodNotArchiving(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, st.Code())
 }
 
+func TestConvertToGRPCError_ColdStorageDisabled(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := convertToGRPCError(domain.ErrColdStorageDisabled)
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+}
+
 func TestConvertToGRPCError_AlreadyGRPCStatus(t *testing.T) {
 	t.Parallel()
 

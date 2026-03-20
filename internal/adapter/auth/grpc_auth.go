@@ -15,8 +15,8 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
 
 var authTracer = otel.Tracer("auth")

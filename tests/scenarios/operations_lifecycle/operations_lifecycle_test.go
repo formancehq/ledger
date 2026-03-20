@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
+	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
 
@@ -32,7 +33,9 @@ func TestOperationsLifecycle(t *testing.T) {
 		numDeposits = 5
 	)
 
-	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+4, scenariotest.GRPCPort+4)
+	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+4, scenariotest.GRPCPort+4,
+		testserver.WithColdStorageDriver("filesystem"),
+	)
 	ctx, client := sc.Ctx(), sc.Client
 
 	// --- Phase 1: Setup ---

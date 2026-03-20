@@ -19,11 +19,11 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 
-	"github.com/formancehq/go-libs/v5/pkg/fx/transportfx"
-	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
+	"github.com/formancehq/go-libs/v5/pkg/fx/transportfx"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
+	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
 
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	grpcadp "github.com/formancehq/ledger-v3-poc/internal/adapter/grpc"
@@ -70,6 +70,109 @@ type nodeProvideResult struct {
 
 	Node       *node.Node
 	FreshStart walFreshStart
+}
+
+// coldStorageModule conditionally provides ColdStorage, ColdReader, and Archiver
+// when cold storage is enabled (driver != "none"). When disabled, these components
+// are not added to the fx graph and archiving is rejected at the admission layer.
+// ColdStorageModule conditionally provides ColdStorage, ColdReader, and Archiver
+// when cold storage is enabled (driver != "none"). When disabled, these components
+// are not added to the fx graph and archiving is rejected at the admission layer.
+func ColdStorageModule(coldStorageDriver string) fx.Option {
+	if coldStorageDriver == "none" {
+		return fx.Options()
+	}
+
+	return fx.Options(
+		fx.Provide(
+			func(cfg Config, logger logging.Logger) (coldstorage.ColdStorage, error) {
+				switch cfg.ColdStorageConfig.Driver {
+				case "s3":
+					if cfg.ColdStorageConfig.S3Bucket == "" {
+						return nil, errors.New("--cold-storage-s3-bucket is required when driver=s3")
+					}
+
+					logger.WithFields(map[string]any{
+						"bucket":   cfg.ColdStorageConfig.S3Bucket,
+						"region":   cfg.ColdStorageConfig.S3Region,
+						"endpoint": cfg.ColdStorageConfig.S3Endpoint,
+					}).Infof("Using S3 cold storage")
+
+					return coldstorage.NewS3ColdStorage(
+						cfg.ColdStorageConfig.S3Bucket,
+						cfg.ColdStorageConfig.S3Region,
+						cfg.ColdStorageConfig.S3Endpoint,
+					)
+				case "filesystem", "":
+					basePath := cfg.ColdStorageConfig.BasePath
+					if basePath == "" {
+						basePath = filepath.Join(cfg.DataDir, "cold-storage")
+					}
+
+					return coldstorage.NewFilesystemStorage(basePath), nil
+				default:
+					return nil, fmt.Errorf("unknown cold storage driver: %s", cfg.ColdStorageConfig.Driver)
+				}
+			},
+			func(cfg Config, cold coldstorage.ColdStorage, logger logging.Logger) *coldstorage.ColdReader {
+				bucketID := cfg.ColdStorageConfig.BucketID
+				if bucketID == "" {
+					bucketID = cfg.ClusterID
+				}
+
+				cacheDir := cfg.ColdStorageConfig.CacheDir
+				if cacheDir == "" {
+					cacheDir = filepath.Join(cfg.DataDir, "cold-cache")
+				}
+
+				return coldstorage.NewColdReader(cold, bucketID, cacheDir, 8, 10*time.Minute, logger)
+			},
+			func(
+				cfg Config,
+				logger logging.Logger,
+				store *dal.Store,
+				cold coldstorage.ColdStorage,
+				machine *state.Machine,
+				admissionHandler ctrl.Admission,
+				raftNode *node.Node,
+			) *state.Archiver {
+				bucketID := cfg.ColdStorageConfig.BucketID
+				if bucketID == "" {
+					bucketID = cfg.ClusterID
+				}
+
+				return state.NewArchiver(
+					logger,
+					store,
+					cold,
+					machine.ArchiveRequestCh(),
+					func(periodID uint64) {
+						_, _ = admissionHandler.Admit(context.Background(), &servicepb.Request{
+							Type: &servicepb.Request_ConfirmArchivePeriod{
+								ConfirmArchivePeriod: &servicepb.ConfirmArchivePeriodRequest{
+									PeriodId: periodID,
+								},
+							},
+						})
+					},
+					raftNode.IsLeader,
+					bucketID,
+				)
+			},
+		),
+		fx.Invoke(
+			func(lc fx.Lifecycle, coldReader *coldstorage.ColdReader) {
+				lc.Append(fx.Hook{
+					OnStop: func(_ context.Context) error {
+						return coldReader.Close()
+					},
+				})
+			},
+			func(lc fx.Lifecycle, archiver *state.Archiver) {
+				lc.Append(worker.FxHook(archiver))
+			},
+		),
+	)
 }
 
 func Module() fx.Option {
@@ -421,6 +524,10 @@ func Module() fx.Option {
 					opts = append(opts, admission.WithReceiptSigner(receiptSigner))
 				}
 
+				if cfg.ColdStorageConfig.Driver != "none" {
+					opts = append(opts, admission.WithColdStorageEnabled())
+				}
+
 				return admission.NewAdmission(
 					store,
 					logger,
@@ -454,67 +561,6 @@ func Module() fx.Option {
 						},
 					})
 				}, raftNode.IsLeader, machine)
-			},
-			func(cfg Config, logger logging.Logger) (coldstorage.ColdStorage, error) {
-				switch cfg.ColdStorageConfig.Driver {
-				case "s3":
-					if cfg.ColdStorageConfig.S3Bucket == "" {
-						return nil, errors.New("--cold-storage-s3-bucket is required when driver=s3")
-					}
-
-					logger.WithFields(map[string]any{
-						"bucket":   cfg.ColdStorageConfig.S3Bucket,
-						"region":   cfg.ColdStorageConfig.S3Region,
-						"endpoint": cfg.ColdStorageConfig.S3Endpoint,
-					}).Infof("Using S3 cold storage")
-
-					return coldstorage.NewS3ColdStorage(
-						cfg.ColdStorageConfig.S3Bucket,
-						cfg.ColdStorageConfig.S3Region,
-						cfg.ColdStorageConfig.S3Endpoint,
-					)
-				case "filesystem", "":
-					basePath := cfg.ColdStorageConfig.BasePath
-					if basePath == "" {
-						basePath = filepath.Join(cfg.DataDir, "cold-storage")
-					}
-
-					return coldstorage.NewFilesystemStorage(basePath), nil
-				default:
-					return nil, fmt.Errorf("unknown cold storage driver: %s", cfg.ColdStorageConfig.Driver)
-				}
-			},
-			func(
-				cfg Config,
-				logger logging.Logger,
-				store *dal.Store,
-				cold coldstorage.ColdStorage,
-				machine *state.Machine,
-				admissionHandler ctrl.Admission,
-				raftNode *node.Node,
-			) *state.Archiver {
-				bucketID := cfg.ColdStorageConfig.BucketID
-				if bucketID == "" {
-					bucketID = cfg.ClusterID
-				}
-
-				return state.NewArchiver(
-					logger,
-					store,
-					cold,
-					machine.ArchiveRequestCh(),
-					func(periodID uint64) {
-						_, _ = admissionHandler.Admit(context.Background(), &servicepb.Request{
-							Type: &servicepb.Request_ConfirmArchivePeriod{
-								ConfirmArchivePeriod: &servicepb.ConfirmArchivePeriodRequest{
-									PeriodId: periodID,
-								},
-							},
-						})
-					},
-					raftNode.IsLeader,
-					bucketID,
-				)
 			},
 			func(
 				logger logging.Logger,
@@ -562,13 +608,14 @@ func Module() fx.Option {
 				logger logging.Logger,
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
+				coldReader *coldstorage.ColdReader,
 			) ctrl.Controller {
 				return NewRoutedController(
-					ctrl.NewDefaultController(admission, store, logger, attrs, rs),
+					ctrl.NewDefaultController(admission, store, logger, attrs, rs, coldReader),
 					raftNode,
 					servicePool,
 				)
-			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, `optional:"true"`)),
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node, hc *clusterhealth.HealthChecker) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
@@ -947,9 +994,6 @@ func Module() fx.Option {
 			},
 			func(lc fx.Lifecycle, sealer *state.Sealer) {
 				lc.Append(worker.FxHook(sealer))
-			},
-			func(lc fx.Lifecycle, archiver *state.Archiver) {
-				lc.Append(worker.FxHook(archiver))
 			},
 			func(lc fx.Lifecycle, scheduler *state.PeriodScheduler) {
 				lc.Append(worker.FxHook(scheduler))

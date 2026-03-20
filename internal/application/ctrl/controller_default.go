@@ -18,6 +18,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/analysis"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -38,11 +39,12 @@ type Admission interface {
 // The FSM is responsible for interpreting requests, validating, and applying changes.
 // Idempotency is handled in the FSM to ensure consistency in the Raft log.
 type DefaultController struct {
-	logger    logging.Logger
-	admission Admission
-	store     *dal.Store
-	attrs     *attributes.Attributes
-	readStore *readstore.Store
+	logger     logging.Logger
+	admission  Admission
+	store      *dal.Store
+	attrs      *attributes.Attributes
+	readStore  *readstore.Store
+	coldReader *coldstorage.ColdReader
 }
 
 // NewDefaultController creates a new default controller.
@@ -52,13 +54,15 @@ func NewDefaultController(
 	logger logging.Logger,
 	attrs *attributes.Attributes,
 	readStore *readstore.Store,
+	coldReader *coldstorage.ColdReader,
 ) *DefaultController {
 	return &DefaultController{
-		logger:    logger,
-		admission: admission,
-		store:     store,
-		attrs:     attrs,
-		readStore: readStore,
+		logger:     logger,
+		admission:  admission,
+		store:      store,
+		attrs:      attrs,
+		readStore:  readStore,
+		coldReader: coldReader,
 	}
 }
 
@@ -931,12 +935,13 @@ func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, afterSequen
 }
 
 // GetLog returns a single system log by sequence number.
+// Falls back to cold storage if the log has been archived.
 func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
 	handle := ctrl.store.NewReadHandle()
 
 	defer func() { _ = handle.Close() }()
 
-	log, err := query.ReadLogBySequence(ctx, handle, sequence)
+	log, err := query.ReadLogBySequenceWithCold(ctx, handle, ctrl.coldReader, sequence)
 	if err != nil {
 		return nil, fmt.Errorf("getting log %d: %w", sequence, err)
 	}

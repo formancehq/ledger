@@ -55,16 +55,17 @@ type Proposer interface {
 // Admission handles the admission of orders into the Raft cluster.
 // It is responsible for preloading volumes and proposing commands.
 type Admission struct {
-	store          *dal.Store
-	logger         logging.Logger
-	proposer       Proposer
-	healthChecker  health.Checker
-	keyStore       *keystore.KeyStore
-	sharedState    *state.SharedState
-	receiptSigner  *receipt.Signer
-	preloader      *preload.Preloader
-	attrs          *attributes.Attributes
-	numscriptCache *numscript.NumscriptCache
+	store              *dal.Store
+	logger             logging.Logger
+	proposer           Proposer
+	healthChecker      health.Checker
+	keyStore           *keystore.KeyStore
+	sharedState        *state.SharedState
+	receiptSigner      *receipt.Signer
+	preloader          *preload.Preloader
+	attrs              *attributes.Attributes
+	numscriptCache     *numscript.NumscriptCache
+	coldStorageEnabled bool
 
 	// Metrics (noop when metricsEnabled is false)
 	metricsEnabled            bool
@@ -94,6 +95,13 @@ func WithMetrics() func(*Admission) {
 func WithReceiptSigner(signer *receipt.Signer) func(*Admission) {
 	return func(a *Admission) {
 		a.receiptSigner = signer
+	}
+}
+
+// WithColdStorageEnabled marks cold storage as available, allowing archive operations.
+func WithColdStorageEnabled() func(*Admission) {
+	return func(a *Admission) {
+		a.coldStorageEnabled = true
 	}
 }
 
@@ -906,6 +914,10 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 			},
 		}
 	case *servicepb.Request_ArchivePeriod:
+		if !a.coldStorageEnabled {
+			return nil, domain.ErrColdStorageDisabled
+		}
+
 		order.Type = &raftcmdpb.Order_ArchivePeriod{
 			ArchivePeriod: &raftcmdpb.ArchivePeriodOrder{
 				PeriodId: reqType.ArchivePeriod.GetPeriodId(),

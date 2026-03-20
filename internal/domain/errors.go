@@ -47,6 +47,7 @@ const (
 	ErrReasonAccountTypeAlreadyExists      = "ACCOUNT_TYPE_ALREADY_EXISTS"
 	ErrReasonInvalidPattern                = "INVALID_PATTERN"
 	ErrReasonAccountTypeHasAccounts        = "ACCOUNT_TYPE_HAS_ACCOUNTS"
+	ErrReasonColdStorageDisabled           = "COLD_STORAGE_DISABLED"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -63,6 +64,9 @@ func (e *BusinessError) Error() string {
 func (e *BusinessError) Unwrap() error {
 	return e.Err
 }
+
+// ErrColdStorageDisabled is returned when archiving is attempted but cold storage is not configured.
+var ErrColdStorageDisabled = errors.New("cold storage is disabled: archiving is not available")
 
 // Sentinel validation errors (no context needed).
 var (

@@ -976,6 +976,11 @@ type PersistenceSpec struct {
 	// +optional
 	Data VolumeSpec `json:"data,omitempty"`
 
+	// ColdCache persistence configuration for cold storage read cache.
+	// Uses a separate volume to avoid filling the data disk when reading archived periods.
+	// +optional
+	ColdCache VolumeSpec `json:"coldCache,omitempty"`
+
 	// RetentionPolicy for PVCs.
 	// +optional
 	RetentionPolicy *RetentionPolicySpec `json:"retentionPolicy,omitempty"`

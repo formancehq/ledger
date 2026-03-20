@@ -10,6 +10,7 @@ type Config struct {
 	Driver   string // "filesystem" (default) or "s3"
 	BasePath string // filesystem driver base path
 	BucketID string // shared namespace prefix for cold storage archives (default: cluster-id)
+	CacheDir string // directory for cold reader cache (default: <data-dir>/cold-cache)
 	// S3-specific
 	S3Bucket   string // S3 bucket name (required when driver=s3)
 	S3Region   string // AWS region
@@ -19,10 +20,12 @@ type Config struct {
 // ColdStorage provides an abstraction for archiving period data to durable external storage.
 // Implementations include filesystem (dev/test) and S3 (production, deferred).
 type ColdStorage interface {
-	// Archive writes period archive data to cold storage.
-	// The data is a tar.gz stream containing logs, audit entries, and period metadata.
+	// Archive writes period archive data (SST format) to cold storage.
 	Archive(ctx context.Context, bucketID string, periodID uint64, data io.Reader) error
 
 	// Exists checks whether an archive for the given period exists in cold storage.
 	Exists(ctx context.Context, bucketID string, periodID uint64) (bool, error)
+
+	// Fetch retrieves a previously archived SST file from cold storage.
+	Fetch(ctx context.Context, bucketID string, periodID uint64) (io.ReadCloser, error)
 }

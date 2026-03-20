@@ -50,7 +50,7 @@ func NewS3Storage(client *s3.Client, bucket string) *S3Storage {
 }
 
 func (s *S3Storage) archiveKey(bucketID string, periodID uint64) string {
-	return fmt.Sprintf("%s/periods/%d/archive.tar.gz", bucketID, periodID)
+	return fmt.Sprintf("%s/periods/%d/archive.sst", bucketID, periodID)
 }
 
 func (s *S3Storage) Archive(ctx context.Context, bucketID string, periodID uint64, data io.Reader) error {
@@ -60,7 +60,7 @@ func (s *S3Storage) Archive(ctx context.Context, bucketID string, periodID uint6
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(key),
 		Body:        data,
-		ContentType: aws.String("application/gzip"),
+		ContentType: aws.String("application/octet-stream"),
 	})
 	if err != nil {
 		return fmt.Errorf("s3 PutObject %s: %w", key, err)
@@ -90,6 +90,20 @@ func (s *S3Storage) Exists(ctx context.Context, bucketID string, periodID uint64
 	}
 
 	return true, nil
+}
+
+func (s *S3Storage) Fetch(ctx context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {
+	key := s.archiveKey(bucketID, periodID)
+
+	output, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("s3 GetObject %s: %w", key, err)
+	}
+
+	return output.Body, nil
 }
 
 // Ensure S3Storage implements ColdStorage.

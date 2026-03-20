@@ -174,6 +174,7 @@ func buildPodTemplate(ledger *ledgerv1alpha1.LedgerService, specHash string, age
 	volumeMounts := []corev1.VolumeMount{
 		{Name: "wal", MountPath: cfg.WalDir},
 		{Name: "data", MountPath: cfg.DataDir},
+		{Name: "cold-cache", MountPath: "/data/cold-cache"},
 	}
 
 	// Volumes
@@ -423,6 +424,11 @@ func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.LedgerService) []corev1.Pe
 		dataAccessMode = corev1.PersistentVolumeAccessMode(ledger.Spec.Persistence.Data.AccessMode)
 	}
 
+	coldCacheAccessMode := corev1.ReadWriteOnce
+	if ledger.Spec.Persistence.ColdCache.AccessMode != "" {
+		coldCacheAccessMode = corev1.PersistentVolumeAccessMode(ledger.Spec.Persistence.ColdCache.AccessMode)
+	}
+
 	walSize := ledger.Spec.Persistence.WAL.Size
 	if walSize.IsZero() {
 		walSize = resource.MustParse("5Gi")
@@ -431,6 +437,11 @@ func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.LedgerService) []corev1.Pe
 	dataSize := ledger.Spec.Persistence.Data.Size
 	if dataSize.IsZero() {
 		dataSize = resource.MustParse("10Gi")
+	}
+
+	coldCacheSize := ledger.Spec.Persistence.ColdCache.Size
+	if coldCacheSize.IsZero() {
+		coldCacheSize = resource.MustParse("10Gi")
 	}
 
 	templates := []corev1.PersistentVolumeClaim{
@@ -456,6 +467,17 @@ func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.LedgerService) []corev1.Pe
 				},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "cold-cache"},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{coldCacheAccessMode},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceStorage: coldCacheSize,
+					},
+				},
+			},
+		},
 	}
 
 	if ledger.Spec.Persistence.WAL.StorageClass != "" {
@@ -463,6 +485,9 @@ func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.LedgerService) []corev1.Pe
 	}
 	if ledger.Spec.Persistence.Data.StorageClass != "" {
 		templates[1].Spec.StorageClassName = &ledger.Spec.Persistence.Data.StorageClass
+	}
+	if ledger.Spec.Persistence.ColdCache.StorageClass != "" {
+		templates[2].Spec.StorageClassName = &ledger.Spec.Persistence.ColdCache.StorageClass
 	}
 
 	return templates

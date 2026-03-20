@@ -1798,6 +1798,26 @@ spec:
               persistence:
                 description: Persistence configuration for WAL and data volumes.
                 properties:
+                  coldCache:
+                    description: |-
+                      ColdCache persistence configuration for cold storage read cache.
+                      Uses a separate volume to avoid filling the data disk when reading archived periods.
+                    properties:
+                      accessMode:
+                        default: ReadWriteOnce
+                        description: AccessMode for the PVC.
+                        type: string
+                      size:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: Size of the volume.
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      storageClass:
+                        description: StorageClass for the PVC.
+                        type: string
+                    type: object
                   data:
                     description: Data persistence configuration.
                     properties:

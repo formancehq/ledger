@@ -1,7 +1,9 @@
 package state
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -14,26 +16,39 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
+	"github.com/formancehq/ledger-v3-poc/internal/infra/coldstorage"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
 // mockColdStorage is a test-only in-memory implementation of coldstorage.ColdStorage.
 type mockColdStorage struct {
 	mu       sync.Mutex
-	archives map[string]bool // bucketID/periodID -> exists
+	archives map[string][]byte // bucketID/periodID -> data
 }
 
 func newMockColdStorage() *mockColdStorage {
-	return &mockColdStorage{archives: make(map[string]bool)}
+	return &mockColdStorage{archives: make(map[string][]byte)}
 }
 
-func (m *mockColdStorage) Archive(_ context.Context, bucketID string, periodID uint64, _ io.Reader) error {
+func (m *mockColdStorage) Archive(_ context.Context, bucketID string, periodID uint64, data io.Reader) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	key := archiveKey(bucketID, periodID)
-	m.archives[key] = true
+	key := mockArchiveKey(bucketID, periodID)
+
+	var buf []byte
+	if data != nil {
+		var err error
+
+		buf, err = io.ReadAll(data)
+		if err != nil {
+			return err
+		}
+	}
+
+	m.archives[key] = buf
 
 	return nil
 }
@@ -42,13 +57,28 @@ func (m *mockColdStorage) Exists(_ context.Context, bucketID string, periodID ui
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	key := archiveKey(bucketID, periodID)
+	key := mockArchiveKey(bucketID, periodID)
+	_, ok := m.archives[key]
 
-	return m.archives[key], nil
+	return ok, nil
 }
 
-func archiveKey(bucketID string, periodID uint64) string {
-	return bucketID + "/" + string(rune(periodID))
+func (m *mockColdStorage) Fetch(_ context.Context, bucketID string, periodID uint64) (io.ReadCloser, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	key := mockArchiveKey(bucketID, periodID)
+
+	data, ok := m.archives[key]
+	if !ok {
+		return nil, fmt.Errorf("archive %s not found", key)
+	}
+
+	return io.NopCloser(bytes.NewReader(data)), nil
+}
+
+func mockArchiveKey(bucketID string, periodID uint64) string {
+	return fmt.Sprintf("%s/%d", bucketID, periodID)
 }
 
 func TestArchiverStartStop(t *testing.T) {
@@ -258,4 +288,75 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond, "archiver should eventually succeed after becoming leader")
 
 	a.Stop()
+}
+
+func TestArchiverSSTRoundtrip(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("test")
+
+	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dataStore.Close() })
+
+	// Store a log so IterateColdKVPairs finds something
+	batch := dataStore.NewBatch()
+	require.NoError(t, AppendLogs(batch, &commonpb.Log{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+			CreateLedger: &commonpb.CreateLedgerLog{
+				Info: &commonpb.LedgerInfo{Name: "test-ledger", CreatedAt: commonpb.NewTimestamp(libtime.Now())},
+			},
+		}},
+	}))
+	require.NoError(t, batch.Commit())
+
+	cs := newMockColdStorage()
+	archiveReqCh := make(chan ArchiveRequest, 1)
+
+	var proposedPeriodID atomic.Uint64
+
+	a := NewArchiver(
+		logger,
+		dataStore,
+		cs,
+		archiveReqCh,
+		func(periodID uint64) { proposedPeriodID.Store(periodID) },
+		func() bool { return true },
+		"test-bucket",
+	)
+	a.Start()
+
+	archiveReqCh <- ArchiveRequest{
+		PeriodID:      1,
+		StartSequence: 1,
+		CloseSequence: 1,
+	}
+
+	require.Eventually(t, func() bool {
+		return proposedPeriodID.Load() == 1
+	}, 5*time.Second, 50*time.Millisecond, "archiver should propose ConfirmArchivePeriod")
+
+	a.Stop()
+
+	// Now read the SST back via ColdReader and verify the log is readable
+	cacheDir := t.TempDir()
+	coldReader := coldstorage.NewColdReader(cs, "test-bucket", cacheDir, 4, 0, logger)
+	t.Cleanup(func() { _ = coldReader.Close() })
+
+	pebbleReader, err := coldReader.GetReader(ctx, 1)
+	require.NoError(t, err)
+
+	// Verify the log is readable from the ingested SST
+	log, err := query.ReadLogBySequence(ctx, pebbleReader, 1)
+	require.NoError(t, err, "log should be readable from cold storage")
+	require.NotNil(t, log, "log should not be nil")
+	require.Equal(t, uint64(1), log.GetSequence())
+
+	// Non-existent log should return nil
+	log, err = query.ReadLogBySequence(ctx, pebbleReader, 999)
+	require.NoError(t, err)
+	require.Nil(t, log)
 }

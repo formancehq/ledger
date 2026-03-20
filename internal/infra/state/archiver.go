@@ -1,15 +1,16 @@
 package state
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"os"
 	"time"
+
+	"github.com/cockroachdb/pebble/bloom"
+	"github.com/cockroachdb/pebble/objstorage"
+	"github.com/cockroachdb/pebble/sstable"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -140,35 +141,22 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 
 	a.logger.WithFields(logFields).Infof("Starting period archival")
 
-	// Stream the tar.gz archive directly to cold storage via a pipe,
-	// avoiding buffering the entire archive in memory.
-	pr, pw := io.Pipe()
-
-	streamErrCh := make(chan error, 1)
-
-	go func() {
-		err := a.streamArchive(req, pw)
-
-		_ = pw.CloseWithError(err) // signals EOF (or error) to the reader side
-		streamErrCh <- err
-	}()
-
-	// Upload to cold storage — reads from the pipe as streamArchive writes.
-	uploadErr := a.coldStorage.Archive(ctx, a.bucketID, req.PeriodID, pr)
-
-	// Close the reader so the writer goroutine doesn't block if upload failed early.
-	_ = pr.CloseWithError(uploadErr)
-
-	// Wait for the writer goroutine to finish.
-	streamErr := <-streamErrCh
-
-	if streamErr != nil && uploadErr != nil {
-		return fmt.Errorf("streaming archive: %w (upload also failed: %w)", streamErr, uploadErr)
+	// Build SST archive to a temp file, then upload it.
+	tmpPath, err := a.buildSSTArchive(req)
+	if err != nil {
+		return fmt.Errorf("building SST archive: %w", err)
 	}
 
-	if streamErr != nil {
-		return fmt.Errorf("streaming archive: %w", streamErr)
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	// Open for reading and upload to cold storage.
+	sstFile, err := os.Open(tmpPath)
+	if err != nil {
+		return fmt.Errorf("opening SST archive for upload: %w", err)
 	}
+
+	uploadErr := a.coldStorage.Archive(ctx, a.bucketID, req.PeriodID, sstFile)
+	_ = sstFile.Close()
 
 	if uploadErr != nil {
 		return fmt.Errorf("uploading archive: %w", uploadErr)
@@ -200,21 +188,30 @@ type periodMetadata struct {
 	ArchivedAt    string `json:"archivedAt"`
 }
 
-// streamArchive writes a tar.gz archive to w containing period metadata and a
-// raw binary dump of all cold-storable Pebble KV pairs for the period.
-//
-// It uses a two-pass approach over IterateColdKVPairs to avoid buffering:
-//   - Pass 1: compute the total data.bin size (tar needs it upfront)
-//   - Pass 2: stream KV pairs directly through tar → gzip → w
-//
-// Archive layout:
-//   - metadata.json  — period ID, sequence range, archival timestamp
-//   - data.bin       — raw KV pairs: [keyLen:4][key][valueLen:4][value]...
-func (a *Archiver) streamArchive(req ArchiveRequest, w io.Writer) error {
-	gzWriter := gzip.NewWriter(w)
-	tarWriter := tar.NewWriter(gzWriter)
+// MetadataKey is the SST key used for period metadata.
+// Prefix 0x00 sorts before the cold zone (0x01+) so it won't interfere with queries.
+var MetadataKey = []byte{0x00, 'm', 'e', 't', 'a', 'd', 'a', 't', 'a'}
 
-	// 1. Add period metadata JSON (always small, OK to buffer)
+// buildSSTArchive writes a Pebble SST file to a temp file containing period metadata
+// and all cold-storable KV pairs for the period in a single pass.
+//
+// SST key layout:
+//   - [0x00]["metadata"] → JSON period metadata
+//   - original Pebble keys (0x01+ prefix) → values as-is
+func (a *Archiver) buildSSTArchive(req ArchiveRequest) (string, error) {
+	tmpFile, err := os.CreateTemp("", "cold-archive-*.sst")
+	if err != nil {
+		return "", fmt.Errorf("creating temp file: %w", err)
+	}
+
+	tmpPath := tmpFile.Name()
+
+	writer := sstable.NewWriter(newFileWritable(tmpFile), sstable.WriterOptions{
+		Compression:  sstable.SnappyCompression,
+		FilterPolicy: bloom.FilterPolicy(10),
+	})
+
+	// 1. Write metadata (sorts first due to 0x00 prefix)
 	meta := periodMetadata{
 		PeriodID:      req.PeriodID,
 		StartSequence: req.StartSequence,
@@ -222,95 +219,65 @@ func (a *Archiver) streamArchive(req ArchiveRequest, w io.Writer) error {
 		ArchivedAt:    time.Now().UTC().Format(time.RFC3339),
 	}
 
-	metaJSON, err := json.MarshalIndent(meta, "", "  ")
+	metaJSON, err := json.Marshal(meta)
 	if err != nil {
-		return fmt.Errorf("marshaling period metadata: %w", err)
+		_ = writer.Close()
+		_ = os.Remove(tmpPath)
+
+		return "", fmt.Errorf("marshaling period metadata: %w", err)
 	}
 
-	if err := addTarEntry(tarWriter, "metadata.json", metaJSON); err != nil {
+	if err := writer.Set(MetadataKey, metaJSON); err != nil {
+		_ = writer.Close()
+		_ = os.Remove(tmpPath)
+
+		return "", fmt.Errorf("writing metadata to SST: %w", err)
+	}
+
+	// 2. Write all cold-storable KV pairs (already sorted from Pebble)
+	if err := a.dataStore.IterateColdKVPairs(req.StartSequence, req.CloseSequence, func(key, value []byte) error {
+		return writer.Set(key, value)
+	}); err != nil {
+		_ = writer.Close()
+		_ = os.Remove(tmpPath)
+
+		return "", fmt.Errorf("writing cold KV pairs to SST: %w", err)
+	}
+
+	if err := writer.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+
+		return "", fmt.Errorf("closing SST writer: %w", err)
+	}
+
+	return tmpPath, nil
+}
+
+// fileWritable adapts an *os.File to the objstorage.Writable interface.
+type fileWritable struct {
+	f *os.File
+}
+
+func newFileWritable(f *os.File) objstorage.Writable {
+	return &fileWritable{f: f}
+}
+
+func (w *fileWritable) Write(p []byte) error {
+	_, err := w.f.Write(p)
+
+	return err
+}
+
+func (w *fileWritable) Finish() error {
+	if err := w.f.Sync(); err != nil {
+		_ = w.f.Close()
+
 		return err
 	}
 
-	// 2. Dump all cold-storable KV pairs as raw binary (two-pass streaming)
-	// Pass 1: compute data.bin size so we can write the tar header.
-	var dataSize int64
-
-	if err := a.dataStore.IterateColdKVPairs(req.StartSequence, req.CloseSequence, func(key, value []byte) error {
-		dataSize += 4 + int64(len(key)) + 4 + int64(len(value))
-
-		return nil
-	}); err != nil {
-		return fmt.Errorf("computing data size: %w", err)
-	}
-
-	// Pass 2: stream KV pairs directly into the tar entry.
-	if dataSize > 0 {
-		err := tarWriter.WriteHeader(&tar.Header{
-			Name: "data.bin",
-			Mode: 0o644,
-			Size: dataSize,
-		})
-		if err != nil {
-			return fmt.Errorf("writing tar header for data.bin: %w", err)
-		}
-
-		var lenBuf [4]byte
-
-		err = a.dataStore.IterateColdKVPairs(req.StartSequence, req.CloseSequence, func(key, value []byte) error {
-			binary.BigEndian.PutUint32(lenBuf[:], uint32(len(key)))
-
-			if _, err := tarWriter.Write(lenBuf[:]); err != nil {
-				return err
-			}
-
-			if _, err := tarWriter.Write(key); err != nil {
-				return err
-			}
-
-			binary.BigEndian.PutUint32(lenBuf[:], uint32(len(value)))
-
-			if _, err := tarWriter.Write(lenBuf[:]); err != nil {
-				return err
-			}
-
-			if _, err := tarWriter.Write(value); err != nil {
-				return err
-			}
-
-			return nil
-		})
-		if err != nil {
-			return fmt.Errorf("streaming cold KV pairs: %w", err)
-		}
-	}
-
-	if err := tarWriter.Close(); err != nil {
-		return fmt.Errorf("closing tar writer: %w", err)
-	}
-
-	if err := gzWriter.Close(); err != nil {
-		return fmt.Errorf("closing gzip writer: %w", err)
-	}
-
-	return nil
+	return w.f.Close()
 }
 
-// addTarEntry adds a file entry to a tar archive.
-func addTarEntry(tw *tar.Writer, name string, data []byte) error {
-	header := &tar.Header{
-		Name: name,
-		Mode: 0o644,
-		Size: int64(len(data)),
-	}
-
-	err := tw.WriteHeader(header)
-	if err != nil {
-		return fmt.Errorf("writing tar header for %s: %w", name, err)
-	}
-
-	if _, err := tw.Write(data); err != nil {
-		return fmt.Errorf("writing tar data for %s: %w", name, err)
-	}
-
-	return nil
+func (w *fileWritable) Abort() {
+	_ = w.f.Close()
 }

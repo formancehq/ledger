@@ -141,6 +141,11 @@ func buildEnvVars(ledger *ledgerv1alpha1.LedgerService) []corev1.EnvVar {
 		}
 	}
 
+	// Cold cache directory — set to the dedicated mount point when cold storage is enabled
+	if cfg.ColdStorage == nil || cfg.ColdStorage.Driver != "none" {
+		envs = append(envs, corev1.EnvVar{Name: "COLD_CACHE_DIR", Value: "/data/cold-cache"})
+	}
+
 	// Health
 	if cfg.Health != nil {
 		envs = appendIfStr(envs, "HEALTH_CHECK_INTERVAL", cfg.Health.Interval)

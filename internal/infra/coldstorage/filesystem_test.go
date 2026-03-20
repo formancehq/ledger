@@ -2,8 +2,7 @@ package coldstorage
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"io"
 	"strings"
 	"testing"
 
@@ -86,9 +85,13 @@ func TestFilesystemStorage_ArchiveReadBack(t *testing.T) {
 	err := fs.Archive(ctx, "bucket", 7, strings.NewReader(content))
 	require.NoError(t, err)
 
-	// Read back the file directly to verify content
-	path := filepath.Join(dir, "bucket", "periods", "7", "archive.tar.gz")
-	data, err := os.ReadFile(path)
+	// Read back via Fetch to verify content
+	rc, err := fs.Fetch(ctx, "bucket", 7)
+	require.NoError(t, err)
+
+	defer func() { _ = rc.Close() }()
+
+	data, err := io.ReadAll(rc)
 	require.NoError(t, err)
 	require.Equal(t, content, string(data))
 }
