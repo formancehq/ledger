@@ -435,6 +435,9 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	ctx, fsmSpan := tracer.Start(ctx, "admission.fsm_wait")
 	fsmWaitStart := time.Now()
 	result, err := fsmFuture.Wait()
+	if err != nil {
+		return nil, err
+	}
 
 	a.fsmFutureWaitHistogram.Record(ctx, time.Since(fsmWaitStart).Microseconds())
 	fsmSpan.End()
