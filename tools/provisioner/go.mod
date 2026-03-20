@@ -8,7 +8,7 @@ replace (
 )
 
 require (
-	github.com/formancehq/go-libs/v4 v4.0.1-0.20260320141827-56bca73d45aa
+	github.com/formancehq/go-libs/v4 v4.1.3
 	github.com/formancehq/ledger v0.0.0-00010101000000-000000000000
 	github.com/formancehq/ledger/pkg/client v0.0.0-00010101000000-000000000000
 	github.com/google/go-cmp v0.7.0

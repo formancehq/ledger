@@ -51,7 +51,7 @@ require (
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.37.2
-	github.com/formancehq/go-libs/v4 v4.0.1-0.20260320141827-56bca73d45aa
+	github.com/formancehq/go-libs/v4 v4.1.3
 	github.com/go-jose/go-jose/v4 v4.1.3
 	github.com/iancoleman/strcase v0.3.0
 	github.com/mitchellh/mapstructure v1.5.0
