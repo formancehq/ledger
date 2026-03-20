@@ -102,9 +102,21 @@ func (a *AttributeCache[T]) Reset() {
 	a.gen1.Store(newShardedMap[T]())
 }
 
-// IsGuaranteedInCache checks if a key will still be in the cache when we reach
-// the future raft index `at`. This is used to determine if cached data will survive
-// until a future point in time.
+// CacheStatus describes the result of checking a key against the dual-generation cache.
+type CacheStatus int
+
+const (
+	// CacheGuaranteed means the key is in cache and will survive until the target index.
+	CacheGuaranteed CacheStatus = iota
+	// CacheNeedsTouch means the key is in Gen1 but not Gen0 — a touch (Gen1→Gen0 promotion)
+	// will keep it alive without a store read.
+	CacheNeedsTouch
+	// CacheMiss means the key is not in cache at all — a full preload from store is needed.
+	CacheMiss
+)
+
+// CheckCache determines whether a key will survive in cache until the future raft
+// index `at`, needs a touch (promotion from Gen1 to Gen0), or is a full miss.
 //
 // The cache uses a dual-generation system where:
 // - Gen0 contains data from the current generation
@@ -116,32 +128,58 @@ func (a *AttributeCache[T]) Reset() {
 // predicted generation matches the actual Raft index progression.
 //
 // This method only takes a brief shared RLock on a single shard.
-func (a *AttributeCache[T]) IsGuaranteedInCache(at uint64, k attributes.U128) bool {
+func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus {
 	threshold := a.Cache.GenerationThreshold // immutable after init
 	if threshold == 0 {
-		return false
+		return CacheMiss
 	}
 
 	actualGeneration := a.Cache.currentGeneration.Load()
 	futureGeneration := gen(at, threshold)
 
-	// Check how far ahead the target generation is from current
 	switch futureGeneration - actualGeneration {
 	case 0:
 		// Same generation — no rotation expected.
-		// Data in Gen0 or Gen1 will survive.
-		_, ok := a.Get(k)
+		if _, ok := a.gen0.Load().Get(k); ok {
+			return CacheGuaranteed
+		}
 
-		return ok
+		if _, ok := a.gen1.Load().Get(k); ok {
+			// Key in Gen1 but not Gen0 — will survive this generation,
+			// but needs a touch to survive the next rotation.
+			return CacheNeedsTouch
+		}
+
+		return CacheMiss
 	case 1:
 		// Next generation — one rotation expected.
 		// Only Gen0 data survives (it becomes Gen1 after rotation).
-		_, ok := a.gen0.Load().Get(k)
+		if _, ok := a.gen0.Load().Get(k); ok {
+			return CacheGuaranteed
+		}
 
-		return ok
+		// A touch is NOT safe here: the FSM applies rotation BEFORE touches,
+		// so Gen1 would be discarded before the touch can promote the key.
+
+		return CacheMiss
 	default:
-		// 2+ generations ahead - too many rotations, data will be lost
-		return false
+		// 2+ generations ahead — data will be lost regardless.
+		return CacheMiss
+	}
+}
+
+// IsGuaranteedInCache checks if a key will still be in the cache when we reach
+// the future raft index `at`. Convenience wrapper around CheckCache.
+func (a *AttributeCache[T]) IsGuaranteedInCache(at uint64, k attributes.U128) bool {
+	return a.CheckCache(at, k) == CacheGuaranteed
+}
+
+// Touch promotes a key from Gen1 to Gen0. This ensures the key survives
+// the next rotation without needing a full preload from store.
+// Called only from the FSM goroutine (same as Put/Del).
+func (a *AttributeCache[T]) Touch(k attributes.U128) {
+	if v, ok := a.gen1.Load().Get(k); ok {
+		a.gen0.Load().Put(k, v)
 	}
 }
 

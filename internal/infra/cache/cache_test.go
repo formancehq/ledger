@@ -263,10 +263,11 @@ func TestAttributeCache_IsGuaranteedInCache_SameGeneration(t *testing.T) {
 	nonExistent := attributes.NewU128(99, 99)
 	assert.False(t, ac.IsGuaranteedInCache(5, nonExistent))
 
-	// Key in Gen1 only IS guaranteed in same generation (no rotation expected)
+	// Key in Gen1 only needs a touch — not guaranteed (would be lost after next rotation)
 	gen1Key := attributes.NewU128(3, 3)
 	ac.Gen1().Put(gen1Key, attributes.Entry[*raftcmdpb.VolumePair]{})
-	assert.True(t, ac.IsGuaranteedInCache(5, gen1Key))
+	assert.False(t, ac.IsGuaranteedInCache(5, gen1Key))
+	assert.Equal(t, CacheNeedsTouch, ac.CheckCache(5, gen1Key))
 }
 
 func TestAttributeCache_IsGuaranteedInCache_NextGeneration(t *testing.T) {

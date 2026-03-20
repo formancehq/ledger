@@ -657,7 +657,7 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 
 // Preload applies preloaded data to the Machine's volatile state.
 func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
-	if preloadSet == nil || len(preloadSet.GetPreloads()) == 0 {
+	if preloadSet == nil || (len(preloadSet.GetPreloads()) == 0 && len(preloadSet.GetTouches()) == 0) {
 		return nil
 	}
 
@@ -1026,6 +1026,36 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		}
 	}
 
+	// Apply touches: promote keys from Gen1 to Gen0 without a store read.
+	for _, touch := range preloadSet.GetTouches() {
+		id := attributes.U128FromBytes(touch.GetId())
+
+		switch touch.GetType() {
+		case raftcmdpb.CacheTouchType_CACHE_TOUCH_VOLUMES:
+			fsm.Registry.Cache.Volumes.Touch(id)
+		case raftcmdpb.CacheTouchType_CACHE_TOUCH_IDEMPOTENCY_KEYS:
+			fsm.Registry.Cache.IdempotencyKeys.Touch(id)
+		case raftcmdpb.CacheTouchType_CACHE_TOUCH_REFERENCES:
+			fsm.Registry.Cache.References.Touch(id)
+		case raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS:
+			fsm.Registry.Cache.Ledgers.Touch(id)
+		case raftcmdpb.CacheTouchType_CACHE_TOUCH_BOUNDARIES:
+			fsm.Registry.Cache.Boundaries.Touch(id)
+		case raftcmdpb.CacheTouchType_CACHE_TOUCH_SINK_CONFIGS:
+			fsm.Registry.Cache.SinkConfigs.Touch(id)
+		case raftcmdpb.CacheTouchType_CACHE_TOUCH_ACCOUNT_METADATA:
+			fsm.Registry.Cache.AccountMetadata.Touch(id)
+		case raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_VERSIONS:
+			fsm.Registry.Cache.NumscriptVersions.Touch(id)
+		case raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_ENTRIES:
+			fsm.Registry.Cache.NumscriptEntries.Touch(id)
+		case raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_PARSED:
+			fsm.Registry.Cache.NumscriptParsed.Touch(id)
+		case raftcmdpb.CacheTouchType_CACHE_TOUCH_TRANSACTIONS:
+			fsm.Registry.Cache.Transactions.Touch(id)
+		}
+	}
+
 	return nil
 }
 
@@ -1129,17 +1159,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	if err := fsm.Preload(proposal.GetPreload()); err != nil {
 		return nil, err
-	}
-
-	// Promote frequently-read ledger data from gen1→gen0 to prevent eviction.
-	// This avoids unnecessary Pebble reloads via the preload system.
-	// TODO: this is costly on the fsm path, we should be able to promote on generation switch?
-	for _, order := range proposal.GetOrders() {
-		if apply, ok := order.GetType().(*raftcmdpb.Order_Apply); ok {
-			ledgerKey := domain.LedgerKey{Name: apply.Apply.GetLedger()}
-			fsm.Registry.Ledgers.Touch(ledgerKey.Bytes())
-			fsm.Registry.Boundaries.Touch(ledgerKey.Bytes())
-		}
 	}
 
 	// Compute the effective date using the HLC to guarantee monotonicity

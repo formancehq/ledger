@@ -171,10 +171,10 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 	return preloadSet, &ProposalGuard{p: p, token: token}, nil
 }
 
-// preloadResult holds the output of a single attribute-type resolution goroutine.
-type preloadResult struct {
-	preloads []*raftcmdpb.Preload
-	err      error
+// buildResult holds the output of a single attribute-type resolution goroutine.
+type buildResult struct {
+	resolve *resolveResult
+	err     error
 }
 
 // buildPreloadsAt resolves all preload needs at the given nextIndex.
@@ -187,7 +187,7 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 
 	// Each goroutine writes to a distinct results[slot] and a distinct token field.
 	const maxTypes = 11
-	results := make([]preloadResult, maxTypes)
+	results := make([]buildResult, maxTypes)
 
 	var wg sync.WaitGroup
 
@@ -205,129 +205,195 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 
 	if len(needs.Ledgers) > 0 {
 		launch(func(i int) {
-			results[i].preloads, token.Ledgers, results[i].err = resolveStandard(
+			var r *resolveResult
+			r, results[i].err = resolveStandard(
 				needs.Ledgers, nextIndex, boundary,
 				p.cache.Ledgers, p.loaders.Ledgers,
 				p.attrs.Ledger.ComputeValue, p.store,
-				buildLedgerPreload, false, nil,
+				buildLedgerPreload, true,
+				raftcmdpb.CacheTouchType_CACHE_TOUCH_LEDGERS, nil,
 				p.logger, "ledgers",
 			)
+			results[i].resolve = r
+			if r != nil {
+				token.Ledgers = r.tracker
+			}
 		})
 	}
 
 	if len(needs.Boundaries) > 0 {
 		launch(func(i int) {
-			results[i].preloads, token.Boundaries, results[i].err = resolveStandard(
+			var r *resolveResult
+			r, results[i].err = resolveStandard(
 				needs.Boundaries, nextIndex, boundary,
 				p.cache.Boundaries, p.loaders.Boundaries,
 				p.attrs.Boundary.ComputeValue, p.store,
-				buildBoundaryPreload, false, nil,
+				buildBoundaryPreload, true,
+				raftcmdpb.CacheTouchType_CACHE_TOUCH_BOUNDARIES, nil,
 				p.logger, "boundaries",
 			)
+			results[i].resolve = r
+			if r != nil {
+				token.Boundaries = r.tracker
+			}
 		})
 	}
 
 	if len(needs.Volumes) > 0 {
 		launch(func(i int) {
-			results[i].preloads, token.Volumes, results[i].err = resolveStandard(
+			var r *resolveResult
+			r, results[i].err = resolveStandard(
 				needs.Volumes, nextIndex, boundary,
 				p.cache.Volumes, p.loaders.Volumes,
 				p.attrs.Volume.ComputeValue, p.store,
-				buildVolumePreload, true, nil,
+				buildVolumePreload, true,
+				raftcmdpb.CacheTouchType_CACHE_TOUCH_VOLUMES, nil,
 				p.logger, "volumes",
 			)
+			results[i].resolve = r
+			if r != nil {
+				token.Volumes = r.tracker
+			}
 		})
 	}
 
 	if len(needs.IdempotencyKeys) > 0 {
 		launch(func(i int) {
-			results[i].preloads, token.IdempotencyKeys, results[i].err = resolveStandard(
+			var r *resolveResult
+			r, results[i].err = resolveStandard(
 				needs.IdempotencyKeys, nextIndex, boundary,
 				p.cache.IdempotencyKeys, p.loaders.IdempotencyKeys,
 				p.attrs.IdempotencyKeys.ComputeValue, p.store,
-				buildIdempotencyKeyPreload, false, nil,
+				buildIdempotencyKeyPreload, false,
+				raftcmdpb.CacheTouchType_CACHE_TOUCH_IDEMPOTENCY_KEYS, nil,
 				p.logger, "idempotency_keys",
 			)
+			results[i].resolve = r
+			if r != nil {
+				token.IdempotencyKeys = r.tracker
+			}
 		})
 	}
 
 	if len(needs.References) > 0 {
 		launch(func(i int) {
-			results[i].preloads, token.References, results[i].err = resolveStandard(
+			var r *resolveResult
+			r, results[i].err = resolveStandard(
 				needs.References, nextIndex, boundary,
 				p.cache.References, p.loaders.References,
 				p.attrs.References.ComputeValue, p.store,
-				buildReferencePreload, false, nil,
+				buildReferencePreload, false,
+				raftcmdpb.CacheTouchType_CACHE_TOUCH_REFERENCES, nil,
 				p.logger, "references",
 			)
+			results[i].resolve = r
+			if r != nil {
+				token.References = r.tracker
+			}
 		})
 	}
 
 	if len(needs.SinkConfigs) > 0 {
 		launch(func(i int) {
-			results[i].preloads, token.SinkConfigs, results[i].err = resolveCustom(
+			var r *resolveResult
+			r, results[i].err = resolveCustom(
 				needs.SinkConfigs, nextIndex, boundary,
 				p.cache.SinkConfigs, p.loaders.SinkConfigs,
-				buildSinkConfigPreload, false, nil,
+				buildSinkConfigPreload, false,
+				raftcmdpb.CacheTouchType_CACHE_TOUCH_SINK_CONFIGS, nil,
 				p.logger, "sink_configs",
 			)
+			results[i].resolve = r
+			if r != nil {
+				token.SinkConfigs = r.tracker
+			}
 		})
 	}
 
 	if len(needs.NumscriptVersions) > 0 {
 		launch(func(i int) {
-			results[i].preloads, token.NumscriptVersions, results[i].err = resolveCustom(
+			var r *resolveResult
+			r, results[i].err = resolveCustom(
 				needs.NumscriptVersions, nextIndex, boundary,
 				p.cache.NumscriptVersions, p.loaders.NumscriptVersions,
-				buildNumscriptVersionPreload, true, nil,
+				buildNumscriptVersionPreload, true,
+				raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_VERSIONS, nil,
 				p.logger, "numscript_versions",
 			)
+			results[i].resolve = r
+			if r != nil {
+				token.NumscriptVersions = r.tracker
+			}
 		})
 	}
 
 	if len(needs.NumscriptEntries) > 0 {
 		launch(func(i int) {
-			results[i].preloads, token.NumscriptEntries, results[i].err = resolveCustom(
+			var r *resolveResult
+			r, results[i].err = resolveCustom(
 				needs.NumscriptEntries, nextIndex, boundary,
 				p.cache.NumscriptEntries, p.loaders.NumscriptEntries,
-				buildNumscriptEntryPreload, true, nil,
+				buildNumscriptEntryPreload, true,
+				raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_ENTRIES, nil,
 				p.logger, "numscript_entries",
 			)
+			results[i].resolve = r
+			if r != nil {
+				token.NumscriptEntries = r.tracker
+			}
 		})
 	}
 
 	if len(needs.NumscriptParsed) > 0 {
 		launch(func(i int) {
-			results[i].preloads, token.NumscriptParsed, results[i].err = resolveCustom(
+			var r *resolveResult
+			r, results[i].err = resolveCustom(
 				needs.NumscriptParsed, nextIndex, boundary,
 				p.cache.NumscriptParsed, p.loaders.NumscriptParsed,
-				buildNumscriptParsedPreload, true, nil,
+				buildNumscriptParsedPreload, true,
+				raftcmdpb.CacheTouchType_CACHE_TOUCH_NUMSCRIPT_PARSED, nil,
 				p.logger, "numscript_parsed",
 			)
+			results[i].resolve = r
+			if r != nil {
+				token.NumscriptParsed = r.tracker
+			}
 		})
 	}
 
 	if len(needs.Transactions) > 0 {
 		launch(func(i int) {
-			results[i].preloads, token.Transactions, results[i].err = resolveStandard(
+			var r *resolveResult
+			r, results[i].err = resolveStandard(
 				needs.Transactions, nextIndex, boundary,
 				p.cache.Transactions, p.loaders.Transactions,
 				p.attrs.Transaction.ComputeValue, p.store,
-				buildTransactionStatePreload, false, nil,
+				buildTransactionStatePreload, false,
+				raftcmdpb.CacheTouchType_CACHE_TOUCH_TRANSACTIONS, nil,
 				p.logger, "transactions",
 			)
+			results[i].resolve = r
+			if r != nil {
+				token.Transactions = r.tracker
+			}
 		})
 	}
 
 	if len(needs.Metadata) > 0 {
 		launch(func(i int) {
-			results[i].preloads, token.AccountMetadata, results[i].err = resolveStandard(
+			var r *resolveResult
+			r, results[i].err = resolveStandard(
 				needs.Metadata, nextIndex, boundary,
 				p.cache.AccountMetadata, p.loaders.AccountMetadata,
 				p.attrs.Metadata.ComputeValue, p.store,
-				buildMetadataPreload, false, nil,
+				buildMetadataPreload, false,
+				raftcmdpb.CacheTouchType_CACHE_TOUCH_ACCOUNT_METADATA, nil,
 				p.logger, "metadata",
 			)
+			results[i].resolve = r
+			if r != nil {
+				token.AccountMetadata = r.tracker
+			}
 		})
 	}
 
@@ -343,7 +409,10 @@ func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.
 			return nil, token, results[i].err
 		}
 
-		preloadSet.Preloads = append(preloadSet.Preloads, results[i].preloads...)
+		if results[i].resolve != nil {
+			preloadSet.Preloads = append(preloadSet.Preloads, results[i].resolve.preloads...)
+			preloadSet.Touches = append(preloadSet.Touches, results[i].resolve.touches...)
+		}
 	}
 
 	return preloadSet, token, nil

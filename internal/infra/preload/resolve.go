@@ -12,9 +12,16 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
+// resolveResult holds the output of a resolve call: preloads, touches, and tracker keys.
+type resolveResult struct {
+	preloads []*raftcmdpb.Preload
+	touches  []*raftcmdpb.CacheTouch
+	tracker  []attributes.U128
+}
+
 // resolveStandard resolves a standard attribute type (loaded via attrs.*.ComputeValue).
-// For each key not guaranteed in cache, it loads (or waits for) the value and
-// appends a preload entry. Returns updated tracker keys.
+// For each key not guaranteed in cache, it either emits a touch (if the key is
+// in Gen1 but not Gen0) or loads the value from store and appends a preload entry.
 func resolveStandard[K interface {
 	comparable
 	Bytes() []byte
@@ -26,49 +33,70 @@ func resolveStandard[K interface {
 	computeValue func(reader dal.PebbleReader, index uint64, canonicalKey []byte) (T, uint64, error),
 	store dal.PebbleReader,
 	buildPreload func(id *raftcmdpb.AttributeID, value T) *raftcmdpb.Preload,
-	alwaysSend bool,
+	includeZeroValue bool,
+	touchType raftcmdpb.CacheTouchType,
 	tracker []attributes.U128,
 	logger logging.Logger,
 	typeName string,
-) ([]*raftcmdpb.Preload, []attributes.U128, error) {
-	var preloads []*raftcmdpb.Preload
+) (*resolveResult, error) {
+	var (
+		preloads []*raftcmdpb.Preload
+		touches  []*raftcmdpb.CacheTouch
+	)
 
 	for key := range keys {
 		canonicalKey := key.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
-		if attrCache.IsGuaranteedInCache(nextIndex, id) {
+		switch attrCache.CheckCache(nextIndex, id) {
+		case cache.CacheGuaranteed:
 			continue
-		}
 
-		logger.WithFields(map[string]any{
-			"type":      typeName,
-			"key":       hex.EncodeToString(canonicalKey),
-			"nextIndex": nextIndex,
-			"boundary":  boundary,
-		}).Infof("Cache miss: key not guaranteed in cache, loading from store")
+		case cache.CacheNeedsTouch:
+			logger.WithFields(map[string]any{
+				"type":      typeName,
+				"key":       hex.EncodeToString(canonicalKey),
+				"nextIndex": nextIndex,
+				"boundary":  boundary,
+			}).Debugf("Cache touch: promoting key from gen1 to gen0")
 
-		result, err := loader.LoadOrWait(id, boundary, func() (T, uint64, error) {
-			return computeValue(store, boundary, canonicalKey)
-		})
-		if err != nil {
-			return nil, nil, err
-		}
+			touches = append(touches, &raftcmdpb.CacheTouch{
+				Id:   id[:],
+				Type: touchType,
+			})
 
-		if result.FromLoad {
-			tracker = append(tracker, id)
-		}
+			continue
 
-		var zero T
-		hasValue := any(result.Value) != any(zero)
+		case cache.CacheMiss:
+			logger.WithFields(map[string]any{
+				"type":      typeName,
+				"key":       hex.EncodeToString(canonicalKey),
+				"nextIndex": nextIndex,
+				"boundary":  boundary,
+			}).Infof("Cache miss: key not guaranteed in cache, loading from store")
 
-		if alwaysSend || hasValue {
-			attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag, BaseIndex: result.BaseIndex}
-			preloads = append(preloads, buildPreload(attrID, result.Value))
+			result, err := loader.LoadOrWait(id, boundary, func() (T, uint64, error) {
+				return computeValue(store, boundary, canonicalKey)
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			if result.FromLoad {
+				tracker = append(tracker, id)
+			}
+
+			var zero T
+			hasValue := any(result.Value) != any(zero)
+
+			if includeZeroValue || hasValue {
+				attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag, BaseIndex: result.BaseIndex}
+				preloads = append(preloads, buildPreload(attrID, result.Value))
+			}
 		}
 	}
 
-	return preloads, tracker, nil
+	return &resolveResult{preloads: preloads, touches: touches, tracker: tracker}, nil
 }
 
 // resolveCustom resolves a custom attribute type where callers provide load functions.
@@ -83,54 +111,75 @@ func resolveCustom[K interface {
 	attrCache *cache.AttributeCache[T],
 	loader *AttributeLoader[T],
 	buildPreload func(id *raftcmdpb.AttributeID, value T) *raftcmdpb.Preload,
-	alwaysSend bool,
+	includeZeroValue bool,
+	touchType raftcmdpb.CacheTouchType,
 	tracker []attributes.U128,
 	logger logging.Logger,
 	typeName string,
-) ([]*raftcmdpb.Preload, []attributes.U128, error) {
-	var preloads []*raftcmdpb.Preload
+) (*resolveResult, error) {
+	var (
+		preloads []*raftcmdpb.Preload
+		touches  []*raftcmdpb.CacheTouch
+	)
 
 	for key, loadFn := range keys {
 		canonicalKey := key.Bytes()
 		id, tag := attributes.MakeKey(attributes.DefaultSeeds, canonicalKey)
 
-		if attrCache.IsGuaranteedInCache(nextIndex, id) {
+		switch attrCache.CheckCache(nextIndex, id) {
+		case cache.CacheGuaranteed:
 			continue
-		}
 
-		logger.WithFields(map[string]any{
-			"type":      typeName,
-			"key":       hex.EncodeToString(canonicalKey),
-			"nextIndex": nextIndex,
-			"boundary":  boundary,
-		}).Infof("Cache miss: key not guaranteed in cache, loading from store")
+		case cache.CacheNeedsTouch:
+			logger.WithFields(map[string]any{
+				"type":      typeName,
+				"key":       hex.EncodeToString(canonicalKey),
+				"nextIndex": nextIndex,
+				"boundary":  boundary,
+			}).Debugf("Cache touch: promoting key from gen1 to gen0")
 
-		// Wrap loadFn to match the (T, uint64, error) signature — baseIndex=0 for custom types.
-		wrappedFn := func() (T, uint64, error) {
-			v, err := loadFn()
+			touches = append(touches, &raftcmdpb.CacheTouch{
+				Id:   id[:],
+				Type: touchType,
+			})
 
-			return v, 0, err
-		}
+			continue
 
-		result, err := loader.LoadOrWait(id, boundary, wrappedFn)
-		if err != nil {
-			return nil, nil, err
-		}
+		case cache.CacheMiss:
+			logger.WithFields(map[string]any{
+				"type":      typeName,
+				"key":       hex.EncodeToString(canonicalKey),
+				"nextIndex": nextIndex,
+				"boundary":  boundary,
+			}).Infof("Cache miss: key not guaranteed in cache, loading from store")
 
-		if result.FromLoad {
-			tracker = append(tracker, id)
-		}
+			// Wrap loadFn to match the (T, uint64, error) signature — baseIndex=0 for custom types.
+			wrappedFn := func() (T, uint64, error) {
+				v, err := loadFn()
 
-		var zero T
-		hasValue := any(result.Value) != any(zero)
+				return v, 0, err
+			}
 
-		if alwaysSend || hasValue {
-			attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
-			preloads = append(preloads, buildPreload(attrID, result.Value))
+			result, err := loader.LoadOrWait(id, boundary, wrappedFn)
+			if err != nil {
+				return nil, err
+			}
+
+			if result.FromLoad {
+				tracker = append(tracker, id)
+			}
+
+			var zero T
+			hasValue := any(result.Value) != any(zero)
+
+			if includeZeroValue || hasValue {
+				attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
+				preloads = append(preloads, buildPreload(attrID, result.Value))
+			}
 		}
 	}
 
-	return preloads, tracker, nil
+	return &resolveResult{preloads: preloads, touches: touches, tracker: tracker}, nil
 }
 
 // Preload builders — one per attribute type.

@@ -382,6 +382,29 @@ message VolumePair {
 message PreloadSet {
   uint64 lastPersistedIndex = 1;
   repeated Preload preloads = 2;
+  repeated CacheTouch touches = 3;
+}
+
+// CacheTouch tells the FSM to promote a key from Gen1 to Gen0 (no value payload).
+// Used when a key is still in cache (Gen1) but would not survive the next rotation.
+message CacheTouch {
+  bytes id = 1;  // 16-byte U128 identifier
+  CacheTouchType type = 2;
+}
+
+enum CacheTouchType {
+  CACHE_TOUCH_UNSPECIFIED = 0;
+  CACHE_TOUCH_VOLUMES = 1;
+  CACHE_TOUCH_IDEMPOTENCY_KEYS = 2;
+  CACHE_TOUCH_REFERENCES = 3;
+  CACHE_TOUCH_LEDGERS = 4;
+  CACHE_TOUCH_BOUNDARIES = 5;
+  CACHE_TOUCH_SINK_CONFIGS = 6;
+  CACHE_TOUCH_ACCOUNT_METADATA = 7;
+  CACHE_TOUCH_NUMSCRIPT_VERSIONS = 8;
+  CACHE_TOUCH_NUMSCRIPT_ENTRIES = 9;
+  CACHE_TOUCH_NUMSCRIPT_PARSED = 10;
+  CACHE_TOUCH_TRANSACTIONS = 11;
 }
 
 message Preload {
