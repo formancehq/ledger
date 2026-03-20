@@ -1550,15 +1550,19 @@ paths:
             example: ledger001
       responses:
         "200":
-          description: Import OK
-        default:
-          description: Error
+          description: Export OK
           content:
             application/octet-stream:
               schema:
                 title: bytes
                 type: string
                 format: binary
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write

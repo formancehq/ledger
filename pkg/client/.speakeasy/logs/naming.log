@@ -239,7 +239,7 @@ V2ListLogsResponse (HttpMeta: HTTPMetadata, V2LogsCursorResponse: V2LogsCursorRe
 V2ImportLogsRequest (ledger: string, V2ImportLogsRequest: V2ImportLogsRequest)
 V2ImportLogsResponse (HttpMeta: HTTPMetadata)
 V2ExportLogsRequest (ledger: string)
-V2ExportLogsResponse (HttpMeta: HTTPMetadata)
+V2ExportLogsResponse (HttpMeta: HTTPMetadata, bytes: response-stream)
 V2RunQueryRequest (ledger: string, schemaVersion: string, id: string ...)
  V2RunQueryQueryParamOrder (enum: effective)
  V2RunQueryRequestBody (cursor: string, params: V2QueryParams, vars: map)

@@ -1,16 +1,16 @@
 lockVersion: 2.0.0
 id: a9ac79e1-e429-4ee3-96c4-ec973f19bec3
 management:
-  docChecksum: c5b4551fc6808954a5f7d5d88ffe10a1
+  docChecksum: 4f916558c54519db7a63cf911afd01dd
   docVersion: v2
   speakeasyVersion: 1.758.0
   generationVersion: 2.866.2
   releaseVersion: 0.10.2
   configChecksum: dd46b48d25fdb2a8e05e819ac208a15f
 persistentEdits:
-  generation_id: 3163430d-cc33-4fb6-b3c4-119f1931d52c
-  pristine_commit_hash: 5745ccca575fcf32e3b890bc261e46a5e3bb3bd6
-  pristine_tree_hash: 765d2e8a04f98637886ab8772183a42e4a8bd5b4
+  generation_id: 78d961e5-d685-4e2a-956e-532633c8aee5
+  pristine_commit_hash: 36186443bbb8744e5082821939cad8330ef65ee2
+  pristine_tree_hash: 946b90a0eee1f6383ea3c4459dfa1cc38d73b2b5
 features:
   go:
     additionalDependencies: 0.1.0
@@ -965,8 +965,8 @@ trackedFiles:
     pristine_git_object: 6603f0c3e179cf6ec3d9393133d44dbf7b106209
   docs/models/operations/v2exportlogsresponse.md:
     id: 23c951890daf
-    last_write_checksum: sha1:e0caf4627446c8e83883aec0926116ce0841b635
-    pristine_git_object: 488d5b56e65e2972465b4c97b5fc1998a2f0ee97
+    last_write_checksum: sha1:9c1864a5a81c6c4b1769a4772260aa7a95045eb7
+    pristine_git_object: 743f5be12d2ab5fe4c266d15b509ca3143f9685d
   docs/models/operations/v2getaccountrequest.md:
     id: af5bce1f6736
     last_write_checksum: sha1:087a9e421af62f297eb6aea85de7cd4104f550eb
@@ -1213,8 +1213,8 @@ trackedFiles:
     pristine_git_object: 95bb7a8c46e4d169ade75346257f43c31b339c3d
   docs/sdks/v2/README.md:
     id: 1fff216d9073
-    last_write_checksum: sha1:513d8813188ca54e5553c96010fc302f5f212fa3
-    pristine_git_object: fecff63655b6ac4d52551ef1d8190fc1f4221c31
+    last_write_checksum: sha1:1147b3271159578c782e59728c3079338521bc3f
+    pristine_git_object: 45eac0a492246a64f20f324d3d80370255b492ff
   formance.go:
     id: 6a39aafd73d7
     last_write_checksum: sha1:627a105b55cd18cc71d68b29e5d329528b088915
@@ -1781,8 +1781,8 @@ trackedFiles:
     pristine_git_object: ee9a41c4957e487dc8c22793d28ac69b486920f5
   models/operations/options.go:
     id: d20dd4db9865
-    last_write_checksum: sha1:0bf9a35b9d9e3b28b1d50ba209354eaa7c497537
-    pristine_git_object: 93d24534c66f5b94d5696d69b10b210d9db830cb
+    last_write_checksum: sha1:af35fd92782f1a5d27666aca93fbe16781adc655
+    pristine_git_object: 63c30ba932cadcbc1a9aa1bf66b7e398347b0274
   models/operations/readstats.go:
     id: 7b8938c59c52
     last_write_checksum: sha1:157a72fc794dfed93f7e2da6593de876f46934b1
@@ -1861,8 +1861,8 @@ trackedFiles:
     pristine_git_object: 4a5c330a2da89c90de0a6973a16584649cd4e586
   models/operations/v2exportlogs.go:
     id: 4331cb2cd664
-    last_write_checksum: sha1:629d6fb5357d599d5f594db0e6a8169d6cb35298
-    pristine_git_object: 8458aa1f629e20654f3c02a076a3f79ab781f862
+    last_write_checksum: sha1:b5fc819836a0320a061044c8913e14d42f72efa3
+    pristine_git_object: 5c7231f29f79a454832fe0c9f863bc0bdac0b800
   models/operations/v2getaccount.go:
     id: c8f3948ab2fc
     last_write_checksum: sha1:a093b59807e7a1926cd054233463820f031e4083
@@ -2021,8 +2021,8 @@ trackedFiles:
     pristine_git_object: 826e59e393c569765d0cd3cefd6859f4e3c6513a
   v2.go:
     id: eeaf7a3656c7
-    last_write_checksum: sha1:7a6b4b8161fcb0a8367d5132e18781a3ff19161e
-    pristine_git_object: a5fa59bfa097983c29ab48aceb6f4df1ae05ce46
+    last_write_checksum: sha1:dc7dd0fb18935965d9dac1091c9afac8442fa785
+    pristine_git_object: dba53256fa9f3fa28aaeab16acf766fb7ff7cfdd
 examples:
   v2GetInfo:
     speakeasy-default-v2-get-info:
@@ -2591,6 +2591,11 @@ examples:
       parameters:
         path:
           ledger: "ledger001"
+      responses:
+        "200":
+          application/octet-stream: "x-file: example.file"
+        default:
+          application/json: {"errorCode": "VALIDATION", "errorMessage": "[VALIDATION] invalid 'cursor' query param", "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"}
   v2ListConnectors:
     speakeasy-default-v2-list-connectors:
       responses:

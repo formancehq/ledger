@@ -4,6 +4,7 @@ package operations
 
 import (
 	"github.com/formancehq/ledger/pkg/client/models/components"
+	"io"
 )
 
 type V2ExportLogsRequest struct {
@@ -23,6 +24,9 @@ func (v *V2ExportLogsRequest) GetLedger() string {
 
 type V2ExportLogsResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
+	// Export OK
+	// The Close method must be called on this field, even if it is not used, to prevent resource leaks.
+	Bytes io.ReadCloser
 }
 
 func (v *V2ExportLogsResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -30,6 +34,13 @@ func (v *V2ExportLogsResponse) GetHTTPMeta() components.HTTPMetadata {
 		return components.HTTPMetadata{}
 	}
 	return v.HTTPMeta
+}
+
+func (v *V2ExportLogsResponse) GetBytes() io.ReadCloser {
+	if v == nil {
+		return nil
+	}
+	return v.Bytes
 }
 
 // #region class-body-v2exportlogsresponse
