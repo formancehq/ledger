@@ -96,6 +96,9 @@ type Buffered struct {
 	pendingNumscriptWrites  []*commonpb.NumscriptInfo
 	pendingNumscriptDeletes []numscriptDeleteEntry
 
+	// pendingLedgerDeletions holds ledger names scheduled for data cleanup during Merge.
+	pendingLedgerDeletions []string
+
 	// volumeUpdates is populated during Merge for post-commit verification.
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 }
@@ -132,13 +135,19 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	}
 
 	// Process Boundary updates
-	boundaryUpdates, _, err := b.Derived.Boundaries.Merge(index)
+	boundaryUpdates, boundaryDeletions, err := b.Derived.Boundaries.Merge(index)
 	if err != nil {
 		return fmt.Errorf("failed to merge boundaries: %w", err)
 	}
 
 	if err := mergeSimple(b.attrs.Boundary, batch, index, boundaryUpdates); err != nil {
 		return fmt.Errorf("failed merging boundary attributes: %w", err)
+	}
+
+	for _, deletion := range boundaryDeletions {
+		if err := b.attrs.Boundary.Delete(batch, deletion.CanonicalKey); err != nil {
+			return fmt.Errorf("failed deleting boundary attribute: %w", err)
+		}
 	}
 
 	// Process Volume updates — all volumes are now always preloaded with Known values.
@@ -365,6 +374,34 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		}
 	}
 
+	// Register pending ledger data cleanups (deferred to purge time).
+	// Find the delete sequence for each pending deletion from the logs.
+	if len(b.pendingLedgerDeletions) > 0 {
+		deleteSequences := make(map[string]uint64, len(b.pendingLedgerDeletions))
+
+		for _, log := range b.PendingLogs {
+			if dl := log.GetPayload().GetDeleteLedger(); dl != nil && dl.GetInfo() != nil {
+				deleteSequences[dl.GetInfo().GetName()] = log.GetSequence()
+			}
+		}
+
+		for _, ledgerName := range b.pendingLedgerDeletions {
+			seq := deleteSequences[ledgerName]
+
+			if err := SavePendingLedgerCleanup(batch, ledgerName, seq); err != nil {
+				return fmt.Errorf("saving pending ledger cleanup for %q: %w", ledgerName, err)
+			}
+
+			b.fsm.pendingLedgerCleanups[ledgerName] = seq
+
+			// Boundary deletion is handled above via boundaryDeletions
+			// (MarkLedgerForCleanup adds a Delete to the Derived.Boundaries overlay).
+
+			// Clean in-memory reversion bitset — not needed after deletion.
+			delete(b.fsm.Registry.Reversions, ledgerName)
+		}
+	}
+
 	b.PendingLogs = nil
 	b.fsm.nextSequenceID = b.NextSequenceID
 	b.fsm.lastLogHash = b.LastLogHash
@@ -411,6 +448,14 @@ func (b *Buffered) GetLedger(name string) (*commonpb.LedgerInfo, bool) {
 
 func (b *Buffered) PutLedger(name string, info *commonpb.LedgerInfo) {
 	b.Derived.Ledgers.Put(domain.LedgerKey{Name: name}, info)
+}
+
+func (b *Buffered) MarkLedgerForCleanup(ledger string) {
+	b.pendingLedgerDeletions = append(b.pendingLedgerDeletions, ledger)
+	// Remove boundary from the in-memory overlay so that subsequent
+	// GetBoundaries calls return (nil, false) — both within this proposal
+	// and in future proposals after Merge propagates the deletion.
+	b.Derived.Boundaries.Delete(domain.LedgerKey{Name: ledger})
 }
 
 func (b *Buffered) GetBoundaries(ledger string) (*raftcmdpb.LedgerBoundaries, bool) {
@@ -750,6 +795,8 @@ func (b *Buffered) SetPendingArchive(periodID, startSequence, closeSequence uint
 }
 
 // executePurge deletes cold-storable data for a single purge range.
+// It also cleans up per-ledger data for any deleted ledgers whose
+// DeleteLedger log falls within the purge range.
 func (b *Buffered) executePurge(batch *dal.Batch, pr *purgeRange) error {
 	// Sequence-keyed prefixes (logs, audit): efficient range delete.
 	for _, prefix := range dal.ColdSequencePrefixes {
@@ -760,6 +807,22 @@ func (b *Buffered) executePurge(batch *dal.Batch, pr *purgeRange) error {
 		err := batch.DeleteRange(start, end, nil)
 		if err != nil {
 			return fmt.Errorf("purging prefix 0x%02x [%d, %d]: %w", prefix, pr.startSequence, pr.closeSequence, err)
+		}
+	}
+
+	// Clean up per-ledger data for deleted ledgers whose delete log
+	// falls within this purge range.
+	for ledgerName, deleteSeq := range b.fsm.pendingLedgerCleanups {
+		if deleteSeq >= pr.startSequence && deleteSeq <= pr.closeSequence {
+			if err := DeleteLedgerData(batch, ledgerName); err != nil {
+				return fmt.Errorf("purging ledger data for %q: %w", ledgerName, err)
+			}
+
+			if err := DeletePendingLedgerCleanup(batch, ledgerName); err != nil {
+				return fmt.Errorf("removing pending cleanup entry for %q: %w", ledgerName, err)
+			}
+
+			delete(b.fsm.pendingLedgerCleanups, ledgerName)
 		}
 	}
 

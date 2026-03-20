@@ -99,6 +99,7 @@ func TestProcessDeleteLedger(t *testing.T) {
 	mockStore.EXPECT().GetLedger("test-ledger").Return(existingLedger, true)
 	mockStore.EXPECT().GetDate().Return(now)
 	mockStore.EXPECT().PutLedger("test-ledger", gomock.Any())
+	mockStore.EXPECT().MarkLedgerForCleanup("test-ledger")
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_DeleteLedger{

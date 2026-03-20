@@ -52,6 +52,12 @@ type Machine struct {
 	Registry *StateRegistry // 10 KeyStores + Cache + Attrs (includes NumscriptVersions/NumscriptEntries)
 	Periods  *PeriodTracker // Period lifecycle
 
+	// pendingLedgerCleanups tracks deleted ledgers whose Pebble data has not
+	// yet been purged. Map key is the ledger name; value is the sequence number
+	// of the DeleteLedger log. Data is cleaned up when the purge range covers
+	// the delete sequence.
+	pendingLedgerCleanups map[string]uint64
+
 	// FSM mechanics
 	nextSequenceID      uint64
 	nextAuditSequenceID uint64
@@ -273,6 +279,15 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	sharedState.SetAuditEnabled(auditEnabled)
 	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadSharedState done")
 
+	stepStart = time.Now()
+
+	pendingCleanups, err := query.ReadPendingLedgerCleanups(dataStore)
+	if err != nil {
+		return nil, fmt.Errorf("loading pending ledger cleanups from store: %w", err)
+	}
+
+	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String(), "count": len(pendingCleanups)}).Infof("FSM: ReadPendingLedgerCleanups done")
+
 	fsm := &Machine{
 		logger:                      logger,
 		dataStore:                   dataStore,
@@ -297,6 +312,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		archiveRequestCh:            make(chan ArchiveRequest, 1),
 		metadataConvertRequestCh:    make(chan MetadataConvertRequest, 16),
 		coldCompactionCh:            make(chan struct{}, 1),
+		pendingLedgerCleanups:       pendingCleanups,
 	}
 	fsm.appliedCond = sync.NewCond(&fsm.appliedMu)
 
@@ -1344,19 +1360,29 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		})
 	}
 
+	// Serialize pending ledger cleanups
+	pendingCleanups := make([]*raftcmdpb.PendingLedgerCleanup, 0, len(fsm.pendingLedgerCleanups))
+	for ledger, seq := range fsm.pendingLedgerCleanups {
+		pendingCleanups = append(pendingCleanups, &raftcmdpb.PendingLedgerCleanup{
+			Ledger:         ledger,
+			DeleteSequence: seq,
+		})
+	}
+
 	serializeStart := time.Now()
 	snapshot := &raftcmdpb.MemorySnapshot{
-		NextSequenceId:       fsm.nextSequenceID,
-		LastLogHash:          fsm.lastLogHash,
-		CheckpointId:         checkpointID,
-		CurrentGeneration:    fsm.Registry.Cache.CurrentGeneration(),
-		LastAppliedTimestamp: fsm.lastAppliedTimestamp,
-		NextAuditSequenceId:  fsm.nextAuditSequenceID,
-		OpenPeriod:           fsm.Periods.CurrentOpenPeriod(),
-		ClosingPeriods:       fsm.Periods.ClosingPeriods(),
-		NextPeriodId:         fsm.Periods.NextPeriodID(),
-		ClosedPeriods:        closedPeriods,
-		Reversions:           reversions,
+		NextSequenceId:        fsm.nextSequenceID,
+		LastLogHash:           fsm.lastLogHash,
+		CheckpointId:          checkpointID,
+		CurrentGeneration:     fsm.Registry.Cache.CurrentGeneration(),
+		LastAppliedTimestamp:  fsm.lastAppliedTimestamp,
+		NextAuditSequenceId:   fsm.nextAuditSequenceID,
+		OpenPeriod:            fsm.Periods.CurrentOpenPeriod(),
+		ClosingPeriods:        fsm.Periods.ClosingPeriods(),
+		NextPeriodId:          fsm.Periods.NextPeriodID(),
+		ClosedPeriods:         closedPeriods,
+		Reversions:            reversions,
+		PendingLedgerCleanups: pendingCleanups,
 	}
 
 	size := snapshot.SizeVT()
@@ -1875,6 +1901,13 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 
 	for _, entry := range memSnapshot.GetReversions() {
 		fsm.Registry.Reversions[entry.GetLedger()] = domain.ReversionBitsetFromWords(entry.GetWords())
+	}
+
+	// Restore pending ledger cleanups from snapshot
+	fsm.pendingLedgerCleanups = make(map[string]uint64, len(memSnapshot.GetPendingLedgerCleanups()))
+
+	for _, entry := range memSnapshot.GetPendingLedgerCleanups() {
+		fsm.pendingLedgerCleanups[entry.GetLedger()] = entry.GetDeleteSequence()
 	}
 
 	fsm.logger.WithFields(map[string]any{

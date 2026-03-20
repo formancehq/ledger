@@ -47,20 +47,21 @@ type testEngine struct {
 	cache     *cache.Cache
 
 	// In-memory state tracking (mirroring the state machine)
-	nextSequenceID    uint64
-	lastLogHash       []byte
-	ledgers           map[string]*commonpb.LedgerInfo
-	boundaries        map[string]*raftcmdpb.LedgerBoundaries
-	volumes           map[string]*raftcmdpb.VolumePair
-	metadata          map[string]*commonpb.MetadataValue
-	idempotency       map[string]*commonpb.IdempotencyKeyValue
-	references        map[string]*commonpb.TransactionReferenceValue
-	transactionStates map[string]*commonpb.TransactionState
-	currentOpenPeriod *commonpb.Period
-	closingPeriods    []*commonpb.Period
-	nextPeriodID      uint64
-	hasher            *blake3.Hasher
-	raftIndex         uint64
+	nextSequenceID         uint64
+	lastLogHash            []byte
+	ledgers                map[string]*commonpb.LedgerInfo
+	boundaries             map[string]*raftcmdpb.LedgerBoundaries
+	volumes                map[string]*raftcmdpb.VolumePair
+	metadata               map[string]*commonpb.MetadataValue
+	idempotency            map[string]*commonpb.IdempotencyKeyValue
+	references             map[string]*commonpb.TransactionReferenceValue
+	transactionStates      map[string]*commonpb.TransactionState
+	currentOpenPeriod      *commonpb.Period
+	closingPeriods         []*commonpb.Period
+	nextPeriodID           uint64
+	hasher                 *blake3.Hasher
+	raftIndex              uint64
+	pendingLedgerDeletions []string
 }
 
 func newTestEngine(t *testing.T) *testEngine {
@@ -185,6 +186,16 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		err = e.attrs.Ledger.Set(batch, e.raftIndex, domain.LedgerKey{Name: info.GetName()}.Bytes(), info)
 		require.NoError(e.t, err)
 	}
+
+	// For deleted ledgers, remove boundary from in-memory state (blocks
+	// subsequent operations) but keep all other data — it stays in Pebble
+	// until the purge cycle cleans it up.
+	for _, ledgerName := range e.pendingLedgerDeletions {
+		require.NoError(e.t, e.attrs.Boundary.Delete(batch, domain.LedgerKey{Name: ledgerName}.Bytes()))
+		delete(e.boundaries, ledgerName)
+	}
+
+	e.pendingLedgerDeletions = nil
 
 	err = state.SetAppliedIndex(batch, e.raftIndex)
 	require.NoError(e.t, err)
@@ -420,6 +431,9 @@ func (s *inMemoryStore) GetNumscriptLatestVersion(_, _ string) (string, error) {
 func (s *inMemoryStore) NumscriptVersionExists(_, _, _ string) (bool, error)   { return false, nil }
 func (s *inMemoryStore) PutNumscript(_ *commonpb.NumscriptInfo)                {}
 func (s *inMemoryStore) DeleteNumscriptLatest(_, _ string)                     {}
+func (s *inMemoryStore) MarkLedgerForCleanup(ledger string) {
+	s.engine.pendingLedgerDeletions = append(s.engine.pendingLedgerDeletions, ledger)
+}
 
 // Helper functions for building orders
 

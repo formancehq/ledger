@@ -55,6 +55,7 @@ func (p *RequestProcessor) processDeleteLedger(order *raftcmdpb.DeleteLedgerOrde
 	l.DeletedAt = s.GetDate()
 
 	s.PutLedger(order.GetName(), l)
+	s.MarkLedgerForCleanup(order.GetName())
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeleteLedger{

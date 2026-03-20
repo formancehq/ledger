@@ -460,6 +460,18 @@ func (mr *MockInMemoryStoreMockRecorder) IncrementNextSequenceID() *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrementNextSequenceID", reflect.TypeOf((*MockInMemoryStore)(nil).IncrementNextSequenceID))
 }
 
+// MarkLedgerForCleanup mocks base method.
+func (m *MockInMemoryStore) MarkLedgerForCleanup(ledger string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "MarkLedgerForCleanup", ledger)
+}
+
+// MarkLedgerForCleanup indicates an expected call of MarkLedgerForCleanup.
+func (mr *MockInMemoryStoreMockRecorder) MarkLedgerForCleanup(ledger any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkLedgerForCleanup", reflect.TypeOf((*MockInMemoryStore)(nil).MarkLedgerForCleanup), ledger)
+}
+
 // NumscriptVersionExists mocks base method.
 func (m *MockInMemoryStore) NumscriptVersionExists(ledger, name, version string) (bool, error) {
 	m.ctrl.T.Helper()

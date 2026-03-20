@@ -475,6 +475,16 @@ message MemorySnapshot {
   uint64 next_period_id = 11;
   repeated common.Period closed_periods = 12;  // CLOSED + ARCHIVED periods (non-purged)
   repeated ReversionBitsetEntry reversions = 13;  // Per-ledger reversion bitsets
+  repeated PendingLedgerCleanup pending_ledger_cleanups = 14;  // Ledgers awaiting data cleanup at purge time
+}
+
+// PendingLedgerCleanup tracks a deleted ledger whose Pebble data
+// (volumes, metadata, transactions, per-ledger system keys) has not yet
+// been purged. The cleanup is deferred until the period containing
+// delete_sequence is purged.
+message PendingLedgerCleanup {
+  string ledger = 1;
+  uint64 delete_sequence = 2;
 }
 
 // NodeSnapshot wraps the FSM snapshot with cluster-level metadata.

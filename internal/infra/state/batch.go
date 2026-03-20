@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -418,6 +419,81 @@ func SaveNumscript(b *dal.Batch, info *commonpb.NumscriptInfo) error {
 	err = b.SetBytes(b.KeyBuilder.Build(), []byte(info.GetVersion()))
 	if err != nil {
 		return fmt.Errorf("saving numscript latest version for %q: %w", info.GetName(), err)
+	}
+
+	return nil
+}
+
+// DeleteLedgerData removes all per-ledger data from Pebble for the given ledger.
+// This performs range deletes on:
+//   - Attributes zone (0xF1): volumes, metadata, transactions, references (keyed by [ledger\x00]...)
+//   - Per-ledger system zone: prepared queries (0xE0), numscript (0xE9), numscript latest (0xEA)
+//   - Point deletes: mirror source head (0xEB), mirror cursor (0xEC), mirror status (0xED)
+//
+// LedgerInfo and Boundaries are NOT deleted here — LedgerInfo is kept for "ledger deleted"
+// responses, and Boundaries are handled separately via Attribute.Delete.
+func DeleteLedgerData(b *dal.Batch, ledgerName string) error {
+	// Ledger name followed by null separator — this is the prefix for all
+	// ledger-scoped canonical keys in the attributes zone.
+	ledgerPrefix := append([]byte(ledgerName), 0x00)
+	ledgerPrefixUpper := attributes.IncrementBytes(ledgerPrefix)
+
+	// Range delete all attributes for this ledger: [0xF1][ledger\x00] -> [0xF1][ledger\x01]
+	start := append([]byte{dal.KeyPrefixAttributes}, ledgerPrefix...)
+	end := append([]byte{dal.KeyPrefixAttributes}, ledgerPrefixUpper...)
+
+	if err := b.DeleteRange(start, end, nil); err != nil {
+		return fmt.Errorf("deleting ledger attributes for %q: %w", ledgerName, err)
+	}
+
+	// Range delete prepared queries: [0xE0][ledger\x00] -> [0xE0][ledger\x01]
+	for _, prefix := range []byte{dal.KeyPrefixPreparedQuery, dal.KeyPrefixNumscript, dal.KeyPrefixNumscriptLatest} {
+		start := append([]byte{prefix}, ledgerPrefix...)
+		end := append([]byte{prefix}, ledgerPrefixUpper...)
+
+		if err := b.DeleteRange(start, end, nil); err != nil {
+			return fmt.Errorf("deleting prefix 0x%02x for ledger %q: %w", prefix, ledgerName, err)
+		}
+	}
+
+	// Point deletes for mirror keys (keyed by [prefix][ledgerName], no null separator).
+	for _, prefix := range []byte{dal.KeyPrefixMirrorSourceHead, dal.KeyPrefixMirrorCursor, dal.KeyPrefixMirrorStatus} {
+		key := append([]byte{prefix}, ledgerName...)
+		if err := b.DeleteKey(key); err != nil {
+			return fmt.Errorf("deleting mirror key 0x%02x for ledger %q: %w", prefix, ledgerName, err)
+		}
+	}
+
+	return nil
+}
+
+// SavePendingLedgerCleanup records a deferred ledger data cleanup keyed by ledger name.
+// The value is the sequence number of the DeleteLedger log.
+func SavePendingLedgerCleanup(b *dal.Batch, ledgerName string, deleteSequence uint64) error {
+	b.KeyBuilder.
+		PutByte(dal.KeyPrefixPendingLedgerCleanup).
+		PutString(ledgerName)
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], deleteSequence)
+
+	err := b.SetBytes(b.KeyBuilder.Build(), buf[:])
+	if err != nil {
+		return fmt.Errorf("saving pending ledger cleanup for %q: %w", ledgerName, err)
+	}
+
+	return nil
+}
+
+// DeletePendingLedgerCleanup removes a pending ledger cleanup entry after data has been purged.
+func DeletePendingLedgerCleanup(b *dal.Batch, ledgerName string) error {
+	b.KeyBuilder.
+		PutByte(dal.KeyPrefixPendingLedgerCleanup).
+		PutString(ledgerName)
+
+	err := b.DeleteKey(b.KeyBuilder.Build())
+	if err != nil {
+		return fmt.Errorf("deleting pending ledger cleanup for %q: %w", ledgerName, err)
 	}
 
 	return nil

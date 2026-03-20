@@ -26,6 +26,11 @@ func (wb *WriteBatch) Init(batch *pebble.Batch) {
 	wb.batch = batch
 }
 
+// Batch returns the underlying Pebble batch for direct operations (e.g., range deletes).
+func (wb *WriteBatch) Batch() *pebble.Batch {
+	return wb.batch
+}
+
 // Empty returns true if no operations have been buffered.
 func (wb *WriteBatch) Empty() bool {
 	return wb.count == 0

@@ -234,7 +234,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					knownLedgers[payload.CreateLedger.GetInfo().GetName()] = struct{}{}
 				}
 			case *commonpb.LogPayload_DeleteLedger:
-				// Nothing to track for delete
+				if payload.DeleteLedger != nil && payload.DeleteLedger.GetInfo() != nil {
+					delete(knownLedgers, payload.DeleteLedger.GetInfo().GetName())
+				}
 			case *commonpb.LogPayload_Apply:
 				if payload.Apply != nil {
 					ledgerName := payload.Apply.GetLedgerName()

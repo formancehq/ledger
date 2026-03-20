@@ -103,4 +103,7 @@ type InMemoryStore interface {
 	NumscriptVersionExists(ledger, name, version string) (bool, error)
 	PutNumscript(info *commonpb.NumscriptInfo)
 	DeleteNumscriptLatest(ledger, name string)
+
+	// Ledger cleanup
+	MarkLedgerForCleanup(ledger string)
 }
