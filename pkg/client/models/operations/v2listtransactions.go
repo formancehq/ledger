@@ -65,74 +65,77 @@ func (v V2ListTransactionsRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2ListTransactionsRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2ListTransactionsRequest) GetLedger() string {
-	if o == nil {
+func (v *V2ListTransactionsRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2ListTransactionsRequest) GetPageSize() *int64 {
-	if o == nil {
+func (v *V2ListTransactionsRequest) GetPageSize() *int64 {
+	if v == nil {
 		return nil
 	}
-	return o.PageSize
+	return v.PageSize
 }
 
-func (o *V2ListTransactionsRequest) GetCursor() *string {
-	if o == nil {
+func (v *V2ListTransactionsRequest) GetCursor() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Cursor
+	return v.Cursor
 }
 
-func (o *V2ListTransactionsRequest) GetExpand() *string {
-	if o == nil {
+func (v *V2ListTransactionsRequest) GetExpand() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Expand
+	return v.Expand
 }
 
-func (o *V2ListTransactionsRequest) GetPit() *time.Time {
-	if o == nil {
+func (v *V2ListTransactionsRequest) GetPit() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.Pit
+	return v.Pit
 }
 
-func (o *V2ListTransactionsRequest) GetOrder() *QueryParamOrder {
-	if o == nil {
+func (v *V2ListTransactionsRequest) GetOrder() *QueryParamOrder {
+	if v == nil {
 		return nil
 	}
-	return o.Order
+	return v.Order
 }
 
-func (o *V2ListTransactionsRequest) GetReverse() *bool {
-	if o == nil {
+func (v *V2ListTransactionsRequest) GetReverse() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.Reverse
+	return v.Reverse
 }
 
-func (o *V2ListTransactionsRequest) GetSort() *string {
-	if o == nil {
+func (v *V2ListTransactionsRequest) GetSort() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Sort
+	return v.Sort
 }
 
-func (o *V2ListTransactionsRequest) GetRequestBody() map[string]any {
-	if o == nil {
+func (v *V2ListTransactionsRequest) GetRequestBody() map[string]any {
+	if v == nil {
 		return map[string]any{}
 	}
-	return o.RequestBody
+	return v.RequestBody
 }
+
+// #region class-body-v2listtransactionsrequest
+// #endregion class-body-v2listtransactionsrequest
 
 type V2ListTransactionsResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -140,16 +143,19 @@ type V2ListTransactionsResponse struct {
 	V2TransactionsCursorResponse *components.V2TransactionsCursorResponse
 }
 
-func (o *V2ListTransactionsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2ListTransactionsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2ListTransactionsResponse) GetV2TransactionsCursorResponse() *components.V2TransactionsCursorResponse {
-	if o == nil {
+func (v *V2ListTransactionsResponse) GetV2TransactionsCursorResponse() *components.V2TransactionsCursorResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2TransactionsCursorResponse
+	return v.V2TransactionsCursorResponse
 }
+
+// #region class-body-v2listtransactionsresponse
+// #endregion class-body-v2listtransactionsresponse

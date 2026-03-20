@@ -11,11 +11,11 @@ type GetLedgerInfoRequest struct {
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 }
 
-func (o *GetLedgerInfoRequest) GetLedger() string {
-	if o == nil {
+func (g *GetLedgerInfoRequest) GetLedger() string {
+	if g == nil {
 		return ""
 	}
-	return o.Ledger
+	return g.Ledger
 }
 
 type GetLedgerInfoResponse struct {
@@ -24,16 +24,16 @@ type GetLedgerInfoResponse struct {
 	LedgerInfoResponse *components.LedgerInfoResponse
 }
 
-func (o *GetLedgerInfoResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (g *GetLedgerInfoResponse) GetHTTPMeta() components.HTTPMetadata {
+	if g == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return g.HTTPMeta
 }
 
-func (o *GetLedgerInfoResponse) GetLedgerInfoResponse() *components.LedgerInfoResponse {
-	if o == nil {
+func (g *GetLedgerInfoResponse) GetLedgerInfoResponse() *components.LedgerInfoResponse {
+	if g == nil {
 		return nil
 	}
-	return o.LedgerInfoResponse
+	return g.LedgerInfoResponse
 }

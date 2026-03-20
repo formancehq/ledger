@@ -13,19 +13,22 @@ type V2GetPipelineStateRequest struct {
 	PipelineID string `pathParam:"style=simple,explode=false,name=pipelineID"`
 }
 
-func (o *V2GetPipelineStateRequest) GetLedger() string {
-	if o == nil {
+func (v *V2GetPipelineStateRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2GetPipelineStateRequest) GetPipelineID() string {
-	if o == nil {
+func (v *V2GetPipelineStateRequest) GetPipelineID() string {
+	if v == nil {
 		return ""
 	}
-	return o.PipelineID
+	return v.PipelineID
 }
+
+// #region class-body-v2getpipelinestaterequest
+// #endregion class-body-v2getpipelinestaterequest
 
 type V2GetPipelineStateResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -33,16 +36,19 @@ type V2GetPipelineStateResponse struct {
 	V2GetPipelineStateResponse *components.V2GetPipelineStateResponse
 }
 
-func (o *V2GetPipelineStateResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2GetPipelineStateResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2GetPipelineStateResponse) GetV2GetPipelineStateResponse() *components.V2GetPipelineStateResponse {
-	if o == nil {
+func (v *V2GetPipelineStateResponse) GetV2GetPipelineStateResponse() *components.V2GetPipelineStateResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2GetPipelineStateResponse
+	return v.V2GetPipelineStateResponse
 }
+
+// #region class-body-v2getpipelinestateresponse
+// #endregion class-body-v2getpipelinestateresponse

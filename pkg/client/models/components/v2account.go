@@ -22,57 +22,60 @@ func (v V2Account) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2Account) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"address", "metadata"}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2Account) GetAddress() string {
-	if o == nil {
+func (v *V2Account) GetAddress() string {
+	if v == nil {
 		return ""
 	}
-	return o.Address
+	return v.Address
 }
 
-func (o *V2Account) GetMetadata() map[string]string {
-	if o == nil {
+func (v *V2Account) GetMetadata() map[string]string {
+	if v == nil {
 		return map[string]string{}
 	}
-	return o.Metadata
+	return v.Metadata
 }
 
-func (o *V2Account) GetInsertionDate() *time.Time {
-	if o == nil {
+func (v *V2Account) GetInsertionDate() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.InsertionDate
+	return v.InsertionDate
 }
 
-func (o *V2Account) GetUpdatedAt() *time.Time {
-	if o == nil {
+func (v *V2Account) GetUpdatedAt() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.UpdatedAt
+	return v.UpdatedAt
 }
 
-func (o *V2Account) GetFirstUsage() *time.Time {
-	if o == nil {
+func (v *V2Account) GetFirstUsage() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.FirstUsage
+	return v.FirstUsage
 }
 
-func (o *V2Account) GetVolumes() map[string]V2Volume {
-	if o == nil {
+func (v *V2Account) GetVolumes() map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.Volumes
+	return v.Volumes
 }
 
-func (o *V2Account) GetEffectiveVolumes() map[string]V2Volume {
-	if o == nil {
+func (v *V2Account) GetEffectiveVolumes() map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.EffectiveVolumes
+	return v.EffectiveVolumes
 }
+
+// #region class-body-v2account
+// #endregion class-body-v2account

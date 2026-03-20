@@ -11,12 +11,15 @@ type V2ReadStatsRequest struct {
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 }
 
-func (o *V2ReadStatsRequest) GetLedger() string {
-	if o == nil {
+func (v *V2ReadStatsRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
+
+// #region class-body-v2readstatsrequest
+// #endregion class-body-v2readstatsrequest
 
 type V2ReadStatsResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -24,16 +27,19 @@ type V2ReadStatsResponse struct {
 	V2StatsResponse *components.V2StatsResponse
 }
 
-func (o *V2ReadStatsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2ReadStatsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2ReadStatsResponse) GetV2StatsResponse() *components.V2StatsResponse {
-	if o == nil {
+func (v *V2ReadStatsResponse) GetV2StatsResponse() *components.V2StatsResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2StatsResponse
+	return v.V2StatsResponse
 }
+
+// #region class-body-v2readstatsresponse
+// #endregion class-body-v2readstatsresponse

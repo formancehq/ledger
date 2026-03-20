@@ -11,11 +11,11 @@ type GetMappingRequest struct {
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 }
 
-func (o *GetMappingRequest) GetLedger() string {
-	if o == nil {
+func (g *GetMappingRequest) GetLedger() string {
+	if g == nil {
 		return ""
 	}
-	return o.Ledger
+	return g.Ledger
 }
 
 type GetMappingResponse struct {
@@ -24,16 +24,16 @@ type GetMappingResponse struct {
 	MappingResponse *components.MappingResponse
 }
 
-func (o *GetMappingResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (g *GetMappingResponse) GetHTTPMeta() components.HTTPMetadata {
+	if g == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return g.HTTPMeta
 }
 
-func (o *GetMappingResponse) GetMappingResponse() *components.MappingResponse {
-	if o == nil {
+func (g *GetMappingResponse) GetMappingResponse() *components.MappingResponse {
+	if g == nil {
 		return nil
 	}
-	return o.MappingResponse
+	return g.MappingResponse
 }

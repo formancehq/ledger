@@ -15,8 +15,8 @@ func main() {
 
 	s := client.New(
 		client.WithSecurity(components.Security{
-			ClientID:     client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-			ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+			ClientID:     client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+			ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
 		}),
 	)
 

@@ -9,30 +9,36 @@ import (
 type V2UpdateExporterRequest struct {
 	// The exporter id
 	ExporterID              string                             `pathParam:"style=simple,explode=false,name=exporterID"`
-	V2ExporterConfiguration components.V2ExporterConfiguration `request:"mediaType=application/json"`
+	V2CreateExporterRequest components.V2CreateExporterRequest `request:"mediaType=application/json"`
 }
 
-func (o *V2UpdateExporterRequest) GetExporterID() string {
-	if o == nil {
+func (v *V2UpdateExporterRequest) GetExporterID() string {
+	if v == nil {
 		return ""
 	}
-	return o.ExporterID
+	return v.ExporterID
 }
 
-func (o *V2UpdateExporterRequest) GetV2ExporterConfiguration() components.V2ExporterConfiguration {
-	if o == nil {
-		return components.V2ExporterConfiguration{}
+func (v *V2UpdateExporterRequest) GetV2CreateExporterRequest() components.V2CreateExporterRequest {
+	if v == nil {
+		return components.V2CreateExporterRequest{}
 	}
-	return o.V2ExporterConfiguration
+	return v.V2CreateExporterRequest
 }
+
+// #region class-body-v2updateexporterrequest
+// #endregion class-body-v2updateexporterrequest
 
 type V2UpdateExporterResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 }
 
-func (o *V2UpdateExporterResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2UpdateExporterResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
+
+// #region class-body-v2updateexporterresponse
+// #endregion class-body-v2updateexporterresponse

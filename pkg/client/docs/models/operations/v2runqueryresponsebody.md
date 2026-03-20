@@ -29,3 +29,19 @@ v2RunQueryResponseBody := operations.CreateV2RunQueryResponseBodyV2LogsCursorRes
 v2RunQueryResponseBody := operations.CreateV2RunQueryResponseBodyV2VolumesWithBalanceCursorResponse(components.V2VolumesWithBalanceCursorResponse{/* values here */})
 ```
 
+## Union Discrimination
+
+Use the `Type` field to determine which variant is active, then access the corresponding field:
+
+```go
+switch v2RunQueryResponseBody.Type {
+	case operations.V2RunQueryResponseBodyTypeV2TransactionsCursorResponse:
+		// v2RunQueryResponseBody.V2TransactionsCursorResponse is populated
+	case operations.V2RunQueryResponseBodyTypeV2AccountsCursorResponse:
+		// v2RunQueryResponseBody.V2AccountsCursorResponse is populated
+	case operations.V2RunQueryResponseBodyTypeV2LogsCursorResponse:
+		// v2RunQueryResponseBody.V2LogsCursorResponse is populated
+	case operations.V2RunQueryResponseBodyTypeV2VolumesWithBalanceCursorResponse:
+		// v2RunQueryResponseBody.V2VolumesWithBalanceCursorResponse is populated
+}
+```

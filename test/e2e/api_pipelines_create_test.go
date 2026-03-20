@@ -137,7 +137,7 @@ func runPipelinesTests(ctx context.Context, testServer *deferred.Deferred[*tests
 		setup(func(driver *deferred.Deferred[Driver]) {
 			When("creating a new exporter", func() {
 				var (
-					createExporterRequest  components.V2ExporterConfiguration
+					createExporterRequest  components.V2CreateExporterRequest
 					createExporterResponse *operations.V2CreateExporterResponse
 					err                    error
 				)
@@ -147,7 +147,7 @@ func runPipelinesTests(ctx context.Context, testServer *deferred.Deferred[*tests
 					config["batching"] = map[string]any{
 						"maxItems": 1,
 					}
-					createExporterRequest = components.V2ExporterConfiguration{
+					createExporterRequest = components.V2CreateExporterRequest{
 						Driver: driverName,
 						Config: config,
 					}

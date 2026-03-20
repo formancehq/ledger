@@ -12,16 +12,16 @@ type GetMetricsResponse struct {
 	Object map[string]any
 }
 
-func (o *GetMetricsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (g *GetMetricsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if g == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return g.HTTPMeta
 }
 
-func (o *GetMetricsResponse) GetObject() map[string]any {
-	if o == nil {
+func (g *GetMetricsResponse) GetObject() map[string]any {
+	if g == nil {
 		return nil
 	}
-	return o.Object
+	return g.Object
 }

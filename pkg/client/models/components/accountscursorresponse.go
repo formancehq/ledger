@@ -10,48 +10,48 @@ type Cursor struct {
 	Data     []Account `json:"data"`
 }
 
-func (o *Cursor) GetPageSize() int64 {
-	if o == nil {
+func (c *Cursor) GetPageSize() int64 {
+	if c == nil {
 		return 0
 	}
-	return o.PageSize
+	return c.PageSize
 }
 
-func (o *Cursor) GetHasMore() bool {
-	if o == nil {
+func (c *Cursor) GetHasMore() bool {
+	if c == nil {
 		return false
 	}
-	return o.HasMore
+	return c.HasMore
 }
 
-func (o *Cursor) GetPrevious() *string {
-	if o == nil {
+func (c *Cursor) GetPrevious() *string {
+	if c == nil {
 		return nil
 	}
-	return o.Previous
+	return c.Previous
 }
 
-func (o *Cursor) GetNext() *string {
-	if o == nil {
+func (c *Cursor) GetNext() *string {
+	if c == nil {
 		return nil
 	}
-	return o.Next
+	return c.Next
 }
 
-func (o *Cursor) GetData() []Account {
-	if o == nil {
+func (c *Cursor) GetData() []Account {
+	if c == nil {
 		return []Account{}
 	}
-	return o.Data
+	return c.Data
 }
 
 type AccountsCursorResponse struct {
 	Cursor Cursor `json:"cursor"`
 }
 
-func (o *AccountsCursorResponse) GetCursor() Cursor {
-	if o == nil {
+func (a *AccountsCursorResponse) GetCursor() Cursor {
+	if a == nil {
 		return Cursor{}
 	}
-	return o.Cursor
+	return a.Cursor
 }

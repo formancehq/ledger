@@ -10,68 +10,77 @@ type V2ListPipelinesResponseCursorCursor struct {
 	Data     []V2Pipeline `json:"data"`
 }
 
-func (o *V2ListPipelinesResponseCursorCursor) GetPageSize() int64 {
-	if o == nil {
+func (v *V2ListPipelinesResponseCursorCursor) GetPageSize() int64 {
+	if v == nil {
 		return 0
 	}
-	return o.PageSize
+	return v.PageSize
 }
 
-func (o *V2ListPipelinesResponseCursorCursor) GetHasMore() bool {
-	if o == nil {
+func (v *V2ListPipelinesResponseCursorCursor) GetHasMore() bool {
+	if v == nil {
 		return false
 	}
-	return o.HasMore
+	return v.HasMore
 }
 
-func (o *V2ListPipelinesResponseCursorCursor) GetPrevious() *string {
-	if o == nil {
+func (v *V2ListPipelinesResponseCursorCursor) GetPrevious() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Previous
+	return v.Previous
 }
 
-func (o *V2ListPipelinesResponseCursorCursor) GetNext() *string {
-	if o == nil {
+func (v *V2ListPipelinesResponseCursorCursor) GetNext() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Next
+	return v.Next
 }
 
-func (o *V2ListPipelinesResponseCursorCursor) GetData() []V2Pipeline {
-	if o == nil {
+func (v *V2ListPipelinesResponseCursorCursor) GetData() []V2Pipeline {
+	if v == nil {
 		return []V2Pipeline{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2listpipelinesresponsecursorcursor
+// #endregion class-body-v2listpipelinesresponsecursorcursor
 
 type V2ListPipelinesResponseCursor struct {
 	Cursor V2ListPipelinesResponseCursorCursor `json:"cursor"`
 	Data   []V2Pipeline                        `json:"data,omitempty"`
 }
 
-func (o *V2ListPipelinesResponseCursor) GetCursor() V2ListPipelinesResponseCursorCursor {
-	if o == nil {
+func (v *V2ListPipelinesResponseCursor) GetCursor() V2ListPipelinesResponseCursorCursor {
+	if v == nil {
 		return V2ListPipelinesResponseCursorCursor{}
 	}
-	return o.Cursor
+	return v.Cursor
 }
 
-func (o *V2ListPipelinesResponseCursor) GetData() []V2Pipeline {
-	if o == nil {
+func (v *V2ListPipelinesResponseCursor) GetData() []V2Pipeline {
+	if v == nil {
 		return nil
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2listpipelinesresponsecursor
+// #endregion class-body-v2listpipelinesresponsecursor
 
 // V2ListPipelinesResponse - Pipelines list
 type V2ListPipelinesResponse struct {
 	Cursor *V2ListPipelinesResponseCursor `json:"cursor,omitempty"`
 }
 
-func (o *V2ListPipelinesResponse) GetCursor() *V2ListPipelinesResponseCursor {
-	if o == nil {
+func (v *V2ListPipelinesResponse) GetCursor() *V2ListPipelinesResponseCursor {
+	if v == nil {
 		return nil
 	}
-	return o.Cursor
+	return v.Cursor
 }
+
+// #region class-body-v2listpipelinesresponse
+// #endregion class-body-v2listpipelinesresponse

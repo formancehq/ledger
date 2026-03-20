@@ -6,9 +6,9 @@ type StatsResponse struct {
 	Data Stats `json:"data"`
 }
 
-func (o *StatsResponse) GetData() Stats {
-	if o == nil {
+func (s *StatsResponse) GetData() Stats {
+	if s == nil {
 		return Stats{}
 	}
-	return o.Data
+	return s.Data
 }

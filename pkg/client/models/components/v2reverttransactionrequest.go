@@ -6,9 +6,12 @@ type V2RevertTransactionRequest struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
-func (o *V2RevertTransactionRequest) GetMetadata() map[string]string {
-	if o == nil {
+func (v *V2RevertTransactionRequest) GetMetadata() map[string]string {
+	if v == nil {
 		return nil
 	}
-	return o.Metadata
+	return v.Metadata
 }
+
+// #region class-body-v2reverttransactionrequest
+// #endregion class-body-v2reverttransactionrequest

@@ -10,30 +10,30 @@ type Script struct {
 	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
-func (o *Script) GetPlain() string {
-	if o == nil {
+func (s *Script) GetPlain() string {
+	if s == nil {
 		return ""
 	}
-	return o.Plain
+	return s.Plain
 }
 
-func (o *Script) GetVars() map[string]any {
-	if o == nil {
+func (s *Script) GetVars() map[string]any {
+	if s == nil {
 		return nil
 	}
-	return o.Vars
+	return s.Vars
 }
 
-func (o *Script) GetReference() *string {
-	if o == nil {
+func (s *Script) GetReference() *string {
+	if s == nil {
 		return nil
 	}
-	return o.Reference
+	return s.Reference
 }
 
-func (o *Script) GetMetadata() map[string]any {
-	if o == nil {
+func (s *Script) GetMetadata() map[string]any {
+	if s == nil {
 		return nil
 	}
-	return o.Metadata
+	return s.Metadata
 }

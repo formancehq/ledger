@@ -10,68 +10,77 @@ type V2ListExportersResponseCursorCursor struct {
 	Data     []V2Exporter `json:"data"`
 }
 
-func (o *V2ListExportersResponseCursorCursor) GetPageSize() int64 {
-	if o == nil {
+func (v *V2ListExportersResponseCursorCursor) GetPageSize() int64 {
+	if v == nil {
 		return 0
 	}
-	return o.PageSize
+	return v.PageSize
 }
 
-func (o *V2ListExportersResponseCursorCursor) GetHasMore() bool {
-	if o == nil {
+func (v *V2ListExportersResponseCursorCursor) GetHasMore() bool {
+	if v == nil {
 		return false
 	}
-	return o.HasMore
+	return v.HasMore
 }
 
-func (o *V2ListExportersResponseCursorCursor) GetPrevious() *string {
-	if o == nil {
+func (v *V2ListExportersResponseCursorCursor) GetPrevious() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Previous
+	return v.Previous
 }
 
-func (o *V2ListExportersResponseCursorCursor) GetNext() *string {
-	if o == nil {
+func (v *V2ListExportersResponseCursorCursor) GetNext() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Next
+	return v.Next
 }
 
-func (o *V2ListExportersResponseCursorCursor) GetData() []V2Exporter {
-	if o == nil {
+func (v *V2ListExportersResponseCursorCursor) GetData() []V2Exporter {
+	if v == nil {
 		return []V2Exporter{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2listexportersresponsecursorcursor
+// #endregion class-body-v2listexportersresponsecursorcursor
 
 type V2ListExportersResponseCursor struct {
 	Cursor V2ListExportersResponseCursorCursor `json:"cursor"`
 	Data   []V2Exporter                        `json:"data,omitempty"`
 }
 
-func (o *V2ListExportersResponseCursor) GetCursor() V2ListExportersResponseCursorCursor {
-	if o == nil {
+func (v *V2ListExportersResponseCursor) GetCursor() V2ListExportersResponseCursorCursor {
+	if v == nil {
 		return V2ListExportersResponseCursorCursor{}
 	}
-	return o.Cursor
+	return v.Cursor
 }
 
-func (o *V2ListExportersResponseCursor) GetData() []V2Exporter {
-	if o == nil {
+func (v *V2ListExportersResponseCursor) GetData() []V2Exporter {
+	if v == nil {
 		return nil
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2listexportersresponsecursor
+// #endregion class-body-v2listexportersresponsecursor
 
 // V2ListExportersResponse - Exporters list
 type V2ListExportersResponse struct {
 	Cursor *V2ListExportersResponseCursor `json:"cursor,omitempty"`
 }
 
-func (o *V2ListExportersResponse) GetCursor() *V2ListExportersResponseCursor {
-	if o == nil {
+func (v *V2ListExportersResponse) GetCursor() *V2ListExportersResponseCursor {
+	if v == nil {
 		return nil
 	}
-	return o.Cursor
+	return v.Cursor
 }
+
+// #region class-body-v2listexportersresponse
+// #endregion class-body-v2listexportersresponse

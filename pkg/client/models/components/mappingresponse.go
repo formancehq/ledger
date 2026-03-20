@@ -6,9 +6,9 @@ type MappingResponse struct {
 	Data *Mapping `json:"data,omitempty"`
 }
 
-func (o *MappingResponse) GetData() *Mapping {
-	if o == nil {
+func (m *MappingResponse) GetData() *Mapping {
+	if m == nil {
 		return nil
 	}
-	return o.Data
+	return m.Data
 }

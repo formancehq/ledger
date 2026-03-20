@@ -10,48 +10,48 @@ type BalancesCursorResponseCursor struct {
 	Data     []map[string]map[string]int64 `json:"data"`
 }
 
-func (o *BalancesCursorResponseCursor) GetPageSize() int64 {
-	if o == nil {
+func (b *BalancesCursorResponseCursor) GetPageSize() int64 {
+	if b == nil {
 		return 0
 	}
-	return o.PageSize
+	return b.PageSize
 }
 
-func (o *BalancesCursorResponseCursor) GetHasMore() bool {
-	if o == nil {
+func (b *BalancesCursorResponseCursor) GetHasMore() bool {
+	if b == nil {
 		return false
 	}
-	return o.HasMore
+	return b.HasMore
 }
 
-func (o *BalancesCursorResponseCursor) GetPrevious() *string {
-	if o == nil {
+func (b *BalancesCursorResponseCursor) GetPrevious() *string {
+	if b == nil {
 		return nil
 	}
-	return o.Previous
+	return b.Previous
 }
 
-func (o *BalancesCursorResponseCursor) GetNext() *string {
-	if o == nil {
+func (b *BalancesCursorResponseCursor) GetNext() *string {
+	if b == nil {
 		return nil
 	}
-	return o.Next
+	return b.Next
 }
 
-func (o *BalancesCursorResponseCursor) GetData() []map[string]map[string]int64 {
-	if o == nil {
+func (b *BalancesCursorResponseCursor) GetData() []map[string]map[string]int64 {
+	if b == nil {
 		return []map[string]map[string]int64{}
 	}
-	return o.Data
+	return b.Data
 }
 
 type BalancesCursorResponse struct {
 	Cursor BalancesCursorResponseCursor `json:"cursor"`
 }
 
-func (o *BalancesCursorResponse) GetCursor() BalancesCursorResponseCursor {
-	if o == nil {
+func (b *BalancesCursorResponse) GetCursor() BalancesCursorResponseCursor {
+	if b == nil {
 		return BalancesCursorResponseCursor{}
 	}
-	return o.Cursor
+	return b.Cursor
 }

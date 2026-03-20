@@ -24,39 +24,39 @@ type GetBalancesRequest struct {
 	Cursor *string `queryParam:"style=form,explode=true,name=cursor"`
 }
 
-func (o *GetBalancesRequest) GetLedger() string {
-	if o == nil {
+func (g *GetBalancesRequest) GetLedger() string {
+	if g == nil {
 		return ""
 	}
-	return o.Ledger
+	return g.Ledger
 }
 
-func (o *GetBalancesRequest) GetAddress() *string {
-	if o == nil {
+func (g *GetBalancesRequest) GetAddress() *string {
+	if g == nil {
 		return nil
 	}
-	return o.Address
+	return g.Address
 }
 
-func (o *GetBalancesRequest) GetPageSize() *int64 {
-	if o == nil {
+func (g *GetBalancesRequest) GetPageSize() *int64 {
+	if g == nil {
 		return nil
 	}
-	return o.PageSize
+	return g.PageSize
 }
 
-func (o *GetBalancesRequest) GetAfter() *string {
-	if o == nil {
+func (g *GetBalancesRequest) GetAfter() *string {
+	if g == nil {
 		return nil
 	}
-	return o.After
+	return g.After
 }
 
-func (o *GetBalancesRequest) GetCursor() *string {
-	if o == nil {
+func (g *GetBalancesRequest) GetCursor() *string {
+	if g == nil {
 		return nil
 	}
-	return o.Cursor
+	return g.Cursor
 }
 
 type GetBalancesResponse struct {
@@ -65,16 +65,16 @@ type GetBalancesResponse struct {
 	BalancesCursorResponse *components.BalancesCursorResponse
 }
 
-func (o *GetBalancesResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (g *GetBalancesResponse) GetHTTPMeta() components.HTTPMetadata {
+	if g == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return g.HTTPMeta
 }
 
-func (o *GetBalancesResponse) GetBalancesCursorResponse() *components.BalancesCursorResponse {
-	if o == nil {
+func (g *GetBalancesResponse) GetBalancesCursorResponse() *components.BalancesCursorResponse {
+	if g == nil {
 		return nil
 	}
-	return o.BalancesCursorResponse
+	return g.BalancesCursorResponse
 }

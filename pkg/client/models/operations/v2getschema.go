@@ -13,19 +13,22 @@ type V2GetSchemaRequest struct {
 	Version string `pathParam:"style=simple,explode=false,name=version"`
 }
 
-func (o *V2GetSchemaRequest) GetLedger() string {
-	if o == nil {
+func (v *V2GetSchemaRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2GetSchemaRequest) GetVersion() string {
-	if o == nil {
+func (v *V2GetSchemaRequest) GetVersion() string {
+	if v == nil {
 		return ""
 	}
-	return o.Version
+	return v.Version
 }
+
+// #region class-body-v2getschemarequest
+// #endregion class-body-v2getschemarequest
 
 type V2GetSchemaResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -33,16 +36,19 @@ type V2GetSchemaResponse struct {
 	V2SchemaResponse *components.V2SchemaResponse
 }
 
-func (o *V2GetSchemaResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2GetSchemaResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2GetSchemaResponse) GetV2SchemaResponse() *components.V2SchemaResponse {
-	if o == nil {
+func (v *V2GetSchemaResponse) GetV2SchemaResponse() *components.V2SchemaResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2SchemaResponse
+	return v.V2SchemaResponse
 }
+
+// #region class-body-v2getschemaresponse
+// #endregion class-body-v2getschemaresponse

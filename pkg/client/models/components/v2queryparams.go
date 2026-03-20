@@ -51,7 +51,7 @@ type QueryTemplateVolumeParams struct {
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
-	Sort any `json:"sort,omitempty"`
+	Sort *string `json:"sort,omitempty"`
 }
 
 func (q QueryTemplateVolumeParams) MarshalJSON() ([]byte, error) {
@@ -59,66 +59,66 @@ func (q QueryTemplateVolumeParams) MarshalJSON() ([]byte, error) {
 }
 
 func (q *QueryTemplateVolumeParams) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &q, "", false, true); err != nil {
+	if err := utils.UnmarshalJSON(data, &q, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *QueryTemplateVolumeParams) GetResource() *V2QueryParams4Resource {
-	if o == nil {
+func (q *QueryTemplateVolumeParams) GetResource() *V2QueryParams4Resource {
+	if q == nil {
 		return nil
 	}
-	return o.Resource
+	return q.Resource
 }
 
-func (o *QueryTemplateVolumeParams) GetInsertionDate() *bool {
-	if o == nil {
+func (q *QueryTemplateVolumeParams) GetInsertionDate() *bool {
+	if q == nil {
 		return nil
 	}
-	return o.InsertionDate
+	return q.InsertionDate
 }
 
-func (o *QueryTemplateVolumeParams) GetGroupBy() *int64 {
-	if o == nil {
+func (q *QueryTemplateVolumeParams) GetGroupBy() *int64 {
+	if q == nil {
 		return nil
 	}
-	return o.GroupBy
+	return q.GroupBy
 }
 
-func (o *QueryTemplateVolumeParams) GetPageSize() *int64 {
-	if o == nil {
+func (q *QueryTemplateVolumeParams) GetPageSize() *int64 {
+	if q == nil {
 		return nil
 	}
-	return o.PageSize
+	return q.PageSize
 }
 
-func (o *QueryTemplateVolumeParams) GetCursor() *string {
-	if o == nil {
+func (q *QueryTemplateVolumeParams) GetCursor() *string {
+	if q == nil {
 		return nil
 	}
-	return o.Cursor
+	return q.Cursor
 }
 
-func (o *QueryTemplateVolumeParams) GetExpand() *string {
-	if o == nil {
+func (q *QueryTemplateVolumeParams) GetExpand() *string {
+	if q == nil {
 		return nil
 	}
-	return o.Expand
+	return q.Expand
 }
 
-func (o *QueryTemplateVolumeParams) GetPit() *time.Time {
-	if o == nil {
+func (q *QueryTemplateVolumeParams) GetPit() *time.Time {
+	if q == nil {
 		return nil
 	}
-	return o.Pit
+	return q.Pit
 }
 
-func (o *QueryTemplateVolumeParams) GetSort() any {
-	if o == nil {
+func (q *QueryTemplateVolumeParams) GetSort() *string {
+	if q == nil {
 		return nil
 	}
-	return o.Sort
+	return q.Sort
 }
 
 type V2QueryParams3Resource string
@@ -160,7 +160,7 @@ type QueryTemplateLogParams struct {
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
-	Sort any `json:"sort,omitempty"`
+	Sort *string `json:"sort,omitempty"`
 }
 
 func (q QueryTemplateLogParams) MarshalJSON() ([]byte, error) {
@@ -168,52 +168,52 @@ func (q QueryTemplateLogParams) MarshalJSON() ([]byte, error) {
 }
 
 func (q *QueryTemplateLogParams) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &q, "", false, true); err != nil {
+	if err := utils.UnmarshalJSON(data, &q, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *QueryTemplateLogParams) GetResource() *V2QueryParams3Resource {
-	if o == nil {
+func (q *QueryTemplateLogParams) GetResource() *V2QueryParams3Resource {
+	if q == nil {
 		return nil
 	}
-	return o.Resource
+	return q.Resource
 }
 
-func (o *QueryTemplateLogParams) GetPageSize() *int64 {
-	if o == nil {
+func (q *QueryTemplateLogParams) GetPageSize() *int64 {
+	if q == nil {
 		return nil
 	}
-	return o.PageSize
+	return q.PageSize
 }
 
-func (o *QueryTemplateLogParams) GetCursor() *string {
-	if o == nil {
+func (q *QueryTemplateLogParams) GetCursor() *string {
+	if q == nil {
 		return nil
 	}
-	return o.Cursor
+	return q.Cursor
 }
 
-func (o *QueryTemplateLogParams) GetExpand() *string {
-	if o == nil {
+func (q *QueryTemplateLogParams) GetExpand() *string {
+	if q == nil {
 		return nil
 	}
-	return o.Expand
+	return q.Expand
 }
 
-func (o *QueryTemplateLogParams) GetPit() *time.Time {
-	if o == nil {
+func (q *QueryTemplateLogParams) GetPit() *time.Time {
+	if q == nil {
 		return nil
 	}
-	return o.Pit
+	return q.Pit
 }
 
-func (o *QueryTemplateLogParams) GetSort() any {
-	if o == nil {
+func (q *QueryTemplateLogParams) GetSort() *string {
+	if q == nil {
 		return nil
 	}
-	return o.Sort
+	return q.Sort
 }
 
 type V2QueryParamsResource string
@@ -255,7 +255,7 @@ type QueryTemplateTransactionParams struct {
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
-	Sort any `json:"sort,omitempty"`
+	Sort *string `json:"sort,omitempty"`
 }
 
 func (q QueryTemplateTransactionParams) MarshalJSON() ([]byte, error) {
@@ -263,52 +263,52 @@ func (q QueryTemplateTransactionParams) MarshalJSON() ([]byte, error) {
 }
 
 func (q *QueryTemplateTransactionParams) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &q, "", false, true); err != nil {
+	if err := utils.UnmarshalJSON(data, &q, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *QueryTemplateTransactionParams) GetResource() *V2QueryParamsResource {
-	if o == nil {
+func (q *QueryTemplateTransactionParams) GetResource() *V2QueryParamsResource {
+	if q == nil {
 		return nil
 	}
-	return o.Resource
+	return q.Resource
 }
 
-func (o *QueryTemplateTransactionParams) GetPageSize() *int64 {
-	if o == nil {
+func (q *QueryTemplateTransactionParams) GetPageSize() *int64 {
+	if q == nil {
 		return nil
 	}
-	return o.PageSize
+	return q.PageSize
 }
 
-func (o *QueryTemplateTransactionParams) GetCursor() *string {
-	if o == nil {
+func (q *QueryTemplateTransactionParams) GetCursor() *string {
+	if q == nil {
 		return nil
 	}
-	return o.Cursor
+	return q.Cursor
 }
 
-func (o *QueryTemplateTransactionParams) GetExpand() *string {
-	if o == nil {
+func (q *QueryTemplateTransactionParams) GetExpand() *string {
+	if q == nil {
 		return nil
 	}
-	return o.Expand
+	return q.Expand
 }
 
-func (o *QueryTemplateTransactionParams) GetPit() *time.Time {
-	if o == nil {
+func (q *QueryTemplateTransactionParams) GetPit() *time.Time {
+	if q == nil {
 		return nil
 	}
-	return o.Pit
+	return q.Pit
 }
 
-func (o *QueryTemplateTransactionParams) GetSort() any {
-	if o == nil {
+func (q *QueryTemplateTransactionParams) GetSort() *string {
+	if q == nil {
 		return nil
 	}
-	return o.Sort
+	return q.Sort
 }
 
 type V2QueryParams1Resource string
@@ -350,7 +350,7 @@ type QueryTemplateAccountParams struct {
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
-	Sort any `json:"sort,omitempty"`
+	Sort *string `json:"sort,omitempty"`
 }
 
 func (q QueryTemplateAccountParams) MarshalJSON() ([]byte, error) {
@@ -358,52 +358,52 @@ func (q QueryTemplateAccountParams) MarshalJSON() ([]byte, error) {
 }
 
 func (q *QueryTemplateAccountParams) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &q, "", false, true); err != nil {
+	if err := utils.UnmarshalJSON(data, &q, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *QueryTemplateAccountParams) GetResource() *V2QueryParams1Resource {
-	if o == nil {
+func (q *QueryTemplateAccountParams) GetResource() *V2QueryParams1Resource {
+	if q == nil {
 		return nil
 	}
-	return o.Resource
+	return q.Resource
 }
 
-func (o *QueryTemplateAccountParams) GetPageSize() *int64 {
-	if o == nil {
+func (q *QueryTemplateAccountParams) GetPageSize() *int64 {
+	if q == nil {
 		return nil
 	}
-	return o.PageSize
+	return q.PageSize
 }
 
-func (o *QueryTemplateAccountParams) GetCursor() *string {
-	if o == nil {
+func (q *QueryTemplateAccountParams) GetCursor() *string {
+	if q == nil {
 		return nil
 	}
-	return o.Cursor
+	return q.Cursor
 }
 
-func (o *QueryTemplateAccountParams) GetExpand() *string {
-	if o == nil {
+func (q *QueryTemplateAccountParams) GetExpand() *string {
+	if q == nil {
 		return nil
 	}
-	return o.Expand
+	return q.Expand
 }
 
-func (o *QueryTemplateAccountParams) GetPit() *time.Time {
-	if o == nil {
+func (q *QueryTemplateAccountParams) GetPit() *time.Time {
+	if q == nil {
 		return nil
 	}
-	return o.Pit
+	return q.Pit
 }
 
-func (o *QueryTemplateAccountParams) GetSort() any {
-	if o == nil {
+func (q *QueryTemplateAccountParams) GetSort() *string {
+	if q == nil {
 		return nil
 	}
-	return o.Sort
+	return q.Sort
 }
 
 type V2QueryParamsType string
@@ -416,10 +416,10 @@ const (
 )
 
 type V2QueryParams struct {
-	QueryTemplateAccountParams     *QueryTemplateAccountParams     `queryParam:"inline"`
-	QueryTemplateTransactionParams *QueryTemplateTransactionParams `queryParam:"inline"`
-	QueryTemplateLogParams         *QueryTemplateLogParams         `queryParam:"inline"`
-	QueryTemplateVolumeParams      *QueryTemplateVolumeParams      `queryParam:"inline"`
+	QueryTemplateAccountParams     *QueryTemplateAccountParams     `queryParam:"inline" union:"member"`
+	QueryTemplateTransactionParams *QueryTemplateTransactionParams `queryParam:"inline" union:"member"`
+	QueryTemplateLogParams         *QueryTemplateLogParams         `queryParam:"inline" union:"member"`
+	QueryTemplateVolumeParams      *QueryTemplateVolumeParams      `queryParam:"inline" union:"member"`
 
 	Type V2QueryParamsType
 }
@@ -463,28 +463,28 @@ func CreateV2QueryParamsQueryTemplateVolumeParams(queryTemplateVolumeParams Quer
 func (u *V2QueryParams) UnmarshalJSON(data []byte) error {
 
 	var queryTemplateAccountParams QueryTemplateAccountParams = QueryTemplateAccountParams{}
-	if err := utils.UnmarshalJSON(data, &queryTemplateAccountParams, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &queryTemplateAccountParams, "", true, nil); err == nil {
 		u.QueryTemplateAccountParams = &queryTemplateAccountParams
 		u.Type = V2QueryParamsTypeQueryTemplateAccountParams
 		return nil
 	}
 
 	var queryTemplateTransactionParams QueryTemplateTransactionParams = QueryTemplateTransactionParams{}
-	if err := utils.UnmarshalJSON(data, &queryTemplateTransactionParams, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &queryTemplateTransactionParams, "", true, nil); err == nil {
 		u.QueryTemplateTransactionParams = &queryTemplateTransactionParams
 		u.Type = V2QueryParamsTypeQueryTemplateTransactionParams
 		return nil
 	}
 
 	var queryTemplateLogParams QueryTemplateLogParams = QueryTemplateLogParams{}
-	if err := utils.UnmarshalJSON(data, &queryTemplateLogParams, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &queryTemplateLogParams, "", true, nil); err == nil {
 		u.QueryTemplateLogParams = &queryTemplateLogParams
 		u.Type = V2QueryParamsTypeQueryTemplateLogParams
 		return nil
 	}
 
 	var queryTemplateVolumeParams QueryTemplateVolumeParams = QueryTemplateVolumeParams{}
-	if err := utils.UnmarshalJSON(data, &queryTemplateVolumeParams, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &queryTemplateVolumeParams, "", true, nil); err == nil {
 		u.QueryTemplateVolumeParams = &queryTemplateVolumeParams
 		u.Type = V2QueryParamsTypeQueryTemplateVolumeParams
 		return nil

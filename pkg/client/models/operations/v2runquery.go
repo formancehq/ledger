@@ -41,26 +41,29 @@ type V2RunQueryRequestBody struct {
 	Vars   map[string]string         `json:"vars,omitempty"`
 }
 
-func (o *V2RunQueryRequestBody) GetCursor() *string {
-	if o == nil {
+func (v *V2RunQueryRequestBody) GetCursor() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Cursor
+	return v.Cursor
 }
 
-func (o *V2RunQueryRequestBody) GetParams() *components.V2QueryParams {
-	if o == nil {
+func (v *V2RunQueryRequestBody) GetParams() *components.V2QueryParams {
+	if v == nil {
 		return nil
 	}
-	return o.Params
+	return v.Params
 }
 
-func (o *V2RunQueryRequestBody) GetVars() map[string]string {
-	if o == nil {
+func (v *V2RunQueryRequestBody) GetVars() map[string]string {
+	if v == nil {
 		return nil
 	}
-	return o.Vars
+	return v.Vars
 }
+
+// #region class-body-v2runqueryrequestbody
+// #endregion class-body-v2runqueryrequestbody
 
 type V2RunQueryRequest struct {
 	// Name of the ledger.
@@ -97,88 +100,91 @@ func (v V2RunQueryRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2RunQueryRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2RunQueryRequest) GetLedger() string {
-	if o == nil {
+func (v *V2RunQueryRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2RunQueryRequest) GetSchemaVersion() string {
-	if o == nil {
+func (v *V2RunQueryRequest) GetSchemaVersion() string {
+	if v == nil {
 		return ""
 	}
-	return o.SchemaVersion
+	return v.SchemaVersion
 }
 
-func (o *V2RunQueryRequest) GetID() string {
-	if o == nil {
+func (v *V2RunQueryRequest) GetID() string {
+	if v == nil {
 		return ""
 	}
-	return o.ID
+	return v.ID
 }
 
-func (o *V2RunQueryRequest) GetPageSize() *int64 {
-	if o == nil {
+func (v *V2RunQueryRequest) GetPageSize() *int64 {
+	if v == nil {
 		return nil
 	}
-	return o.PageSize
+	return v.PageSize
 }
 
-func (o *V2RunQueryRequest) GetCursor() *string {
-	if o == nil {
+func (v *V2RunQueryRequest) GetCursor() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Cursor
+	return v.Cursor
 }
 
-func (o *V2RunQueryRequest) GetExpand() *string {
-	if o == nil {
+func (v *V2RunQueryRequest) GetExpand() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Expand
+	return v.Expand
 }
 
-func (o *V2RunQueryRequest) GetPit() *time.Time {
-	if o == nil {
+func (v *V2RunQueryRequest) GetPit() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.Pit
+	return v.Pit
 }
 
-func (o *V2RunQueryRequest) GetOrder() *V2RunQueryQueryParamOrder {
-	if o == nil {
+func (v *V2RunQueryRequest) GetOrder() *V2RunQueryQueryParamOrder {
+	if v == nil {
 		return nil
 	}
-	return o.Order
+	return v.Order
 }
 
-func (o *V2RunQueryRequest) GetReverse() *bool {
-	if o == nil {
+func (v *V2RunQueryRequest) GetReverse() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.Reverse
+	return v.Reverse
 }
 
-func (o *V2RunQueryRequest) GetSort() *string {
-	if o == nil {
+func (v *V2RunQueryRequest) GetSort() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Sort
+	return v.Sort
 }
 
-func (o *V2RunQueryRequest) GetRequestBody() V2RunQueryRequestBody {
-	if o == nil {
+func (v *V2RunQueryRequest) GetRequestBody() V2RunQueryRequestBody {
+	if v == nil {
 		return V2RunQueryRequestBody{}
 	}
-	return o.RequestBody
+	return v.RequestBody
 }
+
+// #region class-body-v2runqueryrequest
+// #endregion class-body-v2runqueryrequest
 
 type V2RunQueryResponseBodyType string
 
@@ -191,10 +197,10 @@ const (
 
 // V2RunQueryResponseBody - OK
 type V2RunQueryResponseBody struct {
-	V2TransactionsCursorResponse       *components.V2TransactionsCursorResponse       `queryParam:"inline"`
-	V2AccountsCursorResponse           *components.V2AccountsCursorResponse           `queryParam:"inline"`
-	V2LogsCursorResponse               *components.V2LogsCursorResponse               `queryParam:"inline"`
-	V2VolumesWithBalanceCursorResponse *components.V2VolumesWithBalanceCursorResponse `queryParam:"inline"`
+	V2TransactionsCursorResponse       *components.V2TransactionsCursorResponse       `queryParam:"inline" union:"member"`
+	V2AccountsCursorResponse           *components.V2AccountsCursorResponse           `queryParam:"inline" union:"member"`
+	V2LogsCursorResponse               *components.V2LogsCursorResponse               `queryParam:"inline" union:"member"`
+	V2VolumesWithBalanceCursorResponse *components.V2VolumesWithBalanceCursorResponse `queryParam:"inline" union:"member"`
 
 	Type V2RunQueryResponseBodyType
 }
@@ -238,28 +244,28 @@ func CreateV2RunQueryResponseBodyV2VolumesWithBalanceCursorResponse(v2VolumesWit
 func (u *V2RunQueryResponseBody) UnmarshalJSON(data []byte) error {
 
 	var v2TransactionsCursorResponse components.V2TransactionsCursorResponse = components.V2TransactionsCursorResponse{}
-	if err := utils.UnmarshalJSON(data, &v2TransactionsCursorResponse, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &v2TransactionsCursorResponse, "", true, nil); err == nil {
 		u.V2TransactionsCursorResponse = &v2TransactionsCursorResponse
 		u.Type = V2RunQueryResponseBodyTypeV2TransactionsCursorResponse
 		return nil
 	}
 
 	var v2AccountsCursorResponse components.V2AccountsCursorResponse = components.V2AccountsCursorResponse{}
-	if err := utils.UnmarshalJSON(data, &v2AccountsCursorResponse, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &v2AccountsCursorResponse, "", true, nil); err == nil {
 		u.V2AccountsCursorResponse = &v2AccountsCursorResponse
 		u.Type = V2RunQueryResponseBodyTypeV2AccountsCursorResponse
 		return nil
 	}
 
 	var v2LogsCursorResponse components.V2LogsCursorResponse = components.V2LogsCursorResponse{}
-	if err := utils.UnmarshalJSON(data, &v2LogsCursorResponse, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &v2LogsCursorResponse, "", true, nil); err == nil {
 		u.V2LogsCursorResponse = &v2LogsCursorResponse
 		u.Type = V2RunQueryResponseBodyTypeV2LogsCursorResponse
 		return nil
 	}
 
 	var v2VolumesWithBalanceCursorResponse components.V2VolumesWithBalanceCursorResponse = components.V2VolumesWithBalanceCursorResponse{}
-	if err := utils.UnmarshalJSON(data, &v2VolumesWithBalanceCursorResponse, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &v2VolumesWithBalanceCursorResponse, "", true, nil); err == nil {
 		u.V2VolumesWithBalanceCursorResponse = &v2VolumesWithBalanceCursorResponse
 		u.Type = V2RunQueryResponseBodyTypeV2VolumesWithBalanceCursorResponse
 		return nil
@@ -294,16 +300,19 @@ type V2RunQueryResponse struct {
 	OneOf *V2RunQueryResponseBody
 }
 
-func (o *V2RunQueryResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2RunQueryResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2RunQueryResponse) GetOneOf() *V2RunQueryResponseBody {
-	if o == nil {
+func (v *V2RunQueryResponse) GetOneOf() *V2RunQueryResponseBody {
+	if v == nil {
 		return nil
 	}
-	return o.OneOf
+	return v.OneOf
 }
+
+// #region class-body-v2runqueryresponse
+// #endregion class-body-v2runqueryresponse

@@ -5,6 +5,7 @@ package components
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
 )
 
 type V2LogsCursorResponseResource string
@@ -38,56 +39,84 @@ type V2LogsCursorResponseCursor struct {
 	Data     []V2Log `json:"data"`
 }
 
-func (o *V2LogsCursorResponseCursor) GetPageSize() int64 {
-	if o == nil {
+func (v V2LogsCursorResponseCursor) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2LogsCursorResponseCursor) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"pageSize", "hasMore", "data"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2LogsCursorResponseCursor) GetPageSize() int64 {
+	if v == nil {
 		return 0
 	}
-	return o.PageSize
+	return v.PageSize
 }
 
-func (o *V2LogsCursorResponseCursor) GetHasMore() bool {
-	if o == nil {
+func (v *V2LogsCursorResponseCursor) GetHasMore() bool {
+	if v == nil {
 		return false
 	}
-	return o.HasMore
+	return v.HasMore
 }
 
-func (o *V2LogsCursorResponseCursor) GetPrevious() *string {
-	if o == nil {
+func (v *V2LogsCursorResponseCursor) GetPrevious() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Previous
+	return v.Previous
 }
 
-func (o *V2LogsCursorResponseCursor) GetNext() *string {
-	if o == nil {
+func (v *V2LogsCursorResponseCursor) GetNext() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Next
+	return v.Next
 }
 
-func (o *V2LogsCursorResponseCursor) GetData() []V2Log {
-	if o == nil {
+func (v *V2LogsCursorResponseCursor) GetData() []V2Log {
+	if v == nil {
 		return []V2Log{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2logscursorresponsecursor
+// #endregion class-body-v2logscursorresponsecursor
 
 type V2LogsCursorResponse struct {
 	Resource *V2LogsCursorResponseResource `json:"resource,omitempty"`
 	Cursor   V2LogsCursorResponseCursor    `json:"cursor"`
 }
 
-func (o *V2LogsCursorResponse) GetResource() *V2LogsCursorResponseResource {
-	if o == nil {
-		return nil
-	}
-	return o.Resource
+func (v V2LogsCursorResponse) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
 }
 
-func (o *V2LogsCursorResponse) GetCursor() V2LogsCursorResponseCursor {
-	if o == nil {
+func (v *V2LogsCursorResponse) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"cursor"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2LogsCursorResponse) GetResource() *V2LogsCursorResponseResource {
+	if v == nil {
+		return nil
+	}
+	return v.Resource
+}
+
+func (v *V2LogsCursorResponse) GetCursor() V2LogsCursorResponseCursor {
+	if v == nil {
 		return V2LogsCursorResponseCursor{}
 	}
-	return o.Cursor
+	return v.Cursor
 }
+
+// #region class-body-v2logscursorresponse
+// #endregion class-body-v2logscursorresponse

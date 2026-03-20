@@ -7,9 +7,12 @@ type V2SchemaResponse struct {
 	Data V2Schema `json:"data"`
 }
 
-func (o *V2SchemaResponse) GetData() V2Schema {
-	if o == nil {
+func (v *V2SchemaResponse) GetData() V2Schema {
+	if v == nil {
 		return V2Schema{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2schemaresponse
+// #endregion class-body-v2schemaresponse

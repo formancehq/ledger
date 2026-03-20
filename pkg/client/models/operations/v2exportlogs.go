@@ -11,20 +11,26 @@ type V2ExportLogsRequest struct {
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 }
 
-func (o *V2ExportLogsRequest) GetLedger() string {
-	if o == nil {
+func (v *V2ExportLogsRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
+
+// #region class-body-v2exportlogsrequest
+// #endregion class-body-v2exportlogsrequest
 
 type V2ExportLogsResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 }
 
-func (o *V2ExportLogsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2ExportLogsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
+
+// #region class-body-v2exportlogsresponse
+// #endregion class-body-v2exportlogsresponse

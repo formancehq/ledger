@@ -7,16 +7,16 @@ type Stats struct {
 	Transactions int64 `json:"transactions"`
 }
 
-func (o *Stats) GetAccounts() int64 {
-	if o == nil {
+func (s *Stats) GetAccounts() int64 {
+	if s == nil {
 		return 0
 	}
-	return o.Accounts
+	return s.Accounts
 }
 
-func (o *Stats) GetTransactions() int64 {
-	if o == nil {
+func (s *Stats) GetTransactions() int64 {
+	if s == nil {
 		return 0
 	}
-	return o.Transactions
+	return s.Transactions
 }

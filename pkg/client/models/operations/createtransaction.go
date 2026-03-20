@@ -18,25 +18,25 @@ type CreateTransactionRequest struct {
 	PostTransaction components.PostTransaction `request:"mediaType=application/json"`
 }
 
-func (o *CreateTransactionRequest) GetLedger() string {
-	if o == nil {
+func (c *CreateTransactionRequest) GetLedger() string {
+	if c == nil {
 		return ""
 	}
-	return o.Ledger
+	return c.Ledger
 }
 
-func (o *CreateTransactionRequest) GetPreview() *bool {
-	if o == nil {
+func (c *CreateTransactionRequest) GetPreview() *bool {
+	if c == nil {
 		return nil
 	}
-	return o.Preview
+	return c.Preview
 }
 
-func (o *CreateTransactionRequest) GetPostTransaction() components.PostTransaction {
-	if o == nil {
+func (c *CreateTransactionRequest) GetPostTransaction() components.PostTransaction {
+	if c == nil {
 		return components.PostTransaction{}
 	}
-	return o.PostTransaction
+	return c.PostTransaction
 }
 
 type CreateTransactionResponse struct {
@@ -46,23 +46,23 @@ type CreateTransactionResponse struct {
 	Headers              map[string][]string
 }
 
-func (o *CreateTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (c *CreateTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
+	if c == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return c.HTTPMeta
 }
 
-func (o *CreateTransactionResponse) GetTransactionsResponse() *components.TransactionsResponse {
-	if o == nil {
+func (c *CreateTransactionResponse) GetTransactionsResponse() *components.TransactionsResponse {
+	if c == nil {
 		return nil
 	}
-	return o.TransactionsResponse
+	return c.TransactionsResponse
 }
 
-func (o *CreateTransactionResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (c *CreateTransactionResponse) GetHeaders() map[string][]string {
+	if c == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return c.Headers
 }

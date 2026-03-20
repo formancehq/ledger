@@ -6,9 +6,9 @@ type TransactionResponse struct {
 	Data Transaction `json:"data"`
 }
 
-func (o *TransactionResponse) GetData() Transaction {
-	if o == nil {
+func (t *TransactionResponse) GetData() Transaction {
+	if t == nil {
 		return Transaction{}
 	}
-	return o.Data
+	return t.Data
 }

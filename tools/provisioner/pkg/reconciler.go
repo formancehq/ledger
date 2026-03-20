@@ -64,7 +64,7 @@ func (r Reconciler) handleExporters(ctx context.Context, cfg Config, state *Stat
 		}
 
 		fmt.Printf("Creating exporter %s...\r\n", exporterName)
-		ret, err := r.ledgerClient.Ledger.V2.CreateExporter(ctx, components.V2ExporterConfiguration{
+		ret, err := r.ledgerClient.Ledger.V2.CreateExporter(ctx, components.V2CreateExporterRequest{
 			Driver: exporterConfig.Driver,
 			Config: exporterConfig.Config,
 		})

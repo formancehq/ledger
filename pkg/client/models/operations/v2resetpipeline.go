@@ -13,27 +13,33 @@ type V2ResetPipelineRequest struct {
 	PipelineID string `pathParam:"style=simple,explode=false,name=pipelineID"`
 }
 
-func (o *V2ResetPipelineRequest) GetLedger() string {
-	if o == nil {
+func (v *V2ResetPipelineRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2ResetPipelineRequest) GetPipelineID() string {
-	if o == nil {
+func (v *V2ResetPipelineRequest) GetPipelineID() string {
+	if v == nil {
 		return ""
 	}
-	return o.PipelineID
+	return v.PipelineID
 }
+
+// #region class-body-v2resetpipelinerequest
+// #endregion class-body-v2resetpipelinerequest
 
 type V2ResetPipelineResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 }
 
-func (o *V2ResetPipelineResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2ResetPipelineResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
+
+// #region class-body-v2resetpipelineresponse
+// #endregion class-body-v2resetpipelineresponse

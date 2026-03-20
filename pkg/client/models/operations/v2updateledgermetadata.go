@@ -12,19 +12,22 @@ type V2UpdateLedgerMetadataRequest struct {
 	RequestBody map[string]string `request:"mediaType=application/json"`
 }
 
-func (o *V2UpdateLedgerMetadataRequest) GetLedger() string {
-	if o == nil {
+func (v *V2UpdateLedgerMetadataRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2UpdateLedgerMetadataRequest) GetRequestBody() map[string]string {
-	if o == nil {
+func (v *V2UpdateLedgerMetadataRequest) GetRequestBody() map[string]string {
+	if v == nil {
 		return map[string]string{}
 	}
-	return o.RequestBody
+	return v.RequestBody
 }
+
+// #region class-body-v2updateledgermetadatarequest
+// #endregion class-body-v2updateledgermetadatarequest
 
 type V2UpdateLedgerMetadataResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -32,16 +35,19 @@ type V2UpdateLedgerMetadataResponse struct {
 	V2ErrorResponse *components.V2ErrorResponse
 }
 
-func (o *V2UpdateLedgerMetadataResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2UpdateLedgerMetadataResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2UpdateLedgerMetadataResponse) GetV2ErrorResponse() *components.V2ErrorResponse {
-	if o == nil {
+func (v *V2UpdateLedgerMetadataResponse) GetV2ErrorResponse() *components.V2ErrorResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2ErrorResponse
+	return v.V2ErrorResponse
 }
+
+// #region class-body-v2updateledgermetadataresponse
+// #endregion class-body-v2updateledgermetadataresponse

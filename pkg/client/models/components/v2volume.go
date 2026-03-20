@@ -18,29 +18,32 @@ func (v V2Volume) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2Volume) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"input", "output"}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2Volume) GetInput() *big.Int {
-	if o == nil {
+func (v *V2Volume) GetInput() *big.Int {
+	if v == nil {
 		return big.NewInt(0)
 	}
-	return o.Input
+	return v.Input
 }
 
-func (o *V2Volume) GetOutput() *big.Int {
-	if o == nil {
+func (v *V2Volume) GetOutput() *big.Int {
+	if v == nil {
 		return big.NewInt(0)
 	}
-	return o.Output
+	return v.Output
 }
 
-func (o *V2Volume) GetBalance() *big.Int {
-	if o == nil {
+func (v *V2Volume) GetBalance() *big.Int {
+	if v == nil {
 		return nil
 	}
-	return o.Balance
+	return v.Balance
 }
+
+// #region class-body-v2volume
+// #endregion class-body-v2volume

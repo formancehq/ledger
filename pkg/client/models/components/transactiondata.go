@@ -19,36 +19,36 @@ func (t TransactionData) MarshalJSON() ([]byte, error) {
 }
 
 func (t *TransactionData) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &t, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &t, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *TransactionData) GetPostings() []Posting {
-	if o == nil {
+func (t *TransactionData) GetPostings() []Posting {
+	if t == nil {
 		return []Posting{}
 	}
-	return o.Postings
+	return t.Postings
 }
 
-func (o *TransactionData) GetReference() *string {
-	if o == nil {
+func (t *TransactionData) GetReference() *string {
+	if t == nil {
 		return nil
 	}
-	return o.Reference
+	return t.Reference
 }
 
-func (o *TransactionData) GetMetadata() map[string]any {
-	if o == nil {
+func (t *TransactionData) GetMetadata() map[string]any {
+	if t == nil {
 		return nil
 	}
-	return o.Metadata
+	return t.Metadata
 }
 
-func (o *TransactionData) GetTimestamp() *time.Time {
-	if o == nil {
+func (t *TransactionData) GetTimestamp() *time.Time {
+	if t == nil {
 		return nil
 	}
-	return o.Timestamp
+	return t.Timestamp
 }

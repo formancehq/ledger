@@ -128,7 +128,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 					})
 					It("Should be ok", func() {
 						Expect(err).ToNot(HaveOccurred())
-						Expect(newTransaction.V2CreateTransactionResponse.Data.ID).To(Equal(big.NewInt(3)))
+						Expect(newTransaction.V2RevertTransactionResponse.Data.ID).To(Equal(big.NewInt(3)))
 					})
 				})
 			})
@@ -156,7 +156,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 				Eventually(events).Should(Receive(Event(ledgerevents.EventTypeRevertedTransaction, WithPayload(ledgerevents.RevertedTransaction{
 					Ledger: "default",
 					RevertTransaction: ledger.Transaction{
-						ID: pointer.For(newTransaction.V2CreateTransactionResponse.Data.ID.Uint64()),
+						ID: pointer.For(newTransaction.V2RevertTransactionResponse.Data.ID.Uint64()),
 						TransactionData: ledger.TransactionData{
 							Metadata: map[string]string{
 								"com.formance.spec/state/reverts": tx.V2CreateTransactionResponse.Data.ID.String(),
@@ -164,10 +164,10 @@ var _ = Context("Ledger revert transactions API tests", func() {
 							Postings: []ledger.Posting{
 								ledger.NewPosting("alice", "world", "USD", big.NewInt(100)),
 							},
-							Timestamp: libtime.New(newTransaction.V2CreateTransactionResponse.Data.Timestamp),
+							Timestamp: libtime.New(newTransaction.V2RevertTransactionResponse.Data.Timestamp),
 						},
-						InsertedAt: libtime.New(*newTransaction.V2CreateTransactionResponse.Data.InsertedAt),
-						UpdatedAt:  libtime.New(*newTransaction.V2CreateTransactionResponse.Data.UpdatedAt),
+						InsertedAt: libtime.New(*newTransaction.V2RevertTransactionResponse.Data.InsertedAt),
+						UpdatedAt:  libtime.New(*newTransaction.V2RevertTransactionResponse.Data.UpdatedAt),
 						PostCommitVolumes: map[string]ledger.VolumesByAssets{
 							"world": {
 								"USD": {
@@ -207,8 +207,8 @@ var _ = Context("Ledger revert transactions API tests", func() {
 							Timestamp: libtime.New(tx.V2CreateTransactionResponse.Data.Timestamp),
 						},
 						InsertedAt: libtime.New(*tx.V2CreateTransactionResponse.Data.InsertedAt),
-						UpdatedAt:  libtime.New(*newTransaction.V2CreateTransactionResponse.Data.InsertedAt),
-						RevertedAt: pointer.For(libtime.New(newTransaction.V2CreateTransactionResponse.Data.Timestamp)),
+						UpdatedAt:  libtime.New(*newTransaction.V2RevertTransactionResponse.Data.InsertedAt),
+						RevertedAt: pointer.For(libtime.New(newTransaction.V2RevertTransactionResponse.Data.Timestamp)),
 						PostCommitVolumes: map[string]ledger.VolumesByAssets{
 							"world": {
 								"USD": {
@@ -243,7 +243,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 						ctx,
 						operations.V2GetTransactionRequest{
 							Ledger: "default",
-							ID:     newTransaction.V2CreateTransactionResponse.Data.ID,
+							ID:     newTransaction.V2RevertTransactionResponse.Data.ID,
 						},
 					)
 					Expect(err).NotTo(HaveOccurred())
@@ -263,7 +263,7 @@ var _ = Context("Ledger revert transactions API tests", func() {
 						ctx,
 						operations.V2GetTransactionRequest{
 							Ledger: "default",
-							ID:     newTransaction.V2CreateTransactionResponse.Data.ID,
+							ID:     newTransaction.V2RevertTransactionResponse.Data.ID,
 						},
 					)
 					Expect(err).NotTo(HaveOccurred())

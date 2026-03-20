@@ -16,15 +16,18 @@ func (v V2AggregateBalancesResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2AggregateBalancesResponse) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2AggregateBalancesResponse) GetData() map[string]*big.Int {
-	if o == nil {
+func (v *V2AggregateBalancesResponse) GetData() map[string]*big.Int {
+	if v == nil {
 		return map[string]*big.Int{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2aggregatebalancesresponse
+// #endregion class-body-v2aggregatebalancesresponse

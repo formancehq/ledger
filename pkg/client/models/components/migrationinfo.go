@@ -47,36 +47,36 @@ func (m MigrationInfo) MarshalJSON() ([]byte, error) {
 }
 
 func (m *MigrationInfo) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &m, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &m, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *MigrationInfo) GetVersion() *string {
-	if o == nil {
+func (m *MigrationInfo) GetVersion() *string {
+	if m == nil {
 		return nil
 	}
-	return o.Version
+	return m.Version
 }
 
-func (o *MigrationInfo) GetName() *string {
-	if o == nil {
+func (m *MigrationInfo) GetName() *string {
+	if m == nil {
 		return nil
 	}
-	return o.Name
+	return m.Name
 }
 
-func (o *MigrationInfo) GetDate() *time.Time {
-	if o == nil {
+func (m *MigrationInfo) GetDate() *time.Time {
+	if m == nil {
 		return nil
 	}
-	return o.Date
+	return m.Date
 }
 
-func (o *MigrationInfo) GetState() *State {
-	if o == nil {
+func (m *MigrationInfo) GetState() *State {
+	if m == nil {
 		return nil
 	}
-	return o.State
+	return m.State
 }

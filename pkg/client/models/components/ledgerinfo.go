@@ -6,11 +6,11 @@ type Storage struct {
 	Migrations []MigrationInfo `json:"migrations,omitempty"`
 }
 
-func (o *Storage) GetMigrations() []MigrationInfo {
-	if o == nil {
+func (s *Storage) GetMigrations() []MigrationInfo {
+	if s == nil {
 		return nil
 	}
-	return o.Migrations
+	return s.Migrations
 }
 
 type LedgerInfo struct {
@@ -18,16 +18,16 @@ type LedgerInfo struct {
 	Storage *Storage `json:"storage,omitempty"`
 }
 
-func (o *LedgerInfo) GetName() *string {
-	if o == nil {
+func (l *LedgerInfo) GetName() *string {
+	if l == nil {
 		return nil
 	}
-	return o.Name
+	return l.Name
 }
 
-func (o *LedgerInfo) GetStorage() *Storage {
-	if o == nil {
+func (l *LedgerInfo) GetStorage() *Storage {
+	if l == nil {
 		return nil
 	}
-	return o.Storage
+	return l.Storage
 }

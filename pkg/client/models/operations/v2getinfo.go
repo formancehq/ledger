@@ -14,23 +14,26 @@ type V2GetInfoResponse struct {
 	V2ErrorResponse *components.V2ErrorResponse
 }
 
-func (o *V2GetInfoResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2GetInfoResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2GetInfoResponse) GetV2ConfigInfoResponse() *components.V2ConfigInfoResponse {
-	if o == nil {
+func (v *V2GetInfoResponse) GetV2ConfigInfoResponse() *components.V2ConfigInfoResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2ConfigInfoResponse
+	return v.V2ConfigInfoResponse
 }
 
-func (o *V2GetInfoResponse) GetV2ErrorResponse() *components.V2ErrorResponse {
-	if o == nil {
+func (v *V2GetInfoResponse) GetV2ErrorResponse() *components.V2ErrorResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2ErrorResponse
+	return v.V2ErrorResponse
 }
+
+// #region class-body-v2getinforesponse
+// #endregion class-body-v2getinforesponse

@@ -24,47 +24,50 @@ type V2CreateTransactionRequest struct {
 	V2PostTransaction components.V2PostTransaction `request:"mediaType=application/json"`
 }
 
-func (o *V2CreateTransactionRequest) GetLedger() string {
-	if o == nil {
+func (v *V2CreateTransactionRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2CreateTransactionRequest) GetDryRun() *bool {
-	if o == nil {
+func (v *V2CreateTransactionRequest) GetDryRun() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.DryRun
+	return v.DryRun
 }
 
-func (o *V2CreateTransactionRequest) GetIdempotencyKey() *string {
-	if o == nil {
+func (v *V2CreateTransactionRequest) GetIdempotencyKey() *string {
+	if v == nil {
 		return nil
 	}
-	return o.IdempotencyKey
+	return v.IdempotencyKey
 }
 
-func (o *V2CreateTransactionRequest) GetForce() *bool {
-	if o == nil {
+func (v *V2CreateTransactionRequest) GetForce() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.Force
+	return v.Force
 }
 
-func (o *V2CreateTransactionRequest) GetSchemaVersion() *string {
-	if o == nil {
+func (v *V2CreateTransactionRequest) GetSchemaVersion() *string {
+	if v == nil {
 		return nil
 	}
-	return o.SchemaVersion
+	return v.SchemaVersion
 }
 
-func (o *V2CreateTransactionRequest) GetV2PostTransaction() components.V2PostTransaction {
-	if o == nil {
+func (v *V2CreateTransactionRequest) GetV2PostTransaction() components.V2PostTransaction {
+	if v == nil {
 		return components.V2PostTransaction{}
 	}
-	return o.V2PostTransaction
+	return v.V2PostTransaction
 }
+
+// #region class-body-v2createtransactionrequest
+// #endregion class-body-v2createtransactionrequest
 
 type V2CreateTransactionResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -73,23 +76,26 @@ type V2CreateTransactionResponse struct {
 	Headers                     map[string][]string
 }
 
-func (o *V2CreateTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2CreateTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2CreateTransactionResponse) GetV2CreateTransactionResponse() *components.V2CreateTransactionResponse {
-	if o == nil {
+func (v *V2CreateTransactionResponse) GetV2CreateTransactionResponse() *components.V2CreateTransactionResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2CreateTransactionResponse
+	return v.V2CreateTransactionResponse
 }
 
-func (o *V2CreateTransactionResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (v *V2CreateTransactionResponse) GetHeaders() map[string][]string {
+	if v == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return v.Headers
 }
+
+// #region class-body-v2createtransactionresponse
+// #endregion class-body-v2createtransactionresponse
