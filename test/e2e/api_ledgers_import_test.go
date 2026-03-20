@@ -3,7 +3,9 @@
 package test_suite
 
 import (
+	"bytes"
 	"database/sql"
+	"io"
 	"math/big"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -305,9 +307,17 @@ var _ = Context("Ledger engine tests", func() {
 					importLogs := func(specContext SpecContext) error {
 						GinkgoHelper()
 
-						_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ImportLogs(ctx, operations.V2ImportLogsRequest{
+						// Buffer the export response body to avoid Go 1.26
+						// issues with streaming an HTTP response body as
+						// another request body.
+						data, err := io.ReadAll(response.HTTPMeta.Response.Body)
+						if err != nil {
+							return err
+						}
+
+						_, err = Wait(specContext, DeferClient(testServer)).Ledger.V2.ImportLogs(ctx, operations.V2ImportLogsRequest{
 							Ledger:              ledgerCopyName,
-							V2ImportLogsRequest: response.HTTPMeta.Response.Body,
+							V2ImportLogsRequest: bytes.NewReader(data),
 						})
 						return err
 					}
