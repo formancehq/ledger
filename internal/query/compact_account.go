@@ -7,6 +7,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/analysis"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
@@ -175,13 +176,15 @@ func (it *CompactAccountIterator) addEntry(canonical []byte, nameBytes []byte, a
 
 	it.lastCanonical = append(it.lastCanonical[:0], canonical...)
 
-	name := string(nameBytes)
-
 	switch attrType {
 	case dal.AttributePrefixVolume:
-		it.assets = append(it.assets, name)
+		// nameBytes is [asset_base]\x03[precision_byte] — reconstruct "USD/4" form.
+		sep := bytes.IndexByte(nameBytes, dal.CanonicalKeySepAssetPrecision)
+		if sep >= 0 && sep+1 < len(nameBytes) {
+			it.assets = append(it.assets, domain.FormatAsset(string(nameBytes[:sep]), nameBytes[sep+1]))
+		}
 	case dal.AttributePrefixMetadata:
-		it.metadataKeys = append(it.metadataKeys, name)
+		it.metadataKeys = append(it.metadataKeys, string(nameBytes))
 	}
 }
 
