@@ -6596,6 +6596,132 @@
           ],
           "title": "Applying entries rate",
           "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "\u00b5s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 109
+          },
+          "id": 503,
+          "options": {
+            "legend": {
+              "calcs": [
+                "mean",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true
+            },
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "pluginVersion": "12.3.1",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.50, sum(rate(raft.applier.batch_wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
+              "interval": "1s",
+              "legendFormat": "p50 - Node {{service.node_id}}",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum(rate(raft.applier.batch_wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
+              "interval": "1s",
+              "legendFormat": "p95 - Node {{service.node_id}}",
+              "range": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "VictoriaMetrics"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.99, sum(rate(raft.applier.batch_wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
+              "interval": "1s",
+              "legendFormat": "p99 - Node {{service.node_id}}",
+              "range": true,
+              "refId": "C"
+            }
+          ],
+          "title": "Applier Batch Wait (p50, p95, p99)",
+          "type": "timeseries"
         }
       ],
       "title": "Applier",

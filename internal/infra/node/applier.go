@@ -68,6 +68,7 @@ type Applier struct {
 	readiesDuringGatingHistogram    metric.Int64Histogram
 	maintenanceSnapshotHistogram    metric.Float64Histogram
 	maintenanceReplaySpoolHistogram metric.Float64Histogram
+	batchWaitDurationHistogram      metric.Int64Histogram
 }
 
 // NewApplier creates a new Applier with all metrics registered on the provided meter.
@@ -211,6 +212,18 @@ func NewApplier(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating maintenance_replay_spool histogram: %w", err)
+	}
+
+	a.batchWaitDurationHistogram, err = meter.Int64Histogram(
+		"raft.applier.batch_wait.duration",
+		metric.WithDescription("Time the applier spends idle waiting for the next batch of entries"),
+		metric.WithUnit("us"),
+		metric.WithExplicitBucketBoundaries(
+			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000,
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating batch_wait histogram: %w", err)
 	}
 
 	return a, nil
@@ -383,19 +396,24 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 	var (
 		readiesDuringGating int64
 		gatingStart         time.Time
+		waitStart           = time.Now()
 	)
 
 	for {
 		select {
 		case work := <-a.ch:
+			a.batchWaitDurationHistogram.Record(ctx, time.Since(waitStart).Microseconds())
+
 			if work.barrier != nil {
 				close(work.barrier)
+				waitStart = time.Now()
 
 				continue
 			}
 
 			if work.syncLeader != 0 {
 				a.startSyncSnapshot(ctx, work.syncLeader)
+				waitStart = time.Now()
 
 				continue
 			}
@@ -422,6 +440,8 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 					return fmt.Errorf("spooling committed entries: %w", err)
 				}
 			}
+
+			waitStart = time.Now()
 		case <-a.gatingTerminated:
 			a.gatingWaitDurationHistogram.Record(context.Background(), time.Since(gatingStart).Microseconds())
 			a.readiesDuringGatingHistogram.Record(context.Background(), readiesDuringGating)
@@ -436,6 +456,7 @@ func (a *Applier) Run(ctx context.Context, stop chan struct{}) error {
 
 			a.unspoolDurationHistogram.Record(context.Background(), float64(time.Since(unspoolStart).Microseconds()))
 			a.gatingTerminated = nil
+			waitStart = time.Now()
 		case <-stop:
 			a.taskExecutor.interrupt()
 
