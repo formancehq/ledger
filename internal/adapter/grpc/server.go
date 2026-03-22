@@ -237,15 +237,19 @@ func loggingStreamInterceptor(logger logging.Logger, slowThreshold time.Duration
 		err := handler(srv, ss)
 		duration := time.Since(start)
 
+		code := status.Code(err)
 		fields := map[string]any{
 			"method":   info.FullMethod,
 			"duration": duration.String(),
-			"code":     status.Code(err).String(),
+			"code":     code.String(),
 		}
 		switch {
-		case err != nil:
+		case err != nil && code != codes.Canceled && code != codes.DeadlineExceeded:
 			fields["error"] = err.Error()
 			logger.WithFields(fields).Errorf("gRPC stream failed")
+		case err != nil:
+			fields["error"] = err.Error()
+			logger.WithFields(fields).Debugf("gRPC stream canceled")
 		case duration > slowThreshold:
 			fields["slow"] = true
 			logger.WithFields(fields).Infof("gRPC stream slow")
