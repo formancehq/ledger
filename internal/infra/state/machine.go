@@ -64,10 +64,9 @@ type Machine struct {
 	lastLogHash         []byte
 	lastCheckpointID    uint64
 
-	lastAppliedIndex            uint64
-	lastAppliedTimestamp        uint64
-	snapshotIndex               uint64
-	generationRotationThreshold uint64
+	lastAppliedIndex     uint64
+	lastAppliedTimestamp uint64
+	snapshotIndex        uint64
 
 	// KeyStore holds registered signing keys (updated after proposal apply)
 	keyStore *keystore.KeyStore
@@ -128,7 +127,7 @@ type Machine struct {
 	snapshotBuf []byte
 }
 
-func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, generationRotationThreshold uint64, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, numscriptCacheSize int, volumeAssertions bool) (*Machine, error) {
+func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter, cache *cache.Cache, attrs *attributes.Attributes, ks *keystore.KeyStore, sharedState *SharedState, eventNotifier Notifier, mirrorNotifier Notifier, indexNotifier Notifier, numscriptCacheSize int, volumeAssertions bool) (*Machine, error) {
 	stepStart := time.Now()
 
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(dataStore)
@@ -291,10 +290,9 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 	fsm := &Machine{
 		logger:                      logger,
 		dataStore:                   dataStore,
-		lastAppliedIndex:            lastAppliedIndex,
-		lastAppliedTimestamp:        lastAppliedTimestamp,
-		generationRotationThreshold: generationRotationThreshold,
-		volumeAssertions:            volumeAssertions,
+		lastAppliedIndex:     lastAppliedIndex,
+		lastAppliedTimestamp: lastAppliedTimestamp,
+		volumeAssertions:     volumeAssertions,
 		logsAppendedCounter:         logsAppendedCounter,
 		rotationDurationHistogram:   rotationDurationHistogram,
 		batchCommitHistogram:        batchCommitHistogram,

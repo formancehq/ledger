@@ -56,7 +56,7 @@ ledgerService:
       proposeQueueCapacity: 4096
       maxSizePerMsg: 4194304
     cache:
-      rotationThreshold: 50000
+      rotationThreshold: 1000
 
   networkPolicy:
     enabled: true

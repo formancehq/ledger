@@ -26,6 +26,7 @@ Refactor:
 * store checks memory usage
 * estimate cache size
 * delete attributes on ledger deletion
+* Push grafana dashboard (use variable for datasources)
 
 Later:
 * Store

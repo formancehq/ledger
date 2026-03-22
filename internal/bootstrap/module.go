@@ -296,7 +296,6 @@ func Module() fx.Option {
 					meterProvider.Meter("raft.node"),
 					c,
 					attrs,
-					cfg.RaftConfig.RotationThreshold,
 					ks,
 					ss,
 					eventNotifications,
