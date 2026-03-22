@@ -2,7 +2,6 @@ export function buildOptions(config) {
   return {
     thresholds: {
       errors: ['rate<0.1'],
-      grpc_req_duration: ['p(95)<500'],
       bulk_latency: ['p(95)<500'],
     },
     stages: [

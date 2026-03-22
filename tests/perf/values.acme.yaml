@@ -15,16 +15,31 @@ spec:
   arguments: "-o opentelemetry"
 
 ledgerService:
-  defaultsRef: default
+  defaultsRef: dev
   replicas: 1
   resources:
     requests:
-      cpu: "4"
+      cpu: "6"
       memory: 12Gi
     limits:
-      cpu: "4"
+      cpu: "6"
       memory: 12Gi
   config:
+##    admissionMetrics: true
+#    monitoring:
+#      flightRecorder:
+#        enabled: false
+#      logs:
+#        enabled: false
+#      traces:
+#        enabled: false
+#      metrics:
+#        enabled: false
+#      pyroscope:
+#        enabled: true
+#        serverAddress: http://pyroscope.ledger-v3:4040
+#        tags: version=8334cd10-dirty-20260321-170227
+
     auth:
       enabled: false
     pebble:
@@ -34,13 +49,14 @@ ledgerService:
       cacheSize: 4294967296
       bytesPerSync: 4194304
       walBytesPerSync: 4194304
-      maxConcurrentCompactions: 4
+      maxConcurrentCompactions: 2
+      snapshotThreshold: 1000
     raft:
       compactionMargin: 5000
       proposeQueueCapacity: 4096
       maxSizePerMsg: 4194304
     cache:
-      rotationThreshold: 5000
+      rotationThreshold: 50000
 
   networkPolicy:
     enabled: true
@@ -67,9 +83,9 @@ ledgerService:
 runner:
   env:
     LEDGER_NAME: "ledger0"
+    HTTP_ADDR: "http://acme-world-to-bank-ledger:9000"
     K6_STAGES: "1m:100,5m:100,1m:0"
     BULK_SIZE: "50"
-    BULK_ATOMIC: "true"
     K6_OTEL_GRPC_EXPORTER_ENDPOINT: "otel-opentelemetry-collector.ledger-v3.svc.cluster.local:4317"
     K6_OTEL_GRPC_EXPORTER_INSECURE: "true"
     K6_OTEL_METRICS_FLUSH_INTERVAL: "5s"

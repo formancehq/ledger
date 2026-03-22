@@ -9,6 +9,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -53,9 +54,16 @@ type BucketServiceServerImpl struct {
 	responseSigner        *signing.ResponseSigner
 	authCfg               internalauth.AuthConfig
 	queryProfileThreshold time.Duration
+	applyDuration         metric.Int64Histogram
 }
 
-func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, meterProvider metric.MeterProvider) servicepb.BucketServiceServer {
+	meter := meterProvider.Meter("grpc")
+	applyDuration, _ := meter.Int64Histogram("grpc.apply.duration",
+		metric.WithUnit("us"),
+		metric.WithDescription("Total duration of the gRPC Apply handler (auth + ctrl.Apply + signing)"),
+	)
+
 	return &BucketServiceServerImpl{
 		logger:                logger,
 		ctrl:                  ctrl,
@@ -67,10 +75,13 @@ func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.
 		responseSigner:        responseSigner,
 		authCfg:               authCfg,
 		queryProfileThreshold: queryProfileThreshold,
+		applyDuration:         applyDuration,
 	}
 }
 
 func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+	start := time.Now()
+
 	// Authenticate the token and expand scopes, but don't check a specific scope yet.
 	ctx, err := internalauth.Authenticate(ctx, impl.authCfg)
 	if err != nil {
@@ -114,6 +125,9 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 			log.ResponseSignature = impl.responseSigner.SignLog(log)
 		}
 	}
+
+	impl.applyDuration.Record(ctx, time.Since(start).Microseconds(),
+		metric.WithAttributes(attribute.Int("batch_size", len(req.GetRequests()))))
 
 	return &servicepb.ApplyResponse{Logs: logs}, nil
 }

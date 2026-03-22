@@ -11,6 +11,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -45,6 +46,8 @@ type DefaultController struct {
 	attrs      *attributes.Attributes
 	readStore  *readstore.Store
 	coldReader *coldstorage.ColdReader
+
+	applyDuration metric.Int64Histogram
 }
 
 // NewDefaultController creates a new default controller.
@@ -55,14 +58,25 @@ func NewDefaultController(
 	attrs *attributes.Attributes,
 	readStore *readstore.Store,
 	coldReader *coldstorage.ColdReader,
+	meter metric.Meter,
 ) *DefaultController {
+	applyDuration, err := meter.Int64Histogram(
+		"ctrl.apply.duration",
+		metric.WithDescription("End-to-end duration of a batch Apply call"),
+		metric.WithUnit("us"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	return &DefaultController{
-		logger:     logger,
-		admission:  admission,
-		store:      store,
-		attrs:      attrs,
-		readStore:  readStore,
-		coldReader: coldReader,
+		logger:        logger,
+		admission:     admission,
+		store:         store,
+		attrs:         attrs,
+		readStore:     readStore,
+		coldReader:    coldReader,
+		applyDuration: applyDuration,
 	}
 }
 
@@ -1047,11 +1061,17 @@ func (ctrl *DefaultController) Apply(ctx context.Context, requests ...*servicepb
 		trace.WithAttributes(attribute.Int("request_count", len(requests))))
 	defer span.End()
 
+	start := time.Now()
+
 	if len(requests) == 0 {
 		return nil, errors.New("at least one request is required")
 	}
 
 	logs, err := ctrl.admission.Admit(ctx, requests...)
+
+	ctrl.applyDuration.Record(ctx, time.Since(start).Microseconds(),
+		metric.WithAttributes(attribute.Int("batch_size", len(requests))))
+
 	if err != nil {
 		return nil, fmt.Errorf("applying raft requests: %w", err)
 	}

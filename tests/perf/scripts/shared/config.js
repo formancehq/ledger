@@ -2,8 +2,8 @@
 // This file exports configuration options for k6 tests
 
 export const config = {
-  // gRPC address of the ledger service
-  grpcAddr: __ENV.GRPC_ADDR || 'localhost:8888',
+  // HTTP address of the ledger service
+  httpAddr: __ENV.HTTP_ADDR || 'http://localhost:9000',
 
   // Ledger name to use for tests
   ledgerName: __ENV.LEDGER_NAME || 'ledger0',

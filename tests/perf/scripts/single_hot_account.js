@@ -17,15 +17,16 @@
 // - BULK_SIZE: Number of transactions per request
 
 import { check } from 'k6';
+import http from 'k6/http';
 import { Rate, Trend, Counter } from 'k6/metrics';
-import grpc from 'k6/net/grpc';
 import { config } from './shared/config.js';
 import { buildOptions } from './shared/options.js';
-import { connectClient, apply, scriptRequest } from './shared/utils.js';
+import { bulkUrl, scriptBulkElement, sendBulk, checkBulkSuccess } from './shared/http_utils.js';
 import exec from 'k6/execution';
 
 // Configuration
 const BULK_SIZE = parseInt(__ENV.BULK_SIZE || '1');
+const BULK_ATOMIC = (__ENV.BULK_ATOMIC || 'true') === 'true';
 const HOT_ACCOUNT = __ENV.HOT_ACCOUNT || 'treasury:main';
 const CONTENTION_MODE = __ENV.CONTENTION_MODE || 'mixed'; // 'deposit', 'withdraw', 'mixed'
 const SENDER_POOL_SIZE = parseInt(__ENV.SENDER_POOL_SIZE || '1000');
@@ -39,7 +40,7 @@ const withdrawOps = new Counter('withdraw_ops');
 
 export const options = buildOptions(config);
 
-let client;
+const url = bulkUrl(config.httpAddr, config.ledgerName, BULK_ATOMIC);
 
 // Generate a unique sender account
 function getSenderAccount(uniqueId) {
@@ -53,7 +54,7 @@ function generateDeposit(uniqueId) {
 
   depositOps.add(1);
 
-  return scriptRequest(config.ledgerName,
+  return scriptBulkElement(
     `vars {
             account $sender
             monetary $amount
@@ -74,7 +75,7 @@ function generateWithdraw(uniqueId) {
 
   withdrawOps.add(1);
 
-  return scriptRequest(config.ledgerName,
+  return scriptBulkElement(
     `vars {
             account $recipient
             monetary $amount
@@ -97,7 +98,7 @@ function generateTransfer(uniqueId) {
   depositOps.add(1);
   withdrawOps.add(1);
 
-  return scriptRequest(config.ledgerName,
+  return scriptBulkElement(
     `vars {
             account $sender
             account $recipient
@@ -118,7 +119,7 @@ function generateTransfer(uniqueId) {
   );
 }
 
-function generateTransaction(uniqueId) {
+function generateElement(uniqueId) {
   switch (CONTENTION_MODE) {
     case 'deposit':
       return generateDeposit(uniqueId);
@@ -137,31 +138,25 @@ function generateTransaction(uniqueId) {
   }
 }
 
-function generateRequests(iteration) {
-  const requests = [];
+function generateElements(iteration) {
+  const elements = [];
   for (let i = 0; i < BULK_SIZE; i++) {
     const uniqueId = iteration * BULK_SIZE + i;
-    requests.push(generateTransaction(uniqueId));
+    elements.push(generateElement(uniqueId));
   }
-  return requests;
+  return elements;
 }
 
 export default function () {
-  if (!client) client = connectClient(config.grpcAddr);
-
-  const requests = generateRequests(exec.scenario.iterationInTest);
+  const elements = generateElements(exec.scenario.iterationInTest);
 
   const startTime = Date.now();
-  const response = apply(client, requests);
+  const response = sendBulk(url, elements);
   const latency = Date.now() - startTime;
 
   bulkLatency.add(latency);
 
-  const success = check(response, {
-    'bulk operation successful': (r) => r && r.status === grpc.StatusOK,
-  });
-
-  if (!success) {
+  if (!checkBulkSuccess(response)) {
     errorRate.add(1);
   } else {
     errorRate.add(0);
@@ -171,26 +166,23 @@ export default function () {
 
 // Setup: Initialize the hot account with funds
 export function setup() {
-  const setupClient = connectClient(config.grpcAddr);
+  const setupUrl = `${config.httpAddr}/${config.ledgerName}/_bulk?atomic=true`;
+  const element = scriptBulkElement(
+    `send [USD/2 100000000] (
+            source = @world
+            destination = @${HOT_ACCOUNT}
+        )`,
+    {},
+    { type: 'hot_account_init', hot_account: HOT_ACCOUNT },
+  );
 
-  // Initialize hot account with large balance to handle withdrawals
-  const initRequests = [
-    scriptRequest(config.ledgerName,
-      `send [USD/2 100000000] (
-              source = @world
-              destination = @${HOT_ACCOUNT}
-          )`,
-      {},
-      { type: 'hot_account_init', hot_account: HOT_ACCOUNT },
-    ),
-  ];
-
-  const response = apply(setupClient, initRequests);
-  check(response, {
-    'setup: hot account initialized': (r) => r && r.status === grpc.StatusOK,
+  const response = http.post(setupUrl, JSON.stringify([element]), {
+    headers: { 'Content-Type': 'application/json' },
   });
 
-  setupClient.close();
+  check(response, {
+    'setup: hot account initialized': (r) => r.status === 200,
+  });
 
   console.log(`Setup complete: hot account @${HOT_ACCOUNT} initialized`);
   console.log(`Contention mode: ${CONTENTION_MODE}`);
@@ -223,7 +215,6 @@ export function handleSummary(data) {
         p99_latency: data.metrics.bulk_latency?.values?.['p(99)'] || 0,
         avg_latency: data.metrics.bulk_latency?.values?.avg || 0,
         max_latency: data.metrics.bulk_latency?.values?.max || 0,
-        rps: data.metrics.grpc_reqs?.values?.rate || 0,
         tps: tps,
       },
     }, null, 2),
