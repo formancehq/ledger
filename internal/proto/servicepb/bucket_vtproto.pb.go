@@ -2765,6 +2765,7 @@ func (m *AggregateVolumesRequest) CloneVT() *AggregateVolumesRequest {
 	r.Ledger = m.Ledger
 	r.Filter = m.Filter.CloneVT()
 	r.MinLogSequence = m.MinLogSequence
+	r.UseMaxPrecision = m.UseMaxPrecision
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -7207,6 +7208,9 @@ func (this *AggregateVolumesRequest) EqualVT(that *AggregateVolumesRequest) bool
 		return false
 	}
 	if this.MinLogSequence != that.MinLogSequence {
+		return false
+	}
+	if this.UseMaxPrecision != that.UseMaxPrecision {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -14084,6 +14088,16 @@ func (m *AggregateVolumesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.UseMaxPrecision {
+		i--
+		if m.UseMaxPrecision {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x20
+	}
 	if m.MinLogSequence != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinLogSequence))
 		i--
@@ -17099,6 +17113,9 @@ func (m *AggregateVolumesRequest) SizeVT() (n int) {
 	}
 	if m.MinLogSequence != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinLogSequence))
+	}
+	if m.UseMaxPrecision {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -32830,6 +32847,26 @@ func (m *AggregateVolumesRequest) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UseMaxPrecision", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.UseMaxPrecision = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -777,7 +777,7 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 
 	profileCtx, profile := query.WithProfile(ctx)
 
-	result, err := impl.ctrl.AggregateVolumes(profileCtx, req.GetLedger(), req.GetFilter())
+	result, err := impl.ctrl.AggregateVolumes(profileCtx, req.GetLedger(), req.GetFilter(), req.GetUseMaxPrecision())
 	impl.emitProfile(ctx, profile)
 
 	return result, err

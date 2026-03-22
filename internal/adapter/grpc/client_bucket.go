@@ -241,10 +241,11 @@ func (g *BucketGrpcClient) AnalyzeTransactions(ctx context.Context, ledgerName s
 	}
 }
 
-func (g *BucketGrpcClient) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter) (*commonpb.AggregateResult, error) {
+func (g *BucketGrpcClient) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, useMaxPrecision bool) (*commonpb.AggregateResult, error) {
 	return g.client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
-		Ledger: ledgerName,
-		Filter: filter,
+		Ledger:          ledgerName,
+		Filter:          filter,
+		UseMaxPrecision: useMaxPrecision,
 	})
 }
 

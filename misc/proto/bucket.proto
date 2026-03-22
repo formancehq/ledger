@@ -907,6 +907,9 @@ message AggregateVolumesRequest {
   string ledger = 1;
   common.QueryFilter filter = 2;
   uint64 min_log_sequence = 3;
+  // When true, assets sharing the same base (e.g. USD/2, USD/4) are merged
+  // under the highest precision observed, with lower-precision amounts rescaled.
+  bool use_max_precision = 4;
 }
 
 // ============================================================================

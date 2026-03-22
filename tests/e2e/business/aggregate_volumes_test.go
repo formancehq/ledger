@@ -208,6 +208,139 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 		})
 	})
 
+	Context("When aggregating volumes with use_max_precision across different precisions", Ordered, func() {
+		const ledgerName = "agg-vol-max-prec"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			// Create postings with different precisions for the same asset base:
+			// world→alice: 100 USD/2 (= $1.00)
+			// world→bob:   10000 USD/4 (= $1.0000)
+			// world→carol: 1000 USD/3 (= $1.000)
+			// world→alice: 50 EUR/2
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						testutil.NewPosting("world", "alice", big.NewInt(100), "USD/2"),
+					}, nil),
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						testutil.NewPosting("world", "bob", big.NewInt(10000), "USD/4"),
+					}, nil),
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						testutil.NewPosting("world", "carol", big.NewInt(1000), "USD/3"),
+					}, nil),
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						testutil.NewPosting("world", "alice", big.NewInt(50), "EUR/2"),
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Without use_max_precision, should return separate entries per precision", func() {
+			Eventually(func(g Gomega) {
+				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+				// USD/2, USD/3, USD/4, EUR/2 = 4 entries
+				g.Expect(result.Volumes).To(HaveLen(4))
+
+				volumesByAsset := make(map[string]*commonpb.AggregatedVolume)
+				for _, v := range result.Volumes {
+					volumesByAsset[v.Asset] = v
+				}
+				g.Expect(volumesByAsset).To(HaveKey("USD/2"))
+				g.Expect(volumesByAsset).To(HaveKey("USD/3"))
+				g.Expect(volumesByAsset).To(HaveKey("USD/4"))
+				g.Expect(volumesByAsset).To(HaveKey("EUR/2"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+
+		It("With use_max_precision, should merge USD precisions under USD/4", func() {
+			Eventually(func(g Gomega) {
+				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+					Ledger:          ledgerName,
+					UseMaxPrecision: true,
+				})
+				g.Expect(err).To(Succeed())
+				// USD/2 + USD/3 + USD/4 → USD/4, EUR/2 stays = 2 entries
+				g.Expect(result.Volumes).To(HaveLen(2))
+
+				volumesByAsset := make(map[string]*commonpb.AggregatedVolume)
+				for _, v := range result.Volumes {
+					volumesByAsset[v.Asset] = v
+				}
+
+				// USD/4 merged:
+				// USD/2: input=100, rescaled to /4: 100 * 10^(4-2) = 10000
+				// USD/3: input=1000, rescaled to /4: 1000 * 10^(4-3) = 10000
+				// USD/4: input=10000 (no rescaling)
+				// Total input = 30000, same for output (double-entry, world has the output)
+				usdVol, ok := volumesByAsset["USD/4"]
+				g.Expect(ok).To(BeTrue(), "expected merged USD/4 volumes")
+				g.Expect(usdVol.Input.ToBigInt().Int64()).To(Equal(int64(30000)))
+				g.Expect(usdVol.Output.ToBigInt().Int64()).To(Equal(int64(30000)))
+
+				// EUR/2 unchanged
+				eurVol, ok := volumesByAsset["EUR/2"]
+				g.Expect(ok).To(BeTrue(), "expected EUR/2 volumes")
+				g.Expect(eurVol.Input.ToBigInt().Int64()).To(Equal(int64(50)))
+				g.Expect(eurVol.Output.ToBigInt().Int64()).To(Equal(int64(50)))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+	})
+
+	Context("When aggregating volumes with use_max_precision and a prefix filter", Ordered, func() {
+		const ledgerName = "agg-vol-max-prec-filter"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			// world→users:alice 100 USD/2, world→users:bob 10000 USD/4, world→bank:main 500 USD/2
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						testutil.NewPosting("world", "users:alice", big.NewInt(100), "USD/2"),
+					}, nil),
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						testutil.NewPosting("world", "users:bob", big.NewInt(10000), "USD/4"),
+					}, nil),
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						testutil.NewPosting("world", "bank:main", big.NewInt(500), "USD/2"),
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should merge precisions only for filtered accounts", func() {
+			Eventually(func(g Gomega) {
+				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+					Ledger:          ledgerName,
+					Filter:          prefixFilter("users:"),
+					UseMaxPrecision: true,
+				})
+				g.Expect(err).To(Succeed())
+				// users:alice(USD/2) + users:bob(USD/4) merged → USD/4
+				g.Expect(result.Volumes).To(HaveLen(1))
+
+				usdVol := result.Volumes[0]
+				g.Expect(usdVol.Asset).To(Equal("USD/4"))
+				// alice: 100 * 10^2 = 10000, bob: 10000 → total = 20000
+				g.Expect(usdVol.Input.ToBigInt().Int64()).To(Equal(int64(20000)))
+				g.Expect(usdVol.Output.ToBigInt().Int64()).To(Equal(int64(0)))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+	})
+
 	Context("When aggregating volumes for a non-existent ledger", func() {
 		It("Should return a NotFound error", func() {
 			_, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{

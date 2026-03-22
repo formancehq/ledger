@@ -178,10 +178,9 @@ func (it *CompactAccountIterator) addEntry(canonical []byte, nameBytes []byte, a
 
 	switch attrType {
 	case dal.AttributePrefixVolume:
-		// nameBytes is [asset_base]\x03[precision_byte] — reconstruct "USD/4" form.
-		sep := bytes.IndexByte(nameBytes, dal.CanonicalKeySepAssetPrecision)
-		if sep >= 0 && sep+1 < len(nameBytes) {
-			it.assets = append(it.assets, domain.FormatAsset(string(nameBytes[:sep]), nameBytes[sep+1]))
+		// nameBytes is [asset_base][precision_byte] — last byte is always precision.
+		if len(nameBytes) >= 2 {
+			it.assets = append(it.assets, domain.FormatAsset(string(nameBytes[:len(nameBytes)-1]), nameBytes[len(nameBytes)-1]))
 		}
 	case dal.AttributePrefixMetadata:
 		it.metadataKeys = append(it.metadataKeys, string(nameBytes))

@@ -7425,8 +7425,11 @@ type AggregateVolumesRequest struct {
 	Ledger         string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
 	Filter         *commonpb.QueryFilter  `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	MinLogSequence uint64                 `protobuf:"varint,3,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// When true, assets sharing the same base (e.g. USD/2, USD/4) are merged
+	// under the highest precision observed, with lower-precision amounts rescaled.
+	UseMaxPrecision bool `protobuf:"varint,4,opt,name=use_max_precision,json=useMaxPrecision,proto3" json:"use_max_precision,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *AggregateVolumesRequest) Reset() {
@@ -7478,6 +7481,13 @@ func (x *AggregateVolumesRequest) GetMinLogSequence() uint64 {
 		return x.MinLogSequence
 	}
 	return 0
+}
+
+func (x *AggregateVolumesRequest) GetUseMaxPrecision() bool {
+	if x != nil {
+		return x.UseMaxPrecision
+	}
+	return false
 }
 
 // QueryProfile contains execution statistics for a read query.
@@ -8168,11 +8178,12 @@ const file_bucket_proto_rawDesc = "" +
 	"\x06cursor\x18\x05 \x01(\x04R\x06cursorB\a\n" +
 	"\x05index\"/\n" +
 	"\x15GetLedgerStatsRequest\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\x88\x01\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\xb4\x01\n" +
 	"\x17AggregateVolumesRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +
 	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x12(\n" +
-	"\x10min_log_sequence\x18\x03 \x01(\x04R\x0eminLogSequence\"\xde\x02\n" +
+	"\x10min_log_sequence\x18\x03 \x01(\x04R\x0eminLogSequence\x12*\n" +
+	"\x11use_max_precision\x18\x04 \x01(\bR\x0fuseMaxPrecision\"\xde\x02\n" +
 	"\fQueryProfile\x12*\n" +
 	"\x11index_duration_us\x18\x01 \x01(\x03R\x0findexDurationUs\x124\n" +
 	"\x16enrichment_duration_us\x18\x02 \x01(\x03R\x14enrichmentDurationUs\x12'\n" +

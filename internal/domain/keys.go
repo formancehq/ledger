@@ -21,18 +21,44 @@ type AccountKey struct {
 type VolumeKey struct {
 	AccountKey
 
+	// Asset is the full asset string (e.g. "USD/4"). Used for API responses,
+	// error messages, and as map key in application code.
 	Asset string
+
+	// AssetBase and AssetPrecision are the decomposed form, populated by
+	// NewVolumeKey and Unmarshal. They avoid re-parsing the Asset string
+	// when serializing or aggregating.
+	AssetBase      string
+	AssetPrecision uint8
+}
+
+// NewVolumeKey creates a VolumeKey, parsing the asset string into base and precision.
+func NewVolumeKey(ak AccountKey, asset string) VolumeKey {
+	base, prec := ParseAssetPrecision(asset)
+
+	return VolumeKey{
+		AccountKey:     ak,
+		Asset:          asset,
+		AssetBase:      base,
+		AssetPrecision: prec,
+	}
 }
 
 // Bytes returns a canonical byte representation of the balance key.
-// Format: [ledger]\x00[account]\x00[asset_base]\x03[precision_byte]
-// Ledger names are restricted to printable ASCII, so \x00 is a safe separator.
-// \x03 separates the asset base from the precision byte.
+// Format: [ledger]\x00[account]\x00[asset_base][precision_byte]
+// The last byte is always the precision. Asset bases are uppercase ASCII
+// (≥0x41), so there is no ambiguity with precision values (0x00–0xFF).
 func (bk VolumeKey) Bytes() []byte {
-	base, precision := ParseAssetPrecision(bk.Asset)
+	base := bk.AssetBase
+	precision := bk.AssetPrecision
 
-	// [ledger]\x00[account]\x00[base]\x03[precision]
-	ret := make([]byte, len(bk.Ledger)+1+len(bk.Account)+1+len(base)+1+1)
+	// Fallback: if constructed via struct literal without NewVolumeKey.
+	if base == "" && bk.Asset != "" {
+		base, precision = ParseAssetPrecision(bk.Asset)
+	}
+
+	// [ledger]\x00[account]\x00[base][precision]
+	ret := make([]byte, len(bk.Ledger)+1+len(bk.Account)+1+len(base)+1)
 	n := copy(ret, bk.Ledger)
 	ret[n] = 0x00
 	n++
@@ -40,15 +66,14 @@ func (bk VolumeKey) Bytes() []byte {
 	ret[n] = 0x00
 	n++
 	n += copy(ret[n:], base)
-	ret[n] = 0x03 // CanonicalKeySepAssetPrecision
-	n++
 	ret[n] = precision
 
 	return ret
 }
 
 // Unmarshal parses canonical bytes into the VolumeKey.
-// Expected format: [ledger]\x00[account]\x00[asset_base]\x03[precision_byte]
+// Expected format: [ledger]\x00[account]\x00[asset_base][precision_byte]
+// The last byte is always the precision.
 func (bk *VolumeKey) Unmarshal(d []byte) error {
 	parts := splitNullBytes(d, 3)
 	if len(parts) != 3 {
@@ -59,24 +84,13 @@ func (bk *VolumeKey) Unmarshal(d []byte) error {
 	bk.Account = string(parts[1])
 
 	assetPart := parts[2]
-	// Find the \x03 separator between asset base and precision byte.
-	sep := -1
-
-	for i, b := range assetPart {
-		if b == 0x03 {
-			sep = i
-
-			break
-		}
+	if len(assetPart) < 2 {
+		return fmt.Errorf("invalid balance key bytes: asset part too short")
 	}
 
-	if sep == -1 || sep+1 >= len(assetPart) {
-		return fmt.Errorf("invalid balance key bytes: missing asset precision separator")
-	}
-
-	base := string(assetPart[:sep])
-	precision := assetPart[sep+1]
-	bk.Asset = FormatAsset(base, precision)
+	bk.AssetBase = string(assetPart[:len(assetPart)-1])
+	bk.AssetPrecision = assetPart[len(assetPart)-1]
+	bk.Asset = FormatAsset(bk.AssetBase, bk.AssetPrecision)
 
 	return nil
 }

@@ -181,7 +181,7 @@ func (m *mockBackend) AnalyzeTransactions(ctx context.Context, ledgerName string
 	return nil, nil
 }
 
-func (m *mockBackend) AggregateVolumes(_ context.Context, _ string, _ *commonpb.QueryFilter) (*commonpb.AggregateResult, error) {
+func (m *mockBackend) AggregateVolumes(_ context.Context, _ string, _ *commonpb.QueryFilter, _ bool) (*commonpb.AggregateResult, error) {
 	return &commonpb.AggregateResult{}, nil
 }
 
