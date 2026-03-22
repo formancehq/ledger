@@ -86,6 +86,7 @@ runner:
     HTTP_ADDR: "http://acme-world-to-bank-ledger:9000"
     K6_STAGES: "1m:100,5m:100,1m:0"
     BULK_SIZE: "50"
+    USE_NUMSCRIPT: "true"
     K6_OTEL_GRPC_EXPORTER_ENDPOINT: "otel-opentelemetry-collector.ledger-v3.svc.cluster.local:4317"
     K6_OTEL_GRPC_EXPORTER_INSECURE: "true"
     K6_OTEL_METRICS_FLUSH_INTERVAL: "5s"
