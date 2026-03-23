@@ -3825,7 +3825,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "P4169E866C3094E38"
+        "uid": "${datasource}"
       },
       "description": "Time spent processing Raft 'Ready' state (in microseconds). The Ready loop is the main Raft processing cycle.\n\nThis includes:\n- Sending messages to peers\n- Persisting entries to WAL\n- Applying committed entries\n- Advancing Raft state\n\nHigh values indicate the Raft loop is slow, which limits throughput.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
       "fieldConfig": {
@@ -4149,7 +4149,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "P4169E866C3094E38"
+        "uid": "${datasource}"
       },
       "description": "Time spent appending entries to the Write-Ahead Log (WAL) in microseconds.\n\nWAL writes must complete before entries can be committed. High latency indicates:\n- Slow disk I/O\n- Disk saturation\n- Need for faster storage\n\nThis directly impacts transaction latency and throughput.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
       "fieldConfig": {
@@ -5063,7 +5063,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "P4169E866C3094E38"
+        "uid": "${datasource}"
       },
       "fieldConfig": {
         "defaults": {
