@@ -15,274 +15,201 @@ import (
 
 const errorDomain = "ledger"
 
+// errorMapping defines how a business error maps to a gRPC status.
+type errorMapping struct {
+	match  func(err error) (map[string]string, bool)
+	code   codes.Code
+	reason string
+}
+
+// matchAs is a helper that creates a match function using errors.As,
+// extracting metadata via the provided function.
+func matchAs[T error](metadataFn func(T) map[string]string) func(error) (map[string]string, bool) {
+	return func(err error) (map[string]string, bool) {
+		var target T
+		if errors.As(err, &target) {
+			return metadataFn(target), true
+		}
+
+		return nil, false
+	}
+}
+
+// matchIs is a helper that creates a match function using errors.Is (no metadata).
+func matchIs(sentinel error) func(error) (map[string]string, bool) {
+	return func(err error) (map[string]string, bool) {
+		if errors.Is(err, sentinel) {
+			return nil, true
+		}
+
+		return nil, false
+	}
+}
+
+var errorMappings = []errorMapping{
+	{matchAs(func(e *domain.ErrLedgerAlreadyExists) map[string]string {
+		return map[string]string{"name": e.Name}
+	}), codes.AlreadyExists, domain.ErrReasonLedgerAlreadyExists},
+
+	{matchAs(func(e *domain.ErrLedgerNotFound) map[string]string {
+		return map[string]string{"name": e.Name}
+	}), codes.NotFound, domain.ErrReasonLedgerNotFound},
+
+	{matchAs(func(e *domain.ErrLedgerInMirrorMode) map[string]string {
+		return map[string]string{"name": e.Name}
+	}), codes.FailedPrecondition, domain.ErrReasonLedgerInMirrorMode},
+
+	{matchAs(func(e *domain.ErrLedgerNotInMirrorMode) map[string]string {
+		return map[string]string{"name": e.Name}
+	}), codes.FailedPrecondition, domain.ErrReasonLedgerNotInMirrorMode},
+
+	{matchAs(func(e *domain.ErrIdempotencyKeyConflict) map[string]string {
+		return map[string]string{"key": e.Key}
+	}), codes.AlreadyExists, domain.ErrReasonIdempotencyKeyConflict},
+
+	{matchAs(func(e *domain.ErrTransactionReferenceConflict) map[string]string {
+		return map[string]string{"ledger": e.Ledger, "reference": e.Reference}
+	}), codes.AlreadyExists, domain.ErrReasonTransactionReferenceConflict},
+
+	{matchAs(func(e *domain.ErrTransactionNotFound) map[string]string {
+		return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
+	}), codes.NotFound, domain.ErrReasonTransactionNotFound},
+
+	{matchAs(func(e *domain.ErrTransactionAlreadyReverted) map[string]string {
+		return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
+	}), codes.FailedPrecondition, domain.ErrReasonTransactionAlreadyReverted},
+
+	{matchAs(func(e *domain.ErrInsufficientFunds) map[string]string {
+		return map[string]string{"account": e.Account, "asset": e.Asset, "amount": e.Amount, "balance": e.Balance}
+	}), codes.FailedPrecondition, domain.ErrReasonInsufficientFunds},
+
+	{matchAs(func(e *domain.ErrBalanceNotFound) map[string]string {
+		return map[string]string{"account": e.Account, "asset": e.Asset}
+	}), codes.FailedPrecondition, domain.ErrReasonBalanceNotFound},
+
+	{matchAs(func(e *domain.ErrBalanceNotPreloaded) map[string]string {
+		return map[string]string{"account": e.Account, "asset": e.Asset}
+	}), codes.FailedPrecondition, domain.ErrReasonBalanceNotPreloaded},
+
+	{matchAs(func(e *domain.ErrNumscriptParse) map[string]string {
+		return map[string]string{"details": e.Details}
+	}), codes.InvalidArgument, domain.ErrReasonNumscriptParseError},
+
+	{matchAs(func(e *domain.ErrNumscriptNotFound) map[string]string {
+		return map[string]string{"name": e.Name}
+	}), codes.NotFound, domain.ErrReasonNumscriptNotFound},
+
+	{matchAs(func(e *domain.ErrNumscriptVersionAlreadyExists) map[string]string {
+		return map[string]string{"name": e.Name, "version": e.Version}
+	}), codes.AlreadyExists, domain.ErrReasonNumscriptVersionAlreadyExists},
+
+	{matchAs(func(e *domain.ErrNumscriptInvalidVersion) map[string]string {
+		return map[string]string{"version": e.Version}
+	}), codes.InvalidArgument, domain.ErrReasonNumscriptInvalidVersion},
+
+	{matchAs(func(e *domain.ErrSinkAlreadyExists) map[string]string {
+		return map[string]string{"name": e.Name}
+	}), codes.AlreadyExists, domain.ErrReasonSinkAlreadyExists},
+
+	{matchAs(func(e *domain.ErrSinkNotFound) map[string]string {
+		return map[string]string{"name": e.Name}
+	}), codes.NotFound, domain.ErrReasonSinkNotFound},
+
+	{matchAs(func(e *domain.ErrPreparedQueryAlreadyExists) map[string]string {
+		return map[string]string{"ledger": e.Ledger, "name": e.Name}
+	}), codes.AlreadyExists, domain.ErrReasonPreparedQueryAlreadyExists},
+
+	{matchAs(func(e *domain.ErrPreparedQueryNotFound) map[string]string {
+		return map[string]string{"ledger": e.Ledger, "name": e.Name}
+	}), codes.NotFound, domain.ErrReasonPreparedQueryNotFound},
+
+	{matchAs(func(e *domain.ErrMetadataNotFound) map[string]string {
+		return map[string]string{"target": e.Target, "key": e.Key}
+	}), codes.NotFound, domain.ErrReasonMetadataNotFound},
+
+	{matchIs(domain.ErrNoPeriodOpen), codes.FailedPrecondition, domain.ErrReasonNoPeriodOpen},
+
+	{matchAs(func(e *domain.ErrPeriodNotFound) map[string]string {
+		return map[string]string{"periodId": strconv.FormatUint(e.PeriodID, 10)}
+	}), codes.NotFound, domain.ErrReasonPeriodNotFound},
+
+	{matchAs(func(e *domain.ErrPeriodNotClosing) map[string]string {
+		return map[string]string{"periodId": strconv.FormatUint(e.PeriodID, 10)}
+	}), codes.FailedPrecondition, domain.ErrReasonPeriodNotClosing},
+
+	{matchAs(func(e *domain.ErrInvalidReceipt) map[string]string {
+		return map[string]string{"reason": e.Reason}
+	}), codes.InvalidArgument, domain.ErrReasonInvalidReceipt},
+
+	// Validation sentinel errors (no metadata)
+	{matchIs(domain.ErrTargetRequired), codes.InvalidArgument, domain.ErrReasonValidation},
+	{matchIs(domain.ErrMetadataKeyRequired), codes.InvalidArgument, domain.ErrReasonValidation},
+	{matchIs(domain.ErrScriptRequired), codes.InvalidArgument, domain.ErrReasonValidation},
+	{matchIs(admission.ErrIdempotencyKeyTooLong), codes.InvalidArgument, domain.ErrReasonValidation},
+	{matchIs(domain.ErrNumscriptNameRequired), codes.InvalidArgument, domain.ErrReasonValidation},
+	{matchIs(domain.ErrNumscriptContentRequired), codes.InvalidArgument, domain.ErrReasonValidation},
+	{matchIs(domain.ErrScriptAndReferenceConflict), codes.InvalidArgument, domain.ErrReasonValidation},
+	{matchIs(numscript.ErrMetaNotSupported), codes.InvalidArgument, domain.ErrReasonValidation},
+
+	{matchIs(domain.ErrMaintenanceMode), codes.Unavailable, domain.ErrReasonMaintenanceMode},
+
+	{matchAs(func(e *domain.ErrInvalidCronExpression) map[string]string {
+		return map[string]string{"expression": e.Expression, "details": e.Details}
+	}), codes.InvalidArgument, domain.ErrReasonInvalidCronExpression},
+
+	{matchAs(func(e *domain.ErrIndexNotFound) map[string]string {
+		return map[string]string{"index": e.Index}
+	}), codes.FailedPrecondition, domain.ErrReasonIndexNotFound},
+
+	{matchAs(func(e *domain.ErrIndexBuilding) map[string]string {
+		return map[string]string{"index": e.Index}
+	}), codes.FailedPrecondition, domain.ErrReasonIndexBuilding},
+
+	{matchAs(func(e *domain.ErrAccountNotMatchingType) map[string]string {
+		return map[string]string{"address": e.Address}
+	}), codes.FailedPrecondition, domain.ErrReasonAccountNotMatchingType},
+
+	{matchAs(func(e *domain.ErrAccountTypeNotFound) map[string]string {
+		return map[string]string{"name": e.Name}
+	}), codes.NotFound, domain.ErrReasonAccountTypeNotFound},
+
+	{matchAs(func(e *domain.ErrAccountTypeAlreadyExists) map[string]string {
+		return map[string]string{"name": e.Name}
+	}), codes.AlreadyExists, domain.ErrReasonAccountTypeAlreadyExists},
+
+	{matchAs(func(e *domain.ErrInvalidPattern) map[string]string {
+		return map[string]string{"pattern": e.Pattern, "details": e.Details}
+	}), codes.InvalidArgument, domain.ErrReasonInvalidPattern},
+
+	{matchAs(func(e *domain.ErrAccountTypeHasAccounts) map[string]string {
+		return map[string]string{"name": e.Name}
+	}), codes.FailedPrecondition, domain.ErrReasonAccountTypeHasAccounts},
+}
+
 // businessErrorToGRPCStatus converts a BusinessError to a gRPC status with ErrorInfo details.
 func businessErrorToGRPCStatus(bizErr *domain.BusinessError) *status.Status {
-	var (
-		code     codes.Code
-		reason   string
-		metadata map[string]string
-	)
-
 	inner := bizErr.Err
 
-	var (
-		ledgerAlreadyExists           *domain.ErrLedgerAlreadyExists
-		ledgerNotFound                *domain.ErrLedgerNotFound
-		ledgerInMirrorMode            *domain.ErrLedgerInMirrorMode
-		ledgerNotInMirrorMode         *domain.ErrLedgerNotInMirrorMode
-		idempotencyKeyConflict        *domain.ErrIdempotencyKeyConflict
-		transactionReferenceConflict  *domain.ErrTransactionReferenceConflict
-		transactionNotFound           *domain.ErrTransactionNotFound
-		transactionAlreadyReverted    *domain.ErrTransactionAlreadyReverted
-		insufficientFunds             *domain.ErrInsufficientFunds
-		balanceNotFound               *domain.ErrBalanceNotFound
-		balanceNotPreloaded           *domain.ErrBalanceNotPreloaded
-		numscriptParse                *domain.ErrNumscriptParse
-		numscriptNotFound             *domain.ErrNumscriptNotFound
-		numscriptVersionAlreadyExists *domain.ErrNumscriptVersionAlreadyExists
-		numscriptInvalidVersion       *domain.ErrNumscriptInvalidVersion
-		sinkAlreadyExists             *domain.ErrSinkAlreadyExists
-		sinkNotFound                  *domain.ErrSinkNotFound
-		metadataNotFound              *domain.ErrMetadataNotFound
-		preparedQueryAlreadyExists    *domain.ErrPreparedQueryAlreadyExists
-		preparedQueryNotFound         *domain.ErrPreparedQueryNotFound
-		periodNotFound                *domain.ErrPeriodNotFound
-		periodNotClosing              *domain.ErrPeriodNotClosing
-		invalidReceipt                *domain.ErrInvalidReceipt
-		invalidCronExpression         *domain.ErrInvalidCronExpression
-		indexNotFound                 *domain.ErrIndexNotFound
-		indexBuilding                 *domain.ErrIndexBuilding
-		accountNotMatchingType        *domain.ErrAccountNotMatchingType
-		accountTypeNotFound           *domain.ErrAccountTypeNotFound
-		accountTypeAlreadyExists      *domain.ErrAccountTypeAlreadyExists
-		invalidPattern                *domain.ErrInvalidPattern
-		accountTypeHasAccounts        *domain.ErrAccountTypeHasAccounts
-	)
-
-	switch {
-	case errors.As(inner, &ledgerAlreadyExists):
-		code = codes.AlreadyExists
-		reason = domain.ErrReasonLedgerAlreadyExists
-		metadata = map[string]string{"name": ledgerAlreadyExists.Name}
-
-	case errors.As(inner, &ledgerNotFound):
-		code = codes.NotFound
-		reason = domain.ErrReasonLedgerNotFound
-		metadata = map[string]string{"name": ledgerNotFound.Name}
-
-	case errors.As(inner, &ledgerInMirrorMode):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonLedgerInMirrorMode
-		metadata = map[string]string{"name": ledgerInMirrorMode.Name}
-
-	case errors.As(inner, &ledgerNotInMirrorMode):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonLedgerNotInMirrorMode
-		metadata = map[string]string{"name": ledgerNotInMirrorMode.Name}
-
-	case errors.As(inner, &idempotencyKeyConflict):
-		code = codes.AlreadyExists
-		reason = domain.ErrReasonIdempotencyKeyConflict
-		metadata = map[string]string{"key": idempotencyKeyConflict.Key}
-
-	case errors.As(inner, &transactionReferenceConflict):
-		code = codes.AlreadyExists
-		reason = domain.ErrReasonTransactionReferenceConflict
-		metadata = map[string]string{
-			"ledger":    transactionReferenceConflict.Ledger,
-			"reference": transactionReferenceConflict.Reference,
+	for _, m := range errorMappings {
+		metadata, matched := m.match(inner)
+		if !matched {
+			continue
 		}
 
-	case errors.As(inner, &transactionNotFound):
-		code = codes.NotFound
-		reason = domain.ErrReasonTransactionNotFound
-		metadata = map[string]string{
-			"transactionId": strconv.FormatUint(transactionNotFound.TransactionID, 10),
+		st := status.New(m.code, inner.Error())
+
+		detailed, err := st.WithDetails(&errdetails.ErrorInfo{
+			Reason:   m.reason,
+			Domain:   errorDomain,
+			Metadata: metadata,
+		})
+		if err != nil {
+			return st
 		}
 
-	case errors.As(inner, &transactionAlreadyReverted):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonTransactionAlreadyReverted
-		metadata = map[string]string{
-			"transactionId": strconv.FormatUint(transactionAlreadyReverted.TransactionID, 10),
-		}
-
-	case errors.As(inner, &insufficientFunds):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonInsufficientFunds
-		metadata = map[string]string{
-			"account": insufficientFunds.Account,
-			"asset":   insufficientFunds.Asset,
-			"amount":  insufficientFunds.Amount,
-			"balance": insufficientFunds.Balance,
-		}
-
-	case errors.As(inner, &balanceNotFound):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonBalanceNotFound
-		metadata = map[string]string{
-			"account": balanceNotFound.Account,
-			"asset":   balanceNotFound.Asset,
-		}
-
-	case errors.As(inner, &balanceNotPreloaded):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonBalanceNotPreloaded
-		metadata = map[string]string{
-			"account": balanceNotPreloaded.Account,
-			"asset":   balanceNotPreloaded.Asset,
-		}
-
-	case errors.As(inner, &numscriptParse):
-		code = codes.InvalidArgument
-		reason = domain.ErrReasonNumscriptParseError
-		metadata = map[string]string{"details": numscriptParse.Details}
-
-	case errors.As(inner, &numscriptNotFound):
-		code = codes.NotFound
-		reason = domain.ErrReasonNumscriptNotFound
-		metadata = map[string]string{"name": numscriptNotFound.Name}
-
-	case errors.As(inner, &numscriptVersionAlreadyExists):
-		code = codes.AlreadyExists
-		reason = domain.ErrReasonNumscriptVersionAlreadyExists
-		metadata = map[string]string{"name": numscriptVersionAlreadyExists.Name, "version": numscriptVersionAlreadyExists.Version}
-
-	case errors.As(inner, &numscriptInvalidVersion):
-		code = codes.InvalidArgument
-		reason = domain.ErrReasonNumscriptInvalidVersion
-		metadata = map[string]string{"version": numscriptInvalidVersion.Version}
-
-	case errors.As(inner, &sinkAlreadyExists):
-		code = codes.AlreadyExists
-		reason = domain.ErrReasonSinkAlreadyExists
-		metadata = map[string]string{"name": sinkAlreadyExists.Name}
-
-	case errors.As(inner, &sinkNotFound):
-		code = codes.NotFound
-		reason = domain.ErrReasonSinkNotFound
-		metadata = map[string]string{"name": sinkNotFound.Name}
-
-	case errors.As(inner, &preparedQueryAlreadyExists):
-		code = codes.AlreadyExists
-		reason = domain.ErrReasonPreparedQueryAlreadyExists
-		metadata = map[string]string{
-			"ledger": preparedQueryAlreadyExists.Ledger,
-			"name":   preparedQueryAlreadyExists.Name,
-		}
-
-	case errors.As(inner, &preparedQueryNotFound):
-		code = codes.NotFound
-		reason = domain.ErrReasonPreparedQueryNotFound
-		metadata = map[string]string{
-			"ledger": preparedQueryNotFound.Ledger,
-			"name":   preparedQueryNotFound.Name,
-		}
-
-	case errors.As(inner, &metadataNotFound):
-		code = codes.NotFound
-		reason = domain.ErrReasonMetadataNotFound
-		metadata = map[string]string{"target": metadataNotFound.Target, "key": metadataNotFound.Key}
-
-	case errors.Is(inner, domain.ErrNoPeriodOpen):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonNoPeriodOpen
-
-	case errors.As(inner, &periodNotFound):
-		code = codes.NotFound
-		reason = domain.ErrReasonPeriodNotFound
-		metadata = map[string]string{
-			"periodId": strconv.FormatUint(periodNotFound.PeriodID, 10),
-		}
-
-	case errors.As(inner, &periodNotClosing):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonPeriodNotClosing
-		metadata = map[string]string{
-			"periodId": strconv.FormatUint(periodNotClosing.PeriodID, 10),
-		}
-
-	case errors.As(inner, &invalidReceipt):
-		code = codes.InvalidArgument
-		reason = domain.ErrReasonInvalidReceipt
-		metadata = map[string]string{
-			"reason": invalidReceipt.Reason,
-		}
-
-	case errors.Is(inner, domain.ErrTargetRequired),
-		errors.Is(inner, domain.ErrMetadataKeyRequired),
-		errors.Is(inner, domain.ErrScriptRequired),
-		errors.Is(inner, admission.ErrIdempotencyKeyTooLong),
-		errors.Is(inner, domain.ErrNumscriptNameRequired),
-		errors.Is(inner, domain.ErrNumscriptContentRequired),
-		errors.Is(inner, domain.ErrScriptAndReferenceConflict),
-		errors.Is(inner, numscript.ErrMetaNotSupported):
-		code = codes.InvalidArgument
-		reason = domain.ErrReasonValidation
-
-	case errors.Is(inner, domain.ErrMaintenanceMode):
-		code = codes.Unavailable
-		reason = domain.ErrReasonMaintenanceMode
-
-	case errors.As(inner, &invalidCronExpression):
-		code = codes.InvalidArgument
-		reason = domain.ErrReasonInvalidCronExpression
-		metadata = map[string]string{
-			"expression": invalidCronExpression.Expression,
-			"details":    invalidCronExpression.Details,
-		}
-
-	case errors.As(inner, &indexNotFound):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonIndexNotFound
-		metadata = map[string]string{"index": indexNotFound.Index}
-
-	case errors.As(inner, &indexBuilding):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonIndexBuilding
-		metadata = map[string]string{"index": indexBuilding.Index}
-
-	case errors.As(inner, &accountNotMatchingType):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonAccountNotMatchingType
-		metadata = map[string]string{"address": accountNotMatchingType.Address}
-
-	case errors.As(inner, &accountTypeNotFound):
-		code = codes.NotFound
-		reason = domain.ErrReasonAccountTypeNotFound
-		metadata = map[string]string{"name": accountTypeNotFound.Name}
-
-	case errors.As(inner, &accountTypeAlreadyExists):
-		code = codes.AlreadyExists
-		reason = domain.ErrReasonAccountTypeAlreadyExists
-		metadata = map[string]string{"name": accountTypeAlreadyExists.Name}
-
-	case errors.As(inner, &invalidPattern):
-		code = codes.InvalidArgument
-		reason = domain.ErrReasonInvalidPattern
-		metadata = map[string]string{"pattern": invalidPattern.Pattern, "details": invalidPattern.Details}
-
-	case errors.As(inner, &accountTypeHasAccounts):
-		code = codes.FailedPrecondition
-		reason = domain.ErrReasonAccountTypeHasAccounts
-		metadata = map[string]string{"name": accountTypeHasAccounts.Name}
-
-	default:
-		// Unknown business error — fall back to Internal
-		return status.New(codes.Internal, inner.Error())
+		return detailed
 	}
 
-	st := status.New(code, inner.Error())
-
-	detailed, err := st.WithDetails(&errdetails.ErrorInfo{
-		Reason:   reason,
-		Domain:   errorDomain,
-		Metadata: metadata,
-	})
-	if err != nil {
-		// If attaching details fails, return the plain status
-		return st
-	}
-
-	return detailed
+	// Unknown business error — fall back to Internal
+	return status.New(codes.Internal, inner.Error())
 }
