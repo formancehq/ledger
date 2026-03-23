@@ -91,6 +91,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			r.With(requireAccountsRead).Group(func(r chi.Router) {
 				r.Get("/{ledgerName}/accounts", server.handleListAccounts)
 				r.Get("/{ledgerName}/accounts/{address}", server.handleGetAccount)
+				r.Get("/{ledgerName}/volumes", server.handleAggregateVolumes)
 				r.Get("/{ledgerName}/metadata-schema", server.handleGetMetadataSchema)
 				r.Get("/{ledgerName}/analyze-accounts", server.handleAnalyzeAccounts)
 				r.Get("/{ledgerName}/analyze-transactions", server.handleAnalyzeTransactions)

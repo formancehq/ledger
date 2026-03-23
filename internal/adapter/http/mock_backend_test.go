@@ -34,6 +34,7 @@ type mockBackend struct {
 	analyzeTransactionsFn     func(ctx context.Context, ledgerName string, variableThreshold uint32) (*servicepb.AnalyzeTransactionsResponse, error)
 	getClusterStateFn         func(ctx context.Context) (*clusterpb.ClusterState, error)
 	getLedgerStatsFn          func(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error)
+	aggregateVolumesFn        func(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error)
 }
 
 func (m *mockBackend) IsHealthy() bool { return m.healthy }
@@ -182,7 +183,11 @@ func (m *mockBackend) AnalyzeTransactions(ctx context.Context, ledgerName string
 	return nil, nil
 }
 
-func (m *mockBackend) AggregateVolumes(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
+func (m *mockBackend) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
+	if m.aggregateVolumesFn != nil {
+		return m.aggregateVolumesFn(ctx, ledgerName, filter, opts)
+	}
+
 	return &commonpb.AggregateResult{}, nil
 }
 

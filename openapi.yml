@@ -419,6 +419,55 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /{ledgerName}/volumes:
+    get:
+      summary: Aggregate volumes
+      description: |
+        Returns aggregated volumes (input/output/balance per asset) across all accounts in the ledger.
+        Supports filtering by account address prefix, grouping by account prefixes, and max-precision merging.
+        Requires `accounts:read` scope.
+      operationId: aggregateVolumes
+      tags:
+        - Volumes
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/LedgerName'
+        - name: prefix
+          in: query
+          description: Filter accounts by address prefix
+          schema:
+            type: string
+        - name: useMaxPrecision
+          in: query
+          description: Merge assets with the same base at the highest observed precision
+          schema:
+            type: boolean
+            default: false
+        - name: groupByPrefixes
+          in: query
+          description: Comma-separated list of account prefixes to group volumes by
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Aggregated volumes retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AggregateVolumesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /{ledgerName}/accounts/{address}/metadata:
     post:
       summary: Save account metadata
@@ -1588,6 +1637,66 @@ components:
         balance:
           type: string
           description: Current balance (input - output, as big integer string)
+
+    AggregateVolumesResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: '#/components/schemas/AggregateVolumesData'
+
+    AggregateVolumesData:
+      type: object
+      required:
+        - volumes
+      properties:
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/AggregatedVolume'
+          description: Flat aggregated volumes per asset
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupedAggregateResult'
+          description: Per-prefix aggregated volumes (present when groupByPrefixes is set)
+
+    AggregatedVolume:
+      type: object
+      required:
+        - asset
+        - input
+        - output
+        - balance
+      properties:
+        asset:
+          type: string
+          description: Asset identifier (e.g. "USD/2")
+        input:
+          type: string
+          description: Total amount received (as big integer string)
+        output:
+          type: string
+          description: Total amount sent (as big integer string)
+        balance:
+          type: string
+          description: Net balance (input - output, as big integer string)
+
+    GroupedAggregateResult:
+      type: object
+      required:
+        - prefix
+        - volumes
+      properties:
+        prefix:
+          type: string
+          description: Account prefix this group matches
+        volumes:
+          type: array
+          items:
+            $ref: '#/components/schemas/AggregatedVolume'
+          description: Aggregated volumes for accounts matching this prefix
 
     TransactionResponse:
       type: object
