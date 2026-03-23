@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"context"
 	"fmt"
 	"io"
@@ -46,7 +46,7 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -67,17 +67,17 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank:main", big.NewInt(1000), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank:main", big.NewInt(1000), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank:main", big.NewInt(2000), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank:main", big.NewInt(2000), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -103,18 +103,18 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank:main", big.NewInt(10000), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank:main", big.NewInt(10000), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("bank:main", "bank:fees", big.NewInt(10), "USD"),
-						testutil.NewPosting("bank:main", "users:alice", big.NewInt(990), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("bank:main", "bank:fees", big.NewInt(10), "USD"),
+						actions.NewPosting("bank:main", "users:alice", big.NewInt(990), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -145,20 +145,20 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Fund world first, then create 12 user transactions
 			requests := make([]*servicepb.Request, 0, 13)
-			requests = append(requests, testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "bank:main", big.NewInt(1000000), "USD"),
+			requests = append(requests, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "bank:main", big.NewInt(1000000), "USD"),
 			}, nil, nil))
 
 			for i := range 12 {
 				userID := fmt.Sprintf("%08d-%04d-%04d-%04d-%012d", i+1, 0, 0, 0, i+1)
-				requests = append(requests, testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					testutil.NewPosting("bank:main", fmt.Sprintf("users:%s:main", userID), big.NewInt(100), "USD"),
+				requests = append(requests, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("bank:main", fmt.Sprintf("users:%s:main", userID), big.NewInt(100), "USD"),
 				}, nil, nil))
 			}
 
@@ -196,17 +196,17 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank:main", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank:main", big.NewInt(100), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank:main", big.NewInt(300), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank:main", big.NewInt(300), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -247,7 +247,7 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -255,20 +255,20 @@ var _ = Describe("AnalyzeTransactions", Ordered, func() {
 
 			// Funding flow: world -> bank:main
 			requests = append(requests,
-				testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					testutil.NewPosting("world", "bank:main", big.NewInt(1000000), "USD"),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "bank:main", big.NewInt(1000000), "USD"),
 				}, nil, nil),
-				testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					testutil.NewPosting("world", "bank:main", big.NewInt(500000), "EUR"),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "bank:main", big.NewInt(500000), "EUR"),
 				}, nil, nil),
 			)
 
 			// Distribution flow: bank:main -> users + bank:fees (multi-destination)
 			for i := range 3 {
 				requests = append(requests,
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("bank:main", fmt.Sprintf("users:user%d", i), big.NewInt(1000), "USD"),
-						testutil.NewPosting("bank:main", "bank:fees", big.NewInt(10), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("bank:main", fmt.Sprintf("users:user%d", i), big.NewInt(1000), "USD"),
+						actions.NewPosting("bank:main", "bank:fees", big.NewInt(10), "USD"),
 					}, nil, nil),
 				)
 			}

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -23,7 +23,7 @@ var _ = Describe("Numscript", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -43,7 +43,7 @@ send $amount (
 `
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"source":      "world",
 						"destination": "bank",
 						"amount":      "USD/2 1000",
@@ -93,7 +93,7 @@ send $amount (
 `
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"destination": "users:alice",
 						"amount":      "EUR/2 5000",
 					}, nil),
@@ -119,7 +119,7 @@ send $amount (
 			// First fund the source account
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, `
+					actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 10000] (
   source = @world
   destination = @sales:revenue
@@ -148,7 +148,7 @@ send $amount (
 `
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"source":       "sales:revenue",
 						"tax_account":  "taxes:vat",
 						"main_account": "bank:main",
@@ -192,13 +192,13 @@ send $amount (
 			// Fund the wallet and bank accounts
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, `
+					actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 50] (
   source = @world
   destination = @users:bob:wallet
 )
 `, nil, nil),
-					testutil.CreateScriptTransactionAction(ledgerName, `
+					actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 200] (
   source = @world
   destination = @users:bob:bank
@@ -227,7 +227,7 @@ send $amount (
 `
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"wallet":      "users:bob:wallet",
 						"bank":        "users:bob:bank",
 						"destination": "merchants:shop",
@@ -275,7 +275,7 @@ send $amount (
 			// Fund the account with some initial balance
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, `
+					actions.CreateScriptTransactionAction(ledgerName, `
 send [EUR/2 100] (
   source = @world
   destination = @users:charlie
@@ -302,7 +302,7 @@ send $amount (
 `
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"source":      "users:charlie",
 						"destination": "merchants:store",
 						"amount":      "EUR/2 400",
@@ -329,7 +329,7 @@ send $amount (
 			// Fund the account with some initial balance
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, `
+					actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 100] (
   source = @world
   destination = @users:dave
@@ -356,7 +356,7 @@ send $amount (
 `
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"source":      "users:dave",
 						"destination": "merchants:store",
 						"amount":      "USD/2 500", // 100 balance + 200 overdraft = 300 max, but we try 500
@@ -384,7 +384,7 @@ send $amount (
 `
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"credit_line": "credit:eve",
 						"destination": "bank:main",
 						"amount":      "USD/2 100000",
@@ -424,7 +424,7 @@ send $amount (
 `
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"buyer":  "users:frank",
 						"seller": "merchants:gadgets",
 						"amount": "USD/2 299",
@@ -462,7 +462,7 @@ send $amount (
 `
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"destination": "users:grace:savings",
 						"amount":      "USD/2 1000",
 					}, nil),
@@ -500,7 +500,7 @@ send $amount (
 			// First fund the buyer
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, `
+					actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 1000] (
   source = @world
   destination = @users:henry
@@ -513,7 +513,7 @@ send [USD/2 1000] (
 			// Create escrow transaction with dynamic address
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"buyer":    "users:henry",
 						"order_id": "order-12345",
 						"amount":   "USD/2 500",
@@ -541,7 +541,7 @@ send [USD/2 100] (
 `
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, nil, nil),
+					actions.CreateScriptTransactionAction(ledgerName, script, nil, nil),
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -550,7 +550,7 @@ send [USD/2 100] (
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.InvalidArgument))
 
-			info := testutil.ExtractGRPCErrorInfo(err)
+			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptParseError))
 			Expect(info.Domain).To(Equal("ledger"))
@@ -571,7 +571,7 @@ send $amount (
 `
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"source": "world",
 						// missing "destination" and "amount"
 					}, nil),
@@ -594,15 +594,15 @@ send $amount (
 `
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"destination": "bulk:account1",
 						"amount":      "USD/2 100",
 					}, nil),
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"destination": "bulk:account2",
 						"amount":      "USD/2 200",
 					}, nil),
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"destination": "bulk:account3",
 						"amount":      "USD/2 300",
 					}, nil),
@@ -634,7 +634,7 @@ send $amount (
 		It("Should reject scripts that use meta() to resolve variables", func() {
 			ledgerName := "numscript-meta-rejected"
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -651,7 +651,7 @@ send $amount (
 `
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+					actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 						"amount": "USD/2 5000",
 					}, nil),
 				},

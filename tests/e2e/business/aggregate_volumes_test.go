@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"math/big"
 	"time"
 
@@ -22,7 +22,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -41,21 +41,21 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// world→alice 100 USD, world→alice 50 EUR, world→bob 200 USD
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(50), "EUR"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(50), "EUR"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(200), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil),
 				},
 			})
@@ -95,21 +95,21 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// world→users:alice 100 USD, world→users:bob 200 USD, world→bank:main 500 USD
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:bob", big.NewInt(200), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "users:bob", big.NewInt(200), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank:main", big.NewInt(500), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank:main", big.NewInt(500), "USD"),
 					}, nil),
 				},
 			})
@@ -120,7 +120,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 			Eventually(func(g Gomega) {
 				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
 					Ledger: ledgerName,
-					Filter: prefixFilter("users:"),
+					Filter: actions.AddressPrefixFilter("users:"),
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(result.Volumes).To(HaveLen(1))
@@ -140,31 +140,31 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "role",
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
 
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")).To(Succeed())
 
 			// world→alice 100 USD, world→alice 50 EUR, world→bob 200 USD
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(50), "EUR"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(50), "EUR"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(200), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil),
 				},
 			})
@@ -172,8 +172,8 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
-					testutil.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"role": "user"}),
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
+					actions.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"role": "user"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -183,7 +183,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 			Eventually(func(g Gomega) {
 				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
 					Ledger: ledgerName,
-					Filter: stringFilter("role", "admin"),
+					Filter: actions.StringMetadataFilter("role", "admin"),
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(result.Volumes).To(HaveLen(2))
@@ -213,7 +213,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -224,17 +224,17 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 			// world→alice: 50 EUR/2
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD/2"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD/2"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(10000), "USD/4"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(10000), "USD/4"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "carol", big.NewInt(1000), "USD/3"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "carol", big.NewInt(1000), "USD/3"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(50), "EUR/2"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(50), "EUR/2"),
 					}, nil),
 				},
 			})
@@ -300,21 +300,21 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// world→users:alice 100 USD/2, world→users:bob 10000 USD/4, world→bank:main 500 USD/2
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:alice", big.NewInt(100), "USD/2"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "users:alice", big.NewInt(100), "USD/2"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:bob", big.NewInt(10000), "USD/4"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "users:bob", big.NewInt(10000), "USD/4"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank:main", big.NewInt(500), "USD/2"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank:main", big.NewInt(500), "USD/2"),
 					}, nil),
 				},
 			})
@@ -325,7 +325,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 			Eventually(func(g Gomega) {
 				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
 					Ledger:          ledgerName,
-					Filter:          prefixFilter("users:"),
+					Filter:          actions.AddressPrefixFilter("users:"),
 					UseMaxPrecision: true,
 				})
 				g.Expect(err).To(Succeed())
@@ -346,7 +346,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -354,17 +354,17 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 			// world→merchants:shop1 500 USD, world→merchants:shop2 300 EUR
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:bob", big.NewInt(200), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "users:bob", big.NewInt(200), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "merchants:shop1", big.NewInt(500), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "merchants:shop1", big.NewInt(500), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "merchants:shop2", big.NewInt(300), "EUR"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "merchants:shop2", big.NewInt(300), "EUR"),
 					}, nil),
 				},
 			})
@@ -407,18 +407,18 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// world→users:alice 100 USD/2, world→users:bob 10000 USD/4
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:alice", big.NewInt(100), "USD/2"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "users:alice", big.NewInt(100), "USD/2"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:bob", big.NewInt(10000), "USD/4"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "users:bob", big.NewInt(10000), "USD/4"),
 					}, nil),
 				},
 			})

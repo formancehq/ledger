@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/pkg/scenario/actions"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 )
 
 func init() { Register("marketplace", RunMarketplace) }

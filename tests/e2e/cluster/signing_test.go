@@ -9,6 +9,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -33,14 +34,16 @@ var _ = Describe("Request Signing", func() {
 		)
 
 		BeforeAll(func() {
-			pubKey, privKey = testutil.GenerateTestKeypair()
+			var err error
+			pubKey, privKey, err = actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
 			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
 		})
 
 		It("should accept unsigned requests when no keys exist", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("signing-bootstrap", nil),
+					actions.CreateLedgerAction("signing-bootstrap", nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -50,7 +53,7 @@ var _ = Describe("Request Signing", func() {
 		It("should allow unsigned RegisterSigningKey as bootstrap (first key)", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RegisterSigningKeyAction(keyID, pubKey),
+					actions.RegisterSigningKeyAction(keyID, pubKey),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -58,10 +61,11 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject unsigned RegisterSigningKey once keys exist", func() {
-			newPubKey, _ := testutil.GenerateTestKeypair()
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+			newPubKey, _, err := actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RegisterSigningKeyAction("another-key", newPubKey),
+					actions.RegisterSigningKeyAction("another-key", newPubKey),
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -71,9 +75,11 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept signed RegisterSigningKey to add a second key", func() {
-			newPubKey, _ := testutil.GenerateTestKeypair()
-			req := testutil.RegisterSigningKeyAction("second-key", newPubKey)
-			testutil.SignRequest(req, keyID, privKey)
+			newPubKey, _, err := actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
+			req := actions.RegisterSigningKeyAction("second-key", newPubKey)
+			_, err = actions.SignRequest(req, keyID, privKey)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -85,7 +91,7 @@ var _ = Describe("Request Signing", func() {
 		It("should reject unsigned RevokeSigningKey", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RevokeSigningKeyAction("second-key", false),
+					actions.RevokeSigningKeyAction("second-key", false),
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -95,8 +101,9 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept signed RevokeSigningKey", func() {
-			req := testutil.RevokeSigningKeyAction("second-key", false)
-			testutil.SignRequest(req, keyID, privKey)
+			req := actions.RevokeSigningKeyAction("second-key", false)
+			_, err := actions.SignRequest(req, keyID, privKey)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -108,7 +115,7 @@ var _ = Describe("Request Signing", func() {
 		It("should reject unsigned SetSigningConfig", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SetSigningConfigAction(true),
+					actions.SetSigningConfigAction(true),
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -118,8 +125,9 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept signed SetSigningConfig to enable require-signatures", func() {
-			req := testutil.SetSigningConfigAction(true)
-			testutil.SignRequest(req, keyID, privKey)
+			req := actions.SetSigningConfigAction(true)
+			_, err := actions.SignRequest(req, keyID, privKey)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -131,7 +139,7 @@ var _ = Describe("Request Signing", func() {
 		It("should reject unsigned regular requests after require-signatures is enabled", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("signing-should-fail", nil),
+					actions.CreateLedgerAction("signing-should-fail", nil),
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -141,8 +149,9 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept signed regular requests after require-signatures is enabled", func() {
-			req := testutil.CreateLedgerAction("signing-required-ok", nil)
-			testutil.SignRequest(req, keyID, privKey)
+			req := actions.CreateLedgerAction("signing-required-ok", nil)
+			_, err := actions.SignRequest(req, keyID, privKey)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -154,8 +163,9 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should disable require-signatures via signed config change", func() {
-			req := testutil.SetSigningConfigAction(false)
-			testutil.SignRequest(req, keyID, privKey)
+			req := actions.SetSigningConfigAction(false)
+			_, err := actions.SignRequest(req, keyID, privKey)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -166,7 +176,7 @@ var _ = Describe("Request Signing", func() {
 			// Now unsigned requests should work again
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("signing-disabled-again", nil),
+					actions.CreateLedgerAction("signing-disabled-again", nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -190,14 +200,16 @@ var _ = Describe("Request Signing", func() {
 
 		BeforeAll(func() {
 			var pubKey ed25519.PublicKey
-			pubKey, privKey = testutil.GenerateTestKeypair()
+			var err error
+			pubKey, privKey, err = actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
 
 			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
 
 			// Bootstrap: register the first key (unsigned)
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RegisterSigningKeyAction(keyID, pubKey),
+					actions.RegisterSigningKeyAction(keyID, pubKey),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -206,7 +218,7 @@ var _ = Describe("Request Signing", func() {
 			// Create a ledger for transaction tests
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerName, nil),
+					actions.CreateLedgerAction(ledgerName, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -214,10 +226,11 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept signed requests and persist signature in log", func() {
-			req := testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req, keyID, privKey)
+			_, err := actions.SignRequest(req, keyID, privKey)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -233,12 +246,13 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject requests signed with an unknown key ID", func() {
-			req := testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "bob", big.NewInt(50), "USD"),
+			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "bob", big.NewInt(50), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req, "unknown-key-id", privKey)
+			_, err := actions.SignRequest(req, "unknown-key-id", privKey)
+			Expect(err).To(Succeed())
 
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
 			})
 			Expect(err).To(HaveOccurred())
@@ -248,14 +262,16 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject requests with invalid signature", func() {
-			_, wrongPrivKey := testutil.GenerateTestKeypair()
+			_, wrongPrivKey, err := actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
 
-			req := testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "charlie", big.NewInt(50), "USD"),
+			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "charlie", big.NewInt(50), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req, keyID, wrongPrivKey)
+			_, err = actions.SignRequest(req, keyID, wrongPrivKey)
+			Expect(err).To(Succeed())
 
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
 			})
 			Expect(err).To(HaveOccurred())
@@ -265,15 +281,16 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject requests with tampered signed_payload", func() {
-			req := testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "dave", big.NewInt(50), "USD"),
+			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "dave", big.NewInt(50), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req, keyID, privKey)
+			_, err := actions.SignRequest(req, keyID, privKey)
+			Expect(err).To(Succeed())
 
 			// Tamper with the signed_payload after signing
 			req.Signature.SignedPayload = append(req.Signature.SignedPayload, 0xFF)
 
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
 			})
 			Expect(err).To(HaveOccurred())
@@ -283,15 +300,17 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should handle signed bulk operations", func() {
-			req1 := testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "bulk-alice", big.NewInt(100), "USD"),
+			req1 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "bulk-alice", big.NewInt(100), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req1, keyID, privKey)
+			_, err := actions.SignRequest(req1, keyID, privKey)
+			Expect(err).To(Succeed())
 
-			req2 := testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "bulk-bob", big.NewInt(200), "USD"),
+			req2 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "bulk-bob", big.NewInt(200), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req2, keyID, privKey)
+			_, err = actions.SignRequest(req2, keyID, privKey)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req1, req2},
@@ -307,13 +326,14 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept mixed signed and unsigned requests when signatures are not required", func() {
-			signedReq := testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "mixed-signed", big.NewInt(100), "USD"),
+			signedReq := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "mixed-signed", big.NewInt(100), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(signedReq, keyID, privKey)
+			_, err := actions.SignRequest(signedReq, keyID, privKey)
+			Expect(err).To(Succeed())
 
-			unsignedReq := testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "mixed-unsigned", big.NewInt(100), "USD"),
+			unsignedReq := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "mixed-unsigned", big.NewInt(100), "USD"),
 			}, nil, nil)
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
@@ -346,23 +366,27 @@ var _ = Describe("Request Signing", func() {
 
 		BeforeAll(func() {
 			var pubKey1, pubKey2 ed25519.PublicKey
-			pubKey1, privKey1 = testutil.GenerateTestKeypair()
-			pubKey2, privKey2 = testutil.GenerateTestKeypair()
+			var err error
+			pubKey1, privKey1, err = actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
+			pubKey2, privKey2, err = actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
 
 			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
 
 			// Bootstrap: register the first key (unsigned)
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RegisterSigningKeyAction(keyID1, pubKey1),
+					actions.RegisterSigningKeyAction(keyID1, pubKey1),
 				},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Register the second key (signed by first key)
-			req := testutil.RegisterSigningKeyAction(keyID2, pubKey2)
-			testutil.SignRequest(req, keyID1, privKey1)
+			req := actions.RegisterSigningKeyAction(keyID2, pubKey2)
+			_, err = actions.SignRequest(req, keyID1, privKey1)
+			Expect(err).To(Succeed())
 
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -371,8 +395,9 @@ var _ = Describe("Request Signing", func() {
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Enable require-signatures (signed by first key)
-			configReq := testutil.SetSigningConfigAction(true)
-			testutil.SignRequest(configReq, keyID1, privKey1)
+			configReq := actions.SetSigningConfigAction(true)
+			_, err = actions.SignRequest(configReq, keyID1, privKey1)
+			Expect(err).To(Succeed())
 
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{configReq},
@@ -382,8 +407,9 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept requests signed with the first key", func() {
-			req := testutil.CreateLedgerAction(ledgerName, nil)
-			testutil.SignRequest(req, keyID1, privKey1)
+			req := actions.CreateLedgerAction(ledgerName, nil)
+			_, err := actions.SignRequest(req, keyID1, privKey1)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -394,10 +420,11 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept requests signed with the second key", func() {
-			req := testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "multi-key-test", big.NewInt(100), "USD"),
+			req := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "multi-key-test", big.NewInt(100), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req, keyID2, privKey2)
+			_, err := actions.SignRequest(req, keyID2, privKey2)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -408,15 +435,17 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept bulk with different signing keys", func() {
-			req1 := testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "multi-key-1", big.NewInt(100), "USD"),
+			req1 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "multi-key-1", big.NewInt(100), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req1, keyID1, privKey1)
+			_, err := actions.SignRequest(req1, keyID1, privKey1)
+			Expect(err).To(Succeed())
 
-			req2 := testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "multi-key-2", big.NewInt(200), "USD"),
+			req2 := actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "multi-key-2", big.NewInt(200), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req2, keyID2, privKey2)
+			_, err = actions.SignRequest(req2, keyID2, privKey2)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req1, req2},
@@ -446,34 +475,40 @@ var _ = Describe("Request Signing", func() {
 
 		BeforeAll(func() {
 			var pubKeyA, pubKeyB, pubKeyC ed25519.PublicKey
-			pubKeyA, privKeyA = testutil.GenerateTestKeypair()
-			pubKeyB, _ = testutil.GenerateTestKeypair()
-			pubKeyC, _ = testutil.GenerateTestKeypair()
+			var err error
+			pubKeyA, privKeyA, err = actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
+			pubKeyB, _, err = actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
+			pubKeyC, _, err = actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
 
 			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
 
 			// Register root key A (bootstrap, unsigned)
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RegisterSigningKeyAction(keyIDA, pubKeyA),
+					actions.RegisterSigningKeyAction(keyIDA, pubKeyA),
 				},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Register child key B (signed by A)
-			reqB := testutil.RegisterSigningKeyAction(keyIDB, pubKeyB)
-			testutil.SignRequest(reqB, keyIDA, privKeyA)
+			reqB := actions.RegisterSigningKeyAction(keyIDB, pubKeyB)
+			_, err = actions.SignRequest(reqB, keyIDA, privKeyA)
+			Expect(err).To(Succeed())
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{reqB},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
-			// Register grandchild key C (signed by A, parent is A — not B)
+			// Register grandchild key C (signed by A, parent is A -- not B)
 			// This makes C a child of A, so revoking B (non-cascade) leaves C
-			reqC := testutil.RegisterSigningKeyAction(keyIDC, pubKeyC)
-			testutil.SignRequest(reqC, keyIDA, privKeyA)
+			reqC := actions.RegisterSigningKeyAction(keyIDC, pubKeyC)
+			_, err = actions.SignRequest(reqC, keyIDA, privKeyA)
+			Expect(err).To(Succeed())
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{reqC},
 			})
@@ -482,16 +517,18 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should list A, B, C before revoke", func() {
-			keys := testutil.ListAllSigningKeys(ctx, client)
+			keys, err := actions.ListAllSigningKeys(ctx, client)
+			Expect(err).To(Succeed())
 			Expect(keys).To(HaveLen(3))
-			Expect(testutil.FindSigningKey(keys, keyIDA)).NotTo(BeNil())
-			Expect(testutil.FindSigningKey(keys, keyIDB)).NotTo(BeNil())
-			Expect(testutil.FindSigningKey(keys, keyIDC)).NotTo(BeNil())
+			Expect(actions.FindSigningKey(keys, keyIDA)).NotTo(BeNil())
+			Expect(actions.FindSigningKey(keys, keyIDB)).NotTo(BeNil())
+			Expect(actions.FindSigningKey(keys, keyIDC)).NotTo(BeNil())
 		})
 
 		It("should list A and C after non-cascade revoke of B", func() {
-			req := testutil.RevokeSigningKeyAction(keyIDB, false)
-			testutil.SignRequest(req, keyIDA, privKeyA)
+			req := actions.RevokeSigningKeyAction(keyIDB, false)
+			_, err := actions.SignRequest(req, keyIDA, privKeyA)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -499,11 +536,12 @@ var _ = Describe("Request Signing", func() {
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
-			keys := testutil.ListAllSigningKeys(ctx, client)
+			keys, err := actions.ListAllSigningKeys(ctx, client)
+			Expect(err).To(Succeed())
 			Expect(keys).To(HaveLen(2))
-			Expect(testutil.FindSigningKey(keys, keyIDA)).NotTo(BeNil())
-			Expect(testutil.FindSigningKey(keys, keyIDB)).To(BeNil(), "revoked key B should not be listed")
-			Expect(testutil.FindSigningKey(keys, keyIDC)).NotTo(BeNil(), "non-cascaded key C should still be listed")
+			Expect(actions.FindSigningKey(keys, keyIDA)).NotTo(BeNil())
+			Expect(actions.FindSigningKey(keys, keyIDB)).To(BeNil(), "revoked key B should not be listed")
+			Expect(actions.FindSigningKey(keys, keyIDC)).NotTo(BeNil(), "non-cascaded key C should still be listed")
 		})
 	})
 
@@ -526,24 +564,29 @@ var _ = Describe("Request Signing", func() {
 
 		BeforeAll(func() {
 			var pubKeyA, pubKeyB, pubKeyC ed25519.PublicKey
-			pubKeyA, privKeyA = testutil.GenerateTestKeypair()
-			pubKeyB, privKeyB = testutil.GenerateTestKeypair()
-			pubKeyC, privKeyC = testutil.GenerateTestKeypair()
+			var err error
+			pubKeyA, privKeyA, err = actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
+			pubKeyB, privKeyB, err = actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
+			pubKeyC, privKeyC, err = actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
 
 			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
 
 			// Register root key A (bootstrap, unsigned)
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RegisterSigningKeyAction(keyIDA, pubKeyA),
+					actions.RegisterSigningKeyAction(keyIDA, pubKeyA),
 				},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			// Register child key B (signed by A -> B is child of A)
-			reqB := testutil.RegisterSigningKeyAction(keyIDB, pubKeyB)
-			testutil.SignRequest(reqB, keyIDA, privKeyA)
+			reqB := actions.RegisterSigningKeyAction(keyIDB, pubKeyB)
+			_, err = actions.SignRequest(reqB, keyIDA, privKeyA)
+			Expect(err).To(Succeed())
 
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{reqB},
@@ -556,8 +599,9 @@ var _ = Describe("Request Signing", func() {
 			Expect(regLog.ParentKeyId).To(Equal(keyIDA))
 
 			// Register grandchild key C (signed by B -> C is child of B)
-			reqC := testutil.RegisterSigningKeyAction(keyIDC, pubKeyC)
-			testutil.SignRequest(reqC, keyIDB, privKeyB)
+			reqC := actions.RegisterSigningKeyAction(keyIDC, pubKeyC)
+			_, err = actions.SignRequest(reqC, keyIDB, privKeyB)
+			Expect(err).To(Succeed())
 
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{reqC},
@@ -570,8 +614,9 @@ var _ = Describe("Request Signing", func() {
 			Expect(regLog.ParentKeyId).To(Equal(keyIDB))
 
 			// Create a ledger using key A for later tests
-			ledgerReq := testutil.CreateLedgerAction("hierarchy-test", nil)
-			testutil.SignRequest(ledgerReq, keyIDA, privKeyA)
+			ledgerReq := actions.CreateLedgerAction("hierarchy-test", nil)
+			_, err = actions.SignRequest(ledgerReq, keyIDA, privKeyA)
+			Expect(err).To(Succeed())
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{ledgerReq},
 			})
@@ -580,27 +625,29 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should list all three keys (A, B, C) with correct parent relationships", func() {
-			keys := testutil.ListAllSigningKeys(ctx, client)
+			keys, err := actions.ListAllSigningKeys(ctx, client)
+			Expect(err).To(Succeed())
 			Expect(keys).To(HaveLen(3))
 
-			keyA := testutil.FindSigningKey(keys, keyIDA)
+			keyA := actions.FindSigningKey(keys, keyIDA)
 			Expect(keyA).NotTo(BeNil())
 			Expect(keyA.ParentKeyId).To(BeEmpty(), "root key A should have no parent")
 
-			keyB := testutil.FindSigningKey(keys, keyIDB)
+			keyB := actions.FindSigningKey(keys, keyIDB)
 			Expect(keyB).NotTo(BeNil())
 			Expect(keyB.ParentKeyId).To(Equal(keyIDA), "key B should have A as parent")
 
-			keyC := testutil.FindSigningKey(keys, keyIDC)
+			keyC := actions.FindSigningKey(keys, keyIDC)
 			Expect(keyC).NotTo(BeNil())
 			Expect(keyC.ParentKeyId).To(Equal(keyIDB), "key C should have B as parent")
 		})
 
 		It("should accept requests signed by child key B", func() {
-			req := testutil.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
-				testutil.NewPosting("world", "h-bob", big.NewInt(100), "USD"),
+			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+				actions.NewPosting("world", "h-bob", big.NewInt(100), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req, keyIDB, privKeyB)
+			_, err := actions.SignRequest(req, keyIDB, privKeyB)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -610,10 +657,11 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should accept requests signed by grandchild key C", func() {
-			req := testutil.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
-				testutil.NewPosting("world", "h-charlie", big.NewInt(100), "USD"),
+			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+				actions.NewPosting("world", "h-charlie", big.NewInt(100), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req, keyIDC, privKeyC)
+			_, err := actions.SignRequest(req, keyIDC, privKeyC)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -623,8 +671,9 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should cascade revoke B and C when B is revoked with cascade (signed by A)", func() {
-			req := testutil.RevokeSigningKeyAction(keyIDB, true)
-			testutil.SignRequest(req, keyIDA, privKeyA)
+			req := actions.RevokeSigningKeyAction(keyIDB, true)
+			_, err := actions.SignRequest(req, keyIDA, privKeyA)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -640,22 +689,24 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should list only key A after cascade revoke of B", func() {
-			keys := testutil.ListAllSigningKeys(ctx, client)
+			keys, err := actions.ListAllSigningKeys(ctx, client)
+			Expect(err).To(Succeed())
 			Expect(keys).To(HaveLen(1))
 
-			keyA := testutil.FindSigningKey(keys, keyIDA)
+			keyA := actions.FindSigningKey(keys, keyIDA)
 			Expect(keyA).NotTo(BeNil())
 			Expect(keyA.ParentKeyId).To(BeEmpty())
 
-			Expect(testutil.FindSigningKey(keys, keyIDB)).To(BeNil(), "revoked key B should not be listed")
-			Expect(testutil.FindSigningKey(keys, keyIDC)).To(BeNil(), "cascade-revoked key C should not be listed")
+			Expect(actions.FindSigningKey(keys, keyIDB)).To(BeNil(), "revoked key B should not be listed")
+			Expect(actions.FindSigningKey(keys, keyIDC)).To(BeNil(), "cascade-revoked key C should not be listed")
 		})
 
 		It("should still accept requests signed by root key A", func() {
-			req := testutil.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
-				testutil.NewPosting("world", "h-post-revoke", big.NewInt(50), "USD"),
+			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+				actions.NewPosting("world", "h-post-revoke", big.NewInt(50), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req, keyIDA, privKeyA)
+			_, err := actions.SignRequest(req, keyIDA, privKeyA)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -665,12 +716,13 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject requests signed by revoked key B", func() {
-			req := testutil.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
-				testutil.NewPosting("world", "h-revoked-b", big.NewInt(50), "USD"),
+			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+				actions.NewPosting("world", "h-revoked-b", big.NewInt(50), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req, keyIDB, privKeyB)
+			_, err := actions.SignRequest(req, keyIDB, privKeyB)
+			Expect(err).To(Succeed())
 
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
 			})
 			Expect(err).To(HaveOccurred())
@@ -680,12 +732,13 @@ var _ = Describe("Request Signing", func() {
 		})
 
 		It("should reject requests signed by cascade-revoked key C", func() {
-			req := testutil.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
-				testutil.NewPosting("world", "h-revoked-c", big.NewInt(50), "USD"),
+			req := actions.CreateTransactionAction("hierarchy-test", []*commonpb.Posting{
+				actions.NewPosting("world", "h-revoked-c", big.NewInt(50), "USD"),
 			}, nil, nil)
-			testutil.SignRequest(req, keyIDC, privKeyC)
+			_, err := actions.SignRequest(req, keyIDC, privKeyC)
+			Expect(err).To(Succeed())
 
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
 			})
 			Expect(err).To(HaveOccurred())

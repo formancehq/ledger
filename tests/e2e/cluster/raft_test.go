@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
@@ -42,7 +43,7 @@ var _ = Describe("Simple cluster", func() {
 
 		It("should create a ledger and delete it", func() {
 			_, err := servers[0].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction("ledger0", nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction("ledger0", nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -53,15 +54,15 @@ var _ = Describe("Simple cluster", func() {
 			Eventually(servers[0]).To(HaveALeader(nil), "Timed out waiting for leader election")
 
 			_, err := servers[0].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			for i := range countInstances {
 				_, err := servers[i].Client.Apply(ctx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", fmt.Sprintf("node-%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", fmt.Sprintf("node-%d", i+1), big.NewInt(100*int64(i+1)), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -125,15 +126,15 @@ var _ = Describe("Simple cluster", func() {
 			Eventually(servers[lid-1]).To(HaveALeader(nil))
 
 			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction("ledger1", nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction("ledger1", nil)},
 			})
 			Expect(err).To(Succeed())
 
 			for i := 0; i < 5; i++ {
 				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateTransactionAction("ledger1", []*commonpb.Posting{
-							testutil.NewPosting("world", "bank", big.NewInt(100), "USD"),
+						actions.CreateTransactionAction("ledger1", []*commonpb.Posting{
+							actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -145,7 +146,7 @@ var _ = Describe("Simple cluster", func() {
 			lid := *leaderID
 
 			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -156,7 +157,7 @@ var _ = Describe("Simple cluster", func() {
 				WithPolling(500 * time.Millisecond).
 				Should(BeFollower(), "Timed out waiting for node to become follower")
 			Eventually(func(g Gomega) bool {
-				ledgers, err := testutil.ListLedgers(ctx, servers[followerID-1].Client)
+				ledgers, err := actions.ListLedgers(ctx, servers[followerID-1].Client)
 				g.Expect(err).To(Succeed())
 				_, found := ledgers[ledgerName]
 				return found
@@ -178,8 +179,8 @@ var _ = Describe("Simple cluster", func() {
 			for i := 0; i < countTransactions; i++ {
 				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "bank", big.NewInt(100), "USD"),
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -226,7 +227,7 @@ var _ = Describe("Simple cluster", func() {
 			BeforeEach(func() {
 				ledgerName = "ledger2"
 				_, err := servers[*leaderID-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-					Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+					Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 				})
 				Expect(err).To(Succeed())
 
@@ -256,8 +257,8 @@ var _ = Describe("Simple cluster", func() {
 						for i := 0; i < countTransactions; i++ {
 							_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
 								Requests: []*servicepb.Request{
-									testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-										testutil.NewPosting("world", "bank", big.NewInt(100), "USD"),
+									actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+										actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 									}, nil, nil),
 								},
 							})
@@ -272,8 +273,8 @@ var _ = Describe("Simple cluster", func() {
 							for i := 0; i < countTransactions; i++ {
 								_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
 									Requests: []*servicepb.Request{
-										testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-											testutil.NewPosting("world", "bank", big.NewInt(100), "USD"),
+										actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+											actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 										}, nil, nil),
 									},
 								})

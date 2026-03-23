@@ -3,41 +3,18 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
-	"context"
-	"io"
 	"math/big"
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
-
-// listAllPeriods collects all periods from the streaming RPC.
-func listAllPeriods(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.Period, error) {
-	stream, err := client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{})
-	if err != nil {
-		return nil, err
-	}
-
-	var periods []*commonpb.Period
-	for {
-		period, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		periods = append(periods, period)
-	}
-	return periods, nil
-}
 
 var _ = Describe("Periods", Ordered, func() {
 
@@ -45,13 +22,13 @@ var _ = Describe("Periods", Ordered, func() {
 		BeforeAll(func() {
 			// Create a ledger and a transaction to trigger period auto-bootstrap
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction("period-test", nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction("period-test", nil)},
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should have at least one OPEN period after first proposal", func() {
-			periods, err := listAllPeriods(sharedCtx, sharedClient)
+			periods, err := actions.ListAllPeriods(sharedCtx, sharedClient)
 			Expect(err).To(Succeed())
 			Expect(periods).NotTo(BeEmpty())
 			// The last period should always be OPEN
@@ -84,7 +61,7 @@ var _ = Describe("Periods", Ordered, func() {
 		It("Should have at least two periods after close (last OPEN)", func() {
 			// The sealer runs in the background so the second-to-last period may be CLOSING or CLOSED
 			Eventually(func(g Gomega) {
-				periods, err := listAllPeriods(sharedCtx, sharedClient)
+				periods, err := actions.ListAllPeriods(sharedCtx, sharedClient)
 				g.Expect(err).To(Succeed())
 				g.Expect(len(periods)).To(BeNumerically(">=", 2))
 				// Last period should always be OPEN
@@ -94,7 +71,7 @@ var _ = Describe("Periods", Ordered, func() {
 
 		It("Should eventually seal the closed period", func() {
 			Eventually(func(g Gomega) {
-				periods, err := listAllPeriods(sharedCtx, sharedClient)
+				periods, err := actions.ListAllPeriods(sharedCtx, sharedClient)
 				g.Expect(err).To(Succeed())
 				g.Expect(len(periods)).To(BeNumerically(">=", 2))
 				// Second-to-last period should eventually be CLOSED (sealed)
@@ -109,7 +86,7 @@ var _ = Describe("Periods", Ordered, func() {
 		It("Should allow closing while another period is already in CLOSING state", func() {
 			// Wait until there's no CLOSING period (previous seal completed)
 			Eventually(func(g Gomega) {
-				periods, err := listAllPeriods(sharedCtx, sharedClient)
+				periods, err := actions.ListAllPeriods(sharedCtx, sharedClient)
 				g.Expect(err).To(Succeed())
 				for _, p := range periods {
 					g.Expect(p.Status).NotTo(Equal(commonpb.PeriodStatus_PERIOD_CLOSING))
@@ -133,7 +110,7 @@ var _ = Describe("Periods", Ordered, func() {
 
 			// Wait for all periods to be sealed
 			Eventually(func(g Gomega) {
-				periods, err := listAllPeriods(sharedCtx, sharedClient)
+				periods, err := actions.ListAllPeriods(sharedCtx, sharedClient)
 				g.Expect(err).To(Succeed())
 				for _, p := range periods {
 					g.Expect(p.Status).NotTo(Equal(commonpb.PeriodStatus_PERIOD_CLOSING))
@@ -150,7 +127,7 @@ var _ = Describe("Receipts", Ordered, func() {
 	BeforeAll(func() {
 		// Create a ledger
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledger, nil)},
+			Requests: []*servicepb.Request{actions.CreateLedgerAction(ledger, nil)},
 		})
 		Expect(err).To(Succeed())
 	})
@@ -162,8 +139,8 @@ var _ = Describe("Receipts", Ordered, func() {
 			// Create a transaction
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledger, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
+					actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+						actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
 					}, nil),
 				},
 			})
@@ -197,8 +174,8 @@ var _ = Describe("Receipts", Ordered, func() {
 			// Create a transaction
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledger, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:bob", big.NewInt(500), "EUR"),
+					actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+						actions.NewPosting("world", "users:bob", big.NewInt(500), "EUR"),
 					}, nil),
 				},
 			})
@@ -272,7 +249,7 @@ var _ = Describe("Receipts", Ordered, func() {
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
 
-			info := testutil.ExtractGRPCErrorInfo(err)
+			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonTransactionAlreadyReverted))
 		})

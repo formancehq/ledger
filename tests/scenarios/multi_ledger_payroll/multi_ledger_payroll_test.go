@@ -9,7 +9,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
@@ -75,7 +75,7 @@ func TestMultiLedgerPayroll(t *testing.T) {
 					totalNeeded += int64(dept.Employees) * baseSalary
 				}
 				scenariotest.ApplyActions(t, ctx, client,
-					testutil.CreateScriptRefTransactionAction("clearing", "fund_clearing", "1.0.0", map[string]string{
+					actions.CreateScriptRefTransactionAction("clearing", "fund_clearing", "1.0.0", map[string]string{
 						"amount": fmt.Sprintf("USD/2 %d", totalNeeded),
 					}, map[string]string{"month": fmt.Sprintf("%d", month)}),
 				)
@@ -86,7 +86,7 @@ func TestMultiLedgerPayroll(t *testing.T) {
 				for _, dept := range departments {
 					amount := int64(dept.Employees) * baseSalary
 					deptActions = append(deptActions,
-						testutil.CreateScriptRefTransactionAction("clearing", "fund_dept", "1.0.0", map[string]string{
+						actions.CreateScriptRefTransactionAction("clearing", "fund_dept", "1.0.0", map[string]string{
 							"dept_account": fmt.Sprintf("dept:%s", dept.Name),
 							"amount":       fmt.Sprintf("USD/2 %d", amount),
 						}, map[string]string{"month": fmt.Sprintf("%d", month)}),
@@ -99,7 +99,7 @@ func TestMultiLedgerPayroll(t *testing.T) {
 				for _, dept := range departments {
 					amount := int64(dept.Employees) * baseSalary
 					payrollActions = append(payrollActions,
-						testutil.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
+						actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
 							"amount": fmt.Sprintf("USD/2 %d", amount),
 						}, map[string]string{"month": fmt.Sprintf("%d", month)}),
 					)
@@ -112,7 +112,7 @@ func TestMultiLedgerPayroll(t *testing.T) {
 					var salaryActions []*servicepb.Request
 					for emp := 1; emp <= dept.Employees; emp++ {
 						salaryActions = append(salaryActions,
-							testutil.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "1.0.0", map[string]string{
+							actions.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "1.0.0", map[string]string{
 								"employee": fmt.Sprintf("employee:%d", emp),
 								"amount":   fmt.Sprintf("USD/2 %d", baseSalary),
 							}, map[string]string{
@@ -141,7 +141,7 @@ func TestMultiLedgerPayroll(t *testing.T) {
 		// Fund bonus pool
 		totalBonus := bonusAmount * int64(dept.Employees)
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
 				"amount": fmt.Sprintf("USD/2 %d", totalBonus),
 			}, map[string]string{"type": "bonus-funding"}),
 		)
@@ -150,7 +150,7 @@ func TestMultiLedgerPayroll(t *testing.T) {
 		var bonusActions []*servicepb.Request
 		for emp := 1; emp <= dept.Employees; emp++ {
 			bonusActions = append(bonusActions,
-				testutil.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "1.0.0", map[string]string{
+				actions.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "1.0.0", map[string]string{
 					"employee": fmt.Sprintf("employee:%d", emp),
 					"amount":   fmt.Sprintf("USD/2 %d", bonusAmount),
 				}, map[string]string{"type": "bonus"}),
@@ -176,25 +176,25 @@ func TestMultiLedgerPayroll(t *testing.T) {
 			{"dept:sales", "dept:operations", 20_000, "office-supplies"},
 		}
 
-		var actions []*servicepb.Request
+		var reqs []*servicepb.Request
 		for _, alloc := range allocations {
-			actions = append(actions,
-				testutil.CreateScriptRefTransactionAction("clearing", "cost_allocation", "1.0.0", map[string]string{
+			reqs = append(reqs,
+				actions.CreateScriptRefTransactionAction("clearing", "cost_allocation", "1.0.0", map[string]string{
 					"from_dept": alloc.from,
 					"to_dept":   alloc.to,
 					"amount":    fmt.Sprintf("USD/2 %d", alloc.amount),
 				}, map[string]string{"reason": alloc.reason}),
 			)
 		}
-		scenariotest.ApplyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, reqs...)
 	})
 
 	// --- Phase 5: Verify Ledger Isolation ---
 	t.Run("LedgerIsolation", func(t *testing.T) {
 		// Verify each department ledger has the correct number of employees
 		for _, dept := range departments {
-			accounts, err := testutil.ListAccountsFiltered(ctx, client, dept.Ledger, 100, "",
-				testutil.AddressPrefixFilter("employee:"))
+			accounts, err := actions.ListAccountsFiltered(ctx, client, dept.Ledger, 100, "",
+				actions.AddressPrefixFilter("employee:"))
 			require.NoError(t, err, "failed to list employees for %s", dept.Name)
 			require.Equal(t, dept.Employees, len(accounts),
 				"%s should have %d employees, got %d", dept.Name, dept.Employees, len(accounts))
@@ -202,20 +202,20 @@ func TestMultiLedgerPayroll(t *testing.T) {
 
 		// Verify same account name "payroll:pool" exists independently in each dept ledger
 		for _, dept := range departments {
-			acct, err := testutil.GetAccount(ctx, client, dept.Ledger, "payroll:pool")
+			acct, err := actions.GetAccount(ctx, client, dept.Ledger, "payroll:pool")
 			require.NoError(t, err, "payroll:pool should exist in %s", dept.Name)
 			require.NotNil(t, acct)
 		}
 
 		// Verify clearing ledger has department accounts
-		clearingAccounts, err := testutil.ListAccountsFiltered(ctx, client, "clearing", 100, "",
-			testutil.AddressPrefixFilter("dept:"))
+		clearingAccounts, err := actions.ListAccountsFiltered(ctx, client, "clearing", 100, "",
+			actions.AddressPrefixFilter("dept:"))
 		require.NoError(t, err)
 		require.Equal(t, len(departments), len(clearingAccounts), "clearing should have %d dept accounts", len(departments))
 
 		// Verify employee accounts don't exist in clearing ledger
-		clearingEmployees, err := testutil.ListAccountsFiltered(ctx, client, "clearing", 100, "",
-			testutil.AddressPrefixFilter("employee:"))
+		clearingEmployees, err := actions.ListAccountsFiltered(ctx, client, "clearing", 100, "",
+			actions.AddressPrefixFilter("employee:"))
 		require.NoError(t, err)
 		require.Empty(t, clearingEmployees, "clearing ledger should have no employee accounts")
 	})
@@ -225,7 +225,7 @@ func TestMultiLedgerPayroll(t *testing.T) {
 		// Save a v2 of pay_salary with a bonus metadata field
 		dept := departments[1] // sales
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.SaveNumscriptWithVersionAction(dept.Ledger, "pay_salary", `vars {
+			actions.SaveNumscriptWithVersionAction(dept.Ledger, "pay_salary", `vars {
   account $employee
   monetary $amount
 }
@@ -236,20 +236,20 @@ send $amount (
 		)
 
 		// Verify both versions exist
-		v1, err := testutil.GetNumscript(ctx, client, dept.Ledger, "pay_salary", "1.0.0")
+		v1, err := actions.GetNumscript(ctx, client, dept.Ledger, "pay_salary", "1.0.0")
 		require.NoError(t, err, "should find pay_salary v1.0.0")
 		require.Equal(t, "1.0.0", v1.GetVersion())
 
-		v2, err := testutil.GetNumscript(ctx, client, dept.Ledger, "pay_salary", "2.0.0")
+		v2, err := actions.GetNumscript(ctx, client, dept.Ledger, "pay_salary", "2.0.0")
 		require.NoError(t, err, "should find pay_salary v2.0.0")
 		require.Equal(t, "2.0.0", v2.GetVersion())
 
 		// Use v2 for one more payment
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(dept.Ledger, "fund_payroll", "1.0.0", map[string]string{
 				"amount": "USD/2 50000",
 			}, nil),
-			testutil.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "2.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(dept.Ledger, "pay_salary", "2.0.0", map[string]string{
 				"employee": "employee:1",
 				"amount":   "USD/2 50000",
 			}, map[string]string{"type": "v2-test"}),
@@ -258,7 +258,7 @@ send $amount (
 
 		// Duplicate semver should fail
 		err = scenariotest.ApplyActionsExpectError(ctx, client,
-			testutil.SaveNumscriptWithVersionAction(dept.Ledger, "pay_salary", `send [USD/2 1] (source = @world destination = @world)`, "1.0.0"),
+			actions.SaveNumscriptWithVersionAction(dept.Ledger, "pay_salary", `send [USD/2 1] (source = @world destination = @world)`, "1.0.0"),
 		)
 		require.Error(t, err, "duplicate semver version should fail")
 	})
@@ -289,7 +289,7 @@ send $amount (
 
 		// Stats per ledger
 		for _, dept := range departments {
-			stats, err := testutil.GetLedgerStats(ctx, client, dept.Ledger)
+			stats, err := actions.GetLedgerStats(ctx, client, dept.Ledger)
 			require.NoError(t, err)
 			t.Logf("%s: %d accounts, %d transactions",
 				dept.Name, stats.GetAccountCount(), stats.GetTransactionCount())

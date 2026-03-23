@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
@@ -109,7 +110,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			// Create first ledger with metadata.
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerName, map[string]string{"env": "test"}),
+					actions.CreateLedgerAction(ledgerName, map[string]string{"env": "test"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -117,8 +118,8 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			// Transaction 1: fund the bank.
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank", big.NewInt(10000), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
 					}, map[string]string{"type": "funding"}, nil),
 				},
 			})
@@ -127,9 +128,9 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			// Transaction 2: distribute from bank.
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("bank", "alice", big.NewInt(3000), "USD"),
-						testutil.NewPosting("bank", "bob", big.NewInt(2000), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("bank", "alice", big.NewInt(3000), "USD"),
+						actions.NewPosting("bank", "bob", big.NewInt(2000), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -138,7 +139,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			// Add account metadata.
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"}),
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -146,15 +147,15 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			// Create second ledger with a transaction.
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledger2, nil),
+					actions.CreateLedgerAction(ledger2, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledger2, []*commonpb.Posting{
-						testutil.NewPosting("world", "treasury", big.NewInt(50000), "EUR"),
+					actions.CreateTransactionAction(ledger2, []*commonpb.Posting{
+						actions.NewPosting("world", "treasury", big.NewInt(50000), "EUR"),
 					}, nil, nil),
 				},
 			})
@@ -311,7 +312,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		})
 
 		It("should have both ledgers", func() {
-			ledgers, err := testutil.ListLedgers(ctx, client)
+			ledgers, err := actions.ListLedgers(ctx, client)
 			Expect(err).To(Succeed())
 			Expect(ledgers).To(HaveKey(ledgerName))
 			Expect(ledgers).To(HaveKey(ledger2))
@@ -377,8 +378,8 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should accept new transactions after bootstrap", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("bank", "charlie", big.NewInt(1000), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("bank", "charlie", big.NewInt(1000), "USD"),
 					}, map[string]string{"type": "post-bootstrap"}, nil),
 				},
 			})
@@ -403,21 +404,21 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should accept new ledger creation after bootstrap", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("post-bootstrap-ledger", nil),
+					actions.CreateLedgerAction("post-bootstrap-ledger", nil),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction("post-bootstrap-ledger", []*commonpb.Posting{
-						testutil.NewPosting("world", "user1", big.NewInt(100), "BTC"),
+					actions.CreateTransactionAction("post-bootstrap-ledger", []*commonpb.Posting{
+						actions.NewPosting("world", "user1", big.NewInt(100), "BTC"),
 					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 
-			ledgers, err := testutil.ListLedgers(ctx, client)
+			ledgers, err := actions.ListLedgers(ctx, client)
 			Expect(err).To(Succeed())
 			Expect(ledgers).To(HaveLen(3))
 		})

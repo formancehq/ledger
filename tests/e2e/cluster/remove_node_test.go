@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
@@ -77,15 +78,15 @@ var _ = Describe("Remove node", func() {
 			ledgerName := "remove-voter-test"
 
 			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			for i := range 3 {
 				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -196,15 +197,15 @@ var _ = Describe("Remove node", func() {
 			ledgerName := "force-remove-test"
 
 			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			for i := range 3 {
 				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -267,14 +268,14 @@ var _ = Describe("Remove node", func() {
 			ledgerName := "quorum-restore-test"
 
 			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			_, err = servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(500), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(500), "USD"),
 					}, nil, nil),
 				},
 			})

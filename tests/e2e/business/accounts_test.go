@@ -3,58 +3,18 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
-	"context"
-	"io"
 	"math/big"
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
-
-// prefixFilter builds a QueryFilter for an address prefix match.
-func prefixFilter(prefix string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Address{
-			Address: &commonpb.AddressMatch{
-				Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
-			},
-		},
-	}
-}
-
-// listAllAccounts collects all accounts from the streaming RPC into a slice
-func listAllAccounts(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter) ([]*commonpb.Account, error) {
-	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{
-		Ledger:       ledgerName,
-		PageSize:     pageSize,
-		AfterAddress: afterAddress,
-		Filter:       filter,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	var accounts []*commonpb.Account
-	for {
-		account, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		accounts = append(accounts, account)
-	}
-
-	return accounts, nil
-}
 
 var _ = Describe("Accounts", Ordered, func() {
 
@@ -64,21 +24,21 @@ var _ = Describe("Accounts", Ordered, func() {
 		BeforeAll(func() {
 			// Create ledger
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Create transactions that touch multiple accounts
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(200), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "charlie", big.NewInt(300), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -89,7 +49,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			// The Pebble read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", nil)
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 				// world + alice + bob + charlie = 4 accounts
 				g.Expect(accounts).To(HaveLen(4))
@@ -97,7 +57,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should return accounts in alphabetical order", func() {
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", nil)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(4))
 
@@ -109,7 +69,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should respect page size limit", func() {
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 2, "", nil)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 2, "", nil)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(2))
 
@@ -120,12 +80,12 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		It("Should paginate with afterAddress", func() {
 			// First page: 2 accounts
-			firstPage, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 2, "", nil)
+			firstPage, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 2, "", nil)
 			Expect(err).To(Succeed())
 			Expect(firstPage).To(HaveLen(2))
 
 			// Second page: after the last account from first page
-			secondPage, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 2, firstPage[1].Address, nil)
+			secondPage, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 2, firstPage[1].Address, nil)
 			Expect(err).To(Succeed())
 			Expect(secondPage).To(HaveLen(2))
 
@@ -137,7 +97,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			}
 
 			// Third page: should be empty
-			thirdPage, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 2, secondPage[1].Address, nil)
+			thirdPage, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 2, secondPage[1].Address, nil)
 			Expect(err).To(Succeed())
 			Expect(thirdPage).To(BeEmpty())
 		})
@@ -145,17 +105,17 @@ var _ = Describe("Accounts", Ordered, func() {
 		It("Should return empty list for empty ledger", func() {
 			emptyLedgerName := "accounts-list-empty"
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(emptyLedgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(emptyLedgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, emptyLedgerName, 0, "", nil)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, emptyLedgerName, 0, "", nil)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(BeEmpty())
 		})
 
 		It("Should return error for non-existent ledger", func() {
-			_, err := listAllAccounts(sharedCtx, sharedClient, "non-existent-ledger", 0, "", nil)
+			_, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, "non-existent-ledger", 0, "", nil)
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -167,7 +127,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			// Add metadata to an account
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
 						"role": "admin",
 						"tier": "premium",
 					}),
@@ -175,7 +135,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", nil)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 			Expect(err).To(Succeed())
 
 			// Find alice in the list
@@ -198,24 +158,24 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Create accounts with different prefixes
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:bob", big.NewInt(200), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "users:bob", big.NewInt(200), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "merchants:shop1", big.NewInt(300), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "merchants:shop1", big.NewInt(300), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "merchants:shop2", big.NewInt(400), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "merchants:shop2", big.NewInt(400), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -226,7 +186,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			// The Pebble read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", prefixFilter("users:"))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.AddressPrefixFilter("users:"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(2))
 				g.Expect(accounts[0].Address).To(Equal("users:alice"))
@@ -235,7 +195,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should filter merchants by prefix", func() {
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", prefixFilter("merchants:"))
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.AddressPrefixFilter("merchants:"))
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(2))
 			Expect(accounts[0].Address).To(Equal("merchants:shop1"))
@@ -243,26 +203,26 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should return empty list for non-matching prefix", func() {
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", prefixFilter("nonexistent:"))
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.AddressPrefixFilter("nonexistent:"))
 			Expect(err).To(Succeed())
 			Expect(accounts).To(BeEmpty())
 		})
 
 		It("Should combine prefix filter with pagination", func() {
 			// Get first page of users
-			firstPage, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 1, "", prefixFilter("users:"))
+			firstPage, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 1, "", actions.AddressPrefixFilter("users:"))
 			Expect(err).To(Succeed())
 			Expect(firstPage).To(HaveLen(1))
 			Expect(firstPage[0].Address).To(Equal("users:alice"))
 
 			// Get second page of users
-			secondPage, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 1, firstPage[0].Address, prefixFilter("users:"))
+			secondPage, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 1, firstPage[0].Address, actions.AddressPrefixFilter("users:"))
 			Expect(err).To(Succeed())
 			Expect(secondPage).To(HaveLen(1))
 			Expect(secondPage[0].Address).To(Equal("users:bob"))
 
 			// Third page should be empty
-			thirdPage, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 1, secondPage[0].Address, prefixFilter("users:"))
+			thirdPage, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 1, secondPage[0].Address, actions.AddressPrefixFilter("users:"))
 			Expect(err).To(Succeed())
 			Expect(thirdPage).To(BeEmpty())
 		})
@@ -273,15 +233,15 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Create a force transaction from an unfunded account (source-only, no input)
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("unfunded-source", "destination-only", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("unfunded-source", "destination-only", big.NewInt(100), "USD"),
 					}, nil),
 				},
 			})
@@ -290,8 +250,8 @@ var _ = Describe("Accounts", Ordered, func() {
 			// Create a normal transaction from world
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "normal-account", big.NewInt(200), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "normal-account", big.NewInt(200), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -302,7 +262,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			// The Pebble read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", nil)
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 
 				// Collect all addresses
@@ -323,7 +283,7 @@ var _ = Describe("Accounts", Ordered, func() {
 		})
 
 		It("Should list all accounts in alphabetical order", func() {
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", nil)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 			Expect(err).To(Succeed())
 
 			// Alphabetical: destination-only, normal-account, unfunded-source, world
@@ -340,17 +300,17 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Create transactions with different assets to the same account
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "multi-asset", big.NewInt(100), "USD"),
-						testutil.NewPosting("world", "multi-asset", big.NewInt(50), "EUR"),
-						testutil.NewPosting("world", "multi-asset", big.NewInt(1000), "JPY"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "multi-asset", big.NewInt(100), "USD"),
+						actions.NewPosting("world", "multi-asset", big.NewInt(50), "EUR"),
+						actions.NewPosting("world", "multi-asset", big.NewInt(1000), "JPY"),
 					}, nil, nil),
 				},
 			})
@@ -361,7 +321,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			// The Pebble read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", nil)
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 
 				// Should have exactly 2 accounts: multi-asset and world
@@ -382,7 +342,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -391,8 +351,8 @@ var _ = Describe("Accounts", Ordered, func() {
 			// First batch
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "account-1", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -400,7 +360,7 @@ var _ = Describe("Accounts", Ordered, func() {
 
 			// Wait for the async index builder to catch up
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", nil)
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(2)) // world + account-1
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -408,18 +368,18 @@ var _ = Describe("Accounts", Ordered, func() {
 			// Second batch
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "account-2", big.NewInt(200), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "account-2", big.NewInt(200), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "account-3", big.NewInt(300), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "account-3", big.NewInt(300), "USD"),
 					}, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", nil)
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(4)) // world + account-1 + account-2 + account-3
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -433,47 +393,47 @@ var _ = Describe("Accounts", Ordered, func() {
 			// Create ledger with int64 schema for "age" and its index
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "age",
 							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 						},
 					}),
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age"),
 				},
 			})
 			Expect(err).To(Succeed())
 
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age")).To(Succeed())
 
 			// Create accounts with transactions and set typed int metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(200), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "charlie", big.NewInt(300), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "dave", big.NewInt(400), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "dave", big.NewInt(400), "USD"),
 					}, nil, nil),
 					// alice=20, bob=35, charlie=50, dave=65
-					testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"age": "20"}),
-					testutil.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"age": "35"}),
-					testutil.SaveAccountMetadataAction(ledgerName, "charlie", map[string]string{"age": "50"}),
-					testutil.SaveAccountMetadataAction(ledgerName, "dave", map[string]string{"age": "65"}),
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"age": "20"}),
+					actions.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"age": "35"}),
+					actions.SaveAccountMetadataAction(ledgerName, "charlie", map[string]string{"age": "50"}),
+					actions.SaveAccountMetadataAction(ledgerName, "dave", map[string]string{"age": "65"}),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			// Wait for index builder to catch up (5 accounts: world + 4 users)
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", nil)
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(5))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -496,7 +456,7 @@ var _ = Describe("Accounts", Ordered, func() {
 				},
 			}
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(2))
 				addresses := []string{accounts[0].Address, accounts[1].Address}
@@ -519,7 +479,7 @@ var _ = Describe("Accounts", Ordered, func() {
 					},
 				},
 			}
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(3))
 			addresses := make([]string, len(accounts))
@@ -545,7 +505,7 @@ var _ = Describe("Accounts", Ordered, func() {
 					},
 				},
 			}
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(2))
 			addresses := []string{accounts[0].Address, accounts[1].Address}
@@ -567,7 +527,7 @@ var _ = Describe("Accounts", Ordered, func() {
 					},
 				},
 			}
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(3))
 			addresses := make([]string, len(accounts))
@@ -614,7 +574,7 @@ var _ = Describe("Accounts", Ordered, func() {
 					},
 				},
 			}
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(2))
 			addresses := []string{accounts[0].Address, accounts[1].Address}
@@ -637,7 +597,7 @@ var _ = Describe("Accounts", Ordered, func() {
 					},
 				},
 			}
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(BeEmpty())
 		})
@@ -653,8 +613,8 @@ var _ = Describe("Accounts", Ordered, func() {
 			// Create two ledgers
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerA, nil),
-					testutil.CreateLedgerAction(ledgerB, nil),
+					actions.CreateLedgerAction(ledgerA, nil),
+					actions.CreateLedgerAction(ledgerB, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -662,11 +622,11 @@ var _ = Describe("Accounts", Ordered, func() {
 			// Create accounts in ledger A
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerA, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerA, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerA, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(200), "USD"),
+					actions.CreateTransactionAction(ledgerA, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -675,8 +635,8 @@ var _ = Describe("Accounts", Ordered, func() {
 			// Create accounts in ledger B
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerB, []*commonpb.Posting{
-						testutil.NewPosting("world", "charlie", big.NewInt(300), "USD"),
+					actions.CreateTransactionAction(ledgerB, []*commonpb.Posting{
+						actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -687,7 +647,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			// The Pebble read index is populated asynchronously by the index builder,
 			// so we need to wait for it to catch up after writing data.
 			Eventually(func(g Gomega) {
-				accountsA, err := listAllAccounts(sharedCtx, sharedClient, ledgerA, 0, "", nil)
+				accountsA, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerA, 0, "", nil)
 				g.Expect(err).To(Succeed())
 				g.Expect(accountsA).To(HaveLen(3)) // world + alice + bob
 
@@ -700,7 +660,7 @@ var _ = Describe("Accounts", Ordered, func() {
 				g.Expect(addressesA).To(HaveKey("bob"))
 				g.Expect(addressesA).NotTo(HaveKey("charlie"))
 
-				accountsB, err := listAllAccounts(sharedCtx, sharedClient, ledgerB, 0, "", nil)
+				accountsB, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerB, 0, "", nil)
 				g.Expect(err).To(Succeed())
 				g.Expect(accountsB).To(HaveLen(2)) // world + charlie
 
@@ -722,46 +682,46 @@ var _ = Describe("Accounts", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "role",
 							Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 						},
 					}),
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
 
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")).To(Succeed())
 
 			// Create accounts with different roles
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(200), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "charlie", big.NewInt(300), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "dave", big.NewInt(400), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "dave", big.NewInt(400), "USD"),
 					}, nil),
-					testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
-					testutil.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"role": "user"}),
-					testutil.SaveAccountMetadataAction(ledgerName, "charlie", map[string]string{"role": "admin"}),
-					testutil.SaveAccountMetadataAction(ledgerName, "dave", map[string]string{"role": "viewer"}),
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
+					actions.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"role": "user"}),
+					actions.SaveAccountMetadataAction(ledgerName, "charlie", map[string]string{"role": "admin"}),
+					actions.SaveAccountMetadataAction(ledgerName, "dave", map[string]string{"role": "viewer"}),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			// Wait for all accounts to appear
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", nil)
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(5)) // world + 4 users
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -773,7 +733,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(3))
 				addresses := make([]string, len(accounts))
@@ -789,7 +749,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			filter, err := filterexpr.Parse(`metadata[role] in (user)`)
 			Expect(err).To(Succeed())
 
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(1))
 			Expect(accounts[0].Address).To(Equal("bob"))
@@ -799,7 +759,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			filter, err := filterexpr.Parse(`metadata[role] in (superadmin, moderator)`)
 			Expect(err).To(Succeed())
 
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(BeEmpty())
 		})
@@ -809,7 +769,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			filter, err := filterexpr.Parse(`metadata[role] in (admin, user) and address ^= "a"`)
 			Expect(err).To(Succeed())
 
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(1))
 			Expect(accounts[0].Address).To(Equal("alice"))
@@ -821,27 +781,27 @@ var _ = Describe("Accounts", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "users:bob", big.NewInt(200), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "users:bob", big.NewInt(200), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "merchants:shop1", big.NewInt(300), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "merchants:shop1", big.NewInt(300), "USD"),
 					}, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", nil)
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", nil)
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(4)) // world + 3
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -852,7 +812,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			filter, err := filterexpr.Parse(`address in ("users:alice", "merchants:shop1")`)
 			Expect(err).To(Succeed())
 
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(2))
 			addresses := []string{accounts[0].Address, accounts[1].Address}
@@ -863,7 +823,7 @@ var _ = Describe("Accounts", Ordered, func() {
 			filter, err := filterexpr.Parse(`address in ("nonexistent:a", "nonexistent:b")`)
 			Expect(err).To(Succeed())
 
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
 			Expect(err).To(Succeed())
 			Expect(accounts).To(BeEmpty())
 		})

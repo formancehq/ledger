@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
@@ -43,14 +43,14 @@ send [USD/2 50] (
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
 
 		It("Should save a numscript and retrieve it", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.SaveNumscriptWithVersionAction(ledgerName, "payment", paymentScript, "1.0.0")},
+				Requests: []*servicepb.Request{actions.SaveNumscriptWithVersionAction(ledgerName, "payment", paymentScript, "1.0.0")},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -76,7 +76,7 @@ send [USD/2 50] (
 		It("Should save to the 'latest' version slot", func() {
 			// Save with version="" (defaults to "latest") — creates its own version slot
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.SaveNumscriptAction(ledgerName, "payment", paymentScriptV2)},
+				Requests: []*servicepb.Request{actions.SaveNumscriptAction(ledgerName, "payment", paymentScriptV2)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs[0].Payload.GetSavedNumscript().Info.Version).To(Equal("latest"))
@@ -103,7 +103,7 @@ send [USD/2 50] (
 		It("Should support versioning with semver", func() {
 			// Save v2.0.0 of "payment"
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.SaveNumscriptWithVersionAction(ledgerName, "payment", paymentScript, "2.0.0")},
+				Requests: []*servicepb.Request{actions.SaveNumscriptWithVersionAction(ledgerName, "payment", paymentScript, "2.0.0")},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs[0].Payload.GetSavedNumscript().Info.Version).To(Equal("2.0.0"))
@@ -151,11 +151,11 @@ send [USD/2 50] (
 		It("Should list numscripts", func() {
 			// Save a second numscript
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.SaveNumscriptWithVersionAction(ledgerName, "refund", refundScript, "1.0.0")},
+				Requests: []*servicepb.Request{actions.SaveNumscriptWithVersionAction(ledgerName, "refund", refundScript, "1.0.0")},
 			})
 			Expect(err).To(Succeed())
 
-			scripts, err := testutil.ListNumscripts(sharedCtx, sharedClient, ledgerName)
+			scripts, err := actions.ListNumscripts(sharedCtx, sharedClient, ledgerName)
 			Expect(err).To(Succeed())
 			Expect(scripts).To(HaveLen(2))
 
@@ -172,7 +172,7 @@ send [USD/2 50] (
 
 		It("Should delete a numscript", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.DeleteNumscriptAction(ledgerName, "refund")},
+				Requests: []*servicepb.Request{actions.DeleteNumscriptAction(ledgerName, "refund")},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -180,7 +180,7 @@ send [USD/2 50] (
 			Expect(resp.Logs[0].Payload.GetDeletedNumscript().Name).To(Equal("refund"))
 
 			// List should only have "payment"
-			scripts, err := testutil.ListNumscripts(sharedCtx, sharedClient, ledgerName)
+			scripts, err := actions.ListNumscripts(sharedCtx, sharedClient, ledgerName)
 			Expect(err).To(Succeed())
 			Expect(scripts).To(HaveLen(1))
 			Expect(scripts[0].Name).To(Equal("payment"))
@@ -209,8 +209,8 @@ send [EUR/2 2] (
 			// Single batch: create v1.0.0 then save to "latest" slot
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveNumscriptWithVersionAction(ledgerName, "batch-script", batchScript, "1.0.0"),
-					testutil.SaveNumscriptAction(ledgerName, "batch-script", batchScriptLatest),
+					actions.SaveNumscriptWithVersionAction(ledgerName, "batch-script", batchScript, "1.0.0"),
+					actions.SaveNumscriptAction(ledgerName, "batch-script", batchScriptLatest),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -256,11 +256,11 @@ send [EUR/2 2] (
 			// Create ledger and save multiple versions of "partial-test" to test range resolution
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerName, nil),
-					testutil.SaveNumscriptWithVersionAction(ledgerName, "partial-test", simpleScript, "1.0.0"),
-					testutil.SaveNumscriptWithVersionAction(ledgerName, "partial-test", simpleScript, "1.0.3"),
-					testutil.SaveNumscriptWithVersionAction(ledgerName, "partial-test", simpleScript, "1.2.0"),
-					testutil.SaveNumscriptWithVersionAction(ledgerName, "partial-test", simpleScript, "2.0.0"),
+					actions.CreateLedgerAction(ledgerName, nil),
+					actions.SaveNumscriptWithVersionAction(ledgerName, "partial-test", simpleScript, "1.0.0"),
+					actions.SaveNumscriptWithVersionAction(ledgerName, "partial-test", simpleScript, "1.0.3"),
+					actions.SaveNumscriptWithVersionAction(ledgerName, "partial-test", simpleScript, "1.2.0"),
+					actions.SaveNumscriptWithVersionAction(ledgerName, "partial-test", simpleScript, "2.0.0"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -325,9 +325,9 @@ send $amount (
 			// Create ledger and save two versions
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(txLedgerName, nil),
-					testutil.SaveNumscriptWithVersionAction(txLedgerName, "transfer", transferScript, "1.0.0"),
-					testutil.SaveNumscriptWithVersionAction(txLedgerName, "transfer", transferScript, "1.0.5"),
+					actions.CreateLedgerAction(txLedgerName, nil),
+					actions.SaveNumscriptWithVersionAction(txLedgerName, "transfer", transferScript, "1.0.0"),
+					actions.SaveNumscriptWithVersionAction(txLedgerName, "transfer", transferScript, "1.0.5"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -335,7 +335,7 @@ send $amount (
 			// Use partial version "1.0" in script reference — should resolve to 1.0.5
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptRefTransactionAction(txLedgerName, "transfer", "1.0", map[string]string{
+					actions.CreateScriptRefTransactionAction(txLedgerName, "transfer", "1.0", map[string]string{
 						"destination": "users:charlie",
 						"amount":      "USD/2 42",
 					}, nil),
@@ -367,10 +367,10 @@ send $amount (
 			// Create ledger and save versions across minor ranges
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(txLedgerName, nil),
-					testutil.SaveNumscriptWithVersionAction(txLedgerName, "major-transfer", transferScript, "1.0.0"),
-					testutil.SaveNumscriptWithVersionAction(txLedgerName, "major-transfer", transferScript, "1.3.0"),
-					testutil.SaveNumscriptWithVersionAction(txLedgerName, "major-transfer", transferScript, "2.0.0"),
+					actions.CreateLedgerAction(txLedgerName, nil),
+					actions.SaveNumscriptWithVersionAction(txLedgerName, "major-transfer", transferScript, "1.0.0"),
+					actions.SaveNumscriptWithVersionAction(txLedgerName, "major-transfer", transferScript, "1.3.0"),
+					actions.SaveNumscriptWithVersionAction(txLedgerName, "major-transfer", transferScript, "2.0.0"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -378,7 +378,7 @@ send $amount (
 			// Use version "1" — should resolve to 1.3.0 (highest 1.x.y)
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptRefTransactionAction(txLedgerName, "major-transfer", "1", map[string]string{
+					actions.CreateScriptRefTransactionAction(txLedgerName, "major-transfer", "1", map[string]string{
 						"destination": "users:delta",
 						"amount":      "USD/2 77",
 					}, nil),
@@ -410,9 +410,9 @@ send $amount (
 			// Create ledger and save multiple semver versions
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(txLedgerName, nil),
-					testutil.SaveNumscriptWithVersionAction(txLedgerName, "latest-transfer", transferScript, "1.0.0"),
-					testutil.SaveNumscriptWithVersionAction(txLedgerName, "latest-transfer", transferScript, "2.0.0"),
+					actions.CreateLedgerAction(txLedgerName, nil),
+					actions.SaveNumscriptWithVersionAction(txLedgerName, "latest-transfer", transferScript, "1.0.0"),
+					actions.SaveNumscriptWithVersionAction(txLedgerName, "latest-transfer", transferScript, "2.0.0"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -420,7 +420,7 @@ send $amount (
 			// Use version "" — should resolve via latest pointer to 2.0.0
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptRefTransactionAction(txLedgerName, "latest-transfer", "", map[string]string{
+					actions.CreateScriptRefTransactionAction(txLedgerName, "latest-transfer", "", map[string]string{
 						"destination": "users:echo",
 						"amount":      "USD/2 99",
 					}, nil),
@@ -467,8 +467,8 @@ send $amount (
 			// Create ledger and save numscript
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerName, nil),
-					testutil.SaveNumscriptWithVersionAction(ledgerName, "send_payment", sendPaymentScript, "1.0.0"),
+					actions.CreateLedgerAction(ledgerName, nil),
+					actions.SaveNumscriptWithVersionAction(ledgerName, "send_payment", sendPaymentScript, "1.0.0"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -477,7 +477,7 @@ send $amount (
 		It("Should create a transaction using a script reference", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptRefTransactionAction(ledgerName, "send_payment", "", map[string]string{
+					actions.CreateScriptRefTransactionAction(ledgerName, "send_payment", "", map[string]string{
 						"source":      "world",
 						"destination": "users:alice",
 						"amount":      "USD/2 1000",
@@ -511,7 +511,7 @@ send $amount (
 			// Save v2 of "send_payment" (uses @world as source, no $source var)
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveNumscriptWithVersionAction(ledgerName, "send_payment", sendPaymentScriptV2, "2.0.0"),
+					actions.SaveNumscriptWithVersionAction(ledgerName, "send_payment", sendPaymentScriptV2, "2.0.0"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -519,7 +519,7 @@ send $amount (
 			// Use version="1.0.0" explicitly (the old script that requires $source)
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptRefTransactionAction(ledgerName, "send_payment", "1.0.0", map[string]string{
+					actions.CreateScriptRefTransactionAction(ledgerName, "send_payment", "1.0.0", map[string]string{
 						"source":      "world",
 						"destination": "users:bob",
 						"amount":      "EUR/2 500",
@@ -543,7 +543,7 @@ send $amount (
 
 		It("Should reject saving a numscript with empty name", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.SaveNumscriptWithVersionAction(ledgerName, "", "send [USD/2 1] (source = @world destination = @x)", "1.0.0")},
+				Requests: []*servicepb.Request{actions.SaveNumscriptWithVersionAction(ledgerName, "", "send [USD/2 1] (source = @world destination = @x)", "1.0.0")},
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -553,28 +553,28 @@ send $amount (
 
 		It("Should reject saving a numscript with invalid syntax", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.SaveNumscriptWithVersionAction(ledgerName, "bad-script", "this is not valid numscript", "1.0.0")},
+				Requests: []*servicepb.Request{actions.SaveNumscriptWithVersionAction(ledgerName, "bad-script", "this is not valid numscript", "1.0.0")},
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.InvalidArgument))
 
-			info := testutil.ExtractGRPCErrorInfo(err)
+			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptParseError))
 		})
 
 		It("Should reject deleting a non-existent numscript", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.DeleteNumscriptAction(ledgerName, "does-not-exist")},
+				Requests: []*servicepb.Request{actions.DeleteNumscriptAction(ledgerName, "does-not-exist")},
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.NotFound))
 
-			info := testutil.ExtractGRPCErrorInfo(err)
+			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptNotFound))
 		})
@@ -593,13 +593,13 @@ send $amount (
 		It("Should reject script reference with non-existent name", func() {
 			const txLedgerName = "numscript-lib-err-ledger"
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(txLedgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(txLedgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptRefTransactionAction(txLedgerName, "nonexistent-script", "", map[string]string{
+					actions.CreateScriptRefTransactionAction(txLedgerName, "nonexistent-script", "", map[string]string{
 						"amount": "USD/2 100",
 					}, nil),
 				},
@@ -609,7 +609,7 @@ send $amount (
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.NotFound))
 
-			info := testutil.ExtractGRPCErrorInfo(err)
+			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptNotFound))
 		})
@@ -646,7 +646,7 @@ send $amount (
 
 		It("Should create a numscript with version 'latest' when no version exists", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.SaveNumscriptAction(ledgerName, "new-script", "send [USD/2 1] (source = @world destination = @x)")},
+				Requests: []*servicepb.Request{actions.SaveNumscriptAction(ledgerName, "new-script", "send [USD/2 1] (source = @world destination = @x)")},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -667,14 +667,14 @@ send $amount (
 
 		It("Should reject saving with invalid version format", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.SaveNumscriptWithVersionAction(ledgerName, "payment", "send [USD/2 1] (source = @world destination = @x)", "invalid")},
+				Requests: []*servicepb.Request{actions.SaveNumscriptWithVersionAction(ledgerName, "payment", "send [USD/2 1] (source = @world destination = @x)", "invalid")},
 			})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.InvalidArgument))
 
-			info := testutil.ExtractGRPCErrorInfo(err)
+			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptInvalidVersion))
 		})

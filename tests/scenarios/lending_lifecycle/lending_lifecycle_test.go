@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
@@ -72,7 +72,7 @@ func TestLendingLifecycle(t *testing.T) {
 
 		// Fund the lending pool
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateScriptRefTransactionAction(ledger, "fund_pool", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(ledger, "fund_pool", "1.0.0", map[string]string{
 				"amount": fmt.Sprintf("USD/2 %d", loanAmount*numBorrowers),
 			}, nil),
 		)
@@ -82,21 +82,21 @@ func TestLendingLifecycle(t *testing.T) {
 
 	// --- Phase 2: Loan Disbursements ---
 	t.Run("Disbursements", func(t *testing.T) {
-		actions := make([]*servicepb.Request, 0, numBorrowers)
+		reqs := make([]*servicepb.Request, 0, numBorrowers)
 		for i := 1; i <= numBorrowers; i++ {
-			action := testutil.CreateScriptRefTransactionAction(ledger, "disburse_loan", "1.0.0", map[string]string{
+			action := actions.CreateScriptRefTransactionAction(ledger, "disburse_loan", "1.0.0", map[string]string{
 				"borrower_loan":   fmt.Sprintf("borrower:%d:loan", i),
 				"borrower_wallet": fmt.Sprintf("borrower:%d:wallet", i),
 				"amount":          fmt.Sprintf("USD/2 %d", loanAmount),
 			}, nil)
 			action.GetApply().GetCreateTransaction().Reference = fmt.Sprintf("loan-disburse-%d", i)
-			actions = append(actions, action)
+			reqs = append(reqs, action)
 
 			fundingBalance.Sub(fundingBalance, big.NewInt(loanAmount))
 			borrowerLoanBalance[i].SetInt64(loanAmount)
 			borrowerWalletBalance[i].SetInt64(loanAmount)
 		}
-		scenariotest.ApplyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, reqs...)
 
 		// Verify funding pool is depleted
 		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "funding:pool", "USD/2", fundingBalance)
@@ -106,7 +106,7 @@ func TestLendingLifecycle(t *testing.T) {
 	t.Run("RepayCycles", func(t *testing.T) {
 		for month := 1; month <= numMonths; month++ {
 			t.Run(fmt.Sprintf("Month%d", month), func(t *testing.T) {
-				var actions []*servicepb.Request
+				var reqs []*servicepb.Request
 
 				for i := 1; i <= numBorrowers; i++ {
 					outstanding := borrowerLoanBalance[i]
@@ -124,8 +124,8 @@ func TestLendingLifecycle(t *testing.T) {
 						interest.Div(interest, big.NewInt(100))
 
 						// Interest payment
-						actions = append(actions,
-							testutil.CreateScriptRefTransactionAction(ledger, "accrue_interest", "1.0.0", map[string]string{
+						reqs = append(reqs,
+							actions.CreateScriptRefTransactionAction(ledger, "accrue_interest", "1.0.0", map[string]string{
 								"borrower_wallet": fmt.Sprintf("borrower:%d:wallet", i),
 								"amount":          fmt.Sprintf("USD/2 %s", interest.String()),
 							}, map[string]string{"type": "early-repay-interest"}),
@@ -138,8 +138,8 @@ func TestLendingLifecycle(t *testing.T) {
 						if repayAmount.Cmp(wallet) > 0 {
 							repayAmount.Set(wallet)
 						}
-						actions = append(actions,
-							testutil.CreateScriptRefTransactionAction(ledger, "repay_principal", "1.0.0", map[string]string{
+						reqs = append(reqs,
+							actions.CreateScriptRefTransactionAction(ledger, "repay_principal", "1.0.0", map[string]string{
 								"borrower_wallet": fmt.Sprintf("borrower:%d:wallet", i),
 								"borrower_loan":   fmt.Sprintf("borrower:%d:loan", i),
 								"amount":          fmt.Sprintf("USD/2 %s", repayAmount.String()),
@@ -182,8 +182,8 @@ func TestLendingLifecycle(t *testing.T) {
 
 					// Interest payment
 					if interest.Sign() > 0 {
-						actions = append(actions,
-							testutil.CreateScriptRefTransactionAction(ledger, "accrue_interest", "1.0.0", map[string]string{
+						reqs = append(reqs,
+							actions.CreateScriptRefTransactionAction(ledger, "accrue_interest", "1.0.0", map[string]string{
 								"borrower_wallet": fmt.Sprintf("borrower:%d:wallet", i),
 								"amount":          fmt.Sprintf("USD/2 %s", interest.String()),
 							}, map[string]string{
@@ -197,8 +197,8 @@ func TestLendingLifecycle(t *testing.T) {
 
 					// Principal repayment
 					if principal.Sign() > 0 {
-						actions = append(actions,
-							testutil.CreateScriptRefTransactionAction(ledger, "repay_principal", "1.0.0", map[string]string{
+						reqs = append(reqs,
+							actions.CreateScriptRefTransactionAction(ledger, "repay_principal", "1.0.0", map[string]string{
 								"borrower_wallet": fmt.Sprintf("borrower:%d:wallet", i),
 								"borrower_loan":   fmt.Sprintf("borrower:%d:loan", i),
 								"amount":          fmt.Sprintf("USD/2 %s", principal.String()),
@@ -213,8 +213,8 @@ func TestLendingLifecycle(t *testing.T) {
 					}
 				}
 
-				if len(actions) > 0 {
-					scenariotest.ApplyActions(t, ctx, client, actions...)
+				if len(reqs) > 0 {
+					scenariotest.ApplyActions(t, ctx, client, reqs...)
 				}
 
 				// Close period each month
@@ -226,12 +226,12 @@ func TestLendingLifecycle(t *testing.T) {
 	// --- Phase 4: Provision for Doubtful Debts ---
 	t.Run("Provisions", func(t *testing.T) {
 		// Provision the full outstanding balance of defaulters
-		var actions []*servicepb.Request
+		var reqs []*servicepb.Request
 		for id := range defaulters {
 			outstanding := borrowerLoanBalance[id]
 			if outstanding.Sign() > 0 {
-				actions = append(actions,
-					testutil.CreateScriptRefTransactionAction(ledger, "provision", "1.0.0", map[string]string{
+				reqs = append(reqs,
+					actions.CreateScriptRefTransactionAction(ledger, "provision", "1.0.0", map[string]string{
 						"amount": fmt.Sprintf("USD/2 %s", outstanding.String()),
 					}, map[string]string{
 						"borrower": fmt.Sprintf("borrower:%d", id),
@@ -241,19 +241,19 @@ func TestLendingLifecycle(t *testing.T) {
 				provisionBalance.Add(provisionBalance, outstanding)
 			}
 		}
-		if len(actions) > 0 {
-			scenariotest.ApplyActions(t, ctx, client, actions...)
+		if len(reqs) > 0 {
+			scenariotest.ApplyActions(t, ctx, client, reqs...)
 		}
 	})
 
 	// --- Phase 5: Write-off Defaulted Loans ---
 	t.Run("WriteOffs", func(t *testing.T) {
-		var actions []*servicepb.Request
+		var reqs []*servicepb.Request
 		for id := range defaulters {
 			outstanding := borrowerLoanBalance[id]
 			if outstanding.Sign() > 0 {
-				actions = append(actions,
-					testutil.CreateScriptRefTransactionAction(ledger, "write_off", "1.0.0", map[string]string{
+				reqs = append(reqs,
+					actions.CreateScriptRefTransactionAction(ledger, "write_off", "1.0.0", map[string]string{
 						"borrower_loan": fmt.Sprintf("borrower:%d:loan", id),
 						"amount":        fmt.Sprintf("USD/2 %s", outstanding.String()),
 					}, map[string]string{
@@ -264,8 +264,8 @@ func TestLendingLifecycle(t *testing.T) {
 				outstanding.SetInt64(0)
 			}
 		}
-		if len(actions) > 0 {
-			scenariotest.ApplyActions(t, ctx, client, actions...)
+		if len(reqs) > 0 {
+			scenariotest.ApplyActions(t, ctx, client, reqs...)
 		}
 	})
 
@@ -274,14 +274,14 @@ func TestLendingLifecycle(t *testing.T) {
 		// Tag defaulted borrowers
 		for id := range defaulters {
 			scenariotest.ApplyActions(t, ctx, client,
-				testutil.SaveAccountMetadataAction(ledger, fmt.Sprintf("borrower:%d:loan", id), map[string]string{
+				actions.SaveAccountMetadataAction(ledger, fmt.Sprintf("borrower:%d:loan", id), map[string]string{
 					"status": "written-off",
 				}),
 			)
 		}
 		// Tag early repayer
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.SaveAccountMetadataAction(ledger, fmt.Sprintf("borrower:%d:loan", earlyRepayer), map[string]string{
+			actions.SaveAccountMetadataAction(ledger, fmt.Sprintf("borrower:%d:loan", earlyRepayer), map[string]string{
 				"status": "repaid-early",
 			}),
 		)
@@ -291,7 +291,7 @@ func TestLendingLifecycle(t *testing.T) {
 	t.Run("PreparedQueries", func(t *testing.T) {
 		// Wait for index backfill to complete (lag=0 and no backfill in progress)
 		require.Eventually(t, func() bool {
-			indexStatus, err := testutil.GetIndexStatus(ctx, client)
+			indexStatus, err := actions.GetIndexStatus(ctx, client)
 			if err != nil {
 				return false
 			}
@@ -300,9 +300,9 @@ func TestLendingLifecycle(t *testing.T) {
 
 		// 1. Parameterized string metadata — query by loan status at runtime
 		// Query for written-off loans — should find exactly the defaulters
-		resp, err := testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "loans-by-status",
+		resp, err := actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "loans-by-status",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"status_value": testutil.StringParam("written-off")},
+			map[string]*commonpb.ParameterValue{"status_value": actions.StringParam("written-off")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(written-off) failed")
 		cursor := resp.GetCursor()
@@ -311,18 +311,18 @@ func TestLendingLifecycle(t *testing.T) {
 			"should find exactly %d defaulted loan accounts", len(defaulters))
 
 		// Query for early-repaid loans — should find exactly 1 (borrower 5)
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "loans-by-status",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "loans-by-status",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"status_value": testutil.StringParam("repaid-early")},
+			map[string]*commonpb.ParameterValue{"status_value": actions.StringParam("repaid-early")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(repaid-early) failed")
 		require.Equal(t, 1, len(resp.GetCursor().GetAccountData()),
 			"should find exactly 1 early-repaid loan account")
 
 		// Query for a status nobody has — should return 0
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "loans-by-status",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "loans-by-status",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"status_value": testutil.StringParam("active")},
+			map[string]*commonpb.ParameterValue{"status_value": actions.StringParam("active")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(active) failed")
 		require.Empty(t, resp.GetCursor().GetAccountData(),
@@ -330,9 +330,9 @@ func TestLendingLifecycle(t *testing.T) {
 
 		// 2. Parameterized address prefix — filter borrower accounts by prefix
 		// Query for all borrower loan accounts
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("borrower:")},
+			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("borrower:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(borrower:) failed")
 		// 10 borrowers × 2 accounts each (loan + wallet) = 20
@@ -340,17 +340,17 @@ func TestLendingLifecycle(t *testing.T) {
 			"should find all borrower accounts (loan + wallet)")
 
 		// Query for funding accounts only
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("funding:")},
+			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("funding:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(funding:) failed")
 		require.Equal(t, 1, len(resp.GetCursor().GetAccountData()),
 			"should find exactly 1 funding account")
 
 		// Cleanup
-		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "loans-by-status"))
-		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "accounts-by-prefix"))
+		require.NoError(t, actions.DeletePreparedQuery(ctx, client, ledger, "loans-by-status"))
+		require.NoError(t, actions.DeletePreparedQuery(ctx, client, ledger, "accounts-by-prefix"))
 	})
 
 	// --- Phase 8: Final Invariants ---
@@ -378,7 +378,7 @@ func TestLendingLifecycle(t *testing.T) {
 		scenariotest.CheckPositiveBalance(t, ctx, client, ledger, "recovery:pool", "USD/2")
 
 		// Stats
-		stats, err := testutil.GetLedgerStats(ctx, client, ledger)
+		stats, err := actions.GetLedgerStats(ctx, client, ledger)
 		require.NoError(t, err)
 		t.Logf("LedgerStats: %d accounts, %d transactions",
 			stats.GetAccountCount(), stats.GetTransactionCount())

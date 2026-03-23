@@ -3,6 +3,7 @@
 package business
 
 import (
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"context"
 	"crypto/ed25519"
@@ -67,7 +68,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 		// Create the test ledger (generates 1 audit entry)
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+			Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 		})
 		Expect(err).To(Succeed())
 	})
@@ -82,8 +83,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 	It("Should record a success audit entry for a successful transaction", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					testutil.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 				}, nil, nil),
 			},
 		})
@@ -102,8 +103,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 	It("Should record a failure audit entry for insufficient funds", func() {
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					testutil.NewPosting("empty:account", "bank", big.NewInt(99999), "USD"),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("empty:account", "bank", big.NewInt(99999), "USD"),
 				}, nil, nil),
 			},
 		})
@@ -126,8 +127,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// Create a successful transaction
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					testutil.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 				}, nil, nil),
 			},
 		})
@@ -136,8 +137,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// Create a failing transaction
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					testutil.NewPosting("empty:account", "bank", big.NewInt(99999), "USD"),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("empty:account", "bank", big.NewInt(99999), "USD"),
 				}, nil, nil),
 			},
 		})
@@ -158,8 +159,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// Create a transaction to ensure we have entries
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					testutil.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 				}, nil, nil),
 			},
 		})
@@ -183,7 +184,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// Create a ledger — produces a CreateLedger order
 		ledgerForOrders := "audit-orders-test"
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerForOrders, nil)},
+			Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerForOrders, nil)},
 		})
 		Expect(err).To(Succeed())
 
@@ -198,8 +199,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// Create a transaction — produces an Apply/CreateTransaction order
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateTransactionAction(ledgerForOrders, []*commonpb.Posting{
-					testutil.NewPosting("world", "bank", big.NewInt(500), "EUR"),
+				actions.CreateTransactionAction(ledgerForOrders, []*commonpb.Posting{
+					actions.NewPosting("world", "bank", big.NewInt(500), "EUR"),
 				}, nil, nil),
 			},
 		})
@@ -243,13 +244,13 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// Register the key (bootstrap: first key can be unsigned)
 		_, err = sigClient.Apply(sigCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.RegisterSigningKeyAction(keyID, pubKey),
+				actions.RegisterSigningKeyAction(keyID, pubKey),
 			},
 		})
 		Expect(err).To(Succeed())
 
 		// Create a ledger with a signed request
-		signedReq := testutil.CreateLedgerAction("signed-ledger", nil)
+		signedReq := actions.CreateLedgerAction("signed-ledger", nil)
 		Expect(signing.Sign(signedReq, keyID, privKey)).To(Succeed())
 		_, err = sigClient.Apply(sigCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{signedReq},
@@ -277,11 +278,11 @@ var _ = Describe("Audit Log", Ordered, func() {
 		// Submit multiple requests in a single Apply (batch)
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					testutil.NewPosting("world", "batch:a", big.NewInt(100), "USD"),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "batch:a", big.NewInt(100), "USD"),
 				}, nil, nil),
-				testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					testutil.NewPosting("world", "batch:b", big.NewInt(200), "USD"),
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "batch:b", big.NewInt(200), "USD"),
 				}, nil, nil),
 			},
 		})

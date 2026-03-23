@@ -3,47 +3,16 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
-	"context"
 	"io"
 	"math/big"
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-// createLogBuiltinIndexAction creates a request for creating a log builtin index.
-func createLogBuiltinIndexAction(ledger string, index commonpb.LogBuiltinIndex) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_CreateIndex{
-			CreateIndex: &servicepb.CreateIndexRequest{
-				Ledger: ledger,
-				Index: &servicepb.CreateIndexRequest_LogBuiltin{
-					LogBuiltin: index,
-				},
-			},
-		},
-	}
-}
-
-// waitForLogBuiltinIndexReady waits until a log builtin index reaches READY status.
-func waitForLogBuiltinIndexReady(ctx context.Context, client servicepb.BucketServiceClient, ledger string, index commonpb.LogBuiltinIndex) {
-	Eventually(func(g Gomega) {
-		info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledger})
-		g.Expect(err).To(Succeed())
-		g.Expect(info.LogBuiltinIndexes).NotTo(BeNil())
-
-		switch index {
-		case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER:
-			g.Expect(info.LogBuiltinIndexes.LedgerStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
-		case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
-			g.Expect(info.LogBuiltinIndexes.DateStatus).To(Equal(commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY))
-		}
-	}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
-}
 
 // collectLogs drains a ListLogs gRPC stream into a slice.
 func collectLogs(stream servicepb.BucketService_ListLogsClient) []*commonpb.Log {
@@ -75,9 +44,9 @@ var _ = Describe("Log date index", Ordered, func() {
 		// Create ledger with both ledger log index and date index enabled.
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateLedgerAction(ledgerName, nil),
-				createLogBuiltinIndexAction(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER),
-				createLogBuiltinIndexAction(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+				actions.CreateLedgerAction(ledgerName, nil),
+				actions.CreateLogBuiltinIndexAction(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER),
+				actions.CreateLogBuiltinIndexAction(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
 			},
 		})
 		Expect(err).To(Succeed())
@@ -87,16 +56,16 @@ var _ = Describe("Log date index", Ordered, func() {
 
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{testutil.NewPosting("world", "alice", big.NewInt(100), "USD")}, nil),
-				testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{testutil.NewPosting("world", "bob", big.NewInt(200), "USD")}, nil),
-				testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{testutil.NewPosting("world", "carol", big.NewInt(300), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "alice", big.NewInt(100), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "bob", big.NewInt(200), "USD")}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "carol", big.NewInt(300), "USD")}, nil),
 			},
 		})
 		Expect(err).To(Succeed())
 
 		// Wait for both indexes to be ready.
-		waitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER)
-		waitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_LEDGER)).To(Succeed())
+		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)).To(Succeed())
 	})
 
 	It("Should show log date index as READY in GetLedger", func() {

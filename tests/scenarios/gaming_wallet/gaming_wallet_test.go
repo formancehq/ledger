@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
@@ -88,21 +88,21 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 	// --- Phase 2: Top-Ups (buy coins with real money) ---
 	t.Run("TopUps", func(t *testing.T) {
-		var actions []*servicepb.Request
+		var reqs []*servicepb.Request
 		for i := 1; i <= numPlayers; i++ {
-			action := testutil.CreateScriptRefTransactionAction(ledger, "top_up", "1.0.0", map[string]string{
+			action := actions.CreateScriptRefTransactionAction(ledger, "top_up", "1.0.0", map[string]string{
 				"player_usd":   fmt.Sprintf("player:%d:usd", i),
 				"player_coins": fmt.Sprintf("player:%d:coins", i),
 				"usd_amount":   fmt.Sprintf("USD/2 %d", topUpUSD),
 				"coin_amount":  fmt.Sprintf("COINS %d", topUpCoins),
 			}, map[string]string{"type": "initial-topup"})
 			action.GetApply().GetCreateTransaction().Reference = fmt.Sprintf("topup-initial-%d", i)
-			actions = append(actions, action)
+			reqs = append(reqs, action)
 
 			playerCoins[i].Add(playerCoins[i], big.NewInt(topUpCoins))
 			revenueUSD.Add(revenueUSD, big.NewInt(topUpUSD))
 		}
-		scenariotest.ApplyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, reqs...)
 
 		// Verify revenue
 		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "platform:revenue", "USD/2", revenueUSD)
@@ -111,11 +111,11 @@ func TestGamingWalletLifecycle(t *testing.T) {
 	// --- Phase 3: Promotional Credits (force transactions from @world) ---
 	t.Run("Promotions", func(t *testing.T) {
 		// Give free coins to first 10 players
-		var actions []*servicepb.Request
+		var reqs []*servicepb.Request
 		for i := 1; i <= 10; i++ {
-			actions = append(actions,
-				testutil.CreateForceTransactionAction(ledger, []*commonpb.Posting{
-					testutil.NewPosting("world", fmt.Sprintf("player:%d:coins", i), big.NewInt(promoCoins), "COINS"),
+			reqs = append(reqs,
+				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+					actions.NewPosting("world", fmt.Sprintf("player:%d:coins", i), big.NewInt(promoCoins), "COINS"),
 				}, map[string]string{
 					"type":   "promotion",
 					"reason": "welcome-bonus",
@@ -124,7 +124,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 			playerCoins[i].Add(playerCoins[i], big.NewInt(promoCoins))
 			promoTotal.Add(promoTotal, big.NewInt(promoCoins))
 		}
-		scenariotest.ApplyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, reqs...)
 
 		scenariotest.ClosePeriodAndWait(t, ctx, client, "post-promotion period close")
 	})
@@ -135,25 +135,25 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		itemCosts := []int64{100, 250, 500}
 
 		for round, cost := range itemCosts {
-			var actions []*servicepb.Request
+			var reqs []*servicepb.Request
 			for i := 1; i <= numPlayers; i++ {
 				// Only buy if player has enough coins
 				if playerCoins[i].Cmp(big.NewInt(cost)) < 0 {
 					continue
 				}
-				action := testutil.CreateScriptRefTransactionAction(ledger, "buy_item", "1.0.0", map[string]string{
+				action := actions.CreateScriptRefTransactionAction(ledger, "buy_item", "1.0.0", map[string]string{
 					"player_coins": fmt.Sprintf("player:%d:coins", i),
 					"amount":       fmt.Sprintf("COINS %d", cost),
 				}, map[string]string{
 					"item":  fmt.Sprintf("item-round-%d", round+1),
 					"round": fmt.Sprintf("%d", round+1),
 				})
-				actions = append(actions, action)
+				reqs = append(reqs, action)
 
 				playerCoins[i].Sub(playerCoins[i], big.NewInt(cost))
 				shopCoins.Add(shopCoins, big.NewInt(cost))
 			}
-			resp := scenariotest.ApplyActions(t, ctx, client, actions...)
+			resp := scenariotest.ApplyActions(t, ctx, client, reqs...)
 
 			// Track some purchases for revert tests
 			for j, log := range resp.Logs {
@@ -175,7 +175,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 			// Read some accounts mid-way to exercise cache
 			if round == 1 {
 				for i := 1; i <= 5; i++ {
-					_, err := testutil.GetAccount(ctx, client, ledger, fmt.Sprintf("player:%d:coins", i))
+					_, err := actions.GetAccount(ctx, client, ledger, fmt.Sprintf("player:%d:coins", i))
 					require.NoError(t, err)
 				}
 			}
@@ -192,7 +192,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 			{2, 3, 30}, {4, 5, 60}, {6, 7, 80}, {8, 9, 40}, {10, 1, 90},
 		}
 
-		var actions []*servicepb.Request
+		var reqs []*servicepb.Request
 		for _, trade := range trades {
 			from, to, amount := trade[0], trade[1], int64(trade[2])
 
@@ -201,8 +201,8 @@ func TestGamingWalletLifecycle(t *testing.T) {
 				continue
 			}
 
-			actions = append(actions,
-				testutil.CreateScriptRefTransactionAction(ledger, "p2p_transfer", "1.0.0", map[string]string{
+			reqs = append(reqs,
+				actions.CreateScriptRefTransactionAction(ledger, "p2p_transfer", "1.0.0", map[string]string{
 					"from_player": fmt.Sprintf("player:%d:coins", from),
 					"to_player":   fmt.Sprintf("player:%d:coins", to),
 					"amount":      fmt.Sprintf("COINS %d", amount),
@@ -213,8 +213,8 @@ func TestGamingWalletLifecycle(t *testing.T) {
 			playerCoins[from].Sub(playerCoins[from], big.NewInt(amount))
 			playerCoins[to].Add(playerCoins[to], big.NewInt(amount))
 		}
-		if len(actions) > 0 {
-			scenariotest.ApplyActions(t, ctx, client, actions...)
+		if len(reqs) > 0 {
+			scenariotest.ApplyActions(t, ctx, client, reqs...)
 		}
 	})
 
@@ -227,7 +227,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		// Revert first purchase (force=false — balance-checked)
 		p := &itemPurchases[0]
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.RevertTransactionAction(ledger, p.txID, false, false, map[string]string{"reason": "refund"}),
+			actions.RevertTransactionAction(ledger, p.txID, false, false, map[string]string{"reason": "refund"}),
 		)
 		playerCoins[p.player].Add(playerCoins[p.player], big.NewInt(p.coins))
 		shopCoins.Sub(shopCoins, big.NewInt(p.coins))
@@ -236,7 +236,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		// Revert second purchase with force=true
 		p2 := &itemPurchases[1]
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.RevertTransactionAction(ledger, p2.txID, true, false, map[string]string{"reason": "admin-refund"}),
+			actions.RevertTransactionAction(ledger, p2.txID, true, false, map[string]string{"reason": "admin-refund"}),
 		)
 		playerCoins[p2.player].Add(playerCoins[p2.player], big.NewInt(p2.coins))
 		shopCoins.Sub(shopCoins, big.NewInt(p2.coins))
@@ -244,15 +244,15 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 		// Double-revert should fail
 		err := scenariotest.ApplyActionsExpectError(ctx, client,
-			testutil.RevertTransactionAction(ledger, p.txID, false, false, nil),
+			actions.RevertTransactionAction(ledger, p.txID, false, false, nil),
 		)
 		require.Error(t, err, "double revert should fail")
 
 		// Revert with ExpandVolumes
 		if len(itemPurchases) >= 3 {
 			p3 := &itemPurchases[2]
-			action := testutil.RevertTransactionAction(ledger, p3.txID, false, false, nil)
-			testutil.WithExpandVolumes(action)
+			action := actions.RevertTransactionAction(ledger, p3.txID, false, false, nil)
+			actions.WithExpandVolumes(action)
 			resp := scenariotest.ApplyActions(t, ctx, client, action)
 			require.NotEmpty(t, resp.Logs, "revert with expand volumes should return logs")
 			playerCoins[p3.player].Add(playerCoins[p3.player], big.NewInt(p3.coins))
@@ -265,7 +265,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 	t.Run("InsufficientFunds", func(t *testing.T) {
 		// Try to buy an item the player can't afford
 		err := scenariotest.ApplyActionsExpectError(ctx, client,
-			testutil.CreateScriptRefTransactionAction(ledger, "buy_item", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(ledger, "buy_item", "1.0.0", map[string]string{
 				"player_coins": fmt.Sprintf("player:%d:coins", numPlayers),
 				"amount":       "COINS 999999999",
 			}, nil),
@@ -277,7 +277,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 	t.Run("PromoClawback", func(t *testing.T) {
 		// Clawback remaining promo coins from players 8-10
 		// (simulating expired promotional balance)
-		var actions []*servicepb.Request
+		var reqs []*servicepb.Request
 		for i := 8; i <= 10; i++ {
 			clawAmount := big.NewInt(promoCoins)
 			// Can only claw back if they still have enough
@@ -288,8 +288,8 @@ func TestGamingWalletLifecycle(t *testing.T) {
 				continue
 			}
 
-			actions = append(actions,
-				testutil.CreateScriptRefTransactionAction(ledger, "clawback", "1.0.0", map[string]string{
+			reqs = append(reqs,
+				actions.CreateScriptRefTransactionAction(ledger, "clawback", "1.0.0", map[string]string{
 					"player_coins": fmt.Sprintf("player:%d:coins", i),
 					"amount":       fmt.Sprintf("COINS %s", clawAmount.String()),
 				}, map[string]string{
@@ -299,8 +299,8 @@ func TestGamingWalletLifecycle(t *testing.T) {
 			)
 			playerCoins[i].Sub(playerCoins[i], clawAmount)
 		}
-		if len(actions) > 0 {
-			scenariotest.ApplyActions(t, ctx, client, actions...)
+		if len(reqs) > 0 {
+			scenariotest.ApplyActions(t, ctx, client, reqs...)
 		}
 
 		scenariotest.ClosePeriodAndWait(t, ctx, client, "post-clawback period close")
@@ -310,7 +310,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 	t.Run("MetadataLifecycle", func(t *testing.T) {
 		// Add metadata to player 1
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.SaveAccountMetadataAction(ledger, "player:1:coins", map[string]string{
+			actions.SaveAccountMetadataAction(ledger, "player:1:coins", map[string]string{
 				"vip":    "true",
 				"tier":   "gold",
 				"joined": "2025-01-01",
@@ -319,27 +319,27 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 		// Update metadata
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.SaveAccountMetadataAction(ledger, "player:1:coins", map[string]string{
+			actions.SaveAccountMetadataAction(ledger, "player:1:coins", map[string]string{
 				"tier": "platinum",
 			}),
 		)
 
 		// Verify metadata
-		acct, err := testutil.GetAccount(ctx, client, ledger, "player:1:coins")
+		acct, err := actions.GetAccount(ctx, client, ledger, "player:1:coins")
 		require.NoError(t, err)
-		tier := testutil.FindMetadataValue(acct.Metadata, "tier")
+		tier := actions.FindMetadataValue(acct.Metadata, "tier")
 		require.NotNil(t, tier, "tier metadata should exist")
 		require.Equal(t, "platinum", tier.GetStringValue(), "tier should be updated to platinum")
 
 		// Delete metadata key
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.DeleteAccountMetadataAction(ledger, "player:1:coins", "joined"),
+			actions.DeleteAccountMetadataAction(ledger, "player:1:coins", "joined"),
 		)
 
 		// Verify deletion
-		acct, err = testutil.GetAccount(ctx, client, ledger, "player:1:coins")
+		acct, err = actions.GetAccount(ctx, client, ledger, "player:1:coins")
 		require.NoError(t, err)
-		joined := testutil.FindMetadataValue(acct.Metadata, "joined")
+		joined := actions.FindMetadataValue(acct.Metadata, "joined")
 		require.Nil(t, joined, "joined metadata should be deleted")
 	})
 
@@ -347,27 +347,27 @@ func TestGamingWalletLifecycle(t *testing.T) {
 	t.Run("AccountTypeEnforcement", func(t *testing.T) {
 		// STRICT mode: transaction to non-matching address should fail
 		err := scenariotest.ApplyActionsExpectError(ctx, client,
-			testutil.CreateTransactionAction(ledger, []*commonpb.Posting{
-				testutil.NewPosting("world", "invalid-address", big.NewInt(1), "COINS"),
+			actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+				actions.NewPosting("world", "invalid-address", big.NewInt(1), "COINS"),
 			}, nil, nil),
 		)
 		require.Error(t, err, "STRICT mode should reject non-matching address")
 
 		// Switch platform type to STRICT and test
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.UpdateAccountTypeAction(ledger, "platform", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+			actions.UpdateAccountTypeAction(ledger, "platform", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
 		)
 
 		// Valid platform address should still work
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateForceTransactionAction(ledger, []*commonpb.Posting{
-				testutil.NewPosting("world", "platform:test", big.NewInt(1), "COINS"),
+			actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+				actions.NewPosting("world", "platform:test", big.NewInt(1), "COINS"),
 			}, nil),
 		)
 
 		// Revert back to AUDIT for platform
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.UpdateAccountTypeAction(ledger, "platform", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT),
+			actions.UpdateAccountTypeAction(ledger, "platform", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT),
 		)
 	})
 
@@ -375,7 +375,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 	t.Run("PreparedQueries", func(t *testing.T) {
 		// Wait for tier index backfill to complete
 		require.Eventually(t, func() bool {
-			indexStatus, err := testutil.GetIndexStatus(ctx, client)
+			indexStatus, err := actions.GetIndexStatus(ctx, client)
 			if err != nil {
 				return false
 			}
@@ -384,9 +384,9 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 		// 1. Parameterized address prefix — filter by account type at runtime
 		// Query for all player coin accounts
-		resp, err := testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+		resp, err := actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("player:")},
+			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("player:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(player:) failed")
 		// 20 players × 2 accounts each (usd + coins) = 40
@@ -394,36 +394,36 @@ func TestGamingWalletLifecycle(t *testing.T) {
 			"should find all player accounts (usd + coins)")
 
 		// Query for shop accounts only
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("shop:")},
+			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("shop:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(shop:) failed")
 		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 1,
 			"should find at least 1 shop account")
 
 		// Query for escrow accounts
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("escrow:")},
+			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("escrow:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(escrow:) failed")
 		// escrow:p2p exists even if not used, depending on the flow
 		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 0)
 
 		// 2. Parameterized exact address — find a specific account
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"addr": testutil.StringParam("platform:revenue")},
+			map[string]*commonpb.ParameterValue{"addr": actions.StringParam("platform:revenue")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(platform:revenue) failed")
 		require.Equal(t, 1, len(resp.GetCursor().GetAccountData()),
 			"exact match should return exactly 1 account")
 
 		// Non-existent exact address — should return 0
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"addr": testutil.StringParam("nonexistent:account")},
+			map[string]*commonpb.ParameterValue{"addr": actions.StringParam("nonexistent:account")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(nonexistent) failed")
 		require.Empty(t, resp.GetCursor().GetAccountData(),
@@ -431,27 +431,27 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 		// 3. Parameterized string metadata — filter by tier
 		// Query for "platinum" tier — player:1:coins was updated to platinum
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-tier",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-tier",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"tier_value": testutil.StringParam("platinum")},
+			map[string]*commonpb.ParameterValue{"tier_value": actions.StringParam("platinum")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(tier=platinum) failed")
 		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 1,
 			"should find at least 1 account with tier=platinum")
 
 		// Query for "gold" tier — was overwritten to platinum, so should be 0
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-tier",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-tier",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"tier_value": testutil.StringParam("gold")},
+			map[string]*commonpb.ParameterValue{"tier_value": actions.StringParam("gold")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(tier=gold) failed")
 		require.Empty(t, resp.GetCursor().GetAccountData(),
 			"gold tier was overwritten, should return 0")
 
 		// Cleanup
-		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "accounts-by-prefix"))
-		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "account-exact"))
-		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "by-tier"))
+		require.NoError(t, actions.DeletePreparedQuery(ctx, client, ledger, "accounts-by-prefix"))
+		require.NoError(t, actions.DeletePreparedQuery(ctx, client, ledger, "account-exact"))
+		require.NoError(t, actions.DeletePreparedQuery(ctx, client, ledger, "by-tier"))
 	})
 
 	// --- Phase 12: Final Invariants ---
@@ -472,7 +472,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "platform:revenue", "USD/2", revenueUSD)
 
 		// Stats
-		stats, err := testutil.GetLedgerStats(ctx, client, ledger)
+		stats, err := actions.GetLedgerStats(ctx, client, ledger)
 		require.NoError(t, err)
 		require.Greater(t, stats.GetTransactionCount(), uint64(100), "should have many transactions")
 		t.Logf("LedgerStats: %d accounts, %d transactions",

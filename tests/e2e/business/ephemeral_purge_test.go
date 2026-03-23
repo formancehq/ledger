@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -21,7 +21,7 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 		BeforeAll(func() {
 			// Create ledger
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -65,11 +65,11 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 			// After both legs, clearing:tx1 has input=100, output=100 → zero balance
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "clearing:tx1", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "clearing:tx1", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("clearing:tx1", "bank:main", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("clearing:tx1", "bank:main", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -113,8 +113,8 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 			// Send money through clearing:tx1 again
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "clearing:tx1", big.NewInt(50), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "clearing:tx1", big.NewInt(50), "USD"),
 					}, nil),
 				},
 			})
@@ -140,7 +140,7 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -148,11 +148,11 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 			// alice ends with input=100, output=100 (zero balance) but no ephemeral type
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("alice", "bob", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("alice", "bob", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})

@@ -18,26 +18,13 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 )
 
 const (
 	DefaultTimeout  = 10 * time.Second
 	DefaultPageSize = 10
 )
-
-// GRPCRetryPolicy defines the retry policy for gRPC clients when no leader is available.
-var GRPCRetryPolicy = `{
-	"methodConfig": [{
-		"name": [{}],
-		"retryPolicy": {
-			"MaxAttempts": 50,
-			"InitialBackoff": "0.2s",
-			"MaxBackoff": "0.2s",
-			"BackoffMultiplier": 1.0,
-			"RetryableStatusCodes": ["UNAVAILABLE"]
-		}
-	}]
-}`
 
 // GetClientTransportCredentials returns the transport credentials based on CLI flags.
 // If --insecure is set, returns insecure credentials.
@@ -80,7 +67,7 @@ func GetClient(cmd *cobra.Command) (servicepb.BucketServiceClient, *grpc.ClientC
 
 	conn, err := grpc.NewClient(serverAddr,
 		grpc.WithTransportCredentials(creds),
-		grpc.WithDefaultServiceConfig(GRPCRetryPolicy), // Retry on UNAVAILABLE (no leader) up to 50 times with 200ms delay (10s max)
+		grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy), // Retry on UNAVAILABLE (no leader) up to 50 times with 200ms delay (10s max)
 		grpc.WithUnaryInterceptor(TracingUnaryInterceptor()),
 		grpc.WithStreamInterceptor(TracingStreamInterceptor()),
 	)

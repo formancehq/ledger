@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"math/big"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
@@ -19,14 +19,14 @@ var _ = Describe("CreateCheckpoint", Ordered, func() {
 
 		// Create a ledger with some data so the checkpoint is non-trivial
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{testutil.CreateLedgerAction("checkpoint-test", nil)},
+			Requests: []*servicepb.Request{actions.CreateLedgerAction("checkpoint-test", nil)},
 		})
 		Expect(err).To(Succeed())
 
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateTransactionAction("checkpoint-test", []*commonpb.Posting{
-					testutil.NewPosting("world", "bank", big.NewInt(10000), "USD"),
+				actions.CreateTransactionAction("checkpoint-test", []*commonpb.Posting{
+					actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
 				}, nil, nil),
 			},
 		})
@@ -61,8 +61,8 @@ var _ = Describe("CreateCheckpoint", Ordered, func() {
 		// Verify we can still create transactions after checkpoint
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateTransactionAction("checkpoint-test", []*commonpb.Posting{
-					testutil.NewPosting("world", "user", big.NewInt(500), "USD"),
+				actions.CreateTransactionAction("checkpoint-test", []*commonpb.Posting{
+					actions.NewPosting("world", "user", big.NewInt(500), "USD"),
 				}, nil, nil),
 			},
 		})

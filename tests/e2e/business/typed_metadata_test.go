@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"math/big"
 	"time"
 
@@ -20,7 +20,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -28,7 +28,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		It("Should declare a field type and verify via schema status", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SetMetadataFieldTypeAction(ledgerName,
+					actions.SetMetadataFieldTypeAction(ledgerName,
 						commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age",
 						commonpb.MetadataType_METADATA_TYPE_INT64),
 				},
@@ -46,7 +46,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		It("Should remove a field type and verify it is absent", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RemoveMetadataFieldTypeAction(ledgerName,
+					actions.RemoveMetadataFieldTypeAction(ledgerName,
 						commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age"),
 				},
 			})
@@ -70,7 +70,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "verified",
@@ -111,7 +111,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "age",
@@ -126,7 +126,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		It("Should convert string metadata to int64 on write", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"age": "42"}),
+					actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"age": "42"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -138,7 +138,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Raw proto value should be int_value
-			v := testutil.FindMetadataValue(account.Metadata, "age")
+			v := actions.FindMetadataValue(account.Metadata, "age")
 			Expect(v).NotTo(BeNil())
 			intVal, ok := v.Type.(*commonpb.MetadataValue_IntValue)
 			Expect(ok).To(BeTrue(), "expected int_value, got %T", v.Type)
@@ -155,7 +155,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
 							Key:        "priority",
@@ -170,8 +170,8 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		It("Should convert string metadata to uint64 on transaction creation", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "user1", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "user1", big.NewInt(100), "USD"),
 					}, map[string]string{"priority": "100"}),
 				},
 			})
@@ -185,7 +185,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			v := testutil.FindMetadataValue(txResp.Transaction.Metadata, "priority")
+			v := actions.FindMetadataValue(txResp.Transaction.Metadata, "priority")
 			Expect(v).NotTo(BeNil())
 			uintVal, ok := v.Type.(*commonpb.MetadataValue_UintValue)
 			Expect(ok).To(BeTrue(), "expected uint_value, got %T", v.Type)
@@ -199,7 +199,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "active",
@@ -214,7 +214,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		It("Should convert 'true' string to bool_value true", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "acct1", map[string]string{"active": "true"}),
+					actions.SaveAccountMetadataAction(ledgerName, "acct1", map[string]string{"active": "true"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -225,7 +225,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			v := testutil.FindMetadataValue(account.Metadata, "active")
+			v := actions.FindMetadataValue(account.Metadata, "active")
 			Expect(v).NotTo(BeNil())
 			boolVal, ok := v.Type.(*commonpb.MetadataValue_BoolValue)
 			Expect(ok).To(BeTrue(), "expected bool_value, got %T", v.Type)
@@ -235,7 +235,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		It("Should convert '0' string to bool_value false", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "acct2", map[string]string{"active": "0"}),
+					actions.SaveAccountMetadataAction(ledgerName, "acct2", map[string]string{"active": "0"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -246,7 +246,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			v := testutil.FindMetadataValue(account.Metadata, "active")
+			v := actions.FindMetadataValue(account.Metadata, "active")
 			Expect(v).NotTo(BeNil())
 			boolVal, ok := v.Type.(*commonpb.MetadataValue_BoolValue)
 			Expect(ok).To(BeTrue(), "expected bool_value, got %T", v.Type)
@@ -260,7 +260,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "age",
@@ -275,7 +275,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		It("Should produce null_value preserving the original string", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "bad-data", map[string]string{"age": "not-a-number"}),
+					actions.SaveAccountMetadataAction(ledgerName, "bad-data", map[string]string{"age": "not-a-number"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -286,7 +286,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			v := testutil.FindMetadataValue(account.Metadata, "age")
+			v := actions.FindMetadataValue(account.Metadata, "age")
 			Expect(v).NotTo(BeNil())
 			nullVal, ok := v.Type.(*commonpb.MetadataValue_NullValue)
 			Expect(ok).To(BeTrue(), "expected null_value, got %T", v.Type)
@@ -302,7 +302,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -311,7 +311,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			// Save metadata before any schema exists (stored as string)
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "scored-user", map[string]string{"score": "99"}),
+					actions.SaveAccountMetadataAction(ledgerName, "scored-user", map[string]string{"score": "99"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -319,7 +319,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			// Declare the type
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SetMetadataFieldTypeAction(ledgerName,
+					actions.SetMetadataFieldTypeAction(ledgerName,
 						commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score",
 						commonpb.MetadataType_METADATA_TYPE_INT64),
 				},
@@ -344,7 +344,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 
-			v := testutil.FindMetadataValue(account.Metadata, "score")
+			v := actions.FindMetadataValue(account.Metadata, "score")
 			Expect(v).NotTo(BeNil())
 			intVal, ok := v.Type.(*commonpb.MetadataValue_IntValue)
 			Expect(ok).To(BeTrue(), "expected int_value after background conversion, got %T", v.Type)
@@ -358,7 +358,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "account_type",
@@ -380,7 +380,7 @@ set_account_meta(@user, "account_type", "true")
 `
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceScriptTransactionAction(ledgerName, script, nil, nil),
+					actions.CreateForceScriptTransactionAction(ledgerName, script, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -391,7 +391,7 @@ set_account_meta(@user, "account_type", "true")
 			})
 			Expect(err).To(Succeed())
 
-			v := testutil.FindMetadataValue(account.Metadata, "account_type")
+			v := actions.FindMetadataValue(account.Metadata, "account_type")
 			Expect(v).NotTo(BeNil())
 			boolVal, ok := v.Type.(*commonpb.MetadataValue_BoolValue)
 			Expect(ok).To(BeTrue(), "expected bool_value, got %T", v.Type)
@@ -405,7 +405,7 @@ set_account_meta(@user, "account_type", "true")
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "age",
@@ -420,7 +420,7 @@ set_account_meta(@user, "account_type", "true")
 		It("Should convert typed fields and keep untyped as strings", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
 						"age":  "25",
 						"name": "Alice",
 					}),
@@ -435,14 +435,14 @@ set_account_meta(@user, "account_type", "true")
 			Expect(err).To(Succeed())
 
 			// "age" should be converted to int_value
-			ageVal := testutil.FindMetadataValue(account.Metadata, "age")
+			ageVal := actions.FindMetadataValue(account.Metadata, "age")
 			Expect(ageVal).NotTo(BeNil())
 			intVal, ok := ageVal.Type.(*commonpb.MetadataValue_IntValue)
 			Expect(ok).To(BeTrue(), "expected int_value for age, got %T", ageVal.Type)
 			Expect(intVal.IntValue).To(Equal(int64(25)))
 
 			// "name" should remain as string_value
-			nameVal := testutil.FindMetadataValue(account.Metadata, "name")
+			nameVal := actions.FindMetadataValue(account.Metadata, "name")
 			Expect(nameVal).NotTo(BeNil())
 			strVal, ok := nameVal.Type.(*commonpb.MetadataValue_StringValue)
 			Expect(ok).To(BeTrue(), "expected string_value for name, got %T", nameVal.Type)
@@ -456,7 +456,7 @@ set_account_meta(@user, "account_type", "true")
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "count",
@@ -481,7 +481,7 @@ set_account_meta(@user, "account_type", "true")
 		It("Should convert each field to the correct type", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "multi", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "multi", map[string]string{
 						"count":   "42",
 						"enabled": "true",
 						"label":   "test",
@@ -497,21 +497,21 @@ set_account_meta(@user, "account_type", "true")
 			Expect(err).To(Succeed())
 
 			// count → uint_value
-			countVal := testutil.FindMetadataValue(account.Metadata, "count")
+			countVal := actions.FindMetadataValue(account.Metadata, "count")
 			Expect(countVal).NotTo(BeNil())
 			uintVal, ok := countVal.Type.(*commonpb.MetadataValue_UintValue)
 			Expect(ok).To(BeTrue(), "expected uint_value for count, got %T", countVal.Type)
 			Expect(uintVal.UintValue).To(Equal(uint64(42)))
 
 			// enabled → bool_value
-			enabledVal := testutil.FindMetadataValue(account.Metadata, "enabled")
+			enabledVal := actions.FindMetadataValue(account.Metadata, "enabled")
 			Expect(enabledVal).NotTo(BeNil())
 			boolVal, ok := enabledVal.Type.(*commonpb.MetadataValue_BoolValue)
 			Expect(ok).To(BeTrue(), "expected bool_value for enabled, got %T", enabledVal.Type)
 			Expect(boolVal.BoolValue).To(BeTrue())
 
 			// label → string_value
-			labelVal := testutil.FindMetadataValue(account.Metadata, "label")
+			labelVal := actions.FindMetadataValue(account.Metadata, "label")
 			Expect(labelVal).NotTo(BeNil())
 			strVal, ok := labelVal.Type.(*commonpb.MetadataValue_StringValue)
 			Expect(ok).To(BeTrue(), "expected string_value for label, got %T", labelVal.Type)
@@ -525,7 +525,7 @@ set_account_meta(@user, "account_type", "true")
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "field_int8",
@@ -565,7 +565,7 @@ set_account_meta(@user, "account_type", "true")
 		It("Should convert string values to correct proto types", func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "small-ints", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "small-ints", map[string]string{
 						"field_int8":   "-42",
 						"field_int16":  "1000",
 						"field_int32":  "100000",
@@ -584,38 +584,38 @@ set_account_meta(@user, "account_type", "true")
 			Expect(err).To(Succeed())
 
 			// Signed types -> int_value
-			int8Val := testutil.FindMetadataValue(account.Metadata, "field_int8")
+			int8Val := actions.FindMetadataValue(account.Metadata, "field_int8")
 			Expect(int8Val).NotTo(BeNil())
 			iv8, ok := int8Val.Type.(*commonpb.MetadataValue_IntValue)
 			Expect(ok).To(BeTrue(), "expected int_value for int8, got %T", int8Val.Type)
 			Expect(iv8.IntValue).To(Equal(int64(-42)))
 
-			int16Val := testutil.FindMetadataValue(account.Metadata, "field_int16")
+			int16Val := actions.FindMetadataValue(account.Metadata, "field_int16")
 			Expect(int16Val).NotTo(BeNil())
 			iv16, ok := int16Val.Type.(*commonpb.MetadataValue_IntValue)
 			Expect(ok).To(BeTrue(), "expected int_value for int16, got %T", int16Val.Type)
 			Expect(iv16.IntValue).To(Equal(int64(1000)))
 
-			int32Val := testutil.FindMetadataValue(account.Metadata, "field_int32")
+			int32Val := actions.FindMetadataValue(account.Metadata, "field_int32")
 			Expect(int32Val).NotTo(BeNil())
 			iv32, ok := int32Val.Type.(*commonpb.MetadataValue_IntValue)
 			Expect(ok).To(BeTrue(), "expected int_value for int32, got %T", int32Val.Type)
 			Expect(iv32.IntValue).To(Equal(int64(100000)))
 
 			// Unsigned types -> uint_value
-			uint8Val := testutil.FindMetadataValue(account.Metadata, "field_uint8")
+			uint8Val := actions.FindMetadataValue(account.Metadata, "field_uint8")
 			Expect(uint8Val).NotTo(BeNil())
 			uv8, ok := uint8Val.Type.(*commonpb.MetadataValue_UintValue)
 			Expect(ok).To(BeTrue(), "expected uint_value for uint8, got %T", uint8Val.Type)
 			Expect(uv8.UintValue).To(Equal(uint64(200)))
 
-			uint16Val := testutil.FindMetadataValue(account.Metadata, "field_uint16")
+			uint16Val := actions.FindMetadataValue(account.Metadata, "field_uint16")
 			Expect(uint16Val).NotTo(BeNil())
 			uv16, ok := uint16Val.Type.(*commonpb.MetadataValue_UintValue)
 			Expect(ok).To(BeTrue(), "expected uint_value for uint16, got %T", uint16Val.Type)
 			Expect(uv16.UintValue).To(Equal(uint64(50000)))
 
-			uint32Val := testutil.FindMetadataValue(account.Metadata, "field_uint32")
+			uint32Val := actions.FindMetadataValue(account.Metadata, "field_uint32")
 			Expect(uint32Val).NotTo(BeNil())
 			uv32, ok := uint32Val.Type.(*commonpb.MetadataValue_UintValue)
 			Expect(ok).To(BeTrue(), "expected uint_value for uint32, got %T", uint32Val.Type)
@@ -645,7 +645,7 @@ set_account_meta(@user, "account_type", "true")
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "f_string",
@@ -739,7 +739,7 @@ set_account_meta(@user, "account_type", "true")
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "score",
@@ -759,7 +759,7 @@ set_account_meta(@user, "account_type", "true")
 			}
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveTypedAccountMetadataAction(ledgerName, "proto-user", typedMeta),
+					actions.SaveTypedAccountMetadataAction(ledgerName, "proto-user", typedMeta),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -770,7 +770,7 @@ set_account_meta(@user, "account_type", "true")
 			})
 			Expect(err).To(Succeed())
 
-			v := testutil.FindMetadataValue(account.Metadata, "score")
+			v := actions.FindMetadataValue(account.Metadata, "score")
 			Expect(v).NotTo(BeNil())
 			intVal, ok := v.Type.(*commonpb.MetadataValue_IntValue)
 			Expect(ok).To(BeTrue(), "expected int_value, got %T", v.Type)

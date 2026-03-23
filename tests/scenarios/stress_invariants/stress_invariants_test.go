@@ -9,7 +9,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
@@ -41,14 +41,14 @@ func TestStressInvariants(t *testing.T) {
 
 	// --- Phase 2: Bulk Deposits (100 Apply calls) ---
 	t.Run("BulkDeposits", func(t *testing.T) {
-		actions := make([]*servicepb.Request, 0, numAccounts)
+		reqs := make([]*servicepb.Request, 0, numAccounts)
 		for i := 1; i <= numAccounts; i++ {
-			actions = append(actions, testutil.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
+			reqs = append(reqs, actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 				"account": fmt.Sprintf("trader:%d", i),
 				"amount":  fmt.Sprintf("USD/2 %d", depositAmt),
 			}, nil))
 		}
-		scenariotest.ApplyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, reqs...)
 
 		// Spot check a few accounts
 		for _, i := range []int{1, 25, 50, 75, 100} {
@@ -68,7 +68,7 @@ func TestStressInvariants(t *testing.T) {
 			amount := int64(100 + (i%50)*10)
 
 			resp := scenariotest.ApplyActions(t, ctx, client,
-				testutil.CreateScriptRefTransactionAction(ledger, "trade", "1.0.0", map[string]string{
+				actions.CreateScriptRefTransactionAction(ledger, "trade", "1.0.0", map[string]string{
 					"buyer":  fmt.Sprintf("trader:%d", buyer),
 					"seller": fmt.Sprintf("trader:%d", seller),
 					"amount": fmt.Sprintf("USD/2 %d", amount),
@@ -80,7 +80,7 @@ func TestStressInvariants(t *testing.T) {
 			if (i+1)%20 == 0 {
 				for j := 0; j < 5; j++ {
 					acctIdx := 1 + (i*7+j*13)%numAccounts
-					_, err := testutil.GetAccount(ctx, client, ledger, fmt.Sprintf("trader:%d", acctIdx))
+					_, err := actions.GetAccount(ctx, client, ledger, fmt.Sprintf("trader:%d", acctIdx))
 					require.NoError(t, err, "failed to read trader:%d at trade %d", acctIdx, i)
 				}
 			}
@@ -90,7 +90,7 @@ func TestStressInvariants(t *testing.T) {
 				revertIdx := len(tradeTxIDs) - 10
 				if !revertedTrades[revertIdx] {
 					scenariotest.ApplyActions(t, ctx, client,
-						testutil.RevertTransactionAction(ledger, tradeTxIDs[revertIdx], true, false, nil),
+						actions.RevertTransactionAction(ledger, tradeTxIDs[revertIdx], true, false, nil),
 					)
 					revertedTrades[revertIdx] = true
 				}
@@ -108,7 +108,7 @@ func TestStressInvariants(t *testing.T) {
 	// Note: audit entries require explicit SetAuditConfig(true). The stress test
 	// does not enable audit logging, so we only verify the RPC works (empty is OK).
 	t.Run("AuditEntriesAfterTrading", func(t *testing.T) {
-		entries, err := testutil.ListAuditEntries(ctx, client, false)
+		entries, err := actions.ListAuditEntries(ctx, client, false)
 		require.NoError(t, err, "ListAuditEntries RPC should succeed")
 		t.Logf("Audit entries after trading: %d total", len(entries))
 	})
@@ -120,7 +120,7 @@ func TestStressInvariants(t *testing.T) {
 		scenariotest.CheckPositiveBalance(t, ctx, client, ledger, "exchange:fees", "USD/2")
 
 		// GetLedgerStats: verify counts
-		stats, err := testutil.GetLedgerStats(ctx, client, ledger)
+		stats, err := actions.GetLedgerStats(ctx, client, ledger)
 		require.NoError(t, err, "GetLedgerStats failed")
 		require.Greater(t, stats.GetAccountCount(), uint64(0), "should have accounts")
 		require.Greater(t, stats.GetTransactionCount(), uint64(0), "should have transactions")
@@ -131,20 +131,20 @@ func TestStressInvariants(t *testing.T) {
 	// --- Phase 4b: Monitoring RPCs ---
 	t.Run("MonitoringRPCs", func(t *testing.T) {
 		// GetStoreMetrics
-		storeMetrics, err := testutil.GetStoreMetrics(ctx, client)
+		storeMetrics, err := actions.GetStoreMetrics(ctx, client)
 		require.NoError(t, err, "GetStoreMetrics failed")
 		require.True(t, storeMetrics.GetAvailable(), "store metrics should be available")
 		require.NotNil(t, storeMetrics.GetMetrics(), "store metrics should not be nil")
 		t.Logf("StoreMetrics: available=%v", storeMetrics.GetAvailable())
 
 		// GetReadIndexMetrics
-		readMetrics, err := testutil.GetReadIndexMetrics(ctx, client)
+		readMetrics, err := actions.GetReadIndexMetrics(ctx, client)
 		require.NoError(t, err, "GetReadIndexMetrics failed")
 		require.True(t, readMetrics.GetAvailable(), "read index metrics should be available")
 		t.Logf("ReadIndexMetrics: available=%v", readMetrics.GetAvailable())
 
 		// GetIndexStatus
-		indexStatus, err := testutil.GetIndexStatus(ctx, client)
+		indexStatus, err := actions.GetIndexStatus(ctx, client)
 		require.NoError(t, err, "GetIndexStatus failed")
 		require.Greater(t, indexStatus.GetLastIndexedSequence(), uint64(0),
 			"last indexed sequence should be > 0")
@@ -154,7 +154,7 @@ func TestStressInvariants(t *testing.T) {
 
 	// --- Phase 4c: Discovery ---
 	t.Run("Discovery", func(t *testing.T) {
-		resp, err := testutil.Discovery(ctx, client)
+		resp, err := actions.Discovery(ctx, client)
 		require.NoError(t, err, "Discovery failed")
 		require.NotNil(t, resp, "Discovery response should not be nil")
 		// ResponseSigning may be nil if not configured — that's OK

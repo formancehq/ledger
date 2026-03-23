@@ -10,9 +10,9 @@ func TestParseAssetPrecision(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		asset     string
-		wantBase  string
-		wantPrec  uint8
+		asset    string
+		wantBase string
+		wantPrec uint8
 	}{
 		{"USD/4", "USD", 4},
 		{"EUR/2", "EUR", 2},

@@ -85,7 +85,7 @@ func (bk *VolumeKey) Unmarshal(d []byte) error {
 
 	assetPart := parts[2]
 	if len(assetPart) < 2 {
-		return fmt.Errorf("invalid balance key bytes: asset part too short")
+		return errors.New("invalid balance key bytes: asset part too short")
 	}
 
 	bk.AssetBase = string(assetPart[:len(assetPart)-1])

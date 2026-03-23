@@ -18,8 +18,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/restorepb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -81,7 +81,7 @@ func (sc *ScenarioCluster) BackupAndRestore() {
 	sc.t.Helper()
 
 	// 1. Take backup to memory.
-	backup, err := testutil.BackupToBuffer(sc.ctx, sc.Cluster)
+	backup, err := actions.BackupToBuffer(sc.ctx, sc.Cluster)
 	require.NoError(sc.t, err, "BackupToBuffer failed")
 	require.NotEmpty(sc.t, backup.Data, "backup should produce data")
 	sc.t.Logf("Backup captured: %d bytes, SHA-256=%s", len(backup.Data), backup.Hash)
@@ -121,7 +121,7 @@ func (sc *ScenarioCluster) BackupAndRestore() {
 	restoreClient := restorepb.NewRestoreServiceClient(restoreConn)
 
 	// 4. Upload, validate, finalize.
-	require.NoError(sc.t, testutil.UploadAndFinalizeRestore(sc.ctx, restoreClient, backup),
+	require.NoError(sc.t, actions.UploadAndFinalizeRestore(sc.ctx, restoreClient, backup),
 		"UploadAndFinalizeRestore failed")
 
 	// 5. Stop restore server.
@@ -173,7 +173,7 @@ func (sc *ScenarioCluster) startServer() {
 	conn, err := grpc.NewClient(
 		fmt.Sprintf("localhost:%d", sc.grpcPort),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultServiceConfig(testutil.GRPCRetryPolicy),
+		grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
 	)
 	require.NoError(sc.t, err)
 
@@ -228,7 +228,7 @@ func SetupSingleNode(t *testing.T, httpPort, grpcPort int, extra ...testservice.
 func CheckStoreIntegrity(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient) {
 	t.Helper()
 
-	result, err := testutil.CollectCheckStoreEvents(ctx, client)
+	result, err := actions.CollectCheckStoreEvents(ctx, client)
 	require.NoError(t, err, "CheckStore RPC failed")
 
 	for _, e := range result.Errors {
@@ -243,7 +243,7 @@ func CheckStoreIntegrity(t *testing.T, ctx context.Context, client servicepb.Buc
 func PerformBackup(t *testing.T, ctx context.Context, clusterClient clusterpb.ClusterServiceClient) {
 	t.Helper()
 
-	totalBytes, sha256, err := testutil.StreamBackup(ctx, clusterClient, io.Discard)
+	totalBytes, sha256, err := actions.StreamBackup(ctx, clusterClient, io.Discard)
 	require.NoError(t, err, "Backup RPC failed")
 	require.NotZero(t, totalBytes, "backup should produce data")
 	require.NotEmpty(t, sha256, "backup should report content SHA-256")
@@ -288,9 +288,9 @@ func RunPostTestPhases(t *testing.T, sc *ScenarioCluster, verifyFn func(t *testi
 func ClosePeriodAndWait(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, msgAndArgs ...interface{}) {
 	t.Helper()
 
-	ApplyActions(t, ctx, client, testutil.ClosePeriodAction())
+	ApplyActions(t, ctx, client, actions.ClosePeriodAction())
 	require.Eventually(t, func() bool {
-		periods, err := testutil.ListAllPeriods(ctx, client)
+		periods, err := actions.ListAllPeriods(ctx, client)
 		if err != nil {
 			return false
 		}
@@ -306,7 +306,7 @@ func ClosePeriodAndWait(t *testing.T, ctx context.Context, client servicepb.Buck
 func CheckPositiveBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address, asset string) {
 	t.Helper()
 
-	acct, err := testutil.GetAccount(ctx, client, ledgerName, address)
+	acct, err := actions.GetAccount(ctx, client, ledgerName, address)
 	require.NoError(t, err, "failed to get account %s", address)
 
 	vol, ok := acct.Volumes[asset]
@@ -323,7 +323,7 @@ func CheckPositiveBalance(t *testing.T, ctx context.Context, client servicepb.Bu
 func CheckDoubleEntryBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) {
 	t.Helper()
 
-	accounts, err := testutil.ListAllAccounts(ctx, client, ledgerName)
+	accounts, err := actions.ListAllAccounts(ctx, client, ledgerName)
 	require.NoError(t, err, "failed to list accounts for double-entry check")
 
 	sums := make(map[string]*big.Int) // asset -> sum of balances
@@ -349,7 +349,7 @@ func CheckDoubleEntryBalance(t *testing.T, ctx context.Context, client servicepb
 func CheckAccountBalance(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address, asset string, expected *big.Int) {
 	t.Helper()
 
-	acct, err := testutil.GetAccount(ctx, client, ledgerName, address)
+	acct, err := actions.GetAccount(ctx, client, ledgerName, address)
 	require.NoError(t, err, "failed to get account %s", address)
 
 	vol, ok := acct.Volumes[asset]
@@ -372,7 +372,7 @@ func CheckNoNegativeBalances(t *testing.T, ctx context.Context, client servicepb
 		exceptionSet[e] = true
 	}
 
-	accounts, err := testutil.ListAllAccounts(ctx, client, ledgerName)
+	accounts, err := actions.ListAllAccounts(ctx, client, ledgerName)
 	require.NoError(t, err, "failed to list accounts for negative balance check")
 
 	for _, acct := range accounts {
@@ -404,7 +404,7 @@ func CheckAuditTrail(t *testing.T, ctx context.Context, client servicepb.BucketS
 	t.Helper()
 
 	// 1. Verify global log chain integrity.
-	logs, err := testutil.ListAllLogs(ctx, client)
+	logs, err := actions.ListAllLogs(ctx, client)
 	require.NoError(t, err, "ListAllLogs failed")
 	require.NotEmpty(t, logs, "should have at least one log")
 
@@ -422,7 +422,7 @@ func CheckAuditTrail(t *testing.T, ctx context.Context, client servicepb.BucketS
 
 	// 2. Verify transactions per ledger.
 	for _, exp := range expectations {
-		txs, err := testutil.ListAllTransactions(ctx, client, exp.Ledger)
+		txs, err := actions.ListAllTransactions(ctx, client, exp.Ledger)
 		require.NoError(t, err, "ListAllTransactions failed for ledger %s", exp.Ledger)
 		require.GreaterOrEqual(t, len(txs), exp.MinTransactions,
 			"ledger %s: expected at least %d transactions, got %d",

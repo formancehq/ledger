@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"archive/tar"
 	"bytes"
 	"crypto/sha256"
@@ -24,14 +24,14 @@ var _ = Describe("Backup", Ordered, func() {
 
 		// Create a ledger with some data so the backup is non-trivial
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{testutil.CreateLedgerAction("backup-test", nil)},
+			Requests: []*servicepb.Request{actions.CreateLedgerAction("backup-test", nil)},
 		})
 		Expect(err).To(Succeed())
 
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateTransactionAction("backup-test", []*commonpb.Posting{
-					testutil.NewPosting("world", "bank", big.NewInt(10000), "USD"),
+				actions.CreateTransactionAction("backup-test", []*commonpb.Posting{
+					actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
 				}, nil, nil),
 			},
 		})
@@ -127,8 +127,8 @@ var _ = Describe("Backup", Ordered, func() {
 		// Verify we can still create transactions after backup
 		_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateTransactionAction("backup-test", []*commonpb.Posting{
-					testutil.NewPosting("world", "user", big.NewInt(500), "USD"),
+				actions.CreateTransactionAction("backup-test", []*commonpb.Posting{
+					actions.NewPosting("world", "user", big.NewInt(500), "USD"),
 				}, nil, nil),
 			},
 		})

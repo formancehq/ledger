@@ -187,9 +187,18 @@ func ParamInt64RangeMetadataFilter(key, paramMin, paramMax string) *commonpb.Que
 }
 
 // Int64RangeMetadataFilter creates a filter matching a metadata int64 field
-// with hardcoded min/max bounds.
+// with hardcoded min/max bounds (inclusive).
 func Int64RangeMetadataFilter(key string, minVal, maxVal *int64) *commonpb.QueryFilter {
-	cond := &commonpb.IntCondition{}
+	return Int64RangeMetadataFilterExclusive(key, minVal, maxVal, false, false)
+}
+
+// Int64RangeMetadataFilterExclusive creates a filter matching a metadata int64 field
+// with hardcoded min/max bounds and configurable exclusivity.
+func Int64RangeMetadataFilterExclusive(key string, minVal, maxVal *int64, minExclusive, maxExclusive bool) *commonpb.QueryFilter {
+	cond := &commonpb.IntCondition{
+		MinExclusive: minExclusive,
+		MaxExclusive: maxExclusive,
+	}
 	if minVal != nil {
 		cond.Min = minVal
 	}
@@ -245,4 +254,48 @@ func Uint64Param(v uint64) *commonpb.ParameterValue {
 // BoolParam creates a ParameterValue with a bool value.
 func BoolParam(v bool) *commonpb.ParameterValue {
 	return &commonpb.ParameterValue{Value: &commonpb.ParameterValue_BoolValue{BoolValue: v}}
+}
+
+// ExistsMetadataFilter creates a filter that checks for metadata key existence.
+func ExistsMetadataFilter(key string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field:     &commonpb.FieldRef{Metadata: key},
+				Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+			},
+		},
+	}
+}
+
+// BuiltinUintRangeFilter creates a filter matching a builtin uint field within a range.
+func BuiltinUintRangeFilter(field commonpb.TransactionBuiltinIndex, minVal, maxVal uint64) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &commonpb.BuiltinUintCondition{
+				Field: field,
+				Cond:  &commonpb.UintCondition{Min: &minVal, Max: &maxVal},
+			},
+		},
+	}
+}
+
+// TimestampRangeFilter creates a filter matching transactions by timestamp range.
+func TimestampRangeFilter(minVal, maxVal uint64) *commonpb.QueryFilter {
+	return BuiltinUintRangeFilter(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, minVal, maxVal)
+}
+
+// InsertedAtRangeFilter creates a filter matching transactions by inserted-at range.
+func InsertedAtRangeFilter(minVal, maxVal uint64) *commonpb.QueryFilter {
+	return BuiltinUintRangeFilter(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT, minVal, maxVal)
+}
+
+// TxIDRangeFilter creates a filter matching transactions by ID range.
+func TxIDRangeFilter(minVal, maxVal uint64) *commonpb.QueryFilter {
+	return BuiltinUintRangeFilter(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID, minVal, maxVal)
+}
+
+// TxIDExactFilter creates a filter matching a single transaction by exact ID.
+func TxIDExactFilter(id uint64) *commonpb.QueryFilter {
+	return TxIDRangeFilter(id, id)
 }

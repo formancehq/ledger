@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"fmt"
 	"math/big"
 	"time"
@@ -22,7 +22,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 		BeforeAll(func() {
 			// Create a ledger
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -38,7 +38,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 		It("Should successfully delete the ledger (soft delete)", func() {
 			// Delete the ledger (soft delete)
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.DeleteLedgerAction(ledgerName)},
+				Requests: []*servicepb.Request{actions.DeleteLedgerAction(ledgerName)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -52,7 +52,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 			}).Within(15 * time.Second).WithPolling(500 * time.Millisecond).To(BeTrue())
 
 			// Verify the ledger is not in the list of all ledgers (soft-deleted are filtered)
-			ledgers, err := testutil.ListLedgers(sharedCtx, sharedClient)
+			ledgers, err := actions.ListLedgers(sharedCtx, sharedClient)
 			Expect(err).To(Succeed())
 			for name := range ledgers {
 				Expect(name).NotTo(Equal(ledgerName))
@@ -65,7 +65,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 			Expect(err).To(HaveOccurred())
 
 			// Verify the ledger does not appear in the list
-			ledgers, err = testutil.ListLedgers(sharedCtx, sharedClient)
+			ledgers, err = actions.ListLedgers(sharedCtx, sharedClient)
 			Expect(err).To(Succeed())
 			_, found := ledgers[ledgerName]
 			Expect(found).To(BeFalse())
@@ -74,7 +74,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 		It("Should return error when trying to delete a non-existent ledger", func() {
 			// Try to delete a non-existent ledger
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.DeleteLedgerAction("non-existent-ledger")},
+				Requests: []*servicepb.Request{actions.DeleteLedgerAction("non-existent-ledger")},
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -86,7 +86,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 		BeforeAll(func() {
 			// Create a ledger
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -95,8 +95,8 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 			for i := 0; i < 5; i++ {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", fmt.Sprintf("account-%d", i), big.NewInt(100*int64(i+1)), "USD"),
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", fmt.Sprintf("account-%d", i), big.NewInt(100*int64(i+1)), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -107,7 +107,7 @@ var _ = Describe("Ledger Deletion", Ordered, func() {
 		It("Should successfully soft-delete the ledger even with transactions", func() {
 			// Soft-delete the ledger (should succeed even with transactions)
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.DeleteLedgerAction(ledgerName)},
+				Requests: []*servicepb.Request{actions.DeleteLedgerAction(ledgerName)},
 			})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())

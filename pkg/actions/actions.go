@@ -671,6 +671,24 @@ func ArchivePeriodAction(periodID uint64) *servicepb.Request {
 	}
 }
 
+// WithReference sets the reference on a create transaction request.
+func WithReference(req *servicepb.Request, reference string) *servicepb.Request {
+	if reqType, ok := req.GetType().(*servicepb.Request_Apply); ok {
+		if d, ok := reqType.Apply.GetData().(*servicepb.LedgerApplyRequest_CreateTransaction); ok {
+			d.CreateTransaction.Reference = reference
+		}
+	}
+
+	return req
+}
+
+// WithIdempotencyKey sets the idempotency key on a request.
+func WithIdempotencyKey(req *servicepb.Request, key string) *servicepb.Request {
+	req.IdempotencyKey = key
+
+	return req
+}
+
 // GetCreatedTransactionID extracts the first created transaction ID from an ApplyResponse.
 // Returns (id, true) on success or (0, false) if no transaction was found.
 func GetCreatedTransactionID(resp *servicepb.ApplyResponse) (uint64, bool) {

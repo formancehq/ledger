@@ -3,6 +3,7 @@
 package business
 
 import (
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"context"
 	"crypto/ed25519"
@@ -56,7 +57,7 @@ var _ = Describe("Audit Config (SetAuditConfig RPC)", func() {
 		It("should record audit entries after enabling", func() {
 			// Create a ledger to generate an audit entry
 			_, err := auditClient.Apply(auditCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -107,8 +108,8 @@ var _ = Describe("Audit Config (SetAuditConfig RPC)", func() {
 			// Create a transaction — should NOT generate an audit entry
 			_, err = auditClient.Apply(auditCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
 				},
 			})
@@ -133,8 +134,8 @@ var _ = Describe("Audit Config (SetAuditConfig RPC)", func() {
 			// Create a transaction — should generate an audit entry again
 			_, err = auditClient.Apply(auditCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(200), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil),
 				},
 			})
@@ -158,14 +159,16 @@ var _ = Describe("Audit Config (SetAuditConfig RPC)", func() {
 
 		BeforeAll(func() {
 			var pubKey ed25519.PublicKey
-			pubKey, privKey = testutil.GenerateTestKeypair()
+			var err error
+			pubKey, privKey, err = actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
 
 			sigCtx, sigClient, _ = testutil.SetupSingleNode(9311, 8311)
 
 			// Bootstrap signing key
 			resp, err := sigClient.Apply(sigCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RegisterSigningKeyAction(keyID, pubKey),
+					actions.RegisterSigningKeyAction(keyID, pubKey),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -174,7 +177,8 @@ var _ = Describe("Audit Config (SetAuditConfig RPC)", func() {
 
 		It("should accept signed SetAuditConfig request", func() {
 			req := setAuditConfigAction(true)
-			testutil.SignRequest(req, keyID, privKey)
+			req, err := actions.SignRequest(req, keyID, privKey)
+			Expect(err).To(Succeed())
 
 			resp, err := sigClient.Apply(sigCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},

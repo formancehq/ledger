@@ -19,6 +19,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
@@ -117,7 +118,7 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 		// Create a ledger
 		resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateLedgerAction(ledger, nil),
+				actions.CreateLedgerAction(ledger, nil),
 			},
 		})
 		Expect(err).To(Succeed())
@@ -129,9 +130,9 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 		// Create a transaction
 		resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateForceTransactionAction(ledger,
+				actions.CreateForceTransactionAction(ledger,
 					[]*commonpb.Posting{
-						testutil.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
+						actions.NewPosting("world", "users:alice", big.NewInt(1000), "USD"),
 					},
 					nil,
 				),
@@ -145,7 +146,7 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 		// Close the current period
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.ClosePeriodAction(),
+				actions.ClosePeriodAction(),
 			},
 		})
 		Expect(err).To(Succeed())
@@ -171,7 +172,7 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 		// Archive the closed period
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.ArchivePeriodAction(closedPeriodID),
+				actions.ArchivePeriodAction(closedPeriodID),
 			},
 		})
 		Expect(err).To(Succeed())
@@ -194,13 +195,13 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 
 		// Verify that logs from the archived period can still be read via GetLog
 		// (cold storage fallback)
-		log, err := testutil.GetLog(ctx, client, createLedgerSeq)
+		log, err := actions.GetLog(ctx, client, createLedgerSeq)
 		Expect(err).To(Succeed())
 		Expect(log).NotTo(BeNil())
 		Expect(log.Sequence).To(Equal(createLedgerSeq))
 		Expect(log.Payload.GetCreateLedger()).NotTo(BeNil())
 
-		log, err = testutil.GetLog(ctx, client, txSeq)
+		log, err = actions.GetLog(ctx, client, txSeq)
 		Expect(err).To(Succeed())
 		Expect(log).NotTo(BeNil())
 		Expect(log.Sequence).To(Equal(txSeq))

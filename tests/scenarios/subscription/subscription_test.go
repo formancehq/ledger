@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
@@ -83,14 +83,14 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 
 		// Fund wallets at the start of each cycle
 		t.Run(fmt.Sprintf("%s/FundWallets", cycleName), func(t *testing.T) {
-			actions := make([]*servicepb.Request, 0, numSubscribers)
+			reqs := make([]*servicepb.Request, 0, numSubscribers)
 			for _, sub := range subscribers {
-				actions = append(actions, testutil.CreateScriptRefTransactionAction(ledger, "fund_wallet", "1.0.0", map[string]string{
+				reqs = append(reqs, actions.CreateScriptRefTransactionAction(ledger, "fund_wallet", "1.0.0", map[string]string{
 					"subscriber": fmt.Sprintf("subscriber:%d", sub.id),
 					"amount":     fmt.Sprintf("USD/2 %d", sub.fundedAt),
 				}, nil))
 			}
-			resp := scenariotest.ApplyActions(t, ctx, client, actions...)
+			resp := scenariotest.ApplyActions(t, ctx, client, reqs...)
 
 			// Capture first fund tx ID on cycle 1 for later typed metadata test
 			if cycle == 1 {
@@ -103,7 +103,7 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 			var successCount, failCount int
 			for _, sub := range subscribers {
 				err := scenariotest.ApplyActionsExpectError(ctx, client,
-					testutil.CreateScriptRefTransactionAction(ledger, "charge_subscription", "1.0.0", map[string]string{
+					actions.CreateScriptRefTransactionAction(ledger, "charge_subscription", "1.0.0", map[string]string{
 						"subscriber": fmt.Sprintf("subscriber:%d", sub.id),
 						"amount":     fmt.Sprintf("USD/2 %d", sub.amount),
 					}, nil),
@@ -128,11 +128,11 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 		// Credits to 2 subscribers
 		t.Run(fmt.Sprintf("%s/Credits", cycleName), func(t *testing.T) {
 			scenariotest.ApplyActions(t, ctx, client,
-				testutil.CreateScriptRefTransactionAction(ledger, "issue_credit", "1.0.0", map[string]string{
+				actions.CreateScriptRefTransactionAction(ledger, "issue_credit", "1.0.0", map[string]string{
 					"subscriber": fmt.Sprintf("subscriber:%d", 6+cycle),
 					"amount":     "USD/2 200",
 				}, nil),
-				testutil.CreateScriptRefTransactionAction(ledger, "issue_credit", "1.0.0", map[string]string{
+				actions.CreateScriptRefTransactionAction(ledger, "issue_credit", "1.0.0", map[string]string{
 					"subscriber": fmt.Sprintf("subscriber:%d", 10+cycle),
 					"amount":     "USD/2 300",
 				}, nil),
@@ -143,14 +143,14 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 		if cycle == 1 {
 			t.Run(fmt.Sprintf("%s/TypedMetadata", cycleName), func(t *testing.T) {
 				scenariotest.ApplyActions(t, ctx, client,
-					testutil.SaveTypedAccountMetadataAction(ledger, "subscriber:6", &commonpb.MetadataSet{
+					actions.SaveTypedAccountMetadataAction(ledger, "subscriber:6", &commonpb.MetadataSet{
 						Metadata: []*commonpb.Metadata{
 							{Key: "subscriber_plan", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "pro"}}},
 							{Key: "billing_cycle", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: 1}}},
 							{Key: "retention_score", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: 85}}},
 						},
 					}),
-					testutil.SaveTypedAccountMetadataAction(ledger, "subscriber:7", &commonpb.MetadataSet{
+					actions.SaveTypedAccountMetadataAction(ledger, "subscriber:7", &commonpb.MetadataSet{
 						Metadata: []*commonpb.Metadata{
 							{Key: "subscriber_plan", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "enterprise"}}},
 							{Key: "retention_score", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: 92}}},
@@ -159,12 +159,12 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 				)
 
 				// Verify typed metadata was stored
-				acct, err := testutil.GetAccount(ctx, client, ledger, "subscriber:6")
+				acct, err := actions.GetAccount(ctx, client, ledger, "subscriber:6")
 				require.NoError(t, err)
-				plan := testutil.FindMetadataValue(acct.Metadata, "subscriber_plan")
+				plan := actions.FindMetadataValue(acct.Metadata, "subscriber_plan")
 				require.NotNil(t, plan, "subscriber_plan should exist")
 				require.Equal(t, "pro", plan.GetStringValue())
-				score := testutil.FindMetadataValue(acct.Metadata, "retention_score")
+				score := actions.FindMetadataValue(acct.Metadata, "retention_score")
 				require.NotNil(t, score, "retention_score should exist")
 				require.Equal(t, int64(85), score.GetIntValue())
 			})
@@ -175,7 +175,7 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/TypedTxMetadata", cycleName), func(t *testing.T) {
 				require.NotZero(t, firstFundTxID, "should have captured first fund tx ID")
 				scenariotest.ApplyActions(t, ctx, client,
-					testutil.SaveTypedTransactionMetadataAction(ledger, firstFundTxID, &commonpb.MetadataSet{
+					actions.SaveTypedTransactionMetadataAction(ledger, firstFundTxID, &commonpb.MetadataSet{
 						Metadata: []*commonpb.Metadata{
 							{Key: "billing_cycle", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_IntValue{IntValue: 1}}},
 							{Key: "subscriber_plan", Value: &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "initial_fund"}}},
@@ -184,11 +184,11 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 				)
 
 				// Verify typed metadata on the transaction
-				txResp, err := testutil.GetTransaction(ctx, client, ledger, firstFundTxID)
+				txResp, err := actions.GetTransaction(ctx, client, ledger, firstFundTxID)
 				require.NoError(t, err, "GetTransaction failed")
 				tx := txResp.GetTransaction()
 				require.NotNil(t, tx, "transaction should exist")
-				cycleVal := testutil.FindMetadataValue(tx.Metadata, "billing_cycle")
+				cycleVal := actions.FindMetadataValue(tx.Metadata, "billing_cycle")
 				require.NotNil(t, cycleVal, "billing_cycle metadata should exist on tx")
 				require.Equal(t, int64(1), cycleVal.GetIntValue())
 			})
@@ -197,7 +197,7 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 		// Revenue adjustment
 		t.Run(fmt.Sprintf("%s/Adjustment", cycleName), func(t *testing.T) {
 			scenariotest.ApplyActions(t, ctx, client,
-				testutil.CreateScriptRefTransactionAction(ledger, "adjust_revenue", "1.0.0", map[string]string{
+				actions.CreateScriptRefTransactionAction(ledger, "adjust_revenue", "1.0.0", map[string]string{
 					"amount": fmt.Sprintf("USD/2 %d", adjustmentAmount.Int64()),
 				}, nil),
 			)
@@ -208,7 +208,7 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 		t.Run(fmt.Sprintf("%s/RevenueRecognition", cycleName), func(t *testing.T) {
 			recognizeAmt := new(big.Int).Set(totalDeferred)
 			scenariotest.ApplyActions(t, ctx, client,
-				testutil.CreateScriptRefTransactionAction(ledger, "recognize_revenue", "1.0.0", map[string]string{
+				actions.CreateScriptRefTransactionAction(ledger, "recognize_revenue", "1.0.0", map[string]string{
 					"amount": fmt.Sprintf("USD/2 %d", recognizeAmt.Int64()),
 				}, nil),
 			)
@@ -227,7 +227,7 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 
 	// --- Metadata Schema Verification ---
 	t.Run("MetadataSchemaStatus", func(t *testing.T) {
-		resp, err := testutil.GetMetadataSchemaStatus(ctx, client, ledger)
+		resp, err := actions.GetMetadataSchemaStatus(ctx, client, ledger)
 		require.NoError(t, err, "GetMetadataSchemaStatus failed")
 
 		// Verify declared account fields persist through billing cycles
@@ -242,7 +242,7 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 	t.Run("PreparedQueries", func(t *testing.T) {
 		// Wait for index backfill to complete
 		require.Eventually(t, func() bool {
-			indexStatus, err := testutil.GetIndexStatus(ctx, client)
+			indexStatus, err := actions.GetIndexStatus(ctx, client)
 			if err != nil {
 				return false
 			}
@@ -250,17 +250,17 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 		}, 15*time.Second, 200*time.Millisecond, "index backfill should complete")
 
 		// 1. Parameterized address prefix — reusable across different prefixes
-		resp, err := testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+		resp, err := actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("subscriber:")},
+			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("subscriber:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(subscriber:) failed")
 		require.Equal(t, numSubscribers, len(resp.GetCursor().GetAccountData()),
 			"prefix=subscriber: should return all subscribers")
 
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("revenue:")},
+			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("revenue:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(revenue:) failed")
 		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 2,
@@ -268,27 +268,27 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 
 		// 2. Parameterized string metadata — filter by subscriber plan
 		// Query for "pro" subscribers — subscriber:6 was tagged with plan=pro
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-plan",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-plan",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"plan_value": testutil.StringParam("pro")},
+			map[string]*commonpb.ParameterValue{"plan_value": actions.StringParam("pro")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(plan=pro) failed")
 		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 1,
 			"should find at least 1 account with plan=pro")
 
 		// Query for "enterprise" subscribers — subscriber:7 was tagged
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-plan",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-plan",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"plan_value": testutil.StringParam("enterprise")},
+			map[string]*commonpb.ParameterValue{"plan_value": actions.StringParam("enterprise")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(plan=enterprise) failed")
 		require.GreaterOrEqual(t, len(resp.GetCursor().GetAccountData()), 1,
 			"should find at least 1 account with plan=enterprise")
 
 		// Query for a plan nobody has — should return 0
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-plan",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "by-plan",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"plan_value": testutil.StringParam("nonexistent")},
+			map[string]*commonpb.ParameterValue{"plan_value": actions.StringParam("nonexistent")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(plan=nonexistent) failed")
 		require.Empty(t, resp.GetCursor().GetAccountData(),
@@ -297,11 +297,11 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 		// 3. Parameterized int64 range metadata — filter by retention_score range
 		// Query score >= 90 (subscriber:7 has 92) — retry until index is ready
 		require.Eventually(t, func() bool {
-			resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "high-retention",
+			resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "high-retention",
 				commonpb.QueryMode_QUERY_MODE_LIST, 100,
 				map[string]*commonpb.ParameterValue{
-					"min_score": testutil.Int64Param(90),
-					"max_score": testutil.Int64Param(100),
+					"min_score": actions.Int64Param(90),
+					"max_score": actions.Int64Param(100),
 				},
 			)
 			return err == nil
@@ -310,11 +310,11 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 			"should find at least 1 high-retention subscriber (score >= 90)")
 
 		// Query score 80-90 (subscriber:6 has 85)
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "high-retention",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "high-retention",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
 			map[string]*commonpb.ParameterValue{
-				"min_score": testutil.Int64Param(80),
-				"max_score": testutil.Int64Param(90),
+				"min_score": actions.Int64Param(80),
+				"max_score": actions.Int64Param(90),
 			},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(score 80-90) failed")
@@ -322,11 +322,11 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 			"should find at least 1 subscriber with score 80-90")
 
 		// Query score 0-50 — nobody has scores that low
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "high-retention",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "high-retention",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
 			map[string]*commonpb.ParameterValue{
-				"min_score": testutil.Int64Param(0),
-				"max_score": testutil.Int64Param(50),
+				"min_score": actions.Int64Param(0),
+				"max_score": actions.Int64Param(50),
 			},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(score 0-50) failed")
@@ -334,9 +334,9 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 			"no subscribers should have score in 0-50 range")
 
 		// Cleanup
-		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "accounts-by-prefix"))
-		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "by-plan"))
-		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "high-retention"))
+		require.NoError(t, actions.DeletePreparedQuery(ctx, client, ledger, "accounts-by-prefix"))
+		require.NoError(t, actions.DeletePreparedQuery(ctx, client, ledger, "by-plan"))
+		require.NoError(t, actions.DeletePreparedQuery(ctx, client, ledger, "high-retention"))
 	})
 
 	// --- BUG: CreateAccountMetadataIndex fails under cache pressure ---
@@ -346,15 +346,15 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 	t.Run("CreateAccountMetadataIndexUnderLoad", func(t *testing.T) {
 		// Drop the index created in SetupQueriesAndIndexes, then re-create under load
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.DropAccountMetadataIndexAction(ledger, "subscriber_plan"),
+			actions.DropAccountMetadataIndexAction(ledger, "subscriber_plan"),
 		)
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateAccountMetadataIndexAction(ledger, "subscriber_plan"),
+			actions.CreateAccountMetadataIndexAction(ledger, "subscriber_plan"),
 		)
 
 		// Cleanup
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.DropAccountMetadataIndexAction(ledger, "subscriber_plan"),
+			actions.DropAccountMetadataIndexAction(ledger, "subscriber_plan"),
 		)
 	})
 

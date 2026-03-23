@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"math/big"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -19,7 +19,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -28,8 +28,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// First, fund the account with a small amount
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "limited-account", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "limited-account", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -46,8 +46,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// Try to send more than available without force - should fail
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("limited-account", "destination", big.NewInt(500), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("limited-account", "destination", big.NewInt(500), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -57,8 +57,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// Now try with force=true - should succeed
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("limited-account", "destination", big.NewInt(500), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("limited-account", "destination", big.NewInt(500), "USD"),
 					}, nil),
 				},
 			})
@@ -79,8 +79,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// Account with zero balance - should fail without force
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("empty-account", "zero-dest", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("empty-account", "zero-dest", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -89,8 +89,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// With force=true - should succeed
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("empty-account", "zero-dest", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("empty-account", "zero-dest", big.NewInt(100), "USD"),
 					}, nil),
 				},
 			})
@@ -119,10 +119,10 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// Multiple postings from accounts with no balance
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("source-a", "dest-1", big.NewInt(100), "USD"),
-						testutil.NewPosting("source-b", "dest-2", big.NewInt(200), "EUR"),
-						testutil.NewPosting("source-c", "dest-3", big.NewInt(300), "GBP"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("source-a", "dest-1", big.NewInt(100), "USD"),
+						actions.NewPosting("source-b", "dest-2", big.NewInt(200), "EUR"),
+						actions.NewPosting("source-c", "dest-3", big.NewInt(300), "GBP"),
 					}, nil),
 				},
 			})
@@ -157,8 +157,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("meta-source", "meta-dest", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("meta-source", "meta-dest", big.NewInt(100), "USD"),
 					}, metadata),
 				},
 			})
@@ -178,8 +178,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// First fund an account for the non-force transaction
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "funded-account", big.NewInt(1000), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "funded-account", big.NewInt(1000), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -189,12 +189,12 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					// Normal transaction - should succeed because account has funds
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("funded-account", "recipient-1", big.NewInt(500), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("funded-account", "recipient-1", big.NewInt(500), "USD"),
 					}, nil, nil),
 					// Force transaction - should succeed despite no funds
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("unfunded-account", "recipient-2", big.NewInt(500), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("unfunded-account", "recipient-2", big.NewInt(500), "USD"),
 					}, nil),
 				},
 			})
@@ -209,7 +209,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -218,7 +218,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// Without force, this would fail because users:broke has no balance
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceScriptTransactionAction(ledgerName, `
+					actions.CreateForceScriptTransactionAction(ledgerName, `
 						send [USD/2 100000] (
 							source = @users:broke
 							destination = @users:alice
@@ -261,7 +261,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceScriptTransactionAction(ledgerName, script, vars, nil),
+					actions.CreateForceScriptTransactionAction(ledgerName, script, vars, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -292,7 +292,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceScriptTransactionAction(ledgerName, script, nil, nil),
+					actions.CreateForceScriptTransactionAction(ledgerName, script, nil, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -311,7 +311,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -320,8 +320,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// Force transaction from empty account
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("empty-source", "target", big.NewInt(500), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("empty-source", "target", big.NewInt(500), "USD"),
 					}, nil),
 				},
 			})
@@ -353,8 +353,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			for i := 0; i < 3; i++ {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("debt-source", "receiver", big.NewInt(100), "USD"),
+						actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("debt-source", "receiver", big.NewInt(100), "USD"),
 						}, nil),
 					},
 				})
@@ -375,8 +375,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// First, create debt with force
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("recovery-account", "some-dest", big.NewInt(500), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("recovery-account", "some-dest", big.NewInt(500), "USD"),
 					}, nil),
 				},
 			})
@@ -393,8 +393,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			// Fund the account to recover
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "recovery-account", big.NewInt(1000), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "recovery-account", big.NewInt(1000), "USD"),
 					}, nil, nil),
 				},
 			})

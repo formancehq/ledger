@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
@@ -238,8 +239,8 @@ var _ = Describe("Mirror", Ordered, func() {
 		It("Should reject creating transactions on mirror ledger", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction("mirror-guard", []*commonpb.Posting{
-						testutil.NewPosting("world", "users:001", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction("mirror-guard", []*commonpb.Posting{
+						actions.NewPosting("world", "users:001", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -249,7 +250,7 @@ var _ = Describe("Mirror", Ordered, func() {
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
 
-			info := testutil.ExtractGRPCErrorInfo(err)
+			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonLedgerInMirrorMode))
 		})
@@ -257,7 +258,7 @@ var _ = Describe("Mirror", Ordered, func() {
 		It("Should reject saving metadata on mirror ledger", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction("mirror-guard", "users:001", map[string]string{"key": "val"}),
+					actions.SaveAccountMetadataAction("mirror-guard", "users:001", map[string]string{"key": "val"}),
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -270,7 +271,7 @@ var _ = Describe("Mirror", Ordered, func() {
 		It("Should reject deleting metadata on mirror ledger", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.DeleteAccountMetadataAction("mirror-guard", "users:001", "key"),
+					actions.DeleteAccountMetadataAction("mirror-guard", "users:001", "key"),
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -283,7 +284,7 @@ var _ = Describe("Mirror", Ordered, func() {
 		It("Should allow setting metadata field type on mirror ledger", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SetMetadataFieldTypeAction("mirror-guard", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category", commonpb.MetadataType_METADATA_TYPE_STRING),
+					actions.SetMetadataFieldTypeAction("mirror-guard", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category", commonpb.MetadataType_METADATA_TYPE_STRING),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -292,7 +293,7 @@ var _ = Describe("Mirror", Ordered, func() {
 		It("Should allow removing metadata field type on mirror ledger", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RemoveMetadataFieldTypeAction("mirror-guard", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category"),
+					actions.RemoveMetadataFieldTypeAction("mirror-guard", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -365,7 +366,7 @@ var _ = Describe("Mirror", Ordered, func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(account).NotTo(BeNil())
 
-				roleVal := testutil.FindMetadataValue(account.Metadata, "role")
+				roleVal := actions.FindMetadataValue(account.Metadata, "role")
 				g.Expect(roleVal).NotTo(BeNil())
 				g.Expect(roleVal.GetStringValue()).To(Equal("admin"))
 			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
@@ -446,8 +447,8 @@ var _ = Describe("Mirror", Ordered, func() {
 		It("Should allow writing to the promoted ledger", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction("mirror-promote", []*commonpb.Posting{
-						testutil.NewPosting("world", "users:002", big.NewInt(200), "USD/2"),
+					actions.CreateTransactionAction("mirror-promote", []*commonpb.Posting{
+						actions.NewPosting("world", "users:002", big.NewInt(200), "USD/2"),
 					}, nil, nil),
 				},
 			})
@@ -458,7 +459,7 @@ var _ = Describe("Mirror", Ordered, func() {
 	Context("When promoting a non-mirror ledger", func() {
 		It("Should fail with LEDGER_NOT_IN_MIRROR_MODE", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction("normal-ledger-promote", nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction("normal-ledger-promote", nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -477,7 +478,7 @@ var _ = Describe("Mirror", Ordered, func() {
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
 
-			info := testutil.ExtractGRPCErrorInfo(err)
+			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonLedgerNotInMirrorMode))
 		})
@@ -566,7 +567,7 @@ var _ = Describe("Mirror", Ordered, func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(account).NotTo(BeNil())
 
-				providerVal := testutil.FindMetadataValue(account.Metadata, "provider")
+				providerVal := actions.FindMetadataValue(account.Metadata, "provider")
 				g.Expect(providerVal).NotTo(BeNil())
 				g.Expect(providerVal.GetStringValue()).To(Equal("oauth2"))
 			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())

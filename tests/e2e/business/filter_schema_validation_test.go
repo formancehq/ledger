@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"math/big"
 	"time"
 
@@ -12,53 +12,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-// intFilter creates a QueryFilter for a metadata integer range condition.
-func intFilter(metaKey string, min, max *int64, minExclusive, maxExclusive bool) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field: &commonpb.FieldRef{Metadata: metaKey},
-				Condition: &commonpb.FieldCondition_IntCond{
-					IntCond: &commonpb.IntCondition{
-						Min:          min,
-						Max:          max,
-						MinExclusive: minExclusive,
-						MaxExclusive: maxExclusive,
-					},
-				},
-			},
-		},
-	}
-}
-
-// boolFilter creates a QueryFilter for a metadata boolean condition.
-func boolFilter(metaKey string, value bool) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field: &commonpb.FieldRef{Metadata: metaKey},
-				Condition: &commonpb.FieldCondition_BoolCond{
-					BoolCond: &commonpb.BoolCondition{
-						Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: value},
-					},
-				},
-			},
-		},
-	}
-}
-
-// existsFilter creates a QueryFilter that checks for metadata key existence.
-func existsFilter(metaKey string) *commonpb.QueryFilter {
-	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{
-			Field: &commonpb.FieldCondition{
-				Field:     &commonpb.FieldRef{Metadata: metaKey},
-				Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
-			},
-		},
-	}
-}
 
 var _ = Describe("FilterSchemaValidation", Ordered, func() {
 
@@ -71,7 +24,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "age",
@@ -88,25 +41,25 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_BOOL,
 						},
 					}),
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age"),
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "name"),
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "active"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "name"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "active"),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			// Wait for indexes to become READY (backfill must complete)
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age")
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "name")
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "active")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "name")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "active")).To(Succeed())
 
 			// Create an account so execution has something to scan
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
 						"age": "25", "name": "Alice", "active": "true",
 					}),
 				},
@@ -121,7 +74,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 					Name:   "bad-string-on-int",
 					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: stringFilter("age", "hello"),
+					Filter: actions.StringMetadataFilter("age", "hello"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -143,7 +96,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 					Name:   "bad-int-on-string",
 					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: intFilter("name", &val, nil, false, false),
+					Filter: actions.Int64RangeMetadataFilterExclusive("name", &val, nil, false, false),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -163,7 +116,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 					Name:   "bad-bool-on-int",
 					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: boolFilter("age", true),
+					Filter: actions.BoolMetadataFilter("age", true),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -183,7 +136,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 					Name:   "exists-on-int",
 					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: existsFilter("age"),
+					Filter: actions.ExistsMetadataFilter("age"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -211,35 +164,35 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "counter",
 							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
 						},
 					}),
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "counter"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "counter"),
 				},
 			})
 			Expect(err).To(Succeed())
 
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "counter")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "counter")).To(Succeed())
 
 			// Create accounts with uint64 metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(200), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "charlie", big.NewInt(300), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 					}, nil),
-					testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"counter": "10"}),
-					testutil.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"counter": "50"}),
-					testutil.SaveAccountMetadataAction(ledgerName, "charlie", map[string]string{"counter": "100"}),
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"counter": "10"}),
+					actions.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"counter": "50"}),
+					actions.SaveAccountMetadataAction(ledgerName, "charlie", map[string]string{"counter": "100"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -254,7 +207,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 					Name:   "counter-gte-30",
 					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: intFilter("counter", &minVal, nil, false, false),
+					Filter: actions.Int64RangeMetadataFilterExclusive("counter", &minVal, nil, false, false),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -282,7 +235,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 					Name:   "counter-neg",
 					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: intFilter("counter", &negVal, nil, false, false),
+					Filter: actions.Int64RangeMetadataFilterExclusive("counter", &negVal, nil, false, false),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -307,7 +260,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "score",
@@ -319,21 +272,21 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 							Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
 						},
 					}),
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score"),
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "visits"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "visits"),
 				},
 			})
 			Expect(err).To(Succeed())
 
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "visits")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "visits")).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
 						"score": "80", "visits": "5",
 					}),
 				},
@@ -342,17 +295,17 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		})
 
 		It("Should error when ListAccounts uses string filter on int field", func() {
-			_, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("score", "high"))
+			_, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("score", "high"))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("cannot use string condition"))
 		})
 
 		It("Should auto-coerce and succeed when ListAccounts uses int filter on uint field", func() {
 			minVal := int64(3)
-			filter := intFilter("visits", &minVal, nil, false, false)
+			filter := actions.Int64RangeMetadataFilterExclusive("visits", &minVal, nil, false, false)
 
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", filter)
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", filter)
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(1))
 				g.Expect(accounts[0].Address).To(Equal("alice"))
@@ -369,24 +322,24 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
 							Key:        "priority",
 							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 						},
 					}),
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority"),
 				},
 			})
 			Expect(err).To(Succeed())
 
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "priority")).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, map[string]string{"priority": "5"}),
 				},
 			})
@@ -394,17 +347,17 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		})
 
 		It("Should error when ListTransactions uses string filter on int field", func() {
-			_, err := listAllTransactions(sharedCtx, sharedClient, ledgerName, 0, 0, stringFilter("priority", "high"))
+			_, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, actions.StringMetadataFilter("priority", "high"))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("cannot use string condition"))
 		})
 
 		It("Should succeed with correct int filter on int field", func() {
 			val := int64(5)
-			filter := intFilter("priority", &val, &val, false, false)
+			filter := actions.Int64RangeMetadataFilterExclusive("priority", &val, &val, false, false)
 
 			Eventually(func(g Gomega) {
-				txns, err := listAllTransactions(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
+				txns, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, filter)
 				g.Expect(err).To(Succeed())
 				g.Expect(txns).To(HaveLen(1))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -422,20 +375,20 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 			// Creating a metadata index auto-creates a STRING schema field.
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerName, nil),
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "anything"),
+					actions.CreateLedgerAction(ledgerName, nil),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "anything"),
 				},
 			})
 			Expect(err).To(Succeed())
 
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "anything")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "anything")).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"anything": "hello"}),
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"anything": "hello"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -449,7 +402,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 					Name:   "auto-schema-int",
 					Ledger: ledgerName,
 					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: intFilter("anything", &val, nil, false, false),
+					Filter: actions.Int64RangeMetadataFilterExclusive("anything", &val, nil, false, false),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -466,7 +419,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 
 		It("Should allow string filter on ListAccounts with auto-created schema", func() {
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("anything", "hello"))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("anything", "hello"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(1))
 				g.Expect(accounts[0].Address).To(Equal("alice"))

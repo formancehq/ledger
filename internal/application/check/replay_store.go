@@ -119,7 +119,7 @@ func (s *replayStore) getVolume(canonicalKey []byte) (*raftcmdpb.VolumePair, err
 		return nil, fmt.Errorf("reading volume: %w", err)
 	}
 
-	defer closer.Close()
+	defer func() { _ = closer.Close() }()
 
 	pair := &raftcmdpb.VolumePair{}
 	if err := pair.UnmarshalVT(val); err != nil {

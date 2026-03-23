@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"context"
 	"fmt"
 	"io"
@@ -75,8 +75,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("check-ledger-1", nil),
-					testutil.CreateLedgerAction("check-ledger-2", map[string]string{
+					actions.CreateLedgerAction("check-ledger-1", nil),
+					actions.CreateLedgerAction("check-ledger-2", map[string]string{
 						"env":  "test",
 						"tier": "premium",
 					}),
@@ -95,21 +95,21 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Fund accounts
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank", big.NewInt(100000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank", big.NewInt(100000), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank", big.NewInt(50000), "EUR"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank", big.NewInt(50000), "EUR"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "treasury", big.NewInt(500000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "treasury", big.NewInt(500000), "USD"),
 					}, nil),
 				},
 			})
@@ -118,14 +118,14 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Transfers
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("bank", "user:alice", big.NewInt(1000), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("bank", "user:alice", big.NewInt(1000), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("bank", "user:bob", big.NewInt(2500), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("bank", "user:bob", big.NewInt(2500), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("bank", "user:alice", big.NewInt(500), "EUR"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("bank", "user:alice", big.NewInt(500), "EUR"),
 					}, nil, nil),
 				},
 			})
@@ -142,15 +142,15 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Fund
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "treasury", big.NewInt(1000000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "treasury", big.NewInt(1000000), "USD"),
 					}, nil),
 				},
 			})
@@ -159,10 +159,10 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Multi-posting transaction
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("treasury", "user:1", big.NewInt(1000), "USD"),
-						testutil.NewPosting("treasury", "user:2", big.NewInt(2000), "USD"),
-						testutil.NewPosting("treasury", "user:3", big.NewInt(3000), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("treasury", "user:1", big.NewInt(1000), "USD"),
+						actions.NewPosting("treasury", "user:2", big.NewInt(2000), "USD"),
+						actions.NewPosting("treasury", "user:3", big.NewInt(3000), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -179,18 +179,18 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Create accounts
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "user:alice", big.NewInt(1000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "user:alice", big.NewInt(1000), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "user:bob", big.NewInt(2000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "user:bob", big.NewInt(2000), "USD"),
 					}, nil),
 				},
 			})
@@ -199,10 +199,10 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Set metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "user:alice", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "user:alice", map[string]string{
 						"status": "active", "tier": "gold", "verified": "true",
 					}),
-					testutil.SaveAccountMetadataAction(ledgerName, "user:bob", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "user:bob", map[string]string{
 						"status": "pending",
 					}),
 				},
@@ -212,7 +212,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Update metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "user:bob", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "user:bob", map[string]string{
 						"status": "active",
 					}),
 				},
@@ -222,7 +222,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Delete metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.DeleteAccountMetadataAction(ledgerName, "user:alice", "tier"),
+					actions.DeleteAccountMetadataAction(ledgerName, "user:alice", "tier"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -238,18 +238,18 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Create transactions
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank", big.NewInt(10000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank", big.NewInt(20000), "EUR"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank", big.NewInt(20000), "EUR"),
 					}, nil),
 				},
 			})
@@ -262,10 +262,10 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Save metadata on transactions
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveTransactionMetadataAction(ledgerName, tx1ID, map[string]string{
+					actions.SaveTransactionMetadataAction(ledgerName, tx1ID, map[string]string{
 						"category": "funding", "note": "initial funding",
 					}),
-					testutil.SaveTransactionMetadataAction(ledgerName, tx2ID, map[string]string{
+					actions.SaveTransactionMetadataAction(ledgerName, tx2ID, map[string]string{
 						"category": "fx",
 					}),
 				},
@@ -275,7 +275,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Update transaction metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveTransactionMetadataAction(ledgerName, tx1ID, map[string]string{
+					actions.SaveTransactionMetadataAction(ledgerName, tx1ID, map[string]string{
 						"status": "approved",
 					}),
 				},
@@ -285,7 +285,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Delete transaction metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.DeleteTransactionMetadataAction(ledgerName, tx1ID, "note"),
+					actions.DeleteTransactionMetadataAction(ledgerName, tx1ID, "note"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -301,18 +301,18 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Create transactions to revert
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "user:alice", big.NewInt(1000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "user:alice", big.NewInt(1000), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "user:bob", big.NewInt(2000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "user:bob", big.NewInt(2000), "USD"),
 					}, nil),
 				},
 			})
@@ -324,7 +324,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Revert first transaction
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RevertTransactionAction(ledgerName, tx1ID, false, false, nil),
+					actions.RevertTransactionAction(ledgerName, tx1ID, false, false, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -332,7 +332,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Revert second transaction with metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RevertTransactionAction(ledgerName, tx2ID, false, false, map[string]string{
+					actions.RevertTransactionAction(ledgerName, tx2ID, false, false, map[string]string{
 						"reason": "test revert",
 					}),
 				},
@@ -342,8 +342,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// More transactions after revert
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "user:alice", big.NewInt(500), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "user:alice", big.NewInt(500), "USD"),
 					}, nil),
 				},
 			})
@@ -360,15 +360,15 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Fund account, then spend, then force-revert the original
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "spender", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "spender", big.NewInt(100), "USD"),
 					}, nil),
 				},
 			})
@@ -378,8 +378,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Spend it all
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("spender", "receiver", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("spender", "receiver", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -388,7 +388,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Force revert (spender now has 0 but revert sends back 100 from spender)
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RevertTransactionAction(ledgerName, fundTxID, true, false, nil),
+					actions.RevertTransactionAction(ledgerName, fundTxID, true, false, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -404,15 +404,15 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Transaction with inline account metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "customer:1", big.NewInt(5000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "customer:1", big.NewInt(5000), "USD"),
 					}, map[string]string{"type": "deposit"}),
 				},
 			})
@@ -421,8 +421,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Transaction with account metadata on multiple accounts
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "customer:2", big.NewInt(3000), "EUR"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "customer:2", big.NewInt(3000), "EUR"),
 					}, map[string]string{"type": "fx-deposit"}, map[string]*commonpb.MetadataSet{
 						"customer:2": commonpb.MetadataSetFromMap(map[string]string{
 							"joined":  "2026-01-15",
@@ -443,21 +443,21 @@ var _ = Describe("CheckStore", Ordered, func() {
 		BeforeAll(func() {
 			// Create a ledger, operate on it, then delete it
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction("check-to-delete", nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction("check-to-delete", nil)},
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction("check-to-delete", []*commonpb.Posting{
-						testutil.NewPosting("world", "temp", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction("check-to-delete", []*commonpb.Posting{
+						actions.NewPosting("world", "temp", big.NewInt(100), "USD"),
 					}, nil),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.DeleteLedgerAction("check-to-delete")},
+				Requests: []*servicepb.Request{actions.DeleteLedgerAction("check-to-delete")},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -472,15 +472,15 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Fund with force
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank", big.NewInt(100000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank", big.NewInt(100000), "USD"),
 					}, nil),
 				},
 			})
@@ -489,7 +489,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Numscript-based transactions
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(ledgerName, `
+					actions.CreateScriptTransactionAction(ledgerName, `
 						send [USD 500] (
 							source = @bank
 							destination = @user:charlie
@@ -501,7 +501,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceScriptTransactionAction(ledgerName, `
+					actions.CreateForceScriptTransactionAction(ledgerName, `
 						send [EUR 1000] (
 							source = @world
 							destination = @user:charlie
@@ -522,7 +522,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -531,8 +531,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 			for _, asset := range assets {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "treasury", big.NewInt(1000000), asset),
+						actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "treasury", big.NewInt(1000000), asset),
 						}, nil),
 					},
 				})
@@ -543,8 +543,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 			for i := 1; i <= 10; i++ {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("treasury", fmt.Sprintf("user:%d", i), big.NewInt(int64(1000*i)), "USD"),
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("treasury", fmt.Sprintf("user:%d", i), big.NewInt(int64(1000*i)), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -555,8 +555,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 			for i := 1; i < 5; i++ {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting(fmt.Sprintf("user:%d", i), fmt.Sprintf("user:%d", i+5), big.NewInt(100), "USD"),
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting(fmt.Sprintf("user:%d", i), fmt.Sprintf("user:%d", i+5), big.NewInt(100), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -567,7 +567,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			for i := 1; i <= 10; i++ {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.SaveAccountMetadataAction(ledgerName, fmt.Sprintf("user:%d", i), map[string]string{
+						actions.SaveAccountMetadataAction(ledgerName, fmt.Sprintf("user:%d", i), map[string]string{
 							"status":     "active",
 							"created_by": "high-volume-test",
 						}),
@@ -580,7 +580,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			for i := 1; i <= 3; i++ {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.DeleteAccountMetadataAction(ledgerName, fmt.Sprintf("user:%d", i), "created_by"),
+						actions.DeleteAccountMetadataAction(ledgerName, fmt.Sprintf("user:%d", i), "created_by"),
 					},
 				})
 				Expect(err).To(Succeed())
@@ -606,9 +606,9 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Create multiple ledgers
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("check-multi-a", nil),
-					testutil.CreateLedgerAction("check-multi-b", nil),
-					testutil.CreateLedgerAction("check-multi-c", map[string]string{"purpose": "archive"}),
+					actions.CreateLedgerAction("check-multi-a", nil),
+					actions.CreateLedgerAction("check-multi-b", nil),
+					actions.CreateLedgerAction("check-multi-c", map[string]string{"purpose": "archive"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -617,8 +617,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 			for _, ledger := range []string{"check-multi-a", "check-multi-b", "check-multi-c"} {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateForceTransactionAction(ledger, []*commonpb.Posting{
-							testutil.NewPosting("world", "bank", big.NewInt(50000), "USD"),
+						actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+							actions.NewPosting("world", "bank", big.NewInt(50000), "USD"),
 						}, nil),
 					},
 				})
@@ -626,8 +626,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 				_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateTransactionAction(ledger, []*commonpb.Posting{
-							testutil.NewPosting("bank", "user", big.NewInt(1000), "USD"),
+						actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+							actions.NewPosting("bank", "user", big.NewInt(1000), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -635,7 +635,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 				_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.SaveAccountMetadataAction(ledger, "user", map[string]string{
+						actions.SaveAccountMetadataAction(ledger, "user", map[string]string{
 							"ledger": ledger,
 						}),
 					},
@@ -645,15 +645,15 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 			// Delete one ledger
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.DeleteLedgerAction("check-multi-c")},
+				Requests: []*servicepb.Request{actions.DeleteLedgerAction("check-multi-c")},
 			})
 			Expect(err).To(Succeed())
 
 			// Continue operating on remaining ledgers
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction("check-multi-a", []*commonpb.Posting{
-						testutil.NewPosting("bank", "user", big.NewInt(500), "USD"),
+					actions.CreateTransactionAction("check-multi-a", []*commonpb.Posting{
+						actions.NewPosting("bank", "user", big.NewInt(500), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -670,15 +670,15 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Create transaction
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "user", big.NewInt(1000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "user", big.NewInt(1000), "USD"),
 					}, nil),
 				},
 			})
@@ -688,7 +688,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Add metadata before revert
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveTransactionMetadataAction(ledgerName, txID, map[string]string{
+					actions.SaveTransactionMetadataAction(ledgerName, txID, map[string]string{
 						"pre-revert": "note",
 					}),
 				},
@@ -698,7 +698,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Revert
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RevertTransactionAction(ledgerName, txID, false, false, nil),
+					actions.RevertTransactionAction(ledgerName, txID, false, false, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -706,7 +706,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Add metadata after revert
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveTransactionMetadataAction(ledgerName, txID, map[string]string{
+					actions.SaveTransactionMetadataAction(ledgerName, txID, map[string]string{
 						"post-revert": "reason",
 					}),
 				},
@@ -724,15 +724,15 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Fund
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank", big.NewInt(1000000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bank", big.NewInt(1000000), "USD"),
 					}, nil),
 				},
 			})
@@ -741,16 +741,16 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Bulk: multiple transactions + metadata operations in single request
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("bank", "user:1", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("bank", "user:1", big.NewInt(100), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("bank", "user:2", big.NewInt(200), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("bank", "user:2", big.NewInt(200), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("bank", "user:3", big.NewInt(300), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("bank", "user:3", big.NewInt(300), "USD"),
 					}, nil, nil),
-					testutil.SaveAccountMetadataAction(ledgerName, "bank", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "bank", map[string]string{
 						"type": "main-bank",
 					}),
 				},
@@ -768,7 +768,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -776,8 +776,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 			for i := 1; i <= 5; i++ {
 				resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", fmt.Sprintf("temp:%d", i), big.NewInt(int64(i*100)), "USD"),
+						actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", fmt.Sprintf("temp:%d", i), big.NewInt(int64(i*100)), "USD"),
 						}, nil),
 					},
 				})
@@ -787,7 +787,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 				_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.RevertTransactionAction(ledgerName, txID, false, false, map[string]string{
+						actions.RevertTransactionAction(ledgerName, txID, false, false, map[string]string{
 							"batch": fmt.Sprintf("%d", i),
 						}),
 					},
@@ -808,8 +808,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// 1. Create ledgers with various configurations
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("check-comprehensive-trading", nil),
-					testutil.CreateLedgerAction("check-comprehensive-payments", map[string]string{
+					actions.CreateLedgerAction("check-comprehensive-trading", nil),
+					actions.CreateLedgerAction("check-comprehensive-payments", map[string]string{
 						"region": "eu", "currency": "EUR",
 					}),
 				},
@@ -822,17 +822,17 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// 2. Fund multiple accounts in multiple assets across ledgers
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(trading, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank", big.NewInt(500000), "USD"),
+					actions.CreateForceTransactionAction(trading, []*commonpb.Posting{
+						actions.NewPosting("world", "bank", big.NewInt(500000), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(trading, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank", big.NewInt(400000), "EUR"),
+					actions.CreateForceTransactionAction(trading, []*commonpb.Posting{
+						actions.NewPosting("world", "bank", big.NewInt(400000), "EUR"),
 					}, nil),
-					testutil.CreateForceTransactionAction(trading, []*commonpb.Posting{
-						testutil.NewPosting("world", "bank", big.NewInt(300000), "GBP"),
+					actions.CreateForceTransactionAction(trading, []*commonpb.Posting{
+						actions.NewPosting("world", "bank", big.NewInt(300000), "GBP"),
 					}, nil),
-					testutil.CreateForceTransactionAction(payments, []*commonpb.Posting{
-						testutil.NewPosting("world", "escrow", big.NewInt(100000), "EUR"),
+					actions.CreateForceTransactionAction(payments, []*commonpb.Posting{
+						actions.NewPosting("world", "escrow", big.NewInt(100000), "EUR"),
 					}, nil),
 				},
 			})
@@ -841,10 +841,10 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// 3. Multi-posting distribution
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(trading, []*commonpb.Posting{
-						testutil.NewPosting("bank", "trader:alpha", big.NewInt(10000), "USD"),
-						testutil.NewPosting("bank", "trader:beta", big.NewInt(20000), "USD"),
-						testutil.NewPosting("bank", "trader:gamma", big.NewInt(5000), "EUR"),
+					actions.CreateTransactionAction(trading, []*commonpb.Posting{
+						actions.NewPosting("bank", "trader:alpha", big.NewInt(10000), "USD"),
+						actions.NewPosting("bank", "trader:beta", big.NewInt(20000), "USD"),
+						actions.NewPosting("bank", "trader:gamma", big.NewInt(5000), "EUR"),
 					}, map[string]string{"batch": "distribution-1"}, nil),
 				},
 			})
@@ -853,11 +853,11 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// 4. Inter-account transfers
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(trading, []*commonpb.Posting{
-						testutil.NewPosting("trader:alpha", "trader:beta", big.NewInt(1000), "USD"),
+					actions.CreateTransactionAction(trading, []*commonpb.Posting{
+						actions.NewPosting("trader:alpha", "trader:beta", big.NewInt(1000), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(trading, []*commonpb.Posting{
-						testutil.NewPosting("trader:beta", "trader:gamma", big.NewInt(500), "USD"),
+					actions.CreateTransactionAction(trading, []*commonpb.Posting{
+						actions.NewPosting("trader:beta", "trader:gamma", big.NewInt(500), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -866,13 +866,13 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// 5. Account metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(trading, "trader:alpha", map[string]string{
+					actions.SaveAccountMetadataAction(trading, "trader:alpha", map[string]string{
 						"strategy": "aggressive", "level": "pro",
 					}),
-					testutil.SaveAccountMetadataAction(trading, "trader:beta", map[string]string{
+					actions.SaveAccountMetadataAction(trading, "trader:beta", map[string]string{
 						"strategy": "conservative",
 					}),
-					testutil.SaveAccountMetadataAction(payments, "escrow", map[string]string{
+					actions.SaveAccountMetadataAction(payments, "escrow", map[string]string{
 						"type": "escrow", "locked": "true",
 					}),
 				},
@@ -883,8 +883,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// Get a transaction ID for metadata
 			txResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(payments, []*commonpb.Posting{
-						testutil.NewPosting("escrow", "merchant:1", big.NewInt(5000), "EUR"),
+					actions.CreateTransactionAction(payments, []*commonpb.Posting{
+						actions.NewPosting("escrow", "merchant:1", big.NewInt(5000), "EUR"),
 					}, nil, nil),
 				},
 			})
@@ -893,7 +893,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveTransactionMetadataAction(payments, paymentTxID, map[string]string{
+					actions.SaveTransactionMetadataAction(payments, paymentTxID, map[string]string{
 						"invoice": "INV-001", "approved_by": "admin",
 					}),
 				},
@@ -903,8 +903,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// 7. Revert a transaction
 			revertResp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(trading, []*commonpb.Posting{
-						testutil.NewPosting("world", "trader:delta", big.NewInt(999), "USD"),
+					actions.CreateForceTransactionAction(trading, []*commonpb.Posting{
+						actions.NewPosting("world", "trader:delta", big.NewInt(999), "USD"),
 					}, nil),
 				},
 			})
@@ -913,7 +913,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RevertTransactionAction(trading, revertTargetID, false, false, map[string]string{
+					actions.RevertTransactionAction(trading, revertTargetID, false, false, map[string]string{
 						"reason": "error correction",
 					}),
 				},
@@ -923,8 +923,8 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// 8. Delete metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.DeleteAccountMetadataAction(trading, "trader:alpha", "level"),
-					testutil.DeleteTransactionMetadataAction(payments, paymentTxID, "approved_by"),
+					actions.DeleteAccountMetadataAction(trading, "trader:alpha", "level"),
+					actions.DeleteTransactionMetadataAction(payments, paymentTxID, "approved_by"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -932,10 +932,10 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// 9. More operations after all the above
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(trading, []*commonpb.Posting{
-						testutil.NewPosting("bank", "trader:alpha", big.NewInt(777), "GBP"),
+					actions.CreateTransactionAction(trading, []*commonpb.Posting{
+						actions.NewPosting("bank", "trader:alpha", big.NewInt(777), "GBP"),
 					}, nil, nil),
-					testutil.SaveAccountMetadataAction(trading, "trader:alpha", map[string]string{
+					actions.SaveAccountMetadataAction(trading, "trader:alpha", map[string]string{
 						"level": "elite",
 					}),
 				},
@@ -945,7 +945,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			// 10. Numscript transaction
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateScriptTransactionAction(trading, `
+					actions.CreateScriptTransactionAction(trading, `
 						send [USD 250] (
 							source = @bank
 							destination = @trader:gamma

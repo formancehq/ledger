@@ -16,6 +16,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/encoding/protojson"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
@@ -111,7 +112,7 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 		// Create a ledger
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateLedgerAction("nats-test", nil),
+				actions.CreateLedgerAction("nats-test", nil),
 			},
 		})
 		Expect(err).To(Succeed())
@@ -119,9 +120,9 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 		// Create a transaction (force=true to bypass balance checks)
 		_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 			Requests: []*servicepb.Request{
-				testutil.CreateForceTransactionAction("nats-test",
+				actions.CreateForceTransactionAction("nats-test",
 					[]*commonpb.Posting{
-						testutil.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 					},
 					nil,
 				),

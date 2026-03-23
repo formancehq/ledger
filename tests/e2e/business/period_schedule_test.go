@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"time"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
@@ -41,7 +41,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 
 		// Create a ledger so period auto-bootstrap happens
 		_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-			Requests: []*servicepb.Request{testutil.CreateLedgerAction("schedule-test", nil)},
+			Requests: []*servicepb.Request{actions.CreateLedgerAction("schedule-test", nil)},
 		})
 		Expect(err).To(Succeed())
 	})
@@ -83,7 +83,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.InvalidArgument))
 
-			info := testutil.ExtractGRPCErrorInfo(err)
+			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonInvalidCronExpression))
 		})
@@ -100,7 +100,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.InvalidArgument))
 
-			info := testutil.ExtractGRPCErrorInfo(err)
+			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonInvalidCronExpression))
 		})
@@ -134,7 +134,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 		var initialPeriodCount int
 
 		It("should record initial period count", func() {
-			periods, err := listAllPeriods(sharedCtx, sharedClient)
+			periods, err := actions.ListAllPeriods(sharedCtx, sharedClient)
 			Expect(err).To(Succeed())
 			initialPeriodCount = len(periods)
 			Expect(initialPeriodCount).To(BeNumerically(">=", 1))
@@ -152,7 +152,7 @@ var _ = Describe("Period Schedule", Ordered, func() {
 		It("should automatically create a new period within ~10 seconds", func() {
 			// The cron fires every 5 seconds, so within ~10s we should see a new period
 			Eventually(func(g Gomega) {
-				periods, err := listAllPeriods(sharedCtx, sharedClient)
+				periods, err := actions.ListAllPeriods(sharedCtx, sharedClient)
 				g.Expect(err).To(Succeed())
 				g.Expect(len(periods)).To(BeNumerically(">", initialPeriodCount))
 				// The latest period should be OPEN

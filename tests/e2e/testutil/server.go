@@ -17,6 +17,7 @@ import (
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 )
 
@@ -51,20 +52,6 @@ type ServiceWithClient struct {
 	NodeID        uint32
 }
 
-// GRPCRetryPolicy defines the retry policy for gRPC clients when no leader is available.
-var GRPCRetryPolicy = `{
-	"methodConfig": [{
-		"name": [{}],
-		"retryPolicy": {
-			"MaxAttempts": 50,
-			"InitialBackoff": "0.2s",
-			"MaxBackoff": "0.2s",
-			"BackoffMultiplier": 1.0,
-			"RetryableStatusCodes": ["UNAVAILABLE"]
-		}
-	}]
-}`
-
 // NewGRPCClient creates a new gRPC client connection for a given port with automatic retry on Unavailable errors.
 func NewGRPCClient(grpcPort int) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
 	return NewGRPCClientWithRetry(grpcPort, true)
@@ -77,7 +64,7 @@ func NewGRPCClientWithRetry(grpcPort int, withRetry bool) (servicepb.BucketServi
 	}
 
 	if withRetry {
-		opts = append(opts, grpc.WithDefaultServiceConfig(GRPCRetryPolicy))
+		opts = append(opts, grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy))
 	}
 
 	conn, err := grpc.NewClient(

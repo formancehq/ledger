@@ -3,7 +3,7 @@ package scenario
 import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
-	"github.com/formancehq/ledger-v3-poc/pkg/scenario/actions"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 )
 
 // OperationsLifecycleLedger is the ledger name used by the operations lifecycle scenario.

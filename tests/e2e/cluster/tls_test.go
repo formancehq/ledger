@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -59,7 +60,7 @@ func newTLSGRPCClient(grpcPort int, caCertFile string) (servicepb.BucketServiceC
 	conn, err := grpc.NewClient(
 		fmt.Sprintf("localhost:%d", grpcPort),
 		grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)),
-		grpc.WithDefaultServiceConfig(testutil.GRPCRetryPolicy),
+		grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
 	)
 	if err != nil {
 		return nil, nil, nil, err
@@ -284,7 +285,7 @@ var _ = Describe("TLS", Ordered, func() {
 			// Verify it can perform actual operations.
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("tls-test-ledger", nil),
+					actions.CreateLedgerAction("tls-test-ledger", nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -295,8 +296,8 @@ var _ = Describe("TLS", Ordered, func() {
 			// Create a transaction to verify full round-trip
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction("tls-test-ledger", []*commonpb.Posting{
-						testutil.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+					actions.CreateTransactionAction("tls-test-ledger", []*commonpb.Posting{
+						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -352,7 +353,7 @@ var _ = Describe("TLS", Ordered, func() {
 
 			resp, err := client2.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("tls-test-ledger-2", nil),
+					actions.CreateLedgerAction("tls-test-ledger-2", nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -383,7 +384,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 			// Create a ledger via node 0
 			resp, err := servers[0].client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("tls-multi-ledger", nil),
+					actions.CreateLedgerAction("tls-multi-ledger", nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -392,7 +393,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 			// Verify the ledger is visible from all nodes
 			for i, srv := range servers {
 				Eventually(func(g Gomega) {
-					ledgers, err := testutil.ListLedgers(ctx, srv.client)
+					ledgers, err := actions.ListLedgers(ctx, srv.client)
 					g.Expect(err).To(Succeed())
 					g.Expect(ledgers).To(HaveKey("tls-multi-ledger"))
 				}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed(),
@@ -409,8 +410,8 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 				var err error
 				resp, err = servers[0].client.Apply(ctx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateTransactionAction("tls-multi-ledger", []*commonpb.Posting{
-							testutil.NewPosting("world", "bank", big.NewInt(5000), "USD"),
+						actions.CreateTransactionAction("tls-multi-ledger", []*commonpb.Posting{
+							actions.NewPosting("world", "bank", big.NewInt(5000), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -445,7 +446,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 			// Create a ledger via node 1 (non-bootstrap)
 			resp, err := servers[1].client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("tls-multi-ledger-node1", nil),
+					actions.CreateLedgerAction("tls-multi-ledger-node1", nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -454,8 +455,8 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 			// Create a transaction via node 2
 			resp, err = servers[2].client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction("tls-multi-ledger-node1", []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "EUR"),
+					actions.CreateTransactionAction("tls-multi-ledger-node1", []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "EUR"),
 					}, nil, nil),
 				},
 			})

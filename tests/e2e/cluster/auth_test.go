@@ -22,6 +22,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -183,7 +184,7 @@ var _ = Describe("Auth", Ordered, func() {
 		grpcConn, err = grpc.NewClient(
 			fmt.Sprintf("localhost:%d", authTestGRPCPort),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithDefaultServiceConfig(testutil.GRPCRetryPolicy),
+			grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
 		)
 		Expect(err).To(Succeed())
 		DeferCleanup(func() { _ = grpcConn.Close() })
@@ -227,7 +228,7 @@ var _ = Describe("Auth", Ordered, func() {
 
 			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("auth-test-ledger", nil),
+					actions.CreateLedgerAction("auth-test-ledger", nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -242,7 +243,7 @@ var _ = Describe("Auth", Ordered, func() {
 
 			_, err = client.Apply(authCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("auth-test-ledger-2", nil),
+					actions.CreateLedgerAction("auth-test-ledger-2", nil),
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -268,8 +269,8 @@ var _ = Describe("Auth", Ordered, func() {
 
 			resp, err := client.Apply(authCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction("auth-test-ledger", []*commonpb.Posting{
-						testutil.NewPosting("world", "bank", big.NewInt(1000), "USD"),
+					actions.CreateTransactionAction("auth-test-ledger", []*commonpb.Posting{
+						actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 					}, nil, nil),
 				},
 			})

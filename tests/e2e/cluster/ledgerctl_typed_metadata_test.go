@@ -20,6 +20,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -185,7 +186,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -238,7 +239,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "temp_field",
@@ -287,7 +288,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "verified",
@@ -327,7 +328,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		It("Should show empty schema for a ledger without schema", func() {
 			const emptyLedger = "cli-get-schema-empty"
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(emptyLedger, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(emptyLedger, nil)},
 			})
 			Expect(err).To(Succeed())
 
@@ -377,7 +378,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		It("Should enforce typed metadata on account writes", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{
+					actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{
 						"age":    "25",
 						"active": "true",
 						"score":  "100",
@@ -393,21 +394,21 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// age → int_value
-			ageVal := testutil.FindMetadataValue(account.Metadata, "age")
+			ageVal := actions.FindMetadataValue(account.Metadata, "age")
 			Expect(ageVal).NotTo(BeNil())
 			intVal, ok := ageVal.Type.(*commonpb.MetadataValue_IntValue)
 			Expect(ok).To(BeTrue(), "expected int_value for age, got %T", ageVal.Type)
 			Expect(intVal.IntValue).To(Equal(int64(25)))
 
 			// active → bool_value
-			activeVal := testutil.FindMetadataValue(account.Metadata, "active")
+			activeVal := actions.FindMetadataValue(account.Metadata, "active")
 			Expect(activeVal).NotTo(BeNil())
 			boolVal, ok := activeVal.Type.(*commonpb.MetadataValue_BoolValue)
 			Expect(ok).To(BeTrue(), "expected bool_value for active, got %T", activeVal.Type)
 			Expect(boolVal.BoolValue).To(BeTrue())
 
 			// score → uint_value
-			scoreVal := testutil.FindMetadataValue(account.Metadata, "score")
+			scoreVal := actions.FindMetadataValue(account.Metadata, "score")
 			Expect(scoreVal).NotTo(BeNil())
 			uintVal, ok := scoreVal.Type.(*commonpb.MetadataValue_UintValue)
 			Expect(ok).To(BeTrue(), "expected uint_value for score, got %T", scoreVal.Type)
@@ -500,7 +501,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -557,15 +558,15 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			// Write untyped metadata before schema exists
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"score": "42"}),
-					testutil.SaveAccountMetadataAction(ledgerName, "user2", map[string]string{"score": "99"}),
+					actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"score": "42"}),
+					actions.SaveAccountMetadataAction(ledgerName, "user2", map[string]string{"score": "99"}),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -601,7 +602,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 				})
 				Expect(err).To(Succeed())
 
-				v := testutil.FindMetadataValue(account.Metadata, "score")
+				v := actions.FindMetadataValue(account.Metadata, "score")
 				Expect(v).NotTo(BeNil())
 				_, ok := v.Type.(*commonpb.MetadataValue_IntValue)
 				Expect(ok).To(BeTrue(), "expected int_value for %s score, got %T", addr, v.Type)
@@ -615,7 +616,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		BeforeAll(func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "test_field",

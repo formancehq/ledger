@@ -10,11 +10,12 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
+	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
 // setMaintenanceModeAction creates a SetMaintenanceMode request.
@@ -49,7 +50,7 @@ var _ = Describe("Maintenance Mode", func() {
 			// Create a ledger before enabling maintenance mode
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerName, nil),
+					actions.CreateLedgerAction(ledgerName, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -59,8 +60,8 @@ var _ = Describe("Maintenance Mode", func() {
 		It("should allow all operations when maintenance mode is off", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
 				},
 			})
@@ -87,7 +88,7 @@ var _ = Describe("Maintenance Mode", func() {
 		It("should reject create ledger requests in maintenance mode", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("should-fail", nil),
+					actions.CreateLedgerAction("should-fail", nil),
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -99,8 +100,8 @@ var _ = Describe("Maintenance Mode", func() {
 		It("should reject create transaction requests in maintenance mode", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(50), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(50), "USD"),
 					}, nil),
 				},
 			})
@@ -113,7 +114,7 @@ var _ = Describe("Maintenance Mode", func() {
 		It("should reject delete ledger requests in maintenance mode", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.DeleteLedgerAction(ledgerName),
+					actions.DeleteLedgerAction(ledgerName),
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -125,7 +126,7 @@ var _ = Describe("Maintenance Mode", func() {
 		It("should reject save metadata requests in maintenance mode", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"key": "value"}),
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"key": "value"}),
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -162,8 +163,8 @@ var _ = Describe("Maintenance Mode", func() {
 		It("should allow write operations after maintenance mode is disabled", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "charlie", big.NewInt(200), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "charlie", big.NewInt(200), "USD"),
 					}, nil),
 				},
 			})
@@ -190,7 +191,7 @@ var _ = Describe("Maintenance Mode", func() {
 			// Create a ledger
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerName, nil),
+					actions.CreateLedgerAction(ledgerName, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -210,7 +211,7 @@ var _ = Describe("Maintenance Mode", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
 					setMaintenanceModeAction(false),
-					testutil.CreateLedgerAction("should-fail-bulk", nil),
+					actions.CreateLedgerAction("should-fail-bulk", nil),
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -247,14 +248,16 @@ var _ = Describe("Maintenance Mode", func() {
 
 		BeforeAll(func() {
 			var pubKey ed25519.PublicKey
-			pubKey, privKey = testutil.GenerateTestKeypair()
+			var err error
+			pubKey, privKey, err = actions.GenerateTestKeypair()
+			Expect(err).To(Succeed())
 
 			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
 
 			// Bootstrap signing key
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.RegisterSigningKeyAction(keyID, pubKey),
+					actions.RegisterSigningKeyAction(keyID, pubKey),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -263,7 +266,7 @@ var _ = Describe("Maintenance Mode", func() {
 			// Create a ledger
 			resp, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerName, nil),
+					actions.CreateLedgerAction(ledgerName, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -272,7 +275,8 @@ var _ = Describe("Maintenance Mode", func() {
 
 		It("should accept signed maintenance mode request", func() {
 			req := setMaintenanceModeAction(true)
-			testutil.SignRequest(req, keyID, privKey)
+			_, err := actions.SignRequest(req, keyID, privKey)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -282,12 +286,13 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should reject signed write requests in maintenance mode", func() {
-			req := testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "signed-user", big.NewInt(100), "USD"),
+			req := actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "signed-user", big.NewInt(100), "USD"),
 			}, nil)
-			testutil.SignRequest(req, keyID, privKey)
+			_, err := actions.SignRequest(req, keyID, privKey)
+			Expect(err).To(Succeed())
 
-			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
+			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
 			})
 			Expect(err).To(HaveOccurred())
@@ -298,7 +303,8 @@ var _ = Describe("Maintenance Mode", func() {
 
 		It("should allow signed disable maintenance mode request", func() {
 			req := setMaintenanceModeAction(false)
-			testutil.SignRequest(req, keyID, privKey)
+			_, err := actions.SignRequest(req, keyID, privKey)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},
@@ -308,10 +314,11 @@ var _ = Describe("Maintenance Mode", func() {
 		})
 
 		It("should allow signed write requests after maintenance mode is disabled", func() {
-			req := testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-				testutil.NewPosting("world", "signed-user", big.NewInt(200), "USD"),
+			req := actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "signed-user", big.NewInt(200), "USD"),
 			}, nil)
-			testutil.SignRequest(req, keyID, privKey)
+			_, err := actions.SignRequest(req, keyID, privKey)
+			Expect(err).To(Succeed())
 
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{req},

@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"math/big"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -18,7 +18,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 		It("Should create a ledger with idempotency key", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(testutil.CreateLedgerAction("idempotent-ledger", nil), "create-ledger-key-1"),
+					actions.WithIdempotencyKey(actions.CreateLedgerAction("idempotent-ledger", nil), "create-ledger-key-1"),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -39,7 +39,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// First request
 			resp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(testutil.CreateLedgerAction("duplicate-ledger", nil), idempotencyKey),
+					actions.WithIdempotencyKey(actions.CreateLedgerAction("duplicate-ledger", nil), idempotencyKey),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -50,7 +50,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// Second request with same idempotency key and same content
 			resp2, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(testutil.CreateLedgerAction("duplicate-ledger", nil), idempotencyKey),
+					actions.WithIdempotencyKey(actions.CreateLedgerAction("duplicate-ledger", nil), idempotencyKey),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -67,7 +67,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// First request - create ledger "ledger-a"
 			resp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(testutil.CreateLedgerAction("ledger-a", nil), idempotencyKey),
+					actions.WithIdempotencyKey(actions.CreateLedgerAction("ledger-a", nil), idempotencyKey),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -76,7 +76,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// Second request with same idempotency key but different content (different ledger name)
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(testutil.CreateLedgerAction("ledger-b", nil), idempotencyKey),
+					actions.WithIdempotencyKey(actions.CreateLedgerAction("ledger-b", nil), idempotencyKey),
 				},
 			})
 			Expect(err).To(HaveOccurred())
@@ -89,7 +89,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -97,9 +97,9 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 		It("Should create a transaction with idempotency key", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-1", big.NewInt(100), "USD"),
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"tx-key-1",
 					),
@@ -116,9 +116,9 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// First request
 			resp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-dup", big.NewInt(100), "USD"),
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "account-dup", big.NewInt(100), "USD"),
 						}, nil, nil),
 						idempotencyKey,
 					),
@@ -132,9 +132,9 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// Second request with same idempotency key and same content
 			resp2, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-dup", big.NewInt(100), "USD"),
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "account-dup", big.NewInt(100), "USD"),
 						}, nil, nil),
 						idempotencyKey,
 					),
@@ -162,9 +162,9 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// First request - transfer 100 USD
 			resp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-conflict", big.NewInt(100), "USD"),
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "account-conflict", big.NewInt(100), "USD"),
 						}, nil, nil),
 						idempotencyKey,
 					),
@@ -176,9 +176,9 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// Second request with same idempotency key but different amount (200 instead of 100)
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-conflict", big.NewInt(200), "USD"),
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "account-conflict", big.NewInt(200), "USD"),
 						}, nil, nil),
 						idempotencyKey,
 					),
@@ -192,9 +192,9 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// First request with key-a
 			resp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-multi", big.NewInt(100), "USD"),
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "account-multi", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"key-a",
 					),
@@ -206,9 +206,9 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// Second request with key-b (same content, different key)
 			resp2, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-multi", big.NewInt(100), "USD"),
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "account-multi", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"key-b",
 					),
@@ -235,7 +235,7 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 		})
@@ -244,15 +244,15 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// First bulk request with multiple transactions
 			resp1, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "bulk-account-1", big.NewInt(100), "USD"),
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "bulk-account-1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"bulk-tx-1",
 					),
-					withIdempotencyKey(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "bulk-account-2", big.NewInt(200), "USD"),
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "bulk-account-2", big.NewInt(200), "USD"),
 						}, nil, nil),
 						"bulk-tx-2",
 					),
@@ -265,15 +265,15 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 			// Second bulk request - replay the same
 			resp2, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withIdempotencyKey(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "bulk-account-1", big.NewInt(100), "USD"),
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "bulk-account-1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"bulk-tx-1",
 					),
-					withIdempotencyKey(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "bulk-account-2", big.NewInt(200), "USD"),
+					actions.WithIdempotencyKey(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "bulk-account-2", big.NewInt(200), "USD"),
 						}, nil, nil),
 						"bulk-tx-2",
 					),
@@ -304,9 +304,3 @@ var _ = Describe("Idempotency Keys", Ordered, func() {
 		})
 	})
 })
-
-// withIdempotencyKey adds an idempotency key to a request
-func withIdempotencyKey(req *servicepb.Request, key string) *servicepb.Request {
-	req.IdempotencyKey = key
-	return req
-}

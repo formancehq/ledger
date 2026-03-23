@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
@@ -122,15 +122,15 @@ func TestMultiCurrencyTreasury(t *testing.T) {
 
 		// Fund treasury accounts
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateScriptRefTransactionAction(ledger, "fund_account", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(ledger, "fund_account", "1.0.0", map[string]string{
 				"account": "treasury:usd",
 				"amount":  "USD/2 1000000",
 			}, nil),
-			testutil.CreateScriptRefTransactionAction(ledger, "fund_account", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(ledger, "fund_account", "1.0.0", map[string]string{
 				"account": "treasury:eur",
 				"amount":  "EUR/2 500000",
 			}, nil),
-			testutil.CreateScriptRefTransactionAction(ledger, "fund_account", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(ledger, "fund_account", "1.0.0", map[string]string{
 				"account": "treasury:gbp",
 				"amount":  "GBP/2 300000",
 			}, nil),
@@ -143,7 +143,7 @@ func TestMultiCurrencyTreasury(t *testing.T) {
 		for i, fx := range fxOps {
 			// Leg 1: source → fx:clearing (in source currency, balance-checked)
 			scenariotest.ApplyActions(t, ctx, client,
-				testutil.CreateScriptRefTransactionAction(ledger, "fx_convert", "1.0.0", map[string]string{
+				actions.CreateScriptRefTransactionAction(ledger, "fx_convert", "1.0.0", map[string]string{
 					"source_account":   fx.sourceAccount,
 					"clearing_account": "fx:clearing",
 					"amount":           fmt.Sprintf("%s %d", fx.sourceAsset, fx.sourceAmount),
@@ -152,8 +152,8 @@ func TestMultiCurrencyTreasury(t *testing.T) {
 
 			// Leg 2: fx:clearing → target (in target currency, force because clearing doesn't have target currency)
 			scenariotest.ApplyActions(t, ctx, client,
-				testutil.CreateForceTransactionAction(ledger, []*commonpb.Posting{
-					testutil.NewPosting("fx:clearing", fx.targetAccount, big.NewInt(fx.targetAmount), fx.targetAsset),
+				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
+					actions.NewPosting("fx:clearing", fx.targetAccount, big.NewInt(fx.targetAmount), fx.targetAsset),
 				}, nil),
 			)
 
@@ -174,7 +174,7 @@ func TestMultiCurrencyTreasury(t *testing.T) {
 	t.Run("ForceScriptAndIndexes", func(t *testing.T) {
 		// Force script transaction: bypass balance check with Numscript
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateForceScriptTransactionAction(ledger,
+			actions.CreateForceScriptTransactionAction(ledger,
 				`vars {
   account $src
   account $dst
@@ -197,7 +197,7 @@ send $amount (
 
 		// Verify builtin indexes (created by shared scenario) become READY
 		require.Eventually(t, func() bool {
-			info, err := testutil.GetLedger(ctx, client, ledger)
+			info, err := actions.GetLedger(ctx, client, ledger)
 			if err != nil {
 				return false
 			}
@@ -209,10 +209,10 @@ send $amount (
 
 		// Drop and re-create to test index lifecycle
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.DropBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
+			actions.DropBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
 		)
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.DropBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
+			actions.DropBuiltinTxIndexAction(ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
 		)
 	})
 
@@ -221,7 +221,7 @@ send $amount (
 		applyVendorPayments := func(payments []vendorPayment) {
 			for _, vp := range payments {
 				scenariotest.ApplyActions(t, ctx, client,
-					testutil.CreateScriptRefTransactionAction(ledger, "vendor_payment", "1.0.0", map[string]string{
+					actions.CreateScriptRefTransactionAction(ledger, "vendor_payment", "1.0.0", map[string]string{
 						"treasury": vp.treasury,
 						"vendor":   vp.vendor,
 						"amount":   fmt.Sprintf("%s %d", vp.asset, vp.amount),
@@ -239,7 +239,7 @@ send $amount (
 	// --- Phase 3b: AnalyzeAccounts + AnalyzeTransactions ---
 	t.Run("Analytics", func(t *testing.T) {
 		// AnalyzeAccounts
-		acctResult, err := testutil.AnalyzeAccounts(ctx, client, ledger, 3)
+		acctResult, err := actions.AnalyzeAccounts(ctx, client, ledger, 3)
 		require.NoError(t, err, "AnalyzeAccounts failed")
 		require.NotNil(t, acctResult, "AnalyzeAccounts result should not be nil")
 		require.Greater(t, acctResult.GetTotalAccounts(), uint64(0), "should have accounts")
@@ -248,7 +248,7 @@ send $amount (
 			acctResult.GetTotalAccounts(), len(acctResult.GetPatterns()))
 
 		// AnalyzeTransactions
-		txResult, err := testutil.AnalyzeTransactions(ctx, client, ledger)
+		txResult, err := actions.AnalyzeTransactions(ctx, client, ledger)
 		require.NoError(t, err, "AnalyzeTransactions failed")
 		require.NotNil(t, txResult, "AnalyzeTransactions result should not be nil")
 		require.Greater(t, txResult.GetTotalTransactions(), uint64(0), "should have transactions")
@@ -261,18 +261,18 @@ send $amount (
 	t.Run("PreparedQueries", func(t *testing.T) {
 		// 1. Parameterized address prefix — reusable query for different account types
 		// Query for all treasury accounts
-		resp, err := testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+		resp, err := actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("treasury:")},
+			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("treasury:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(treasury:) failed")
 		require.Equal(t, 3, len(resp.GetCursor().GetAccountData()),
 			"should find 3 treasury accounts (usd, eur, gbp)")
 
 		// Query for all vendor accounts
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("vendor:")},
+			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("vendor:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(vendor:) failed")
 		// 5 EUR vendors + 4 GBP vendors = 9 unique vendors
@@ -280,9 +280,9 @@ send $amount (
 			"should find all unique vendor accounts")
 
 		// Query for fx accounts
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "accounts-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("fx:")},
+			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("fx:")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(fx:) failed")
 		require.Equal(t, 1, len(resp.GetCursor().GetAccountData()),
@@ -290,18 +290,18 @@ send $amount (
 
 		// 2. Parameterized exact address — find specific accounts
 		// Query for a specific vendor
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"addr": testutil.StringParam("vendor:acme")},
+			map[string]*commonpb.ParameterValue{"addr": actions.StringParam("vendor:acme")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(vendor:acme) failed")
 		require.Equal(t, 1, len(resp.GetCursor().GetAccountData()),
 			"exact match should return exactly 1 account")
 
 		// Query for nonexistent account
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "account-exact",
 			commonpb.QueryMode_QUERY_MODE_LIST, 100,
-			map[string]*commonpb.ParameterValue{"addr": testutil.StringParam("vendor:nonexistent")},
+			map[string]*commonpb.ParameterValue{"addr": actions.StringParam("vendor:nonexistent")},
 		)
 		require.NoError(t, err, "ExecutePreparedQueryWithParams(nonexistent) failed")
 		require.Empty(t, resp.GetCursor().GetAccountData(),
@@ -309,9 +309,9 @@ send $amount (
 
 		// 3. Aggregate volumes with parameterized prefix — verify per-account-type volumes
 		// Aggregate volumes for treasury accounts
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "volumes-by-prefix",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "volumes-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, 0,
-			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("treasury:")},
+			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("treasury:")},
 		)
 		require.NoError(t, err, "AGGREGATE_VOLUMES(treasury:) failed")
 		aggResult := resp.GetAggregate()
@@ -319,9 +319,9 @@ send $amount (
 		require.NotEmpty(t, aggResult.GetVolumes(), "treasury accounts should have volumes")
 
 		// Aggregate volumes for vendor accounts
-		resp, err = testutil.ExecutePreparedQueryWithParams(ctx, client, ledger, "volumes-by-prefix",
+		resp, err = actions.ExecutePreparedQueryWithParams(ctx, client, ledger, "volumes-by-prefix",
 			commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES, 0,
-			map[string]*commonpb.ParameterValue{"prefix": testutil.StringParam("vendor:")},
+			map[string]*commonpb.ParameterValue{"prefix": actions.StringParam("vendor:")},
 		)
 		require.NoError(t, err, "AGGREGATE_VOLUMES(vendor:) failed")
 		aggResult = resp.GetAggregate()
@@ -329,9 +329,9 @@ send $amount (
 		require.NotEmpty(t, aggResult.GetVolumes(), "vendor accounts should have volumes")
 
 		// Cleanup
-		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "accounts-by-prefix"))
-		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "account-exact"))
-		require.NoError(t, testutil.DeletePreparedQuery(ctx, client, ledger, "volumes-by-prefix"))
+		require.NoError(t, actions.DeletePreparedQuery(ctx, client, ledger, "accounts-by-prefix"))
+		require.NoError(t, actions.DeletePreparedQuery(ctx, client, ledger, "account-exact"))
+		require.NoError(t, actions.DeletePreparedQuery(ctx, client, ledger, "volumes-by-prefix"))
 	})
 
 	// --- Phase 4: Close & Reconciliation ---

@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
@@ -116,15 +117,15 @@ var _ = Describe("Learner node", func() {
 			ledgerName := "learner-test-ledger"
 
 			_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			for i := range 5 {
 				_, err := servers[lid-1].Client.Apply(ctx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
 						}, nil, nil),
 					},
 				})
@@ -133,7 +134,7 @@ var _ = Describe("Learner node", func() {
 
 			followerID := ((lid + 1) % countInstances) + 1
 			Eventually(func(g Gomega) {
-				ledgers, err := testutil.ListLedgers(ctx, servers[followerID-1].Client)
+				ledgers, err := actions.ListLedgers(ctx, servers[followerID-1].Client)
 				g.Expect(err).To(Succeed())
 				_, found := ledgers[ledgerName]
 				g.Expect(found).To(BeTrue())
@@ -275,15 +276,15 @@ var _ = Describe("Learner node", func() {
 		It("should accept transactions through all nodes after auto-promotion", func() {
 			ledgerName := "auto-promote-test"
 			_, err := servers[0].Client.Apply(ctx, &servicepb.ApplyRequest{
-				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+				Requests: []*servicepb.Request{actions.CreateLedgerAction(ledgerName, nil)},
 			})
 			Expect(err).To(Succeed())
 
 			for i := range countInstances {
 				_, err := servers[i].Client.Apply(ctx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", fmt.Sprintf("user-%d", i), big.NewInt(100), "USD"),
 						}, nil, nil),
 					},
 				})

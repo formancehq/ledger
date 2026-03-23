@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"math/big"
 	"time"
 
@@ -30,7 +30,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			// Create ledger with a string metadata field + index
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "role",
@@ -44,28 +44,28 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			// Create index on the "role" field
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 				},
 			})
 			Expect(err).To(Succeed())
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")).To(Succeed())
 		})
 
 		It("Should find account by initial metadata value", func() {
 			// Create account with role=admin
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			// Query: role=admin should return alice
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("role", "admin"))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("role", "admin"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(1))
 				g.Expect(accounts[0].Address).To(Equal("alice"))
@@ -76,14 +76,14 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			// Update alice's role from admin to viewer
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "viewer"}),
+					actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "viewer"}),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			// Query: role=viewer should return alice
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("role", "viewer"))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("role", "viewer"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(1))
 				g.Expect(accounts[0].Address).To(Equal("alice"))
@@ -91,7 +91,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// Query: role=admin should return NO results (old value removed from index)
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("role", "admin"))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("role", "admin"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(BeEmpty(), "old value 'admin' should no longer be indexed")
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -102,7 +102,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			for _, newRole := range []string{"editor", "moderator", "superadmin"} {
 				_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 					Requests: []*servicepb.Request{
-						testutil.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": newRole}),
+						actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": newRole}),
 					},
 				})
 				Expect(err).To(Succeed())
@@ -110,7 +110,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// Only the latest value should be indexed
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("role", "superadmin"))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("role", "superadmin"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(1))
 				g.Expect(accounts[0].Address).To(Equal("alice"))
@@ -118,7 +118,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// All previous values should be gone from the index
 			for _, oldRole := range []string{"admin", "viewer", "editor", "moderator"} {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("role", oldRole))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("role", oldRole))
 				Expect(err).To(Succeed())
 				Expect(accounts).To(BeEmpty(), "old value %q should no longer be indexed", oldRole)
 			}
@@ -134,7 +134,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "category",
@@ -147,28 +147,28 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category"),
 				},
 			})
 			Expect(err).To(Succeed())
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category")).To(Succeed())
 		})
 
 		It("Should no longer find account after metadata key is deleted", func() {
 			// Create account with category=vip
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(50), "EUR"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(50), "EUR"),
 					}, nil),
-					testutil.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"category": "vip"}),
+					actions.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"category": "vip"}),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			// Verify bob is found by category=vip
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("category", "vip"))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("category", "vip"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(1))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -176,14 +176,14 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			// Delete the metadata key
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.DeleteAccountMetadataAction(ledgerName, "bob", "category"),
+					actions.DeleteAccountMetadataAction(ledgerName, "bob", "category"),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			// category=vip should return NO results
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("category", "vip"))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("category", "vip"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(BeEmpty(), "deleted value 'vip' should no longer be indexed")
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -199,7 +199,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
 							Key:        "status",
@@ -212,19 +212,19 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "status"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "status"),
 				},
 			})
 			Expect(err).To(Succeed())
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "status")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "status")).To(Succeed())
 		})
 
 		It("Should update transaction metadata and no longer find by old value", func() {
 			// Create transaction with status=pending
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "merchant", big.NewInt(1000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "merchant", big.NewInt(1000), "USD"),
 					}, map[string]string{"status": "pending"}),
 				},
 			})
@@ -233,7 +233,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// Verify transaction found by status=pending
 			Eventually(func(g Gomega) {
-				txs, err := listAllTransactions(sharedCtx, sharedClient, ledgerName, 0, 0, stringFilter("status", "pending"))
+				txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, actions.StringMetadataFilter("status", "pending"))
 				g.Expect(err).To(Succeed())
 				g.Expect(txs).To(HaveLen(1))
 				g.Expect(txs[0].Id).To(Equal(txID))
@@ -242,14 +242,14 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			// Update status to completed
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveTransactionMetadataAction(ledgerName, txID, map[string]string{"status": "completed"}),
+					actions.SaveTransactionMetadataAction(ledgerName, txID, map[string]string{"status": "completed"}),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			// status=completed should return the transaction
 			Eventually(func(g Gomega) {
-				txs, err := listAllTransactions(sharedCtx, sharedClient, ledgerName, 0, 0, stringFilter("status", "completed"))
+				txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, actions.StringMetadataFilter("status", "completed"))
 				g.Expect(err).To(Succeed())
 				g.Expect(txs).To(HaveLen(1))
 				g.Expect(txs[0].Id).To(Equal(txID))
@@ -257,7 +257,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// status=pending should return NO results
 			Eventually(func(g Gomega) {
-				txs, err := listAllTransactions(sharedCtx, sharedClient, ledgerName, 0, 0, stringFilter("status", "pending"))
+				txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, actions.StringMetadataFilter("status", "pending"))
 				g.Expect(err).To(Succeed())
 				g.Expect(txs).To(BeEmpty(), "old value 'pending' should no longer be indexed")
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -273,7 +273,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
 							Key:        "tag",
@@ -286,19 +286,19 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tag"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tag"),
 				},
 			})
 			Expect(err).To(Succeed())
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tag")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tag")).To(Succeed())
 		})
 
 		It("Should no longer find transaction after metadata key is deleted", func() {
 			// Create transaction with tag=urgent
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "ops", big.NewInt(500), "EUR"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "ops", big.NewInt(500), "EUR"),
 					}, map[string]string{"tag": "urgent"}),
 				},
 			})
@@ -307,7 +307,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// Verify found
 			Eventually(func(g Gomega) {
-				txs, err := listAllTransactions(sharedCtx, sharedClient, ledgerName, 0, 0, stringFilter("tag", "urgent"))
+				txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, actions.StringMetadataFilter("tag", "urgent"))
 				g.Expect(err).To(Succeed())
 				g.Expect(txs).To(HaveLen(1))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -315,14 +315,14 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			// Delete the metadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.DeleteTransactionMetadataAction(ledgerName, txID, "tag"),
+					actions.DeleteTransactionMetadataAction(ledgerName, txID, "tag"),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			// tag=urgent should return NO results
 			Eventually(func(g Gomega) {
-				txs, err := listAllTransactions(sharedCtx, sharedClient, ledgerName, 0, 0, stringFilter("tag", "urgent"))
+				txs, err := actions.ListTransactionsFiltered(sharedCtx, sharedClient, ledgerName, 0, 0, actions.StringMetadataFilter("tag", "urgent"))
 				g.Expect(err).To(Succeed())
 				g.Expect(txs).To(BeEmpty(), "deleted value 'urgent' should no longer be indexed")
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -338,7 +338,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "tier",
@@ -351,32 +351,32 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier"),
 				},
 			})
 			Expect(err).To(Succeed())
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")).To(Succeed())
 		})
 
 		It("Should only remove old value for the updated account", func() {
 			// Create two accounts both with tier=gold
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "user1", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "user1", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "user2", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "user2", big.NewInt(100), "USD"),
 					}, nil),
-					testutil.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"tier": "gold"}),
-					testutil.SaveAccountMetadataAction(ledgerName, "user2", map[string]string{"tier": "gold"}),
+					actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"tier": "gold"}),
+					actions.SaveAccountMetadataAction(ledgerName, "user2", map[string]string{"tier": "gold"}),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			// Both should be found
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("tier", "gold"))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("tier", "gold"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(2))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -384,21 +384,21 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			// Update user1 to tier=platinum
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"tier": "platinum"}),
+					actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"tier": "platinum"}),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			// tier=gold should now return only user2
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("tier", "gold"))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("tier", "gold"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(1))
 				g.Expect(accounts[0].Address).To(Equal("user2"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// tier=platinum should return user1
-			accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("tier", "platinum"))
+			accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("tier", "platinum"))
 			Expect(err).To(Succeed())
 			Expect(accounts).To(HaveLen(1))
 			Expect(accounts[0].Address).To(Equal("user1"))
@@ -414,7 +414,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		BeforeAll(func() {
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+					actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 						{
 							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 							Key:        "source",
@@ -427,19 +427,19 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					createMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "source"),
+					actions.CreateMetadataIndexAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "source"),
 				},
 			})
 			Expect(err).To(Succeed())
-			waitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "source")
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "source")).To(Succeed())
 		})
 
 		It("Should index account metadata set via transaction creation and update correctly", func() {
 			// Create transaction with account metadata source=api
 			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "merchant", big.NewInt(1000), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "merchant", big.NewInt(1000), "USD"),
 					}, nil, map[string]*commonpb.MetadataSet{
 						"merchant": {
 							Metadata: []*commonpb.Metadata{
@@ -453,7 +453,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// Verify source=api returns merchant
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("source", "api"))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("source", "api"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(1))
 				g.Expect(accounts[0].Address).To(Equal("merchant"))
@@ -462,14 +462,14 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			// Update source to webhook via SaveMetadata
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.SaveAccountMetadataAction(ledgerName, "merchant", map[string]string{"source": "webhook"}),
+					actions.SaveAccountMetadataAction(ledgerName, "merchant", map[string]string{"source": "webhook"}),
 				},
 			})
 			Expect(err).To(Succeed())
 
 			// source=webhook should return merchant
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("source", "webhook"))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("source", "webhook"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(HaveLen(1))
 				g.Expect(accounts[0].Address).To(Equal("merchant"))
@@ -477,7 +477,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// source=api should return NO results
 			Eventually(func(g Gomega) {
-				accounts, err := listAllAccounts(sharedCtx, sharedClient, ledgerName, 0, "", stringFilter("source", "api"))
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("source", "api"))
 				g.Expect(err).To(Succeed())
 				g.Expect(accounts).To(BeEmpty(), "old value 'api' should no longer be indexed")
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())

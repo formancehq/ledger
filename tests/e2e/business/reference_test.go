@@ -3,7 +3,7 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"math/big"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
@@ -23,7 +23,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 		BeforeAll(func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerName, nil),
+					actions.CreateLedgerAction(ledgerName, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -33,9 +33,9 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 		It("Should create a transaction with a reference", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withReference(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-1", big.NewInt(100), "USD"),
+					actions.WithReference(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"ref-001",
 					),
@@ -50,9 +50,9 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			// First transaction with reference succeeds
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withReference(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-1", big.NewInt(100), "USD"),
+					actions.WithReference(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"dup-ref",
 					),
@@ -64,9 +64,9 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			// Second transaction with the same reference fails
 			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withReference(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-2", big.NewInt(200), "USD"),
+					actions.WithReference(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "account-2", big.NewInt(200), "USD"),
 						}, nil, nil),
 						"dup-ref",
 					),
@@ -78,7 +78,7 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			Expect(ok).To(BeTrue())
 			Expect(st.Code()).To(Equal(codes.AlreadyExists))
 
-			info := testutil.ExtractGRPCErrorInfo(err)
+			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil())
 			Expect(info.Reason).To(Equal(domain.ErrReasonTransactionReferenceConflict))
 			Expect(info.Domain).To(Equal("ledger"))
@@ -89,11 +89,11 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			// Multiple transactions without reference should all succeed
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "account-1", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "account-2", big.NewInt(200), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "account-2", big.NewInt(200), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -104,15 +104,15 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 		It("Should allow different references in the same ledger", func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withReference(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-1", big.NewInt(100), "USD"),
+					actions.WithReference(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"ref-a",
 					),
-					withReference(
-						testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-2", big.NewInt(200), "USD"),
+					actions.WithReference(
+						actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+							actions.NewPosting("world", "account-2", big.NewInt(200), "USD"),
 						}, nil, nil),
 						"ref-b",
 					),
@@ -132,8 +132,8 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 		BeforeAll(func() {
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerA, nil),
-					testutil.CreateLedgerAction(ledgerB, nil),
+					actions.CreateLedgerAction(ledgerA, nil),
+					actions.CreateLedgerAction(ledgerB, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -144,9 +144,9 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			// Create transaction with reference in ledger A
 			resp, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withReference(
-						testutil.CreateTransactionAction(ledgerA, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-1", big.NewInt(100), "USD"),
+					actions.WithReference(
+						actions.CreateTransactionAction(ledgerA, []*commonpb.Posting{
+							actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"shared-ref",
 					),
@@ -158,9 +158,9 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 			// Same reference in ledger B should succeed
 			resp, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					withReference(
-						testutil.CreateTransactionAction(ledgerB, []*commonpb.Posting{
-							testutil.NewPosting("world", "account-1", big.NewInt(100), "USD"),
+					actions.WithReference(
+						actions.CreateTransactionAction(ledgerB, []*commonpb.Posting{
+							actions.NewPosting("world", "account-1", big.NewInt(100), "USD"),
 						}, nil, nil),
 						"shared-ref",
 					),
@@ -171,15 +171,3 @@ var _ = Describe("Transaction Reference Uniqueness", Ordered, func() {
 		})
 	})
 })
-
-// withReference adds a reference to a create transaction request
-func withReference(req *servicepb.Request, reference string) *servicepb.Request {
-	switch t := req.Type.(type) {
-	case *servicepb.Request_Apply:
-		switch d := t.Apply.Data.(type) {
-		case *servicepb.LedgerApplyRequest_CreateTransaction:
-			d.CreateTransaction.Reference = reference
-		}
-	}
-	return req
-}

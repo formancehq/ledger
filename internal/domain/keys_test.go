@@ -17,10 +17,10 @@ func TestVolumeKey_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		asset     string
-		wantBase  string
-		wantPrec  uint8
+		name     string
+		asset    string
+		wantBase string
+		wantPrec uint8
 	}{
 		{"with precision", "USD/4", "USD", 4},
 		{"zero precision", "EUR", "EUR", 0},

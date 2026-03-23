@@ -17,8 +17,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/scenario"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger-v3-poc/tests/scenarios/scenariotest"
@@ -43,24 +43,24 @@ func TestOperationsLifecycle(t *testing.T) {
 		scenariotest.ApplyActions(t, ctx, client, scenario.OperationsLifecycleSetupActions()...)
 
 		// Create a few transactions
-		actions := make([]*servicepb.Request, 0, numDeposits)
+		reqs := make([]*servicepb.Request, 0, numDeposits)
 		for i := 1; i <= numDeposits; i++ {
-			actions = append(actions, testutil.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
+			reqs = append(reqs, actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 				"account": fmt.Sprintf("ops:%d", i),
 				"amount":  "USD/2 10000",
 			}, nil))
 		}
-		scenariotest.ApplyActions(t, ctx, client, actions...)
+		scenariotest.ApplyActions(t, ctx, client, reqs...)
 	})
 
 	// --- Phase 2: Maintenance Mode ---
 	t.Run("MaintenanceMode", func(t *testing.T) {
 		// Enable maintenance mode
-		scenariotest.ApplyActions(t, ctx, client, testutil.SetMaintenanceModeAction(true))
+		scenariotest.ApplyActions(t, ctx, client, actions.SetMaintenanceModeAction(true))
 
 		// Transaction should fail during maintenance
 		err := scenariotest.ApplyActionsExpectError(ctx, client,
-			testutil.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 				"account": "ops:1",
 				"amount":  "USD/2 100",
 			}, nil),
@@ -68,11 +68,11 @@ func TestOperationsLifecycle(t *testing.T) {
 		require.Error(t, err, "expected error during maintenance mode")
 
 		// Disable maintenance mode
-		scenariotest.ApplyActions(t, ctx, client, testutil.SetMaintenanceModeAction(false))
+		scenariotest.ApplyActions(t, ctx, client, actions.SetMaintenanceModeAction(false))
 
 		// Transaction should succeed after disabling maintenance
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
+			actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 				"account": "ops:1",
 				"amount":  "USD/2 100",
 			}, nil),
@@ -82,12 +82,12 @@ func TestOperationsLifecycle(t *testing.T) {
 	// --- Phase 3: Audit Config ---
 	t.Run("AuditConfig", func(t *testing.T) {
 		// Enable audit logging
-		scenariotest.ApplyActions(t, ctx, client, testutil.SetAuditConfigAction(true))
+		scenariotest.ApplyActions(t, ctx, client, actions.SetAuditConfigAction(true))
 
 		// 3 successful transactions
 		for i := 1; i <= 3; i++ {
 			scenariotest.ApplyActions(t, ctx, client,
-				testutil.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
+				actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 					"account": fmt.Sprintf("ops:%d", i),
 					"amount":  "USD/2 50",
 				}, nil),
@@ -96,19 +96,19 @@ func TestOperationsLifecycle(t *testing.T) {
 
 		// 1 failing transaction (insufficient funds: ops:1 sending more than it has to ops:2)
 		_ = scenariotest.ApplyActionsExpectError(ctx, client,
-			testutil.CreateTransactionAction(ledger, []*commonpb.Posting{
-				testutil.NewPosting("ops:1", "ops:2", big.NewInt(999_999_999), "USD/2"),
+			actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+				actions.NewPosting("ops:1", "ops:2", big.NewInt(999_999_999), "USD/2"),
 			}, nil, nil),
 		)
 
 		// ListAuditEntries (all): should have entries
-		allEntries, err := testutil.ListAuditEntries(ctx, client, false)
+		allEntries, err := actions.ListAuditEntries(ctx, client, false)
 		require.NoError(t, err, "ListAuditEntries(all) failed")
 		require.GreaterOrEqual(t, len(allEntries), 4, "should have at least 4 audit entries (3 success + 1 failure)")
 		t.Logf("Audit entries (all): %d", len(allEntries))
 
 		// ListAuditEntries (failures only): should have at least 1
-		failures, err := testutil.ListAuditEntries(ctx, client, true)
+		failures, err := actions.ListAuditEntries(ctx, client, true)
 		require.NoError(t, err, "ListAuditEntries(failures) failed")
 		require.GreaterOrEqual(t, len(failures), 1, "should have at least 1 failure entry")
 		t.Logf("Audit entries (failures): %d", len(failures))
@@ -119,19 +119,19 @@ func TestOperationsLifecycle(t *testing.T) {
 		}
 
 		// Disable audit logging
-		scenariotest.ApplyActions(t, ctx, client, testutil.SetAuditConfigAction(false))
+		scenariotest.ApplyActions(t, ctx, client, actions.SetAuditConfigAction(false))
 	})
 
 	// --- Phase 3b: GetAuditEntry ---
 	t.Run("GetAuditEntry", func(t *testing.T) {
 		// Get all audit entries and verify we can fetch one individually
-		allEntries, err := testutil.ListAuditEntries(ctx, client, false)
+		allEntries, err := actions.ListAuditEntries(ctx, client, false)
 		require.NoError(t, err, "ListAuditEntries failed")
 		require.NotEmpty(t, allEntries, "should have audit entries")
 
 		// Fetch the first entry by sequence
 		firstSeq := allEntries[0].GetSequence()
-		entry, err := testutil.GetAuditEntry(ctx, client, firstSeq)
+		entry, err := actions.GetAuditEntry(ctx, client, firstSeq)
 		require.NoError(t, err, "GetAuditEntry failed")
 		require.Equal(t, firstSeq, entry.GetSequence(),
 			"GetAuditEntry sequence should match")
@@ -148,7 +148,7 @@ func TestOperationsLifecycle(t *testing.T) {
 		// Create a few transactions to have content in the current period
 		for i := 1; i <= 3; i++ {
 			scenariotest.ApplyActions(t, ctx, client,
-				testutil.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
+				actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
 					"account": fmt.Sprintf("ops:%d", i),
 					"amount":  "USD/2 25",
 				}, nil),
@@ -161,7 +161,7 @@ func TestOperationsLifecycle(t *testing.T) {
 		// Find the CLOSED period (the one just sealed)
 		var closedPeriodID uint64
 		require.Eventually(t, func() bool {
-			periods, err := testutil.ListAllPeriods(ctx, client)
+			periods, err := actions.ListAllPeriods(ctx, client)
 			if err != nil {
 				return false
 			}
@@ -178,11 +178,11 @@ func TestOperationsLifecycle(t *testing.T) {
 		require.NotZero(t, closedPeriodID, "should have found a closed period ID")
 
 		// Archive the closed period
-		scenariotest.ApplyActions(t, ctx, client, testutil.ArchivePeriodAction(closedPeriodID))
+		scenariotest.ApplyActions(t, ctx, client, actions.ArchivePeriodAction(closedPeriodID))
 
 		// Wait for the period to become ARCHIVED
 		require.Eventually(t, func() bool {
-			periods, err := testutil.ListAllPeriods(ctx, client)
+			periods, err := actions.ListAllPeriods(ctx, client)
 			if err != nil {
 				return false
 			}
@@ -220,18 +220,18 @@ func TestOperationsLifecycle(t *testing.T) {
 	// --- Phase 4: Period Schedule ---
 	t.Run("PeriodSchedule", func(t *testing.T) {
 		// Set a period schedule
-		scenariotest.ApplyActions(t, ctx, client, testutil.SetPeriodScheduleAction("0 0 * * *"))
+		scenariotest.ApplyActions(t, ctx, client, actions.SetPeriodScheduleAction("0 0 * * *"))
 
 		// Verify cron was set
-		cron, err := testutil.GetPeriodSchedule(ctx, client)
+		cron, err := actions.GetPeriodSchedule(ctx, client)
 		require.NoError(t, err, "GetPeriodSchedule failed")
 		require.Equal(t, "0 0 * * *", cron, "cron should match")
 
 		// Delete period schedule
-		scenariotest.ApplyActions(t, ctx, client, testutil.DeletePeriodScheduleAction())
+		scenariotest.ApplyActions(t, ctx, client, actions.DeletePeriodScheduleAction())
 
 		// Verify cron is empty
-		cron, err = testutil.GetPeriodSchedule(ctx, client)
+		cron, err = actions.GetPeriodSchedule(ctx, client)
 		require.NoError(t, err, "GetPeriodSchedule after delete failed")
 		require.Empty(t, cron, "cron should be empty after delete")
 	})
@@ -245,41 +245,41 @@ func TestOperationsLifecycle(t *testing.T) {
 		require.NoError(t, err, "failed to generate Ed25519 keypair 2")
 
 		// Register first key (bootstrap: unsigned when no keys exist)
-		scenariotest.ApplyActions(t, ctx, client, testutil.RegisterSigningKeyAction("key-1", pubKey1))
+		scenariotest.ApplyActions(t, ctx, client, actions.RegisterSigningKeyAction("key-1", pubKey1))
 
 		// Verify the key is registered
 		keys := listSigningKeys(t, ctx, client)
-		require.NotNil(t, testutil.FindSigningKey(keys, "key-1"), "key-1 should be registered")
+		require.NotNil(t, actions.FindSigningKey(keys, "key-1"), "key-1 should be registered")
 
 		// Register second key (must be signed by existing key)
-		regReq := testutil.RegisterSigningKeyAction("key-2", pubKey2)
+		regReq := actions.RegisterSigningKeyAction("key-2", pubKey2)
 		require.NoError(t, signing.Sign(regReq, "key-1", privKey1))
 		scenariotest.ApplyActions(t, ctx, client, regReq)
 
 		// Verify both keys are registered
 		keys = listSigningKeys(t, ctx, client)
 		require.Len(t, keys, 2, "should have 2 signing keys")
-		require.NotNil(t, testutil.FindSigningKey(keys, "key-1"), "key-1 should exist")
-		require.NotNil(t, testutil.FindSigningKey(keys, "key-2"), "key-2 should exist")
+		require.NotNil(t, actions.FindSigningKey(keys, "key-1"), "key-1 should exist")
+		require.NotNil(t, actions.FindSigningKey(keys, "key-2"), "key-2 should exist")
 
 		// Verify key-2 has key-1 as parent
-		key2 := testutil.FindSigningKey(keys, "key-2")
+		key2 := actions.FindSigningKey(keys, "key-2")
 		require.Equal(t, "key-1", key2.GetParentKeyId(), "key-2 parent should be key-1")
 
 		// Revoke key-2 (must be signed since keys exist)
-		revokeReq := testutil.RevokeSigningKeyAction("key-2", false)
+		revokeReq := actions.RevokeSigningKeyAction("key-2", false)
 		require.NoError(t, signing.Sign(revokeReq, "key-1", privKey1))
 		scenariotest.ApplyActions(t, ctx, client, revokeReq)
 
 		// Verify key-2 is removed
 		keys = listSigningKeys(t, ctx, client)
 		require.Len(t, keys, 1, "should have 1 signing key after revocation")
-		require.Nil(t, testutil.FindSigningKey(keys, "key-2"), "key-2 should be removed after revocation")
-		require.NotNil(t, testutil.FindSigningKey(keys, "key-1"), "key-1 should still exist")
+		require.Nil(t, actions.FindSigningKey(keys, "key-2"), "key-2 should be removed after revocation")
+		require.NotNil(t, actions.FindSigningKey(keys, "key-1"), "key-1 should still exist")
 
 		// Signed transaction should persist signature in log
-		signedTxReq := testutil.CreateTransactionAction(ledger, []*commonpb.Posting{
-			testutil.NewPosting("world", "ops:1", big.NewInt(10), "USD/2"),
+		signedTxReq := actions.CreateTransactionAction(ledger, []*commonpb.Posting{
+			actions.NewPosting("world", "ops:1", big.NewInt(10), "USD/2"),
 		}, nil, nil)
 		require.NoError(t, signing.Sign(signedTxReq, "key-1", privKey1))
 		txResp := scenariotest.ApplyActions(t, ctx, client, signedTxReq)
@@ -292,26 +292,26 @@ func TestOperationsLifecycle(t *testing.T) {
 	t.Run("DeleteLedger", func(t *testing.T) {
 		// Create a temporary ledger
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateLedgerAction("temp-ledger", nil),
+			actions.CreateLedgerAction("temp-ledger", nil),
 		)
 
 		// Verify it exists
-		ledgers, err := testutil.ListLedgers(ctx, client)
+		ledgers, err := actions.ListLedgers(ctx, client)
 		require.NoError(t, err)
 		require.Contains(t, ledgers, "temp-ledger", "temp-ledger should exist")
 
 		// Make 1 transaction
 		scenariotest.ApplyActions(t, ctx, client,
-			testutil.CreateForceTransactionAction("temp-ledger", []*commonpb.Posting{
-				testutil.NewPosting("world", "user:1", big.NewInt(1000), "USD/2"),
+			actions.CreateForceTransactionAction("temp-ledger", []*commonpb.Posting{
+				actions.NewPosting("world", "user:1", big.NewInt(1000), "USD/2"),
 			}, nil),
 		)
 
 		// Delete the ledger
-		scenariotest.ApplyActions(t, ctx, client, testutil.DeleteLedgerAction("temp-ledger"))
+		scenariotest.ApplyActions(t, ctx, client, actions.DeleteLedgerAction("temp-ledger"))
 
 		// Verify it's gone from the active list
-		ledgers, err = testutil.ListLedgers(ctx, client)
+		ledgers, err = actions.ListLedgers(ctx, client)
 		require.NoError(t, err)
 		if info, exists := ledgers["temp-ledger"]; exists {
 			// If still listed, it should have a deleted_at timestamp
@@ -325,7 +325,7 @@ func TestOperationsLifecycle(t *testing.T) {
 		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
 
 		// Verify stats
-		stats, err := testutil.GetLedgerStats(ctx, client, ledger)
+		stats, err := actions.GetLedgerStats(ctx, client, ledger)
 		require.NoError(t, err, "GetLedgerStats failed")
 		require.Greater(t, stats.GetAccountCount(), uint64(0), "should have accounts")
 		require.Greater(t, stats.GetTransactionCount(), uint64(0), "should have transactions")

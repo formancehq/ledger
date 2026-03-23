@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
@@ -62,7 +63,7 @@ var _ = Describe("Response Signing", func() {
 			// Create a test ledger
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerName, nil),
+					actions.CreateLedgerAction(ledgerName, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -72,8 +73,8 @@ var _ = Describe("Response Signing", func() {
 		It("should include response signature in Apply response logs", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -90,8 +91,8 @@ var _ = Describe("Response Signing", func() {
 		It("should produce verifiable response signatures", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(200), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -107,8 +108,8 @@ var _ = Describe("Response Signing", func() {
 		It("should fail verification with a wrong public key", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "charlie", big.NewInt(50), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "charlie", big.NewInt(50), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -128,11 +129,11 @@ var _ = Describe("Response Signing", func() {
 		It("should sign all logs in bulk Apply response", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bulk-1", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bulk-1", big.NewInt(100), "USD"),
 					}, nil, nil),
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bulk-2", big.NewInt(200), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bulk-2", big.NewInt(200), "USD"),
 					}, nil, nil),
 				},
 			})
@@ -156,7 +157,7 @@ var _ = Describe("Response Signing", func() {
 		It("should include ledger creation log in response signatures", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction("response-signing-create-test", nil),
+					actions.CreateLedgerAction("response-signing-create-test", nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -186,7 +187,7 @@ var _ = Describe("Response Signing", func() {
 			// Create a test ledger
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerName, nil),
+					actions.CreateLedgerAction(ledgerName, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -196,8 +197,8 @@ var _ = Describe("Response Signing", func() {
 		It("should not include response signature in Apply response logs", func() {
 			resp, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil, nil),
 				},
 			})
