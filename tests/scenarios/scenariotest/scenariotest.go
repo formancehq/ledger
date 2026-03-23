@@ -144,22 +144,18 @@ func (sc *ScenarioCluster) startServer() {
 
 	raftPort := sc.grpcPort - 1000
 
-	instruments := []testservice.Instrumentation{
-		testservice.OutputInstrumentation(os.Stderr),
-		testserver.WithNodeID(1),
-		testserver.WithClusterID("scenario-cluster"),
-		testserver.WithHTTPPort(sc.httpPort),
-		testserver.WithWalDir(sc.walDir),
-		testserver.WithDataDir(sc.dataDir),
-		testserver.WithRaftPort(raftPort),
-		testserver.WithGRPCPort(sc.grpcPort),
-		testserver.WithSnapshotThreshold(10),
-		testserver.WithCacheRotationThreshold(50),
-		testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-		testserver.WithRaftTickInterval(10 * time.Millisecond),
-		testserver.WithRaftHeartbeatTick(1),
-		testserver.WithRaftElectionTick(10),
-	}
+	instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+		NodeID:    1,
+		ClusterID: "scenario-cluster",
+		HTTPPort:  sc.httpPort,
+		RaftPort:  raftPort,
+		GRPCPort:  sc.grpcPort,
+		WalDir:    sc.walDir,
+		DataDir:   sc.dataDir,
+		Debug:     os.Getenv("DEBUG") == "true",
+		Output:    os.Stderr,
+	})
+	instruments = append(instruments, testserver.WithCacheRotationThreshold(50))
 	if sc.bootstrap {
 		instruments = append(instruments, testserver.WithBootstrap())
 	}

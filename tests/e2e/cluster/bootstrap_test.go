@@ -15,17 +15,17 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/store"
+	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
+	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
-	"github.com/formancehq/ledger-v3-poc/pkg/actions"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
 var _ = Describe("Bootstrap from backup", Ordered, func() {
@@ -76,23 +76,21 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			walDir := GinkgoT().TempDir()
 			dataDir := GinkgoT().TempDir()
 
+			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+				NodeID:    1,
+				ClusterID: "test-cluster",
+				HTTPPort:  httpPort,
+				RaftPort:  raftPort,
+				GRPCPort:  grpcPort,
+				WalDir:    walDir,
+				DataDir:   dataDir,
+				Debug:     testutil.Debug,
+				Output:    GinkgoWriter,
+			})
+			instruments = append(instruments, testserver.WithBootstrap())
+
 			sourceServer = testservice.New(cmdserver.NewRunCommand,
-				testservice.WithInstruments(
-					testservice.DebugInstrumentation(testutil.Debug),
-					testservice.OutputInstrumentation(GinkgoWriter),
-					testserver.WithNodeID(1),
-					testserver.WithClusterID("test-cluster"),
-					testserver.WithHTTPPort(httpPort),
-					testserver.WithWalDir(walDir),
-					testserver.WithDataDir(dataDir),
-					testserver.WithRaftPort(raftPort),
-					testserver.WithGRPCPort(grpcPort),
-					testserver.WithSnapshotThreshold(10),
-					testserver.WithRaftTickInterval(10*time.Millisecond),
-					testserver.WithRaftHeartbeatTick(1),
-					testserver.WithRaftElectionTick(10),
-					testserver.WithBootstrap(),
-				),
+				testservice.WithInstruments(instruments...),
 			)
 			Expect(sourceServer.Start(ctx)).To(Succeed())
 
@@ -268,22 +266,21 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		)
 
 		BeforeAll(func() {
+			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+				NodeID:    1,
+				ClusterID: "test-cluster",
+				HTTPPort:  httpPort,
+				RaftPort:  raftPort,
+				GRPCPort:  grpcPort,
+				WalDir:    bootstrapWalDir,
+				DataDir:   bootstrapDataDir,
+				Debug:     testutil.Debug,
+				Output:    GinkgoWriter,
+			})
+			instruments = append(instruments, testserver.WithBootstrap())
+
 			server = testservice.New(cmdserver.NewRunCommand,
-				testservice.WithInstruments(
-					testservice.DebugInstrumentation(testutil.Debug),
-					testservice.OutputInstrumentation(GinkgoWriter),
-					testserver.WithNodeID(1),
-					testserver.WithClusterID("test-cluster"),
-					testserver.WithHTTPPort(httpPort),
-					testserver.WithWalDir(bootstrapWalDir),
-					testserver.WithDataDir(bootstrapDataDir),
-					testserver.WithRaftPort(raftPort),
-					testserver.WithGRPCPort(grpcPort),
-					testserver.WithRaftTickInterval(10*time.Millisecond),
-					testserver.WithRaftHeartbeatTick(1),
-					testserver.WithRaftElectionTick(10),
-					testserver.WithBootstrap(),
-				),
+				testservice.WithInstruments(instruments...),
 			)
 			Expect(server.Start(ctx)).To(Succeed())
 

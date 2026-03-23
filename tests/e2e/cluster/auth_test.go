@@ -14,16 +14,17 @@ import (
 	"os"
 	"time"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	jose "github.com/go-jose/go-jose/v4"
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
+	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	jose "github.com/go-jose/go-jose/v4"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
@@ -31,7 +32,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
 // Dedicated port range for auth tests.
@@ -149,28 +149,26 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 		})
 
+		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+			NodeID:    1,
+			ClusterID: "test-cluster",
+			HTTPPort:  authTestHTTPPort,
+			RaftPort:  authTestRaftPort,
+			GRPCPort:  authTestGRPCPort,
+			WalDir:    walTmpDir,
+			DataDir:   dataTmpDir,
+			Debug:     testutil.Debug,
+			Output:    GinkgoWriter,
+		})
+		instruments = append(instruments,
+			testserver.WithBootstrap(),
+			testserver.WithAuthEnabled(),
+			testserver.WithAuthIssuer(oidcServer.URL),
+			testserver.WithAuthService("ledger"),
+		)
+
 		server := testservice.New(cmdserver.NewRunCommand,
-			testservice.WithInstruments(
-				testservice.DebugInstrumentation(testutil.Debug),
-				testservice.OutputInstrumentation(GinkgoWriter),
-				testserver.WithNodeID(1),
-				testserver.WithClusterID("test-cluster"),
-				testserver.WithHTTPPort(authTestHTTPPort),
-				testserver.WithWalDir(walTmpDir),
-				testserver.WithDataDir(dataTmpDir),
-				testserver.WithRaftPort(authTestRaftPort),
-				testserver.WithGRPCPort(authTestGRPCPort),
-				testserver.WithSnapshotThreshold(10),
-				testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-				testserver.WithRaftTickInterval(10*time.Millisecond),
-				testserver.WithRaftHeartbeatTick(1),
-				testserver.WithRaftElectionTick(10),
-				testserver.WithBootstrap(),
-				// Auth configuration
-				testserver.WithAuthEnabled(),
-				testserver.WithAuthIssuer(oidcServer.URL),
-				testserver.WithAuthService("ledger"),
-			),
+			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
 

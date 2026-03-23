@@ -141,24 +141,23 @@ func SetupMultiNodeCluster(
 
 	// Common instruments shared by all nodes
 	commonInstruments := func(i int, walDir, dataDir string) []testservice.Instrumentation {
-		return []testservice.Instrumentation{
-			testservice.DebugInstrumentation(Debug),
-			testservice.OutputInstrumentation(GinkgoWriter),
-			testserver.WithNodeID(i + 1),
-			testserver.WithClusterID("test-cluster"),
-			testserver.WithHTTPPort(httpBasePort + i),
-			testserver.WithWalDir(walDir),
-			testserver.WithDataDir(dataDir),
-			testserver.WithRaftPort(raftBasePort + i),
-			testserver.WithGRPCPort(serviceBasePort + i),
-			testserver.WithSnapshotThreshold(10),
+		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+			NodeID:       i + 1,
+			ClusterID:    "test-cluster",
+			HTTPPort:     httpBasePort + i,
+			RaftPort:     raftBasePort + i,
+			GRPCPort:     serviceBasePort + i,
+			WalDir:       walDir,
+			DataDir:      dataDir,
+			Debug:        Debug,
+			Output:       GinkgoWriter,
+			TickInterval: options.RaftTickInterval,
+		})
+
+		return append(instruments,
 			testserver.WithRaftCompactionMargin(1),
-			testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-			testserver.WithRaftTickInterval(options.RaftTickInterval),
-			testserver.WithRaftHeartbeatTick(1),
-			testserver.WithRaftElectionTick(10),
 			testserver.WithAutoPromoteThreshold(10),
-		}
+		)
 	}
 
 	servers := make([]*ServiceWithClient, 0, countInstances)
@@ -280,23 +279,18 @@ func SetupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Ins
 	// Derive Raft port from gRPC port (e.g., 8100 -> 7100)
 	raftPort := grpcPort - 1000
 
-	instruments := []testservice.Instrumentation{
-		testservice.DebugInstrumentation(Debug),
-		testservice.OutputInstrumentation(GinkgoWriter),
-		testserver.WithNodeID(1),
-		testserver.WithClusterID("test-cluster"),
-		testserver.WithHTTPPort(httpPort),
-		testserver.WithWalDir(walTmpDir),
-		testserver.WithDataDir(dataTmpDir),
-		testserver.WithRaftPort(raftPort),
-		testserver.WithGRPCPort(grpcPort),
-		testserver.WithSnapshotThreshold(10),
-		testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-		testserver.WithRaftTickInterval(10 * time.Millisecond),
-		testserver.WithRaftHeartbeatTick(1),
-		testserver.WithRaftElectionTick(10),
-		testserver.WithBootstrap(),
-	}
+	instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+		NodeID:    1,
+		ClusterID: "test-cluster",
+		HTTPPort:  httpPort,
+		RaftPort:  raftPort,
+		GRPCPort:  grpcPort,
+		WalDir:    walTmpDir,
+		DataDir:   dataTmpDir,
+		Debug:     Debug,
+		Output:    GinkgoWriter,
+	})
+	instruments = append(instruments, testserver.WithBootstrap())
 	instruments = append(instruments, extraInstruments...)
 
 	server := testservice.New(cmdserver.NewRunCommand,

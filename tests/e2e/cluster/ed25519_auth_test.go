@@ -13,10 +13,9 @@ import (
 	"path/filepath"
 	"time"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	jose "github.com/go-jose/go-jose/v4"
 	cmdserver "github.com/formancehq/ledger-v3-poc/cmd/server"
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
@@ -24,6 +23,8 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
+	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+	jose "github.com/go-jose/go-jose/v4"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
@@ -31,7 +32,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
 // Dedicated port range for Ed25519 auth tests (separate from OIDC auth tests).
@@ -145,27 +145,25 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 		})
 
+		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+			NodeID:    1,
+			ClusterID: "test-cluster",
+			HTTPPort:  ed25519AuthTestHTTPPort,
+			RaftPort:  ed25519AuthTestRaftPort,
+			GRPCPort:  ed25519AuthTestGRPCPort,
+			WalDir:    walTmpDir,
+			DataDir:   dataTmpDir,
+			Debug:     testutil.Debug,
+			Output:    GinkgoWriter,
+		})
+		instruments = append(instruments,
+			testserver.WithBootstrap(),
+			testserver.WithAuthEd25519Keys(configPath),
+			testserver.WithAuthService("ledger"),
+		)
+
 		server := testservice.New(cmdserver.NewRunCommand,
-			testservice.WithInstruments(
-				testservice.DebugInstrumentation(testutil.Debug),
-				testservice.OutputInstrumentation(GinkgoWriter),
-				testserver.WithNodeID(1),
-				testserver.WithClusterID("test-cluster"),
-				testserver.WithHTTPPort(ed25519AuthTestHTTPPort),
-				testserver.WithWalDir(walTmpDir),
-				testserver.WithDataDir(dataTmpDir),
-				testserver.WithRaftPort(ed25519AuthTestRaftPort),
-				testserver.WithGRPCPort(ed25519AuthTestGRPCPort),
-				testserver.WithSnapshotThreshold(10),
-				testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-				testserver.WithRaftTickInterval(10*time.Millisecond),
-				testserver.WithRaftHeartbeatTick(1),
-				testserver.WithRaftElectionTick(10),
-				testserver.WithBootstrap(),
-				// Ed25519 auth (auto-enables --auth-enabled)
-				testserver.WithAuthEd25519Keys(configPath),
-				testserver.WithAuthService("ledger"),
-			),
+			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
 
@@ -364,26 +362,25 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 			Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 		})
 
+		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+			NodeID:    1,
+			ClusterID: "test-cluster",
+			HTTPPort:  ed25519ScopeTestHTTPPort,
+			RaftPort:  ed25519ScopeTestRaftPort,
+			GRPCPort:  ed25519ScopeTestGRPCPort,
+			WalDir:    walTmpDir,
+			DataDir:   dataTmpDir,
+			Debug:     testutil.Debug,
+			Output:    GinkgoWriter,
+		})
+		instruments = append(instruments,
+			testserver.WithBootstrap(),
+			testserver.WithAuthEd25519Keys(configPath),
+			testserver.WithAuthService("ledger"),
+		)
+
 		server := testservice.New(cmdserver.NewRunCommand,
-			testservice.WithInstruments(
-				testservice.DebugInstrumentation(testutil.Debug),
-				testservice.OutputInstrumentation(GinkgoWriter),
-				testserver.WithNodeID(1),
-				testserver.WithClusterID("test-cluster"),
-				testserver.WithHTTPPort(ed25519ScopeTestHTTPPort),
-				testserver.WithWalDir(walTmpDir),
-				testserver.WithDataDir(dataTmpDir),
-				testserver.WithRaftPort(ed25519ScopeTestRaftPort),
-				testserver.WithGRPCPort(ed25519ScopeTestGRPCPort),
-				testserver.WithSnapshotThreshold(10),
-				testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-				testserver.WithRaftTickInterval(10*time.Millisecond),
-				testserver.WithRaftHeartbeatTick(1),
-				testserver.WithRaftElectionTick(10),
-				testserver.WithBootstrap(),
-				testserver.WithAuthEd25519Keys(configPath),
-				testserver.WithAuthService("ledger"),
-			),
+			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
 

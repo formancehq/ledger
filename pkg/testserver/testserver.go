@@ -3,11 +3,51 @@ package testserver
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"time"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 )
+
+// TestNodeConfig holds the common configuration for a test node.
+type TestNodeConfig struct {
+	NodeID       int
+	ClusterID    string
+	HTTPPort     int
+	RaftPort     int
+	GRPCPort     int
+	WalDir       string
+	DataDir      string
+	Debug        bool
+	Output       io.Writer
+	TickInterval time.Duration
+}
+
+// DefaultTestInstruments returns the standard set of test instruments for a node.
+// Callers append extra instruments (e.g. WithBootstrap, TLS, auth) to the returned slice.
+func DefaultTestInstruments(cfg TestNodeConfig) []testservice.Instrumentation {
+	if cfg.TickInterval == 0 {
+		cfg.TickInterval = 10 * time.Millisecond
+	}
+
+	return []testservice.Instrumentation{
+		testservice.DebugInstrumentation(cfg.Debug),
+		testservice.OutputInstrumentation(cfg.Output),
+		WithNodeID(cfg.NodeID),
+		WithClusterID(cfg.ClusterID),
+		WithHTTPPort(cfg.HTTPPort),
+		WithWalDir(cfg.WalDir),
+		WithDataDir(cfg.DataDir),
+		WithRaftPort(cfg.RaftPort),
+		WithGRPCPort(cfg.GRPCPort),
+		WithSnapshotThreshold(10),
+		WithDebug(cfg.Debug),
+		WithRaftTickInterval(cfg.TickInterval),
+		WithRaftHeartbeatTick(1),
+		WithRaftElectionTick(10),
+	}
+}
 
 // Option functions
 

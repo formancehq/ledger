@@ -19,12 +19,12 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"github.com/formancehq/ledger-v3-poc/pkg/testserver"
+	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
 // Dedicated port range for TLS tests to avoid conflict with other e2e tests.
@@ -86,27 +86,25 @@ func setupTLSSingleNode(httpPort, grpcPort, raftPort int) (context.Context, serv
 		Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 	})
 
+	instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+		NodeID:    1,
+		ClusterID: "test-cluster",
+		HTTPPort:  httpPort,
+		RaftPort:  raftPort,
+		GRPCPort:  grpcPort,
+		WalDir:    walTmpDir,
+		DataDir:   dataTmpDir,
+		Debug:     testutil.Debug,
+		Output:    GinkgoWriter,
+	})
+	instruments = append(instruments,
+		testserver.WithBootstrap(),
+		testserver.WithTLSCertFile(certs.ServerCertFile),
+		testserver.WithTLSKeyFile(certs.ServerKeyFile),
+	)
+
 	server := testservice.New(cmdserver.NewRunCommand,
-		testservice.WithInstruments(
-			testservice.DebugInstrumentation(testutil.Debug),
-			testservice.OutputInstrumentation(GinkgoWriter),
-			testserver.WithNodeID(1),
-			testserver.WithClusterID("test-cluster"),
-			testserver.WithHTTPPort(httpPort),
-			testserver.WithWalDir(walTmpDir),
-			testserver.WithDataDir(dataTmpDir),
-			testserver.WithRaftPort(raftPort),
-			testserver.WithGRPCPort(grpcPort),
-			testserver.WithSnapshotThreshold(10),
-			testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-			testserver.WithRaftTickInterval(10*time.Millisecond),
-			testserver.WithRaftHeartbeatTick(1),
-			testserver.WithRaftElectionTick(10),
-			testserver.WithBootstrap(),
-			// TLS configuration
-			testserver.WithTLSCertFile(certs.ServerCertFile),
-			testserver.WithTLSKeyFile(certs.ServerKeyFile),
-		),
+		testservice.WithInstruments(instruments...),
 	)
 	Expect(server.Start(ctx)).To(Succeed())
 
@@ -159,28 +157,24 @@ func setupTLSMultiNodeCluster(
 
 	// Common instruments shared by all TLS nodes
 	commonInstruments := func(i int, walDir, dataDir string) []testservice.Instrumentation {
-		return []testservice.Instrumentation{
-			testservice.DebugInstrumentation(testutil.Debug),
-			testservice.OutputInstrumentation(GinkgoWriter),
-			testserver.WithNodeID(i + 1),
-			testserver.WithClusterID("test-cluster"),
-			testserver.WithHTTPPort(httpBasePort + i),
-			testserver.WithWalDir(walDir),
-			testserver.WithDataDir(dataDir),
-			testserver.WithRaftPort(raftBasePort + i),
-			testserver.WithGRPCPort(serviceBasePort + i),
-			testserver.WithSnapshotThreshold(10),
+		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+			NodeID:    i + 1,
+			ClusterID: "test-cluster",
+			HTTPPort:  httpBasePort + i,
+			RaftPort:  raftBasePort + i,
+			GRPCPort:  serviceBasePort + i,
+			WalDir:    walDir,
+			DataDir:   dataDir,
+			Debug:     testutil.Debug,
+			Output:    GinkgoWriter,
+		})
+		return append(instruments,
 			testserver.WithRaftCompactionMargin(1),
-			testserver.WithDebug(os.Getenv("DEBUG") == "true"),
-			testserver.WithRaftTickInterval(10 * time.Millisecond),
-			testserver.WithRaftHeartbeatTick(1),
-			testserver.WithRaftElectionTick(10),
 			testserver.WithAutoPromoteThreshold(10),
-			// TLS configuration — same cert for all nodes
 			testserver.WithTLSCertFile(certs.ServerCertFile),
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 			testserver.WithTLSCACertFile(certs.CACertFile),
-		}
+		)
 	}
 
 	servers := make([]*tlsServiceWithClient, 0, countInstances)
@@ -396,7 +390,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 					ledgers, err := actions.ListLedgers(ctx, srv.client)
 					g.Expect(err).To(Succeed())
 					g.Expect(ledgers).To(HaveKey("tls-multi-ledger"))
-				}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed(),
+				}).Within(15*time.Second).ProbeEvery(200*time.Millisecond).Should(Succeed(),
 					"ledger should be visible on node %d", i+1)
 			}
 		})
@@ -437,7 +431,7 @@ var _ = Describe("TLS Multi-Node", Ordered, func() {
 					g.Expect(err).To(Succeed())
 					g.Expect(txResp).NotTo(BeNil())
 					g.Expect(txResp.Transaction.Postings).To(HaveLen(1))
-				}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed(),
+				}).Within(15*time.Second).ProbeEvery(200*time.Millisecond).Should(Succeed(),
 					"transaction should be visible on node %d", i+1)
 			}
 		})
