@@ -127,7 +127,7 @@ func Execute(
 		}
 
 	case commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
-		aggResult, aggErr := AggregateVolumes(handle, volumeAttr, req.GetLedger(), iter, false)
+		aggResult, aggErr := AggregateVolumes(handle, volumeAttr, req.GetLedger(), iter, AggregateOptions{})
 		if aggErr != nil {
 			return nil, aggErr
 		}

@@ -341,6 +341,110 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 		})
 	})
 
+	Context("When aggregating volumes with group_by_prefixes", Ordered, func() {
+		const ledgerName = "agg-vol-group-prefix"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			// world→users:alice 100 USD, world→users:bob 200 USD
+			// world→merchants:shop1 500 USD, world→merchants:shop2 300 EUR
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						testutil.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
+					}, nil),
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						testutil.NewPosting("world", "users:bob", big.NewInt(200), "USD"),
+					}, nil),
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						testutil.NewPosting("world", "merchants:shop1", big.NewInt(500), "USD"),
+					}, nil),
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						testutil.NewPosting("world", "merchants:shop2", big.NewInt(300), "EUR"),
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should return grouped results by prefix", func() {
+			Eventually(func(g Gomega) {
+				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+					Ledger:          ledgerName,
+					GroupByPrefixes: []string{"users:", "merchants:"},
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(result.Volumes).To(BeEmpty(), "flat volumes should be empty for grouped result")
+				g.Expect(result.Groups).To(HaveLen(2))
+
+				// Groups ordered by declaration: users: first, merchants: second
+				usersGroup := result.Groups[0]
+				g.Expect(usersGroup.Prefix).To(Equal("users:"))
+				g.Expect(usersGroup.Volumes).To(HaveLen(1))
+				g.Expect(usersGroup.Volumes[0].Asset).To(Equal("USD"))
+				g.Expect(usersGroup.Volumes[0].Input.ToBigInt().Int64()).To(Equal(int64(300))) // 100+200
+
+				merchantsGroup := result.Groups[1]
+				g.Expect(merchantsGroup.Prefix).To(Equal("merchants:"))
+				g.Expect(merchantsGroup.Volumes).To(HaveLen(2))
+
+				merchByAsset := make(map[string]*commonpb.AggregatedVolume)
+				for _, v := range merchantsGroup.Volumes {
+					merchByAsset[v.Asset] = v
+				}
+				g.Expect(merchByAsset["USD"].Input.ToBigInt().Int64()).To(Equal(int64(500)))
+				g.Expect(merchByAsset["EUR"].Input.ToBigInt().Int64()).To(Equal(int64(300)))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+	})
+
+	Context("When aggregating volumes with group_by_prefixes and use_max_precision", Ordered, func() {
+		const ledgerName = "agg-vol-group-maxprec"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{testutil.CreateLedgerAction(ledgerName, nil)},
+			})
+			Expect(err).To(Succeed())
+
+			// world→users:alice 100 USD/2, world→users:bob 10000 USD/4
+			_, err = sharedClient.Apply(sharedCtx, &servicepb.ApplyRequest{
+				Requests: []*servicepb.Request{
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						testutil.NewPosting("world", "users:alice", big.NewInt(100), "USD/2"),
+					}, nil),
+					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						testutil.NewPosting("world", "users:bob", big.NewInt(10000), "USD/4"),
+					}, nil),
+				},
+			})
+			Expect(err).To(Succeed())
+		})
+
+		It("Should merge precisions within each group", func() {
+			Eventually(func(g Gomega) {
+				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+					Ledger:          ledgerName,
+					UseMaxPrecision: true,
+					GroupByPrefixes: []string{"users:"},
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(result.Groups).To(HaveLen(1))
+
+				usersGroup := result.Groups[0]
+				g.Expect(usersGroup.Prefix).To(Equal("users:"))
+				g.Expect(usersGroup.Volumes).To(HaveLen(1))
+				g.Expect(usersGroup.Volumes[0].Asset).To(Equal("USD/4"))
+				// alice: 100 * 10^2 = 10000, bob: 10000 → total = 20000
+				g.Expect(usersGroup.Volumes[0].Input.ToBigInt().Int64()).To(Equal(int64(20000)))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+	})
+
 	Context("When aggregating volumes for a non-existent ledger", func() {
 		It("Should return a NotFound error", func() {
 			_, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{

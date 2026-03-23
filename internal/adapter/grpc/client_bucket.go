@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -241,11 +242,12 @@ func (g *BucketGrpcClient) AnalyzeTransactions(ctx context.Context, ledgerName s
 	}
 }
 
-func (g *BucketGrpcClient) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, useMaxPrecision bool) (*commonpb.AggregateResult, error) {
+func (g *BucketGrpcClient) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
 	return g.client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
 		Ledger:          ledgerName,
 		Filter:          filter,
-		UseMaxPrecision: useMaxPrecision,
+		UseMaxPrecision: opts.UseMaxPrecision,
+		GroupByPrefixes: opts.GroupByPrefixes,
 	})
 }
 

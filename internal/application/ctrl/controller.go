@@ -6,6 +6,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -49,7 +50,7 @@ type Controller interface {
 	AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeTransactionsResponse, error)
 
 	// Aggregation operations
-	AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, useMaxPrecision bool) (*commonpb.AggregateResult, error)
+	AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error)
 
 	// Prepared query operations (read-only)
 	ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error)

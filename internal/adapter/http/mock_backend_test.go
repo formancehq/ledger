@@ -7,6 +7,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -181,7 +182,7 @@ func (m *mockBackend) AnalyzeTransactions(ctx context.Context, ledgerName string
 	return nil, nil
 }
 
-func (m *mockBackend) AggregateVolumes(_ context.Context, _ string, _ *commonpb.QueryFilter, _ bool) (*commonpb.AggregateResult, error) {
+func (m *mockBackend) AggregateVolumes(_ context.Context, _ string, _ *commonpb.QueryFilter, _ query.AggregateOptions) (*commonpb.AggregateResult, error) {
 	return &commonpb.AggregateResult{}, nil
 }
 

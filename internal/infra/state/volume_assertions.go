@@ -323,7 +323,7 @@ func verifyAggregatedVolumesBalanced(
 	raftIndex uint64,
 ) error {
 	for _, ledger := range ledgerNames {
-		result, err := query.AggregateAllVolumes(store, volumeAttr, ledger, false)
+		result, err := query.AggregateAllVolumes(store, volumeAttr, ledger, query.AggregateOptions{})
 		if err != nil {
 			return fmt.Errorf("aggregating volumes for ledger %s at raft index %d: %w", ledger, raftIndex, err)
 		}

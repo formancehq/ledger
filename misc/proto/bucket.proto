@@ -910,6 +910,9 @@ message AggregateVolumesRequest {
   // When true, assets sharing the same base (e.g. USD/2, USD/4) are merged
   // under the highest precision observed, with lower-precision amounts rescaled.
   bool use_max_precision = 4;
+  // When set, results are grouped by account prefix. Each account is assigned
+  // to the first matching prefix. Accounts not matching any prefix are excluded.
+  repeated string group_by_prefixes = 5;
 }
 
 // ============================================================================

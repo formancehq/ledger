@@ -113,6 +113,117 @@ func TestVolumeAggregator_UseMaxPrecision_NoPrecision(t *testing.T) {
 	require.Equal(t, uint256.NewInt(800), &gotInput)
 }
 
+func TestGroupedAggregator_BasicPrefixes(t *testing.T) {
+	t.Parallel()
+
+	ga := newGroupedAggregator(AggregateOptions{
+		GroupByPrefixes: []string{"users:", "merchants:"},
+	})
+
+	require.NoError(t, ga.accumulate(makeEntry("l", "users:alice", "USD/2", 100, 50)))
+	require.NoError(t, ga.accumulate(makeEntry("l", "users:bob", "USD/2", 200, 100)))
+	require.NoError(t, ga.accumulate(makeEntry("l", "merchants:shop1", "USD/2", 500, 250)))
+
+	result := ga.result()
+	require.Empty(t, result.GetVolumes(), "flat volumes should be empty for grouped result")
+	require.Len(t, result.GetGroups(), 2)
+
+	// Groups are ordered by prefix declaration order.
+	require.Equal(t, "users:", result.GetGroups()[0].GetPrefix())
+	require.Len(t, result.GetGroups()[0].GetVolumes(), 1)
+
+	var usersInput uint256.Int
+	result.GetGroups()[0].GetVolumes()[0].GetInput().IntoUint256(&usersInput)
+	require.Equal(t, uint256.NewInt(300), &usersInput) // 100 + 200
+
+	require.Equal(t, "merchants:", result.GetGroups()[1].GetPrefix())
+	require.Len(t, result.GetGroups()[1].GetVolumes(), 1)
+
+	var merchantsInput uint256.Int
+	result.GetGroups()[1].GetVolumes()[0].GetInput().IntoUint256(&merchantsInput)
+	require.Equal(t, uint256.NewInt(500), &merchantsInput)
+}
+
+func TestGroupedAggregator_UnmatchedAccountSkipped(t *testing.T) {
+	t.Parallel()
+
+	ga := newGroupedAggregator(AggregateOptions{
+		GroupByPrefixes: []string{"users:"},
+	})
+
+	require.NoError(t, ga.accumulate(makeEntry("l", "users:alice", "USD/2", 100, 50)))
+	require.NoError(t, ga.accumulate(makeEntry("l", "world", "USD/2", 9999, 9999))) // no match
+
+	result := ga.result()
+	require.Len(t, result.GetGroups(), 1)
+
+	var input uint256.Int
+	result.GetGroups()[0].GetVolumes()[0].GetInput().IntoUint256(&input)
+	require.Equal(t, uint256.NewInt(100), &input)
+}
+
+func TestGroupedAggregator_WithMaxPrecision(t *testing.T) {
+	t.Parallel()
+
+	ga := newGroupedAggregator(AggregateOptions{
+		UseMaxPrecision: true,
+		GroupByPrefixes: []string{"users:"},
+	})
+
+	require.NoError(t, ga.accumulate(makeEntry("l", "users:alice", "USD/2", 100, 50)))
+	require.NoError(t, ga.accumulate(makeEntry("l", "users:bob", "USD/4", 10000, 5000)))
+
+	result := ga.result()
+	require.Len(t, result.GetGroups(), 1)
+	require.Len(t, result.GetGroups()[0].GetVolumes(), 1)
+	require.Equal(t, "USD/4", result.GetGroups()[0].GetVolumes()[0].GetAsset())
+
+	var gotInput uint256.Int
+	result.GetGroups()[0].GetVolumes()[0].GetInput().IntoUint256(&gotInput)
+	require.Equal(t, uint256.NewInt(20000), &gotInput) // 100*100 + 10000
+}
+
+func TestGroupedAggregator_FirstPrefixWins(t *testing.T) {
+	t.Parallel()
+
+	ga := newGroupedAggregator(AggregateOptions{
+		GroupByPrefixes: []string{"users:", "users:v"},
+	})
+
+	require.NoError(t, ga.accumulate(makeEntry("l", "users:vip1", "USD/2", 100, 50)))
+
+	result := ga.result()
+	// "users:vip1" matches "users:" first.
+	var input uint256.Int
+	result.GetGroups()[0].GetVolumes()[0].GetInput().IntoUint256(&input)
+	require.Equal(t, uint256.NewInt(100), &input)
+
+	// Second group should be empty.
+	require.Empty(t, result.GetGroups()[1].GetVolumes())
+}
+
+func TestNewAccumulator_FlatByDefault(t *testing.T) {
+	t.Parallel()
+
+	acc := newAccumulator(AggregateOptions{})
+	require.NoError(t, acc.accumulate(makeEntry("l", "a", "USD/2", 100, 50)))
+
+	result := acc.result()
+	require.Len(t, result.GetVolumes(), 1)
+	require.Empty(t, result.GetGroups())
+}
+
+func TestNewAccumulator_GroupedWhenPrefixes(t *testing.T) {
+	t.Parallel()
+
+	acc := newAccumulator(AggregateOptions{GroupByPrefixes: []string{"a:"}})
+	require.NoError(t, acc.accumulate(makeEntry("l", "a:1", "USD/2", 100, 50)))
+
+	result := acc.result()
+	require.Empty(t, result.GetVolumes())
+	require.Len(t, result.GetGroups(), 1)
+}
+
 func TestPow10(t *testing.T) {
 	t.Parallel()
 

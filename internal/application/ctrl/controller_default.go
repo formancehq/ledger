@@ -676,7 +676,7 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 }
 
 // AggregateVolumes returns per-asset aggregated volumes for filtered accounts.
-func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, useMaxPrecision bool) (*commonpb.AggregateResult, error) {
+func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
 	ctx, span := tracer.Start(ctx, "ctrl.aggregate_volumes",
 		trace.WithAttributes(attribute.String("ledger", ledgerName)))
 	defer span.End()
@@ -700,7 +700,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 	if filter == nil {
 		enrichStart := time.Now()
 
-		result, aggErr := query.AggregateAllVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), useMaxPrecision)
+		result, aggErr := query.AggregateAllVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), opts)
 		if aggErr != nil {
 			return nil, fmt.Errorf("aggregating volumes: %w", aggErr)
 		}
@@ -733,7 +733,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	enrichStart := time.Now()
 
-	result, err := query.AggregateVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), iter, useMaxPrecision)
+	result, err := query.AggregateVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), iter, opts)
 	if err != nil {
 		return nil, fmt.Errorf("aggregating volumes: %w", err)
 	}

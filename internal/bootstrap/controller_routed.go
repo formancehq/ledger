@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -207,13 +208,13 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 }
 
-func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, useMaxPrecision bool) (*commonpb.AggregateResult, error) {
+func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
 	c, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.AggregateVolumes(ctx, ledgerName, filter, useMaxPrecision)
+	return c.AggregateVolumes(ctx, ledgerName, filter, opts)
 }
 
 func (b *RoutedController) ListSigningKeys(ctx context.Context) (dal.Cursor[*commonpb.SigningKey], error) {

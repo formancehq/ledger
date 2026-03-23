@@ -3,6 +3,7 @@ package query
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/holiman/uint256"
 
@@ -48,7 +49,13 @@ func (va *volumeAggregator) accumulate(entry attributes.ComputedEntry[*raftcmdpb
 		return fmt.Errorf("unmarshaling volume key: %w", err)
 	}
 
-	key := assetKey{base: vk.AssetBase, precision: vk.AssetPrecision}
+	va.accumulateAsset(vk.AssetBase, vk.AssetPrecision, entry.Value)
+
+	return nil
+}
+
+func (va *volumeAggregator) accumulateAsset(base string, precision uint8, value *raftcmdpb.VolumePair) {
+	key := assetKey{base: base, precision: precision}
 
 	agg, ok := va.byAsset[key]
 	if !ok {
@@ -59,20 +66,18 @@ func (va *volumeAggregator) accumulate(entry attributes.ComputedEntry[*raftcmdpb
 		va.byAsset[key] = agg
 	}
 
-	if entry.Value != nil {
+	if value != nil {
 		var tmp uint256.Int
-		if entry.Value.GetInput() != nil {
-			entry.Value.GetInput().IntoUint256(&tmp)
+		if value.GetInput() != nil {
+			value.GetInput().IntoUint256(&tmp)
 			agg.input.Add(agg.input, &tmp)
 		}
 
-		if entry.Value.GetOutput() != nil {
-			entry.Value.GetOutput().IntoUint256(&tmp)
+		if value.GetOutput() != nil {
+			value.GetOutput().IntoUint256(&tmp)
 			agg.output.Add(agg.output, &tmp)
 		}
 	}
-
-	return nil
 }
 
 // pow10 returns 10^exp as a uint256.Int.
@@ -166,6 +171,69 @@ func (va *volumeAggregator) resultWithMaxPrecision() *commonpb.AggregateResult {
 	return &commonpb.AggregateResult{Volumes: volumes}
 }
 
+// AggregateOptions configures volume aggregation behavior.
+type AggregateOptions struct {
+	UseMaxPrecision bool
+	GroupByPrefixes []string
+}
+
+// groupedAggregator dispatches volume entries to per-prefix volumeAggregators.
+// Each account is assigned to the first matching prefix.
+type groupedAggregator struct {
+	prefixes    []string
+	aggregators map[string]*volumeAggregator
+}
+
+func newGroupedAggregator(opts AggregateOptions) *groupedAggregator {
+	aggs := make(map[string]*volumeAggregator, len(opts.GroupByPrefixes))
+	for _, p := range opts.GroupByPrefixes {
+		aggs[p] = newVolumeAggregator(opts.UseMaxPrecision)
+	}
+
+	return &groupedAggregator{
+		prefixes:    opts.GroupByPrefixes,
+		aggregators: aggs,
+	}
+}
+
+func (ga *groupedAggregator) matchPrefix(account string) (string, bool) {
+	for _, p := range ga.prefixes {
+		if strings.HasPrefix(account, p) {
+			return p, true
+		}
+	}
+
+	return "", false
+}
+
+func (ga *groupedAggregator) accumulate(entry attributes.ComputedEntry[*raftcmdpb.VolumePair]) error {
+	var vk domain.VolumeKey
+	if err := vk.Unmarshal(entry.CanonicalKey); err != nil {
+		return fmt.Errorf("unmarshaling volume key: %w", err)
+	}
+
+	prefix, ok := ga.matchPrefix(vk.Account)
+	if !ok {
+		return nil // account doesn't match any prefix, skip
+	}
+
+	ga.aggregators[prefix].accumulateAsset(vk.AssetBase, vk.AssetPrecision, entry.Value)
+
+	return nil
+}
+
+func (ga *groupedAggregator) result() *commonpb.AggregateResult {
+	groups := make([]*commonpb.GroupedAggregateResult, 0, len(ga.prefixes))
+	for _, p := range ga.prefixes {
+		groups = append(groups, &commonpb.GroupedAggregateResult{
+			Prefix:  p,
+			Volumes: ga.aggregators[p].result().GetVolumes(),
+		})
+	}
+
+	return &commonpb.AggregateResult{Groups: groups}
+}
+
 // AggregateVolumes executes a cross-store merge-scan for filtered aggregation:
 // 1. Iterate matching accounts from Pebble (accountIter)
 // 2. For each account, scan volumes in Pebble via StreamingIter
@@ -175,9 +243,9 @@ func AggregateVolumes(
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledger string,
 	accountIter readstore.EntityIterator,
-	useMaxPrecision bool,
+	opts AggregateOptions,
 ) (*commonpb.AggregateResult, error) {
-	va := newVolumeAggregator(useMaxPrecision)
+	acc := newAccumulator(opts)
 
 	for accountIter.Next() {
 		account := string(accountIter.Current())
@@ -197,7 +265,7 @@ func AggregateVolumes(
 		}
 
 		for iter.Next() {
-			if err := va.accumulate(iter.Entry()); err != nil {
+			if err := acc.accumulate(iter.Entry()); err != nil {
 				_ = iter.Close()
 
 				return nil, fmt.Errorf("accumulating volumes for account %q: %w", account, err)
@@ -213,7 +281,7 @@ func AggregateVolumes(
 		}
 	}
 
-	return va.result(), nil
+	return acc.result(), nil
 }
 
 // AggregateAllVolumes performs unfiltered volume aggregation in a single Pebble
@@ -229,9 +297,9 @@ func AggregateAllVolumes(
 	pebbleReader dal.PebbleReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledger string,
-	useMaxPrecision bool,
+	opts AggregateOptions,
 ) (*commonpb.AggregateResult, error) {
-	va := newVolumeAggregator(useMaxPrecision)
+	acc := newAccumulator(opts)
 
 	// Single-pass: scan [ledger\x00] prefix which covers all accounts.
 	// StreamingIter on volumeAttr skips non-volume entries (metadata).
@@ -245,7 +313,7 @@ func AggregateAllVolumes(
 	}
 
 	for iter.Next() {
-		if err := va.accumulate(iter.Entry()); err != nil {
+		if err := acc.accumulate(iter.Entry()); err != nil {
 			_ = iter.Close()
 
 			return nil, fmt.Errorf("accumulating volumes: %w", err)
@@ -260,5 +328,19 @@ func AggregateAllVolumes(
 		return nil, fmt.Errorf("scanning all volumes: %w", err)
 	}
 
-	return va.result(), nil
+	return acc.result(), nil
+}
+
+// accumulator is the common interface for flat and grouped aggregation.
+type accumulator interface {
+	accumulate(entry attributes.ComputedEntry[*raftcmdpb.VolumePair]) error
+	result() *commonpb.AggregateResult
+}
+
+func newAccumulator(opts AggregateOptions) accumulator {
+	if len(opts.GroupByPrefixes) > 0 {
+		return newGroupedAggregator(opts)
+	}
+
+	return newVolumeAggregator(opts.UseMaxPrecision)
 }

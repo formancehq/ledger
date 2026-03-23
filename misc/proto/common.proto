@@ -960,6 +960,14 @@ message AggregatedVolume {
 
 message AggregateResult {
   repeated AggregatedVolume volumes = 1;
+  // When group_by_prefixes is set, contains per-prefix aggregated volumes.
+  repeated GroupedAggregateResult groups = 2;
+}
+
+// GroupedAggregateResult holds aggregated volumes for a single account prefix.
+message GroupedAggregateResult {
+  string prefix = 1;
+  repeated AggregatedVolume volumes = 2;
 }
 
 // PreparedQueryCursor follows the cursor-based pagination pattern.
