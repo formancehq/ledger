@@ -1,12 +1,7 @@
 package http
 
 import (
-	"errors"
-	"io"
 	"net/http"
-	"strconv"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
@@ -14,25 +9,15 @@ import (
 
 // handleListAccounts handles GET /{ledgerName}/accounts to list accounts.
 func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
-	ledgerName := chi.URLParam(r, "ledgerName")
-	if ledgerName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
-
+	ledgerName, ok := requireLedgerName(w, r)
+	if !ok {
 		return
 	}
 
 	// Parse query parameters
-	var pageSize uint32
-
-	if ps := r.URL.Query().Get("pageSize"); ps != "" {
-		parsed, err := strconv.ParseUint(ps, 10, 32)
-		if err != nil {
-			writeBadRequest(w, "INVALID_REQUEST", errors.New("invalid pageSize parameter"))
-
-			return
-		}
-
-		pageSize = uint32(parsed)
+	pageSize, ok := parsePageSize(w, r)
+	if !ok {
+		return
 	}
 
 	afterAddress := r.URL.Query().Get("after")
@@ -61,25 +46,9 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer func() {
-		_ = cursor.Close()
-	}()
-
-	var accounts []*commonpb.Account
-
-	for {
-		account, err := cursor.Next()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-
-			handleError(w, r, err)
-
-			return
-		}
-
-		accounts = append(accounts, account)
+	accounts, ok := drainCursor(w, r, cursor)
+	if !ok {
+		return
 	}
 
 	if wantsHTTPProfile(r) {

@@ -17,10 +17,8 @@ type updateAccountTypeRequest struct {
 
 // handleUpdateAccountType handles PATCH /{ledgerName}/account-types/{typeName}.
 func (s *Server) handleUpdateAccountType(w http.ResponseWriter, r *http.Request) {
-	ledgerName := chi.URLParam(r, "ledgerName")
-	if ledgerName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
-
+	ledgerName, ok := requireLedgerName(w, r)
+	if !ok {
 		return
 	}
 

@@ -12,10 +12,8 @@ import (
 
 // handleDeleteAccountMetadata handles DELETE /{ledgerName}/accounts/{address}/metadata/{key} to delete account metadata.
 func (s *Server) handleDeleteAccountMetadata(w http.ResponseWriter, r *http.Request) {
-	ledgerName := chi.URLParam(r, "ledgerName")
-	if ledgerName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
-
+	ledgerName, ok := requireLedgerName(w, r)
+	if !ok {
 		return
 	}
 

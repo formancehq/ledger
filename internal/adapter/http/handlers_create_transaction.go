@@ -1,11 +1,8 @@
 package http
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -14,10 +11,8 @@ import (
 
 // handleCreateTransaction handles POST /{ledgerName}/transactions to create a new transaction.
 func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request) {
-	ledgerName := chi.URLParam(r, "ledgerName")
-	if ledgerName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
-
+	ledgerName, ok := requireLedgerName(w, r)
+	if !ok {
 		return
 	}
 

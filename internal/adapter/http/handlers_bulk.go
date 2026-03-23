@@ -2,11 +2,8 @@ package http
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
 
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
@@ -16,10 +13,8 @@ import (
 
 // handleBulk handles POST /{ledgerName}/_bulk to create multiple transactions/operations.
 func (s *Server) handleBulk(w http.ResponseWriter, r *http.Request) {
-	ledgerName := chi.URLParam(r, "ledgerName")
-	if ledgerName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
-
+	ledgerName, ok := requireLedgerName(w, r)
+	if !ok {
 		return
 	}
 

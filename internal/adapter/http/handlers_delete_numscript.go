@@ -11,7 +11,11 @@ import (
 
 // handleDeleteNumscript handles DELETE /{ledgerName}/numscripts/{name} to delete a numscript.
 func (s *Server) handleDeleteNumscript(w http.ResponseWriter, r *http.Request) {
-	ledger := chi.URLParam(r, "ledgerName")
+	ledgerName, ok := requireLedgerName(w, r)
+	if !ok {
+		return
+	}
+
 	name := chi.URLParam(r, "name")
 	if name == "" {
 		writeBadRequest(w, "INVALID_REQUEST", errors.New("numscript name is required"))
@@ -22,7 +26,7 @@ func (s *Server) handleDeleteNumscript(w http.ResponseWriter, r *http.Request) {
 	_, err := s.backend.Apply(r.Context(), &servicepb.Request{
 		Type: &servicepb.Request_DeleteNumscript{
 			DeleteNumscript: &servicepb.DeleteNumscriptRequest{
-				Ledger: ledger,
+				Ledger: ledgerName,
 				Name:   name,
 			},
 		},

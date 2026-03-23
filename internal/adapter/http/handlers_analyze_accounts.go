@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 )
 
@@ -82,10 +80,8 @@ func toPatternSegmentJSON(s *servicepb.PatternSegment) *patternSegmentJSON {
 
 // handleAnalyzeAccounts handles GET /{ledgerName}/analyze-accounts.
 func (s *Server) handleAnalyzeAccounts(w http.ResponseWriter, r *http.Request) {
-	ledgerName := chi.URLParam(r, "ledgerName")
-	if ledgerName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
-
+	ledgerName, ok := requireLedgerName(w, r)
+	if !ok {
 		return
 	}
 

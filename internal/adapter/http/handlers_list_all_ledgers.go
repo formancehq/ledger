@@ -1,11 +1,7 @@
 package http
 
 import (
-	"errors"
-	"io"
 	"net/http"
-
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
 // handleListAllLedgers handles GET / to list all ledgers.
@@ -20,25 +16,9 @@ func (s *Server) handleListAllLedgers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer func() {
-		_ = cursor.Close()
-	}()
-
-	var ret []*commonpb.LedgerInfo
-
-	for {
-		ledger, err := cursor.Next()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-
-			handleError(w, r, err)
-
-			return
-		}
-
-		ret = append(ret, ledger)
+	ret, ok := drainCursor(w, r, cursor)
+	if !ok {
+		return
 	}
 
 	// Return ledgers list wrapped in BaseResponse

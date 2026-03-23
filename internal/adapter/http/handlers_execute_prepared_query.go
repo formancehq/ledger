@@ -17,11 +17,14 @@ import (
 
 // handleExecutePreparedQuery handles POST /{ledgerName}/prepared-queries/{name}/execute.
 func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Request) {
-	ledgerName := chi.URLParam(r, "ledgerName")
+	ledgerName, ok := requireLedgerName(w, r)
+	if !ok {
+		return
+	}
 
 	queryName := chi.URLParam(r, "queryName")
-	if ledgerName == "" || queryName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name and query name are required"))
+	if queryName == "" {
+		writeBadRequest(w, "INVALID_REQUEST", errors.New("query name is required"))
 
 		return
 	}

@@ -1,12 +1,8 @@
 package http
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -15,24 +11,13 @@ import (
 
 // handleRevertTransaction handles POST /{ledgerName}/transactions/{transactionId}/revert to revert a transaction.
 func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request) {
-	ledgerName := chi.URLParam(r, "ledgerName")
-	if ledgerName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
-
+	ledgerName, ok := requireLedgerName(w, r)
+	if !ok {
 		return
 	}
 
-	transactionIDRaw := chi.URLParam(r, "transactionId")
-	if transactionIDRaw == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("transaction id is required"))
-
-		return
-	}
-
-	transactionID, err := strconv.ParseUint(transactionIDRaw, 10, 64)
-	if err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid transaction id: %w", err))
-
+	transactionID, ok := requireTransactionID(w, r)
+	if !ok {
 		return
 	}
 

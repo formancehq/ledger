@@ -1,11 +1,8 @@
 package http
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -34,10 +31,8 @@ type mirrorSourceBody struct {
 
 // handleCreateLedger handles POST /{ledgerName} to create a new ledger.
 func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
-	ledgerName := chi.URLParam(r, "ledgerName")
-	if ledgerName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
-
+	ledgerName, ok := requireLedgerName(w, r)
+	if !ok {
 		return
 	}
 

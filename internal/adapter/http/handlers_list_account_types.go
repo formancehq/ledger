@@ -1,11 +1,8 @@
 package http
 
 import (
-	"errors"
 	"net/http"
 	"sort"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
@@ -41,10 +38,8 @@ func toAccountTypeJSON(at *commonpb.AccountType) accountTypeJSON {
 
 // handleListAccountTypes handles GET /{ledgerName}/account-types.
 func (s *Server) handleListAccountTypes(w http.ResponseWriter, r *http.Request) {
-	ledgerName := chi.URLParam(r, "ledgerName")
-	if ledgerName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
-
+	ledgerName, ok := requireLedgerName(w, r)
+	if !ok {
 		return
 	}
 

@@ -1,12 +1,9 @@
 package http
 
 import (
-	"errors"
 	"math/big"
 	"net/http"
 	"strings"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/query"
@@ -71,10 +68,8 @@ func toAggregateVolumesJSON(result *commonpb.AggregateResult) *aggregateVolumesR
 
 // handleAggregateVolumes handles GET /{ledgerName}/volumes.
 func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) {
-	ledgerName := chi.URLParam(r, "ledgerName")
-	if ledgerName == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("ledger name is required"))
-
+	ledgerName, ok := requireLedgerName(w, r)
+	if !ok {
 		return
 	}
 
