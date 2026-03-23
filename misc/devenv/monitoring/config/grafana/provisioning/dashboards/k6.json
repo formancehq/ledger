@@ -51,7 +51,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -103,7 +103,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -155,7 +155,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -208,7 +208,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -261,7 +261,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -314,7 +314,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -367,7 +367,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -524,7 +524,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "k6_http_req_duration - HTTP request duration percentiles",
       "fieldConfig": {
@@ -632,7 +632,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "HTTP request rate over time",
       "fieldConfig": {
@@ -732,7 +732,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Average HTTP latency calculated from histogram sum/count",
       "fieldConfig": {
@@ -832,7 +832,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -925,7 +925,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1011,7 +1011,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "k6_iteration_duration - Time to complete one full iteration",
       "fieldConfig": {
@@ -1122,6 +1122,22 @@
   "templating": {
     "list": [
       {
+        "current": {
+          "selected": true,
+          "text": "VictoriaMetrics",
+          "value": "VictoriaMetrics"
+        },
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
         "allValue": ".*",
         "current": {
           "text": "All",
@@ -1129,7 +1145,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "${datasource}"
         },
         "definition": "label_values(k6_vus, service.name)",
         "includeAll": true,

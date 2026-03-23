@@ -34,7 +34,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Number of logs appended to the store per second per node. This metric represents the actual throughput of the system - how many logs (transactions, metadata changes, etc.) are being committed.\n\nHigher values indicate better performance. A sudden drop may indicate:\n- Leader election in progress\n- Storage backpressure (check Pebble write stalls)\n- Network issues between nodes\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#fsm-metrics",
           "fieldConfig": {
@@ -115,7 +115,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(raft.fsm.logs_appended{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -131,7 +131,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Round-trip time (RTT) latency of ping requests between nodes. Measures network health between cluster members.\n\nHigh latency (>10ms) may cause:\n- Slower consensus\n- Leadership instability\n- Increased transaction latency\n\nCheck network configuration if latency is consistently high.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#global-transport-metrics",
           "fieldConfig": {
@@ -217,7 +217,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "rate({\"raft.transport.ping.latency_sum\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}[$__rate_interval])",
@@ -233,7 +233,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "HTTP request rate per node, grouped by status code. Shows API traffic and error rates.\n\nMonitor for:\n- 2xx: Successful requests\n- 4xx: Client errors (bad requests, not found)\n- 5xx: Server errors (investigate immediately)\n\nSudden spikes in 5xx errors may indicate system issues.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#http-server-metrics",
           "fieldConfig": {
@@ -329,7 +329,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "System memory utilization ratio (0-1) showing used vs free memory.\n\nHigh memory utilization (>0.9) may cause:\n- OOM kills by Kubernetes\n- Performance degradation due to swapping\n- Increased GC pressure\n\nConsider increasing memory limits or scaling horizontally.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#system-metrics",
           "fieldConfig": {
@@ -414,7 +414,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "rate({\"system.memory.utilization\", \"system.memory.state\"=\"used\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}[$__rate_interval])",
@@ -426,7 +426,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "rate({\"system.memory.utilization\", \"system.memory.state\"=\"free\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}[$__rate_interval])",
@@ -443,7 +443,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "CPU utilization as a ratio of process CPU time to available processor limit. Shows how much CPU capacity the process is using.\n\nValues close to 1.0 indicate CPU saturation. Consider:\n- Profiling to identify hot paths\n- Increasing CPU limits\n- Scaling horizontally\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#process-metrics",
           "fieldConfig": {
@@ -529,7 +529,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -544,7 +544,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -573,7 +573,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Network I/O throughput showing bytes received and transmitted per second.\n\nHigh network traffic is expected during:\n- Log replication (leader to followers)\n- Snapshot transfers\n- Client request processing\n\nSudden drops may indicate network partitions.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#process-metrics",
           "fieldConfig": {
@@ -658,7 +658,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -671,7 +671,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "rate(system.network.io{network.io.direction=\"transmit\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"})",
@@ -688,7 +688,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Absolute system memory usage in bytes, broken down by state (used, free, cached, buffered).\n\nProvides visibility into how memory is allocated at the OS level. Useful for capacity planning and troubleshooting memory pressure.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#process-metrics",
           "fieldConfig": {
@@ -773,7 +773,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -791,7 +791,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of memory allocation by the Go runtime (bytes per second). High allocation rates cause increased GC pressure.\n\nConsistently high allocation rates may indicate:\n- Inefficient code paths creating many short-lived objects\n- Need for object pooling\n- Memory leaks if trend is upward\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#go-runtime-metrics",
           "fieldConfig": {
@@ -876,7 +876,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "rate(go.memory.allocated{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
@@ -892,7 +892,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Shows which node is recognized as the Raft leader by each node. All nodes should report the same leader ID.\n\nLeader ID 0 means no leader is known (cluster is electing). Monitor for:\n- Frequent leader changes (leadership instability)\n- Split-brain scenarios (different nodes reporting different leaders)\n- Extended periods with no leader\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
           "fieldConfig": {
@@ -976,7 +976,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "builder",
               "exemplar": false,
@@ -990,7 +990,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "builder",
               "expr": "",
@@ -1007,7 +1007,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Number of active goroutines in the Go runtime. A steadily increasing count may indicate goroutine leaks.\n\nNormal operation should show a stable count with occasional spikes during high load. Investigate if:\n- Count grows unbounded over time\n- Count is significantly higher than expected\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#go-runtime-metrics",
           "fieldConfig": {
@@ -1091,7 +1091,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "go.goroutine.count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
@@ -1107,7 +1107,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Memory currently in use by the Go runtime, broken down by type (stack, heap).\n\nStack: Memory used by goroutine stacks\nHeap: Memory used by heap-allocated objects\n\nHigh heap usage may trigger more frequent GC cycles.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#go-runtime-metrics",
           "fieldConfig": {
@@ -1192,7 +1192,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "{\"go.memory.used\", \"service.cluster\"=~\"$cluster\", \"service.node_id\"=~\"$node\"}",
@@ -1210,7 +1210,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of memory allocations (objects per second) by the Go runtime.\n\nHigh allocation rates increase GC overhead. Combined with 'Go memory allocated', this helps identify whether you're allocating many small objects or fewer large objects.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#go-runtime-metrics",
           "fieldConfig": {
@@ -1295,7 +1295,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "rate(go.memory.allocations{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
@@ -1312,7 +1312,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Target heap size for the next GC cycle, set by the Go runtime's pacer.\n\nThe GC goal grows as your application uses more memory. If it grows unbounded, you may have a memory leak. The GOGC environment variable controls how aggressively the GC runs.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#go-runtime-metrics",
           "fieldConfig": {
@@ -1397,7 +1397,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "go.memory.gc.goal{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
@@ -1428,7 +1428,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of Raft messages received from other nodes, grouped by message type.\n\nMessage types include:\n- MsgApp: Log replication (AppendEntries)\n- MsgAppResp: Response to AppendEntries\n- MsgHeartbeat/MsgHeartbeatResp: Leader heartbeats\n- MsgVote/MsgVoteResp: Leader election votes\n\nHigh rates indicate active replication. Zero rates may indicate network issues.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#reception-channel-metrics",
           "fieldConfig": {
@@ -1509,7 +1509,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "rate(raft.transport.recv.load_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\", scope.name=\"raft.transport\"}[30s])",
@@ -1525,7 +1525,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Heatmap showing queue depth distribution for high-priority received messages (priority 1).\n\nHigh-priority messages include:\n- AppendEntries responses (AppResp)\n- Vote requests/responses (Vote, VoteResp)\n- Pre-vote requests (PreVote, PreVoteResp)\n\nConsistently high queue depth indicates the node cannot process messages fast enough. This may delay leader election or log replication acknowledgments.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#reception-channel-metrics",
           "fieldConfig": {
@@ -1728,7 +1728,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Heatmap showing queue depth distribution for medium-priority received messages (priority 1).\n\nMedium-priority messages include: MsgVote, MsgVoteResp, MsgPreVote, MsgPreVoteResp, MsgAppResp.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#reception-channel-metrics",
           "fieldConfig": {
@@ -1806,7 +1806,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Heatmap showing queue depth distribution for lower-priority received messages (priority 2).\n\nLower-priority messages include AppendEntries requests (App) which carry log entries for replication.\n\nHigh queue depth on followers is normal during heavy write load. On the leader, it should be minimal.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#reception-channel-metrics",
           "fieldConfig": {
@@ -2009,7 +2009,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Total number of times the reception channel was full and messages were dropped.\n\nALERT: Any non-zero value requires investigation!\n\nDropped messages cause:\n- Delayed log replication\n- Slower consensus\n- Potential leader election timeouts\n\nIncrease queue capacity or investigate why processing is slow.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#reception-channel-metrics",
           "fieldConfig": {
@@ -2059,7 +2059,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(increase(raft.transport.recv.full{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, scope.attributes.priority_name)",
@@ -2075,7 +2075,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of 'unreachable' notifications received. These indicate that a peer node could not be reached.\n\nHigh rates suggest:\n- Network connectivity issues\n- Peer node is down or overloaded\n- DNS resolution problems\n\nCorrelate with ping latency and leadership status.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#unreachable-channel-metrics",
           "fieldConfig": {
@@ -2156,7 +2156,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "rate(raft.transport.unreachable.load_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\", scope.name=\"raft.transport\"})",
@@ -2172,7 +2172,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Heatmap showing queue depth distribution for the unreachable notification queue.\n\nHigh values indicate many peers are becoming unreachable.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#unreachable-channel-metrics",
           "fieldConfig": {
@@ -2250,7 +2250,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Total number of times the unreachable notification channel was full.\n\nNon-zero values indicate the system cannot process unreachable notifications fast enough, which may delay failure detection.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#unreachable-channel-metrics",
           "fieldConfig": {
@@ -2300,7 +2300,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -2318,7 +2318,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Throughput of the pending send queue. This is the rate at which message batches are being queued for dispatch to peers.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#pending-send-queue-metrics",
           "fieldConfig": {
@@ -2399,7 +2399,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(raft.send.pending_messages.load_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -2415,7 +2415,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Heatmap showing queue depth distribution for the pending send queue.\n\nHigh values indicate messages are being queued faster than they can be dispatched.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#pending-send-queue-metrics",
           "fieldConfig": {
@@ -2493,7 +2493,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Number of times the pending send queue was full. Alert if non-zero.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#pending-send-queue-metrics",
           "fieldConfig": {
@@ -2578,7 +2578,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(increase(raft.send.pending_messages.full{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -2594,7 +2594,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of Raft messages being queued for sending to each peer, grouped by message type.\n\nShows outbound message flow to other cluster members:\n- MsgApp: Log replication to followers (leader only)\n- MsgHeartbeat: Heartbeats to maintain leadership\n- MsgVote: Vote requests during elections\n\nHigh rates on the leader indicate active replication.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
           "fieldConfig": {
@@ -2676,7 +2676,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -2696,7 +2696,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of times the per-peer send channel was full and messages were dropped.\n\nALERT: Non-zero rates indicate messages to peers are being dropped!\n\nThis causes:\n- Delayed replication to affected peer\n- Potential follower lag\n- Need for snapshot transfer if too far behind\n\nInvestigate network connectivity to the affected peer.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
           "fieldConfig": {
@@ -2783,7 +2783,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "exemplar": false,
@@ -2802,7 +2802,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Heatmap showing per-peer send queue depth for high-priority messages (priority 1).\n\nHigh-priority outbound messages:\n- AppendEntries responses\n- Vote requests/responses\n- Pre-vote requests/responses\n\nThese messages are critical for consensus. High queue depth may delay leader election or acknowledgment of replicated entries.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
           "fieldConfig": {
@@ -3005,7 +3005,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Heatmap showing queue depth distribution for medium-priority outgoing messages (priority 1).\n\nMedium-priority messages include: MsgVote, MsgVoteResp, MsgPreVote, MsgPreVoteResp, MsgAppResp.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
           "fieldConfig": {
@@ -3083,7 +3083,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Heatmap showing per-peer send queue depth for lower-priority messages (priority 2).\n\nLower-priority outbound messages are AppendEntries requests carrying log entries for replication.\n\nHigh queue depth indicates the leader is producing entries faster than they can be sent to followers. This may be due to:\n- Network bandwidth limitations\n- Slow followers\n- High write throughput\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#per-peer-sending-metrics",
           "fieldConfig": {
@@ -3286,7 +3286,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of proposals (transactions) entering and leaving the propose queue.\n\nIncoming: Transactions submitted by clients\nOutgoing: Transactions processed by Raft\n\nIf incoming >> outgoing, the queue is building up (backpressure). Check:\n- Leadership status (only leader processes proposals)\n- Apply entries latency\n- Storage write stalls\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#propose-queue-metrics",
           "fieldConfig": {
@@ -3367,7 +3367,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "rate(admission.propose_queue.load_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
@@ -3383,7 +3383,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Heatmap showing propose queue depth distribution over time.\n\nThe propose queue buffers transactions before they enter Raft consensus. Queue depth indicates backpressure:\n- Low values: System keeping up with load\n- High values: Transactions waiting to be processed\n\nPersistently high queue depth may require:\n- Increasing throughput capacity\n- Reducing client request rate\n- Investigating bottlenecks\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#propose-queue-metrics",
           "fieldConfig": {
@@ -3586,7 +3586,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Total number of times the propose queue was full and proposals were dropped.\n\nCRITICAL ALERT: Any non-zero value means transactions are being rejected!\n\nClients will receive errors when this happens. Immediate action required:\n- Scale horizontally\n- Increase queue capacity\n- Reduce client load\n- Investigate processing bottlenecks\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#propose-queue-metrics",
           "fieldConfig": {
@@ -3667,7 +3667,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(increase(admission.propose_queue.full{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -3683,7 +3683,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Number of responses awaited from each peer node. Shows in-flight requests to other cluster members.\n\nHigh values indicate:\n- Slow peer nodes\n- Network congestion\n- Processing bottlenecks on remote nodes\n\nPersistently high values for a specific peer may indicate that peer is struggling.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#global-transport-metrics",
           "fieldConfig": {
@@ -3792,7 +3792,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "{\"raft.transport.sending.pending_response\", service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
@@ -3921,7 +3921,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Number of Raft ready entries processed per second.\n\nThis metric shows the throughput of the Raft ready processing loop. Higher values indicate more activity in the Raft consensus layer.\n\nCorrelate with 'Process ready entry time passed' to understand both throughput and latency.",
       "fieldConfig": {
@@ -4002,7 +4002,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "sum(rate(raft.process_entry_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -4017,7 +4017,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Percentile distribution of time spent processing Raft ready entries (in microseconds).\n\nShows P99, P95, P75 and average latency for processing each ready batch from the Raft consensus layer.\n\nHigh latencies may indicate:\n- Heavy message processing load\n- Slow WAL writes\n- FSM apply bottlenecks",
       "fieldConfig": {
@@ -4098,7 +4098,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum(rate(raft.process_entry_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -4109,7 +4109,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum(rate(raft.process_entry_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -4121,7 +4121,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.75, sum(rate(raft.process_entry_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -4133,7 +4133,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "sum(rate(raft.process_entry_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.process_entry_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -4245,7 +4245,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Latency percentiles (P75, P95, P99) for appending entries to the WAL, in microseconds.\n\nThis measures the time spent writing Raft log entries to durable storage:\n- P75: 75% of append operations complete within this time\n- P95: 95% of append operations complete within this time\n- P99: 99% of append operations complete within this time\n\nHigh latencies indicate slow disk I/O or storage bottlenecks.",
       "fieldConfig": {
@@ -4326,7 +4326,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum(rate(raft.append_entries_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -4337,7 +4337,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum(rate(raft.append_entries_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -4349,7 +4349,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.75, sum(rate(raft.append_entries_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -4361,7 +4361,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "sum(rate(raft.append_entries_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.append_entries_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -4377,7 +4377,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Number of committed entries per Raft Ready batch.\n\nShows P99, P95, P75 percentiles and average count of committed entries received in each Ready from the Raft consensus layer.\n\nHigher values indicate more batching efficiency. Low values (close to 1) indicate entries are being processed one at a time.",
       "fieldConfig": {
@@ -4458,7 +4458,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum(rate(raft.ready.committed_entries_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -4469,7 +4469,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum(rate(raft.ready.committed_entries_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -4481,7 +4481,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.75, sum(rate(raft.ready.committed_entries_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -4493,7 +4493,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "sum(rate(raft.ready.committed_entries_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.ready.committed_entries_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -4509,7 +4509,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Time spent updating the in-memory cache (s.entries) during WAL append operations, in microseconds.\n\nThis measures the time to update the in-memory entry cache before persisting to disk. Should be very fast as it's purely in-memory operations.\n\nHigh values may indicate:\n- Memory pressure\n- Large entry batches\n- GC pauses",
       "fieldConfig": {
@@ -4605,7 +4605,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Time spent saving entries to the Write-Ahead Log (WAL) on disk, in microseconds.\n\nThis is the actual disk I/O time for persisting entries. High values indicate:\n- Slow disk I/O\n- Disk saturation\n- Need for faster storage (SSD/NVMe)\n\nThis metric directly impacts transaction latency as WAL writes must complete before entries can be committed.",
       "fieldConfig": {
@@ -4701,7 +4701,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Distribution of batch sizes when appending entries to the WAL (P75, P95, P99 percentiles).\n\nThis shows how many entries are appended at once:\n- Batch size 1: Single entry per append (less efficient)\n- Batch size >1: Multiple entries batched together (better throughput)\n\nHigher batch sizes indicate the system is efficiently batching entries under load.",
       "fieldConfig": {
@@ -4793,7 +4793,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum(rate(wal.append.batch_size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -4805,7 +4805,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.75, sum(rate(wal.append.batch_size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -4817,7 +4817,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "sum(rate(wal.append.batch_size_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(wal.append.batch_size_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -4833,7 +4833,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Time spent waiting for a Ready from the Raft state machine. This measures the idle time between processing consecutive Ready batches.\n\nHigh wait times indicate:\n- Low activity (normal when idle)\n- System is not under load\n\nLow wait times indicate:\n- High throughput\n- System is processing many transactions",
       "fieldConfig": {
@@ -4914,7 +4914,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
@@ -4926,7 +4926,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum(rate(raft.node.ready.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
@@ -4938,7 +4938,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
@@ -4950,7 +4950,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "sum(rate(raft.node.ready.wait_duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.node.ready.wait_duration_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -4966,7 +4966,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Number of Ready events processed per second. Each Ready contains a batch of entries to apply to the state machine.\n\nHigher rates indicate:\n- More transactions being processed\n- More Raft activity (heartbeats, elections, etc.)",
       "fieldConfig": {
@@ -5047,7 +5047,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "sum(rate(raft.node.ready.wait_duration_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -5158,7 +5158,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Time spent creating Raft snapshots (in milliseconds). Snapshots compact the Raft log and are transferred to lagging followers.\n\nSnapshot creation involves:\n- Serializing FSM state\n- Writing to disk\n- Compacting the Raft log\n\nLong snapshot times may cause:\n- Temporary throughput reduction\n- Increased memory usage during serialization\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#snapshot-metrics",
       "fieldConfig": {
@@ -5243,7 +5243,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "rate(raft.syncer.create_snapshot.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
@@ -5259,7 +5259,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Time the processReadies goroutine spends waiting for the orchestrate loop to consume readyTerminated (in microseconds).\n\nHigh values indicate the orchestrate loop is slow to pick up completed Readies, which means the ready processing pipeline is stalled waiting for Advance.",
       "fieldConfig": {
@@ -5340,7 +5340,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum(rate(raft.node.ready_terminated.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
@@ -5352,7 +5352,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.50, sum(rate(raft.node.ready_terminated.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
@@ -5368,7 +5368,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Time spent in unspoolAndResume after a maintenance task (snapshot or checkpoint restore). During this time, spooled entries are replayed into the store.\n\nLong unspool times indicate many entries were spooled during the maintenance task, which means the system was under heavy write load when the snapshot was triggered.",
       "fieldConfig": {
@@ -5449,7 +5449,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "rate(raft.node.unspool.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
@@ -5465,7 +5465,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Rate of snapshots triggered per second. Each snapshot causes the state machine to be short-circuited (entries are spooled) while the snapshot is created and WAL is compacted.\n\nFrequent snapshots may indicate the snapshot threshold is too low relative to throughput.",
       "fieldConfig": {
@@ -5546,7 +5546,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "rate(raft.snapshot.triggered{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
@@ -5562,7 +5562,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Time spent waiting for gatingTerminated (maintenance task completion) in the processReadies goroutine.\n\nThis measures how long the ready processing pipeline is stalled while a snapshot or checkpoint restore is in progress.",
       "fieldConfig": {
@@ -5643,7 +5643,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum(rate(raft.node.gating.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
@@ -5655,7 +5655,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.50, sum(rate(raft.node.gating.wait_duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
@@ -5671,7 +5671,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Number of Raft Readies processed during each gating period (snapshot/checkpoint restore).\n\nHigher values indicate more Readies were spooled instead of applied directly to the FSM while the maintenance task was running.",
       "fieldConfig": {
@@ -5751,7 +5751,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum(rate(raft.node.gating.readies_processed_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
@@ -5763,7 +5763,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.50, sum(rate(raft.node.gating.readies_processed_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
@@ -5779,7 +5779,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Gating timeline breakdown: snapshot creation time vs replay spool time (stacked bars).\n\nShows how time is spent during each maintenance task (snapshot). The total of both series approximates the gating wait duration.\n\n- Snapshot creation (red): serializing FSM state + writing to WAL\n- Replay spool (orange): replaying entries that were spooled during the snapshot\n\nIf snapshot creation dominates, the bottleneck is serialization/I/O.\nIf replay spool dominates, many entries accumulated during the snapshot window.",
       "fieldConfig": {
@@ -5891,7 +5891,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "rate(raft.node.maintenance.snapshot_creation.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
@@ -5903,7 +5903,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "rate(raft.node.maintenance.replay_spool.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
@@ -5919,7 +5919,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Time spent in generation rotation (boundary flush) during ApplyEntries.\n\nRotation happens when the raft index crosses a generation threshold. During rotation, dirty boundaries are flushed to PebbleDB inline in the critical path.",
       "fieldConfig": {
@@ -6000,7 +6000,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "rate(raft.fsm.rotation.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])",
@@ -6016,7 +6016,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "${datasource}"
       },
       "description": "Time spent in PebbleDB batch.Commit() during ApplyEntries (p50 and p99).\n\nMeasures the final I/O cost of committing all accumulated writes to PebbleDB.\n\nSpikes correlate with large batches, PebbleDB compaction pressure, or disk I/O latency.",
       "fieldConfig": {
@@ -6097,7 +6097,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum(rate(raft.fsm.batch_commit.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
@@ -6109,7 +6109,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.50, sum(rate(raft.fsm.batch_commit.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le, service.node_id))",
@@ -6135,7 +6135,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Total time spent applying committed entries to the FSM (in microseconds per second).\n\nThis is where transactions are actually processed and balances updated. High values indicate:\n- Complex transactions taking longer\n- Storage (Pebble) write bottlenecks\n- High transaction volume\n\nCorrelate with 'Applying entries rate' and Pebble metrics.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
           "fieldConfig": {
@@ -6216,7 +6216,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(raft.apply_entries.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -6232,7 +6232,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Distribution of batch sizes when applying entries (P75, P95, P99 percentiles).\n\nLarger batches are more efficient:\n- Batch size 1: Each entry applied individually (less efficient)\n- Batch size >1: Multiple entries applied together (better throughput)\n\nHigher percentiles indicate the system is effectively batching under load, which improves throughput.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
           "fieldConfig": {
@@ -6316,7 +6316,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -6329,7 +6329,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -6342,7 +6342,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.batch_size_distribution_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -6355,7 +6355,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(raft.apply_entries.batch_size_distribution_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.apply_entries.batch_size_distribution_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -6372,7 +6372,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Latency percentiles (P75, P95, P99) for applying committed entries to the FSM, in microseconds.\n\nThis is the core transaction processing latency:\n- P75: 75% of batches complete within this time\n- P95: 95% of batches complete within this time\n- P99: 99% of batches complete within this time\n\nHigh P99 values may indicate occasional slow operations (GC pauses, disk flushes).\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
           "fieldConfig": {
@@ -6464,7 +6464,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(raft.apply_entries.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -6476,7 +6476,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.75, sum(rate(raft.apply_entries.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -6488,7 +6488,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(raft.apply_entries.duration_sum{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(raft.apply_entries.duration_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -6504,7 +6504,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of apply operations per second (how often the FSM processes batches).\n\nCombine with 'Batch size distribution' to understand throughput:\n- High rate + low batch size = many small batches\n- Lower rate + high batch size = fewer but larger batches (more efficient)\n\nTotal transactions/sec = rate \u00d7 average batch size\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#node-metrics",
           "fieldConfig": {
@@ -6600,7 +6600,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "fieldConfig": {
             "defaults": {
@@ -6686,7 +6686,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(raft.applier.batch_wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
@@ -6698,7 +6698,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(raft.applier.batch_wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
@@ -6710,7 +6710,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(raft.applier.batch_wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
@@ -6740,7 +6740,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Number of Pebble flush operations per second. Flushes write data from memory (memtable) to disk (SSTable).\n\nFlushes are triggered when:\n- Memtable reaches capacity\n- Manual flush requested\n- Write stall prevention\n\nHigh flush rates indicate heavy write activity. Monitor flush duration for performance.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#flush-metrics",
           "fieldConfig": {
@@ -6835,7 +6835,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Pebble flush duration percentiles (P50, P95, P99) in milliseconds.\n\nFlush duration measures how long it takes to write memtable contents to disk. High values indicate:\n- Slow disk I/O\n- Large memtables\n- Disk contention\n\nP99 spikes may correlate with write stalls. Consider NVMe storage for better performance.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#flush-metrics",
           "fieldConfig": {
@@ -6953,7 +6953,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of bytes flushed from memtables to SSTables per second.\n\nThis indicates write amplification and disk write throughput. High values mean:\n- Heavy write workload\n- Good throughput\n- High disk I/O utilization\n\nCompare with flush duration to understand I/O efficiency.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#flush-metrics",
           "fieldConfig": {
@@ -7049,7 +7049,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Number of Pebble compaction operations per second. Compactions merge and reorganize SSTables.\n\nCompaction purposes:\n- Merge overlapping keys\n- Reclaim deleted space\n- Optimize read performance\n- Level promotion\n\nHigh compaction rates indicate active data reorganization. Watch compaction duration for bottlenecks.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#compaction-metrics",
           "fieldConfig": {
@@ -7144,7 +7144,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Pebble compaction duration percentiles (P50, P95, P99) in milliseconds.\n\nCompaction duration depends on:\n- Amount of data being compacted\n- Disk I/O speed\n- CPU for decompression/compression\n\nLong compactions may temporarily impact read performance. Very high P99 values warrant investigation.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#compaction-metrics",
           "fieldConfig": {
@@ -7287,7 +7287,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of compaction errors per second.\n\nALERT: Any non-zero value requires immediate investigation!\n\nCompaction errors may indicate:\n- Disk corruption\n- Out of disk space\n- Hardware failure\n- File system issues\n\nCheck system logs and disk health immediately.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#compaction-metrics",
           "fieldConfig": {
@@ -7382,7 +7382,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Shows if Pebble is currently stalling writes (1 = stalling, 0 = normal).\n\nCRITICAL ALERT: Value of 1 means transactions are being delayed!\n\nWrite stalls occur when:\n- L0 has too many files\n- Memtable count too high\n- Compaction backlog too large\n\nImmediate actions:\n- Check disk I/O utilization\n- Consider faster storage (NVMe)\n- Review compaction settings\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#write-stall-metrics",
           "fieldConfig": {
@@ -7477,7 +7477,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Number of write stall events per second. Each stall temporarily blocks write operations.\n\nWrite stalls happen when Pebble's internal queues fill up:\n- memtable: Too many memtables waiting to flush\n- l0: Too many L0 SSTables\n- flush_slowdown: Flush falling behind\n\nFrequent stalls indicate storage cannot keep up with write rate. Consider:\n- Faster storage (NVMe SSD)\n- Reduced write rate\n- Tuning Pebble settings\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#write-stall-metrics",
           "fieldConfig": {
@@ -7572,7 +7572,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Duration of write stalls (P50, P95, P99) in seconds. Shows how long writes are blocked.\n\nStall duration directly impacts:\n- Transaction latency (blocked during stall)\n- Throughput (no progress during stall)\n- Client timeouts (if stall exceeds timeout)\n\nLong stalls (>1s) are critical. High P99 values indicate occasional severe blocking.\n\nSee: https://github.com/formancehq/ledger-v3-poc/blob/master/docs/metrics.md#write-stall-metrics",
           "fieldConfig": {
@@ -7704,7 +7704,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Total bytes stored in each Pebble LSM level. Level 0 holds recently flushed memtable data; higher levels hold progressively older, compacted data.",
           "fieldConfig": {
@@ -7788,7 +7788,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "readindex.level.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
@@ -7803,7 +7803,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Current memtable size in bytes. The memtable absorbs writes before they are flushed to L0 SSTables.",
           "fieldConfig": {
@@ -7887,7 +7887,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "readindex.memtable.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
@@ -7902,7 +7902,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Block cache hit and miss rates. A high hit rate indicates the working set fits in cache.",
           "fieldConfig": {
@@ -7986,7 +7986,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "readindex.cache.hits{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
@@ -7997,7 +7997,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "readindex.cache.misses{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
@@ -8012,7 +8012,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Block cache hit ratio: hits / (hits + misses). Values above 90% are good.",
           "fieldConfig": {
@@ -8073,7 +8073,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "readindex.cache.hits{service.cluster=~\"$cluster\", service.node_id=~\"$node\"} / (readindex.cache.hits{service.cluster=~\"$cluster\", service.node_id=~\"$node\"} + readindex.cache.misses{service.cluster=~\"$cluster\", service.node_id=~\"$node\"})",
@@ -8103,7 +8103,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Number of entries in the attribute cache by type.\n\n- volumes: Account volumes (input/output)\n- account_metadata: Account metadata\n- ledger_metadata: Ledger metadata\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency keys\n- references: Transaction references\n- ledgers: Ledger info\n- boundaries: Ledger boundaries",
           "fieldConfig": {
@@ -8186,7 +8186,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "cache.size{service.cluster=~\"$cluster\", service.node_id=~\"$node\", type=\"volumes\"}",
@@ -8198,7 +8198,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "cache.size{service.cluster=~\"$cluster\", service.node_id=~\"$node\", type=\"account_metadata\"}",
@@ -8210,7 +8210,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "cache.size{service.cluster=~\"$cluster\", service.node_id=~\"$node\", type=\"idempotency_keys\"}",
@@ -8222,7 +8222,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "cache.size{service.cluster=~\"$cluster\", service.node_id=~\"$node\", type=\"boundaries\"}",
@@ -8238,7 +8238,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Number of cached Numscript programs per node. Shows how many unique scripts are currently stored in the cache.",
           "fieldConfig": {
@@ -8319,7 +8319,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "numscript.cache.size{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
@@ -8335,7 +8335,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Number of cache generation rotations and current generation.\n\nRotations occur when the raft index crosses a generation threshold, triggering cleanup of old cached data.",
           "fieldConfig": {
@@ -8416,7 +8416,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "cache.generation{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}",
@@ -8428,7 +8428,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(cache.rotations{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -8458,7 +8458,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Time spent loading preload values from the persistent store during admission. High values indicate slow storage or expensive attribute computations.\n\nBreakdown by attribute type:\n- volumes: Account volumes (input/output)\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency key mappings\n- boundaries: Ledger boundaries\n- ledgers: Ledger info\n- references: Transaction references",
           "fieldConfig": {
@@ -8540,7 +8540,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(admission.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, type))",
@@ -8552,7 +8552,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(admission.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, type))",
@@ -8564,7 +8564,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(admission.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, type))",
@@ -8580,7 +8580,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of preload operations from the persistent store per second. High rates after warmup may indicate cache efficiency issues.\n\nBreakdown by attribute type:\n- volumes: Account volumes (input/output)\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency key mappings\n- boundaries: Ledger boundaries\n- ledgers: Ledger info\n- references: Transaction references",
           "fieldConfig": {
@@ -8662,7 +8662,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(admission.preload.total{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -8678,7 +8678,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of keys that need resolving during preload, broken down by attribute type.\nThis shows the total demand on the preload system before cache filtering.",
           "fieldConfig": {
@@ -8760,7 +8760,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(admission.preload.keys_needed{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -8776,7 +8776,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Percentage of preload keys found guaranteed in cache (no store read needed).\nComputed as: cache_hits / keys_needed * 100.\n\nHigh values (close to 100%) indicate good cache efficiency.\nLow values indicate many cache misses requiring store reads.",
           "fieldConfig": {
@@ -8858,7 +8858,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(admission.preload.cache_hits{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(admission.preload.keys_needed{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) * 100",
@@ -8874,7 +8874,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Comparison of store reads (cache misses) vs cache hits by attribute type.\nHelps visualize the cache effectiveness at a glance.",
           "fieldConfig": {
@@ -8956,7 +8956,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(admission.preload.keys_needed{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) - sum(rate(admission.preload.cache_hits{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -8968,7 +8968,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(admission.preload.cache_hits{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -8984,7 +8984,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Current load of the propose queue. High values indicate backpressure from Raft consensus.\nAlert if propose queue full counter is non-zero.",
           "fieldConfig": {
@@ -9066,7 +9066,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(admission.propose_queue.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
@@ -9078,7 +9078,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(admission.propose_queue.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
@@ -9090,7 +9090,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(admission.propose_queue.load_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
@@ -9106,7 +9106,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Total time from Apply call to future resolution. Includes preload time, proposal time, and FSM application time.",
           "fieldConfig": {
@@ -9188,7 +9188,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(admission.command.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -9200,7 +9200,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(admission.command.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -9212,7 +9212,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(admission.command.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -9228,7 +9228,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Distribution of Raft command sizes in bytes. Large commands may indicate many postings or large metadata.",
           "fieldConfig": {
@@ -9294,7 +9294,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(admission.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le)",
@@ -9311,7 +9311,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Size of marshalled Raft commands in bytes. Large commands (>50KB) can cause memory issues when many requests are queued.",
           "fieldConfig": {
@@ -9401,7 +9401,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.5, rate(admission.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval]))",
@@ -9413,7 +9413,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, rate(admission.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval]))",
@@ -9425,7 +9425,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, rate(admission.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval]))",
@@ -9441,7 +9441,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of commands by size bucket. Helps identify the distribution of command sizes.",
           "fieldConfig": {
@@ -9522,7 +9522,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum by (le) (rate(admission.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval]))",
@@ -9538,7 +9538,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Time waiting for Raft to accept and replicate a proposal (Propose + Wait). Lower is better.",
           "fieldConfig": {
@@ -9620,7 +9620,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(admission.propose.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -9632,7 +9632,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(admission.propose.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -9644,7 +9644,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(admission.propose.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -9660,7 +9660,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Time waiting for the FSM to apply the command after Raft has accepted the proposal.\n\nThis measures the gap between proposal acceptance and future resolution. Spikes here confirm that snapshot gating or pipeline stalls are blocking command application.\n\nCompare with 'Propose Duration' which measures only Raft acceptance time.",
           "fieldConfig": {
@@ -9741,7 +9741,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(admission.fsm_future.wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -9753,7 +9753,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(admission.fsm_future.wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -9765,7 +9765,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(admission.fsm_future.wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id, le))",
@@ -9781,7 +9781,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Time spent waiting to acquire the proposal guard lock. High values indicate contention on the proposal mutex, which serializes boundary validation and Propose calls.",
           "fieldConfig": {
@@ -9863,7 +9863,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(admission.proposal_guard.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
@@ -9875,7 +9875,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(admission.proposal_guard.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
@@ -9887,7 +9887,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(admission.proposal_guard.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
@@ -9903,7 +9903,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of proposal guard rebuilds (boundary shifted) vs total proposals. A high ratio means the cache generation boundary is frequently shifting between optimistic preload and proposal, causing expensive re-builds under lock.",
           "fieldConfig": {
@@ -9985,7 +9985,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(admission.proposal_guard.rebuild{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id) / sum(rate(admission.command.duration_count{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -9997,7 +9997,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(admission.proposal_guard.rebuild{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
@@ -10027,7 +10027,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "End-to-end duration of a batch Apply call through the controller, including admission, preload, marshal, propose, and FSM wait.",
           "fieldConfig": {
@@ -10109,7 +10109,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(ctrl.apply.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
@@ -10121,7 +10121,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(ctrl.apply.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
@@ -10133,7 +10133,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(ctrl.apply.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
@@ -10149,7 +10149,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Total duration of the gRPC Apply handler, including auth, ctrl.Apply, receipt signing, and response signing.",
           "fieldConfig": {
@@ -10231,7 +10231,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(grpc.apply.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
@@ -10243,7 +10243,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(grpc.apply.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
@@ -10255,7 +10255,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(grpc.apply.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (vmrange, service.node_id))",
@@ -10285,7 +10285,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of v2 logs fetched and ingested by the mirror worker, broken down by ledger.",
           "fieldConfig": {
@@ -10367,7 +10367,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(mirror.logs.ingested{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (ledger)",
@@ -10383,7 +10383,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of mirror batches processed per second, broken down by status (success/error).",
           "fieldConfig": {
@@ -10465,7 +10465,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "sum(rate(mirror.batch.total{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (status)",
@@ -10481,7 +10481,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "End-to-end batch processing time from cursor read to FSM apply completion.",
           "fieldConfig": {
@@ -10563,7 +10563,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(mirror.batch.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
@@ -10575,7 +10575,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(mirror.batch.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
@@ -10587,7 +10587,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.99, sum(rate(mirror.batch.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
@@ -10603,7 +10603,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "p95 duration of each phase within a mirror batch: fetch (HTTP/PG source), translate (v2\u2192v3), preload (Pebble reads), propose (Raft), and fsm_wait (FSM apply).",
           "fieldConfig": {
@@ -10685,7 +10685,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(mirror.fetch.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
@@ -10697,7 +10697,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(mirror.translate.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
@@ -10709,7 +10709,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(mirror.preload.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
@@ -10721,7 +10721,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(mirror.propose.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
@@ -10733,7 +10733,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(mirror.fsm_wait.duration_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
@@ -10749,7 +10749,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Size of the marshalled Raft proposal in bytes. Large commands increase WAL write amplification.",
           "fieldConfig": {
@@ -10831,7 +10831,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.50, sum(rate(mirror.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
@@ -10843,7 +10843,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "histogram_quantile(0.95, sum(rate(mirror.command.size_bucket{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (le))",
@@ -10873,7 +10873,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Disk space used by each storage component (spool, WAL, data, read index). Updated every 10 seconds by a background collector.",
           "fieldConfig": {
@@ -10956,7 +10956,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "storage.disk.component.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", component=\"spool\"}",
@@ -10968,7 +10968,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "storage.disk.component.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", component=\"wal\"}",
@@ -10980,7 +10980,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "storage.disk.component.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", component=\"data\"}",
@@ -10992,7 +10992,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "storage.disk.component.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", component=\"readindex\"}",
@@ -11008,7 +11008,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Disk space used by each storage volume (WAL volume, data volume). Updated every 10 seconds by a background collector.",
           "fieldConfig": {
@@ -11091,7 +11091,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "storage.disk.volume.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", volume=\"wal\"}",
@@ -11103,7 +11103,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "editorMode": "code",
               "expr": "storage.disk.volume.bytes{service.cluster=~\"$cluster\", service.node_id=~\"$node\", volume=\"data\"}",
@@ -11133,7 +11133,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Number of logs the index builder is behind Pebble. A high lag means queries may return stale results. The builder batches 1000 logs per Pebble batch to amortize write overhead.",
           "fieldConfig": {
@@ -11189,7 +11189,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "expr": "index.builder.lag{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
               "refId": "A"
@@ -11201,7 +11201,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Rate of logs indexed per second. Higher values indicate faster catch-up.",
           "fieldConfig": {
@@ -11272,7 +11272,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "expr": "rate(index.builder.logs_indexed_total{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[1m])",
               "legendFormat": "{{service_node_id}}",
@@ -11285,7 +11285,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "${datasource}"
           },
           "description": "Last indexed sequence vs Pebble last sequence. The gap between the two lines is the lag.",
           "fieldConfig": {
@@ -11355,7 +11355,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "expr": "index.builder.last_indexed_sequence{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
               "legendFormat": "Last Indexed ({{service_node_id}})",
@@ -11364,7 +11364,7 @@
             {
               "datasource": {
                 "type": "prometheus",
-                "uid": "VictoriaMetrics"
+                "uid": "${datasource}"
               },
               "expr": "index.builder.pebble_last_sequence{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
               "legendFormat": "Pebble Last ({{service_node_id}})",
@@ -11391,7 +11391,7 @@
         {
           "datasource": {
             "type": "grafana-pyroscope-datasource",
-            "uid": "Pyroscope"
+            "uid": "${pyroscope}"
           },
           "description": "CPU flame graph from Pyroscope continuous profiling. Shows where CPU time is spent in the application.\n\nUse the version tag to compare profiles between different builds.",
           "fieldConfig": {
@@ -11415,7 +11415,7 @@
             {
               "datasource": {
                 "type": "grafana-pyroscope-datasource",
-                "uid": "Pyroscope"
+                "uid": "${pyroscope}"
               },
               "groupBy": [],
               "labelSelector": "{service_name=\"ledger-v3-poc\", version=~\"$version\"}",
@@ -11431,7 +11431,7 @@
         {
           "datasource": {
             "type": "grafana-pyroscope-datasource",
-            "uid": "Pyroscope"
+            "uid": "${pyroscope}"
           },
           "description": "Memory allocation flame graph from Pyroscope. Shows where memory is being allocated in the application.",
           "fieldConfig": {
@@ -11455,7 +11455,7 @@
             {
               "datasource": {
                 "type": "grafana-pyroscope-datasource",
-                "uid": "Pyroscope"
+                "uid": "${pyroscope}"
               },
               "groupBy": [],
               "labelSelector": "{service_name=\"ledger-v3-poc\", version=~\"$version\"}",
@@ -11471,7 +11471,7 @@
         {
           "datasource": {
             "type": "grafana-pyroscope-datasource",
-            "uid": "Pyroscope"
+            "uid": "${pyroscope}"
           },
           "description": "Memory in-use flame graph from Pyroscope. Shows current memory usage in the application.",
           "fieldConfig": {
@@ -11495,7 +11495,7 @@
             {
               "datasource": {
                 "type": "grafana-pyroscope-datasource",
-                "uid": "Pyroscope"
+                "uid": "${pyroscope}"
               },
               "groupBy": [],
               "labelSelector": "{service_name=\"ledger-v3-poc\", version=~\"$version\"}",
@@ -11511,7 +11511,7 @@
         {
           "datasource": {
             "type": "grafana-pyroscope-datasource",
-            "uid": "Pyroscope"
+            "uid": "${pyroscope}"
           },
           "description": "Goroutine flame graph from Pyroscope. Shows goroutine stack traces.",
           "fieldConfig": {
@@ -11535,7 +11535,7 @@
             {
               "datasource": {
                 "type": "grafana-pyroscope-datasource",
-                "uid": "Pyroscope"
+                "uid": "${pyroscope}"
               },
               "groupBy": [],
               "labelSelector": "{service_name=\"ledger-v3-poc\", version=~\"$version\"}",
@@ -11563,10 +11563,42 @@
   "templating": {
     "list": [
       {
+        "current": {
+          "selected": true,
+          "text": "VictoriaMetrics",
+          "value": "VictoriaMetrics"
+        },
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "Pyroscope",
+          "value": "Pyroscope"
+        },
+        "includeAll": false,
+        "label": "Pyroscope",
+        "multi": false,
+        "name": "pyroscope",
+        "options": [],
+        "query": "grafana-pyroscope-datasource",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
         "allValue": ".*",
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "${datasource}"
         },
         "definition": "query_result(raft.node.lead)",
         "description": "Select a Ledger cluster to filter metrics",
@@ -11588,7 +11620,7 @@
         "allValue": ".*",
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "${datasource}"
         },
         "definition": "query_result(raft.node.lead{service.cluster=~\"$cluster\"})",
         "description": "Select a node to filter metrics",
@@ -11610,7 +11642,7 @@
         "allValue": ".*",
         "datasource": {
           "type": "grafana-pyroscope-datasource",
-          "uid": "Pyroscope"
+          "uid": "${pyroscope}"
         },
         "definition": "",
         "description": "Select a version to filter Pyroscope profiles (for comparison)",
