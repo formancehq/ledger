@@ -3,11 +3,11 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"context"
 	"fmt"
-	"io"
 	"math/big"
+
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -17,33 +17,12 @@ import (
 
 // collectCheckStoreEvents runs the CheckStore RPC and returns all errors and progress events.
 func collectCheckStoreEvents(ctx context.Context, client servicepb.BucketServiceClient) ([]*servicepb.CheckStoreError, []*servicepb.CheckStoreProgress, error) {
-	stream, err := client.CheckStore(ctx, &servicepb.CheckStoreRequest{})
+	result, err := actions.CollectCheckStoreEvents(ctx, client)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	var (
-		errors   []*servicepb.CheckStoreError
-		progress []*servicepb.CheckStoreProgress
-	)
-	for {
-		event, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, nil, err
-		}
-
-		switch t := event.Type.(type) {
-		case *servicepb.CheckStoreEvent_Error:
-			errors = append(errors, t.Error)
-		case *servicepb.CheckStoreEvent_Progress:
-			progress = append(progress, t.Progress)
-		}
-	}
-
-	return errors, progress, nil
+	return result.Errors, result.Progress, nil
 }
 
 // expectStoreValid is a reusable assertion that runs CheckStore and expects no errors.

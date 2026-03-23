@@ -104,24 +104,7 @@ func ListAllTransactions(ctx context.Context, client servicepb.BucketServiceClie
 
 // ListAllLogs collects all system logs from the streaming RPC.
 func ListAllLogs(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.Log, error) {
-	stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{})
-	if err != nil {
-		return nil, err
-	}
-
-	var logs []*commonpb.Log
-	for {
-		log, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		logs = append(logs, log)
-	}
-
-	return logs, nil
+	return ListLogsFiltered(ctx, client, &servicepb.ListLogsRequest{})
 }
 
 // ListAllPeriods collects all periods from the streaming RPC.
@@ -194,9 +177,14 @@ func AggregateVolumes(ctx context.Context, client servicepb.BucketServiceClient,
 
 // ListAuditEntries collects all audit entries from the streaming RPC.
 func ListAuditEntries(ctx context.Context, client servicepb.BucketServiceClient, failuresOnly bool) ([]*auditpb.AuditEntry, error) {
-	stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
+	return ListAuditEntriesWithRequest(ctx, client, &servicepb.ListAuditEntriesRequest{
 		FailuresOnly: failuresOnly,
 	})
+}
+
+// ListAuditEntriesWithRequest collects all audit entries using the provided request.
+func ListAuditEntriesWithRequest(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.ListAuditEntriesRequest) ([]*auditpb.AuditEntry, error) {
+	stream, err := client.ListAuditEntries(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +202,28 @@ func ListAuditEntries(ctx context.Context, client servicepb.BucketServiceClient,
 	}
 
 	return entries, nil
+}
+
+// ListLogsFiltered collects logs matching the given request parameters.
+func ListLogsFiltered(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.ListLogsRequest) ([]*commonpb.Log, error) {
+	stream, err := client.ListLogs(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var logs []*commonpb.Log
+	for {
+		log, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		logs = append(logs, log)
+	}
+
+	return logs, nil
 }
 
 // GetMetadataSchemaStatus retrieves the metadata schema conversion status for a ledger.

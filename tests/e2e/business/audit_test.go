@@ -3,16 +3,16 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/pkg/actions"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"io"
 	"math/big"
 
-	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
+	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
+
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -24,24 +24,7 @@ import (
 
 // collectAuditEntries collects all audit entries from the streaming RPC.
 func collectAuditEntries(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.ListAuditEntriesRequest) ([]*auditpb.AuditEntry, error) {
-	stream, err := client.ListAuditEntries(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	var entries []*auditpb.AuditEntry
-	for {
-		entry, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, entry)
-	}
-
-	return entries, nil
+	return actions.ListAuditEntriesWithRequest(ctx, client, req)
 }
 
 var _ = Describe("Audit Log", Ordered, func() {

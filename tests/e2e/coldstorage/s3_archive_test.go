@@ -4,7 +4,6 @@ package coldstorage
 
 import (
 	"context"
-	"io"
 	"math/big"
 	"time"
 
@@ -33,24 +32,7 @@ const (
 
 // listAllPeriods collects all periods from the streaming RPC.
 func listAllPeriods(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.Period, error) {
-	stream, err := client.ListPeriods(ctx, &servicepb.ListPeriodsRequest{})
-	if err != nil {
-		return nil, err
-	}
-
-	var periods []*commonpb.Period
-	for {
-		period, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		periods = append(periods, period)
-	}
-
-	return periods, nil
+	return actions.ListAllPeriods(ctx, client)
 }
 
 var _ = Describe("Cold Storage S3", Ordered, func() {

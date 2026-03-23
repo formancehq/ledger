@@ -3,11 +3,11 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"context"
 	"fmt"
-	"io"
 	"math/big"
+
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -19,24 +19,7 @@ import (
 
 // analyzeTransactions calls the streaming AnalyzeTransactions RPC and returns the final result.
 func analyzeTransactions(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.AnalyzeTransactionsRequest) (*servicepb.AnalyzeTransactionsResponse, error) {
-	stream, err := client.AnalyzeTransactions(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	var result *servicepb.AnalyzeTransactionsResponse
-	for {
-		event, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		if r := event.GetResult(); r != nil {
-			result = r
-		}
-	}
-	return result, nil
+	return actions.AnalyzeTransactions(ctx, client, req.GetLedger())
 }
 
 var _ = Describe("AnalyzeTransactions", Ordered, func() {

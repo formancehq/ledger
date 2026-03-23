@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -18,12 +17,12 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
+	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"github.com/formancehq/ledger-v3-poc/pkg/actions"
-	"github.com/formancehq/ledger-v3-poc/tests/e2e/testutil"
 )
 
 // mockV2Server simulates a v2 ledger API for mirror integration tests.
@@ -336,21 +335,8 @@ var _ = Describe("Mirror", Ordered, func() {
 		It("Should sync transactions from v2", func() {
 			// Wait for mirror worker to sync the v2 logs
 			Eventually(func(g Gomega) {
-				stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-					Ledger:   "mirror-sync",
-					PageSize: 10,
-				})
+				txs, err := listAllTransactions(ctx, client, "mirror-sync", 10, 0)
 				g.Expect(err).To(Succeed())
-
-				var txs []*commonpb.Transaction
-				for {
-					tx, err := stream.Recv()
-					if err == io.EOF {
-						break
-					}
-					g.Expect(err).To(Succeed())
-					txs = append(txs, tx)
-				}
 
 				// We expect at least 2 transactions from the v2 logs
 				g.Expect(len(txs)).To(BeNumerically(">=", 2))
@@ -404,21 +390,8 @@ var _ = Describe("Mirror", Ordered, func() {
 
 			// Wait for sync to complete
 			Eventually(func(g Gomega) {
-				stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-					Ledger:   "mirror-promote",
-					PageSize: 10,
-				})
+				txs, err := listAllTransactions(ctx, client, "mirror-promote", 10, 0)
 				g.Expect(err).To(Succeed())
-
-				var txs []*commonpb.Transaction
-				for {
-					tx, err := stream.Recv()
-					if err == io.EOF {
-						break
-					}
-					g.Expect(err).To(Succeed())
-					txs = append(txs, tx)
-				}
 				g.Expect(len(txs)).To(BeNumerically(">=", 1))
 			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})
@@ -529,21 +502,8 @@ var _ = Describe("Mirror", Ordered, func() {
 
 		It("Should obtain an OAuth2 token and sync transactions", func() {
 			Eventually(func(g Gomega) {
-				stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-					Ledger:   "mirror-oauth2",
-					PageSize: 10,
-				})
+				txs, err := listAllTransactions(ctx, client, "mirror-oauth2", 10, 0)
 				g.Expect(err).To(Succeed())
-
-				var txs []*commonpb.Transaction
-				for {
-					tx, err := stream.Recv()
-					if err == io.EOF {
-						break
-					}
-					g.Expect(err).To(Succeed())
-					txs = append(txs, tx)
-				}
 
 				g.Expect(len(txs)).To(BeNumerically(">=", 1))
 			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
@@ -645,12 +605,12 @@ func (m *mockOAuth2TokenServer) handleToken(w http.ResponseWriter, r *http.Reque
 
 // authMockV2Server is a mock v2 server that requires Bearer token authentication.
 type authMockV2Server struct {
-	mu              sync.Mutex
-	logs            []v2.V2Log
-	expectedToken   string
-	authReqs        atomic.Int64
-	unauthReqs      atomic.Int64
-	srv             *httptest.Server
+	mu            sync.Mutex
+	logs          []v2.V2Log
+	expectedToken string
+	authReqs      atomic.Int64
+	unauthReqs    atomic.Int64
+	srv           *httptest.Server
 }
 
 func newAuthMockV2Server(expectedToken string) *authMockV2Server {

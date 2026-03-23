@@ -3,11 +3,11 @@
 package business
 
 import (
-	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	"context"
 	"fmt"
-	"io"
 	"math/big"
+
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
@@ -20,24 +20,7 @@ import (
 // analyzeAccounts calls the streaming AnalyzeAccounts RPC and returns the final result.
 // Progress events are discarded; only the terminal Result event is returned.
 func analyzeAccounts(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.AnalyzeAccountsRequest) (*servicepb.AnalyzeAccountsResponse, error) {
-	stream, err := client.AnalyzeAccounts(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	var result *servicepb.AnalyzeAccountsResponse
-	for {
-		event, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		if r := event.GetResult(); r != nil {
-			result = r
-		}
-	}
-	return result, nil
+	return actions.AnalyzeAccounts(ctx, client, req.GetLedger(), req.GetVariableThreshold())
 }
 
 var _ = Describe("AnalyzeAccounts", Ordered, func() {
