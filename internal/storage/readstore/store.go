@@ -69,13 +69,20 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 		BytesPerSync:                cfg.BytesPerSync,
 		MaxConcurrentCompactions:    func() int { return cfg.MaxConcurrentCompactions },
 		Cache:                       cache,
-		Levels: []pebble.LevelOptions{
-			{
-				Compression:    pebble.SnappyCompression,
-				TargetFileSize: cfg.TargetFileSize,
-				FilterPolicy:   bloom.FilterPolicy(10),
-			},
-		},
+		Levels: func() []pebble.LevelOptions {
+			levels := make([]pebble.LevelOptions, 7)
+			for i := range levels {
+				levels[i] = pebble.LevelOptions{
+					TargetFileSize: cfg.TargetFileSize,
+					FilterPolicy:   bloom.FilterPolicy(10),
+					Compression:    pebble.SnappyCompression,
+				}
+			}
+			for i := 4; i < 7; i++ {
+				levels[i].Compression = pebble.ZstdCompression
+			}
+			return levels
+		}(),
 	}
 
 	db, err := pebble.Open(dbPath, opts)

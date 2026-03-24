@@ -207,10 +207,23 @@ func NewStore(
 		LBaseMaxBytes:         cfg.LBaseMaxBytes,
 		Cache:                 pebble.NewCache(cfg.CacheSize),
 
-		// 3) Table sizes: fewer small files => fewer compactions.
-		Levels: []pebble.LevelOptions{
-			{TargetFileSize: cfg.TargetFileSize, FilterPolicy: bloom.FilterPolicy(10)},
-		},
+		// 3) Table sizes and compression.
+		// L0-L3: Snappy (fast, good for hot levels).
+		// L4-L6: Zstd (better ratio for cold data that dominates disk usage).
+		Levels: func() []pebble.LevelOptions {
+			levels := make([]pebble.LevelOptions, 7)
+			for i := range levels {
+				levels[i] = pebble.LevelOptions{
+					TargetFileSize: cfg.TargetFileSize,
+					FilterPolicy:   bloom.FilterPolicy(10),
+					Compression:    pebble.SnappyCompression,
+				}
+			}
+			for i := 4; i < 7; i++ {
+				levels[i].Compression = pebble.ZstdCompression
+			}
+			return levels
+		}(),
 
 		// 4) Smooth IO during flush/compactions.
 		BytesPerSync:    cfg.BytesPerSync,
