@@ -29,6 +29,7 @@ Refactor:
 * Push grafana dashboard (use variable for datasources)
 
 Later:
+* Simple archival instead of delete (can be restored)
 * Store
 ** UUID detection
 * Events
