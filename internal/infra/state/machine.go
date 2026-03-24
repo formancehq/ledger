@@ -552,17 +552,21 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	// Post-commit assertion: verify cache/Pebble volume consistency.
 	// This catches bugs where the cache diverges from Pebble (stale preloads,
 	// lost updates, snapshot issues). Runs only when there are volume updates.
+	//
+	// When multiple entries in the same ApplyEntries batch touch the same volume
+	// key, only the last entry's value survives in Pebble (earlier entries are
+	// deleted by mergeSimple's DeleteAt). We must deduplicate by canonical key,
+	// keeping only the latest update, before comparing with Pebble.
 	if fsm.volumeAssertions {
-		for _, r := range ret.Results {
-			if len(r.volumeUpdates) > 0 {
-				if err := verifyPostCommitVolumes(
-					fsm.dataStore, fsm.Registry.Attrs.Volume,
-					r.volumeUpdates, fsm.lastAppliedIndex,
-				); err != nil {
-					fsm.logger.Errorf("POST-COMMIT VOLUME ASSERTION FAILED: %v", err)
+		finalUpdates := deduplicateVolumeUpdates(ret.Results)
+		if len(finalUpdates) > 0 {
+			if err := verifyPostCommitVolumes(
+				fsm.dataStore, fsm.Registry.Attrs.Volume,
+				finalUpdates, fsm.lastAppliedIndex,
+			); err != nil {
+				fsm.logger.Errorf("POST-COMMIT VOLUME ASSERTION FAILED: %v", err)
 
-					return nil, fmt.Errorf("post-commit volume assertion failed: %w", err)
-				}
+				return nil, fmt.Errorf("post-commit volume assertion failed: %w", err)
 			}
 		}
 	}

@@ -51,6 +51,30 @@ func (e *ErrVolumeCachePebbleDivergence) Error() string {
 	)
 }
 
+// deduplicateVolumeUpdates collects volume updates from all ApplyResults and
+// keeps only the latest update per canonical key. When multiple raft entries in
+// the same ApplyEntries batch modify the same volume, only the last entry's
+// value is persisted in Pebble (earlier entries are deleted by mergeSimple's
+// DeleteAt). Results are iterated in order so later entries naturally overwrite
+// earlier ones.
+func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
+	seen := make(map[domain.VolumeKey]int) // key -> index in deduped slice
+	var deduped []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+
+	for _, r := range results {
+		for _, update := range r.volumeUpdates {
+			if idx, ok := seen[update.Key]; ok {
+				deduped[idx] = update
+			} else {
+				seen[update.Key] = len(deduped)
+				deduped = append(deduped, update)
+			}
+		}
+	}
+
+	return deduped
+}
+
 // verifyPostCommitVolumes reads back volumes from Pebble after batch commit
 // and compares them with the expected values from the Merge (update.New).
 // This catches bugs where Pebble diverges from what the FSM intended to write.
