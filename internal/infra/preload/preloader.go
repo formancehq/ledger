@@ -156,12 +156,14 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 	// nextIndex is stable for the duration of the rebuild.
 	build.token.Release(p.loaders)
 
-	p.logger.WithFields(map[string]any{
-		"nextIndex_before":    build.nextIndex,
-		"nextIndex_after":     nextIndexAfter,
-		"nextIndexGen_before": build.nextIndexGen,
-		"nextIndexGen_after":  nextIndexGenAfter,
-	}).Infof("nextIndex generation changed, rebuilding preloads under lock")
+	if p.logger.Enabled(logging.DebugLevel) {
+		p.logger.WithFields(map[string]any{
+			"nextIndex_before":    build.nextIndex,
+			"nextIndex_after":     nextIndexAfter,
+			"nextIndexGen_before": build.nextIndexGen,
+			"nextIndexGen_after":  nextIndexGenAfter,
+		}).Debugf("nextIndex generation changed, rebuilding preloads under lock")
+	}
 
 	preloadSet, token, err := p.buildPreloadsAt(p.tracker.Next(), needs)
 	if err != nil {

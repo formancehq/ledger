@@ -127,19 +127,21 @@ func (p *QueryProfile) LogTo(logger logging.Logger) {
 		return
 	}
 
-	fields := map[string]any{
-		"indexDurationUs":      p.IndexDuration.Microseconds(),
-		"enrichmentDurationUs": p.EnrichmentDuration.Microseconds(),
-		"itemsCollected":       p.ItemsCollected,
-		"enrichedCount":        p.EnrichedCount,
-		"materializedRanges":   p.MaterializedRanges,
-		"materializedItems":    p.MaterializedItems,
-	}
-	if p.Root != nil {
-		fields["iteratorTree"] = p.Root.String()
-	}
+	if logger.Enabled(logging.DebugLevel) {
+		fields := map[string]any{
+			"indexDurationUs":      p.IndexDuration.Microseconds(),
+			"enrichmentDurationUs": p.EnrichmentDuration.Microseconds(),
+			"itemsCollected":       p.ItemsCollected,
+			"enrichedCount":        p.EnrichedCount,
+			"materializedRanges":   p.MaterializedRanges,
+			"materializedItems":    p.MaterializedItems,
+		}
+		if p.Root != nil {
+			fields["iteratorTree"] = p.Root.String()
+		}
 
-	logger.WithFields(fields).Debugf("Query profile (total=%s)", p.TotalDuration())
+		logger.WithFields(fields).Debugf("Query profile (total=%s)", p.TotalDuration())
+	}
 }
 
 // String returns a human-readable indented tree of the iterator stats.

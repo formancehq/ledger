@@ -234,16 +234,18 @@ type chiLogEntry struct {
 }
 
 func (c chiLogEntry) Write(status, bytes int, _ http.Header, elapsed stdtime.Duration, extra any) {
-	fields := map[string]any{
-		"status":  status,
-		"bytes":   bytes,
-		"elapsed": elapsed,
-	}
-	if extra != nil {
-		fields["extra"] = extra
-	}
+	if c.logger.Enabled(logging.DebugLevel) {
+		fields := map[string]any{
+			"status":  status,
+			"bytes":   bytes,
+			"elapsed": elapsed,
+		}
+		if extra != nil {
+			fields["extra"] = extra
+		}
 
-	c.logger.WithFields(fields).Debugf("HTTP request completed")
+		c.logger.WithFields(fields).Debugf("HTTP request completed")
+	}
 }
 
 func (c chiLogEntry) Panic(v any, stack []byte) {

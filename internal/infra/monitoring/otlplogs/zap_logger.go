@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -29,6 +30,22 @@ func (z *ZapLogger) Errorf(format string, args ...any) { z.sugar.Errorf(format, 
 func (z *ZapLogger) Debug(args ...any)                 { z.sugar.Debug(args...) }
 func (z *ZapLogger) Info(args ...any)                  { z.sugar.Info(args...) }
 func (z *ZapLogger) Error(args ...any)                 { z.sugar.Error(args...) }
+
+func (z *ZapLogger) Enabled(level logging.Level) bool {
+	var zapLevel zapcore.Level
+	switch level {
+	case logging.DebugLevel:
+		zapLevel = zapcore.DebugLevel
+	case logging.InfoLevel:
+		zapLevel = zapcore.InfoLevel
+	case logging.ErrorLevel:
+		zapLevel = zapcore.ErrorLevel
+	default:
+		zapLevel = zapcore.DebugLevel
+	}
+
+	return z.sugar.Desugar().Core().Enabled(zapLevel)
+}
 
 func (z *ZapLogger) WithFields(fields map[string]any) logging.Logger {
 	kvs := make([]any, 0, len(fields)*2)

@@ -319,10 +319,12 @@ func (hc *HealthChecker) exceedsClockSkew(baseCtx context.Context, client cluste
 	// If the RTT is too high (e.g. during reconnection), the midpoint estimate
 	// is unreliable and would produce a spurious skew. Discard the sample.
 	if rtt > hc.clockSkewThreshold/2 {
-		hc.logger.WithFields(map[string]any{
-			"node_id": nodeID,
-			"rtt":     rtt.String(),
-		}).Debugf("Clock skew check discarded: RTT too high for reliable measurement")
+		if hc.logger.Enabled(logging.DebugLevel) {
+			hc.logger.WithFields(map[string]any{
+				"node_id": nodeID,
+				"rtt":     rtt.String(),
+			}).Debugf("Clock skew check discarded: RTT too high for reliable measurement")
+		}
 
 		return false
 	}

@@ -223,7 +223,9 @@ func loggingInterceptor(logger logging.Logger, slowThreshold time.Duration) ggrp
 			fields["slow"] = true
 			logger.WithFields(fields).Infof("gRPC call slow")
 		default:
-			logger.WithFields(fields).Debugf("gRPC call")
+			if logger.Enabled(logging.DebugLevel) {
+				logger.WithFields(fields).Debugf("gRPC call")
+			}
 		}
 
 		return resp, err
@@ -248,13 +250,17 @@ func loggingStreamInterceptor(logger logging.Logger, slowThreshold time.Duration
 			fields["error"] = err.Error()
 			logger.WithFields(fields).Errorf("gRPC stream failed")
 		case err != nil:
-			fields["error"] = err.Error()
-			logger.WithFields(fields).Debugf("gRPC stream canceled")
+			if logger.Enabled(logging.DebugLevel) {
+				fields["error"] = err.Error()
+				logger.WithFields(fields).Debugf("gRPC stream canceled")
+			}
 		case duration > slowThreshold:
 			fields["slow"] = true
 			logger.WithFields(fields).Infof("gRPC stream slow")
 		default:
-			logger.WithFields(fields).Debugf("gRPC stream")
+			if logger.Enabled(logging.DebugLevel) {
+				logger.WithFields(fields).Debugf("gRPC stream")
+			}
 		}
 
 		return err

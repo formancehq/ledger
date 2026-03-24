@@ -295,11 +295,13 @@ func (g *raftTransportGateway) StreamMessages(stream grpc.BidiStreamingServer[ra
 
 				// Check interceptor
 				if !interceptor.InterceptRequest(raftMsg) {
+					if g.logger.Enabled(logging.DebugLevel) {
 					g.logger.WithFields(map[string]any{
 						"from_node": raftMsg.From,
 						"to_node":   raftMsg.To,
 						"msg_type":  raftMsg.Type.String(),
 					}).Debugf("Message blocked by interceptor")
+				}
 
 					continue // Skip this message
 				}

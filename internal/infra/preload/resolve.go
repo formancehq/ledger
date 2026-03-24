@@ -53,12 +53,14 @@ func resolveStandard[K interface {
 			continue
 
 		case cache.CacheNeedsTouch:
-			logger.WithFields(map[string]any{
-				"type":      typeName,
-				"key":       hex.EncodeToString(canonicalKey),
-				"nextIndex": nextIndex,
-				"boundary":  boundary,
-			}).Debugf("Cache touch: promoting key from gen1 to gen0")
+			if logger.Enabled(logging.DebugLevel) {
+				logger.WithFields(map[string]any{
+					"type":      typeName,
+					"key":       hex.EncodeToString(canonicalKey),
+					"nextIndex": nextIndex,
+					"boundary":  boundary,
+				}).Debugf("Cache touch: promoting key from gen1 to gen0")
+			}
 
 			touches = append(touches, &raftcmdpb.CacheTouch{
 				Id:   id[:],
@@ -68,12 +70,14 @@ func resolveStandard[K interface {
 			continue
 
 		case cache.CacheMiss:
-			logger.WithFields(map[string]any{
-				"type":      typeName,
-				"key":       hex.EncodeToString(canonicalKey),
-				"nextIndex": nextIndex,
-				"boundary":  boundary,
-			}).Infof("Cache miss: key not guaranteed in cache, loading from store")
+			if logger.Enabled(logging.DebugLevel) {
+				logger.WithFields(map[string]any{
+					"type":      typeName,
+					"key":       hex.EncodeToString(canonicalKey),
+					"nextIndex": nextIndex,
+					"boundary":  boundary,
+				}).Debugf("Cache miss: key not guaranteed in cache, loading from store")
+			}
 
 			result, err := loader.LoadOrWait(id, boundary, func() (T, uint64, error) {
 				return computeValue(store, boundary, canonicalKey)
@@ -131,12 +135,14 @@ func resolveCustom[K interface {
 			continue
 
 		case cache.CacheNeedsTouch:
-			logger.WithFields(map[string]any{
-				"type":      typeName,
-				"key":       hex.EncodeToString(canonicalKey),
-				"nextIndex": nextIndex,
-				"boundary":  boundary,
-			}).Debugf("Cache touch: promoting key from gen1 to gen0")
+			if logger.Enabled(logging.DebugLevel) {
+				logger.WithFields(map[string]any{
+					"type":      typeName,
+					"key":       hex.EncodeToString(canonicalKey),
+					"nextIndex": nextIndex,
+					"boundary":  boundary,
+				}).Debugf("Cache touch: promoting key from gen1 to gen0")
+			}
 
 			touches = append(touches, &raftcmdpb.CacheTouch{
 				Id:   id[:],
@@ -146,12 +152,14 @@ func resolveCustom[K interface {
 			continue
 
 		case cache.CacheMiss:
-			logger.WithFields(map[string]any{
-				"type":      typeName,
-				"key":       hex.EncodeToString(canonicalKey),
-				"nextIndex": nextIndex,
-				"boundary":  boundary,
-			}).Infof("Cache miss: key not guaranteed in cache, loading from store")
+			if logger.Enabled(logging.DebugLevel) {
+				logger.WithFields(map[string]any{
+					"type":      typeName,
+					"key":       hex.EncodeToString(canonicalKey),
+					"nextIndex": nextIndex,
+					"boundary":  boundary,
+				}).Debugf("Cache miss: key not guaranteed in cache, loading from store")
+			}
 
 			// Wrap loadFn to match the (T, uint64, error) signature — baseIndex=0 for custom types.
 			wrappedFn := func() (T, uint64, error) {

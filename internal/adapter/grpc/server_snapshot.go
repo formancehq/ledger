@@ -32,10 +32,12 @@ func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store) snapshotpb.Sn
 
 // DescribeSnapshot returns metadata about a snapshot.
 func (s *SnapshotServiceServerImpl) DescribeSnapshot(ctx context.Context, req *snapshotpb.DescribeSnapshotRequest) (*snapshotpb.DescribeSnapshotResponse, error) {
-	s.logger.WithFields(map[string]any{
-		"snapshot_id": req.GetSnapshotId(),
-		"node_id":     req.GetNodeId(),
-	}).Debugf("DescribeSnapshot request received")
+	if s.logger.Enabled(logging.DebugLevel) {
+		s.logger.WithFields(map[string]any{
+			"snapshot_id": req.GetSnapshotId(),
+			"node_id":     req.GetNodeId(),
+		}).Debugf("DescribeSnapshot request received")
+	}
 
 	// Get checkpoint path
 	checkpointPath, err := s.store.GetCheckpointPath(req.GetSnapshotId())
@@ -75,11 +77,13 @@ func (s *SnapshotServiceServerImpl) DescribeSnapshot(ctx context.Context, req *s
 
 // FetchSnapshot streams the snapshot as a tar archive.
 func (s *SnapshotServiceServerImpl) FetchSnapshot(req *snapshotpb.FetchSnapshotRequest, stream ggrpc.ServerStreamingServer[snapshotpb.FetchSnapshotResponse]) error {
-	s.logger.WithFields(map[string]any{
-		"snapshot_id": req.GetSnapshotId(),
-		"offset":      req.GetOffset(),
-		"node_id":     req.GetNodeId(),
-	}).Debugf("FetchSnapshot request received")
+	if s.logger.Enabled(logging.DebugLevel) {
+		s.logger.WithFields(map[string]any{
+			"snapshot_id": req.GetSnapshotId(),
+			"offset":      req.GetOffset(),
+			"node_id":     req.GetNodeId(),
+		}).Debugf("FetchSnapshot request received")
+	}
 
 	// Get checkpoint path
 	checkpointPath, err := s.store.GetCheckpointPath(req.GetSnapshotId())
