@@ -4,62 +4,66 @@ mod workload
 
 tag := "antithesis"
 
-run duration description='ledger-v3 manual run': push-images
-	curl --fail \
-		--user "formance:$ANTITHESIS_PASSWORD" \
-		-X POST https://formance.antithesis.com/api/v1/launch_experiment/formance-k8s -d '{ \
-			"params": { \
-				"custom.duration": "{{duration}}", \
-				"custom.containers_to_exclude_from_network_faults":"etcd-0 etcd-1 etcd-2 workload", \
-				"antithesis.report.recipients": "'"$ANTITHESIS_REPORT_RECIPIENT"'", \
-				"antithesis.config_image": "'"antithesis-config-ledger-v3:{{tag}}"'", \
-				"antithesis.description": "{{description}}", \
-				"antithesis.images": "'"workload-ledger-v3:{{tag}};ledger-operator:{{tag}};ledger-v3-poc:{{tag}};docker.io/bitnami/kubectl:latest"'" \
-			} \
-		}'
+run duration description='ledger-v3 manual run' *ARGS:
+    just push-images {{ARGS}}
+    curl --fail \
+        --user "formance:$ANTITHESIS_PASSWORD" \
+        -X POST https://formance.antithesis.com/api/v1/launch_experiment/formance-k8s -d '{ \
+            "params": { \
+                "custom.duration": "{{duration}}", \
+                "custom.containers_to_exclude_from_network_faults":"etcd-0 etcd-1 etcd-2 workload", \
+                "antithesis.report.recipients": "'"$ANTITHESIS_REPORT_RECIPIENT"'", \
+                "antithesis.config_image": "'"antithesis-config-ledger-v3:{{tag}}"'", \
+                "antithesis.description": "{{description}}", \
+                "antithesis.images": "'"workload-ledger-v3:{{tag}};ledger-operator:{{tag}};ledger-v3-poc:{{tag}};docker.io/bitnami/kubectl:latest"'" \
+            } \
+        }'
 
 build-images:
-	# operator
-	docker build --platform linux/amd64 \
-	    --build-arg GOARCH=amd64 \
-	    --build-arg GOOS=linux \
-	    -f ../../misc/operator/Dockerfile \
-	    --progress=plain \
-	    -t "$ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}" \
-	    ../../misc/operator/
+    # operator
+    docker build --platform linux/amd64 \
+        --build-arg GOARCH=amd64 \
+        --build-arg GOOS=linux \
+        -f ../../misc/operator/Dockerfile \
+        --progress=plain \
+        -t "$ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}" \
+        ../../misc/operator/
 
-	# ledger (instrumented for Antithesis)
-	docker build \
-	    --platform linux/amd64 \
-	    -f ../../Dockerfile.antithesis \
-	    --progress=plain \
-	    -t "$ANTITHESIS_REPOSITORY/ledger-v3-poc:{{tag}}" \
-	    ../../
+    # ledger (instrumented for Antithesis)
+    docker build \
+        --platform linux/amd64 \
+        -f ../../Dockerfile.antithesis \
+        --progress=plain \
+        -t "$ANTITHESIS_REPOSITORY/ledger-v3-poc:{{tag}}" \
+        ../../
 
-push-images: build-images config::push workload::push
-	docker push $ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}
-	docker push $ANTITHESIS_REPOSITORY/ledger-v3-poc:{{tag}}
+push-images *ARGS:
+    just build-images
+    just --justfile config/justfile -d config push {{ARGS}}
+    just --justfile workload/justfile -d workload push
+    docker push $ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}
+    docker push $ANTITHESIS_REPOSITORY/ledger-v3-poc:{{tag}}
 
 deploy-local: build-images
-	#!/usr/bin/env bash
+    #!/usr/bin/env bash
 
-	set -euo pipefail
-	tmpdir=$(mktemp -d)
-	trap 'kill 0; rm -rf $tmpdir' EXIT SIGINT SIGTERM
+    set -euo pipefail
+    tmpdir=$(mktemp -d)
+    trap 'kill 0; rm -rf $tmpdir' EXIT SIGINT SIGTERM
 
-	kapp delete -y -a formance-dst
+    kapp delete -y -a formance-dst
 
-	minikube image load us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-operator:{{tag}}
+    minikube image load us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-operator:{{tag}}
 
-	minikube image load us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-v3-poc:{{tag}}
+    minikube image load us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-v3-poc:{{tag}}
 
-	just workload/build
-	minikube image load us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/workload-ledger-v3:{{tag}}
+    just workload/build
+    minikube image load us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/workload-ledger-v3:{{tag}}
 
 
-	just config/build-manifest "$tmpdir/resources.yaml"
-	minikube image load us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/antithesis-config-ledger-v3:{{tag}}
-	kapp deploy -y -a formance-dst -f "$tmpdir" --diff-changes
-	kubectl port-forward -n stack0 $(kubectl get pod -n stack0 -l app.kubernetes.io/name=gateway -o jsonpath="{.items[0].metadata.name}") 8080:8080 &
+    just config/build-manifest "$tmpdir/resources.yaml"
+    minikube image load us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/antithesis-config-ledger-v3:{{tag}}
+    kapp deploy -y -a formance-dst -f "$tmpdir" --diff-changes
+    kubectl port-forward -n stack0 $(kubectl get pod -n stack0 -l app.kubernetes.io/name=gateway -o jsonpath="{.items[0].metadata.name}") 8080:8080 &
 
-	wait
+    wait
