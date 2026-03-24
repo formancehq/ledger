@@ -48,7 +48,6 @@
             grpcurl
             jdk11
             jq
-            just
             k6
             kubernetes-helm
             nodejs_22
@@ -72,6 +71,7 @@
             setup-envtest
             pulumi
             pulumiPackages.pulumi-language-go
+            just
           ];
           otherPackages = [
             pkgs.nur.repos.goreleaser.goreleaser-pro
