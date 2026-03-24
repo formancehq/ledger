@@ -202,7 +202,7 @@ func runServer(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	fmt.Println(string(data))
+	cmd.Println(string(data))
 
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("validating config: %w", err)
@@ -545,7 +545,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 			return nil, errors.New("--join and --bootstrap are mutually exclusive")
 		}
 
-		fmt.Printf("Join mode: discovering peers from cluster via %s\n", joinAddr)
+		cmd.Printf("Join mode: discovering peers from cluster via %s\n", joinAddr)
 
 		peers, err := discoverPeersFromClusterWithRetry(joinAddr, cfg.TLSConfig, cfg.ClusterSecret)
 		if err != nil {
@@ -553,7 +553,7 @@ func LoadConfig(cmd *cobra.Command) (*bootstrap.Config, error) {
 		}
 
 		for _, p := range peers {
-			fmt.Printf("  Discovered peer: id=%d raft=%s service=%s\n", p.ID, p.Address, p.ServiceAddress)
+			cmd.Printf("  Discovered peer: id=%d raft=%s service=%s\n", p.ID, p.Address, p.ServiceAddress)
 		}
 
 		cfg.RaftConfig.Peers = peers
