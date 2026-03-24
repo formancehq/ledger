@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
@@ -265,13 +266,18 @@ func (hc *HealthChecker) exceedsThreshold(nodeID uint64, walUsed, walTotal, data
 	if walTotal > 0 {
 		percent := float64(walUsed) / float64(walTotal)
 		if percent >= hc.walThreshold {
-			hc.logger.WithFields(map[string]any{
+			details := map[string]any{
 				"node_id": nodeID,
 				"volume":  "wal",
 				"used":    walUsed,
 				"total":   walTotal,
 				"percent": percent * 100,
-			}).Errorf("Disk usage exceeds threshold (%.0f%%)", hc.walThreshold*100)
+			}
+
+			assert.Unreachable("disk usage exceeds threshold", details)
+
+			hc.logger.WithFields(details).
+				Errorf("Disk usage exceeds threshold (%.0f%%)", hc.walThreshold*100)
 
 			exceeded = true
 		}
@@ -280,13 +286,18 @@ func (hc *HealthChecker) exceedsThreshold(nodeID uint64, walUsed, walTotal, data
 	if dataTotal > 0 {
 		percent := float64(dataUsed) / float64(dataTotal)
 		if percent >= hc.dataThreshold {
-			hc.logger.WithFields(map[string]any{
+			details := map[string]any{
 				"node_id": nodeID,
 				"volume":  "data",
 				"used":    dataUsed,
 				"total":   dataTotal,
 				"percent": percent * 100,
-			}).Errorf("Disk usage exceeds threshold (%.0f%%)", hc.dataThreshold*100)
+			}
+
+			assert.Unreachable("disk usage exceeds threshold", details)
+
+			hc.logger.WithFields(details).
+				Errorf("Disk usage exceeds threshold (%.0f%%)", hc.dataThreshold*100)
 
 			exceeded = true
 		}
