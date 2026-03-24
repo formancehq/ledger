@@ -52,11 +52,16 @@ func (t *singleTaskExecutor) run(ctx context.Context, fn func(ctx context.Contex
 }
 
 func (t *singleTaskExecutor) interrupt() {
+	t.mu.Lock()
+	terminated := t.terminated
+	cancel := t.cancel
+	t.mu.Unlock()
+
 	select {
-	case <-t.terminated:
+	case <-terminated:
 	default:
-		t.cancel()
-		<-t.terminated
+		cancel()
+		<-terminated
 	}
 }
 
