@@ -177,9 +177,22 @@ func (a *AttributeCache[T]) IsGuaranteedInCache(at uint64, k attributes.U128) bo
 // Touch promotes a key from Gen1 to Gen0. This ensures the key survives
 // the next rotation without needing a full preload from store.
 // Called only from the FSM goroutine (same as Put/Del).
+//
+// IMPORTANT: Touch must NOT overwrite an existing Gen0 entry. After rotation,
+// entries processed earlier in the same batch may have already updated Gen0
+// with a newer value via Merge. If a later entry's proposal was admitted
+// concurrently (before the FSM applied the earlier entry's Touch+Merge),
+// it would carry a redundant CacheNeedsTouch. Blindly overwriting Gen0 with
+// the stale Gen1 value would discard the earlier entry's update, causing
+// volume corruption (lost deltas).
 func (a *AttributeCache[T]) Touch(k attributes.U128) {
+	gen0 := a.gen0.Load()
+	if _, ok := gen0.Get(k); ok {
+		return // Gen0 already has a (possibly newer) value — do not overwrite.
+	}
+
 	if v, ok := a.gen1.Load().Get(k); ok {
-		a.gen0.Load().Put(k, v)
+		gen0.Put(k, v)
 	}
 }
 
