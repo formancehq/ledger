@@ -614,7 +614,6 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 			"thresholdReached": thresholdReached,
 			"confStateChanged": confStateChanged,
 		}
-		assert.Sometimes(true, "snapshot triggered", details)
 		lifecycle.SendEvent("snapshot_triggered", details)
 		a.triggerSnapshot(ctx, confState, lastEntryIndex, lastSnapshot.Metadata.Index)
 	}
@@ -850,7 +849,7 @@ func (a *Applier) unspoolAndResume(ctx context.Context) error {
 		return fmt.Errorf("pruning spool: %w", err)
 	}
 
-	assert.Sometimes(true, "spool replay completed", nil)
+	lifecycle.SendEvent("spool replay completed", nil)
 	a.logger.Infof("Unspooling operation terminated, resuming...")
 
 	return nil

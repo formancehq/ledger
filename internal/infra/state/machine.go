@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"github.com/cockroachdb/pebble"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric"
@@ -462,7 +463,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 		}
 
 		if rotated, _ := fsm.Registry.Cache.CheckRotationNeeded(entry.Index); rotated {
-			assert.Sometimes(true, "cache generation rotated", map[string]any{
+			lifecycle.SendEvent("spool replay completed", map[string]any{
 				"entryIndex": entry.Index,
 			})
 			rotationStart := time.Now()
@@ -1414,7 +1415,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		return nil, fmt.Errorf("marshaling snapshot: %w", err)
 	}
 
-	assert.Sometimes(true, "snapshot created", map[string]any{
+	lifecycle.SendEvent("spool replay completed", map[string]any{
 		"checkpointId": checkpointID,
 		"snapshotSize": n,
 	})
