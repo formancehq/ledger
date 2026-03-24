@@ -93,6 +93,22 @@ func (node *Node) execClusterCommand(ctx context.Context, fn func() error) error
 	}
 }
 
+// readyResult is sent from processReadies to orchestrate after a Ready has been
+// persisted. It carries deferred rawNode operations that must execute in the
+// orchestrate goroutine (rawNode is not thread-safe).
+type readyResult struct {
+	rd raft.Ready
+	// snapshotApplied is true when a leader snapshot was installed; orchestrate
+	// must call rawNode.ReportSnapshot.
+	snapshotApplied bool
+	// confChanges are committed ConfChangeV2 entries extracted from rd.CommittedEntries;
+	// orchestrate must call rawNode.ApplyConfChange for each.
+	confChanges []raftpb.ConfChangeV2
+	// nonProposalCount is the number of committed entries that are not user proposals
+	// (no-ops and config changes) — used to increment the IndexTracker.
+	nonProposalCount uint64
+}
+
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft.
 type Node struct {
 	rawNode          *raft.RawNode
@@ -103,13 +119,13 @@ type Node struct {
 	config           NodeConfig
 	proposeCh        chan *Proposal
 	clusterCommandCh chan *clusterCommand
-	confState        *raftpb.ConfState
-	lastSoftState    atomic.Pointer[raft.SoftState]
+	confState     atomic.Pointer[raftpb.ConfState]
+	lastSoftState atomic.Pointer[raft.SoftState]
 	observer         *Observer
 	applier          *Applier
 
 	readies            chan raft.Ready
-	readyTerminated    chan raft.Ready
+	readyTerminated    chan readyResult
 	tasks              *taskSet
 	stopChannel        chan chan struct{}
 	recoveredPeers     map[uint64]ConfChangeContext
@@ -392,10 +408,9 @@ func NewNode(
 		proposeCh:        make(chan *Proposal, cfg.ProposeQueueCapacity),
 		clusterCommandCh: make(chan *clusterCommand, 1),
 		fsm:              fsm,
-		confState:        &initialConfState,
 		applier:          applier,
 		readies:          make(chan raft.Ready, 1),
-		readyTerminated:  make(chan raft.Ready, 1),
+		readyTerminated:  make(chan readyResult, 1),
 		tasks:            newTaskSet(),
 		stopChannel:      make(chan chan struct{}),
 		pendingReads:     &SyncMap[uint64, *readIndexRequest]{},
@@ -405,6 +420,8 @@ func NewNode(
 		indexTracker:     NewIndexTracker(initialIndex(wal)),
 		observer:         NewNoOpObserver(),
 	}
+
+	node.confState.Store(&initialConfState)
 
 	// Ensure peerAddresses is never nil (bootstrap path has no recoveredPeers).
 	if node.peerAddresses == nil {
@@ -572,7 +589,7 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 
 	walSnapshotStart := time.Now()
 
-	if err := node.wal.CreateSnapshot(appliedIndex, node.confState, snapshotData); err != nil {
+	if err := node.wal.CreateSnapshot(appliedIndex, node.confState.Load(), snapshotData); err != nil {
 		return fmt.Errorf("saving snapshot: %w", err)
 	}
 
@@ -647,8 +664,8 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		"term":      status.HardState.Term,
 		"commit":    status.HardState.Commit,
 		"vote":      status.HardState.Vote,
-		"voters":    node.confState.Voters,
-		"learners":  node.confState.Learners,
+		"voters":    node.confState.Load().Voters,
+		"learners":  node.confState.Load().Learners,
 	}).Infof("Raft node created — initial state")
 
 	node.tasks.add(newTask(node.orchestrate))
@@ -707,7 +724,7 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 			node.readyWaitDurationHistogram.Record(context.Background(), time.Since(waitStart).Microseconds())
 
 			now := time.Now()
-			err := node.processReady(ctx, stop, rd)
+			result, err := node.processReady(ctx, stop, rd)
 			node.processEntryHistogram.Record(context.Background(), time.Since(now).Microseconds())
 
 			if err != nil {
@@ -717,7 +734,7 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 			terminatedStart := time.Now()
 
 			select {
-			case node.readyTerminated <- rd:
+			case node.readyTerminated <- result:
 				node.readyTerminatedWaitHistogram.Record(context.Background(), time.Since(terminatedStart).Microseconds())
 			case <-stop:
 				return nil
@@ -728,7 +745,7 @@ func (node *Node) processReadies(ctx context.Context, stop chan struct{}) error 
 	}
 }
 
-func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.Ready) error {
+func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.Ready) (readyResult, error) {
 	node.logger.Debugf("Processing ready")
 
 	node.committedEntriesPerReadyHistogram.Record(context.Background(), int64(len(rd.CommittedEntries)))
@@ -760,10 +777,12 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 
 		if wasLeader != isLeader {
-			status := node.rawNode.Status()
+			// Use rd.HardState.Term instead of rawNode.Status().Term to avoid
+			// calling rawNode from the processReadies goroutine (rawNode is not thread-safe).
+			term := rd.HardState.Term
 			logger := node.logger.WithFields(map[string]any{
 				"lead": ss.Lead,
-				"term": status.Term,
+				"term": term,
 			})
 
 			// leadership loss
@@ -772,9 +791,8 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 				details := map[string]any{
 					"nodeID": node.config.NodeID,
 					"lead":   ss.Lead,
-					"term":   status.Term,
+					"term":   term,
 				}
-				assert.Sometimes(true, "leadership lost", details)
 				lifecycle.SendEvent("leadership_lost", details)
 				node.observer.Emit(LeadershipChangeEvent{IsLeader: false})
 			}
@@ -784,7 +802,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 				details := map[string]any{
 					"nodeID": node.config.NodeID,
 					"lead":   ss.Lead,
-					"term":   status.Term,
+					"term":   term,
 				}
 				assert.Sometimes(true, "leadership gained", details)
 				lifecycle.SendEvent("leadership_gained", details)
@@ -820,10 +838,12 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 
 	err := node.wal.Append(rd.HardState, rd.Entries)
 	if err != nil {
-		return fmt.Errorf("appending entries to storage: %w", err)
+		return readyResult{}, fmt.Errorf("appending entries to storage: %w", err)
 	}
 
 	node.appendEntriesHistogram.Record(ctx, time.Since(now).Microseconds())
+
+	result := readyResult{rd: rd}
 
 	if !raft.IsEmptySnap(rd.Snapshot) {
 		snapshotStart := time.Now()
@@ -839,40 +859,41 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		node.applier.Drain(stop)
 
 		if err := node.wal.ApplySnapshot(rd.Snapshot); err != nil {
-			return fmt.Errorf("applying snapshot to storage: %w", err)
+			return readyResult{}, fmt.Errorf("applying snapshot to storage: %w", err)
 		}
 
 		// Unwrap NodeSnapshot to get FSM data and peer addresses
 		unwrapStart := time.Now()
 
-		result, err := unwrapSnapshot(rd.Snapshot.Data)
+		snapResult, err := unwrapSnapshot(rd.Snapshot.Data)
 		if err != nil {
-			return fmt.Errorf("unwrapping snapshot: %w", err)
+			return readyResult{}, fmt.Errorf("unwrapping snapshot: %w", err)
 		}
 
 		node.logger.WithFields(map[string]any{
 			"duration":    time.Since(unwrapStart).String(),
-			"fsmDataSize": len(result.fsmData),
-			"peerCount":   len(result.peerAddresses),
+			"fsmDataSize": len(snapResult.fsmData),
+			"peerCount":   len(snapResult.peerAddresses),
 		}).Infof("Unwrapped leader snapshot")
 
 		fsmSnapshot := rd.Snapshot
 
-		fsmSnapshot.Data = result.fsmData
+		fsmSnapshot.Data = snapResult.fsmData
 		if err := node.fsm.InstallSnapshot(ctx, fsmSnapshot); err != nil {
-			return fmt.Errorf("installing snapshot: %w", err)
+			return readyResult{}, fmt.Errorf("installing snapshot: %w", err)
 		}
 
 		// Restore peer addresses into node
-		node.peerAddresses = make(map[uint64]ConfChangeContext, len(result.peerAddresses))
-		for _, addr := range result.peerAddresses {
+		node.peerAddresses = make(map[uint64]ConfChangeContext, len(snapResult.peerAddresses))
+		for _, addr := range snapResult.peerAddresses {
 			node.peerAddresses[addr.GetNodeId()] = ConfChangeContext{
 				RaftAddress:    addr.GetRaftAddress(),
 				ServiceAddress: addr.GetServiceAddress(),
 			}
 		}
 
-		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
+		// Defer ReportSnapshot to orchestrate goroutine (rawNode is not thread-safe).
+		result.snapshotApplied = true
 
 		node.logger.WithFields(map[string]any{
 			"duration": time.Since(snapshotStart).String(),
@@ -890,26 +911,46 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	node.logger.Debugf("Sending messages via transport")
 	node.transport.Send(rd.Messages)
 
-	// Apply conf changes (must happen in processReadies goroutine since rawNode is not thread-safe).
+	// Extract conf changes from committed entries. The actual rawNode.ApplyConfChange
+	// calls are deferred to the orchestrate goroutine (rawNode is not thread-safe).
+	for _, entry := range rd.CommittedEntries {
+		cc, ok, err := unmarshalConfChangeV2(entry)
+		if err != nil {
+			return readyResult{}, err
+		}
+
+		if ok {
+			result.confChanges = append(result.confChanges, cc)
+		}
+
+		if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
+			result.nonProposalCount++
+		}
+	}
+
+	return result, nil
+}
+
+// finishReady completes processing of a Ready by applying deferred rawNode operations
+// and post-processing. Must be called from the orchestrate goroutine.
+func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
+	rd := result.rd
+
+	if result.snapshotApplied {
+		node.rawNode.ReportSnapshot(rd.Snapshot.Metadata.Index, raft.SnapshotFinish)
+	}
+
+	// Apply conf changes (rawNode.ApplyConfChange must run in orchestrate goroutine).
 	// Collect pending futures to resolve AFTER the WAL ConfState update, so
 	// callers waiting on ConfChange commit (AddLearner, PromoteLearner, etc.)
 	// don't resume before the WAL is consistent.
 	var pendingFutures []*futures.Future[struct{}]
 
-	for _, entry := range rd.CommittedEntries {
-		cc, ok, err := unmarshalConfChangeV2(entry)
-		if err != nil {
-			return err
-		}
-
-		if !ok {
-			continue
-		}
-
+	for _, cc := range result.confChanges {
 		node.logger.
 			WithFields(map[string]any{"transition": cc.Transition.String()}).
 			Infof("Applying configuration change")
-		node.confState = node.rawNode.ApplyConfChange(cc)
+		node.confState.Store(node.rawNode.ApplyConfChange(cc))
 
 		// Update peer address map and collect pending futures
 		for _, change := range cc.Changes {
@@ -949,10 +990,10 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	// snapshot's ConfState immediately. Without this, etcd/raft would send
 	// the stale snapshot (which lacks the new node) before the applier's
 	// async snapshot creation finishes, causing the new node to reject it.
-	if node.confState != nil {
+	if cs := node.confState.Load(); cs != nil {
 		snap, _ := node.wal.Snapshot()
-		if !confStatesEqual(node.confState, &snap.Metadata.ConfState) {
-			err := node.wal.UpdateSnapshotConfState(node.confState)
+		if !confStatesEqual(cs, &snap.Metadata.ConfState) {
+			err := node.wal.UpdateSnapshotConfState(cs)
 			if err != nil {
 				return fmt.Errorf("updating snapshot confstate: %w", err)
 			}
@@ -967,20 +1008,13 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	// Count non-proposal committed entries (no-ops and config changes) and
 	// increment the IndexTracker so the preloader's boundary prediction stays
 	// accurate. Proposals are already counted by Node.Propose().
-	var nonProposalCount uint64
-	for _, entry := range rd.CommittedEntries {
-		if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
-			nonProposalCount++
-		}
-	}
-
-	if nonProposalCount > 0 {
-		node.indexTracker.Increment(nonProposalCount)
+	if result.nonProposalCount > 0 {
+		node.indexTracker.Increment(result.nonProposalCount)
 	}
 
 	// Submit committed entries to the Applier for async FSM application
 	if len(rd.CommittedEntries) > 0 {
-		node.applier.Submit(rd.CommittedEntries, node.confState, stop)
+		node.applier.Submit(rd.CommittedEntries, node.confState.Load(), stop)
 	}
 
 	return nil
@@ -1035,7 +1069,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 	// until the next processingTick, adding up to 10ms to every commit cycle.
 	maybeCreateReady := func() {
 		if node.readyTerminated == nil && node.rawNode.HasReady() {
-			node.readyTerminated = make(chan raft.Ready, 1)
+			node.readyTerminated = make(chan readyResult, 1)
 
 			processingTick.Stop()
 
@@ -1084,8 +1118,12 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 				cmd.errCh <- cmd.fn()
 			default:
 				select {
-				case rd := <-node.readyTerminated:
-					node.rawNode.Advance(rd)
+				case result := <-node.readyTerminated:
+					if err := node.finishReady(result, stop); err != nil {
+						return err
+					}
+
+					node.rawNode.Advance(result.rd)
 
 					if node.rawNode.HasReady() {
 						node.readies <- node.rawNode.Ready()
@@ -1099,7 +1137,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 						continue
 					}
 
-					node.readyTerminated = make(chan raft.Ready, 1)
+					node.readyTerminated = make(chan readyResult, 1)
 
 					processingTick.Stop()
 
@@ -1281,8 +1319,18 @@ func (node *Node) GetNodeID() uint64 {
 }
 
 // GetClusterState returns the current state of the Raft cluster.
+// The rawNode.Status() call is dispatched to the orchestrate goroutine
+// because rawNode is not thread-safe.
 func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState, error) {
-	status := node.rawNode.Status()
+	var status raft.Status
+
+	err := node.execClusterCommand(ctx, func() error {
+		status = node.rawNode.Status()
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	// Get leader
 	leaderID := status.Lead
@@ -1389,9 +1437,12 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 
 // IsHealthy returns true if the rawNode is connected to the cluster (leader or follower).
 func (node *Node) IsHealthy() bool {
-	status := node.rawNode.Status()
+	ss := node.lastSoftState.Load()
+	if ss == nil {
+		return false
+	}
 	// Node is healthy if it's a leader or follower
-	return status.RaftState == raft.StateLeader || status.RaftState == raft.StateFollower
+	return ss.RaftState == raft.StateLeader || ss.RaftState == raft.StateFollower
 }
 
 // pickBestTransferee selects the follower with the highest Match index (most synchronized).
@@ -1657,21 +1708,22 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 				NodeID: nodeID,
 			}},
 		}
-		node.confState = node.rawNode.ApplyConfChange(cc)
+		cs := node.rawNode.ApplyConfChange(cc)
+		node.confState.Store(cs)
 
 		node.RemovePeerAddress(nodeID)
 
 		// Persist the updated ConfState in the WAL snapshot so that restarts
 		// see the correct voter set.
-		err := node.wal.UpdateSnapshotConfState(node.confState)
+		err := node.wal.UpdateSnapshotConfState(cs)
 		if err != nil {
 			return fmt.Errorf("persisting confstate after force-remove: %w", err)
 		}
 
 		node.logger.WithFields(map[string]any{
 			"removedNodeID": nodeID,
-			"voters":        node.confState.Voters,
-			"learners":      node.confState.Learners,
+			"voters":        cs.Voters,
+			"learners":      cs.Learners,
 		}).Infof("Force-removed node (bypassed consensus)")
 
 		// Notify observers so bootstrap can clean up transport/service pool.

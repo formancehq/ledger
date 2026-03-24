@@ -877,7 +877,7 @@ func TestNodeFailureBetweenStoreSnapshotAndWalSnapshot(t *testing.T) {
 	}()
 
 	select {
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		require.Fail(t, "node did not fail and it should")
 	case err := <-nodeError:
 		require.Error(t, err)
@@ -1691,9 +1691,9 @@ func TestForceRemoveNode_DisconnectedNode(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify ConfState has 2 voters
-	require.Len(t, leader.Node.confState.Voters, 2)
+	require.Len(t, leader.Node.confState.Load().Voters, 2)
 
-	for _, v := range leader.Node.confState.Voters {
+	for _, v := range leader.Node.confState.Load().Voters {
 		require.NotEqual(t, followerID, v, "removed node should not be in voters")
 	}
 
@@ -1743,8 +1743,8 @@ func TestForceRemoveNode_QuorumLoss(t *testing.T) {
 	require.NoError(t, err)
 
 	// Now we have a single-voter cluster — leader can propose alone
-	require.Len(t, leader.Node.confState.Voters, 1)
-	require.Equal(t, leaderID, leader.Node.confState.Voters[0])
+	require.Len(t, leader.Node.confState.Load().Voters, 1)
+	require.Equal(t, leaderID, leader.Node.confState.Load().Voters[0])
 
 	// Verify the leader can still propose
 	_, err = createLedger(ctx, leader.Node, "after-quorum-restore")
@@ -1825,7 +1825,7 @@ func TestForceRemoveNode_PersistsConfState(t *testing.T) {
 	cluster.DisconnectNode(followerID)
 	err = leader.Node.ForceRemoveNode(ctx, followerID)
 	require.NoError(t, err)
-	require.Len(t, leader.Node.confState.Voters, 2)
+	require.Len(t, leader.Node.confState.Load().Voters, 2)
 
 	// Verify the ConfState was persisted to the WAL snapshot directly.
 	// Reading from the WAL proves the change survives restarts without

@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"runtime/debug"
+	"sync"
 
 	collectionutils "github.com/formancehq/go-libs/v5/pkg/types/collections"
 )
@@ -43,6 +44,7 @@ func newTask(fn func(context.Context, chan struct{}) error) *task {
 }
 
 type taskSet struct {
+	mu         sync.Mutex
 	tasks      []*task
 	errChannel chan error
 	terminated chan struct{}
@@ -63,12 +65,15 @@ func (pool *taskSet) run(ctx context.Context) {
 		defer close(pool.terminated)
 
 		for {
+			pool.mu.Lock()
 			selectCases := collectionutils.Map(pool.tasks, func(t *task) reflect.SelectCase {
 				return reflect.SelectCase{
 					Dir:  reflect.SelectRecv,
 					Chan: reflect.ValueOf(t.err()),
 				}
 			})
+			pool.mu.Unlock()
+
 			chosen, recv, _ := reflect.Select(selectCases)
 
 			var err error
@@ -80,9 +85,12 @@ func (pool *taskSet) run(ctx context.Context) {
 
 			pool.errChannel <- err
 
+			pool.mu.Lock()
 			pool.tasks = append(pool.tasks[:chosen], pool.tasks[chosen+1:]...)
+			empty := len(pool.tasks) == 0
+			pool.mu.Unlock()
 
-			if len(pool.tasks) == 0 {
+			if empty {
 				return
 			}
 		}
@@ -94,9 +102,11 @@ func (pool *taskSet) err() chan error {
 }
 
 func (pool *taskSet) stop() error {
+	pool.mu.Lock()
 	for _, t := range pool.tasks {
 		t.interrupt()
 	}
+	pool.mu.Unlock()
 
 	<-pool.terminated
 

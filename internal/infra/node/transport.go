@@ -48,7 +48,8 @@ type DefaultTransport struct {
 	lowPriorityRecvCh    chan []raftpb.Message // Data messages
 
 	// Channels for outgoing messages per peer
-	peers map[uint64]*peerConnection
+	peersMu sync.RWMutex
+	peers   map[uint64]*peerConnection
 
 	// Channel for reporting unreachable peers
 	unreachableCh chan uint64
@@ -258,8 +259,15 @@ func (t *DefaultTransport) Stop(ctx context.Context) error {
 		}
 	}
 
-	for _, peerConnection := range t.peers {
-		err := peerConnection.stop(ctx)
+	t.peersMu.RLock()
+	peersSnapshot := make([]*peerConnection, 0, len(t.peers))
+	for _, pc := range t.peers {
+		peersSnapshot = append(peersSnapshot, pc)
+	}
+	t.peersMu.RUnlock()
+
+	for _, pc := range peersSnapshot {
+		err := pc.stop(ctx)
 		if err != nil {
 			return err
 		}
@@ -275,6 +283,9 @@ func (t *DefaultTransport) Stop(ctx context.Context) error {
 
 // AddPeer adds a peer to the transport. If the peer already exists, it is a no-op.
 func (t *DefaultTransport) AddPeer(id uint64, addr string) {
+	t.peersMu.Lock()
+	defer t.peersMu.Unlock()
+
 	if _, exists := t.peers[id]; exists {
 		return
 	}
@@ -359,18 +370,20 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 
 // RemovePeer removes a peer from the transport, stopping its connection and cleaning up resources.
 func (t *DefaultTransport) RemovePeer(ctx context.Context, id uint64) {
+	t.peersMu.Lock()
 	conn, exists := t.peers[id]
 	if !exists {
+		t.peersMu.Unlock()
 		return
 	}
+	delete(t.peers, id)
+	t.peersMu.Unlock()
 
 	err := conn.stop(ctx)
 	if err != nil {
 		t.logger.WithFields(map[string]any{"peer": strconv.FormatUint(id, 16), "error": err}).
 			Errorf("Failed to stop peer connection")
 	}
-
-	delete(t.peers, id)
 
 	err = t.connectionPool.RemovePeer(id)
 	if err != nil {
@@ -437,7 +450,10 @@ func (t *DefaultTransport) Start(_ context.Context) {
 
 			// Push batches to each peer's priority queues
 			for peerID, priorityMsgs := range msgsByPeerAndPriority {
+				t.peersMu.RLock()
 				peer, exists := t.peers[peerID]
+				t.peersMu.RUnlock()
+
 				if !exists {
 					t.logger.
 						WithFields(map[string]any{
@@ -533,7 +549,10 @@ func (t *DefaultTransport) StreamMessages(stream grpc.BidiStreamingServer[rafttr
 	t.logger.Infof("Peer %x connected on %s priority stream!", peerID, priority)
 
 	// Best effort to notify the send loop that the peer is now reachable
-	if peer, ok := t.peers[peerID]; ok {
+	t.peersMu.RLock()
+	peer, ok := t.peers[peerID]
+	t.peersMu.RUnlock()
+	if ok {
 		select {
 		case peer.reconnected <- struct{}{}:
 		default:
