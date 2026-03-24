@@ -76,7 +76,7 @@ func setTransactionMetadata(
 		Ledger:        ledger,
 		TransactionId: txID,
 	})
-	assert.Sometimes(err == nil, "should be able to get existing transaction before metadata change", internal.Details{
+	assert.Sometimes(err == nil, "should be able to get entity before metadata change", internal.Details{
 		"ledger": ledger,
 		"error": err,
 	})
@@ -105,7 +105,7 @@ func setTransactionMetadata(
 			},
 		}},
 	})
-	assert.Sometimes(err == nil, "should be able to set metadata on transaction", internal.Details{
+	assert.Sometimes(err == nil, "should be able to set metadata", internal.Details{
 		"ledger": ledger,
 		"error": err,
 	})
@@ -118,7 +118,7 @@ func setTransactionMetadata(
 		Ledger:        ledger,
 		TransactionId: txID,
 	})
-	assert.Sometimes(err == nil, "should be able to get existing transaction after metadata change", internal.Details{
+	assert.Sometimes(err == nil, "should be able to get entity after metadata change", internal.Details{
 		"ledger": ledger,
 		"error":  err,
 	})
@@ -133,7 +133,7 @@ func setTransactionMetadata(
 
 	postMetadata := commonpb.MetadataSetToMap(postTx.GetTransaction().GetMetadata())
 
-	assert.Always(maps.Equal(postMetadata, expectedMetadata), "new transaction metadata should be correct", internal.Details{
+	assert.Always(maps.Equal(postMetadata, expectedMetadata), "new metadata should be correct", internal.Details{
 		"ledger":   ledger,
 		"txID":     txID,
 		"original": preMetadata,

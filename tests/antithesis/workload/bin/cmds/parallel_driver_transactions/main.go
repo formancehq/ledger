@@ -81,7 +81,7 @@ func createRandomPostingsTransaction(ctx context.Context, client servicepb.Bucke
 		"error":  err,
 	}
 
-	assert.Sometimes(err == nil, "should be able to create a postings transaction", details)
+	assert.Sometimes(err == nil, "should be able to create a transaction", details)
 	if err != nil {
 		return
 	}
@@ -99,7 +99,7 @@ func createRandomPostingsTransaction(ctx context.Context, client servicepb.Bucke
 	})
 	if err != nil {
 		st, _ := status.FromError(err)
-		assert.AlwaysOrUnreachable(st.Code() != codes.NotFound, "should always be able to read committed postings transactions", internal.Details{
+		assert.AlwaysOrUnreachable(st.Code() != codes.NotFound, "should always be able to read committed transaction", internal.Details{
 			"ledger": ledger,
 			"txId":   createdTx.Transaction.Id,
 		})
@@ -155,7 +155,7 @@ func createRandomNumscriptTransaction(ctx context.Context, client servicepb.Buck
 		"error":  err,
 	}
 
-	assert.Sometimes(err == nil, "should be able to create a numscript transaction", details)
+	assert.Sometimes(err == nil, "should be able to create a transaction", details)
 	if err != nil {
 		return
 	}
@@ -172,7 +172,7 @@ func createRandomNumscriptTransaction(ctx context.Context, client servicepb.Buck
 	})
 	if err != nil {
 		st, _ := status.FromError(err)
-		assert.AlwaysOrUnreachable(st.Code() != codes.NotFound, "should always be able to read committed numscript transactions", internal.Details{
+		assert.AlwaysOrUnreachable(st.Code() != codes.NotFound, "should always be able to read committed transaction", internal.Details{
 			"ledger": ledger,
 			"txId":   createdTx.Transaction.Id,
 		})

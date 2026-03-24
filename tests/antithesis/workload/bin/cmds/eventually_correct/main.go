@@ -50,7 +50,7 @@ func main() {
 func checkBalanced(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 	// Aggregate all account balances per asset
 	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{Ledger: ledger})
-	assert.Sometimes(err == nil, "should be able to list accounts for balance aggregation", internal.Details{
+	assert.Sometimes(err == nil, "should be able to list accounts", internal.Details{
 		"ledger": ledger,
 		"error":  err,
 	})
@@ -82,7 +82,7 @@ func checkBalanced(ctx context.Context, client servicepb.BucketServiceClient, le
 	for asset, total := range aggregated {
 		assert.Always(
 			total.Cmp(big.NewInt(0)) == 0,
-			"aggregated volumes for asset should be 0",
+			"double-entry: sum of balances should be 0",
 			internal.Details{
 				"ledger":  ledger,
 				"asset":   asset,
@@ -102,7 +102,7 @@ func checkAccountBalances(ctx context.Context, client servicepb.BucketServiceCli
 			Ledger:  ledger,
 			Address: address,
 		})
-		assert.Sometimes(err == nil, "should be able to get account balances", internal.Details{
+		assert.Sometimes(err == nil, "should be able to get account", internal.Details{
 			"ledger":  ledger,
 			"address": address,
 			"error":   err,
@@ -124,7 +124,7 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 	details := internal.Details{"ledger": ledger}
 
 	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{Ledger: ledger})
-	assert.Sometimes(err == nil, "can list accounts for volume consistency", details.With(internal.Details{"error": err}))
+	assert.Sometimes(err == nil, "should be able to list accounts", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return
 	}
@@ -161,7 +161,7 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 				Ledger:  ledger,
 				Address: account.Address,
 			})
-			assert.Sometimes(err == nil, "can get account for cross-check", details.With(internal.Details{
+			assert.Sometimes(err == nil, "should be able to get account", details.With(internal.Details{
 				"account": account.Address,
 				"error":   err,
 			}))

@@ -76,7 +76,7 @@ func setAccountMetadata(
 		Ledger:  ledger,
 		Address: account,
 	})
-	assert.Sometimes(err == nil, "should be able to get existing account before metadata change", internal.Details{
+	assert.Sometimes(err == nil, "should be able to get entity before metadata change", internal.Details{
 		"ledger": ledger,
 		"error":  err,
 	})
@@ -105,7 +105,7 @@ func setAccountMetadata(
 			},
 		}},
 	})
-	assert.Sometimes(err == nil, "should be able to set metadata on account", internal.Details{
+	assert.Sometimes(err == nil, "should be able to set metadata", internal.Details{
 		"ledger": ledger,
 		"error":  err,
 	})
@@ -118,7 +118,7 @@ func setAccountMetadata(
 		Ledger:  ledger,
 		Address: account,
 	})
-	assert.Sometimes(err == nil, "should be able to get existing account after metadata change", internal.Details{
+	assert.Sometimes(err == nil, "should be able to get entity after metadata change", internal.Details{
 		"ledger": ledger,
 		"error":  err,
 	})
@@ -134,7 +134,7 @@ func setAccountMetadata(
 
 	postMetadata := commonpb.MetadataSetToMap(postAcc.GetMetadata())
 
-	assert.Always(maps.Equal(postMetadata, expectedMetadata), "new account metadata should be correct", internal.Details{
+	assert.Always(maps.Equal(postMetadata, expectedMetadata), "new metadata should be correct", internal.Details{
 		"ledger":   ledger,
 		"account":  account,
 		"original": preMetadata,
