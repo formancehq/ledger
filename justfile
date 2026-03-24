@@ -58,11 +58,11 @@ install-client:
 
 # Run unit tests for the root module (light build)
 test:
-    go test ./... -timeout 20m
+    go test -race ./... -timeout 20m
 
 # Run unit tests with all optional features
 test-full:
-    go test -tags "{{all_tags}}" ./... -timeout 20m
+    go test -race -tags "{{all_tags}}" ./... -timeout 20m
 
 # Run all tests across all modules (unit + integration + e2e)
 test-all: test test-submodules test-e2e test-scenarios
@@ -73,20 +73,20 @@ test-submodules:
     set -euo pipefail
     for dir in {{go_submodules}}; do
         echo "==> go test ($dir)"
-        (cd "$dir" && go test ./...)
+        (cd "$dir" && go test -race ./...)
     done
 
 # Run end-to-end tests (light build)
 test-e2e:
-    go test -tags e2e -p 1 ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
+    go test -race -tags e2e -p 1 ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
 
 # Run end-to-end tests with all optional features
 test-e2e-full:
-    go test -tags "e2e,{{all_tags}}" -p 1 ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
+    go test -race -tags "e2e,{{all_tags}}" -p 1 ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
 
 # Run financial scenario tests
 test-scenarios:
-    go test -tags scenario ./tests/scenarios/... -timeout 300s
+    go test -race -tags scenario ./tests/scenarios/... -timeout 300s
 
 # Release (official, triggered by tag)
 release:
