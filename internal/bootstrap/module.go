@@ -447,7 +447,7 @@ func Module() fx.Option {
 					cfg.RaftConfig.WalDir,
 					cfg.DataDir,
 					readIndexDir,
-					10*time.Second,
+					5*time.Second,
 					meterProvider.Meter("storage"),
 				)
 			},

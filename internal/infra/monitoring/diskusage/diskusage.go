@@ -158,33 +158,33 @@ func (c *Collector) collect() {
 		c.dataBytes.Store(size)
 	}
 
-	if size, err := DirSize(c.walDir); err == nil {
-		c.walVolumeBytes.Store(size)
-	}
-
-	if size, err := DirSize(c.dataDir); err == nil {
-		c.dataVolumeBytes.Store(size)
-	}
-
-	if total, err := filesystemTotalBytes(c.walDir); err == nil {
+	if used, total, err := filesystemUsage(c.walDir); err == nil {
+		c.walVolumeBytes.Store(used)
 		c.walVolumeTotalBytes.Store(total)
 	}
 
-	if total, err := filesystemTotalBytes(c.dataDir); err == nil {
+	if used, total, err := filesystemUsage(c.dataDir); err == nil {
+		c.dataVolumeBytes.Store(used)
 		c.dataVolumeTotalBytes.Store(total)
 	}
 }
 
-// filesystemTotalBytes returns the total capacity of the filesystem containing path.
-func filesystemTotalBytes(path string) (int64, error) {
+// filesystemUsage returns the used and total bytes of the filesystem containing path.
+// Used bytes are computed as (Blocks - Bavail) * Bsize, which accounts for all
+// consumers on the filesystem (not just managed directories) and includes space
+// reserved for root. This is a single syscall, much faster than walking directories.
+func filesystemUsage(path string) (used, total int64, err error) {
 	var stat syscall.Statfs_t
 
-	err := syscall.Statfs(path, &stat)
-	if err != nil {
-		return 0, err
+	if err = syscall.Statfs(path, &stat); err != nil {
+		return 0, 0, err
 	}
 
-	return int64(stat.Blocks) * int64(stat.Bsize), nil
+	bsize := int64(stat.Bsize)
+	total = int64(stat.Blocks) * bsize
+	used = int64(stat.Blocks-stat.Bavail) * bsize
+
+	return used, total, nil
 }
 
 // SpoolBytes returns the last computed spool directory size in bytes.

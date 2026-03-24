@@ -98,6 +98,18 @@ func (hc *HealthChecker) IsHealthy() bool {
 	return hc.healthy.Load()
 }
 
+// nodeUsageReport holds the disk usage data for a single node, used for info logging.
+type nodeUsageReport struct {
+	nodeID         uint64
+	walUsed        int64
+	walTotal       int64
+	walPercent     float64
+	dataUsed       int64
+	dataTotal      int64
+	dataPercent    float64
+	fetchErr       error
+}
+
 // check performs the disk usage check on all nodes if this node is the leader.
 // It updates the healthy state atomically.
 //
@@ -121,13 +133,28 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 		}
 	}()
 
+	var reports []nodeUsageReport
+
+	localWalUsed := hc.collector.WALVolumeBytes()
+	localWalTotal := hc.collector.WALVolumeTotalBytes()
+	localDataUsed := hc.collector.DataVolumeBytes()
+	localDataTotal := hc.collector.DataVolumeTotalBytes()
+
 	healthy := !hc.exceedsThreshold(
 		hc.node.GetNodeID(),
-		hc.collector.WALVolumeBytes(),
-		hc.collector.WALVolumeTotalBytes(),
-		hc.collector.DataVolumeBytes(),
-		hc.collector.DataVolumeTotalBytes(),
+		localWalUsed, localWalTotal,
+		localDataUsed, localDataTotal,
 	)
+
+	reports = append(reports, nodeUsageReport{
+		nodeID:      hc.node.GetNodeID(),
+		walUsed:     localWalUsed,
+		walTotal:    localWalTotal,
+		walPercent:  safePercent(localWalUsed, localWalTotal),
+		dataUsed:    localDataUsed,
+		dataTotal:   localDataTotal,
+		dataPercent: safePercent(localDataUsed, localDataTotal),
+	})
 
 	// Check peers dynamically from the service pool
 	for _, peerID := range hc.servicePool.PeerIDs() {
@@ -156,14 +183,31 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				"node_id": peerID,
 				"error":   err,
 			}).Errorf("Failed to get disk usage from peer")
-		} else if hc.exceedsThreshold(
-			peerID,
-			resp.GetWalVolumeBytes(),
-			resp.GetWalVolumeTotalBytes(),
-			resp.GetDataVolumeBytes(),
-			resp.GetDataVolumeTotalBytes(),
-		) {
-			healthy = false
+
+			reports = append(reports, nodeUsageReport{
+				nodeID:   peerID,
+				fetchErr: err,
+			})
+		} else {
+			if hc.exceedsThreshold(
+				peerID,
+				resp.GetWalVolumeBytes(),
+				resp.GetWalVolumeTotalBytes(),
+				resp.GetDataVolumeBytes(),
+				resp.GetDataVolumeTotalBytes(),
+			) {
+				healthy = false
+			}
+
+			reports = append(reports, nodeUsageReport{
+				nodeID:      peerID,
+				walUsed:     resp.GetWalVolumeBytes(),
+				walTotal:    resp.GetWalVolumeTotalBytes(),
+				walPercent:  safePercent(resp.GetWalVolumeBytes(), resp.GetWalVolumeTotalBytes()),
+				dataUsed:    resp.GetDataVolumeBytes(),
+				dataTotal:   resp.GetDataVolumeTotalBytes(),
+				dataPercent: safePercent(resp.GetDataVolumeBytes(), resp.GetDataVolumeTotalBytes()),
+			})
 		}
 
 		// Check clock skew
@@ -175,6 +219,42 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	}
 
 	hc.healthy.Store(healthy)
+
+	hc.logDiskUsageSummary(reports, healthy)
+}
+
+// logDiskUsageSummary logs an info-level message summarizing disk usage across all nodes.
+func (hc *HealthChecker) logDiskUsageSummary(reports []nodeUsageReport, healthy bool) {
+	for _, r := range reports {
+		fields := map[string]any{
+			"node_id": r.nodeID,
+			"healthy": healthy,
+		}
+
+		if r.fetchErr != nil {
+			fields["error"] = r.fetchErr
+			hc.logger.WithFields(fields).Infof("Disk usage check: unreachable")
+
+			continue
+		}
+
+		fields["wal_used"] = r.walUsed
+		fields["wal_total"] = r.walTotal
+		fields["wal_percent"] = r.walPercent
+		fields["data_used"] = r.dataUsed
+		fields["data_total"] = r.dataTotal
+		fields["data_percent"] = r.dataPercent
+		hc.logger.WithFields(fields).Infof("Disk usage check: wal=%.1f%% data=%.1f%%", r.walPercent, r.dataPercent)
+	}
+}
+
+// safePercent returns the percentage of used/total as a float (0-100), or 0 if total is zero.
+func safePercent(used, total int64) float64 {
+	if total <= 0 {
+		return 0
+	}
+
+	return float64(used) / float64(total) * 100
 }
 
 // exceedsThreshold checks the WAL and data volume usage for a given node,
