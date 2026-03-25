@@ -37,60 +37,60 @@ type ListAccountsRequest struct {
 	PaginationToken *string `queryParam:"style=form,explode=true,name=pagination_token"`
 }
 
-func (o *ListAccountsRequest) GetLedger() string {
-	if o == nil {
+func (l *ListAccountsRequest) GetLedger() string {
+	if l == nil {
 		return ""
 	}
-	return o.Ledger
+	return l.Ledger
 }
 
-func (o *ListAccountsRequest) GetPageSize() *int64 {
-	if o == nil {
+func (l *ListAccountsRequest) GetPageSize() *int64 {
+	if l == nil {
 		return nil
 	}
-	return o.PageSize
+	return l.PageSize
 }
 
-func (o *ListAccountsRequest) GetAfter() *string {
-	if o == nil {
+func (l *ListAccountsRequest) GetAfter() *string {
+	if l == nil {
 		return nil
 	}
-	return o.After
+	return l.After
 }
 
-func (o *ListAccountsRequest) GetAddress() *string {
-	if o == nil {
+func (l *ListAccountsRequest) GetAddress() *string {
+	if l == nil {
 		return nil
 	}
-	return o.Address
+	return l.Address
 }
 
-func (o *ListAccountsRequest) GetMetadata() map[string]any {
-	if o == nil {
+func (l *ListAccountsRequest) GetMetadata() map[string]any {
+	if l == nil {
 		return nil
 	}
-	return o.Metadata
+	return l.Metadata
 }
 
-func (o *ListAccountsRequest) GetBalance() *int64 {
-	if o == nil {
+func (l *ListAccountsRequest) GetBalance() *int64 {
+	if l == nil {
 		return nil
 	}
-	return o.Balance
+	return l.Balance
 }
 
-func (o *ListAccountsRequest) GetCursor() *string {
-	if o == nil {
+func (l *ListAccountsRequest) GetCursor() *string {
+	if l == nil {
 		return nil
 	}
-	return o.Cursor
+	return l.Cursor
 }
 
-func (o *ListAccountsRequest) GetPaginationToken() *string {
-	if o == nil {
+func (l *ListAccountsRequest) GetPaginationToken() *string {
+	if l == nil {
 		return nil
 	}
-	return o.PaginationToken
+	return l.PaginationToken
 }
 
 type ListAccountsResponse struct {
@@ -101,23 +101,23 @@ type ListAccountsResponse struct {
 	ErrorResponse *components.ErrorResponse
 }
 
-func (o *ListAccountsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (l *ListAccountsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if l == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return l.HTTPMeta
 }
 
-func (o *ListAccountsResponse) GetAccountsCursorResponse() *components.AccountsCursorResponse {
-	if o == nil {
+func (l *ListAccountsResponse) GetAccountsCursorResponse() *components.AccountsCursorResponse {
+	if l == nil {
 		return nil
 	}
-	return o.AccountsCursorResponse
+	return l.AccountsCursorResponse
 }
 
-func (o *ListAccountsResponse) GetErrorResponse() *components.ErrorResponse {
-	if o == nil {
+func (l *ListAccountsResponse) GetErrorResponse() *components.ErrorResponse {
+	if l == nil {
 		return nil
 	}
-	return o.ErrorResponse
+	return l.ErrorResponse
 }

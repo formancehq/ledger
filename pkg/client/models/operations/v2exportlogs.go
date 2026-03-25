@@ -4,6 +4,7 @@ package operations
 
 import (
 	"github.com/formancehq/ledger/pkg/client/models/components"
+	"io"
 )
 
 type V2ExportLogsRequest struct {
@@ -11,20 +12,36 @@ type V2ExportLogsRequest struct {
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 }
 
-func (o *V2ExportLogsRequest) GetLedger() string {
-	if o == nil {
+func (v *V2ExportLogsRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
+
+// #region class-body-v2exportlogsrequest
+// #endregion class-body-v2exportlogsrequest
 
 type V2ExportLogsResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
+	// Export OK
+	// The Close method must be called on this field, even if it is not used, to prevent resource leaks.
+	Bytes io.ReadCloser
 }
 
-func (o *V2ExportLogsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2ExportLogsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
+
+func (v *V2ExportLogsResponse) GetBytes() io.ReadCloser {
+	if v == nil {
+		return nil
+	}
+	return v.Bytes
+}
+
+// #region class-body-v2exportlogsresponse
+// #endregion class-body-v2exportlogsresponse

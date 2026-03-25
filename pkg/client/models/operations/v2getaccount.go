@@ -26,39 +26,42 @@ func (v V2GetAccountRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2GetAccountRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2GetAccountRequest) GetLedger() string {
-	if o == nil {
+func (v *V2GetAccountRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2GetAccountRequest) GetAddress() string {
-	if o == nil {
+func (v *V2GetAccountRequest) GetAddress() string {
+	if v == nil {
 		return ""
 	}
-	return o.Address
+	return v.Address
 }
 
-func (o *V2GetAccountRequest) GetExpand() *string {
-	if o == nil {
+func (v *V2GetAccountRequest) GetExpand() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Expand
+	return v.Expand
 }
 
-func (o *V2GetAccountRequest) GetPit() *time.Time {
-	if o == nil {
+func (v *V2GetAccountRequest) GetPit() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.Pit
+	return v.Pit
 }
+
+// #region class-body-v2getaccountrequest
+// #endregion class-body-v2getaccountrequest
 
 type V2GetAccountResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -66,16 +69,19 @@ type V2GetAccountResponse struct {
 	V2AccountResponse *components.V2AccountResponse
 }
 
-func (o *V2GetAccountResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2GetAccountResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2GetAccountResponse) GetV2AccountResponse() *components.V2AccountResponse {
-	if o == nil {
+func (v *V2GetAccountResponse) GetV2AccountResponse() *components.V2AccountResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2AccountResponse
+	return v.V2AccountResponse
 }
+
+// #region class-body-v2getaccountresponse
+// #endregion class-body-v2getaccountresponse

@@ -5,6 +5,7 @@ package components
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
 )
 
 type Resource string
@@ -38,56 +39,84 @@ type V2AccountsCursorResponseCursor struct {
 	Data     []V2Account `json:"data"`
 }
 
-func (o *V2AccountsCursorResponseCursor) GetPageSize() int64 {
-	if o == nil {
+func (v V2AccountsCursorResponseCursor) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2AccountsCursorResponseCursor) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"pageSize", "hasMore", "data"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2AccountsCursorResponseCursor) GetPageSize() int64 {
+	if v == nil {
 		return 0
 	}
-	return o.PageSize
+	return v.PageSize
 }
 
-func (o *V2AccountsCursorResponseCursor) GetHasMore() bool {
-	if o == nil {
+func (v *V2AccountsCursorResponseCursor) GetHasMore() bool {
+	if v == nil {
 		return false
 	}
-	return o.HasMore
+	return v.HasMore
 }
 
-func (o *V2AccountsCursorResponseCursor) GetPrevious() *string {
-	if o == nil {
+func (v *V2AccountsCursorResponseCursor) GetPrevious() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Previous
+	return v.Previous
 }
 
-func (o *V2AccountsCursorResponseCursor) GetNext() *string {
-	if o == nil {
+func (v *V2AccountsCursorResponseCursor) GetNext() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Next
+	return v.Next
 }
 
-func (o *V2AccountsCursorResponseCursor) GetData() []V2Account {
-	if o == nil {
+func (v *V2AccountsCursorResponseCursor) GetData() []V2Account {
+	if v == nil {
 		return []V2Account{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2accountscursorresponsecursor
+// #endregion class-body-v2accountscursorresponsecursor
 
 type V2AccountsCursorResponse struct {
 	Resource *Resource                      `json:"resource,omitempty"`
 	Cursor   V2AccountsCursorResponseCursor `json:"cursor"`
 }
 
-func (o *V2AccountsCursorResponse) GetResource() *Resource {
-	if o == nil {
-		return nil
-	}
-	return o.Resource
+func (v V2AccountsCursorResponse) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
 }
 
-func (o *V2AccountsCursorResponse) GetCursor() V2AccountsCursorResponseCursor {
-	if o == nil {
+func (v *V2AccountsCursorResponse) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"cursor"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2AccountsCursorResponse) GetResource() *Resource {
+	if v == nil {
+		return nil
+	}
+	return v.Resource
+}
+
+func (v *V2AccountsCursorResponse) GetCursor() V2AccountsCursorResponseCursor {
+	if v == nil {
 		return V2AccountsCursorResponseCursor{}
 	}
-	return o.Cursor
+	return v.Cursor
 }
+
+// #region class-body-v2accountscursorresponse
+// #endregion class-body-v2accountscursorresponse

@@ -34,60 +34,63 @@ func (v V2ListAccountsRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2ListAccountsRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2ListAccountsRequest) GetLedger() string {
-	if o == nil {
+func (v *V2ListAccountsRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2ListAccountsRequest) GetPageSize() *int64 {
-	if o == nil {
+func (v *V2ListAccountsRequest) GetPageSize() *int64 {
+	if v == nil {
 		return nil
 	}
-	return o.PageSize
+	return v.PageSize
 }
 
-func (o *V2ListAccountsRequest) GetCursor() *string {
-	if o == nil {
+func (v *V2ListAccountsRequest) GetCursor() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Cursor
+	return v.Cursor
 }
 
-func (o *V2ListAccountsRequest) GetExpand() *string {
-	if o == nil {
+func (v *V2ListAccountsRequest) GetExpand() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Expand
+	return v.Expand
 }
 
-func (o *V2ListAccountsRequest) GetPit() *time.Time {
-	if o == nil {
+func (v *V2ListAccountsRequest) GetPit() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.Pit
+	return v.Pit
 }
 
-func (o *V2ListAccountsRequest) GetSort() *string {
-	if o == nil {
+func (v *V2ListAccountsRequest) GetSort() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Sort
+	return v.Sort
 }
 
-func (o *V2ListAccountsRequest) GetRequestBody() map[string]any {
-	if o == nil {
+func (v *V2ListAccountsRequest) GetRequestBody() map[string]any {
+	if v == nil {
 		return map[string]any{}
 	}
-	return o.RequestBody
+	return v.RequestBody
 }
+
+// #region class-body-v2listaccountsrequest
+// #endregion class-body-v2listaccountsrequest
 
 type V2ListAccountsResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -95,16 +98,19 @@ type V2ListAccountsResponse struct {
 	V2AccountsCursorResponse *components.V2AccountsCursorResponse
 }
 
-func (o *V2ListAccountsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2ListAccountsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2ListAccountsResponse) GetV2AccountsCursorResponse() *components.V2AccountsCursorResponse {
-	if o == nil {
+func (v *V2ListAccountsResponse) GetV2AccountsCursorResponse() *components.V2AccountsCursorResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2AccountsCursorResponse
+	return v.V2AccountsCursorResponse
 }
+
+// #region class-body-v2listaccountsresponse
+// #endregion class-body-v2listaccountsresponse

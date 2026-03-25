@@ -10,48 +10,48 @@ type LogsCursorResponseCursor struct {
 	Data     []Log   `json:"data"`
 }
 
-func (o *LogsCursorResponseCursor) GetPageSize() int64 {
-	if o == nil {
+func (l *LogsCursorResponseCursor) GetPageSize() int64 {
+	if l == nil {
 		return 0
 	}
-	return o.PageSize
+	return l.PageSize
 }
 
-func (o *LogsCursorResponseCursor) GetHasMore() bool {
-	if o == nil {
+func (l *LogsCursorResponseCursor) GetHasMore() bool {
+	if l == nil {
 		return false
 	}
-	return o.HasMore
+	return l.HasMore
 }
 
-func (o *LogsCursorResponseCursor) GetPrevious() *string {
-	if o == nil {
+func (l *LogsCursorResponseCursor) GetPrevious() *string {
+	if l == nil {
 		return nil
 	}
-	return o.Previous
+	return l.Previous
 }
 
-func (o *LogsCursorResponseCursor) GetNext() *string {
-	if o == nil {
+func (l *LogsCursorResponseCursor) GetNext() *string {
+	if l == nil {
 		return nil
 	}
-	return o.Next
+	return l.Next
 }
 
-func (o *LogsCursorResponseCursor) GetData() []Log {
-	if o == nil {
+func (l *LogsCursorResponseCursor) GetData() []Log {
+	if l == nil {
 		return []Log{}
 	}
-	return o.Data
+	return l.Data
 }
 
 type LogsCursorResponse struct {
 	Cursor LogsCursorResponseCursor `json:"cursor"`
 }
 
-func (o *LogsCursorResponse) GetCursor() LogsCursorResponseCursor {
-	if o == nil {
+func (l *LogsCursorResponse) GetCursor() LogsCursorResponseCursor {
+	if l == nil {
 		return LogsCursorResponseCursor{}
 	}
-	return o.Cursor
+	return l.Cursor
 }

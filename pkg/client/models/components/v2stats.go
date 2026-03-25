@@ -17,22 +17,25 @@ func (v V2Stats) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2Stats) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2Stats) GetAccounts() int64 {
-	if o == nil {
+func (v *V2Stats) GetAccounts() int64 {
+	if v == nil {
 		return 0
 	}
-	return o.Accounts
+	return v.Accounts
 }
 
-func (o *V2Stats) GetTransactions() *big.Int {
-	if o == nil {
+func (v *V2Stats) GetTransactions() *big.Int {
+	if v == nil {
 		return big.NewInt(0)
 	}
-	return o.Transactions
+	return v.Transactions
 }
+
+// #region class-body-v2stats
+// #endregion class-body-v2stats

@@ -7,16 +7,16 @@ type LedgerStorage struct {
 	Ledgers []string `json:"ledgers"`
 }
 
-func (o *LedgerStorage) GetDriver() string {
-	if o == nil {
+func (l *LedgerStorage) GetDriver() string {
+	if l == nil {
 		return ""
 	}
-	return o.Driver
+	return l.Driver
 }
 
-func (o *LedgerStorage) GetLedgers() []string {
-	if o == nil {
+func (l *LedgerStorage) GetLedgers() []string {
+	if l == nil {
 		return []string{}
 	}
-	return o.Ledgers
+	return l.Ledgers
 }

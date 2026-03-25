@@ -10,37 +10,40 @@ type V2SchemasCursor struct {
 	PageSize int64      `json:"pageSize"`
 }
 
-func (o *V2SchemasCursor) GetData() []V2Schema {
-	if o == nil {
+func (v *V2SchemasCursor) GetData() []V2Schema {
+	if v == nil {
 		return []V2Schema{}
 	}
-	return o.Data
+	return v.Data
 }
 
-func (o *V2SchemasCursor) GetHasMore() bool {
-	if o == nil {
+func (v *V2SchemasCursor) GetHasMore() bool {
+	if v == nil {
 		return false
 	}
-	return o.HasMore
+	return v.HasMore
 }
 
-func (o *V2SchemasCursor) GetPrevious() *string {
-	if o == nil {
+func (v *V2SchemasCursor) GetPrevious() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Previous
+	return v.Previous
 }
 
-func (o *V2SchemasCursor) GetNext() *string {
-	if o == nil {
+func (v *V2SchemasCursor) GetNext() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Next
+	return v.Next
 }
 
-func (o *V2SchemasCursor) GetPageSize() int64 {
-	if o == nil {
+func (v *V2SchemasCursor) GetPageSize() int64 {
+	if v == nil {
 		return 0
 	}
-	return o.PageSize
+	return v.PageSize
 }
+
+// #region class-body-v2schemascursor
+// #endregion class-body-v2schemascursor

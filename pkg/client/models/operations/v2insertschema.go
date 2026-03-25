@@ -16,49 +16,55 @@ type V2InsertSchemaRequest struct {
 	V2SchemaData   components.V2SchemaData `request:"mediaType=application/json"`
 }
 
-func (o *V2InsertSchemaRequest) GetLedger() string {
-	if o == nil {
+func (v *V2InsertSchemaRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2InsertSchemaRequest) GetVersion() string {
-	if o == nil {
+func (v *V2InsertSchemaRequest) GetVersion() string {
+	if v == nil {
 		return ""
 	}
-	return o.Version
+	return v.Version
 }
 
-func (o *V2InsertSchemaRequest) GetIdempotencyKey() *string {
-	if o == nil {
+func (v *V2InsertSchemaRequest) GetIdempotencyKey() *string {
+	if v == nil {
 		return nil
 	}
-	return o.IdempotencyKey
+	return v.IdempotencyKey
 }
 
-func (o *V2InsertSchemaRequest) GetV2SchemaData() components.V2SchemaData {
-	if o == nil {
+func (v *V2InsertSchemaRequest) GetV2SchemaData() components.V2SchemaData {
+	if v == nil {
 		return components.V2SchemaData{}
 	}
-	return o.V2SchemaData
+	return v.V2SchemaData
 }
+
+// #region class-body-v2insertschemarequest
+// #endregion class-body-v2insertschemarequest
 
 type V2InsertSchemaResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	Headers  map[string][]string
 }
 
-func (o *V2InsertSchemaResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2InsertSchemaResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2InsertSchemaResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (v *V2InsertSchemaResponse) GetHeaders() map[string][]string {
+	if v == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return v.Headers
 }
+
+// #region class-body-v2insertschemaresponse
+// #endregion class-body-v2insertschemaresponse

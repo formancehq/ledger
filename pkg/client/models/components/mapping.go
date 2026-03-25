@@ -6,9 +6,9 @@ type Mapping struct {
 	Contracts []Contract `json:"contracts"`
 }
 
-func (o *Mapping) GetContracts() []Contract {
-	if o == nil {
+func (m *Mapping) GetContracts() []Contract {
+	if m == nil {
 		return []Contract{}
 	}
-	return o.Contracts
+	return m.Contracts
 }

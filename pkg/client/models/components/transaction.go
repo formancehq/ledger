@@ -23,57 +23,57 @@ func (t Transaction) MarshalJSON() ([]byte, error) {
 }
 
 func (t *Transaction) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &t, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &t, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *Transaction) GetTimestamp() time.Time {
-	if o == nil {
+func (t *Transaction) GetTimestamp() time.Time {
+	if t == nil {
 		return time.Time{}
 	}
-	return o.Timestamp
+	return t.Timestamp
 }
 
-func (o *Transaction) GetPostings() []Posting {
-	if o == nil {
+func (t *Transaction) GetPostings() []Posting {
+	if t == nil {
 		return []Posting{}
 	}
-	return o.Postings
+	return t.Postings
 }
 
-func (o *Transaction) GetReference() *string {
-	if o == nil {
+func (t *Transaction) GetReference() *string {
+	if t == nil {
 		return nil
 	}
-	return o.Reference
+	return t.Reference
 }
 
-func (o *Transaction) GetMetadata() map[string]any {
-	if o == nil {
+func (t *Transaction) GetMetadata() map[string]any {
+	if t == nil {
 		return nil
 	}
-	return o.Metadata
+	return t.Metadata
 }
 
-func (o *Transaction) GetTxid() *big.Int {
-	if o == nil {
+func (t *Transaction) GetTxid() *big.Int {
+	if t == nil {
 		return big.NewInt(0)
 	}
-	return o.Txid
+	return t.Txid
 }
 
-func (o *Transaction) GetPreCommitVolumes() map[string]map[string]Volume {
-	if o == nil {
+func (t *Transaction) GetPreCommitVolumes() map[string]map[string]Volume {
+	if t == nil {
 		return nil
 	}
-	return o.PreCommitVolumes
+	return t.PreCommitVolumes
 }
 
-func (o *Transaction) GetPostCommitVolumes() map[string]map[string]Volume {
-	if o == nil {
+func (t *Transaction) GetPostCommitVolumes() map[string]map[string]Volume {
+	if t == nil {
 		return nil
 	}
-	return o.PostCommitVolumes
+	return t.PostCommitVolumes
 }

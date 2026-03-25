@@ -11,11 +11,11 @@ type ReadStatsRequest struct {
 	Ledger string `pathParam:"style=simple,explode=false,name=ledger"`
 }
 
-func (o *ReadStatsRequest) GetLedger() string {
-	if o == nil {
+func (r *ReadStatsRequest) GetLedger() string {
+	if r == nil {
 		return ""
 	}
-	return o.Ledger
+	return r.Ledger
 }
 
 type ReadStatsResponse struct {
@@ -24,16 +24,16 @@ type ReadStatsResponse struct {
 	StatsResponse *components.StatsResponse
 }
 
-func (o *ReadStatsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (r *ReadStatsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if r == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return r.HTTPMeta
 }
 
-func (o *ReadStatsResponse) GetStatsResponse() *components.StatsResponse {
-	if o == nil {
+func (r *ReadStatsResponse) GetStatsResponse() *components.StatsResponse {
+	if r == nil {
 		return nil
 	}
-	return o.StatsResponse
+	return r.StatsResponse
 }

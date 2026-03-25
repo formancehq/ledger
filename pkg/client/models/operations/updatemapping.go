@@ -12,18 +12,18 @@ type UpdateMappingRequest struct {
 	Mapping *components.Mapping `request:"mediaType=application/json"`
 }
 
-func (o *UpdateMappingRequest) GetLedger() string {
-	if o == nil {
+func (u *UpdateMappingRequest) GetLedger() string {
+	if u == nil {
 		return ""
 	}
-	return o.Ledger
+	return u.Ledger
 }
 
-func (o *UpdateMappingRequest) GetMapping() *components.Mapping {
-	if o == nil {
+func (u *UpdateMappingRequest) GetMapping() *components.Mapping {
+	if u == nil {
 		return nil
 	}
-	return o.Mapping
+	return u.Mapping
 }
 
 type UpdateMappingResponse struct {
@@ -32,16 +32,16 @@ type UpdateMappingResponse struct {
 	MappingResponse *components.MappingResponse
 }
 
-func (o *UpdateMappingResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (u *UpdateMappingResponse) GetHTTPMeta() components.HTTPMetadata {
+	if u == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return u.HTTPMeta
 }
 
-func (o *UpdateMappingResponse) GetMappingResponse() *components.MappingResponse {
-	if o == nil {
+func (u *UpdateMappingResponse) GetMappingResponse() *components.MappingResponse {
+	if u == nil {
 		return nil
 	}
-	return o.MappingResponse
+	return u.MappingResponse
 }

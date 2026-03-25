@@ -1,5 +1,4 @@
-# V2
-(*Ledger.V2*)
+# Ledger.V2
 
 ## Overview
 
@@ -55,6 +54,7 @@ List ledgers
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2ListLedgers" method="get" path="/v2" -->
 ```go
 package main
 
@@ -72,15 +72,15 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V2.ListLedgers(ctx, operations.V2ListLedgersRequest{
-        PageSize: client.Int64(100),
-        Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
-        Sort: client.String("id:desc"),
+        PageSize: client.Pointer[int64](100),
+        Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        Sort: client.Pointer("id:desc"),
         RequestBody: map[string]any{
             "key": "<value>",
             "key1": "<value>",
@@ -121,6 +121,7 @@ Get a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2GetLedger" method="get" path="/v2/{ledger}" -->
 ```go
 package main
 
@@ -138,8 +139,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -180,6 +181,7 @@ Create a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2CreateLedger" method="post" path="/v2/{ledger}" -->
 ```go
 package main
 
@@ -197,8 +199,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -244,6 +246,7 @@ Insert a schema for a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2InsertSchema" method="post" path="/v2/{ledger}/schemas/{version}" -->
 ```go
 package main
 
@@ -261,8 +264,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -274,7 +277,7 @@ func main() {
                 "users": components.V2ChartSegment{
                     AdditionalProperties: map[string]components.V2ChartSegment{
                         "$userID": components.V2ChartSegment{
-                            DotPattern: client.String("^[0-9]{16}$"),
+                            DotPattern: client.Pointer("^[0-9]{16}$"),
                         },
                     },
                 },
@@ -284,8 +287,8 @@ func main() {
                     Params: client.Pointer(components.CreateV2QueryParamsQueryTemplateAccountParams(
                         components.QueryTemplateAccountParams{
                             Resource: components.V2QueryParams1ResourceAccounts.ToPointer(),
-                            PageSize: client.Int64(100),
-                            Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+                            PageSize: client.Pointer[int64](100),
+                            Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
                         },
                     )),
                 },
@@ -326,6 +329,7 @@ Get a schema for a ledger by version
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2GetSchema" method="get" path="/v2/{ledger}/schemas/{version}" -->
 ```go
 package main
 
@@ -343,8 +347,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -386,6 +390,7 @@ List all schemas for a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2ListSchemas" method="get" path="/v2/{ledger}/schemas" -->
 ```go
 package main
 
@@ -403,8 +408,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -445,6 +450,7 @@ Update ledger metadata
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2UpdateLedgerMetadata" method="put" path="/v2/{ledger}/metadata" -->
 ```go
 package main
 
@@ -462,8 +468,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -476,7 +482,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    if res != nil {
+    if res.V2ErrorResponse != nil {
         // handle response
     }
 }
@@ -507,6 +513,7 @@ Delete ledger metadata by key
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2DeleteLedgerMetadata" method="delete" path="/v2/{ledger}/metadata/{key}" -->
 ```go
 package main
 
@@ -524,8 +531,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -567,6 +574,7 @@ Get information about a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2GetLedgerInfo" method="get" path="/v2/{ledger}/_info" -->
 ```go
 package main
 
@@ -584,8 +592,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -626,6 +634,7 @@ Bulk request
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2CreateBulk" method="post" path="/v2/{ledger}/_bulk" -->
 ```go
 package main
 
@@ -643,17 +652,17 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V2.CreateBulk(ctx, operations.V2CreateBulkRequest{
         Ledger: "ledger001",
-        ContinueOnFailure: client.Bool(true),
-        Atomic: client.Bool(true),
-        Parallel: client.Bool(true),
-        SchemaVersion: client.String("v1.0.0"),
+        ContinueOnFailure: client.Pointer(true),
+        Atomic: client.Pointer(true),
+        Parallel: client.Pointer(true),
+        SchemaVersion: client.Pointer("v1.0.0"),
         RequestBody: []components.V2BulkElement{
             components.CreateV2BulkElementDeleteMetadata(
                 components.V2BulkElementDeleteMetadata{
@@ -696,6 +705,7 @@ Count the accounts from a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2CountAccounts" method="head" path="/v2/{ledger}/accounts" -->
 ```go
 package main
 
@@ -713,8 +723,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -759,6 +769,7 @@ List accounts from a ledger, sorted by address in descending order.
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2ListAccounts" method="get" path="/v2/{ledger}/accounts" -->
 ```go
 package main
 
@@ -776,16 +787,16 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V2.ListAccounts(ctx, operations.V2ListAccountsRequest{
         Ledger: "ledger001",
-        PageSize: client.Int64(100),
-        Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
-        Sort: client.String("id:desc"),
+        PageSize: client.Pointer[int64](100),
+        Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        Sort: client.Pointer("id:desc"),
         RequestBody: map[string]any{
 
         },
@@ -824,6 +835,7 @@ Get account by its address
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2GetAccount" method="get" path="/v2/{ledger}/accounts/{address}" -->
 ```go
 package main
 
@@ -841,8 +853,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -884,6 +896,7 @@ Add metadata to an account
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2AddMetadataToAccount" method="post" path="/v2/{ledger}/accounts/{address}/metadata" -->
 ```go
 package main
 
@@ -901,16 +914,16 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V2.AddMetadataToAccount(ctx, operations.V2AddMetadataToAccountRequest{
         Ledger: "ledger001",
         Address: "users:001",
-        DryRun: client.Bool(true),
-        SchemaVersion: client.String("v1.0.0"),
+        DryRun: client.Pointer(true),
+        SchemaVersion: client.Pointer("v1.0.0"),
         RequestBody: map[string]string{
             "admin": "true",
         },
@@ -949,6 +962,7 @@ Delete metadata by key
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2DeleteAccountMetadata" method="delete" path="/v2/{ledger}/accounts/{address}/metadata/{key}" -->
 ```go
 package main
 
@@ -966,8 +980,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1011,6 +1025,7 @@ Get statistics from a ledger. (aggregate metrics on accounts and transactions)
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2ReadStats" method="get" path="/v2/{ledger}/stats" -->
 ```go
 package main
 
@@ -1028,8 +1043,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1070,6 +1085,7 @@ Count the transactions from a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2CountTransactions" method="head" path="/v2/{ledger}/transactions" -->
 ```go
 package main
 
@@ -1087,8 +1103,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1132,6 +1148,7 @@ List transactions from a ledger, sorted by id in descending order.
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2ListTransactions" method="get" path="/v2/{ledger}/transactions" -->
 ```go
 package main
 
@@ -1149,16 +1166,16 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
         Ledger: "ledger001",
-        PageSize: client.Int64(100),
-        Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
-        Sort: client.String("id:desc"),
+        PageSize: client.Pointer[int64](100),
+        Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        Sort: client.Pointer("id:desc"),
         RequestBody: map[string]any{
 
         },
@@ -1197,6 +1214,7 @@ Create a new transaction to a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2CreateTransaction" method="post" path="/v2/{ledger}/transactions" -->
 ```go
 package main
 
@@ -1215,16 +1233,16 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
         Ledger: "ledger001",
-        DryRun: client.Bool(true),
-        Force: client.Bool(true),
-        SchemaVersion: client.String("v1.0.0"),
+        DryRun: client.Pointer(true),
+        Force: client.Pointer(true),
+        SchemaVersion: client.Pointer("v1.0.0"),
         V2PostTransaction: components.V2PostTransaction{
             Postings: []components.V2Posting{
                 components.V2Posting{
@@ -1235,20 +1253,13 @@ func main() {
                 },
             },
             Script: &components.V2PostTransactionScript{
-                Template: client.String("CUSTOMER_DEPOSIT"),
-                Plain: client.String("vars {\n" +
-                "account $user\n" +
-                "}\n" +
-                "send [COIN 10] (\n" +
-                "	source = @world\n" +
-                "	destination = $user\n" +
-                ")\n" +
-                ""),
+                Template: client.Pointer("CUSTOMER_DEPOSIT"),
+                Plain: client.Pointer("vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"),
                 Vars: map[string]string{
                     "user": "users:042",
                 },
             },
-            Reference: client.String("ref:001"),
+            Reference: client.Pointer("ref:001"),
             Metadata: map[string]string{
                 "admin": "true",
             },
@@ -1299,6 +1310,7 @@ Get transaction from a ledger by its ID
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2GetTransaction" method="get" path="/v2/{ledger}/transactions/{id}" -->
 ```go
 package main
 
@@ -1317,8 +1329,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1360,6 +1372,7 @@ Set the metadata of a transaction by its ID
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2AddMetadataOnTransaction" method="post" path="/v2/{ledger}/transactions/{id}/metadata" -->
 ```go
 package main
 
@@ -1378,16 +1391,16 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V2.AddMetadataOnTransaction(ctx, operations.V2AddMetadataOnTransactionRequest{
         Ledger: "ledger001",
         ID: big.NewInt(1234),
-        DryRun: client.Bool(true),
-        SchemaVersion: client.String("v1.0.0"),
+        DryRun: client.Pointer(true),
+        SchemaVersion: client.Pointer("v1.0.0"),
         RequestBody: map[string]string{
             "admin": "true",
         },
@@ -1426,6 +1439,7 @@ Delete metadata by key
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2DeleteTransactionMetadata" method="delete" path="/v2/{ledger}/transactions/{id}/metadata/{key}" -->
 ```go
 package main
 
@@ -1444,8 +1458,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1488,6 +1502,7 @@ Revert a ledger transaction by its ID
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2RevertTransaction" method="post" path="/v2/{ledger}/transactions/{id}/revert" -->
 ```go
 package main
 
@@ -1506,21 +1521,21 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V2.RevertTransaction(ctx, operations.V2RevertTransactionRequest{
         Ledger: "ledger001",
         ID: big.NewInt(1234),
-        DryRun: client.Bool(true),
-        SchemaVersion: client.String("v1.0.0"),
+        DryRun: client.Pointer(true),
+        SchemaVersion: client.Pointer("v1.0.0"),
     })
     if err != nil {
         log.Fatal(err)
     }
-    if res.V2CreateTransactionResponse != nil {
+    if res.V2RevertTransactionResponse != nil {
         // handle response
     }
 }
@@ -1551,6 +1566,7 @@ Get the aggregated balances from selected accounts
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2GetBalancesAggregated" method="get" path="/v2/{ledger}/aggregate/balances" -->
 ```go
 package main
 
@@ -1568,8 +1584,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1615,6 +1631,7 @@ Get list of volumes with balances for (account/asset)
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2GetVolumesWithBalances" method="get" path="/v2/{ledger}/volumes" -->
 ```go
 package main
 
@@ -1632,17 +1649,17 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V2.GetVolumesWithBalances(ctx, operations.V2GetVolumesWithBalancesRequest{
-        PageSize: client.Int64(100),
-        Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        PageSize: client.Pointer[int64](100),
+        Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
         Ledger: "ledger001",
-        GroupBy: client.Int64(3),
-        Sort: client.String("id:desc"),
+        GroupBy: client.Pointer[int64](3),
+        Sort: client.Pointer("id:desc"),
         RequestBody: map[string]any{
             "key": "<value>",
         },
@@ -1681,6 +1698,7 @@ List the logs from a ledger, sorted by ID in descending order.
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2ListLogs" method="get" path="/v2/{ledger}/logs" -->
 ```go
 package main
 
@@ -1698,16 +1716,16 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V2.ListLogs(ctx, operations.V2ListLogsRequest{
         Ledger: "ledger001",
-        PageSize: client.Int64(100),
-        Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
-        Sort: client.String("id:desc"),
+        PageSize: client.Pointer[int64](100),
+        Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        Sort: client.Pointer("id:desc"),
         RequestBody: map[string]any{
 
         },
@@ -1744,6 +1762,7 @@ func main() {
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2ImportLogs" method="post" path="/v2/{ledger}/logs/import" -->
 ```go
 package main
 
@@ -1761,8 +1780,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1809,6 +1828,7 @@ Export logs
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2ExportLogs" method="post" path="/v2/{ledger}/logs/export" -->
 ```go
 package main
 
@@ -1826,8 +1846,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1837,7 +1857,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    if res != nil {
+    if res.Bytes != nil {
         // handle response
     }
 }
@@ -1857,9 +1877,10 @@ func main() {
 
 ### Errors
 
-| Error Type         | Status Code        | Content Type       |
-| ------------------ | ------------------ | ------------------ |
-| sdkerrors.SDKError | 4XX, 5XX           | \*/\*              |
+| Error Type                | Status Code               | Content Type              |
+| ------------------------- | ------------------------- | ------------------------- |
+| sdkerrors.V2ErrorResponse | default                   | application/json          |
+| sdkerrors.SDKError        | 4XX, 5XX                  | \*/\*                     |
 
 ## RunQuery
 
@@ -1867,6 +1888,7 @@ Run a query template on a ledger
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2RunQuery" method="post" path="/v2/{ledger}/queries/{id}/run" -->
 ```go
 package main
 
@@ -1884,8 +1906,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1893,14 +1915,14 @@ func main() {
         Ledger: "ledger001",
         SchemaVersion: "v1.0.0",
         ID: "CUSTOMER_DEPOSIT",
-        PageSize: client.Int64(100),
-        Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
-        Sort: client.String("id:desc"),
+        PageSize: client.Pointer[int64](100),
+        Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+        Sort: client.Pointer("id:desc"),
         RequestBody: operations.V2RunQueryRequestBody{
             Params: client.Pointer(components.CreateV2QueryParamsQueryTemplateAccountParams(
                 components.QueryTemplateAccountParams{
-                    PageSize: client.Int64(100),
-                    Cursor: client.String("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
+                    PageSize: client.Pointer[int64](100),
+                    Cursor: client.Pointer("aHR0cHM6Ly9nLnBhZ2UvTmVrby1SYW1lbj9zaGFyZQ=="),
                 },
             )),
         },
@@ -1909,7 +1931,17 @@ func main() {
         log.Fatal(err)
     }
     if res.OneOf != nil {
-        // handle response
+        switch res.OneOf.Type {
+            case operations.V2RunQueryResponseBodyTypeV2TransactionsCursorResponse:
+                // res.OneOf.V2TransactionsCursorResponse is populated
+            case operations.V2RunQueryResponseBodyTypeV2AccountsCursorResponse:
+                // res.OneOf.V2AccountsCursorResponse is populated
+            case operations.V2RunQueryResponseBodyTypeV2LogsCursorResponse:
+                // res.OneOf.V2LogsCursorResponse is populated
+            case operations.V2RunQueryResponseBodyTypeV2VolumesWithBalanceCursorResponse:
+                // res.OneOf.V2VolumesWithBalanceCursorResponse is populated
+        }
+
     }
 }
 ```
@@ -1939,6 +1971,7 @@ List exporters
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2ListExporters" method="get" path="/v2/_/exporters" -->
 ```go
 package main
 
@@ -1955,8 +1988,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -1994,6 +2027,7 @@ Create exporter
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2CreateExporter" method="post" path="/v2/_/exporters" -->
 ```go
 package main
 
@@ -2010,12 +2044,12 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
-    res, err := s.Ledger.V2.CreateExporter(ctx, components.V2ExporterConfiguration{
+    res, err := s.Ledger.V2.CreateExporter(ctx, components.V2CreateExporterRequest{
         Driver: "<value>",
         Config: map[string]any{
             "key": "<value>",
@@ -2035,7 +2069,7 @@ func main() {
 | Parameter                                                                                | Type                                                                                     | Required                                                                                 | Description                                                                              |
 | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `ctx`                                                                                    | [context.Context](https://pkg.go.dev/context#Context)                                    | :heavy_check_mark:                                                                       | The context to use for the request.                                                      |
-| `request`                                                                                | [components.V2ExporterConfiguration](../../models/components/v2exporterconfiguration.md) | :heavy_check_mark:                                                                       | The request object to use for the request.                                               |
+| `request`                                                                                | [components.V2CreateExporterRequest](../../models/components/v2createexporterrequest.md) | :heavy_check_mark:                                                                       | The request object to use for the request.                                               |
 | `opts`                                                                                   | [][operations.Option](../../models/operations/option.md)                                 | :heavy_minus_sign:                                                                       | The options for this request.                                                            |
 
 ### Response
@@ -2055,6 +2089,7 @@ Get exporter state
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2GetExporterState" method="get" path="/v2/_/exporters/{exporterID}" -->
 ```go
 package main
 
@@ -2072,8 +2107,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -2114,6 +2149,7 @@ Update exporter
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2UpdateExporter" method="put" path="/v2/_/exporters/{exporterID}" -->
 ```go
 package main
 
@@ -2131,14 +2167,14 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
     res, err := s.Ledger.V2.UpdateExporter(ctx, operations.V2UpdateExporterRequest{
         ExporterID: "<id>",
-        V2ExporterConfiguration: components.V2ExporterConfiguration{
+        V2CreateExporterRequest: components.V2CreateExporterRequest{
             Driver: "<value>",
             Config: map[string]any{
                 "key": "<value>",
@@ -2181,6 +2217,7 @@ Delete exporter
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2DeleteExporter" method="delete" path="/v2/_/exporters/{exporterID}" -->
 ```go
 package main
 
@@ -2198,8 +2235,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -2240,6 +2277,7 @@ Delete a bucket by marking all ledgers in the bucket as deleted (soft delete). A
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2DeleteBucket" method="delete" path="/v2/_/buckets/{bucket}" -->
 ```go
 package main
 
@@ -2257,8 +2295,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -2268,7 +2306,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    if res != nil {
+    if res.V2ErrorResponse != nil {
         // handle response
     }
 }
@@ -2299,6 +2337,7 @@ Restore a deleted bucket by unmarking all ledgers in the bucket as deleted. All 
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2RestoreBucket" method="post" path="/v2/_/buckets/{bucket}/restore" -->
 ```go
 package main
 
@@ -2316,8 +2355,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -2327,7 +2366,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    if res != nil {
+    if res.V2ErrorResponse != nil {
         // handle response
     }
 }
@@ -2358,6 +2397,7 @@ List pipelines
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2ListPipelines" method="get" path="/v2/{ledger}/pipelines" -->
 ```go
 package main
 
@@ -2375,8 +2415,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -2417,6 +2457,7 @@ Create pipeline
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2CreatePipeline" method="post" path="/v2/{ledger}/pipelines" -->
 ```go
 package main
 
@@ -2434,8 +2475,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -2476,6 +2517,7 @@ Get pipeline state
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2GetPipelineState" method="get" path="/v2/{ledger}/pipelines/{pipelineID}" -->
 ```go
 package main
 
@@ -2493,8 +2535,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -2536,6 +2578,7 @@ Delete pipeline
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2DeletePipeline" method="delete" path="/v2/{ledger}/pipelines/{pipelineID}" -->
 ```go
 package main
 
@@ -2553,8 +2596,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -2596,6 +2639,7 @@ Reset pipeline
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2ResetPipeline" method="post" path="/v2/{ledger}/pipelines/{pipelineID}/reset" -->
 ```go
 package main
 
@@ -2613,8 +2657,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -2656,6 +2700,7 @@ Start pipeline
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2StartPipeline" method="post" path="/v2/{ledger}/pipelines/{pipelineID}/start" -->
 ```go
 package main
 
@@ -2673,8 +2718,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 
@@ -2716,6 +2761,7 @@ Stop pipeline
 
 ### Example Usage
 
+<!-- UsageSnippet language="go" operationID="v2StopPipeline" method="post" path="/v2/{ledger}/pipelines/{pipelineID}/stop" -->
 ```go
 package main
 
@@ -2733,8 +2779,8 @@ func main() {
 
     s := client.New(
         client.WithSecurity(components.Security{
-            ClientID: client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-            ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+            ClientID: client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+            ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
         }),
     )
 

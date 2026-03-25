@@ -22,31 +22,31 @@ func (a AddMetadataOnTransactionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (a *AddMetadataOnTransactionRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &a, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &a, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *AddMetadataOnTransactionRequest) GetLedger() string {
-	if o == nil {
+func (a *AddMetadataOnTransactionRequest) GetLedger() string {
+	if a == nil {
 		return ""
 	}
-	return o.Ledger
+	return a.Ledger
 }
 
-func (o *AddMetadataOnTransactionRequest) GetTxid() *big.Int {
-	if o == nil {
+func (a *AddMetadataOnTransactionRequest) GetTxid() *big.Int {
+	if a == nil {
 		return big.NewInt(0)
 	}
-	return o.Txid
+	return a.Txid
 }
 
-func (o *AddMetadataOnTransactionRequest) GetRequestBody() map[string]any {
-	if o == nil {
+func (a *AddMetadataOnTransactionRequest) GetRequestBody() map[string]any {
+	if a == nil {
 		return nil
 	}
-	return o.RequestBody
+	return a.RequestBody
 }
 
 type AddMetadataOnTransactionResponse struct {
@@ -54,16 +54,16 @@ type AddMetadataOnTransactionResponse struct {
 	Headers  map[string][]string
 }
 
-func (o *AddMetadataOnTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (a *AddMetadataOnTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
+	if a == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return a.HTTPMeta
 }
 
-func (o *AddMetadataOnTransactionResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (a *AddMetadataOnTransactionResponse) GetHeaders() map[string][]string {
+	if a == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return a.Headers
 }

@@ -9,6 +9,17 @@ import (
 type DotSelf struct {
 }
 
+func (d DotSelf) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(d, "", false)
+}
+
+func (d *DotSelf) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &d, "", false, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
 // V2ChartSegment - Segment within a chart of accounts
 type V2ChartSegment struct {
 	DotSelf              *DotSelf                          `json:".self,omitempty"`
@@ -23,43 +34,46 @@ func (v V2ChartSegment) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2ChartSegment) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2ChartSegment) GetDotSelf() *DotSelf {
-	if o == nil {
+func (v *V2ChartSegment) GetDotSelf() *DotSelf {
+	if v == nil {
 		return nil
 	}
-	return o.DotSelf
+	return v.DotSelf
 }
 
-func (o *V2ChartSegment) GetDotPattern() *string {
-	if o == nil {
+func (v *V2ChartSegment) GetDotPattern() *string {
+	if v == nil {
 		return nil
 	}
-	return o.DotPattern
+	return v.DotPattern
 }
 
-func (o *V2ChartSegment) GetDotRules() *V2ChartAccountRules {
-	if o == nil {
+func (v *V2ChartSegment) GetDotRules() *V2ChartAccountRules {
+	if v == nil {
 		return nil
 	}
-	return o.DotRules
+	return v.DotRules
 }
 
-func (o *V2ChartSegment) GetDotMetadata() map[string]V2ChartAccountMetadata {
-	if o == nil {
+func (v *V2ChartSegment) GetDotMetadata() map[string]V2ChartAccountMetadata {
+	if v == nil {
 		return nil
 	}
-	return o.DotMetadata
+	return v.DotMetadata
 }
 
-func (o *V2ChartSegment) GetAdditionalProperties() map[string]V2ChartSegment {
-	if o == nil {
+func (v *V2ChartSegment) GetAdditionalProperties() map[string]V2ChartSegment {
+	if v == nil {
 		return nil
 	}
-	return o.AdditionalProperties
+	return v.AdditionalProperties
 }
+
+// #region class-body-v2chartsegment
+// #endregion class-body-v2chartsegment

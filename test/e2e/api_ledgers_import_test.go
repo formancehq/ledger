@@ -307,7 +307,7 @@ var _ = Context("Ledger engine tests", func() {
 
 						_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ImportLogs(ctx, operations.V2ImportLogsRequest{
 							Ledger:              ledgerCopyName,
-							V2ImportLogsRequest: response.HTTPMeta.Response.Body,
+							V2ImportLogsRequest: response.Bytes,
 						})
 						return err
 					}

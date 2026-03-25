@@ -2,6 +2,10 @@
 
 package components
 
+import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+)
+
 type V2TransactionTemplate struct {
 	Description *string `json:"description,omitempty"`
 	Script      string  `json:"script"`
@@ -9,23 +13,37 @@ type V2TransactionTemplate struct {
 	Runtime *Runtime `json:"runtime,omitempty"`
 }
 
-func (o *V2TransactionTemplate) GetDescription() *string {
-	if o == nil {
-		return nil
-	}
-	return o.Description
+func (v V2TransactionTemplate) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
 }
 
-func (o *V2TransactionTemplate) GetScript() string {
-	if o == nil {
+func (v *V2TransactionTemplate) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"script"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2TransactionTemplate) GetDescription() *string {
+	if v == nil {
+		return nil
+	}
+	return v.Description
+}
+
+func (v *V2TransactionTemplate) GetScript() string {
+	if v == nil {
 		return ""
 	}
-	return o.Script
+	return v.Script
 }
 
-func (o *V2TransactionTemplate) GetRuntime() *Runtime {
-	if o == nil {
+func (v *V2TransactionTemplate) GetRuntime() *Runtime {
+	if v == nil {
 		return nil
 	}
-	return o.Runtime
+	return v.Runtime
 }
+
+// #region class-body-v2transactiontemplate
+// #endregion class-body-v2transactiontemplate

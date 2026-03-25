@@ -45,8 +45,8 @@ const (
 )
 
 type V2LogDataDeleteMetadataTargetID struct {
-	Str    *string  `queryParam:"inline"`
-	Bigint *big.Int `queryParam:"inline"`
+	Str    *string  `queryParam:"inline" union:"member"`
+	Bigint *big.Int `queryParam:"inline" union:"member"`
 
 	Type V2LogDataDeleteMetadataTargetIDType
 }
@@ -72,14 +72,14 @@ func CreateV2LogDataDeleteMetadataTargetIDBigint(bigint *big.Int) V2LogDataDelet
 func (u *V2LogDataDeleteMetadataTargetID) UnmarshalJSON(data []byte) error {
 
 	var str string = ""
-	if err := utils.UnmarshalJSON(data, &str, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &str, "", true, nil); err == nil {
 		u.Str = &str
 		u.Type = V2LogDataDeleteMetadataTargetIDTypeStr
 		return nil
 	}
 
 	var bigint *big.Int = big.NewInt(0)
-	if err := utils.UnmarshalJSON(data, &bigint, "", true, true); err == nil {
+	if err := utils.UnmarshalJSON(data, &bigint, "", true, nil); err == nil {
 		u.Bigint = bigint
 		u.Type = V2LogDataDeleteMetadataTargetIDTypeBigint
 		return nil
@@ -109,23 +109,37 @@ type V2LogDataDeleteMetadata struct {
 	Key string `json:"key"`
 }
 
-func (o *V2LogDataDeleteMetadata) GetTargetType() V2LogDataDeleteMetadataTargetType {
-	if o == nil {
+func (v V2LogDataDeleteMetadata) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2LogDataDeleteMetadata) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"targetType", "targetId", "key"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2LogDataDeleteMetadata) GetTargetType() V2LogDataDeleteMetadataTargetType {
+	if v == nil {
 		return V2LogDataDeleteMetadataTargetType("")
 	}
-	return o.TargetType
+	return v.TargetType
 }
 
-func (o *V2LogDataDeleteMetadata) GetTargetID() V2LogDataDeleteMetadataTargetID {
-	if o == nil {
+func (v *V2LogDataDeleteMetadata) GetTargetID() V2LogDataDeleteMetadataTargetID {
+	if v == nil {
 		return V2LogDataDeleteMetadataTargetID{}
 	}
-	return o.TargetID
+	return v.TargetID
 }
 
-func (o *V2LogDataDeleteMetadata) GetKey() string {
-	if o == nil {
+func (v *V2LogDataDeleteMetadata) GetKey() string {
+	if v == nil {
 		return ""
 	}
-	return o.Key
+	return v.Key
 }
+
+// #region class-body-v2logdatadeletemetadata
+// #endregion class-body-v2logdatadeletemetadata

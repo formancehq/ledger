@@ -12,18 +12,18 @@ type PostTransactionScript struct {
 	Vars  map[string]any `json:"vars,omitempty"`
 }
 
-func (o *PostTransactionScript) GetPlain() string {
-	if o == nil {
+func (p *PostTransactionScript) GetPlain() string {
+	if p == nil {
 		return ""
 	}
-	return o.Plain
+	return p.Plain
 }
 
-func (o *PostTransactionScript) GetVars() map[string]any {
-	if o == nil {
+func (p *PostTransactionScript) GetVars() map[string]any {
+	if p == nil {
 		return nil
 	}
-	return o.Vars
+	return p.Vars
 }
 
 type PostTransaction struct {
@@ -39,43 +39,43 @@ func (p PostTransaction) MarshalJSON() ([]byte, error) {
 }
 
 func (p *PostTransaction) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &p, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &p, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *PostTransaction) GetTimestamp() *time.Time {
-	if o == nil {
+func (p *PostTransaction) GetTimestamp() *time.Time {
+	if p == nil {
 		return nil
 	}
-	return o.Timestamp
+	return p.Timestamp
 }
 
-func (o *PostTransaction) GetPostings() []Posting {
-	if o == nil {
+func (p *PostTransaction) GetPostings() []Posting {
+	if p == nil {
 		return nil
 	}
-	return o.Postings
+	return p.Postings
 }
 
-func (o *PostTransaction) GetScript() *PostTransactionScript {
-	if o == nil {
+func (p *PostTransaction) GetScript() *PostTransactionScript {
+	if p == nil {
 		return nil
 	}
-	return o.Script
+	return p.Script
 }
 
-func (o *PostTransaction) GetReference() *string {
-	if o == nil {
+func (p *PostTransaction) GetReference() *string {
+	if p == nil {
 		return nil
 	}
-	return o.Reference
+	return p.Reference
 }
 
-func (o *PostTransaction) GetMetadata() map[string]any {
-	if o == nil {
+func (p *PostTransaction) GetMetadata() map[string]any {
+	if p == nil {
 		return nil
 	}
-	return o.Metadata
+	return p.Metadata
 }

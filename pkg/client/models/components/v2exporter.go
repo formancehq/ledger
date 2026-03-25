@@ -19,36 +19,39 @@ func (v V2Exporter) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2Exporter) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2Exporter) GetDriver() string {
-	if o == nil {
+func (v *V2Exporter) GetDriver() string {
+	if v == nil {
 		return ""
 	}
-	return o.Driver
+	return v.Driver
 }
 
-func (o *V2Exporter) GetConfig() map[string]any {
-	if o == nil {
+func (v *V2Exporter) GetConfig() map[string]any {
+	if v == nil {
 		return map[string]any{}
 	}
-	return o.Config
+	return v.Config
 }
 
-func (o *V2Exporter) GetID() string {
-	if o == nil {
+func (v *V2Exporter) GetID() string {
+	if v == nil {
 		return ""
 	}
-	return o.ID
+	return v.ID
 }
 
-func (o *V2Exporter) GetCreatedAt() time.Time {
-	if o == nil {
+func (v *V2Exporter) GetCreatedAt() time.Time {
+	if v == nil {
 		return time.Time{}
 	}
-	return o.CreatedAt
+	return v.CreatedAt
 }
+
+// #region class-body-v2exporter
+// #endregion class-body-v2exporter

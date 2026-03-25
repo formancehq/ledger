@@ -50,36 +50,39 @@ func (v V2MigrationInfo) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2MigrationInfo) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2MigrationInfo) GetVersion() *string {
-	if o == nil {
+func (v *V2MigrationInfo) GetVersion() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Version
+	return v.Version
 }
 
-func (o *V2MigrationInfo) GetName() *string {
-	if o == nil {
+func (v *V2MigrationInfo) GetName() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Name
+	return v.Name
 }
 
-func (o *V2MigrationInfo) GetDate() *time.Time {
-	if o == nil {
+func (v *V2MigrationInfo) GetDate() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.Date
+	return v.Date
 }
 
-func (o *V2MigrationInfo) GetState() *V2MigrationInfoState {
-	if o == nil {
+func (v *V2MigrationInfo) GetState() *V2MigrationInfoState {
+	if v == nil {
 		return nil
 	}
-	return o.State
+	return v.State
 }
+
+// #region class-body-v2migrationinfo
+// #endregion class-body-v2migrationinfo

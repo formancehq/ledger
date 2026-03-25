@@ -13,27 +13,33 @@ type V2DeleteLedgerMetadataRequest struct {
 	Key string `pathParam:"style=simple,explode=false,name=key"`
 }
 
-func (o *V2DeleteLedgerMetadataRequest) GetLedger() string {
-	if o == nil {
+func (v *V2DeleteLedgerMetadataRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2DeleteLedgerMetadataRequest) GetKey() string {
-	if o == nil {
+func (v *V2DeleteLedgerMetadataRequest) GetKey() string {
+	if v == nil {
 		return ""
 	}
-	return o.Key
+	return v.Key
 }
+
+// #region class-body-v2deleteledgermetadatarequest
+// #endregion class-body-v2deleteledgermetadatarequest
 
 type V2DeleteLedgerMetadataResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 }
 
-func (o *V2DeleteLedgerMetadataResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2DeleteLedgerMetadataResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
+
+// #region class-body-v2deleteledgermetadataresponse
+// #endregion class-body-v2deleteledgermetadataresponse

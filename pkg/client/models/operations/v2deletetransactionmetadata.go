@@ -24,55 +24,61 @@ func (v V2DeleteTransactionMetadataRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2DeleteTransactionMetadataRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2DeleteTransactionMetadataRequest) GetLedger() string {
-	if o == nil {
+func (v *V2DeleteTransactionMetadataRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2DeleteTransactionMetadataRequest) GetID() *big.Int {
-	if o == nil {
+func (v *V2DeleteTransactionMetadataRequest) GetID() *big.Int {
+	if v == nil {
 		return big.NewInt(0)
 	}
-	return o.ID
+	return v.ID
 }
 
-func (o *V2DeleteTransactionMetadataRequest) GetKey() string {
-	if o == nil {
+func (v *V2DeleteTransactionMetadataRequest) GetKey() string {
+	if v == nil {
 		return ""
 	}
-	return o.Key
+	return v.Key
 }
 
-func (o *V2DeleteTransactionMetadataRequest) GetIdempotencyKey() *string {
-	if o == nil {
+func (v *V2DeleteTransactionMetadataRequest) GetIdempotencyKey() *string {
+	if v == nil {
 		return nil
 	}
-	return o.IdempotencyKey
+	return v.IdempotencyKey
 }
+
+// #region class-body-v2deletetransactionmetadatarequest
+// #endregion class-body-v2deletetransactionmetadatarequest
 
 type V2DeleteTransactionMetadataResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	Headers  map[string][]string
 }
 
-func (o *V2DeleteTransactionMetadataResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2DeleteTransactionMetadataResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2DeleteTransactionMetadataResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (v *V2DeleteTransactionMetadataResponse) GetHeaders() map[string][]string {
+	if v == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return v.Headers
 }
+
+// #region class-body-v2deletetransactionmetadataresponse
+// #endregion class-body-v2deletetransactionmetadataresponse

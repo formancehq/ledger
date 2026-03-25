@@ -2,31 +2,46 @@
 
 package components
 
+import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+)
+
 type Data struct {
 	TargetID   V2TargetID        `json:"targetId"`
 	TargetType V2TargetType      `json:"targetType"`
 	Metadata   map[string]string `json:"metadata"`
 }
 
-func (o *Data) GetTargetID() V2TargetID {
-	if o == nil {
+func (d Data) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(d, "", false)
+}
+
+func (d *Data) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &d, "", false, []string{"targetId", "targetType", "metadata"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *Data) GetTargetID() V2TargetID {
+	if d == nil {
 		return V2TargetID{}
 	}
-	return o.TargetID
+	return d.TargetID
 }
 
-func (o *Data) GetTargetType() V2TargetType {
-	if o == nil {
+func (d *Data) GetTargetType() V2TargetType {
+	if d == nil {
 		return V2TargetType("")
 	}
-	return o.TargetType
+	return d.TargetType
 }
 
-func (o *Data) GetMetadata() map[string]string {
-	if o == nil {
+func (d *Data) GetMetadata() map[string]string {
+	if d == nil {
 		return map[string]string{}
 	}
-	return o.Metadata
+	return d.Metadata
 }
 
 type V2BulkElementAddMetadata struct {
@@ -35,23 +50,37 @@ type V2BulkElementAddMetadata struct {
 	Data   *Data   `json:"data,omitempty"`
 }
 
-func (o *V2BulkElementAddMetadata) GetAction() string {
-	if o == nil {
+func (v V2BulkElementAddMetadata) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2BulkElementAddMetadata) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"action"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2BulkElementAddMetadata) GetAction() string {
+	if v == nil {
 		return ""
 	}
-	return o.Action
+	return v.Action
 }
 
-func (o *V2BulkElementAddMetadata) GetIk() *string {
-	if o == nil {
+func (v *V2BulkElementAddMetadata) GetIk() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Ik
+	return v.Ik
 }
 
-func (o *V2BulkElementAddMetadata) GetData() *Data {
-	if o == nil {
+func (v *V2BulkElementAddMetadata) GetData() *Data {
+	if v == nil {
 		return nil
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2bulkelementaddmetadata
+// #endregion class-body-v2bulkelementaddmetadata

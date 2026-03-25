@@ -9,30 +9,30 @@ type ScriptResponse struct {
 	Transaction  *Transaction `json:"transaction,omitempty"`
 }
 
-func (o *ScriptResponse) GetErrorCode() *ErrorsEnum {
-	if o == nil {
+func (s *ScriptResponse) GetErrorCode() *ErrorsEnum {
+	if s == nil {
 		return nil
 	}
-	return o.ErrorCode
+	return s.ErrorCode
 }
 
-func (o *ScriptResponse) GetErrorMessage() *string {
-	if o == nil {
+func (s *ScriptResponse) GetErrorMessage() *string {
+	if s == nil {
 		return nil
 	}
-	return o.ErrorMessage
+	return s.ErrorMessage
 }
 
-func (o *ScriptResponse) GetDetails() *string {
-	if o == nil {
+func (s *ScriptResponse) GetDetails() *string {
+	if s == nil {
 		return nil
 	}
-	return o.Details
+	return s.Details
 }
 
-func (o *ScriptResponse) GetTransaction() *Transaction {
-	if o == nil {
+func (s *ScriptResponse) GetTransaction() *Transaction {
+	if s == nil {
 		return nil
 	}
-	return o.Transaction
+	return s.Transaction
 }

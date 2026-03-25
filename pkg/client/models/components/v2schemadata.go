@@ -12,23 +12,26 @@ type V2SchemaData struct {
 	Queries map[string]V2QueryTemplate `json:"queries,omitempty"`
 }
 
-func (o *V2SchemaData) GetChart() map[string]V2ChartSegment {
-	if o == nil {
+func (v *V2SchemaData) GetChart() map[string]V2ChartSegment {
+	if v == nil {
 		return map[string]V2ChartSegment{}
 	}
-	return o.Chart
+	return v.Chart
 }
 
-func (o *V2SchemaData) GetTransactions() map[string]V2TransactionTemplate {
-	if o == nil {
+func (v *V2SchemaData) GetTransactions() map[string]V2TransactionTemplate {
+	if v == nil {
 		return nil
 	}
-	return o.Transactions
+	return v.Transactions
 }
 
-func (o *V2SchemaData) GetQueries() map[string]V2QueryTemplate {
-	if o == nil {
+func (v *V2SchemaData) GetQueries() map[string]V2QueryTemplate {
+	if v == nil {
 		return nil
 	}
-	return o.Queries
+	return v.Queries
 }
+
+// #region class-body-v2schemadata
+// #endregion class-body-v2schemadata

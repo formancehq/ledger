@@ -48,43 +48,43 @@ func (l Log) MarshalJSON() ([]byte, error) {
 }
 
 func (l *Log) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &l, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &l, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *Log) GetID() int64 {
-	if o == nil {
+func (l *Log) GetID() int64 {
+	if l == nil {
 		return 0
 	}
-	return o.ID
+	return l.ID
 }
 
-func (o *Log) GetType() Type {
-	if o == nil {
+func (l *Log) GetType() Type {
+	if l == nil {
 		return Type("")
 	}
-	return o.Type
+	return l.Type
 }
 
-func (o *Log) GetData() map[string]any {
-	if o == nil {
+func (l *Log) GetData() map[string]any {
+	if l == nil {
 		return map[string]any{}
 	}
-	return o.Data
+	return l.Data
 }
 
-func (o *Log) GetHash() string {
-	if o == nil {
+func (l *Log) GetHash() string {
+	if l == nil {
 		return ""
 	}
-	return o.Hash
+	return l.Hash
 }
 
-func (o *Log) GetDate() time.Time {
-	if o == nil {
+func (l *Log) GetDate() time.Time {
+	if l == nil {
 		return time.Time{}
 	}
-	return o.Date
+	return l.Date
 }

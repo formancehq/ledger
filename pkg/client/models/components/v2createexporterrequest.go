@@ -7,16 +7,19 @@ type V2CreateExporterRequest struct {
 	Config map[string]any `json:"config"`
 }
 
-func (o *V2CreateExporterRequest) GetDriver() string {
-	if o == nil {
+func (v *V2CreateExporterRequest) GetDriver() string {
+	if v == nil {
 		return ""
 	}
-	return o.Driver
+	return v.Driver
 }
 
-func (o *V2CreateExporterRequest) GetConfig() map[string]any {
-	if o == nil {
+func (v *V2CreateExporterRequest) GetConfig() map[string]any {
+	if v == nil {
 		return map[string]any{}
 	}
-	return o.Config
+	return v.Config
 }
+
+// #region class-body-v2createexporterrequest
+// #endregion class-body-v2createexporterrequest

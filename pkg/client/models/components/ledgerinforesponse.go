@@ -6,9 +6,9 @@ type LedgerInfoResponse struct {
 	Data *LedgerInfo `json:"data,omitempty"`
 }
 
-func (o *LedgerInfoResponse) GetData() *LedgerInfo {
-	if o == nil {
+func (l *LedgerInfoResponse) GetData() *LedgerInfo {
+	if l == nil {
 		return nil
 	}
-	return o.Data
+	return l.Data
 }

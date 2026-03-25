@@ -2,7 +2,7 @@
 
 package client
 
-// Generated from OpenAPI doc version v2 and generator version 2.629.1
+// Generated from OpenAPI doc version v2 and generator version 2.866.2
 
 import (
 	"context"
@@ -57,7 +57,7 @@ type Formance struct {
 
 type SDKOption func(*Formance)
 
-// WithServerURL allows the overriding of the default server URL
+// WithServerURL allows providing an alternative server URL
 func WithServerURL(serverURL string) SDKOption {
 	return func(sdk *Formance) {
 		sdk.sdkConfiguration.ServerURL = serverURL
@@ -127,7 +127,7 @@ func New(opts ...SDKOption) *Formance {
 	sdk := &Formance{
 		SDKVersion: "0.10.2",
 		sdkConfiguration: config.SDKConfiguration{
-			UserAgent:  "speakeasy-sdk/go 0.10.2 2.629.1 v2 github.com/formancehq/ledger/pkg/client",
+			UserAgent:  "speakeasy-sdk/go 0.10.2 2.866.2 v2 github.com/formancehq/ledger/pkg/client",
 			ServerList: ServerList,
 		},
 		hooks: hooks.New(),

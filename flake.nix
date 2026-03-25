@@ -1,5 +1,5 @@
 {
-  description = "A Nix-flake-based Go 1.25 development environment";
+  description = "A Nix-flake-based Go 1.26 development environment";
 
   inputs = {
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2511";
@@ -37,7 +37,7 @@
           f { pkgs = pkgs; pkgs-unstable = pkgs-unstable; system = system; }
         );
 
-      speakeasyVersion = "1.563.0";
+      speakeasyVersion = "1.758.0";
       speakeasyPlatforms = {
         "x86_64-linux"   = "linux_amd64";
         "aarch64-linux"  = "linux_arm64";
@@ -45,10 +45,10 @@
         "aarch64-darwin" = "darwin_arm64";
       };
       speakeasyHashes = {
-        "x86_64-linux"   = "632559a6bdc765ef42b81b8404fd0a3e5023919a0bb70ff7e40a8cc259545afd";
-        "aarch64-linux"  = "c74c502df3a05a2d69e6b282886df23354a319d0510d2c1a21fcc124b7ad00ef";
-        "x86_64-darwin"  = "8814be1fdd4eaf6dcc7fb251ede5693e1d3d4c8e03986f8d37bfd59e049698b9";
-        "aarch64-darwin" = "12c20fa485de4725c9730cb2e8936cab4b0961d0a956e9f4c45534371f2a6148";
+        "x86_64-linux"   = "76aa469523074991691ec2d2ef7ee744e9100ac20f166af3adc6f79406cee8a8";
+        "aarch64-linux"  = "ddf588d500cb198369faf704bce83ea95ff5d8d8d52da23d31a6574e50260bab";
+        "x86_64-darwin"  = "c83b7a47544992797ef0607eb20615002f11fea5b7ff40998b8a7801f2d2bb70";
+        "aarch64-darwin" = "450569b130c161ff79a2850ded1e22712c0a67165ff502ca706777849c1a9fb8";
       };
 
     in
@@ -88,7 +88,7 @@
         let
           stablePackages = with pkgs; [
             ginkgo
-            go_1_25
+            go_1_26
             go-tools
             gomarkdoc
             goperf

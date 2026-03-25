@@ -19,10 +19,10 @@ const (
 )
 
 type V2BulkElement struct {
-	V2BulkElementCreateTransaction *V2BulkElementCreateTransaction `queryParam:"inline"`
-	V2BulkElementAddMetadata       *V2BulkElementAddMetadata       `queryParam:"inline"`
-	V2BulkElementRevertTransaction *V2BulkElementRevertTransaction `queryParam:"inline"`
-	V2BulkElementDeleteMetadata    *V2BulkElementDeleteMetadata    `queryParam:"inline"`
+	V2BulkElementCreateTransaction *V2BulkElementCreateTransaction `queryParam:"inline" union:"member"`
+	V2BulkElementAddMetadata       *V2BulkElementAddMetadata       `queryParam:"inline" union:"member"`
+	V2BulkElementRevertTransaction *V2BulkElementRevertTransaction `queryParam:"inline" union:"member"`
+	V2BulkElementDeleteMetadata    *V2BulkElementDeleteMetadata    `queryParam:"inline" union:"member"`
 
 	Type V2BulkElementType
 }
@@ -89,7 +89,7 @@ func (u *V2BulkElement) UnmarshalJSON(data []byte) error {
 	switch dis.Action {
 	case "CREATE_TRANSACTION":
 		v2BulkElementCreateTransaction := new(V2BulkElementCreateTransaction)
-		if err := utils.UnmarshalJSON(data, &v2BulkElementCreateTransaction, "", true, false); err != nil {
+		if err := utils.UnmarshalJSON(data, &v2BulkElementCreateTransaction, "", true, nil); err != nil {
 			return fmt.Errorf("could not unmarshal `%s` into expected (Action == CREATE_TRANSACTION) type V2BulkElementCreateTransaction within V2BulkElement: %w", string(data), err)
 		}
 
@@ -98,7 +98,7 @@ func (u *V2BulkElement) UnmarshalJSON(data []byte) error {
 		return nil
 	case "ADD_METADATA":
 		v2BulkElementAddMetadata := new(V2BulkElementAddMetadata)
-		if err := utils.UnmarshalJSON(data, &v2BulkElementAddMetadata, "", true, false); err != nil {
+		if err := utils.UnmarshalJSON(data, &v2BulkElementAddMetadata, "", true, nil); err != nil {
 			return fmt.Errorf("could not unmarshal `%s` into expected (Action == ADD_METADATA) type V2BulkElementAddMetadata within V2BulkElement: %w", string(data), err)
 		}
 
@@ -107,7 +107,7 @@ func (u *V2BulkElement) UnmarshalJSON(data []byte) error {
 		return nil
 	case "REVERT_TRANSACTION":
 		v2BulkElementRevertTransaction := new(V2BulkElementRevertTransaction)
-		if err := utils.UnmarshalJSON(data, &v2BulkElementRevertTransaction, "", true, false); err != nil {
+		if err := utils.UnmarshalJSON(data, &v2BulkElementRevertTransaction, "", true, nil); err != nil {
 			return fmt.Errorf("could not unmarshal `%s` into expected (Action == REVERT_TRANSACTION) type V2BulkElementRevertTransaction within V2BulkElement: %w", string(data), err)
 		}
 
@@ -116,7 +116,7 @@ func (u *V2BulkElement) UnmarshalJSON(data []byte) error {
 		return nil
 	case "DELETE_METADATA":
 		v2BulkElementDeleteMetadata := new(V2BulkElementDeleteMetadata)
-		if err := utils.UnmarshalJSON(data, &v2BulkElementDeleteMetadata, "", true, false); err != nil {
+		if err := utils.UnmarshalJSON(data, &v2BulkElementDeleteMetadata, "", true, nil); err != nil {
 			return fmt.Errorf("could not unmarshal `%s` into expected (Action == DELETE_METADATA) type V2BulkElementDeleteMetadata within V2BulkElement: %w", string(data), err)
 		}
 

@@ -23,39 +23,42 @@ func (v V2GetTransactionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2GetTransactionRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2GetTransactionRequest) GetLedger() string {
-	if o == nil {
+func (v *V2GetTransactionRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2GetTransactionRequest) GetID() *big.Int {
-	if o == nil {
+func (v *V2GetTransactionRequest) GetID() *big.Int {
+	if v == nil {
 		return big.NewInt(0)
 	}
-	return o.ID
+	return v.ID
 }
 
-func (o *V2GetTransactionRequest) GetExpand() *string {
-	if o == nil {
+func (v *V2GetTransactionRequest) GetExpand() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Expand
+	return v.Expand
 }
 
-func (o *V2GetTransactionRequest) GetPit() *time.Time {
-	if o == nil {
+func (v *V2GetTransactionRequest) GetPit() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.Pit
+	return v.Pit
 }
+
+// #region class-body-v2gettransactionrequest
+// #endregion class-body-v2gettransactionrequest
 
 type V2GetTransactionResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -63,16 +66,19 @@ type V2GetTransactionResponse struct {
 	V2GetTransactionResponse *components.V2GetTransactionResponse
 }
 
-func (o *V2GetTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2GetTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2GetTransactionResponse) GetV2GetTransactionResponse() *components.V2GetTransactionResponse {
-	if o == nil {
+func (v *V2GetTransactionResponse) GetV2GetTransactionResponse() *components.V2GetTransactionResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2GetTransactionResponse
+	return v.V2GetTransactionResponse
 }
+
+// #region class-body-v2gettransactionresponse
+// #endregion class-body-v2gettransactionresponse

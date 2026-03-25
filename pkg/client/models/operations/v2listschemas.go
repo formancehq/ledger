@@ -78,46 +78,49 @@ func (v V2ListSchemasRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2ListSchemasRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2ListSchemasRequest) GetLedger() string {
-	if o == nil {
+func (v *V2ListSchemasRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2ListSchemasRequest) GetCursor() *string {
-	if o == nil {
+func (v *V2ListSchemasRequest) GetCursor() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Cursor
+	return v.Cursor
 }
 
-func (o *V2ListSchemasRequest) GetPageSize() *int64 {
-	if o == nil {
+func (v *V2ListSchemasRequest) GetPageSize() *int64 {
+	if v == nil {
 		return nil
 	}
-	return o.PageSize
+	return v.PageSize
 }
 
-func (o *V2ListSchemasRequest) GetSort() *Sort {
-	if o == nil {
+func (v *V2ListSchemasRequest) GetSort() *Sort {
+	if v == nil {
 		return nil
 	}
-	return o.Sort
+	return v.Sort
 }
 
-func (o *V2ListSchemasRequest) GetOrder() *Order {
-	if o == nil {
+func (v *V2ListSchemasRequest) GetOrder() *Order {
+	if v == nil {
 		return nil
 	}
-	return o.Order
+	return v.Order
 }
+
+// #region class-body-v2listschemasrequest
+// #endregion class-body-v2listschemasrequest
 
 type V2ListSchemasResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -125,16 +128,19 @@ type V2ListSchemasResponse struct {
 	V2SchemasCursorResponse *components.V2SchemasCursorResponse
 }
 
-func (o *V2ListSchemasResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2ListSchemasResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2ListSchemasResponse) GetV2SchemasCursorResponse() *components.V2SchemasCursorResponse {
-	if o == nil {
+func (v *V2ListSchemasResponse) GetV2SchemasCursorResponse() *components.V2SchemasCursorResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2SchemasCursorResponse
+	return v.V2SchemasCursorResponse
 }
+
+// #region class-body-v2listschemasresponse
+// #endregion class-body-v2listschemasresponse

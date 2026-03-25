@@ -19,36 +19,39 @@ func (v V2Posting) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2Posting) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"amount", "asset", "destination", "source"}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2Posting) GetAmount() *big.Int {
-	if o == nil {
+func (v *V2Posting) GetAmount() *big.Int {
+	if v == nil {
 		return big.NewInt(0)
 	}
-	return o.Amount
+	return v.Amount
 }
 
-func (o *V2Posting) GetAsset() string {
-	if o == nil {
+func (v *V2Posting) GetAsset() string {
+	if v == nil {
 		return ""
 	}
-	return o.Asset
+	return v.Asset
 }
 
-func (o *V2Posting) GetDestination() string {
-	if o == nil {
+func (v *V2Posting) GetDestination() string {
+	if v == nil {
 		return ""
 	}
-	return o.Destination
+	return v.Destination
 }
 
-func (o *V2Posting) GetSource() string {
-	if o == nil {
+func (v *V2Posting) GetSource() string {
+	if v == nil {
 		return ""
 	}
-	return o.Source
+	return v.Source
 }
+
+// #region class-body-v2posting
+// #endregion class-body-v2posting

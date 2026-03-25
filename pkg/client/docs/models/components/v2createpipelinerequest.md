@@ -5,4 +5,4 @@
 
 | Field              | Type               | Required           | Description        |
 | ------------------ | ------------------ | ------------------ | ------------------ |
-| `ExporterID`       | *string*           | :heavy_check_mark: | N/A                |
+| `ExporterID`       | `string`           | :heavy_check_mark: | N/A                |

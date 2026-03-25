@@ -6,9 +6,12 @@ type V2SchemasCursorResponse struct {
 	Cursor V2SchemasCursor `json:"cursor"`
 }
 
-func (o *V2SchemasCursorResponse) GetCursor() V2SchemasCursor {
-	if o == nil {
+func (v *V2SchemasCursorResponse) GetCursor() V2SchemasCursor {
+	if v == nil {
 		return V2SchemasCursor{}
 	}
-	return o.Cursor
+	return v.Cursor
 }
+
+// #region class-body-v2schemascursorresponse
+// #endregion class-body-v2schemascursorresponse

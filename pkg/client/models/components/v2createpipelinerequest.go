@@ -6,9 +6,12 @@ type V2CreatePipelineRequest struct {
 	ExporterID string `json:"exporterID"`
 }
 
-func (o *V2CreatePipelineRequest) GetExporterID() string {
-	if o == nil {
+func (v *V2CreatePipelineRequest) GetExporterID() string {
+	if v == nil {
 		return ""
 	}
-	return o.ExporterID
+	return v.ExporterID
 }
+
+// #region class-body-v2createpipelinerequest
+// #endregion class-body-v2createpipelinerequest

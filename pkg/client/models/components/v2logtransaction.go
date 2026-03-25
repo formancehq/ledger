@@ -33,106 +33,109 @@ func (v V2LogTransaction) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2LogTransaction) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"id", "postings", "metadata", "timestamp", "reverted"}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2LogTransaction) GetID() *big.Int {
-	if o == nil {
+func (v *V2LogTransaction) GetID() *big.Int {
+	if v == nil {
 		return big.NewInt(0)
 	}
-	return o.ID
+	return v.ID
 }
 
-func (o *V2LogTransaction) GetPostings() []V2Posting {
-	if o == nil {
+func (v *V2LogTransaction) GetPostings() []V2Posting {
+	if v == nil {
 		return []V2Posting{}
 	}
-	return o.Postings
+	return v.Postings
 }
 
-func (o *V2LogTransaction) GetMetadata() map[string]string {
-	if o == nil {
+func (v *V2LogTransaction) GetMetadata() map[string]string {
+	if v == nil {
 		return map[string]string{}
 	}
-	return o.Metadata
+	return v.Metadata
 }
 
-func (o *V2LogTransaction) GetTimestamp() time.Time {
-	if o == nil {
+func (v *V2LogTransaction) GetTimestamp() time.Time {
+	if v == nil {
 		return time.Time{}
 	}
-	return o.Timestamp
+	return v.Timestamp
 }
 
-func (o *V2LogTransaction) GetReference() *string {
-	if o == nil {
+func (v *V2LogTransaction) GetReference() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Reference
+	return v.Reference
 }
 
-func (o *V2LogTransaction) GetInsertedAt() *time.Time {
-	if o == nil {
+func (v *V2LogTransaction) GetInsertedAt() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.InsertedAt
+	return v.InsertedAt
 }
 
-func (o *V2LogTransaction) GetUpdatedAt() *time.Time {
-	if o == nil {
+func (v *V2LogTransaction) GetUpdatedAt() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.UpdatedAt
+	return v.UpdatedAt
 }
 
-func (o *V2LogTransaction) GetRevertedAt() *time.Time {
-	if o == nil {
+func (v *V2LogTransaction) GetRevertedAt() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.RevertedAt
+	return v.RevertedAt
 }
 
-func (o *V2LogTransaction) GetReverted() bool {
-	if o == nil {
+func (v *V2LogTransaction) GetReverted() bool {
+	if v == nil {
 		return false
 	}
-	return o.Reverted
+	return v.Reverted
 }
 
-func (o *V2LogTransaction) GetTemplate() *string {
-	if o == nil {
+func (v *V2LogTransaction) GetTemplate() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Template
+	return v.Template
 }
 
-func (o *V2LogTransaction) GetPostCommitVolumes() map[string]map[string]V2Volume {
-	if o == nil {
+func (v *V2LogTransaction) GetPostCommitVolumes() map[string]map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.PostCommitVolumes
+	return v.PostCommitVolumes
 }
 
-func (o *V2LogTransaction) GetPostCommitEffectiveVolumes() map[string]map[string]V2Volume {
-	if o == nil {
+func (v *V2LogTransaction) GetPostCommitEffectiveVolumes() map[string]map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.PostCommitEffectiveVolumes
+	return v.PostCommitEffectiveVolumes
 }
 
-func (o *V2LogTransaction) GetPreCommitVolumes() map[string]map[string]V2Volume {
-	if o == nil {
+func (v *V2LogTransaction) GetPreCommitVolumes() map[string]map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.PreCommitVolumes
+	return v.PreCommitVolumes
 }
 
-func (o *V2LogTransaction) GetPreCommitEffectiveVolumes() map[string]map[string]V2Volume {
-	if o == nil {
+func (v *V2LogTransaction) GetPreCommitEffectiveVolumes() map[string]map[string]V2Volume {
+	if v == nil {
 		return nil
 	}
-	return o.PreCommitEffectiveVolumes
+	return v.PreCommitEffectiveVolumes
 }
+
+// #region class-body-v2logtransaction
+// #endregion class-body-v2logtransaction

@@ -6,28 +6,34 @@ type V2LedgerInfoStorage struct {
 	Migrations []V2MigrationInfo `json:"migrations,omitempty"`
 }
 
-func (o *V2LedgerInfoStorage) GetMigrations() []V2MigrationInfo {
-	if o == nil {
+func (v *V2LedgerInfoStorage) GetMigrations() []V2MigrationInfo {
+	if v == nil {
 		return nil
 	}
-	return o.Migrations
+	return v.Migrations
 }
+
+// #region class-body-v2ledgerinfostorage
+// #endregion class-body-v2ledgerinfostorage
 
 type V2LedgerInfo struct {
 	Name    *string              `json:"name,omitempty"`
 	Storage *V2LedgerInfoStorage `json:"storage,omitempty"`
 }
 
-func (o *V2LedgerInfo) GetName() *string {
-	if o == nil {
+func (v *V2LedgerInfo) GetName() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Name
+	return v.Name
 }
 
-func (o *V2LedgerInfo) GetStorage() *V2LedgerInfoStorage {
-	if o == nil {
+func (v *V2LedgerInfo) GetStorage() *V2LedgerInfoStorage {
+	if v == nil {
 		return nil
 	}
-	return o.Storage
+	return v.Storage
 }
+
+// #region class-body-v2ledgerinfo
+// #endregion class-body-v2ledgerinfo

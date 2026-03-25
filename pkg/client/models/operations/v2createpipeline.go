@@ -12,19 +12,22 @@ type V2CreatePipelineRequest struct {
 	V2CreatePipelineRequest *components.V2CreatePipelineRequest `request:"mediaType=application/json"`
 }
 
-func (o *V2CreatePipelineRequest) GetLedger() string {
-	if o == nil {
+func (v *V2CreatePipelineRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2CreatePipelineRequest) GetV2CreatePipelineRequest() *components.V2CreatePipelineRequest {
-	if o == nil {
+func (v *V2CreatePipelineRequest) GetV2CreatePipelineRequest() *components.V2CreatePipelineRequest {
+	if v == nil {
 		return nil
 	}
-	return o.V2CreatePipelineRequest
+	return v.V2CreatePipelineRequest
 }
+
+// #region class-body-v2createpipelinerequest
+// #endregion class-body-v2createpipelinerequest
 
 type V2CreatePipelineResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -32,16 +35,19 @@ type V2CreatePipelineResponse struct {
 	V2CreatePipelineResponse *components.V2CreatePipelineResponse
 }
 
-func (o *V2CreatePipelineResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2CreatePipelineResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2CreatePipelineResponse) GetV2CreatePipelineResponse() *components.V2CreatePipelineResponse {
-	if o == nil {
+func (v *V2CreatePipelineResponse) GetV2CreatePipelineResponse() *components.V2CreatePipelineResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2CreatePipelineResponse
+	return v.V2CreatePipelineResponse
 }
+
+// #region class-body-v2createpipelineresponse
+// #endregion class-body-v2createpipelineresponse

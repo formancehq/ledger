@@ -2,13 +2,31 @@
 
 package components
 
+import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+)
+
 type V2ChartAccountMetadata struct {
 	Default *string `json:"default,omitempty"`
 }
 
-func (o *V2ChartAccountMetadata) GetDefault() *string {
-	if o == nil {
+func (v V2ChartAccountMetadata) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
+}
+
+func (v *V2ChartAccountMetadata) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2ChartAccountMetadata) GetDefault() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Default
+	return v.Default
 }
+
+// #region class-body-v2chartaccountmetadata
+// #endregion class-body-v2chartaccountmetadata

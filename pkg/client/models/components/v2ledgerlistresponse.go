@@ -10,48 +10,54 @@ type V2LedgerListResponseCursor struct {
 	Data     []V2Ledger `json:"data"`
 }
 
-func (o *V2LedgerListResponseCursor) GetPageSize() int64 {
-	if o == nil {
+func (v *V2LedgerListResponseCursor) GetPageSize() int64 {
+	if v == nil {
 		return 0
 	}
-	return o.PageSize
+	return v.PageSize
 }
 
-func (o *V2LedgerListResponseCursor) GetHasMore() bool {
-	if o == nil {
+func (v *V2LedgerListResponseCursor) GetHasMore() bool {
+	if v == nil {
 		return false
 	}
-	return o.HasMore
+	return v.HasMore
 }
 
-func (o *V2LedgerListResponseCursor) GetPrevious() *string {
-	if o == nil {
+func (v *V2LedgerListResponseCursor) GetPrevious() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Previous
+	return v.Previous
 }
 
-func (o *V2LedgerListResponseCursor) GetNext() *string {
-	if o == nil {
+func (v *V2LedgerListResponseCursor) GetNext() *string {
+	if v == nil {
 		return nil
 	}
-	return o.Next
+	return v.Next
 }
 
-func (o *V2LedgerListResponseCursor) GetData() []V2Ledger {
-	if o == nil {
+func (v *V2LedgerListResponseCursor) GetData() []V2Ledger {
+	if v == nil {
 		return []V2Ledger{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2ledgerlistresponsecursor
+// #endregion class-body-v2ledgerlistresponsecursor
 
 type V2LedgerListResponse struct {
 	Cursor V2LedgerListResponseCursor `json:"cursor"`
 }
 
-func (o *V2LedgerListResponse) GetCursor() V2LedgerListResponseCursor {
-	if o == nil {
+func (v *V2LedgerListResponse) GetCursor() V2LedgerListResponseCursor {
+	if v == nil {
 		return V2LedgerListResponseCursor{}
 	}
-	return o.Cursor
+	return v.Cursor
 }
+
+// #region class-body-v2ledgerlistresponse
+// #endregion class-body-v2ledgerlistresponse

@@ -1550,15 +1550,19 @@ paths:
             example: ledger001
       responses:
         "200":
-          description: Import OK
-        default:
-          description: Error
+          description: Export OK
           content:
             application/octet-stream:
               schema:
                 title: bytes
                 type: string
                 format: binary
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/V2ErrorResponse"
       security:
         - Authorization:
             - ledger:write
@@ -3205,7 +3209,11 @@ components:
           type: string
           format: date-time
         sort:
-          $ref: "#/components/parameters/sort"
+          type: string
+          description: |
+            Sort results using a field name and order (ascending or descending).
+            Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
+          example: id:desc
       oneOf:
         - x-speakeasy-name-override: QueryTemplateAccountParams
           properties:

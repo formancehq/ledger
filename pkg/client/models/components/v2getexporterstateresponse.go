@@ -7,9 +7,12 @@ type V2GetExporterStateResponse struct {
 	Data V2Exporter `json:"data"`
 }
 
-func (o *V2GetExporterStateResponse) GetData() V2Exporter {
-	if o == nil {
+func (v *V2GetExporterStateResponse) GetData() V2Exporter {
+	if v == nil {
 		return V2Exporter{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2getexporterstateresponse
+// #endregion class-body-v2getexporterstateresponse

@@ -7,16 +7,19 @@ type V2ConfigInfoResponse struct {
 	Version string `json:"version"`
 }
 
-func (o *V2ConfigInfoResponse) GetServer() string {
-	if o == nil {
+func (v *V2ConfigInfoResponse) GetServer() string {
+	if v == nil {
 		return ""
 	}
-	return o.Server
+	return v.Server
 }
 
-func (o *V2ConfigInfoResponse) GetVersion() string {
-	if o == nil {
+func (v *V2ConfigInfoResponse) GetVersion() string {
+	if v == nil {
 		return ""
 	}
-	return o.Version
+	return v.Version
 }
+
+// #region class-body-v2configinforesponse
+// #endregion class-body-v2configinforesponse

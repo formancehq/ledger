@@ -20,48 +20,54 @@ func (v V2CountTransactionsRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2CountTransactionsRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2CountTransactionsRequest) GetLedger() string {
-	if o == nil {
+func (v *V2CountTransactionsRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2CountTransactionsRequest) GetPit() *time.Time {
-	if o == nil {
+func (v *V2CountTransactionsRequest) GetPit() *time.Time {
+	if v == nil {
 		return nil
 	}
-	return o.Pit
+	return v.Pit
 }
 
-func (o *V2CountTransactionsRequest) GetRequestBody() map[string]any {
-	if o == nil {
+func (v *V2CountTransactionsRequest) GetRequestBody() map[string]any {
+	if v == nil {
 		return map[string]any{}
 	}
-	return o.RequestBody
+	return v.RequestBody
 }
+
+// #region class-body-v2counttransactionsrequest
+// #endregion class-body-v2counttransactionsrequest
 
 type V2CountTransactionsResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	Headers  map[string][]string
 }
 
-func (o *V2CountTransactionsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2CountTransactionsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2CountTransactionsResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (v *V2CountTransactionsResponse) GetHeaders() map[string][]string {
+	if v == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return v.Headers
 }
+
+// #region class-body-v2counttransactionsresponse
+// #endregion class-body-v2counttransactionsresponse

@@ -20,43 +20,43 @@ func (a AccountWithVolumesAndBalances) MarshalJSON() ([]byte, error) {
 }
 
 func (a *AccountWithVolumesAndBalances) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &a, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &a, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *AccountWithVolumesAndBalances) GetAddress() string {
-	if o == nil {
+func (a *AccountWithVolumesAndBalances) GetAddress() string {
+	if a == nil {
 		return ""
 	}
-	return o.Address
+	return a.Address
 }
 
-func (o *AccountWithVolumesAndBalances) GetType() *string {
-	if o == nil {
+func (a *AccountWithVolumesAndBalances) GetType() *string {
+	if a == nil {
 		return nil
 	}
-	return o.Type
+	return a.Type
 }
 
-func (o *AccountWithVolumesAndBalances) GetMetadata() map[string]any {
-	if o == nil {
+func (a *AccountWithVolumesAndBalances) GetMetadata() map[string]any {
+	if a == nil {
 		return nil
 	}
-	return o.Metadata
+	return a.Metadata
 }
 
-func (o *AccountWithVolumesAndBalances) GetVolumes() map[string]Volume {
-	if o == nil {
+func (a *AccountWithVolumesAndBalances) GetVolumes() map[string]Volume {
+	if a == nil {
 		return nil
 	}
-	return o.Volumes
+	return a.Volumes
 }
 
-func (o *AccountWithVolumesAndBalances) GetBalances() map[string]*big.Int {
-	if o == nil {
+func (a *AccountWithVolumesAndBalances) GetBalances() map[string]*big.Int {
+	if a == nil {
 		return nil
 	}
-	return o.Balances
+	return a.Balances
 }

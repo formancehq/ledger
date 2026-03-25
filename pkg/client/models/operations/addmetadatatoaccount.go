@@ -19,25 +19,25 @@ type AddMetadataToAccountRequest struct {
 	RequestBody map[string]any `request:"mediaType=application/json"`
 }
 
-func (o *AddMetadataToAccountRequest) GetLedger() string {
-	if o == nil {
+func (a *AddMetadataToAccountRequest) GetLedger() string {
+	if a == nil {
 		return ""
 	}
-	return o.Ledger
+	return a.Ledger
 }
 
-func (o *AddMetadataToAccountRequest) GetAddress() string {
-	if o == nil {
+func (a *AddMetadataToAccountRequest) GetAddress() string {
+	if a == nil {
 		return ""
 	}
-	return o.Address
+	return a.Address
 }
 
-func (o *AddMetadataToAccountRequest) GetRequestBody() map[string]any {
-	if o == nil {
+func (a *AddMetadataToAccountRequest) GetRequestBody() map[string]any {
+	if a == nil {
 		return nil
 	}
-	return o.RequestBody
+	return a.RequestBody
 }
 
 type AddMetadataToAccountResponse struct {
@@ -45,16 +45,16 @@ type AddMetadataToAccountResponse struct {
 	Headers  map[string][]string
 }
 
-func (o *AddMetadataToAccountResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (a *AddMetadataToAccountResponse) GetHTTPMeta() components.HTTPMetadata {
+	if a == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return a.HTTPMeta
 }
 
-func (o *AddMetadataToAccountResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (a *AddMetadataToAccountResponse) GetHeaders() map[string][]string {
+	if a == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return a.Headers
 }

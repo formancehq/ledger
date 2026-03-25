@@ -11,12 +11,15 @@ type V2DeleteBucketRequest struct {
 	Bucket string `pathParam:"style=simple,explode=false,name=bucket"`
 }
 
-func (o *V2DeleteBucketRequest) GetBucket() string {
-	if o == nil {
+func (v *V2DeleteBucketRequest) GetBucket() string {
+	if v == nil {
 		return ""
 	}
-	return o.Bucket
+	return v.Bucket
 }
+
+// #region class-body-v2deletebucketrequest
+// #endregion class-body-v2deletebucketrequest
 
 type V2DeleteBucketResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
@@ -24,16 +27,19 @@ type V2DeleteBucketResponse struct {
 	V2ErrorResponse *components.V2ErrorResponse
 }
 
-func (o *V2DeleteBucketResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2DeleteBucketResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2DeleteBucketResponse) GetV2ErrorResponse() *components.V2ErrorResponse {
-	if o == nil {
+func (v *V2DeleteBucketResponse) GetV2ErrorResponse() *components.V2ErrorResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2ErrorResponse
+	return v.V2ErrorResponse
 }
+
+// #region class-body-v2deletebucketresponse
+// #endregion class-body-v2deletebucketresponse

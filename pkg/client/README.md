@@ -73,8 +73,8 @@ func main() {
 
 	s := client.New(
 		client.WithSecurity(components.Security{
-			ClientID:     client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-			ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+			ClientID:     client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+			ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
 		}),
 	)
 
@@ -95,7 +95,6 @@ func main() {
 
 <details open>
 <summary>Available methods</summary>
-
 
 ### [Ledger](docs/sdks/ledger/README.md)
 
@@ -198,8 +197,8 @@ func main() {
 
 	s := client.New(
 		client.WithSecurity(components.Security{
-			ClientID:     client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-			ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+			ClientID:     client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+			ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
 		}),
 	)
 
@@ -253,8 +252,8 @@ func main() {
 				RetryConnectionErrors: false,
 			}),
 		client.WithSecurity(components.Security{
-			ClientID:     client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-			ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+			ClientID:     client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+			ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
 		}),
 	)
 
@@ -304,8 +303,8 @@ func main() {
 
 	s := client.New(
 		client.WithSecurity(components.Security{
-			ClientID:     client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-			ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+			ClientID:     client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+			ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
 		}),
 	)
 
@@ -352,8 +351,8 @@ func main() {
 	s := client.New(
 		client.WithServerURL("http://localhost:8080/"),
 		client.WithSecurity(components.Security{
-			ClientID:     client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-			ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+			ClientID:     client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+			ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
 		}),
 	)
 
@@ -386,12 +385,13 @@ The built-in `net/http` client satisfies this interface and a default client bas
 import (
 	"net/http"
 	"time"
-	"github.com/myorg/your-go-sdk"
+
+	"github.com/formancehq/ledger/pkg/client"
 )
 
 var (
 	httpClient = &http.Client{Timeout: 30 * time.Second}
-	sdkClient  = sdk.New(sdk.WithClient(httpClient))
+	sdkClient  = client.New(client.WithClient(httpClient))
 )
 ```
 
@@ -405,9 +405,9 @@ This can be a convenient way to configure timeouts, cookies, proxies, custom hea
 
 This SDK supports the following security scheme globally:
 
-| Name                          | Type   | Scheme                         | Environment Variable                                                       |
-| ----------------------------- | ------ | ------------------------------ | -------------------------------------------------------------------------- |
-| `ClientID`<br/>`ClientSecret` | oauth2 | OAuth2 Client Credentials Flow | `FORMANCE_CLIENT_ID`<br/>`FORMANCE_CLIENT_SECRET`<br/>`FORMANCE_TOKEN_URL` |
+| Name                                         | Type   | Scheme                         | Environment Variable                                                       |
+| -------------------------------------------- | ------ | ------------------------------ | -------------------------------------------------------------------------- |
+| `ClientID`<br/>`ClientSecret`<br/>`TokenURL` | oauth2 | OAuth2 Client Credentials Flow | `FORMANCE_CLIENT_ID`<br/>`FORMANCE_CLIENT_SECRET`<br/>`FORMANCE_TOKEN_URL` |
 
 You can configure it using the `WithSecurity` option when initializing the SDK client instance. For example:
 ```go
@@ -426,8 +426,8 @@ func main() {
 
 	s := client.New(
 		client.WithSecurity(components.Security{
-			ClientID:     client.String(os.Getenv("FORMANCE_CLIENT_ID")),
-			ClientSecret: client.String(os.Getenv("FORMANCE_CLIENT_SECRET")),
+			ClientID:     client.Pointer(os.Getenv("FORMANCE_CLIENT_ID")),
+			ClientSecret: client.Pointer(os.Getenv("FORMANCE_CLIENT_SECRET")),
 		}),
 	)
 

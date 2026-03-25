@@ -12,18 +12,18 @@ type CreateTransactionsRequest struct {
 	Transactions components.Transactions `request:"mediaType=application/json"`
 }
 
-func (o *CreateTransactionsRequest) GetLedger() string {
-	if o == nil {
+func (c *CreateTransactionsRequest) GetLedger() string {
+	if c == nil {
 		return ""
 	}
-	return o.Ledger
+	return c.Ledger
 }
 
-func (o *CreateTransactionsRequest) GetTransactions() components.Transactions {
-	if o == nil {
+func (c *CreateTransactionsRequest) GetTransactions() components.Transactions {
+	if c == nil {
 		return components.Transactions{}
 	}
-	return o.Transactions
+	return c.Transactions
 }
 
 type CreateTransactionsResponse struct {
@@ -32,16 +32,16 @@ type CreateTransactionsResponse struct {
 	TransactionsResponse *components.TransactionsResponse
 }
 
-func (o *CreateTransactionsResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (c *CreateTransactionsResponse) GetHTTPMeta() components.HTTPMetadata {
+	if c == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return c.HTTPMeta
 }
 
-func (o *CreateTransactionsResponse) GetTransactionsResponse() *components.TransactionsResponse {
-	if o == nil {
+func (c *CreateTransactionsResponse) GetTransactionsResponse() *components.TransactionsResponse {
+	if c == nil {
 		return nil
 	}
-	return o.TransactionsResponse
+	return c.TransactionsResponse
 }

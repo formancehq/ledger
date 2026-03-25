@@ -41,3 +41,21 @@ v2LogData := components.CreateV2LogDataV2LogDataDeleteMetadata(components.V2LogD
 v2LogData := components.CreateV2LogDataV2LogDataInsertedSchema(components.V2LogDataInsertedSchema{/* values here */})
 ```
 
+## Union Discrimination
+
+Use the `Type` field to determine which variant is active, then access the corresponding field:
+
+```go
+switch v2LogData.Type {
+	case components.V2LogDataTypeV2LogDataNewTransaction:
+		// v2LogData.V2LogDataNewTransaction is populated
+	case components.V2LogDataTypeV2LogDataSetMetadata:
+		// v2LogData.V2LogDataSetMetadata is populated
+	case components.V2LogDataTypeV2LogDataRevertedTransaction:
+		// v2LogData.V2LogDataRevertedTransaction is populated
+	case components.V2LogDataTypeV2LogDataDeleteMetadata:
+		// v2LogData.V2LogDataDeleteMetadata is populated
+	case components.V2LogDataTypeV2LogDataInsertedSchema:
+		// v2LogData.V2LogDataInsertedSchema is populated
+}
+```

@@ -31,92 +31,98 @@ func (v V2RevertTransactionRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (v *V2RevertTransactionRequest) UnmarshalJSON(data []byte) error {
-	if err := utils.UnmarshalJSON(data, &v, "", false, false); err != nil {
+	if err := utils.UnmarshalJSON(data, &v, "", false, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (o *V2RevertTransactionRequest) GetLedger() string {
-	if o == nil {
+func (v *V2RevertTransactionRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2RevertTransactionRequest) GetID() *big.Int {
-	if o == nil {
+func (v *V2RevertTransactionRequest) GetID() *big.Int {
+	if v == nil {
 		return big.NewInt(0)
 	}
-	return o.ID
+	return v.ID
 }
 
-func (o *V2RevertTransactionRequest) GetForce() *bool {
-	if o == nil {
+func (v *V2RevertTransactionRequest) GetForce() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.Force
+	return v.Force
 }
 
-func (o *V2RevertTransactionRequest) GetAtEffectiveDate() *bool {
-	if o == nil {
+func (v *V2RevertTransactionRequest) GetAtEffectiveDate() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.AtEffectiveDate
+	return v.AtEffectiveDate
 }
 
-func (o *V2RevertTransactionRequest) GetDryRun() *bool {
-	if o == nil {
+func (v *V2RevertTransactionRequest) GetDryRun() *bool {
+	if v == nil {
 		return nil
 	}
-	return o.DryRun
+	return v.DryRun
 }
 
-func (o *V2RevertTransactionRequest) GetSchemaVersion() *string {
-	if o == nil {
+func (v *V2RevertTransactionRequest) GetSchemaVersion() *string {
+	if v == nil {
 		return nil
 	}
-	return o.SchemaVersion
+	return v.SchemaVersion
 }
 
-func (o *V2RevertTransactionRequest) GetIdempotencyKey() *string {
-	if o == nil {
+func (v *V2RevertTransactionRequest) GetIdempotencyKey() *string {
+	if v == nil {
 		return nil
 	}
-	return o.IdempotencyKey
+	return v.IdempotencyKey
 }
 
-func (o *V2RevertTransactionRequest) GetV2RevertTransactionRequest() *components.V2RevertTransactionRequest {
-	if o == nil {
+func (v *V2RevertTransactionRequest) GetV2RevertTransactionRequest() *components.V2RevertTransactionRequest {
+	if v == nil {
 		return nil
 	}
-	return o.V2RevertTransactionRequest
+	return v.V2RevertTransactionRequest
 }
+
+// #region class-body-v2reverttransactionrequest
+// #endregion class-body-v2reverttransactionrequest
 
 type V2RevertTransactionResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// OK
-	V2CreateTransactionResponse *components.V2CreateTransactionResponse
+	V2RevertTransactionResponse *components.V2RevertTransactionResponse
 	Headers                     map[string][]string
 }
 
-func (o *V2RevertTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2RevertTransactionResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
 
-func (o *V2RevertTransactionResponse) GetV2CreateTransactionResponse() *components.V2CreateTransactionResponse {
-	if o == nil {
+func (v *V2RevertTransactionResponse) GetV2RevertTransactionResponse() *components.V2RevertTransactionResponse {
+	if v == nil {
 		return nil
 	}
-	return o.V2CreateTransactionResponse
+	return v.V2RevertTransactionResponse
 }
 
-func (o *V2RevertTransactionResponse) GetHeaders() map[string][]string {
-	if o == nil {
+func (v *V2RevertTransactionResponse) GetHeaders() map[string][]string {
+	if v == nil {
 		return map[string][]string{}
 	}
-	return o.Headers
+	return v.Headers
 }
+
+// #region class-body-v2reverttransactionresponse
+// #endregion class-body-v2reverttransactionresponse

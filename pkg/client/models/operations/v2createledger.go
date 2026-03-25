@@ -12,27 +12,33 @@ type V2CreateLedgerRequest struct {
 	V2CreateLedgerRequest components.V2CreateLedgerRequest `request:"mediaType=application/json"`
 }
 
-func (o *V2CreateLedgerRequest) GetLedger() string {
-	if o == nil {
+func (v *V2CreateLedgerRequest) GetLedger() string {
+	if v == nil {
 		return ""
 	}
-	return o.Ledger
+	return v.Ledger
 }
 
-func (o *V2CreateLedgerRequest) GetV2CreateLedgerRequest() components.V2CreateLedgerRequest {
-	if o == nil {
+func (v *V2CreateLedgerRequest) GetV2CreateLedgerRequest() components.V2CreateLedgerRequest {
+	if v == nil {
 		return components.V2CreateLedgerRequest{}
 	}
-	return o.V2CreateLedgerRequest
+	return v.V2CreateLedgerRequest
 }
+
+// #region class-body-v2createledgerrequest
+// #endregion class-body-v2createledgerrequest
 
 type V2CreateLedgerResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 }
 
-func (o *V2CreateLedgerResponse) GetHTTPMeta() components.HTTPMetadata {
-	if o == nil {
+func (v *V2CreateLedgerResponse) GetHTTPMeta() components.HTTPMetadata {
+	if v == nil {
 		return components.HTTPMetadata{}
 	}
-	return o.HTTPMeta
+	return v.HTTPMeta
 }
+
+// #region class-body-v2createledgerresponse
+// #endregion class-body-v2createledgerresponse

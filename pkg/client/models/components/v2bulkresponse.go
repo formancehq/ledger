@@ -8,23 +8,26 @@ type V2BulkResponse struct {
 	ErrorMessage *string               `json:"errorMessage,omitempty"`
 }
 
-func (o *V2BulkResponse) GetData() []V2BulkElementResult {
-	if o == nil {
+func (v *V2BulkResponse) GetData() []V2BulkElementResult {
+	if v == nil {
 		return nil
 	}
-	return o.Data
+	return v.Data
 }
 
-func (o *V2BulkResponse) GetErrorCode() *V2ErrorsEnum {
-	if o == nil {
+func (v *V2BulkResponse) GetErrorCode() *V2ErrorsEnum {
+	if v == nil {
 		return nil
 	}
-	return o.ErrorCode
+	return v.ErrorCode
 }
 
-func (o *V2BulkResponse) GetErrorMessage() *string {
-	if o == nil {
+func (v *V2BulkResponse) GetErrorMessage() *string {
+	if v == nil {
 		return nil
 	}
-	return o.ErrorMessage
+	return v.ErrorMessage
 }
+
+// #region class-body-v2bulkresponse
+// #endregion class-body-v2bulkresponse

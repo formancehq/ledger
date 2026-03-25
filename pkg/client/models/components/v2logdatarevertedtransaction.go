@@ -2,6 +2,10 @@
 
 package components
 
+import (
+	"github.com/formancehq/ledger/pkg/client/internal/utils"
+)
+
 // V2LogDataRevertedTransaction - Payload for REVERTED_TRANSACTION log entries. Contains both the original reverted transaction and the new reverting transaction.
 type V2LogDataRevertedTransaction struct {
 	// Transaction structure as it appears in log payloads
@@ -10,16 +14,30 @@ type V2LogDataRevertedTransaction struct {
 	Transaction V2LogTransaction `json:"transaction"`
 }
 
-func (o *V2LogDataRevertedTransaction) GetRevertedTransaction() V2LogTransaction {
-	if o == nil {
-		return V2LogTransaction{}
-	}
-	return o.RevertedTransaction
+func (v V2LogDataRevertedTransaction) MarshalJSON() ([]byte, error) {
+	return utils.MarshalJSON(v, "", false)
 }
 
-func (o *V2LogDataRevertedTransaction) GetTransaction() V2LogTransaction {
-	if o == nil {
+func (v *V2LogDataRevertedTransaction) UnmarshalJSON(data []byte) error {
+	if err := utils.UnmarshalJSON(data, &v, "", false, []string{"revertedTransaction", "transaction"}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *V2LogDataRevertedTransaction) GetRevertedTransaction() V2LogTransaction {
+	if v == nil {
 		return V2LogTransaction{}
 	}
-	return o.Transaction
+	return v.RevertedTransaction
 }
+
+func (v *V2LogDataRevertedTransaction) GetTransaction() V2LogTransaction {
+	if v == nil {
+		return V2LogTransaction{}
+	}
+	return v.Transaction
+}
+
+// #region class-body-v2logdatarevertedtransaction
+// #endregion class-body-v2logdatarevertedtransaction

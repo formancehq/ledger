@@ -7,9 +7,12 @@ type V2GetPipelineStateResponse struct {
 	Data V2Pipeline `json:"data"`
 }
 
-func (o *V2GetPipelineStateResponse) GetData() V2Pipeline {
-	if o == nil {
+func (v *V2GetPipelineStateResponse) GetData() V2Pipeline {
+	if v == nil {
 		return V2Pipeline{}
 	}
-	return o.Data
+	return v.Data
 }
+
+// #region class-body-v2getpipelinestateresponse
+// #endregion class-body-v2getpipelinestateresponse
