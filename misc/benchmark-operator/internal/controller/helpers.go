@@ -20,36 +20,41 @@ const (
 	stageError          = "error"
 )
 
-var (
-	testRunGVR = schema.GroupVersionResource{
-		Group:    "k6.io",
-		Version:  "v1alpha1",
-		Resource: "testruns",
-	}
+var testRunGVR = schema.GroupVersionResource{
+	Group:    "k6.io",
+	Version:  "v1alpha1",
+	Resource: "testruns",
+}
 
-	ledgerServiceGVR = schema.GroupVersionResource{
-		Group:    "ledger.formance.com",
-		Version:  "v1alpha1",
-		Resource: "ledgerservices",
-	}
-)
-
-func ledgerServiceName(benchmarkName string) string {
-	return benchmarkName + "-ledger"
+func resourceName(benchmarkName string, index int) string {
+	return fmt.Sprintf("%s-res-%d", benchmarkName, index)
 }
 
 func testRunName(benchmarkName string) string {
 	return benchmarkName + "-run"
 }
 
-func ledgerServiceGRPCEndpoint(name, namespace string) string {
-	return fmt.Sprintf("%s.%s.svc.cluster.local:8888", name, namespace)
-}
-
 func reportConfigMapName(testRunName string) string {
 	return "k6-report-" + testRunName
 }
 
+// parseGVR parses an apiVersion (e.g. "ledger.formance.com/v1alpha1") and a plural resource name
+// into a GroupVersionResource.
+func parseGVR(apiVersion, resource string) schema.GroupVersionResource {
+	parts := strings.SplitN(apiVersion, "/", 2)
+	if len(parts) == 1 {
+		return schema.GroupVersionResource{Group: "", Version: parts[0], Resource: resource}
+	}
+
+	return schema.GroupVersionResource{Group: parts[0], Version: parts[1], Resource: resource}
+}
+
+// kindToResource converts a Kind (e.g. "LedgerService") to a plural resource name (e.g. "ledgerservices").
+func kindToResource(kind string) string {
+	return strings.ToLower(kind) + "s"
+}
+
+// getString navigates a nested map by keys and returns the string value at the final key.
 func getString(obj map[string]any, path ...string) string {
 	value := obj
 	for i, key := range path {
@@ -71,6 +76,12 @@ func getString(obj map[string]any, path ...string) string {
 	}
 
 	return ""
+}
+
+// getNestedString navigates a dot-separated field path (e.g. "status.phase")
+// and returns the string value.
+func getNestedString(obj map[string]any, fieldPath string) string {
+	return getString(obj, strings.Split(fieldPath, ".")...)
 }
 
 func isProcessed(obj *unstructured.Unstructured) bool {
@@ -100,46 +111,62 @@ func ownerRefToMap(ref metav1.OwnerReference) map[string]any {
 	}
 }
 
-func buildLedgerService(bm *benchmarkv1alpha1.Benchmark) *unstructured.Unstructured {
-	name := ledgerServiceName(bm.Name)
+// buildResource constructs an unstructured resource from a ResourceEntry manifest,
+// overriding the name and namespace and setting the owner reference.
+func buildResource(bm *benchmarkv1alpha1.Benchmark, entry benchmarkv1alpha1.ResourceEntry, name string) *unstructured.Unstructured {
+	var manifest map[string]any
+	if len(entry.Manifest.Raw) > 0 {
+		_ = json.Unmarshal(entry.Manifest.Raw, &manifest) //nolint:errcheck // fallback to empty
+	}
+	if manifest == nil {
+		manifest = map[string]any{}
+	}
 
-	var spec map[string]any
-	if len(bm.Spec.LedgerService.Raw) > 0 {
-		_ = json.Unmarshal(bm.Spec.LedgerService.Raw, &spec)
+	// Ensure metadata exists.
+	metadata, ok := manifest["metadata"].(map[string]any)
+	if !ok {
+		metadata = map[string]any{}
 	}
-	if spec == nil {
-		spec = map[string]any{}
+	metadata["name"] = name
+	metadata["namespace"] = bm.Namespace
+	metadata["ownerReferences"] = []any{
+		ownerRefToMap(ownerReferenceForBenchmark(bm)),
 	}
+	manifest["metadata"] = metadata
 
-	return &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": ledgerServiceGVR.Group + "/" + ledgerServiceGVR.Version,
-			"kind":       "LedgerService",
-			"metadata": map[string]any{
-				"name":      name,
-				"namespace": bm.Namespace,
-				"ownerReferences": []any{
-					ownerRefToMap(ownerReferenceForBenchmark(bm)),
-				},
-			},
-			"spec": spec,
-		},
-	}
+	return &unstructured.Unstructured{Object: manifest}
 }
 
-func buildTestRun(bm *benchmarkv1alpha1.Benchmark, grpcEndpoint string) *unstructured.Unstructured {
+// gvrForManifest extracts the GVR from a raw manifest's apiVersion and kind.
+func gvrForManifest(raw []byte) (schema.GroupVersionResource, error) {
+	var partial struct {
+		APIVersion string `json:"apiVersion"`
+		Kind       string `json:"kind"`
+	}
+	if err := json.Unmarshal(raw, &partial); err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("unmarshal manifest: %w", err)
+	}
+	if partial.APIVersion == "" || partial.Kind == "" {
+		return schema.GroupVersionResource{}, fmt.Errorf("manifest missing apiVersion or kind")
+	}
+
+	return parseGVR(partial.APIVersion, kindToResource(partial.Kind)), nil
+}
+
+// checkReadyCondition checks if the resource's field at fieldPath matches the expected value.
+func checkReadyCondition(obj *unstructured.Unstructured, cond benchmarkv1alpha1.ReadyCondition) bool {
+	return getNestedString(obj.Object, cond.FieldPath) == cond.Value
+}
+
+func buildTestRun(bm *benchmarkv1alpha1.Benchmark) *unstructured.Unstructured {
 	name := testRunName(bm.Name)
 
 	var spec map[string]any
 	if len(bm.Spec.TestRun.Raw) > 0 {
-		_ = json.Unmarshal(bm.Spec.TestRun.Raw, &spec)
+		_ = json.Unmarshal(bm.Spec.TestRun.Raw, &spec) //nolint:errcheck // fallback to empty
 	}
 	if spec == nil {
 		spec = map[string]any{}
-	}
-
-	if grpcEndpoint != "" {
-		injectRunnerEnv(spec, "GRPC_ADDR", grpcEndpoint)
 	}
 
 	return &unstructured.Unstructured{
@@ -156,32 +183,6 @@ func buildTestRun(bm *benchmarkv1alpha1.Benchmark, grpcEndpoint string) *unstruc
 			"spec": spec,
 		},
 	}
-}
-
-func injectRunnerEnv(spec map[string]any, name, value string) {
-	runner, ok := spec["runner"].(map[string]any)
-	if !ok {
-		runner = map[string]any{}
-		spec["runner"] = runner
-	}
-
-	envList, _ := runner["env"].([]any)
-
-	for _, item := range envList {
-		if m, ok := item.(map[string]any); ok {
-			if m["name"] == name {
-				m["value"] = value
-
-				return
-			}
-		}
-	}
-
-	envList = append(envList, map[string]any{
-		"name":  name,
-		"value": value,
-	})
-	runner["env"] = envList
 }
 
 func isOwnedByBenchmark(obj *unstructured.Unstructured) (types.NamespacedName, bool) {

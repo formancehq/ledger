@@ -33,5 +33,8 @@ cat >> "$dest" << 'EOF'
 - apiGroups: [""]
   resources: ["events"]
   verbs: ["create", "patch"]
+{{- with .Values.rbac.additionalRules }}
+{{ toYaml . | indent 0 }}
+{{- end }}
 {{- end }}
 EOF

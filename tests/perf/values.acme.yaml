@@ -7,83 +7,81 @@ metadata:
   name: acme-world-to-bank
   namespace: ledger-v3
 
-ledgerName: ledger0
-
 spec:
   parallelism: 1
   separate: true
   arguments: "-o opentelemetry"
 
-ledgerService:
-  defaultsRef: dev
-  replicas: 1
-  resources:
-    requests:
-      cpu: "6"
-      memory: 12Gi
-    limits:
-      cpu: "6"
-      memory: 12Gi
-  config:
-##    admissionMetrics: true
-#    monitoring:
-#      flightRecorder:
-#        enabled: false
-#      logs:
-#        enabled: false
-#      traces:
-#        enabled: false
-#      metrics:
-#        enabled: false
-#      pyroscope:
-#        enabled: true
-#        serverAddress: http://pyroscope.ledger-v3:4040
-#        tags: version=8334cd10-dirty-20260321-170227
-
-    auth:
-      enabled: false
-    pebble:
-      memTableStopWritesThreshold: 4
-      l0StopWritesThreshold: 256
-      lBaseMaxBytes: 4294967296
-      cacheSize: 4294967296
-      bytesPerSync: 4194304
-      walBytesPerSync: 4194304
-      maxConcurrentCompactions: 2
-      snapshotThreshold: 1000
-    raft:
-      compactionMargin: 5000
-      proposeQueueCapacity: 4096
-      maxSizePerMsg: 4194304
-    cache:
-      rotationThreshold: 1000
-
-  networkPolicy:
-    enabled: true
-    additionalEgress:
-      # Join RDS to allow mirror
-      - to:
-          - ipBlock:
-              cidr: 10.70.6.90/32
-        ports:
-          - port: 5432
-            protocol: TCP
-  ingressGrpc:
-    enabled: true
-  persistence:
-    retentionPolicy:
-      whenDeleted: Delete
-    data:
-      size: 500Gi
-      storageClass: io2
-    wal:
-      size: 15Gi
-      storageClass: io2
+resources:
+  - manifest:
+      apiVersion: ledger.formance.com/v1alpha1
+      kind: LedgerService
+      spec:
+        defaultsRef: dev
+        replicas: 1
+        resources:
+          requests:
+            cpu: "6"
+            memory: 12Gi
+          limits:
+            cpu: "6"
+            memory: 12Gi
+        config:
+          auth:
+            enabled: false
+          pebble:
+            memTableStopWritesThreshold: 4
+            l0StopWritesThreshold: 256
+            lBaseMaxBytes: 4294967296
+            cacheSize: 4294967296
+            bytesPerSync: 4194304
+            walBytesPerSync: 4194304
+            maxConcurrentCompactions: 2
+            snapshotThreshold: 1000
+          raft:
+            compactionMargin: 5000
+            proposeQueueCapacity: 4096
+            maxSizePerMsg: 4194304
+          cache:
+            rotationThreshold: 1000
+        networkPolicy:
+          enabled: true
+          additionalEgress:
+            # Join RDS to allow mirror
+            - to:
+                - ipBlock:
+                    cidr: 10.70.6.90/32
+              ports:
+                - port: 5432
+                  protocol: TCP
+        ingressGrpc:
+          enabled: true
+        persistence:
+          retentionPolicy:
+            whenDeleted: Delete
+          data:
+            size: 500Gi
+            storageClass: io2
+          wal:
+            size: 15Gi
+            storageClass: io2
+    readyCondition:
+      fieldPath: status.phase
+      value: Running
+  - manifest:
+      apiVersion: ledger.formance.com/v1alpha1
+      kind: Ledger
+      spec:
+        name: ledger0
+        serviceRef: acme-world-to-bank-res-0
+    readyCondition:
+      fieldPath: status.phase
+      value: Ready
 
 runner:
   env:
     LEDGER_NAME: "ledger0"
-    HTTP_ADDR: "http://acme-world-to-bank-ledger:9000"
+    HTTP_ADDR: "http://acme-world-to-bank-res-0:9000"
     K6_STAGES: "1m:100,5m:100,1m:0"
     BULK_SIZE: "50"
     USE_NUMSCRIPT: "true"
@@ -91,3 +89,5 @@ runner:
     K6_OTEL_GRPC_EXPORTER_INSECURE: "true"
     K6_OTEL_METRICS_FLUSH_INTERVAL: "5s"
     K6_OTEL_SERVICE_NAME: "k6-loadtest"
+    GRAFANA_USER: admin
+    GRAFANA_PASSWORD: admin

@@ -10,6 +10,13 @@ serviceAccount:
 
 rbac:
   create: true
+  # Additional RBAC rules for managing custom resources created by benchmarks.
+  # Example for ledger resources:
+  #   additionalRules:
+  #     - apiGroups: ["ledger.formance.com"]
+  #       resources: ["ledgerservices", "ledgers"]
+  #       verbs: ["get", "list", "watch", "create", "delete"]
+  additionalRules: []
 
 watchNamespace: ""
 
@@ -18,8 +25,8 @@ env:
   GRAFANA_USER: ""
   GRAFANA_PASSWORD: ""
   SNAPSHOT_PER_NODE: "true"
-  NODE_METRIC: "raft.node.lead"
-  NODE_LABEL: "service.node_id"
+  NODE_METRIC: ""
+  NODE_LABEL: ""
   DATASOURCE_NAME: "VictoriaMetrics"
   SNAPSHOT_NAME_PREFIX: "k6-benchmark"
 

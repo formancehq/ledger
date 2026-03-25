@@ -31,7 +31,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Benchmark orchestrates a LedgerService deployment and k6 TestRun,
+          Benchmark orchestrates resource creation and k6 TestRun execution,
           then captures Grafana snapshots.
         properties:
           apiVersion:
@@ -54,17 +54,40 @@ spec:
           spec:
             description: BenchmarkSpec defines the desired state of a Benchmark.
             properties:
-              ledgerName:
+              resources:
                 description: |-
-                  LedgerName is the name of the ledger to create via gRPC before the test
-                  and delete after the test. If empty, no ledger lifecycle management is done.
-                type: string
-              ledgerService:
-                description: |-
-                  LedgerService is the inline spec for the LedgerService CR.
-                  Passed through without validation (the ledger operator validates).
-                type: object
-                x-kubernetes-preserve-unknown-fields: true
+                  Resources is an ordered list of Kubernetes resources to create before the test.
+                  Each resource is created in order and must reach its readyCondition before the next is created.
+                items:
+                  description: |-
+                    ResourceEntry describes a Kubernetes resource to create before the test
+                    and its readiness condition.
+                  properties:
+                    manifest:
+                      description: Manifest is the full resource manifest to create
+                        (apiVersion, kind, spec, etc.).
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    readyCondition:
+                      description: ReadyCondition defines how to determine if the
+                        resource is ready.
+                      properties:
+                        fieldPath:
+                          description: FieldPath is the dot-separated path to the
+                            field (e.g. "status.phase").
+                          type: string
+                        value:
+                          description: Value is the expected value at the field path.
+                          type: string
+                      required:
+                      - fieldPath
+                      - value
+                      type: object
+                  required:
+                  - manifest
+                  - readyCondition
+                  type: object
+                type: array
               testRun:
                 description: |-
                   TestRun is the inline spec for the k6 TestRun CR.
@@ -72,7 +95,6 @@ spec:
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
             required:
-            - ledgerService
             - testRun
             type: object
           status:
@@ -83,10 +105,6 @@ spec:
                   or failed).
                 format: date-time
                 type: string
-              ledgerServiceName:
-                description: LedgerServiceName is the name of the managed LedgerService
-                  CR.
-                type: string
               message:
                 description: Message contains human-readable status information (e.g.
                   failure reason).
@@ -95,9 +113,8 @@ spec:
                 description: Phase is the current lifecycle phase.
                 enum:
                 - Pending
-                - CreatingCluster
-                - WaitingForCluster
-                - CreatingLedger
+                - CreatingResources
+                - WaitingForResources
                 - Running
                 - Snapshotting
                 - Completed
@@ -106,6 +123,12 @@ spec:
               report:
                 description: Report is the JSON Grafana snapshot report.
                 type: string
+              resourceNames:
+                description: ResourceNames is the list of created resource names (in
+                  creation order).
+                items:
+                  type: string
+                type: array
               startTime:
                 description: StartTime is when the benchmark TestRun was created.
                 format: date-time

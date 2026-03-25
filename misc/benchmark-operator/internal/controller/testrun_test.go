@@ -142,15 +142,15 @@ func TestBenchmark_TestRunNotProcessedByStandalone(t *testing.T) {
 	bm := newBenchmark("skip-check", ns)
 	require.NoError(t, k8sClient.Create(ctx, bm))
 
-	// Wait for LedgerService to be created.
-	lsName := ledgerServiceName("skip-check")
+	// Wait for resource to be created.
+	resName := resourceName("skip-check", 0)
 	requireEventually(t, func() bool {
-		_, getErr := dynamicClient.Resource(ledgerServiceGVR).Namespace(ns).Get(ctx, lsName, metav1.GetOptions{})
+		_, getErr := dynamicClient.Resource(testServiceGVR).Namespace(ns).Get(ctx, resName, metav1.GetOptions{})
 		return getErr == nil
-	}, "LedgerService should be created")
+	}, "Resource should be created")
 
-	// Set LedgerService to Running.
-	setLedgerServicePhase(t, ns, lsName, "Running")
+	// Set resource to Running.
+	setServicePhase(t, ns, resName, "Running")
 
 	// Wait for TestRun to be created.
 	trName := testRunName("skip-check")
@@ -175,4 +175,3 @@ func setTestRunStage(t *testing.T, namespace, name, stage string) {
 	)
 	require.NoError(t, err)
 }
-

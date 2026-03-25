@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -20,32 +19,32 @@ func TestBenchmark_Lifecycle(t *testing.T) {
 	bm := newBenchmark("lifecycle", ns)
 	require.NoError(t, k8sClient.Create(ctx, bm))
 
-	// LedgerService should be created and phase should progress past Pending.
-	lsName := ledgerServiceName("lifecycle")
+	// Resource should be created and phase should progress past Pending.
+	resName := resourceName("lifecycle", 0)
 	requireEventually(t, func() bool {
-		_, err := dynamicClient.Resource(ledgerServiceGVR).Namespace(ns).Get(ctx, lsName, metav1.GetOptions{})
+		_, err := dynamicClient.Resource(testServiceGVR).Namespace(ns).Get(ctx, resName, metav1.GetOptions{})
 		return err == nil
-	}, "LedgerService should be created")
+	}, "Resource should be created")
 
-	// Verify LedgerService has owner reference.
-	ls, err := dynamicClient.Resource(ledgerServiceGVR).Namespace(ns).Get(ctx, lsName, metav1.GetOptions{})
+	// Verify resource has owner reference.
+	res, err := dynamicClient.Resource(testServiceGVR).Namespace(ns).Get(ctx, resName, metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Len(t, ls.GetOwnerReferences(), 1)
-	assert.Equal(t, "Benchmark", ls.GetOwnerReferences()[0].Kind)
-	assert.Equal(t, "lifecycle", ls.GetOwnerReferences()[0].Name)
+	require.Len(t, res.GetOwnerReferences(), 1)
+	assert.Equal(t, "Benchmark", res.GetOwnerReferences()[0].Kind)
+	assert.Equal(t, "lifecycle", res.GetOwnerReferences()[0].Name)
 
-	// Phase should reach at least WaitingForCluster (may skip CreatingCluster quickly).
+	// Phase should reach at least CreatingResources.
 	requireEventually(t, func() bool {
 		var updated benchmarkv1alpha1.Benchmark
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "lifecycle", Namespace: ns}, &updated); err != nil {
 			return false
 		}
-		return updated.Status.Phase == benchmarkv1alpha1.BenchmarkPhaseWaitingCluster ||
-			updated.Status.Phase == benchmarkv1alpha1.BenchmarkPhaseCreatingCluster
-	}, "Benchmark should be in CreatingCluster or WaitingForCluster phase")
+		return updated.Status.Phase == benchmarkv1alpha1.BenchmarkPhaseCreatingResources ||
+			updated.Status.Phase == benchmarkv1alpha1.BenchmarkPhaseWaitingForResources
+	}, "Benchmark should be in CreatingResources or WaitingForResources phase")
 
-	// Simulate LedgerService becoming ready.
-	setLedgerServicePhase(t, ns, lsName, "Running")
+	// Simulate resource becoming ready.
+	setServicePhase(t, ns, resName, "Running")
 
 	// Phase should move to Running and TestRun should be created.
 	requireEventually(t, func() bool {
@@ -63,27 +62,11 @@ func TestBenchmark_Lifecycle(t *testing.T) {
 		return err == nil
 	}, "TestRun should be created")
 
-	// Verify TestRun has GRPC_ADDR injected and owner reference.
+	// Verify TestRun has owner reference.
 	tr, err := dynamicClient.Resource(testRunGVR).Namespace(ns).Get(ctx, trName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Len(t, tr.GetOwnerReferences(), 1)
 	assert.Equal(t, "Benchmark", tr.GetOwnerReferences()[0].Kind)
-
-	runner, _, _ := unstructured.NestedMap(tr.Object, "spec", "runner")
-	if runner != nil {
-		envList, _, _ := unstructured.NestedSlice(tr.Object, "spec", "runner", "env")
-		foundEndpoint := false
-		for _, item := range envList {
-			if m, ok := item.(map[string]any); ok {
-				if m["name"] == "GRPC_ADDR" {
-					foundEndpoint = true
-					expected := ledgerServiceGRPCEndpoint(lsName, ns)
-					assert.Equal(t, expected, m["value"])
-				}
-			}
-		}
-		assert.True(t, foundEndpoint, "GRPC_ADDR should be injected")
-	}
 
 	// Verify StartTime was set.
 	var updated benchmarkv1alpha1.Benchmark
@@ -127,22 +110,22 @@ func TestBenchmark_StatusFields(t *testing.T) {
 	bm := newBenchmark("status", ns)
 	require.NoError(t, k8sClient.Create(ctx, bm))
 
-	// Wait for LedgerServiceName to be set in status.
+	// Wait for ResourceNames to be set in status.
 	requireEventually(t, func() bool {
 		var updated benchmarkv1alpha1.Benchmark
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "status", Namespace: ns}, &updated); err != nil {
 			return false
 		}
-		return updated.Status.LedgerServiceName == ledgerServiceName("status")
-	}, "LedgerServiceName should be set")
+		return len(updated.Status.ResourceNames) > 0 && updated.Status.ResourceNames[0] == resourceName("status", 0)
+	}, "ResourceNames should be set")
 }
 
-// setLedgerServicePhase patches the LedgerService status to simulate readiness.
-func setLedgerServicePhase(t *testing.T, namespace, name, phase string) {
+// setServicePhase patches the test Service status to simulate readiness.
+func setServicePhase(t *testing.T, namespace, name, phase string) {
 	t.Helper()
 
 	patch := []byte(`{"status":{"phase":"` + phase + `"}}`)
-	_, err := dynamicClient.Resource(ledgerServiceGVR).Namespace(namespace).Patch(
+	_, err := dynamicClient.Resource(testServiceGVR).Namespace(namespace).Patch(
 		ctx, name, types.MergePatchType, patch, metav1.PatchOptions{}, "status",
 	)
 	require.NoError(t, err)

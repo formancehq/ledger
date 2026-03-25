@@ -92,7 +92,6 @@ func TestMain(m *testing.M) {
 		Scheme:  mgr.GetScheme(),
 		Dynamic: dynamicClient,
 		Grafana: grafana,
-		Ledger:  &LedgerClient{},
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up Benchmark controller: %v", err))
 	}
@@ -135,10 +134,17 @@ func createTestNamespace(t *testing.T) string {
 	return name
 }
 
-// newBenchmark returns a minimal valid Benchmark CR.
+// testServiceGVR is the GVR for the test Service CRD (example.com/v1alpha1/services).
+var testServiceGVR = parseGVR("example.com/v1alpha1", "services")
+
+// newBenchmark returns a minimal valid Benchmark CR with one test resource.
 func newBenchmark(name, namespace string) *benchmarkv1alpha1.Benchmark {
-	lsSpec, _ := json.Marshal(map[string]any{
-		"replicas": 1,
+	serviceManifest, _ := json.Marshal(map[string]any{
+		"apiVersion": "example.com/v1alpha1",
+		"kind":       "Service",
+		"spec": map[string]any{
+			"replicas": 1,
+		},
 	})
 	trSpec, _ := json.Marshal(map[string]any{
 		"script": map[string]any{
@@ -155,8 +161,16 @@ func newBenchmark(name, namespace string) *benchmarkv1alpha1.Benchmark {
 			Namespace: namespace,
 		},
 		Spec: benchmarkv1alpha1.BenchmarkSpec{
-			LedgerService: runtime.RawExtension{Raw: lsSpec},
-			TestRun:       runtime.RawExtension{Raw: trSpec},
+			Resources: []benchmarkv1alpha1.ResourceEntry{
+				{
+					Manifest: runtime.RawExtension{Raw: serviceManifest},
+					ReadyCondition: benchmarkv1alpha1.ReadyCondition{
+						FieldPath: "status.phase",
+						Value:     "Running",
+					},
+				},
+			},
+			TestRun: runtime.RawExtension{Raw: trSpec},
 		},
 	}
 }

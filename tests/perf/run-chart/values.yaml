@@ -5,11 +5,9 @@ spec:
 metadata:
   namespace: ""
 
-# Name of the ledger to create/delete via gRPC (optional).
-ledgerName: ""
-
-# LedgerService spec (passthrough to LedgerService CR).
-ledgerService: {}
+# Ordered list of resources to create before the test.
+# Each entry has a manifest and readyCondition.
+resources: []
 
 runner:
   env: {}

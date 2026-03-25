@@ -6,38 +6,52 @@ import (
 )
 
 // BenchmarkPhase describes the current lifecycle phase of a Benchmark.
-// +kubebuilder:validation:Enum=Pending;CreatingCluster;WaitingForCluster;CreatingLedger;Running;Snapshotting;Completed;Failed
+// +kubebuilder:validation:Enum=Pending;CreatingResources;WaitingForResources;Running;Snapshotting;Completed;Failed
 type BenchmarkPhase string
 
 const (
-	BenchmarkPhasePending         BenchmarkPhase = "Pending"
-	BenchmarkPhaseCreatingCluster BenchmarkPhase = "CreatingCluster"
-	BenchmarkPhaseWaitingCluster  BenchmarkPhase = "WaitingForCluster"
-	BenchmarkPhaseCreatingLedger  BenchmarkPhase = "CreatingLedger"
-	BenchmarkPhaseRunning         BenchmarkPhase = "Running"
-	BenchmarkPhaseSnapshotting    BenchmarkPhase = "Snapshotting"
-	BenchmarkPhaseCompleted       BenchmarkPhase = "Completed"
-	BenchmarkPhaseFailed          BenchmarkPhase = "Failed"
+	BenchmarkPhasePending             BenchmarkPhase = "Pending"
+	BenchmarkPhaseCreatingResources   BenchmarkPhase = "CreatingResources"
+	BenchmarkPhaseWaitingForResources BenchmarkPhase = "WaitingForResources"
+	BenchmarkPhaseRunning             BenchmarkPhase = "Running"
+	BenchmarkPhaseSnapshotting        BenchmarkPhase = "Snapshotting"
+	BenchmarkPhaseCompleted           BenchmarkPhase = "Completed"
+	BenchmarkPhaseFailed              BenchmarkPhase = "Failed"
 )
+
+// ResourceEntry describes a Kubernetes resource to create before the test
+// and its readiness condition.
+type ResourceEntry struct {
+	// Manifest is the full resource manifest to create (apiVersion, kind, spec, etc.).
+	// +kubebuilder:validation:Required
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Manifest runtime.RawExtension `json:"manifest"`
+
+	// ReadyCondition defines how to determine if the resource is ready.
+	ReadyCondition ReadyCondition `json:"readyCondition"`
+}
+
+// ReadyCondition specifies a field path and expected value to check readiness.
+type ReadyCondition struct {
+	// FieldPath is the dot-separated path to the field (e.g. "status.phase").
+	FieldPath string `json:"fieldPath"`
+
+	// Value is the expected value at the field path.
+	Value string `json:"value"`
+}
 
 // BenchmarkSpec defines the desired state of a Benchmark.
 type BenchmarkSpec struct {
-	// LedgerService is the inline spec for the LedgerService CR.
-	// Passed through without validation (the ledger operator validates).
-	// +kubebuilder:validation:Required
-	// +kubebuilder:pruning:PreserveUnknownFields
-	LedgerService runtime.RawExtension `json:"ledgerService"`
+	// Resources is an ordered list of Kubernetes resources to create before the test.
+	// Each resource is created in order and must reach its readyCondition before the next is created.
+	// +optional
+	Resources []ResourceEntry `json:"resources,omitempty"`
 
 	// TestRun is the inline spec for the k6 TestRun CR.
 	// Passed through without validation (the k6 operator validates).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:pruning:PreserveUnknownFields
 	TestRun runtime.RawExtension `json:"testRun"`
-
-	// LedgerName is the name of the ledger to create via gRPC before the test
-	// and delete after the test. If empty, no ledger lifecycle management is done.
-	// +optional
-	LedgerName string `json:"ledgerName,omitempty"`
 }
 
 // BenchmarkStatus defines the observed state of a Benchmark.
@@ -45,8 +59,8 @@ type BenchmarkStatus struct {
 	// Phase is the current lifecycle phase.
 	Phase BenchmarkPhase `json:"phase,omitempty"`
 
-	// LedgerServiceName is the name of the managed LedgerService CR.
-	LedgerServiceName string `json:"ledgerServiceName,omitempty"`
+	// ResourceNames is the list of created resource names (in creation order).
+	ResourceNames []string `json:"resourceNames,omitempty"`
 
 	// TestRunName is the name of the managed k6 TestRun CR.
 	TestRunName string `json:"testRunName,omitempty"`
@@ -73,7 +87,7 @@ type BenchmarkStatus struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +kubebuilder:printcolumn:name="Message",type=string,JSONPath=`.status.message`,priority=1
 
-// Benchmark orchestrates a LedgerService deployment and k6 TestRun,
+// Benchmark orchestrates resource creation and k6 TestRun execution,
 // then captures Grafana snapshots.
 type Benchmark struct {
 	metav1.TypeMeta   `json:",inline"`

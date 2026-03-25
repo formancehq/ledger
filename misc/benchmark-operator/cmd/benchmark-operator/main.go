@@ -81,7 +81,6 @@ func main() {
 		Scheme:  mgr.GetScheme(),
 		Dynamic: dynamicClient,
 		Grafana: grafana,
-		Ledger:  &controller.LedgerClient{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Benchmark")
 		os.Exit(1)

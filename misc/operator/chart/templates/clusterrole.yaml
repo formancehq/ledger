@@ -81,6 +81,7 @@ rules:
   resources:
   - ledgeragents
   - ledgerclusteragents
+  - ledgers
   - ledgerservices
   verbs:
   - create
@@ -95,6 +96,7 @@ rules:
   resources:
   - ledgeragents/finalizers
   - ledgerclusteragents/finalizers
+  - ledgers/finalizers
   - ledgerservices/finalizers
   verbs:
   - update
@@ -103,6 +105,7 @@ rules:
   resources:
   - ledgeragents/status
   - ledgerclusteragents/status
+  - ledgers/status
   - ledgerservices/status
   verbs:
   - get
