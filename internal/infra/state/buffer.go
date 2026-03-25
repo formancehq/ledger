@@ -179,8 +179,10 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		}
 	}
 
-	// Store volume updates for post-commit verification (kept only).
-	b.volumeUpdates = purgeResult.kept
+	// Store all volume updates (kept + purged) for post-commit verification.
+	// The delta/posting cross-check needs purged entries too, otherwise ephemeral
+	// accounts that return to zero balance would appear as missing deltas.
+	b.volumeUpdates = volumeUpdates
 
 	accountMetadataUpdates, accountMetadataDeletions, err := b.Derived.AccountMetadata.Merge(index)
 	if err != nil {
