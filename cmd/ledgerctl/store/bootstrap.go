@@ -262,32 +262,32 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 	attrs := attributes.New()
 	checker := check.NewChecker(store, attrs)
 
-	var (
-		validationSpinner, _ = pterm.DefaultSpinner.Start("Validating backup integrity...")
-		errorCount           int
-	)
+	pterm.Info.Println("Validating backup integrity...")
+
+	var errorCount int
 
 	err = checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
 		switch t := event.GetType().(type) {
 		case *servicepb.CheckStoreEvent_Progress:
 			if t.Progress.GetTotalLogs() > 0 {
 				pct := float64(t.Progress.GetLogsChecked()) / float64(t.Progress.GetTotalLogs()) * 100
-				validationSpinner.UpdateText(fmt.Sprintf("Validating backup integrity... %d/%d logs (%.0f%%)",
-					t.Progress.GetLogsChecked(), t.Progress.GetTotalLogs(), pct))
+				pterm.Printf("\r  Validating backup integrity... %d/%d logs (%.0f%%)",
+					t.Progress.GetLogsChecked(), t.Progress.GetTotalLogs(), pct)
 			}
 		case *servicepb.CheckStoreEvent_Error:
 			errorCount++
 
-			pterm.Printf("  %s %s\n", pterm.Red("ERROR"), t.Error.GetMessage())
+			pterm.Printf("\n  %s %s\n", pterm.Red("ERROR"), t.Error.GetMessage())
 		}
 	})
+
+	pterm.Println() // newline after carriage-return progress
+
 	if err != nil {
-		validationSpinner.Fail("Failed to validate backup")
+		pterm.Error.Println("Failed to validate backup")
 
 		return fmt.Errorf("running integrity check: %w", err)
 	}
-
-	_ = validationSpinner.Stop()
 
 	pterm.Println()
 

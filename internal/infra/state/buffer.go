@@ -99,8 +99,11 @@ type Buffered struct {
 	// pendingLedgerDeletions holds ledger names scheduled for data cleanup during Merge.
 	pendingLedgerDeletions []string
 
-	// volumeUpdates is populated during Merge for post-commit verification.
-	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+	// allVolumeUpdates includes kept + purged updates (for delta/posting cross-check).
+	allVolumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+
+	// keptVolumeUpdates excludes ephemeral purged entries (for post-commit Pebble verification).
+	keptVolumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 }
 
 // numscriptDeleteEntry identifies a numscript to soft-delete, scoped to a ledger.
@@ -179,10 +182,11 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		}
 	}
 
-	// Store all volume updates (kept + purged) for post-commit verification.
-	// The delta/posting cross-check needs purged entries too, otherwise ephemeral
-	// accounts that return to zero balance would appear as missing deltas.
-	b.volumeUpdates = volumeUpdates
+	// Store both sets: all updates for delta/posting cross-check (needs purged
+	// entries too), and kept-only for post-commit Pebble verification (purged
+	// entries are intentionally deleted from Pebble by applyEphemeralPurge).
+	b.allVolumeUpdates = volumeUpdates
+	b.keptVolumeUpdates = purgeResult.kept
 
 	accountMetadataUpdates, accountMetadataDeletions, err := b.Derived.AccountMetadata.Merge(index)
 	if err != nil {
@@ -634,10 +638,16 @@ func (b *Buffered) HasPendingSinkChanges() bool {
 	return b.sinkConfigChanged
 }
 
-// VolumeUpdates returns the volume updates captured during Merge.
-// Used for post-commit verification.
-func (b *Buffered) VolumeUpdates() []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
-	return b.volumeUpdates
+// AllVolumeUpdates returns all volume updates (kept + purged) captured during Merge.
+// Used for delta/posting cross-check which needs purged ephemeral entries too.
+func (b *Buffered) AllVolumeUpdates() []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
+	return b.allVolumeUpdates
+}
+
+// KeptVolumeUpdates returns only kept volume updates (excluding ephemeral purges).
+// Used for post-commit Pebble verification where purged entries are intentionally absent.
+func (b *Buffered) KeptVolumeUpdates() []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
+	return b.keptVolumeUpdates
 }
 
 func (b *Buffered) GetNextSequenceID() uint64 {

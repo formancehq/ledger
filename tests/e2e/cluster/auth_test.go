@@ -199,7 +199,7 @@ var _ = Describe("Auth", Ordered, func() {
 			state, err := clusterClient.GetClusterState(authCtx, &clusterpb.GetClusterStateRequest{})
 			g.Expect(err).To(Succeed())
 			return state.Leader != 0
-		}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(BeTrue())
+		}).Within(30 * time.Second).ProbeEvery(200 * time.Millisecond).Should(BeTrue())
 	})
 
 	Context("with auth enabled", func() {

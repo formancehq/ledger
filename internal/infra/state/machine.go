@@ -1269,7 +1269,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Cross-check: volume deltas must match postings in the committed logs.
 	if fsm.volumeAssertions {
-		if err := verifyVolumeDeltasMatchPostings(buffer.VolumeUpdates(), createdLogs); err != nil {
+		if err := verifyVolumeDeltasMatchPostings(buffer.AllVolumeUpdates(), createdLogs); err != nil {
 			return nil, fmt.Errorf("volume delta/posting cross-check failed at raft index %d: %w", raftIndex, err)
 		}
 
@@ -1320,7 +1320,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		HasArchiveRequests:      hasArchiveRequests,
 		HasPurges:               hasPurges,
 		MetadataConvertRequests: buffer.MetadataConvertRequests(),
-		volumeUpdates:           buffer.VolumeUpdates(),
+		volumeUpdates:           buffer.KeptVolumeUpdates(),
 		createdLogs:             createdLogs,
 	}, nil
 }

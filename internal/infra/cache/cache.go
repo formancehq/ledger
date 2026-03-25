@@ -65,6 +65,7 @@ func (a *AttributeCache[T]) Put(k attributes.U128, v attributes.Entry[T]) {
 
 func (a *AttributeCache[T]) Del(k attributes.U128) {
 	a.gen0.Load().Del(k)
+	a.gen1.Load().Del(k)
 }
 
 func (a *AttributeCache[T]) Size() uint64 {

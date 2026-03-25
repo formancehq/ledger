@@ -875,6 +875,16 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	lastPing := atomic.Value{}
 	mu := sync.Mutex{}
 
+	// drainPendingUnreachable marks all pending peers as unreachable under the lock.
+	// Used on stream/send errors before returning from handleConnection.
+	drainPendingUnreachable := func() {
+		mu.Lock()
+		for _, peerID := range pending {
+			conn.pushUnreachable(peerID)
+		}
+		mu.Unlock()
+	}
+
 	defer func() {
 		mu.Lock()
 		orphaned := len(pending)
@@ -1067,9 +1077,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 			err := sendMessages(highStream, msgs)
 			if err != nil {
-				for _, peerID := range pending {
-					conn.pushUnreachable(peerID)
-				}
+				drainPendingUnreachable()
 
 				return false, err
 			}
@@ -1084,9 +1092,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 			err := sendMessages(mediumStream, msgs)
 			if err != nil {
-				for _, peerID := range pending {
-					conn.pushUnreachable(peerID)
-				}
+				drainPendingUnreachable()
 
 				return false, err
 			}
@@ -1101,9 +1107,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 			err := sendMessages(lowStream, msgs)
 			if err != nil {
-				for _, peerID := range pending {
-					conn.pushUnreachable(peerID)
-				}
+				drainPendingUnreachable()
 
 				return false, err
 			}
@@ -1120,9 +1124,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 			return true, nil
 		case err := <-streamErrors:
-			for _, peerID := range pending {
-				conn.pushUnreachable(peerID)
-			}
+			drainPendingUnreachable()
 
 			conn.logger.Errorf("Stream error: %v", err)
 
@@ -1142,9 +1144,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 				},
 			})
 			if err != nil {
-				for _, peerID := range pending {
-					conn.pushUnreachable(peerID)
-				}
+				drainPendingUnreachable()
 
 				conn.logger.Errorf("Failed to send ping to peer: %v", err)
 
@@ -1155,9 +1155,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 			err := sendMessages(highStream, msgs)
 			if err != nil {
-				for _, peerID := range pending {
-					conn.pushUnreachable(peerID)
-				}
+				drainPendingUnreachable()
 
 				return false, err
 			}
@@ -1166,9 +1164,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 			err := sendMessages(mediumStream, msgs)
 			if err != nil {
-				for _, peerID := range pending {
-					conn.pushUnreachable(peerID)
-				}
+				drainPendingUnreachable()
 
 				return false, err
 			}
@@ -1177,9 +1173,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 			err := sendMessages(lowStream, msgs)
 			if err != nil {
-				for _, peerID := range pending {
-					conn.pushUnreachable(peerID)
-				}
+				drainPendingUnreachable()
 
 				return false, err
 			}
