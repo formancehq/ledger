@@ -1,0 +1,6 @@
+name: ledger-operator-deploy
+runtime:
+  name: go
+  options:
+    buildTarget: ./bin/pulumi
+description: Ledger operator deployment (CRDs, operator, operator-ui)

@@ -7,16 +7,5 @@ config:
     secure: AAABAPaMVBEAgJxOclkhhDaUtOnTyy1V0aErxzRr4T2q7at0nL+7h3u5xV8xNNj3nlq+CTo5PRDu9D+cgPvXFA==
   ledger-operator:pull-registry: 760319359092.dkr.ecr.eu-west-1.amazonaws.com/ghcr
   ledger-operator:registry: fo.registry.ovh-gra.kers.sh
-  # Optional components
-  ledger-operator:operatorUI-enabled: "true"
-  ledger-operator:operatorUI-ingress-host: operator-ledger-exp.devenv.formance.cloud
-  ledger-operator:operatorUI-ingress-class: traefik
-  ledger-operator:operatorUI-auth-enabled: "true"
-  ledger-operator:operatorUI-auth-issuer-url: https://accounts.google.com
-  ledger-operator:operatorUI-auth-client-id: 660725413384-lmsonmlepjpl79bbbpd8rdcpiqd84raj.apps.googleusercontent.com
-  ledger-operator:operatorUI-auth-client-secret:
-    secure: AAABAKa4HFYGmdjs0zHjiqIfufLFuNmDnEiRyu22Moxv7CDYkVx21fBw6ZDB33Yh93b/5GtyIaF1femKedLP4boRPw==
-  ledger-operator:operatorUI-auth-session-secret:
-    secure: AAABACoKsrBMHQZBFuTZw7nNxDW9HLWqK/tmBHCNeKVVBRPyQV4P1OoStt4JMLEyYP0QdaX1lwaxFhpg5lVDSHr9ehB9sm6KA16qalb5LNaxJxaa+Nz6UPV0IMMpEycV
   ledger-operator:ledger:
     file: values/devenv-ledger-exp/ledger.yaml

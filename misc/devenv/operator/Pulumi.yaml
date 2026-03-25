@@ -3,4 +3,4 @@ runtime:
   name: go
   options:
     buildTarget: ./bin/pulumi
-description: Ledger operator, CRDs, LedgerDefaults, and cold storage
+description: Ledger image, LedgerDefaults CR, and cold storage
