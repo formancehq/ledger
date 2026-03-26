@@ -207,6 +207,10 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s InMemoryStore)
 		return p.processSaveNumscript(orderType.SaveNumscript, s)
 	case *raftcmdpb.Order_DeleteNumscript:
 		return p.processDeleteNumscript(orderType.DeleteNumscript, s)
+	case *raftcmdpb.Order_CreateQueryCheckpoint:
+		return p.processCreateQueryCheckpoint(orderType.CreateQueryCheckpoint, s)
+	case *raftcmdpb.Order_DeleteQueryCheckpoint:
+		return p.processDeleteQueryCheckpoint(orderType.DeleteQueryCheckpoint, s)
 	default:
 		return nil, errors.New("invalid order type")
 	}

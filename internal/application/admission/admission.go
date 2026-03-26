@@ -1097,6 +1097,16 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				Ledger: reqType.DeleteNumscript.GetLedger(),
 			},
 		}
+	case *servicepb.Request_CreateQueryCheckpoint:
+		order.Type = &raftcmdpb.Order_CreateQueryCheckpoint{
+			CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
+		}
+	case *servicepb.Request_DeleteQueryCheckpoint:
+		order.Type = &raftcmdpb.Order_DeleteQueryCheckpoint{
+			DeleteQueryCheckpoint: &raftcmdpb.DeleteQueryCheckpointOrder{
+				CheckpointId: reqType.DeleteQueryCheckpoint.GetCheckpointId(),
+			},
+		}
 	case *servicepb.Request_AddAccountType:
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{

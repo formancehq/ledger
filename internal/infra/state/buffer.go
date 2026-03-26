@@ -76,6 +76,7 @@ type Buffered struct {
 	attrs                          *attributes.Attributes
 	Date                           *commonpb.Timestamp
 	NextSequenceID                 uint64
+	NextQueryCheckpointID          uint64
 	LastLogHash                    []byte
 	Derived                        *DerivedRegistry
 	PendingLogs                    []*commonpb.Log
@@ -104,6 +105,10 @@ type Buffered struct {
 
 	// keptVolumeUpdates excludes ephemeral purged entries (for post-commit Pebble verification).
 	keptVolumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+
+	// Pending query checkpoint changes for Merge.
+	pendingQueryCheckpointSaves   []*raftcmdpb.QueryCheckpointState
+	pendingQueryCheckpointDeletes []uint64
 }
 
 // numscriptDeleteEntry identifies a numscript to soft-delete, scoped to a ledger.
@@ -387,6 +392,19 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		}
 	}
 
+	// Process query checkpoint writes/deletes
+	for _, cp := range b.pendingQueryCheckpointSaves {
+		if err := SaveQueryCheckpoint(batch, cp); err != nil {
+			return fmt.Errorf("saving query checkpoint %d: %w", cp.GetCheckpointId(), err)
+		}
+	}
+
+	for _, cpID := range b.pendingQueryCheckpointDeletes {
+		if err := DeleteQueryCheckpointFromBatch(batch, cpID); err != nil {
+			return fmt.Errorf("deleting query checkpoint %d: %w", cpID, err)
+		}
+	}
+
 	// Register pending ledger data cleanups (deferred to purge time).
 	// Find the delete sequence for each pending deletion from the logs.
 	if len(b.pendingLedgerDeletions) > 0 {
@@ -415,8 +433,16 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 		}
 	}
 
+	// Persist next query checkpoint ID if it changed.
+	if b.NextQueryCheckpointID != b.fsm.nextQueryCheckpointID {
+		if err := StoreNextQueryCheckpointID(batch, b.NextQueryCheckpointID); err != nil {
+			return fmt.Errorf("storing next query checkpoint ID: %w", err)
+		}
+	}
+
 	b.PendingLogs = nil
 	b.fsm.nextSequenceID = b.NextSequenceID
+	b.fsm.nextQueryCheckpointID = b.NextQueryCheckpointID
 	b.fsm.lastLogHash = b.LastLogHash
 
 	// Apply changed periods to Machine's Periods tracker
@@ -438,13 +464,14 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 
 func NewBuffer(at *commonpb.Timestamp, fsm *Machine) *Buffered {
 	return &Buffered{
-		fsm:            fsm,
-		attrs:          fsm.Registry.Attrs,
-		Date:           at,
-		Derived:        NewDerivedRegistry(fsm.Registry),
-		NextSequenceID: fsm.nextSequenceID,
-		LastLogHash:    fsm.lastLogHash,
-		periods:        fsm.Periods.Clone(),
+		fsm:                   fsm,
+		attrs:                 fsm.Registry.Attrs,
+		Date:                  at,
+		Derived:               NewDerivedRegistry(fsm.Registry),
+		NextSequenceID:        fsm.nextSequenceID,
+		NextQueryCheckpointID: fsm.nextQueryCheckpointID,
+		LastLogHash:           fsm.lastLogHash,
+		periods:               fsm.Periods.Clone(),
 	}
 }
 
@@ -917,6 +944,27 @@ func (b *Buffered) NumscriptVersionExists(ledger, name, version string) (bool, e
 	}
 
 	return exists, nil
+}
+
+func (b *Buffered) GetNextQueryCheckpointID() uint64 {
+	return b.NextQueryCheckpointID
+}
+
+func (b *Buffered) IncrementNextQueryCheckpointID() uint64 {
+	id := b.NextQueryCheckpointID
+	b.NextQueryCheckpointID++
+
+	return id
+}
+
+// SaveQueryCheckpoint stores a query checkpoint for Merge.
+func (b *Buffered) SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState) {
+	b.pendingQueryCheckpointSaves = append(b.pendingQueryCheckpointSaves, cp)
+}
+
+// DeleteQueryCheckpoint marks a query checkpoint for deletion during Merge.
+func (b *Buffered) DeleteQueryCheckpoint(checkpointID uint64) {
+	b.pendingQueryCheckpointDeletes = append(b.pendingQueryCheckpointDeletes, checkpointID)
 }
 
 // Ensure Buffered implements InMemoryStore.

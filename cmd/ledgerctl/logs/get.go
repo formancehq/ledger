@@ -20,6 +20,7 @@ func NewGetCommand() *cobra.Command {
 		RunE:  runGet,
 	}
 
+	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -42,8 +43,11 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid sequence number %q: %w", args[0], err)
 	}
 
+	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
+
 	log, err := client.GetLog(ctx, &servicepb.GetLogRequest{
-		Sequence: sequence,
+		Sequence:     sequence,
+		CheckpointId: checkpointID,
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to get log", err)

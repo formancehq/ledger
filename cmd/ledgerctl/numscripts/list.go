@@ -25,6 +25,7 @@ Examples:
 		RunE: runList,
 	}
 
+	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -47,7 +48,9 @@ func runList(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	stream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{Ledger: ledgerName})
+	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
+
+	stream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{Ledger: ledgerName, CheckpointId: checkpointID})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to list numscripts", err)
 	}

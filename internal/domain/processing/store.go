@@ -104,6 +104,12 @@ type InMemoryStore interface {
 	PutNumscript(info *commonpb.NumscriptInfo)
 	DeleteNumscriptLatest(ledger, name string)
 
+	// Query checkpoint operations
+	GetNextQueryCheckpointID() uint64
+	IncrementNextQueryCheckpointID() uint64
+	SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState)
+	DeleteQueryCheckpoint(checkpointID uint64)
+
 	// Ledger cleanup
 	MarkLedgerForCleanup(ledger string)
 }

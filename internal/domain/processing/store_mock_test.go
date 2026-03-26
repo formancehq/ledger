@@ -138,6 +138,18 @@ func (mr *MockInMemoryStoreMockRecorder) DeletePreparedQuery(ledger, name any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePreparedQuery", reflect.TypeOf((*MockInMemoryStore)(nil).DeletePreparedQuery), ledger, name)
 }
 
+// DeleteQueryCheckpoint mocks base method.
+func (m *MockInMemoryStore) DeleteQueryCheckpoint(checkpointID uint64) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "DeleteQueryCheckpoint", checkpointID)
+}
+
+// DeleteQueryCheckpoint indicates an expected call of DeleteQueryCheckpoint.
+func (mr *MockInMemoryStoreMockRecorder) DeleteQueryCheckpoint(checkpointID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteQueryCheckpoint", reflect.TypeOf((*MockInMemoryStore)(nil).DeleteQueryCheckpoint), checkpointID)
+}
+
 // GetAccountMetadata mocks base method.
 func (m *MockInMemoryStore) GetAccountMetadata(key domain.MetadataKey) (*commonpb.MetadataValue, error) {
 	m.ctrl.T.Helper()
@@ -282,6 +294,20 @@ func (m *MockInMemoryStore) GetNextPeriodID() uint64 {
 func (mr *MockInMemoryStoreMockRecorder) GetNextPeriodID() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextPeriodID", reflect.TypeOf((*MockInMemoryStore)(nil).GetNextPeriodID))
+}
+
+// GetNextQueryCheckpointID mocks base method.
+func (m *MockInMemoryStore) GetNextQueryCheckpointID() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNextQueryCheckpointID")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// GetNextQueryCheckpointID indicates an expected call of GetNextQueryCheckpointID.
+func (mr *MockInMemoryStoreMockRecorder) GetNextQueryCheckpointID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextQueryCheckpointID", reflect.TypeOf((*MockInMemoryStore)(nil).GetNextQueryCheckpointID))
 }
 
 // GetNextSequenceID mocks base method.
@@ -444,6 +470,20 @@ func (m *MockInMemoryStore) IncrementNextPeriodID() uint64 {
 func (mr *MockInMemoryStoreMockRecorder) IncrementNextPeriodID() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrementNextPeriodID", reflect.TypeOf((*MockInMemoryStore)(nil).IncrementNextPeriodID))
+}
+
+// IncrementNextQueryCheckpointID mocks base method.
+func (m *MockInMemoryStore) IncrementNextQueryCheckpointID() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IncrementNextQueryCheckpointID")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// IncrementNextQueryCheckpointID indicates an expected call of IncrementNextQueryCheckpointID.
+func (mr *MockInMemoryStoreMockRecorder) IncrementNextQueryCheckpointID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrementNextQueryCheckpointID", reflect.TypeOf((*MockInMemoryStore)(nil).IncrementNextQueryCheckpointID))
 }
 
 // IncrementNextSequenceID mocks base method.
@@ -641,6 +681,18 @@ func (m *MockInMemoryStore) RemoveSinkConfig(name string) {
 func (mr *MockInMemoryStoreMockRecorder) RemoveSinkConfig(name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveSinkConfig", reflect.TypeOf((*MockInMemoryStore)(nil).RemoveSinkConfig), name)
+}
+
+// SaveQueryCheckpoint mocks base method.
+func (m *MockInMemoryStore) SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SaveQueryCheckpoint", cp)
+}
+
+// SaveQueryCheckpoint indicates an expected call of SaveQueryCheckpoint.
+func (mr *MockInMemoryStoreMockRecorder) SaveQueryCheckpoint(cp any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveQueryCheckpoint", reflect.TypeOf((*MockInMemoryStore)(nil).SaveQueryCheckpoint), cp)
 }
 
 // SetAuditEnabled mocks base method.

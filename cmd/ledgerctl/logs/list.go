@@ -28,6 +28,7 @@ func NewListCommand() *cobra.Command {
 	cmd.Flags().Uint64("after", 0, "Show logs after this sequence number")
 	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of logs per page (0 = unlimited)")
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
+	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -45,14 +46,16 @@ func runList(cmd *cobra.Command, _ []string) error {
 	defer cancel()
 
 	var (
-		after, _     = cmd.Flags().GetUint64("after")
-		pageSize, _  = cmd.Flags().GetUint32("page-size")
-		minLogSeq, _ = cmd.Flags().GetUint64("min-log-sequence")
+		after, _        = cmd.Flags().GetUint64("after")
+		pageSize, _     = cmd.Flags().GetUint32("page-size")
+		minLogSeq, _    = cmd.Flags().GetUint64("min-log-sequence")
+		checkpointID, _ = cmd.Flags().GetUint64("checkpoint-id")
 	)
 
 	req := &servicepb.ListLogsRequest{
 		PageSize:       pageSize,
 		MinLogSequence: minLogSeq,
+		CheckpointId:   checkpointID,
 	}
 	if cmd.Flags().Changed("after") {
 		req.AfterSequence = &after

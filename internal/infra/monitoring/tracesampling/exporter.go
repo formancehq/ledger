@@ -170,11 +170,20 @@ func isErrorSpan(s sdktrace.ReadOnlySpan) bool {
 // hashSample uses FNV-1a hash for deterministic sampling based on trace ID.
 // This ensures that all spans within the same trace are either all sampled or all dropped.
 func (e *ErrorAwareSamplingExporter) hashSample(data []byte) bool {
+	if e.ratio >= 1.0 {
+		return true
+	}
+
+	if e.ratio <= 0.0 {
+		return false
+	}
+
 	h := fnv.New64a()
 	h.Write(data)
 	hash := h.Sum64()
 
-	// Convert ratio to threshold
+	// Convert ratio to threshold. The boundary cases (0.0 and 1.0)
+	// are handled above to avoid float64→uint64 precision issues.
 	threshold := uint64(e.ratio * float64(^uint64(0)))
 
 	return hash < threshold

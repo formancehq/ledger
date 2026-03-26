@@ -124,15 +124,17 @@ var (
 
 	// --- Per-ledger system zone [0xE0, 0xF1) ---.
 
-	KeyPrefixPreparedQuery        byte = 0xE0 // [KeyPrefixPreparedQuery][name\x00][queryName] -> PreparedQuery protobuf
-	KeyPrefixPendingLedgerCleanup byte = 0xE1 // [KeyPrefixPendingLedgerCleanup][ledger_name] -> uint64 (delete log sequence)
-	KeyPrefixNumscript            byte = 0xE9 // [KeyPrefixNumscript][name]\x00[version_BE] -> NumscriptInfo protobuf
-	KeyPrefixNumscriptLatest      byte = 0xEA // [KeyPrefixNumscriptLatest][name] -> uint64 (latest version)
-	KeyPrefixMirrorSourceHead     byte = 0xEB // [KeyPrefixMirrorSourceHead][ledger_name] -> uint64 (latest known v2 source log ID)
-	KeyPrefixMirrorCursor         byte = 0xEC // [KeyPrefixMirrorCursor][ledger_name] -> uint64 (last ingested v2 log ID)
-	KeyPrefixMirrorStatus         byte = 0xED // [KeyPrefixMirrorStatus][ledger_name] -> MirrorSyncError protobuf
-	KeyPrefixAuditConfig          byte = 0xEE // [KeyPrefixAuditConfig] -> audit config byte (0x00=false, 0x01=true)
-	KeyPrefixPeriodSchedule       byte = 0xEF // [KeyPrefixPeriodSchedule] -> cron expression string
+	KeyPrefixPreparedQuery         byte = 0xE0 // [KeyPrefixPreparedQuery][name\x00][queryName] -> PreparedQuery protobuf
+	KeyPrefixPendingLedgerCleanup  byte = 0xE1 // [KeyPrefixPendingLedgerCleanup][ledger_name] -> uint64 (delete log sequence)
+	KeyPrefixQueryCheckpoint       byte = 0xE2 // [KeyPrefixQueryCheckpoint][checkpoint_id BE] -> QueryCheckpointState protobuf
+	KeyPrefixNextQueryCheckpointID byte = 0xE3 // [KeyPrefixNextQueryCheckpointID] -> uint64 (next checkpoint ID)
+	KeyPrefixNumscript             byte = 0xE9 // [KeyPrefixNumscript][name]\x00[version_BE] -> NumscriptInfo protobuf
+	KeyPrefixNumscriptLatest       byte = 0xEA // [KeyPrefixNumscriptLatest][name] -> uint64 (latest version)
+	KeyPrefixMirrorSourceHead      byte = 0xEB // [KeyPrefixMirrorSourceHead][ledger_name] -> uint64 (latest known v2 source log ID)
+	KeyPrefixMirrorCursor          byte = 0xEC // [KeyPrefixMirrorCursor][ledger_name] -> uint64 (last ingested v2 log ID)
+	KeyPrefixMirrorStatus          byte = 0xED // [KeyPrefixMirrorStatus][ledger_name] -> MirrorSyncError protobuf
+	KeyPrefixAuditConfig           byte = 0xEE // [KeyPrefixAuditConfig] -> audit config byte (0x00=false, 0x01=true)
+	KeyPrefixPeriodSchedule        byte = 0xEF // [KeyPrefixPeriodSchedule] -> cron expression string
 
 	// --- Attributes zone [0xF1, 0xF2) — seal hash domain ---.
 
@@ -661,6 +663,43 @@ func (s *Store) TemporaryCheckpointPath(name string) (string, bool) {
 	}
 
 	return path, true
+}
+
+// queryCheckpointsDir is the directory where query checkpoint Pebble snapshots are stored.
+const queryCheckpointsDir = "query-checkpoints"
+
+// CreateQueryCheckpoint creates a Pebble checkpoint for query purposes at
+// {dataDir}/query-checkpoints/{id}/main/. These are self-contained snapshots
+// created by the FSM when a CreateQueryCheckpointOrder is applied via Raft.
+func (s *Store) CreateQueryCheckpoint(id uint64) (string, error) {
+	dir := filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10), "main")
+
+	if err := os.MkdirAll(filepath.Dir(dir), 0755); err != nil {
+		return "", fmt.Errorf("creating query checkpoint directory: %w", err)
+	}
+
+	if err := s.getDB().Checkpoint(dir, pebble.WithFlushedWAL()); err != nil {
+		return "", fmt.Errorf("creating query checkpoint: %w", err)
+	}
+
+	return dir, nil
+}
+
+// DeleteQueryCheckpointFiles removes the physical checkpoint files for a query checkpoint.
+func (s *Store) DeleteQueryCheckpointFiles(id uint64) error {
+	dir := filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10))
+
+	return os.RemoveAll(dir)
+}
+
+// QueryCheckpointReadIndexDir returns the path for the read index within a query checkpoint.
+func (s *Store) QueryCheckpointReadIndexDir(id uint64) string {
+	return filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10), "readindex")
+}
+
+// QueryCheckpointMainDir returns the path for the main store within a query checkpoint.
+func (s *Store) QueryCheckpointMainDir(id uint64) string {
+	return filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10), "main")
 }
 
 // BaselineSnapshotDir returns the path where the baseline attribute snapshot

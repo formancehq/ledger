@@ -25,6 +25,7 @@ Examples:
 	}
 
 	cmd.Flags().String("version", "", "Specific version to retrieve (empty = latest)")
+	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -50,10 +51,13 @@ func runGet(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
+	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
+
 	info, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
-		Ledger:  ledgerName,
-		Name:    name,
-		Version: version,
+		Ledger:       ledgerName,
+		Name:         name,
+		Version:      version,
+		CheckpointId: checkpointID,
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to get numscript", err)

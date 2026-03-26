@@ -86,8 +86,13 @@ func sortStrings(s []string) {
 }
 
 // GetAllLedgersInfo collects all ledgers from the streaming RPC into a map.
-func GetAllLedgersInfo(ctx context.Context, client servicepb.BucketServiceClient) (map[string]*commonpb.LedgerInfo, error) {
-	stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{})
+func GetAllLedgersInfo(ctx context.Context, client servicepb.BucketServiceClient, checkpointID ...uint64) (map[string]*commonpb.LedgerInfo, error) {
+	req := &servicepb.ListLedgersRequest{}
+	if len(checkpointID) > 0 {
+		req.CheckpointId = checkpointID[0]
+	}
+
+	stream, err := client.ListLedgers(ctx, req)
 	if err != nil {
 		return nil, err
 	}

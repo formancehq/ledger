@@ -24,6 +24,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/periods"
 	profilecmd "github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/profile"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/provision"
+	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/querycheckpoint"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/restore"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/signing"
 	"github.com/formancehq/ledger-v3-poc/cmd/ledgerctl/store"
@@ -140,6 +141,7 @@ func newRootCommand() *cobra.Command {
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(upgrade.NewCommand(version))
 	rootCmd.AddCommand(provision.NewCommand())
+	rootCmd.AddCommand(querycheckpoint.NewCommand())
 
 	return rootCmd
 }

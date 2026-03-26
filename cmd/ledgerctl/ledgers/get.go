@@ -25,6 +25,7 @@ func NewGetCommand() *cobra.Command {
 		RunE:    runGet,
 	}
 
+	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -44,10 +45,13 @@ func runGet(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
+	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
+
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching ledger %s...", ledgerName))
 
 	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
-		Ledger: ledgerName,
+		Ledger:       ledgerName,
+		CheckpointId: checkpointID,
 	})
 	if err != nil {
 		_ = spinner.Stop()

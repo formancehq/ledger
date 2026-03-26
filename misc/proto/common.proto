@@ -312,6 +312,8 @@ message LogPayload {
     DeletedPreparedQueryLog deleted_prepared_query = 20;
     SavedNumscriptLog saved_numscript = 21;
     DeletedNumscriptLog deleted_numscript = 22;
+    CreatedQueryCheckpointLog created_query_checkpoint = 23;
+    DeletedQueryCheckpointLog deleted_query_checkpoint = 24;
   }
 }
 
@@ -431,6 +433,17 @@ message SavedNumscriptLog {
 message DeletedNumscriptLog {
   string name = 1;
   string ledger = 2;
+}
+
+// CreatedQueryCheckpointLog records a query checkpoint being created.
+message CreatedQueryCheckpointLog {
+  uint64 checkpoint_id = 1;
+  uint64 max_sequence = 2;
+}
+
+// DeletedQueryCheckpointLog records a query checkpoint being deleted.
+message DeletedQueryCheckpointLog {
+  uint64 checkpoint_id = 1;
 }
 
 // SinkConfig wraps a single sink configuration with per-sink settings.

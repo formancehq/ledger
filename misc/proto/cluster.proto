@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package cluster;
 
+import "common.proto";
+
 option go_package = "github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb";
 
 // ============================================================================
@@ -49,6 +51,23 @@ service ClusterService {
   // CreateCheckpoint creates a Pebble checkpoint of the current live database state.
   // Node-local operation (not forwarded to leader).
   rpc CreateCheckpoint(CreateCheckpointRequest) returns (CreateCheckpointResponse);
+
+  // CreateQueryCheckpoint creates a physical Pebble checkpoint via Raft consensus.
+  // The checkpoint captures both the main store and read index, enabling
+  // point-in-time queries on any node. Forwarded to leader.
+  rpc CreateQueryCheckpoint(CreateQueryCheckpointRequest) returns (CreateQueryCheckpointResponse);
+
+  // DeleteQueryCheckpoint removes a previously created query checkpoint via Raft consensus.
+  // Forwarded to leader.
+  rpc DeleteQueryCheckpoint(DeleteQueryCheckpointRequest) returns (DeleteQueryCheckpointResponse);
+
+  // ListQueryCheckpoints lists all existing query checkpoints.
+  // Reads from replicated Pebble state (available on any node).
+  rpc ListQueryCheckpoints(ListQueryCheckpointsRequest) returns (ListQueryCheckpointsResponse);
+
+  // GetQueryCheckpointInfo returns detailed information about a query checkpoint.
+  // Reads from replicated Pebble state (available on any node).
+  rpc GetQueryCheckpointInfo(GetQueryCheckpointInfoRequest) returns (QueryCheckpointInfo);
 }
 
 message GetClusterStateRequest {
@@ -237,4 +256,37 @@ message CreateCheckpointRequest {}
 
 message CreateCheckpointResponse {
   uint64 checkpoint_id = 1;  // ID of the newly created checkpoint
+}
+
+// ============================================================================
+// Query Checkpoint Messages
+// ============================================================================
+
+message CreateQueryCheckpointRequest {}
+
+message CreateQueryCheckpointResponse {
+  uint64 checkpoint_id = 1;  // Sequential checkpoint identifier
+  uint64 max_sequence = 2;   // Max global log sequence at checkpoint time
+}
+
+message DeleteQueryCheckpointRequest {
+  uint64 checkpoint_id = 1;  // ID of the query checkpoint to delete
+}
+
+message DeleteQueryCheckpointResponse {}
+
+message ListQueryCheckpointsRequest {}
+
+message ListQueryCheckpointsResponse {
+  repeated QueryCheckpointInfo checkpoints = 1;
+}
+
+message GetQueryCheckpointInfoRequest {
+  uint64 checkpoint_id = 1;
+}
+
+message QueryCheckpointInfo {
+  uint64 checkpoint_id = 1;           // Sequential checkpoint identifier
+  uint64 max_sequence = 2;            // Max global log sequence at checkpoint time
+  common.Timestamp created_at = 3;    // Creation timestamp
 }

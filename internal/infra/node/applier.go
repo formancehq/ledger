@@ -580,9 +580,13 @@ func (a *Applier) applyEntriesToFSM(ctx context.Context, confState *raftpb.ConfS
 		return err
 	}
 
-	// If Machine stopped at a checkpoint boundary (ClosePeriod),
+	// If Machine stopped at a checkpoint boundary (ClosePeriod or CreateQueryCheckpoint),
 	// enter maintenance mode and create the checkpoint off the Raft hot path.
 	if result.CheckpointRequired {
+		if result.QueryCheckpointID > 0 {
+			return a.handleQueryCheckpointRequired(ctx, entries, result)
+		}
+
 		return a.handleCheckpointRequired(ctx, entries, result)
 	}
 
@@ -686,6 +690,70 @@ func (a *Applier) handleCheckpointRequired(
 
 		if deferredFuture != nil {
 			deferredResult.CheckpointPath = path
+			deferredFuture.Resolve(*deferredResult, nil)
+		}
+
+		return frozenAtIndex, nil
+	}, nil)
+
+	return nil
+}
+
+// handleQueryCheckpointRequired enters maintenance mode to create the main store
+// checkpoint. The read index checkpoint is created separately by the index builder
+// when it processes the CreatedQueryCheckpoint log. While the checkpoint is being
+// created, new committed entries are spooled and replayed afterward.
+func (a *Applier) handleQueryCheckpointRequired(
+	ctx context.Context,
+	entries []raftpb.Entry,
+	applyResult *state.ApplyEntriesResult,
+) error {
+	// Spool remaining entries -- they'll be replayed after the maintenance task
+	if len(applyResult.RemainingEntries) > 0 {
+		err := a.spool.AppendCommittedEntries(ctx, applyResult.RemainingEntries...)
+		if err != nil {
+			return fmt.Errorf("spooling remaining entries: %w", err)
+		}
+	}
+
+	// Last applied index: the boundary entry (before any remaining entries)
+	var frozenAtIndex uint64
+	if len(applyResult.RemainingEntries) > 0 {
+		frozenAtIndex = applyResult.RemainingEntries[0].Index - 1
+	} else {
+		frozenAtIndex = entries[len(entries)-1].Index
+	}
+
+	a.status.Store(statusSnapshotting)
+
+	// Resolve the deferred future for the checkpoint-triggering proposal.
+	var (
+		deferredResult *state.ApplyResult
+		deferredFuture *futures.Future[state.ApplyResult]
+	)
+
+	if len(applyResult.Results) > 0 {
+		deferredResult = &applyResult.Results[len(applyResult.Results)-1]
+		if f, ok := a.futures.Load(deferredResult.ProposalID); ok {
+			deferredFuture = f
+
+			a.futures.Delete(deferredResult.ProposalID)
+		}
+	}
+
+	checkpointID := applyResult.QueryCheckpointID
+
+	// Called from Run goroutine — assign gating directly.
+	a.gatingTerminated = a.startMaintenanceTask(ctx, func(ctx context.Context) (uint64, error) {
+		if err := a.createMainStoreCheckpoint(checkpointID); err != nil {
+			if deferredFuture != nil {
+				deferredFuture.Resolve(state.ApplyResult{}, err)
+			}
+
+			return 0, err
+		}
+
+		if deferredFuture != nil {
 			deferredFuture.Resolve(*deferredResult, nil)
 		}
 
@@ -985,13 +1053,17 @@ func (a *Applier) replaySpool(ctx context.Context, fromIndex uint64) error {
 	return nil
 }
 
-// handleCheckpointDuringReplay creates a temporary checkpoint and calls the
-// FSM-provided callback when a checkpoint-requiring entry (ClosePeriod)
-// is encountered during spool replay.
+// handleCheckpointDuringReplay creates a checkpoint synchronously when a
+// checkpoint-requiring entry (ClosePeriod or CreateQueryCheckpoint) is
+// encountered during spool/WAL replay.
 // Unlike handleCheckpointRequired, this does not enter maintenance mode -- the
 // checkpoint is created synchronously (acceptable since we're already off
 // the hot path) and remaining entries are applied directly.
 func (a *Applier) handleCheckpointDuringReplay(ctx context.Context, applyResult *state.ApplyEntriesResult) error {
+	if cpID := applyResult.QueryCheckpointID; cpID > 0 {
+		return a.handleQueryCheckpointDuringReplay(ctx, applyResult)
+	}
+
 	checkpointPath, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("replay-%d", applyResult.CheckpointPeriodID))
 	if err != nil {
 		return fmt.Errorf("creating checkpoint during replay: %w", err)
@@ -1026,6 +1098,48 @@ func (a *Applier) handleCheckpointDuringReplay(ctx context.Context, applyResult 
 			return fmt.Errorf("applying remaining entries after checkpoint during replay: %w", err)
 		}
 	}
+
+	return nil
+}
+
+// handleQueryCheckpointDuringReplay creates query checkpoint stores synchronously
+// during spool/WAL replay.
+func (a *Applier) handleQueryCheckpointDuringReplay(ctx context.Context, applyResult *state.ApplyEntriesResult) error {
+	if err := a.createMainStoreCheckpoint(applyResult.QueryCheckpointID); err != nil {
+		return fmt.Errorf("during replay: %w", err)
+	}
+
+	// Resolve the deferred future.
+	if len(applyResult.Results) > 0 {
+		lastResult := &applyResult.Results[len(applyResult.Results)-1]
+		if f, ok := a.futures.Load(lastResult.ProposalID); ok {
+			f.Resolve(*lastResult, nil)
+			a.futures.Delete(lastResult.ProposalID)
+		}
+	}
+
+	// Apply remaining entries directly.
+	if len(applyResult.RemainingEntries) > 0 {
+		_, err := a.applyEntriesAndResolveCommands(ctx, applyResult.RemainingEntries...)
+		if err != nil {
+			return fmt.Errorf("applying remaining entries after query checkpoint replay: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// createMainStoreCheckpoint creates a physical Pebble checkpoint of the main store.
+// The read index checkpoint is created separately by the index builder when it
+// processes the CreatedQueryCheckpoint log.
+func (a *Applier) createMainStoreCheckpoint(checkpointID uint64) error {
+	if _, err := a.store.CreateQueryCheckpoint(checkpointID); err != nil {
+		return fmt.Errorf("creating main store query checkpoint %d: %w", checkpointID, err)
+	}
+
+	a.logger.WithFields(map[string]any{
+		"checkpointID": checkpointID,
+	}).Infof("Created main store query checkpoint")
 
 	return nil
 }

@@ -50,6 +50,7 @@ Examples:
 	cmd.Flags().Bool("all", false, "Fetch all transactions at once (no pagination)")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
+	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmd.Flags().Bool("analyze", false, "Display query execution profile (iterator stats, timing)")
 
@@ -77,6 +78,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	reverse, _ := cmd.Flags().GetBool("reverse")
 	fetchAll, _ := cmd.Flags().GetBool("all")
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
+	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 	showProfile, _ := cmd.Flags().GetBool("analyze")
 
 	filter, err := buildTransactionFilter(filterExpr)
@@ -85,10 +87,10 @@ func runList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if fetchAll {
-		return fetchAllTransactions(cmd, client, ledgerName, filter, reverse, minLogSeq, showProfile)
+		return fetchAllTransactions(cmd, client, ledgerName, filter, reverse, minLogSeq, checkpointID, showProfile)
 	}
 
-	return fetchTransactionsWithPager(cmd, client, ledgerName, pageSize, filter, reverse, minLogSeq, showProfile)
+	return fetchTransactionsWithPager(cmd, client, ledgerName, pageSize, filter, reverse, minLogSeq, checkpointID, showProfile)
 }
 
 // buildTransactionFilter parses the --filter expression for transaction metadata.
@@ -105,7 +107,7 @@ func buildTransactionFilter(filterExpr string) (*commonpb.QueryFilter, error) {
 	return filter, nil
 }
 
-func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, reverse bool, minLogSeq uint64, showProfile bool) error {
+func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, filter *commonpb.QueryFilter, reverse bool, minLogSeq, checkpointID uint64, showProfile bool) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
@@ -121,6 +123,7 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 		Filter:         filter,
 		Reverse:        reverse,
 		MinLogSequence: minLogSeq,
+		CheckpointId:   checkpointID,
 	})
 	if err != nil {
 		_ = spinner.Stop()
@@ -167,7 +170,7 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 	return nil
 }
 
-func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, minLogSeq uint64, showProfile bool) error {
+func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, filter *commonpb.QueryFilter, reverse bool, minLogSeq, checkpointID uint64, showProfile bool) error {
 	var afterTxID uint64
 
 	pageNum := 1
@@ -187,6 +190,7 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 			Filter:         filter,
 			Reverse:        reverse,
 			MinLogSequence: minLogSeq,
+			CheckpointId:   checkpointID,
 		})
 		if err != nil {
 			cancel()

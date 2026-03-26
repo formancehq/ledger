@@ -60,10 +60,11 @@ type Machine struct {
 	pendingLedgerCleanups map[string]uint64
 
 	// FSM mechanics
-	nextSequenceID      uint64
-	nextAuditSequenceID uint64
-	lastLogHash         []byte
-	lastCheckpointID    uint64
+	nextSequenceID        uint64
+	nextAuditSequenceID   uint64
+	nextQueryCheckpointID uint64
+	lastLogHash           []byte
+	lastCheckpointID      uint64
 
 	lastAppliedIndex     uint64
 	lastAppliedTimestamp uint64
@@ -222,6 +223,15 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 
 	stepStart = time.Now()
 
+	nextQueryCheckpointID, err := query.ReadNextQueryCheckpointID(dataStore)
+	if err != nil {
+		return nil, fmt.Errorf("loading next query checkpoint ID from store: %w", err)
+	}
+
+	logger.WithFields(map[string]any{"duration": time.Since(stepStart).String()}).Infof("FSM: ReadNextQueryCheckpointID done")
+
+	stepStart = time.Now()
+
 	periodSchedule, err := query.ReadPeriodSchedule(dataStore)
 	if err != nil {
 		return nil, fmt.Errorf("loading period schedule from store: %w", err)
@@ -307,6 +317,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		Periods:                   NewPeriodTracker(allPeriods, currentOpenPeriod, closingPeriods, nextPeriodID, periodSchedule),
 		nextSequenceID:            1,
 		nextAuditSequenceID:       1,
+		nextQueryCheckpointID:     nextQueryCheckpointID,
 		sealRequestCh:             make(chan SealRequest, 10),
 		archiveRequestCh:          make(chan ArchiveRequest, 1),
 		metadataConvertRequestCh:  make(chan MetadataConvertRequest, 16),
@@ -353,10 +364,19 @@ func (fsm *Machine) RecoverState() error {
 		fsm.nextAuditSequenceID = lastAuditSeq + 1
 	}
 
+	// Recover nextQueryCheckpointID from persisted counter
+	nextQCPID, err := query.ReadNextQueryCheckpointID(fsm.dataStore)
+	if err != nil {
+		return fmt.Errorf("recovering next query checkpoint ID: %w", err)
+	}
+
+	fsm.nextQueryCheckpointID = nextQCPID
+
 	fsm.logger.WithFields(map[string]any{
-		"nextSequenceID":      fsm.nextSequenceID,
-		"nextAuditSequenceID": fsm.nextAuditSequenceID,
-		"hasLogHash":          len(fsm.lastLogHash) > 0,
+		"nextSequenceID":        fsm.nextSequenceID,
+		"nextAuditSequenceID":   fsm.nextAuditSequenceID,
+		"nextQueryCheckpointID": fsm.nextQueryCheckpointID,
+		"hasLogHash":            len(fsm.lastLogHash) > 0,
 	}).Infof("Recovered FSM state from store")
 
 	return nil
@@ -528,6 +548,15 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 				}
 			})
 		}
+
+		// If CreateQueryCheckpoint was detected, stop processing and enter gating.
+		// The Applier will spool remaining entries and create the main store checkpoint.
+		// The read index checkpoint is created later by the index builder.
+		if cpID := result.QueryCheckpointCreated; cpID > 0 {
+			ret.QueryCheckpointID = cpID
+
+			return fsm.commitAndRequestCheckpoint(batch, ret, entries[i+1:], needsArchiveDispatch, 0, nil)
+		}
 	}
 
 	err := SetAppliedIndex(batch, fsm.lastAppliedIndex)
@@ -576,6 +605,13 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 
 	if needsArchiveDispatch {
 		fsm.dispatchArchiveRequests()
+	}
+
+	// Clean up physical files for deleted query checkpoints.
+	for _, r := range ret.Results {
+		if cpID := r.QueryCheckpointDeleted; cpID > 0 {
+			fsm.deleteQueryCheckpointFiles(cpID)
+		}
 	}
 
 	if needsColdCompaction {
@@ -656,6 +692,17 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 	ret.OnCheckpointDone = onCheckpointDone
 
 	return ret, nil
+}
+
+// deleteQueryCheckpointFiles removes the physical files for a deleted checkpoint.
+// Called after the batch containing the DeleteQueryCheckpoint metadata removal is committed.
+func (fsm *Machine) deleteQueryCheckpointFiles(checkpointID uint64) {
+	if err := fsm.dataStore.DeleteQueryCheckpointFiles(checkpointID); err != nil {
+		fsm.logger.WithFields(map[string]any{
+			"error":        err,
+			"checkpointID": checkpointID,
+		}).Infof("Failed to delete query checkpoint files (may not exist on this node)")
+	}
 }
 
 // Preload applies preloaded data to the Machine's volatile state.
@@ -1312,6 +1359,20 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	fsm.logsAppendedCounter.Add(ctx, int64(len(createdLogs)))
 
+	// Detect query checkpoint create/delete for gating.
+	// The checkpoint ID is assigned by the processor, so read from pending saves.
+	var queryCheckpointCreated, queryCheckpointDeleted uint64
+
+	for _, cp := range buffer.pendingQueryCheckpointSaves {
+		queryCheckpointCreated = cp.GetCheckpointId()
+	}
+
+	for _, order := range proposal.GetOrders() {
+		if cp := order.GetDeleteQueryCheckpoint(); cp != nil {
+			queryCheckpointDeleted = cp.GetCheckpointId()
+		}
+	}
+
 	return &ApplyResult{
 		ProposalID:              proposal.GetId(),
 		Logs:                    logs,
@@ -1320,6 +1381,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		HasArchiveRequests:      hasArchiveRequests,
 		HasPurges:               hasPurges,
 		MetadataConvertRequests: buffer.MetadataConvertRequests(),
+		QueryCheckpointCreated:  queryCheckpointCreated,
+		QueryCheckpointDeleted:  queryCheckpointDeleted,
 		volumeUpdates:           buffer.KeptVolumeUpdates(),
 		createdLogs:             createdLogs,
 	}, nil
@@ -1405,6 +1468,7 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 		ClosedPeriods:         closedPeriods,
 		Reversions:            reversions,
 		PendingLedgerCleanups: pendingCleanups,
+		NextQueryCheckpointId: fsm.nextQueryCheckpointID,
 	}
 
 	size := snapshot.SizeVT()
@@ -1893,6 +1957,7 @@ func (fsm *Machine) InstallSnapshot(ctx context.Context, snapshot raftpb.Snapsho
 	// Restore memory state from snapshot
 	fsm.nextSequenceID = memSnapshot.GetNextSequenceId()
 	fsm.nextAuditSequenceID = memSnapshot.GetNextAuditSequenceId()
+	fsm.nextQueryCheckpointID = memSnapshot.GetNextQueryCheckpointId()
 	fsm.lastLogHash = memSnapshot.GetLastLogHash()
 	fsm.lastCheckpointID = memSnapshot.GetCheckpointId()
 	fsm.lastAppliedTimestamp = memSnapshot.GetLastAppliedTimestamp()
@@ -2240,13 +2305,21 @@ type ApplyResult struct {
 	HasPurges               bool   // True when cold zone data was purged (triggers cold compaction)
 	MetadataConvertRequests []MetadataConvertRequest
 
+	// QueryCheckpointCreated holds the checkpoint ID when a CreateQueryCheckpoint
+	// order was processed. Signals ApplyEntries to split the batch and create
+	// physical Pebble checkpoints before continuing with remaining entries.
+	QueryCheckpointCreated uint64
+
+	// QueryCheckpointDeleted holds the checkpoint ID when a DeleteQueryCheckpoint
+	// order was processed. Signals ApplyEntries to clean up physical files after commit.
+	QueryCheckpointDeleted uint64
+
 	// volumeUpdates and createdLogs are captured for post-commit verification.
 	// Not exported because they are only used internally by ApplyEntries.
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 	createdLogs   []*commonpb.Log
 }
 
-// ApplyEntriesResult is the structured return value of ApplyEntries.
 type ApplyEntriesResult struct {
 	// Results contains one ApplyResult per processed entry that carried a proposal.
 	Results []ApplyResult
@@ -2265,4 +2338,10 @@ type ApplyEntriesResult struct {
 	// OnCheckpointDone is called by Node once the Pebble checkpoint has been created.
 	// It forges a SealRequest and sends it to the sealer.  Nil when CheckpointRequired is false.
 	OnCheckpointDone func(checkpointPath string)
+
+	// QueryCheckpointID is set when the checkpoint was triggered by a
+	// CreateQueryCheckpointOrder (not a ClosePeriod). The Applier uses this
+	// to create the main store checkpoint. The read index checkpoint is
+	// created separately by the index builder when it processes the log.
+	QueryCheckpointID uint64
 }

@@ -35,6 +35,7 @@ Examples:
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Bool("analyze", false, "Display query execution profile (iterator stats, timing)")
 	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
+	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -59,6 +60,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	filterExpr, _ := cmd.Flags().GetString("filter")
 	showProfile, _ := cmd.Flags().GetBool("analyze")
 	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
+	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 
 	filter, err := buildAccountFilter(filterExpr, prefix)
 	if err != nil {
@@ -80,6 +82,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 		Ledger:         ledgerName,
 		Filter:         filter,
 		MinLogSequence: minLogSeq,
+		CheckpointId:   checkpointID,
 	}, grpc.Trailer(&trailer))
 	_ = spinner.Stop()
 

@@ -3450,3 +3450,121 @@ ledgerctl upgrade --channel stable
 # Force upgrade even if already up to date
 ledgerctl upgrade --force
 ```
+
+### query-checkpoint
+
+Manage query checkpoints — coordinated snapshots of both the main store and the read index for point-in-time queries.
+
+**Aliases:** `qcp`
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `create` | Create a coordinated checkpoint of main and read index stores |
+| `delete` | Delete a query checkpoint |
+| `list` | List all query checkpoints |
+| `info` | Show detailed information about a query checkpoint |
+
+#### query-checkpoint create
+
+Create a query checkpoint via Raft consensus. The checkpoint captures a physical Pebble snapshot of both the main store and the read index, enabling point-in-time queries.
+
+```bash
+ledgerctl query-checkpoint create [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--yaml` | `false` | Output as YAML |
+| `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Routes through Raft so the checkpoint is replicated to all nodes
+- The FSM commits pending state and creates a main store Pebble checkpoint; the read index checkpoint is created asynchronously by the index builder
+- Checkpoints are stored under `{dataDir}/query-checkpoints/{id}/main/` and `{dataDir}/query-checkpoints/{id}/readindex/`
+- Not cleaned up on restart — use `query-checkpoint delete` to remove
+
+**Example:**
+
+```bash
+# Create a query checkpoint
+ledgerctl query-checkpoint create
+
+# Output as JSON (for scripting)
+ledgerctl query-checkpoint create --json
+
+# Short form
+ledgerctl qcp create
+```
+
+#### query-checkpoint delete
+
+Delete a previously created query checkpoint by its ID.
+
+```bash
+ledgerctl query-checkpoint delete <checkpoint-id>
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+ledgerctl query-checkpoint delete 1
+```
+
+#### query-checkpoint list
+
+List all existing query checkpoints.
+
+**Aliases:** `ls`
+
+```bash
+ledgerctl query-checkpoint list [flags]
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--yaml` | `false` | Output as YAML |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+ledgerctl query-checkpoint list
+ledgerctl query-checkpoint list --json
+ledgerctl qcp ls
+```
+
+#### query-checkpoint info
+
+Show detailed information about a specific query checkpoint.
+
+```bash
+ledgerctl query-checkpoint info <checkpoint-id>
+```
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--json` | `false` | Output as JSON |
+| `--yaml` | `false` | Output as YAML |
+| `--timeout` | `10s` | Request timeout |
+
+**Example:**
+
+```bash
+ledgerctl query-checkpoint info 1
+```

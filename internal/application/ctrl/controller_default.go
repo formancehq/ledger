@@ -99,6 +99,11 @@ func (ctrl *DefaultController) ListLedgers(ctx context.Context) (dal.Cursor[*com
 }
 
 func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+	return ctrl.GetTransactionFrom(ctx, ctrl.store, ledgerName, transactionID)
+}
+
+// GetTransactionFrom reads a transaction using the provided store (live or checkpoint).
+func (ctrl *DefaultController) GetTransactionFrom(ctx context.Context, store *dal.Store, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	_, span := tracer.Start(ctx, "ctrl.get_transaction",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),
@@ -106,7 +111,7 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName st
 		))
 	defer span.End()
 
-	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
+	ledgerInfo, err := query.GetLedgerByName(ctx, store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
@@ -115,7 +120,7 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName st
 		return nil, err
 	}
 
-	handle := ctrl.store.NewReadHandle()
+	handle := store.NewReadHandle()
 
 	defer func() { _ = handle.Close() }()
 
@@ -212,6 +217,11 @@ func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, 
 // API convention: reverse=false means newest-first (descending), reverse=true means oldest-first.
 // Internally listEntities uses reverse=true for descending, so we invert the flag here.
 func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
+	return ctrl.ListTransactionsFrom(ctx, ctrl.store, ctrl.readStore, ledgerName, pageSize, afterTxID, filter, reverse)
+}
+
+// ListTransactionsFrom returns a cursor over transactions using the provided stores (live or checkpoint).
+func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Transaction], error) {
 	ctx, span := tracer.Start(ctx, "ctrl.list_transactions",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),
@@ -224,7 +234,7 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 
 	// Create a Pebble snapshot first so that GetLedgerByName and the listing
 	// read from the same consistent point-in-time view.
-	handle := ctrl.store.NewReadHandle()
+	handle := store.NewReadHandle()
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
@@ -245,7 +255,7 @@ func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName 
 
 	indexStart := time.Now()
 
-	result, err := listEntities(ctrl.readStore, entityListParams[uint64]{
+	result, err := listEntities(rs, entityListParams[uint64]{
 		target:       commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		ledger:       ledgerInfo.GetName(),
 		pageSize:     pageSize,

@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/semver"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/auditpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
@@ -232,6 +233,45 @@ func DeletePreparedQuery(b *dal.Batch, ledger, name string) error {
 	err := b.DeleteKey(b.KeyBuilder.Build())
 	if err != nil {
 		return fmt.Errorf("deleting prepared query: %w", err)
+	}
+
+	return nil
+}
+
+// SaveQueryCheckpoint stores a query checkpoint state in the batch (Raft-replicated).
+func SaveQueryCheckpoint(b *dal.Batch, cp *raftcmdpb.QueryCheckpointState) error {
+	b.KeyBuilder.PutByte(dal.KeyPrefixQueryCheckpoint).
+		PutUint64(cp.GetCheckpointId())
+
+	err := b.SetProto(b.KeyBuilder.Build(), cp)
+	if err != nil {
+		return fmt.Errorf("saving query checkpoint: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteQueryCheckpointFromBatch removes a query checkpoint from the batch (Raft-replicated).
+func DeleteQueryCheckpointFromBatch(b *dal.Batch, checkpointID uint64) error {
+	b.KeyBuilder.PutByte(dal.KeyPrefixQueryCheckpoint).
+		PutUint64(checkpointID)
+
+	err := b.DeleteKey(b.KeyBuilder.Build())
+	if err != nil {
+		return fmt.Errorf("deleting query checkpoint: %w", err)
+	}
+
+	return nil
+}
+
+// StoreNextQueryCheckpointID writes the next query checkpoint ID as 8-byte big-endian uint64.
+func StoreNextQueryCheckpointID(b *dal.Batch, id uint64) error {
+	value := make([]byte, 8)
+	binary.BigEndian.PutUint64(value, id)
+
+	err := b.SetBytes([]byte{dal.KeyPrefixNextQueryCheckpointID}, value)
+	if err != nil {
+		return fmt.Errorf("storing next query checkpoint ID: %w", err)
 	}
 
 	return nil

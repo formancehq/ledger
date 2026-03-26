@@ -975,6 +975,24 @@ func (m *LogPayload_DeletedNumscript) CloneVT() isLogPayload_Type {
 	return r
 }
 
+func (m *LogPayload_CreatedQueryCheckpoint) CloneVT() isLogPayload_Type {
+	if m == nil {
+		return (*LogPayload_CreatedQueryCheckpoint)(nil)
+	}
+	r := new(LogPayload_CreatedQueryCheckpoint)
+	r.CreatedQueryCheckpoint = m.CreatedQueryCheckpoint.CloneVT()
+	return r
+}
+
+func (m *LogPayload_DeletedQueryCheckpoint) CloneVT() isLogPayload_Type {
+	if m == nil {
+		return (*LogPayload_DeletedQueryCheckpoint)(nil)
+	}
+	r := new(LogPayload_DeletedQueryCheckpoint)
+	r.DeletedQueryCheckpoint = m.DeletedQueryCheckpoint.CloneVT()
+	return r
+}
+
 func (m *PromoteLedgerLog) CloneVT() *PromoteLedgerLog {
 	if m == nil {
 		return (*PromoteLedgerLog)(nil)
@@ -1286,6 +1304,41 @@ func (m *DeletedNumscriptLog) CloneVT() *DeletedNumscriptLog {
 }
 
 func (m *DeletedNumscriptLog) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *CreatedQueryCheckpointLog) CloneVT() *CreatedQueryCheckpointLog {
+	if m == nil {
+		return (*CreatedQueryCheckpointLog)(nil)
+	}
+	r := new(CreatedQueryCheckpointLog)
+	r.CheckpointId = m.CheckpointId
+	r.MaxSequence = m.MaxSequence
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *CreatedQueryCheckpointLog) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *DeletedQueryCheckpointLog) CloneVT() *DeletedQueryCheckpointLog {
+	if m == nil {
+		return (*DeletedQueryCheckpointLog)(nil)
+	}
+	r := new(DeletedQueryCheckpointLog)
+	r.CheckpointId = m.CheckpointId
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *DeletedQueryCheckpointLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -4896,6 +4949,56 @@ func (this *LogPayload_DeletedNumscript) EqualVT(thatIface isLogPayload_Type) bo
 	return true
 }
 
+func (this *LogPayload_CreatedQueryCheckpoint) EqualVT(thatIface isLogPayload_Type) bool {
+	that, ok := thatIface.(*LogPayload_CreatedQueryCheckpoint)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.CreatedQueryCheckpoint, that.CreatedQueryCheckpoint; p != q {
+		if p == nil {
+			p = &CreatedQueryCheckpointLog{}
+		}
+		if q == nil {
+			q = &CreatedQueryCheckpointLog{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
+func (this *LogPayload_DeletedQueryCheckpoint) EqualVT(thatIface isLogPayload_Type) bool {
+	that, ok := thatIface.(*LogPayload_DeletedQueryCheckpoint)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.DeletedQueryCheckpoint, that.DeletedQueryCheckpoint; p != q {
+		if p == nil {
+			p = &DeletedQueryCheckpointLog{}
+		}
+		if q == nil {
+			q = &DeletedQueryCheckpointLog{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *PromoteLedgerLog) EqualVT(that *PromoteLedgerLog) bool {
 	if this == that {
 		return true
@@ -5259,6 +5362,47 @@ func (this *DeletedNumscriptLog) EqualVT(that *DeletedNumscriptLog) bool {
 
 func (this *DeletedNumscriptLog) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*DeletedNumscriptLog)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *CreatedQueryCheckpointLog) EqualVT(that *CreatedQueryCheckpointLog) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.CheckpointId != that.CheckpointId {
+		return false
+	}
+	if this.MaxSequence != that.MaxSequence {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *CreatedQueryCheckpointLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*CreatedQueryCheckpointLog)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *DeletedQueryCheckpointLog) EqualVT(that *DeletedQueryCheckpointLog) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.CheckpointId != that.CheckpointId {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *DeletedQueryCheckpointLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*DeletedQueryCheckpointLog)
 	if !ok {
 		return false
 	}
@@ -10737,6 +10881,48 @@ func (m *LogPayload_DeletedNumscript) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	}
 	return len(dAtA) - i, nil
 }
+func (m *LogPayload_CreatedQueryCheckpoint) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LogPayload_CreatedQueryCheckpoint) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.CreatedQueryCheckpoint != nil {
+		size, err := m.CreatedQueryCheckpoint.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xba
+	}
+	return len(dAtA) - i, nil
+}
+func (m *LogPayload_DeletedQueryCheckpoint) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LogPayload_DeletedQueryCheckpoint) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.DeletedQueryCheckpoint != nil {
+		size, err := m.DeletedQueryCheckpoint.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xc2
+	}
+	return len(dAtA) - i, nil
+}
 func (m *PromoteLedgerLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -11536,6 +11722,87 @@ func (m *DeletedNumscriptLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
 		i--
 		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *CreatedQueryCheckpointLog) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CreatedQueryCheckpointLog) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *CreatedQueryCheckpointLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.MaxSequence != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MaxSequence))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.CheckpointId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CheckpointId))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *DeletedQueryCheckpointLog) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *DeletedQueryCheckpointLog) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *DeletedQueryCheckpointLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.CheckpointId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CheckpointId))
+		i--
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -17250,6 +17517,30 @@ func (m *LogPayload_DeletedNumscript) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *LogPayload_CreatedQueryCheckpoint) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.CreatedQueryCheckpoint != nil {
+		l = m.CreatedQueryCheckpoint.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
+func (m *LogPayload_DeletedQueryCheckpoint) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.DeletedQueryCheckpoint != nil {
+		l = m.DeletedQueryCheckpoint.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *PromoteLedgerLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -17534,6 +17825,35 @@ func (m *DeletedNumscriptLog) SizeVT() (n int) {
 	l = len(m.Ledger)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *CreatedQueryCheckpointLog) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.CheckpointId != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.CheckpointId))
+	}
+	if m.MaxSequence != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MaxSequence))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *DeletedQueryCheckpointLog) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.CheckpointId != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.CheckpointId))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -24949,6 +25269,88 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 				m.Type = &LogPayload_DeletedNumscript{DeletedNumscript: v}
 			}
 			iNdEx = postIndex
+		case 23:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CreatedQueryCheckpoint", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*LogPayload_CreatedQueryCheckpoint); ok {
+				if err := oneof.CreatedQueryCheckpoint.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &CreatedQueryCheckpointLog{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: v}
+			}
+			iNdEx = postIndex
+		case 24:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeletedQueryCheckpoint", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*LogPayload_DeletedQueryCheckpoint); ok {
+				if err := oneof.DeletedQueryCheckpoint.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &DeletedQueryCheckpointLog{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -26772,6 +27174,165 @@ func (m *DeletedNumscriptLog) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CreatedQueryCheckpointLog) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CreatedQueryCheckpointLog: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CreatedQueryCheckpointLog: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
+			}
+			m.CheckpointId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.CheckpointId |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxSequence", wireType)
+			}
+			m.MaxSequence = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MaxSequence |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DeletedQueryCheckpointLog) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DeletedQueryCheckpointLog: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DeletedQueryCheckpointLog: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
+			}
+			m.CheckpointId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.CheckpointId |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -14,6 +14,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger-v3-poc/internal/adapter/auth"
+	"github.com/formancehq/ledger-v3-poc/internal/application/ctrl"
 	"github.com/formancehq/ledger-v3-poc/internal/application/indexbuilder"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
@@ -22,6 +23,9 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/internal/query"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 	"github.com/formancehq/ledger-v3-poc/internal/storage/readstore"
 )
@@ -37,6 +41,7 @@ type ClusterServiceServerImpl struct {
 	readStore        *readstore.Store
 	sharedState      *state.SharedState
 	indexBuilder     *indexbuilder.Builder
+	admission        ctrl.Admission
 	logger           logging.Logger
 	localRaftAddr    string // This node's own Raft advertise address
 	localServiceAddr string // This node's own gRPC service address
@@ -53,6 +58,7 @@ func NewClusterServiceServer(
 	sharedState *state.SharedState,
 	indexBuilder *indexbuilder.Builder,
 	readStore *readstore.Store,
+	admission ctrl.Admission,
 	logger logging.Logger,
 	localRaftAddr string,
 	localServiceAddr string,
@@ -67,6 +73,7 @@ func NewClusterServiceServer(
 		readStore:        readStore,
 		sharedState:      sharedState,
 		indexBuilder:     indexBuilder,
+		admission:        admission,
 		logger:           logger.WithField("component", "cluster-server"),
 		localRaftAddr:    localRaftAddr,
 		localServiceAddr: localServiceAddr,
@@ -599,6 +606,107 @@ func (impl *ClusterServiceServerImpl) CreateCheckpoint(ctx context.Context, _ *c
 	return &clusterpb.CreateCheckpointResponse{
 		CheckpointId: checkpointID,
 	}, nil
+}
+
+func (impl *ClusterServiceServerImpl) CreateQueryCheckpoint(ctx context.Context, _ *clusterpb.CreateQueryCheckpointRequest) (*clusterpb.CreateQueryCheckpointResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
+		return nil, err
+	}
+
+	// Route through Raft so the checkpoint is replicated to all nodes.
+	logs, err := impl.admission.Admit(ctx, &servicepb.Request{
+		Type: &servicepb.Request_CreateQueryCheckpoint{
+			CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating query checkpoint via raft: %w", err)
+	}
+
+	// Extract the assigned checkpoint ID and log sequence from the response.
+	if cp := logs[0].GetPayload().GetCreatedQueryCheckpoint(); cp != nil {
+		// Wait for the read index to process this log (which triggers the
+		// read index checkpoint creation by the index builder).
+		if err := impl.readStore.WaitForSequence(ctx, logs[0].GetSequence()); err != nil {
+			return nil, fmt.Errorf("waiting for read index checkpoint: %w", err)
+		}
+
+		return &clusterpb.CreateQueryCheckpointResponse{
+			CheckpointId: cp.GetCheckpointId(),
+			MaxSequence:  cp.GetMaxSequence(),
+		}, nil
+	}
+
+	return nil, errors.New("checkpoint creation log not found in response")
+}
+
+func (impl *ClusterServiceServerImpl) DeleteQueryCheckpoint(ctx context.Context, req *clusterpb.DeleteQueryCheckpointRequest) (*clusterpb.DeleteQueryCheckpointResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
+		return nil, err
+	}
+
+	// Route through Raft so the deletion is replicated to all nodes.
+	_, err := impl.admission.Admit(ctx, &servicepb.Request{
+		Type: &servicepb.Request_DeleteQueryCheckpoint{
+			DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{
+				CheckpointId: req.GetCheckpointId(),
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("deleting query checkpoint via raft: %w", err)
+	}
+
+	return &clusterpb.DeleteQueryCheckpointResponse{}, nil
+}
+
+func (impl *ClusterServiceServerImpl) ListQueryCheckpoints(ctx context.Context, _ *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
+		return nil, err
+	}
+
+	handle := impl.store.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
+	cps, err := query.ListQueryCheckpoints(handle)
+	if err != nil {
+		return nil, fmt.Errorf("listing query checkpoints: %w", err)
+	}
+
+	checkpoints := make([]*clusterpb.QueryCheckpointInfo, 0, len(cps))
+	for _, cp := range cps {
+		checkpoints = append(checkpoints, queryCheckpointToInfo(cp))
+	}
+
+	return &clusterpb.ListQueryCheckpointsResponse{Checkpoints: checkpoints}, nil
+}
+
+func (impl *ClusterServiceServerImpl) GetQueryCheckpointInfo(ctx context.Context, req *clusterpb.GetQueryCheckpointInfoRequest) (*clusterpb.QueryCheckpointInfo, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
+		return nil, err
+	}
+
+	handle := impl.store.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
+	cp, err := query.ReadQueryCheckpoint(handle, req.GetCheckpointId())
+	if err != nil {
+		return nil, fmt.Errorf("getting query checkpoint info: %w", err)
+	}
+
+	if cp == nil {
+		return nil, fmt.Errorf("checkpoint %d not found", req.GetCheckpointId())
+	}
+
+	return queryCheckpointToInfo(cp), nil
+}
+
+func queryCheckpointToInfo(cp *raftcmdpb.QueryCheckpointState) *clusterpb.QueryCheckpointInfo {
+	return &clusterpb.QueryCheckpointInfo{
+		CheckpointId: cp.GetCheckpointId(),
+		MaxSequence:  cp.GetMaxSequence(),
+		CreatedAt:    cp.GetCreatedAt(),
+	}
 }
 
 func RegisterClusterService(server *ggrpc.Server, clusterServiceServer clusterpb.ClusterServiceServer) {

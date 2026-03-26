@@ -51,6 +51,8 @@ message Order {
     DeletePreparedQueryOrder delete_prepared_query = 23;
     SaveNumscriptOrder save_numscript = 24;
     DeleteNumscriptOrder delete_numscript = 25;
+    CreateQueryCheckpointOrder create_query_checkpoint = 26;
+    DeleteQueryCheckpointOrder delete_query_checkpoint = 27;
   }
   signature.RequestSignature signature = 5;
 }
@@ -136,6 +138,25 @@ message DeleteNumscriptOrder {
   string ledger = 2;
 }
 
+// CreateQueryCheckpointOrder triggers a physical Pebble checkpoint via Raft.
+// The FSM commits the current batch and the Applier creates snapshots of both
+// the main store and read index, enabling point-in-time queries.
+// The checkpoint ID is assigned sequentially by the FSM, not the caller.
+message CreateQueryCheckpointOrder {}
+
+// DeleteQueryCheckpointOrder removes a previously created query checkpoint.
+// Physical checkpoint files are cleaned up after the batch is committed.
+message DeleteQueryCheckpointOrder {
+  uint64 checkpoint_id = 1;
+}
+
+// QueryCheckpointState stores metadata for a query checkpoint in Pebble.
+// The actual data lives in physical Pebble checkpoint directories.
+message QueryCheckpointState {
+  uint64 checkpoint_id = 1;
+  uint64 max_sequence = 2;            // next_sequence - 1 at creation
+  common.Timestamp created_at = 3;    // Creation timestamp (from proposal date)
+}
 
 message CreateLedgerOrder {
   string name = 1;
@@ -499,6 +520,7 @@ message MemorySnapshot {
   repeated common.Period closed_periods = 12;  // CLOSED + ARCHIVED periods (non-purged)
   repeated ReversionBitsetEntry reversions = 13;  // Per-ledger reversion bitsets
   repeated PendingLedgerCleanup pending_ledger_cleanups = 14;  // Ledgers awaiting data cleanup at purge time
+  uint64 next_query_checkpoint_id = 15;  // Next sequential query checkpoint ID
 }
 
 // PendingLedgerCleanup tracks a deleted ledger whose Pebble data

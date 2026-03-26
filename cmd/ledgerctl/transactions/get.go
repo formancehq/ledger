@@ -32,6 +32,7 @@ Examples:
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -84,9 +85,12 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching transaction #%d...", txID))
 
+	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
+
 	resp, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
 		Ledger:        ledgerName,
 		TransactionId: txID,
+		CheckpointId:  checkpointID,
 	})
 	if err != nil {
 		_ = spinner.Stop()

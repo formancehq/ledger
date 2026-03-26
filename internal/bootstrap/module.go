@@ -433,8 +433,8 @@ func Module() fx.Option {
 			},
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
-			func(cfg Config, logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, meterProvider metric.MeterProvider) servicepb.BucketServiceServer {
-				return grpcadp.NewBucketServiceServer(logger, ctrl, s, rs, attrs, ss, signer, respSigner, authCfg, cfg.QueryProfileThreshold, meterProvider)
+			func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, meterProvider metric.MeterProvider) servicepb.BucketServiceServer {
+				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, signer, respSigner, authCfg, cfg.QueryProfileThreshold, meterProvider)
 			},
 			grpcadp.NewSnapshotServiceServer,
 			func(cfg Config, meterProvider metric.MeterProvider) *diskusage.Collector {
@@ -451,13 +451,13 @@ func Module() fx.Option {
 					meterProvider.Meter("storage"),
 				)
 			},
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig) clusterpb.ClusterServiceServer {
-				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, ss, ib, rs, logger,
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, adm ctrl.Admission, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig) clusterpb.ClusterServiceServer {
+				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, ss, ib, rs, adm, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 					authCfg,
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``, ``)),
 			fx.Annotate(func(n *node.Node, collector *diskusage.Collector, servicePool *transport.ConnectionPool, cfg Config, logger logging.Logger) *clusterhealth.HealthChecker {
 				return clusterhealth.NewHealthChecker(
 					n, collector, servicePool,
@@ -609,12 +609,14 @@ func Module() fx.Option {
 				rs *readstore.Store,
 				coldReader *coldstorage.ColdReader,
 				meterProvider metric.MeterProvider,
-			) ctrl.Controller {
+			) (ctrl.Controller, *ctrl.DefaultController) {
+				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, coldReader, meterProvider.Meter("ctrl"))
+
 				return NewRoutedController(
-					ctrl.NewDefaultController(admission, store, logger, attrs, rs, coldReader, meterProvider.Meter("ctrl")),
+					defaultCtrl,
 					raftNode,
 					servicePool,
-				)
+				), defaultCtrl
 			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, `optional:"true"`, ``)),
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node, hc *clusterhealth.HealthChecker) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()

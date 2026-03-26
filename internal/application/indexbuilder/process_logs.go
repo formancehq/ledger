@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/cockroachdb/pebble"
@@ -45,9 +46,11 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 
 	for {
 		var (
-			batchCount int
-			lastSeq    uint64
-			eof        bool
+			batchCount              int
+			lastSeq                 uint64
+			eof                     bool
+			pendingCheckpointCreate uint64
+			pendingCheckpointDelete uint64
 		)
 
 		// Create an indexed batch up front so write methods have a valid target.
@@ -87,6 +90,23 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 				}
 
 				continue
+			}
+
+			// Handle query checkpoint creation: break batch so we can commit
+			// pending writes, then create a physical Pebble checkpoint of the
+			// read index at this exact point.
+			if cqc, ok := log.GetPayload().GetType().(*commonpb.LogPayload_CreatedQueryCheckpoint); ok {
+				pendingCheckpointCreate = cqc.CreatedQueryCheckpoint.GetCheckpointId()
+
+				break
+			}
+
+			// Handle query checkpoint deletion: break batch so we can commit
+			// pending writes, then remove the physical checkpoint files.
+			if dqc, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeletedQueryCheckpoint); ok {
+				pendingCheckpointDelete = dqc.DeletedQueryCheckpoint.GetCheckpointId()
+
+				break
 			}
 
 			applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
@@ -134,8 +154,9 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 			break
 		}
 
-		// Commit the batch if there are index writes; otherwise discard it.
-		if !b.wb.Empty() {
+		// Commit the batch if there are index writes or a checkpoint action pending.
+		hasCheckpointAction := pendingCheckpointCreate > 0 || pendingCheckpointDelete > 0
+		if !b.wb.Empty() || hasCheckpointAction {
 			// Write progress into the same batch before Flush commits it.
 			if err := b.readStore.WriteProgress(batch, lastSeq); err != nil {
 				_ = batch.Close()
@@ -164,6 +185,18 @@ func (b *Builder) processLogs(cursor uint64, deadline time.Time) (uint64, error)
 		b.lastIndexedSeq.Store(cursor)
 		b.logsIndexed.Add(uint64(batchCount))
 		b.readStore.NotifyProgress()
+
+		// Create or delete a query checkpoint after the batch is committed,
+		// so the physical Pebble checkpoint captures all indexed data up to this point.
+		if cpID := pendingCheckpointCreate; cpID > 0 {
+			if err := b.createReadIndexCheckpoint(cpID); err != nil {
+				return cursor, err
+			}
+		}
+
+		if cpID := pendingCheckpointDelete; cpID > 0 {
+			b.deleteReadIndexCheckpoint(cpID)
+		}
 
 		// Sample pebble last sequence from the cached atomic (written by the FSM
 		// before signalling LogCommitted). This avoids opening a Pebble iterator
@@ -241,6 +274,33 @@ func (b *Builder) indexPayload(kb *dal.KeyBuilder, cfg *ledgerIndexConfig, ledge
 	}
 
 	return nil
+}
+
+// createReadIndexCheckpoint creates a physical Pebble checkpoint of the read index
+// for the given query checkpoint ID. Called after the batch containing all index
+// data up to this point has been committed.
+func (b *Builder) createReadIndexCheckpoint(checkpointID uint64) error {
+	destDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
+	if err := b.readStore.CreateCheckpoint(destDir); err != nil {
+		return fmt.Errorf("creating read index checkpoint %d: %w", checkpointID, err)
+	}
+
+	b.logger.WithFields(map[string]any{
+		"checkpointID": checkpointID,
+	}).Infof("Created read index query checkpoint")
+
+	return nil
+}
+
+// deleteReadIndexCheckpoint removes the physical read index checkpoint files.
+func (b *Builder) deleteReadIndexCheckpoint(checkpointID uint64) {
+	destDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
+	if err := os.RemoveAll(destDir); err != nil {
+		b.logger.WithFields(map[string]any{
+			"error":        err,
+			"checkpointID": checkpointID,
+		}).Infof("Failed to delete read index checkpoint files (may not exist)")
+	}
 }
 
 // RebuildAll replays all system logs from scratch (starting at sequence 0),

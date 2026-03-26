@@ -46,6 +46,7 @@ type BucketServiceServerImpl struct {
 
 	logger                logging.Logger
 	ctrl                  ctrl.Controller
+	localCtrl             *ctrl.DefaultController
 	store                 *dal.Store
 	readStore             *readstore.Store
 	attrs                 *attributes.Attributes
@@ -57,7 +58,7 @@ type BucketServiceServerImpl struct {
 	applyDuration         metric.Int64Histogram
 }
 
-func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, meterProvider metric.MeterProvider) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, meterProvider metric.MeterProvider) servicepb.BucketServiceServer {
 	meter := meterProvider.Meter("grpc")
 	applyDuration, _ := meter.Int64Histogram("grpc.apply.duration",
 		metric.WithUnit("us"),
@@ -66,7 +67,8 @@ func NewBucketServiceServer(logger logging.Logger, ctrl ctrl.Controller, s *dal.
 
 	return &BucketServiceServerImpl{
 		logger:                logger,
-		ctrl:                  ctrl,
+		ctrl:                  c,
+		localCtrl:             localCtrl,
 		store:                 s,
 		readStore:             rs,
 		attrs:                 attrs,
@@ -191,7 +193,27 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 		return nil, errors.New("ledger name is required")
 	}
 
-	tx, err := impl.ctrl.GetTransaction(ctx, req.GetLedger(), req.GetTransactionId())
+	var (
+		tx  *commonpb.Transaction
+		err error
+	)
+
+	if cpID := req.GetCheckpointId(); cpID > 0 {
+		mainStore, readIdx, closeErr := impl.openCheckpointStores(cpID)
+		if closeErr != nil {
+			return nil, closeErr
+		}
+
+		defer func() {
+			_ = readIdx.Close()
+			_ = mainStore.Close()
+		}()
+
+		tx, err = impl.localCtrl.GetTransactionFrom(ctx, mainStore, req.GetLedger(), req.GetTransactionId())
+	} else {
+		tx, err = impl.ctrl.GetTransaction(ctx, req.GetLedger(), req.GetTransactionId())
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -228,6 +250,27 @@ func (impl *BucketServiceServerImpl) computeTransactionReceipt(ctx context.Conte
 	return impl.receiptSigner.Sign(ledger, txID, tx.GetPostings(), tx.GetTimestamp(), created.GetPeriodId())
 }
 
+// openCheckpointStores opens the checkpoint's main store and read index in read-only mode.
+// The caller must close both stores when done.
+func (impl *BucketServiceServerImpl) openCheckpointStores(checkpointID uint64) (*dal.Store, *readstore.Store, error) {
+	mainPath := impl.store.QueryCheckpointMainDir(checkpointID)
+	readIndexPath := impl.store.QueryCheckpointReadIndexDir(checkpointID)
+
+	mainStore, err := dal.OpenReadOnly(mainPath, impl.logger)
+	if err != nil {
+		return nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
+	}
+
+	readIdx, err := readstore.OpenReadOnly(readIndexPath, impl.logger)
+	if err != nil {
+		_ = mainStore.Close()
+
+		return nil, nil, fmt.Errorf("opening checkpoint read index: %w", err)
+	}
+
+	return mainStore, readIdx, nil
+}
+
 // waitMinLogSequence blocks until the Pebble read index has processed at
 // least the requested minimum log sequence, or the context is cancelled.
 func (impl *BucketServiceServerImpl) waitMinLogSequence(ctx context.Context, minLogSequence uint64) error {
@@ -251,16 +294,36 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		return errors.New("ledger name is required")
 	}
 
-	if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
-		return err
-	}
-
 	impl.logger.Debugf("ListTransactions request received for ledger %s (pageSize=%d, afterTxID=%d, hasFilter=%v, reverse=%v)",
 		req.GetLedger(), req.GetPageSize(), req.GetAfterTxId(), req.GetFilter() != nil, req.GetReverse())
 
 	profileCtx, profile := query.WithProfile(ctx)
 
-	cursor, err := impl.ctrl.ListTransactions(profileCtx, req.GetLedger(), req.GetPageSize(), req.GetAfterTxId(), req.GetFilter(), req.GetReverse())
+	var (
+		cursor dal.Cursor[*commonpb.Transaction]
+		err    error
+	)
+
+	if cpID := req.GetCheckpointId(); cpID > 0 {
+		mainStore, readIdx, openErr := impl.openCheckpointStores(cpID)
+		if openErr != nil {
+			return openErr
+		}
+
+		defer func() {
+			_ = readIdx.Close()
+			_ = mainStore.Close()
+		}()
+
+		cursor, err = impl.localCtrl.ListTransactionsFrom(profileCtx, mainStore, readIdx, req.GetLedger(), req.GetPageSize(), req.GetAfterTxId(), req.GetFilter(), req.GetReverse())
+	} else {
+		if waitErr := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); waitErr != nil {
+			return waitErr
+		}
+
+		cursor, err = impl.ctrl.ListTransactions(profileCtx, req.GetLedger(), req.GetPageSize(), req.GetAfterTxId(), req.GetFilter(), req.GetReverse())
+	}
+
 	if err != nil {
 		return fmt.Errorf("listing transactions: %w", err)
 	}

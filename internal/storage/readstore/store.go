@@ -105,6 +105,30 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 	return s, nil
 }
 
+// OpenReadOnly opens a Pebble read index at dirPath in read-only mode.
+// The caller must call Close() when done.
+func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
+	db, err := pebble.Open(dirPath, &pebble.Options{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("opening read-only Pebble read index at %s: %w", dirPath, err)
+	}
+
+	s := &Store{
+		db:     db,
+		logger: logger.WithFields(map[string]any{"cmp": "read-store-readonly"}),
+		dir:    dirPath,
+	}
+	s.progressCond = sync.NewCond(&s.progressMu)
+
+	return s, nil
+}
+
+// CreateCheckpoint creates a Pebble checkpoint of the read index at destDir.
+// Since the read index has WAL disabled, no WAL flush option is needed.
+func (s *Store) CreateCheckpoint(destDir string) error {
+	return s.db.Checkpoint(destDir)
+}
+
 // Close closes the underlying Pebble database.
 func (s *Store) Close() error {
 	return s.db.Close()

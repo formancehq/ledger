@@ -88,11 +88,15 @@ service BucketService {
 message GetAccountRequest {
   string ledger = 1;
   string address = 2;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  uint64 checkpoint_id = 3;
 }
 
 message GetTransactionRequest {
   string ledger = 1;
   uint64 transaction_id = 2;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  uint64 checkpoint_id = 3;
 }
 
 message GetTransactionResponse {
@@ -114,6 +118,8 @@ message ListTransactionsRequest {
   // min_log_sequence requires the store to have applied at least this log sequence before reading.
   // If the store has not caught up, the server returns FailedPrecondition.
   uint64 min_log_sequence = 6;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  uint64 checkpoint_id = 7;
 }
 
 message ListAccountsRequest {
@@ -129,6 +135,8 @@ message ListAccountsRequest {
   // min_log_sequence requires the store to have applied at least this log sequence before reading.
   // If the store has not caught up, the server returns FailedPrecondition.
   uint64 min_log_sequence = 6;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  uint64 checkpoint_id = 7;
 }
 
 message CreateLedgerRequest {
@@ -149,10 +157,14 @@ message DeleteLedgerResponse {}
 message ListLedgersRequest {
   // page_size is the maximum number of ledgers to return (0 = no limit)
   uint32 page_size = 1;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  uint64 checkpoint_id = 2;
 }
 
 message GetLedgerRequest {
   string ledger = 1;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  uint64 checkpoint_id = 2;
 }
 
 message ApplyRequest {
@@ -196,8 +208,19 @@ message Request {
     UpdateAccountTypeLedgerRequest update_account_type = 30;
     RemoveAccountTypeLedgerRequest remove_account_type = 31;
     SetDefaultEnforcementModeLedgerRequest set_default_enforcement_mode = 32;
+    CreateQueryCheckpointRequest create_query_checkpoint = 33;
+    DeleteQueryCheckpointRequest delete_query_checkpoint = 34;
   }
   signature.RequestSignature signature = 5;
+}
+
+// CreateQueryCheckpointRequest creates a query checkpoint via Raft.
+// The checkpoint ID is assigned sequentially by the FSM.
+message CreateQueryCheckpointRequest {}
+
+// DeleteQueryCheckpointRequest removes a query checkpoint via Raft.
+message DeleteQueryCheckpointRequest {
+  uint64 checkpoint_id = 1;
 }
 
 message PromoteLedgerRequest {
@@ -342,11 +365,15 @@ message GetNumscriptRequest {
   string name = 1;
   string version = 2; // "" = latest
   string ledger = 3;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  uint64 checkpoint_id = 4;
 }
 
 // ListNumscriptsRequest lists all numscripts for a ledger (latest version of each).
 message ListNumscriptsRequest {
   string ledger = 1;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  uint64 checkpoint_id = 2;
 }
 
 // ScriptReference references a numscript from the library by name and optional version.
@@ -662,10 +689,14 @@ message ListLogsRequest {
   // is present, results are ordered by ledger-local log ID ascending. Use a log_id condition
   // for pagination. When absent, all logs are returned ordered by global sequence ascending.
   common.QueryFilter filter = 4;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  uint64 checkpoint_id = 5;
 }
 
 message GetLogRequest {
   uint64 sequence = 1;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  uint64 checkpoint_id = 2;
 }
 
 // ============================================================================
@@ -901,6 +932,8 @@ message IndexBackfillProgress {
 
 message GetLedgerStatsRequest {
   string ledger = 1;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  uint64 checkpoint_id = 2;
 }
 
 message AggregateVolumesRequest {
@@ -913,6 +946,8 @@ message AggregateVolumesRequest {
   // When set, results are grouped by account prefix. Each account is assigned
   // to the first matching prefix. Accounts not matching any prefix are excluded.
   repeated string group_by_prefixes = 5;
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
+  uint64 checkpoint_id = 6;
 }
 
 // ============================================================================

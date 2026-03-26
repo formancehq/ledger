@@ -19,17 +19,21 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ClusterService_GetClusterState_FullMethodName    = "/cluster.ClusterService/GetClusterState"
-	ClusterService_GetDiskUsage_FullMethodName       = "/cluster.ClusterService/GetDiskUsage"
-	ClusterService_GetNodeTime_FullMethodName        = "/cluster.ClusterService/GetNodeTime"
-	ClusterService_TransferLeadership_FullMethodName = "/cluster.ClusterService/TransferLeadership"
-	ClusterService_Backup_FullMethodName             = "/cluster.ClusterService/Backup"
-	ClusterService_AddLearner_FullMethodName         = "/cluster.ClusterService/AddLearner"
-	ClusterService_PromoteLearner_FullMethodName     = "/cluster.ClusterService/PromoteLearner"
-	ClusterService_RemoveNode_FullMethodName         = "/cluster.ClusterService/RemoveNode"
-	ClusterService_CompactStore_FullMethodName       = "/cluster.ClusterService/CompactStore"
-	ClusterService_CompactReadIndex_FullMethodName   = "/cluster.ClusterService/CompactReadIndex"
-	ClusterService_CreateCheckpoint_FullMethodName   = "/cluster.ClusterService/CreateCheckpoint"
+	ClusterService_GetClusterState_FullMethodName        = "/cluster.ClusterService/GetClusterState"
+	ClusterService_GetDiskUsage_FullMethodName           = "/cluster.ClusterService/GetDiskUsage"
+	ClusterService_GetNodeTime_FullMethodName            = "/cluster.ClusterService/GetNodeTime"
+	ClusterService_TransferLeadership_FullMethodName     = "/cluster.ClusterService/TransferLeadership"
+	ClusterService_Backup_FullMethodName                 = "/cluster.ClusterService/Backup"
+	ClusterService_AddLearner_FullMethodName             = "/cluster.ClusterService/AddLearner"
+	ClusterService_PromoteLearner_FullMethodName         = "/cluster.ClusterService/PromoteLearner"
+	ClusterService_RemoveNode_FullMethodName             = "/cluster.ClusterService/RemoveNode"
+	ClusterService_CompactStore_FullMethodName           = "/cluster.ClusterService/CompactStore"
+	ClusterService_CompactReadIndex_FullMethodName       = "/cluster.ClusterService/CompactReadIndex"
+	ClusterService_CreateCheckpoint_FullMethodName       = "/cluster.ClusterService/CreateCheckpoint"
+	ClusterService_CreateQueryCheckpoint_FullMethodName  = "/cluster.ClusterService/CreateQueryCheckpoint"
+	ClusterService_DeleteQueryCheckpoint_FullMethodName  = "/cluster.ClusterService/DeleteQueryCheckpoint"
+	ClusterService_ListQueryCheckpoints_FullMethodName   = "/cluster.ClusterService/ListQueryCheckpoints"
+	ClusterService_GetQueryCheckpointInfo_FullMethodName = "/cluster.ClusterService/GetQueryCheckpointInfo"
 )
 
 // ClusterServiceClient is the client API for ClusterService service.
@@ -67,6 +71,19 @@ type ClusterServiceClient interface {
 	// CreateCheckpoint creates a Pebble checkpoint of the current live database state.
 	// Node-local operation (not forwarded to leader).
 	CreateCheckpoint(ctx context.Context, in *CreateCheckpointRequest, opts ...grpc.CallOption) (*CreateCheckpointResponse, error)
+	// CreateQueryCheckpoint creates a physical Pebble checkpoint via Raft consensus.
+	// The checkpoint captures both the main store and read index, enabling
+	// point-in-time queries on any node. Forwarded to leader.
+	CreateQueryCheckpoint(ctx context.Context, in *CreateQueryCheckpointRequest, opts ...grpc.CallOption) (*CreateQueryCheckpointResponse, error)
+	// DeleteQueryCheckpoint removes a previously created query checkpoint via Raft consensus.
+	// Forwarded to leader.
+	DeleteQueryCheckpoint(ctx context.Context, in *DeleteQueryCheckpointRequest, opts ...grpc.CallOption) (*DeleteQueryCheckpointResponse, error)
+	// ListQueryCheckpoints lists all existing query checkpoints.
+	// Reads from replicated Pebble state (available on any node).
+	ListQueryCheckpoints(ctx context.Context, in *ListQueryCheckpointsRequest, opts ...grpc.CallOption) (*ListQueryCheckpointsResponse, error)
+	// GetQueryCheckpointInfo returns detailed information about a query checkpoint.
+	// Reads from replicated Pebble state (available on any node).
+	GetQueryCheckpointInfo(ctx context.Context, in *GetQueryCheckpointInfoRequest, opts ...grpc.CallOption) (*QueryCheckpointInfo, error)
 }
 
 type clusterServiceClient struct {
@@ -196,6 +213,46 @@ func (c *clusterServiceClient) CreateCheckpoint(ctx context.Context, in *CreateC
 	return out, nil
 }
 
+func (c *clusterServiceClient) CreateQueryCheckpoint(ctx context.Context, in *CreateQueryCheckpointRequest, opts ...grpc.CallOption) (*CreateQueryCheckpointResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateQueryCheckpointResponse)
+	err := c.cc.Invoke(ctx, ClusterService_CreateQueryCheckpoint_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clusterServiceClient) DeleteQueryCheckpoint(ctx context.Context, in *DeleteQueryCheckpointRequest, opts ...grpc.CallOption) (*DeleteQueryCheckpointResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteQueryCheckpointResponse)
+	err := c.cc.Invoke(ctx, ClusterService_DeleteQueryCheckpoint_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clusterServiceClient) ListQueryCheckpoints(ctx context.Context, in *ListQueryCheckpointsRequest, opts ...grpc.CallOption) (*ListQueryCheckpointsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListQueryCheckpointsResponse)
+	err := c.cc.Invoke(ctx, ClusterService_ListQueryCheckpoints_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clusterServiceClient) GetQueryCheckpointInfo(ctx context.Context, in *GetQueryCheckpointInfoRequest, opts ...grpc.CallOption) (*QueryCheckpointInfo, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(QueryCheckpointInfo)
+	err := c.cc.Invoke(ctx, ClusterService_GetQueryCheckpointInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility.
@@ -231,6 +288,19 @@ type ClusterServiceServer interface {
 	// CreateCheckpoint creates a Pebble checkpoint of the current live database state.
 	// Node-local operation (not forwarded to leader).
 	CreateCheckpoint(context.Context, *CreateCheckpointRequest) (*CreateCheckpointResponse, error)
+	// CreateQueryCheckpoint creates a physical Pebble checkpoint via Raft consensus.
+	// The checkpoint captures both the main store and read index, enabling
+	// point-in-time queries on any node. Forwarded to leader.
+	CreateQueryCheckpoint(context.Context, *CreateQueryCheckpointRequest) (*CreateQueryCheckpointResponse, error)
+	// DeleteQueryCheckpoint removes a previously created query checkpoint via Raft consensus.
+	// Forwarded to leader.
+	DeleteQueryCheckpoint(context.Context, *DeleteQueryCheckpointRequest) (*DeleteQueryCheckpointResponse, error)
+	// ListQueryCheckpoints lists all existing query checkpoints.
+	// Reads from replicated Pebble state (available on any node).
+	ListQueryCheckpoints(context.Context, *ListQueryCheckpointsRequest) (*ListQueryCheckpointsResponse, error)
+	// GetQueryCheckpointInfo returns detailed information about a query checkpoint.
+	// Reads from replicated Pebble state (available on any node).
+	GetQueryCheckpointInfo(context.Context, *GetQueryCheckpointInfoRequest) (*QueryCheckpointInfo, error)
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -273,6 +343,18 @@ func (UnimplementedClusterServiceServer) CompactReadIndex(context.Context, *Comp
 }
 func (UnimplementedClusterServiceServer) CreateCheckpoint(context.Context, *CreateCheckpointRequest) (*CreateCheckpointResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateCheckpoint not implemented")
+}
+func (UnimplementedClusterServiceServer) CreateQueryCheckpoint(context.Context, *CreateQueryCheckpointRequest) (*CreateQueryCheckpointResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateQueryCheckpoint not implemented")
+}
+func (UnimplementedClusterServiceServer) DeleteQueryCheckpoint(context.Context, *DeleteQueryCheckpointRequest) (*DeleteQueryCheckpointResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteQueryCheckpoint not implemented")
+}
+func (UnimplementedClusterServiceServer) ListQueryCheckpoints(context.Context, *ListQueryCheckpointsRequest) (*ListQueryCheckpointsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListQueryCheckpoints not implemented")
+}
+func (UnimplementedClusterServiceServer) GetQueryCheckpointInfo(context.Context, *GetQueryCheckpointInfoRequest) (*QueryCheckpointInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQueryCheckpointInfo not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 func (UnimplementedClusterServiceServer) testEmbeddedByValue()                        {}
@@ -486,6 +568,78 @@ func _ClusterService_CreateCheckpoint_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterService_CreateQueryCheckpoint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateQueryCheckpointRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).CreateQueryCheckpoint(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_CreateQueryCheckpoint_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).CreateQueryCheckpoint(ctx, req.(*CreateQueryCheckpointRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClusterService_DeleteQueryCheckpoint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteQueryCheckpointRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).DeleteQueryCheckpoint(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_DeleteQueryCheckpoint_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).DeleteQueryCheckpoint(ctx, req.(*DeleteQueryCheckpointRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClusterService_ListQueryCheckpoints_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListQueryCheckpointsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).ListQueryCheckpoints(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_ListQueryCheckpoints_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).ListQueryCheckpoints(ctx, req.(*ListQueryCheckpointsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClusterService_GetQueryCheckpointInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQueryCheckpointInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).GetQueryCheckpointInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_GetQueryCheckpointInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).GetQueryCheckpointInfo(ctx, req.(*GetQueryCheckpointInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -532,6 +686,22 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateCheckpoint",
 			Handler:    _ClusterService_CreateCheckpoint_Handler,
+		},
+		{
+			MethodName: "CreateQueryCheckpoint",
+			Handler:    _ClusterService_CreateQueryCheckpoint_Handler,
+		},
+		{
+			MethodName: "DeleteQueryCheckpoint",
+			Handler:    _ClusterService_DeleteQueryCheckpoint_Handler,
+		},
+		{
+			MethodName: "ListQueryCheckpoints",
+			Handler:    _ClusterService_ListQueryCheckpoints_Handler,
+		},
+		{
+			MethodName: "GetQueryCheckpointInfo",
+			Handler:    _ClusterService_GetQueryCheckpointInfo_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

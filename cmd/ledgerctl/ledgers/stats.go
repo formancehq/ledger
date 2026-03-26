@@ -21,6 +21,7 @@ func NewStatsCommand() *cobra.Command {
 	}
 
 	cmd.Flags().String("ledger", "", "Ledger name (interactive selection if omitted)")
+	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -47,8 +48,11 @@ func runStats(cmd *cobra.Command, _ []string) error {
 
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching stats for ledger %s...", ledgerName))
 
+	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
+
 	stats, err := client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{
-		Ledger: ledgerName,
+		Ledger:       ledgerName,
+		CheckpointId: checkpointID,
 	})
 	if err != nil {
 		_ = spinner.Stop()
