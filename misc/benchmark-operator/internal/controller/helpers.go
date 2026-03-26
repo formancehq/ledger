@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -116,7 +117,7 @@ func ownerRefToMap(ref metav1.OwnerReference) map[string]any {
 func buildResource(bm *benchmarkv1alpha1.Benchmark, entry benchmarkv1alpha1.ResourceEntry, name string) *unstructured.Unstructured {
 	var manifest map[string]any
 	if len(entry.Manifest.Raw) > 0 {
-		_ = json.Unmarshal(entry.Manifest.Raw, &manifest) //nolint:errcheck // fallback to empty
+		_ = json.Unmarshal(entry.Manifest.Raw, &manifest)
 	}
 	if manifest == nil {
 		manifest = map[string]any{}
@@ -147,7 +148,7 @@ func gvrForManifest(raw []byte) (schema.GroupVersionResource, error) {
 		return schema.GroupVersionResource{}, fmt.Errorf("unmarshal manifest: %w", err)
 	}
 	if partial.APIVersion == "" || partial.Kind == "" {
-		return schema.GroupVersionResource{}, fmt.Errorf("manifest missing apiVersion or kind")
+		return schema.GroupVersionResource{}, errors.New("manifest missing apiVersion or kind")
 	}
 
 	return parseGVR(partial.APIVersion, kindToResource(partial.Kind)), nil
@@ -163,7 +164,7 @@ func buildTestRun(bm *benchmarkv1alpha1.Benchmark) *unstructured.Unstructured {
 
 	var spec map[string]any
 	if len(bm.Spec.TestRun.Raw) > 0 {
-		_ = json.Unmarshal(bm.Spec.TestRun.Raw, &spec) //nolint:errcheck // fallback to empty
+		_ = json.Unmarshal(bm.Spec.TestRun.Raw, &spec)
 	}
 	if spec == nil {
 		spec = map[string]any{}

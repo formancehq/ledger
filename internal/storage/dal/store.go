@@ -224,6 +224,7 @@ func NewStore(
 			for i := 4; i < 7; i++ {
 				levels[i].Compression = pebble.ZstdCompression
 			}
+
 			return levels
 		}(),
 

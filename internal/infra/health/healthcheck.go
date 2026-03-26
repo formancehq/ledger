@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/monitoring/diskusage"
@@ -101,14 +102,14 @@ func (hc *HealthChecker) IsHealthy() bool {
 
 // nodeUsageReport holds the disk usage data for a single node, used for info logging.
 type nodeUsageReport struct {
-	nodeID         uint64
-	walUsed        int64
-	walTotal       int64
-	walPercent     float64
-	dataUsed       int64
-	dataTotal      int64
-	dataPercent    float64
-	fetchErr       error
+	nodeID      uint64
+	walUsed     int64
+	walTotal    int64
+	walPercent  float64
+	dataUsed    int64
+	dataTotal   int64
+	dataPercent float64
+	fetchErr    error
 }
 
 // check performs the disk usage check on all nodes if this node is the leader.

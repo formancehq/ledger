@@ -51,6 +51,7 @@ go build -o build/ledgerctl ./cmd/ledgerctl
 | **Audit** | `demo_audit.tape` | Audit log listing, failures-only filter, ledger filter |
 | **Signing** | `demo_signing.tape` | Generate keypair, bootstrap key registration, signed requests, key management |
 
+
 Each demo is self-contained: it creates its own ledger, runs the scenario, and cleans up.
 
 ## Generating Demos

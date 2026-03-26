@@ -4,6 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protowire"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -11,20 +17,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/encoding/protowire"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	ledgerv1alpha1 "github.com/formancehq/ledger-v3-poc/operator/api/v1alpha1"
 )
 
 const (
-	ledgerFinalizer     = "ledger.formance.com/finalizer"
-	bucketServiceApply  = "/ledger.BucketService/Apply"
+	ledgerFinalizer       = "ledger.formance.com/finalizer"
+	bucketServiceApply    = "/ledger.BucketService/Apply"
 	ledgerServiceGRPCPort = 8888
 )
 
@@ -261,4 +259,3 @@ func encodeApplyRequest(requests ...[]byte) []byte {
 
 	return msg
 }
-

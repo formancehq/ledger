@@ -374,6 +374,7 @@ func (t *DefaultTransport) RemovePeer(ctx context.Context, id uint64) {
 	conn, exists := t.peers[id]
 	if !exists {
 		t.peersMu.Unlock()
+
 		return
 	}
 	delete(t.peers, id)

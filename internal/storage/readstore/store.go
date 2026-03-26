@@ -81,6 +81,7 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 			for i := 4; i < 7; i++ {
 				levels[i].Compression = pebble.ZstdCompression
 			}
+
 			return levels
 		}(),
 	}

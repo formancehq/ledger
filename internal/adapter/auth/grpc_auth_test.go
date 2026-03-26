@@ -447,3 +447,28 @@ func TestAuthenticate_GranularScopePassThrough(t *testing.T) {
 	// Should NOT have other read scopes
 	assert.False(t, HasScope(effective, ScopeLedgersRead))
 }
+
+func TestAuthenticate_ClusterSecret_GrantsAllScopes(t *testing.T) {
+	t.Parallel()
+
+	secret := "test-cluster-secret-12345"
+
+	cfg := AuthConfig{
+		Enabled:       true,
+		ClusterSecret: secret,
+	}
+
+	ctx := ctxWithBearer(secret)
+
+	newCtx, err := Authenticate(ctx, cfg)
+	require.NoError(t, err)
+
+	// Cluster-internal requests must have all granular scopes
+	// so that per-request scope checks in Apply succeed.
+	effective := ExpandedScopesFromContext(newCtx)
+	require.NotNil(t, effective)
+
+	for scope := range AllGranularScopes {
+		assert.True(t, HasScope(effective, scope), "missing scope %s", scope)
+	}
+}

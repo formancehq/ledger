@@ -53,10 +53,17 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 	}
 
 	// Fast path: cluster-internal shared secret bypasses JWT validation.
+	// Grant all granular scopes so that per-request scope checks (e.g. in Apply)
+	// succeed when a follower forwards a request to the leader.
 	if cfg.ClusterSecret != "" && token == cfg.ClusterSecret {
 		span.SetAttributes(attribute.Bool("auth.cluster_internal", true))
 
-		return ctx, nil
+		allScopes := make(map[Scope]struct{}, len(AllGranularScopes))
+		for s := range AllGranularScopes {
+			allScopes[s] = struct{}{}
+		}
+
+		return WithExpandedScopes(ctx, allScopes), nil
 	}
 
 	keyID := extractKeyID(token)

@@ -119,8 +119,8 @@ type Node struct {
 	config           NodeConfig
 	proposeCh        chan *Proposal
 	clusterCommandCh chan *clusterCommand
-	confState     atomic.Pointer[raftpb.ConfState]
-	lastSoftState atomic.Pointer[raft.SoftState]
+	confState        atomic.Pointer[raftpb.ConfState]
+	lastSoftState    atomic.Pointer[raft.SoftState]
 	observer         *Observer
 	applier          *Applier
 
@@ -779,7 +779,7 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		if wasLeader != isLeader {
 			// Use rd.HardState.Term instead of rawNode.Status().Term to avoid
 			// calling rawNode from the processReadies goroutine (rawNode is not thread-safe).
-			term := rd.HardState.Term
+			term := rd.Term
 			logger := node.logger.WithFields(map[string]any{
 				"lead": ss.Lead,
 				"term": term,
@@ -1326,6 +1326,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 
 	err := node.execClusterCommand(ctx, func() error {
 		status = node.rawNode.Status()
+
 		return nil
 	})
 	if err != nil {
