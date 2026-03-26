@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/formancehq/ledger-v3-poc/deployments/devenv/shared"
 	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws"
 	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/iam"
 	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/s3"
@@ -19,6 +18,8 @@ import (
 	k8syaml "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/yaml"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+
+	"github.com/formancehq/ledger-v3-poc/deployments/devenv/shared"
 )
 
 func main() {
@@ -273,6 +274,13 @@ func main() {
 					"bucket": bucketName,
 					"region": coldStorageRegion,
 				},
+			}
+
+			// Configure pods to use the aws-access ServiceAccount (IRSA).
+			createSA := false
+			defaultsSpec["serviceAccount"] = map[string]any{
+				"create": createSA,
+				"name":   "aws-access",
 			}
 
 			if existingRoleARN != "" {
