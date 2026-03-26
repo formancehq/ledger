@@ -50,8 +50,12 @@ func readTransaction(t *testing.T, rs *replayStore, canonicalKey []byte) *common
 	require.NoError(t, err)
 	defer func() { _ = closer.Close() }()
 
+	// Values are prefixed with txOpFinalized tag from the merger's Finish output.
+	require.NotEmpty(t, val)
+	require.Equal(t, byte(txOpFinalized), val[0], "expected txOpFinalized prefix")
+
 	var state commonpb.TransactionState
-	require.NoError(t, state.UnmarshalVT(val))
+	require.NoError(t, state.UnmarshalVT(val[1:]))
 
 	return &state
 }

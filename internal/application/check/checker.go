@@ -714,8 +714,15 @@ func (c *Checker) compareTransactions(ctx context.Context, baselineDB *pebble.DB
 			return 1
 		}
 
+		// Values are prefixed with txOpFinalized tag from the merger's Finish output.
+		if len(valBytes) == 0 || valBytes[0] != 0x00 {
+			_ = replayIter.Close()
+
+			return 1
+		}
+
 		state := &commonpb.TransactionState{}
-		if err := state.UnmarshalVT(valBytes); err != nil {
+		if err := state.UnmarshalVT(valBytes[1:]); err != nil {
 			_ = replayIter.Close()
 
 			return 1

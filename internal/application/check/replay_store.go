@@ -32,6 +32,7 @@ const (
 
 // Transaction merge op tags — each Merge operand starts with one of these.
 const (
+	txOpFinalized  = 0x00 // [txOpFinalized][marshaledTransactionState] — output of a previous Finish
 	txOpCreate     = 0x01 // [txOpCreate][uint64 seq][marshaledMetadataSet]
 	txOpRevertedBy = 0x02 // [txOpRevertedBy][uint64 revertTxId]
 	txOpSetMeta    = 0x03 // [txOpSetMeta][marshaledMetadata]
@@ -396,6 +397,12 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 				state.Metadata.Metadata = filtered
 			}
 
+		case txOpFinalized:
+			// Re-ingesting a previously finalized state (from a prior compaction).
+			if err := state.UnmarshalVT(op[1:]); err != nil {
+				return nil, nil, fmt.Errorf("unmarshaling finalized tx state: %w", err)
+			}
+
 		default:
 			return nil, nil, fmt.Errorf("unknown tx op tag: 0x%02x", op[0])
 		}
@@ -406,5 +413,10 @@ func (m *txMerger) Finish(_ bool) ([]byte, io.Closer, error) {
 		return nil, nil, err
 	}
 
-	return data, nil, nil
+	// Prefix with txOpFinalized so a subsequent compaction can re-ingest this result.
+	result := make([]byte, 1+len(data))
+	result[0] = txOpFinalized
+	copy(result[1:], data)
+
+	return result, nil, nil
 }
