@@ -6288,12 +6288,12 @@ func (s *V2) ListExporters(ctx context.Context, opts ...operations.Option) (*ope
 				return nil, err
 			}
 
-			var out components.V2ListExportersResponse
+			var out components.V2ExportersCursorResponse
 			if err := utils.UnmarshalJsonFromResponseBody(bytes.NewBuffer(rawBody), &out, ""); err != nil {
 				return nil, err
 			}
 
-			res.V2ListExportersResponse = &out
+			res.V2ExportersCursorResponse = &out
 		default:
 			rawBody, err := utils.ConsumeRawBody(httpRes)
 			if err != nil {
@@ -7726,12 +7726,12 @@ func (s *V2) ListPipelines(ctx context.Context, request operations.V2ListPipelin
 				return nil, err
 			}
 
-			var out components.V2ListPipelinesResponse
+			var out components.V2PipelinesCursorResponse
 			if err := utils.UnmarshalJsonFromResponseBody(bytes.NewBuffer(rawBody), &out, ""); err != nil {
 				return nil, err
 			}
 
-			res.V2ListPipelinesResponse = &out
+			res.V2PipelinesCursorResponse = &out
 		default:
 			rawBody, err := utils.ConsumeRawBody(httpRes)
 			if err != nil {

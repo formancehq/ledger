@@ -5288,16 +5288,7 @@ components:
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              cursor:
-                allOf:
-                  - $ref: "#/components/schemas/V2PipelinesCursorResponse"
-                  - properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/V2Pipeline"
+            $ref: "#/components/schemas/V2PipelinesCursorResponse"
     V2GetPipelineStateResponse:
       description: Pipeline information
       content:
@@ -5325,17 +5316,7 @@ components:
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              cursor:
-                allOf:
-                  - $ref: "#/components/schemas/V2ExportersCursorResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/V2Exporter"
+            $ref: "#/components/schemas/V2ExportersCursorResponse"
     V2GetExporterStateResponse:
       description: Exporter information
       content:

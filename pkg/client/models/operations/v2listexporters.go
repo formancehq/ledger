@@ -9,7 +9,7 @@ import (
 type V2ListExportersResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// Exporters list
-	V2ListExportersResponse *components.V2ListExportersResponse
+	V2ExportersCursorResponse *components.V2ExportersCursorResponse
 }
 
 func (v *V2ListExportersResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -19,11 +19,11 @@ func (v *V2ListExportersResponse) GetHTTPMeta() components.HTTPMetadata {
 	return v.HTTPMeta
 }
 
-func (v *V2ListExportersResponse) GetV2ListExportersResponse() *components.V2ListExportersResponse {
+func (v *V2ListExportersResponse) GetV2ExportersCursorResponse() *components.V2ExportersCursorResponse {
 	if v == nil {
 		return nil
 	}
-	return v.V2ListExportersResponse
+	return v.V2ExportersCursorResponse
 }
 
 // #region class-body-v2listexportersresponse
