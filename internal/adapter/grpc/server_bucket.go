@@ -627,9 +627,37 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 		return nil, fmt.Errorf("loading sink configs: %w", err)
 	}
 
-	statuses, err := query.ReadAllSinkStatuses(impl.store)
+	// Build statuses by merging error statuses (KeyPrefixSinkStatus) with cursors (KeyPrefixSinkCursor).
+	errorStatuses, err := query.ReadAllSinkStatuses(impl.store)
 	if err != nil {
 		return nil, fmt.Errorf("loading sink statuses: %w", err)
+	}
+
+	statusBySink := make(map[string]*commonpb.SinkStatus, len(errorStatuses))
+	for _, s := range errorStatuses {
+		statusBySink[s.GetSinkName()] = s
+	}
+
+	// Enrich with cursor values for every configured sink.
+	for _, sink := range sinks {
+		cursor, err := query.ReadSinkCursor(impl.store, sink.GetName())
+		if err != nil {
+			return nil, fmt.Errorf("loading sink cursor for %q: %w", sink.GetName(), err)
+		}
+
+		if existing, ok := statusBySink[sink.GetName()]; ok {
+			existing.Cursor = cursor
+		} else {
+			statusBySink[sink.GetName()] = &commonpb.SinkStatus{
+				SinkName: sink.GetName(),
+				Cursor:   cursor,
+			}
+		}
+	}
+
+	statuses := make([]*commonpb.SinkStatus, 0, len(statusBySink))
+	for _, s := range statusBySink {
+		statuses = append(statuses, s)
 	}
 
 	return &servicepb.GetEventsSinksResponse{

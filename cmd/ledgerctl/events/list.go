@@ -141,6 +141,9 @@ func runList(cmd *cobra.Command, _ []string) error {
 			} else {
 				data = append(data, []string{"Status", pterm.Green("healthy")})
 			}
+		} else {
+			data = append(data, []string{"Cursor", "0"})
+			data = append(data, []string{"Status", pterm.Yellow("pending")})
 		}
 
 		err := pterm.DefaultTable.WithData(data).Render()
