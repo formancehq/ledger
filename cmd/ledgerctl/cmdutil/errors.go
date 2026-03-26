@@ -164,6 +164,9 @@ func reconstructError(reason string, metadata map[string]string, message string)
 	case domain.ErrReasonLedgerNotFound:
 		return &domain.ErrLedgerNotFound{Name: metadata["name"]}
 
+	case domain.ErrReasonLedgerDeleted:
+		return &domain.ErrLedgerDeleted{Name: metadata["name"]}
+
 	case domain.ErrReasonIdempotencyKeyConflict:
 		return &domain.ErrIdempotencyKeyConflict{Key: metadata["key"]}
 

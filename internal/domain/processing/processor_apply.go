@@ -14,12 +14,16 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 		return nil, &domain.ErrLedgerNotFound{Name: apply.GetLedger()}
 	}
 
-	// Block data-modifying writes on mirror-mode ledgers.
-	// Schema operations (set/remove metadata field type and their conversion
-	// lifecycle) are allowed because they only affect local configuration,
-	// not replicated data.
-	if ledgerInfo, infoOk := s.GetLedger(apply.GetLedger()); infoOk && ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
-		if !isMirrorSafeApply(apply) {
+	// Block writes on deleted or mirror-mode ledgers.
+	if ledgerInfo, infoOk := s.GetLedger(apply.GetLedger()); infoOk {
+		if ledgerInfo.GetDeletedAt() != nil {
+			return nil, &domain.ErrLedgerDeleted{Name: apply.GetLedger()}
+		}
+
+		// Schema operations (set/remove metadata field type and their conversion
+		// lifecycle) are allowed on mirror-mode ledgers because they only affect
+		// local configuration, not replicated data.
+		if ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !isMirrorSafeApply(apply) {
 			return nil, &domain.ErrLedgerInMirrorMode{Name: apply.GetLedger()}
 		}
 	}

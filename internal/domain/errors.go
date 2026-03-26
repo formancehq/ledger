@@ -12,6 +12,7 @@ var ErrNotFound = errors.New("not found")
 const (
 	ErrReasonLedgerAlreadyExists           = "LEDGER_ALREADY_EXISTS"
 	ErrReasonLedgerNotFound                = "LEDGER_NOT_FOUND"
+	ErrReasonLedgerDeleted                 = "LEDGER_DELETED"
 	ErrReasonIdempotencyKeyConflict        = "IDEMPOTENCY_KEY_CONFLICT"
 	ErrReasonTransactionReferenceConflict  = "TRANSACTION_REFERENCE_CONFLICT"
 	ErrReasonTransactionNotFound           = "TRANSACTION_NOT_FOUND"
@@ -96,6 +97,15 @@ type ErrLedgerNotFound struct {
 
 func (e *ErrLedgerNotFound) Error() string {
 	return "ledger does not exist: " + e.Name
+}
+
+// ErrLedgerDeleted is returned when a write operation targets a soft-deleted ledger.
+type ErrLedgerDeleted struct {
+	Name string
+}
+
+func (e *ErrLedgerDeleted) Error() string {
+	return "ledger has been deleted: " + e.Name
 }
 
 // ErrIdempotencyKeyConflict is returned when an idempotency key is reused with different content.

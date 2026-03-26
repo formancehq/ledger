@@ -55,6 +55,10 @@ var errorMappings = []errorMapping{
 		return map[string]string{"name": e.Name}
 	}), codes.NotFound, domain.ErrReasonLedgerNotFound},
 
+	{matchAs(func(e *domain.ErrLedgerDeleted) map[string]string {
+		return map[string]string{"name": e.Name}
+	}), codes.FailedPrecondition, domain.ErrReasonLedgerDeleted},
+
 	{matchAs(func(e *domain.ErrLedgerInMirrorMode) map[string]string {
 		return map[string]string{"name": e.Name}
 	}), codes.FailedPrecondition, domain.ErrReasonLedgerInMirrorMode},

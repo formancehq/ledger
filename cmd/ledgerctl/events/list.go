@@ -113,6 +113,16 @@ func runList(cmd *cobra.Command, _ []string) error {
 				[]string{"URL", s.Nats.GetUrl()},
 				[]string{"Topic", s.Nats.GetTopic()},
 			)
+		case *commonpb.SinkConfig_Http:
+			secret := "(none)"
+			if s.Http.GetSecret() != "" {
+				secret = "(set)"
+			}
+			data = append(data,
+				[]string{"Type", "HTTP"},
+				[]string{"Endpoint", s.Http.GetEndpoint()},
+				[]string{"Secret", secret},
+			)
 		case *commonpb.SinkConfig_Clickhouse:
 			data = append(data,
 				[]string{"Type", "ClickHouse"},

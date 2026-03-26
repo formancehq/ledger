@@ -8,8 +8,12 @@ import (
 )
 
 func (p *RequestProcessor) processCreateLedger(order *raftcmdpb.CreateLedgerOrder, s InMemoryStore) (*commonpb.LogPayload, error) {
-	_, ok := s.GetLedger(order.GetName())
+	existing, ok := s.GetLedger(order.GetName())
 	if ok {
+		if existing.GetDeletedAt() != nil {
+			return nil, &domain.ErrLedgerDeleted{Name: order.GetName()}
+		}
+
 		return nil, &domain.ErrLedgerAlreadyExists{Name: order.GetName()}
 	}
 
