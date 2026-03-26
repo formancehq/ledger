@@ -230,19 +230,36 @@ func main() {
 				coldStorageRegion = "eu-west-1"
 			}
 
-			awsProvider, awsErr := aws.NewProvider(ctx, "aws-cold-storage", &aws.ProviderArgs{
-				Region: pulumi.String(coldStorageRegion),
-			})
-			if awsErr != nil {
-				return fmt.Errorf("failed to create AWS provider for cold storage: %w", awsErr)
-			}
+			// When pre-existing resources are provided, skip creation and reference them directly.
+			existingBucket := cfg.Get("coldStorage-s3-bucket")
+			existingRoleARN := cfg.Get("coldStorage-iam-role-arn")
 
-			bucketName := fmt.Sprintf("ledger-exp-cold-storage-%s", ctx.Stack())
-			coldBucket, bucketErr := s3.NewBucketV2(ctx, "cold-storage-bucket", &s3.BucketV2Args{
-				Bucket: pulumi.String(bucketName),
-			}, pulumi.Provider(awsProvider))
-			if bucketErr != nil {
-				return fmt.Errorf("failed to create cold storage S3 bucket: %w", bucketErr)
+			var bucketName pulumi.StringInput
+
+			if existingBucket != "" {
+				// Use pre-existing S3 bucket — admin-managed.
+				bucketName = pulumi.String(existingBucket)
+				ctx.Export("coldStorageBucket", pulumi.String(existingBucket))
+			} else {
+				// Create a new S3 bucket.
+				awsProvider, awsErr := aws.NewProvider(ctx, "aws-cold-storage", &aws.ProviderArgs{
+					Region: pulumi.String(coldStorageRegion),
+				})
+				if awsErr != nil {
+					return fmt.Errorf("failed to create AWS provider for cold storage: %w", awsErr)
+				}
+
+				name := fmt.Sprintf("ledger-exp-cold-storage-%s", ctx.Stack())
+				coldBucket, bucketErr := s3.NewBucketV2(ctx, "cold-storage-bucket", &s3.BucketV2Args{
+					Bucket: pulumi.String(name),
+				}, pulumi.Provider(awsProvider))
+				if bucketErr != nil {
+					return fmt.Errorf("failed to create cold storage S3 bucket: %w", bucketErr)
+				}
+
+				bucketName = coldBucket.Bucket
+				coldStorageDeps = append(coldStorageDeps, coldBucket)
+				ctx.Export("coldStorageBucket", coldBucket.Bucket)
 			}
 
 			defaultsConfig, ok := defaultsSpec["config"].(map[string]any)
@@ -253,81 +270,20 @@ func main() {
 			defaultsConfig["coldStorage"] = map[string]any{
 				"driver": "s3",
 				"s3": map[string]any{
-					"bucket": coldBucket.Bucket,
+					"bucket": bucketName,
 					"region": coldStorageRegion,
 				},
 			}
 
-			oidcIssuer := cfg.Get("coldStorage-eks-oidc-issuer")
-			if oidcIssuer != "" {
-				oidcIssuer = strings.TrimPrefix(oidcIssuer, "https://")
-
-				callerIdentity, callerErr := aws.GetCallerIdentity(ctx, &aws.GetCallerIdentityArgs{}, pulumi.Provider(awsProvider))
-				if callerErr != nil {
-					return fmt.Errorf("failed to get AWS caller identity: %w", callerErr)
-				}
-
-				oidcProviderARN := fmt.Sprintf("arn:aws:iam::%s:oidc-provider/%s", callerIdentity.AccountId, oidcIssuer)
-				trustPolicy, jsonErr := json.Marshal(map[string]any{
-					"Version": "2012-10-17",
-					"Statement": []map[string]any{{
-						"Effect":    "Allow",
-						"Principal": map[string]any{"Federated": oidcProviderARN},
-						"Action":    "sts:AssumeRoleWithWebIdentity",
-						"Condition": map[string]any{
-							"StringEquals": map[string]string{
-								oidcIssuer + ":sub": fmt.Sprintf("system:serviceaccount:%s:aws-access", namespaceName),
-								oidcIssuer + ":aud": "sts.amazonaws.com",
-							},
-						},
-					}},
-				})
-				if jsonErr != nil {
-					return fmt.Errorf("failed to marshal trust policy: %w", jsonErr)
-				}
-
-				coldStorageRole, roleErr := iam.NewRole(ctx, "cold-storage-role", &iam.RoleArgs{
-					Name:             pulumi.Sprintf("ledger-exp-%s-cold-storage", ctx.Stack()),
-					AssumeRolePolicy: pulumi.String(trustPolicy),
-				}, pulumi.Provider(awsProvider))
-				if roleErr != nil {
-					return fmt.Errorf("failed to create cold storage IAM role: %w", roleErr)
-				}
-
-				s3Policy, jsonErr := json.Marshal(map[string]any{
-					"Version": "2012-10-17",
-					"Statement": []map[string]any{{
-						"Effect": "Allow",
-						"Action": []string{
-							"s3:GetObject",
-							"s3:PutObject",
-							"s3:DeleteObject",
-							"s3:ListBucket",
-						},
-						"Resource": []string{
-							fmt.Sprintf("arn:aws:s3:::%s", bucketName),
-							fmt.Sprintf("arn:aws:s3:::%s/*", bucketName),
-						},
-					}},
-				})
-				if jsonErr != nil {
-					return fmt.Errorf("failed to marshal S3 policy: %w", jsonErr)
-				}
-
-				_, policyErr := iam.NewRolePolicy(ctx, "cold-storage-s3-policy", &iam.RolePolicyArgs{
-					Role:   coldStorageRole.Name,
-					Policy: pulumi.String(s3Policy),
-				}, pulumi.Provider(awsProvider))
-				if policyErr != nil {
-					return fmt.Errorf("failed to create cold storage S3 policy: %w", policyErr)
-				}
-
+			if existingRoleARN != "" {
+				// Use pre-existing IAM role — admin-managed.
+				// Only create the K8s ServiceAccount with the IRSA annotation.
 				sa, saErr := v1.NewServiceAccount(ctx, "aws-access", &v1.ServiceAccountArgs{
 					Metadata: &metav1.ObjectMetaArgs{
 						Name:      pulumi.String("aws-access"),
 						Namespace: namespace.Metadata.Name(),
 						Annotations: pulumi.StringMap{
-							"eks.amazonaws.com/role-arn": coldStorageRole.Arn,
+							"eks.amazonaws.com/role-arn": pulumi.String(existingRoleARN),
 						},
 					},
 				}, pulumi.Provider(k8sProvider))
@@ -335,11 +291,101 @@ func main() {
 					return fmt.Errorf("failed to create IRSA ServiceAccount: %w", saErr)
 				}
 				coldStorageDeps = append(coldStorageDeps, sa)
-				ctx.Export("coldStorageRoleArn", coldStorageRole.Arn)
-			}
+				ctx.Export("coldStorageRoleArn", pulumi.String(existingRoleARN))
+			} else {
+				// Create IAM role + policy + ServiceAccount via OIDC (IRSA).
+				oidcIssuer := cfg.Get("coldStorage-eks-oidc-issuer")
+				if oidcIssuer != "" {
+					awsProvider, awsErr := aws.NewProvider(ctx, "aws-cold-storage-iam", &aws.ProviderArgs{
+						Region: pulumi.String(coldStorageRegion),
+					})
+					if awsErr != nil {
+						return fmt.Errorf("failed to create AWS provider for cold storage IAM: %w", awsErr)
+					}
 
-			coldStorageDeps = append(coldStorageDeps, coldBucket)
-			ctx.Export("coldStorageBucket", coldBucket.Bucket)
+					oidcIssuer = strings.TrimPrefix(oidcIssuer, "https://")
+
+					callerIdentity, callerErr := aws.GetCallerIdentity(ctx, &aws.GetCallerIdentityArgs{}, pulumi.Provider(awsProvider))
+					if callerErr != nil {
+						return fmt.Errorf("failed to get AWS caller identity: %w", callerErr)
+					}
+
+					oidcProviderARN := fmt.Sprintf("arn:aws:iam::%s:oidc-provider/%s", callerIdentity.AccountId, oidcIssuer)
+					trustPolicy, jsonErr := json.Marshal(map[string]any{
+						"Version": "2012-10-17",
+						"Statement": []map[string]any{{
+							"Effect":    "Allow",
+							"Principal": map[string]any{"Federated": oidcProviderARN},
+							"Action":    "sts:AssumeRoleWithWebIdentity",
+							"Condition": map[string]any{
+								"StringEquals": map[string]string{
+									oidcIssuer + ":sub": fmt.Sprintf("system:serviceaccount:%s:aws-access", namespaceName),
+									oidcIssuer + ":aud": "sts.amazonaws.com",
+								},
+							},
+						}},
+					})
+					if jsonErr != nil {
+						return fmt.Errorf("failed to marshal trust policy: %w", jsonErr)
+					}
+
+					coldStorageRole, roleErr := iam.NewRole(ctx, "cold-storage-role", &iam.RoleArgs{
+						Name:             pulumi.Sprintf("ledger-exp-%s-cold-storage", ctx.Stack()),
+						AssumeRolePolicy: pulumi.String(trustPolicy),
+					}, pulumi.Provider(awsProvider))
+					if roleErr != nil {
+						return fmt.Errorf("failed to create cold storage IAM role: %w", roleErr)
+					}
+
+					s3BucketName := fmt.Sprintf("ledger-exp-cold-storage-%s", ctx.Stack())
+					if existingBucket != "" {
+						s3BucketName = existingBucket
+					}
+
+					s3Policy, jsonErr := json.Marshal(map[string]any{
+						"Version": "2012-10-17",
+						"Statement": []map[string]any{{
+							"Effect": "Allow",
+							"Action": []string{
+								"s3:GetObject",
+								"s3:PutObject",
+								"s3:DeleteObject",
+								"s3:ListBucket",
+							},
+							"Resource": []string{
+								fmt.Sprintf("arn:aws:s3:::%s", s3BucketName),
+								fmt.Sprintf("arn:aws:s3:::%s/*", s3BucketName),
+							},
+						}},
+					})
+					if jsonErr != nil {
+						return fmt.Errorf("failed to marshal S3 policy: %w", jsonErr)
+					}
+
+					_, policyErr := iam.NewRolePolicy(ctx, "cold-storage-s3-policy", &iam.RolePolicyArgs{
+						Role:   coldStorageRole.Name,
+						Policy: pulumi.String(s3Policy),
+					}, pulumi.Provider(awsProvider))
+					if policyErr != nil {
+						return fmt.Errorf("failed to create cold storage S3 policy: %w", policyErr)
+					}
+
+					sa, saErr := v1.NewServiceAccount(ctx, "aws-access", &v1.ServiceAccountArgs{
+						Metadata: &metav1.ObjectMetaArgs{
+							Name:      pulumi.String("aws-access"),
+							Namespace: namespace.Metadata.Name(),
+							Annotations: pulumi.StringMap{
+								"eks.amazonaws.com/role-arn": coldStorageRole.Arn,
+							},
+						},
+					}, pulumi.Provider(k8sProvider))
+					if saErr != nil {
+						return fmt.Errorf("failed to create IRSA ServiceAccount: %w", saErr)
+					}
+					coldStorageDeps = append(coldStorageDeps, sa)
+					ctx.Export("coldStorageRoleArn", coldStorageRole.Arn)
+				}
+			}
 		}
 
 		defaultsDeps := append([]pulumi.Resource{ledgerOperator}, ledgerCRDs...)

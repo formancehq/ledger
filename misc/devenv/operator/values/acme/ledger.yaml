@@ -61,6 +61,8 @@ config:
       enabled: true
       minAge: "10s"
       maxBytes: 10485760  # 10 MiB
+  coldStorage:
+    driver: "s3"
   auth:
     scopeMapping:
       "ledger:read":

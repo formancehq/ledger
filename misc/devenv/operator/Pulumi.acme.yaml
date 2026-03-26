@@ -27,10 +27,11 @@ config:
     "sofia@formance.com": admin
     "david@formance.com": admin
     "*": guest
-  # Cold storage (S3)
-  ledger-operator:coldStorage-enabled: "false"
-  #  ledger-operator:coldStorage-s3-region: eu-west-1
-  #  ledger-operator:coldStorage-eks-oidc-issuer: "https://oidc.eks.eu-west-1.amazonaws.com/id/45E5BC35331522C015273F1FD2D14DC9"
+  # Cold storage (S3) — using pre-existing resources (admin-managed)
+  ledger-operator:coldStorage-enabled: "true"
+  ledger-operator:coldStorage-s3-region: eu-west-1
+  ledger-operator:coldStorage-s3-bucket: formance-acme-dev-euw1-01-ledger-cold-storage
+  ledger-operator:coldStorage-iam-role-arn: "arn:aws:iam::049417292754:role/FormanceEKSAcmeDevEUW101LedgerV3Role"
   ledger-operator:operatorUI-ingress-dnsEndpoint:
     annotations:
       service.beta.kubernetes.io/aws-load-balancer-internal: "true"
