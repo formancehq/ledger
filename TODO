@@ -9,6 +9,7 @@ Business:
 * Json filters as v2
 * Generate cluster id
 * Read only followers (learners ?)
+* 1password integration
 
 Docs:
 * Clean relying parties distinctions
