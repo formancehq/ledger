@@ -8,6 +8,7 @@ Business:
 * Databricks sinks
 * Json filters as v2
 * Generate cluster id
+* Read only followers (learners ?)
 
 Docs:
 * Clean relying parties distinctions
