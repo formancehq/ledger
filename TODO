@@ -7,6 +7,7 @@ Business:
 * Checkpoint when promoting ledger to be able to shutdown the mirrored ledger properly
 * Databricks sinks
 * Json filters as v2
+* Generate cluster id
 
 Docs:
 * Clean relying parties distinctions
