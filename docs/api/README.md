@@ -2845,20 +2845,10 @@ Accept: application/json
 ```json
 {
   "cursor": {
-    "cursor": {
-      "pageSize": 15,
-      "hasMore": false,
-      "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-      "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
-      "data": [
-        {
-          "driver": "string",
-          "config": {},
-          "id": "string",
-          "createdAt": "2019-08-24T14:15:22Z"
-        }
-      ]
-    },
+    "pageSize": 15,
+    "hasMore": false,
+    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "driver": "string",
@@ -2875,51 +2865,8 @@ Accept: application/json
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Exporters list|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Exporters list|[V2ExportersCursorResponse](#schemav2exporterscursorresponse)|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
-
-<h3 id="list-exporters-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» cursor|any|false|none|none|
-
-*allOf*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»» *anonymous*|[V2ExportersCursorResponse](#schemav2exporterscursorresponse)|false|none|none|
-|»»» cursor|object|true|none|none|
-|»»»» pageSize|integer(int64)|true|none|none|
-|»»»» hasMore|boolean|true|none|none|
-|»»»» previous|string|false|none|none|
-|»»»» next|string|false|none|none|
-|»»»» data|[allOf]|true|none|none|
-
-*allOf*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»»»»» *anonymous*|[V2ExporterConfiguration](#schemav2exporterconfiguration)|false|none|none|
-|»»»»»» driver|string|true|none|none|
-|»»»»»» config|object|true|none|none|
-
-*and*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»»»»» *anonymous*|object|false|none|none|
-|»»»»»» id|string|true|none|none|
-|»»»»»» createdAt|string(date-time)|true|none|none|
-
-*and*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»» *anonymous*|object|false|none|none|
-|»»» data|[allOf]|false|none|none|
 
 <aside class="success">
 This operation does not require authentication
@@ -3301,20 +3248,10 @@ Accept: application/json
 ```json
 {
   "cursor": {
-    "cursor": {
-      "pageSize": 15,
-      "hasMore": false,
-      "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
-      "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
-      "data": [
-        {
-          "id": "string",
-          "createdAt": "2019-08-24T14:15:22Z",
-          "lastLogID": 0,
-          "enabled": true
-        }
-      ]
-    },
+    "pageSize": 15,
+    "hasMore": false,
+    "previous": "YXVsdCBhbmQgYSBtYXhpbXVtIG1heF9yZXN1bHRzLol=",
+    "next": "aW0gdmVuaWFtLCBxdWlzIG5vc3RydWQ=",
     "data": [
       {
         "id": "string",
@@ -3331,53 +3268,8 @@ Accept: application/json
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Pipelines list|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Pipelines list|[V2PipelinesCursorResponse](#schemav2pipelinescursorresponse)|
 |default|Default|Error|[V2ErrorResponse](#schemav2errorresponse)|
-
-<h3 id="list-pipelines-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» cursor|any|false|none|none|
-
-*allOf*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»» *anonymous*|[V2PipelinesCursorResponse](#schemav2pipelinescursorresponse)|false|none|none|
-|»»» cursor|object|true|none|none|
-|»»»» pageSize|integer(int64)|true|none|none|
-|»»»» hasMore|boolean|true|none|none|
-|»»»» previous|string|false|none|none|
-|»»»» next|string|false|none|none|
-|»»»» data|[allOf]|true|none|none|
-
-*allOf*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»»»»» *anonymous*|object|false|none|none|
-|»»»»»» ledger|string|true|none|none|
-|»»»»»» exporterID|string|true|none|none|
-
-*and*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»»»»» *anonymous*|object|false|none|none|
-|»»»»»» id|string|true|none|none|
-|»»»»»» createdAt|string(date-time)|true|none|none|
-|»»»»»» lastLogID|integer|false|none|none|
-|»»»»»» enabled|boolean|false|none|none|
-
-*and*
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|»» *anonymous*|object|false|none|none|
-|»»» data|[allOf]|false|none|none|
 
 <aside class="success">
 This operation does not require authentication

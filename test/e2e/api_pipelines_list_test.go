@@ -82,6 +82,6 @@ var _ = Context("Pipelines API tests", func() {
 			Ledger: "default",
 		})
 		Expect(err).To(BeNil())
-		Expect(pipelines.V2ListPipelinesResponse.Cursor.Data).To(HaveLen(countExporters))
+		Expect(pipelines.V2PipelinesCursorResponse.Cursor.Data).To(HaveLen(countExporters))
 	})
 })
