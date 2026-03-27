@@ -677,6 +677,15 @@ func (fsm *Machine) commitAndRequestCheckpoint(
 	fsm.lastPersistedIndex.Store(fsm.lastAppliedIndex)
 	fsm.appliedCond.Broadcast()
 
+	// Notify all log consumers that new logs are available.
+	// Without this, the index builder's fast-path check (LastSequence > cursor)
+	// would never trigger for logs committed in this batch, causing
+	// WaitForSequence to block indefinitely.
+	lastSeq := fsm.nextSequenceID - 1
+	fsm.eventNotifier.NotifyLogsCommitted(lastSeq)
+	fsm.mirrorNotifier.NotifyLogsCommitted(lastSeq)
+	fsm.indexNotifier.NotifyLogsCommitted(lastSeq)
+
 	if needsArchiveDispatch {
 		fsm.dispatchArchiveRequests()
 	}

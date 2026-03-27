@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
+	oidcclient "github.com/formancehq/go-libs/v5/pkg/authn/oidc/client"
 	"github.com/formancehq/go-libs/v5/pkg/fx/transportfx"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
@@ -1078,12 +1079,30 @@ func handleConfChangeEvent(
 
 // buildAuthConfig constructs an AuthConfig from the server configuration and optional OIDC KeySet.
 // If Ed25519 keys are configured, it creates a composite KeySet that handles both OIDC and EdDSA tokens.
+// When auth is enabled with an issuer and no external KeySet is injected, it discovers the OIDC
+// configuration and creates a remote KeySet automatically.
 // Scope mapping is loaded from file, env var, or defaults to the backward-compatible mapping.
 func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) (internalauth.AuthConfig, error) {
 	authCfg := internalauth.AuthConfig{
 		Enabled: cfg.AuthConfig.Enabled,
 		Issuer:  cfg.AuthConfig.Issuer,
 		Service: cfg.AuthConfig.Service,
+	}
+
+	// When auth is enabled and an issuer is configured but no external KeySet was injected,
+	// discover the OIDC configuration and create a remote KeySet.
+	if oidcKeySet == nil && cfg.AuthConfig.Enabled && cfg.AuthConfig.Issuer != "" {
+		discovery, err := oidc.Discover(context.Background(), cfg.AuthConfig.Issuer, oidc.DiscoveryEndpoint)
+		if err != nil {
+			return authCfg, fmt.Errorf("discovering OIDC configuration for issuer %q: %w", cfg.AuthConfig.Issuer, err)
+		}
+
+		oidcKeySet = oidcclient.NewRemoteKeySet(nil, discovery.JwksURI)
+
+		logger.WithFields(map[string]any{
+			"issuer":   cfg.AuthConfig.Issuer,
+			"jwks_uri": discovery.JwksURI,
+		}).Infof("OIDC remote keyset configured via discovery")
 	}
 
 	if cfg.AuthConfig.Ed25519KeysFile != "" {

@@ -291,5 +291,11 @@ func (b *Builder) loop(stop <-chan struct{}) {
 		}
 
 		b.processBackgroundTasks(stop, cursor)
+
+		// Always wake WaitForSequence waiters so they can re-check progress.
+		// Without this, a waiter that enters Wait() between the last
+		// NotifyProgress (inside processLogs) and the next tick would miss
+		// the broadcast and block until new logs arrive.
+		b.readStore.NotifyProgress()
 	}
 }

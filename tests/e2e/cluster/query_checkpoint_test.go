@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/proto/clusterpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
+	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -37,7 +38,7 @@ var _ = Describe("Query Checkpoints", func() {
 			// Create a ledger.
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerName, nil),
+					actions.CreateLedgerAction(ledgerName, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -54,8 +55,8 @@ var _ = Describe("Query Checkpoints", func() {
 		It("should create a transaction before the checkpoint", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(1000), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(1000), "USD"),
 					}, nil),
 				},
 			})
@@ -91,8 +92,8 @@ var _ = Describe("Query Checkpoints", func() {
 		It("should create a post-checkpoint transaction", func() {
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(500), "EUR"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(500), "EUR"),
 					}, nil),
 				},
 			})
@@ -166,7 +167,7 @@ var _ = Describe("Query Checkpoints", func() {
 
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateLedgerAction(ledgerName, nil),
+					actions.CreateLedgerAction(ledgerName, nil),
 				},
 			})
 			Expect(err).To(Succeed())
@@ -176,8 +177,8 @@ var _ = Describe("Query Checkpoints", func() {
 			// tx0: world -> alice 100
 			_, err := client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "alice", big.NewInt(100), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 					}, nil),
 				},
 			})
@@ -191,8 +192,8 @@ var _ = Describe("Query Checkpoints", func() {
 			// tx1: world -> bob 200
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "bob", big.NewInt(200), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "bob", big.NewInt(200), "USD"),
 					}, nil),
 				},
 			})
@@ -206,8 +207,8 @@ var _ = Describe("Query Checkpoints", func() {
 			// tx2: world -> charlie 300
 			_, err = client.Apply(ctx, &servicepb.ApplyRequest{
 				Requests: []*servicepb.Request{
-					testutil.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
-						testutil.NewPosting("world", "charlie", big.NewInt(300), "USD"),
+					actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+						actions.NewPosting("world", "charlie", big.NewInt(300), "USD"),
 					}, nil),
 				},
 			})
