@@ -1,6 +1,7 @@
 package commonpb
 
 import (
+	"errors"
 	"fmt"
 	libtime "time"
 
@@ -9,6 +10,14 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/adapter/json"
 )
 
+// ErrTimestampBeforeEpoch is returned when a timestamp before the Unix epoch is provided.
+// The Data field is stored as uint64 microseconds, so pre-epoch (negative) values
+// cannot be represented correctly.
+var ErrTimestampBeforeEpoch = errors.New("timestamp before Unix epoch (1970-01-01T00:00:00Z) is not supported")
+
+// NewTimestamp creates a Timestamp from a time.Time.
+// Caller must ensure the time is not before the Unix epoch; pre-epoch times
+// will silently overflow the uint64 Data field.
 func NewTimestamp(time time.Time) *Timestamp {
 	return &Timestamp{
 		Data: uint64(time.UnixMicro()),
@@ -34,6 +43,10 @@ func (x *Timestamp) UnmarshalJSON(data []byte) error {
 	t, err := time.ParseTime(v)
 	if err != nil {
 		return err
+	}
+
+	if t.UnixMicro() < 0 {
+		return ErrTimestampBeforeEpoch
 	}
 
 	x.Data = uint64(t.UnixMicro())

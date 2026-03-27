@@ -88,6 +88,61 @@ test-e2e-full:
 test-scenarios:
     go test -race -tags scenario ./tests/scenarios/... -timeout 300s
 
+# Run all fuzz tests (seed corpus replay, no active fuzzing — fast CI check)
+fuzz-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "==> Replaying fuzz seed corpora..."
+    go test ./internal/proto/commonpb/ -run 'Fuzz' -timeout 60s
+    go test ./internal/proto/servicepb/ -run 'Fuzz' -timeout 60s
+    go test ./internal/proto/rafttransportpb/ -run 'Fuzz' -timeout 60s
+    go test ./internal/proto/raftcmdpb/ -run 'Fuzz' -timeout 60s
+    go test ./internal/proto/signaturepb/ -run 'Fuzz' -timeout 60s
+    go test ./internal/proto/snapshotpb/ -run 'Fuzz' -timeout 60s
+    go test ./internal/pkg/filterexpr/ -run 'Fuzz' -timeout 60s
+    go test ./internal/pkg/semver/ -run 'Fuzz' -timeout 60s
+    echo "All fuzz seed corpora passed."
+
+# Run active fuzzing on all targets (default: 30s each)
+fuzz duration="30s":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    targets=(
+        "FuzzUint256UnmarshalJSON ./internal/proto/commonpb/"
+        "FuzzMetadataSetUnmarshalJSON ./internal/proto/commonpb/"
+        "FuzzTimestampUnmarshalJSON ./internal/proto/commonpb/"
+        "FuzzLedgerLogUnmarshalJSON ./internal/proto/commonpb/"
+        "FuzzConvertMetadataValue ./internal/proto/commonpb/"
+        "FuzzBulkElementUnmarshalJSON ./internal/proto/servicepb/"
+        "FuzzLedgerApplyRequestUnmarshalJSON ./internal/proto/servicepb/"
+        "FuzzRaftRequestBatchUnmarshalVT ./internal/proto/rafttransportpb/"
+        "FuzzSendMessageRequestUnmarshalVT ./internal/proto/rafttransportpb/"
+        "FuzzProposalUnmarshalVT ./internal/proto/raftcmdpb/"
+        "FuzzOrderUnmarshalVT ./internal/proto/raftcmdpb/"
+        "FuzzStateUnmarshalVT ./internal/proto/raftcmdpb/"
+        "FuzzRequestSignatureUnmarshalVT ./internal/proto/signaturepb/"
+        "FuzzResponseSignatureUnmarshalVT ./internal/proto/signaturepb/"
+        "FuzzFetchSnapshotResponseUnmarshalVT ./internal/proto/snapshotpb/"
+        "FuzzDescribeSnapshotResponseUnmarshalVT ./internal/proto/snapshotpb/"
+        "FuzzFilterExprParse ./internal/pkg/filterexpr/"
+        "FuzzSemverParse ./internal/pkg/semver/"
+        "FuzzSemverParsePartial ./internal/pkg/semver/"
+    )
+    for entry in "${targets[@]}"; do
+        name="${entry%% *}"
+        pkg="${entry#* }"
+        echo "==> Fuzzing $name ({{duration}})..."
+        if ! go test "$pkg" -run '^$' -fuzz="^${name}$" -fuzztime="{{duration}}" -timeout 600s; then
+            echo "FAIL: $name"
+            exit 1
+        fi
+    done
+    echo "All fuzz targets passed."
+
+# Run active fuzzing on a single target
+fuzz-one target duration="30s":
+    go test ./... -run '^$' -fuzz="^{{target}}$" -fuzztime="{{duration}}" -timeout 600s
+
 # Release (official, triggered by tag)
 release:
     goreleaser release --clean
