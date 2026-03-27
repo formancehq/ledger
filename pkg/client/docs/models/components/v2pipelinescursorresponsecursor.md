@@ -1,4 +1,4 @@
-# V2ListPipelinesResponseCursorCursor
+# V2PipelinesCursorResponseCursor
 
 
 ## Fields

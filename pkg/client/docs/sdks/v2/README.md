@@ -1964,7 +1964,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    if res.V2ListExportersResponse != nil {
+    if res.V2ExportersCursorResponse != nil {
         // handle response
     }
 }
@@ -2386,7 +2386,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    if res.V2ListPipelinesResponse != nil {
+    if res.V2PipelinesCursorResponse != nil {
         // handle response
     }
 }

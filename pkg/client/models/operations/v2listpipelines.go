@@ -21,7 +21,7 @@ func (o *V2ListPipelinesRequest) GetLedger() string {
 type V2ListPipelinesResponse struct {
 	HTTPMeta components.HTTPMetadata `json:"-"`
 	// Pipelines list
-	V2ListPipelinesResponse *components.V2ListPipelinesResponse
+	V2PipelinesCursorResponse *components.V2PipelinesCursorResponse
 }
 
 func (o *V2ListPipelinesResponse) GetHTTPMeta() components.HTTPMetadata {
@@ -31,9 +31,9 @@ func (o *V2ListPipelinesResponse) GetHTTPMeta() components.HTTPMetadata {
 	return o.HTTPMeta
 }
 
-func (o *V2ListPipelinesResponse) GetV2ListPipelinesResponse() *components.V2ListPipelinesResponse {
+func (o *V2ListPipelinesResponse) GetV2PipelinesCursorResponse() *components.V2PipelinesCursorResponse {
 	if o == nil {
 		return nil
 	}
-	return o.V2ListPipelinesResponse
+	return o.V2PipelinesCursorResponse
 }

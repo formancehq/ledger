@@ -55,7 +55,7 @@ var _ = Context("Exporters list API tests", func() {
 			It("should be ok", func(specContext SpecContext) {
 				exporters, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ListExporters(ctx)
 				Expect(err).To(BeNil())
-				Expect(exporters.V2ListExportersResponse.Cursor.Data).To(HaveLen(count))
+				Expect(exporters.V2ExportersCursorResponse.Cursor.Data).To(HaveLen(count))
 			})
 		})
 	})

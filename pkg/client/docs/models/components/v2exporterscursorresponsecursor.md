@@ -1,4 +1,4 @@
-# V2ListExportersResponseCursorCursor
+# V2ExportersCursorResponseCursor
 
 
 ## Fields
