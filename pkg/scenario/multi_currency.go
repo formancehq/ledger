@@ -125,9 +125,9 @@ func multiCurrencyVendorPay(ctx context.Context, client servicepb.BucketServiceC
 func MultiCurrencySetupActions() []*servicepb.Request {
 	return []*servicepb.Request{
 		actions.CreateLedgerAction(MultiCurrencyLedger, nil),
-		actions.AddAccountTypeAction(MultiCurrencyLedger, "treasury", "treasury:{currency}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddEphemeralAccountTypeAction(MultiCurrencyLedger, "fx-clearing", "fx:clearing", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(MultiCurrencyLedger, "vendor", "vendor:{name}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(MultiCurrencyLedger, "treasury", "treasury:{currency}"),
+		actions.AddEphemeralAccountTypeAction(MultiCurrencyLedger, "fx-clearing", "fx:clearing"),
+		actions.AddAccountTypeAction(MultiCurrencyLedger, "vendor", "vendor:{name}"),
 		actions.SaveNumscriptWithVersionAction(MultiCurrencyLedger, "fund_account", `vars {
   account $account
   monetary $amount

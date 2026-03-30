@@ -134,10 +134,10 @@ func SubscriptionSetupActions() []*servicepb.Request {
 				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 			},
 		}),
-		actions.AddAccountTypeAction(SubscriptionLedger, "subscriber", "subscriber:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(SubscriptionLedger, "revenue-deferred", "revenue:deferred", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(SubscriptionLedger, "revenue-recognized", "revenue:recognized", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(SubscriptionLedger, "revenue-adjustment", "revenue:adjustment", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(SubscriptionLedger, "subscriber", "subscriber:{id}"),
+		actions.AddAccountTypeAction(SubscriptionLedger, "revenue-deferred", "revenue:deferred"),
+		actions.AddAccountTypeAction(SubscriptionLedger, "revenue-recognized", "revenue:recognized"),
+		actions.AddAccountTypeAction(SubscriptionLedger, "revenue-adjustment", "revenue:adjustment"),
 		actions.SaveNumscriptWithVersionAction(SubscriptionLedger, "fund_wallet", `vars {
   account $subscriber
   monetary $amount

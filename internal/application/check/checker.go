@@ -880,15 +880,6 @@ func replayLedgerLog(
 			}
 		}
 
-	case *commonpb.LedgerLogPayload_UpdatedAccountType:
-		if p.UpdatedAccountType != nil {
-			if types := ledgerAccountTypes[ledger]; types != nil {
-				if at, ok := types[p.UpdatedAccountType.GetName()]; ok {
-					at.EnforcementMode = p.UpdatedAccountType.GetEnforcementMode()
-				}
-			}
-		}
-
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		if p.CreatedTransaction == nil || p.CreatedTransaction.GetTransaction() == nil {
 			return nil

@@ -1212,18 +1212,6 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				},
 			},
 		}
-	case *servicepb.Request_UpdateAccountType:
-		order.Type = &raftcmdpb.Order_Apply{
-			Apply: &raftcmdpb.LedgerApplyOrder{
-				Ledger: reqType.UpdateAccountType.GetLedger(),
-				Data: &raftcmdpb.LedgerApplyOrder_UpdateAccountType{
-					UpdateAccountType: &raftcmdpb.UpdateAccountTypeOrder{
-						Name:            reqType.UpdateAccountType.GetName(),
-						EnforcementMode: reqType.UpdateAccountType.GetEnforcementMode(),
-					},
-				},
-			},
-		}
 	case *servicepb.Request_RemoveAccountType:
 		order.Type = &raftcmdpb.Order_Apply{
 			Apply: &raftcmdpb.LedgerApplyOrder{
@@ -1345,13 +1333,6 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 		order.Data = &raftcmdpb.LedgerApplyOrder_AddAccountType{
 			AddAccountType: &raftcmdpb.AddAccountTypeOrder{
 				AccountType: data.AddAccountType.GetAccountType(),
-			},
-		}
-	case *servicepb.LedgerApplyRequest_UpdateAccountType:
-		order.Data = &raftcmdpb.LedgerApplyOrder_UpdateAccountType{
-			UpdateAccountType: &raftcmdpb.UpdateAccountTypeOrder{
-				Name:            data.UpdateAccountType.GetName(),
-				EnforcementMode: data.UpdateAccountType.GetEnforcementMode(),
 			},
 		}
 	case *servicepb.LedgerApplyRequest_RemoveAccountType:

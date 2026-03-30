@@ -27,8 +27,7 @@ type EditableConfig struct {
 
 // EditableAccountType is the editable subset of an account type.
 type EditableAccountType struct {
-	Pattern         string `json:"pattern"         yaml:"pattern"`
-	EnforcementMode string `json:"enforcementMode" yaml:"enforcementMode"`
+	Pattern string `json:"pattern" yaml:"pattern"`
 }
 
 // EditableMetaField is the editable subset of a metadata field declaration.
@@ -77,8 +76,7 @@ func ConfigFromProto(
 	// Account types
 	for name, at := range ledger.GetAccountTypes() {
 		cfg.AccountTypes[name] = EditableAccountType{
-			Pattern:         at.GetPattern(),
-			EnforcementMode: strings.ToLower(at.GetEnforcementMode().String()),
+			Pattern: at.GetPattern(),
 		}
 	}
 
@@ -254,19 +252,17 @@ func diffAccountTypes(ledgerName string, current, desired *EditableConfig) []Dif
 	for name, desiredAT := range desired.AccountTypes {
 		currentAT, exists := current.AccountTypes[name]
 		if !exists {
-			mode := parseEnforcementModeProto(desiredAT.EnforcementMode)
 			actions = append(actions, DiffAction{
 				Section:     "accountType",
 				Operation:   "add",
-				Description: fmt.Sprintf("Add account type %q (pattern=%s, enforcement=%s)", name, desiredAT.Pattern, desiredAT.EnforcementMode),
+				Description: fmt.Sprintf("Add account type %q (pattern=%s)", name, desiredAT.Pattern),
 				Request: &servicepb.Request{
 					Type: &servicepb.Request_AddAccountType{
 						AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 							Ledger: ledgerName,
 							AccountType: &commonpb.AccountType{
-								Name:            name,
-								Pattern:         desiredAT.Pattern,
-								EnforcementMode: mode,
+								Name:    name,
+								Pattern: desiredAT.Pattern,
 							},
 						},
 					},
@@ -278,7 +274,6 @@ func diffAccountTypes(ledgerName string, current, desired *EditableConfig) []Dif
 
 		// Pattern changed → remove + add
 		if currentAT.Pattern != desiredAT.Pattern {
-			mode := parseEnforcementModeProto(desiredAT.EnforcementMode)
 			actions = append(actions, DiffAction{
 				Section:     "accountType",
 				Operation:   "remove",
@@ -301,9 +296,8 @@ func diffAccountTypes(ledgerName string, current, desired *EditableConfig) []Dif
 						AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 							Ledger: ledgerName,
 							AccountType: &commonpb.AccountType{
-								Name:            name,
-								Pattern:         desiredAT.Pattern,
-								EnforcementMode: mode,
+								Name:    name,
+								Pattern: desiredAT.Pattern,
 							},
 						},
 					},
@@ -311,25 +305,6 @@ func diffAccountTypes(ledgerName string, current, desired *EditableConfig) []Dif
 			})
 
 			continue
-		}
-
-		// Enforcement mode changed
-		if !strings.EqualFold(currentAT.EnforcementMode, desiredAT.EnforcementMode) {
-			mode := parseEnforcementModeProto(desiredAT.EnforcementMode)
-			actions = append(actions, DiffAction{
-				Section:     "accountType",
-				Operation:   "update",
-				Description: fmt.Sprintf("Update account type %q enforcement %s -> %s", name, currentAT.EnforcementMode, desiredAT.EnforcementMode),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_UpdateAccountType{
-						UpdateAccountType: &servicepb.UpdateAccountTypeLedgerRequest{
-							Ledger:          ledgerName,
-							Name:            name,
-							EnforcementMode: mode,
-						},
-					},
-				},
-			})
 		}
 	}
 

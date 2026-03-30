@@ -538,15 +538,6 @@ func (m *Request_AddAccountType) CloneVT() isRequest_Type {
 	return r
 }
 
-func (m *Request_UpdateAccountType) CloneVT() isRequest_Type {
-	if m == nil {
-		return (*Request_UpdateAccountType)(nil)
-	}
-	r := new(Request_UpdateAccountType)
-	r.UpdateAccountType = m.UpdateAccountType.CloneVT()
-	return r
-}
-
 func (m *Request_RemoveAccountType) CloneVT() isRequest_Type {
 	if m == nil {
 		return (*Request_RemoveAccountType)(nil)
@@ -1362,15 +1353,6 @@ func (m *LedgerApplyRequest_AddAccountType) CloneVT() isLedgerApplyRequest_Data 
 	return r
 }
 
-func (m *LedgerApplyRequest_UpdateAccountType) CloneVT() isLedgerApplyRequest_Data {
-	if m == nil {
-		return (*LedgerApplyRequest_UpdateAccountType)(nil)
-	}
-	r := new(LedgerApplyRequest_UpdateAccountType)
-	r.UpdateAccountType = m.UpdateAccountType.CloneVT()
-	return r
-}
-
 func (m *LedgerApplyRequest_RemoveAccountType) CloneVT() isLedgerApplyRequest_Data {
 	if m == nil {
 		return (*LedgerApplyRequest_RemoveAccountType)(nil)
@@ -1412,24 +1394,6 @@ func (m *AddAccountTypeRequest) CloneVT() *AddAccountTypeRequest {
 }
 
 func (m *AddAccountTypeRequest) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *UpdateAccountTypeRequest) CloneVT() *UpdateAccountTypeRequest {
-	if m == nil {
-		return (*UpdateAccountTypeRequest)(nil)
-	}
-	r := new(UpdateAccountTypeRequest)
-	r.Name = m.Name
-	r.EnforcementMode = m.EnforcementMode
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *UpdateAccountTypeRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -1500,25 +1464,6 @@ func (m *AddAccountTypeLedgerRequest) CloneVT() *AddAccountTypeLedgerRequest {
 }
 
 func (m *AddAccountTypeLedgerRequest) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *UpdateAccountTypeLedgerRequest) CloneVT() *UpdateAccountTypeLedgerRequest {
-	if m == nil {
-		return (*UpdateAccountTypeLedgerRequest)(nil)
-	}
-	r := new(UpdateAccountTypeLedgerRequest)
-	r.Ledger = m.Ledger
-	r.Name = m.Name
-	r.EnforcementMode = m.EnforcementMode
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *UpdateAccountTypeLedgerRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -4014,31 +3959,6 @@ func (this *Request_AddAccountType) EqualVT(thatIface isRequest_Type) bool {
 	return true
 }
 
-func (this *Request_UpdateAccountType) EqualVT(thatIface isRequest_Type) bool {
-	that, ok := thatIface.(*Request_UpdateAccountType)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.UpdateAccountType, that.UpdateAccountType; p != q {
-		if p == nil {
-			p = &UpdateAccountTypeLedgerRequest{}
-		}
-		if q == nil {
-			q = &UpdateAccountTypeLedgerRequest{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
 func (this *Request_RemoveAccountType) EqualVT(thatIface isRequest_Type) bool {
 	that, ok := thatIface.(*Request_RemoveAccountType)
 	if !ok {
@@ -5245,31 +5165,6 @@ func (this *LedgerApplyRequest_AddAccountType) EqualVT(thatIface isLedgerApplyRe
 	return true
 }
 
-func (this *LedgerApplyRequest_UpdateAccountType) EqualVT(thatIface isLedgerApplyRequest_Data) bool {
-	that, ok := thatIface.(*LedgerApplyRequest_UpdateAccountType)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.UpdateAccountType, that.UpdateAccountType; p != q {
-		if p == nil {
-			p = &UpdateAccountTypeRequest{}
-		}
-		if q == nil {
-			q = &UpdateAccountTypeRequest{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
 func (this *LedgerApplyRequest_RemoveAccountType) EqualVT(thatIface isLedgerApplyRequest_Data) bool {
 	that, ok := thatIface.(*LedgerApplyRequest_RemoveAccountType)
 	if !ok {
@@ -5364,28 +5259,6 @@ func (this *AddAccountTypeRequest) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *UpdateAccountTypeRequest) EqualVT(that *UpdateAccountTypeRequest) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Name != that.Name {
-		return false
-	}
-	if this.EnforcementMode != that.EnforcementMode {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *UpdateAccountTypeRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*UpdateAccountTypeRequest)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
 func (this *RemoveAccountTypeRequest) EqualVT(that *RemoveAccountTypeRequest) bool {
 	if this == that {
 		return true
@@ -5463,31 +5336,6 @@ func (this *AddAccountTypeLedgerRequest) EqualVT(that *AddAccountTypeLedgerReque
 
 func (this *AddAccountTypeLedgerRequest) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*AddAccountTypeLedgerRequest)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *UpdateAccountTypeLedgerRequest) EqualVT(that *UpdateAccountTypeLedgerRequest) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Ledger != that.Ledger {
-		return false
-	}
-	if this.Name != that.Name {
-		return false
-	}
-	if this.EnforcementMode != that.EnforcementMode {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *UpdateAccountTypeLedgerRequest) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*UpdateAccountTypeLedgerRequest)
 	if !ok {
 		return false
 	}
@@ -8917,27 +8765,6 @@ func (m *Request_AddAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error
 	}
 	return len(dAtA) - i, nil
 }
-func (m *Request_UpdateAccountType) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *Request_UpdateAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.UpdateAccountType != nil {
-		size, err := m.UpdateAccountType.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xf2
-	}
-	return len(dAtA) - i, nil
-}
 func (m *Request_RemoveAccountType) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -10912,25 +10739,6 @@ func (m *LedgerApplyRequest_AddAccountType) MarshalToSizedBufferVT(dAtA []byte) 
 	}
 	return len(dAtA) - i, nil
 }
-func (m *LedgerApplyRequest_UpdateAccountType) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LedgerApplyRequest_UpdateAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.UpdateAccountType != nil {
-		size, err := m.UpdateAccountType.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x3a
-	}
-	return len(dAtA) - i, nil
-}
 func (m *LedgerApplyRequest_RemoveAccountType) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -11025,51 +10833,6 @@ func (m *AddAccountTypeRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		}
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *UpdateAccountTypeRequest) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *UpdateAccountTypeRequest) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *UpdateAccountTypeRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.EnforcementMode != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.EnforcementMode))
-		i--
-		dAtA[i] = 0x10
-	}
-	if len(m.Name) > 0 {
-		i -= len(m.Name)
-		copy(dAtA[i:], m.Name)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -11236,58 +10999,6 @@ func (m *AddAccountTypeLedgerRequest) MarshalToSizedBufferVT(dAtA []byte) (int, 
 		}
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Ledger) > 0 {
-		i -= len(m.Ledger)
-		copy(dAtA[i:], m.Ledger)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *UpdateAccountTypeLedgerRequest) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *UpdateAccountTypeLedgerRequest) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *UpdateAccountTypeLedgerRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.EnforcementMode != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.EnforcementMode))
-		i--
-		dAtA[i] = 0x18
-	}
-	if len(m.Name) > 0 {
-		i -= len(m.Name)
-		copy(dAtA[i:], m.Name)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Name)))
 		i--
 		dAtA[i] = 0x12
 	}
@@ -15548,18 +15259,6 @@ func (m *Request_AddAccountType) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *Request_UpdateAccountType) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.UpdateAccountType != nil {
-		l = m.UpdateAccountType.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
 func (m *Request_RemoveAccountType) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -16348,18 +16047,6 @@ func (m *LedgerApplyRequest_AddAccountType) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *LedgerApplyRequest_UpdateAccountType) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.UpdateAccountType != nil {
-		l = m.UpdateAccountType.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
 func (m *LedgerApplyRequest_RemoveAccountType) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -16405,23 +16092,6 @@ func (m *AddAccountTypeRequest) SizeVT() (n int) {
 	if m.AccountType != nil {
 		l = m.AccountType.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *UpdateAccountTypeRequest) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.Name)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.EnforcementMode != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.EnforcementMode))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -16484,27 +16154,6 @@ func (m *AddAccountTypeLedgerRequest) SizeVT() (n int) {
 	if m.AccountType != nil {
 		l = m.AccountType.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *UpdateAccountTypeLedgerRequest) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.Ledger)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	l = len(m.Name)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.EnforcementMode != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.EnforcementMode))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -20847,47 +20496,6 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 					return err
 				}
 				m.Type = &Request_AddAccountType{AddAccountType: v}
-			}
-			iNdEx = postIndex
-		case 30:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field UpdateAccountType", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Type.(*Request_UpdateAccountType); ok {
-				if err := oneof.UpdateAccountType.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &UpdateAccountTypeLedgerRequest{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Type = &Request_UpdateAccountType{UpdateAccountType: v}
 			}
 			iNdEx = postIndex
 		case 31:
@@ -25252,47 +24860,6 @@ func (m *LedgerApplyRequest) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyRequest_AddAccountType{AddAccountType: v}
 			}
 			iNdEx = postIndex
-		case 7:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field UpdateAccountType", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Data.(*LedgerApplyRequest_UpdateAccountType); ok {
-				if err := oneof.UpdateAccountType.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &UpdateAccountTypeRequest{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Data = &LedgerApplyRequest_UpdateAccountType{UpdateAccountType: v}
-			}
-			iNdEx = postIndex
 		case 8:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RemoveAccountType", wireType)
@@ -25503,108 +25070,6 @@ func (m *AddAccountTypeRequest) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *UpdateAccountTypeRequest) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: UpdateAccountTypeRequest: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: UpdateAccountTypeRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Name = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EnforcementMode", wireType)
-			}
-			m.EnforcementMode = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.EnforcementMode |= commonpb.ChartEnforcementMode(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -25979,140 +25444,6 @@ func (m *AddAccountTypeLedgerRequest) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *UpdateAccountTypeLedgerRequest) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: UpdateAccountTypeLedgerRequest: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: UpdateAccountTypeLedgerRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ledger = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Name = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EnforcementMode", wireType)
-			}
-			m.EnforcementMode = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.EnforcementMode |= commonpb.ChartEnforcementMode(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

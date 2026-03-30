@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 )
@@ -140,8 +139,8 @@ func MultiLedgerPayrollSetupActions() []*servicepb.Request {
 
 	reqs := []*servicepb.Request{
 		actions.CreateLedgerAction("clearing", nil),
-		actions.AddAccountTypeAction("clearing", "company", "company:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction("clearing", "dept", "dept:{name}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction("clearing", "company", "company:{type}"),
+		actions.AddAccountTypeAction("clearing", "dept", "dept:{name}"),
 		actions.SaveNumscriptWithVersionAction("clearing", "fund_clearing", `vars {
   monetary $amount
 }
@@ -171,9 +170,9 @@ send $amount (
 	for _, dept := range departments {
 		reqs = append(reqs,
 			actions.CreateLedgerAction(dept.Ledger, nil),
-			actions.AddAccountTypeAction(dept.Ledger, "payroll", "payroll:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			actions.AddAccountTypeAction(dept.Ledger, "employee", "employee:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-			actions.AddAccountTypeAction(dept.Ledger, "expense", "expense:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+			actions.AddAccountTypeAction(dept.Ledger, "payroll", "payroll:{type}"),
+			actions.AddAccountTypeAction(dept.Ledger, "employee", "employee:{id}"),
+			actions.AddAccountTypeAction(dept.Ledger, "expense", "expense:{type}"),
 			actions.SaveNumscriptWithVersionAction(dept.Ledger, "fund_payroll", `vars {
   monetary $amount
 }

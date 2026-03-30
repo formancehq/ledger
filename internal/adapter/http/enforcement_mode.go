@@ -17,15 +17,3 @@ func parseEnforcementMode(s string) (commonpb.ChartEnforcementMode, error) {
 		return 0, errors.New("invalid enforcement mode: must be STRICT or AUDIT")
 	}
 }
-
-// enforcementModeToString converts a ChartEnforcementMode to its string representation.
-func enforcementModeToString(mode commonpb.ChartEnforcementMode) string {
-	switch mode {
-	case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT:
-		return "STRICT"
-	case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT:
-		return "AUDIT"
-	default:
-		return "UNKNOWN"
-	}
-}

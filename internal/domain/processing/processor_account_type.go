@@ -52,35 +52,6 @@ func (p *RequestProcessor) processAddAccountType(
 	}, nil
 }
 
-// processUpdateAccountType updates the enforcement mode of an existing account type.
-func (p *RequestProcessor) processUpdateAccountType(
-	ledgerName string,
-	order *raftcmdpb.UpdateAccountTypeOrder,
-	s InMemoryStore,
-) (*commonpb.LedgerLogPayload, error) {
-	info, ok := s.GetLedger(ledgerName)
-	if !ok {
-		return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
-	}
-
-	at, exists := info.GetAccountTypes()[order.GetName()]
-	if !exists {
-		return nil, &domain.ErrAccountTypeNotFound{Name: order.GetName()}
-	}
-
-	at.EnforcementMode = order.GetEnforcementMode()
-	s.PutLedger(ledgerName, info)
-
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_UpdatedAccountType{
-			UpdatedAccountType: &commonpb.UpdatedAccountTypeLog{
-				Name:            order.GetName(),
-				EnforcementMode: order.GetEnforcementMode(),
-			},
-		},
-	}, nil
-}
-
 // processRemoveAccountType removes an account type from a ledger.
 // The type must be DEPRECATED or have no matching accounts.
 func (p *RequestProcessor) processRemoveAccountType(
@@ -417,57 +388,6 @@ func validateAccountAgainstAccountTypes(
 
 	return nil
 }
-
-// matchAddressToType finds the best matching account type for an address using
-// longest-match (highest specificity). Returns nil if no type matches.
-// Deprecated types are skipped.
-func matchAddressToType(
-	address string,
-	types map[string]*commonpb.AccountType,
-) (*commonpb.AccountType, commonpb.ChartEnforcementMode) {
-	var (
-		best     *commonpb.AccountType
-		bestSpec = -1
-		bestLen  = 0
-	)
-
-	for _, at := range types {
-		if at.GetStatus() == commonpb.AccountTypeStatus_ACCOUNT_TYPE_DEPRECATED {
-			continue
-		}
-
-		// For MIGRATING types, match on the target pattern instead of the old pattern.
-		pattern := at.GetPattern()
-		if at.GetStatus() == commonpb.AccountTypeStatus_ACCOUNT_TYPE_MIGRATING && at.GetMigration() != nil {
-			pattern = at.GetMigration().GetTargetPattern()
-		}
-
-		segments, err := accounttype.ParsePattern(pattern)
-		if err != nil {
-			continue
-		}
-
-		if _, ok := accounttype.MatchAddress(address, segments); !ok {
-			continue
-		}
-
-		spec := accounttype.Specificity(segments)
-		segLen := len(segments)
-
-		if spec > bestSpec || (spec == bestSpec && segLen < bestLen) {
-			best = at
-			bestSpec = spec
-			bestLen = segLen
-		}
-	}
-
-	if best == nil {
-		return nil, 0
-	}
-
-	return best, best.GetEnforcementMode()
-}
-
 
 // processUpdateDefaultEnforcementMode updates the ledger's default enforcement mode.
 func (p *RequestProcessor) processUpdateDefaultEnforcementMode(

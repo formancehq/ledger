@@ -58,8 +58,6 @@ func (p *RequestProcessor) processApply(apply *raftcmdpb.LedgerApplyOrder, s InM
 		logPayload, err = p.processIndexReady(apply.GetLedger(), applyData.IndexReady, s)
 	case *raftcmdpb.LedgerApplyOrder_AddAccountType:
 		logPayload, err = p.processAddAccountType(apply.GetLedger(), applyData.AddAccountType, s)
-	case *raftcmdpb.LedgerApplyOrder_UpdateAccountType:
-		logPayload, err = p.processUpdateAccountType(apply.GetLedger(), applyData.UpdateAccountType, s)
 	case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
 		logPayload, err = p.processRemoveAccountType(apply.GetLedger(), applyData.RemoveAccountType, s)
 	case *raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode:
@@ -111,7 +109,6 @@ func isMirrorSafeApply(apply *raftcmdpb.LedgerApplyOrder) bool {
 		*raftcmdpb.LedgerApplyOrder_DropIndex,
 		*raftcmdpb.LedgerApplyOrder_IndexReady,
 		*raftcmdpb.LedgerApplyOrder_AddAccountType,
-		*raftcmdpb.LedgerApplyOrder_UpdateAccountType,
 		*raftcmdpb.LedgerApplyOrder_RemoveAccountType,
 		*raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode,
 		*raftcmdpb.LedgerApplyOrder_StartAccountMigration,

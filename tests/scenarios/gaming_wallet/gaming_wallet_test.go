@@ -353,21 +353,11 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		)
 		require.Error(t, err, "STRICT mode should reject non-matching address")
 
-		// Switch platform type to STRICT and test
-		scenariotest.ApplyActions(t, ctx, client,
-			actions.UpdateAccountTypeAction(ledger, "platform", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		)
-
 		// Valid platform address should still work
 		scenariotest.ApplyActions(t, ctx, client,
 			actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
 				actions.NewPosting("world", "platform:test", big.NewInt(1), "COINS"),
 			}, nil),
-		)
-
-		// Revert back to AUDIT for platform
-		scenariotest.ApplyActions(t, ctx, client,
-			actions.UpdateAccountTypeAction(ledger, "platform", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT),
 		)
 	})
 

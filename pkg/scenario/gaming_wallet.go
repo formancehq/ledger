@@ -136,11 +136,11 @@ func gamingClawback(ctx context.Context, client servicepb.BucketServiceClient, r
 func GamingWalletSetupActions() []*servicepb.Request {
 	return []*servicepb.Request{
 		actions.CreateLedgerAction(GamingWalletLedger, nil),
-		actions.AddAccountTypeAction(GamingWalletLedger, "player-usd", "player:{id}:usd", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(GamingWalletLedger, "player-coins", "player:{id}:coins", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(GamingWalletLedger, "platform", "platform:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT),
-		actions.AddAccountTypeAction(GamingWalletLedger, "shop", "shop:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(GamingWalletLedger, "escrow", "escrow:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(GamingWalletLedger, "player-usd", "player:{id}:usd"),
+		actions.AddAccountTypeAction(GamingWalletLedger, "player-coins", "player:{id}:coins"),
+		actions.AddAccountTypeAction(GamingWalletLedger, "platform", "platform:{type}"),
+		actions.AddAccountTypeAction(GamingWalletLedger, "shop", "shop:{type}"),
+		actions.AddAccountTypeAction(GamingWalletLedger, "escrow", "escrow:{type}"),
 		actions.SaveNumscriptWithVersionAction(GamingWalletLedger, "top_up", `vars {
   account $player_usd
   account $player_coins

@@ -150,7 +150,7 @@ func renderConfigurationAccountTypes(ledger *commonpb.LedgerInfo) {
 	sort.Strings(names)
 
 	table := pterm.TableData{
-		{"NAME", "PATTERN", "STATUS", "ENFORCEMENT"},
+		{"NAME", "PATTERN", "STATUS"},
 	}
 
 	for _, n := range names {
@@ -159,7 +159,6 @@ func renderConfigurationAccountTypes(ledger *commonpb.LedgerInfo) {
 			at.GetName(),
 			at.GetPattern(),
 			accounttypes.FormatStatus(at.GetStatus()),
-			accounttypes.FormatEnforcementMode(at.GetEnforcementMode()),
 		})
 	}
 

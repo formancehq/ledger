@@ -149,12 +149,12 @@ func lendingWriteOff(ctx context.Context, client servicepb.BucketServiceClient, 
 func LendingLifecycleSetupActions() []*servicepb.Request {
 	return []*servicepb.Request{
 		actions.CreateLedgerAction(LendingLifecycleLedger, nil),
-		actions.AddAccountTypeAction(LendingLifecycleLedger, "funding", "funding:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(LendingLifecycleLedger, "borrower-loan", "borrower:{id}:loan", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(LendingLifecycleLedger, "borrower-wallet", "borrower:{id}:wallet", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(LendingLifecycleLedger, "revenue", "revenue:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(LendingLifecycleLedger, "expense", "expense:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(LendingLifecycleLedger, "recovery", "recovery:{type}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(LendingLifecycleLedger, "funding", "funding:{type}"),
+		actions.AddAccountTypeAction(LendingLifecycleLedger, "borrower-loan", "borrower:{id}:loan"),
+		actions.AddAccountTypeAction(LendingLifecycleLedger, "borrower-wallet", "borrower:{id}:wallet"),
+		actions.AddAccountTypeAction(LendingLifecycleLedger, "revenue", "revenue:{type}"),
+		actions.AddAccountTypeAction(LendingLifecycleLedger, "expense", "expense:{type}"),
+		actions.AddAccountTypeAction(LendingLifecycleLedger, "recovery", "recovery:{type}"),
 		actions.SaveNumscriptWithVersionAction(LendingLifecycleLedger, "fund_pool", `vars {
   monetary $amount
 }

@@ -76,7 +76,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	sort.Strings(names)
 
 	tableData := pterm.TableData{
-		{"NAME", "PATTERN", "STATUS", "ENFORCEMENT", "EPHEMERAL"},
+		{"NAME", "PATTERN", "STATUS", "EPHEMERAL"},
 	}
 
 	for _, n := range names {
@@ -85,7 +85,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 			at.GetName(),
 			at.GetPattern(),
 			FormatStatus(at.GetStatus()),
-			FormatEnforcementMode(at.GetEnforcementMode()),
 			FormatEphemeral(at.GetEphemeral()),
 		})
 	}
@@ -101,17 +100,6 @@ func FormatStatus(s commonpb.AccountTypeStatus) string {
 		return "ACTIVE"
 	case commonpb.AccountTypeStatus_ACCOUNT_TYPE_DEPRECATED:
 		return "DEPRECATED"
-	default:
-		return "UNKNOWN"
-	}
-}
-
-func FormatEnforcementMode(m commonpb.ChartEnforcementMode) string {
-	switch m {
-	case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT:
-		return "STRICT"
-	case commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT:
-		return "AUDIT"
 	default:
 		return "UNKNOWN"
 	}

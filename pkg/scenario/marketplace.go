@@ -131,10 +131,10 @@ func marketplaceMetadata(ctx context.Context, client servicepb.BucketServiceClie
 func MarketplaceSetupActions() []*servicepb.Request {
 	return []*servicepb.Request{
 		actions.CreateLedgerAction(MarketplaceLedger, nil),
-		actions.AddAccountTypeAction(MarketplaceLedger, "customer", "customer:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(MarketplaceLedger, "merchant", "merchant:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(MarketplaceLedger, "platform-fees", "platform:fees", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(MarketplaceLedger, "platform-payouts", "platform:payouts", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(MarketplaceLedger, "customer", "customer:{id}"),
+		actions.AddAccountTypeAction(MarketplaceLedger, "merchant", "merchant:{id}"),
+		actions.AddAccountTypeAction(MarketplaceLedger, "platform-fees", "platform:fees"),
+		actions.AddAccountTypeAction(MarketplaceLedger, "platform-payouts", "platform:payouts"),
 		actions.SaveNumscriptWithVersionAction(MarketplaceLedger, "deposit", `vars {
   account $customer
   monetary $amount

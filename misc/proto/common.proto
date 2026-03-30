@@ -536,7 +536,7 @@ message LedgerLogPayload {
     DropIndexLog drop_index = 11;
     IndexReadyLog index_ready = 12;
     AddedAccountTypeLog added_account_type = 13;
-    UpdatedAccountTypeLog updated_account_type = 14;
+    // 14 removed: was updated_account_type
     RemovedAccountTypeLog removed_account_type = 15;
     UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 16;
     StartedAccountMigrationLog started_account_migration = 17;
@@ -787,7 +787,7 @@ message AccountType {
   string name = 1;                           // Unique identifier: "user-checking"
   string pattern = 2;                        // Address pattern: "users:{id}:checking"
   AccountTypeStatus status = 3;              // ACTIVE, DEPRECATED
-  ChartEnforcementMode enforcement_mode = 4; // Per-type enforcement
+  reserved 4; // was: enforcement_mode (per-type enforcement removed)
   bool ephemeral = 5;                        // Purge volumes when input == output (zero balance)
   AccountTypeMigration migration = 6;  // non-nil when status == MIGRATING
 }
@@ -802,12 +802,6 @@ enum AccountTypeStatus {
 // AddedAccountTypeLog records the addition of an account type.
 message AddedAccountTypeLog {
   AccountType account_type = 1;
-}
-
-// UpdatedAccountTypeLog records an enforcement mode update on an account type.
-message UpdatedAccountTypeLog {
-  string name = 1;
-  ChartEnforcementMode enforcement_mode = 2;
 }
 
 // RemovedAccountTypeLog records the removal of an account type.

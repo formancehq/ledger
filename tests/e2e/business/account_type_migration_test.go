@@ -31,7 +31,6 @@ var _ = Describe("AccountTypeMigration", Ordered, func() {
 						ledgerName,
 						"user-checking",
 						"users:{id}:checking",
-						commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 					),
 				},
 			})
@@ -171,7 +170,6 @@ var _ = Describe("AccountTypeMigration", Ordered, func() {
 						ledgerName,
 						"vendor",
 						"vendors:{id}",
-						commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 					),
 				},
 			})
@@ -234,7 +232,6 @@ var _ = Describe("AccountTypeMigration", Ordered, func() {
 						ledgerName,
 						"merchants",
 						"merchants:{id}",
-						commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 					),
 				},
 			})
@@ -306,7 +303,6 @@ var _ = Describe("AccountTypeMigration", Ordered, func() {
 						ledgerName,
 						"wallets",
 						"wallets:{id}",
-						commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 					),
 				},
 			})

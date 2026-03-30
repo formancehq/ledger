@@ -14,7 +14,7 @@ func FuzzUint256UnmarshalJSON(f *testing.F) {
 	f.Add([]byte("1"))
 	f.Add([]byte("42"))
 	f.Add([]byte("1000000000"))
-	f.Add([]byte("18446744073709551615"))                                         // max uint64
+	f.Add([]byte("18446744073709551615"))                                                           // max uint64
 	f.Add([]byte("115792089237316195423570985008687907853269984665640564039457584007913129639935")) // max uint256
 	f.Add([]byte("-1"))
 	f.Add([]byte(""))

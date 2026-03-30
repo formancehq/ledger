@@ -8,10 +8,9 @@ import (
 )
 
 type accountTypeJSON struct {
-	Name            string `json:"name"`
-	Pattern         string `json:"pattern"`
-	Status          string `json:"status"`
-	EnforcementMode string `json:"enforcementMode"`
+	Name    string `json:"name"`
+	Pattern string `json:"pattern"`
+	Status  string `json:"status"`
 }
 
 type listAccountTypesResponse struct {
@@ -29,10 +28,9 @@ func accountTypeStatusToString(status commonpb.AccountTypeStatus) string {
 
 func toAccountTypeJSON(at *commonpb.AccountType) accountTypeJSON {
 	return accountTypeJSON{
-		Name:            at.GetName(),
-		Pattern:         at.GetPattern(),
-		Status:          accountTypeStatusToString(at.GetStatus()),
-		EnforcementMode: enforcementModeToString(at.GetEnforcementMode()),
+		Name:    at.GetName(),
+		Pattern: at.GetPattern(),
+		Status:  accountTypeStatusToString(at.GetStatus()),
 	}
 }
 

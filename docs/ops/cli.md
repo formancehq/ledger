@@ -1273,7 +1273,7 @@ Manage account types (pattern-based account validation).
 Add a new account type to a ledger.
 
 ```bash
-ledgerctl account-types add <name> <pattern> --ledger <ledger> [--enforcement-mode STRICT|AUDIT] [--ephemeral]
+ledgerctl account-types add <name> <pattern> --ledger <ledger> [--ephemeral]
 ```
 
 **Arguments:**
@@ -1284,7 +1284,6 @@ ledgerctl account-types add <name> <pattern> --ledger <ledger> [--enforcement-mo
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | *(required)* | Target ledger name |
-| `--enforcement-mode` | `STRICT` | `STRICT` (reject invalid) or `AUDIT` (warn only) |
 | `--ephemeral` | `false` | Purge volumes when account reaches zero balance (input == output) |
 
 **Pattern syntax:**
@@ -1295,7 +1294,7 @@ ledgerctl account-types add <name> <pattern> --ledger <ledger> [--enforcement-mo
 **Example:**
 ```bash
 ledgerctl at add user-checking "users:{id}:checking" --ledger my-ledger
-ledgerctl at add bank-main "banks:{iban:^[A-Z]{2}[0-9]{14}$}:main" --ledger my-ledger --enforcement-mode AUDIT
+ledgerctl at add bank-main "banks:{iban:^[A-Z]{2}[0-9]{14}$}:main" --ledger my-ledger
 ledgerctl at add fx-clearing "fx:clearing" --ledger my-ledger --ephemeral
 ```
 
@@ -1322,15 +1321,7 @@ Get details of a specific account type.
 ledgerctl account-types get <name> [--ledger <ledger>]
 ```
 
-Shows name, pattern, status, and enforcement mode.
-
-#### account-types update
-
-Update an account type's enforcement mode.
-
-```bash
-ledgerctl account-types update <name> --ledger <ledger> --enforcement-mode STRICT|AUDIT
-```
+Shows name, pattern, status, and ephemeral flag.
 
 #### account-types remove
 

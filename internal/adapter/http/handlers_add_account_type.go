@@ -11,9 +11,8 @@ import (
 )
 
 type addAccountTypeRequest struct {
-	Name            string `json:"name"`
-	Pattern         string `json:"pattern"`
-	EnforcementMode string `json:"enforcementMode,omitempty"`
+	Name    string `json:"name"`
+	Pattern string `json:"pattern"`
 }
 
 // handleAddAccountType handles POST /{ledgerName}/account-types.
@@ -42,25 +41,13 @@ func (s *Server) handleAddAccountType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mode := commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
-	if body.EnforcementMode != "" {
-		var err error
-		mode, err = parseEnforcementMode(body.EnforcementMode)
-		if err != nil {
-			writeBadRequest(w, "INVALID_REQUEST", err)
-
-			return
-		}
-	}
-
 	_, err := s.backend.Apply(r.Context(), &servicepb.Request{
 		Type: &servicepb.Request_AddAccountType{
 			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 				Ledger: ledgerName,
 				AccountType: &commonpb.AccountType{
-					Name:            body.Name,
-					Pattern:         body.Pattern,
-					EnforcementMode: mode,
+					Name:    body.Name,
+					Pattern: body.Pattern,
 				},
 			},
 		},

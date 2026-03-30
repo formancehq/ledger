@@ -205,7 +205,7 @@ message Request {
     SaveNumscriptRequest save_numscript = 27;
     DeleteNumscriptRequest delete_numscript = 28;
     AddAccountTypeLedgerRequest add_account_type = 29;
-    UpdateAccountTypeLedgerRequest update_account_type = 30;
+    // 30 removed: was update_account_type
     RemoveAccountTypeLedgerRequest remove_account_type = 31;
     SetDefaultEnforcementModeLedgerRequest set_default_enforcement_mode = 32;
     CreateQueryCheckpointRequest create_query_checkpoint = 33;
@@ -442,7 +442,7 @@ message LedgerApplyRequest {
     RevertTransactionPayload revert_transaction = 4;
     common.DeleteMetadataCommand delete_metadata = 5;
     AddAccountTypeRequest add_account_type = 6;
-    UpdateAccountTypeRequest update_account_type = 7;
+    // 7 removed: was update_account_type
     RemoveAccountTypeRequest remove_account_type = 8;
     SetDefaultEnforcementModeRequest set_default_enforcement_mode = 9;
     MigrateAccountTypeRequest migrate_account_type = 10;
@@ -452,12 +452,6 @@ message LedgerApplyRequest {
 // AddAccountTypeRequest adds an account type within a LedgerApplyRequest.
 message AddAccountTypeRequest {
   common.AccountType account_type = 1;
-}
-
-// UpdateAccountTypeRequest updates an account type within a LedgerApplyRequest.
-message UpdateAccountTypeRequest {
-  string name = 1;
-  common.ChartEnforcementMode enforcement_mode = 2;
 }
 
 // RemoveAccountTypeRequest removes an account type within a LedgerApplyRequest.
@@ -480,13 +474,6 @@ message SetDefaultEnforcementModeLedgerRequest {
 message AddAccountTypeLedgerRequest {
   string ledger = 1;
   common.AccountType account_type = 2;
-}
-
-// UpdateAccountTypeLedgerRequest updates an account type (top-level request).
-message UpdateAccountTypeLedgerRequest {
-  string ledger = 1;
-  string name = 2;
-  common.ChartEnforcementMode enforcement_mode = 3;
 }
 
 // RemoveAccountTypeLedgerRequest removes an account type (top-level request).

@@ -127,16 +127,15 @@ func CreateScriptTransactionAction(ledgerName string, script string, vars map[st
 }
 
 // AddAccountTypeAction creates an action for adding an account type to a ledger.
-func AddAccountTypeAction(ledgerName, name, pattern string, enforcement commonpb.ChartEnforcementMode) *servicepb.Request {
+func AddAccountTypeAction(ledgerName, name, pattern string) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_AddAccountType{
 			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 				Ledger: ledgerName,
 				AccountType: &commonpb.AccountType{
-					Name:            name,
-					Pattern:         pattern,
-					Status:          commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
-					EnforcementMode: enforcement,
+					Name:    name,
+					Pattern: pattern,
+					Status:  commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 				},
 			},
 		},
@@ -145,31 +144,17 @@ func AddAccountTypeAction(ledgerName, name, pattern string, enforcement commonpb
 
 // AddEphemeralAccountTypeAction creates an action for adding an ephemeral account type to a ledger.
 // Ephemeral accounts have their volumes purged when input == output (zero balance).
-func AddEphemeralAccountTypeAction(ledgerName, name, pattern string, enforcement commonpb.ChartEnforcementMode) *servicepb.Request {
+func AddEphemeralAccountTypeAction(ledgerName, name, pattern string) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_AddAccountType{
 			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 				Ledger: ledgerName,
 				AccountType: &commonpb.AccountType{
-					Name:            name,
-					Pattern:         pattern,
-					Status:          commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
-					EnforcementMode: enforcement,
-					Ephemeral:       true,
+					Name:      name,
+					Pattern:   pattern,
+					Status:    commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
+					Ephemeral: true,
 				},
-			},
-		},
-	}
-}
-
-// UpdateAccountTypeAction creates an action for updating an account type's enforcement mode.
-func UpdateAccountTypeAction(ledgerName, name string, enforcement commonpb.ChartEnforcementMode) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_UpdateAccountType{
-			UpdateAccountType: &servicepb.UpdateAccountTypeLedgerRequest{
-				Ledger:          ledgerName,
-				Name:            name,
-				EnforcementMode: enforcement,
 			},
 		},
 	}

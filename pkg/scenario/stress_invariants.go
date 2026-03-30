@@ -1,7 +1,6 @@
 package scenario
 
 import (
-	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"github.com/formancehq/ledger-v3-poc/pkg/actions"
 )
@@ -14,9 +13,9 @@ const StressInvariantsLedger = "stress"
 func StressInvariantsSetupActions() []*servicepb.Request {
 	return []*servicepb.Request{
 		actions.CreateLedgerAction(StressInvariantsLedger, nil),
-		actions.AddAccountTypeAction(StressInvariantsLedger, "trader", "trader:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(StressInvariantsLedger, "exchange-fees", "exchange:fees", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
-		actions.AddAccountTypeAction(StressInvariantsLedger, "exchange-withdrawals", "exchange:withdrawals", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+		actions.AddAccountTypeAction(StressInvariantsLedger, "trader", "trader:{id}"),
+		actions.AddAccountTypeAction(StressInvariantsLedger, "exchange-fees", "exchange:fees"),
+		actions.AddAccountTypeAction(StressInvariantsLedger, "exchange-withdrawals", "exchange:withdrawals"),
 		actions.SaveNumscriptWithVersionAction(StressInvariantsLedger, "deposit", `vars {
   account $account
   monetary $amount

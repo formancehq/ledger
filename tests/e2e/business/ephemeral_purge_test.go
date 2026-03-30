@@ -33,11 +33,10 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 								Ledger: ledgerName,
 								AccountType: &commonpb.AccountType{
-									Name:            "clearing",
-									Pattern:         "clearing:{id}",
-									Status:          commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
-									EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
-									Ephemeral:       true,
+									Name:      "clearing",
+									Pattern:   "clearing:{id}",
+									Status:    commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
+									Ephemeral: true,
 								},
 							},
 						},
@@ -48,10 +47,9 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 							AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 								Ledger: ledgerName,
 								AccountType: &commonpb.AccountType{
-									Name:            "bank",
-									Pattern:         "bank:{id}",
-									Status:          commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
-									EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+									Name:    "bank",
+									Pattern: "bank:{id}",
+									Status:  commonpb.AccountTypeStatus_ACCOUNT_TYPE_ACTIVE,
 								},
 							},
 						},

@@ -123,7 +123,6 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 				r.Put("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleSetMetadataType)
 				r.Delete("/{ledgerName}/metadata-schema/{targetType}/{key}", server.handleRemoveMetadataType)
 				r.Post("/{ledgerName}/account-types", server.handleAddAccountType)
-				r.Patch("/{ledgerName}/account-types/{typeName}", server.handleUpdateAccountType)
 				r.Delete("/{ledgerName}/account-types/{typeName}", server.handleRemoveAccountType)
 				r.Put("/{ledgerName}/account-types/default-enforcement-mode", server.handleSetDefaultEnforcementMode)
 				r.Post("/{ledgerName}/account-types/{typeName}/migrate", server.handleMigrateAccountType)

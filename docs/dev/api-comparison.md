@@ -36,10 +36,9 @@ This document compares the POC's API with the original Formance ledger API and d
 | Get ledger | ✅ | ✅ | |
 | List ledgers | ✅ | ✅ | |
 | **Account Types** |
-| Add account type | ✅ | ❌ | Pattern-based account validation with per-type enforcement |
+| Add account type | ✅ | ❌ | Pattern-based account validation |
 | List account types | ✅ | ❌ | List all types for a ledger |
 | Get account type | ✅ | ❌ | Get details of a specific type |
-| Update account type | ✅ | ❌ | Change enforcement mode |
 | Remove account type | ✅ | ❌ | Remove a type from a ledger |
 | **Accounts (Read)** |
 | Get account | ✅ | ✅ | Includes volumes per asset |
@@ -188,13 +187,12 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - `GET /{ledgerName}/account-types` - List all account types for a ledger
 - `GET /{ledgerName}/account-types/{typeName}` - Get details of a specific account type
 - `POST /{ledgerName}/account-types` - Add a new account type
-- `PATCH /{ledgerName}/account-types/{typeName}` - Update an account type's enforcement mode
 - `DELETE /{ledgerName}/account-types/{typeName}` - Remove an account type
 
 **Features:**
 - ✅ Pattern-based account address validation (e.g., `users:{id}:checking`)
 - ✅ Variable segments with optional regex constraints (e.g., `{iban:^[A-Z]{2}[0-9]{14}$}`)
-- ✅ Per-type enforcement mode: STRICT (reject) or AUDIT (warnings)
+- ✅ Ledger-level default enforcement mode: STRICT (reject) or AUDIT (warnings)
 - ✅ Longest-match / highest-specificity resolution when multiple types match
 - ✅ Account type lifecycle: ACTIVE → DEPRECATED
 - ✅ `world` account always passes validation
@@ -569,7 +567,6 @@ Read endpoints comparison with the original ledger:
 | `GET /{ledgerName}/account-types` | ✅ | ❌ | List account types |
 | `GET /{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Get account type |
 | `POST /{ledgerName}/account-types` | ✅ | ❌ | Add account type |
-| `PATCH /{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Update account type |
 | `DELETE /{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type |
 | `GET /{ledgerName}/chart-of-accounts` | ✅ | ❌ | Get chart of accounts |
 | `PUT /{ledgerName}/chart-of-accounts` | ✅ | ❌ | Set chart of accounts |

@@ -112,7 +112,7 @@ func renderAccountTypes(types map[string]*commonpb.AccountType) {
 	sort.Strings(names)
 
 	tableData := pterm.TableData{
-		{"  NAME", "PATTERN", "STATUS", "ENFORCEMENT"},
+		{"  NAME", "PATTERN", "STATUS"},
 	}
 
 	for _, n := range names {
@@ -121,7 +121,6 @@ func renderAccountTypes(types map[string]*commonpb.AccountType) {
 			"  " + at.GetName(),
 			at.GetPattern(),
 			accounttypes.FormatStatus(at.GetStatus()),
-			accounttypes.FormatEnforcementMode(at.GetEnforcementMode()),
 		})
 	}
 

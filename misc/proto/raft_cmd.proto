@@ -237,7 +237,7 @@ message LedgerApplyOrder {
     DropIndexOrder drop_index = 11;
     IndexReadyOrder index_ready = 12;
     AddAccountTypeOrder add_account_type = 13;
-    UpdateAccountTypeOrder update_account_type = 14;
+    // 14 removed: was update_account_type
     RemoveAccountTypeOrder remove_account_type = 15;
     UpdateDefaultEnforcementModeOrder update_default_enforcement_mode = 16;
     StartAccountMigrationOrder start_account_migration = 17;
@@ -276,12 +276,6 @@ message IndexReadyOrder {
 // AddAccountTypeOrder adds a new account type to the ledger.
 message AddAccountTypeOrder {
   common.AccountType account_type = 1;
-}
-
-// UpdateAccountTypeOrder updates an existing account type's enforcement mode.
-message UpdateAccountTypeOrder {
-  string name = 1;
-  common.ChartEnforcementMode enforcement_mode = 2;
 }
 
 // RemoveAccountTypeOrder removes an account type from the ledger.

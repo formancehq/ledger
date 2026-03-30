@@ -27,7 +27,6 @@ var (
 	CreateForceScriptTransactionAction = actions.CreateForceScriptTransactionAction
 	CreateScriptTransactionAction      = actions.CreateScriptTransactionAction
 	AddAccountTypeAction               = actions.AddAccountTypeAction
-	UpdateAccountTypeAction            = actions.UpdateAccountTypeAction
 	RemoveAccountTypeAction            = actions.RemoveAccountTypeAction
 	MigrateAccountTypeAction           = actions.MigrateAccountTypeAction
 	SaveAccountMetadataAction          = actions.SaveAccountMetadataAction

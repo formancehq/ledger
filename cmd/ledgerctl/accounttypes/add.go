@@ -24,13 +24,12 @@ Patterns use colon-separated segments with optional variables:
 
 Examples:
   ledgerctl account-types add user-checking "users:{id}:checking" --ledger my-ledger
-  ledgerctl at add bank-main "banks:{iban}:main" --ledger my-ledger --enforcement-mode AUDIT`,
+  ledgerctl at add bank-main "banks:{iban}:main" --ledger my-ledger`,
 		Args: cobra.ExactArgs(2),
 		RunE: runAdd,
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger (required)")
-	cmd.Flags().String("enforcement-mode", "STRICT", "Enforcement mode: STRICT or AUDIT")
 	cmd.Flags().Bool("ephemeral", false, "Purge volumes when account reaches zero balance (input == output)")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	_ = cmd.MarkFlagRequired("ledger")
@@ -43,13 +42,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	pattern := args[1]
 
 	ledgerName, _ := cmd.Flags().GetString("ledger")
-	modeStr, _ := cmd.Flags().GetString("enforcement-mode")
 	ephemeral, _ := cmd.Flags().GetBool("ephemeral")
-
-	mode, err := parseEnforcementMode(modeStr)
-	if err != nil {
-		return err
-	}
 
 	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
@@ -68,10 +61,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 				AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
 					Ledger: ledgerName,
 					AccountType: &commonpb.AccountType{
-						Name:            name,
-						Pattern:         pattern,
-						EnforcementMode: mode,
-						Ephemeral:       ephemeral,
+						Name:      name,
+						Pattern:   pattern,
+						Ephemeral: ephemeral,
 					},
 				},
 			},
@@ -94,11 +86,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	spinner.Success("Added")
 
 	pterm.Println()
-	pterm.Printf("Name:        %s\n", pterm.Cyan(name))
-	pterm.Printf("Pattern:     %s\n", pattern)
-	pterm.Printf("Enforcement: %s\n", modeStr)
-	pterm.Printf("Ephemeral:   %s\n", FormatEphemeral(ephemeral))
-	pterm.Printf("Ledger:      %s\n", pterm.Gray(ledgerName))
+	pterm.Printf("Name:      %s\n", pterm.Cyan(name))
+	pterm.Printf("Pattern:   %s\n", pattern)
+	pterm.Printf("Ephemeral: %s\n", FormatEphemeral(ephemeral))
+	pterm.Printf("Ledger:    %s\n", pterm.Gray(ledgerName))
 
 	return nil
 }

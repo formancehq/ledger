@@ -95,25 +95,13 @@ func TestMarketplaceLifecycle(t *testing.T) {
 
 		// Add a temporary type
 		scenariotest.ApplyActions(t, ctx, client,
-			actions.AddAccountTypeAction(ledger, "temp-type", "temp:{id}", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT),
+			actions.AddAccountTypeAction(ledger, "temp-type", "temp:{id}"),
 		)
 
 		// Verify it was added
 		ledgers, err = actions.ListLedgers(ctx, client)
 		require.NoError(t, err)
 		require.Len(t, ledgers[ledger].GetAccountTypes(), 5, "should have 5 account types after add")
-
-		// Update enforcement mode to AUDIT
-		scenariotest.ApplyActions(t, ctx, client,
-			actions.UpdateAccountTypeAction(ledger, "temp-type", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT),
-		)
-
-		// Verify the update
-		ledgers, err = actions.ListLedgers(ctx, client)
-		require.NoError(t, err)
-		tempType := ledgers[ledger].GetAccountTypes()["temp-type"]
-		require.NotNil(t, tempType)
-		require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, tempType.GetEnforcementMode())
 
 		// Remove the type
 		scenariotest.ApplyActions(t, ctx, client,
