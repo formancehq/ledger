@@ -539,6 +539,9 @@ message LedgerLogPayload {
     UpdatedAccountTypeLog updated_account_type = 14;
     RemovedAccountTypeLog removed_account_type = 15;
     UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 16;
+    StartedAccountMigrationLog started_account_migration = 17;
+    AccountMigrationBatchLog account_migration_batch = 18;
+    CompletedAccountMigrationLog completed_account_migration = 19;
   }
 }
 
@@ -786,12 +789,14 @@ message AccountType {
   AccountTypeStatus status = 3;              // ACTIVE, DEPRECATED
   ChartEnforcementMode enforcement_mode = 4; // Per-type enforcement
   bool ephemeral = 5;                        // Purge volumes when input == output (zero balance)
+  AccountTypeMigration migration = 6;  // non-nil when status == MIGRATING
 }
 
 // AccountTypeStatus represents the lifecycle state of an account type.
 enum AccountTypeStatus {
   ACCOUNT_TYPE_ACTIVE = 0;       // Accepts new accounts, validated normally
-  ACCOUNT_TYPE_DEPRECATED = 1;   // No new accounts; kept for backward compat
+  ACCOUNT_TYPE_MIGRATING = 1;  // Pattern migration in progress
+  ACCOUNT_TYPE_DEPRECATED = 2;   // No new accounts; kept for backward compat
 }
 
 // AddedAccountTypeLog records the addition of an account type.
@@ -813,6 +818,34 @@ message RemovedAccountTypeLog {
 // UpdatedDefaultEnforcementModeLog records a change to the ledger's default enforcement mode.
 message UpdatedDefaultEnforcementModeLog {
   ChartEnforcementMode enforcement_mode = 1;
+}
+
+// AccountTypeMigration tracks the progress of a pattern migration.
+message AccountTypeMigration {
+  string target_pattern = 1;
+  string cursor = 2;              // last processed address (lexicographic)
+  uint64 migrated_accounts = 3;
+}
+
+// StartedAccountMigrationLog records the start of a pattern migration.
+message StartedAccountMigrationLog {
+  string account_type_name = 1;
+  string old_pattern = 2;
+  string target_pattern = 3;
+}
+
+// AccountMigrationBatchLog records a batch of account renames during migration.
+message AccountMigrationBatchLog {
+  string account_type_name = 1;
+  uint32 count = 2;
+}
+
+// CompletedAccountMigrationLog records the completion of a pattern migration.
+message CompletedAccountMigrationLog {
+  string account_type_name = 1;
+  string old_pattern = 2;
+  string new_pattern = 3;
+  uint64 total_migrated = 4;
 }
 
 

@@ -210,6 +210,7 @@ message Request {
     SetDefaultEnforcementModeLedgerRequest set_default_enforcement_mode = 32;
     CreateQueryCheckpointRequest create_query_checkpoint = 33;
     DeleteQueryCheckpointRequest delete_query_checkpoint = 34;
+    MigrateAccountTypeLedgerRequest migrate_account_type = 35;
   }
   signature.RequestSignature signature = 5;
 }
@@ -444,6 +445,7 @@ message LedgerApplyRequest {
     UpdateAccountTypeRequest update_account_type = 7;
     RemoveAccountTypeRequest remove_account_type = 8;
     SetDefaultEnforcementModeRequest set_default_enforcement_mode = 9;
+    MigrateAccountTypeRequest migrate_account_type = 10;
   }
 }
 
@@ -491,6 +493,19 @@ message UpdateAccountTypeLedgerRequest {
 message RemoveAccountTypeLedgerRequest {
   string ledger = 1;
   string name = 2;
+}
+
+// MigrateAccountTypeLedgerRequest initiates a pattern migration (top-level request).
+message MigrateAccountTypeLedgerRequest {
+  string ledger = 1;
+  string name = 2;
+  string target_pattern = 3;
+}
+
+// MigrateAccountTypeRequest initiates a pattern migration within a LedgerApplyRequest.
+message MigrateAccountTypeRequest {
+  string name = 1;
+  string target_pattern = 2;
 }
 
 // ============================================================================

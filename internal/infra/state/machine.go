@@ -92,6 +92,11 @@ type Machine struct {
 	// background conversion of existing account metadata values.
 	metadataConvertRequestCh chan MetadataConvertRequest
 
+	// accountMigrateRequestCh receives migration requests when a StartAccountMigration
+	// log is applied. The AccountMigrator reads from this channel to perform
+	// background account address migration.
+	accountMigrateRequestCh chan AccountMigrateRequest
+
 	// coldCompactionCh signals the SmartCompactor that a period purge has been applied,
 	// meaning the cold zone [0x01, 0xF1) contains fresh tombstones that benefit from compaction.
 	coldCompactionCh chan struct{}
@@ -321,6 +326,7 @@ func NewMachine(logger logging.Logger, dataStore *dal.Store, meter metric.Meter,
 		sealRequestCh:             make(chan SealRequest, 10),
 		archiveRequestCh:          make(chan ArchiveRequest, 1),
 		metadataConvertRequestCh:  make(chan MetadataConvertRequest, 16),
+		accountMigrateRequestCh:   make(chan AccountMigrateRequest, 16),
 		coldCompactionCh:          make(chan struct{}, 1),
 		pendingLedgerCleanups:     pendingCleanups,
 	}
@@ -462,6 +468,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	needsColdCompaction := false
 
 	var pendingConvertRequests []MetadataConvertRequest
+	var pendingAccountMigrateRequests []AccountMigrateRequest
 
 	for i, entry := range entries {
 		if entry.Index <= fsm.lastAppliedIndex {
@@ -535,6 +542,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 
 		ret.Results = append(ret.Results, *result)
 		pendingConvertRequests = append(pendingConvertRequests, result.MetadataConvertRequests...)
+		pendingAccountMigrateRequests = append(pendingAccountMigrateRequests, result.AccountMigrateRequests...)
 
 		// If ClosePeriod was detected, stop processing immediately.
 		// Commit the batch so the ClosePeriod state is persisted,
@@ -624,6 +632,13 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 	for _, req := range pendingConvertRequests {
 		select {
 		case fsm.metadataConvertRequestCh <- req:
+		default:
+		}
+	}
+
+	for _, req := range pendingAccountMigrateRequests {
+		select {
+		case fsm.accountMigrateRequestCh <- req:
 		default:
 		}
 	}
@@ -1392,6 +1407,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		MetadataConvertRequests: buffer.MetadataConvertRequests(),
 		QueryCheckpointCreated:  queryCheckpointCreated,
 		QueryCheckpointDeleted:  queryCheckpointDeleted,
+		AccountMigrateRequests:  buffer.AccountMigrateRequests(),
 		volumeUpdates:           buffer.KeptVolumeUpdates(),
 		createdLogs:             createdLogs,
 	}, nil
@@ -2153,6 +2169,12 @@ func (fsm *Machine) MetadataConvertRequestCh() chan MetadataConvertRequest {
 	return fsm.metadataConvertRequestCh
 }
 
+// AccountMigrateRequestCh returns the channel used to dispatch account
+// migration requests to the AccountMigrator.
+func (fsm *Machine) AccountMigrateRequestCh() chan AccountMigrateRequest {
+	return fsm.accountMigrateRequestCh
+}
+
 // ColdCompactionCh returns the channel that signals the SmartCompactor when
 // cold zone compaction is needed (after period purges).
 func (fsm *Machine) ColdCompactionCh() <-chan struct{} {
@@ -2225,6 +2247,47 @@ func (fsm *Machine) dispatchConvertingFields(info *commonpb.LedgerInfo, targetTy
 	}
 }
 
+// dispatchAccountMigrationRequests iterates all ledgers and dispatches
+// migration requests for account types still in MIGRATING status.
+// Called on leadership acquisition to recover incomplete migrations.
+func (fsm *Machine) dispatchAccountMigrationRequests() {
+	handle := fsm.dataStore.NewReadHandle()
+	defer func() { _ = handle.Close() }()
+
+	cursor, err := query.ReadLedgers(context.Background(), handle)
+	if err != nil {
+		fsm.logger.Errorf("Failed to read ledgers for account migration recovery: %v", err)
+
+		return
+	}
+	defer func() { _ = cursor.Close() }()
+
+	for {
+		info, err := cursor.Next()
+		if err != nil {
+			break
+		}
+
+		if info.GetDeletedAt() != nil {
+			continue
+		}
+
+		for _, at := range info.GetAccountTypes() {
+			if at.GetStatus() == commonpb.AccountTypeStatus_ACCOUNT_TYPE_MIGRATING && at.GetMigration() != nil {
+				select {
+				case fsm.accountMigrateRequestCh <- AccountMigrateRequest{
+					LedgerName:      info.GetName(),
+					AccountTypeName: at.GetName(),
+					OldPattern:      at.GetPattern(),
+					TargetPattern:   at.GetMigration().GetTargetPattern(),
+				}:
+				default:
+				}
+			}
+		}
+	}
+}
+
 // OnLeadershipAcquired is called when this node becomes the Raft leader.
 // It performs recovery actions that only the leader should handle.
 func (fsm *Machine) OnLeadershipAcquired() {
@@ -2235,6 +2298,10 @@ func (fsm *Machine) OnLeadershipAcquired() {
 	// Recover metadata fields stuck in CONVERTING status: if the previous leader
 	// crashed mid-conversion, the new leader retries automatically.
 	fsm.dispatchMetadataConversionRequests()
+
+	// Recover account types stuck in MIGRATING status: if the previous leader
+	// crashed mid-migration, the new leader retries automatically.
+	fsm.dispatchAccountMigrationRequests()
 }
 
 // AllPeriods returns all non-purged periods kept in memory.
@@ -2313,6 +2380,7 @@ type ApplyResult struct {
 	HasArchiveRequests      bool   // True when there are pending archive requests
 	HasPurges               bool   // True when cold zone data was purged (triggers cold compaction)
 	MetadataConvertRequests []MetadataConvertRequest
+	AccountMigrateRequests  []AccountMigrateRequest
 
 	// QueryCheckpointCreated holds the checkpoint ID when a CreateQueryCheckpoint
 	// order was processed. Signals ApplyEntries to split the batch and create

@@ -600,6 +600,23 @@ func Module() fx.Option {
 					4,   // poolSize — max concurrent field conversions
 				)
 			},
+			func(
+				logger logging.Logger,
+				store *dal.Store,
+				attrs *attributes.Attributes,
+				machine *state.Machine,
+				raftNode *node.Node,
+			) *state.AccountMigrator {
+				return state.NewAccountMigrator(
+					logger,
+					store,
+					attrs,
+					machine.AccountMigrateRequestCh(),
+					NewNodeProposer(raftNode),
+					raftNode.IsLeader,
+					100, // batchSize
+				)
+			},
 			fx.Annotate(func(
 				raftNode *node.Node,
 				servicePool *transport.ConnectionPool,
@@ -1003,6 +1020,9 @@ func Module() fx.Option {
 			},
 			func(lc fx.Lifecycle, converter *state.MetadataConverter) {
 				lc.Append(worker.FxHook(converter))
+			},
+			func(lc fx.Lifecycle, migrator *state.AccountMigrator) {
+				lc.Append(worker.FxHook(migrator))
 			},
 			// Register Pebble read index metrics and unregister on stop.
 			func(lc fx.Lifecycle, rs *readstore.Store, meterProvider metric.MeterProvider) error {

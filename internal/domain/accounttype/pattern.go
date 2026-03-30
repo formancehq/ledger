@@ -221,6 +221,29 @@ func VariableNames(segments []PatternSegment) []string {
 	return names
 }
 
+// ValidateMigrationCompatible checks that target pattern is compatible with source
+// for migration. All variables in the target must exist in the source (variables
+// can be dropped but not added). Fixed segments can change freely, and the number
+// of segments can differ.
+func ValidateMigrationCompatible(source, target []PatternSegment) error {
+	sourceVars := make(map[string]struct{})
+	for _, seg := range source {
+		if seg.Kind == SegmentVariable {
+			sourceVars[seg.Value] = struct{}{}
+		}
+	}
+
+	for _, seg := range target {
+		if seg.Kind == SegmentVariable {
+			if _, ok := sourceVars[seg.Value]; !ok {
+				return fmt.Errorf("variable %q in target pattern does not exist in source pattern", seg.Value)
+			}
+		}
+	}
+
+	return nil
+}
+
 // SortBySpecificity sorts pattern segment slices by specificity (most specific first).
 // Ties are broken by fewer total segments (more constrained), then lexicographic on pattern string.
 func SortBySpecificity(patterns [][]PatternSegment) {

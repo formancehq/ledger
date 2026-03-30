@@ -438,6 +438,7 @@ func (s *inMemoryStore) DeleteQueryCheckpoint(_ uint64)                        {
 func (s *inMemoryStore) MarkLedgerForCleanup(ledger string) {
 	s.engine.pendingLedgerDeletions = append(s.engine.pendingLedgerDeletions, ledger)
 }
+func (s *inMemoryStore) AddAccountMigrateRequest(_, _, _, _ string)            {}
 
 // Helper functions for building orders
 

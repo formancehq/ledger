@@ -187,6 +187,19 @@ func RemoveAccountTypeAction(ledgerName, name string) *servicepb.Request {
 	}
 }
 
+// MigrateAccountTypeAction creates an action for migrating an account type to a new pattern.
+func MigrateAccountTypeAction(ledgerName, name, targetPattern string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_MigrateAccountType{
+			MigrateAccountType: &servicepb.MigrateAccountTypeLedgerRequest{
+				Ledger:        ledgerName,
+				Name:          name,
+				TargetPattern: targetPattern,
+			},
+		},
+	}
+}
+
 // SaveAccountMetadataAction creates an action for saving account metadata.
 func SaveAccountMetadataAction(ledgerName, address string, metadata map[string]string) *servicepb.Request {
 	return &servicepb.Request{

@@ -10,45 +10,47 @@ var ErrNotFound = errors.New("not found")
 
 // Reason constants shared between server and client for gRPC error mapping.
 const (
-	ErrReasonLedgerAlreadyExists           = "LEDGER_ALREADY_EXISTS"
-	ErrReasonLedgerNotFound                = "LEDGER_NOT_FOUND"
-	ErrReasonLedgerDeleted                 = "LEDGER_DELETED"
-	ErrReasonIdempotencyKeyConflict        = "IDEMPOTENCY_KEY_CONFLICT"
-	ErrReasonTransactionReferenceConflict  = "TRANSACTION_REFERENCE_CONFLICT"
-	ErrReasonTransactionNotFound           = "TRANSACTION_NOT_FOUND"
-	ErrReasonTransactionAlreadyReverted    = "TRANSACTION_ALREADY_REVERTED"
-	ErrReasonInsufficientFunds             = "INSUFFICIENT_FUNDS"
-	ErrReasonBalanceNotFound               = "BALANCE_NOT_FOUND"
-	ErrReasonBalanceNotPreloaded           = "BALANCE_NOT_PRELOADED"
-	ErrReasonNumscriptParseError           = "NUMSCRIPT_PARSE_ERROR"
-	ErrReasonValidation                    = "VALIDATION"
-	ErrReasonAuditDisabled                 = "AUDIT_DISABLED"
-	ErrReasonSinkAlreadyExists             = "SINK_ALREADY_EXISTS"
-	ErrReasonSinkNotFound                  = "SINK_NOT_FOUND"
-	ErrReasonNoPeriodOpen                  = "NO_PERIOD_OPEN"
-	ErrReasonPeriodNotFound                = "PERIOD_NOT_FOUND"
-	ErrReasonPeriodNotClosing              = "PERIOD_NOT_CLOSING"
-	ErrReasonPeriodNotClosed               = "PERIOD_NOT_CLOSED"
-	ErrReasonPeriodNotArchiving            = "PERIOD_NOT_ARCHIVING"
-	ErrReasonMetadataNotFound              = "METADATA_NOT_FOUND"
-	ErrReasonInvalidReceipt                = "INVALID_RECEIPT"
-	ErrReasonMaintenanceMode               = "MAINTENANCE_MODE"
-	ErrReasonInvalidCronExpression         = "INVALID_CRON_EXPRESSION"
-	ErrReasonLedgerInMirrorMode            = "LEDGER_IN_MIRROR_MODE"
-	ErrReasonLedgerNotInMirrorMode         = "LEDGER_NOT_IN_MIRROR_MODE"
-	ErrReasonPreparedQueryAlreadyExists    = "PREPARED_QUERY_ALREADY_EXISTS"
-	ErrReasonPreparedQueryNotFound         = "PREPARED_QUERY_NOT_FOUND"
-	ErrReasonIndexNotFound                 = "INDEX_NOT_FOUND"
-	ErrReasonIndexBuilding                 = "INDEX_BUILDING"
-	ErrReasonNumscriptNotFound             = "NUMSCRIPT_NOT_FOUND"
-	ErrReasonNumscriptVersionAlreadyExists = "NUMSCRIPT_VERSION_ALREADY_EXISTS"
-	ErrReasonNumscriptInvalidVersion       = "NUMSCRIPT_INVALID_VERSION"
-	ErrReasonAccountNotMatchingType        = "ACCOUNT_NOT_MATCHING_TYPE"
-	ErrReasonAccountTypeNotFound           = "ACCOUNT_TYPE_NOT_FOUND"
-	ErrReasonAccountTypeAlreadyExists      = "ACCOUNT_TYPE_ALREADY_EXISTS"
-	ErrReasonInvalidPattern                = "INVALID_PATTERN"
-	ErrReasonAccountTypeHasAccounts        = "ACCOUNT_TYPE_HAS_ACCOUNTS"
-	ErrReasonColdStorageDisabled           = "COLD_STORAGE_DISABLED"
+	ErrReasonLedgerAlreadyExists               = "LEDGER_ALREADY_EXISTS"
+	ErrReasonLedgerNotFound                    = "LEDGER_NOT_FOUND"
+	ErrReasonLedgerDeleted                     = "LEDGER_DELETED"
+	ErrReasonIdempotencyKeyConflict            = "IDEMPOTENCY_KEY_CONFLICT"
+	ErrReasonTransactionReferenceConflict      = "TRANSACTION_REFERENCE_CONFLICT"
+	ErrReasonTransactionNotFound               = "TRANSACTION_NOT_FOUND"
+	ErrReasonTransactionAlreadyReverted        = "TRANSACTION_ALREADY_REVERTED"
+	ErrReasonInsufficientFunds                 = "INSUFFICIENT_FUNDS"
+	ErrReasonBalanceNotFound                   = "BALANCE_NOT_FOUND"
+	ErrReasonBalanceNotPreloaded               = "BALANCE_NOT_PRELOADED"
+	ErrReasonNumscriptParseError               = "NUMSCRIPT_PARSE_ERROR"
+	ErrReasonValidation                        = "VALIDATION"
+	ErrReasonAuditDisabled                     = "AUDIT_DISABLED"
+	ErrReasonSinkAlreadyExists                 = "SINK_ALREADY_EXISTS"
+	ErrReasonSinkNotFound                      = "SINK_NOT_FOUND"
+	ErrReasonNoPeriodOpen                      = "NO_PERIOD_OPEN"
+	ErrReasonPeriodNotFound                    = "PERIOD_NOT_FOUND"
+	ErrReasonPeriodNotClosing                  = "PERIOD_NOT_CLOSING"
+	ErrReasonPeriodNotClosed                   = "PERIOD_NOT_CLOSED"
+	ErrReasonPeriodNotArchiving                = "PERIOD_NOT_ARCHIVING"
+	ErrReasonMetadataNotFound                  = "METADATA_NOT_FOUND"
+	ErrReasonInvalidReceipt                    = "INVALID_RECEIPT"
+	ErrReasonMaintenanceMode                   = "MAINTENANCE_MODE"
+	ErrReasonInvalidCronExpression             = "INVALID_CRON_EXPRESSION"
+	ErrReasonLedgerInMirrorMode                = "LEDGER_IN_MIRROR_MODE"
+	ErrReasonLedgerNotInMirrorMode             = "LEDGER_NOT_IN_MIRROR_MODE"
+	ErrReasonPreparedQueryAlreadyExists        = "PREPARED_QUERY_ALREADY_EXISTS"
+	ErrReasonPreparedQueryNotFound             = "PREPARED_QUERY_NOT_FOUND"
+	ErrReasonIndexNotFound                     = "INDEX_NOT_FOUND"
+	ErrReasonIndexBuilding                     = "INDEX_BUILDING"
+	ErrReasonNumscriptNotFound                 = "NUMSCRIPT_NOT_FOUND"
+	ErrReasonNumscriptVersionAlreadyExists     = "NUMSCRIPT_VERSION_ALREADY_EXISTS"
+	ErrReasonNumscriptInvalidVersion           = "NUMSCRIPT_INVALID_VERSION"
+	ErrReasonAccountNotMatchingType            = "ACCOUNT_NOT_MATCHING_TYPE"
+	ErrReasonAccountTypeNotFound               = "ACCOUNT_TYPE_NOT_FOUND"
+	ErrReasonAccountTypeAlreadyExists          = "ACCOUNT_TYPE_ALREADY_EXISTS"
+	ErrReasonInvalidPattern                    = "INVALID_PATTERN"
+	ErrReasonAccountTypeHasAccounts            = "ACCOUNT_TYPE_HAS_ACCOUNTS"
+	ErrReasonColdStorageDisabled               = "COLD_STORAGE_DISABLED"
+	ErrReasonAccountTypeMigrationInProgress    = "ACCOUNT_TYPE_MIGRATION_IN_PROGRESS"
+	ErrReasonAccountTypeMigrationNotCompatible = "ACCOUNT_TYPE_MIGRATION_NOT_COMPATIBLE"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.
@@ -406,4 +408,24 @@ type ErrBalanceNotPreloaded struct {
 
 func (e *ErrBalanceNotPreloaded) Error() string {
 	return fmt.Sprintf("balance not preloaded for account %q asset %q", e.Account, e.Asset)
+}
+
+// ErrAccountTypeMigrationInProgress is returned when a migration is already running on this account type.
+type ErrAccountTypeMigrationInProgress struct {
+	Name string
+}
+
+func (e *ErrAccountTypeMigrationInProgress) Error() string {
+	return fmt.Sprintf("account type %q already has a migration in progress", e.Name)
+}
+
+// ErrAccountTypeMigrationNotCompatible is returned when target pattern is incompatible with source.
+type ErrAccountTypeMigrationNotCompatible struct {
+	Source  string
+	Target  string
+	Details string
+}
+
+func (e *ErrAccountTypeMigrationNotCompatible) Error() string {
+	return fmt.Sprintf("migration from %q to %q is not compatible: %s", e.Source, e.Target, e.Details)
 }

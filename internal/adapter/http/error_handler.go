@@ -12,26 +12,28 @@ import (
 // handleError handles errors and returns appropriate HTTP responses.
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	var (
-		notFoundErr       *commonpb.NotFoundError
-		refConflict       *domain.ErrTransactionReferenceConflict
-		ikConflict        *domain.ErrIdempotencyKeyConflict
-		ledgerExists      *domain.ErrLedgerAlreadyExists
-		ledgerNotFound    *domain.ErrLedgerNotFound
-		ledgerInMirror    *domain.ErrLedgerInMirrorMode
-		ledgerNotInMirror *domain.ErrLedgerNotInMirrorMode
-		txNotFound        *domain.ErrTransactionNotFound
-		txReverted        *domain.ErrTransactionAlreadyReverted
-		insufficient      *domain.ErrInsufficientFunds
-		balNotFound       *domain.ErrBalanceNotFound
-		parseErr          *domain.ErrNumscriptParse
-		metaNotFound      *domain.ErrMetadataNotFound
-		pqExists          *domain.ErrPreparedQueryAlreadyExists
-		pqNotFound        *domain.ErrPreparedQueryNotFound
-		acctNotMatching   *domain.ErrAccountNotMatchingType
-		acctTypeNotFound  *domain.ErrAccountTypeNotFound
-		acctTypeExists    *domain.ErrAccountTypeAlreadyExists
-		invalidPattern    *domain.ErrInvalidPattern
-		acctTypeHasAccts  *domain.ErrAccountTypeHasAccounts
+		notFoundErr        *commonpb.NotFoundError
+		refConflict        *domain.ErrTransactionReferenceConflict
+		ikConflict         *domain.ErrIdempotencyKeyConflict
+		ledgerExists       *domain.ErrLedgerAlreadyExists
+		ledgerNotFound     *domain.ErrLedgerNotFound
+		ledgerInMirror     *domain.ErrLedgerInMirrorMode
+		ledgerNotInMirror  *domain.ErrLedgerNotInMirrorMode
+		txNotFound         *domain.ErrTransactionNotFound
+		txReverted         *domain.ErrTransactionAlreadyReverted
+		insufficient       *domain.ErrInsufficientFunds
+		balNotFound        *domain.ErrBalanceNotFound
+		parseErr           *domain.ErrNumscriptParse
+		metaNotFound       *domain.ErrMetadataNotFound
+		pqExists           *domain.ErrPreparedQueryAlreadyExists
+		pqNotFound         *domain.ErrPreparedQueryNotFound
+		acctNotMatching    *domain.ErrAccountNotMatchingType
+		acctTypeNotFound   *domain.ErrAccountTypeNotFound
+		acctTypeExists     *domain.ErrAccountTypeAlreadyExists
+		invalidPattern     *domain.ErrInvalidPattern
+		acctTypeHasAccts   *domain.ErrAccountTypeHasAccounts
+		migrationInProg    *domain.ErrAccountTypeMigrationInProgress
+		migrationNotCompat *domain.ErrAccountTypeMigrationNotCompatible
 	)
 
 	switch {
@@ -98,6 +100,12 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.As(err, &acctTypeHasAccts):
 		writeErrorResponse(w, http.StatusConflict, "ACCOUNT_TYPE_HAS_ACCOUNTS", err)
+
+	case errors.As(err, &migrationInProg):
+		writeErrorResponse(w, http.StatusConflict, "ACCOUNT_TYPE_MIGRATION_IN_PROGRESS", err)
+
+	case errors.As(err, &migrationNotCompat):
+		writeErrorResponse(w, http.StatusBadRequest, "ACCOUNT_TYPE_MIGRATION_NOT_COMPATIBLE", err)
 
 	case errors.Is(err, domain.ErrTargetRequired),
 		errors.Is(err, domain.ErrMetadataKeyRequired),

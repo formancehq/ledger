@@ -17,6 +17,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/domain/accounttype"
 	"github.com/formancehq/ledger-v3-poc/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
@@ -795,6 +796,20 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 					applyData.CreateTransaction.GetScript().ContentHash = scriptHash[:]
 					applyData.CreateTransaction.GetScript().Plain = ""
 
+					// Enrich preload with old-address volumes for MIGRATING account types.
+					if discovered != nil {
+						var scriptVolKeys []domain.VolumeKey
+						for key := range discovered.SourceVolumes {
+							scriptVolKeys = append(scriptVolKeys, key)
+						}
+
+						for key := range discovered.DestinationVolumes {
+							scriptVolKeys = append(scriptVolKeys, key)
+						}
+
+						enrichMigratingVolumePreloads(ctx, a.store, ledgerName, p, scriptVolKeys)
+					}
+
 					continue
 				}
 
@@ -808,6 +823,9 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 						Asset:      posting.GetAsset(),
 					}] = struct{}{}
 				}
+
+				// Enrich preload with old-address volumes for MIGRATING account types.
+				enrichMigratingVolumePreloads(ctx, a.store, ledgerName, p, volumeKeysFromPostings(ledgerName, applyData.CreateTransaction.GetPostings()))
 
 				// Preload account metadata for previous value capture.
 				for account, ms := range applyData.CreateTransaction.GetAccountMetadata() {
@@ -872,6 +890,82 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 	}
 
 	return p, nil
+}
+
+// volumeKeysFromPostings extracts volume keys from postings (source + destination).
+func volumeKeysFromPostings(ledgerName string, postings []*commonpb.Posting) []domain.VolumeKey {
+	keys := make([]domain.VolumeKey, 0, len(postings)*2)
+	for _, posting := range postings {
+		keys = append(keys,
+			domain.VolumeKey{
+				AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetSource()},
+				Asset:      posting.GetAsset(),
+			},
+			domain.VolumeKey{
+				AccountKey: domain.AccountKey{Ledger: ledgerName, Account: posting.GetDestination()},
+				Asset:      posting.GetAsset(),
+			},
+		)
+	}
+
+	return keys
+}
+
+// enrichMigratingVolumePreloads adds old-address volume keys to the preload needs
+// for any address that matches a MIGRATING account type's target pattern.
+// This ensures the FSM can combine old+new volumes via cache lookups only.
+func enrichMigratingVolumePreloads(
+	ctx context.Context,
+	store *dal.Store,
+	ledgerName string,
+	p *preload.Needs,
+	volumeKeys []domain.VolumeKey,
+) {
+	if len(volumeKeys) == 0 {
+		return
+	}
+
+	ledgerInfo, err := query.GetLedgerByName(ctx, store, ledgerName)
+	if err != nil || ledgerInfo == nil {
+		return
+	}
+
+	for _, at := range ledgerInfo.GetAccountTypes() {
+		if at.GetStatus() != commonpb.AccountTypeStatus_ACCOUNT_TYPE_MIGRATING || at.GetMigration() == nil {
+			continue
+		}
+
+		targetSegments, tErr := accounttype.ParsePattern(at.GetMigration().GetTargetPattern())
+		if tErr != nil {
+			continue
+		}
+
+		oldSegments, oErr := accounttype.ParsePattern(at.GetPattern())
+		if oErr != nil {
+			continue
+		}
+
+		for _, vk := range volumeKeys {
+			if vk.Account == "world" {
+				continue
+			}
+
+			bindings, ok := accounttype.MatchAddress(vk.Account, targetSegments)
+			if !ok {
+				continue
+			}
+
+			oldAddr, rwErr := accounttype.RewriteAddress(bindings, oldSegments)
+			if rwErr != nil {
+				continue
+			}
+
+			p.Volumes[domain.VolumeKey{
+				AccountKey: domain.AccountKey{Ledger: ledgerName, Account: oldAddr},
+				Asset:      vk.Asset,
+			}] = struct{}{}
+		}
+	}
 }
 
 // requestToOrder converts a servicepb.Request to a raftcmdpb.Order.
@@ -1152,6 +1246,18 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 				},
 			},
 		}
+	case *servicepb.Request_MigrateAccountType:
+		order.Type = &raftcmdpb.Order_Apply{
+			Apply: &raftcmdpb.LedgerApplyOrder{
+				Ledger: reqType.MigrateAccountType.GetLedger(),
+				Data: &raftcmdpb.LedgerApplyOrder_StartAccountMigration{
+					StartAccountMigration: &raftcmdpb.StartAccountMigrationOrder{
+						AccountTypeName: reqType.MigrateAccountType.GetName(),
+						TargetPattern:   reqType.MigrateAccountType.GetTargetPattern(),
+					},
+				},
+			},
+		}
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
 	}
@@ -1258,6 +1364,13 @@ func (a *Admission) convertApplyRequest(apply *servicepb.LedgerApplyRequest) (*r
 		order.Data = &raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode{
 			UpdateDefaultEnforcementMode: &raftcmdpb.UpdateDefaultEnforcementModeOrder{
 				EnforcementMode: data.SetDefaultEnforcementMode.GetEnforcementMode(),
+			},
+		}
+	case *servicepb.LedgerApplyRequest_MigrateAccountType:
+		order.Data = &raftcmdpb.LedgerApplyOrder_StartAccountMigration{
+			StartAccountMigration: &raftcmdpb.StartAccountMigrationOrder{
+				AccountTypeName: data.MigrateAccountType.GetName(),
+				TargetPattern:   data.MigrateAccountType.GetTargetPattern(),
 			},
 		}
 	case *servicepb.LedgerApplyRequest_RevertTransaction:

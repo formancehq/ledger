@@ -91,6 +91,7 @@ type Buffered struct {
 	purgeRanges                    []purgeRange
 	pendingArchives                []ArchiveRequest
 	pendingMetadataConvertRequests []MetadataConvertRequest
+	pendingAccountMigrateRequests  []AccountMigrateRequest
 
 	// Pending prepared query changes (ledger/name -> query or nil for deletion)
 	pendingPreparedQueries  map[domain.PreparedQueryKey]*commonpb.PreparedQuery
@@ -887,6 +888,20 @@ func (b *Buffered) AddMetadataConvertRequest(ledgerName string, targetType commo
 // MetadataConvertRequests returns the accumulated metadata conversion requests.
 func (b *Buffered) MetadataConvertRequests() []MetadataConvertRequest {
 	return b.pendingMetadataConvertRequests
+}
+
+func (b *Buffered) AddAccountMigrateRequest(ledgerName, accountTypeName, oldPattern, targetPattern string) {
+	b.pendingAccountMigrateRequests = append(b.pendingAccountMigrateRequests, AccountMigrateRequest{
+		LedgerName:      ledgerName,
+		AccountTypeName: accountTypeName,
+		OldPattern:      oldPattern,
+		TargetPattern:   targetPattern,
+	})
+}
+
+// AccountMigrateRequests returns the accumulated account migration requests.
+func (b *Buffered) AccountMigrateRequests() []AccountMigrateRequest {
+	return b.pendingAccountMigrateRequests
 }
 
 // HasPurges returns true if the buffer contains any pending purge ranges.
