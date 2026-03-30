@@ -10,6 +10,7 @@ Business:
 * Generate cluster id
 * Read only followers (learners ?)
 * 1password integration
+* Ledger v2 passthrough
 
 Docs:
 * Clean relying parties distinctions
