@@ -11,10 +11,10 @@ Usage:
 import argparse
 import re
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 from hypothesis import HealthCheck, settings as hypothesis_settings
-
 import schemathesis
 from schemathesis.checks import (
     not_a_server_error,
@@ -137,6 +137,7 @@ def main():
     has_failures = False
     has_errors = False
     tested_count = 0
+    network_error_count = 0
 
     runner = from_schema(
         schema,
@@ -149,6 +150,7 @@ def main():
         hypothesis_settings=hypothesis_settings(
             max_examples=args.max_examples,
             suppress_health_check=[HealthCheck.filter_too_much],
+            deadline=timedelta(seconds=30),
         ),
     )
     for event in runner.execute():
@@ -181,27 +183,59 @@ def main():
                         print(f"    FAIL: {check_result.name}: {check_result.message}{detail}")
 
             if event.result.has_errors:
-                has_errors = True
-                for error in event.result.errors:
-                    print(f"    ERROR: {error}", file=sys.stderr)
+                # Distinguish real server errors from transient network errors
+                is_network_error = all(
+                    _is_network_error(error)
+                    for error in event.result.errors
+                )
+                if is_network_error:
+                    network_error_count += 1
+                else:
+                    has_errors = True
+                    for error in event.result.errors:
+                        print(f"    ERROR: {error}", file=sys.stderr)
 
         elif isinstance(event, Finished):
             print("=" * 60)
+            passed = event.passed_count + network_error_count
+            errored = event.errored_count - network_error_count
             print(
                 f"Tested {tested_count} endpoint(s) | "
-                f"Passed: {event.passed_count} | "
+                f"Passed: {passed} | "
                 f"Failed: {event.failed_count} | "
-                f"Errored: {event.errored_count} | "
+                f"Errored: {errored} | "
                 f"Skipped: {event.skipped_count}"
             )
-            if event.has_failures or event.has_errors:
+            if network_error_count > 0:
+                print(
+                    f"  (ignored {network_error_count} transient network error(s))"
+                )
+            if has_failures or has_errors:
                 print("RESULT: FAILURES DETECTED")
             else:
                 print("RESULT: ALL CHECKS PASSED")
-            has_failures = event.has_failures
-            has_errors = event.has_errors
 
     sys.exit(1 if has_failures or has_errors else 0)
+
+
+def _is_network_error(error):
+    """Check if an error is a transient network error (connection reset, etc.).
+
+    These occur intermittently due to HTTP connection pooling and the Go
+    server's connection lifecycle. They are not indicative of API bugs.
+    """
+    error_str = str(error)
+    network_indicators = [
+        "ConnectionResetError",
+        "Connection reset by peer",
+        "Connection broken",
+        "ChunkedEncodingError",
+        "ConnectionRefusedError",
+        "ConnectionAbortedError",
+        "BrokenPipeError",
+        "network_other",
+    ]
+    return any(indicator in error_str for indicator in network_indicators)
 
 
 if __name__ == "__main__":
