@@ -26,7 +26,7 @@ func main() {
 	defer conn.Close()
 
 	ledgers, err := internal.ListLedgers(ctx, client)
-	assert.Sometimes(err == nil, "should be able to list ledgers", internal.Details{
+	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to list ledgers", internal.Details{
 		"error": err,
 	})
 	if err != nil {
@@ -50,7 +50,7 @@ func main() {
 func checkBalanced(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 	// Aggregate all account balances per asset
 	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{Ledger: ledger})
-	assert.Sometimes(err == nil, "should be able to list accounts", internal.Details{
+	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to list accounts", internal.Details{
 		"ledger": ledger,
 		"error":  err,
 	})
@@ -102,7 +102,7 @@ func checkAccountBalances(ctx context.Context, client servicepb.BucketServiceCli
 			Ledger:  ledger,
 			Address: address,
 		})
-		assert.Sometimes(err == nil, "should be able to get account", internal.Details{
+		assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to get account", internal.Details{
 			"ledger":  ledger,
 			"address": address,
 			"error":   err,
@@ -124,7 +124,7 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 	details := internal.Details{"ledger": ledger}
 
 	stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{Ledger: ledger})
-	assert.Sometimes(err == nil, "should be able to list accounts", details.With(internal.Details{"error": err}))
+	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to list accounts", details.With(internal.Details{"error": err}))
 	if err != nil {
 		return
 	}

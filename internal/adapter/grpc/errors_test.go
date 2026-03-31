@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
@@ -450,6 +451,19 @@ func TestConvertToGRPCError_ColdStorageDisabled(t *testing.T) {
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.FailedPrecondition, st.Code())
+}
+
+func TestConvertToGRPCError_ClusterUnhealthy(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := convertToGRPCError(health.ErrUnhealthy)
+	st, ok := status.FromError(grpcErr)
+	require.True(t, ok)
+	require.Equal(t, codes.Unavailable, st.Code())
+
+	info := extractErrorInfo(t, st)
+	require.Equal(t, domain.ErrReasonClusterUnhealthy, info.GetReason())
+	require.Equal(t, errorDomain, info.GetDomain())
 }
 
 func TestConvertToGRPCError_AlreadyGRPCStatus(t *testing.T) {

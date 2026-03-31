@@ -51,6 +51,7 @@ const (
 	ErrReasonColdStorageDisabled               = "COLD_STORAGE_DISABLED"
 	ErrReasonAccountTypeMigrationInProgress    = "ACCOUNT_TYPE_MIGRATION_IN_PROGRESS"
 	ErrReasonAccountTypeMigrationNotCompatible = "ACCOUNT_TYPE_MIGRATION_NOT_COMPATIBLE"
+	ErrReasonClusterUnhealthy                  = "CLUSTER_UNHEALTHY"
 )
 
 // BusinessError wraps a processing error to distinguish it from infrastructure errors.

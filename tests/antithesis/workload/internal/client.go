@@ -6,7 +6,9 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/proto/servicepb"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 // NewGRPCConn creates a gRPC connection to the ledger service with retry on UNAVAILABLE.
@@ -38,6 +40,17 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		return nil, err
 	}
 	return conn, nil
+}
+
+// IsUnavailable returns true if the error is a gRPC Unavailable status
+// (cluster unhealthy, no leader, etc.). These are transient errors that
+// should not trigger failure assertions in Antithesis tests.
+func IsUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	st, ok := status.FromError(err)
+	return ok && st.Code() == codes.Unavailable
 }
 
 // NewClient creates a BucketServiceClient connected to the ledger service.

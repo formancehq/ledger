@@ -25,6 +25,7 @@ import (
 
 	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -314,6 +315,21 @@ func convertToGRPCError(err error) error {
 	// Convert maintenance mode error to Unavailable (client should retry later)
 	if errors.Is(err, admission.ErrMaintenanceMode) {
 		return status.Error(codes.Unavailable, err.Error())
+	}
+
+	// Convert ErrUnhealthy to Unavailable with ErrorInfo (client should retry later)
+	if errors.Is(err, health.ErrUnhealthy) {
+		st := status.New(codes.Unavailable, err.Error())
+
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: domain.ErrReasonClusterUnhealthy,
+			Domain: errorDomain,
+		})
+		if detailErr == nil {
+			return detailed.Err()
+		}
+
+		return st.Err()
 	}
 
 	// Convert ErrNoLeader to Unavailable (client should retry)

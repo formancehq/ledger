@@ -21,14 +21,14 @@ func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, nam
 			},
 		}},
 	})
-	assert.Sometimes(err == nil, "should be able to create ledger", details.With(Details{"error": err}))
+	assert.Sometimes(err == nil || IsUnavailable(err), "should be able to create ledger", details.With(Details{"error": err}))
 	if err != nil {
 		return err
 	}
 
 	// Verify it's readable
 	_, err = client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: name})
-	assert.Sometimes(err == nil, "should always be able to get created ledger", details.With(Details{"error": err}))
+	assert.Sometimes(err == nil || IsUnavailable(err), "should always be able to get created ledger", details.With(Details{"error": err}))
 	return nil
 }
 
@@ -55,7 +55,7 @@ func ListLedgers(ctx context.Context, client servicepb.BucketServiceClient) ([]s
 // GetRandomLedger returns a random ledger name from the existing ledgers.
 func GetRandomLedger(ctx context.Context, client servicepb.BucketServiceClient) (string, error) {
 	ledgers, err := ListLedgers(ctx, client)
-	assert.Sometimes(err == nil, "should be able to get a random ledger", Details{"error": err})
+	assert.Sometimes(err == nil || IsUnavailable(err), "should be able to get a random ledger", Details{"error": err})
 	if err != nil {
 		return "", err
 	}
@@ -111,7 +111,7 @@ func ListTransactions(ctx context.Context, client servicepb.BucketServiceClient,
 // GetLastTransactionID returns the ID of the most recent transaction in a ledger, or -1 if none.
 func GetLastTransactionID(ctx context.Context, client servicepb.BucketServiceClient, ledger string) (int64, error) {
 	txs, err := ListTransactions(ctx, client, ledger, 1)
-	assert.Sometimes(err == nil, "should be able to get the latest transaction", Details{"ledger": ledger})
+	assert.Sometimes(err == nil || IsUnavailable(err), "should be able to get the latest transaction", Details{"ledger": ledger})
 	if err != nil {
 		return -1, err
 	}

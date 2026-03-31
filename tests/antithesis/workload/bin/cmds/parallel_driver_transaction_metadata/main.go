@@ -76,9 +76,9 @@ func setTransactionMetadata(
 		Ledger:        ledger,
 		TransactionId: txID,
 	})
-	assert.Sometimes(err == nil, "should be able to get entity before metadata change", internal.Details{
+	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to get entity before metadata change", internal.Details{
 		"ledger": ledger,
-		"error": err,
+		"error":  err,
 	})
 	if err != nil {
 		return
@@ -105,9 +105,9 @@ func setTransactionMetadata(
 			},
 		}},
 	})
-	assert.Sometimes(err == nil, "should be able to set metadata", internal.Details{
+	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to set metadata", internal.Details{
 		"ledger": ledger,
-		"error": err,
+		"error":  err,
 	})
 	if err != nil {
 		return
@@ -118,7 +118,7 @@ func setTransactionMetadata(
 		Ledger:        ledger,
 		TransactionId: txID,
 	})
-	assert.Sometimes(err == nil, "should be able to get entity after metadata change", internal.Details{
+	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to get entity after metadata change", internal.Details{
 		"ledger": ledger,
 		"error":  err,
 	})

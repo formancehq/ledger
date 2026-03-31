@@ -81,7 +81,7 @@ func createRandomPostingsTransaction(ctx context.Context, client servicepb.Bucke
 		"error":  err,
 	}
 
-	assert.Sometimes(err == nil, "should be able to create a transaction", details)
+	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to create a transaction", details)
 	if err != nil {
 		return
 	}

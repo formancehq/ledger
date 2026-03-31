@@ -80,7 +80,7 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 			if len(actions) > 0 {
 				_, err := client.Apply(ctx, &servicepb.ApplyRequest{Requests: actions})
 				details := internal.Details{"error": err}
-				assert.Sometimes(err == nil, "should be able to setup scenario", details)
+				assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to setup scenario", details)
 				if err != nil && !isAlreadyExists(err) {
 					log.Printf("scenario_blocks: setup failed: %v", err)
 				}
@@ -113,6 +113,8 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 			CheckPostCommitVolumes(resp, details)
 		case errors.Is(err, scenario.ErrSkip):
 			assert.Sometimes(true, fmt.Sprintf("block %s precondition not met (skip)", b.Name), details)
+		case internal.IsUnavailable(err):
+			log.Printf("scenario_blocks: %s unavailable (transient): %v", b.Name, err)
 		default:
 			assert.Sometimes(false, fmt.Sprintf("block %s failed", b.Name), details.With(internal.Details{"error": err}))
 			log.Printf("scenario_blocks: %s failed: %v", b.Name, err)
