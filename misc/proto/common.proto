@@ -832,6 +832,17 @@ message StartedAccountMigrationLog {
 message AccountMigrationBatchLog {
   string account_type_name = 1;
   uint32 count = 2;
+  repeated AccountMigrationEntryLog entries = 3;
+}
+
+// AccountMigrationEntryLog records a single account rename with the assets
+// and metadata keys that were migrated. This is needed so that the integrity
+// checker can replay volume/metadata movements.
+message AccountMigrationEntryLog {
+  string old_address = 1;
+  string new_address = 2;
+  repeated string assets = 3;
+  repeated string metadata_keys = 4;
 }
 
 // CompletedAccountMigrationLog records the completion of a pattern migration.

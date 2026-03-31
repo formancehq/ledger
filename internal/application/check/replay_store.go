@@ -137,6 +137,52 @@ func (s *replayStore) deleteVolume(canonicalKey []byte) error {
 	return s.db.Delete(key, pebble.NoSync)
 }
 
+// moveVolume transfers accumulated volume from oldKey to newKey:
+// newVolume += oldVolume, then deletes oldKey.
+// If oldKey has no volume, this is a no-op.
+func (s *replayStore) moveVolume(oldCanonicalKey, newCanonicalKey []byte) error {
+	oldVol, err := s.getVolume(oldCanonicalKey)
+	if err != nil {
+		return err
+	}
+	if oldVol == nil {
+		return nil // nothing to move
+	}
+
+	// Add old volume to new key
+	inBig := oldVol.GetInput().ToBigInt()
+	outBig := oldVol.GetOutput().ToBigInt()
+
+	if err := s.addVolumeDelta(newCanonicalKey, inBig, outBig); err != nil {
+		return err
+	}
+
+	return s.deleteVolume(oldCanonicalKey)
+}
+
+// moveMetadata transfers a metadata entry from oldKey to newKey.
+// If oldKey has no metadata, this is a no-op.
+func (s *replayStore) moveMetadata(oldCanonicalKey, newCanonicalKey []byte) error {
+	oldKey := replayKey(replayPrefixMetadata, oldCanonicalKey)
+
+	val, closer, err := s.db.Get(oldKey)
+	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return nil // nothing to move
+		}
+		return fmt.Errorf("reading metadata for move: %w", err)
+	}
+	valCopy := append([]byte(nil), val...)
+	_ = closer.Close()
+
+	newKey := replayKey(replayPrefixMetadata, newCanonicalKey)
+	if err := s.db.Set(newKey, valCopy, pebble.NoSync); err != nil {
+		return err
+	}
+
+	return s.db.Delete(oldKey, pebble.NoSync)
+}
+
 // setMetadata stores a metadata value in the replay store (pure write).
 func (s *replayStore) setMetadata(canonicalKey []byte, value string) error {
 	key := replayKey(replayPrefixMetadata, canonicalKey)

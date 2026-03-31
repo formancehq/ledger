@@ -1012,6 +1012,51 @@ func replayLedgerLog(
 			}
 		}
 
+	case *commonpb.LedgerLogPayload_AccountMigrationBatch:
+		if p.AccountMigrationBatch == nil {
+			return nil
+		}
+		// Replay volume and metadata movements for each migrated account.
+		for _, entry := range p.AccountMigrationBatch.GetEntries() {
+			oldAddr := entry.GetOldAddress()
+			newAddr := entry.GetNewAddress()
+
+			// Move volumes for each asset
+			for _, asset := range entry.GetAssets() {
+				oldKey := domain.VolumeKey{
+					AccountKey: domain.AccountKey{Ledger: ledger, Account: oldAddr},
+					Asset:      asset,
+				}
+				newKey := domain.VolumeKey{
+					AccountKey: domain.AccountKey{Ledger: ledger, Account: newAddr},
+					Asset:      asset,
+				}
+				if err := replay.moveVolume(oldKey.Bytes(), newKey.Bytes()); err != nil {
+					return fmt.Errorf("moving volume %s/%s -> %s: %w", oldAddr, asset, newAddr, err)
+				}
+			}
+
+			// Move metadata for each key
+			for _, metaKey := range entry.GetMetadataKeys() {
+				oldMK := domain.MetadataKey{
+					AccountKey: domain.AccountKey{Ledger: ledger, Account: oldAddr},
+					Key:        metaKey,
+				}
+				newMK := domain.MetadataKey{
+					AccountKey: domain.AccountKey{Ledger: ledger, Account: newAddr},
+					Key:        metaKey,
+				}
+				if err := replay.moveMetadata(oldMK.Bytes(), newMK.Bytes()); err != nil {
+					return fmt.Errorf("moving metadata %s/%s -> %s: %w", oldAddr, metaKey, newAddr, err)
+				}
+			}
+		}
+
+	case *commonpb.LedgerLogPayload_StartedAccountMigration:
+		// No state to track — informational log
+	case *commonpb.LedgerLogPayload_CompletedAccountMigration:
+		// No state to track — informational log
+
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
 		// Schema operations — no state to track for integrity checks
 	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:

@@ -143,6 +143,90 @@ fuzz duration="30s":
 fuzz-one target duration="30s":
     go test ./... -run '^$' -fuzz="^{{target}}$" -fuzztime="{{duration}}" -timeout 600s
 
+# Coverage output directory
+coverage_dir := "build/coverage"
+
+# Packages to instrument for coverage (exclude generated proto, test infra, misc)
+coverage_pkgs := "github.com/formancehq/ledger-v3-poc/internal/..."
+
+# Run unit tests with coverage
+test-coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{coverage_dir}}
+    echo "==> Unit tests with coverage..."
+    GOTOOLCHAIN=$(go env GOVERSION) go test -race -coverprofile={{coverage_dir}}/unit.out -coverpkg={{coverage_pkgs}} ./... -timeout 20m
+    echo "Coverage profile: {{coverage_dir}}/unit.out"
+
+# Run E2E tests with coverage
+test-e2e-coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{coverage_dir}}
+    echo "==> E2E tests with coverage..."
+    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags e2e -p 1 -coverprofile={{coverage_dir}}/e2e.out -coverpkg={{coverage_pkgs}} ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
+    echo "Coverage profile: {{coverage_dir}}/e2e.out"
+
+# Run scenario tests with coverage
+test-scenarios-coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{coverage_dir}}
+    echo "==> Scenario tests with coverage..."
+    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags scenario -coverprofile={{coverage_dir}}/scenario.out -coverpkg={{coverage_pkgs}} ./tests/scenarios/... -timeout 300s
+    echo "Coverage profile: {{coverage_dir}}/scenario.out"
+
+# Run fuzz seed replay with coverage
+fuzz-check-coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{coverage_dir}}
+    fuzz_pkgs=(
+        ./internal/proto/commonpb/
+        ./internal/proto/servicepb/
+        ./internal/proto/rafttransportpb/
+        ./internal/proto/raftcmdpb/
+        ./internal/proto/signaturepb/
+        ./internal/proto/snapshotpb/
+        ./internal/pkg/filterexpr/
+        ./internal/pkg/semver/
+    )
+    echo "==> Fuzz seed replay with coverage..."
+    GOTOOLCHAIN=$(go env GOVERSION) go test -coverprofile={{coverage_dir}}/fuzz.out -coverpkg={{coverage_pkgs}} -run 'Fuzz' -timeout 60s "${fuzz_pkgs[@]}"
+    echo "Coverage profile: {{coverage_dir}}/fuzz.out"
+
+# Merge all coverage profiles into a single report
+coverage-merge:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{coverage_dir}}
+    profiles=()
+    for f in {{coverage_dir}}/unit.out {{coverage_dir}}/e2e.out {{coverage_dir}}/scenario.out {{coverage_dir}}/fuzz.out; do
+        [ -f "$f" ] && profiles+=("$f")
+    done
+    if [ ${#profiles[@]} -eq 0 ]; then
+        echo "No coverage profiles found in {{coverage_dir}}/"
+        exit 1
+    fi
+    echo "==> Merging ${#profiles[@]} coverage profiles..."
+    # Take the mode line from the first profile, then all data lines from all profiles
+    head -1 "${profiles[0]}" > {{coverage_dir}}/merged.out
+    for f in "${profiles[@]}"; do
+        tail -n +2 "$f" >> {{coverage_dir}}/merged.out
+    done
+    echo "==> Merged profile: {{coverage_dir}}/merged.out"
+    go tool cover -func={{coverage_dir}}/merged.out | tail -1
+    echo ""
+    echo "To view HTML report: go tool cover -html={{coverage_dir}}/merged.out -o {{coverage_dir}}/coverage.html"
+
+# Generate HTML coverage report from merged profile
+coverage-html: coverage-merge
+    go tool cover -html={{coverage_dir}}/merged.out -o {{coverage_dir}}/coverage.html
+    echo "HTML report: {{coverage_dir}}/coverage.html"
+
+# Run all tests with coverage and merge
+coverage-all: test-coverage test-e2e-coverage test-scenarios-coverage fuzz-check-coverage coverage-merge
+
 # Run Schemathesis API conformity and fuzzing tests
 test-schemathesis:
     bash tests/schemathesis/run.sh

@@ -64,9 +64,17 @@ jobs:
           filter: tree:0
       - name: Setup Env
         uses: ./.github/actions/default
-      - name: Run unit tests
+      - name: Run unit tests with coverage
         run: >
-          nix develop --command just test
+          nix develop --command just test-coverage
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit
+          path: build/coverage/unit.out
+          retention-days: 7
+          if-no-files-found: ignore
 
   Tests-Submodules:
     runs-on: shipfox-4vcpu-ubuntu-2404
@@ -94,9 +102,17 @@ jobs:
           filter: tree:0
       - name: Setup Env
         uses: ./.github/actions/default
-      - name: Run E2E tests
+      - name: Run E2E tests with coverage
         run: >
-          nix develop --command just test-e2e
+          nix develop --command just test-e2e-coverage
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-e2e
+          path: build/coverage/e2e.out
+          retention-days: 7
+          if-no-files-found: ignore
 
   Tests-Scenarios:
     runs-on: shipfox-4vcpu-ubuntu-2404
@@ -109,9 +125,65 @@ jobs:
           filter: tree:0
       - name: Setup Env
         uses: ./.github/actions/default
-      - name: Run scenario tests
+      - name: Run scenario tests with coverage
         run: >
-          nix develop --command just test-scenarios
+          nix develop --command just test-scenarios-coverage
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-scenario
+          path: build/coverage/scenario.out
+          retention-days: 7
+          if-no-files-found: ignore
+
+  Coverage:
+    if: always()
+    needs: [Tests, Tests-E2E, Tests-Scenarios]
+    runs-on: shipfox-4vcpu-ubuntu-2404
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Download all coverage profiles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+          path: build/coverage
+      - name: Merge coverage profiles
+        run: |
+          nix develop --command bash -c '
+            cd build/coverage
+            profiles=()
+            for f in *.out; do
+              [ -f "$f" ] && profiles+=("$f")
+            done
+            if [ ${#profiles[@]} -eq 0 ]; then
+              echo "No coverage profiles found"
+              exit 0
+            fi
+            echo "Merging ${#profiles[@]} profiles: ${profiles[*]}"
+            head -1 "${profiles[0]}" > merged.out
+            for f in "${profiles[@]}"; do
+              tail -n +2 "$f" >> merged.out
+            done
+            go tool cover -func=merged.out | tail -1
+          '
+      - name: Upload to Codecov
+        if: hashFiles('build/coverage/merged.out') != ''
+        uses: codecov/codecov-action@v5
+        with:
+          files: build/coverage/merged.out
+          flags: unit,e2e,scenario
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   Build:
     runs-on: shipfox-4vcpu-ubuntu-2404

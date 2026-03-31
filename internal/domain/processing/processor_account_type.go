@@ -265,11 +265,24 @@ func (p *RequestProcessor) processAccountMigrationBatch(
 
 	s.PutLedger(ledgerName, info)
 
+	// Build log entries from the order entries so the integrity checker
+	// can replay volume/metadata movements.
+	logEntries := make([]*commonpb.AccountMigrationEntryLog, 0, len(order.GetEntries()))
+	for _, entry := range order.GetEntries() {
+		logEntries = append(logEntries, &commonpb.AccountMigrationEntryLog{
+			OldAddress:   entry.GetOldAddress(),
+			NewAddress:   entry.GetNewAddress(),
+			Assets:       entry.GetAssets(),
+			MetadataKeys: entry.GetMetadataKeys(),
+		})
+	}
+
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_AccountMigrationBatch{
 			AccountMigrationBatch: &commonpb.AccountMigrationBatchLog{
 				AccountTypeName: order.GetAccountTypeName(),
 				Count:           count,
+				Entries:         logEntries,
 			},
 		},
 	}, nil

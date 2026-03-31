@@ -1,0 +1,38 @@
+codecov:
+  require_ci_to_pass: false
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto      # don't regress from base branch
+        threshold: 1%     # allow 1% fluctuation
+    patch:
+      default:
+        target: 80%       # new code should be at least 80% covered
+
+  # Exclude generated code and test utilities from coverage metrics
+ignore:
+  - "internal/proto/**/*_vt.pb.go"
+  - "internal/proto/**/*.pb.go"
+  - "internal/proto/**/*_grpc.pb.go"
+  - "**/*_generated.go"
+  - "**/*_generated_test.go"
+  - "tests/**"
+  - "pkg/testserver/**"
+  - "misc/**"
+  - "cmd/**"
+
+flags:
+  unit:
+    paths:
+      - "internal/"
+    carryforward: true
+  e2e:
+    paths:
+      - "internal/"
+    carryforward: true
+  scenario:
+    paths:
+      - "internal/"
+    carryforward: true
