@@ -13,7 +13,7 @@ func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
 
 	ledgerInfo, err := s.backend.GetLedgerByName(r.Context(), ledgerName)
 	if err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", err)
+		handleError(w, r, err)
 
 		return
 	}

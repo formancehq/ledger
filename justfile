@@ -143,6 +143,10 @@ fuzz duration="30s":
 fuzz-one target duration="30s":
     go test ./... -run '^$' -fuzz="^{{target}}$" -fuzztime="{{duration}}" -timeout 600s
 
+# Run Schemathesis API conformity and fuzzing tests
+test-schemathesis:
+    bash tests/schemathesis/run.sh
+
 # Release (official, triggered by tag)
 release:
     goreleaser release --clean

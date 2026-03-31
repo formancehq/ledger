@@ -4,8 +4,9 @@ on:
   push:
     branches:
       - master
+      - release/*
   pull_request:
-    types: [assigned, opened, synchronize, reopened]
+    types: [assigned, opened, synchronize, reopened, labeled]
 
 permissions:
   contents: write
@@ -15,6 +16,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  PR:
+    if: github.event_name == 'pull_request'
+    name: Check PR Title
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   Dirty:
     runs-on: shipfox-4vcpu-ubuntu-2404
     env:
@@ -52,8 +64,54 @@ jobs:
           filter: tree:0
       - name: Setup Env
         uses: ./.github/actions/default
-      - run: >
-          nix develop --command go test ./... -timeout 10m
+      - name: Run unit tests
+        run: >
+          nix develop --command just test
+
+  Tests-Submodules:
+    runs-on: shipfox-4vcpu-ubuntu-2404
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Run submodule tests
+        run: >
+          nix develop --command just test-submodules
+
+  Tests-E2E:
+    runs-on: shipfox-4vcpu-ubuntu-2404
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Run E2E tests
+        run: >
+          nix develop --command just test-e2e
+
+  Tests-Scenarios:
+    runs-on: shipfox-4vcpu-ubuntu-2404
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Run scenario tests
+        run: >
+          nix develop --command just test-scenarios
 
   Build:
     runs-on: shipfox-4vcpu-ubuntu-2404
@@ -69,9 +127,42 @@ jobs:
       - run: >
           nix develop --command go build ./...
 
+  Tests-Schemathesis:
+    runs-on: shipfox-4vcpu-ubuntu-2404
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Run Schemathesis API conformity tests
+        continue-on-error: true
+        run: >
+          nix develop --command bash -c "MAX_EXAMPLES=10 just test-schemathesis"
+      - name: Upload Schemathesis results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schemathesis-report
+          path: /tmp/schemathesis-*.txt
+          retention-days: 14
+          if-no-files-found: ignore
+
   Release-Latest:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    needs: [Dirty, Tests, Build]
+    needs:
+      [
+        Dirty,
+        Tests,
+        Tests-Submodules,
+        Tests-E2E,
+        Tests-Scenarios,
+        Tests-Schemathesis,
+        Build,
+      ]
     runs-on: shipfox-4vcpu-ubuntu-2404
     env:
       GOPATH: /tmp/go

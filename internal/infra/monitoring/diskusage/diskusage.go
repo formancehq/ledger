@@ -16,6 +16,12 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/worker"
 )
 
+// toInt64 converts any integer type to int64. This avoids unconvert lint errors
+// when stat.Bsize is uint32 on darwin but int64 on linux.
+func toInt64[T ~int32 | ~uint32 | ~int64 | ~uint64](v T) int64 {
+	return int64(v)
+}
+
 // DirSize computes the total size in bytes of all files under the given directory.
 func DirSize(path string) (int64, error) {
 	var size int64
@@ -180,7 +186,7 @@ func filesystemUsage(path string) (used, total int64, err error) {
 		return 0, 0, err
 	}
 
-	bsize := int64(stat.Bsize)
+	bsize := toInt64(stat.Bsize)
 	total = int64(stat.Blocks) * bsize
 	used = int64(stat.Blocks-stat.Bavail) * bsize
 

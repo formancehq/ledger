@@ -64,4 +64,5 @@ misc/devenv/devenv
 
 # Python
 .venv/
+.hypothesis/
 misc/devenv/operator/operator

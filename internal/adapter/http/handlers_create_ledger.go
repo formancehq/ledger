@@ -40,8 +40,9 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		Name: ledgerName,
 	}
 
-	// Parse optional body for mirror mode
-	if r.ContentLength > 0 {
+	// Parse optional body for mirror mode.
+	// Use ContentLength != 0 to also handle chunked requests (ContentLength == -1).
+	if r.ContentLength != 0 {
 		var body createLedgerBody
 
 		err := json.UnmarshalRead(r.Body, &body)

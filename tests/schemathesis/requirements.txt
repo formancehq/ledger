@@ -1,0 +1,1 @@
+schemathesis>=3.25.0,<4.0

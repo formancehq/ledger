@@ -33,12 +33,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListAllLedgersResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}:
     get:
@@ -59,6 +65,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetLedgerResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -69,6 +77,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
     post:
       summary: Create a new ledger
       description: |
@@ -96,6 +106,39 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateLedgerResponse'
+          links:
+            GetCreatedLedger:
+              operationId: getLedger
+              parameters:
+                ledgerName: '$response.body#/data/name'
+            DeleteCreatedLedger:
+              operationId: deleteLedger
+              parameters:
+                ledgerName: '$response.body#/data/name'
+            GetLedgerStats:
+              operationId: getLedgerStats
+              parameters:
+                ledgerName: '$response.body#/data/name'
+            CreateTransactionInLedger:
+              operationId: createTransaction
+              parameters:
+                ledgerName: '$response.body#/data/name'
+            ListLedgerAccounts:
+              operationId: listAccounts
+              parameters:
+                ledgerName: '$response.body#/data/name'
+            ListLedgerLogs:
+              operationId: listLedgerLogs
+              parameters:
+                ledgerName: '$response.body#/data/name'
+            SaveNumscriptInLedger:
+              operationId: saveNumscript
+              parameters:
+                ledgerName: '$response.body#/data/name'
+            BulkInLedger:
+              operationId: bulkOperations
+              parameters:
+                ledgerName: '$response.body#/data/name'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -112,6 +155,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Delete a ledger
       description: Deletes a ledger by its name. This operation removes the ledger and its associated Raft group from the cluster. Requires `ledger:write` scope.
@@ -125,8 +170,10 @@ paths:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
-        '2XX':
+        '204':
           description: Ledger deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -137,6 +184,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/stats:
     get:
@@ -157,6 +206,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetLedgerStatsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -167,6 +218,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/logs:
     get:
@@ -236,6 +289,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/promote:
     post:
@@ -264,6 +319,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -274,6 +331,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/transactions:
     post:
@@ -301,16 +360,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateTransactionResponse'
+          links:
+            GetCreatedTransaction:
+              operationId: getTransaction
+              parameters:
+                ledgerName: '$request.path.ledgerName'
+                transactionId: '$response.body#/data/transaction/id'
+            RevertCreatedTransaction:
+              operationId: revertTransaction
+              parameters:
+                ledgerName: '$request.path.ledgerName'
+                transactionId: '$response.body#/data/transaction/id'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Conflict (e.g. concurrent modification)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/transactions/{transactionId}:
     get:
@@ -332,6 +412,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetTransactionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -342,6 +424,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/accounts:
     get:
@@ -381,12 +465,20 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/accounts/{address}:
     get:
@@ -408,6 +500,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetAccountResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -418,6 +512,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/volumes:
     get:
@@ -457,6 +553,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AggregateVolumesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -467,6 +565,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/accounts/{address}/metadata:
     post:
@@ -505,10 +605,14 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/transactions/{transactionId}/metadata:
     post:
@@ -546,10 +650,14 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/accounts/{address}/metadata/{key}:
     delete:
@@ -575,10 +683,14 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/transactions/{transactionId}/metadata/{key}:
     delete:
@@ -604,10 +716,14 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/transactions/{transactionId}/revert:
     post:
@@ -642,10 +758,20 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Conflict (e.g. transaction already reverted)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/metadata-schema:
     get:
@@ -666,6 +792,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MetadataSchemaStatusResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -676,6 +804,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/analyze-accounts:
     get:
@@ -707,6 +837,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AnalyzeAccountsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -717,6 +849,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/analyze-transactions:
     get:
@@ -748,6 +882,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AnalyzeTransactionsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -758,6 +894,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/metadata-schema/{targetType}/{key}:
     put:
@@ -802,6 +940,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Remove metadata field type
       description: |
@@ -837,6 +977,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/numscripts:
     get:
@@ -854,14 +996,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ListNumscriptsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/numscripts/{name}:
     get:
@@ -894,6 +1038,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetNumscriptResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           description: Numscript not found
           content:
@@ -908,6 +1054,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
     put:
       summary: Save a numscript
       description: |
@@ -940,6 +1088,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetNumscriptResponse'
+          links:
+            GetSavedNumscript:
+              operationId: getNumscript
+              parameters:
+                ledgerName: '$request.path.ledgerName'
+                name: '$response.body#/data/name'
+            DeleteSavedNumscript:
+              operationId: deleteNumscript
+              parameters:
+                ledgerName: '$request.path.ledgerName'
+                name: '$response.body#/data/name'
         '204':
           description: Numscript saved (no content returned)
         '400':
@@ -962,6 +1121,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
     delete:
       summary: Delete a numscript
       description: Deletes a numscript from a ledger's library. Removes the latest version entry.
@@ -979,6 +1140,8 @@ paths:
       responses:
         '204':
           description: Numscript deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           description: Numscript not found
           content:
@@ -993,6 +1156,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
   /{ledgerName}/_bulk:
     post:
@@ -1034,11 +1199,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/BulkResponse'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: Bulk operations completed with errors, or invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '413':
           description: Request entity too large
           content:
@@ -1049,6 +1220,8 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
 
 components:
   securitySchemes:
@@ -1174,7 +1347,31 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
 
+    MethodNotAllowed:
+      description: Method not allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
   schemas:
+    ChartViolation:
+      type: object
+      description: A chart of accounts violation reported in AUDIT enforcement mode
+      required:
+        - type
+        - message
+      properties:
+        type:
+          type: string
+          description: The type of violation
+        message:
+          type: string
+          description: Human-readable description of the violation
+        account:
+          type: string
+          description: The account address that caused the violation
+
     MetadataValue:
       description: A typed metadata value (string, integer, boolean, or null)
       nullable: true
@@ -1228,36 +1425,56 @@ components:
           items:
             $ref: '#/components/schemas/LedgerInfo'
           description: List of all ledgers in the cluster
+          nullable: true
 
     LedgerInfo:
       type: object
       required:
         - name
-        - createdAt
-        - mode
       properties:
         name:
           type: string
           description: Name of the ledger
-        metadata:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/MetadataValue'
-          description: Metadata for the ledger (supports typed values)
-        createdAt:
+        created_at:
           type: string
           format: date-time
           description: Creation timestamp (ISO 8601 format)
+        deleted_at:
+          type: string
+          format: date-time
+          description: Soft delete timestamp (null if not deleted)
+          nullable: true
+        metadata_schema:
+          type: object
+          description: Per-key metadata type declarations
+          nullable: true
         mode:
           type: string
           enum:
             - NORMAL
             - MIRROR
           description: Ledger mode (NORMAL or MIRROR)
-        mirrorSource:
+        mirror_source:
           $ref: '#/components/schemas/MirrorSourceConfig'
-        mirrorSyncProgress:
+        mirror_sync_progress:
           $ref: '#/components/schemas/MirrorSyncProgress'
+        builtin_indexes:
+          type: object
+          description: Built-in transaction field index config
+          nullable: true
+        log_builtin_indexes:
+          type: object
+          description: Built-in log field index config
+          nullable: true
+        account_types:
+          type: object
+          description: Per-type account address validation
+          additionalProperties:
+            type: object
+          nullable: true
+        default_enforcement_mode:
+          type: string
+          description: Default enforcement for unmatched accounts
 
     MirrorSyncProgress:
       type: object
@@ -1500,8 +1717,6 @@ components:
 
     BulkResponse:
       type: object
-      required:
-        - data
       properties:
         data:
           type: array
@@ -1514,23 +1729,23 @@ components:
 
     BulkResult:
       type: object
-      required:
-        - responseType
-        - logID
       properties:
-        errorCode:
-          type: string
-        errorDescription:
-          type: string
-        data:
-          type: object
-          description: Operation result data (transaction for CREATE_TRANSACTION, null for others)
         responseType:
           type: string
           description: Type of response (action name or ERROR)
         logID:
           type: integer
           format: int64
+          description: Log ID of the applied operation (0 on error)
+        errorCode:
+          type: string
+          description: Error code (present only on error)
+        errorDescription:
+          type: string
+          description: Error description (present only on error)
+        data:
+          description: Operation result data (transaction object for CREATE_TRANSACTION, null for others)
+          nullable: true
           description: Log ID of the operation
 
     CreateTransactionResponse:
@@ -1540,21 +1755,26 @@ components:
       properties:
         data:
           type: object
-          required:
-            - transaction
           properties:
             transaction:
               $ref: '#/components/schemas/TransactionResponse'
-            accountMetadata:
+            account_metadata:
               type: object
               additionalProperties:
                 type: object
-                additionalProperties:
-                  $ref: '#/components/schemas/MetadataValue'
-              description: Metadata for accounts involved in the transaction (typed values)
-            postCommitVolumes:
+              description: Metadata for accounts involved in the transaction
+            post_commit_volumes:
               $ref: '#/components/schemas/PostCommitVolumes'
               description: Post-commit volumes per account/asset (only present when expandVolumes is true)
+            period_id:
+              type: integer
+              format: uint64
+              description: Period that was OPEN when this transaction was created
+            previous_account_metadata:
+              type: object
+              additionalProperties:
+                type: object
+              description: Previous account metadata values (for index replay)
             warnings:
               type: array
               items:
@@ -1702,8 +1922,6 @@ components:
       type: object
       required:
         - id
-        - postings
-        - timestamp
       properties:
         postings:
           type: array
@@ -1723,21 +1941,34 @@ components:
           type: integer
           format: int64
           description: Transaction ID (assigned by the system)
+        reverted:
+          type: boolean
+          description: Whether this transaction has been reverted
+        inserted_at:
+          type: string
+          format: date-time
+          description: When the transaction was inserted into the ledger
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+        reverted_at:
+          type: string
+          format: date-time
+          description: When the transaction was reverted (null if not reverted)
+          nullable: true
 
     RevertedTransaction:
       type: object
-      required:
-        - revertedTransactionId
-        - revertTransaction
       properties:
-        revertedTransactionId:
+        reverted_transaction_id:
           type: integer
           format: uint64
           description: ID of the original transaction that was reverted
-        revertTransaction:
+        revert_transaction:
           $ref: '#/components/schemas/TransactionResponse'
           description: The new transaction that reverses the original transaction
-        postCommitVolumes:
+        post_commit_volumes:
           $ref: '#/components/schemas/PostCommitVolumes'
           description: Post-commit volumes per account/asset (only present when expandVolumes is true)
         warnings:
@@ -2146,9 +2377,6 @@ components:
       type: object
       required:
         - name
-        - content
-        - version
-        - createdAt
       properties:
         name:
           type: string
@@ -2160,10 +2388,13 @@ components:
           type: string
           description: Semver version string (e.g. "1.0.0")
           example: "1.0.0"
-        createdAt:
+        created_at:
           type: string
           format: date-time
           description: Creation/update timestamp (ISO 8601 format)
+        ledger:
+          type: string
+          description: Ledger name this numscript belongs to
 
     PromoteLedgerResponse:
       type: object
@@ -2191,19 +2422,39 @@ components:
           items:
             $ref: '#/components/schemas/NumscriptInfo'
           description: List of all numscripts
+          nullable: true
+
+    ChartOfAccounts:
+      type: object
+      description: A suggested chart of accounts based on account analysis
+      properties:
+        accounts:
+          type: array
+          items:
+            type: object
+            properties:
+              pattern:
+                type: string
+                description: Account name pattern
+              description:
+                type: string
+                description: Suggested description for this account group
 
     AnalyzeAccountsResponse:
       type: object
+      required:
+        - data
       properties:
-        suggestedChart:
-          $ref: '#/components/schemas/ChartOfAccounts'
-        patterns:
-          type: array
-          items:
-            $ref: '#/components/schemas/AccountPattern'
-        totalAccounts:
-          type: integer
-          format: int64
+        data:
+          type: object
+          properties:
+            patterns:
+              type: array
+              items:
+                $ref: '#/components/schemas/AccountPattern'
+            totalAccounts:
+              type: integer
+              format: int64
 
     AccountPattern:
       type: object
@@ -2251,17 +2502,22 @@ components:
 
     AnalyzeTransactionsResponse:
       type: object
+      required:
+        - data
       properties:
-        flowPatterns:
-          type: array
-          items:
-            $ref: '#/components/schemas/FlowPattern'
-        totalTransactions:
-          type: integer
-          format: int64
-        totalReverted:
-          type: integer
-          format: int64
+        data:
+          type: object
+          properties:
+            flowPatterns:
+              type: array
+              items:
+                $ref: '#/components/schemas/FlowPattern'
+            totalTransactions:
+              type: integer
+              format: int64
+            totalReverted:
+              type: integer
+              format: int64
 
     FlowPattern:
       type: object

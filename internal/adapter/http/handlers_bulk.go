@@ -209,18 +209,13 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 		}
 	}
 
+	statusCode := http.StatusOK
 	if hasError {
-		w.WriteHeader(http.StatusBadRequest)
+		statusCode = http.StatusBadRequest
 	}
 
 	response := bulkResponse{Data: apiResults}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	err := json.MarshalWrite(w, response)
-	if err != nil {
-		panic(err)
-	}
+	writeJSONResponse(w, statusCode, response)
 }
 
 // writeBulkErrorResponse writes a bulk error response.
@@ -230,9 +225,7 @@ func writeBulkErrorResponse(w http.ResponseWriter, statusCode int, errorCode str
 		errorMsg = err.Error()
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	_ = json.MarshalWrite(w, bulkResponse{
+	writeJSONResponse(w, statusCode, bulkResponse{
 		ErrorCode:    errorCode,
 		ErrorMessage: errorMsg,
 	})

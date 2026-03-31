@@ -2,13 +2,13 @@ package http
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
 
@@ -52,7 +52,7 @@ func TestHandleGetLedger_NotFound(t *testing.T) {
 
 	backend := &mockBackend{
 		getLedgerByNameFn: func(_ context.Context, _ string) (*commonpb.LedgerInfo, error) {
-			return nil, errors.New("ledger not found")
+			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		},
 	}
 	srv := newTestServer(t, backend)
@@ -64,5 +64,5 @@ func TestHandleGetLedger_NotFound(t *testing.T) {
 
 	srv.handleGetLedger(w, r)
 
-	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Equal(t, http.StatusNotFound, w.Code)
 }

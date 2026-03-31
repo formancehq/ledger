@@ -24,6 +24,9 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		insufficient       *domain.ErrInsufficientFunds
 		balNotFound        *domain.ErrBalanceNotFound
 		parseErr           *domain.ErrNumscriptParse
+		nsNotFound         *domain.ErrNumscriptNotFound
+		nsVersionExists    *domain.ErrNumscriptVersionAlreadyExists
+		nsInvalidVersion   *domain.ErrNumscriptInvalidVersion
 		metaNotFound       *domain.ErrMetadataNotFound
 		pqExists           *domain.ErrPreparedQueryAlreadyExists
 		pqNotFound         *domain.ErrPreparedQueryNotFound
@@ -76,6 +79,18 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.As(err, &parseErr):
 		writeErrorResponse(w, http.StatusBadRequest, "SCRIPT_PARSE_ERROR", err)
+
+	case errors.As(err, &nsNotFound):
+		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
+
+	case errors.As(err, &nsVersionExists):
+		writeErrorResponse(w, http.StatusConflict, "CONFLICT", err)
+
+	case errors.Is(err, domain.ErrNumscriptContentRequired):
+		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
+
+	case errors.As(err, &nsInvalidVersion):
+		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
 
 	case errors.As(err, &metaNotFound):
 		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)

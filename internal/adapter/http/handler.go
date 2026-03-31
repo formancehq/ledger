@@ -33,6 +33,18 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	requireQueriesRead := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesRead)
 	requireQueriesWrite := internalauth.RequireScope(authCfg, internalauth.ScopeQueriesWrite)
 
+	// Return JSON for 405 Method Not Allowed (Chi default returns text/plain)
+	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+		writeErrorResponse(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED",
+			fmt.Errorf("method %s not allowed on %s", r.Method, r.URL.Path))
+	})
+
+	// Return JSON for 404 Not Found on unmatched routes
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		writeErrorResponse(w, http.StatusNotFound, "ROUTE_NOT_FOUND",
+			fmt.Errorf("no route matches %s %s", r.Method, r.URL.Path))
+	})
+
 	// Apply middlewares
 	r.Use(
 		middleware.RequestID,
@@ -43,7 +55,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 		middleware.RequestLogger(&chiLogFormatter{
 			logger: logger,
 		}),
-		middleware.Recoverer,
+		jsonRecoverer,
 		internalauth.HTTPAuthMiddleware(authCfg),
 	)
 

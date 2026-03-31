@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -49,7 +50,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	ledgerLog := logs[0].GetPayload().GetApply().GetLog()
 	ct, ok := ledgerLog.GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
 	if !ok {
-		http.Error(w, "unexpected log payload type", http.StatusInternalServerError)
+		writeInternalServerError(w, r, errors.New("unexpected log payload type"))
 
 		return
 	}
