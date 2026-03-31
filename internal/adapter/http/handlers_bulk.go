@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -161,6 +162,13 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 		if err != nil {
 			hasError = true
 			results[i] = bulkResult{err: err}
+
+			continue
+		}
+
+		if len(logs) == 0 {
+			hasError = true
+			results[i] = bulkResult{err: errors.New("no log returned from apply")}
 
 			continue
 		}

@@ -17,6 +17,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		ikConflict         *domain.ErrIdempotencyKeyConflict
 		ledgerExists       *domain.ErrLedgerAlreadyExists
 		ledgerNotFound     *domain.ErrLedgerNotFound
+		ledgerDeleted      *domain.ErrLedgerDeleted
 		ledgerInMirror     *domain.ErrLedgerInMirrorMode
 		ledgerNotInMirror  *domain.ErrLedgerNotInMirrorMode
 		txNotFound         *domain.ErrTransactionNotFound
@@ -52,6 +53,9 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 
 	case errors.As(err, &ledgerNotFound):
 		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
+
+	case errors.As(err, &ledgerDeleted):
+		writeErrorResponse(w, http.StatusConflict, "LEDGER_DELETED", err)
 
 	case errors.As(err, &ledgerInMirror):
 		writeErrorResponse(w, http.StatusConflict, "LEDGER_IN_MIRROR_MODE", err)
@@ -125,7 +129,8 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, domain.ErrTargetRequired),
 		errors.Is(err, domain.ErrMetadataKeyRequired),
 		errors.Is(err, domain.ErrScriptRequired),
-		errors.Is(err, admission.ErrIdempotencyKeyTooLong):
+		errors.Is(err, admission.ErrIdempotencyKeyTooLong),
+		errors.Is(err, admission.ErrIdempotencyKeyInvalidUTF8):
 		writeErrorResponse(w, http.StatusBadRequest, "VALIDATION", err)
 
 	default:

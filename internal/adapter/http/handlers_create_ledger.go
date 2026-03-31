@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -87,6 +88,12 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		handleError(w, r, err)
+
+		return
+	}
+
+	if len(logs) == 0 {
+		writeInternalServerError(w, r, errors.New("no log returned from apply"))
 
 		return
 	}

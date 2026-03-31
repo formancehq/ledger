@@ -47,6 +47,12 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Return the service response directly - JSON encoding will handle it
+	if len(logs) == 0 {
+		writeInternalServerError(w, r, errors.New("no log returned from apply"))
+
+		return
+	}
+
 	ledgerLog := logs[0].GetPayload().GetApply().GetLog()
 	ct, ok := ledgerLog.GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
 	if !ok {

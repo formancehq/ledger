@@ -49,13 +49,12 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	r.Use(
 		middleware.RequestID,
 		middleware.RealIP,
-		otelhttp.NewMiddleware("ledger-http-server",
-			otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
-		),
+		otelhttp.NewMiddleware("ledger-http-server"),
 		middleware.RequestLogger(&chiLogFormatter{
 			logger: logger,
 		}),
 		jsonRecoverer,
+		utf8BodyValidator,
 		internalauth.HTTPAuthMiddleware(authCfg),
 	)
 
@@ -79,7 +78,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			r.Handle("/threadcreate", pprof.Handler("threadcreate"))
 		})
 
-		r.With(contentTypeMiddleware).Group(func(r chi.Router) {
+		r.With(contentTypeMiddleware, utf8PathParamValidator).Group(func(r chi.Router) {
 			r.Get("/health", server.handleHealth)
 			r.Get("/livez", server.handleLivez)
 			r.Get("/readyz", server.handleReadyz)

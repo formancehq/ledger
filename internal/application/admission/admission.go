@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -589,6 +590,9 @@ const maxIdempotencyKeyLength = 256
 
 // ErrIdempotencyKeyTooLong is returned when an idempotency key exceeds the maximum length.
 var ErrIdempotencyKeyTooLong = errors.New("idempotency key exceeds maximum length of 256 characters")
+
+// ErrIdempotencyKeyInvalidUTF8 is returned when an idempotency key contains invalid UTF-8.
+var ErrIdempotencyKeyInvalidUTF8 = errors.New("idempotency key contains invalid UTF-8")
 
 // ErrMaintenanceMode is returned when maintenance mode is active and the request is not a maintenance mode toggle.
 var ErrMaintenanceMode = errors.New("cluster is in maintenance mode: write operations are blocked")
@@ -1254,6 +1258,10 @@ func (a *Admission) requestToOrder(req *servicepb.Request) (*raftcmdpb.Order, er
 	if req.GetIdempotencyKey() != "" {
 		if len(req.GetIdempotencyKey()) > maxIdempotencyKeyLength {
 			return nil, &domain.BusinessError{Err: ErrIdempotencyKeyTooLong}
+		}
+
+		if !utf8.ValidString(req.GetIdempotencyKey()) {
+			return nil, &domain.BusinessError{Err: ErrIdempotencyKeyInvalidUTF8}
 		}
 
 		order.Idempotency = &commonpb.Idempotency{

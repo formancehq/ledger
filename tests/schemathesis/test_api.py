@@ -98,6 +98,18 @@ def before_call(context, case):
             case.body["metadata"] = {}
 
 
+@schemathesis.hook
+def after_call(context, case, response):
+    """Log details of server errors and connection failures for debugging."""
+    if response is not None and response.status_code >= 500:
+        print(
+            f"  >> SERVER ERROR {response.status_code} on "
+            f"{case.method.upper()} {case.formatted_path}: "
+            f"body={case.body!r:.200} resp={response.text[:200]}",
+            file=sys.stderr,
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Schemathesis API conformity and fuzzing tests for Ledger V3"
@@ -151,7 +163,22 @@ def main():
                 has_failures = True
                 for check_result in event.result.checks:
                     if hasattr(check_result, "message") and check_result.message:
-                        print(f"    FAIL: {check_result.name}: {check_result.message}")
+                        detail = ""
+                        try:
+                            resp = getattr(check_result, "response", None)
+                            if resp is None:
+                                example = getattr(check_result, "example", None)
+                                if example is not None:
+                                    resp = getattr(example, "response", None)
+                            if resp is not None:
+                                status = getattr(resp, "status_code", "?")
+                                body = getattr(resp, "text", None) or getattr(resp, "body", "")
+                                if isinstance(body, bytes):
+                                    body = body.decode("utf-8", errors="replace")
+                                detail = f" [HTTP {status}: {str(body)[:200]}]"
+                        except Exception:
+                            pass
+                        print(f"    FAIL: {check_result.name}: {check_result.message}{detail}")
 
             if event.result.has_errors:
                 has_errors = True
