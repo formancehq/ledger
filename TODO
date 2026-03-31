@@ -3,7 +3,6 @@ API:
 * Clean HTTP layer / GRPC proxy
 
 Business:
-* accounts migration
 * Checkpoint when promoting ledger to be able to shutdown the mirrored ledger properly
 * Databricks sinks
 * Json filters as v2
