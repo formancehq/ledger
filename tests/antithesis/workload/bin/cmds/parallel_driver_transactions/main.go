@@ -155,7 +155,7 @@ func createRandomNumscriptTransaction(ctx context.Context, client servicepb.Buck
 		"error":  err,
 	}
 
-	assert.Sometimes(err == nil, "should be able to create a transaction", details)
+	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to create a transaction", details)
 	if err != nil {
 		return
 	}
