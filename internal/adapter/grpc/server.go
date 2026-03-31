@@ -470,21 +470,22 @@ func NewRaftServer(port int, logger logging.Logger, tlsOpt ggrpc.ServerOption) *
 // Authentication is handled explicitly in each service method via auth.Authenticate.
 // If tlsOpt is non-nil, it is appended to the server options to enable TLS.
 func NewServiceServer(port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsOpt ggrpc.ServerOption) *ServiceServer {
-	// Recovery interceptor must be first (outermost) to catch panics from all handlers
+	// Recovery interceptor must be first (outermost) to catch panics from all handlers.
+	// Logging is placed before error conversion so that on the response path
+	// (innermost-first), error conversion runs first and logging sees the
+	// proper gRPC status code instead of "Unknown" for domain errors.
 	unaryInterceptors := []ggrpc.UnaryServerInterceptor{
 		recoveryInterceptor(logger),
 		consistencyInterceptor(),
+		loggingInterceptor(logger, slowThreshold),
 		errorConversionInterceptor(),
 	}
 	streamInterceptors := []ggrpc.StreamServerInterceptor{
 		recoveryStreamInterceptor(logger),
 		consistencyStreamInterceptor(),
+		loggingStreamInterceptor(logger, slowThreshold),
 		errorConversionStreamInterceptor(),
 	}
-
-	// Always log method, duration, and error for observability.
-	unaryInterceptors = append(unaryInterceptors, loggingInterceptor(logger, slowThreshold))
-	streamInterceptors = append(streamInterceptors, loggingStreamInterceptor(logger, slowThreshold))
 
 	opts := []ggrpc.ServerOption{
 		ggrpc.StatsHandler(otelgrpc.NewServerHandler()),
