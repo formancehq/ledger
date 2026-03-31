@@ -11,6 +11,9 @@ Business:
 * Read only followers (learners ?)
 * 1password integration
 * Ledger v2 passthrough
+* Backup export s3
+* CRON job to trigger backups
+* Operator create buckets
 
 Docs:
 * Clean relying parties distinctions
