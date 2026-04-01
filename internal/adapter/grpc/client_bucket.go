@@ -68,8 +68,10 @@ func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName stri
 }
 
 func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, address string) (*commonpb.Account, error) {
-	// GetAccount reads from local store via RoutedController, this method should not be called
-	return nil, errors.New("GetAccount is not available via gRPC client - use local reads")
+	return g.client.GetAccount(ctx, &servicepb.GetAccountRequest{
+		Ledger:  ledgerName,
+		Address: address,
+	})
 }
 
 func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (dal.Cursor[*commonpb.Account], error) {

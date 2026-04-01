@@ -2,7 +2,6 @@ package state
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -493,6 +492,12 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, entries ...raftpb.Entry) (
 			lifecycle.SendEvent("spool replay completed", map[string]any{
 				"entryIndex": entry.Index,
 			})
+			fsm.logger.WithFields(map[string]any{
+				"entryIndex":        entry.Index,
+				"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
+				"gen0":              fsm.Registry.Cache.BaseIndex.Gen0,
+				"gen1":              fsm.Registry.Cache.BaseIndex.Gen1,
+			}).Infof("Cache generation rotated")
 			rotationStart := time.Now()
 			fsm.rotationDurationHistogram.Record(context.Background(), time.Since(rotationStart).Microseconds())
 		}
@@ -735,21 +740,33 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		return nil
 	}
 
-	// The preloads should target gen0 or gen1. The admission uses the
-	// IndexTracker to predict the next Raft index and compute the boundary,
-	// but the prediction can be off by ±1 due to the race between the tracker
-	// and rawNode.Propose() (non-proposal entries like leader no-ops can
-	// intercalate). When the off-by-one crosses a generation boundary, the
-	// preload targets a boundary that doesn't match either gen. This is safe
-	// because preloaded values only seed keys not already in cache, and a
-	// forward-mismatch (preload ahead) means the data is at least as fresh.
+	// The preloads must target gen0 or gen1. The admission uses the
+	// IndexTracker to predict the next Raft index and compute the boundary.
+	// A mismatch here indicates a bug in the preload/cache coordination.
 	switch preloadSet.GetLastPersistedIndex() {
 	case fsm.Registry.Cache.BaseIndex.Gen0:
 		fsm.logger.Debug("Selecting cache generation 0")
 	case fsm.Registry.Cache.BaseIndex.Gen1:
 		fsm.logger.Debug("Selecting cache generation 1")
 	default:
-		return errors.New("preloading preloaded index is invalid")
+		fsm.logger.WithFields(map[string]any{
+			"lastPersistedIndex":   preloadSet.GetLastPersistedIndex(),
+			"gen0":                 fsm.Registry.Cache.BaseIndex.Gen0,
+			"gen1":                 fsm.Registry.Cache.BaseIndex.Gen1,
+			"currentGeneration":    fsm.Registry.Cache.CurrentGeneration(),
+			"generationThreshold":  fsm.Registry.Cache.GenerationThreshold,
+			"lastAppliedIndex":     fsm.lastAppliedIndex,
+			"preloadCount":         len(preloadSet.GetPreloads()),
+			"touchCount":           len(preloadSet.GetTouches()),
+		}).Errorf("Preload boundary mismatch: LastPersistedIndex does not match Gen0 or Gen1")
+
+		return fmt.Errorf("preloading preloaded index is invalid: lastPersistedIndex=%d gen0=%d gen1=%d currentGen=%d lastApplied=%d",
+			preloadSet.GetLastPersistedIndex(),
+			fsm.Registry.Cache.BaseIndex.Gen0,
+			fsm.Registry.Cache.BaseIndex.Gen1,
+			fsm.Registry.Cache.CurrentGeneration(),
+			fsm.lastAppliedIndex,
+		)
 	}
 
 	// Helper function to put a preloaded volume pair into a cache generation.
@@ -1444,7 +1461,11 @@ func (fsm *Machine) CreateSnapshot(_ context.Context) ([]byte, error) {
 	}
 
 	fsm.logger.WithFields(map[string]any{
-		"duration": time.Since(persistStart).String(),
+		"duration":          time.Since(persistStart).String(),
+		"gen0":              fsm.Registry.Cache.BaseIndex.Gen0,
+		"gen1":              fsm.Registry.Cache.BaseIndex.Gen1,
+		"currentGeneration": fsm.Registry.Cache.CurrentGeneration(),
+		"lastAppliedIndex":  fsm.lastAppliedIndex,
 	}).Infof("Persisted cache to Pebble")
 
 	checkpointID, err := fsm.dataStore.CreateSnapshot()

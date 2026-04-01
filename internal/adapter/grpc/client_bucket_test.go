@@ -294,13 +294,26 @@ func TestListTransactions_StreamError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestGetAccount_Success(t *testing.T) {
+	t.Parallel()
+
+	expected := &commonpb.Account{Address: "user:001"}
+	mock := &mockBucketServiceClient{getAccountResp: expected}
+
+	client := NewLedgerGrpcClient(mock)
+	account, err := client.GetAccount(context.Background(), "ledger1", "user:001")
+	require.NoError(t, err)
+	require.Equal(t, "user:001", account.GetAddress())
+}
+
 func TestGetAccount_ReturnsError(t *testing.T) {
 	t.Parallel()
 
-	client := NewLedgerGrpcClient(&mockBucketServiceClient{})
+	mock := &mockBucketServiceClient{getAccountErr: errors.New("unavailable")}
+
+	client := NewLedgerGrpcClient(mock)
 	_, err := client.GetAccount(context.Background(), "ledger1", "user:001")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "not available via gRPC client")
 }
 
 func TestListAccounts_Success(t *testing.T) {
