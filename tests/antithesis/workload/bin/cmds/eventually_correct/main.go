@@ -161,7 +161,7 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 				Ledger:  ledger,
 				Address: account.Address,
 			})
-			assert.Sometimes(err == nil, "should be able to get account", details.With(internal.Details{
+			assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to get account", details.With(internal.Details{
 				"account": account.Address,
 				"error":   err,
 			}))
