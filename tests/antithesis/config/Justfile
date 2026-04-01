@@ -1,13 +1,7 @@
 tag := "antithesis"
 
-build-manifest output *ARGS:
-	rm -f -- '{{output}}'
-	helm dependency update
-	helm dependency build
-	helm template . \
-	    --values values.yaml \
-	    --set run_tag={{tag}} \
-	    --include-crds {{ARGS}} > '{{output}}'
+build-config output:
+	sed 's/__TAG__/{{tag}}/g' docker-compose.yaml > '{{output}}'
 
 push *ARGS:
 	#!/usr/bin/env bash
@@ -16,7 +10,7 @@ push *ARGS:
 	tmpdir=$(mktemp -d)
 	trap 'rm -rf $tmpdir' EXIT
 
-	just build-manifest "$tmpdir/resources.yaml" {{ARGS}}
+	just build-config "$tmpdir/docker-compose.yaml"
 
 	docker build --platform linux/amd64 -f Dockerfile.config -t $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:{{tag}} $tmpdir
 	docker push $ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3:{{tag}}

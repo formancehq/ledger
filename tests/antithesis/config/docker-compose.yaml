@@ -1,0 +1,157 @@
+x-etcd-common: &etcd-common
+  image: quay.io/coreos/etcd:v3.5.9
+  init: true
+  environment: &etcd-env
+    ETCD_INITIAL_CLUSTER: etcd-0=http://etcd-0:2380,etcd-1=http://etcd-1:2380,etcd-2=http://etcd-2:2380
+    ETCD_INITIAL_CLUSTER_STATE: new
+    ETCD_INITIAL_CLUSTER_TOKEN: etcd-cluster
+    ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
+    ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+
+x-ledger-common: &ledger-common
+  image: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-v3-poc:__TAG__
+  init: true
+  environment: &ledger-env
+    BIND_ADDR: "0.0.0.0:7777"
+    GRPC_PORT: "8888"
+    HTTP_PORT: "9000"
+    WAL_DIR: "/data/raft"
+    DATA_DIR: "/data/app"
+    CLUSTER_ID: "default"
+    VOLUME_ASSERTIONS: "true"
+    SNAPSHOT_THRESHOLD: "1000"
+    RAFT_ELECTION_TICK: "10"
+    RAFT_HEARTBEAT_TICK: "1"
+    RAFT_MAX_SIZE_PER_MSG: "1048576"
+    RAFT_MAX_INFLIGHT_MSGS: "256"
+    RAFT_TICK_INTERVAL: "100ms"
+    COLD_CACHE_DIR: "/data/cold-cache"
+    INSECURE: "true"
+
+services:
+  etcd-0:
+    <<: *etcd-common
+    container_name: etcd-0
+    hostname: etcd-0
+    environment:
+      <<: *etcd-env
+      ETCD_NAME: etcd-0
+      ETCD_DATA_DIR: /var/run/etcd/default.etcd
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd-0:2380
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd-0:2379
+    volumes:
+      - etcd-0-data:/var/run/etcd
+
+  etcd-1:
+    <<: *etcd-common
+    container_name: etcd-1
+    hostname: etcd-1
+    environment:
+      <<: *etcd-env
+      ETCD_NAME: etcd-1
+      ETCD_DATA_DIR: /var/run/etcd/default.etcd
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd-1:2380
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd-1:2379
+    volumes:
+      - etcd-1-data:/var/run/etcd
+
+  etcd-2:
+    <<: *etcd-common
+    container_name: etcd-2
+    hostname: etcd-2
+    environment:
+      <<: *etcd-env
+      ETCD_NAME: etcd-2
+      ETCD_DATA_DIR: /var/run/etcd/default.etcd
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd-2:2380
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd-2:2379
+    volumes:
+      - etcd-2-data:/var/run/etcd
+
+  ledger-0:
+    <<: *ledger-common
+    container_name: ledger-0
+    hostname: ledger-0
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -f "/data/app/CURRENT_CHECKPOINT" ]; then
+          CLUSTER_FLAG=""
+        else
+          CLUSTER_FLAG="--bootstrap"
+        fi
+        exec ./ledger-v3-poc run \
+          --node-id 1 \
+          --advertise-addr "ledger-0:7777" \
+          $$CLUSTER_FLAG
+    volumes:
+      - ledger-0-wal:/data/raft
+      - ledger-0-data:/data/app
+      - ledger-0-cold-cache:/data/cold-cache
+
+  ledger-1:
+    <<: *ledger-common
+    container_name: ledger-1
+    hostname: ledger-1
+    depends_on:
+      - ledger-0
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        exec ./ledger-v3-poc run \
+          --node-id 2 \
+          --advertise-addr "ledger-1:7777" \
+          --join ledger-0:8888
+    volumes:
+      - ledger-1-wal:/data/raft
+      - ledger-1-data:/data/app
+      - ledger-1-cold-cache:/data/cold-cache
+
+  ledger-2:
+    <<: *ledger-common
+    container_name: ledger-2
+    hostname: ledger-2
+    depends_on:
+      - ledger-0
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        exec ./ledger-v3-poc run \
+          --node-id 3 \
+          --advertise-addr "ledger-2:7777" \
+          --join ledger-0:8888
+    volumes:
+      - ledger-2-wal:/data/raft
+      - ledger-2-data:/data/app
+      - ledger-2-cold-cache:/data/cold-cache
+
+  workload:
+    image: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/workload-ledger-v3:__TAG__
+    container_name: workload
+    hostname: workload
+    init: true
+    environment:
+      LEDGER_GRPC_ADDR: "ledger-0:8888"
+      EXPECTED_VOTERS: "3"
+      ETCD_ENDPOINTS: "http://etcd-0:2379,http://etcd-1:2379,http://etcd-2:2379"
+    depends_on:
+      - ledger-0
+      - ledger-1
+      - ledger-2
+      - etcd-0
+      - etcd-1
+      - etcd-2
+
+volumes:
+  etcd-0-data:
+  etcd-1-data:
+  etcd-2-data:
+  ledger-0-wal:
+  ledger-0-data:
+  ledger-0-cold-cache:
+  ledger-1-wal:
+  ledger-1-data:
+  ledger-1-cold-cache:
+  ledger-2-wal:
+  ledger-2-data:
+  ledger-2-cold-cache:

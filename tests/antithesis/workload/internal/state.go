@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	etcd "go.etcd.io/etcd/client/v3"
@@ -22,7 +23,7 @@ func NewEtcdClient() *etcd.Client {
 		"http://etcd-2.etcd.default.svc.cluster.local:2379",
 	}
 	if env := os.Getenv("ETCD_ENDPOINTS"); env != "" {
-		endpoints = []string{env}
+		endpoints = strings.Split(env, ",")
 	}
 	client, err := etcd.New(etcd.Config{
 		Endpoints:   endpoints,

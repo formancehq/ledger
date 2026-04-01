@@ -1,7 +1,0 @@
-apiVersion: v2
-name: ledger_v3_dst
-version: 1.0.0
-dependencies:
-  - name: ledger-operator
-    repository: "file://../../../misc/operator/chart"
-    version: 0.1.0

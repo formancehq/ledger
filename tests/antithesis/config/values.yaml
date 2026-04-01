@@ -1,6 +1,0 @@
-ledger-operator:
-  image:
-    repository: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/ledger-operator
-    tag: antithesis
-run_tag: antithesis
-replicas: 1
