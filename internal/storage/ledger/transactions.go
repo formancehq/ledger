@@ -137,14 +137,12 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 				}
 			}
 
-			return tx, nil
-		},
-		func(ctx context.Context, tx *ledger.Transaction) {
 			trace.SpanFromContext(ctx).SetAttributes(
 				attribute.String("transaction.id", fmt.Sprint(tx.ID)),
 				attribute.String("transaction.timestamp", tx.Timestamp.Format(time.RFC3339Nano)),
 				attribute.String("transaction.reference", tx.Reference),
 			)
+			return tx, nil
 		},
 	))
 }
