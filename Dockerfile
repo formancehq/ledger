@@ -20,7 +20,7 @@ ARG GOOS
 ARG BUILD_TAGS
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go build -tags "${BUILD_TAGS}" -o ledger-v3-poc .
+    go build -tags "${BUILD_TAGS}" -o ledger .
 
 FROM base AS build-ledgerctl
 ARG GOARCH
@@ -36,6 +36,6 @@ ENV TZ=UTC
 ENV PATH=$PATH:/app
 ENV INSECURE=true
 WORKDIR /app
-COPY --from=build-server /build/ledger-v3-poc .
+COPY --from=build-server /build/ledger .
 COPY --from=build-ledgerctl /build/ledgerctl .
-ENTRYPOINT ["./ledger-v3-poc"]
+ENTRYPOINT ["./ledger"]

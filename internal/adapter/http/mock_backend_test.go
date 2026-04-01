@@ -35,6 +35,10 @@ type mockBackend struct {
 	getClusterStateFn         func(ctx context.Context) (*clusterpb.ClusterState, error)
 	getLedgerStatsFn          func(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error)
 	aggregateVolumesFn        func(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error)
+	listPreparedQueriesFn     func(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error)
+	executePreparedQueryFn    func(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error)
+	getNumscriptFn            func(ctx context.Context, ledger, name string, version string) (*commonpb.NumscriptInfo, error)
+	listNumscriptsFn          func(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error)
 }
 
 func (m *mockBackend) IsHealthy() bool { return m.healthy }
@@ -191,11 +195,19 @@ func (m *mockBackend) AggregateVolumes(ctx context.Context, ledgerName string, f
 	return &commonpb.AggregateResult{}, nil
 }
 
-func (m *mockBackend) ListPreparedQueries(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
+func (m *mockBackend) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
+	if m.listPreparedQueriesFn != nil {
+		return m.listPreparedQueriesFn(ctx, ledger)
+	}
+
 	return nil, nil
 }
 
-func (m *mockBackend) ExecutePreparedQuery(_ context.Context, _ *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+func (m *mockBackend) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	if m.executePreparedQueryFn != nil {
+		return m.executePreparedQueryFn(ctx, req)
+	}
+
 	return nil, nil
 }
 
@@ -207,11 +219,19 @@ func (m *mockBackend) GetLedgerStats(ctx context.Context, ledgerName string) (*c
 	return &commonpb.LedgerStats{}, nil
 }
 
-func (m *mockBackend) GetNumscript(_ context.Context, _, _ string, _ string) (*commonpb.NumscriptInfo, error) {
+func (m *mockBackend) GetNumscript(ctx context.Context, ledger, name string, version string) (*commonpb.NumscriptInfo, error) {
+	if m.getNumscriptFn != nil {
+		return m.getNumscriptFn(ctx, ledger, name, version)
+	}
+
 	return nil, nil
 }
 
-func (m *mockBackend) ListNumscripts(_ context.Context, _ string) ([]*commonpb.NumscriptInfo, error) {
+func (m *mockBackend) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
+	if m.listNumscriptsFn != nil {
+		return m.listNumscriptsFn(ctx, ledger)
+	}
+
 	return nil, nil
 }
 
