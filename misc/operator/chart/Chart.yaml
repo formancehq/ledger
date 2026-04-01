@@ -1,6 +1,0 @@
-apiVersion: v2
-name: ledger-operator
-description: Helm chart for deploying the Ledger Kubernetes operator
-type: application
-version: 0.1.0
-appVersion: "0.1.0"
