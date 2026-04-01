@@ -104,9 +104,6 @@ type readyResult struct {
 	// confChanges are committed ConfChangeV2 entries extracted from rd.CommittedEntries;
 	// orchestrate must call rawNode.ApplyConfChange for each.
 	confChanges []raftpb.ConfChangeV2
-	// nonProposalCount is the number of committed entries that are not user proposals
-	// (no-ops and config changes) — used to increment the IndexTracker.
-	nonProposalCount uint64
 }
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft.
@@ -923,9 +920,6 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 			result.confChanges = append(result.confChanges, cc)
 		}
 
-		if entry.Type != raftpb.EntryNormal || len(entry.Data) == 0 {
-			result.nonProposalCount++
-		}
 	}
 
 	return result, nil
@@ -1005,11 +999,13 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		f.Resolve(struct{}{}, nil)
 	}
 
-	// Count non-proposal committed entries (no-ops and config changes) and
-	// increment the IndexTracker so the preloader's boundary prediction stays
-	// accurate. Proposals are already counted by Node.Propose().
-	if result.nonProposalCount > 0 {
-		node.indexTracker.Increment(result.nonProposalCount)
+	// Advance the IndexTracker to at least lastCommitted+1 so that followers
+	// have an accurate next-index prediction. Without this, proposals from
+	// other leaders are not counted and a follower that becomes leader would
+	// compute wrong cache generation boundaries in the preloader.
+	if len(rd.CommittedEntries) > 0 {
+		lastCommitted := rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
+		node.indexTracker.Advance(lastCommitted + 1)
 	}
 
 	// Submit committed entries to the Applier for async FSM application
