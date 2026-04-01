@@ -69,8 +69,6 @@
             protoc-gen-go-vtproto
             golangci-lint
             setup-envtest
-            pulumi
-            pulumiPackages.pulumi-language-go
             just
           ];
           otherPackages = [

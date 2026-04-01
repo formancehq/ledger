@@ -2,7 +2,7 @@ set dotenv-load
 
 # Go sub-modules relative to project root
 # Go sub-modules that contain .go files (misc/devenv is Pulumi-only, no Go sources)
-go_submodules := "misc/operator misc/benchmark-operator"
+go_submodules := "misc/benchmark-operator"
 
 pre-commit: generate generate-proto tidy lint
 pc: pre-commit
@@ -48,8 +48,8 @@ run:
 run-client *ARGS:
     go run ./cmd/ledgerctl {{ARGS}}
 
-# Install ledgerctl and kubectl-ledger plugin into $(go env GOPATH)/bin
-install: install-client install-kubectl-plugin
+# Install ledgerctl into $(go env GOPATH)/bin
+install: install-client
 
 install-client:
     go build -o $(go env GOPATH)/bin/ledgerctl ./cmd/ledgerctl
@@ -254,11 +254,6 @@ generate:
     rm $(find ./internal -name '*_generated_test.go') 2>/dev/null || true
     rm $(find ./internal -name '*_generated.go') 2>/dev/null || true
     go generate ./...
-    echo "==> controller-gen (misc/operator)"
-    cd misc/operator && go run sigs.k8s.io/controller-tools/cmd/controller-gen@latest \
-        object:headerFile="" paths=./api/... \
-        crd output:crd:dir=config/crd/bases \
-        rbac:roleName=ledger-operator output:rbac:dir=config/rbac paths=./...
 
 # Generate gRPC code from protobuf files
 generate-proto:
@@ -366,11 +361,3 @@ _generate-demo tapes:
         echo "==> Done: misc/demo/${tape}.gif"
     done
     echo "All demos generated."
-
-# Build the kubectl-ledger plugin
-build-kubectl-plugin:
-    cd misc/operator && go build -o ../../build/kubectl-ledger ./cmd/kubectl-ledger
-
-# Install the kubectl-ledger plugin into $(go env GOPATH)/bin (makes it available as `kubectl ledger`)
-install-kubectl-plugin:
-    cd misc/operator && go build -o $(go env GOPATH)/bin/kubectl-ledger ./cmd/kubectl-ledger
