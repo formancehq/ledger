@@ -23,9 +23,12 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"go.etcd.io/etcd/raft/v3"
+
 	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/transport"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
@@ -314,6 +317,16 @@ func convertToGRPCError(err error) error {
 
 	// Convert maintenance mode error to Unavailable (client should retry later)
 	if errors.Is(err, admission.ErrMaintenanceMode) {
+		return status.Error(codes.Unavailable, err.Error())
+	}
+
+	// Convert Raft transient errors to Unavailable (client should retry).
+	// ErrProposalDropped: the leader lost leadership while processing the proposal.
+	// ErrNotLeader/ErrNodeSyncing/ErrProposalQueueFull: node cannot serve the request right now.
+	if errors.Is(err, raft.ErrProposalDropped) ||
+		errors.Is(err, node.ErrNotLeader) ||
+		errors.Is(err, node.ErrNodeSyncing) ||
+		errors.Is(err, node.ErrProposalQueueFull) {
 		return status.Error(codes.Unavailable, err.Error())
 	}
 

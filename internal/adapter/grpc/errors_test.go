@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,9 +10,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"go.etcd.io/etcd/raft/v3"
+
 	"github.com/formancehq/ledger-v3-poc/internal/application/admission"
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 	"github.com/formancehq/ledger-v3-poc/internal/infra/health"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/pkg/crypto/signing"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 )
@@ -464,6 +468,32 @@ func TestConvertToGRPCError_ClusterUnhealthy(t *testing.T) {
 	info := extractErrorInfo(t, st)
 	require.Equal(t, domain.ErrReasonClusterUnhealthy, info.GetReason())
 	require.Equal(t, errorDomain, info.GetDomain())
+}
+
+func TestConvertToGRPCError_RaftTransientErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"proposal dropped", raft.ErrProposalDropped},
+		{"not leader", node.ErrNotLeader},
+		{"node syncing", node.ErrNodeSyncing},
+		{"proposal queue full", node.ErrProposalQueueFull},
+		{"wrapped proposal dropped", fmt.Errorf("applying raft requests: %w", raft.ErrProposalDropped)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			grpcErr := convertToGRPCError(tt.err)
+			st, ok := status.FromError(grpcErr)
+			require.True(t, ok)
+			require.Equal(t, codes.Unavailable, st.Code())
+		})
+	}
 }
 
 func TestConvertToGRPCError_AlreadyGRPCStatus(t *testing.T) {
