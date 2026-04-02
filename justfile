@@ -278,6 +278,10 @@ generate-proto:
         misc/proto/events.proto \
         misc/proto/restore.proto
 
+# Build and push multi-arch Docker image
+docker-build *ARGS:
+    docker buildx build -t ghcr.io/formancehq/ledger-v3-poc --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,clickhouse,s3,pyroscope {{ARGS}} .
+
 # Docker builds are handled via Pulumi
 
 k8s-install:

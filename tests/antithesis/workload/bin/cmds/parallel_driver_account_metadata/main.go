@@ -126,7 +126,11 @@ func setAccountMetadata(
 		return
 	}
 
-	// Verify metadata was merged correctly
+	// Verify metadata was merged correctly.
+	// Only assert exact match if the etcd session is still alive. Under
+	// Antithesis fault injection (network partitions), the session lease can
+	// expire silently, releasing the lock and allowing concurrent writes that
+	// add extra keys — making an exact-match assertion invalid.
 	preMetadata := commonpb.MetadataSetToMap(preAcc.GetMetadata())
 	expectedMetadata := make(map[string]string)
 	maps.Copy(expectedMetadata, preMetadata)
@@ -134,12 +138,34 @@ func setAccountMetadata(
 
 	postMetadata := commonpb.MetadataSetToMap(postAcc.GetMetadata())
 
-	assert.Always(maps.Equal(postMetadata, expectedMetadata), "new metadata should be correct", internal.Details{
-		"ledger":   ledger,
-		"account":  account,
-		"original": preMetadata,
-		"added":    randomMetadata,
-		"actual":   postMetadata,
-		"expected": expectedMetadata,
-	})
+	sessionAlive := true
+	select {
+	case <-session.Done():
+		sessionAlive = false
+	default:
+	}
+
+	if sessionAlive {
+		assert.Always(maps.Equal(postMetadata, expectedMetadata), "new metadata should be correct", internal.Details{
+			"ledger":   ledger,
+			"account":  account,
+			"original": preMetadata,
+			"added":    randomMetadata,
+			"actual":   postMetadata,
+			"expected": expectedMetadata,
+		})
+	}
+
+	// Always verify that at least the expected keys are present (superset check).
+	// This holds regardless of lock validity — our write was committed, so its
+	// keys must appear.
+	for k, v := range expectedMetadata {
+		assert.Always(postMetadata[k] == v, "metadata key should be present after set", internal.Details{
+			"ledger":  ledger,
+			"account": account,
+			"key":     k,
+			"want":    v,
+			"got":     postMetadata[k],
+		})
+	}
 }

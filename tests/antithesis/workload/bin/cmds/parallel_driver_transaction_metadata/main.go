@@ -133,12 +133,31 @@ func setTransactionMetadata(
 
 	postMetadata := commonpb.MetadataSetToMap(postTx.GetTransaction().GetMetadata())
 
-	assert.Always(maps.Equal(postMetadata, expectedMetadata), "new metadata should be correct", internal.Details{
-		"ledger":   ledger,
-		"txID":     txID,
-		"original": preMetadata,
-		"added":    randomMetadata,
-		"actual":   postMetadata,
-		"expected": expectedMetadata,
-	})
+	sessionAlive := true
+	select {
+	case <-session.Done():
+		sessionAlive = false
+	default:
+	}
+
+	if sessionAlive {
+		assert.Always(maps.Equal(postMetadata, expectedMetadata), "new metadata should be correct", internal.Details{
+			"ledger":   ledger,
+			"txID":     txID,
+			"original": preMetadata,
+			"added":    randomMetadata,
+			"actual":   postMetadata,
+			"expected": expectedMetadata,
+		})
+	}
+
+	for k, v := range expectedMetadata {
+		assert.Always(postMetadata[k] == v, "metadata key should be present after set", internal.Details{
+			"ledger": ledger,
+			"txID":   txID,
+			"key":    k,
+			"want":   v,
+			"got":    postMetadata[k],
+		})
+	}
 }
