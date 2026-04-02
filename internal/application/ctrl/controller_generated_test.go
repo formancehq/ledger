@@ -108,6 +108,20 @@ func (mr *MockControllerMockRecorder) Apply(ctx any, requests ...any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Apply", reflect.TypeOf((*MockController)(nil).Apply), varargs...)
 }
 
+// Barrier mocks base method.
+func (m *MockController) Barrier(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Barrier", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Barrier indicates an expected call of Barrier.
+func (mr *MockControllerMockRecorder) Barrier(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Barrier", reflect.TypeOf((*MockController)(nil).Barrier), ctx)
+}
+
 // ExecutePreparedQuery mocks base method.
 func (m *MockController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 	m.ctrl.T.Helper()

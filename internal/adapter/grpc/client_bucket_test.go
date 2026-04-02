@@ -18,6 +18,7 @@ import (
 // mockStream implements grpc.ServerStreamingClient for testing.
 type mockStream[T any] struct {
 	grpc.ClientStream
+
 	items []*T
 	index int
 	err   error
@@ -45,50 +46,50 @@ func (m *mockStream[T]) CloseSend() error {
 // mockBucketServiceClient implements servicepb.BucketServiceClient for testing.
 type mockBucketServiceClient struct {
 	// Simple methods - store responses/errors
-	getTransactionResp         *servicepb.GetTransactionResponse
-	getTransactionErr          error
-	listTransactionsStream     grpc.ServerStreamingClient[commonpb.Transaction]
-	listTransactionsErr        error
-	getAccountResp             *commonpb.Account
-	getAccountErr              error
-	listAccountsStream         grpc.ServerStreamingClient[commonpb.Account]
-	listAccountsErr            error
-	listLogsStream             grpc.ServerStreamingClient[commonpb.Log]
-	listLogsErr                error
-	listLedgersStream          grpc.ServerStreamingClient[commonpb.LedgerInfo]
-	listLedgersErr             error
-	getLedgerResp              *commonpb.LedgerInfo
-	getLedgerErr               error
-	listAuditEntriesStream     grpc.ServerStreamingClient[auditpb.AuditEntry]
-	listAuditEntriesErr        error
-	getLogResp                 *commonpb.Log
-	getLogErr                  error
-	getAuditEntryResp          *auditpb.AuditEntry
-	getAuditEntryErr           error
-	listPeriodsStream          grpc.ServerStreamingClient[commonpb.Period]
-	listPeriodsErr             error
-	listSigningKeysStream      grpc.ServerStreamingClient[commonpb.SigningKey]
-	listSigningKeysErr         error
-	getMetadataSchemaResp      *servicepb.GetMetadataSchemaStatusResponse
-	getMetadataSchemaErr       error
-	analyzeAccountsStream      grpc.ServerStreamingClient[servicepb.AnalyzeAccountsEvent]
-	analyzeAccountsErr         error
-	analyzeTransactionsStream  grpc.ServerStreamingClient[servicepb.AnalyzeTransactionsEvent]
-	analyzeTransactionsErr     error
-	aggregateVolumesResp       *commonpb.AggregateResult
-	aggregateVolumesErr        error
-	listPreparedQueriesResp    *servicepb.ListPreparedQueriesResponse
-	listPreparedQueriesErr     error
-	executePreparedQueryResp   *servicepb.ExecutePreparedQueryResponse
-	executePreparedQueryErr    error
-	getLedgerStatsResp         *commonpb.LedgerStats
-	getLedgerStatsErr          error
-	getNumscriptResp           *commonpb.NumscriptInfo
-	getNumscriptErr            error
-	listNumscriptsStream       grpc.ServerStreamingClient[commonpb.NumscriptInfo]
-	listNumscriptsErr          error
-	applyResp                  *servicepb.ApplyResponse
-	applyErr                   error
+	getTransactionResp        *servicepb.GetTransactionResponse
+	getTransactionErr         error
+	listTransactionsStream    grpc.ServerStreamingClient[commonpb.Transaction]
+	listTransactionsErr       error
+	getAccountResp            *commonpb.Account
+	getAccountErr             error
+	listAccountsStream        grpc.ServerStreamingClient[commonpb.Account]
+	listAccountsErr           error
+	listLogsStream            grpc.ServerStreamingClient[commonpb.Log]
+	listLogsErr               error
+	listLedgersStream         grpc.ServerStreamingClient[commonpb.LedgerInfo]
+	listLedgersErr            error
+	getLedgerResp             *commonpb.LedgerInfo
+	getLedgerErr              error
+	listAuditEntriesStream    grpc.ServerStreamingClient[auditpb.AuditEntry]
+	listAuditEntriesErr       error
+	getLogResp                *commonpb.Log
+	getLogErr                 error
+	getAuditEntryResp         *auditpb.AuditEntry
+	getAuditEntryErr          error
+	listPeriodsStream         grpc.ServerStreamingClient[commonpb.Period]
+	listPeriodsErr            error
+	listSigningKeysStream     grpc.ServerStreamingClient[commonpb.SigningKey]
+	listSigningKeysErr        error
+	getMetadataSchemaResp     *servicepb.GetMetadataSchemaStatusResponse
+	getMetadataSchemaErr      error
+	analyzeAccountsStream     grpc.ServerStreamingClient[servicepb.AnalyzeAccountsEvent]
+	analyzeAccountsErr        error
+	analyzeTransactionsStream grpc.ServerStreamingClient[servicepb.AnalyzeTransactionsEvent]
+	analyzeTransactionsErr    error
+	aggregateVolumesResp      *commonpb.AggregateResult
+	aggregateVolumesErr       error
+	listPreparedQueriesResp   *servicepb.ListPreparedQueriesResponse
+	listPreparedQueriesErr    error
+	executePreparedQueryResp  *servicepb.ExecutePreparedQueryResponse
+	executePreparedQueryErr   error
+	getLedgerStatsResp        *commonpb.LedgerStats
+	getLedgerStatsErr         error
+	getNumscriptResp          *commonpb.NumscriptInfo
+	getNumscriptErr           error
+	listNumscriptsStream      grpc.ServerStreamingClient[commonpb.NumscriptInfo]
+	listNumscriptsErr         error
+	applyResp                 *servicepb.ApplyResponse
+	applyErr                  error
 
 	// Capture requests for assertion
 	capturedListLogsReq *servicepb.ListLogsRequest
@@ -116,6 +117,7 @@ func (m *mockBucketServiceClient) ListAccounts(_ context.Context, _ *servicepb.L
 
 func (m *mockBucketServiceClient) ListLogs(_ context.Context, req *servicepb.ListLogsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Log], error) {
 	m.capturedListLogsReq = req
+
 	return m.listLogsStream, m.listLogsErr
 }
 
@@ -221,6 +223,10 @@ func (m *mockBucketServiceClient) DeletePreparedQuery(_ context.Context, _ *serv
 }
 
 func (m *mockBucketServiceClient) GetIndexStatus(_ context.Context, _ *servicepb.GetIndexStatusRequest, _ ...grpc.CallOption) (*servicepb.GetIndexStatusResponse, error) {
+	return nil, nil
+}
+
+func (m *mockBucketServiceClient) Barrier(_ context.Context, _ *servicepb.BarrierRequest, _ ...grpc.CallOption) (*servicepb.BarrierResponse, error) {
 	return nil, nil
 }
 
@@ -389,7 +395,7 @@ func TestListLogs_WithAfterSequence(t *testing.T) {
 
 	// Verify afterSequence is set when > 0
 	require.NotNil(t, mock.capturedListLogsReq.AfterSequence)
-	require.Equal(t, uint64(3), *mock.capturedListLogsReq.AfterSequence)
+	require.Equal(t, uint64(3), mock.capturedListLogsReq.GetAfterSequence())
 }
 
 func TestListLogs_StreamError(t *testing.T) {

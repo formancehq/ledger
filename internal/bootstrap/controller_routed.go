@@ -104,6 +104,15 @@ func (b *RoutedController) Apply(ctx context.Context, requests ...*servicepb.Req
 	return leaderCtrl.Apply(ctx, requests...)
 }
 
+func (b *RoutedController) Barrier(ctx context.Context) error {
+	leaderCtrl, err := b.getLeaderCtrl()
+	if err != nil {
+		return err
+	}
+
+	return leaderCtrl.Barrier(ctx)
+}
+
 // --- Read operations requiring leader state: forwarded to leader ---
 
 func (b *RoutedController) ListPeriods(ctx context.Context) (dal.Cursor[*commonpb.Period], error) {

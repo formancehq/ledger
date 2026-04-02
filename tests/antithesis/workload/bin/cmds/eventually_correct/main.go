@@ -25,6 +25,19 @@ func main() {
 	}
 	defer conn.Close()
 
+	// Barrier ensures all in-flight Raft proposals have been applied before
+	// we run consistency checks. Without this, proposals that were in-flight
+	// during fault injection may still be applied between our reads, causing
+	// false positives (e.g. ListAccounts and GetAccount seeing different states).
+	_, err = client.Barrier(ctx, &servicepb.BarrierRequest{})
+	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to call barrier", internal.Details{
+		"error": err,
+	})
+	if err != nil {
+		return
+	}
+	log.Println("composer: barrier completed, all proposals applied")
+
 	ledgers, err := internal.ListLedgers(ctx, client)
 	assert.Sometimes(err == nil || internal.IsUnavailable(err), "should be able to list ledgers", internal.Details{
 		"error": err,

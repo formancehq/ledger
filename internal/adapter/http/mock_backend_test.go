@@ -235,4 +235,8 @@ func (m *mockBackend) ListNumscripts(ctx context.Context, ledger string) ([]*com
 	return nil, nil
 }
 
+func (m *mockBackend) Barrier(_ context.Context) error {
+	return nil
+}
+
 var _ Backend = (*mockBackend)(nil)

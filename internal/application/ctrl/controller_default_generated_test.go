@@ -59,3 +59,17 @@ func (mr *MockAdmissionMockRecorder) Admit(ctx any, requests ...any) *gomock.Cal
 	varargs := append([]any{ctx}, requests...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Admit", reflect.TypeOf((*MockAdmission)(nil).Admit), varargs...)
 }
+
+// Barrier mocks base method.
+func (m *MockAdmission) Barrier(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Barrier", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Barrier indicates an expected call of Barrier.
+func (mr *MockAdmissionMockRecorder) Barrier(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Barrier", reflect.TypeOf((*MockAdmission)(nil).Barrier), ctx)
+}

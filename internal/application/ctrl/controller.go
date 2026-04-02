@@ -62,4 +62,8 @@ type Controller interface {
 
 	// Write operations - single entry point for all requests
 	Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
+
+	// Barrier proposes a no-op through Raft consensus. When it returns, all
+	// previously proposed entries are guaranteed to have been applied.
+	Barrier(ctx context.Context) error
 }

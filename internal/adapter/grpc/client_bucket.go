@@ -26,6 +26,16 @@ func NewLedgerGrpcClient(client servicepb.BucketServiceClient) *BucketGrpcClient
 	}
 }
 
+// Barrier forwards a barrier request via gRPC to the leader.
+func (g *BucketGrpcClient) Barrier(ctx context.Context) error {
+	_, err := g.client.Barrier(ctx, &servicepb.BarrierRequest{})
+	if err != nil {
+		return fmt.Errorf("gRPC Barrier call failed: %w", err)
+	}
+
+	return nil
+}
+
 // Apply forwards the requests via gRPC to the leader.
 func (g *BucketGrpcClient) Apply(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error) {
 	resp, err := g.client.Apply(ctx, &servicepb.ApplyRequest{

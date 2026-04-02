@@ -900,6 +900,14 @@ func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscript
 	return nil
 }
 
+func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
+	if err := impl.ctrl.Barrier(ctx); err != nil {
+		return nil, err
+	}
+
+	return &servicepb.BarrierResponse{}, nil
+}
+
 func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {
 	resp := &servicepb.DiscoveryResponse{}
 	if impl.responseSigner != nil {

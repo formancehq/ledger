@@ -79,6 +79,10 @@ service BucketService {
   rpc GetNumscript(GetNumscriptRequest) returns (common.NumscriptInfo);
   // ListNumscripts streams all numscripts (latest version of each)
   rpc ListNumscripts(ListNumscriptsRequest) returns (stream common.NumscriptInfo);
+  // Barrier proposes a no-op through Raft consensus. When it returns, all
+  // previously proposed entries are guaranteed to have been applied to the FSM.
+  // Useful for ensuring read-after-write consistency across API calls.
+  rpc Barrier(BarrierRequest) returns (BarrierResponse);
 }
 
 // ============================================================================
@@ -977,3 +981,11 @@ message IteratorProfile {
   int64 seek_calls = 5;
   repeated IteratorProfile children = 6;
 }
+
+// ============================================================================
+// Barrier Messages
+// ============================================================================
+
+message BarrierRequest {}
+
+message BarrierResponse {}

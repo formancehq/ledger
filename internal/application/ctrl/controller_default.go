@@ -33,6 +33,7 @@ var tracer = otel.Tracer("ctrl")
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package ctrl . Admission
 type Admission interface {
 	Admit(ctx context.Context, requests ...*servicepb.Request) ([]*commonpb.Log, error)
+	Barrier(ctx context.Context) error
 }
 
 // DefaultController is the default implementation of the Controller interface.
@@ -1060,6 +1061,12 @@ func (ctrl *DefaultController) ListNumscripts(_ context.Context, ledger string) 
 	defer func() { _ = handle.Close() }()
 
 	return query.ReadAllNumscripts(handle, ledger)
+}
+
+// Barrier proposes a no-op through Raft consensus. When it returns, all
+// previously proposed entries are guaranteed to have been applied.
+func (ctrl *DefaultController) Barrier(ctx context.Context) error {
+	return ctrl.admission.Barrier(ctx)
 }
 
 // Apply applies a list of requests and returns the resulting logs.

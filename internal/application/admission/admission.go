@@ -471,6 +471,33 @@ func (a *Admission) Admit(ctx context.Context, requests ...*servicepb.Request) (
 	return logs, err
 }
 
+// Barrier proposes a no-op command through Raft and waits for it to be applied.
+// When Barrier returns, all previously proposed entries are guaranteed applied
+// due to Raft log ordering.
+func (a *Admission) Barrier(ctx context.Context) error {
+	cmd := commands.NewCommand() // no orders = no-op
+	proposalData, err := a.marshalCommand(ctx, cmd)
+	if err != nil {
+		return fmt.Errorf("marshaling barrier command: %w", err)
+	}
+
+	proposal := node.NewProposal(cmd.GetId(), proposalData)
+	fsmFuture, err := a.proposer.Propose(proposal)
+	if err != nil {
+		return err
+	}
+
+	if _, err := proposal.Wait(); err != nil {
+		return err
+	}
+
+	if _, err := fsmFuture.Wait(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // marshalCommand marshals a proposal command into a newly allocated byte slice
 // using a pooled buffer. The returned slice is safe for Raft retention.
 func (a *Admission) marshalCommand(ctx context.Context, cmd *raftcmdpb.Proposal) ([]byte, error) {
