@@ -418,6 +418,10 @@ func NewNode(
 		observer:         NewNoOpObserver(),
 	}
 
+	logger.WithFields(map[string]any{
+		"initialIndex": initialIndex(wal),
+	}).Infof("IndexTracker initialized")
+
 	node.confState.Store(&initialConfState)
 
 	// Ensure peerAddresses is never nil (bootstrap path has no recoveredPeers).
@@ -1004,7 +1008,17 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	// compute wrong cache generation boundaries in the preloader.
 	if len(rd.CommittedEntries) > 0 {
 		lastCommitted := rd.CommittedEntries[len(rd.CommittedEntries)-1].Index
+		before := node.indexTracker.Next()
 		node.indexTracker.Advance(lastCommitted + 1)
+		after := node.indexTracker.Next()
+		if before != after {
+			node.logger.WithFields(map[string]any{
+				"lastCommitted":  lastCommitted,
+				"trackerBefore":  before,
+				"trackerAfter":   after,
+				"committedCount": len(rd.CommittedEntries),
+			}).Infof("IndexTracker advanced in finishReady")
+		}
 	}
 
 	// Submit committed entries to the Applier for async FSM application

@@ -1249,7 +1249,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	if err := fsm.Preload(proposal.GetPreload()); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("raftIndex=%d: %w", raftIndex, err)
 	}
 
 	// Compute the effective date using the HLC to guarantee monotonicity

@@ -187,6 +187,13 @@ type buildResult struct {
 func (p *Preloader) buildPreloadsAt(nextIndex uint64, needs *Needs) (*raftcmdpb.PreloadSet, *CleanupToken, error) {
 	boundary := cache.BoundaryIndex(nextIndex, p.cache.GenerationThreshold)
 
+	p.logger.WithFields(map[string]any{
+		"nextIndex":           nextIndex,
+		"boundary":            boundary,
+		"generationThreshold": p.cache.GenerationThreshold,
+		"gen":                 cache.Gen(nextIndex, p.cache.GenerationThreshold),
+	}).Infof("Preloader: buildPreloadsAt")
+
 	token := &CleanupToken{}
 
 	// Each goroutine writes to a distinct results[slot] and a distinct token field.
