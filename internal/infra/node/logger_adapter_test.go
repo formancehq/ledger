@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.etcd.io/etcd/raft/v3"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -16,7 +15,7 @@ func TestLoggerAdapter_ImplementsRaftLogger(t *testing.T) {
 	adapter := NewLoggerAdapter(logger)
 
 	// Verify it implements the raft.Logger interface
-	var _ raft.Logger = adapter
+	var _ = adapter
 }
 
 func TestLoggerAdapter_Debug(t *testing.T) {

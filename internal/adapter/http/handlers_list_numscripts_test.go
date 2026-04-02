@@ -2,7 +2,7 @@ package http
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -75,7 +75,7 @@ func TestHandleListNumscripts_BackendError(t *testing.T) {
 
 	backend := &mockBackend{
 		listNumscriptsFn: func(_ context.Context, _ string) ([]*commonpb.NumscriptInfo, error) {
-			return nil, fmt.Errorf("unexpected error")
+			return nil, errors.New("unexpected error")
 		},
 	}
 	srv := newTestServer(t, backend)

@@ -750,14 +750,14 @@ func (fsm *Machine) Preload(preloadSet *raftcmdpb.PreloadSet) error {
 		fsm.logger.Debug("Selecting cache generation 1")
 	default:
 		fsm.logger.WithFields(map[string]any{
-			"lastPersistedIndex":   preloadSet.GetLastPersistedIndex(),
-			"gen0":                 fsm.Registry.Cache.BaseIndex.Gen0,
-			"gen1":                 fsm.Registry.Cache.BaseIndex.Gen1,
-			"currentGeneration":    fsm.Registry.Cache.CurrentGeneration(),
-			"generationThreshold":  fsm.Registry.Cache.GenerationThreshold,
-			"lastAppliedIndex":     fsm.lastAppliedIndex,
-			"preloadCount":         len(preloadSet.GetPreloads()),
-			"touchCount":           len(preloadSet.GetTouches()),
+			"lastPersistedIndex":  preloadSet.GetLastPersistedIndex(),
+			"gen0":                fsm.Registry.Cache.BaseIndex.Gen0,
+			"gen1":                fsm.Registry.Cache.BaseIndex.Gen1,
+			"currentGeneration":   fsm.Registry.Cache.CurrentGeneration(),
+			"generationThreshold": fsm.Registry.Cache.GenerationThreshold,
+			"lastAppliedIndex":    fsm.lastAppliedIndex,
+			"preloadCount":        len(preloadSet.GetPreloads()),
+			"touchCount":          len(preloadSet.GetTouches()),
 		}).Errorf("Preload boundary mismatch: LastPersistedIndex does not match Gen0 or Gen1")
 
 		return fmt.Errorf("preloading preloaded index is invalid: lastPersistedIndex=%d gen0=%d gen1=%d currentGen=%d lastApplied=%d",

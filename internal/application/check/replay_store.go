@@ -170,6 +170,7 @@ func (s *replayStore) moveMetadata(oldCanonicalKey, newCanonicalKey []byte) erro
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil // nothing to move
 		}
+
 		return fmt.Errorf("reading metadata for move: %w", err)
 	}
 	valCopy := append([]byte(nil), val...)

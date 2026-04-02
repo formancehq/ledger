@@ -29,9 +29,9 @@ func TestBuildIdempotencyKeyPreload_WithValue(t *testing.T) {
 
 	ik := preload.GetIdempotencyKey()
 	require.NotNil(t, ik)
-	assert.Equal(t, id, ik.Id)
-	assert.Equal(t, uint64(5), ik.LogSequence)
-	assert.Equal(t, []byte("test-hash"), ik.Hash)
+	assert.Equal(t, id, ik.GetId())
+	assert.Equal(t, uint64(5), ik.GetLogSequence())
+	assert.Equal(t, []byte("test-hash"), ik.GetHash())
 }
 
 func TestBuildIdempotencyKeyPreload_NilValue(t *testing.T) {
@@ -46,8 +46,8 @@ func TestBuildIdempotencyKeyPreload_NilValue(t *testing.T) {
 
 	ik := preload.GetIdempotencyKey()
 	require.NotNil(t, ik)
-	assert.Equal(t, uint64(0), ik.LogSequence)
-	assert.Nil(t, ik.Hash)
+	assert.Equal(t, uint64(0), ik.GetLogSequence())
+	assert.Nil(t, ik.GetHash())
 }
 
 func TestBuildReferencePreload_WithValue(t *testing.T) {
@@ -67,8 +67,8 @@ func TestBuildReferencePreload_WithValue(t *testing.T) {
 
 	ref := preload.GetTransactionReference()
 	require.NotNil(t, ref)
-	assert.Equal(t, id, ref.Id)
-	assert.Equal(t, uint64(123), ref.TransactionId)
+	assert.Equal(t, id, ref.GetId())
+	assert.Equal(t, uint64(123), ref.GetTransactionId())
 }
 
 func TestBuildReferencePreload_NilValue(t *testing.T) {
@@ -83,7 +83,7 @@ func TestBuildReferencePreload_NilValue(t *testing.T) {
 
 	ref := preload.GetTransactionReference()
 	require.NotNil(t, ref)
-	assert.Equal(t, uint64(0), ref.TransactionId)
+	assert.Equal(t, uint64(0), ref.GetTransactionId())
 }
 
 func TestBuildSinkConfigPreload_WithValue(t *testing.T) {
@@ -103,8 +103,8 @@ func TestBuildSinkConfigPreload_WithValue(t *testing.T) {
 
 	sc := preload.GetSinkConfig()
 	require.NotNil(t, sc)
-	assert.Equal(t, id, sc.Id)
-	assert.Equal(t, config, sc.Config)
+	assert.Equal(t, id, sc.GetId())
+	assert.Equal(t, config, sc.GetConfig())
 }
 
 func TestBuildSinkConfigPreload_NilValue(t *testing.T) {
@@ -119,7 +119,7 @@ func TestBuildSinkConfigPreload_NilValue(t *testing.T) {
 
 	sc := preload.GetSinkConfig()
 	require.NotNil(t, sc)
-	assert.Nil(t, sc.Config)
+	assert.Nil(t, sc.GetConfig())
 }
 
 func TestBuildMetadataPreload_WithValue(t *testing.T) {
@@ -140,8 +140,8 @@ func TestBuildMetadataPreload_WithValue(t *testing.T) {
 
 	md := preload.GetAccountMetadata()
 	require.NotNil(t, md)
-	assert.Equal(t, id, md.Id)
-	assert.Equal(t, value, md.Value)
+	assert.Equal(t, id, md.GetId())
+	assert.Equal(t, value, md.GetValue())
 }
 
 func TestBuildMetadataPreload_NilValue(t *testing.T) {
@@ -156,7 +156,7 @@ func TestBuildMetadataPreload_NilValue(t *testing.T) {
 
 	md := preload.GetAccountMetadata()
 	require.NotNil(t, md)
-	assert.Nil(t, md.Value)
+	assert.Nil(t, md.GetValue())
 }
 
 func TestBuildVolumePreload_WithValue(t *testing.T) {
@@ -176,9 +176,9 @@ func TestBuildVolumePreload_WithValue(t *testing.T) {
 
 	v := preload.GetVolume()
 	require.NotNil(t, v)
-	assert.Equal(t, id, v.Id)
-	assert.Equal(t, commonpb.NewUint256FromUint64(100), v.Input)
-	assert.Equal(t, commonpb.NewUint256FromUint64(50), v.Output)
+	assert.Equal(t, id, v.GetId())
+	assert.Equal(t, commonpb.NewUint256FromUint64(100), v.GetInput())
+	assert.Equal(t, commonpb.NewUint256FromUint64(50), v.GetOutput())
 }
 
 func TestBuildVolumePreload_NilValue(t *testing.T) {
@@ -194,8 +194,8 @@ func TestBuildVolumePreload_NilValue(t *testing.T) {
 	v := preload.GetVolume()
 	require.NotNil(t, v)
 	// Nil volumes should default to zero
-	assert.Equal(t, commonpb.NewUint256FromUint64(0), v.Input)
-	assert.Equal(t, commonpb.NewUint256FromUint64(0), v.Output)
+	assert.Equal(t, commonpb.NewUint256FromUint64(0), v.GetInput())
+	assert.Equal(t, commonpb.NewUint256FromUint64(0), v.GetOutput())
 }
 
 func TestBuildLedgerPreload(t *testing.T) {
@@ -215,8 +215,8 @@ func TestBuildLedgerPreload(t *testing.T) {
 
 	l := preload.GetLedger()
 	require.NotNil(t, l)
-	assert.Equal(t, id, l.Id)
-	assert.Equal(t, info, l.Info)
+	assert.Equal(t, id, l.GetId())
+	assert.Equal(t, info, l.GetInfo())
 }
 
 func TestBuildBoundaryPreload(t *testing.T) {
@@ -235,8 +235,8 @@ func TestBuildBoundaryPreload(t *testing.T) {
 
 	b := preload.GetBoundary()
 	require.NotNil(t, b)
-	assert.Equal(t, id, b.Id)
-	assert.Equal(t, boundaries, b.Boundaries)
+	assert.Equal(t, id, b.GetId())
+	assert.Equal(t, boundaries, b.GetBoundaries())
 }
 
 func TestBuildNumscriptVersionPreload(t *testing.T) {
@@ -251,8 +251,8 @@ func TestBuildNumscriptVersionPreload(t *testing.T) {
 
 	nv := preload.GetNumscriptVersion()
 	require.NotNil(t, nv)
-	assert.Equal(t, id, nv.Id)
-	assert.Equal(t, "v1.2.3", nv.Version)
+	assert.Equal(t, id, nv.GetId())
+	assert.Equal(t, "v1.2.3", nv.GetVersion())
 }
 
 func TestBuildNumscriptEntryPreload(t *testing.T) {
@@ -267,8 +267,8 @@ func TestBuildNumscriptEntryPreload(t *testing.T) {
 
 	ne := preload.GetNumscriptEntry()
 	require.NotNil(t, ne)
-	assert.Equal(t, id, ne.Id)
-	assert.True(t, ne.Exists)
+	assert.Equal(t, id, ne.GetId())
+	assert.True(t, ne.GetExists())
 }
 
 func TestBuildNumscriptParsedPreload(t *testing.T) {
@@ -283,8 +283,8 @@ func TestBuildNumscriptParsedPreload(t *testing.T) {
 
 	np := preload.GetNumscriptParsed()
 	require.NotNil(t, np)
-	assert.Equal(t, id, np.Id)
-	assert.Equal(t, "send [USD 100] ( source = @world destination = @user )", np.Plain)
+	assert.Equal(t, id, np.GetId())
+	assert.Equal(t, "send [USD 100] ( source = @world destination = @user )", np.GetPlain())
 }
 
 func TestBuildTransactionStatePreload(t *testing.T) {
@@ -304,6 +304,6 @@ func TestBuildTransactionStatePreload(t *testing.T) {
 
 	ts := preload.GetTransactionState()
 	require.NotNil(t, ts)
-	assert.Equal(t, id, ts.Id)
-	assert.Equal(t, state, ts.State)
+	assert.Equal(t, id, ts.GetId())
+	assert.Equal(t, state, ts.GetState())
 }

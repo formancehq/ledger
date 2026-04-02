@@ -43,6 +43,7 @@ func TestProposalGuard_ReleaseLoaders(t *testing.T) {
 	loadCount := 0
 	_, err = loaders.Volumes.LoadOrWait(key, 100, func() (*raftcmdpb.VolumePair, uint64, error) {
 		loadCount++
+
 		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(2)}, 0, nil
 	})
 	require.NoError(t, err)
@@ -88,6 +89,7 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 	loadCount := 0
 	_, err = loaders.IdempotencyKeys.LoadOrWait(key, 100, func() (*commonpb.IdempotencyKeyValue, uint64, error) {
 		loadCount++
+
 		return &commonpb.IdempotencyKeyValue{LogSequence: 2, Hash: []byte("h2")}, 0, nil
 	})
 	require.NoError(t, err)
@@ -122,6 +124,7 @@ func TestPreloadBuild_ReleaseLoaders(t *testing.T) {
 	loadCount := 0
 	_, err = loaders.References.LoadOrWait(key, 100, func() (*commonpb.TransactionReferenceValue, uint64, error) {
 		loadCount++
+
 		return &commonpb.TransactionReferenceValue{TransactionId: 2}, 0, nil
 	})
 	require.NoError(t, err)

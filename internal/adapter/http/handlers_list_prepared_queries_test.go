@@ -2,7 +2,7 @@ package http
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -75,7 +75,7 @@ func TestHandleListPreparedQueries_BackendError(t *testing.T) {
 
 	backend := &mockBackend{
 		listPreparedQueriesFn: func(_ context.Context, _ string) ([]*commonpb.PreparedQuery, error) {
-			return nil, fmt.Errorf("unexpected error")
+			return nil, errors.New("unexpected error")
 		},
 	}
 	srv := newTestServer(t, backend)
