@@ -1425,8 +1425,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		QueryCheckpointCreated:  queryCheckpointCreated,
 		QueryCheckpointDeleted:  queryCheckpointDeleted,
 		AccountMigrateRequests:  buffer.AccountMigrateRequests(),
-		volumeUpdates:           buffer.KeptVolumeUpdates(),
-		createdLogs:             createdLogs,
+		volumeUpdates:    buffer.KeptVolumeUpdates(),
+		purgedVolumeKeys: buffer.PurgedVolumeKeys(),
+		createdLogs:      createdLogs,
 	}, nil
 }
 
@@ -2414,8 +2415,9 @@ type ApplyResult struct {
 
 	// volumeUpdates and createdLogs are captured for post-commit verification.
 	// Not exported because they are only used internally by ApplyEntries.
-	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
-	createdLogs   []*commonpb.Log
+	volumeUpdates    []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+	purgedVolumeKeys []domain.VolumeKey // keys removed by ephemeral purge
+	createdLogs      []*commonpb.Log
 }
 
 type ApplyEntriesResult struct {

@@ -57,6 +57,10 @@ func (e *ErrVolumeCachePebbleDivergence) Error() string {
 // value is persisted in Pebble (earlier entries are deleted by mergeSimple's
 // DeleteAt). Results are iterated in order so later entries naturally overwrite
 // earlier ones.
+//
+// Volumes purged by ephemeral purge in a later entry are excluded: the purge
+// deletes the Pebble entry written by the earlier entry, so verifying the
+// earlier entry's expected value would fail with "volume missing from pebble".
 func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
 	seen := make(map[domain.VolumeKey]int) // key -> index in deduped slice
 	var deduped []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
@@ -70,9 +74,28 @@ func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.
 				deduped = append(deduped, update)
 			}
 		}
+
+		// Remove volumes that were purged by this entry's ephemeral purge.
+		// A purge deletes the Pebble entry at OldBaseIndex, which may have been
+		// written by an earlier entry in this same batch.
+		for _, key := range r.purgedVolumeKeys {
+			if idx, ok := seen[key]; ok {
+				// Mark as removed by setting to zero value; compact below.
+				deduped[idx] = attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{}
+				delete(seen, key)
+			}
+		}
 	}
 
-	return deduped
+	// Compact: remove zero-value entries left by purge removals.
+	compact := deduped[:0]
+	for _, u := range deduped {
+		if len(u.CanonicalKey) > 0 {
+			compact = append(compact, u)
+		}
+	}
+
+	return compact
 }
 
 // verifyPostCommitVolumes reads back volumes from Pebble after batch commit

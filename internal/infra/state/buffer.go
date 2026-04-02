@@ -107,6 +107,10 @@ type Buffered struct {
 	// keptVolumeUpdates excludes ephemeral purged entries (for post-commit Pebble verification).
 	keptVolumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 
+	// purgedVolumeKeys holds keys of volumes removed by ephemeral purge.
+	// Used to exclude these from cross-entry post-commit verification.
+	purgedVolumeKeys []domain.VolumeKey
+
 	// Pending query checkpoint changes for Merge.
 	pendingQueryCheckpointSaves   []*raftcmdpb.QueryCheckpointState
 	pendingQueryCheckpointDeletes []uint64
@@ -193,6 +197,11 @@ func (b *Buffered) Merge(index uint64, batch *dal.Batch) error {
 	// entries are intentionally deleted from Pebble by applyEphemeralPurge).
 	b.allVolumeUpdates = volumeUpdates
 	b.keptVolumeUpdates = purgeResult.kept
+
+	// Record purged volume keys for cross-entry deduplication in ApplyEntries.
+	for _, purged := range purgeResult.purged {
+		b.purgedVolumeKeys = append(b.purgedVolumeKeys, purged.Key)
+	}
 
 	accountMetadataUpdates, accountMetadataDeletions, err := b.Derived.AccountMetadata.Merge(index)
 	if err != nil {
@@ -980,6 +989,13 @@ func (b *Buffered) SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState) {
 // DeleteQueryCheckpoint marks a query checkpoint for deletion during Merge.
 func (b *Buffered) DeleteQueryCheckpoint(checkpointID uint64) {
 	b.pendingQueryCheckpointDeletes = append(b.pendingQueryCheckpointDeletes, checkpointID)
+}
+
+// PurgedVolumeKeys returns the keys of volumes that were purged by ephemeral purge.
+// Used to exclude these keys from post-commit Pebble verification when a later entry
+// in the same ApplyEntries batch purges a volume that was written by an earlier entry.
+func (b *Buffered) PurgedVolumeKeys() []domain.VolumeKey {
+	return b.purgedVolumeKeys
 }
 
 // Ensure Buffered implements InMemoryStore.
