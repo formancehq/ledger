@@ -919,7 +919,6 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		if ok {
 			result.confChanges = append(result.confChanges, cc)
 		}
-
 	}
 
 	return result, nil
@@ -1109,7 +1108,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 
 				maybeCreateReady()
 			case p := <-node.proposeCh:
-				p.Resolve(nil, node.rawNode.Propose(p.data))
+				node.handleProposal(p)
 			case cmd := <-node.clusterCommandCh:
 				cmd.errCh <- cmd.fn()
 			default:
@@ -1167,7 +1166,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 
 					maybeCreateReady()
 				case p := <-node.proposeCh:
-					p.Resolve(nil, node.rawNode.Propose(p.data))
+					node.handleProposal(p)
 				case cmd := <-node.clusterCommandCh:
 					cmd.errCh <- cmd.fn()
 				case err := <-node.applier.TaskError():
@@ -1259,6 +1258,26 @@ func (node *Node) Propose(proposal *Proposal) (*futures.Future[state.ApplyResult
 
 		return nil, ErrProposalQueueFull
 	}
+}
+
+// handleProposal sends a proposal to rawNode and rolls back the IndexTracker
+// if Raft drops the proposal (e.g. the node is no longer leader).
+// Must be called from the readyLoop goroutine.
+func (node *Node) handleProposal(p *Proposal) {
+	err := node.rawNode.Propose(p.data)
+	if err != nil {
+		// The IndexTracker was optimistically incremented in Propose().
+		// Since Raft rejected this proposal, no log entry was created—
+		// decrement to keep the tracker accurate.
+		prev := node.indexTracker.Next()
+		node.indexTracker.Decrement(1)
+		node.logger.WithFields(map[string]any{
+			"error":         err,
+			"trackerBefore": prev,
+			"trackerAfter":  node.indexTracker.Next(),
+		}).Errorf("Proposal dropped, IndexTracker decremented")
+	}
+	p.Resolve(nil, err)
 }
 
 // IndexTracker returns the shared index tracker for accurate Raft index prediction.

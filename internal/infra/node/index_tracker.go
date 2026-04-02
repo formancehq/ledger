@@ -30,6 +30,13 @@ func (t *IndexTracker) Increment(n uint64) {
 	t.nextIndex.Add(n)
 }
 
+// Decrement rolls back the tracker by n indices. Used when a proposal is
+// dropped by Raft (e.g. leadership lost) to compensate for the optimistic
+// Increment in Propose.
+func (t *IndexTracker) Decrement(n uint64) {
+	t.nextIndex.Add(^(n - 1)) // atomic subtract via two's complement
+}
+
 // Advance sets the tracker to at least minNext. Used by processReady to
 // catch up with all committed entries (including proposals from other leaders)
 // so that followers have an accurate index prediction if they become leader.
