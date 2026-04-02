@@ -1643,7 +1643,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 	// Volumes
 	for u128, entry := range volumeStore.Iter() {
 		e := &raftcmdpb.VolumeAttributeSnapshotEntry{
-			Id: &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
+			Id: &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag, BaseIndex: entry.BaseIndex},
 		}
 		if entry.Data != nil {
 			e.Input = entry.Data.GetInput()
@@ -1658,7 +1658,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 	// Metadata
 	for u128, entry := range metadataStore.Iter() {
 		e := &raftcmdpb.MetadataAttributeEntry{
-			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
+			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag, BaseIndex: entry.BaseIndex},
 			Value: entry.Data,
 		}
 		if err := batch.SetProto(makeKey(dal.CacheTypeMetadata, u128), e); err != nil {
@@ -1669,7 +1669,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 	// Ledgers
 	for u128, entry := range ledgerStore.Iter() {
 		e := &raftcmdpb.LedgerAttributeEntry{
-			Id:   &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
+			Id:   &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag, BaseIndex: entry.BaseIndex},
 			Info: entry.Data,
 		}
 		if err := batch.SetProto(makeKey(dal.CacheTypeLedgers, u128), e); err != nil {
@@ -1680,7 +1680,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 	// Boundaries
 	for u128, entry := range boundaryStore.Iter() {
 		e := &raftcmdpb.BoundaryAttributeEntry{
-			Id:         &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
+			Id:         &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag, BaseIndex: entry.BaseIndex},
 			Boundaries: entry.Data,
 		}
 		if err := batch.SetProto(makeKey(dal.CacheTypeBoundaries, u128), e); err != nil {
@@ -1691,7 +1691,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 	// References
 	for u128, entry := range referenceStore.Iter() {
 		e := &raftcmdpb.TransactionReferenceAttributeEntry{
-			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
+			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag, BaseIndex: entry.BaseIndex},
 			Value: entry.Data,
 		}
 		if err := batch.SetProto(makeKey(dal.CacheTypeReferences, u128), e); err != nil {
@@ -1702,7 +1702,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 	// Transactions
 	for u128, entry := range transactionStore.Iter() {
 		e := &raftcmdpb.TransactionStateAttributeEntry{
-			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
+			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag, BaseIndex: entry.BaseIndex},
 			State: entry.Data,
 		}
 		if err := batch.SetProto(makeKey(dal.CacheTypeTransactions, u128), e); err != nil {
@@ -1713,7 +1713,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 	// NumscriptParsed
 	for u128, entry := range numscriptParsedStore.Iter() {
 		e := &raftcmdpb.NumscriptParsedAttributeEntry{
-			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
+			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag, BaseIndex: entry.BaseIndex},
 			Plain: entry.Data,
 		}
 		if err := batch.SetProto(makeKey(dal.CacheTypeNumscript, u128), e); err != nil {
@@ -1724,7 +1724,7 @@ func (fsm *Machine) persistCacheGeneration(batch *dal.Batch, genByte byte) error
 	// IdempotencyKeys
 	for u128, entry := range idempotencyStore.Iter() {
 		e := &raftcmdpb.IdempotencyKeyAttributeEntry{
-			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag},
+			Id:    &raftcmdpb.AttributeID{Id: u128[:], Tag: entry.Tag, BaseIndex: entry.BaseIndex},
 			Value: entry.Data,
 		}
 		if err := batch.SetProto(makeKey(dal.CacheTypeIdempotency, u128), e); err != nil {
@@ -1851,7 +1851,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 			}
 			pair := &raftcmdpb.VolumePair{Input: e.GetInput(), Output: e.GetOutput()}
 			volumeStore.Put(u128, attributes.Entry[*raftcmdpb.VolumePair]{
-				Tag: e.GetId().GetTag(), Data: pair,
+				Tag: e.GetId().GetTag(), Data: pair, BaseIndex: e.GetId().GetBaseIndex(),
 			})
 
 			return nil
@@ -1862,7 +1862,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 				return err
 			}
 			metadataStore.Put(u128, attributes.Entry[*commonpb.MetadataValue]{
-				Tag: e.GetId().GetTag(), Data: e.GetValue(),
+				Tag: e.GetId().GetTag(), Data: e.GetValue(), BaseIndex: e.GetId().GetBaseIndex(),
 			})
 
 			return nil
@@ -1873,7 +1873,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 				return err
 			}
 			ledgerStore.Put(u128, attributes.Entry[*commonpb.LedgerInfo]{
-				Tag: e.GetId().GetTag(), Data: e.GetInfo(),
+				Tag: e.GetId().GetTag(), Data: e.GetInfo(), BaseIndex: e.GetId().GetBaseIndex(),
 			})
 
 			return nil
@@ -1884,7 +1884,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 				return err
 			}
 			boundaryStore.Put(u128, attributes.Entry[*raftcmdpb.LedgerBoundaries]{
-				Tag: e.GetId().GetTag(), Data: e.GetBoundaries(),
+				Tag: e.GetId().GetTag(), Data: e.GetBoundaries(), BaseIndex: e.GetId().GetBaseIndex(),
 			})
 
 			return nil
@@ -1895,7 +1895,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 				return err
 			}
 			referenceStore.Put(u128, attributes.Entry[*commonpb.TransactionReferenceValue]{
-				Tag: e.GetId().GetTag(), Data: e.GetValue(),
+				Tag: e.GetId().GetTag(), Data: e.GetValue(), BaseIndex: e.GetId().GetBaseIndex(),
 			})
 
 			return nil
@@ -1906,7 +1906,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 				return err
 			}
 			transactionStore.Put(u128, attributes.Entry[*commonpb.TransactionState]{
-				Tag: e.GetId().GetTag(), Data: e.GetState(),
+				Tag: e.GetId().GetTag(), Data: e.GetState(), BaseIndex: e.GetId().GetBaseIndex(),
 			})
 
 			return nil
@@ -1917,7 +1917,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 				return err
 			}
 			numscriptParsedStore.Put(u128, attributes.Entry[string]{
-				Tag: e.GetId().GetTag(), Data: e.GetPlain(),
+				Tag: e.GetId().GetTag(), Data: e.GetPlain(), BaseIndex: e.GetId().GetBaseIndex(),
 			})
 
 			return nil
@@ -1928,7 +1928,7 @@ func (fsm *Machine) restoreCacheGeneration(genByte byte) error {
 				return err
 			}
 			idempotencyStore.Put(u128, attributes.Entry[*commonpb.IdempotencyKeyValue]{
-				Tag: e.GetId().GetTag(), Data: e.GetValue(),
+				Tag: e.GetId().GetTag(), Data: e.GetValue(), BaseIndex: e.GetId().GetBaseIndex(),
 			})
 
 			return nil
