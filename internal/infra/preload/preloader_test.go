@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger-v3-poc/internal/infra/attributes"
+	"github.com/formancehq/ledger-v3-poc/internal/infra/node"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/commonpb"
 	"github.com/formancehq/ledger-v3-poc/internal/proto/raftcmdpb"
 )
@@ -25,8 +26,9 @@ func TestProposalGuard_ReleaseLoaders(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a guard with a token tracking that key
-	p := &Preloader{loaders: loaders}
-	p.proposeMu.Lock() // simulate AcquireProposalGuard having locked
+	tracker := node.NewIndexTracker(1)
+	p := &Preloader{loaders: loaders, tracker: tracker}
+	tracker.Lock() // simulate AcquireProposalGuard having locked
 
 	guard := &ProposalGuard{
 		p:     p,
@@ -68,8 +70,9 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	p := &Preloader{loaders: loaders}
-	p.proposeMu.Lock()
+	tracker := node.NewIndexTracker(1)
+	p := &Preloader{loaders: loaders, tracker: tracker}
+	tracker.Lock()
 
 	guard := &ProposalGuard{
 		p:     p,
@@ -80,8 +83,8 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 	guard.ReleaseAll()
 
 	// Verify the mutex was unlocked by trying to lock it again
-	p.proposeMu.Lock()
-	p.proposeMu.Unlock() //nolint:staticcheck // SA2001: empty critical section is intentional
+	tracker.Lock()
+	tracker.Unlock()
 
 	// Verify loaders were cleaned
 	assert.Nil(t, guard.token)

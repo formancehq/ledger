@@ -15,6 +15,11 @@ import (
 // Preloader manages the shared preload infrastructure used by both admission
 // and mirror. It uses the Node's IndexTracker for accurate Raft index prediction
 // and the Loaders for deduplication.
+//
+// The proposal lock is the IndexTracker's own mutex (tracker.Lock/Unlock),
+// which also serializes with IndexTracker.Decrement. This prevents a race
+// where a dropped proposal shifts the tracker across a generation boundary
+// between AcquireProposalGuard's validation and Node.Propose.
 type Preloader struct {
 	tracker *node.IndexTracker
 	cache   *cache.Cache
@@ -22,11 +27,6 @@ type Preloader struct {
 	store   *dal.Store
 	loaders *Loaders
 	logger  logging.Logger
-
-	// proposeMu serializes the final boundary validation and Propose().
-	// Preload building (the slow part) happens outside this lock;
-	// only the fast critical section (validate + propose) is held.
-	proposeMu sync.Mutex
 }
 
 // PreloadBuild carries the result of an optimistic BuildPreloads call.
@@ -67,7 +67,7 @@ type ProposalGuard struct {
 // Node's IndexTracker (incremented in Node.Propose).
 // The loader cleanup token is NOT released — call ReleaseLoaders separately.
 func (g *ProposalGuard) Release() {
-	g.p.proposeMu.Unlock()
+	g.p.tracker.Unlock()
 }
 
 // ReleaseLoaders cleans up loader entries tracked during preload building.
@@ -141,7 +141,7 @@ func (p *Preloader) BuildPreloads(needs *Needs) (*PreloadBuild, error) {
 //
 // On error, the caller must call guard.ReleaseAll() if guard is non-nil.
 func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*raftcmdpb.PreloadSet, *ProposalGuard, error) {
-	p.proposeMu.Lock()
+	p.tracker.Lock()
 
 	nextIndexAfter := p.tracker.Next()
 	nextIndexGenAfter := cache.Gen(nextIndexAfter, p.cache.GenerationThreshold)
@@ -152,8 +152,9 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 
 	// --- Stale: re-build under lock ---
 	// nextIndex crossed a generation boundary since BuildPreloads, so the
-	// CheckCache decisions (hit/miss/touch) may be wrong. Under proposeMu,
-	// nextIndex is stable for the duration of the rebuild.
+	// CheckCache decisions (hit/miss/touch) may be wrong. Under the tracker
+	// lock, nextIndex is stable for the duration of the rebuild (Decrement
+	// also acquires this lock, preventing the race).
 	build.token.Release(p.loaders)
 
 	if p.logger.Enabled(logging.DebugLevel) {
@@ -167,7 +168,7 @@ func (p *Preloader) AcquireProposalGuard(build *PreloadBuild, needs *Needs) (*ra
 
 	preloadSet, token, err := p.buildPreloadsAt(p.tracker.Next(), needs)
 	if err != nil {
-		p.proposeMu.Unlock()
+		p.tracker.Unlock()
 
 		return nil, &ProposalGuard{p: p, token: token}, err
 	}
