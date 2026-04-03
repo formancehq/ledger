@@ -70,7 +70,7 @@ func (ctrl *DefaultController) insertSchema(ctx context.Context, store Store, _s
 	}
 
 	for id, template := range schema.Transactions {
-		parser := ctrl.getParser(ledger.RuntimeType(template.Runtime))
+		parser := ctrl.getParser(template.Runtime)
 		_, err := parser.Parse(template.Script)
 		if err != nil {
 			return nil, ledger.NewErrInvalidSchema(fmt.Errorf("invalid template %s: %w", id, err))

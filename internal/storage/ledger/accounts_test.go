@@ -3,7 +3,6 @@
 package ledger_test
 
 import (
-	"context"
 	"errors"
 	"math/big"
 	"testing"
@@ -325,7 +324,7 @@ func TestAccountsUpdateMetadata(t *testing.T) {
 		"bank": m,
 	}, time.Time{}))
 
-	account, err := store.Accounts().GetOne(context.Background(), common.ResourceQuery[any]{
+	account, err := store.Accounts().GetOne(t.Context(), common.ResourceQuery[any]{
 		Builder: query.Match("address", "bank"),
 	})
 	require.NoError(t, err, "account retrieval should not fail")
