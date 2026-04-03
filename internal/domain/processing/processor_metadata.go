@@ -76,7 +76,7 @@ func (p *RequestProcessor) processAddMetadata(ledger string, boundaries *raftcmd
 		}
 
 		if state == nil {
-			return nil, fmt.Errorf("transaction state not found for tx %d", target.Transaction.GetId())
+			return nil, &domain.ErrTransactionNotFound{TransactionID: target.Transaction.GetId()}
 		}
 
 		// Add metadata entries to the transaction state
@@ -170,7 +170,7 @@ func (p *RequestProcessor) processDeleteMetadata(ledger string, boundaries *raft
 		}
 
 		if state == nil {
-			return nil, fmt.Errorf("transaction state not found for tx %d", target.Transaction.GetId())
+			return nil, &domain.ErrTransactionNotFound{TransactionID: target.Transaction.GetId()}
 		}
 
 		// Capture old value and remove the metadata key from the transaction state
