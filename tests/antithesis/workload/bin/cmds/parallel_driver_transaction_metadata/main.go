@@ -149,15 +149,15 @@ func setTransactionMetadata(
 			"actual":   postMetadata,
 			"expected": expectedMetadata,
 		})
-	}
 
-	for k, v := range expectedMetadata {
-		assert.Always(postMetadata[k] == v, "metadata key should be present after set", internal.Details{
-			"ledger": ledger,
-			"txID":   txID,
-			"key":    k,
-			"want":   v,
-			"got":    postMetadata[k],
-		})
+		for k, v := range expectedMetadata {
+			assert.Always(postMetadata[k] == v, "metadata key should be present after set", internal.Details{
+				"ledger": ledger,
+				"txID":   txID,
+				"key":    k,
+				"want":   v,
+				"got":    postMetadata[k],
+			})
+		}
 	}
 }

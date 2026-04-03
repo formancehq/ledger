@@ -154,18 +154,15 @@ func setAccountMetadata(
 			"actual":   postMetadata,
 			"expected": expectedMetadata,
 		})
-	}
 
-	// Always verify that at least the expected keys are present (superset check).
-	// This holds regardless of lock validity — our write was committed, so its
-	// keys must appear.
-	for k, v := range expectedMetadata {
-		assert.Always(postMetadata[k] == v, "metadata key should be present after set", internal.Details{
-			"ledger":  ledger,
-			"account": account,
-			"key":     k,
-			"want":    v,
-			"got":     postMetadata[k],
-		})
+		for k, v := range expectedMetadata {
+			assert.Always(postMetadata[k] == v, "metadata key should be present after set", internal.Details{
+				"ledger":  ledger,
+				"account": account,
+				"key":     k,
+				"want":    v,
+				"got":     postMetadata[k],
+			})
+		}
 	}
 }

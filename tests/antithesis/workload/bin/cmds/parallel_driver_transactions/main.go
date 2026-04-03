@@ -92,7 +92,8 @@ func createRandomPostingsTransaction(ctx context.Context, client servicepb.Bucke
 		return
 	}
 
-	// Check that we can read it immediately
+	// Check that we can read it immediately (linearizable read-after-write).
+	// The read index barrier should ensure this always succeeds.
 	_, err = client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
 		Ledger:        ledger,
 		TransactionId: createdTx.Transaction.Id,
@@ -102,6 +103,7 @@ func createRandomPostingsTransaction(ctx context.Context, client servicepb.Bucke
 		assert.AlwaysOrUnreachable(st.Code() != codes.NotFound, "should always be able to read committed transaction", internal.Details{
 			"ledger": ledger,
 			"txId":   createdTx.Transaction.Id,
+			"error":  err,
 		})
 	}
 
@@ -165,7 +167,8 @@ func createRandomNumscriptTransaction(ctx context.Context, client servicepb.Buck
 		return
 	}
 
-	// Read-after-write check
+	// Read-after-write check (linearizable read-after-write).
+	// The read index barrier should ensure this always succeeds.
 	_, err = client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
 		Ledger:        ledger,
 		TransactionId: createdTx.Transaction.Id,
@@ -175,6 +178,7 @@ func createRandomNumscriptTransaction(ctx context.Context, client servicepb.Buck
 		assert.AlwaysOrUnreachable(st.Code() != codes.NotFound, "should always be able to read committed transaction", internal.Details{
 			"ledger": ledger,
 			"txId":   createdTx.Transaction.Id,
+			"error":  err,
 		})
 	}
 
