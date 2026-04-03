@@ -150,7 +150,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(result.GetCursor()).NotTo(BeNil())
 				g.Expect(result.GetCursor().AccountData).To(HaveLen(1))
-				g.Expect(result.GetCursor().AccountData[0]).To(Equal("alice"))
+				g.Expect(result.GetCursor().AccountData[0].GetAddress()).To(Equal("alice"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -225,7 +225,7 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 				g.Expect(result.GetCursor().AccountData).To(HaveLen(2))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			Expect(result.GetCursor().AccountData).To(ConsistOf("bob", "charlie"))
+			Expect(accountAddresses(result.GetCursor().AccountData)).To(ConsistOf("bob", "charlie"))
 		})
 
 		It("Should error when int filter has negative bound on uint field", func() {

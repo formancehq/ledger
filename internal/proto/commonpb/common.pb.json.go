@@ -215,6 +215,25 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 	return err
 }
 
+// MarshalJSON implements json.Marshaler for PreparedQueryCursor.
+func (x *PreparedQueryCursor) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		PageSize        uint32         `json:"pageSize"`
+		HasMore         bool           `json:"hasMore"`
+		Previous        string         `json:"previous,omitempty"`
+		Next            string         `json:"next,omitempty"`
+		AccountData     []*Account     `json:"accountData,omitempty"`
+		TransactionData []*Transaction `json:"transactionData,omitempty"`
+	}{
+		PageSize:        x.GetPageSize(),
+		HasMore:         x.GetHasMore(),
+		Previous:        x.GetPrevious(),
+		Next:            x.GetNext(),
+		AccountData:     x.GetAccountData(),
+		TransactionData: x.GetTransactionData(),
+	})
+}
+
 // ParseTarget parses targetType and targetId into a Target message.
 func ParseTarget(targetType string, targetID json.RawValue) *Target {
 	if len(targetID) == 0 {

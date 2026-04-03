@@ -211,7 +211,7 @@ var _ = Describe("QueryProfile", Ordered, func() {
 
 				cursor := resp.GetCursor()
 				g.Expect(cursor).NotTo(BeNil())
-				g.Expect(cursor.AccountData).To(ContainElement("alice"))
+				g.Expect(accountAddresses(cursor.AccountData)).To(ContainElement("alice"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -231,7 +231,7 @@ var _ = Describe("QueryProfile", Ordered, func() {
 			cursor := resp.GetCursor()
 			Expect(cursor).NotTo(BeNil())
 			Expect(cursor.AccountData).To(HaveLen(1))
-			Expect(cursor.AccountData[0]).To(Equal("alice"))
+			Expect(cursor.AccountData[0].GetAddress()).To(Equal("alice"))
 		})
 	})
 

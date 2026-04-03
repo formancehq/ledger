@@ -288,18 +288,11 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 	// Enrich each transaction ID from Pebble
 	enrichStart := time.Now()
 
-	txns := make([]*commonpb.Transaction, 0, len(result.entityIDs))
-	for _, eid := range result.entityIDs {
-		txID := binary.BigEndian.Uint64(eid)
+	txns, err := query.EnrichTransactions(ctx, result.entityIDs, ctrl.entityEnricher(), handle, ledgerInfo.GetName(), ledgerInfo.GetMetadataSchema())
+	if err != nil {
+		_ = handle.Close()
 
-		tx, txErr := ctrl.buildTransaction(ctx, handle, ledgerInfo.GetName(), txID, ledgerInfo.GetMetadataSchema())
-		if txErr != nil {
-			_ = handle.Close()
-
-			return nil, txErr
-		}
-
-		txns = append(txns, tx)
+		return nil, err
 	}
 
 	if profile != nil {
@@ -377,16 +370,11 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	// Enrich each account from Pebble
 	enrichStart := time.Now()
 
-	accounts := make([]*commonpb.Account, 0, len(result.entityIDs))
-	for _, addr := range result.entityIDs {
-		acc, accErr := scanAccount(handle, ctrl.attrs, ledgerInfo.GetName(), string(addr), ledgerInfo.GetMetadataSchema())
-		if accErr != nil {
-			_ = handle.Close()
+	accounts, err := query.EnrichAccounts(result.entityIDs, ctrl.entityEnricher(), handle, ledgerInfo.GetName(), ledgerInfo.GetMetadataSchema())
+	if err != nil {
+		_ = handle.Close()
 
-			return nil, accErr
-		}
-
-		accounts = append(accounts, acc)
+		return nil, err
 	}
 
 	if profile != nil {
@@ -1029,11 +1017,24 @@ func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger s
 	return query.ReadPreparedQueries(ctx, ctrl.store, ledger)
 }
 
+// entityEnricher returns an EntityEnricher that uses the controller's attributes
+// and transaction assembly logic to hydrate raw entity IDs into full objects.
+func (ctrl *DefaultController) entityEnricher() *query.EntityEnricher {
+	return &query.EntityEnricher{
+		EnrichAccount: func(reader dal.PebbleReader, ledger, address string, schema *commonpb.MetadataSchema) (*commonpb.Account, error) {
+			return scanAccount(reader, ctrl.attrs, ledger, address, schema)
+		},
+		EnrichTransaction: func(ctx context.Context, reader dal.PebbleReader, ledger string, txID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error) {
+			return ctrl.buildTransaction(ctx, reader, ledger, txID, schema)
+		},
+	}
+}
+
 // ExecutePreparedQuery executes a prepared query against the read index store.
 func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 	profile := query.ProfileFromContext(ctx)
 
-	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, req, profile)
+	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, req, profile, ctrl.entityEnricher())
 }
 
 // GetNumscript returns a numscript by ledger, name and optional version ("" = latest).

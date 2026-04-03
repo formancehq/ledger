@@ -1027,8 +1027,8 @@ message PreparedQueryCursor {
   bool has_more = 2;
   string previous = 3;
   string next = 4;
-  repeated string account_data = 5;
-  repeated uint64 transaction_data = 6;
+  repeated Account account_data = 5;
+  repeated Transaction transaction_data = 6;
 }
 
 // LedgerStats contains aggregate statistics for a ledger.

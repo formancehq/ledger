@@ -97,7 +97,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(result.GetCursor()).NotTo(BeNil())
 				g.Expect(result.GetCursor().AccountData).To(HaveLen(1))
-				g.Expect(result.GetCursor().AccountData[0]).To(Equal("alice"))
+				g.Expect(result.GetCursor().AccountData[0].GetAddress()).To(Equal("alice"))
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -603,7 +603,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(Succeed())
-				g.Expect(result.GetCursor().TransactionData).To(ConsistOf(uint64(3)))
+				g.Expect(transactionIDs(result.GetCursor().TransactionData)).To(ConsistOf(uint64(3)))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -625,7 +625,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 					Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
 				})
 				g.Expect(err).To(Succeed())
-				g.Expect(result.GetCursor().TransactionData).To(ConsistOf(uint64(2), uint64(3), uint64(4)))
+				g.Expect(transactionIDs(result.GetCursor().TransactionData)).To(ConsistOf(uint64(2), uint64(3), uint64(4)))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 

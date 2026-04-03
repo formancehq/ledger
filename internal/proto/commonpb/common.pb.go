@@ -9178,8 +9178,8 @@ type PreparedQueryCursor struct {
 	HasMore         bool                   `protobuf:"varint,2,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
 	Previous        string                 `protobuf:"bytes,3,opt,name=previous,proto3" json:"previous,omitempty"`
 	Next            string                 `protobuf:"bytes,4,opt,name=next,proto3" json:"next,omitempty"`
-	AccountData     []string               `protobuf:"bytes,5,rep,name=account_data,json=accountData,proto3" json:"account_data,omitempty"`
-	TransactionData []uint64               `protobuf:"varint,6,rep,packed,name=transaction_data,json=transactionData,proto3" json:"transaction_data,omitempty"`
+	AccountData     []*Account             `protobuf:"bytes,5,rep,name=account_data,json=accountData,proto3" json:"account_data,omitempty"`
+	TransactionData []*Transaction         `protobuf:"bytes,6,rep,name=transaction_data,json=transactionData,proto3" json:"transaction_data,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -9242,14 +9242,14 @@ func (x *PreparedQueryCursor) GetNext() string {
 	return ""
 }
 
-func (x *PreparedQueryCursor) GetAccountData() []string {
+func (x *PreparedQueryCursor) GetAccountData() []*Account {
 	if x != nil {
 		return x.AccountData
 	}
 	return nil
 }
 
-func (x *PreparedQueryCursor) GetTransactionData() []uint64 {
+func (x *PreparedQueryCursor) GetTransactionData() []*Transaction {
 	if x != nil {
 		return x.TransactionData
 	}
@@ -9916,14 +9916,14 @@ const file_common_proto_rawDesc = "" +
 	"\x06groups\x18\x02 \x03(\v2\x1e.common.GroupedAggregateResultR\x06groups\"d\n" +
 	"\x16GroupedAggregateResult\x12\x16\n" +
 	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x122\n" +
-	"\avolumes\x18\x02 \x03(\v2\x18.common.AggregatedVolumeR\avolumes\"\xcb\x01\n" +
+	"\avolumes\x18\x02 \x03(\v2\x18.common.AggregatedVolumeR\avolumes\"\xf1\x01\n" +
 	"\x13PreparedQueryCursor\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\rR\bpageSize\x12\x19\n" +
 	"\bhas_more\x18\x02 \x01(\bR\ahasMore\x12\x1a\n" +
 	"\bprevious\x18\x03 \x01(\tR\bprevious\x12\x12\n" +
-	"\x04next\x18\x04 \x01(\tR\x04next\x12!\n" +
-	"\faccount_data\x18\x05 \x03(\tR\vaccountData\x12)\n" +
-	"\x10transaction_data\x18\x06 \x03(\x04R\x0ftransactionData\"_\n" +
+	"\x04next\x18\x04 \x01(\tR\x04next\x122\n" +
+	"\faccount_data\x18\x05 \x03(\v2\x0f.common.AccountR\vaccountData\x12>\n" +
+	"\x10transaction_data\x18\x06 \x03(\v2\x13.common.TransactionR\x0ftransactionData\"_\n" +
 	"\vLedgerStats\x12#\n" +
 	"\raccount_count\x18\x01 \x01(\x04R\faccountCount\x12+\n" +
 	"\x11transaction_count\x18\x02 \x01(\x04R\x10transactionCount*B\n" +
@@ -10362,20 +10362,22 @@ var file_common_proto_depIdxs = []int32{
 	132, // 191: common.AggregateResult.volumes:type_name -> common.AggregatedVolume
 	134, // 192: common.AggregateResult.groups:type_name -> common.GroupedAggregateResult
 	132, // 193: common.GroupedAggregateResult.volumes:type_name -> common.AggregatedVolume
-	26,  // 194: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
-	28,  // 195: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	27,  // 196: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
-	34,  // 197: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	34,  // 198: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	20,  // 199: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataSet
-	20,  // 200: common.CreatedTransaction.PreviousAccountMetadataEntry.value:type_name -> common.MetadataSet
-	19,  // 201: common.SavedMetadata.PreviousValuesEntry.value:type_name -> common.MetadataValue
-	105, // 202: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
-	203, // [203:203] is the sub-list for method output_type
-	203, // [203:203] is the sub-list for method input_type
-	203, // [203:203] is the sub-list for extension type_name
-	203, // [203:203] is the sub-list for extension extendee
-	0,   // [0:203] is the sub-list for field type_name
+	30,  // 194: common.PreparedQueryCursor.account_data:type_name -> common.Account
+	24,  // 195: common.PreparedQueryCursor.transaction_data:type_name -> common.Transaction
+	26,  // 196: common.VolumesByAssets.VolumesEntry.value:type_name -> common.Volumes
+	28,  // 197: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	27,  // 198: common.Account.VolumesEntry.value:type_name -> common.VolumesWithBalance
+	34,  // 199: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	34,  // 200: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	20,  // 201: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataSet
+	20,  // 202: common.CreatedTransaction.PreviousAccountMetadataEntry.value:type_name -> common.MetadataSet
+	19,  // 203: common.SavedMetadata.PreviousValuesEntry.value:type_name -> common.MetadataValue
+	105, // 204: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
+	205, // [205:205] is the sub-list for method output_type
+	205, // [205:205] is the sub-list for method input_type
+	205, // [205:205] is the sub-list for extension type_name
+	205, // [205:205] is the sub-list for extension extendee
+	0,   // [0:205] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }

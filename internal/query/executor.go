@@ -31,6 +31,12 @@ func (e *ErrReadIndexNotCaughtUp) Error() string {
 	return fmt.Sprintf("read index has not caught up to sequence %d (current: %d)", e.Requested, e.Current)
 }
 
+// EntityEnricher provides functions to hydrate raw entity IDs into full objects.
+type EntityEnricher struct {
+	EnrichAccount     func(reader dal.PebbleReader, ledger, address string, schema *commonpb.MetadataSchema) (*commonpb.Account, error)
+	EnrichTransaction func(ctx context.Context, reader dal.PebbleReader, ledger string, txID uint64, schema *commonpb.MetadataSchema) (*commonpb.Transaction, error)
+}
+
 // Execute runs a prepared query against the read index and, for
 // AGGREGATE_VOLUMES mode, crosses into Pebble for volume data.
 func Execute(
@@ -40,6 +46,7 @@ func Execute(
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
+	enricher *EntityEnricher,
 ) (*servicepb.ExecutePreparedQueryResponse, error) {
 	ctx, span := queryTracer.Start(ctx, "query.execute_prepared",
 		trace.WithAttributes(
@@ -93,25 +100,13 @@ func Execute(
 	indexSnap := rs.NewSnapshot()
 	defer func() { _ = indexSnap.Close() }()
 
-	var handle *dal.ReadHandle
-	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES {
-		handle = pebbleStore.NewReadHandle()
-		defer func() { _ = handle.Close() }()
-	}
+	// Always open a read handle — needed for filter compilation and entity enrichment.
+	handle := pebbleStore.NewReadHandle()
+	defer func() { _ = handle.Close() }()
 
 	kb := dal.NewKeyBuilder()
 
-	// Compile filter into iterator tree.
-	var pebbleReader dal.PebbleReader
-	if handle != nil {
-		pebbleReader = handle
-	} else {
-		tmpHandle := pebbleStore.NewReadHandle()
-		defer func() { _ = tmpHandle.Close() }()
-		pebbleReader = tmpHandle
-	}
-
-	iter, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), req.GetLedger(), req.GetParameters(), schema, ledgerInfo.GetBuiltinIndexes(), ledgerInfo.GetLogBuiltinIndexes(), profile, pebbleReader)
+	iter, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), req.GetLedger(), req.GetParameters(), schema, ledgerInfo.GetBuiltinIndexes(), ledgerInfo.GetLogBuiltinIndexes(), profile, handle)
 	if compileErr != nil {
 		return nil, fmt.Errorf("compiling filter: %w", compileErr)
 	}
@@ -121,7 +116,7 @@ func Execute(
 
 	switch req.GetMode() {
 	case commonpb.QueryMode_QUERY_MODE_LIST:
-		resp, err = executeList(iter, pq.GetTarget(), req, profile)
+		resp, err = executeList(ctx, iter, pq.GetTarget(), req, profile, handle, req.GetLedger(), ledgerInfo.GetMetadataSchema(), enricher)
 		if err != nil {
 			return nil, err
 		}
@@ -145,12 +140,18 @@ func Execute(
 	return resp, nil
 }
 
-// executeList paginates entities from the iterator and returns a cursor response.
+// executeList paginates entities from the iterator, enriches them into full
+// objects, and returns a cursor response.
 func executeList(
+	ctx context.Context,
 	iter readstore.EntityIterator,
 	target commonpb.QueryTarget,
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
+	reader dal.PebbleReader,
+	ledger string,
+	schema *commonpb.MetadataSchema,
+	enricher *EntityEnricher,
 ) (*servicepb.ExecutePreparedQueryResponse, error) {
 	pageSize := req.GetPageSize()
 	if pageSize == 0 {
@@ -186,19 +187,19 @@ func executeList(
 
 	switch target {
 	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
-		accounts := make([]string, len(entities))
-		for i, e := range entities {
-			accounts[i] = string(e)
+		accounts, err := EnrichAccounts(entities, enricher, reader, ledger, schema)
+		if err != nil {
+			return nil, err
 		}
 
 		cursor.AccountData = accounts
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-		txIDs := make([]uint64, len(entities))
-		for i, e := range entities {
-			txIDs[i] = binary.BigEndian.Uint64(e)
+		txns, err := EnrichTransactions(ctx, entities, enricher, reader, ledger, schema)
+		if err != nil {
+			return nil, err
 		}
 
-		cursor.TransactionData = txIDs
+		cursor.TransactionData = txns
 	}
 
 	if hasMore {
@@ -214,6 +215,38 @@ func executeList(
 			Cursor: cursor,
 		},
 	}, nil
+}
+
+// EnrichAccounts hydrates a slice of raw entity bytes into full Account objects.
+func EnrichAccounts(entityIDs [][]byte, enricher *EntityEnricher, reader dal.PebbleReader, ledger string, schema *commonpb.MetadataSchema) ([]*commonpb.Account, error) {
+	accounts := make([]*commonpb.Account, len(entityIDs))
+	for i, e := range entityIDs {
+		acc, err := enricher.EnrichAccount(reader, ledger, string(e), schema)
+		if err != nil {
+			return nil, fmt.Errorf("enriching account %q: %w", string(e), err)
+		}
+
+		accounts[i] = acc
+	}
+
+	return accounts, nil
+}
+
+// EnrichTransactions hydrates a slice of raw entity bytes into full Transaction objects.
+func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *EntityEnricher, reader dal.PebbleReader, ledger string, schema *commonpb.MetadataSchema) ([]*commonpb.Transaction, error) {
+	txns := make([]*commonpb.Transaction, len(entityIDs))
+	for i, e := range entityIDs {
+		txID := binary.BigEndian.Uint64(e)
+
+		tx, err := enricher.EnrichTransaction(ctx, reader, ledger, txID, schema)
+		if err != nil {
+			return nil, fmt.Errorf("enriching transaction %d: %w", txID, err)
+		}
+
+		txns[i] = tx
+	}
+
+	return txns, nil
 }
 
 func emptyListResponse(pageSize uint32) *servicepb.ExecutePreparedQueryResponse {

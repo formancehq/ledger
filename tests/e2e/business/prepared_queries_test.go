@@ -17,6 +17,26 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// accountAddresses extracts addresses from a slice of Account objects.
+func accountAddresses(accounts []*commonpb.Account) []string {
+	addrs := make([]string, len(accounts))
+	for i, a := range accounts {
+		addrs[i] = a.GetAddress()
+	}
+
+	return addrs
+}
+
+// transactionIDs extracts IDs from a slice of Transaction objects.
+func transactionIDs(txns []*commonpb.Transaction) []uint64 {
+	ids := make([]uint64, len(txns))
+	for i, tx := range txns {
+		ids[i] = tx.GetId()
+	}
+
+	return ids
+}
+
 var _ = Describe("PreparedQueries", Ordered, func() {
 
 	// ========================================================================
@@ -205,11 +225,9 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				g.Expect(cursor.AccountData).To(HaveLen(2))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			accounts := result.GetCursor().AccountData
-			sorted := make([]string, len(accounts))
-			copy(sorted, accounts)
-			sort.Strings(sorted)
-			Expect(sorted).To(Equal([]string{"alice", "charlie"}))
+			addrs := accountAddresses(result.GetCursor().AccountData)
+			sort.Strings(addrs)
+			Expect(addrs).To(Equal([]string{"alice", "charlie"}))
 		})
 
 		It("Should paginate with page_size=1", func() {
@@ -230,7 +248,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			cursor := firstPage.GetCursor()
-			Expect(cursor.AccountData[0]).To(Equal("alice"))
+			Expect(cursor.AccountData[0].GetAddress()).To(Equal("alice"))
 			Expect(cursor.Next).NotTo(BeEmpty())
 
 			// Fetch second page using cursor
@@ -245,7 +263,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 			cursor2 := secondPage.GetCursor()
 			Expect(cursor2).NotTo(BeNil())
 			Expect(cursor2.AccountData).To(HaveLen(1))
-			Expect(cursor2.AccountData[0]).To(Equal("charlie"))
+			Expect(cursor2.AccountData[0].GetAddress()).To(Equal("charlie"))
 			Expect(cursor2.HasMore).To(BeFalse())
 		})
 	})
@@ -303,11 +321,9 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				g.Expect(cursor.AccountData).To(HaveLen(2))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			accounts := result.GetCursor().AccountData
-			sorted := make([]string, len(accounts))
-			copy(sorted, accounts)
-			sort.Strings(sorted)
-			Expect(sorted).To(Equal([]string{"users:alice", "users:bob"}))
+			addrs := accountAddresses(result.GetCursor().AccountData)
+			sort.Strings(addrs)
+			Expect(addrs).To(Equal([]string{"users:alice", "users:bob"}))
 		})
 	})
 
@@ -399,7 +415,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				g.Expect(result.GetCursor().AccountData).To(HaveLen(1))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			Expect(result.GetCursor().AccountData).To(ConsistOf("alice"))
+			Expect(accountAddresses(result.GetCursor().AccountData)).To(ConsistOf("alice"))
 		})
 
 		It("OR: should return union (admin OR user = all with role)", func() {
@@ -429,7 +445,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				g.Expect(result.GetCursor().AccountData).To(HaveLen(4))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			Expect(result.GetCursor().AccountData).To(ConsistOf("alice", "bob", "charlie", "diana"))
+			Expect(accountAddresses(result.GetCursor().AccountData)).To(ConsistOf("alice", "bob", "charlie", "diana"))
 		})
 
 		It("NOT: should return complement (NOT admin = user accounts)", func() {
@@ -457,7 +473,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				g.Expect(result.GetCursor().AccountData).To(HaveLen(3))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			Expect(result.GetCursor().AccountData).To(ContainElements("bob", "diana"))
+			Expect(accountAddresses(result.GetCursor().AccountData)).To(ContainElements("bob", "diana"))
 		})
 	})
 
@@ -530,7 +546,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				g.Expect(result.GetCursor().AccountData).To(HaveLen(1))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			Expect(result.GetCursor().AccountData).To(ConsistOf("alice"))
+			Expect(accountAddresses(result.GetCursor().AccountData)).To(ConsistOf("alice"))
 		})
 
 		It("Should return user accounts when param role_value=user", func() {
@@ -548,7 +564,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				g.Expect(result.GetCursor().AccountData).To(HaveLen(1))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			Expect(result.GetCursor().AccountData).To(ConsistOf("bob"))
+			Expect(accountAddresses(result.GetCursor().AccountData)).To(ConsistOf("bob"))
 		})
 	})
 
@@ -610,15 +626,13 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				g.Expect(result.GetCursor().TransactionData).To(HaveLen(2))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			txIDs := result.GetCursor().TransactionData
-			sorted := make([]uint64, len(txIDs))
-			copy(sorted, txIDs)
-			sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+			txIDs := transactionIDs(result.GetCursor().TransactionData)
+			sort.Slice(txIDs, func(i, j int) bool { return txIDs[i] < txIDs[j] })
 			// tx1 (world→alice) and tx3 (alice→charlie) should be returned
 			// (transaction IDs are 1-based)
-			Expect(sorted).To(HaveLen(2))
-			Expect(sorted[0]).To(Equal(uint64(1)))
-			Expect(sorted[1]).To(Equal(uint64(3)))
+			Expect(txIDs).To(HaveLen(2))
+			Expect(txIDs[0]).To(Equal(uint64(1)))
+			Expect(txIDs[1]).To(Equal(uint64(3)))
 		})
 	})
 
@@ -887,7 +901,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				g.Expect(result.GetCursor().AccountData).To(HaveLen(3))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			Expect(result.GetCursor().AccountData).To(ConsistOf("alice", "charlie", "diana"))
+			Expect(accountAddresses(result.GetCursor().AccountData)).To(ConsistOf("alice", "charlie", "diana"))
 		})
 
 		It("Should combine in filter with AND on different fields", func() {
@@ -918,7 +932,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				g.Expect(result.GetCursor().AccountData).To(HaveLen(2))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			Expect(result.GetCursor().AccountData).To(ConsistOf("alice", "diana"))
+			Expect(accountAddresses(result.GetCursor().AccountData)).To(ConsistOf("alice", "diana"))
 		})
 
 		It("Should support in with quoted string values", func() {
@@ -949,7 +963,7 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				g.Expect(result.GetCursor().AccountData).To(HaveLen(3))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			Expect(result.GetCursor().AccountData).To(ConsistOf("alice", "bob", "diana"))
+			Expect(accountAddresses(result.GetCursor().AccountData)).To(ConsistOf("alice", "bob", "diana"))
 		})
 	})
 
@@ -1015,12 +1029,10 @@ var _ = Describe("PreparedQueries", Ordered, func() {
 				g.Expect(result.GetCursor().TransactionData).To(HaveLen(2))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			txIDs := result.GetCursor().TransactionData
-			sorted := make([]uint64, len(txIDs))
-			copy(sorted, txIDs)
-			sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
-			Expect(sorted[0]).To(Equal(uint64(1))) // tx0: world→alice
-			Expect(sorted[1]).To(Equal(uint64(3))) // tx2: alice→charlie
+			txIDs := transactionIDs(result.GetCursor().TransactionData)
+			sort.Slice(txIDs, func(i, j int) bool { return txIDs[i] < txIDs[j] })
+			Expect(txIDs[0]).To(Equal(uint64(1))) // tx0: world→alice
+			Expect(txIDs[1]).To(Equal(uint64(3))) // tx2: alice→charlie
 		})
 	})
 })
