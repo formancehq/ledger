@@ -159,10 +159,12 @@ func NewServeCommand() *cobra.Command {
 			}
 
 			if cfg.WorkerEnabled {
-				options = append(options,
-					newWorkerModule(cfg.WorkerConfiguration),
-					replication.NewFXEmbeddedClientModule(),
-				)
+				workerModule, err := newWorkerModule(cfg.WorkerConfiguration)
+				if err != nil {
+					return fmt.Errorf("failed to build worker module: %w", err)
+				}
+				options = append(options, workerModule)
+				options = append(options, replication.NewFXEmbeddedClientModule())
 			} else {
 				options = append(options,
 					worker.NewGRPCClientFxModule(
@@ -191,7 +193,6 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(WorkerGRPCAddressFlag, "localhost:8081", "GRPC address")
 	cmd.Flags().Bool(SemconvMetricsNames, false, "Use semconv metrics names (recommended)")
 	cmd.Flags().String(SchemaEnforcementMode, "audit", "Schema enforcement mode. Values: `audit`, `strict`")
-
 	addWorkerFlags(cmd)
 	bunconnect.AddFlags(cmd.Flags())
 	otlp.AddFlags(cmd.Flags())
