@@ -81,7 +81,7 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 
 	// Verify the mutex was unlocked by trying to lock it again
 	p.proposeMu.Lock()
-	p.proposeMu.Unlock()
+	p.proposeMu.Unlock() //nolint:staticcheck // SA2001: empty critical section is intentional
 
 	// Verify loaders were cleaned
 	assert.Nil(t, guard.token)

@@ -635,9 +635,32 @@ func allRequestsAreMaintenanceMode(requests []*servicepb.Request) bool {
 	return true
 }
 
+// cachedLedgerInfo returns the LedgerInfo for a ledger, caching it to avoid
+// repeated Pebble reads within a single extractPreloadNeeds call.
+func (a *Admission) cachedLedgerInfo(ctx context.Context, cache map[string]*commonpb.LedgerInfo, ledgerName string) *commonpb.LedgerInfo {
+	if info, ok := cache[ledgerName]; ok {
+		return info
+	}
+
+	info, err := query.GetLedgerByName(ctx, a.store, ledgerName)
+	if err != nil {
+		cache[ledgerName] = nil
+
+		return nil
+	}
+
+	cache[ledgerName] = info
+
+	return info
+}
+
 // extractPreloadNeeds extracts all preload keys from orders in a single pass.
 func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb.Order) (*preload.Needs, error) {
 	p := preload.NewNeeds()
+
+	// Cache LedgerInfo per ledger to avoid repeated Pebble reads
+	// (used by enrichMigratingVolumePreloads).
+	ledgerInfoCache := make(map[string]*commonpb.LedgerInfo)
 
 	for _, order := range orders {
 		// Idempotency keys apply to all order types.
@@ -838,7 +861,7 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 							scriptVolKeys = append(scriptVolKeys, key)
 						}
 
-						enrichMigratingVolumePreloads(ctx, a.store, ledgerName, p, scriptVolKeys)
+						enrichMigratingVolumePreloads(a.cachedLedgerInfo(ctx, ledgerInfoCache, ledgerName), ledgerName, p, scriptVolKeys)
 					}
 
 					continue
@@ -856,7 +879,7 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 				}
 
 				// Enrich preload with old-address volumes for MIGRATING account types.
-				enrichMigratingVolumePreloads(ctx, a.store, ledgerName, p, volumeKeysFromPostings(ledgerName, applyData.CreateTransaction.GetPostings()))
+				enrichMigratingVolumePreloads(a.cachedLedgerInfo(ctx, ledgerInfoCache, ledgerName), ledgerName, p, volumeKeysFromPostings(ledgerName, applyData.CreateTransaction.GetPostings()))
 
 				// Preload account metadata for previous value capture.
 				for account, ms := range applyData.CreateTransaction.GetAccountMetadata() {
@@ -945,19 +968,15 @@ func volumeKeysFromPostings(ledgerName string, postings []*commonpb.Posting) []d
 // enrichMigratingVolumePreloads adds old-address volume keys to the preload needs
 // for any address that matches a MIGRATING account type's target pattern.
 // This ensures the FSM can combine old+new volumes via cache lookups only.
+// The ledgerInfo is passed in to avoid repeated Pebble reads (the caller
+// caches it per ledger within extractPreloadNeeds).
 func enrichMigratingVolumePreloads(
-	ctx context.Context,
-	store *dal.Store,
+	ledgerInfo *commonpb.LedgerInfo,
 	ledgerName string,
 	p *preload.Needs,
 	volumeKeys []domain.VolumeKey,
 ) {
-	if len(volumeKeys) == 0 {
-		return
-	}
-
-	ledgerInfo, err := query.GetLedgerByName(ctx, store, ledgerName)
-	if err != nil || ledgerInfo == nil {
+	if len(volumeKeys) == 0 || ledgerInfo == nil {
 		return
 	}
 
