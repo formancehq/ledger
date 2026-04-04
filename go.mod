@@ -52,7 +52,7 @@ require (
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.37.2
 	github.com/formancehq/go-libs/v4 v4.1.3
-	github.com/go-jose/go-jose/v4 v4.1.3
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/iancoleman/strcase v0.3.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/olivere/elastic/v7 v7.0.32
