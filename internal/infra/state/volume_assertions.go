@@ -14,24 +14,6 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
-// ErrStalePreloadDetected is returned when a preload would seed the cache
-// with a value that is older than what the cache already holds.
-// This indicates a potential stale-overwrite bug.
-type ErrStalePreloadDetected struct {
-	ID            attributes.U128
-	CacheInput    string
-	CacheOutput   string
-	PreloadInput  string
-	PreloadOutput string
-}
-
-func (e *ErrStalePreloadDetected) Error() string {
-	return fmt.Sprintf(
-		"stale preload detected for volume %s: cache has input=%s output=%s, preload has input=%s output=%s",
-		e.ID.Hex(), e.CacheInput, e.CacheOutput, e.PreloadInput, e.PreloadOutput,
-	)
-}
-
 // ErrVolumeCachePebbleDivergence is returned when the cache volume does not
 // match what was persisted to Pebble, indicating a cache/storage inconsistency.
 type ErrVolumeCachePebbleDivergence struct {

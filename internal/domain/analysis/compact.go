@@ -31,15 +31,6 @@ type CompactTransaction struct {
 	MetadataKeys []string
 }
 
-// ExtractCompactAccount extracts the minimal fields from a proto Account.
-func ExtractCompactAccount(acc *commonpb.Account) CompactAccount {
-	return CompactAccount{
-		Address:      acc.GetAddress(),
-		Assets:       collectAssets(acc),
-		MetadataKeys: collectMetadataKeys(acc),
-	}
-}
-
 // ExtractCompactTransaction extracts the minimal fields from a proto Transaction.
 func ExtractCompactTransaction(tx *commonpb.Transaction) CompactTransaction {
 	postings := make([]CompactPosting, len(tx.GetPostings()))

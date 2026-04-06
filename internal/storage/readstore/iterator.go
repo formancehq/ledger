@@ -27,7 +27,3 @@ func compareEntities(a, b []byte) int {
 	return bytes.Compare(a, b)
 }
 
-// HasPrefix returns true if key starts with prefix.
-func HasPrefix(key, prefix []byte) bool {
-	return len(key) >= len(prefix) && bytes.Equal(key[:len(prefix)], prefix)
-}

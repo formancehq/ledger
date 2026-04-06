@@ -1,7 +1,6 @@
 package query
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -163,71 +162,6 @@ func ReadLedgerLogsCompiled(
 		}
 
 		_ = closer.Close()
-	}
-
-	return &ledgerLogCursor{pebble: pebbleReader, seqs: seqs}, nil
-}
-
-// ReadLedgerLogsSince returns a cursor over log entries for a specific ledger,
-// ordered by ledger-local log ID (ascending). Pass afterLogID=0 to start from
-// the beginning. pageSize=0 means no limit.
-//
-// It reads the per-ledger index from the read index to get global sequences,
-// then fetches the full Log from Pebble for each entry.
-func ReadLedgerLogsSince(
-	_ context.Context,
-	pebbleReader dal.PebbleReader,
-	readStore *readstore.Store,
-	ledger string,
-	afterLogID uint64,
-	pageSize uint32,
-) (dal.Cursor[*commonpb.Log], error) {
-	kb := dal.NewKeyBuilder()
-	prefix := readstore.LedgerLogPrefix(kb, ledger)
-
-	var startKey []byte
-	if afterLogID > 0 {
-		startKey = readstore.LedgerLogKey(kb, ledger, afterLogID+1)
-	} else {
-		startKey = prefix
-	}
-
-	upper := readstore.IncrementBytes(prefix)
-
-	snap := readStore.NewSnapshot()
-	defer func() { _ = snap.Close() }()
-
-	iter, err := snap.NewIter(&pebble.IterOptions{
-		LowerBound: startKey,
-		UpperBound: upper,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating ledger log iterator: %w", err)
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	var seqs []uint64
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		k := iter.Key()
-		if !bytes.HasPrefix(k, prefix) {
-			break
-		}
-
-		v, verr := iter.ValueAndErr()
-		if verr != nil {
-			return nil, verr
-		}
-
-		if len(v) != 8 {
-			continue
-		}
-
-		seqs = append(seqs, binary.BigEndian.Uint64(v))
-		if pageSize > 0 && uint32(len(seqs)) >= pageSize {
-			break
-		}
 	}
 
 	return &ledgerLogCursor{pebble: pebbleReader, seqs: seqs}, nil

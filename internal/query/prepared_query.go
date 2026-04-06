@@ -93,24 +93,3 @@ func ReadPreparedQueries(ctx context.Context, reader dal.PebbleReader, ledger st
 	return queries, nil
 }
 
-// WritePreparedQuery writes a prepared query using a dal.Batch.
-func WritePreparedQuery(batch *dal.Batch, pq *commonpb.PreparedQuery) error {
-	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixPreparedQuery)
-	kb.PutLedgerName(pq.GetLedger())
-	kb.PutString(pq.GetName())
-	key := kb.Build()
-
-	return batch.SetProto(key, pq)
-}
-
-// DeletePreparedQuery deletes a prepared query using a dal.Batch.
-func DeletePreparedQuery(batch *dal.Batch, ledger, name string) error {
-	kb := dal.NewKeyBuilder()
-	kb.PutByte(dal.KeyPrefixPreparedQuery)
-	kb.PutLedgerName(ledger)
-	kb.PutString(name)
-	key := kb.Build()
-
-	return batch.DeleteKey(key)
-}

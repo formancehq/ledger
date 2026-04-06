@@ -204,20 +204,6 @@ func (s *Sealer) seal(req SealRequest) error {
 	return nil
 }
 
-// ComputeStateHash hashes computed attribute values (last value per canonical key)
-// for Volumes, Metadata, and TransactionState.
-//
-// The checkpoint is frozen at the exact ClosePeriod point, so all entries
-// in it belong to the period being sealed — no filtering is needed.
-//
-// This is deterministic because Pebble iteration order is deterministic
-// and compaction is 100% deterministic via Raft.
-//
-// Exported so the checker can reuse the same algorithm to verify state_hash.
-func ComputeStateHash(reader dal.PebbleReader, attrs *attributes.Attributes) ([]byte, error) {
-	return computeStateHash(reader, attrs)
-}
-
 func computeStateHash(reader dal.PebbleReader, attrs *attributes.Attributes) ([]byte, error) {
 	hasher := blake3.New()
 

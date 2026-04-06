@@ -384,38 +384,6 @@ func inferVariableName(values []string) string {
 	return "value"
 }
 
-// collectAssets extracts distinct asset names from an account's volumes.
-func collectAssets(acc *commonpb.Account) []string {
-	if len(acc.GetVolumes()) == 0 {
-		return nil
-	}
-
-	assets := make([]string, 0, len(acc.GetVolumes()))
-	for asset := range acc.GetVolumes() {
-		assets = append(assets, asset)
-	}
-
-	sort.Strings(assets)
-
-	return assets
-}
-
-// collectMetadataKeys extracts metadata keys from an account.
-func collectMetadataKeys(acc *commonpb.Account) []string {
-	if acc.GetMetadata() == nil || len(acc.GetMetadata().GetMetadata()) == 0 {
-		return nil
-	}
-
-	keys := make([]string, 0, len(acc.GetMetadata().GetMetadata()))
-	for _, m := range acc.GetMetadata().GetMetadata() {
-		keys = append(keys, m.GetKey())
-	}
-
-	sort.Strings(keys)
-
-	return keys
-}
-
 // mergeDistinct merges two sorted slices, returning distinct sorted values.
 func mergeDistinct(a, b []string) []string {
 	if len(b) == 0 {
