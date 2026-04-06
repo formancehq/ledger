@@ -10,6 +10,10 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/domain"
 )
 
+// MaxForceBalance is returned for all accounts when force mode is enabled.
+// This effectively allows any amount to be sent from any account.
+var MaxForceBalance = new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)
+
 // DiscoveryResult holds the results of Numscript dependency discovery.
 // SourceVolumes contains accounts queried via GetBalances (posting sources).
 // DestinationVolumes contains accounts that only appear as posting destinations.

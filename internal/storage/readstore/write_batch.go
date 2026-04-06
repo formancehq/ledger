@@ -8,6 +8,11 @@ import (
 	"github.com/formancehq/ledger-v3-poc/internal/storage/dal"
 )
 
+// isNullEncoded returns true if the encoded value starts with TypeTagNull.
+func isNullEncoded(encodedValue []byte) bool {
+	return len(encodedValue) > 0 && encodedValue[0] == TypeTagNull
+}
+
 // WriteBatch buffers Pebble write operations using an indexed batch.
 // An indexed batch allows reads to see previously buffered writes,
 // which is needed for the reverse map overlay pattern.
