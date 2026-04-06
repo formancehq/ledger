@@ -2655,24 +2655,23 @@ type LedgerApplyOrder_AddAccountType struct {
 }
 
 type LedgerApplyOrder_RemoveAccountType struct {
-	// 14 removed: was update_account_type
-	RemoveAccountType *RemoveAccountTypeOrder `protobuf:"bytes,15,opt,name=remove_account_type,json=removeAccountType,proto3,oneof"`
+	RemoveAccountType *RemoveAccountTypeOrder `protobuf:"bytes,14,opt,name=remove_account_type,json=removeAccountType,proto3,oneof"`
 }
 
 type LedgerApplyOrder_UpdateDefaultEnforcementMode struct {
-	UpdateDefaultEnforcementMode *UpdateDefaultEnforcementModeOrder `protobuf:"bytes,16,opt,name=update_default_enforcement_mode,json=updateDefaultEnforcementMode,proto3,oneof"`
+	UpdateDefaultEnforcementMode *UpdateDefaultEnforcementModeOrder `protobuf:"bytes,15,opt,name=update_default_enforcement_mode,json=updateDefaultEnforcementMode,proto3,oneof"`
 }
 
 type LedgerApplyOrder_StartAccountMigration struct {
-	StartAccountMigration *StartAccountMigrationOrder `protobuf:"bytes,17,opt,name=start_account_migration,json=startAccountMigration,proto3,oneof"`
+	StartAccountMigration *StartAccountMigrationOrder `protobuf:"bytes,16,opt,name=start_account_migration,json=startAccountMigration,proto3,oneof"`
 }
 
 type LedgerApplyOrder_AccountMigrationBatch struct {
-	AccountMigrationBatch *AccountMigrationBatchOrder `protobuf:"bytes,18,opt,name=account_migration_batch,json=accountMigrationBatch,proto3,oneof"`
+	AccountMigrationBatch *AccountMigrationBatchOrder `protobuf:"bytes,17,opt,name=account_migration_batch,json=accountMigrationBatch,proto3,oneof"`
 }
 
 type LedgerApplyOrder_CompleteAccountMigration struct {
-	CompleteAccountMigration *CompleteAccountMigrationOrder `protobuf:"bytes,19,opt,name=complete_account_migration,json=completeAccountMigration,proto3,oneof"`
+	CompleteAccountMigration *CompleteAccountMigrationOrder `protobuf:"bytes,18,opt,name=complete_account_migration,json=completeAccountMigration,proto3,oneof"`
 }
 
 func (*LedgerApplyOrder_CreateTransaction) isLedgerApplyOrder_Data() {}
@@ -5322,19 +5321,19 @@ type MemorySnapshot struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	NextSequenceId       uint64                 `protobuf:"varint,1,opt,name=next_sequence_id,json=nextSequenceId,proto3" json:"next_sequence_id,omitempty"`
 	LastLogHash          []byte                 `protobuf:"bytes,2,opt,name=last_log_hash,json=lastLogHash,proto3" json:"last_log_hash,omitempty"`
-	CheckpointId         uint64                 `protobuf:"varint,5,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
-	CurrentGeneration    uint64                 `protobuf:"varint,6,opt,name=current_generation,json=currentGeneration,proto3" json:"current_generation,omitempty"`
-	LastAppliedTimestamp uint64                 `protobuf:"varint,7,opt,name=last_applied_timestamp,json=lastAppliedTimestamp,proto3" json:"last_applied_timestamp,omitempty"` // HLC timestamp (microseconds since epoch)
-	NextAuditSequenceId  uint64                 `protobuf:"varint,8,opt,name=next_audit_sequence_id,json=nextAuditSequenceId,proto3" json:"next_audit_sequence_id,omitempty"`  // Next audit log sequence ID
+	CheckpointId         uint64                 `protobuf:"varint,3,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CurrentGeneration    uint64                 `protobuf:"varint,4,opt,name=current_generation,json=currentGeneration,proto3" json:"current_generation,omitempty"`
+	LastAppliedTimestamp uint64                 `protobuf:"varint,5,opt,name=last_applied_timestamp,json=lastAppliedTimestamp,proto3" json:"last_applied_timestamp,omitempty"` // HLC timestamp (microseconds since epoch)
+	NextAuditSequenceId  uint64                 `protobuf:"varint,6,opt,name=next_audit_sequence_id,json=nextAuditSequenceId,proto3" json:"next_audit_sequence_id,omitempty"`  // Next audit log sequence ID
 	// Signing keys are persisted in Pebble, not in the memory snapshot.
 	// They are reloaded from Pebble after SynchronizeWithLeader restores the checkpoint.
-	OpenPeriod            *commonpb.Period        `protobuf:"bytes,9,opt,name=open_period,json=openPeriod,proto3" json:"open_period,omitempty"`              // Current open period (may be nil before first proposal)
-	ClosingPeriods        []*commonpb.Period      `protobuf:"bytes,10,rep,name=closing_periods,json=closingPeriods,proto3" json:"closing_periods,omitempty"` // Periods being sealed (empty when no period is closing)
-	NextPeriodId          uint64                  `protobuf:"varint,11,opt,name=next_period_id,json=nextPeriodId,proto3" json:"next_period_id,omitempty"`
-	ClosedPeriods         []*commonpb.Period      `protobuf:"bytes,12,rep,name=closed_periods,json=closedPeriods,proto3" json:"closed_periods,omitempty"`                              // CLOSED + ARCHIVED periods (non-purged)
-	Reversions            []*ReversionBitsetEntry `protobuf:"bytes,13,rep,name=reversions,proto3" json:"reversions,omitempty"`                                                         // Per-ledger reversion bitsets
-	PendingLedgerCleanups []*PendingLedgerCleanup `protobuf:"bytes,14,rep,name=pending_ledger_cleanups,json=pendingLedgerCleanups,proto3" json:"pending_ledger_cleanups,omitempty"`    // Ledgers awaiting data cleanup at purge time
-	NextQueryCheckpointId uint64                  `protobuf:"varint,15,opt,name=next_query_checkpoint_id,json=nextQueryCheckpointId,proto3" json:"next_query_checkpoint_id,omitempty"` // Next sequential query checkpoint ID
+	OpenPeriod            *commonpb.Period        `protobuf:"bytes,7,opt,name=open_period,json=openPeriod,proto3" json:"open_period,omitempty"`             // Current open period (may be nil before first proposal)
+	ClosingPeriods        []*commonpb.Period      `protobuf:"bytes,8,rep,name=closing_periods,json=closingPeriods,proto3" json:"closing_periods,omitempty"` // Periods being sealed (empty when no period is closing)
+	NextPeriodId          uint64                  `protobuf:"varint,9,opt,name=next_period_id,json=nextPeriodId,proto3" json:"next_period_id,omitempty"`
+	ClosedPeriods         []*commonpb.Period      `protobuf:"bytes,10,rep,name=closed_periods,json=closedPeriods,proto3" json:"closed_periods,omitempty"`                              // CLOSED + ARCHIVED periods (non-purged)
+	Reversions            []*ReversionBitsetEntry `protobuf:"bytes,11,rep,name=reversions,proto3" json:"reversions,omitempty"`                                                         // Per-ledger reversion bitsets
+	PendingLedgerCleanups []*PendingLedgerCleanup `protobuf:"bytes,12,rep,name=pending_ledger_cleanups,json=pendingLedgerCleanups,proto3" json:"pending_ledger_cleanups,omitempty"`    // Ledgers awaiting data cleanup at purge time
+	NextQueryCheckpointId uint64                  `protobuf:"varint,13,opt,name=next_query_checkpoint_id,json=nextQueryCheckpointId,proto3" json:"next_query_checkpoint_id,omitempty"` // Next sequential query checkpoint ID
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -6553,11 +6552,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\vindex_ready\x18\f \x01(\v2\x15.raft.IndexReadyOrderH\x00R\n" +
 	"indexReady\x12E\n" +
 	"\x10add_account_type\x18\r \x01(\v2\x19.raft.AddAccountTypeOrderH\x00R\x0eaddAccountType\x12N\n" +
-	"\x13remove_account_type\x18\x0f \x01(\v2\x1c.raft.RemoveAccountTypeOrderH\x00R\x11removeAccountType\x12p\n" +
-	"\x1fupdate_default_enforcement_mode\x18\x10 \x01(\v2'.raft.UpdateDefaultEnforcementModeOrderH\x00R\x1cupdateDefaultEnforcementMode\x12Z\n" +
-	"\x17start_account_migration\x18\x11 \x01(\v2 .raft.StartAccountMigrationOrderH\x00R\x15startAccountMigration\x12Z\n" +
-	"\x17account_migration_batch\x18\x12 \x01(\v2 .raft.AccountMigrationBatchOrderH\x00R\x15accountMigrationBatch\x12c\n" +
-	"\x1acomplete_account_migration\x18\x13 \x01(\v2#.raft.CompleteAccountMigrationOrderH\x00R\x18completeAccountMigrationB\x06\n" +
+	"\x13remove_account_type\x18\x0e \x01(\v2\x1c.raft.RemoveAccountTypeOrderH\x00R\x11removeAccountType\x12p\n" +
+	"\x1fupdate_default_enforcement_mode\x18\x0f \x01(\v2'.raft.UpdateDefaultEnforcementModeOrderH\x00R\x1cupdateDefaultEnforcementMode\x12Z\n" +
+	"\x17start_account_migration\x18\x10 \x01(\v2 .raft.StartAccountMigrationOrderH\x00R\x15startAccountMigration\x12Z\n" +
+	"\x17account_migration_batch\x18\x11 \x01(\v2 .raft.AccountMigrationBatchOrderH\x00R\x15accountMigrationBatch\x12c\n" +
+	"\x1acomplete_account_migration\x18\x12 \x01(\v2#.raft.CompleteAccountMigrationOrderH\x00R\x18completeAccountMigrationB\x06\n" +
 	"\x04data\"\xc7\x01\n" +
 	"\x10CreateIndexOrder\x12:\n" +
 	"\vlog_builtin\x18\x01 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
@@ -6748,21 +6747,21 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x0eMemorySnapshot\x12(\n" +
 	"\x10next_sequence_id\x18\x01 \x01(\x04R\x0enextSequenceId\x12\"\n" +
 	"\rlast_log_hash\x18\x02 \x01(\fR\vlastLogHash\x12#\n" +
-	"\rcheckpoint_id\x18\x05 \x01(\x04R\fcheckpointId\x12-\n" +
-	"\x12current_generation\x18\x06 \x01(\x04R\x11currentGeneration\x124\n" +
-	"\x16last_applied_timestamp\x18\a \x01(\x04R\x14lastAppliedTimestamp\x123\n" +
-	"\x16next_audit_sequence_id\x18\b \x01(\x04R\x13nextAuditSequenceId\x12/\n" +
-	"\vopen_period\x18\t \x01(\v2\x0e.common.PeriodR\n" +
+	"\rcheckpoint_id\x18\x03 \x01(\x04R\fcheckpointId\x12-\n" +
+	"\x12current_generation\x18\x04 \x01(\x04R\x11currentGeneration\x124\n" +
+	"\x16last_applied_timestamp\x18\x05 \x01(\x04R\x14lastAppliedTimestamp\x123\n" +
+	"\x16next_audit_sequence_id\x18\x06 \x01(\x04R\x13nextAuditSequenceId\x12/\n" +
+	"\vopen_period\x18\a \x01(\v2\x0e.common.PeriodR\n" +
 	"openPeriod\x127\n" +
-	"\x0fclosing_periods\x18\n" +
-	" \x03(\v2\x0e.common.PeriodR\x0eclosingPeriods\x12$\n" +
-	"\x0enext_period_id\x18\v \x01(\x04R\fnextPeriodId\x125\n" +
-	"\x0eclosed_periods\x18\f \x03(\v2\x0e.common.PeriodR\rclosedPeriods\x12:\n" +
+	"\x0fclosing_periods\x18\b \x03(\v2\x0e.common.PeriodR\x0eclosingPeriods\x12$\n" +
+	"\x0enext_period_id\x18\t \x01(\x04R\fnextPeriodId\x125\n" +
+	"\x0eclosed_periods\x18\n" +
+	" \x03(\v2\x0e.common.PeriodR\rclosedPeriods\x12:\n" +
 	"\n" +
-	"reversions\x18\r \x03(\v2\x1a.raft.ReversionBitsetEntryR\n" +
+	"reversions\x18\v \x03(\v2\x1a.raft.ReversionBitsetEntryR\n" +
 	"reversions\x12R\n" +
-	"\x17pending_ledger_cleanups\x18\x0e \x03(\v2\x1a.raft.PendingLedgerCleanupR\x15pendingLedgerCleanups\x127\n" +
-	"\x18next_query_checkpoint_id\x18\x0f \x01(\x04R\x15nextQueryCheckpointId\"W\n" +
+	"\x17pending_ledger_cleanups\x18\f \x03(\v2\x1a.raft.PendingLedgerCleanupR\x15pendingLedgerCleanups\x127\n" +
+	"\x18next_query_checkpoint_id\x18\r \x01(\x04R\x15nextQueryCheckpointId\"W\n" +
 	"\x14PendingLedgerCleanup\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12'\n" +
 	"\x0fdelete_sequence\x18\x02 \x01(\x04R\x0edeleteSequence\"k\n" +

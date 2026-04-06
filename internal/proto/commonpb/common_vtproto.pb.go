@@ -13303,7 +13303,7 @@ func (m *LedgerLogPayload_RemovedAccountType) MarshalToSizedBufferVT(dAtA []byte
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x7a
+		dAtA[i] = 0x72
 	}
 	return len(dAtA) - i, nil
 }
@@ -13322,9 +13322,7 @@ func (m *LedgerLogPayload_UpdatedDefaultEnforcementMode) MarshalToSizedBufferVT(
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0x7a
 	}
 	return len(dAtA) - i, nil
 }
@@ -13345,7 +13343,7 @@ func (m *LedgerLogPayload_StartedAccountMigration) MarshalToSizedBufferVT(dAtA [
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -13366,7 +13364,7 @@ func (m *LedgerLogPayload_AccountMigrationBatch) MarshalToSizedBufferVT(dAtA []b
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -13387,7 +13385,7 @@ func (m *LedgerLogPayload_CompletedAccountMigration) MarshalToSizedBufferVT(dAtA
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0x92
 	}
 	return len(dAtA) - i, nil
 }
@@ -15243,7 +15241,7 @@ func (m *AccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x32
+		dAtA[i] = 0x2a
 	}
 	if m.Ephemeral {
 		i--
@@ -15253,7 +15251,7 @@ func (m *AccountType) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			dAtA[i] = 0
 		}
 		i--
-		dAtA[i] = 0x28
+		dAtA[i] = 0x20
 	}
 	if m.Status != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Status))
@@ -19169,7 +19167,7 @@ func (m *LedgerLogPayload_UpdatedDefaultEnforcementMode) SizeVT() (n int) {
 	_ = l
 	if m.UpdatedDefaultEnforcementMode != nil {
 		l = m.UpdatedDefaultEnforcementMode.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
@@ -30846,7 +30844,7 @@ func (m *LedgerLogPayload) UnmarshalVT(dAtA []byte) error {
 				m.Payload = &LedgerLogPayload_AddedAccountType{AddedAccountType: v}
 			}
 			iNdEx = postIndex
-		case 15:
+		case 14:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RemovedAccountType", wireType)
 			}
@@ -30887,7 +30885,7 @@ func (m *LedgerLogPayload) UnmarshalVT(dAtA []byte) error {
 				m.Payload = &LedgerLogPayload_RemovedAccountType{RemovedAccountType: v}
 			}
 			iNdEx = postIndex
-		case 16:
+		case 15:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field UpdatedDefaultEnforcementMode", wireType)
 			}
@@ -30928,7 +30926,7 @@ func (m *LedgerLogPayload) UnmarshalVT(dAtA []byte) error {
 				m.Payload = &LedgerLogPayload_UpdatedDefaultEnforcementMode{UpdatedDefaultEnforcementMode: v}
 			}
 			iNdEx = postIndex
-		case 17:
+		case 16:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StartedAccountMigration", wireType)
 			}
@@ -30969,7 +30967,7 @@ func (m *LedgerLogPayload) UnmarshalVT(dAtA []byte) error {
 				m.Payload = &LedgerLogPayload_StartedAccountMigration{StartedAccountMigration: v}
 			}
 			iNdEx = postIndex
-		case 18:
+		case 17:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AccountMigrationBatch", wireType)
 			}
@@ -31010,7 +31008,7 @@ func (m *LedgerLogPayload) UnmarshalVT(dAtA []byte) error {
 				m.Payload = &LedgerLogPayload_AccountMigrationBatch{AccountMigrationBatch: v}
 			}
 			iNdEx = postIndex
-		case 19:
+		case 18:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CompletedAccountMigration", wireType)
 			}
@@ -35684,7 +35682,7 @@ func (m *AccountType) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 5:
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Ephemeral", wireType)
 			}
@@ -35704,7 +35702,7 @@ func (m *AccountType) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Ephemeral = bool(v != 0)
-		case 6:
+		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Migration", wireType)
 			}

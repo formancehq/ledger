@@ -237,12 +237,11 @@ message LedgerApplyOrder {
     DropIndexOrder drop_index = 11;
     IndexReadyOrder index_ready = 12;
     AddAccountTypeOrder add_account_type = 13;
-    // 14 removed: was update_account_type
-    RemoveAccountTypeOrder remove_account_type = 15;
-    UpdateDefaultEnforcementModeOrder update_default_enforcement_mode = 16;
-    StartAccountMigrationOrder start_account_migration = 17;
-    AccountMigrationBatchOrder account_migration_batch = 18;
-    CompleteAccountMigrationOrder complete_account_migration = 19;
+    RemoveAccountTypeOrder remove_account_type = 14;
+    UpdateDefaultEnforcementModeOrder update_default_enforcement_mode = 15;
+    StartAccountMigrationOrder start_account_migration = 16;
+    AccountMigrationBatchOrder account_migration_batch = 17;
+    CompleteAccountMigrationOrder complete_account_migration = 18;
   }
 }
 
@@ -532,19 +531,19 @@ message PreloadNumscriptParsed {
 message MemorySnapshot {
   uint64 next_sequence_id = 1;
   bytes last_log_hash = 2;
-  uint64 checkpoint_id = 5;
-  uint64 current_generation = 6;
-  uint64 last_applied_timestamp = 7;  // HLC timestamp (microseconds since epoch)
-  uint64 next_audit_sequence_id = 8;  // Next audit log sequence ID
+  uint64 checkpoint_id = 3;
+  uint64 current_generation = 4;
+  uint64 last_applied_timestamp = 5;  // HLC timestamp (microseconds since epoch)
+  uint64 next_audit_sequence_id = 6;  // Next audit log sequence ID
   // Signing keys are persisted in Pebble, not in the memory snapshot.
   // They are reloaded from Pebble after SynchronizeWithLeader restores the checkpoint.
-  common.Period open_period = 9;      // Current open period (may be nil before first proposal)
-  repeated common.Period closing_periods = 10;  // Periods being sealed (empty when no period is closing)
-  uint64 next_period_id = 11;
-  repeated common.Period closed_periods = 12;  // CLOSED + ARCHIVED periods (non-purged)
-  repeated ReversionBitsetEntry reversions = 13;  // Per-ledger reversion bitsets
-  repeated PendingLedgerCleanup pending_ledger_cleanups = 14;  // Ledgers awaiting data cleanup at purge time
-  uint64 next_query_checkpoint_id = 15;  // Next sequential query checkpoint ID
+  common.Period open_period = 7;      // Current open period (may be nil before first proposal)
+  repeated common.Period closing_periods = 8;  // Periods being sealed (empty when no period is closing)
+  uint64 next_period_id = 9;
+  repeated common.Period closed_periods = 10;  // CLOSED + ARCHIVED periods (non-purged)
+  repeated ReversionBitsetEntry reversions = 11;  // Per-ledger reversion bitsets
+  repeated PendingLedgerCleanup pending_ledger_cleanups = 12;  // Ledgers awaiting data cleanup at purge time
+  uint64 next_query_checkpoint_id = 13;  // Next sequential query checkpoint ID
 }
 
 // PendingLedgerCleanup tracks a deleted ledger whose Pebble data

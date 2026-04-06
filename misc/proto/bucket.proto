@@ -209,12 +209,11 @@ message Request {
     SaveNumscriptRequest save_numscript = 27;
     DeleteNumscriptRequest delete_numscript = 28;
     AddAccountTypeLedgerRequest add_account_type = 29;
-    // 30 removed: was update_account_type
-    RemoveAccountTypeLedgerRequest remove_account_type = 31;
-    SetDefaultEnforcementModeLedgerRequest set_default_enforcement_mode = 32;
-    CreateQueryCheckpointRequest create_query_checkpoint = 33;
-    DeleteQueryCheckpointRequest delete_query_checkpoint = 34;
-    MigrateAccountTypeLedgerRequest migrate_account_type = 35;
+    RemoveAccountTypeLedgerRequest remove_account_type = 30;
+    SetDefaultEnforcementModeLedgerRequest set_default_enforcement_mode = 31;
+    CreateQueryCheckpointRequest create_query_checkpoint = 32;
+    DeleteQueryCheckpointRequest delete_query_checkpoint = 33;
+    MigrateAccountTypeLedgerRequest migrate_account_type = 34;
   }
   signature.RequestSignature signature = 5;
 }
@@ -446,10 +445,9 @@ message LedgerApplyRequest {
     RevertTransactionPayload revert_transaction = 4;
     common.DeleteMetadataCommand delete_metadata = 5;
     AddAccountTypeRequest add_account_type = 6;
-    // 7 removed: was update_account_type
-    RemoveAccountTypeRequest remove_account_type = 8;
-    SetDefaultEnforcementModeRequest set_default_enforcement_mode = 9;
-    MigrateAccountTypeRequest migrate_account_type = 10;
+    RemoveAccountTypeRequest remove_account_type = 7;
+    SetDefaultEnforcementModeRequest set_default_enforcement_mode = 8;
+    MigrateAccountTypeRequest migrate_account_type = 9;
   }
 }
 

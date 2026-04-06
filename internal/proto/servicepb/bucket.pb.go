@@ -1413,24 +1413,23 @@ type Request_AddAccountType struct {
 }
 
 type Request_RemoveAccountType struct {
-	// 30 removed: was update_account_type
-	RemoveAccountType *RemoveAccountTypeLedgerRequest `protobuf:"bytes,31,opt,name=remove_account_type,json=removeAccountType,proto3,oneof"`
+	RemoveAccountType *RemoveAccountTypeLedgerRequest `protobuf:"bytes,30,opt,name=remove_account_type,json=removeAccountType,proto3,oneof"`
 }
 
 type Request_SetDefaultEnforcementMode struct {
-	SetDefaultEnforcementMode *SetDefaultEnforcementModeLedgerRequest `protobuf:"bytes,32,opt,name=set_default_enforcement_mode,json=setDefaultEnforcementMode,proto3,oneof"`
+	SetDefaultEnforcementMode *SetDefaultEnforcementModeLedgerRequest `protobuf:"bytes,31,opt,name=set_default_enforcement_mode,json=setDefaultEnforcementMode,proto3,oneof"`
 }
 
 type Request_CreateQueryCheckpoint struct {
-	CreateQueryCheckpoint *CreateQueryCheckpointRequest `protobuf:"bytes,33,opt,name=create_query_checkpoint,json=createQueryCheckpoint,proto3,oneof"`
+	CreateQueryCheckpoint *CreateQueryCheckpointRequest `protobuf:"bytes,32,opt,name=create_query_checkpoint,json=createQueryCheckpoint,proto3,oneof"`
 }
 
 type Request_DeleteQueryCheckpoint struct {
-	DeleteQueryCheckpoint *DeleteQueryCheckpointRequest `protobuf:"bytes,34,opt,name=delete_query_checkpoint,json=deleteQueryCheckpoint,proto3,oneof"`
+	DeleteQueryCheckpoint *DeleteQueryCheckpointRequest `protobuf:"bytes,33,opt,name=delete_query_checkpoint,json=deleteQueryCheckpoint,proto3,oneof"`
 }
 
 type Request_MigrateAccountType struct {
-	MigrateAccountType *MigrateAccountTypeLedgerRequest `protobuf:"bytes,35,opt,name=migrate_account_type,json=migrateAccountType,proto3,oneof"`
+	MigrateAccountType *MigrateAccountTypeLedgerRequest `protobuf:"bytes,34,opt,name=migrate_account_type,json=migrateAccountType,proto3,oneof"`
 }
 
 func (*Request_Apply) isRequest_Type() {}
@@ -3528,16 +3527,15 @@ type LedgerApplyRequest_AddAccountType struct {
 }
 
 type LedgerApplyRequest_RemoveAccountType struct {
-	// 7 removed: was update_account_type
-	RemoveAccountType *RemoveAccountTypeRequest `protobuf:"bytes,8,opt,name=remove_account_type,json=removeAccountType,proto3,oneof"`
+	RemoveAccountType *RemoveAccountTypeRequest `protobuf:"bytes,7,opt,name=remove_account_type,json=removeAccountType,proto3,oneof"`
 }
 
 type LedgerApplyRequest_SetDefaultEnforcementMode struct {
-	SetDefaultEnforcementMode *SetDefaultEnforcementModeRequest `protobuf:"bytes,9,opt,name=set_default_enforcement_mode,json=setDefaultEnforcementMode,proto3,oneof"`
+	SetDefaultEnforcementMode *SetDefaultEnforcementModeRequest `protobuf:"bytes,8,opt,name=set_default_enforcement_mode,json=setDefaultEnforcementMode,proto3,oneof"`
 }
 
 type LedgerApplyRequest_MigrateAccountType struct {
-	MigrateAccountType *MigrateAccountTypeRequest `protobuf:"bytes,10,opt,name=migrate_account_type,json=migrateAccountType,proto3,oneof"`
+	MigrateAccountType *MigrateAccountTypeRequest `protobuf:"bytes,9,opt,name=migrate_account_type,json=migrateAccountType,proto3,oneof"`
 }
 
 func (*LedgerApplyRequest_CreateTransaction) isLedgerApplyRequest_Data() {}
@@ -8063,11 +8061,11 @@ const file_bucket_proto_rawDesc = "" +
 	"\x0esave_numscript\x18\x1b \x01(\v2\x1c.ledger.SaveNumscriptRequestH\x00R\rsaveNumscript\x12K\n" +
 	"\x10delete_numscript\x18\x1c \x01(\v2\x1e.ledger.DeleteNumscriptRequestH\x00R\x0fdeleteNumscript\x12O\n" +
 	"\x10add_account_type\x18\x1d \x01(\v2#.ledger.AddAccountTypeLedgerRequestH\x00R\x0eaddAccountType\x12X\n" +
-	"\x13remove_account_type\x18\x1f \x01(\v2&.ledger.RemoveAccountTypeLedgerRequestH\x00R\x11removeAccountType\x12q\n" +
-	"\x1cset_default_enforcement_mode\x18  \x01(\v2..ledger.SetDefaultEnforcementModeLedgerRequestH\x00R\x19setDefaultEnforcementMode\x12^\n" +
-	"\x17create_query_checkpoint\x18! \x01(\v2$.ledger.CreateQueryCheckpointRequestH\x00R\x15createQueryCheckpoint\x12^\n" +
-	"\x17delete_query_checkpoint\x18\" \x01(\v2$.ledger.DeleteQueryCheckpointRequestH\x00R\x15deleteQueryCheckpoint\x12[\n" +
-	"\x14migrate_account_type\x18# \x01(\v2'.ledger.MigrateAccountTypeLedgerRequestH\x00R\x12migrateAccountType\x129\n" +
+	"\x13remove_account_type\x18\x1e \x01(\v2&.ledger.RemoveAccountTypeLedgerRequestH\x00R\x11removeAccountType\x12q\n" +
+	"\x1cset_default_enforcement_mode\x18\x1f \x01(\v2..ledger.SetDefaultEnforcementModeLedgerRequestH\x00R\x19setDefaultEnforcementMode\x12^\n" +
+	"\x17create_query_checkpoint\x18  \x01(\v2$.ledger.CreateQueryCheckpointRequestH\x00R\x15createQueryCheckpoint\x12^\n" +
+	"\x17delete_query_checkpoint\x18! \x01(\v2$.ledger.DeleteQueryCheckpointRequestH\x00R\x15deleteQueryCheckpoint\x12[\n" +
+	"\x14migrate_account_type\x18\" \x01(\v2'.ledger.MigrateAccountTypeLedgerRequestH\x00R\x12migrateAccountType\x129\n" +
 	"\tsignature\x18\x05 \x01(\v2\x1b.signature.RequestSignatureR\tsignatureB\x06\n" +
 	"\x04type\"\x1e\n" +
 	"\x1cCreateQueryCheckpointRequest\"C\n" +
@@ -8193,10 +8191,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12revert_transaction\x18\x04 \x01(\v2 .ledger.RevertTransactionPayloadH\x00R\x11revertTransaction\x12H\n" +
 	"\x0fdelete_metadata\x18\x05 \x01(\v2\x1d.common.DeleteMetadataCommandH\x00R\x0edeleteMetadata\x12I\n" +
 	"\x10add_account_type\x18\x06 \x01(\v2\x1d.ledger.AddAccountTypeRequestH\x00R\x0eaddAccountType\x12R\n" +
-	"\x13remove_account_type\x18\b \x01(\v2 .ledger.RemoveAccountTypeRequestH\x00R\x11removeAccountType\x12k\n" +
-	"\x1cset_default_enforcement_mode\x18\t \x01(\v2(.ledger.SetDefaultEnforcementModeRequestH\x00R\x19setDefaultEnforcementMode\x12U\n" +
-	"\x14migrate_account_type\x18\n" +
-	" \x01(\v2!.ledger.MigrateAccountTypeRequestH\x00R\x12migrateAccountTypeB\x06\n" +
+	"\x13remove_account_type\x18\a \x01(\v2 .ledger.RemoveAccountTypeRequestH\x00R\x11removeAccountType\x12k\n" +
+	"\x1cset_default_enforcement_mode\x18\b \x01(\v2(.ledger.SetDefaultEnforcementModeRequestH\x00R\x19setDefaultEnforcementMode\x12U\n" +
+	"\x14migrate_account_type\x18\t \x01(\v2!.ledger.MigrateAccountTypeRequestH\x00R\x12migrateAccountTypeB\x06\n" +
 	"\x04data\"O\n" +
 	"\x15AddAccountTypeRequest\x126\n" +
 	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType\".\n" +

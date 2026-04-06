@@ -548,12 +548,11 @@ message LedgerLogPayload {
     DropIndexLog drop_index = 11;
     IndexReadyLog index_ready = 12;
     AddedAccountTypeLog added_account_type = 13;
-    // 14 removed: was updated_account_type
-    RemovedAccountTypeLog removed_account_type = 15;
-    UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 16;
-    StartedAccountMigrationLog started_account_migration = 17;
-    AccountMigrationBatchLog account_migration_batch = 18;
-    CompletedAccountMigrationLog completed_account_migration = 19;
+    RemovedAccountTypeLog removed_account_type = 14;
+    UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 15;
+    StartedAccountMigrationLog started_account_migration = 16;
+    AccountMigrationBatchLog account_migration_batch = 17;
+    CompletedAccountMigrationLog completed_account_migration = 18;
   }
 }
 
@@ -799,9 +798,8 @@ message AccountType {
   string name = 1;                           // Unique identifier: "user-checking"
   string pattern = 2;                        // Address pattern: "users:{id}:checking"
   AccountTypeStatus status = 3;              // ACTIVE, DEPRECATED
-  reserved 4; // was: enforcement_mode (per-type enforcement removed)
-  bool ephemeral = 5;                        // Purge volumes when input == output (zero balance)
-  AccountTypeMigration migration = 6;  // non-nil when status == MIGRATING
+  bool ephemeral = 4;                        // Purge volumes when input == output (zero balance)
+  AccountTypeMigration migration = 5;  // non-nil when status == MIGRATING
 }
 
 // AccountTypeStatus represents the lifecycle state of an account type.

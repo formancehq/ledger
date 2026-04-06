@@ -9522,7 +9522,7 @@ func (m *LedgerApplyOrder_RemoveAccountType) MarshalToSizedBufferVT(dAtA []byte)
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x7a
+		dAtA[i] = 0x72
 	}
 	return len(dAtA) - i, nil
 }
@@ -9541,9 +9541,7 @@ func (m *LedgerApplyOrder_UpdateDefaultEnforcementMode) MarshalToSizedBufferVT(d
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0x7a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9564,7 +9562,7 @@ func (m *LedgerApplyOrder_StartAccountMigration) MarshalToSizedBufferVT(dAtA []b
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -9585,7 +9583,7 @@ func (m *LedgerApplyOrder_AccountMigrationBatch) MarshalToSizedBufferVT(dAtA []b
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -9606,7 +9604,7 @@ func (m *LedgerApplyOrder_CompleteAccountMigration) MarshalToSizedBufferVT(dAtA 
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0x92
 	}
 	return len(dAtA) - i, nil
 }
@@ -12182,7 +12180,7 @@ func (m *MemorySnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.NextQueryCheckpointId != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NextQueryCheckpointId))
 		i--
-		dAtA[i] = 0x78
+		dAtA[i] = 0x68
 	}
 	if len(m.PendingLedgerCleanups) > 0 {
 		for iNdEx := len(m.PendingLedgerCleanups) - 1; iNdEx >= 0; iNdEx-- {
@@ -12193,7 +12191,7 @@ func (m *MemorySnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x72
+			dAtA[i] = 0x62
 		}
 	}
 	if len(m.Reversions) > 0 {
@@ -12205,7 +12203,7 @@ func (m *MemorySnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x6a
+			dAtA[i] = 0x5a
 		}
 	}
 	if len(m.ClosedPeriods) > 0 {
@@ -12217,13 +12215,13 @@ func (m *MemorySnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x62
+			dAtA[i] = 0x52
 		}
 	}
 	if m.NextPeriodId != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NextPeriodId))
 		i--
-		dAtA[i] = 0x58
+		dAtA[i] = 0x48
 	}
 	if len(m.ClosingPeriods) > 0 {
 		for iNdEx := len(m.ClosingPeriods) - 1; iNdEx >= 0; iNdEx-- {
@@ -12234,7 +12232,7 @@ func (m *MemorySnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x52
+			dAtA[i] = 0x42
 		}
 	}
 	if m.OpenPeriod != nil {
@@ -12245,27 +12243,27 @@ func (m *MemorySnapshot) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x4a
+		dAtA[i] = 0x3a
 	}
 	if m.NextAuditSequenceId != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NextAuditSequenceId))
 		i--
-		dAtA[i] = 0x40
+		dAtA[i] = 0x30
 	}
 	if m.LastAppliedTimestamp != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LastAppliedTimestamp))
 		i--
-		dAtA[i] = 0x38
+		dAtA[i] = 0x28
 	}
 	if m.CurrentGeneration != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CurrentGeneration))
 		i--
-		dAtA[i] = 0x30
+		dAtA[i] = 0x20
 	}
 	if m.CheckpointId != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CheckpointId))
 		i--
-		dAtA[i] = 0x28
+		dAtA[i] = 0x18
 	}
 	if len(m.LastLogHash) > 0 {
 		i -= len(m.LastLogHash)
@@ -14353,7 +14351,7 @@ func (m *LedgerApplyOrder_UpdateDefaultEnforcementMode) SizeVT() (n int) {
 	_ = l
 	if m.UpdateDefaultEnforcementMode != nil {
 		l = m.UpdateDefaultEnforcementMode.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
@@ -21652,7 +21650,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_AddAccountType{AddAccountType: v}
 			}
 			iNdEx = postIndex
-		case 15:
+		case 14:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RemoveAccountType", wireType)
 			}
@@ -21693,7 +21691,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_RemoveAccountType{RemoveAccountType: v}
 			}
 			iNdEx = postIndex
-		case 16:
+		case 15:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field UpdateDefaultEnforcementMode", wireType)
 			}
@@ -21734,7 +21732,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_UpdateDefaultEnforcementMode{UpdateDefaultEnforcementMode: v}
 			}
 			iNdEx = postIndex
-		case 17:
+		case 16:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StartAccountMigration", wireType)
 			}
@@ -21775,7 +21773,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_StartAccountMigration{StartAccountMigration: v}
 			}
 			iNdEx = postIndex
-		case 18:
+		case 17:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AccountMigrationBatch", wireType)
 			}
@@ -21816,7 +21814,7 @@ func (m *LedgerApplyOrder) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyOrder_AccountMigrationBatch{AccountMigrationBatch: v}
 			}
 			iNdEx = postIndex
-		case 19:
+		case 18:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CompleteAccountMigration", wireType)
 			}
@@ -27724,7 +27722,7 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 				m.LastLogHash = []byte{}
 			}
 			iNdEx = postIndex
-		case 5:
+		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
 			}
@@ -27743,7 +27741,7 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 6:
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CurrentGeneration", wireType)
 			}
@@ -27762,7 +27760,7 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 7:
+		case 5:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LastAppliedTimestamp", wireType)
 			}
@@ -27781,7 +27779,7 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 8:
+		case 6:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NextAuditSequenceId", wireType)
 			}
@@ -27800,7 +27798,7 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 9:
+		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field OpenPeriod", wireType)
 			}
@@ -27836,7 +27834,7 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 10:
+		case 8:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ClosingPeriods", wireType)
 			}
@@ -27870,7 +27868,7 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 11:
+		case 9:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NextPeriodId", wireType)
 			}
@@ -27889,7 +27887,7 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 12:
+		case 10:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ClosedPeriods", wireType)
 			}
@@ -27923,7 +27921,7 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 13:
+		case 11:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Reversions", wireType)
 			}
@@ -27957,7 +27955,7 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 14:
+		case 12:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PendingLedgerCleanups", wireType)
 			}
@@ -27991,7 +27989,7 @@ func (m *MemorySnapshot) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 15:
+		case 13:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NextQueryCheckpointId", wireType)
 			}

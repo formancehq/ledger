@@ -8846,7 +8846,7 @@ func (m *Request_RemoveAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, er
 		i--
 		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0xfa
+		dAtA[i] = 0xf2
 	}
 	return len(dAtA) - i, nil
 }
@@ -8865,9 +8865,9 @@ func (m *Request_SetDefaultEnforcementMode) MarshalToSizedBufferVT(dAtA []byte) 
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2
+		dAtA[i] = 0x1
 		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0xfa
 	}
 	return len(dAtA) - i, nil
 }
@@ -8888,7 +8888,7 @@ func (m *Request_CreateQueryCheckpoint) MarshalToSizedBufferVT(dAtA []byte) (int
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0x82
 	}
 	return len(dAtA) - i, nil
 }
@@ -8909,7 +8909,7 @@ func (m *Request_DeleteQueryCheckpoint) MarshalToSizedBufferVT(dAtA []byte) (int
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0x92
+		dAtA[i] = 0x8a
 	}
 	return len(dAtA) - i, nil
 }
@@ -8930,7 +8930,7 @@ func (m *Request_MigrateAccountType) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i--
 		dAtA[i] = 0x2
 		i--
-		dAtA[i] = 0x9a
+		dAtA[i] = 0x92
 	}
 	return len(dAtA) - i, nil
 }
@@ -10818,7 +10818,7 @@ func (m *LedgerApplyRequest_RemoveAccountType) MarshalToSizedBufferVT(dAtA []byt
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x42
+		dAtA[i] = 0x3a
 	}
 	return len(dAtA) - i, nil
 }
@@ -10837,7 +10837,7 @@ func (m *LedgerApplyRequest_SetDefaultEnforcementMode) MarshalToSizedBufferVT(dA
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x4a
+		dAtA[i] = 0x42
 	}
 	return len(dAtA) - i, nil
 }
@@ -10856,7 +10856,7 @@ func (m *LedgerApplyRequest_MigrateAccountType) MarshalToSizedBufferVT(dAtA []by
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x52
+		dAtA[i] = 0x4a
 	}
 	return len(dAtA) - i, nil
 }
@@ -20648,7 +20648,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_AddAccountType{AddAccountType: v}
 			}
 			iNdEx = postIndex
-		case 31:
+		case 30:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RemoveAccountType", wireType)
 			}
@@ -20689,7 +20689,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_RemoveAccountType{RemoveAccountType: v}
 			}
 			iNdEx = postIndex
-		case 32:
+		case 31:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SetDefaultEnforcementMode", wireType)
 			}
@@ -20730,7 +20730,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_SetDefaultEnforcementMode{SetDefaultEnforcementMode: v}
 			}
 			iNdEx = postIndex
-		case 33:
+		case 32:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreateQueryCheckpoint", wireType)
 			}
@@ -20771,7 +20771,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_CreateQueryCheckpoint{CreateQueryCheckpoint: v}
 			}
 			iNdEx = postIndex
-		case 34:
+		case 33:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DeleteQueryCheckpoint", wireType)
 			}
@@ -20812,7 +20812,7 @@ func (m *Request) UnmarshalVT(dAtA []byte) error {
 				m.Type = &Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: v}
 			}
 			iNdEx = postIndex
-		case 35:
+		case 34:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MigrateAccountType", wireType)
 			}
@@ -25010,7 +25010,7 @@ func (m *LedgerApplyRequest) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyRequest_AddAccountType{AddAccountType: v}
 			}
 			iNdEx = postIndex
-		case 8:
+		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RemoveAccountType", wireType)
 			}
@@ -25051,7 +25051,7 @@ func (m *LedgerApplyRequest) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyRequest_RemoveAccountType{RemoveAccountType: v}
 			}
 			iNdEx = postIndex
-		case 9:
+		case 8:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SetDefaultEnforcementMode", wireType)
 			}
@@ -25092,7 +25092,7 @@ func (m *LedgerApplyRequest) UnmarshalVT(dAtA []byte) error {
 				m.Data = &LedgerApplyRequest_SetDefaultEnforcementMode{SetDefaultEnforcementMode: v}
 			}
 			iNdEx = postIndex
-		case 10:
+		case 9:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MigrateAccountType", wireType)
 			}

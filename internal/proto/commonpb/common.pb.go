@@ -5291,24 +5291,23 @@ type LedgerLogPayload_AddedAccountType struct {
 }
 
 type LedgerLogPayload_RemovedAccountType struct {
-	// 14 removed: was updated_account_type
-	RemovedAccountType *RemovedAccountTypeLog `protobuf:"bytes,15,opt,name=removed_account_type,json=removedAccountType,proto3,oneof"`
+	RemovedAccountType *RemovedAccountTypeLog `protobuf:"bytes,14,opt,name=removed_account_type,json=removedAccountType,proto3,oneof"`
 }
 
 type LedgerLogPayload_UpdatedDefaultEnforcementMode struct {
-	UpdatedDefaultEnforcementMode *UpdatedDefaultEnforcementModeLog `protobuf:"bytes,16,opt,name=updated_default_enforcement_mode,json=updatedDefaultEnforcementMode,proto3,oneof"`
+	UpdatedDefaultEnforcementMode *UpdatedDefaultEnforcementModeLog `protobuf:"bytes,15,opt,name=updated_default_enforcement_mode,json=updatedDefaultEnforcementMode,proto3,oneof"`
 }
 
 type LedgerLogPayload_StartedAccountMigration struct {
-	StartedAccountMigration *StartedAccountMigrationLog `protobuf:"bytes,17,opt,name=started_account_migration,json=startedAccountMigration,proto3,oneof"`
+	StartedAccountMigration *StartedAccountMigrationLog `protobuf:"bytes,16,opt,name=started_account_migration,json=startedAccountMigration,proto3,oneof"`
 }
 
 type LedgerLogPayload_AccountMigrationBatch struct {
-	AccountMigrationBatch *AccountMigrationBatchLog `protobuf:"bytes,18,opt,name=account_migration_batch,json=accountMigrationBatch,proto3,oneof"`
+	AccountMigrationBatch *AccountMigrationBatchLog `protobuf:"bytes,17,opt,name=account_migration_batch,json=accountMigrationBatch,proto3,oneof"`
 }
 
 type LedgerLogPayload_CompletedAccountMigration struct {
-	CompletedAccountMigration *CompletedAccountMigrationLog `protobuf:"bytes,19,opt,name=completed_account_migration,json=completedAccountMigration,proto3,oneof"`
+	CompletedAccountMigration *CompletedAccountMigrationLog `protobuf:"bytes,18,opt,name=completed_account_migration,json=completedAccountMigration,proto3,oneof"`
 }
 
 func (*LedgerLogPayload_CreatedTransaction) isLedgerLogPayload_Payload() {}
@@ -7248,8 +7247,8 @@ type AccountType struct {
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                    // Unique identifier: "user-checking"
 	Pattern       string                 `protobuf:"bytes,2,opt,name=pattern,proto3" json:"pattern,omitempty"`                              // Address pattern: "users:{id}:checking"
 	Status        AccountTypeStatus      `protobuf:"varint,3,opt,name=status,proto3,enum=common.AccountTypeStatus" json:"status,omitempty"` // ACTIVE, DEPRECATED
-	Ephemeral     bool                   `protobuf:"varint,5,opt,name=ephemeral,proto3" json:"ephemeral,omitempty"`                         // Purge volumes when input == output (zero balance)
-	Migration     *AccountTypeMigration  `protobuf:"bytes,6,opt,name=migration,proto3" json:"migration,omitempty"`                          // non-nil when status == MIGRATING
+	Ephemeral     bool                   `protobuf:"varint,4,opt,name=ephemeral,proto3" json:"ephemeral,omitempty"`                         // Purge volumes when input == output (zero balance)
+	Migration     *AccountTypeMigration  `protobuf:"bytes,5,opt,name=migration,proto3" json:"migration,omitempty"`                          // non-nil when status == MIGRATING
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9749,11 +9748,11 @@ const file_common_proto_rawDesc = "" +
 	"\vindex_ready\x18\f \x01(\v2\x15.common.IndexReadyLogH\x00R\n" +
 	"indexReady\x12K\n" +
 	"\x12added_account_type\x18\r \x01(\v2\x1b.common.AddedAccountTypeLogH\x00R\x10addedAccountType\x12Q\n" +
-	"\x14removed_account_type\x18\x0f \x01(\v2\x1d.common.RemovedAccountTypeLogH\x00R\x12removedAccountType\x12s\n" +
-	" updated_default_enforcement_mode\x18\x10 \x01(\v2(.common.UpdatedDefaultEnforcementModeLogH\x00R\x1dupdatedDefaultEnforcementMode\x12`\n" +
-	"\x19started_account_migration\x18\x11 \x01(\v2\".common.StartedAccountMigrationLogH\x00R\x17startedAccountMigration\x12Z\n" +
-	"\x17account_migration_batch\x18\x12 \x01(\v2 .common.AccountMigrationBatchLogH\x00R\x15accountMigrationBatch\x12f\n" +
-	"\x1bcompleted_account_migration\x18\x13 \x01(\v2$.common.CompletedAccountMigrationLogH\x00R\x19completedAccountMigrationB\t\n" +
+	"\x14removed_account_type\x18\x0e \x01(\v2\x1d.common.RemovedAccountTypeLogH\x00R\x12removedAccountType\x12s\n" +
+	" updated_default_enforcement_mode\x18\x0f \x01(\v2(.common.UpdatedDefaultEnforcementModeLogH\x00R\x1dupdatedDefaultEnforcementMode\x12`\n" +
+	"\x19started_account_migration\x18\x10 \x01(\v2\".common.StartedAccountMigrationLogH\x00R\x17startedAccountMigration\x12Z\n" +
+	"\x17account_migration_batch\x18\x11 \x01(\v2 .common.AccountMigrationBatchLogH\x00R\x15accountMigrationBatch\x12f\n" +
+	"\x1bcompleted_account_migration\x18\x12 \x01(\v2$.common.CompletedAccountMigrationLogH\x00R\x19completedAccountMigrationB\t\n" +
 	"\apayload\"\xc5\x01\n" +
 	"\x0eCreateIndexLog\x12:\n" +
 	"\vlog_builtin\x18\x01 \x01(\x0e2\x17.common.LogBuiltinIndexH\x00R\n" +
@@ -9904,13 +9903,13 @@ const file_common_proto_rawDesc = "" +
 	"\flog_sequence\x18\x01 \x01(\x04R\vlogSequence\x12\x12\n" +
 	"\x04hash\x18\x02 \x01(\fR\x04hash\"B\n" +
 	"\x19TransactionReferenceValue\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\"\xce\x01\n" +
+	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\"\xc8\x01\n" +
 	"\vAccountType\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\apattern\x18\x02 \x01(\tR\apattern\x121\n" +
 	"\x06status\x18\x03 \x01(\x0e2\x19.common.AccountTypeStatusR\x06status\x12\x1c\n" +
-	"\tephemeral\x18\x05 \x01(\bR\tephemeral\x12:\n" +
-	"\tmigration\x18\x06 \x01(\v2\x1c.common.AccountTypeMigrationR\tmigrationJ\x04\b\x04\x10\x05\"M\n" +
+	"\tephemeral\x18\x04 \x01(\bR\tephemeral\x12:\n" +
+	"\tmigration\x18\x05 \x01(\v2\x1c.common.AccountTypeMigrationR\tmigration\"M\n" +
 	"\x13AddedAccountTypeLog\x126\n" +
 	"\faccount_type\x18\x01 \x01(\v2\x13.common.AccountTypeR\vaccountType\"+\n" +
 	"\x15RemovedAccountTypeLog\x12\x12\n" +
