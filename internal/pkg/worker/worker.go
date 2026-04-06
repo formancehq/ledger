@@ -1,5 +1,19 @@
 package worker
 
+import "context"
+
+// ContextFromStop returns a context.Context that is canceled when stop is closed.
+func ContextFromStop(stop <-chan struct{}) context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		<-stop
+		cancel()
+	}()
+
+	return ctx
+}
+
 // Worker provides goroutine lifecycle management (start/stop) for background
 // workers. It encapsulates the stopCh/doneCh pattern shared across all workers.
 type Worker struct {

@@ -105,6 +105,7 @@ func (mc *MetadataConverter) Stop() {
 //   - accepting new requests from requestCh (always, to avoid back-pressure)
 //   - dispatching the head of the queue when a pool slot is available
 func (mc *MetadataConverter) dispatchLoop(stop <-chan struct{}) {
+	ctx := worker.ContextFromStop(stop)
 	sem := make(chan struct{}, mc.poolSize)
 
 	var pending []MetadataConvertRequest
@@ -125,7 +126,7 @@ func (mc *MetadataConverter) dispatchLoop(stop <-chan struct{}) {
 				mc.wg.Go(func() {
 					defer func() { <-sem }()
 
-					mc.convertWithRetry(stop, req)
+					mc.convertWithRetry(ctx, stop, req)
 				})
 			}
 		} else {
@@ -142,8 +143,8 @@ func (mc *MetadataConverter) dispatchLoop(stop <-chan struct{}) {
 
 // isFieldStillConverting checks whether a metadata field is still in CONVERTING
 // state by reading the ledger's metadata schema from the data store.
-func (mc *MetadataConverter) isFieldStillConverting(ledgerName string, targetType commonpb.TargetType, key string, expectedType commonpb.MetadataType) bool {
-	ledgerInfo, err := query.GetLedgerByName(context.TODO(), mc.dataStore, ledgerName)
+func (mc *MetadataConverter) isFieldStillConverting(ctx context.Context, ledgerName string, targetType commonpb.TargetType, key string, expectedType commonpb.MetadataType) bool {
+	ledgerInfo, err := query.GetLedgerByName(ctx, mc.dataStore, ledgerName)
 	if err != nil {
 		return false
 	}
@@ -177,11 +178,11 @@ func (mc *MetadataConverter) isFieldStillConverting(ledgerName string, targetTyp
 // or the converter is stopped.
 // On follower nodes, the loop exits when the field is no longer in CONVERTING
 // state (completed by the leader through Raft), without calling the proposers.
-func (mc *MetadataConverter) convertWithRetry(stop <-chan struct{}, req MetadataConvertRequest) {
+func (mc *MetadataConverter) convertWithRetry(ctx context.Context, stop <-chan struct{}, req MetadataConvertRequest) {
 	worker.RetryWithBackoff(stop, mc.logger, func() error {
 		// Check if the field is still converting before attempting work.
 		// If the leader already completed the conversion, exit early.
-		if !mc.isFieldStillConverting(req.LedgerName, req.TargetType, req.Key, req.Type) {
+		if !mc.isFieldStillConverting(ctx, req.LedgerName, req.TargetType, req.Key, req.Type) {
 			mc.logger.WithFields(map[string]any{
 				"ledger": req.LedgerName,
 				"key":    req.Key,
@@ -194,7 +195,7 @@ func (mc *MetadataConverter) convertWithRetry(stop <-chan struct{}, req Metadata
 			return worker.ErrNotLeader
 		}
 
-		return mc.convert(req)
+		return mc.convert(ctx, req)
 	})
 }
 
@@ -267,14 +268,14 @@ func (mc *MetadataConverter) proposeComplete(
 //   - If the field is still CONVERTING and this node is not the leader, return
 //     worker.ErrNotLeader so the retry loop waits and re-checks.
 //   - Only the leader scans, converts, and proposes.
-func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
+func (mc *MetadataConverter) convert(ctx context.Context, req MetadataConvertRequest) error {
 	logFields := map[string]any{
 		"ledger": req.LedgerName,
 		"key":    req.Key,
 		"type":   req.Type.String(),
 	}
 
-	if !mc.isFieldStillConverting(req.LedgerName, req.TargetType, req.Key, req.Type) {
+	if !mc.isFieldStillConverting(ctx, req.LedgerName, req.TargetType, req.Key, req.Type) {
 		mc.logger.WithFields(logFields).Infof("Field no longer converting (completed by leader), done")
 
 		return nil
@@ -285,7 +286,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 	}
 
 	// Validate the ledger exists (off the hot path).
-	_, err := query.GetLedgerByName(context.TODO(), mc.dataStore, req.LedgerName)
+	_, err := query.GetLedgerByName(ctx, mc.dataStore, req.LedgerName)
 	if err != nil {
 		return fmt.Errorf("resolving ledger %q: %w", req.LedgerName, err)
 	}
@@ -390,7 +391,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 
 		if len(batch) >= mc.batchSize {
 			// Check staleness before proposing each batch.
-			if !mc.isFieldStillConverting(req.LedgerName, req.TargetType, req.Key, req.Type) {
+			if !mc.isFieldStillConverting(ctx, req.LedgerName, req.TargetType, req.Key, req.Type) {
 				mc.logger.WithFields(logFields).Infof("Field no longer converting mid-batch, aborting")
 
 				aborted = true
@@ -418,7 +419,7 @@ func (mc *MetadataConverter) convert(req MetadataConvertRequest) error {
 
 	// Propose any remaining partial batch.
 	if len(batch) > 0 {
-		if !mc.isFieldStillConverting(req.LedgerName, req.TargetType, req.Key, req.Type) {
+		if !mc.isFieldStillConverting(ctx, req.LedgerName, req.TargetType, req.Key, req.Type) {
 			mc.logger.WithFields(logFields).Infof("Field no longer converting mid-batch, aborting")
 
 			return nil

@@ -92,6 +92,8 @@ func (am *AccountMigrator) Stop() {
 // dispatchLoop drains requestCh into an internal queue and processes requests
 // sequentially (single goroutine, no pool).
 func (am *AccountMigrator) dispatchLoop(stop <-chan struct{}) {
+	ctx := worker.ContextFromStop(stop)
+
 	var pending []AccountMigrateRequest
 
 	for {
@@ -102,7 +104,7 @@ func (am *AccountMigrator) dispatchLoop(stop <-chan struct{}) {
 			pending = pending[1:]
 
 			am.wg.Go(func() {
-				am.migrateWithRetry(stop, req)
+				am.migrateWithRetry(ctx, stop, req)
 			})
 
 			// Drain any requests that arrived while processing.
@@ -130,8 +132,8 @@ func (am *AccountMigrator) dispatchLoop(stop <-chan struct{}) {
 
 // isTypeStillMigrating checks whether an account type is still in MIGRATING
 // state by reading the ledger's account types from the data store.
-func (am *AccountMigrator) isTypeStillMigrating(ledgerName, accountTypeName, expectedOldPattern string) bool {
-	ledgerInfo, err := query.GetLedgerByName(context.TODO(), am.dataStore, ledgerName)
+func (am *AccountMigrator) isTypeStillMigrating(ctx context.Context, ledgerName, accountTypeName, expectedOldPattern string) bool {
+	ledgerInfo, err := query.GetLedgerByName(ctx, am.dataStore, ledgerName)
 	if err != nil {
 		return false
 	}
@@ -154,9 +156,9 @@ func (am *AccountMigrator) isTypeStillMigrating(ledgerName, accountTypeName, exp
 // or the migrator is stopped.
 // On follower nodes, the loop exits when the account type is no longer in
 // MIGRATING state (completed by the leader through Raft).
-func (am *AccountMigrator) migrateWithRetry(stop <-chan struct{}, req AccountMigrateRequest) {
+func (am *AccountMigrator) migrateWithRetry(ctx context.Context, stop <-chan struct{}, req AccountMigrateRequest) {
 	worker.RetryWithBackoff(stop, am.logger, func() error {
-		if !am.isTypeStillMigrating(req.LedgerName, req.AccountTypeName, req.OldPattern) {
+		if !am.isTypeStillMigrating(ctx, req.LedgerName, req.AccountTypeName, req.OldPattern) {
 			am.logger.WithFields(map[string]any{
 				"ledger":      req.LedgerName,
 				"accountType": req.AccountTypeName,
@@ -169,7 +171,7 @@ func (am *AccountMigrator) migrateWithRetry(stop <-chan struct{}, req AccountMig
 			return worker.ErrNotLeader
 		}
 
-		return am.migrate(req)
+		return am.migrate(ctx, req)
 	})
 }
 
@@ -182,7 +184,7 @@ func (am *AccountMigrator) migrateWithRetry(stop <-chan struct{}, req AccountMig
 //   - Pass 2: scan metadata to collect metadata keys for matched accounts
 //
 // Both passes use the same point-in-time read snapshot for consistency.
-func (am *AccountMigrator) migrate(req AccountMigrateRequest) error {
+func (am *AccountMigrator) migrate(ctx context.Context, req AccountMigrateRequest) error {
 	logFields := map[string]any{
 		"ledger":        req.LedgerName,
 		"accountType":   req.AccountTypeName,
@@ -190,7 +192,7 @@ func (am *AccountMigrator) migrate(req AccountMigrateRequest) error {
 		"targetPattern": req.TargetPattern,
 	}
 
-	if !am.isTypeStillMigrating(req.LedgerName, req.AccountTypeName, req.OldPattern) {
+	if !am.isTypeStillMigrating(ctx, req.LedgerName, req.AccountTypeName, req.OldPattern) {
 		am.logger.WithFields(logFields).Infof("Account type no longer migrating (completed by leader), done")
 
 		return nil
@@ -201,7 +203,7 @@ func (am *AccountMigrator) migrate(req AccountMigrateRequest) error {
 	}
 
 	// Validate the ledger exists (off the hot path).
-	if _, err := query.GetLedgerByName(context.TODO(), am.dataStore, req.LedgerName); err != nil {
+	if _, err := query.GetLedgerByName(ctx, am.dataStore, req.LedgerName); err != nil {
 		return fmt.Errorf("resolving ledger %q: %w", req.LedgerName, err)
 	}
 
@@ -338,7 +340,7 @@ func (am *AccountMigrator) migrate(req AccountMigrateRequest) error {
 		})
 
 		if len(batch) >= am.batchSize {
-			if !am.isTypeStillMigrating(req.LedgerName, req.AccountTypeName, req.OldPattern) {
+			if !am.isTypeStillMigrating(ctx, req.LedgerName, req.AccountTypeName, req.OldPattern) {
 				am.logger.WithFields(logFields).Infof("Account type no longer migrating mid-batch, aborting")
 
 				aborted = true
@@ -357,7 +359,7 @@ func (am *AccountMigrator) migrate(req AccountMigrateRequest) error {
 
 	// Propose any remaining partial batch.
 	if len(batch) > 0 {
-		if !am.isTypeStillMigrating(req.LedgerName, req.AccountTypeName, req.OldPattern) {
+		if !am.isTypeStillMigrating(ctx, req.LedgerName, req.AccountTypeName, req.OldPattern) {
 			am.logger.WithFields(logFields).Infof("Account type no longer migrating mid-batch, aborting")
 
 			return nil
